@@ -177,6 +177,9 @@ message TPersistentFastShardConfig
     // 5min total timeout, 500ms backoff increment.
     uint64 RetryTotalTimeoutMs = 4;
     uint64 RetryBackoffIncrementMs = 5;
+
+    // TODO(#6956): drop once every device supports the journal.
+    bool JournalRestoreEnabled = 20;
 }
 
 message TMemFastShardConfig

@@ -51,6 +51,7 @@ struct TFakeStorageNode: public IStorageNode
     TDeque<NCloud::NProto::TReleaseDevicesResponse> ReleaseRespQueue;
     TDeque<NCloud::NProto::TReadPagesResponse> ReadRespQueue;
     TDeque<NCloud::NProto::TWriteLogRecordResponse> WriteRespQueue;
+    TDeque<NCloud::NProto::TReadJournalTailResponse> ReadJournalTailRespQueue;
 
     NCloud::NProto::TAcquireDevicesResponse AcquireDevices(
         NCloud::NProto::TAcquireDevicesRequest request) override;

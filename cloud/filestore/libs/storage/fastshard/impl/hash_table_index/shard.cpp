@@ -2174,6 +2174,8 @@ struct TStorageGroupFactory: IStorageGroupFactory
                 TDuration::MilliSeconds(config.GetRetryBackoffIncrementMs());
         }
 
+        groupConfig.JournalRestoreEnabled = config.GetJournalRestoreEnabled();
+
         if (sg.GetType() == NProtoPrivate::TStorageGroup::E_SG_QUORUM_MIRROR) {
             return CreateQuorumMirroredStorageGroup(
                 std::move(groupConfig),
