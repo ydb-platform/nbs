@@ -64,7 +64,7 @@ inline bool IsFilesystemIdEncoded(const TString& fsId)
 
 NCloud::NProto::TError ValidateFilesystemId(const TString& fsId);
 
-inline void GuidToString(const TGUID& guid, TString& str)
+Y_FORCE_INLINE void GuidToString(const TGUID& guid, TString& str)
 {
     constexpr size_t MaxHexDigitsInGuidWord = sizeof(TGUID::dw[0]) * 2;
 

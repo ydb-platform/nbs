@@ -21,7 +21,7 @@ static_assert(ShardIdAsBinaryStream <= MaxShardIdEncodingVersion);
 static_assert(sizeof(TGUID::dw) == 16);
 
 
-inline void
+Y_FORCE_INLINE void
 DecodedShardId(const TString& mainFsId, const ui16 shardNo, TString& shardId)
 {
     constexpr size_t MaxDecimalDigitsInUi16 = 5;
