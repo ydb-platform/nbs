@@ -72,24 +72,34 @@ inline void GuidToString(const TGUID& guid, TString& str)
     // Example: 57d8913c-c009f3cd-f059ad8a-cabde340
     constexpr size_t MaxGuidAsStringChars = sizeof(TGUID::dw) * 2 + 3;
 
-    // The following code relies on the fact that ReserveAndResize allocates
-    // at least MaxGuidAsStringChars + 1 bytes.
     str.ReserveAndResize(MaxGuidAsStringChars);
-    char* ptr = str.Detach();
-    const char* buffStart = ptr;
+    char* buffStart = str.Detach();
 
-    for (ui32 i = 0; i < sizeof(TGUID::dw) / sizeof(TGUID::dw[0]); ++i) {
-        auto result = std::to_chars(
-            ptr,
-            ptr + MaxHexDigitsInGuidWord,
-            guid.dw[i],
-            16);
-        ptr = result.ptr;
-        *(ptr++) = '-';
-    }
+    std::to_chars_result result = std::to_chars(
+        buffStart,
+        buffStart + MaxHexDigitsInGuidWord,
+        guid.dw[0],
+        16);
+    *(result.ptr++) = '-';
+    result = std::to_chars(
+        result.ptr,
+        result.ptr + MaxHexDigitsInGuidWord,
+        guid.dw[1],
+        16);
+    *(result.ptr++) = '-';
+    result = std::to_chars(
+        result.ptr,
+        result.ptr + MaxHexDigitsInGuidWord,
+        guid.dw[2],
+        16);
+    *(result.ptr++) = '-';
+    result = std::to_chars(
+        result.ptr,
+        result.ptr + MaxHexDigitsInGuidWord,
+        guid.dw[3],
+        16);
 
-    ptr--;
-    str.ReserveAndResize(ptr - buffStart);
+    str.ReserveAndResize(result.ptr - buffStart);
 }
 
 }   // namespace NCloud::NFileStore::NStorage
