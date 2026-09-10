@@ -15,6 +15,7 @@ SRCS(
     tablet_actor_accessnode.cpp
     tablet_actor_acquirelock.cpp
     tablet_actor_adapter.cpp
+    tablet_actor_adapterinit.cpp
     tablet_actor_addblob.cpp
     tablet_actor_adddata.cpp
     tablet_actor_adddata_unconfirmed.cpp
@@ -41,7 +42,6 @@ SRCS(
     tablet_actor_destroyhandle.cpp
     tablet_actor_destroysession.cpp
     tablet_actor_dumprange.cpp
-    tablet_actor_fastshard.cpp
     tablet_actor_filteralivenodes.cpp
     tablet_actor_flush.cpp
     tablet_actor_flush_bytes.cpp
