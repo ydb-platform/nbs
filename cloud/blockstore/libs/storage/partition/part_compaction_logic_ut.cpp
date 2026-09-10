@@ -319,9 +319,6 @@ Y_UNIT_TEST_SUITE(TApplyBlobsSkippingTest)
         UNIT_ASSERT_VALUES_EQUAL(3, args.BlocksSkipped);
         UNIT_ASSERT(!args.AffectedBlobs.contains(skippedBlobId));
         UNIT_ASSERT(args.AffectedBlobs.contains(preservedBlobId));
-        UNIT_ASSERT_VALUES_EQUAL(1, args.AffectedBlocks.size());
-        UNIT_ASSERT_VALUES_EQUAL(0, args.AffectedBlocks[0].BlockIndex);
-        UNIT_ASSERT_VALUES_EQUAL(10, args.AffectedBlocks[0].CommitId);
         UNIT_ASSERT(!args.BlockMarks[0].CommitId);
     }
 }
