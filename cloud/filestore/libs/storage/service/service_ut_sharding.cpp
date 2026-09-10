@@ -647,6 +647,107 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    SERVICE_TEST(ShouldRemoveStaleSessionFromShardDuringSyncAfterDestroyPushFails)
+    {
+        constexpr TDuration IdleSessionTimeout = TDuration::Seconds(5);
+        config.SetIdleSessionTimeout(IdleSessionTimeout.MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        env.GetRuntime().SetRegistrationObserverFunc(
+            [](auto& runtime, const auto& parentId, const auto& actorId)
+            {
+                Y_UNUSED(parentId);
+                runtime.EnableScheduleForActor(actorId);
+            });
+
+        // When the main tablet destroys the session, it also sends a
+        // DestroySessionRequest straight to each shard. Drop the first one
+        // going to Shard1Id, so only the sync process can remove it there -
+        // this is what would happen if the main tablet died before that
+        // direct request reached the shard. Only the first one is dropped,
+        // so a later retry sent by sync still gets through.
+        bool droppedDestroyPushToShard1 = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvIndexTablet::EvDestroySessionRequest)
+                {
+                    const auto* msg =
+                        event->Get<TEvIndexTablet::TEvDestroySessionRequest>();
+                    if (msg->Record.GetFileSystemId() == fsConfig.Shard1Id &&
+                        !droppedDestroyPushToShard1)
+                    {
+                        droppedDestroyPushToShard1 = true;
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        auto describeShardSessions = [&](const TString& fsId)
+        {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(fsId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+            return response;
+        };
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, fsInfo.MainTabletId);
+        tablet.InitSession("client", "session");
+
+        // Check: the session already exists in the shard, and it is not
+        // orphan yet.
+        {
+            auto response = describeShardSessions(fsConfig.Shard1Id);
+            UNIT_ASSERT_VALUES_EQUAL(1, response.GetSessions().size());
+            UNIT_ASSERT(!response.GetSessions(0).GetIsOrphan());
+        }
+
+        // Rebooting reloads sessions from the DB through LoadSessions, and
+        // LoadSessions always marks a session as orphan with a
+        // IdleSessionTimeout deadline
+        tablet.RebootTablet();
+
+        // Wait for one sync cycle while the session is still inside its
+        // grace period on main. The session must still exist in the shard.
+        env.GetRuntime().DispatchEvents(
+            {},
+            IdleSessionTimeout / 3 + TDuration::MilliSeconds(500));
+        {
+            auto response = describeShardSessions(fsConfig.Shard1Id);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1,
+                response.GetSessions().size(),
+                "session removed from shard too early");
+            UNIT_ASSERT(!response.GetSessions(0).GetIsOrphan());
+        }
+
+        // Wait for the session to be destroyed on main and for the next
+        // sync cycle to run, then check that the session is gone from the
+        // shard too.
+        env.GetRuntime().DispatchEvents(
+            {},
+            2 * IdleSessionTimeout + IdleSessionTimeout / 3 +
+                TDuration::Seconds(1));
+        {
+            auto response = describeShardSessions(fsConfig.Shard1Id);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                response.GetSessions().size(),
+                "stale session was not removed from the shard during sync");
+        }
+    }
+
     SERVICE_TEST(ShouldPropagateQuotasToShards)
     {
         TShardedFileSystemConfig fsConfig;

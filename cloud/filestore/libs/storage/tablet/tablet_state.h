@@ -356,6 +356,11 @@ public:
         return FileSystem;
     }
 
+    bool IsMainTablet() const
+    {
+        return GetFileSystem().GetShardNo() == 0;
+    }
+
     TString GetFileSystemId() const
     {
         return FileSystem.GetFileSystemId();
@@ -889,6 +894,8 @@ private:
         const NProto::TSessionOptions& sessionOptions);
 
     void RemoveSession(TSession* session);
+
+    void TrackSessionOwner(const NActors::TActorId& owner, TSession* session);
 
     //
     // Handles
