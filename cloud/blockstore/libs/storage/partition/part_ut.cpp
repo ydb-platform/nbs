@@ -2227,43 +2227,77 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // logical flush threshold is 2 * 4_MB. The cap is above that product
         // and the HDD setting is far below it, so neither a raw SSD read nor a
         // raw unsuffixed read can produce 8_MB.
+        constexpr ui32 BlockCount = 2048;
+        constexpr ui32 BlocksPerWrite = 512;
+        constexpr ui32 WriteCount = BlockCount / BlocksPerWrite;
+        constexpr ui64 ExpectedThreshold = 2 * 4_MB;
+
+        // Half the workload stays below the threshold and the whole workload
+        // lands exactly on it, so this also covers the >= boundary.
+        static_assert(
+            ui64(BlockCount / 2) * DefaultBlockSize < ExpectedThreshold);
+        static_assert(ui64(BlockCount) * DefaultBlockSize == ExpectedThreshold);
+
+        // The physical blob count and blob byte thresholds are scaled too, so
+        // they cannot be disabled by a large cap. These are their effective
+        // values. Each write produces one fresh blob, and both thresholds keep
+        // a 4x margin over the whole workload, so neither can preempt the
+        // logical one - not even with per-blob overhead on top of the payload.
+        constexpr ui64 BlobCountThreshold = 2 * 3200;
+        constexpr ui64 BlobByteCountThreshold = 2 * 16_MB;
+        static_assert(WriteCount * 4 < BlobCountThreshold);
+        static_assert(
+            ui64(BlockCount) * DefaultBlockSize * 4 <= BlobByteCountThreshold);
+
         auto config = DefaultConfig();
         config.SetWriteBlobThresholdSSD(16_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetBytesPerFreshCapacityUnitSSD(4_MB);
         config.SetFlushThresholdSSD(64_MB);
         config.SetFlushThreshold(1_MB);
-        config.SetFreshBlobCountFlushThresholdSSD(Max<ui32>());
-        config.SetFreshBlobByteCountFlushThresholdSSD(Max<ui32>());
+        config.SetFreshBlobCountFlushThresholdSSD(BlobCountThreshold);
+        config.SetFreshBlobByteCountFlushThresholdSSD(BlobByteCountThreshold);
 
         auto runtime = PrepareTestActorRuntime(
             config,
-            2048,
+            BlockCount,
             {},
             {.MediaKind = NCloud::NProto::STORAGE_MEDIA_SSD});
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        partition.WriteBlocks(TBlockRange32::WithLength(0, 512));
-        partition.WriteBlocks(TBlockRange32::WithLength(512, 512));
+        for (ui32 i = 0; i < WriteCount / 2; ++i) {
+            partition.WriteBlocks(
+                TBlockRange32::WithLength(i * BlocksPerWrite, BlocksPerWrite));
+        }
 
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
-            UNIT_ASSERT_VALUES_EQUAL(1024, stats.GetFreshBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                BlockCount / 2,
+                stats.GetFreshBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedIndexBlocksCount());
+            // One fresh blob per write, as the margins above assume.
+            UNIT_ASSERT_VALUES_EQUAL(
+                WriteCount / 2,
+                stats.GetFreshBlobsCount());
         }
 
-        partition.WriteBlocks(TBlockRange32::WithLength(1024, 512));
-        partition.WriteBlocks(TBlockRange32::WithLength(1536, 512));
+        for (ui32 i = WriteCount / 2; i < WriteCount; ++i) {
+            partition.WriteBlocks(
+                TBlockRange32::WithLength(i * BlocksPerWrite, BlocksPerWrite));
+        }
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         {
             const auto response = partition.StatPartition();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBlocksCount());
-            UNIT_ASSERT_VALUES_EQUAL(2048, stats.GetMixedIndexBlocksCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                BlockCount,
+                stats.GetMixedIndexBlocksCount());
         }
     }
 
