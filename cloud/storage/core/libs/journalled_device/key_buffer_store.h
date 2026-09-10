@@ -7,16 +7,11 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/buffer.h>
-#include <util/generic/vector.h>
+#include <util/generic/map.h>
 
 #include <memory>
-#include <utility>
 
 namespace NCloud::NJournalled {
-
-////////////////////////////////////////////////////////////////////////////////
-
-using TKeyBuffers = TVector<std::pair<ui64, TBuffer>>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -25,17 +20,22 @@ struct IKeyBufferStore
     virtual ~IKeyBufferStore() = default;
 
     [[nodiscard]] virtual auto Restore()
-        -> NThreading::TFuture<TResultOrError<TKeyBuffers>> = 0;
+        -> NThreading::TFuture<TResultOrError<TMap<ui64, TBuffer>>> = 0;
 
     [[nodiscard]] virtual auto Write(ui64 key, TBuffer buffer)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
 
-    [[nodiscard]] virtual auto EraseBelow(ui64 key)
+    [[nodiscard]] virtual auto EraseUpTo(ui64 lastKey)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IKeyBufferStorePtr CreateInMemoryKeyBufferStore();
+
+IKeyBufferStorePtr CreateDeviceKeyBufferStore(
+    IDevicePtr device,
+    ui64 pageCount,
+    ui32 pageSize);
 
 }   // namespace NCloud::NJournalled
