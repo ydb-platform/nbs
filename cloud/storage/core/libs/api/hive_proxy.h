@@ -5,6 +5,7 @@
 #include <cloud/storage/core/libs/hive_proxy/tablet_boot_info.h>
 #include <cloud/storage/core/libs/kikimr/components.h>
 #include <cloud/storage/core/libs/kikimr/events.h>
+#include <cloud/storage/core/protos/drain.pb.h>
 
 #include <contrib/ydb/core/base/hive.h>
 
@@ -235,10 +236,10 @@ struct TEvHiveProxy
 
     struct TDrainNodeRequest
     {
-        const bool KeepDown;
+        const NProto::EDrainDownPolicy DownPolicy;
 
-        explicit TDrainNodeRequest(bool keepDown)
-            : KeepDown(keepDown)
+        explicit TDrainNodeRequest(NProto::EDrainDownPolicy downPolicy)
+            : DownPolicy(downPolicy)
         {}
     };
 

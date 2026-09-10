@@ -162,14 +162,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         ui64 observedNodeId = 0;
-        bool observedKeepDown = false;
+        NKikimrHive::EDrainDownPolicy observedDownPolicy =
+            NKikimrHive::DRAIN_POLICY_NO_DOWN;
         env.GetRuntime().SetObserverFunc([&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvHive::EvDrainNode: {
                         auto* msg = event->Get<TEvHive::TEvDrainNode>();
                         observedNodeId = msg->Record.GetNodeID();
-                        observedKeepDown = msg->Record.GetKeepDown();
+                        observedDownPolicy = msg->Record.GetDownPolicy();
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -185,19 +186,24 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
 
             UNIT_ASSERT_VALUES_EQUAL(service.GetSender().NodeId(), observedNodeId);
-            UNIT_ASSERT(!observedKeepDown);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NKikimrHive::DRAIN_POLICY_NO_DOWN),
+                static_cast<int>(observedDownPolicy));
         }
 
         {
             NProtoPrivate::TDrainNodeRequest request;
-            request.SetKeepDown(true);
+            request.SetDownPolicy(
+                NCloud::NProto::DRAIN_POLICY_KEEP_DOWN);
             TString requestJson;
             google::protobuf::util::MessageToJsonString(request, &requestJson);
 
-            auto response = service.ExecuteAction(DrainTabletsActionName, requestJson);
+            auto response =
+                service.ExecuteAction(DrainTabletsActionName, requestJson);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
-            UNIT_ASSERT_VALUES_EQUAL(service.GetSender().NodeId(), observedNodeId);
-            UNIT_ASSERT(observedKeepDown);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NKikimrHive::DRAIN_POLICY_KEEP_DOWN),
+                static_cast<int>(observedDownPolicy));
         }
     }
 
@@ -1579,6 +1585,38 @@ Y_UNIT_TEST_SUITE(TStorageServiceActionsTest)
                 false,
                 response.GetParentlessFilesOnly());
         }
+    }
+
+    Y_UNIT_TEST(ShouldForwardDrainDownPolicy)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        NKikimrHive::EDrainDownPolicy observedDownPolicy =
+            NKikimrHive::DRAIN_POLICY_NO_DOWN;
+        env.GetRuntime().SetObserverFunc([&](TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() == TEvHive::EvDrainNode) {
+                observedDownPolicy = event->Get<TEvHive::TEvDrainNode>()
+                    ->Record.GetDownPolicy();
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        NProtoPrivate::TDrainNodeRequest request;
+        request.SetDownPolicy(
+            NCloud::NProto::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART);
+
+        TString input;
+        google::protobuf::util::MessageToJsonString(request, &input);
+        auto response = service.ExecuteAction("draintablets", input);
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(
+                NKikimrHive::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART),
+            static_cast<int>(observedDownPolicy));
     }
 }
 

@@ -9,6 +9,7 @@ SRCS(
 
 PEERDIR(
     cloud/storage/core/libs/kikimr
+    cloud/storage/core/protos
 
     contrib/ydb/core/base
 

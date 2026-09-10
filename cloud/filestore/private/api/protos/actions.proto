@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 import "cloud/filestore/public/api/protos/ping.proto";
+import "cloud/storage/core/protos/drain.proto";
 
 package NCloud.NFileStore.NProtoPrivate;
 
@@ -11,7 +12,11 @@ option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/pro
 
 message TDrainNodeRequest
 {
-    bool KeepDown = 1;
+    // Deprecated in favor of DownPolicy.
+    bool KeepDown = 1 [deprecated = true];
+
+    // Controls whether and for how long the node stays down after draining.
+    NCloud.NProto.EDrainDownPolicy DownPolicy = 2;
 }
 
 message TDrainNodeResponse

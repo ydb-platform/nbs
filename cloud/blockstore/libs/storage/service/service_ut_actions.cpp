@@ -682,14 +682,15 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
         TServiceClient service(env.GetRuntime(), nodeIdx);
 
         ui64 observedNodeIdx = 0;
-        bool observedKeepDown = false;
+        NKikimrHive::EDrainDownPolicy observedDownPolicy =
+            NKikimrHive::DRAIN_POLICY_NO_DOWN;
 
         env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvHive::EvDrainNode: {
                         auto* msg = event->Get<TEvHive::TEvDrainNode>();
                         observedNodeIdx = msg->Record.GetNodeID();
-                        observedKeepDown = msg->Record.GetKeepDown();
+                        observedDownPolicy = msg->Record.GetDownPolicy();
                     }
                 }
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -708,9 +709,12 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             observedNodeIdx
         );
 
-        UNIT_ASSERT(!observedKeepDown);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NKikimrHive::DRAIN_POLICY_NO_DOWN),
+            static_cast<int>(observedDownPolicy));
 
-        request.SetKeepDown(true);
+        request.SetDownPolicy(
+            NCloud::NProto::DRAIN_POLICY_KEEP_DOWN);
 
         buf.clear();
         google::protobuf::util::MessageToJsonString(request, &buf);
@@ -722,7 +726,9 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
             observedNodeIdx
         );
 
-        UNIT_ASSERT(observedKeepDown);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NKikimrHive::DRAIN_POLICY_KEEP_DOWN),
+            static_cast<int>(observedDownPolicy));
     }
 
     Y_UNIT_TEST(ShouldForwardUpdateUsedBlocksToVolume)
@@ -2464,6 +2470,38 @@ Y_UNIT_TEST_SUITE(TServiceActionsTest)
 
         UNIT_ASSERT_VALUES_EQUAL(true, exactDiskIdMatch);
         UNIT_ASSERT_VALUES_EQUAL(false, hasDiskIdInVolumeConfig);
+    }
+
+    Y_UNIT_TEST(ShouldForwardDrainDownPolicy)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        ui32 nodeIdx = SetupTestEnv(env, std::move(config));
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        NKikimrHive::EDrainDownPolicy observedDownPolicy =
+            NKikimrHive::DRAIN_POLICY_NO_DOWN;
+        env.GetRuntime().SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() == TEvHive::EvDrainNode) {
+                observedDownPolicy = event->Get<TEvHive::TEvDrainNode>()
+                    ->Record.GetDownPolicy();
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        NPrivateProto::TDrainNodeRequest request;
+        request.SetDownPolicy(
+            NCloud::NProto::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART);
+
+        TString input;
+        google::protobuf::util::MessageToJsonString(request, &input);
+        service.ExecuteAction("drainnode", input);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(
+                NKikimrHive::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART),
+            static_cast<int>(observedDownPolicy));
     }
 }
 

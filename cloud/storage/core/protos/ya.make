@@ -13,6 +13,7 @@ SRCS(
     config_dispatcher_settings.proto
     device.proto
     diagnostics.proto
+    drain.proto
     endpoints.proto
     error.proto
     media.proto
