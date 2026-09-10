@@ -139,13 +139,16 @@ struct TTickTimer: ITimer
     void Sleep(TDuration duration) override
     {
         Y_UNUSED(duration);
-        (void)Ticks.wait(Sleeps.increment());
+        int r = Ticks.wait(Sleeps.increment());
+        Y_UNUSED(r);
     }
 
     void TickOnce()
     {
-        (void)Sleeps.wait(Ticks.get() + 1);
-        (void)Sleeps.wait(Ticks.increment() + 1);
+        int r = Sleeps.wait(Ticks.get() + 1);
+        Y_UNUSED(r);
+        r = Sleeps.wait(Ticks.increment() + 1);
+        Y_UNUSED(r);
     }
 
     // Ticks until the predicate holds, each tick being one full iteration of
@@ -799,7 +802,7 @@ TEST(QuorumGroupTest, InitAcquiresEveryDeviceWithTheGeneration)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             auto error = fx.Group->Init();
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
@@ -838,7 +841,7 @@ TEST(QuorumGroupTest, InitFailsIfAnyDeviceRefusesAcquire)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             // Acquire is n/n: one bad device is enough to fail the group.
             *fx.StorageNodes[2]->AcquireResp.MutableError() =
@@ -859,7 +862,7 @@ TEST(QuorumGroupTest, InitFailsIfAnyDeviceCannotReportItsLsn)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             // n/n, like acquire
             *fx.StorageNodes[2]->ReadJournalTailResp.MutableError() =
@@ -880,7 +883,7 @@ TEST(QuorumGroupTest, InitSeedsFromDevicesAndCatchesUpTheLaggingOne)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             // dev-a and dev-b at 10, dev-c at 7; dev-a serves the tail
             fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({8, 9, 10});
@@ -891,12 +894,13 @@ TEST(QuorumGroupTest, InitSeedsFromDevicesAndCatchesUpTheLaggingOne)
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
             EXPECT_EQ((TVector<ui64>{8, 9, 10}), WrittenLsns(fx, 2));
-            if (WrittenLsns(fx, 2).size() != 3) {
-                return 1;
+            const auto& replays = fx.StorageNodes[2]->WriteCalls;
+            for (ui32 i = 0; i < replays.size(); ++i) {
+                EXPECT_EQ(7 + i, replays[i].GetPrevLogSequenceNumber());
+                EXPECT_EQ(
+                    TStringBuilder() << "lsn" << 8 + i,
+                    replays[i].GetPageGroups(0).GetContent(0));
             }
-            const auto& replay = fx.StorageNodes[2]->WriteCalls[0];
-            EXPECT_EQ(7U, replay.GetPrevLogSequenceNumber());
-            EXPECT_EQ("lsn8", replay.GetPageGroups(0).GetContent(0));
             EXPECT_EQ(0U, fx.StorageNodes[0]->WriteCalls.size());
             EXPECT_EQ(0U, fx.StorageNodes[1]->WriteCalls.size());
 
@@ -922,7 +926,7 @@ TEST(QuorumGroupTest, InitWithEveryDeviceAtTheSameLsnServesAtOnce)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             for (auto& sn: fx.StorageNodes) {
                 sn->ReadJournalTailResp = JournalTail({9, 10});
@@ -945,7 +949,7 @@ TEST(QuorumGroupTest, InitFailsIfTheTailStopsShortOfTheReportedLsn)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             // dev-a says 10, but the tail it serves stops at 9
             fx.StorageNodes[0]->ReadJournalTailRespQueue.push_back(
@@ -969,7 +973,7 @@ TEST(QuorumGroupTest, InitFailsIfAReplayIsRefused)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({8, 9, 10});
             fx.StorageNodes[1]->ReadJournalTailResp = JournalTail({10});
@@ -999,7 +1003,7 @@ TEST(QuorumGroupTest, InitWithoutJournalRestoreOnlyAcquires)
             // devices, which do not implement either call.
             auto config = WatermarkConfig();
             config.JournalRestoreEnabled = false;
-            TQuorumFixture fx(false, config);
+            TQuorumFixture fx(false /* init */, config);
 
             for (auto& sn: fx.StorageNodes) {
                 *sn->ReadJournalTailResp.MutableError() =
@@ -1032,7 +1036,7 @@ TEST(QuorumGroupTest, InitReplaysEverythingOntoAnEmptyDevice)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             // dev-c has nothing at all: the whole tail goes onto it
             fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({1, 2, 3});
@@ -1057,7 +1061,7 @@ TEST(QuorumGroupTest, TearDownBeforeInitReleasesAndReturns)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             // No watermark fiber was ever started: nothing to wait for.
             fx.Group->TearDown();
@@ -1076,7 +1080,7 @@ TEST(QuorumGroupTest, InitTakesThePositionFromTheAckedLsnField)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             // A position query may come back without records at all.
             for (auto& sn: fx.StorageNodes) {
@@ -1104,7 +1108,7 @@ TEST(QuorumGroupTest, InitJoinsEveryReplayEvenIfOneIsRefused)
     const int r = FiberScheduler::run(
         +[](int*) noexcept -> int
         {
-            TQuorumFixture fx(false);
+            TQuorumFixture fx(false /* init */);
 
             // dev-b and dev-c both lag; dev-c refuses its replay
             fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({8, 9, 10});
@@ -1132,7 +1136,7 @@ TEST(QuorumGroupTest, LowWatermarkFollowsTheSlowestDevice)
         +[](int*) noexcept -> int
         {
             auto timer = std::make_shared<TTickTimer>();
-            TQuorumFixture fx(true, WatermarkConfig(), timer);
+            TQuorumFixture fx(true /* init */, WatermarkConfig(), timer);
 
             fx.StorageNodes[2]->Paused = true;
             auto error = WriteSomething(*fx.Group);
@@ -1178,7 +1182,7 @@ TEST(QuorumGroupTest, LowWatermarkStartsFromTheRestoredPosition)
         +[](int*) noexcept -> int
         {
             auto timer = std::make_shared<TTickTimer>();
-            TQuorumFixture fx(false, WatermarkConfig(), timer);
+            TQuorumFixture fx(false /* init */, WatermarkConfig(), timer);
 
             // Every device restored at 10: that is acked everywhere by
             // definition, so the first round pushes it.
@@ -1210,7 +1214,7 @@ TEST(QuorumGroupTest, LowWatermarkMissedByADeviceReachesItWithTheNextOne)
         +[](int*) noexcept -> int
         {
             auto timer = std::make_shared<TTickTimer>();
-            TQuorumFixture fx(true, WatermarkConfig(), timer);
+            TQuorumFixture fx(true /* init */, WatermarkConfig(), timer);
 
             // Retriable and out of retries at once (see WatermarkConfig)
             *fx.StorageNodes[2]->AdvanceLsnLowWatermarkResp.MutableError() =
@@ -1270,7 +1274,7 @@ TEST(QuorumGroupTest, LowWatermarkRefusedOutrightBreaksTheGroup)
         +[](int*) noexcept -> int
         {
             auto timer = std::make_shared<TTickTimer>();
-            TQuorumFixture fx(true, WatermarkConfig(), timer);
+            TQuorumFixture fx(true /* init */, WatermarkConfig(), timer);
 
             *fx.StorageNodes[2]->AdvanceLsnLowWatermarkResp.MutableError() =
                 MakeError(E_ARGUMENT, "scripted error");

@@ -262,7 +262,8 @@ int WriteDispatchFiberMain(TWriteDispatchParams* params) noexcept
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TJournalRecords = google::protobuf::RepeatedPtrField<NProto::TJournalRecord>;
+using TJournalRecords =
+    google::protobuf::RepeatedPtrField<NProto::TJournalRecord>;
 
 ui64 GetLastLsn(const NProto::TReadJournalTailResponse& journal)
 {
@@ -302,21 +303,21 @@ int ReplayFiberMain(TReplayParams* params) noexcept
 
 NProto::TError ReplayOnDevicesBehind(
     const TGroupStatePtr& state,
-    const TVector<ui64>& lsns,
+    const TVector<ui64>& maxLsnPerDevice,
     ui64 maxKnownLsn,
     const TJournalRecords& records)
 {
     TVector<ui32> proxyIndexesToReplay;
     TVector<ui32> journalPositionsToStartReplay;
-    for (ui32 i = 0; i < lsns.size(); ++i) {
-        if (lsns[i] == maxKnownLsn) {
+    for (ui32 i = 0; i < maxLsnPerDevice.size(); ++i) {
+        if (maxLsnPerDevice[i] == maxKnownLsn) {
             continue;
         }
 
         const auto it = std::upper_bound(
             records.begin(),
             records.end(),
-            lsns[i],
+            maxLsnPerDevice[i],
             [](ui64 lsn, const NProto::TJournalRecord& record)
             {
                 return lsn < record.GetLogSequenceNumber();
@@ -330,7 +331,7 @@ NProto::TError ReplayOnDevicesBehind(
                 TStringBuilder()
                     << "journal tail does not continue "
                     << state->Proxies[i]->DeviceUUID << " from lsn "
-                    << lsns[i]);
+                    << maxLsnPerDevice[i]);
         }
 
         proxyIndexesToReplay.push_back(i);
@@ -360,7 +361,8 @@ NProto::TError ReplayOnDevicesBehind(
             error = MakeError(
                 errors[i].GetCode(),
                 TStringBuilder()
-                    << "replay onto " << state->Proxies[proxyIndexesToReplay[i]]->DeviceUUID
+                    << "replay onto "
+                    << state->Proxies[proxyIndexesToReplay[i]]->DeviceUUID
                     << " failed: " << FormatError(errors[i]));
         }
     }
@@ -389,7 +391,8 @@ NProto::TError ReadRecordsAbove(
             E_INVALID_STATE,
             TStringBuilder()
                 << "journal of " << source.DeviceUUID
-                << " does not reach from lsn " << afterLsn << " to " << maxKnownLsn);
+                << " does not reach from lsn " << afterLsn << " to "
+                << maxKnownLsn);
     }
 
     return {};
@@ -404,7 +407,7 @@ struct TQueryPositionParams
 
 NProto::TError QueryCurrentJournalPosition(
     TGroupState& state,
-    TVector<ui64>& lsns)
+    TVector<ui64>& maxLsnPerDevice)
 {
     const ui32 count = state.Proxies.size();
 
@@ -430,7 +433,7 @@ NProto::TError QueryCurrentJournalPosition(
             },
             TQueryPositionParams{
                 .Proxy = state.Proxies[i],
-                .Lsn = &lsns[i],
+                .Lsn = &maxLsnPerDevice[i],
                 .Error = &errors[i]
             },
             &futures[i]);
@@ -462,20 +465,22 @@ NProto::TError QueryCurrentJournalPosition(
 // most advanced one and replays it onto everyone behind.
 NProto::TError RebuildJournal(const TGroupStatePtr& state)
 {
-    TVector<ui64> lsns(state->Proxies.size());
-    auto error = QueryCurrentJournalPosition(*state, lsns);
+    TVector<ui64> maxLsnPerDevice(state->Proxies.size());
+    auto error = QueryCurrentJournalPosition(*state, maxLsnPerDevice);
     if (HasError(error)) {
         return error;
     }
 
-    for (ui32 i = 0; i < lsns.size(); ++i) {
-        state->Proxies[i]->Seed(lsns[i]);
+    for (ui32 i = 0; i < maxLsnPerDevice.size(); ++i) {
+        state->Proxies[i]->Seed(maxLsnPerDevice[i]);
     }
 
-    auto low = std::min_element(lsns.begin(), lsns.end());
-    auto high = std::max_element(lsns.begin(), lsns.end());
+    auto low =
+        std::min_element(maxLsnPerDevice.begin(), maxLsnPerDevice.end());
+    auto high =
+        std::max_element(maxLsnPerDevice.begin(), maxLsnPerDevice.end());
     if (*low < *high) {
-        const ui32 source = std::distance(lsns.begin(), high);
+        const ui32 source = std::distance(maxLsnPerDevice.begin(), high);
 
         NProto::TReadJournalTailResponse tail;
         error = ReadRecordsAbove(*state->Proxies[source], *low, *high, &tail);
@@ -483,7 +488,11 @@ NProto::TError RebuildJournal(const TGroupStatePtr& state)
             return error;
         }
 
-        error = ReplayOnDevicesBehind(state, lsns, *high, tail.GetRecords());
+        error = ReplayOnDevicesBehind(
+            state,
+            maxLsnPerDevice,
+            *high,
+            tail.GetRecords());
         if (HasError(error)) {
             return error;
         }
@@ -598,7 +607,8 @@ public:
                     State->Timer));
         }
 
-        // Allow TearDown to pass by default. Init resets it upon launching loop.
+        // Allow TearDown to pass by default. Init resets it upon launching
+        // the loop.
         State->WatermarkLoopStopped.set(0);
     }
 
