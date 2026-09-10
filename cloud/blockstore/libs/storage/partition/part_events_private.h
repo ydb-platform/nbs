@@ -128,6 +128,16 @@ struct TAffectedBlock
 {
     ui32 BlockIndex = 0;
     ui64 CommitId = 0;
+
+    auto operator<=>(const TAffectedBlock&) const = default;
+};
+
+struct TAffectedBlockHash
+{
+    size_t operator()(const TAffectedBlock& block) const
+    {
+        return MultiHash(block.BlockIndex, block.CommitId);
+    }
 };
 
 using TAffectedBlocks = TVector<TAffectedBlock>;
