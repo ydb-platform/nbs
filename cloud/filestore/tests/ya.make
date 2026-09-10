@@ -33,5 +33,6 @@ RECURSE_FOR_TESTS(
     registration
     scheme_cache
     service
+    virtiofs_live_migration
     xfs_suite
 )
