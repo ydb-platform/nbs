@@ -456,6 +456,14 @@ void InitProfileLogRequestInfo(
 template <>
 void InitProfileLogRequestInfo(
     NProto::TProfileLogRequestInfo& profileLogRequest,
+    const NProtoPrivate::TLinkNodeInShardRequest& request)
+{
+    profileLogRequest.MutableNodeInfo()->SetNodeId(request.GetNodeId());
+}
+
+template <>
+void InitProfileLogRequestInfo(
+    NProto::TProfileLogRequestInfo& profileLogRequest,
     const NProto::TAccessNodeRequest& request)
 {
     auto* nodeInfo = profileLogRequest.MutableNodeInfo();

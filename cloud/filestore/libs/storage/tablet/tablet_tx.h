@@ -113,6 +113,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(CompleteUnlinkNode,                 __VA_ARGS__)                       \
     xxx(PrepareUnlinkDirectoryNode,         __VA_ARGS__)                       \
     xxx(AbortUnlinkDirectoryNode,           __VA_ARGS__)                       \
+    xxx(LinkNodeInShard,                    __VA_ARGS__)                       \
     xxx(RenameNode,                         __VA_ARGS__)                       \
     xxx(PrepareRenameNodeInSource,          __VA_ARGS__)                       \
     xxx(RenameNodeInDestination,            __VA_ARGS__)                       \
@@ -982,6 +983,50 @@ struct TTxIndexTablet
             ChildNode.Clear();
             ChildRef.Clear();
             OpLogEntry.Clear();
+
+            // deliberately not calling TProfileAware::Clear()
+        }
+    };
+
+    //
+    // LinkNodeInShard
+    //
+
+    struct TLinkNodeInShard
+        : TTxIndexTabletBase
+        , TErrorAware
+        , TSessionAware
+        , TProfileAware
+        , TIndexStateNodeUpdates
+    {
+        const TRequestInfoPtr RequestInfo;
+        const NProtoPrivate::TLinkNodeInShardRequest Request;
+        NProto::TProfileLogRequestInfo ProfileLogRequest;
+        NProtoPrivate::TLinkNodeInShardResponse Response;
+        NProtoPrivate::TResponseLogEntry ResponseLogEntry;
+
+        ui64 CommitId = InvalidCommitId;
+        TMaybe<INodeIndexTabletDatabase::TNode> Node;
+
+        TLinkNodeInShard(
+                TRequestInfoPtr requestInfo,
+                NProtoPrivate::TLinkNodeInShardRequest request,
+                NProto::TProfileLogRequestInfo profileLogRequest)
+            : TSessionAware(request)
+            , TProfileAware(std::move(profileLogRequest))
+            , RequestInfo(std::move(requestInfo))
+            , Request(std::move(request))
+        {}
+
+        void Clear() override
+        {
+            TErrorAware::Clear();
+            TIndexStateNodeUpdates::Clear();
+
+            CommitId = InvalidCommitId;
+            Node.Clear();
+            Response.Clear();
+            ResponseLogEntry.Clear();
 
             // deliberately not calling TProfileAware::Clear()
         }

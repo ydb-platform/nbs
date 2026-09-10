@@ -102,7 +102,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
     {
         const auto requests = GetRequestTypes();
 
-        UNIT_ASSERT_VALUES_EQUAL(85, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(86, requests.size());
 
         ui32 index = 0;
 #define TEST_REQUEST_TYPE(id, name)                                            \
@@ -202,6 +202,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         TEST_REQUEST_TYPE(10015, AbortUnlinkDirectoryNodeInShard);
         TEST_REQUEST_TYPE(10016, AddDataUnconfirmed);
         TEST_REQUEST_TYPE(10017, RecoverUnconfirmedData);
+        TEST_REQUEST_TYPE(10018, LinkNodeInShard);
 
 #undef TEST_REQUEST_TYPE
     }

@@ -426,6 +426,20 @@ public:
         return request;
     }
 
+    auto CreateLinkNodeInShardRequest(
+        ui64 nodeId,
+        ui64 clientTabletId = 1,
+        ui64 requestId = 0)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvLinkNodeInShardRequest;
+        auto request = CreateSessionRequest<TRequestEvent>();
+        auto& headers = *request->Record.MutableHeaders();
+        headers.MutableInternal()->SetClientTabletId(clientTabletId);
+        headers.SetRequestId(requestId ? requestId : ++AutoRequestId);
+        request->Record.SetNodeId(nodeId);
+        return request;
+    }
+
     auto CreateRenameNodeInDestinationRequest(
         ui64 newParent,
         const TString& newName,
@@ -498,7 +512,10 @@ public:
         return request;
     }
 
-    auto CreateUnsafeUpdateNodeRequest(ui64 nodeId, ui64 newSize)
+    auto CreateUnsafeUpdateNodeRequest(
+        ui64 nodeId,
+        ui64 newSize,
+        ui32 links = 1)
     {
         using TRequestEvent = TEvIndexTablet::TEvUnsafeUpdateNodeRequest;
         auto request = std::make_unique<TRequestEvent>();
@@ -508,7 +525,7 @@ public:
         node->SetSize(newSize);
         node->SetType(NProto::E_REGULAR_NODE);
         node->SetMTime(Now().MicroSeconds());
-        node->SetLinks(1);
+        node->SetLinks(links);
         return request;
     }
 
