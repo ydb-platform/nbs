@@ -21,15 +21,23 @@ struct ICellHostEndpointBootstrap
         NThreading::TFuture<NClient::IMultiClientEndpointPtr>;
     using TRdmaEndpointBootstrapFuture =
         NThreading::TFuture<TResultOrError<IBlockStorePtr>>;
+    using TRdmaEndpointBootstrapResult = TResultOrError<IBlockStorePtr>;
     using TShutdownEndpointFuture = NThreading::TFuture<void>;
 
     virtual TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) = 0;
 
-    // The handler is how the rdma client reports the endpoint state back to
-    // whoever asked for the endpoint; it may be empty when nobody listens.
+    // Waits for the endpoint to connect, and fails if it does not. For callers
+    // that have nothing to serve data with in the meantime.
     virtual TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
+        const TBootstrap& bootstrap,
+        const TCellHostConfig& config) = 0;
+
+    // Hands the endpoint back before it has connected and reports its state
+    // through the handler. For callers that have a fallback transport and want
+    // to move over once the endpoint is usable.
+    virtual TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
         NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler) = 0;

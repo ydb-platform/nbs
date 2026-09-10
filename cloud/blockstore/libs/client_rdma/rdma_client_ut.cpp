@@ -253,15 +253,15 @@ struct TTestEnv
 
     IBlockStorePtr CreateDataEndpoint()
     {
-        auto future = CreateRdmaDataEndpointAsync(
+        auto result = CreateRdmaDataEndpoint(
             Logging,
             Client,
             TraceSerializer,
             TaskQueue,
             Config);
-        UNIT_ASSERT_C(future.HasValue(), "Value not set");
-        auto result = future.GetValue();
-        UNIT_ASSERT_C(!HasError(result.GetError()), result.GetError().GetMessage());
+        UNIT_ASSERT_C(
+            !HasError(result.GetError()),
+            result.GetError().GetMessage());
         return result.GetResult();
     }
 };

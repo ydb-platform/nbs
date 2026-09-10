@@ -929,7 +929,7 @@ CreateRdmaEndpointClientAsync(
     });
 }
 
-IBlockStorePtr CreateRdmaDataEndpoint(
+NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
     ITraceSerializerPtr traceSerializer,
@@ -942,13 +942,18 @@ IBlockStorePtr CreateRdmaDataEndpoint(
         std::move(taskQueue),
         client->IsAlignedDataEnabled());
 
-    auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
-
-    endpoint->Init(startEndpoint.GetValue(WAIT_TIMEOUT));
-    return endpoint;
+    auto future = client->StartEndpoint(config.Address, config.Port);
+    return future.Apply([endpoint = std::move(endpoint)] (const auto& future) mutable {
+        auto result = SafeExecute<TResultOrError<IBlockStorePtr>>(
+            [&] {
+                endpoint->Init(future.GetValue());
+                return TResultOrError<IBlockStorePtr>(endpoint);
+            });
+        return result;
+    });
 }
 
-NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
+TResultOrError<IBlockStorePtr> CreateRdmaDataEndpoint(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
     ITraceSerializerPtr traceSerializer,
@@ -962,18 +967,19 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
         std::move(taskQueue),
         client->IsAlignedDataEnabled());
 
-    auto future = client->StartEndpoint(
+    // hands the endpoint back before it has connected; the handler is how the
+    // caller learns when it is usable
+    auto [clientEndpoint, error] = client->StartEndpoint(
         config.Address,
         config.Port,
         std::move(handler));
-    return future.Apply([endpoint = std::move(endpoint)] (const auto& future) mutable {
-        auto result = SafeExecute<TResultOrError<IBlockStorePtr>>(
-            [&] {
-                endpoint->Init(future.GetValue());
-                return TResultOrError<IBlockStorePtr>(endpoint);
-            });
-        return result;
-    });
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    endpoint->Init(std::move(clientEndpoint));
+    return IBlockStorePtr(std::move(endpoint));
 }
 
 }   // namespace NCloud::NBlockStore::NClient

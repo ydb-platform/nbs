@@ -22,23 +22,21 @@ namespace NCloud::NBlockStore::NCells {
 
 struct TTransportSwitcherConfig
 {
-    TDuration InitialRetryDelay = TDuration::Seconds(1);
-    TDuration MaxRetryDelay = TDuration::Seconds(30);
     TDuration SettleTime = TDuration::Seconds(30);
 };
 
 // The handler has to reach the rdma client, and only the switcher can make it,
-// so the factory is handed one rather than capturing it.
-using TEndpointFactory = std::function<NThreading::TFuture<
-    TResultOrError<IBlockStorePtr>>(
+// so the factory is handed one rather than capturing it. It returns the
+// endpoint before it has connected; the handler says when it can carry data.
+using TEndpointFactory = std::function<TResultOrError<IBlockStorePtr>(
     NCloud::NStorage::NRdma::IClientEndpointHandlerPtr)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // Decides which transport the router points at, for as long as the connection
 // lives. Data starts on the endpoint the router was created with and moves onto
-// the preferred transport once the factory has produced it and it has stayed
-// connected for SettleTime; a break moves the data straight back.
+// the preferred transport once it has connected and stayed connected for
+// SettleTime; a break moves the data straight back.
 //
 // Immediate on the way down and deliberate on the way up: at a break there is
 // nothing to wait for since the requests are already aborted, while returning

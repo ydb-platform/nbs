@@ -1,6 +1,5 @@
 #include "transport_switcher.h"
 
-#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -15,11 +14,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Keeps the router pointing at the transport that can serve data right now: the
-// fallback until the preferred endpoint is acquired and settled, and back onto
-// the fallback the moment that endpoint breaks.
-//
-// Owns itself for as long as an attempt is pending: every scheduled retry holds
-// a strong reference, and once the router is gone nothing schedules any more.
+// fallback until the preferred endpoint has connected and settled, and back
+// onto the fallback the moment that endpoint breaks.
 class TTransportSwitcher final
     : public ITransportSwitcher
     , public std::enable_shared_from_this<TTransportSwitcher>
@@ -34,7 +30,6 @@ private:
     const TDuration SettleTime;
 
     TLog Log;
-    TBackoffDelayProvider RetryDelay;
 
     TAdaptiveLock Lock;
     IBlockStorePtr Preferred;       // the rdma endpoint, once acquired
@@ -61,25 +56,43 @@ public:
         , Host(std::move(host))
         , SettleTime(config.SettleTime)
         , Log(logging->CreateLog("BLOCKSTORE_CELLS"))
-        , RetryDelay(config.InitialRetryDelay, config.MaxRetryDelay)
     {}
 
     NCloud::NStorage::NRdma::IClientEndpointHandlerPtr GetEndpointHandler()
         override;
 
-    void Attempt()
+    // Asks for the preferred endpoint once. There is nothing to retry: the
+    // endpoint is handed back before it has connected and reconnects on its
+    // own from then on, so a failure here means the rdma client itself cannot
+    // give us one, and we stay on the fallback.
+    void Start()
     {
-        if (Router.expired()) {
+        auto result = Factory(GetEndpointHandler());
+
+        if (HasError(result) || !result.GetResult()) {
+            STORAGE_WARN(
+                "[" << Host << "] can't set up the preferred transport: "
+                    << FormatError(result.GetError())
+                    << ", staying on the fallback");
             return;
         }
 
-        // a failed attempt destroys the endpoint it was building, and with it
-        // the handler handed out here, so no stale handler can ever drive the
-        // endpoint a later attempt produces
-        Factory(GetEndpointHandler())
-            .Subscribe(
-                [self = shared_from_this()](const auto& future)
-                { self->OnAttemptCompleted(future.GetValue()); });
+        ui64 generation = 0;
+        bool connected = false;
+
+        with_lock (Lock) {
+            Preferred = result.GetResult();
+            connected = Connected;
+            if (connected) {
+                generation = ++SettleGeneration;
+            }
+        }
+
+        if (connected) {
+            // the endpoint reported itself connected before we got hold of it,
+            // so nothing else is going to start the wait
+            StartSettling(generation);
+        }
     }
 
     void OnConnected()
@@ -120,44 +133,6 @@ public:
     }
 
 private:
-    void OnAttemptCompleted(const TResultOrError<IBlockStorePtr>& result)
-    {
-        auto router = Router.lock();
-        if (!router) {
-            return;
-        }
-
-        if (!HasError(result) && result.GetResult()) {
-            ui64 generation = 0;
-            bool connected = false;
-
-            with_lock (Lock) {
-                Preferred = result.GetResult();
-                connected = Connected;
-                if (connected) {
-                    generation = ++SettleGeneration;
-                }
-            }
-
-            if (connected) {
-                // the endpoint reported itself connected before we got hold of
-                // it, so nothing else is going to start the wait
-                StartSettling(generation);
-            }
-            return;
-        }
-
-        const auto delay = RetryDelay.GetDelayAndIncrease();
-
-        STORAGE_WARN(
-            "[" << Host << "] can't set up the preferred transport: "
-                << FormatError(result.GetError()) << ", retrying in " << delay);
-
-        Scheduler->Schedule(
-            Timer->Now() + delay,
-            [self = shared_from_this()] { self->Attempt(); });
-    }
-
     // Starts the wait after which the data may move onto the preferred
     // transport. The generation lets a break invalidate a wait in flight.
     void StartSettling(ui64 generation)
@@ -223,39 +198,40 @@ class TEndpointHandler final
 {
 private:
     const std::weak_ptr<TTransportSwitcher> Switcher;
+    const TString Host;   // only for logging: the calls carry no host
 
     TLog Log;
 
 public:
-    TEndpointHandler(std::weak_ptr<TTransportSwitcher> switcher, TLog log)
+    TEndpointHandler(
+            std::weak_ptr<TTransportSwitcher> switcher,
+            TString host,
+            TLog log)
         : Switcher(std::move(switcher))
+        , Host(std::move(host))
         , Log(std::move(log))
     {}
 
-    void HandleConnected(const TString& host, ui32 port) override
+    void HandleConnected() override
     {
-        Y_UNUSED(host);
-        Y_UNUSED(port);
         if (auto self = Switcher.lock()) {
             self->OnConnected();
         }
     }
 
-    void HandleDisconnected(const TString& host, ui32 port) override
+    void HandleDisconnected() override
     {
-        Y_UNUSED(host);
-        Y_UNUSED(port);
         if (auto self = Switcher.lock()) {
             self->OnDisconnected();
         }
     }
 
-    void HandleUnavailable(const TString& host, ui32 port) override
+    void HandleUnavailable() override
     {
-        Y_UNUSED(port);
         // nothing to do: by now the data is already on the fallback. The signal
-        // belongs to host liveness, which is a separate concern.
-        STORAGE_WARN("[" << host << "] rdma endpoint is unavailable");
+        // belongs to host liveness, which is a separate concern. It repeats on
+        // every reconnect attempt for as long as the endpoint stays down.
+        STORAGE_WARN("[" << Host << "] rdma endpoint is unavailable");
     }
 };
 
@@ -264,7 +240,7 @@ public:
 NCloud::NStorage::NRdma::IClientEndpointHandlerPtr
 TTransportSwitcher::GetEndpointHandler()
 {
-    return std::make_shared<TEndpointHandler>(weak_from_this(), Log);
+    return std::make_shared<TEndpointHandler>(weak_from_this(), Host, Log);
 }
 
 }   // namespace
@@ -291,7 +267,7 @@ ITransportSwitcherPtr StartTransportSwitching(
         std::move(host),
         config);
 
-    switcher->Attempt();
+    switcher->Start();
 
     return switcher;
 }

@@ -45,25 +45,33 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     TPromise<TResultOrError<IBlockStorePtr>> RdmaSetupPromise =
         NewPromise<TResultOrError<IBlockStorePtr>>();
 
+    // what the synchronous form hands back; the test decides when the endpoint
+    // reports itself connected
+    TResultOrError<IBlockStorePtr> RdmaSetupResult =
+        MakeError(E_REJECTED, "no rdma endpoint in this test");
+
     NCloud::NStorage::NRdma::IClientEndpointHandlerPtr RdmaHandler;
 
     TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
+        const TBootstrap& bootstrap,
+        const TCellHostConfig& config) override
+    {
+        Y_UNUSED(bootstrap);
+        Y_UNUSED(config);
+
+        return RdmaSetupPromise.GetFuture();
+    }
+
+    TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
         NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler) override
     {
         Y_UNUSED(bootstrap);
+        Y_UNUSED(config);
 
         RdmaHandler = std::move(handler);
-        if (RdmaHandler) {
-            // the real rdma client reports the state as soon as the endpoint
-            // is up, which is what lets the data move over
-            RdmaHandler->HandleConnected(
-                config.GetFqdn(),
-                config.GetRdmaPort());
-        }
-
-        return RdmaSetupPromise.GetFuture();
+        return RdmaSetupResult;
     }
 };
 
@@ -186,6 +194,9 @@ struct TTestEnv
         proto.AddHosts()->SetFqdn("host-a");
         CellConfig = std::make_shared<TCellConfig>(std::move(proto));
 
+        // the synchronous form hands the endpoint back before it connects
+        EndpointsSetup->RdmaSetupResult = IBlockStorePtr(RdmaService);
+
         Bootstrap.EndpointsSetup = EndpointsSetup;
         Bootstrap.GrpcClient = GrpcClient;
         Bootstrap.Logging = CreateLoggingService("console");
@@ -302,8 +313,8 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
             env.GrpcClient->Service->RequestCount);
         UNIT_ASSERT_VALUES_EQUAL(0, env.RdmaService->RequestCount);
 
-        env.EndpointsSetup->RdmaSetupPromise.SetValue(
-            TResultOrError<IBlockStorePtr>(env.RdmaService));
+        UNIT_ASSERT(env.EndpointsSetup->RdmaHandler);
+        env.EndpointsSetup->RdmaHandler->HandleConnected();
 
         TTestEnv::Read(connection);
         UNIT_ASSERT_VALUES_EQUAL(1, env.RdmaService->RequestCount);
@@ -333,15 +344,13 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
 
         auto connection = env.Connect("host-a");
 
-        env.EndpointsSetup->RdmaSetupPromise.SetValue(
-            TResultOrError<IBlockStorePtr>(env.RdmaService));
-
         UNIT_ASSERT(env.EndpointsSetup->RdmaHandler);
+        env.EndpointsSetup->RdmaHandler->HandleConnected();
 
         TTestEnv::Read(connection);
         UNIT_ASSERT_VALUES_EQUAL(1, env.RdmaService->RequestCount);
 
-        env.EndpointsSetup->RdmaHandler->HandleDisconnected("host-a", 10020);
+        env.EndpointsSetup->RdmaHandler->HandleDisconnected();
 
         const auto grpcRequests = env.GrpcClient->Service->RequestCount;
         TTestEnv::Read(connection);
@@ -359,15 +368,13 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
 
         auto connection = env.Connect("host-a");
 
-        env.EndpointsSetup->RdmaSetupPromise.SetValue(
-            TResultOrError<IBlockStorePtr>(env.RdmaService));
-
         UNIT_ASSERT(env.EndpointsSetup->RdmaHandler);
+        env.EndpointsSetup->RdmaHandler->HandleConnected();
 
         // the first connect moves the data over at once, so make the link drop
         // and come back - only then does the settle time apply
-        env.EndpointsSetup->RdmaHandler->HandleDisconnected("host-a", 10020);
-        env.EndpointsSetup->RdmaHandler->HandleConnected("host-a", 10020);
+        env.EndpointsSetup->RdmaHandler->HandleDisconnected();
+        env.EndpointsSetup->RdmaHandler->HandleConnected();
 
         auto grpcRequests = env.GrpcClient->Service->RequestCount;
         TTestEnv::Read(connection);

@@ -17,6 +17,7 @@ struct TCellCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
 {
     using ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture;
     using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture;
+    using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapResult;
 
     auto SetupHostGrpcEndpoint(
         const TBootstrap& bootstrap,
@@ -24,9 +25,14 @@ struct TCellCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
 
     auto SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
+        const TCellHostConfig& config)
+        -> TRdmaEndpointBootstrapFuture override;
+
+    auto SetupHostRdmaEndpoint(
+        const TBootstrap& bootstrap,
         const TCellHostConfig& config,
         NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
-        -> TRdmaEndpointBootstrapFuture override;
+        -> TRdmaEndpointBootstrapResult override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

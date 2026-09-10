@@ -234,8 +234,7 @@ NThreading::TFuture<TResultOrError<TSwitchingDataEndpoint>> SetupDataEndpoint(
                 // report the endpoint state to
                 auto future = bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
                     bootstrap,
-                    hostConfig,
-                    nullptr);
+                    hostConfig);
 
                 using TResult = TResultOrError<TSwitchingDataEndpoint>;
                 return future.Apply(
