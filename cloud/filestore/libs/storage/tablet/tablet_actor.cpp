@@ -2018,11 +2018,6 @@ bool TIndexTabletActor::HasNodesLeft(ui32 quotaId) const
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TIndexTabletActor::IsMainTablet() const
-{
-    return GetFileSystem().GetShardNo() == 0;
-}
-
 bool TIndexTabletActor::BehaveAsShard(const NProto::THeaders& headers) const
 {
     // main filesystem can't behave as a shard
