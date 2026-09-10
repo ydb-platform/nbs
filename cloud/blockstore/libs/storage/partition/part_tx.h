@@ -430,7 +430,6 @@ struct TTxPartition
             ab.Offsets.push_back(blobOffset);
 
             if (keepTrackOfAffectedBlocks) {
-                ab.AffectedBlocks.push_back({ blockIndex, commitId });
                 AffectedBlocks.push_back({ blockIndex, commitId });
             }
         }

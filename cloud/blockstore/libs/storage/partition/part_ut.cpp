@@ -6552,14 +6552,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         partition.ZeroBlocks(TBlockRange32::WithLength(20, 6));
 
-        runtime->Send(firstCompactionRequest.release());
+        runtime->SendAsync(firstCompactionRequest.release());
         runtime->DispatchEvents({}, TDuration::Seconds(1));
 
         UNIT_ASSERT(compactionResultObserved);
 
         const auto counters = partition.GetCompactionCounters(0);
         UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.BlobCount);
-        UNIT_ASSERT_VALUES_EQUAL(1018, counters->Counters.BlockCount);
+        // All 1024 blocks remain in the skipped blob, plus 10 compacted blocks.
+        UNIT_ASSERT_VALUES_EQUAL(1034, counters->Counters.BlockCount);
     }
 
     Y_UNIT_TEST(ShouldPreserveSkippedCountersForMixedCompactionResults)
@@ -17036,6 +17037,81 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             HasProtoFlag(response->GetError().GetFlags(), NProto::EF_SILENT));
 
         partition.Drain();
+    }
+
+    // Test that writes with commit id newer than compaction commit id and can
+    // be observed in compaction tx should be accounted for skipped blobs and
+    // blocks.
+    Y_UNIT_TEST(ShouldAccountForWritesNewerThanCompactionCommit)
+    {
+        auto config = DefaultConfig();
+        config.SetReadBlockMaskOnCompactionOptimizationEnabled(true);
+        config.SetFreshChannelWriteRequestsEnabled(true);
+
+        auto runtime = PrepareTestActorRuntime(config, 2048);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        // Just some writes before compaction.
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 'A');
+        partition.WriteBlocks(0, '0');
+
+        std::unique_ptr<IEventHandle> writeBlobRequest;
+
+        bool interceptWriteBlobRequest = false;
+
+        auto observer = runtime->AddObserver(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvWriteBlobRequest &&
+                    interceptWriteBlobRequest)
+                {
+                    writeBlobRequest.reset(event.Release());
+                }
+            });
+
+        // Intercepting write blob request to slow down compaction (as it should
+        // wait for it before start executing).
+        interceptWriteBlobRequest = true;
+        partition.SendWriteBlocksRequest(1, '1');
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT(writeBlobRequest);
+        interceptWriteBlobRequest = false;
+
+        partition.SendCompactionRequest();
+
+        runtime->DispatchEvents({}, 10ms);
+
+        // Do fresh write with commit id higher than compaction commit id and
+        // then flush to create a mixed blob that has commit ids less and
+        // greater than compaction commit id.
+        partition.WriteBlocks(2, '2');
+        partition.Flush();
+        partition.TrimFreshLog();
+
+        // Merged blob newer than compaction.
+        partition.WriteBlocks(TBlockRange32::WithLength(511, 512), 'B');
+
+        // Unblock write blob request to continue compaction.
+        runtime->SendAsync(writeBlobRequest.release());
+
+        auto response = partition.RecvCompactionResponse();
+        UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), S_OK);
+        partition.Cleanup();
+
+        const auto counters = partition.GetCompactionCounters(0);
+
+        // Check that compaction accounted for blocks and blobs that was written
+        // with commit id higher than compaction commit id.
+
+        // 1 compaction blob + 1 flush blob + 1 merged blob
+        UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.BlobCount);
+        // 512 blocks form merged blob + 1 block from
+        // flush blob newer than compaction + 1024
+        // blocks from compaction merged blob
+        UNIT_ASSERT_VALUES_EQUAL(512 + 1 + 1024, counters->Counters.BlockCount);
     }
 }
 

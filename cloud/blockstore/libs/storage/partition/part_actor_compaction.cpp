@@ -876,16 +876,9 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             auto [blobIt, inserted] =
                 affectedBlobs.try_emplace(blobId, std::move(blob));
             if (!inserted) {
+                // In AddBlobs transaction we only looking at block masks, so we
+                // need to merge them.
                 auto& affectedBlob = blobIt->second;
-                affectedBlob.Offsets.insert(
-                    affectedBlob.Offsets.end(),
-                    blob.Offsets.begin(),
-                    blob.Offsets.end());
-                affectedBlob.AffectedBlocks.insert(
-                    affectedBlob.AffectedBlocks.end(),
-                    blob.AffectedBlocks.begin(),
-                    blob.AffectedBlocks.end());
-
                 affectedBlob.BlockMask.GetRef() |= blockMask;
             }
         }
