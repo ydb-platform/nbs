@@ -202,24 +202,6 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
              MakeError(E_ARGUMENT, "invalid page data: block size mismatch")},
             {[&](auto& proto)
              {
-                 // the client id is checked after the device is found
-                 proto.SetDeviceUUID(DeviceUUID);
-                 auto& groups = *proto.MutablePageGroups();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.MutableContent()->Add()->resize(
-                         DefaultBlockSize,
-                         'A');
-                     group.MutableContent()->Add()->resize(
-                         DefaultBlockSize,
-                         'B');
-                 }
-             },
-             MakeError(E_ARGUMENT, "empty client id")},
-            {[&](auto& proto)
-             {
                  proto.MutableHeaders()->SetClientId(ClientId);
                  proto.SetDeviceUUID(DeviceUUID);
 
@@ -242,7 +224,9 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         for (size_t i = 0; i != std::size(testCases); ++i) {
             const auto& [prepare, expectedError] = testCases[i];
 
+            // the requests of a client always carry its id
             NCloud::NProto::TWriteLogRecordRequest request;
+            request.MutableHeaders()->SetClientId(ClientId);
             prepare(request);
 
             const auto error = WritePages(std::move(request));
@@ -322,26 +306,6 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
              MakeError(E_ARGUMENT, "page size must be greater than zero")},
             {[&](auto& proto)
              {
-                 proto.SetDeviceUUID(DeviceUUID);
-                 auto& groups = *proto.MutablePageGroupRefs();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.SetPageSize(DefaultBlockSize);
-                     group.SetPageCount(1);
-                 }
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x20);
-                     group.SetPageSize(DefaultBlockSize);
-                     group.SetPageCount(1);
-                 }
-             },
-             MakeError(E_ARGUMENT, "empty client id")},
-            {[&](auto& proto)
-             {
                  proto.MutableHeaders()->SetClientId(ClientId);
                  proto.SetDeviceUUID(DeviceUUID);
 
@@ -368,6 +332,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
             const auto& [prepare, expectedError] = testCases[i];
 
             NCloud::NProto::TReadPagesRequest request;
+            request.MutableHeaders()->SetClientId(ClientId);
             prepare(request);
 
             const auto error = ReadPages(std::move(request)).GetError();
@@ -383,6 +348,192 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
                 expectedError.GetMessage(),
                 "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
                     << FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldServeADeviceRegion, TFixture)
+    {
+        constexpr ui64 firstBlock = 16;
+        constexpr ui64 blockCount = 32;
+
+        auto region = CreateDeviceAdapter(
+            Timer,
+            DeviceUUID,
+            DeviceClient,
+            {.Offset = firstBlock * DefaultBlockSize,
+             .Size = blockCount * DefaultBlockSize});
+
+        AcquireDevice();
+        FillDevice();
+
+        const auto readPage = [&](ui64 pageNo, ui32 pageSize)
+        {
+            NCloud::NProto::TReadPagesRequest request;
+            request.MutableHeaders()->SetClientId(ClientId);
+            request.SetDeviceUUID(DeviceUUID);
+
+            auto& group = *request.MutablePageGroupRefs()->Add();
+            group.SetFirstPageNo(pageNo);
+            group.SetPageSize(pageSize);
+            group.SetPageCount(1);
+
+            return region->ReadPages(std::move(request)).GetValueSync();
+        };
+
+        // page 0 of the region is the first block of the region
+        {
+            const auto response = readPage(0, DefaultBlockSize);
+            UNIT_ASSERT_C(
+                !HasError(response),
+                FormatError(response.GetError()));
+            TStringBuf block = response.GetPageGroups(0).GetContent(0);
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, block.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                block.size(),
+                std::ranges::count(block, BlockData(firstBlock)));
+        }
+
+        // the pages beyond the region are rejected
+        {
+            const auto error =
+                readPage(blockCount, DefaultBlockSize).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "beyond the device");
+        }
+
+        // and so is a page size the region is not made of
+        {
+            const auto error = readPage(0, 3000).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "not made of pages");
+        }
+
+        // a write lands in the region as well
+        {
+            NCloud::NProto::TWriteLogRecordRequest request;
+            request.MutableHeaders()->SetClientId(ClientId);
+            request.SetDeviceUUID(DeviceUUID);
+            request.SetLogSequenceNumber(1);
+
+            auto& group = *request.MutablePageGroups()->Add();
+            group.SetFirstPageNo(1);
+            group.MutableContent()->Add()->resize(DefaultBlockSize, 'Z');
+
+            const auto error = region->WritePages(std::move(request))
+                                   .GetValueSync()
+                                   .GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            NCloud::NProto::TReadPagesRequest request;
+            request.MutableHeaders()->SetClientId(ClientId);
+            request.SetDeviceUUID(DeviceUUID);
+
+            auto& group = *request.MutablePageGroupRefs()->Add();
+            group.SetFirstPageNo(firstBlock + 1);
+            group.SetPageSize(DefaultBlockSize);
+            group.SetPageCount(1);
+
+            const auto response = ReadPages(request);
+            UNIT_ASSERT_C(
+                !HasError(response),
+                FormatError(response.GetError()));
+            TStringBuf block = response.GetPageGroups(0).GetContent(0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                block.size(),
+                std::ranges::count(block, 'Z'));
+        }
+
+        // a write beyond the region is rejected before anything is written
+        {
+            NCloud::NProto::TWriteLogRecordRequest request;
+            request.MutableHeaders()->SetClientId(ClientId);
+            request.SetDeviceUUID(DeviceUUID);
+            request.SetLogSequenceNumber(2);
+
+            auto& group = *request.MutablePageGroups()->Add();
+            group.SetFirstPageNo(blockCount - 1);
+            group.MutableContent()->Add()->resize(DefaultBlockSize, 'Q');
+            group.MutableContent()->Add()->resize(DefaultBlockSize, 'Q');
+
+            const auto error = region->WritePages(std::move(request))
+                                   .GetValueSync()
+                                   .GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldServeItsOwnRequestsWithoutASession, TFixture)
+    {
+        // the device is not acquired, the requests carry no client id
+
+        {
+            NCloud::NProto::TWriteLogRecordRequest request;
+            request.SetLogSequenceNumber(1);
+
+            auto& group = *request.MutablePageGroups()->Add();
+            group.SetFirstPageNo(3);
+            group.MutableContent()->Add()->resize(DefaultBlockSize, 'J');
+
+            const auto error = WritePages(std::move(request));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            NCloud::NProto::TReadPagesRequest request;
+
+            auto& group = *request.MutablePageGroupRefs()->Add();
+            group.SetFirstPageNo(3);
+            group.SetPageSize(DefaultBlockSize);
+            group.SetPageCount(1);
+
+            const auto response = ReadPages(request);
+            UNIT_ASSERT_C(
+                !HasError(response),
+                FormatError(response.GetError()));
+            TStringBuf block = response.GetPageGroups(0).GetContent(0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                block.size(),
+                std::ranges::count(block, 'J'));
+        }
+
+        // a client is still held to its session
+
+        {
+            NCloud::NProto::TReadPagesRequest request;
+            request.MutableHeaders()->SetClientId(ClientId);
+            request.SetDeviceUUID(DeviceUUID);
+
+            auto& group = *request.MutablePageGroupRefs()->Add();
+            group.SetFirstPageNo(3);
+            group.SetPageSize(DefaultBlockSize);
+            group.SetPageCount(1);
+
+            const auto error = ReadPages(request).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                error.GetCode(),
+                FormatError(error));
         }
     }
 

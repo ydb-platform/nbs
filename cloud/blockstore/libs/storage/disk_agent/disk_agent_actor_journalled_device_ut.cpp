@@ -74,7 +74,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             device.SetBlockSize(4_KB);
             device.SetDeviceId(uuid);
             device.SetPoolName("journalled");
-            device.SetFileSize(1_MB);
+            // large enough for the journal parts to hold a few pages each
+            device.SetFileSize(4_MB);
 
             PrepareFile(device);
         }
@@ -279,13 +280,14 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
         ui64 requestId = 0;
 
-        const auto writeLogRecord = [&](const TString& deviceUUID)
+        const auto writeLogRecordAs =
+            [&](const TString& deviceUUID, const TString& requestClientId)
         {
             NCloud::NProto::TDeviceProtocolRequest request;
             request.SetRequestId(++requestId);
 
             auto& proto = *request.MutableWriteLogRecord();
-            proto.MutableHeaders()->SetClientId(clientId);
+            proto.MutableHeaders()->SetClientId(requestClientId);
             proto.SetDeviceUUID(deviceUUID);
             proto.SetLogSequenceNumber(1);
 
@@ -304,6 +306,11 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
                 response.GetResponseCase());
 
             return response.GetWriteLogRecord().GetError();
+        };
+
+        const auto writeLogRecord = [&](const TString& deviceUUID)
+        {
+            return writeLogRecordAs(deviceUUID, clientId);
         };
 
         const auto readPages = [&](const TString& deviceUUID)
@@ -330,7 +337,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
                 NProto::TDeviceProtocolResponse::ResponseCase::kReadPages,
                 response.GetResponseCase());
 
-            return response.GetReadPages().GetError();
+            return response.GetReadPages();
         };
 
         // the requests reach the device hosted by this agent
@@ -344,18 +351,28 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
         }
 
         {
-            const auto error = readPages(uuid);
+            const auto response = readPages(uuid);
+            const auto& error = response.GetError();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
+
+            // and the data written comes back
+            UNIT_ASSERT_VALUES_EQUAL(1, response.PageGroupsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response.GetPageGroups(0).ContentSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TString(DefaultBlockSize, 'A'),
+                response.GetPageGroups(0).GetContent(0));
         }
 
         // an unknown device is rejected before the request is validated
 
         for (const auto& error: {
                  writeLogRecord(unknownUuid),
-                 readPages(unknownUuid)})
+                 readPages(unknownUuid).GetError()})
         {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_NOT_FOUND,
@@ -368,7 +385,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
         // a request without a device is rejected as well
 
-        for (const auto& error: {writeLogRecord({}), readPages({})}) {
+        for (const auto& error:
+             {writeLogRecord({}), readPages({}).GetError()})
+        {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 error.GetCode(),
@@ -376,6 +395,20 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
             UNIT_ASSERT_STRING_CONTAINS(
                 error.GetMessage(),
                 "empty device UUID");
+        }
+
+        // and so is a request without a client - the devices take such
+        // requests for their own
+
+        {
+            const auto error = writeLogRecordAs(uuid, {});
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "empty client id");
         }
     }
 }
