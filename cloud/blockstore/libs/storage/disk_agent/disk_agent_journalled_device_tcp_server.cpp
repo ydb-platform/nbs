@@ -125,7 +125,7 @@ public:
         NCloud::NProto::TReadPagesRequest request)
         -> TFuture<NCloud::NProto::TReadPagesResponse> final
     {
-        auto [device, error] = GetDevice(request.GetDeviceUUID());
+        auto [device, error] = GetDevice(request);
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TReadPagesResponse>(
                 TErrorResponse(error));
@@ -138,7 +138,7 @@ public:
         NCloud::NProto::TWriteLogRecordRequest request)
         -> TFuture<NCloud::NProto::TWriteLogRecordResponse> final
     {
-        auto [device, error] = GetDevice(request.GetDeviceUUID());
+        auto [device, error] = GetDevice(request);
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
                 TErrorResponse(error));
@@ -151,7 +151,7 @@ public:
         NCloud::NProto::TReadJournalTailRequest request)
         -> TFuture<NCloud::NProto::TReadJournalTailResponse> final
     {
-        auto [device, error] = GetDevice(request.GetDeviceUUID());
+        auto [device, error] = GetDevice(request);
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TReadJournalTailResponse>(
                 TErrorResponse(error));
@@ -164,7 +164,7 @@ public:
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
         -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> final
     {
-        auto [device, error] = GetDevice(request.GetDeviceUUID());
+        auto [device, error] = GetDevice(request);
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
                 TErrorResponse(error));
@@ -174,9 +174,17 @@ public:
     }
 
 private:
+    // The devices take a request without a client id for their own, so such
+    // a request must not come from outside.
+    template <typename TRequest>
     TResultOrError<NJournalled::IJournalledDevicePtr> GetDevice(
-        const TString& deviceUUID) const
+        const TRequest& request) const
     {
+        if (request.GetHeaders().GetClientId().empty()) {
+            return MakeError(E_ARGUMENT, "empty client id");
+        }
+
+        const auto& deviceUUID = request.GetDeviceUUID();
         if (deviceUUID.empty()) {
             return MakeError(E_ARGUMENT, "empty device UUID");
         }
@@ -226,9 +234,6 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
     try {
         const TNetworkAddress listenAddress = CreateNetworkAddress(
             AgentConfig->GetJournalledDeviceTcpServerListenAddress());
-
-        Executor = TExecutor::Create("JD");
-        Executor->Start();
 
         JournalledDeviceTcpServer = NJournalled::CreateServer(
             listenAddress,

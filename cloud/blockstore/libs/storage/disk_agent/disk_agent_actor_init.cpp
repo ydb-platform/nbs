@@ -9,12 +9,19 @@
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
+#include <cloud/storage/core/libs/journalled_device/device_page_store.h>
+#include <cloud/storage/core/libs/journalled_device/journal.h>
 #include <cloud/storage/core/libs/journalled_device/journalled_device.h>
+#include <cloud/storage/core/libs/journalled_device/journalled_device_v2.h>
+#include <cloud/storage/core/libs/journalled_device/key_buffer_store.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 
+#include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
+#include <util/system/align.h>
 #include <util/stream/str.h>
 #include <util/string/builder.h>
 #include <util/string/cast.h>
@@ -22,6 +29,95 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// The device is split into three parts: the journal metadata, the journal
+// data and the data itself. The journal parts take these fractions of the
+// device.
+constexpr ui64 LogMetaSizeDivisor = 128;
+constexpr ui64 LogDataSizeDivisor = 8;
+
+TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
+    const TActorContext& ctx,
+    ITimerPtr timer,
+    ILoggingServicePtr logging,
+    TExecutorPtr executor,
+    TDeviceClientPtr deviceClient,
+    const NProto::TDeviceConfig& device)
+{
+    const ui64 blockSize = device.GetBlockSize();
+    const ui64 deviceSize = blockSize * device.GetBlocksCount();
+    if (!blockSize) {
+        return MakeError(E_ARGUMENT, "the device block size is zero");
+    }
+
+    const ui64 logMetaSize =
+        AlignDown(deviceSize / LogMetaSizeDivisor, blockSize);
+    const ui64 logDataSize =
+        AlignDown(deviceSize / LogDataSizeDivisor, blockSize);
+
+    if (logMetaSize < 3 * blockSize || logDataSize < blockSize ||
+        logMetaSize + logDataSize >= deviceSize)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "the journal parts " << logMetaSize << " and "
+                << logDataSize << " bytes leave no room on the device of "
+                << deviceSize << " bytes");
+    }
+
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
+        "Journalled device " << device.GetDeviceUUID().Quote() << ": journal "
+            << "metadata " << FormatByteSize(logMetaSize) << ", journal data "
+            << FormatByteSize(logDataSize) << ", data "
+            << FormatByteSize(deviceSize - logMetaSize - logDataSize)
+            << ", block size " << blockSize);
+
+    auto createAdapter = [&](ui64 offset, ui64 size)
+    {
+        return CreateDeviceAdapter(
+            timer,
+            device.GetDeviceUUID(),
+            deviceClient,
+            {.Offset = offset, .Size = size});
+    };
+
+    auto logMetaStore = NJournalled::CreateDeviceKeyBufferStore(
+        createAdapter(0, logMetaSize),
+        logMetaSize / blockSize,
+        blockSize);
+
+    auto logDataStore = NJournalled::CreateDevicePageStore(
+        createAdapter(logMetaSize, logDataSize),
+        logDataSize / blockSize,
+        blockSize);
+
+    auto dataStore = createAdapter(
+        logMetaSize + logDataSize,
+        deviceSize - logMetaSize - logDataSize);
+
+    auto journal = NJournalled::CreateJournal(
+        logging,
+        executor,
+        std::move(logMetaStore),
+        std::move(logDataStore));
+
+    return NJournalled::CreateJournalledDeviceV2(
+        std::move(logging),
+        std::move(executor),
+        std::move(journal),
+        std::move(dataStore),
+        device.GetDeviceUUID(),
+        TString{});
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -173,18 +269,47 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         }
     }
 
-    if (State) {
-        THashMap<TString, NJournalled::IJournalledDevicePtr> devices;
+    if (State &&
+        !AgentConfig->GetJournalledDeviceTcpServerListenAddress().empty())
+    {
+        Executor = TExecutor::Create("JD");
+        Executor->Start();
 
         auto timer = CreateWallClockTimer();
+        auto deviceClient = State->GetDeviceClient();
 
-        for (const auto& deviceId: State->GetDeviceIds()) {
-            devices.emplace(
-                deviceId,
-                NJournalled::CreateJournalledDevice(CreateDeviceAdapter(
-                    timer,
-                    deviceId,
-                    State->GetDeviceClient())));
+        THashMap<TString, NJournalled::IJournalledDevicePtr> devices;
+
+        for (const auto& deviceConfig: State->GetDevices()) {
+            const auto& uuid = deviceConfig.GetDeviceUUID();
+
+            auto [device, error] = CreateJournalledDevice(
+                ctx,
+                timer,
+                Logging,
+                Executor,
+                deviceClient,
+                deviceConfig);
+
+            if (!HasError(error)) {
+                try {
+                    device->Start();
+                } catch (...) {
+                    error = MakeError(E_FAIL, CurrentExceptionMessage());
+                }
+            }
+
+            if (HasError(error)) {
+                LOG_ERROR_S(
+                    ctx,
+                    TBlockStoreComponents::DISK_AGENT,
+                    "Can't create journalled device " << uuid.Quote() << ": "
+                        << FormatError(error));
+                continue;
+            }
+
+            JournalledDevices.push_back(device);
+            devices.emplace(uuid, std::move(device));
         }
 
         StartJournalledDeviceTcpServer(ctx, std::move(devices));

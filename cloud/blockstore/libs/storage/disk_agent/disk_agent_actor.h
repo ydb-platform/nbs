@@ -75,6 +75,7 @@ private:
     NNvme::INvmeManagerPtr NvmeManager;
 
     TExecutorPtr Executor;
+    TVector<NJournalled::IJournalledDevicePtr> JournalledDevices;
     std::shared_ptr<IStartable> JournalledDeviceTcpServer;
 
     std::unique_ptr<TDiskAgentState> State;
