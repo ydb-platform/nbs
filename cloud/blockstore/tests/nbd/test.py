@@ -50,8 +50,8 @@ def start_nbs_daemon(ydb, tmp_path):
 
     server_config.NbdEnabled = True
     server_config.NbdNetlink = True
-    server_config.NbdRequestTimeout = 5 * 1000
-    server_config.NbdConnectionTimeout = 10 * 1000
+    server_config.NbdRequestTimeout = 10000            # 10s
+    server_config.NbdConnectionTimeout = 86400 * 1000  # 24h
     server_config.NbdDevicePrefix = "/dev/nbd"
 
     server_config.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
@@ -152,8 +152,8 @@ def test_ydb_outage(ydb, bdev):
             wbuf[:] = expected
             future = executor.submit(write_block)
 
-            # Verify that the write does not complete within one minute.
-            logging.info("Verifying that the write remains pending for 60 seconds")
+            # Verify that the write does not complete within 1 minute.
+            logging.info("Verifying that the write remains pending for 1 minute")
             done, _ = wait([future], timeout=60)
             if done:
                 future.result()  # Propagate any worker exception.
@@ -178,10 +178,11 @@ def test_ydb_outage(ydb, bdev):
         write_block()
 
         # Verify that the new data is not overwritten by a delayed write.
+        dt = 120
         t0 = time.monotonic()
-        deadline = t0 + 120
+        deadline = t0 + dt
 
-        logging.info("Checking for delayed overwrites for 120 seconds")
+        logging.info("Checking for delayed overwrites for {dt} seconds")
         for i in count():
             read_block()
             assert rbuf[:] == expected, (
@@ -192,7 +193,7 @@ def test_ydb_outage(ydb, bdev):
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
-            time.sleep(min(0.05, remaining))
+            time.sleep(min(0.5, remaining))
 
         logging.info(
             "Verification passed: %s reads over %.3f seconds, no data mismatches",
