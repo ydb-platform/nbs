@@ -35,11 +35,12 @@ struct TDrainTabletsActionActor final
             return;
         }
 
-        LOG_INFO(
+        LOG_INFO_S(
             ctx,
             TFileStoreComponents::SERVICE,
-            "Draining tablets started, DownPolicy=%d",
-            request.GetDownPolicy());
+            "Draining tablets started, DownPolicy="
+                << NCloud::NProto::EDrainDownPolicy_Name(
+                       request.GetDownPolicy()));
 
         DrainTablets(ctx, request);
         Become(&TThis::StateWork);
