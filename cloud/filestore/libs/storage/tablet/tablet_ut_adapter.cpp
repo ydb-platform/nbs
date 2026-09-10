@@ -174,8 +174,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
                 response->GetErrorReason());
             nodeId2 = response->Record.GetNode().GetId();
 
-            auto hResponse =
-                tablet.SendAndRecvCreateHandle(nodeId2, 0 /* flags */);
+            auto hResponse = tablet.SendAndRecvCreateHandle(
+                nodeId2,
+                TCreateHandleArgs::RDWR);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 hResponse->GetStatus(),
@@ -191,7 +192,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             auto hResponse = tablet.SendAndRecvCreateHandle(
                 RootNodeId,
                 uuid3,
-                0 /* flags */);
+                TCreateHandleArgs::RDWR);
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_FS_NOENT,
                 hResponse->GetStatus(),
@@ -412,6 +413,119 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
         });
 
         tablet.DestroySession();
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldReturnFastShardEndpointOnlyForFastShards)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetTwoStageReadEnabled(true);
+        storageConfig.SetThreeStageWriteEnabled(true);
+        const ui32 fastShardPort = 11111;
+        storageConfig.SetFastShardServerPort(fastShardPort);
+        TTestEnv env(testEnvConfig, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+
+        {
+            auto response = tablet.InitSession("client", "session");
+            UNIT_ASSERT(!response->Record.GetAdapterModeEnabled());
+        }
+
+        const TString shardId1 = "shard1";
+        const TString uuid1 = CreateGuidAsString();
+        ui64 nodeId1 = 0;
+        ui64 handle1 = 0;
+
+        {
+            auto response = tablet.SendAndRecvCreateNode(
+                TCreateNodeArgs::File(RootNodeId, uuid1));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            nodeId1 = response->Record.GetNode().GetId();
+
+            auto hResponse = tablet.SendAndRecvCreateHandle(
+                nodeId1,
+                TCreateHandleArgs::RDWR);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                hResponse->GetStatus(),
+                hResponse->GetErrorReason());
+            handle1 = hResponse->Record.GetHandle();
+        }
+
+        {
+            auto response = tablet.SendAndRecvReadData(
+                handle1,
+                0 /* offset */,
+                4_KB /* len */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            const auto& bi = response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT_VALUES_EQUAL(0, bi.GetFastShardPort());
+            UNIT_ASSERT_VALUES_EQUAL("", bi.GetFastShardHost());
+        }
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            NProtoPrivate::TFastShardConfig(),
+            true /* isFastShard */);
+
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        {
+            auto response = tablet.InitSession("client", "session");
+            UNIT_ASSERT(response->Record.GetAdapterModeEnabled());
+        }
+
+        tablet.DestroySession();
+
+        {
+            auto response = tablet.SendAndRecvCreateNode(
+                TCreateNodeArgs::File(RootNodeId, uuid1));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            nodeId1 = response->Record.GetNode().GetId();
+
+            auto hResponse = tablet.SendAndRecvCreateHandle(
+                nodeId1,
+                TCreateHandleArgs::RDWR);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                hResponse->GetStatus(),
+                hResponse->GetErrorReason());
+            handle1 = hResponse->Record.GetHandle();
+        }
+
+        {
+            auto response = tablet.SendAndRecvReadData(
+                handle1,
+                0 /* offset */,
+                4_KB /* len */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            const auto& bi = response->Record.GetHeaders().GetBackendInfo();
+            UNIT_ASSERT_VALUES_EQUAL(fastShardPort, bi.GetFastShardPort());
+            UNIT_ASSERT_VALUES_UNEQUAL("", bi.GetFastShardHost());
+        }
     }
 }
 

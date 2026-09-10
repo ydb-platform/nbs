@@ -69,6 +69,7 @@ void OnResponse(
         traceSerializer,
         systemCounters,
         fileSystemId,
+        true /* isFastShard */,
         metrics,
         response->Record,
         callContext,
