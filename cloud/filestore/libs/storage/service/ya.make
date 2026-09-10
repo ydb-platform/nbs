@@ -52,6 +52,8 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/restricted/abseil-cpp-tstring
+
     cloud/filestore/libs/diagnostics
     cloud/filestore/libs/storage/api
     cloud/filestore/libs/storage/core
