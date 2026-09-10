@@ -392,7 +392,7 @@ void ApplyFreshDataRange(
     }
 
     const ui64 relOffset = commonRange.Offset - targetByteRange.Offset;
-    TRopeUtils::MemcpyNoCache(
+    TRopeUtils::Memcpy(
         targetBuffer.Begin() + relOffset,
         sourceFreshData.GetContent().data() +
             (commonRange.Offset - sourceByteRange.Offset),
@@ -668,7 +668,7 @@ void TReadDataActor::HandleReadBlobResponse(
             const auto relOffset = commonRange.Offset - OriginByteRange.Offset;
             auto dataIter = response.Buffer.begin();
             dataIter += commonRange.Offset - blobByteRange.Offset;
-            TRopeUtils::MemcpyNoCache(
+            TRopeUtils::Memcpy(
                 TargetBuffers.Begin() + relOffset,
                 dataIter,
                 commonRange.Length);
@@ -784,7 +784,7 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
             if (dataToWrite == 0) {
                 break;
             }
-            TRopeUtils::MemcpyNoCache(
+            TRopeUtils::Memcpy(
                 reinterpret_cast<char*>(iovec.GetBase()),
                 it,
                 dataToWrite);
@@ -804,7 +804,7 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
     } else {
         auto& buffer = *readDataResponse.MutableBuffer();
         buffer.ReserveAndResize(remainingBufferSize);
-        TRopeUtils::MemcpyNoCache(buffer.begin(), it, remainingBufferSize);
+        TRopeUtils::Memcpy(buffer.begin(), it, remainingBufferSize);
     }
 
     // Set the buffer offset to 0 because the response buffer/iovecs do not
