@@ -1624,12 +1624,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         TVector<TString> visited;
 
-        rb.VisitFirst(
+        UNIT_ASSERT(!HasError(rb.VisitFirst(
             2,
             [&](ui32, ui32, TStringBuf entry)
             {
                 visited.emplace_back(entry);
-            });
+            })));
 
         UNIT_ASSERT_VALUES_EQUAL(2, visited.size());
         UNIT_ASSERT_VALUES_EQUAL("A", visited[0]);
@@ -1644,12 +1644,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("A").Pushed);
 
         ui32 visited = 0;
-        rb.VisitFirst(
+        UNIT_ASSERT(!HasError(rb.VisitFirst(
             0,
             [&](ui32, ui32, TStringBuf)
             {
                 ++visited;
-            });
+            })));
 
         UNIT_ASSERT_VALUES_EQUAL(0, visited);
     }
@@ -1664,12 +1664,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("C").Pushed);
 
         TVector<TString> visited;
-        rb.VisitFirst(
+        UNIT_ASSERT(!HasError(rb.VisitFirst(
             10,
             [&](ui32, ui32, TStringBuf entry)
             {
                 visited.emplace_back(entry);
-            });
+            })));
 
         UNIT_ASSERT_VALUES_EQUAL(3, visited.size());
         UNIT_ASSERT_VALUES_EQUAL("A", visited[0]);
@@ -1683,12 +1683,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         TFileRingBuffer rb(file.GetName(), 128, 0, ver);
 
         ui32 visited = 0;
-        rb.VisitFirst(
+        UNIT_ASSERT(!HasError(rb.VisitFirst(
             2,
             [&](ui32, ui32, TStringBuf)
             {
                 ++visited;
-            });
+            })));
 
         UNIT_ASSERT_VALUES_EQUAL(0, visited);
     }
@@ -1707,12 +1707,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(!HasError(rb.Free(entry.data())));
 
         TVector<TString> visited;
-        rb.VisitFirst(
+        UNIT_ASSERT(!HasError(rb.VisitFirst(
             2,
             [&](ui32, ui32, TStringBuf value)
             {
                 visited.emplace_back(value);
-            });
+            })));
 
         UNIT_ASSERT_VALUES_EQUAL(2, visited.size());
         UNIT_ASSERT_VALUES_EQUAL("A", visited[0]);
@@ -1735,12 +1735,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(rb.PushBack("entry005").Pushed);
 
         TVector<TString> visited;
-        rb.VisitFirst(
+        UNIT_ASSERT(!HasError(rb.VisitFirst(
             3,
             [&](ui32, ui32, TStringBuf entry)
             {
                 visited.emplace_back(entry);
-            });
+            })));
 
         UNIT_ASSERT_VALUES_EQUAL(3, visited.size());
         UNIT_ASSERT_VALUES_EQUAL("entry003", visited[0]);

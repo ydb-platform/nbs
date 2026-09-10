@@ -89,25 +89,28 @@ std::optional<NProto::TQueueEntry> THandleOpsQueue::Front()
     return entry;
 }
 
-TVector<std::optional<NProto::TQueueEntry>> THandleOpsQueue::Front(ui32 count)
+THandleOpsQueue::TFrontResult THandleOpsQueue::Front(ui32 count)
 {
-    TVector<std::optional<NProto::TQueueEntry>> entries;
-    entries.reserve(count);
+    TFrontResult result;
+    result.Entries.reserve(count);
 
-    RequestsToProcess.VisitFirst(count, [&](ui32 checksum, ui32 tag, TStringBuf entry) {
-        Y_UNUSED(checksum);
-        Y_UNUSED(tag);
+    result.Error = RequestsToProcess.VisitFirst(
+        count,
+        [&](ui32 checksum, ui32 tag, TStringBuf entry)
+        {
+            Y_UNUSED(checksum);
+            Y_UNUSED(tag);
 
-        NProto::TQueueEntry queueEntry;
-        if (!queueEntry.ParseFromArray(entry.data(), entry.size())) {
-            Stats->IncrementParseErrorCount();
-            entries.push_back(std::nullopt);
-        } else {
-            entries.push_back(queueEntry);
-        }
-    });
+            NProto::TQueueEntry queueEntry;
+            if (!queueEntry.ParseFromArray(entry.data(), entry.size())) {
+                Stats->IncrementParseErrorCount();
+                result.Entries.push_back(std::nullopt);
+            } else {
+                result.Entries.push_back(queueEntry);
+            }
+        });
 
-    return entries;
+    return result;
 }
 
 bool THandleOpsQueue::Empty() const

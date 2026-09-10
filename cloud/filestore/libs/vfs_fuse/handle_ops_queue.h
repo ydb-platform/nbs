@@ -7,6 +7,8 @@
 
 #include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
 
+#include <util/generic/vector.h>
+
 namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,6 +27,14 @@ public:
         SerializationError,
     };
 
+    struct TFrontResult
+    {
+        TVector<std::optional<NProto::TQueueEntry>> Entries;
+        // Set if the underlying ring buffer is corrupted. Entries collected
+        // before the corruption was detected are still returned.
+        NCloud::NProto::TError Error;
+    };
+
     explicit THandleOpsQueue(const TString& filePath, ui32 size);
 
     IModuleStatsPtr GetModuleStats() const;
@@ -35,7 +45,7 @@ public:
         ui64 originalRequestId);
     EResult AddDestroyRequest(ui64 nodeId, ui64 handle);
     std::optional<NProto::TQueueEntry> Front();
-    TVector<std::optional<NProto::TQueueEntry>> Front(ui32 count);
+    TFrontResult Front(ui32 count);
     void PopFront();
     void PopFront(ui32 count);
     ui64 Size() const;

@@ -510,7 +510,7 @@ private:
         TCallContext& callContext,
         const NProto::TConfirmCreateHandleResponse& response);
     void CompleteHandleOpsQueueBatch(ui32 batchSize);
-    void ProcessDelayedRelease();
+    bool ProcessDelayedRelease();
 
     void ClearDirectoryCache();
 
