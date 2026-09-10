@@ -1061,54 +1061,45 @@ void TIndexTabletActor::HandleSessionDisconnected(
     const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
     const TActorContext& ctx)
 {
-    LOG_INFO(ctx, TFileStoreComponents::TABLET,
-        "%s Server disconnected, ev->Sender: %s",
-        LogTag.c_str(),
-        ev->Sender.ToString().c_str());
-
-    OrphanSession(ev->Sender, ctx.Now());
-}
-
-void TIndexTabletActor::HandleSessionDisconnectedInWork(
-    const TEvTabletPipe::TEvServerDisconnected::TPtr& ev,
-    const TActorContext& ctx)
-{
     const auto& msg = *ev->Get();
 
-    // TODO (#4962): once owner-to-session relation is tracked properly, use
-    // the session id directly and simplify this split session/pipe cleanup.
-    const auto& sessionIds = FindSessionIdsByPipeServer(msg.ServerId);
+    // If msg.ServerId is a session's own control pipe, session is found
+    // here, and below we orphan that session and delete its unconfirmed
+    // data. If it is not (e.g. IndexTabletProxy's own pipe, used for
+    // AddData/GenerateBlobIds), session is null - but that pipe id can
+    // still have unconfirmed writes tracked under it, so
+    // DeleteUnconfirmedDataForPipeServer below cleans those up regardless
+    // of whether a session was found.
+    auto* session = FindSessionByPipeServer(msg.ServerId);
 
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
         "%s Server disconnected, sender: %s, client: %s, server: %s, "
-        "matchedSessions: %zu",
+        "matchedSession: %s",
         LogTag.c_str(),
         ev->Sender.ToString().c_str(),
         msg.ClientId.ToString().c_str(),
         msg.ServerId.ToString().c_str(),
-        sessionIds.size());
+        session ? session->GetSessionId().c_str() : "<none>");
 
-    // The disconnected pipe may be the control pipe, while unconfirmed writes
-    // for the same logical session can be tracked with a separate data pipe
-    // server id. Delete by session too.
-    for (const auto& sessionId: sessionIds) {
+    if (session) {
         LOG_INFO(
             ctx,
             TFileStoreComponents::TABLET,
             "%s Deleting unconfirmed data for session: sessionId=%s",
             LogTag.c_str(),
-            sessionId.Quote().c_str());
+            session->GetSessionId().Quote().c_str());
 
-        DeleteUnconfirmedDataForSession(sessionId, ctx);
+        DeleteUnconfirmedDataForSession(session->GetSessionId(), ctx);
     }
 
     // msg.ServerId is the tablet-pipe server actor that received requests
     // from this client connection. Unconfirmed data keeps this actor id from
     // GenerateBlobIds, so clean it up when the pipe disconnects.
     DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
-    RemoveSessionByPipeServer(msg.ServerId);
+
+    OrphanSession(msg.ServerId, ctx.Now() + Config->GetIdleSessionTimeout());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1594,10 +1585,9 @@ STFUNC(TIndexTabletActor::StateWork)
         HFunc(TEvents::TEvWakeup, HandleWakeup);
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
+
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        HFunc(
-            TEvTabletPipe::TEvServerDisconnected,
-            HandleSessionDisconnectedInWork);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
@@ -1696,9 +1686,7 @@ STFUNC(TIndexTabletActor::StateAdapter)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        HFunc(
-            TEvTabletPipe::TEvServerDisconnected,
-            HandleSessionDisconnectedInWork);
+        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
 
         HFunc(TEvLocal::TEvTabletMetrics, HandleTabletMetrics);
         HFunc(TEvFileStore::TEvUpdateConfig, HandleUpdateConfig);
@@ -1723,7 +1711,10 @@ STFUNC(TIndexTabletActor::StateZombie)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
-        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
+
+        // Tablet is rebooting - sessions get orphaned and unconfirmed data gets
+        // cleaned up on startup anyway, no need to do anything extra on stop.
+        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         // If compaction/cleanup/collectgarbage/flush started before the tablet
         // reload and completed during the zombie state, we should ignore it.
@@ -1820,7 +1811,7 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(TEvTablet::TEvTabletDead, HandleTabletDead);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
-        HFunc(TEvTabletPipe::TEvServerDisconnected, HandleSessionDisconnected);
+        IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvFileStore::TEvUpdateConfig);

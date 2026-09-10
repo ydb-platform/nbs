@@ -529,6 +529,11 @@ public:
         return request;
     }
 
+    auto CreateDescribeSessionsRequest()
+    {
+        return std::make_unique<TEvIndexTablet::TEvDescribeSessionsRequest>();
+    }
+
     //
     // TEvIndexTabletPrivate
     //

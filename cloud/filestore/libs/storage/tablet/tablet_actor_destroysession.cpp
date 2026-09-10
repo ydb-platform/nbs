@@ -153,7 +153,12 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
             return;
         }
 
-        if (session->DeleteSubSession(args.SessionSeqNo)) {
+        auto result = session->DeleteSubSession(args.SessionSeqNo);
+        if (result.Removed) {
+            RemovePipeServer(result.Removed->PipeInfo.PipeServer);
+        }
+
+        if (!result.SessionCanBeDestroyed) {
             db->WriteSession(*session);
             args.Completed = true;
             return;
@@ -217,7 +222,6 @@ void TIndexTabletActor::CompleteTx_DestroySession(
         return;
     }
 
-    UnregisterSessionByPipeServer(args.SessionId);
     DeleteUnconfirmedDataForSession(args.SessionId, ctx);
 
     const auto& shardIds = GetFileSystem().GetShardFileSystemIds();
