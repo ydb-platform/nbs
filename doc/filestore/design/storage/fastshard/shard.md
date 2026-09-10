@@ -83,10 +83,9 @@ chunks that have zero bits.
 V1 version - one bit per 4-page min-size cluster, larger clusters will be
 tracked as groups of 4-page clusters.
 
-V2 mostly keeps this design - but the allocation logic will probably be
-smarter. Always allocating in multiples of 32KiB (8 pages) may waste too much
-space; a more sophisticated allocator is a possible future change. Large files
-will also need to address storage pages from other groups.
+V2 mostly keeps this design; a more sophisticated allocator is a possible
+future change. Large files will also need to address storage pages from other
+groups.
 
 ## Per-group layout
 

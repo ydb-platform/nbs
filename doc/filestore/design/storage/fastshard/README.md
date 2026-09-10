@@ -16,10 +16,10 @@ files can be implemented via fastshard.
 This directory documents the prospective design. The version present in the repo
 at `impl/hash_table_index` is currently a prototype and implements a subset of
 it; every gap between the prototype and the design is marked in the per-layer
-documents. This hash_table_index implementation will probably transform into
-the "V1" production implementation. The "V2" implementation will most probably
+documents. This `hash_table_index` implementation will probably transform into
+the V1 production implementation. The V2 implementation will most probably
 differ in the way we work with multiple groups per shard and in the way we index
-file pages (if we ever need to actually implement the "V2" version).
+file pages (if we ever need to actually implement the V2 version).
 
 ## Motivation
 
