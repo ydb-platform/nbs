@@ -15,13 +15,6 @@ namespace {
 NKikimrHive::EDrainDownPolicy ConvertDownPolicy(
     NProto::EDrainDownPolicy downPolicy)
 {
-    using TDownPolicy = NProto::EDrainDownPolicy;
-
-    constexpr auto MinSentinel = static_cast<TDownPolicy>(
-        std::numeric_limits<i32>::min());
-    constexpr auto MaxSentinel = static_cast<TDownPolicy>(
-        std::numeric_limits<i32>::max());
-
     switch (downPolicy) {
         case NProto::DRAIN_POLICY_NO_DOWN:
             return NKikimrHive::DRAIN_POLICY_NO_DOWN;
@@ -29,8 +22,8 @@ NKikimrHive::EDrainDownPolicy ConvertDownPolicy(
             return NKikimrHive::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART;
         case NProto::DRAIN_POLICY_KEEP_DOWN:
             return NKikimrHive::DRAIN_POLICY_KEEP_DOWN;
-        case MinSentinel:
-        case MaxSentinel:
+        case NProto::EDrainDownPolicy_INT_MIN_SENTINEL_DO_NOT_USE_:
+        case NProto::EDrainDownPolicy_INT_MAX_SENTINEL_DO_NOT_USE_:
             Y_ABORT_UNLESS(
                 false,
                 "Unknown drain down policy: %d",

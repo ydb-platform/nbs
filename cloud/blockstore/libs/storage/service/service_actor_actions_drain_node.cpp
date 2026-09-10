@@ -79,9 +79,9 @@ void TDrainNodeActionActor::Bootstrap(const TActorContext& ctx)
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "Draining node started, DownPolicy="
-            << NCloud::NProto::EDrainDownPolicy_Name(
-                   drainRequest.GetDownPolicy()));
+        "Draining node started, DownPolicy=" <<
+        NCloud::NProto::EDrainDownPolicy_Name(
+            drainRequest.GetDownPolicy()));
 
     DrainNode(ctx, drainRequest);
     Become(&TThis::StateWork);
