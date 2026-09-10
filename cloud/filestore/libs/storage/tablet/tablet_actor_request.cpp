@@ -98,6 +98,7 @@ void CompleteResponse(
     const ITraceSerializerPtr& traceSerializer,
     TSystemCounters& systemCounters,
     const TString& fileSystemId,
+    bool isFastShard,
     TTabletMetrics& metrics,
     typename TMethod::TResponse::ProtoRecordType& response,
     const TCallContextPtr& callContext,
@@ -123,6 +124,7 @@ void CompleteResponse(
         config,
         systemCounters,
         fileSystemId,
+        isFastShard,
         metrics.CPUUsageRate,
         response);
     if constexpr (HasResponseHeaders<decltype(response)>()) {
@@ -146,6 +148,7 @@ void TIndexTabletActor::CompleteResponse(
         TraceSerializer,
         *SystemCounters,
         GetFileSystemId(),
+        FastShard != nullptr,
         *Metrics,
         response,
         callContext,

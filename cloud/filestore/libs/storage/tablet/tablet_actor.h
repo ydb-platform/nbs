@@ -74,6 +74,7 @@ inline void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
     TString fileSystemId,
+    bool isFastShard,
     ui32 tabletActorCpuUsageRate,
     NProto::TBackendInfo* backendInfo)
 {
@@ -81,7 +82,7 @@ inline void BuildBackendInfo(
         IsTabletOverloaded(config, systemCounters, tabletActorCpuUsageRate));
 
     const ui32 fastShardPort = config.GetFastShardServerPort();
-    if (fastShardPort) {
+    if (isFastShard && fastShardPort) {
         backendInfo->SetFastShardHost(FQDNHostName());
         backendInfo->SetFastShardPort(fastShardPort);
     }
@@ -94,6 +95,7 @@ void BuildBackendInfo(
     const TStorageConfig& config,
     const TSystemCounters& systemCounters,
     TString fileSystemId,
+    bool isFastShard,
     ui32 tabletActorCpuUsageRate,
     T& response)
 {
@@ -104,6 +106,7 @@ void BuildBackendInfo(
             config,
             systemCounters,
             std::move(fileSystemId),
+            isFastShard,
             tabletActorCpuUsageRate,
             backendInfo);
     }
@@ -128,6 +131,7 @@ void CompleteResponse(
     const ITraceSerializerPtr& traceSerializer,
     TSystemCounters& systemCounters,
     const TString& fileSystemId,
+    bool isFastShard,
     TTabletMetrics& metrics,
     typename TMethod::TResponse::ProtoRecordType& response,
     const TCallContextPtr& callContext,
