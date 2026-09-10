@@ -306,7 +306,6 @@ void TIndexTabletActor::HandleCreateSession(
     ExecuteTx<TCreateSession>(
         ctx,
         std::move(requestInfo),
-        ev->Recipient,
         std::move(msg->Record));
 }
 
@@ -517,9 +516,6 @@ void TIndexTabletActor::CompleteTx_CreateSession(
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }
-
-    UnregisterSessionByPipeServer(args.SessionId);
-    RegisterSessionByPipeServer(args.PipeServerId, args.SessionId);
 
     auto response = std::make_unique<TResponse>(args.Error);
     response->Record.SetSessionId(std::move(args.SessionId));

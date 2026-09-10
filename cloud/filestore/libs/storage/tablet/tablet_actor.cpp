@@ -1075,40 +1075,19 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
 {
     const auto& msg = *ev->Get();
 
-    // TODO (#4962): once owner-to-session relation is tracked properly, use
-    // the session id directly and simplify this split session/pipe cleanup.
-    const auto& sessionIds = FindSessionIdsByPipeServer(msg.ServerId);
-
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s Server disconnected, sender: %s, client: %s, server: %s, "
-        "matchedSessions: %zu",
+        "%s Server disconnected, sender: %s, client: %s, server: %s",
         LogTag.c_str(),
         ev->Sender.ToString().c_str(),
         msg.ClientId.ToString().c_str(),
-        msg.ServerId.ToString().c_str(),
-        sessionIds.size());
-
-    // The disconnected pipe may be the control pipe, while unconfirmed writes
-    // for the same logical session can be tracked with a separate data pipe
-    // server id. Delete by session too.
-    for (const auto& sessionId: sessionIds) {
-        LOG_INFO(
-            ctx,
-            TFileStoreComponents::TABLET,
-            "%s Deleting unconfirmed data for session: sessionId=%s",
-            LogTag.c_str(),
-            sessionId.Quote().c_str());
-
-        DeleteUnconfirmedDataForSession(sessionId, ctx);
-    }
+        msg.ServerId.ToString().c_str());
 
     // msg.ServerId is the tablet-pipe server actor that received requests
     // from this client connection. Unconfirmed data keeps this actor id from
     // GenerateBlobIds, so clean it up when the pipe disconnects.
     DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
-    RemoveSessionByPipeServer(msg.ServerId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
