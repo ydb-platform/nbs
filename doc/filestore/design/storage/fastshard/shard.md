@@ -43,7 +43,10 @@ groups of 8 consecutive pages.
 
 * Prototype: `TPersistentHashTable` with `<NodeId, PageClusterNo>` keys and
   `StoragePageClusterNo` values.
-* Production: an extent tree / a radix tree hybrid per file.
+* V1: same hash table but page cluster sizes will have variable size - page
+  clusters at further offsets relative to the beginning of the file will be
+  much larger.
+* V2: an extent tree / a radix tree hybrid per file.
 
 #### Page index tree
 
@@ -77,7 +80,10 @@ prototype: one bit per 8-page cluster, stored in page-sized chunks (with
 `PageSize == 4KiB` each chunk stores `2^15 bits`), plus an in-memory stack of
 chunks that have zero bits.
 
-Production mostly keeps this design - but the allocation logic will probably be
+V1 version - one bit per 4-page min-size cluster, larger clusters will be
+tracked as groups of 4-page clusters.
+
+V2 mostly keeps this design - but the allocation logic will probably be
 smarter. Always allocating in multiples of 32KiB (8 pages) may waste too much
 space; a more sophisticated allocator is a possible future change. Large files
 will also need to address storage pages from other groups.
@@ -132,6 +138,11 @@ shard in the following manner:
 
 Steps 0 and 1 can be thought of as the "prepare" stage of a 2PC transaction.
 Steps 2 and 3 can be thought of as the "commit" stage of a 2PC transaction.
+
+V1 might actually end up having only one storage group per shard and omit the
+need to implement this mechanism. We can simply allocate large devices - e.g.
+4TiB per device. This way a single group will be able to store the amount of
+data that we usually expect to store per shard.
 
 ## Diagram
 
