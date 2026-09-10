@@ -7,7 +7,7 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/buffer.h>
-#include <util/generic/set.h>
+#include <util/generic/map.h>
 
 #include <memory>
 
@@ -19,20 +19,23 @@ struct IKeyBufferStore
 {
     virtual ~IKeyBufferStore() = default;
 
+    [[nodiscard]] virtual auto Restore()
+        -> NThreading::TFuture<TResultOrError<TMap<ui64, TBuffer>>> = 0;
+
     [[nodiscard]] virtual auto Write(ui64 key, TBuffer buffer)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
 
-    [[nodiscard]] virtual auto Read(ui64 key) const
-        -> NThreading::TFuture<TResultOrError<TBuffer>> = 0;
-
     [[nodiscard]] virtual auto EraseUpTo(ui64 lastKey)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
-
-    [[nodiscard]] virtual TSet<ui64> GetKeys() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 IKeyBufferStorePtr CreateInMemoryKeyBufferStore();
+
+IKeyBufferStorePtr CreateDeviceKeyBufferStore(
+    IDevicePtr device,
+    ui64 pageCount,
+    ui32 pageSize);
 
 }   // namespace NCloud::NJournalled
