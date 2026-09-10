@@ -1,3 +1,4 @@
+import contextlib
 import json
 import logging
 import os
@@ -102,6 +103,7 @@ class Qemu:
 
         self.ssh_port = 0
         self.qmp = None
+        self.qmp_socket = None
         self.has_incoming_socket = has_incoming_socket
         self.incoming_socket = None
         self.mount_paths = None
@@ -193,6 +195,28 @@ class Qemu:
     def stop(self):
         if self.qmp is not None:
             self.qmp.close()
+
+    def shutdown(self):
+        """Release QMP, process and socket resources; safe to call repeatedly."""
+        try:
+            self.stop()
+            self.qmp = None
+        finally:
+            try:
+                if self.qemu_bin:
+                    self.qemu_bin.stop()
+                    self.qemu_bin = None
+            finally:
+                try:
+                    if self.qmp_socket:
+                        with contextlib.suppress(FileNotFoundError):
+                            os.unlink(self.qmp_socket)
+                        self.qmp_socket = None
+                finally:
+                    if self.incoming_socket:
+                        with contextlib.suppress(FileNotFoundError):
+                            os.unlink(self.incoming_socket)
+                        self.incoming_socket = None
 
     def set_ssh_port(self, port=0):
         self.ssh_port = port
