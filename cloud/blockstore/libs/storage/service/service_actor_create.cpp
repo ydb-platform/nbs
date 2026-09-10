@@ -548,6 +548,16 @@ NProto::TError ValidateSsdDirectMirror3Of5GroupCreateVolumeRequest(
             "ssd-direct-mirror3of5-group disks");
     }
 
+    if (request.GetTabletVersion() &&
+        request.GetTabletVersion() != SsdDirectMirror3Of5GroupTabletVersion)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "bad tablet version for ssd-direct-mirror3of5-group disks: "
+                << request.GetTabletVersion());
+    }
+
     if (request.GetBaseDiskId()) {
         return MakeError(
             E_ARGUMENT,
@@ -641,13 +651,15 @@ NProto::TError ValidateCreateVolumeRequest(
                 << config.GetMaxPartitionsPerVolume());
     }
 
-    const auto maxBlocks = ComputeMaxBlocks(config, mediaKind, 0);
-    if (request.GetBlocksCount() > maxBlocks) {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder() << "disk size for media kind "
-                << MediaKindToString(mediaKind)
-                << " should be <= " << maxBlocks << " blocks");
+    if (!IsSsdDirectMirror3Of5GroupMediaKind(mediaKind)) {
+        const auto maxBlocks = ComputeMaxBlocks(config, mediaKind, 0);
+        if (request.GetBlocksCount() > maxBlocks) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "disk size for media kind "
+                    << MediaKindToString(mediaKind)
+                    << " should be <= " << maxBlocks << " blocks");
+        }
     }
 
     if (!request.GetBlocksCount()) {
