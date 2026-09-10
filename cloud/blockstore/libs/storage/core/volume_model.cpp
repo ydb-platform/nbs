@@ -778,41 +778,30 @@ void SetupSsdDirectMirror3Of5GroupVolumeChannels(
     const TStorageConfig& config,
     NKikimrBlockStore::TVolumeConfig& volumeConfig)
 {
+    const auto poolKinds = GetPoolKinds(
+        config,
+        NCloud::NProto::STORAGE_MEDIA_SSD,
+        volumeConfig.GetCloudId(),
+        volumeConfig.GetFolderId(),
+        volumeConfig.GetDiskId());
     const NPrivateProto::TVolumeChannelsToPoolsKinds noOverrides;
 
     AddOrModifyChannel(
-        config.GetSSDSystemChannelPoolKind(),
+        poolKinds.System,
         0,
         128_MB,
         EChannelDataKind::System,
         volumeConfig,
         noOverrides);
     AddOrModifyChannel(
-        config.GetSSDLogChannelPoolKind(),
+        poolKinds.Log,
         1,
         1_MB,
         EChannelDataKind::Log,
         volumeConfig,
         noOverrides);
 
-    SetupVolumeChannel(
-        config.GetSSDSystemChannelPoolKind(),
-        0,
-        1_MB,
-        EChannelDataKind::System,
-        volumeConfig);
-    SetupVolumeChannel(
-        config.GetSSDLogChannelPoolKind(),
-        1,
-        1_MB,
-        EChannelDataKind::Log,
-        volumeConfig);
-    SetupVolumeChannel(
-        config.GetSSDIndexChannelPoolKind(),
-        2,
-        1_MB,
-        EChannelDataKind::Index,
-        volumeConfig);
+    SetVolumeExplicitChannelProfiles(config, volumeConfig);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
