@@ -39,7 +39,6 @@ DecodedShardId(const TString& mainFsId, const ui16 shardNo, TString& shardId)
 
     std::to_chars_result result =
         std::to_chars(ptr, ptr + MaxDecimalDigitsInUi16, shardNo);
-    *result.ptr = 0;
     shardId.ReserveAndResize(result.ptr - start);
 }
 

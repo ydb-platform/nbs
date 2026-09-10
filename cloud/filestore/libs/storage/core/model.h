@@ -88,7 +88,7 @@ inline void GuidToString(const TGUID& guid, TString& str)
         *(ptr++) = '-';
     }
 
-    *(ptr--) = 0;
+    ptr--;
     str.ReserveAndResize(ptr - buffStart);
 }
 
