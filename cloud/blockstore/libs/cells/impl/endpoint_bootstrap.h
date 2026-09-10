@@ -28,15 +28,10 @@ struct ICellHostEndpointBootstrap
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) = 0;
 
-    // Waits for the endpoint to connect, and fails if it does not. For callers
-    // that have nothing to serve data with in the meantime.
     virtual TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) = 0;
 
-    // Hands the endpoint back before it has connected and reports its state
-    // through the handler. For callers that have a fallback transport and want
-    // to move over once the endpoint is usable.
     virtual TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,

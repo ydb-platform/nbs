@@ -45,8 +45,6 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     TPromise<TResultOrError<IBlockStorePtr>> RdmaSetupPromise =
         NewPromise<TResultOrError<IBlockStorePtr>>();
 
-    // what the synchronous form hands back; the test decides when the endpoint
-    // reports itself connected
     TResultOrError<IBlockStorePtr> RdmaSetupResult =
         MakeError(E_REJECTED, "no rdma endpoint in this test");
 
@@ -190,7 +188,7 @@ struct TTestEnv
         proto.SetGrpcPort(9766);
         proto.SetTransport(transport);
         proto.SetGrpcDataFallbackEnabled(grpcDataFallback);
-        proto.SetRdmaSettleTimeMs(rdmaSettleTimeMs);
+        proto.SetRdmaSettleTime(rdmaSettleTimeMs);
         proto.AddHosts()->SetFqdn("host-a");
         CellConfig = std::make_shared<TCellConfig>(std::move(proto));
 

@@ -101,7 +101,7 @@ public:
     [[nodiscard]] ui32 GetNbdPort() const;
     [[nodiscard]] NProto::ECellDataTransport GetTransport() const;
     [[nodiscard]] bool GetGrpcDataFallbackEnabled() const;
-    [[nodiscard]] ui32 GetRdmaSettleTimeMs() const;
+    [[nodiscard]] TDuration GetRdmaSettleTime() const;
     [[nodiscard]] const TConfiguredHostsByFqdn& GetHosts() const;
     [[nodiscard]] ui32 GetDescribeVolumeHostCount() const;
     [[nodiscard]] ui32 GetMinCellConnections() const;

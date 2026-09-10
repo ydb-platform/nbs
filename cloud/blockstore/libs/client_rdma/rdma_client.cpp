@@ -967,8 +967,6 @@ TResultOrError<IBlockStorePtr> CreateRdmaDataEndpoint(
         std::move(taskQueue),
         client->IsAlignedDataEnabled());
 
-    // hands the endpoint back before it has connected; the handler is how the
-    // caller learns when it is usable
     auto [clientEndpoint, error] = client->StartEndpoint(
         config.Address,
         config.Port,

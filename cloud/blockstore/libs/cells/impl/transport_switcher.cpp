@@ -61,10 +61,6 @@ public:
     NCloud::NStorage::NRdma::IClientEndpointHandlerPtr GetEndpointHandler()
         override;
 
-    // Asks for the preferred endpoint once. There is nothing to retry: the
-    // endpoint is handed back before it has connected and reconnects on its
-    // own from then on, so a failure here means the rdma client itself cannot
-    // give us one, and we stay on the fallback.
     void Start()
     {
         auto result = Factory(GetEndpointHandler());
@@ -89,8 +85,6 @@ public:
         }
 
         if (connected) {
-            // the endpoint reported itself connected before we got hold of it,
-            // so nothing else is going to start the wait
             StartSettling(generation);
         }
     }
@@ -124,8 +118,8 @@ public:
             }
             PreferredActive = false;
 
-            // under the lock, so that a settle racing this break cannot store
-            // its target after ours; the store is a wait-free swap
+            // inside the lock: a settle racing this break must not store its
+            // target after ours
             router->SetTarget(Fallback);
         }
 
@@ -177,8 +171,8 @@ private:
             PreferredActive = true;
             EverActive = true;
 
-            // under the lock, so that a break racing this settle cannot store
-            // its target before ours; the store is a wait-free swap
+            // inside the lock: a break racing this settle must not store its
+            // target before ours
             router->SetTarget(Preferred);
         }
 
@@ -228,9 +222,6 @@ public:
 
     void HandleUnavailable() override
     {
-        // nothing to do: by now the data is already on the fallback. The signal
-        // belongs to host liveness, which is a separate concern. It repeats on
-        // every reconnect attempt for as long as the endpoint stays down.
         STORAGE_WARN("[" << Host << "] rdma endpoint is unavailable");
     }
 };

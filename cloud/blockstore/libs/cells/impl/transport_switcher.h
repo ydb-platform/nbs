@@ -22,12 +22,9 @@ namespace NCloud::NBlockStore::NCells {
 
 struct TTransportSwitcherConfig
 {
-    TDuration SettleTime = TDuration::Seconds(30);
+    TDuration SettleTime = TDuration::Seconds(10);
 };
 
-// The handler has to reach the rdma client, and only the switcher can make it,
-// so the factory is handed one rather than capturing it. It returns the
-// endpoint before it has connected; the handler says when it can carry data.
 using TEndpointFactory = std::function<TResultOrError<IBlockStorePtr>(
     NCloud::NStorage::NRdma::IClientEndpointHandlerPtr)>;
 
@@ -37,14 +34,6 @@ using TEndpointFactory = std::function<TResultOrError<IBlockStorePtr>(
 // lives. Data starts on the endpoint the router was created with and moves onto
 // the preferred transport once it has connected and stayed connected for
 // SettleTime; a break moves the data straight back.
-//
-// Immediate on the way down and deliberate on the way up: at a break there is
-// nothing to wait for since the requests are already aborted, while returning
-// on the first reconnect would keep feeding a flapping link.
-//
-// The handler from GetEndpointHandler() must be given to the rdma client so it
-// reports the endpoint state. It holds the switcher weakly, so the switcher's
-// life is bound by whoever owns it and not by the endpoint.
 struct ITransportSwitcher
 {
     virtual ~ITransportSwitcher() = default;

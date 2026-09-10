@@ -7,8 +7,6 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Holds the connection alive: the caller may keep the storage handle alone,
-// and dropping the connection would take the transport switcher with it.
 IStoragePtr CreateRemoteStorage(
     IBlockStorePtr endpoint,
     ICellConnectionPtr connection);

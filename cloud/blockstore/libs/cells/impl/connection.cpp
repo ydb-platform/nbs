@@ -25,8 +25,6 @@ using TCellConnectionPtr = std::shared_ptr<TCellConnection>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The data endpoint together with the switcher that decides what it points at.
-// The switcher is empty for transports that never switch.
 struct TSwitchingDataEndpoint
 {
     IBlockStorePtr Router;
@@ -81,8 +79,6 @@ private:
 
     const IBlockStorePtr ControlService;
     const IBlockStorePtr DataEndpoint;
-    // keeps switching alive for as long as the connection is: the endpoint
-    // holds the handler only weakly
     const ITransportSwitcherPtr Switcher;
 
 public:
@@ -111,8 +107,6 @@ public:
         return HostConfig.GetFqdn();
     }
 
-    // Built on demand rather than cached: the wrapper owns the connection, so
-    // storing it here would close a reference cycle.
     IBlockStorePtr GetService() override
     {
         return std::make_shared<TControlService>(
@@ -120,8 +114,6 @@ public:
             shared_from_this());
     }
 
-    // Built on demand for the same reason as GetService() above: the storage
-    // holds the connection, so caching it here would close a reference cycle.
     IStoragePtr GetStorage() override
     {
         return CreateRemoteStorage(DataEndpoint, shared_from_this());
@@ -198,8 +190,6 @@ TSwitchingDataEndpoint CreateSwitchingDataEndpoint(
         CreateGrpcDataEndpoint(bootstrap, hostConfig, controlService);
     auto router = CreateEndpointRouter(fallback);
 
-    // the switcher has to exist before the factory runs: the factory hands the
-    // handler it is given down to the rdma client
     auto switcher = StartTransportSwitching(
         router,
         fallback,
@@ -230,8 +220,6 @@ NThreading::TFuture<TResultOrError<TSwitchingDataEndpoint>> SetupDataEndpoint(
     switch (hostConfig.GetTransport()) {
         case NProto::CELL_DATA_TRANSPORT_RDMA:
             if (!hostConfig.GetGrpcDataFallbackEnabled()) {
-                // nothing switches here, so the rdma client has nobody to
-                // report the endpoint state to
                 auto future = bootstrap.EndpointsSetup->SetupHostRdmaEndpoint(
                     bootstrap,
                     hostConfig);
@@ -259,11 +247,11 @@ NThreading::TFuture<TResultOrError<TSwitchingDataEndpoint>> SetupDataEndpoint(
         case NProto::CELL_DATA_TRANSPORT_GRPC:
             return MakeFuture(TResultOrError<TSwitchingDataEndpoint>(
                 TSwitchingDataEndpoint{
-                    CreateGrpcDataEndpoint(
+                    .Router = CreateGrpcDataEndpoint(
                         bootstrap,
                         hostConfig,
                         controlService),
-                    nullptr}));
+                    .Switcher = nullptr}));
 
         default:
             return MakeFuture(TResultOrError<TSwitchingDataEndpoint>(MakeError(

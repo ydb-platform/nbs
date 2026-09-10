@@ -56,10 +56,8 @@ message TCellConfig
     optional bool GrpcDataFallbackEnabled = 11;
 
     // How long an RDMA connection that has dropped once has to stay up again
-    // before data is moved back onto it. The first connect never waits - the
-    // wait guards against a link that has already proved it flaps. Zero moves
-    // the data over as soon as it reconnects. Defaults to 30 seconds.
-    optional uint32 RdmaSettleTimeMs = 12;
+    // before data is moved back onto it, in milliseconds.
+    optional uint32 RdmaSettleTime = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
