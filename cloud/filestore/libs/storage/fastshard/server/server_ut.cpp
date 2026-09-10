@@ -4,7 +4,7 @@
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 #include <cloud/filestore/libs/storage/fastshard/server/server.h>
 #include <cloud/filestore/libs/storage/fastshard/testlib/silk_env.h>
-#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>

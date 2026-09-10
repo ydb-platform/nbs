@@ -16,7 +16,7 @@ PEERDIR(
     cloud/filestore/libs/storage/fastshard/iface
     cloud/filestore/libs/storage/fastshard/impl/hash_table_index
     cloud/filestore/libs/storage/fastshard/sn/quorum
-    cloud/filestore/private/api/unsafe_protos
+    cloud/filestore/private/api/protos
 
     cloud/storage/core/libs/common
 

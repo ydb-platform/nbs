@@ -11,8 +11,7 @@ import (
 	client_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	stats_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos"
-	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos"
 	"github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	coreprotos "github.com/ydb-platform/nbs/cloud/storage/core/protos"
@@ -498,11 +497,11 @@ func (c *client) GetStorageStats(
 
 	defer c.metrics.StatRequest("GetStorageStats")(&err)
 
-	response := &stats_protos.TGetStorageStatsResponse{}
+	response := &private_protos.TGetStorageStatsResponse{}
 	err = c.executeAction(
 		ctx,
 		"getstoragestats",
-		&stats_protos.TGetStorageStatsRequest{
+		&private_protos.TGetStorageStatsRequest{
 			FileSystemId: filesystemID,
 		},
 		response,

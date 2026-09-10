@@ -14,7 +14,7 @@ SRCS(
 PEERDIR(
     cloud/filestore/libs/storage/tablet/events
     cloud/filestore/libs/storage/testlib
-    cloud/filestore/private/api/unsafe_protos
+    cloud/filestore/private/api/protos
 
     contrib/ydb/core/testlib
 )
