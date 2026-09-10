@@ -38,10 +38,10 @@ struct TDrainTabletsActionActor final
         LOG_INFO(
             ctx,
             TFileStoreComponents::SERVICE,
-            "Draining tablets started, KeepDown=%d",
-            request.GetKeepDown());
+            "Draining tablets started, DownPolicy=%d",
+            request.GetDownPolicy());
 
-        DrainTablets(ctx, request.GetKeepDown());
+        DrainTablets(ctx, request);
         Become(&TThis::StateWork);
     }
 
@@ -59,10 +59,12 @@ struct TDrainTabletsActionActor final
         }
     }
 
-    void DrainTablets(const TActorContext& ctx, bool keepDown) const
+    void DrainTablets(
+        const TActorContext& ctx,
+        const NProtoPrivate::TDrainNodeRequest& drainRequest) const
     {
-        auto request =
-            std::make_unique<TEvHiveProxy::TEvDrainNodeRequest>(keepDown);
+        auto request = std::make_unique<TEvHiveProxy::TEvDrainNodeRequest>(
+            drainRequest.GetDownPolicy());
         NCloud::Send(
             ctx,
             MakeHiveProxyServiceId(),

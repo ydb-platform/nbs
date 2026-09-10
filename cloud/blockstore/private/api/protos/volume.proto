@@ -3,6 +3,7 @@ syntax = "proto3";
 package NCloud.NBlockStore.NPrivateProto;
 
 import "cloud/blockstore/private/api/protos/blob.proto";
+import "cloud/storage/core/protos/drain.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/private/api/protos";
 
@@ -172,8 +173,11 @@ message TRebindVolumesResponse
 
 message TDrainNodeRequest
 {
-    // KeepDown hive flag. If set, the node will stay disabled after draining.
-    bool KeepDown = 1;
+    // Deprecated in favor of DownPolicy.
+    bool KeepDown = 1 [deprecated = true];
+
+    // Controls whether and for how long the node stays down after draining.
+    NCloud.NProto.EDrainDownPolicy DownPolicy = 2;
 };
 
 message TDrainNodeResponse

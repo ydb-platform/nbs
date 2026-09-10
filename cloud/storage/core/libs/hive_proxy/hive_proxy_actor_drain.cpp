@@ -12,12 +12,40 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NKikimrHive::EDrainDownPolicy ConvertDownPolicy(
+    NProto::EDrainDownPolicy downPolicy)
+{
+    using TDownPolicy = NProto::EDrainDownPolicy;
+
+    constexpr auto MinSentinel = static_cast<TDownPolicy>(
+        std::numeric_limits<i32>::min());
+    constexpr auto MaxSentinel = static_cast<TDownPolicy>(
+        std::numeric_limits<i32>::max());
+
+    switch (downPolicy) {
+        case NProto::DRAIN_POLICY_NO_DOWN:
+            return NKikimrHive::DRAIN_POLICY_NO_DOWN;
+        case NProto::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART:
+            return NKikimrHive::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART;
+        case NProto::DRAIN_POLICY_KEEP_DOWN:
+            return NKikimrHive::DRAIN_POLICY_KEEP_DOWN;
+        case MinSentinel:
+        case MaxSentinel:
+            Y_ABORT_UNLESS(
+                false,
+                "Unknown drain down policy: %d",
+                static_cast<int>(downPolicy));
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TDrainNodeRequestActor final
     : public TActorBootstrapped<TDrainNodeRequestActor>
 {
 private:
     const TActorId Owner;
-    const bool KeepDown;
+    const NProto::EDrainDownPolicy DownPolicy;
     const int LogComponent;
     const THiveProxyActor::TRequestInfo Request;
     TActorId ClientId;
@@ -25,12 +53,12 @@ private:
 public:
     TDrainNodeRequestActor(
             const TActorId& owner,
-            const bool keepDown,
+            NProto::EDrainDownPolicy downPolicy,
             const int logComponent,
             THiveProxyActor::TRequestInfo request,
             TActorId clientId)
         : Owner(owner)
-        , KeepDown(keepDown)
+        , DownPolicy(downPolicy)
         , LogComponent(logComponent)
         , Request(request)
         , ClientId(clientId)
@@ -58,7 +86,7 @@ void TDrainNodeRequestActor::Bootstrap(const TActorContext& ctx)
 {
 
     auto ev = std::make_unique<TEvHive::TEvDrainNode>(Owner.NodeId());
-    ev->Record.SetKeepDown(KeepDown);
+    ev->Record.SetDownPolicy(ConvertDownPolicy(DownPolicy));
     NKikimr::NTabletPipe::SendData(
         ctx,
         ClientId,
@@ -132,7 +160,7 @@ void THiveProxyActor::HandleDrainNode(
     HiveState.Actors.insert(NCloud::Register<TDrainNodeRequestActor>(
         ctx,
         SelfId(),
-        ev->Get()->KeepDown,
+        ev->Get()->DownPolicy,
         LogComponent,
         TRequestInfo(ev->Sender, ev->Cookie),
         clientId
