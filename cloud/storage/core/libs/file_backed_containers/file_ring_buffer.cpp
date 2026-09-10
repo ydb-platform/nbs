@@ -361,12 +361,16 @@ private:
         return Validate();
     }
 
+    // The visitor may return false to stop the traversal early once it has
+    // seen enough entries
     void VisitEntries(auto&& visitor)
     {
         auto e = GetFrontEntry();
 
         while (e.HasValue()) {
-            visitor(e);
+            if (!visitor(e)) {
+                return;
+            }
             e = GetNextEntry(e);
         }
 
@@ -494,6 +498,7 @@ public:
                         MaxObservedEntryByteCount,
                         e.Header.DataSize);
                 }
+                return true;
             });
 
         if (!IsCorrupted()) {
@@ -878,6 +883,7 @@ public:
                 if (!e.GetFreeFlag()) {
                     visitor(e.Header.DataChecksum, e.GetTag(), e.GetData());
                 }
+                return true;
             });
 
         if (IsCorrupted()) {
@@ -888,39 +894,35 @@ public:
         return {};
     }
 
-    void VisitFirst(size_t count, const TVisitor& visitor)
+    NProto::TError VisitFirst(size_t count, const TVisitor& visitor)
     {
         if (!ValidateAccess("VisitFirst")) {
-            return;
+            return MakeBufferIsCorruptError();
         }
 
         if (count == 0) {
-            return;
+            return {};
         }
 
-        auto entry = GetFrontEntry();
         size_t visited = 0;
-
-        while (entry.HasValue()) {
-            if (!entry.GetFreeFlag()) {
-                visitor(
-                    entry.Header.DataChecksum,
-                    entry.GetTag(),
-                    entry.GetData());
-
-                ++visited;
-
-                if (visited == count) {
-                    return;
+        VisitEntries(
+            [&](const TEntryInfo& e)
+            {
+                if (!e.GetFreeFlag()) {
+                    visitor(e.Header.DataChecksum, e.GetTag(), e.GetData());
+                    if (++visited == count) {
+                        return false;
+                    }
                 }
-            }
+                return true;
+            });
 
-            entry = GetNextEntry(entry);
+        if (IsCorrupted()) {
+            // VisitEntries may set IsCorrupted flag during entry enumeration
+            return MakeBufferIsCorruptError();
         }
 
-        if (entry.IsInvalid()) {
-            SetCorrupted("Invalid entry detected at VisitFirst");
-        }
+        return {};
     }
 
     bool IsCorrupted() const
@@ -1126,9 +1128,11 @@ NProto::TError TFileRingBuffer::Visit(const TVisitor& visitor)
     return Impl->Visit(visitor);
 }
 
-void TFileRingBuffer::VisitFirst(size_t count, const TVisitor& visitor)
+NProto::TError TFileRingBuffer::VisitFirst(
+    size_t count,
+    const TVisitor& visitor)
 {
-    Impl->VisitFirst(count, visitor);
+    return Impl->VisitFirst(count, visitor);
 }
 
 bool TFileRingBuffer::IsCorrupted() const

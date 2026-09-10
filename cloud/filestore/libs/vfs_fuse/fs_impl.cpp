@@ -415,27 +415,34 @@ void TFileSystem::CompleteHandleOpsQueueBatch(ui32 batchSize)
     }
 
     for (ui32 i = 0; i < batchSize; ++i) {
-        ProcessDelayedRelease();
+        if (!ProcessDelayedRelease()) {
+            break;
+        }
     }
     ScheduleProcessHandleOpsQueue(
         Config->GetAsyncHandleOperationDrainPeriod());
 }
 
-void TFileSystem::ProcessDelayedRelease()
+bool TFileSystem::ProcessDelayedRelease()
 {
     with_lock (DelayedReleaseQueueLock) {
-        if (!DelayedReleaseQueue.empty()) {
-            const auto& request = DelayedReleaseQueue.front();
-            if (ProcessAsyncRelease(
-                    request.CallContext,
-                    request.Req,
-                    request.Ino,
-                    request.Fh,
-                    request.WriteBackCacheError))
-            {
-                DelayedReleaseQueue.pop();
-            }
+        if (DelayedReleaseQueue.empty()) {
+            return false;
         }
+        const auto& request = DelayedReleaseQueue.front();
+        if (!ProcessAsyncRelease(
+                request.CallContext,
+                request.Req,
+                request.Ino,
+                request.Fh,
+                request.WriteBackCacheError))
+        {
+            // HandleOpsQueue is full: the remaining iterations would
+            // retry the same head entry with no new capacity, so stop here.
+            return false;
+        }
+        DelayedReleaseQueue.pop();
+        return true;
     }
 }
 
@@ -514,24 +521,65 @@ TFuture<void> TFileSystem::ProcessHandleOpsQueueEntry(
 
 void TFileSystem::ProcessHandleOpsQueue()
 {
-    TVector<std::optional<NProto::TQueueEntry>> entries;
+    THandleOpsQueue::TFrontResult frontResult;
     with_lock (HandleOpsQueueLock) {
         const ui32 batchSize =
             Max<ui32>(1, Config->GetAsyncHandleOperationBatchSize());
-        entries = HandleOpsQueue->Front(batchSize);
+        frontResult = HandleOpsQueue->Front(batchSize);
     }
 
+    if (HasError(frontResult.Error)) {
+        ReportHandleOpsQueueProcessError(
+            TStringBuilder()
+            << "HandleOpsQueue is corrupted, filesystem: "
+            << Config->GetFileSystemId()
+            << " error: " << FormatError(frontResult.Error));
+    }
+
+    auto& entries = frontResult.Entries;
     if (entries.empty()) {
         ScheduleProcessHandleOpsQueue(
             Config->GetAsyncHandleOperationIdlePeriod());
         return;
     }
 
+    // A queued confirm followed later in this batch by a destroy for the
+    // same handle is redundant: sending both races on the tablet and can
+    // resurrect a handle that Destroy already removed. Skip the confirm -
+    // Destroy alone is enough, whether or not the handle was actually
+    // persisted yet (if it wasn't, Destroy just gets S_ALREADY, a no-op).
+    THashMap<ui64, size_t> pendingConfirmIndexByHandle;
+    TVector<bool> skipConfirm(entries.size(), false);
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const auto& entry = entries[i];
+        if (!entry) {
+            continue;
+        }
+        if (entry->HasQueuedCreateHandleRequest()) {
+            pendingConfirmIndexByHandle[
+                entry->GetQueuedCreateHandleRequest().GetHandle()] = i;
+        } else if (entry->HasDestroyHandleRequest()) {
+            auto it = pendingConfirmIndexByHandle.find(
+                entry->GetDestroyHandleRequest().GetHandle());
+            if (it != pendingConfirmIndexByHandle.end()) {
+                skipConfirm[it->second] = true;
+                pendingConfirmIndexByHandle.erase(it);
+            }
+        }
+    }
+
     TVector<TFuture<void>> futures;
     futures.reserve(entries.size());
 
-    for (const auto& entry: entries) {
-        futures.push_back(ProcessHandleOpsQueueEntry(entry));
+    for (size_t i = 0; i < entries.size(); ++i) {
+        if (skipConfirm[i]) {
+            STORAGE_DEBUG(
+                "Skipping superseded create handle confirmation: "
+                << "filesystem " << Config->GetFileSystemId());
+            futures.push_back(MakeFuture());
+            continue;
+        }
+        futures.push_back(ProcessHandleOpsQueueEntry(entries[i]));
     }
 
     WaitAll(futures).Subscribe(
