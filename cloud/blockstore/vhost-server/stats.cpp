@@ -8,6 +8,7 @@
 #include <util/stream/output.h>
 #include <util/system/event.h>
 
+#include <algorithm>
 #include <numeric>
 
 namespace NCloud::NBlockStore::NVHostServer {
@@ -64,7 +65,9 @@ public:
 
     void Sync(const TAtomicStats& stats) override
     {
-        if (!NeedUpdateCompletionStats) {
+        // RDMA completion callbacks may call Sync concurrently. Claim the
+        // pending snapshot before writing to the shared publication buffer.
+        if (!NeedUpdateCompletionStats.exchange(false)) {
             return;
         }
 
@@ -79,7 +82,6 @@ public:
             stats.LatencyCounters,
             CompletionStats.LatencyCounters.begin());
 
-        NeedUpdateCompletionStats = false;
         CompletionStatsEvent.Signal();
     }
 };

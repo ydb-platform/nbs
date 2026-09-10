@@ -27,7 +27,7 @@ inline constexpr size_t MaxLatencyThresholdBucketsPerMediaKind = 1024;
 ////////////////////////////////////////////////////////////////////////////////
 
 // A single operation-size bucket: the lower bound (inclusive) of the
-// operation size range together with the execution time thresholds for read
+// operation size range together with the measured-latency thresholds for read
 // and write operations of that size. An operation is considered timely if it
 // completes within the threshold configured for its size class. The upper
 // bound of a bucket is the next bucket's MinRequestBytes (open-ended for the
@@ -144,8 +144,9 @@ const TLatencyThresholdBucket& FindLatencyThresholdBucket(
 // Outcome of judging one final logical read/write operation after all
 // splitting and retries have completed. Successful operations are compared
 // with the size-dependent threshold. A final service failure is bad. Explicit
-// load-shedding/checkpoint rejections, invalid input and cancellation are
-// excluded from latency accounting.
+// load-shedding/checkpoint rejections and cancellation are excluded from
+// latency accounting. A bare E_ARGUMENT is not enough to prove invalid guest
+// input because service-response validation also uses that code.
 struct TLatencyThresholdOutcome
 {
     // Operation counted in the total (denominator).
@@ -170,6 +171,6 @@ TLatencyThresholdOutcome ClassifyLatencyOutcome(
     const NProto::TError& error,
     bool isWrite,
     ui64 requestBytes,
-    TDuration execTime);
+    TDuration latency);
 
 }   // namespace NCloud::NBlockStore

@@ -187,6 +187,14 @@ struct IVolumeStats
         const TString& cellId,
         const TString& fqdn) = 0;
 
+    // Effective startup state after threshold validation. The default keeps
+    // existing implementations source-compatible and disables the optional
+    // request-path bookkeeping for implementations that do not provide it.
+    virtual bool IsLatencyTrackingEnabled() const
+    {
+        return false;
+    }
+
     // Publishes startup diagnostics after the monitoring service is ready,
     // without initializing the otherwise lazy volume counters. The default
     // keeps other implementations source-compatible; TVolumeStats also

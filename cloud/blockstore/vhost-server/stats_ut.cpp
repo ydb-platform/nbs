@@ -10,6 +10,7 @@
 #include <util/stream/str.h>
 
 #include <chrono>
+#include <thread>
 #include <tuple>
 
 using namespace std::chrono_literals;
@@ -458,20 +459,120 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, stats.LatencyCounters[1].Skipped);
     }
 
-    Y_UNIT_TEST(ShouldExcludeWaitTimeFromLatencyDuration)
+    Y_UNIT_TEST(ShouldSynchronizeLatencyCountersFromConcurrentCallbacks)
+    {
+        constexpr ui64 cyclesPerSecond = 2000000000;
+        constexpr ui64 recordsPerThread = 10000;
+        constexpr int readRequest = 0;
+        SetCyclesPerSecond(cyclesPerSecond);
+
+        NCloud::NBlockStore::TLatencyThresholdLadder ladder = {{
+            .MinRequestBytes = 0,
+            .ReadThreshold = TDuration::MilliSeconds(5),
+            .WriteThreshold = TDuration::MilliSeconds(5),
+        }};
+        TLatencyTracker latencyTracker(true, std::move(ladder));
+        TAtomicStats stats;
+
+        std::array<std::thread, 4> workers;
+        for (size_t i = 0; i != workers.size(); ++i) {
+            workers[i] = std::thread([&, i] {
+                const auto completion = i == 2
+                    ? ELatencyCompletion::Error
+                    : i == 3 ? ELatencyCompletion::Skipped
+                             : ELatencyCompletion::Success;
+                const auto elapsed = i == 1
+                    ? TDuration::MilliSeconds(10)
+                    : TDuration::MilliSeconds(1);
+
+                for (ui64 j = 0; j != recordsPerThread; ++j) {
+                    latencyTracker.Record(
+                        stats,
+                        readRequest,
+                        4096,
+                        DurationToCyclesSafe(elapsed),
+                        completion);
+                }
+            });
+        }
+
+        for (auto& worker: workers) {
+            worker.join();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            recordsPerThread,
+            stats.LatencyCounters[readRequest].Good.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * recordsPerThread,
+            stats.LatencyCounters[readRequest].Bad.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            recordsPerThread,
+            stats.LatencyCounters[readRequest].Skipped.load());
+
+        auto completionStats = CreateCompletionStats();
+        std::atomic_bool readerStarted = false;
+        std::atomic_bool readerDone = false;
+        std::optional<TSimpleStats> snapshot;
+
+        std::thread reader([&] {
+            readerStarted = true;
+            snapshot = completionStats->Get(TDuration::Seconds(5));
+            readerDone = true;
+        });
+        while (!readerStarted) {
+            std::this_thread::yield();
+        }
+
+        std::array<std::thread, 4> publishers;
+        for (auto& publisher: publishers) {
+            publisher = std::thread([&] {
+                while (!readerDone) {
+                    completionStats->Sync(stats);
+                    std::this_thread::yield();
+                }
+            });
+        }
+
+        reader.join();
+        for (auto& publisher: publishers) {
+            publisher.join();
+        }
+
+        UNIT_ASSERT(snapshot);
+        UNIT_ASSERT_VALUES_EQUAL(
+            recordsPerThread,
+            snapshot->LatencyCounters[readRequest].Good);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * recordsPerThread,
+            snapshot->LatencyCounters[readRequest].Bad);
+        UNIT_ASSERT_VALUES_EQUAL(
+            recordsPerThread,
+            snapshot->LatencyCounters[readRequest].Skipped);
+    }
+
+    Y_UNIT_TEST(ShouldAdjustLatencyForShaping)
     {
         constexpr ui64 cyclesPerSecond = 2000000000;
         SetCyclesPerSecond(cyclesPerSecond);
 
         UNIT_ASSERT_VALUES_EQUAL(
             DurationToCyclesSafe(TDuration::MilliSeconds(7)),
-            SubtractLatencyWaitTime(
+            AdjustLatencyForShaping(
                 DurationToCyclesSafe(TDuration::MilliSeconds(12)),
-                TDuration::MilliSeconds(5)));
+                TDuration::MilliSeconds(5),
+                false));
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            SubtractLatencyWaitTime(
+            AdjustLatencyForShaping(
                 DurationToCyclesSafe(TDuration::MilliSeconds(3)),
-                TDuration::MilliSeconds(5)));
+                TDuration::MilliSeconds(5),
+                false));
+        UNIT_ASSERT_VALUES_EQUAL(
+            DurationToCyclesSafe(TDuration::MilliSeconds(12)),
+            AdjustLatencyForShaping(
+                DurationToCyclesSafe(TDuration::MilliSeconds(12)),
+                TDuration::MilliSeconds(5),
+                true));
     }
 }

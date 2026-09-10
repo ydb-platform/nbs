@@ -788,6 +788,96 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
         bootstrap->Stop();
     }
 
+    Y_UNIT_TEST(ShouldRecordCheckpointWriteAsLatencySkippedOnly)
+    {
+        auto storage = std::make_shared<TTestStorage>();
+        SetupStorage(*storage);
+
+        auto bootstrap = CreateBootstrap(storage);
+        bootstrap->Start();
+
+        TStorageOptions options;
+        options.DiskId = DefaultDiskId;
+        options.ClientId = "client";
+        options.BlockSize = DefaultBlockSize;
+        options.BlocksCount = DefaultBlocksCount;
+        options.CheckpointId = "checkpoint";
+
+        auto serverStats = std::make_shared<TTestServerStats>();
+        ui32 requestStarts = 0;
+        ui32 latencyCompletions = 0;
+        ui32 latencyBatches = 0;
+
+        serverStats->RequestStartedHandler = [&] (
+            TLog&,
+            TMetricRequest&,
+            TCallContext&,
+            const TString&)
+        {
+            ++requestStarts;
+        };
+        serverStats->RecordLatencyCompletionHandler = [&] (
+            TMetricRequest&,
+            TCallContext&,
+            ui64,
+            const NProto::TError&)
+        {
+            ++latencyCompletions;
+        };
+        serverStats->RecordLatencyBatchHandler = [&] (
+            TMetricRequest& metricRequest,
+            ui64 goodOps,
+            ui64 badOps,
+            ui64 skippedOps)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                EBlockStoreRequest::WriteBlocks,
+                metricRequest.RequestType);
+            UNIT_ASSERT_VALUES_EQUAL(0, goodOps);
+            UNIT_ASSERT_VALUES_EQUAL(0, badOps);
+            UNIT_ASSERT_VALUES_EQUAL(1, skippedOps);
+            ++latencyBatches;
+        };
+
+        auto handler = CreateServerHandlerFactory(
+            CreateDefaultDeviceHandlerFactory(),
+            bootstrap->GetLogging(),
+            bootstrap->GetStorage(),
+            serverStats,
+            CreateErrorHandlerStub(),
+            options)->CreateHandler();
+
+        TStringStream clientToServer;
+        TStringStream serverToClient;
+        TRequestWriter writer(clientToServer);
+
+        TRequest request;
+        request.Magic = NBD_REQUEST_MAGIC;
+        request.Flags = 0;
+        request.Type = NBD_CMD_WRITE;
+        request.Handle = 1;
+        request.From = 0;
+        request.Length = DefaultBlockSize;
+        // The checkpoint branch rejects the request before using its body,
+        // but the NBD request itself must still contain the declared payload.
+        writer.WriteRequest(request, TString(request.Length, 'a'));
+
+        auto ctx = MakeIntrusive<TServerContext>(*handler, serverToClient);
+        handler->ProcessRequests(
+            ctx,
+            clientToServer,
+            serverToClient,
+            nullptr);
+
+        // The old request-statistics lifecycle is untouched. The early
+        // checkpoint rejection appears only in the new coverage counter.
+        UNIT_ASSERT_VALUES_EQUAL(0, requestStarts);
+        UNIT_ASSERT_VALUES_EQUAL(0, latencyCompletions);
+        UNIT_ASSERT_VALUES_EQUAL(1, latencyBatches);
+
+        bootstrap->Stop();
+    }
+
     // TODO: simple/structured
 }
 
