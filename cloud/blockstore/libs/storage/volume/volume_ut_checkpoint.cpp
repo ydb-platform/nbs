@@ -2165,7 +2165,6 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
             auto response = volume.RecvCreateCheckpointResponse();
 
-            CheckForkJoin(response->Record.GetDeprecatedTrace().GetLWTrace().GetTrace(), true);
             CheckForkJoin(response->Record.GetHeaders().GetTrace().GetLWTrace().GetTrace(), true);
         }
 
@@ -2177,7 +2176,6 @@ Y_UNIT_TEST_SUITE(TVolumeCheckpointTest)
 
             auto response = volume.RecvDeleteCheckpointResponse();
 
-            CheckForkJoin(response->Record.GetDeprecatedTrace().GetLWTrace().GetTrace(), true);
             CheckForkJoin(response->Record.GetHeaders().GetTrace().GetLWTrace().GetTrace(), true);
         }
     }

@@ -30,20 +30,13 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_HAS_MEMBER(SetDeprecatedThrottlerDelay);
-
 template <typename TMethod>
 void StoreThrottlerDelay(
     typename TMethod::TResponse& response,
     TDuration delay,
     TDuration shapingDelay)
 {
-    using TProtoType = decltype(TMethod::TResponse::Record);
-    static_assert(
-        THasSetDeprecatedThrottlerDelay<TProtoType>::value ==
-        RequiresThrottling<TMethod>);
     if constexpr (RequiresThrottling<TMethod>) {
-        response.Record.SetDeprecatedThrottlerDelay(delay.MicroSeconds());
         response.Record.MutableHeaders()->MutableThrottler()->SetDelay(
             delay.MicroSeconds());
         response.Record.MutableHeaders()->MutableThrottler()->SetShapingDelay(
@@ -328,10 +321,6 @@ void TVolumeActor::FillResponse(
             callContext.LWOrbit,
             startTime,
             GetCycleCount());
-        if constexpr (requires { response.Record.MutableDeprecatedTrace(); }) {
-            response.Record.MutableDeprecatedTrace()->CopyFrom(
-                response.Record.GetHeaders().GetTrace());
-        }
     }
 
     StoreThrottlerDelay<TMethod>(

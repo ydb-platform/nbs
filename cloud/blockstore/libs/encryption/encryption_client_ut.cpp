@@ -434,12 +434,10 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
 
         NProto::TWriteBlocksLocalResponse wResponse;
         wResponse.MutableError()->SetMessage("testMessage");
-        wResponse.MutableDeprecatedTrace()->SetRequestStartTime(42);
         wResponse.MutableHeaders()->MutableTrace()->SetRequestStartTime(42);
-        wResponse.SetDeprecatedThrottlerDelay(13);
         wResponse.MutableHeaders()->MutableThrottler()->SetDelay(13);
         UNIT_ASSERT_VALUES_EQUAL(
-            4,
+            2,
             GetFieldCount<NProto::TWriteBlocksResponse>());
 
         testClient->MountVolumeHandler =
@@ -499,22 +497,16 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
             wResponse.GetError().GetMessage(),
             zResponse.GetError().GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(
-            wResponse.GetDeprecatedTrace().GetRequestStartTime(),
-            zResponse.GetDeprecatedTrace().GetRequestStartTime());
-        UNIT_ASSERT_VALUES_EQUAL(
             wResponse.GetHeaders().GetTrace().GetRequestStartTime(),
             zResponse.GetHeaders().GetTrace().GetRequestStartTime());
-        UNIT_ASSERT_VALUES_EQUAL(
-            wResponse.GetDeprecatedThrottlerDelay(),
-            zResponse.GetDeprecatedThrottlerDelay());
         UNIT_ASSERT_VALUES_EQUAL(
             wResponse.GetHeaders().GetThrottler().GetDelay(),
             zResponse.GetHeaders().GetThrottler().GetDelay());
         UNIT_ASSERT_VALUES_EQUAL(
-            4,
+            2,
             GetFieldCount<NProto::TWriteBlocksResponse>());
         UNIT_ASSERT_VALUES_EQUAL(
-            4,
+            2,
             GetFieldCount<NProto::TZeroBlocksResponse>());
 
         for (size_t i = 0; i < storageBlocksCount; ++i) {
@@ -607,7 +599,7 @@ Y_UNIT_TEST_SUITE(TEncryptionClientTest)
         auto zResponse = future.GetValue(TDuration::Seconds(5));
         UNIT_ASSERT(!HasError(zResponse));
         UNIT_ASSERT_VALUES_EQUAL(
-            4,
+            2,
             GetFieldCount<NProto::TZeroBlocksResponse>());
         UNIT_ASSERT_VALUES_EQUAL(1, zRequestCount);
     }
