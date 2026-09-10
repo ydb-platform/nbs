@@ -211,7 +211,7 @@ TLatencyThresholdOutcome ClassifyLatencyOutcome(
     const NProto::TError& error,
     bool isWrite,
     ui64 requestBytes,
-    TDuration execTime)
+    TDuration latency)
 {
     // A media kind without a configured ladder is not judged at all: not
     // counting it (rather than counting it as bad) avoids showing a bogus
@@ -225,11 +225,14 @@ TLatencyThresholdOutcome ClassifyLatencyOutcome(
     const auto errorKind = GetDiagnosticsErrorKind(error);
 
     // These outcomes do not describe a storage operation whose latency can
-    // fairly be judged: the service explicitly refused to start it, the
-    // request was invalid before execution, or its owner cancelled it.
+    // fairly be judged: the service explicitly refused to start it or its
+    // owner cancelled it. E_ARGUMENT is deliberately not excluded here: the
+    // same code is also used for invalid service responses after a valid
+    // operation has executed, so a final E_ARGUMENT at this boundary is a
+    // service failure unless the endpoint recorded a known pre-execution
+    // rejection explicitly.
     if (errorKind == EDiagnosticsErrorKind::ErrorThrottling ||
         errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint ||
-        error.GetCode() == E_ARGUMENT ||
         error.GetCode() == E_CANCELLED)
     {
         return {.CountSkipped = true};
@@ -270,7 +273,7 @@ TLatencyThresholdOutcome ClassifyLatencyOutcome(
         .CountTotal = true,
         // Non-strict comparison: an operation exactly at the threshold is
         // good.
-        .CountGood = execTime <= threshold,
+        .CountGood = latency <= threshold,
     };
 }
 

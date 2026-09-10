@@ -416,6 +416,10 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsClassificationTest)
     Y_UNIT_TEST(ShouldCountAllFinalServiceFailuresAsBad)
     {
         CheckFinalFailureIsBad(E_FAIL);
+        // E_ARGUMENT is also used for malformed service responses after a
+        // valid request has executed, so the final code alone is not proof of
+        // invalid guest input.
+        CheckFinalFailureIsBad(E_ARGUMENT);
         CheckFinalFailureIsBad(E_RETRY_TIMEOUT);
         CheckFinalFailureIsBad(E_REJECTED);
         CheckFinalFailureIsBad(E_BS_INVALID_SESSION);
@@ -453,9 +457,8 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsClassificationTest)
             "Checkpoint reject request. test"));
     }
 
-    Y_UNIT_TEST(ShouldSkipInvalidInputAndCancellation)
+    Y_UNIT_TEST(ShouldSkipCancellation)
     {
-        CheckSkipped(MakeError(E_ARGUMENT));
         CheckSkipped(MakeError(E_CANCELLED));
     }
 

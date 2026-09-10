@@ -2745,6 +2745,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
             TDuration::Max(),
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
+        UNIT_ASSERT(!volumeStats->IsLatencyTrackingEnabled());
 
         Mount(
             volumeStats,
@@ -2790,6 +2791,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
             TDuration::Max(),
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
+        UNIT_ASSERT(volumeStats->IsLatencyTrackingEnabled());
 
         Mount(
             volumeStats,
@@ -2911,7 +2913,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
     }
 
-    Y_UNIT_TEST(ShouldSubtractAllWaitStagesAndClampAtZero)
+    Y_UNIT_TEST(ShouldSubtractOnlyShapingAndClampAtZero)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto config = std::make_shared<TDiagnosticsConfig>(
@@ -2946,8 +2948,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
         auto total = counters->GetCounter("LatencyTotalOps");
         auto good = counters->GetCounter("LatencyGoodOps");
 
-        // Raw 100ms is above the 10ms threshold, but only 5ms remains after
-        // all explicitly tracked waits are removed.
+        // Postponed and retry backoff remain visible to the caller. Even
+        // though their sum would leave only 5ms, only shaping is excluded,
+        // so the judged latency is 75ms and the operation is bad.
         SendRequestWithWaits(
             volume,
             TDuration::MilliSeconds(100),
@@ -2955,16 +2958,25 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
             TDuration::MilliSeconds(30),
             TDuration::MilliSeconds(25));
 
-        // Inconsistent/rounded stage totals must never underflow into a huge
-        // duration. More wait than elapsed time clamps execution to zero.
+        // Explicit shaping is imposed by the configured performance quota.
+        // Removing 25ms from a 30ms wall-clock latency leaves a good 5ms.
+        SendRequestWithWaits(
+            volume,
+            TDuration::MilliSeconds(30),
+            TDuration::MilliSeconds(100),
+            TDuration::MilliSeconds(100),
+            TDuration::MilliSeconds(25));
+
+        // Inconsistent/rounded shaping totals must never underflow into a
+        // huge duration. More shaping than elapsed time clamps to zero.
         SendRequestWithWaits(
             volume,
             TDuration::MilliSeconds(5),
-            TDuration::MilliSeconds(3),
-            TDuration::MilliSeconds(3),
-            TDuration::MilliSeconds(3));
+            TDuration::Zero(),
+            TDuration::Zero(),
+            TDuration::MilliSeconds(9));
 
-        UNIT_ASSERT_VALUES_EQUAL(2, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, total->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, good->Val());
     }
 
@@ -2986,6 +2998,9 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
                     TDuration::Max(),
                     EVolumeStatsType::EServerStats,
                     CreateWallClockTimer()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                protoConfig.GetLatencyThresholdsEnabled() && !expectedInvalid,
+                volumeStats->IsLatencyTrackingEnabled());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 monitoring->GetCountersCallCount());

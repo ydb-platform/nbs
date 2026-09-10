@@ -567,6 +567,26 @@ void TServerHandler::ProcessRequests(
 
             case NBD_CMD_WRITE: {
                 if (Options.CheckpointId) {
+                    // The write payload is part of the NBD request and must be
+                    // consumed even though checkpoint exports are read-only.
+                    TBuffer ignoredRequestData;
+                    in.ReadOrFail(ignoredRequestData, request.Length);
+
+                    // This request is rejected before RegisterRequest, so it
+                    // must use the latency-only batch hook. Do not register a
+                    // legacy request just to account for the new diagnostic.
+                    TMetricRequest metricRequest(
+                        EBlockStoreRequest::WriteBlocks);
+                    ServerStats->PrepareMetricRequest(
+                        metricRequest,
+                        Options.ClientId,
+                        Options.DiskId,
+                        Options.BlockSize
+                            ? request.From / Options.BlockSize
+                            : 0,
+                        request.Length,
+                        false);
+                    ServerStats->RecordLatencyBatch(metricRequest, 0, 0, 1);
                     replyError(E_ARGUMENT, "invalid write request");
                     break;
                 }

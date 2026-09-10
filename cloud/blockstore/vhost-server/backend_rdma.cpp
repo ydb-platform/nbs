@@ -134,7 +134,7 @@ private:
     NProto::TVolume Volume;
     TString ClientId;
     ICompletionStatsPtr CompletionStats;
-    TSimpleStats CompletionStatsData;
+    TAtomicStats CompletionStatsData;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
@@ -480,15 +480,16 @@ void TRdmaBackend::CompleteRequest(
 
     if (LatencyTracker.IsEnabled()) {
         Y_DEBUG_ABORT_UNLESS(callContext);
+        const TCpuCycles elapsed = completed - startCycles;
+        const TCpuCycles latency = AdjustLatencyForShaping(
+            elapsed,
+            callContext->Time(EProcessingStage::Shaping),
+            callContext->GetHasParallelSubRequests());
         LatencyTracker.Record(
             CompletionStatsData,
             bio->type,
             bytes,
-            SubtractLatencyWaitTime(
-                completed - startCycles,
-                callContext->Time(EProcessingStage::Postponed) +
-                    callContext->Time(EProcessingStage::Backoff) +
-                    callContext->Time(EProcessingStage::Shaping)),
+            latency,
             error);
     }
 

@@ -312,8 +312,8 @@ private:
     // Read/write operations of this instance that were not judged against
     // the thresholds, and so appear in neither counter above. This includes
     // an unconfigured media kind and final load-shedding, checkpoint-reject,
-    // invalid-input, or cancellation outcomes. Exact aggregate producers can
-    // report the same outcome through RecordLatencyBatch. Such operations
+    // or cancellation outcomes. Explicitly recognized pre-execution rejects
+    // can report the same outcome through RecordLatencyBatch. Such operations
     // are never counted as bad. Published next to
     // the two counters above, rather than once per server, because it is
     // what explains a specific volume reading 0/0: without the volume,
@@ -448,8 +448,8 @@ public:
     void RecordLatencyCompletion(
         EBlockStoreRequest requestType,
         ui64 requestStarted,
-        TDuration postponedTime,
-        TDuration backoffTime,
+        TDuration,
+        TDuration,
         TDuration shapingTime,
         ui64 requestBytes,
         const NProto::TError& error,
@@ -466,15 +466,20 @@ public:
 
         // NBD records responseSent immediately after the device future is
         // resolved and before writing the reply to the transport. Embedded
-        // vhost has no separate response-delivery phase, so it uses now.
+        // vhost invokes this hook before publishing completion to the
+        // virtqueue and uses the current time for the same endpoint boundary.
         const ui64 completed = responseSent ? responseSent : GetCycleCount();
         const ui64 elapsedCycles = completed > requestStarted
             ? completed - requestStarted
             : 0;
-        const ui64 waitCycles = DurationToCyclesSafe(
-            postponedTime + backoffTime + shapingTime);
-        const ui64 execCycles = elapsedCycles > waitCycles
-            ? elapsedCycles - waitCycles
+        // Retry backoff and generic postponed time remain part of the
+        // service-side latency: the caller is still waiting, and Postponed is
+        // not specific to quota enforcement. Shaping is the one explicit
+        // delay imposed by the configured performance quota, so only it is
+        // excluded from this latency contract.
+        const ui64 shapingCycles = DurationToCyclesSafe(shapingTime);
+        const ui64 measuredCycles = elapsedCycles > shapingCycles
+            ? elapsedCycles - shapingCycles
             : 0;
 
         const auto mediaKind = VolumeBase->Volume.GetStorageMediaKind();
@@ -486,7 +491,7 @@ public:
             error,
             isWrite,
             requestBytes,
-            CyclesToDurationSafe(execCycles));
+            CyclesToDurationSafe(measuredCycles));
 
         if (outcome.CountSkipped) {
             *LatencyThresholdsSkippedOpsCounter += 1;
@@ -1266,6 +1271,11 @@ public:
         }
 
         return volumeIt->second.VolumeBase->HasStorageConfigPatchCounter->Val();
+    }
+
+    bool IsLatencyTrackingEnabled() const override
+    {
+        return LatencyThresholdsEnabled;
     }
 
     void InitializeMonitoringCounters() override

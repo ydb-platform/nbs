@@ -50,10 +50,10 @@ class TServerStats final
 private:
     const IDumpablePtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
-    const bool LatencyThresholdsConfigured;
     const IProfileLogPtr ProfileLog;
     const IRequestStatsPtr RequestStats;
     const IVolumeStatsPtr VolumeStats;
+    const bool LatencyTrackingEnabled;
     const TString RequestInstanceId;
 
     TDynamicCountersPtr Counters;
@@ -215,12 +215,13 @@ TServerStats::TServerStats(
         TString requestInstanceId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
-    , LatencyThresholdsConfigured(
-          DiagnosticsConfig &&
-          DiagnosticsConfig->GetLatencyThresholdsEnabled())
     , ProfileLog(std::move(profileLog))
     , RequestStats(std::move(requestStats))
     , VolumeStats(std::move(volumeStats))
+    , LatencyTrackingEnabled(
+          DiagnosticsConfig &&
+          VolumeStats &&
+          VolumeStats->IsLatencyTrackingEnabled())
     , RequestInstanceId(std::move(requestInstanceId))
 {
     auto counters = monitoring->GetCounters();
@@ -595,9 +596,10 @@ void TServerStats::RecordLatencyCompletion(
     ui64 requestBytes,
     const NProto::TError& error)
 {
-    // The feature is disabled by default. Avoid reading five atomic timing
-    // fields from the call context on every I/O in that common case.
-    if (!LatencyThresholdsConfigured) {
+    // Use the effective state after threshold validation, not the raw config
+    // flag. This keeps both disabled and invalid configurations off the hot
+    // path entirely.
+    if (!LatencyTrackingEnabled) {
         return;
     }
 
@@ -609,27 +611,21 @@ void TServerStats::RecordLatencyCompletion(
         return;
     }
 
-    const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
-    const auto backoffTime = callContext.Time(EProcessingStage::Backoff);
-    const auto shapingTime = callContext.Time(EProcessingStage::Shaping);
-    const auto waitTime = postponedTime + backoffTime + shapingTime;
-
-    if (!HasError(error) &&
-        waitTime &&
-        callContext.GetHasParallelSubRequests())
-    {
-        // Wait intervals accumulated by concurrent subrequests may overlap,
-        // so their sum cannot be subtracted from one logical request's
-        // wall-clock latency. The successful operation is therefore unjudged.
-        RecordLatencyBatch(req, 0, 0, 1);
-        return;
+    auto shapingTime = callContext.Time(EProcessingStage::Shaping);
+    if (shapingTime && callContext.GetHasParallelSubRequests()) {
+        // Parallel parts add their shaping delays to one shared context. The
+        // sum is not the amount by which shaping extended the logical
+        // request: intervals may overlap or be hidden behind useful work in
+        // another part. Use the full elapsed time instead. This keeps the
+        // operation in the sample and can only make the verdict conservative.
+        shapingTime = TDuration::Zero();
     }
 
     req.VolumeInfo->RecordLatencyCompletion(
         req.RequestType,
         callContext.GetRequestStartedCycles(),
-        postponedTime,
-        backoffTime,
+        TDuration::Zero(),   // generic postponed time remains in latency
+        TDuration::Zero(),   // retry backoff remains in latency
         shapingTime,
         requestBytes,
         error,
