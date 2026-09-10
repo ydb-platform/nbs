@@ -106,8 +106,8 @@ bool INodeIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainF
     }
 
     // Get a shard number from ShardId.
-    const ui16 shardNo =
-        *reinterpret_cast<const ui16*>(ShardId.data() + sizeof(char));
+    ui16 shardNo;
+    memcpy(&shardNo, ShardId.data() + sizeof(char), sizeof(shardNo));
 
     // ShardNodeName should be GUID in binary format.
     if (ShardNodeName.size() != sizeof(TGUID::dw)) {
