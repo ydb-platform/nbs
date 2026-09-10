@@ -20,7 +20,7 @@ using TNodeRef = INodeIndexTabletDatabase::TNodeRef;
 constexpr size_t NodeRefCount = 1'000'000;
 constexpr ui32 ShardCount = 2500;
 
-const TString MainFileSystemId = "computefilesystem-e0tzgsyrp5w19ndped";
+const TString MainFileSystemId = "longlongfilesystem-somerandomabcabca";
 
 struct TEncodedNodeRefs
 {
