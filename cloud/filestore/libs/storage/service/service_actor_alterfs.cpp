@@ -100,9 +100,9 @@ private:
     NProtoPrivate::TFileSystemResizeState ResizeState;
     ui32 ResizeStateVersion = 0;
     bool InitialResizeStateRead = false;
+    // The bitmap can be initialized only after topology provides shard count.
+    bool PersistentResizeStateSupported = false;
     ui64 ShardBitmapBitCount = 0;
-    // In throttled resize, non-null means that the main tablet supports
-    // persistent resize state.
     std::unique_ptr<NCloud::TCompressedBitmap> CreatedShardBitmap;
 
     // These flags are set by HandleGetFileSystemTopologyResponse.
@@ -536,7 +536,7 @@ void TAlterFileStoreActor::HandleResizeStateResponse(
         ResizeState = resizeState;
         ResizeStateVersion = resizeState.GetVersion();
         InitialResizeStateRead = true;
-        CreatedShardBitmap = std::make_unique<NCloud::TCompressedBitmap>(0);
+        PersistentResizeStateSupported = true;
         GetStorageStats(ctx);
         return;
     }
@@ -972,7 +972,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             FileSystemId.c_str(),
             FileStoreConfig.ShardConfigs.size());
 
-        if (CreatedShardBitmap) {
+        if (PersistentResizeStateSupported) {
             SetupCreatedShardBitmap();
         }
 
