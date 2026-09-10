@@ -100,17 +100,14 @@ bool INodeIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainF
         return false;
     }
 
-    // Decode ShardId
-    ui16 shardNo = 0;
-    char version = 0;
-    TMemoryInput shardNoIn(ShardId.data(), ShardId.size());
-    shardNoIn.Read(&version, sizeof(version));
-    shardNoIn.Read(&shardNo, sizeof(shardNo));
-
-    // As of now, only one type of encoding exists.
-    if (version != ShardIdAsBinaryStream) {
+    // The first byte in ShardId is a version.
+    if (ShardId[0] != ShardIdAsBinaryStream) {
         return false;
     }
+
+    // Get a shard number from ShardId.
+    const ui16 shardNo =
+        *reinterpret_cast<const ui16*>(ShardId.data() + sizeof(char));
 
     // ShardNodeName should be GUID in binary format.
     if (ShardNodeName.size() != sizeof(TGUID::dw)) {
@@ -126,9 +123,7 @@ bool INodeIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainF
 
     // Decode ShardNodeName
     TGUID guid;
-    TMemoryInput shardNodeNameIn(ShardNodeName.data(), ShardNodeName.size());
-    shardNodeNameIn.Read(guid.dw, sizeof(guid.dw));
-
+    memcpy(guid.dw, ShardNodeName.data(), sizeof(guid.dw));
     GuidToString(guid, ShardNodeName);
 
     return true;
