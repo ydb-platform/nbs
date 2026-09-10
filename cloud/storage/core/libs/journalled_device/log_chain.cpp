@@ -1,6 +1,7 @@
 #include "log_chain.h"
 
 #include <util/generic/utility.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NJournalled {
 
@@ -10,6 +11,7 @@ void TLogRecordChain::InitLastErasedLsn(ui64 lsn)
 {
     with_lock (Lock) {
         LastErasedLsn = lsn;
+        LastChainedLsn = lsn;
     }
 }
 
@@ -21,68 +23,103 @@ TResultOrError<TLogRecordPtr> TLogRecordChain::Insert(TLogRecordPtr record)
 
     with_lock (Lock) {
         if (record->Lsn <= LastErasedLsn) {
-            auto erasedStub = std::make_shared<TLogRecord>();
-            erasedStub->Lsn = record->Lsn;
-            erasedStub->PrevLsn = record->PrevLsn;
-            erasedStub->Ready.store(true);
-            erasedStub->Promise =
-                NThreading::NewPromise<NCloud::NProto::TError>();
-            erasedStub->Promise.SetValue(MakeError(S_ALREADY));
-            return erasedStub;
+            return MakeError(E_INVALID_STATE);
         }
 
-        auto nextIt = Records.upper_bound(record->Lsn);
-        if (nextIt != Records.end()) {
-            const auto& next = *nextIt->second;
-            if (record->Lsn > next.PrevLsn) {
-                return MakeError(E_INVALID_STATE);
+        if (auto it = Records.find(record->PrevLsn); it != Records.end()) {
+            const auto& held = it->second.Record;
+            if (held->Lsn == record->Lsn) {
+                return held;
             }
+            // another record already continues from the same lsn
+            return MakeError(E_INVALID_STATE);
         }
 
-        if (nextIt != Records.begin()) {
-            auto prevIt = std::prev(nextIt);
-            const auto& prev = *prevIt->second;
-
-            if (prev.Lsn == record->Lsn && prev.PrevLsn == record->PrevLsn) {
-                return prevIt->second;
-            }
-
-            if (prev.Lsn > record->PrevLsn) {
-                return MakeError(E_INVALID_STATE);
-            }
+        // the boundaries of the chained run are all held, so a record
+        // starting below LastChainedLsn starts inside another record
+        if (record->PrevLsn < LastChainedLsn) {
+            return MakeError(E_INVALID_STATE);
         }
 
-        Records.emplace_hint(nextIt, record->Lsn, record);
+        Records.emplace(record->PrevLsn, TEntry{.Record = record});
     }
 
     return record;
 }
 
-TLogRecordPtr TLogRecordChain::Extract(ui64 lsn)
+bool TLogRecordChain::MarkAsReady(ui64 prevLsn)
 {
     with_lock (Lock) {
-        auto it = Records.find(lsn);
+        auto it = Records.find(prevLsn);
         if (it == Records.end()) {
-            return nullptr;
+            return false;
         }
 
-        auto record = std::move(it->second);
-        Records.erase(it);
-        return record;
+        it->second.Ready = true;
+
+        for (;;) {
+            auto next = Records.find(LastChainedLsn);
+            if (next == Records.end() || !next->second.Ready) {
+                break;
+            }
+            LastChainedLsn = next->second.Record->Lsn;
+        }
     }
+
+    return true;
 }
 
-TVector<TLogRecordPtr> TLogRecordChain::EraseUpTo(ui64 lsn)
+bool TLogRecordChain::Remove(ui64 prevLsn)
+{
+    with_lock (Lock) {
+        auto it = Records.find(prevLsn);
+        if (it == Records.end()) {
+            return false;
+        }
+
+        if (it->second.Ready) {
+            return false;
+        }
+
+        Records.erase(it);
+    }
+
+    return true;
+}
+
+TResultOrError<TVector<TLogRecordPtr>> TLogRecordChain::EraseUpTo(ui64 lsn)
 {
     TVector<TLogRecordPtr> records;
 
     with_lock (Lock) {
-        auto it = Records.begin();
-        while (it != Records.end() && it->second->Lsn <= lsn) {
-            records.push_back(std::move(it->second));
-            it = Records.erase(it);
+        if (lsn > LastChainedLsn) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "lsn " << lsn
+                                 << " reaches past the chained run ending at "
+                                 << LastChainedLsn);
         }
-        LastErasedLsn = Max(LastErasedLsn, lsn);
+
+        for (;;) {
+            auto it = Records.find(LastErasedLsn);
+            if (it == Records.end() || it->second.Record->Lsn > lsn) {
+                break;
+            }
+
+            records.push_back(std::move(it->second.Record));
+            Records.erase(it);
+            LastErasedLsn = records.back()->Lsn;
+        }
+
+        // ready records chaining from below the watermark can never join
+        for (auto it = Records.begin(); it != Records.end();) {
+            if (it->first < LastErasedLsn && it->second.Ready) {
+                records.push_back(std::move(it->second.Record));
+                Records.erase(it++);
+            } else {
+                ++it;
+            }
+        }
     }
 
     return records;
@@ -91,20 +128,24 @@ TVector<TLogRecordPtr> TLogRecordChain::EraseUpTo(ui64 lsn)
 TLogRecordPtr TLogRecordChain::GetOldest() const
 {
     with_lock (Lock) {
-        return Records.empty() ? nullptr : Records.begin()->second;
+        return GetNextImpl(LastErasedLsn);
     }
 }
 
-TLogRecordPtr TLogRecordChain::GetChainedNext(ui64 lsn) const
+TLogRecordPtr TLogRecordChain::GetNext(ui64 lsn) const
 {
     with_lock (Lock) {
-        auto nextIt = Records.upper_bound(lsn);
-        if (nextIt == Records.end() || nextIt->second->PrevLsn != lsn) {
-            return nullptr;
-        }
-
-        return nextIt->second;
+        return GetNextImpl(lsn);
     }
+}
+
+TLogRecordPtr TLogRecordChain::GetNextImpl(ui64 lsn) const
+{
+    auto it = Records.find(lsn);
+    if (it == Records.end() || !it->second.Ready) {
+        return nullptr;
+    }
+    return it->second.Record;
 }
 
 TVector<TLogRecordPtr> TLogRecordChain::GetReadyRun(
@@ -115,21 +156,20 @@ TVector<TLogRecordPtr> TLogRecordChain::GetReadyRun(
 
     with_lock (Lock) {
         auto recordCount = maxRecordCount > 0
-                             ? Min<size_t>(maxRecordCount, Records.size())
-                             : Records.size();
+                               ? Min<size_t>(maxRecordCount, Records.size())
+                               : Records.size();
 
         records.reserve(recordCount);
 
         ui64 tailLsn = afterLsn;
-        auto it = Records.upper_bound(tailLsn);
-        for (; it != Records.end() && records.size() < recordCount; ++it) {
-            const auto& record = it->second;
-            if (record->PrevLsn != tailLsn || !record->Ready.load()) {
+        while (records.size() < recordCount) {
+            auto it = Records.find(tailLsn);
+            if (it == Records.end() || !it->second.Ready) {
                 break;
             }
 
-            records.push_back(record);
-            tailLsn = record->Lsn;
+            records.push_back(it->second.Record);
+            tailLsn = it->second.Record->Lsn;
         }
     }
 

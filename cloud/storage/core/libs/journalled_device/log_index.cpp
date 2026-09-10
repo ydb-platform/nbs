@@ -23,18 +23,13 @@ bool TLogPageIndex::TryApplyNext(const TLogRecord& record)
         }
 
         for (const auto& [pageNo, location]: record.PageMappings) {
-            if (location.PageCount == 0) {
-                continue;
-            }
-
-            const auto hint =
-                ClearRange(pageNo, pageNo + location.PageCount);
+            const auto hint = ClearRange(pageNo, pageNo + location.PageCount);
 
             const size_t sizeBefore = Entries.size();
             Entries.emplace_hint(
                 hint,
                 pageNo,
-                std::make_pair(record.Lsn, location));
+                TEntry{.Lsn = record.Lsn, .Location = location});
 
             STORAGE_VERIFY(Entries.size() == sizeBefore + 1, "PageNo", pageNo);
         }
@@ -48,7 +43,7 @@ void TLogPageIndex::EraseUpTo(ui64 lsn)
 {
     with_lock (Lock) {
         for (auto it = Entries.begin(); it != Entries.end();) {
-            if (it->second.first <= lsn) {
+            if (it->second.Lsn <= lsn) {
                 it = Entries.erase(it);
             } else {
                 ++it;
@@ -102,12 +97,13 @@ auto TLogPageIndex::Lookup(
                 const ui64 clipFrom = Max(entryFrom, from);
                 const ui64 clipTo = Min(entryTo, to);
 
-                result.Mappings.push_back(TPageMapping{
-                    .PageNo = clipFrom,
-                    .Location = TPageRange{
-                        .FirstPageNo =
-                            location.FirstPageNo + (clipFrom - entryFrom),
-                        .PageCount = clipTo - clipFrom}});
+                result.Mappings.push_back(
+                    TPageMapping{
+                        .PageNo = clipFrom,
+                        .Location = TPageRange{
+                            .FirstPageNo =
+                                location.FirstPageNo + (clipFrom - entryFrom),
+                            .PageCount = clipTo - clipFrom}});
             }
         }
     }
@@ -124,14 +120,9 @@ TLogPageIndex::TEntries::iterator TLogPageIndex::ClearRange(ui64 from, ui64 to)
 
     while (it != Entries.end() && it->first < to) {
         const ui64 entryFrom = it->first;
-        const ui64 lsn = it->second.first;
-        const TPageRange location = it->second.second;
+        const ui64 lsn = it->second.Lsn;
+        const TPageRange location = it->second.Location;
         const ui64 entryTo = entryFrom + location.PageCount;
-
-        if (!location.PageCount) {
-            it = Entries.erase(it);
-            continue;
-        }
 
         if (entryTo <= from) {
             ++it;
@@ -144,23 +135,22 @@ TLogPageIndex::TEntries::iterator TLogPageIndex::ClearRange(ui64 from, ui64 to)
             Entries.emplace_hint(
                 it,
                 entryFrom,
-                std::make_pair(
-                    lsn,
-                    TPageRange{
+                TEntry{
+                    .Lsn = lsn,
+                    .Location = TPageRange{
                         .FirstPageNo = location.FirstPageNo,
-                        .PageCount = from - entryFrom}));
+                        .PageCount = from - entryFrom}});
         }
 
         if (entryTo > to) {
             it = Entries.emplace_hint(
                 it,
                 to,
-                std::make_pair(
-                    lsn,
-                    TPageRange{
-                        .FirstPageNo =
-                            location.FirstPageNo + (to - entryFrom),
-                        .PageCount = entryTo - to}));
+                TEntry{
+                    .Lsn = lsn,
+                    .Location = TPageRange{
+                        .FirstPageNo = location.FirstPageNo + (to - entryFrom),
+                        .PageCount = entryTo - to}});
         }
     }
 

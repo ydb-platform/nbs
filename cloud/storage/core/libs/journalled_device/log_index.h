@@ -17,8 +17,13 @@ namespace NCloud::NJournalled {
 class TLogPageIndex
 {
 private:
-    using TEntries =
-        TMap<ui64 /*pageNo*/, std::pair<ui64 /*lsn*/, TPageRange>>;
+    struct TEntry
+    {
+        ui64 Lsn = 0;
+        TPageRange Location;
+    };
+
+    using TEntries = TMap<ui64 /*pageNo*/, TEntry>;
 
     mutable TAdaptiveLock Lock;
     ui64 LastIndexedLsn = 0;

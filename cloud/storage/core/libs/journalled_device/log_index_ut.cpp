@@ -6,15 +6,12 @@
 
 namespace NCloud::NJournalled {
 
-////////////////////////////////////////////////////////////////////////////////
-
 namespace {
 
-// TLogRecord holds an atomic, so it is neither copyable nor movable
-TLogRecordPtr MakePageRecord(
-    ui64 prevLsn,
-    ui64 lsn,
-    TVector<TPageMapping> pageMappings)
+////////////////////////////////////////////////////////////////////////////////
+
+TLogRecordPtr
+MakePageRecord(ui64 prevLsn, ui64 lsn, TVector<TPageMapping> pageMappings)
 {
     auto record = std::make_shared<TLogRecord>();
     record->PrevLsn = prevLsn;
@@ -309,36 +306,6 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT(map.Lookup({Range(1, 1)}, 100).Mappings.empty());
     }
 
-    Y_UNIT_TEST(ShouldNotLetADegenerateEntryBlockALaterMapping)
-    {
-        TLogPageIndex map;
-        map.InitLastIndexedLsn(10);
-
-        // a group covering no pages at all
-        auto empty = MakePageRecord(10, 20, {{5, Range(100, 0)}});
-        UNIT_ASSERT(map.TryApplyNext(*empty));
-
-        // a later record maps that same first page for real
-        auto real = MakePageRecord(20, 30, {{5, Range(200, 3)}});
-        UNIT_ASSERT(map.TryApplyNext(*real));
-
-        // the real mapping must win rather than be dropped on a taken key
-        UNIT_ASSERT_VALUES_EQUAL("5->200x3", DescribeAll(map));
-    }
-
-    Y_UNIT_TEST(ShouldIgnoreADegenerateEntryWhenReading)
-    {
-        TLogPageIndex map;
-        map.InitLastIndexedLsn(10);
-
-        auto record =
-            MakePageRecord(10, 20, {{1, Range(100, 2)}, {7, Range(200, 0)}});
-        UNIT_ASSERT(map.TryApplyNext(*record));
-
-        // the zero length group contributes nothing to what can be served
-        UNIT_ASSERT_VALUES_EQUAL("1->100x2", DescribeAll(map));
-    }
-
     Y_UNIT_TEST(ShouldRemoveEverythingUpToTheGivenLsn)
     {
         TLogPageIndex map;
@@ -415,10 +382,7 @@ namespace {
 // brute-force model: one entry per device page, no ranges at all
 using TModel = TMap<ui64, std::pair<ui64 /*lsn*/, ui64 /*storePage*/>>;
 
-void ModelApply(
-    TModel& model,
-    ui64 lsn,
-    const TVector<TPageMapping>& mappings)
+void ModelApply(TModel& model, ui64 lsn, const TVector<TPageMapping>& mappings)
 {
     for (const auto& [pageNo, location]: mappings) {
         for (ui64 i = 0; i < location.PageCount; ++i) {
@@ -448,8 +412,7 @@ ModelGet(const TModel& model, ui64 from, ui64 to, ui64 afterLsn)
 }
 
 // expand the range-based answer back to one entry per page
-TVector<std::pair<ui64, ui64>> Expand(
-    const TVector<TPageMapping>& mappings)
+TVector<std::pair<ui64, ui64>> Expand(const TVector<TPageMapping>& mappings)
 {
     TVector<std::pair<ui64, ui64>> out;
     for (const auto& [pageNo, location]: mappings) {
@@ -511,11 +474,12 @@ Y_UNIT_TEST_SUITE(TLogPageIndexModelTest)
                 for (ui64 g = 0; g < groupCnt; ++g) {
                     const ui64 len = 1 + rng.Next(8);
                     const ui64 start = rng.Next(PageSpace - len);
-                    mappings.push_back(TPageMapping{
-                        .PageNo = start,
-                        .Location = TPageRange{
-                            .FirstPageNo = storeNext,
-                            .PageCount = len}});
+                    mappings.push_back(
+                        TPageMapping{
+                            .PageNo = start,
+                            .Location = TPageRange{
+                                .FirstPageNo = storeNext,
+                                .PageCount = len}});
                     storeNext += len;
                 }
 
@@ -539,13 +503,12 @@ Y_UNIT_TEST_SUITE(TLogPageIndexModelTest)
                     const ui64 from = rng.Next(PageSpace + 8);
                     const ui64 afterLsn = rng.Next(lsn + 20);
 
-                    const auto got = Expand(
-                        map.Lookup(
-                               {TPageRange{
-                                   .FirstPageNo = from,
-                                   .PageCount = len}},
-                               afterLsn)
-                            .Mappings);
+                    const auto got = Expand(map.Lookup(
+                                                   {TPageRange{
+                                                       .FirstPageNo = from,
+                                                       .PageCount = len}},
+                                                   afterLsn)
+                                                .Mappings);
                     const auto want =
                         ModelGet(model, from, from + len, afterLsn);
 

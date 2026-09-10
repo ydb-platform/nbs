@@ -9,8 +9,6 @@
 
 #include <util/generic/vector.h>
 
-#include <atomic>
-
 namespace NCloud::NJournalled {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -42,7 +40,6 @@ struct TLogRecord
     TVector<TPageMapping> PageMappings;
 
     NThreading::TPromise<NCloud::NProto::TError> Promise;
-    std::atomic<bool> Ready = false;
 };
 
 }   // namespace NCloud::NJournalled
