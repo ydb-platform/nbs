@@ -62,16 +62,18 @@ inline bool IsFilesystemIdEncoded(const TString& fsId)
            fsId[0] <= MaxShardIdEncodingVersion;
 }
 
-constexpr size_t MaxHexDigitsInGuidWord = sizeof(TGUID::dw[0]) * 2;
-
-// At most two hexadecimal characters per GUID byte, plus three dashes.
-// Example: 57d8913c-c009f3cd-f059ad8a-cabde340
-constexpr size_t MaxGuidAsStringChars = sizeof(TGUID::dw) * 2 + 3;
-
 NCloud::NProto::TError ValidateFilesystemId(const TString& fsId);
 
-inline void CreateGuidString(const TGUID& guid, TString& str)
+inline void GuidToString(const TGUID& guid, TString& str)
 {
+    constexpr size_t MaxHexDigitsInGuidWord = sizeof(TGUID::dw[0]) * 2;
+
+    // At most two hexadecimal characters per GUID byte, plus three dashes.
+    // Example: 57d8913c-c009f3cd-f059ad8a-cabde340
+    constexpr size_t MaxGuidAsStringChars = sizeof(TGUID::dw) * 2 + 3;
+
+    // The following code relies on the fact that ReserveAndResize allocates
+    // art least MaxGuidAsStringChars + 1 bytes.
     str.ReserveAndResize(MaxGuidAsStringChars);
     char* ptr = str.Detach();
     const char* buffStart = ptr;
@@ -86,7 +88,7 @@ inline void CreateGuidString(const TGUID& guid, TString& str)
         *(ptr++) = '-';
     }
 
-    *(--ptr) = 0;
+    *(ptr--) = 0;
     str.ReserveAndResize(ptr - buffStart);
 }
 

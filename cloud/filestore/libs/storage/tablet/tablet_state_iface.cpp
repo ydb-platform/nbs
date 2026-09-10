@@ -20,11 +20,12 @@ static_assert(ShardIdAsBinaryStream <= MaxShardIdEncodingVersion);
 
 static_assert(sizeof(TGUID::dw) == 16);
 
-constexpr size_t MaxDecimalDigitsInUi16 = 5;
 
 inline void
-CreateDecodedShardId(const TString& mainFsId, const ui16 shardNo, TString& shardId)
+DecodedShardId(const TString& mainFsId, const ui16 shardNo, TString& shardId)
 {
+    constexpr size_t MaxDecimalDigitsInUi16 = 5;
+
     shardId.ReserveAndResize(
         mainFsId.size() + ShardNumPrefix.size() + MaxDecimalDigitsInUi16);
     char* ptr = shardId.Detach();
@@ -36,7 +37,8 @@ CreateDecodedShardId(const TString& mainFsId, const ui16 shardNo, TString& shard
     memcpy(ptr, ShardNumPrefix.data(), ShardNumPrefix.size());
     ptr += ShardNumPrefix.size();
 
-    auto result = std::to_chars(ptr, ptr + MaxDecimalDigitsInUi16, shardNo);
+    std::to_chars_result result =
+        std::to_chars(ptr, ptr + MaxDecimalDigitsInUi16, shardNo);
     *result.ptr = 0;
     shardId.ReserveAndResize(result.ptr - start);
 }
@@ -118,7 +120,7 @@ bool INodeIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainF
 
     // Create decoded ShardId as a string.
     if (shardNo) {
-        CreateDecodedShardId(mainFsId, shardNo, ShardId);
+        DecodedShardId(mainFsId, shardNo, ShardId);
     } else {
         ShardId = mainFsId;
     }
@@ -128,7 +130,7 @@ bool INodeIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainF
     TMemoryInput shardNodeNameIn(ShardNodeName.data(), ShardNodeName.size());
     shardNodeNameIn.Read(guid.dw, sizeof(guid.dw));
 
-    CreateGuidString(guid, ShardNodeName);
+    GuidToString(guid, ShardNodeName);
 
     return true;
 }

@@ -154,6 +154,48 @@ void ClearOptional(NProto::TFileStorePerformanceProfile& profile)
 
 Y_UNIT_TEST_SUITE(TModel)
 {
+    Y_UNIT_TEST(ShouldConvertGuidToString)
+    {
+        struct TTestCase
+        {
+            TGUID Guid;
+            TStringBuf Expected;
+        };
+
+        const TVector<TTestCase> testCases = {
+            // An empty GUID is represented by four zero words, not an empty
+            // string.
+            TTestCase{{{0, 0, 0, 0}}, "0-0-0-0"},
+            TTestCase{{{1, 2, 3, 4}}, "1-2-3-4"},
+            TTestCase{
+                {{0x57d8913c, 0xc009f3cd, 0xf059ad8a, 0xcabde340}},
+                "57d8913c-c009f3cd-f059ad8a-cabde340"},
+            TTestCase{
+                {{0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff}},
+                "ffffffff-ffffffff-ffffffff-ffffffff"},
+
+            // Leading zeroes in individual words must not be emitted.
+            TTestCase{
+                {{0x00000001, 0x00000010, 0x00000100, 0x00001000}},
+                "1-10-100-1000"},
+            TTestCase{
+                {{0x0000ffff, 0x000fffff, 0x00ffffff, 0x0fffffff}},
+                "ffff-fffff-ffffff-fffffff"},
+            TTestCase{
+                {{0, 0x00000001, 0, 0x0000000f}},
+                "0-1-0-f"},
+            TTestCase{
+                {{0x10000000, 0x01000000, 0x00100000, 0x00010000}},
+                "10000000-1000000-100000-10000"},
+        };
+
+        TString actual = "just a string";
+        for (const auto& testCase: testCases) {
+            GuidToString(testCase.Guid, actual);
+            UNIT_ASSERT_VALUES_EQUAL(actual, testCase.Expected);
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldCorrectlyOverrideStorageMediaKind, TConfigs)
     {
 #define DO_TEST(srcKind, overrideKind, targetKind)                             \
