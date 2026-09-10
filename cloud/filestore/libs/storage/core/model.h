@@ -73,7 +73,7 @@ inline void GuidToString(const TGUID& guid, TString& str)
     constexpr size_t MaxGuidAsStringChars = sizeof(TGUID::dw) * 2 + 3;
 
     // The following code relies on the fact that ReserveAndResize allocates
-    // art least MaxGuidAsStringChars + 1 bytes.
+    // at least MaxGuidAsStringChars + 1 bytes.
     str.ReserveAndResize(MaxGuidAsStringChars);
     char* ptr = str.Detach();
     const char* buffStart = ptr;
