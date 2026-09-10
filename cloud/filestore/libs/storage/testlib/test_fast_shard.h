@@ -14,18 +14,19 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// A shard whose Init the test completes by hand. Serves nothing.
+// FastShard stub for test purposes
 struct TTestFastShard: NFastShard::IFileSystemShard
 {
     NThreading::TPromise<NCloud::NProto::TError> InitResult =
         NThreading::NewPromise<NCloud::NProto::TError>();
     bool TornDown = false;
+    ui64 Generation = 0;
 
 #define FAST_SHARD_NOT_IMPLEMENTED(name, ns, ...)                              \
     NThreading::TFuture<ns::T##name##Response> name(                           \
         ns::T##name##Request request) override                                 \
     {                                                                          \
-        return NotImplemented<ns::T##name##Response>(std::move(request));      \
+        return Serve<ns::T##name##Response>(std::move(request));               \
     }                                                                          \
     // FAST_SHARD_NOT_IMPLEMENTED
 
@@ -43,12 +44,21 @@ struct TTestFastShard: NFastShard::IFileSystemShard
 
 private:
     template <typename TResponse, typename TRequest>
-    static NThreading::TFuture<TResponse> NotImplemented(TRequest request)
+    static NThreading::TFuture<TResponse> Serve(TRequest request)
     {
         Y_UNUSED(request);
 
         TResponse response;
         *response.MutableError() = MakeError(E_NOT_IMPLEMENTED);
+        return NThreading::MakeFuture(std::move(response));
+    }
+
+    template <typename TResponse>
+    static NThreading::TFuture<TResponse> Serve(
+        NProto::TReadDataRequest request)
+    {
+        TResponse response;
+        response.SetBuffer(TString(request.GetLength(), 'x'));
         return NThreading::MakeFuture(std::move(response));
     }
 };

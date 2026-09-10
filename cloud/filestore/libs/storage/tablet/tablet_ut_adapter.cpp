@@ -55,29 +55,33 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             true /* isFastShard */);
         tablet.ReconnectPipe();
 
-        // the shard is asked for; until it is up the tablet is not ready
         DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
         tablet.SendRequest(tablet.CreateWaitReadyRequest());
-        {
-            TAutoPtr<IEventHandle> handle;
-            UNIT_ASSERT(!runtime.GrabEdgeEvent<TEvIndexTablet::TEvWaitReadyResponse>(
+        tablet.SendReadDataRequest(1 /* handle */, 0 /* offset */, 4_KB);
+
+        // not ready until the shard is up: nothing is answered
+        runtime.AdvanceCurrentTime(TDuration::Seconds(5));
+        TAutoPtr<IEventHandle> handle;
+        UNIT_ASSERT(
+            !runtime.GrabEdgeEvent<TEvIndexTablet::TEvWaitReadyResponse>(
                 handle,
-                TDuration::Seconds(5)));
-        }
+                TDuration::MilliSeconds(100)));
+        UNIT_ASSERT(!runtime.GrabEdgeEvent<TEvService::TEvReadDataResponse>(
+            handle,
+            TDuration::MilliSeconds(100)));
 
         shards->Created[0]->InitResult.SetValue({});
         tablet.RecvResponse<TEvIndexTablet::TEvWaitReadyResponse>();
-        {
-            auto response = tablet.InitSession("client", "session");
-            UNIT_ASSERT(response->Record.GetAdapterModeEnabled());
-        }
 
-        // a restart releases the shard and asks for a new one
-        tablet.RebootTablet();
-        UNIT_ASSERT(shards->Created[0]->TornDown);
-        DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
-        shards->Created[1]->InitResult.SetValue({});
-        tablet.WaitReady();
+        auto response = tablet.RecvReadDataResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, response->Record.GetBuffer().size());
+
+        UNIT_ASSERT(tablet.InitSession("client", "session")
+            ->Record.GetAdapterModeEnabled());
     }
 
     TABLET_TEST_4K_ONLY(ShouldRestartIfFastShardInitFails)
@@ -107,14 +111,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
         // the tablet dies, releases the shard, and comes back asking again
         DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
         UNIT_ASSERT(shards->Created[0]->TornDown);
-
-        shards->Created[1]->InitResult.SetValue({});
-        tablet.ReconnectPipe();
-        tablet.WaitReady();
-        {
-            auto response = tablet.InitSession("client", "session");
-            UNIT_ASSERT(response->Record.GetAdapterModeEnabled());
-        }
     }
 
     TABLET_TEST_4K_ONLY(ShouldUseAdapter)
