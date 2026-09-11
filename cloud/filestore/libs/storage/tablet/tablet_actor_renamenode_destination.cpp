@@ -845,8 +845,20 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
         0,
         ctx.Now() - args.RequestInfo->StartedTs);
 
+    //
+    // On the exchange path args.Response carries the old target node
+    // location which the source tablet needs to link the old target under
+    // the old name - without it the old target node leaks.
+    //
+
+    // args.Error is used below in FinalizeProfileLogRequestInfo - copy, not
+    // move
+    *args.Response.MutableError() = args.Error;
+
     using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
-    auto response = std::make_unique<TMethod::TResponse>(args.Error);
+    auto response = std::make_unique<TMethod::TResponse>();
+    response->Record = std::move(args.Response);
+
     CompleteResponse<TMethod>(
         response->Record,
         args.RequestInfo->CallContext,
