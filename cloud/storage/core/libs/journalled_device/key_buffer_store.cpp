@@ -8,6 +8,8 @@
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/hash.h>
+#include <util/generic/map.h>
 #include <util/generic/utility.h>
 #include <util/generic/ylimits.h>
 #include <util/stream/buffer.h>
@@ -28,29 +30,32 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TRestoreResult = TResultOrError<TMap<ui64, TBuffer>>;
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TInMemoryKeyBufferStore final: public IKeyBufferStore
 {
 private:
     TAdaptiveLock Lock;
     TMap<ui64, TBuffer> Buffers;
-    std::optional<ui64> ErasedUpToKey;
+    ui64 ErasedBelowKey = 0;
 
 public:
     TFuture<TRestoreResult> Restore() override
     {
+        TVector<std::pair<ui64, TBuffer>> buffers;
+
         with_lock (Lock) {
-            return MakeFuture<TRestoreResult>(Buffers);
+            buffers.reserve(Buffers.size());
+            for (const auto& [key, buffer]: Buffers) {
+                buffers.emplace_back(key, buffer);
+            }
         }
+
+        return MakeFuture<TRestoreResult>(std::move(buffers));
     }
 
     TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override
     {
         with_lock (Lock) {
-            if (ErasedUpToKey && key <= *ErasedUpToKey) {
+            if (key < ErasedBelowKey) {
                 return MakeFuture(MakeError(
                     E_ARGUMENT,
                     TStringBuilder() << "key " << key << " is erased"));
@@ -61,14 +66,12 @@ public:
         return MakeFuture(MakeError(S_OK));
     }
 
-    TFuture<NCloud::NProto::TError> EraseUpTo(ui64 lastKey) override
+    TFuture<NCloud::NProto::TError> EraseBelow(ui64 key) override
     {
         with_lock (Lock) {
-            if (!ErasedUpToKey || *ErasedUpToKey < lastKey) {
-                ErasedUpToKey = lastKey;
-            }
+            ErasedBelowKey = Max(ErasedBelowKey, key);
 
-            auto end = Buffers.upper_bound(lastKey);
+            auto end = Buffers.lower_bound(key);
             if (end == Buffers.begin()) {
                 return MakeFuture(MakeError(S_FALSE));
             }
@@ -92,9 +95,9 @@ constexpr ui64 SuperblockSlotCount = 2;
 // checksum covers the fields before it and the chunk that follows.
 constexpr ui32 EntryHeaderSize = 4 * sizeof(ui64) + 4 * sizeof(ui32);
 
-// Magic, Seq, ErasedUpToKey, Version, HasErasedUpToKey, Crc. The checksum
-// covers the fields before it.
-constexpr ui32 SuperblockSize = 3 * sizeof(ui64) + 3 * sizeof(ui32);
+// Magic, Seq, ErasedBelowKey, Version, Crc. The checksum covers the fields
+// before it.
+constexpr ui32 SuperblockSize = 3 * sizeof(ui64) + 2 * sizeof(ui32);
 
 constexpr ui64 MaxPagesPerReadRequest = 1024;
 
@@ -110,7 +113,7 @@ struct TEntryHeader
 struct TSuperblock
 {
     ui64 Seq = 0;
-    std::optional<ui64> ErasedUpToKey;
+    ui64 ErasedBelowKey = 0;
 };
 
 ui64 EntryPageCountFor(ui64 payloadSize, ui64 chunkCapacity)
@@ -208,9 +211,8 @@ TBuffer MakeSuperblockPage(const TSuperblock& superblock, ui32 pageSize)
 
     Save(&out, SuperblockMagic);
     Save(&out, superblock.Seq);
-    Save(&out, superblock.ErasedUpToKey.value_or(0));
+    Save(&out, superblock.ErasedBelowKey);
     Save(&out, StoreFormatVersion);
-    Save(&out, static_cast<ui32>(superblock.ErasedUpToKey.has_value()));
 
     ui32 crc = Crc32c(page.Data(), page.Size());
     Save(&out, crc);
@@ -229,27 +231,20 @@ std::optional<TSuperblock> ParseSuperblockPage(TStringBuf page, ui32 pageSize)
     TMemoryInput in(page.data(), page.size());
 
     ui64 magic = 0;
-    ui64 erasedUpToKey = 0;
     ui32 version = 0;
-    ui32 hasErasedUpToKey = 0;
     ui32 crc = 0;
     TSuperblock superblock;
 
     Load(&in, magic);
     Load(&in, superblock.Seq);
-    Load(&in, erasedUpToKey);
+    Load(&in, superblock.ErasedBelowKey);
     Load(&in, version);
-    Load(&in, hasErasedUpToKey);
     Load(&in, crc);
 
     if (magic != SuperblockMagic || version != StoreFormatVersion ||
         crc != Crc32c(page.data(), SuperblockSize - sizeof(ui32)))
     {
         return std::nullopt;
-    }
-
-    if (hasErasedUpToKey) {
-        superblock.ErasedUpToKey = erasedUpToKey;
     }
 
     return superblock;
@@ -301,10 +296,10 @@ private:
     TMap<ui64, TEntry> Entries;
 
     // The erased bound the device holds.
-    std::optional<ui64> ErasedUpToKey;
-    // The bound of the last erase requested - the keys at or below it are
-    // refused right away, whether the erase has been persisted or not.
-    std::optional<ui64> RequestedErasedUpToKey;
+    ui64 ErasedBelowKey = 0;
+    // The bound of the last erase requested - the keys below it are refused
+    // right away, whether the erase has been persisted or not.
+    ui64 RequestedErasedBelowKey = 0;
 
     bool EraseInFlight = false;
     ui64 NextSuperblockSlot = 0;
@@ -316,9 +311,7 @@ public:
 
     TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override;
 
-    // The erases do not overlap - the bound is persisted with a superblock
-    // write, and a second erase is refused until it is done.
-    TFuture<NCloud::NProto::TError> EraseUpTo(ui64 lastKey) override;
+    TFuture<NCloud::NProto::TError> EraseBelow(ui64 key) override;
 
 private:
     TRestoreResult RestoreFromPages(const TVector<TString>& pages);
@@ -330,7 +323,7 @@ private:
         const TFuture<NCloud::NProto::TError>& future);
 
     NCloud::NProto::TError OnSuperblockWritten(
-        ui64 lastKey,
+        ui64 key,
         const TFuture<NCloud::NProto::TError>& future);
 };
 
@@ -352,7 +345,7 @@ TDeviceKeyBufferStore::TDeviceKeyBufferStore(
     Y_ABORT_UNLESS(!HasError(error), "%s", FormatError(error).c_str());
 }
 
-TFuture<TRestoreResult> TDeviceKeyBufferStore::Restore()
+TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
 {
     with_lock (Lock) {
         if (RestoreStarted) {
@@ -422,7 +415,7 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::Write(
                 MakeError(E_INVALID_STATE, "the store is not restored"));
         }
 
-        if (RequestedErasedUpToKey && key <= *RequestedErasedUpToKey) {
+        if (key < RequestedErasedBelowKey) {
             return MakeFuture(MakeError(
                 E_ARGUMENT,
                 TStringBuilder() << "key " << key << " is erased"));
@@ -472,7 +465,7 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::Write(
                { return self->OnEntryWritten(key, seq, locations, future); });
 }
 
-TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::EraseUpTo(ui64 lastKey)
+TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::EraseBelow(ui64 key)
 {
     TSuperblock superblock;
     ui64 slot = 0;
@@ -483,7 +476,7 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::EraseUpTo(ui64 lastKey)
                 MakeError(E_INVALID_STATE, "the store is not restored"));
         }
 
-        if (ErasedUpToKey && lastKey <= *ErasedUpToKey) {
+        if (key <= ErasedBelowKey) {
             return MakeFuture(MakeError(S_FALSE));
         }
 
@@ -491,14 +484,14 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::EraseUpTo(ui64 lastKey)
             return MakeFuture(MakeError(
                 E_REJECTED,
                 TStringBuilder()
-                    << "an erase up to key " << *RequestedErasedUpToKey
+                    << "an erase below key " << RequestedErasedBelowKey
                     << " is in progress"));
         }
 
         EraseInFlight = true;
-        RequestedErasedUpToKey = lastKey;
+        RequestedErasedBelowKey = key;
 
-        superblock = {.Seq = NextSeq++, .ErasedUpToKey = lastKey};
+        superblock = {.Seq = NextSeq++, .ErasedBelowKey = key};
         slot = NextSuperblockSlot;
         NextSuperblockSlot = (NextSuperblockSlot + 1) % SuperblockSlotCount;
     }
@@ -508,11 +501,11 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::EraseUpTo(ui64 lastKey)
 
     return Pages->Write({{.FirstPageNo = slot, .PageCount = 1}}, pages)
         .Apply([self = shared_from_this(),
-                lastKey](const TFuture<NCloud::NProto::TError>& future)
-               { return self->OnSuperblockWritten(lastKey, future); });
+                key](const TFuture<NCloud::NProto::TError>& future)
+               { return self->OnSuperblockWritten(key, future); });
 }
 
-TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
+IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
     const TVector<TString>& pages)
 {
     struct TCandidate
@@ -543,7 +536,7 @@ TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
     }
 
     // the pages of a single (key, seq) entry
-    TMap<std::pair<ui64, ui64>, TCandidate> candidates;
+    THashMap<std::pair<ui64, ui64>, TCandidate> candidates;
 
     for (ui64 i = SuperblockSlotCount; i < pages.size(); ++i) {
         auto parsed = ParseEntryPage(pages[i], PageSize);
@@ -554,7 +547,7 @@ TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
         const auto& [header, chunk] = *parsed;
         maxSeq = Max(maxSeq, header.Seq);
 
-        auto& candidate = candidates[{header.Key, header.Seq}];
+        auto& candidate = candidates[std::pair(header.Key, header.Seq)];
         if (candidate.Chunks.empty()) {
             candidate.PageCount = header.PageCount;
             candidate.PayloadSize = header.PayloadSize;
@@ -574,22 +567,19 @@ TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
         candidate.PageNos[header.PageIndex] = i;
     }
 
-    // the candidates go in the (key, seq) order, so the last intact one
-    // of a key is the newest
+    // the newest intact candidate of a key wins
     struct TWinner
     {
         ui64 Seq = 0;
         const TCandidate* Candidate = nullptr;
     };
 
-    TMap<ui64, TWinner> winners;
+    THashMap<ui64, TWinner> winners;
 
     for (const auto& [keyAndSeq, candidate]: candidates) {
         const auto& [key, seq] = keyAndSeq;
 
-        if (superblock && superblock->ErasedUpToKey &&
-            key <= *superblock->ErasedUpToKey)
-        {
+        if (superblock && key < superblock->ErasedBelowKey) {
             continue;
         }
 
@@ -601,12 +591,18 @@ TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
             candidate.Chunks,
             [](const auto& chunk) { return chunk.has_value(); });
 
-        if (complete) {
-            winners[key] = {.Seq = seq, .Candidate = &candidate};
+        if (!complete) {
+            continue;
+        }
+
+        auto& winner = winners[key];
+        if (!winner.Candidate || winner.Seq < seq) {
+            winner = {.Seq = seq, .Candidate = &candidate};
         }
     }
 
-    TMap<ui64, TBuffer> buffers;
+    TVector<std::pair<ui64, TBuffer>> buffers;
+    buffers.reserve(winners.size());
     TMap<ui64, TEntry> entries;
 
     for (const auto& [key, winner]: winners) {
@@ -625,7 +621,7 @@ TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
             .Seq = winner.Seq,
             .Locations = std::move(locations),
         };
-        buffers[key] = std::move(buffer);
+        buffers.emplace_back(key, std::move(buffer));
     }
 
     with_lock (Lock) {
@@ -634,10 +630,10 @@ TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
         Entries = std::move(entries);
 
         if (superblock) {
-            ErasedUpToKey = superblock->ErasedUpToKey;
+            ErasedBelowKey = superblock->ErasedBelowKey;
             NextSuperblockSlot = (superblockSlot + 1) % SuperblockSlotCount;
         }
-        RequestedErasedUpToKey = ErasedUpToKey;
+        RequestedErasedBelowKey = ErasedBelowKey;
     }
 
     return std::move(buffers);
@@ -658,7 +654,7 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
     TVector<TPageRange> stalePages;
 
     with_lock (Lock) {
-        if (RequestedErasedUpToKey && key <= *RequestedErasedUpToKey) {
+        if (key < RequestedErasedBelowKey) {
             // erased while being written - a restore would drop it
             stalePages = locations;
             error = MakeError(
@@ -685,7 +681,7 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
 }
 
 NCloud::NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
-    ui64 lastKey,
+    ui64 key,
     const TFuture<NCloud::NProto::TError>& future)
 {
     auto error = future.GetValue();
@@ -699,9 +695,9 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
             return error;
         }
 
-        ErasedUpToKey = lastKey;
+        ErasedBelowKey = key;
 
-        auto end = Entries.upper_bound(lastKey);
+        auto end = Entries.lower_bound(key);
         for (auto it = Entries.begin(); it != end; ++it) {
             for (const auto& location: it->second.Locations) {
                 pagesToFree.push_back(location);
