@@ -16,6 +16,7 @@ FileStore {
     HasXAttrs: true
     MaxFuseLoopThreads: 1
     TabletDirectRdmaEnabled: false
+    AsyncHandleOperationBatchSize: 32
   }
   ShardFileSystemIds: "fs0_s1"
 }

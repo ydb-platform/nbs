@@ -1,5 +1,7 @@
 #include "fs_impl.h"
 
+#include <library/cpp/threading/future/wait/wait.h>
+
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 namespace NCloud::NFileStore::NFuse {
@@ -384,8 +386,6 @@ void TFileSystem::CompleteAsyncDestroyHandle(
             << " error: " << FormatError(error));
         ReportAsyncDestroyHandleFailed();
     }
-
-    CompleteHandleOpsQueueEntry();
 }
 
 void TFileSystem::CompleteAsyncCreateHandle(
@@ -406,57 +406,55 @@ void TFileSystem::CompleteAsyncCreateHandle(
             << Config->GetFileSystemId()
             << " error: " << FormatError(error));
     }
-
-    CompleteHandleOpsQueueEntry();
 }
 
-void TFileSystem::CompleteHandleOpsQueueEntry()
+void TFileSystem::CompleteHandleOpsQueueBatch(ui32 batchSize)
 {
     with_lock (HandleOpsQueueLock) {
-        HandleOpsQueue->PopFront();
+        HandleOpsQueue->PopFront(batchSize);
     }
-    ProcessDelayedRelease();
+
+    for (ui32 i = 0; i < batchSize; ++i) {
+        if (!ProcessDelayedRelease()) {
+            break;
+        }
+    }
     ScheduleProcessHandleOpsQueue(
         Config->GetAsyncHandleOperationDrainPeriod());
 }
 
-void TFileSystem::ProcessDelayedRelease()
+bool TFileSystem::ProcessDelayedRelease()
 {
     with_lock (DelayedReleaseQueueLock) {
-        if (!DelayedReleaseQueue.empty()) {
-            const auto& request = DelayedReleaseQueue.front();
-            if (ProcessAsyncRelease(
-                    request.CallContext,
-                    request.Req,
-                    request.Ino,
-                    request.Fh,
-                    request.WriteBackCacheError))
-            {
-                DelayedReleaseQueue.pop();
-            }
+        if (DelayedReleaseQueue.empty()) {
+            return false;
         }
+        const auto& request = DelayedReleaseQueue.front();
+        if (!ProcessAsyncRelease(
+                request.CallContext,
+                request.Req,
+                request.Ino,
+                request.Fh,
+                request.WriteBackCacheError))
+        {
+            // HandleOpsQueue is full: the remaining iterations would
+            // retry the same head entry with no new capacity, so stop here.
+            return false;
+        }
+        DelayedReleaseQueue.pop();
+        return true;
     }
 }
 
-void TFileSystem::ProcessHandleOpsQueue()
+TFuture<void> TFileSystem::ProcessHandleOpsQueueEntry(
+    const std::optional<NProto::TQueueEntry>& optionalEntry)
 {
-    TGuard g{HandleOpsQueueLock};
-    if (HandleOpsQueue->Empty()) {
-        ScheduleProcessHandleOpsQueue(
-            Config->GetAsyncHandleOperationIdlePeriod());
-        return;
-    }
-
-    const auto optionalEntry = HandleOpsQueue->Front();
     if (!optionalEntry) {
         ReportHandleOpsQueueProcessError(
             TStringBuilder()
             << "Failed to get TQueueEntry from queue, filesystem: "
             << Config->GetFileSystemId());
-        HandleOpsQueue->PopFront();
-        ScheduleProcessHandleOpsQueue(
-            Config->GetAsyncHandleOperationIdlePeriod());
-        return;
+        return MakeFuture();
     }
 
     const auto& entry = optionalEntry.value();
@@ -475,8 +473,8 @@ void TFileSystem::ProcessHandleOpsQueue()
         callContext->RequestType = EFileStoreRequest::DestroyHandle;
         RequestStats->RequestStarted(Log, *callContext);
 
-        Session->DestroyHandle(callContext, std::move(request))
-            .Subscribe(
+        return Session->DestroyHandle(callContext, std::move(request))
+            .Apply(
                 [ptr = weak_from_this(), callContext](const auto& future)
                 {
                     const auto& response = future.GetValue();
@@ -484,7 +482,8 @@ void TFileSystem::ProcessHandleOpsQueue()
                         self->CompleteAsyncDestroyHandle(*callContext, response);
                     }
                 });
-    } else if (entry.HasQueuedCreateHandleRequest()) {
+    }
+    if (entry.HasQueuedCreateHandleRequest()) {
         const auto& requestInfo = entry.GetQueuedCreateHandleRequest();
         auto request = CreateConfirmCreateHandleRequest(
             requestInfo.GetNodeId(),
@@ -503,8 +502,8 @@ void TFileSystem::ProcessHandleOpsQueue()
         callContext->RequestType = EFileStoreRequest::ConfirmCreateHandle;
         RequestStats->RequestStarted(Log, *callContext);
 
-        Session->ConfirmCreateHandle(callContext, std::move(request))
-            .Subscribe(
+        return Session->ConfirmCreateHandle(callContext, std::move(request))
+            .Apply(
                 [ptr = weak_from_this(), callContext](const auto& future)
                 {
                     const auto& response = future.GetValue();
@@ -512,16 +511,84 @@ void TFileSystem::ProcessHandleOpsQueue()
                         self->CompleteAsyncCreateHandle(*callContext, response);
                     }
                 });
-    } else {
+    }
+
+    ReportHandleOpsQueueProcessError(
+        TStringBuilder() << "Unexpected TQueueEntry in queue, filesystem: "
+                            << Config->GetFileSystemId());
+    return MakeFuture();
+}
+
+void TFileSystem::ProcessHandleOpsQueue()
+{
+    THandleOpsQueue::TFrontResult frontResult;
+    with_lock (HandleOpsQueueLock) {
+        const ui32 batchSize =
+            Max<ui32>(1, Config->GetAsyncHandleOperationBatchSize());
+        frontResult = HandleOpsQueue->Front(batchSize);
+    }
+
+    if (HasError(frontResult.Error)) {
         ReportHandleOpsQueueProcessError(
-            TStringBuilder() << "Unexpected TQueueEntry in queue, filesystem: "
-                             << Config->GetFileSystemId());
-        HandleOpsQueue->PopFront();
+            TStringBuilder()
+            << "HandleOpsQueue is corrupted, filesystem: "
+            << Config->GetFileSystemId()
+            << " error: " << FormatError(frontResult.Error));
+    }
+
+    auto& entries = frontResult.Entries;
+    if (entries.empty()) {
         ScheduleProcessHandleOpsQueue(
             Config->GetAsyncHandleOperationIdlePeriod());
         return;
     }
 
+    // A queued confirm followed later in this batch by a destroy for the
+    // same handle is redundant: sending both races on the tablet and can
+    // resurrect a handle that Destroy already removed. Skip the confirm -
+    // Destroy alone is enough, whether or not the handle was actually
+    // persisted yet (if it wasn't, Destroy just gets S_ALREADY, a no-op).
+    THashMap<ui64, size_t> pendingConfirmIndexByHandle;
+    TVector<bool> skipConfirm(entries.size(), false);
+    for (size_t i = 0; i < entries.size(); ++i) {
+        const auto& entry = entries[i];
+        if (!entry) {
+            continue;
+        }
+        if (entry->HasQueuedCreateHandleRequest()) {
+            pendingConfirmIndexByHandle[
+                entry->GetQueuedCreateHandleRequest().GetHandle()] = i;
+        } else if (entry->HasDestroyHandleRequest()) {
+            auto it = pendingConfirmIndexByHandle.find(
+                entry->GetDestroyHandleRequest().GetHandle());
+            if (it != pendingConfirmIndexByHandle.end()) {
+                skipConfirm[it->second] = true;
+                pendingConfirmIndexByHandle.erase(it);
+            }
+        }
+    }
+
+    TVector<TFuture<void>> futures;
+    futures.reserve(entries.size());
+
+    for (size_t i = 0; i < entries.size(); ++i) {
+        if (skipConfirm[i]) {
+            STORAGE_DEBUG(
+                "Skipping superseded create handle confirmation: "
+                << "filesystem " << Config->GetFileSystemId());
+            futures.push_back(MakeFuture());
+            continue;
+        }
+        futures.push_back(ProcessHandleOpsQueueEntry(entries[i]));
+    }
+
+    WaitAll(futures).Subscribe(
+        [ptr = weak_from_this(), batchSize = entries.size()](const auto&)
+        {
+            if (auto self = ptr.lock()) {
+                self->CompleteHandleOpsQueueBatch(batchSize);
+            }
+        });
 }
 
 }   // namespace NCloud::NFileStore::NFuse

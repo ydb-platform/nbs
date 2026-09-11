@@ -925,4 +925,7 @@ message TStorageConfig
     // when ShardBalancerPolicy is SBP_WEIGHTED_DETERMINISTIC.
     // Zero means that all shards are used.
     optional uint32 ShardsPerDirectoryCount = 545;
+
+    // Maximum number of queued handle operations processed concurrently.
+    optional uint32 AsyncHandleOperationBatchSize = 546;
 }
