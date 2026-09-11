@@ -39,8 +39,9 @@ func ParseProto(
 	return nil
 }
 
-// Keep in sync with "internal/pkg/types/types.proto : enum DiskKind"
-func GetAllDiskKinds() []types.DiskKind {
+// Disk kinds served by blockstore cells. Used by the cell selector; ssd-direct-mirror3of5-group
+// disks are created in a single YDB-backed zone and have no cell capacity.
+func GetBlockstoreDiskKinds() []types.DiskKind {
 	return []types.DiskKind{
 		types.DiskKind_DISK_KIND_SSD,
 		types.DiskKind_DISK_KIND_HDD,

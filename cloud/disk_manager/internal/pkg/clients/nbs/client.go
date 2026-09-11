@@ -73,6 +73,8 @@ func getStorageMediaKind(
 		return core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_NONREPLICATED, nil
 	case types.DiskKind_DISK_KIND_HDD_LOCAL:
 		return core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_LOCAL, nil
+	case types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP:
+		return core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
 			"unknown disk kind %v",
@@ -109,6 +111,8 @@ func getDiskKind(
 		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
 	case core_protos.EStorageMediaKind_STORAGE_MEDIA_HDD_LOCAL:
 		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
+	case core_protos.EStorageMediaKind_STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP:
+		return types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP, nil
 	default:
 		return 0, errors.NewNonRetriableErrorf(
 			"unknown media kind %v",
