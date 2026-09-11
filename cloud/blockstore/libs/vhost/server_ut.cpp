@@ -26,6 +26,7 @@
 #include <util/thread/lfqueue.h>
 
 #include <atomic>
+#include <exception>
 
 namespace NCloud::NBlockStore::NVhost {
 
@@ -322,6 +323,79 @@ ui32 StartEndpointAndCountExecutors(
         executorsCount += !queue->GetDevices().empty();
     }
     return executorsCount;
+}
+
+void TestEndpointStopException(bool failSynchronously)
+{
+    const TString socketPath = CreateGuidAsString() + ".sock";
+    TTempFile socketFile(socketPath);
+
+    auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+    auto asyncStopPromise = NewPromise<NProto::TError>();
+    if (failSynchronously) {
+        queueFactory->DeviceStopHandler = [](const TString&)
+        {
+            throw TFutureException();
+        };
+    } else {
+        queueFactory->DeviceStopFutureHandler =
+            [asyncStopPromise](const TString&)
+        {
+            return asyncStopPromise.GetFuture();
+        };
+    }
+
+    auto server = CreateServer(
+        CreateLoggingService("console"),
+        CreateServerStatsStub(),
+        queueFactory,
+        CreateDefaultDeviceHandlerFactory(),
+        TServerConfig(),
+        TVhostCallbacks());
+    server->Start();
+    Y_DEFER
+    {
+        server->Stop();
+    };
+
+    const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+    while (!queueFactory->Queues.at(0)->IsRun() && TInstant::Now() < deadline) {
+        Sleep(TDuration::MilliSeconds(10));
+    }
+    UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+    TStorageOptions options;
+    options.DiskId = "testDiskId";
+    options.BlockSize = 4096;
+    options.BlocksCount = 256;
+    options.VhostQueuesCount = 1;
+
+    auto startEndpoint = [&]
+    {
+        return server
+            ->StartEndpoint(
+                socketPath,
+                std::make_shared<TTestStorage>(),
+                options)
+            .GetValue(TDuration::Seconds(5));
+    };
+
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, startEndpoint().GetCode());
+
+    auto stopFuture = server->StopEndpoint(socketPath);
+    if (!failSynchronously) {
+        UNIT_ASSERT(!stopFuture.HasValue());
+        asyncStopPromise.SetException(
+            std::make_exception_ptr(TFutureException()));
+    }
+
+    const auto stopError = stopFuture.GetValue(TDuration::Seconds(5));
+    UNIT_ASSERT_VALUES_EQUAL(E_FAIL, stopError.GetCode());
+
+    // A completed error must remove the endpoint from StoppingEndpoints.
+    queueFactory->DeviceStopHandler = {};
+    queueFactory->DeviceStopFutureHandler = {};
+    UNIT_ASSERT_VALUES_EQUAL(S_OK, startEndpoint().GetCode());
 }
 
 }   // namespace
@@ -1848,6 +1922,501 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             StartEndpointAndCountExecutors(1, 4, 4));
+    }
+
+    Y_UNIT_TEST(ShouldCompletePreviousEndpointWhileStoppingAnother)
+    {
+        const TString firstSocket = CreateGuidAsString() + ".sock";
+        const TString secondSocket = CreateGuidAsString() + ".sock";
+        TTempFile firstSocketFile(firstSocket);
+        TTempFile secondSocketFile(secondSocket);
+        TManualEvent secondStopEntered;
+        TManualEvent firstStopCompleted;
+        bool completionWasBlocked = false;
+        auto storagePromise = NewPromise<NProto::TReadBlocksLocalResponse>();
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            return request->GetStartIndex() == 0
+                       ? storagePromise.GetFuture()
+                       : MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
+        auto stats = std::make_shared<TTestServerStats>();
+        stats->RequestCompletedHandler = [&](TLog&,
+                                             TMetricRequest&,
+                                             TCallContext&,
+                                             const NProto::TError& error)
+        {
+            if (error.GetCode() != E_CANCELLED) {
+                return;
+            }
+            // Cancellation runs inside endpoint->Stop(). Model its wait
+            // for another device's unregister callback on a separate thread.
+            secondStopEntered.Signal();
+            completionWasBlocked =
+                !firstStopCompleted.WaitT(TDuration::Seconds(5));
+        };
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            stats,
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            TServerConfig(),
+            TVhostCallbacks());
+        server->Start();
+        Y_DEFER
+        {
+            server->Stop();
+        };
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (!queueFactory->Queues.at(0)->IsRun() &&
+               TInstant::Now() < deadline)
+        {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+        TStorageOptions options;
+        options.BlockSize = 4096;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = 1;
+        for (const auto& socket: {firstSocket, secondSocket}) {
+            options.DiskId = socket;
+            const auto error = server->StartEndpoint(socket, storage, options)
+                                   .GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+
+        auto devices = queueFactory->Queues.at(0)->GetDevices();
+        TVector<TString> blocks;
+        auto sglist = ResizeBlocks(blocks, 1, TString(4096, 'x'));
+        Y_DEFER
+        {
+            storagePromise.SetValue(NProto::TReadBlocksLocalResponse());
+        };
+        auto read = devices.at(1)->SendTestRequest(
+            EBlockStoreRequest::ReadBlocks,
+            0,
+            4096,
+            sglist);
+        // A following request on the same executor ensures that the pending
+        // read has finished entering the storage layer before cancellation.
+        auto barrier = devices.at(1)->SendTestRequest(
+            EBlockStoreRequest::ReadBlocks,
+            4096,
+            4096,
+            sglist);
+        UNIT_ASSERT(
+            barrier.GetValue(TDuration::Seconds(5)) == TVhostRequest::SUCCESS);
+
+        devices.at(0)->DisableAutostop(true);
+        auto firstStop = server->StopEndpoint(firstSocket);
+        auto controlThread = SystemThreadFactory()->Run(
+            [&]
+            {
+                secondStopEntered.Wait();
+                // Completing the promise synchronously runs
+                // HandleStoppedEndpoint.
+                devices.at(0)->DisableAutostop(false);
+                firstStopCompleted.Signal();
+            });
+
+        TFuture<NProto::TError> secondStop;
+        {
+            Y_DEFER
+            {
+                secondStopEntered.Signal();
+                controlThread->Join();
+            };
+            secondStop = server->StopEndpoint(secondSocket);
+        }
+
+        UNIT_ASSERT_C(!completionWasBlocked, "Stop held the server mutex");
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            firstStop.GetValue(TDuration::Seconds(5)).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            secondStop.GetValue(TDuration::Seconds(5)).GetCode());
+        UNIT_ASSERT(
+            read.GetValue(TDuration::Seconds(5)) == TVhostRequest::CANCELLED);
+    }
+
+    Y_UNIT_TEST(ShouldCompletePreviousEndpointWhileStoppingServer)
+    {
+        const TString firstSocket = CreateGuidAsString() + ".sock";
+        const TString secondSocket = CreateGuidAsString() + ".sock";
+        TTempFile firstSocketFile(firstSocket);
+        TTempFile secondSocketFile(secondSocket);
+        TManualEvent serverStopEntered;
+        TManualEvent firstStopCompleted;
+        bool completionWasBlocked = false;
+        auto storagePromise = NewPromise<NProto::TReadBlocksLocalResponse>();
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+        {
+            return request->GetStartIndex() == 0
+                       ? storagePromise.GetFuture()
+                       : MakeFuture(NProto::TReadBlocksLocalResponse());
+        };
+        auto stats = std::make_shared<TTestServerStats>();
+        stats->RequestCompletedHandler = [&](TLog&,
+                                             TMetricRequest&,
+                                             TCallContext&,
+                                             const NProto::TError& error)
+        {
+            if (error.GetCode() != E_CANCELLED) {
+                return;
+            }
+            // Cancellation runs inside StopAllEndpoints(). Model its wait
+            // for another device's unregister callback on a separate thread.
+            serverStopEntered.Signal();
+            completionWasBlocked =
+                !firstStopCompleted.WaitT(TDuration::Seconds(5));
+        };
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            stats,
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            TServerConfig(),
+            TVhostCallbacks());
+        server->Start();
+        Y_DEFER
+        {
+            server->Stop();
+        };
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (!queueFactory->Queues.at(0)->IsRun() &&
+               TInstant::Now() < deadline)
+        {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+        TStorageOptions options;
+        options.BlockSize = 4096;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = 1;
+        for (const auto& socket: {firstSocket, secondSocket}) {
+            options.DiskId = socket;
+            const auto error = server->StartEndpoint(socket, storage, options)
+                                   .GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+
+        auto devices = queueFactory->Queues.at(0)->GetDevices();
+        TVector<TString> blocks;
+        auto sglist = ResizeBlocks(blocks, 1, TString(4096, 'x'));
+        Y_DEFER
+        {
+            storagePromise.SetValue(NProto::TReadBlocksLocalResponse());
+        };
+        auto read = devices.at(1)->SendTestRequest(
+            EBlockStoreRequest::ReadBlocks,
+            0,
+            4096,
+            sglist);
+        // A following request on the same executor ensures that the pending
+        // read has finished entering the storage layer before cancellation.
+        auto barrier = devices.at(1)->SendTestRequest(
+            EBlockStoreRequest::ReadBlocks,
+            4096,
+            4096,
+            sglist);
+        UNIT_ASSERT(
+            barrier.GetValue(TDuration::Seconds(5)) == TVhostRequest::SUCCESS);
+
+        devices.at(0)->DisableAutostop(true);
+        auto firstStop = server->StopEndpoint(firstSocket);
+        auto controlThread = SystemThreadFactory()->Run(
+            [&]
+            {
+                serverStopEntered.Wait();
+                // Completing the promise synchronously runs
+                // HandleStoppedEndpoint.
+                devices.at(0)->DisableAutostop(false);
+                firstStopCompleted.Signal();
+            });
+
+        {
+            Y_DEFER
+            {
+                serverStopEntered.Signal();
+                controlThread->Join();
+            };
+            server->Stop();
+        }
+
+        UNIT_ASSERT_C(!completionWasBlocked, "Stop held the server mutex");
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            firstStop.GetValue(TDuration::Seconds(5)).GetCode());
+        UNIT_ASSERT(
+            read.GetValue(TDuration::Seconds(5)) == TVhostRequest::CANCELLED);
+    }
+
+    Y_UNIT_TEST(ShouldRejectRestartUntilEndpointStopCompletes)
+    {
+        const TString socketPath = CreateGuidAsString() + ".sock";
+        TTempFile socketFile(socketPath);
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            CreateServerStatsStub(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            TServerConfig(),
+            TVhostCallbacks());
+        server->Start();
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (!queueFactory->Queues.at(0)->IsRun() &&
+               TInstant::Now() < deadline)
+        {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+        TStorageOptions options;
+        options.DiskId = "testDiskId";
+        options.BlockSize = 4096;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = 1;
+
+        auto startEndpoint = [&]
+        {
+            return server
+                ->StartEndpoint(
+                    socketPath,
+                    std::make_shared<TTestStorage>(),
+                    options)
+                .GetValue(TDuration::Seconds(5));
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, startEndpoint().GetCode());
+
+        auto device = queueFactory->Queues.at(0)->GetDevices().at(0);
+        device->DisableAutostop(true);
+        bool stopBlocked = true;
+        Y_DEFER
+        {
+            if (stopBlocked) {
+                device->DisableAutostop(false);
+            }
+            server->Stop();
+        };
+
+        auto stop = server->StopEndpoint(socketPath);
+        UNIT_ASSERT(!stop.HasValue());
+
+        const auto restartDuringStop = startEndpoint();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, restartDuringStop.GetCode());
+
+        device->DisableAutostop(false);
+        stopBlocked = false;
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            stop.GetValue(TDuration::Seconds(5)).GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, startEndpoint().GetCode());
+        UNIT_ASSERT(TFsPath(socketPath).Exists());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            server->StopEndpoint(socketPath)
+                .GetValue(TDuration::Seconds(5))
+                .GetCode());
+        UNIT_ASSERT(!TFsPath(socketPath).Exists());
+    }
+
+    Y_UNIT_TEST(ShouldWaitForRepeatedStopEndpoint)
+    {
+        const TString socketPath = CreateGuidAsString() + ".sock";
+        TTempFile socketFile(socketPath);
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            CreateServerStatsStub(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            TServerConfig(),
+            TVhostCallbacks());
+        server->Start();
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (!queueFactory->Queues.at(0)->IsRun() &&
+               TInstant::Now() < deadline)
+        {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+        TStorageOptions options;
+        options.DiskId = "testDiskId";
+        options.BlockSize = 4096;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = 1;
+
+        const auto startError = server
+                                    ->StartEndpoint(
+                                        socketPath,
+                                        std::make_shared<TTestStorage>(),
+                                        options)
+                                    .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, startError.GetCode());
+
+        auto device = queueFactory->Queues.at(0)->GetDevices().at(0);
+        device->DisableAutostop(true);
+        bool stopBlocked = true;
+        Y_DEFER
+        {
+            if (stopBlocked) {
+                device->DisableAutostop(false);
+            }
+            server->Stop();
+        };
+
+        auto firstStop = server->StopEndpoint(socketPath);
+        auto repeatedStop = server->StopEndpoint(socketPath);
+
+        UNIT_ASSERT_EQUAL(firstStop.StateId(), repeatedStop.StateId());
+        UNIT_ASSERT(!firstStop.HasValue());
+        UNIT_ASSERT(!repeatedStop.HasValue());
+
+        device->DisableAutostop(false);
+        stopBlocked = false;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            firstStop.GetValue(TDuration::Seconds(5)).GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            repeatedStop.GetValue(TDuration::Seconds(5)).GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldWaitForSynchronousEndpointStopBeforeShuttingDownExecutors)
+    {
+        const TString socketPath = CreateGuidAsString() + ".sock";
+        TTempFile socketFile(socketPath);
+        TManualEvent endpointStopEntered;
+        TManualEvent resumeEndpointStop;
+        TManualEvent serverStopCompleted;
+
+        auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        queueFactory->DeviceStopHandler = [&](const TString&)
+        {
+            endpointStopEntered.Signal();
+            resumeEndpointStop.Wait();
+        };
+
+        auto server = CreateServer(
+            CreateLoggingService("console"),
+            CreateServerStatsStub(),
+            queueFactory,
+            CreateDefaultDeviceHandlerFactory(),
+            TServerConfig(),
+            TVhostCallbacks());
+        server->Start();
+        Y_DEFER
+        {
+            resumeEndpointStop.Signal();
+            server->Stop();
+        };
+
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (!queueFactory->Queues.at(0)->IsRun() &&
+               TInstant::Now() < deadline)
+        {
+            Sleep(TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(queueFactory->Queues.at(0)->IsRun());
+
+        TStorageOptions options;
+        options.DiskId = "testDiskId";
+        options.BlockSize = 4096;
+        options.BlocksCount = 256;
+        options.VhostQueuesCount = 1;
+
+        const auto startError = server
+                                    ->StartEndpoint(
+                                        socketPath,
+                                        std::make_shared<TTestStorage>(),
+                                        options)
+                                    .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, startError.GetCode());
+
+        TFuture<NProto::TError> endpointStop;
+        auto endpointThread = SystemThreadFactory()->Run(
+            [&] { endpointStop = server->StopEndpoint(socketPath); });
+        const bool endpointStopStarted =
+            endpointStopEntered.WaitT(TDuration::Seconds(5));
+
+        auto serverThread = SystemThreadFactory()->Run(
+            [&]
+            {
+                server->Stop();
+                serverStopCompleted.Signal();
+            });
+
+        const TString stopProbePath = CreateGuidAsString() + ".sock";
+        NProto::TError stopProbeError;
+        const auto stopDeadline = TInstant::Now() + TDuration::Seconds(5);
+        do {
+            stopProbeError = server->StopEndpoint(stopProbePath)
+                                 .GetValue(TDuration::Seconds(5));
+            if (stopProbeError.GetCode() == E_FAIL) {
+                break;
+            }
+            Sleep(TDuration::MilliSeconds(10));
+        } while (TInstant::Now() < stopDeadline);
+
+        bool serverStoppedEarly = false;
+        bool queueRunningDuringStop = false;
+        {
+            Y_DEFER
+            {
+                resumeEndpointStop.Signal();
+                endpointThread->Join();
+                serverThread->Join();
+            };
+
+            serverStoppedEarly =
+                serverStopCompleted.WaitT(TDuration::MilliSeconds(100));
+            queueRunningDuringStop = queueFactory->Queues.at(0)->IsRun();
+        }
+
+        UNIT_ASSERT(endpointStopStarted);
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, stopProbeError.GetCode());
+        UNIT_ASSERT(!serverStoppedEarly);
+        UNIT_ASSERT(queueRunningDuringStop);
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            endpointStop.GetValue(TDuration::Seconds(5)).GetCode());
+        UNIT_ASSERT(serverStopCompleted.WaitT(TDuration::Seconds(5)));
+    }
+
+    Y_UNIT_TEST(ShouldConvertSynchronousEndpointStopExceptionToError)
+    {
+        TestEndpointStopException(true);
+    }
+
+    Y_UNIT_TEST(ShouldConvertAsynchronousEndpointStopExceptionToError)
+    {
+        TestEndpointStopException(false);
     }
 }
 

@@ -51,6 +51,11 @@ struct TTestVhostQueueFactory final
     TManualEvent FailedEvent;
     TVector<std::shared_ptr<ITestVhostQueue>> Queues;
     std::function<void()> RequestCompletionHandler;
+    // Models the synchronous part of libvhost device unregistration.
+    std::function<void(const TString&)> DeviceStopHandler;
+    // Overrides the asynchronous result of device unregistration.
+    std::function<NThreading::TFuture<NProto::TError>(const TString&)>
+        DeviceStopFutureHandler;
 
     IVhostQueuePtr CreateQueue() override;
 

@@ -64,6 +64,9 @@ private:
     void* const Cookie;
     const ui32 OptimalIoSize;
     const std::function<void()> RequestCompletionHandler;
+    const std::function<void(const TString&)> DeviceStopHandler;
+    const std::function<TFuture<NProto::TError>(const TString&)>
+        DeviceStopFutureHandler;
 
     TLockFreeQueue<TVhostRequest*> Requests;
 
@@ -79,11 +82,16 @@ public:
         TString socketPath,
         void* cookie,
         ui32 optimalIoSize,
-        std::function<void()> requestCompletionHandler)
+        std::function<void()> requestCompletionHandler,
+        std::function<void(const TString&)> deviceStopHandler,
+        std::function<TFuture<NProto::TError>(const TString&)>
+            deviceStopFutureHandler)
         : SocketPath(std::move(socketPath))
         , Cookie(cookie)
         , OptimalIoSize(optimalIoSize)
         , RequestCompletionHandler(std::move(requestCompletionHandler))
+        , DeviceStopHandler(std::move(deviceStopHandler))
+        , DeviceStopFutureHandler(std::move(deviceStopFutureHandler))
     {
         Autostop = NewPromise<void>();
         Autostop.SetValue();
@@ -98,6 +106,12 @@ public:
     TFuture<NProto::TError> Stop() override
     {
         Y_UNUSED(Stopped.test_and_set());
+        if (DeviceStopHandler) {
+            DeviceStopHandler(SocketPath);
+        }
+        if (DeviceStopFutureHandler) {
+            return DeviceStopFutureHandler(SocketPath);
+        }
         return Autostop.GetFuture().Apply([this] (const auto&) {
             with_lock (Lock) {
                 return WaitAll(Futures).Apply([] (const auto&) {
@@ -311,7 +325,9 @@ IVhostDevicePtr TTestVhostQueueFactory::CreateDevice(
         std::move(socketPath),
         cookie,
         optimalIoSize,
-        RequestCompletionHandler);
+        RequestCompletionHandler,
+        DeviceStopHandler,
+        DeviceStopFutureHandler);
 
     for (const auto& queue: queues) {
         static_cast<TTestVhostQueue*>(queue.get())->AddDevice(vhostDevice);
