@@ -480,6 +480,23 @@ public:
         return request;
     }
 
+    auto CreateUnsafeUpdateNodeRefRequest(
+        ui64 parentId,
+        const TString& name,
+        ui64 childId,
+        const TString& shardId,
+        const TString& shardNodeName)
+    {
+        using TRequestEvent = TEvIndexTablet::TEvUnsafeUpdateNodeRefRequest;
+        auto request = std::make_unique<TRequestEvent>();
+        request->Record.SetParentId(parentId);
+        request->Record.SetName(name);
+        request->Record.SetChildId(childId);
+        request->Record.SetShardId(shardId);
+        request->Record.SetShardNodeName(shardNodeName);
+        return request;
+    }
+
     auto CreateUnsafeDeleteNodeRefRequest(ui64 parentId, const TString& name)
     {
         using TRequestEvent = TEvIndexTablet::TEvUnsafeDeleteNodeRefRequest;

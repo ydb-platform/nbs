@@ -575,6 +575,16 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
             && args.Request.GetSourceNodeShardNodeName()
                 == args.NewChildRef->ShardNodeName;
         if (isSameExternalNode) {
+            //
+            // The old target is the source node itself. Report its location
+            // anyway - the exchange path in the source uses these fields to
+            // recreate its ref and must not receive them empty.
+            //
+
+            args.Response.SetOldTargetNodeShardId(args.NewChildRef->ShardId);
+            args.Response.SetOldTargetNodeShardNodeName(
+                args.NewChildRef->ShardNodeName);
+
             args.Error = MakeError(S_ALREADY, "is the same file");
             return true;
         }
@@ -845,8 +855,20 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
         0,
         ctx.Now() - args.RequestInfo->StartedTs);
 
+    //
+    // On the exchange path args.Response carries the old target node
+    // location which the source tablet needs to link the old target under
+    // the old name - without it the old target node leaks.
+    //
+
+    // args.Error is used below in FinalizeProfileLogRequestInfo - copy, not
+    // move
+    *args.Response.MutableError() = args.Error;
+
     using TMethod = TEvIndexTablet::TRenameNodeInDestinationMethod;
-    auto response = std::make_unique<TMethod::TResponse>(args.Error);
+    auto response = std::make_unique<TMethod::TResponse>();
+    response->Record = std::move(args.Response);
+
     CompleteResponse<TMethod>(
         response->Record,
         args.RequestInfo->CallContext,

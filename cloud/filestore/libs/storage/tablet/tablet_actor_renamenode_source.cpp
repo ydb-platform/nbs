@@ -766,6 +766,20 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
             NProto::TRenameNodeRequest::F_EXCHANGE);
 
         if (isExchange) {
+            if (!args.Response.GetOldTargetNodeShardId()
+                    || !args.Response.GetOldTargetNodeShardNodeName())
+            {
+                //
+                // Without the old target location the ref created below is
+                // dangling and the old target node leaks.
+                //
+
+                ReportEmptyOldTargetNodeInExchangeRename(TStringBuilder()
+                    << "CommitRenameNodeInSource: "
+                    << args.Request.ShortDebugString()
+                    << ", response: " << args.Response.ShortDebugString());
+            }
+
             // create source ref to target node
             CreateNodeRef(
                 *db,

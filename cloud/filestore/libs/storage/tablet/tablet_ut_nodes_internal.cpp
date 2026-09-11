@@ -539,6 +539,235 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
             true /* useRenameInDestination */);
     }
 
+    TABLET_TEST_4K_ONLY(
+        ShouldReturnOldTargetRefUponRenameNodeInDestinationWithExchange)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env(testEnvConfig, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.InitSession("client", "session");
+
+        //
+        //  Scenario:
+        //
+        //  name2 -> shard2/uuid2 (existing external target)
+        //
+        //  exchange-move shard1/uuid1 to name2 -> ok, the response must
+        //  carry the old target location (shard2/uuid2) - the source shard
+        //  needs it to link the old target under the old name.
+        //
+
+        const TString shardId1 = "shard1";
+        const TString uuid1 = CreateGuidAsString();
+
+        const TString shardId2 = "shard2";
+        const TString name2 = "name2";
+        const TString uuid2 = CreateGuidAsString();
+
+        CreateExternalRef(tablet, RootNodeId, name2, shardId2, uuid2);
+
+        const ui32 exchange =
+            ProtoFlag(NProto::TRenameNodeRequest::F_EXCHANGE);
+        const ui64 clientTabletId = 1;
+        const ui64 requestId = 777;
+
+        tablet.SendRenameNodeInDestinationRequest(
+            RootNodeId,
+            name2,
+            shardId1,
+            uuid1,
+            exchange,
+            clientTabletId,
+            requestId);
+        {
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardId2,
+                response->Record.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                uuid2,
+                response->Record.GetOldTargetNodeShardNodeName());
+        }
+
+        const auto nodeRef = tablet.UnsafeGetNodeRef(RootNodeId, name2)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(shardId1, nodeRef.GetShardId());
+        UNIT_ASSERT_VALUES_EQUAL(uuid1, nodeRef.GetShardNodeName());
+
+        //
+        // A retry with the same request id replays the response from the
+        // response log and must carry the same old target location.
+        //
+
+        tablet.SendRenameNodeInDestinationRequest(
+            RootNodeId,
+            name2,
+            shardId1,
+            uuid1,
+            exchange,
+            clientTabletId,
+            requestId);
+        {
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardId2,
+                response->Record.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                uuid2,
+                response->Record.GetOldTargetNodeShardNodeName());
+        }
+    }
+
+    TABLET_TEST_4K_ONLY(
+        ShouldReturnOldTargetRefUponSameNodeRenameInDestinationWithExchange)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetDirectoryCreationInShardsEnabled(true);
+        TTestEnv env(testEnvConfig, storageConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        OverrideDescribeFileStore(env.GetRuntime(), nodeIdx, tabletId);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.ConfigureShards(true);
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        tablet.InitSession("client", "session");
+
+        //
+        //  Scenario:
+        //
+        //  name1 -> shard1/uuid1 (the target ref already points at the
+        //  source node - oldpath and newpath are hard links to the same
+        //  node, or the response log entry for a completed exchange aged
+        //  out before a late retry)
+        //
+        //  exchange-move shard1/uuid1 to name1 -> S_ALREADY, and the
+        //  response must still carry the old target location - the source
+        //  uses it to recreate its ref and must not receive it empty.
+        //
+        //  The current hardlink implementation cannot run into this scenario
+        //  but in TODO(#2667) we'll change it - so we need to prepare for that
+        //  case in advance.
+        //
+        //  An aged out response log entry is still a problem in theory. It's
+        //  mitigated by very long default ResponseLogEntryTTL.
+        //
+
+        const TString shardId1 = "shard1";
+        const TString name1 = "name1";
+        const TString uuid1 = CreateGuidAsString();
+
+        CreateExternalRef(tablet, RootNodeId, name1, shardId1, uuid1);
+
+        const ui32 exchange =
+            ProtoFlag(NProto::TRenameNodeRequest::F_EXCHANGE);
+
+        tablet.SendRenameNodeInDestinationRequest(
+            RootNodeId,
+            name1,
+            shardId1,
+            uuid1,
+            exchange);
+        {
+            auto response = tablet.RecvRenameNodeInDestinationResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_ALREADY,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                shardId1,
+                response->Record.GetOldTargetNodeShardId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                uuid1,
+                response->Record.GetOldTargetNodeShardNodeName());
+        }
+
+        //
+        // The ref must stay intact.
+        //
+
+        const auto nodeRef = tablet.UnsafeGetNodeRef(RootNodeId, name1)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(shardId1, nodeRef.GetShardId());
+        UNIT_ASSERT_VALUES_EQUAL(uuid1, nodeRef.GetShardNodeName());
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldReportCriticalEventUponListNodesWithBrokenRef)
+    {
+        TTestEnv env(testEnvConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto localNodeNotFoundCounter = counters->GetCounter(
+            "AppCriticalEvents/ListNodesLocalNodeNotFound",
+            true);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const TString name = "broken";
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, name));
+
+        //
+        // Corrupt the ref: neither a valid local child id nor an external
+        // shard location - ListNodes should report a critical event
+        // instead of crashing the tablet.
+        //
+
+        tablet.UnsafeUpdateNodeRef(
+            RootNodeId,
+            name,
+            0 /* childId */,
+            "" /* shardId */,
+            "" /* shardNodeName */);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, localNodeNotFoundCounter->Val());
+
+        tablet.SendListNodesRequest(RootNodeId);
+        {
+            auto response = tablet.RecvListNodesResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_INVALID_STATE,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, localNodeNotFoundCounter->Val());
+    }
+
     TABLET_TEST_4K_ONLY(ShouldReturnErrorUponRenameNodeForFileToDirOp)
     {
         DoTestShouldReturnErrorUponRenameNodeForFileToDirOp(

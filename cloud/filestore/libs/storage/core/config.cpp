@@ -356,7 +356,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
         NProto::LNSM_NAME_ONLY                                                )\
     xxx(UseListNodesInternal,              bool,      false                   )\
                                                                                \
-    xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Hours(1)   )\
+    xxx(ResponseLogEntryTTL,                TDuration,  TDuration::Days(1)    )\
     xxx(TabletRegularTasksSchedulePeriod,   TDuration,  TDuration::Minutes(1) )\
                                                                                \
     xxx(ForceDestroySizeThreshold,          ui64,       0                     )\
