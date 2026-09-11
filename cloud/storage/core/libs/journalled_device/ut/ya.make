@@ -7,6 +7,7 @@ SRCS(
     device_ut.cpp
     journal_ut.cpp
     journalled_device_ut.cpp
+    journalled_device_v2_stack_ut.cpp
     journalled_device_v2_ut.cpp
     key_buffer_store_ut.cpp
     log_chain_ut.cpp
