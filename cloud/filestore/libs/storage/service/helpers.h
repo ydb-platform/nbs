@@ -2,8 +2,6 @@
 
 #include "public.h"
 
-#include <util/generic/fwd.h>
-
 namespace NKikimrFileStore {
     class TConfig;
 }

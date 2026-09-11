@@ -10,8 +10,6 @@
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
 
-#include <util/generic/string.h>
-
 namespace NCloud::NFileStore::NStorage {
 
 namespace {
