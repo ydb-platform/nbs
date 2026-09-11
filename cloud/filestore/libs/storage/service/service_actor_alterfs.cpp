@@ -467,6 +467,9 @@ void TAlterFileStoreActor::HandleResizeStateResponse(
 
     if (!msg->Record.HasResizeState()) {
         if (!InitialResizeStateRead) {
+            // Rolling upgrade compatibility: the filesystem's old IndexTablet
+            // accepts UnsafeChangeTabletState but does not return ResizeState
+            // yet. Fallback to preexisting non-persistent resize flow.
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
