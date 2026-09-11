@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "log_record.h"
+
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <library/cpp/threading/future/future.h>
@@ -12,14 +14,6 @@
 #include <memory>
 
 namespace NCloud::NJournalled {
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct TPageRange
-{
-    ui64 FirstPageNo = 0;
-    ui64 PageCount = 0;
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 

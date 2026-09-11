@@ -12,6 +12,9 @@ using IDevicePtr = std::shared_ptr<IDevice>;
 struct IDevicePageStore;
 using IDevicePageStorePtr = std::shared_ptr<IDevicePageStore>;
 
+struct TLogRecord;
+using TLogRecordPtr = std::shared_ptr<TLogRecord>;
+
 struct IJournal;
 using IJournalPtr = std::shared_ptr<IJournal>;
 
