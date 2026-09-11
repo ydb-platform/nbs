@@ -123,6 +123,16 @@ public:
         return allocResult.AllocationPtr;
     }
 
+    NProto::TError CancelAlloc(const void* ptr) override
+    {
+        auto commitResult = Commit(ptr);
+        if (HasError(commitResult)) {
+            return commitResult;
+        }
+
+        return Free(ptr);
+    }
+
     NProto::TError Commit(const void* ptr) override
     {
         auto commitResult = Storage.Commit(ptr);

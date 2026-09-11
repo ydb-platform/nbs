@@ -1332,6 +1332,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(!f2.HasValue());
         UNIT_ASSERT(!f3.HasValue());
         UNIT_ASSERT(!f4.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(4, b.Metrics.AllocatedQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(9, b.Metrics.Storage.EntryCount->Get());
 
         b.State->FlushSucceeded(1, 2);
 
@@ -1339,10 +1342,34 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(f2.GetValue());
         UNIT_ASSERT(f3.HasValue());
         UNIT_ASSERT(!f4.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.AllocatedQueue.Count->Get());
 
         b.State->FlushSucceeded(1, 2);
 
         UNIT_ASSERT(f4.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.AllocatedQueue.Count->Get());
+    }
+
+    Y_UNIT_TEST(ShouldReleaseBackpressuredRequestOnFlushFailure)
+    {
+        TBootstrap b;
+        b.FlushBatchLimits.MaxQueuedFlushBatchesPerNode = 2;
+        b.Recreate();
+
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 5, "def").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 10, "ghi").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 15, "jkl").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 20, "mno").GetValue());
+
+        auto pending = b.Add(1, 101, 25, "pqr");
+        UNIT_ASSERT(!pending.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(6, b.Metrics.Storage.EntryCount->Get());
+
+        b.State->FlushFailed(1, MakeError(E_FAIL, "Flush failed"));
+
+        UNIT_ASSERT(!pending.GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(5, b.Metrics.Storage.EntryCount->Get());
     }
 
     Y_UNIT_TEST(ShouldHandlePinId)
@@ -1448,8 +1475,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(!b.Add(2, 101, 10, "ghi").HasValue());
         UNIT_ASSERT(!b.Add(2, 101, 15, "jkl").HasValue());
 
-        b.State->UpdateStats();
-
         UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
@@ -1469,6 +1494,53 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.UnflushedQueue.Count->Get());
+    }
+
+    Y_UNIT_TEST(ShouldStopProcessingPendingRequestsAfterCommitFailure)
+    {
+        TBootstrap b;
+        b.Storage->SetCapacity(7);
+        b.FlushBatchLimits.MaxQueuedFlushBatchesPerNode = 2;
+        b.Recreate();
+
+        UNIT_ASSERT(b.Add(1, 101, 0, "abc").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 5, "def").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 10, "ghi").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 15, "jkl").GetValue());
+        UNIT_ASSERT(b.Add(1, 101, 20, "mno").GetValue());
+
+        auto backpressured = b.Add(1, 101, 25, "pqr");
+        auto blocked = b.Add(2, 202, 0, "123"); // due to FIFO
+        auto pending = b.Add(3, 303, 0, "456"); // due to storage capacity
+
+        UNIT_ASSERT(!backpressured.HasValue());
+        UNIT_ASSERT(!blocked.HasValue());
+        UNIT_ASSERT(!pending.HasValue());
+
+        UNIT_ASSERT_VALUES_EQUAL(7, b.Metrics.Storage.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.AllocatedQueue.Count->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.PendingQueue.Count->Get());
+
+        // Normal execution on flush failure:
+        // 1. [backpressured]: failed -> evicted.
+        // 2. [blocked]: committed
+        // 3. [pending]: allocated -> committed.
+
+        b.Storage->SetCommitResult(MakeError(E_FAIL, "Commit failed"));
+
+        // Altered execution:
+        // 1. [backpressured]: failed -> evicted.
+        // 2. [blocked]: commit failed, stop any operations
+        // 3. [pending]: -
+
+        UNIT_ASSERT(
+            b.State->FlushFailed(1, MakeError(E_FAIL)) ==
+            EFlushRetryStatus::ShouldNotRetry);
+
+        UNIT_ASSERT(backpressured.HasValue());
+        UNIT_ASSERT(!backpressured.GetValue());
+        UNIT_ASSERT(!blocked.HasValue());
+        UNIT_ASSERT(!pending.HasValue());
     }
 }
 

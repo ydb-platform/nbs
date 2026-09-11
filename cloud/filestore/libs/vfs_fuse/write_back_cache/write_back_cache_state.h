@@ -21,6 +21,7 @@
 #include <util/generic/function_ref.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
+#include <util/system/guard.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -213,9 +214,6 @@ private:
         std::unique_ptr<TPendingWriteDataRequest> request);
 
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
-        std::unique_ptr<TCachedWriteDataRequest> request);
-
-    NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TCachedWriteDataRequest> request,
         bool handleReleased);
 
@@ -227,7 +225,8 @@ private:
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
     void CheckAndAcquireBarriers(TNodeState& nodeState);
-    void ProcessPendingRequests();
+    void ProcessPendingRequests(TGuard<TQueuedOperations>& guard);
+    void ProcessReadyCachedRequest(TCachedWriteDataRequestPtr request);
 
     void EnqueueUnflushedRequest(
         ui64 nodeId,
@@ -252,9 +251,9 @@ private:
         TNodeState& nodeState,
         const NCloud::NProto::TError& error);
 
-    void FailPendingRequest(
+    bool FailPendingRequest(
         TNodeState& nodeState,
-        TPendingWriteDataRequest* request,
+        TPendingWriteDataRequestPtr request,
         const NCloud::NProto::TError& error);
 
     void FailNodePendingRequests(
