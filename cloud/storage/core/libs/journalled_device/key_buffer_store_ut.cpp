@@ -2,7 +2,9 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/generic/buffer.h>
+#include <util/generic/algorithm.h>
+#include <util/string/builder.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NJournalled {
 
@@ -20,16 +22,42 @@ TString AsString(const TBuffer& buffer)
     return TString(buffer.Data(), buffer.Size());
 }
 
-TString JoinKeys(const TSet<ui64>& keys)
+TKeyBuffers Restore(const IKeyBufferStorePtr& store)
 {
+    auto response = store->Restore().GetValueSync();
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        S_OK,
+        response.GetError().GetCode(),
+        FormatError(response.GetError()));
+    return response.ExtractResult();
+}
+
+// "<key>=<buffer>|..." sorted by key - the store promises no order of its own
+TString Describe(TKeyBuffers buffers)
+{
+    SortBy(buffers, [] (const auto& keyBuffer) { return keyBuffer.first; });
+
     TStringBuilder sb;
-    for (ui64 key: keys) {
+    for (const auto& [key, buffer]: buffers) {
         if (sb) {
             sb << "|";
         }
-        sb << key;
+        sb << key << "=" << AsString(buffer);
     }
     return sb;
+}
+
+void Write(const IKeyBufferStorePtr& store, ui64 key, TStringBuf data)
+{
+    const auto error = store->Write(key, MakeBuffer(data)).GetValueSync();
+    UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+}
+
+ui32 EraseBelow(const IKeyBufferStorePtr& store, ui64 key)
+{
+    const auto error = store->EraseBelow(key).GetValueSync();
+    UNIT_ASSERT_C(!HasError(error), FormatError(error));
+    return error.GetCode();
 }
 
 }   // namespace
@@ -42,142 +70,112 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
-        UNIT_ASSERT(store->GetKeys().empty());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_NOT_FOUND,
-            store->Read(1).GetValue().GetError().GetCode());
+        UNIT_ASSERT(Restore(store).empty());
     }
 
     Y_UNIT_TEST(ShouldInsertAndGet)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->Write(1, MakeBuffer("one")).GetValue().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->Write(2, MakeBuffer("two")).GetValue().GetCode());
+        Write(store, 1, "one");
+        Write(store, 2, "two");
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "one",
-            AsString(store->Read(1).GetValue().GetResult()));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "two",
-            AsString(store->Read(2).GetValue().GetResult()));
+        UNIT_ASSERT_VALUES_EQUAL("1=one|2=two", Describe(Restore(store)));
     }
 
     Y_UNIT_TEST(ShouldOverwriteAnExistingKey)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->Write(1, MakeBuffer("first")).GetValue().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->Write(1, MakeBuffer("second")).GetValue().GetCode());
+        Write(store, 1, "first");
+        Write(store, 1, "second");
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "second",
-            AsString(store->Read(1).GetValue().GetResult()));
-        UNIT_ASSERT_VALUES_EQUAL(1, store->GetKeys().size());
+        UNIT_ASSERT_VALUES_EQUAL("1=second", Describe(Restore(store)));
     }
 
     Y_UNIT_TEST(ShouldEraseASingleKey)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->Write(1, MakeBuffer("one")).GetValue().GetCode());
+        Write(store, 1, "one");
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->EraseUpTo(1).GetValue().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_NOT_FOUND,
-            store->Read(1).GetValue().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 2));
+        UNIT_ASSERT(Restore(store).empty());
 
         // removing what is not there reports that nothing was done
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_FALSE,
-            store->EraseUpTo(1).GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, EraseBelow(store, 2));
     }
 
-    Y_UNIT_TEST(ShouldEraseEveryKeyUpToTheGivenOne)
+    Y_UNIT_TEST(ShouldEraseEveryKeyBelowTheGivenOne)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
         for (ui64 key: {1, 3, 5, 7}) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                S_OK,
-                store->Write(key, MakeBuffer("x")).GetValue().GetCode());
+            Write(store, key, "x");
         }
 
-        // the bound itself is included, and it need not be a stored key
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->EraseUpTo(4).GetValue().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL("5|7", JoinKeys(store->GetKeys()));
+        // the bound itself is kept, and it need not be a stored key
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 5));
+        UNIT_ASSERT_VALUES_EQUAL("5=x|7=x", Describe(Restore(store)));
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->EraseUpTo(5).GetValue().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL("7", JoinKeys(store->GetKeys()));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 6));
+        UNIT_ASSERT_VALUES_EQUAL("7=x", Describe(Restore(store)));
     }
 
     Y_UNIT_TEST(ShouldEraseNothingBelowTheLowestKey)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->Write(5, MakeBuffer("x")).GetValue().GetCode());
+        Write(store, 5, "x");
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_FALSE,
-            store->EraseUpTo(4).GetValue().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL("5", JoinKeys(store->GetKeys()));
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, EraseBelow(store, 5));
+        UNIT_ASSERT_VALUES_EQUAL("5=x", Describe(Restore(store)));
 
         // and on an empty store
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->EraseUpTo(5).GetValue().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_FALSE,
-            store->EraseUpTo(Max<ui64>()).GetValue().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 6));
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, EraseBelow(store, Max<ui64>()));
     }
 
     Y_UNIT_TEST(ShouldEraseKeyZeroLikeAnyOther)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->Write(0, MakeBuffer("metadata")).GetValue().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->Write(10, MakeBuffer("record")).GetValue().GetCode());
+        Write(store, 0, "metadata");
+        Write(store, 10, "record");
 
         // the store gives key 0 no special meaning
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->EraseUpTo(10).GetValue().GetCode());
-        UNIT_ASSERT(store->GetKeys().empty());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 11));
+        UNIT_ASSERT(Restore(store).empty());
     }
 
-    Y_UNIT_TEST(ShouldReadKeysInAscendingOrder)
+    Y_UNIT_TEST(ShouldRefuseToWriteAnErasedKey)
+    {
+        auto store = CreateInMemoryKeyBufferStore();
+
+        Write(store, 5, "x");
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 6));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            store->Write(5, MakeBuffer("x")).GetValueSync().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            store->Write(3, MakeBuffer("x")).GetValueSync().GetCode());
+
+        Write(store, 6, "y");
+        UNIT_ASSERT_VALUES_EQUAL("6=y", Describe(Restore(store)));
+    }
+
+    Y_UNIT_TEST(ShouldReadEveryKeyWhateverTheWriteOrder)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
         for (ui64 key: {5, 1, 3}) {
-            UNIT_ASSERT_VALUES_EQUAL(
-                S_OK,
-                store->Write(key, MakeBuffer("x")).GetValue().GetCode());
+            Write(store, key, "x");
         }
 
-        UNIT_ASSERT_VALUES_EQUAL("1|3|5", JoinKeys(store->GetKeys()));
+        UNIT_ASSERT_VALUES_EQUAL(3, Restore(store).size());
+        UNIT_ASSERT_VALUES_EQUAL("1=x|3=x|5=x", Describe(Restore(store)));
     }
 
     Y_UNIT_TEST(ShouldKeepAnIndependentCopyOfTheBuffer)
@@ -187,13 +185,11 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         TBuffer buffer = MakeBuffer("original");
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            store->Write(1, buffer).GetValue().GetCode());
+            store->Write(1, buffer).GetValueSync().GetCode());
 
         buffer.Clear();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "original",
-            AsString(store->Read(1).GetValue().GetResult()));
+        UNIT_ASSERT_VALUES_EQUAL("1=original", Describe(Restore(store)));
     }
 }
 

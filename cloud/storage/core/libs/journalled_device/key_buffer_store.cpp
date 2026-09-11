@@ -2,7 +2,8 @@
 
 #include <util/generic/map.h>
 #include <util/string/builder.h>
-#include <util/system/spinlock.h>
+
+#include <utility>
 
 namespace NCloud::NJournalled {
 
@@ -12,39 +13,52 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+using TRestoreResult = TResultOrError<TKeyBuffers>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TInMemoryKeyBufferStore final: public IKeyBufferStore
 {
 private:
-    mutable TAdaptiveLock Lock;
+    TAdaptiveLock Lock;
     TMap<ui64, TBuffer> Buffers;
+    ui64 ErasedBelowKey = 0;
 
 public:
+    TFuture<TRestoreResult> Restore() override
+    {
+        with_lock (Lock) {
+            TKeyBuffers buffers;
+            buffers.reserve(Buffers.size());
+            for (const auto& [key, buffer]: Buffers) {
+                buffers.emplace_back(key, buffer);
+            }
+            return MakeFuture<TRestoreResult>(std::move(buffers));
+        }
+    }
+
     TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override
     {
         with_lock (Lock) {
+            if (key < ErasedBelowKey) {
+                return MakeFuture(MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "key " << key << " is erased"));
+            }
+
             Buffers[key] = std::move(buffer);
         }
         return MakeFuture(MakeError(S_OK));
     }
 
-    TFuture<TResultOrError<TBuffer>> Read(ui64 key) const override
+    TFuture<NCloud::NProto::TError> EraseBelow(ui64 key) override
     {
         with_lock (Lock) {
-            auto it = Buffers.find(key);
-            if (it == Buffers.end()) {
-                return MakeFuture<TResultOrError<TBuffer>>(MakeError(
-                    E_NOT_FOUND,
-                    TStringBuilder() << "no buffer for key " << key));
+            if (ErasedBelowKey < key) {
+                ErasedBelowKey = key;
             }
 
-            return MakeFuture<TResultOrError<TBuffer>>(it->second);
-        }
-    }
-
-    TFuture<NCloud::NProto::TError> EraseUpTo(ui64 lastKey) override
-    {
-        with_lock (Lock) {
-            auto end = Buffers.upper_bound(lastKey);
+            auto end = Buffers.lower_bound(key);
             if (end == Buffers.begin()) {
                 return MakeFuture(MakeError(S_FALSE));
             }
@@ -52,17 +66,6 @@ public:
             Buffers.erase(Buffers.begin(), end);
             return MakeFuture(MakeError(S_OK));
         }
-    }
-
-    TSet<ui64> GetKeys() const override
-    {
-        TSet<ui64> keys;
-        with_lock (Lock) {
-            for (const auto& [key, buffer]: Buffers) {
-                keys.insert(key);
-            }
-        }
-        return keys;
     }
 };
 
