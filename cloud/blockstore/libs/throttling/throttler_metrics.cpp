@@ -30,7 +30,7 @@ constexpr std::array<NProto::EStorageMediaKind, 6> MonitoredMediaKinds = {
 
 NProto::EStorageMediaKind NormalizeMediaKind(NProto::EStorageMediaKind mediaKind)
 {
-    static_assert(NProto::EStorageMediaKind_MAX == 9);
+    static_assert(NProto::EStorageMediaKind_MAX == 10);
     switch (mediaKind) {
         case NProto::STORAGE_MEDIA_HDD:
         case NProto::STORAGE_MEDIA_DEFAULT:

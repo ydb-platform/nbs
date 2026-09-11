@@ -241,6 +241,33 @@ void TCreateVolumeActor::CreateVolumeImpl(
 {
     NKikimrBlockStore::TVolumeConfig config;
 
+    if (IsSsdDirectMirror3Of5GroupMediaKind(GetStorageMediaKind())) {
+        config.SetBlockSize(GetBlockSize());
+        config.SetDiskId(Request.GetDiskId());
+        config.SetFolderId(Request.GetFolderId());
+        config.SetCloudId(Request.GetCloudId());
+        config.SetStorageMediaKind(GetStorageMediaKind());
+        config.SetTabletVersion(SsdDirectMirror3Of5GroupTabletVersion);
+        config.SetStoragePoolName(Request.GetStoragePoolName());
+        config.AddPartitions()->SetBlockCount(Request.GetBlocksCount());
+        SetupSsdDirectMirror3Of5GroupVolumeChannels(*Config, config);
+        config.SetCreationTs(ctx.Now().MicroSeconds());
+
+        auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
+            std::move(config));
+
+        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+            "Sending createvolume request for direct volume %s",
+            Request.GetDiskId().Quote().c_str());
+
+        NCloud::Send(
+            ctx,
+            MakeSSProxyServiceId(),
+            std::move(request),
+            RequestInfo->Cookie);
+        return;
+    }
+
     config.SetBlockSize(GetBlockSize());
     const auto maxBlocksInBlob = CalculateMaxBlocksInBlob(
         Config->GetMaxBlobSize(),
@@ -428,6 +455,19 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
         return;
     }
 
+    if (IsSsdDirectMirror3Of5GroupMediaKind(GetStorageMediaKind())) {
+        // TODO: NBS-7763 support WaitReady for ssd-direct-mirror3of5-group
+        // media kind.
+        LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
+            "Successfully created direct volume %s",
+            Request.GetDiskId().Quote().c_str());
+
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvService::TEvCreateVolumeResponse>());
+        return;
+    }
+
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "Sending WaitReady request to volume %s",
         Request.GetDiskId().Quote().c_str());
@@ -500,6 +540,64 @@ STFUNC(TCreateVolumeActor::StateWork)
     }
 }
 
+NProto::TError ValidateSsdDirectMirror3Of5GroupCreateVolumeRequest(
+    const NProto::TCreateVolumeRequest& request)
+{
+    if (!request.GetStoragePoolName()) {
+        return MakeError(
+            E_ARGUMENT,
+            "StoragePoolName is required for "
+            "ssd-direct-mirror3of5-group disks");
+    }
+
+    if (request.GetTabletVersion() &&
+        request.GetTabletVersion() != SsdDirectMirror3Of5GroupTabletVersion)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "bad tablet version for ssd-direct-mirror3of5-group disks: "
+                << request.GetTabletVersion());
+    }
+
+    if (request.GetBaseDiskId()) {
+        return MakeError(
+            E_ARGUMENT,
+            "overlay disks are not supported for "
+            "ssd-direct-mirror3of5-group disks");
+    }
+
+    if (request.GetPlacementGroupId()) {
+        return MakeError(
+            E_ARGUMENT,
+            "PlacementGroupId is not supported for "
+            "ssd-direct-mirror3of5-group disks");
+    }
+
+    if (request.AgentIdsSize()) {
+        return MakeError(
+            E_ARGUMENT,
+            "AgentIds are not supported for "
+            "ssd-direct-mirror3of5-group disks");
+    }
+
+    if (request.GetPartitionsCount() > 1) {
+        return MakeError(
+            E_ARGUMENT,
+            "multiple partitions are not supported for "
+            "ssd-direct-mirror3of5-group disks");
+    }
+
+    if (request.GetEncryptionSpec().GetMode() != NProto::NO_ENCRYPTION) {
+        return MakeError(
+            E_ARGUMENT,
+            "encryption is not supported for "
+            "ssd-direct-mirror3of5-group disks");
+    }
+
+    return MakeError(S_OK);
+}
+
 NProto::TError ValidateCreateVolumeRequest(
     const TStorageConfig& config,
     const NProto::TCreateVolumeRequest& request)
@@ -520,7 +618,10 @@ NProto::TError ValidateCreateVolumeRequest(
         }
     }
 
-    if (request.GetTabletVersion() > MaxSupportedTabletVersion) {
+    const auto mediaKind = request.GetStorageMediaKind();
+    if (!IsSsdDirectMirror3Of5GroupMediaKind(mediaKind) &&
+        request.GetTabletVersion() > MaxSupportedTabletVersion)
+    {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder() << "bad tablet version: "
@@ -552,14 +653,15 @@ NProto::TError ValidateCreateVolumeRequest(
                 << config.GetMaxPartitionsPerVolume());
     }
 
-    const auto mediaKind = request.GetStorageMediaKind();
-    const auto maxBlocks = ComputeMaxBlocks(config, mediaKind, 0);
-    if (request.GetBlocksCount() > maxBlocks) {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder() << "disk size for media kind "
-                << MediaKindToString(mediaKind)
-                << " should be <= " << maxBlocks << " blocks");
+    if (!IsSsdDirectMirror3Of5GroupMediaKind(mediaKind)) {
+        const auto maxBlocks = ComputeMaxBlocks(config, mediaKind, 0);
+        if (request.GetBlocksCount() > maxBlocks) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "disk size for media kind "
+                    << MediaKindToString(mediaKind)
+                    << " should be <= " << maxBlocks << " blocks");
+        }
     }
 
     if (!request.GetBlocksCount()) {
@@ -572,7 +674,19 @@ NProto::TError ValidateCreateVolumeRequest(
         return vbsError;
     }
 
-    if (!IsDiskRegistryMediaKind(mediaKind)) {
+    if (IsSsdDirectMirror3Of5GroupMediaKind(mediaKind)) {
+        return ValidateSsdDirectMirror3Of5GroupCreateVolumeRequest(request);
+    } else if (IsDiskRegistryMediaKind(mediaKind)) {
+        const ui64 volumeSize =
+            request.GetBlockSize() * request.GetBlocksCount();
+        const ui64 unit = GetAllocationUnit(config, mediaKind);
+
+        if (volumeSize % unit != 0) {
+            return MakeError(
+                E_ARGUMENT, TStringBuilder()
+                    << "volume size should be divisible by " << unit);
+        }
+    } else {
         if (request.GetPlacementGroupId()) {
             return MakeError(
                 E_ARGUMENT,
@@ -589,15 +703,6 @@ NProto::TError ValidateCreateVolumeRequest(
             return MakeError(
                 E_ARGUMENT,
                 "AgentIds not allowed for replicated disks");
-        }
-    } else {
-        const ui64 volumeSize = request.GetBlockSize() * request.GetBlocksCount();
-        const ui64 unit = GetAllocationUnit(config, mediaKind);
-
-        if (volumeSize % unit != 0) {
-            return MakeError(
-                E_ARGUMENT, TStringBuilder()
-                    << "volume size should be divisible by " << unit);
         }
     }
 

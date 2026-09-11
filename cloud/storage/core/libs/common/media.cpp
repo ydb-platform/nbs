@@ -4,6 +4,11 @@ namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool IsSsdDirectMirror3Of5GroupMediaKind(NProto::EStorageMediaKind mediaKind)
+{
+    return mediaKind == NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP;
+}
+
 bool IsDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind)
 {
     switch (mediaKind) {
@@ -21,7 +26,8 @@ bool IsDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind)
 
 bool IsBlobStorageMediaKind(NProto::EStorageMediaKind mediaKind)
 {
-    return !IsDiskRegistryMediaKind(mediaKind);
+    return !IsSsdDirectMirror3Of5GroupMediaKind(mediaKind) &&
+        !IsDiskRegistryMediaKind(mediaKind);
 }
 
 bool IsReliableDiskRegistryMediaKind(NProto::EStorageMediaKind mediaKind)
@@ -85,6 +91,8 @@ TString MediaKindToString(NProto::EStorageMediaKind mediaKind)
             return "hdd_local";
         case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
             return "hdd_nonrepl";
+        case NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP:
+            return "ssd_direct_mirror3of5_group";
         default:
             return "unknown";
     }
@@ -117,6 +125,8 @@ TString MediaKindToComputeType(NProto::EStorageMediaKind mediaKind)
             return "network-ssd-mirror3";
         case NProto::STORAGE_MEDIA_HDD_NONREPLICATED:
             return "network-hdd-nonreplicated";
+        case NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP:
+            return "network-ssd-direct-mirror3of5-group";
         default:
             return "unknown";
     }
@@ -142,6 +152,10 @@ bool ParseMediaKind(const TStringBuf s, NProto::EStorageMediaKind* mediaKind)
         *mediaKind = NProto::STORAGE_MEDIA_HDD_LOCAL;
     } else if (s == "hdd_nonrepl") {
         *mediaKind = NProto::STORAGE_MEDIA_HDD_NONREPLICATED;
+    } else if (s == "ssd_direct_mirror3of5_group" ||
+               s == "ssd-direct-mirror3of5-group")
+    {
+        *mediaKind = NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP;
     } else {
         return false;
     }

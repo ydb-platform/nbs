@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/testlib/disk_registry_proxy_mock.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
@@ -2064,6 +2066,232 @@ Y_UNIT_TEST_SUITE(TServiceCreateVolumeTest)
                 false,
                 static_cast<int>(volume.GetVhostDiscardEnabled()));
         }
+    }
+
+    Y_UNIT_TEST(ShouldRejectSsdDirectMirror3Of5GroupVolumeWithoutStoragePool)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        auto request = service.CreateCreateVolumeRequest(
+            DefaultDiskId,
+            DefaultBlocksCount,
+            DefaultBlockSize,
+            "folder",
+            "cloud",
+            NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+        auto response = service.RecvCreateVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        UNIT_ASSERT(response->GetErrorReason().Contains("StoragePoolName"));
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnsupportedSsdDirectMirror3Of5GroupVolumeOptions)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        {
+            auto request = service.CreateCreateVolumeRequest(
+                DefaultDiskId,
+                DefaultBlocksCount,
+                DefaultBlockSize,
+                "folder",
+                "cloud",
+                NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
+            request->Record.SetStoragePoolName("ddp1");
+            request->Record.SetPlacementGroupId("pg");
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT(response->GetErrorReason().Contains("PlacementGroupId"));
+        }
+
+        {
+            auto request = service.CreateCreateVolumeRequest(
+                DefaultDiskId,
+                DefaultBlocksCount,
+                DefaultBlockSize,
+                "folder",
+                "cloud",
+                NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
+            request->Record.SetStoragePoolName("ddp1");
+            request->Record.SetTabletVersion(1);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT(response->GetErrorReason().Contains("tablet version"));
+        }
+
+        {
+            auto request = service.CreateCreateVolumeRequest(
+                DefaultDiskId,
+                DefaultBlocksCount,
+                DefaultBlockSize,
+                "folder",
+                "cloud",
+                NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
+            request->Record.SetStoragePoolName("ddp1");
+            request->Record.SetPartitionsCount(2);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT(response->GetErrorReason().Contains("partitions"));
+        }
+
+        {
+            NProto::TEncryptionSpec encryptionSpec;
+            encryptionSpec.SetMode(NProto::ENCRYPTION_AES_XTS);
+            auto request = service.CreateCreateVolumeRequest(
+                DefaultDiskId,
+                DefaultBlocksCount,
+                DefaultBlockSize,
+                "folder",
+                "cloud",
+                NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP,
+                {},
+                {},
+                0,
+                0,
+                encryptionSpec);
+            request->Record.SetStoragePoolName("ddp1");
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+
+            auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT(response->GetErrorReason().Contains("encryption"));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldSendSsdDirectMirror3Of5GroupVolumeConfigToSchemeShard)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        bool detectedCreateVolumeRequest = false;
+        bool detectedWaitReadyRequest = false;
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvCreateVolumeRequest: {
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvCreateVolumeRequest>();
+                        const auto& volumeConfig = msg->VolumeConfig;
+                        detectedCreateVolumeRequest = true;
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            SsdDirectMirror3Of5GroupTabletVersion,
+                            volumeConfig.GetTabletVersion());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "ddp1",
+                            volumeConfig.GetStoragePoolName());
+                        UNIT_ASSERT_VALUES_EQUAL("folder", volumeConfig.GetFolderId());
+                        UNIT_ASSERT_VALUES_EQUAL("cloud", volumeConfig.GetCloudId());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<int>(NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP),
+                            volumeConfig.GetStorageMediaKind());
+                        UNIT_ASSERT_VALUES_EQUAL(1, volumeConfig.PartitionsSize());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            DefaultBlocksCount,
+                            volumeConfig.GetPartitions(0).GetBlockCount());
+                        UNIT_ASSERT_VALUES_EQUAL(2, volumeConfig.ExplicitChannelProfilesSize());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<ui32>(EChannelDataKind::System),
+                            volumeConfig.GetExplicitChannelProfiles(0).GetDataKind());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<ui32>(EChannelDataKind::Log),
+                            volumeConfig.GetExplicitChannelProfiles(1).GetDataKind());
+                        UNIT_ASSERT(
+                            !volumeConfig.GetExplicitChannelProfiles(0).GetPoolKind().empty());
+                        UNIT_ASSERT_VALUES_EQUAL(3, volumeConfig.VolumeExplicitChannelProfilesSize());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<ui32>(EChannelDataKind::Index),
+                            volumeConfig.GetVolumeExplicitChannelProfiles(2).GetDataKind());
+
+                        auto response =
+                            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>();
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0, // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    case TEvVolume::EvWaitReadyRequest: {
+                        detectedWaitReadyRequest = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto request = service.CreateCreateVolumeRequest(
+            DefaultDiskId,
+            DefaultBlocksCount,
+            DefaultBlockSize,
+            "folder",
+            "cloud",
+            NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
+        request->Record.SetStoragePoolName("ddp1");
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+        auto response = service.RecvCreateVolumeResponse();
+
+        UNIT_ASSERT(detectedCreateVolumeRequest);
+        UNIT_ASSERT(!detectedWaitReadyRequest);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldNotLimitSsdDirectMirror3Of5GroupVolumeSize)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvCreateVolumeRequest: {
+                        auto response =
+                            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>();
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0, // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto request = service.CreateCreateVolumeRequest(
+            DefaultDiskId,
+            MaxPartitionBlocksCount + 1,
+            DefaultBlockSize,
+            "folder",
+            "cloud",
+            NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
+        request->Record.SetStoragePoolName("ddp1");
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+        auto response = service.RecvCreateVolumeResponse();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
     }
 }
 
