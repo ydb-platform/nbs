@@ -49,7 +49,7 @@ NCloud::NProto::TReadPagesRequest MakeMissingRequest(
         const ui64 endPageNo = ref.GetFirstPageNo() + ref.GetPageCount();
         ui64 pageNo = ref.GetFirstPageNo();
 
-        auto addRef = [&] (ui64 begin, ui64 end)
+        auto addRef = [&](ui64 begin, ui64 end)
         {
             if (begin >= end) {
                 return;
@@ -88,7 +88,7 @@ NCloud::NProto::TReadPagesResponse MergeResponses(
 {
     THashMap<ui64, TString*> pages;
 
-    auto index = [&] (NCloud::NProto::TReadPagesResponse* source)
+    auto index = [&](NCloud::NProto::TReadPagesResponse* source)
     {
         if (!source) {
             return;
@@ -122,8 +122,10 @@ NCloud::NProto::TReadPagesResponse MergeResponses(
             if (it == pages.end()) {
                 return ErrorResponse<NCloud::NProto::TReadPagesResponse>(
                     E_INVALID_STATE,
-                    TStringBuilder() << "page " << pageNo << " is missing"
-                        " in both the journal and the device responses");
+                    TStringBuilder()
+                        << "page " << pageNo
+                        << " is missing"
+                           " in both the journal and the device responses");
             }
 
             *group->AddContent() = std::move(*it->second);
@@ -144,6 +146,8 @@ private:
     const TExecutorPtr Executor;
     const IJournalPtr Journal;
     const IDevicePtr DataStore;
+    const TString DeviceUUID;
+    const TString BackgroundClientId;
 
     TLog Log;
 
@@ -155,20 +159,26 @@ private:
 
 public:
     TJournalledDeviceV2(
-            ILoggingServicePtr logging,
-            TExecutorPtr executor,
-            IJournalPtr journal,
-            IDevicePtr dataStore)
+        ILoggingServicePtr logging,
+        TExecutorPtr executor,
+        IJournalPtr journal,
+        IDevicePtr dataStore,
+        TString deviceUUID,
+        TString backgroundClientId)
         : Logging(std::move(logging))
         , Executor(std::move(executor))
         , Journal(std::move(journal))
         , DataStore(std::move(dataStore))
+        , DeviceUUID(std::move(deviceUUID))
+        , BackgroundClientId(std::move(backgroundClientId))
         , Log(Logging->CreateLog("JOURNALLED_DEVICE"))
     {}
 
-    void Start() override {
+    void Start() override
+    {
         auto future = Executor->Execute(
-            [weakSelf = weak_from_this()] () {
+            [weakSelf = weak_from_this()]()
+            {
                 auto self = weakSelf.lock();
                 if (!self) {
                     return MakeError(E_FAIL, "TJournalledDevice is destroyed");
@@ -181,7 +191,8 @@ public:
         Y_ENSURE(!HasError(error), FormatError(error));
     }
 
-    void Stop() override {
+    void Stop() override
+    {
         ShouldStop.store(true);
 
         if (FlushCycleStopped.Initialized()) {
@@ -192,28 +203,39 @@ public:
     TFuture<NCloud::NProto::TReadPagesResponse> ReadPages(
         NCloud::NProto::TReadPagesRequest request) override
     {
+        if (auto error = ValidateRequest(request); HasError(error)) {
+            return MakeFuture<NCloud::NProto::TReadPagesResponse>(
+                TErrorResponse(std::move(error)));
+        }
+
         return Execute<NCloud::NProto::TReadPagesResponse>(
-            [request = std::move(request)] (auto& self) mutable
-            {
-                return self.DoReadPages(std::move(request));
-            });
+            [request = std::move(request)](auto& self) mutable
+            { return self.DoReadPages(std::move(request)); });
     }
 
     TFuture<NCloud::NProto::TWriteLogRecordResponse> WriteLogRecord(
         NCloud::NProto::TWriteLogRecordRequest request) override
     {
+        if (auto error = ValidateRequest(request); HasError(error)) {
+            return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
+                TErrorResponse(std::move(error)));
+        }
+
         return Execute<NCloud::NProto::TWriteLogRecordResponse>(
-            [request = std::move(request)] (auto& self) mutable
-            {
-                return self.DoWriteLogRecord(std::move(request));
-            });
+            [request = std::move(request)](auto& self) mutable
+            { return self.DoWriteLogRecord(std::move(request)); });
     }
 
     TFuture<NCloud::NProto::TReadJournalTailResponse> ReadJournalTail(
         NCloud::NProto::TReadJournalTailRequest request) override
     {
+        if (auto error = ValidateRequest(request); HasError(error)) {
+            return MakeFuture<NCloud::NProto::TReadJournalTailResponse>(
+                TErrorResponse(std::move(error)));
+        }
+
         return Execute<NCloud::NProto::TReadJournalTailResponse>(
-            [request = std::move(request)] (auto& self) mutable
+            [request = std::move(request)](auto& self) mutable
             {
                 return self.Executor->ExtractResponse(
                     self.Journal->ReadTail(std::move(request)));
@@ -224,8 +246,13 @@ public:
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
         -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> override
     {
+        if (auto error = ValidateRequest(request); HasError(error)) {
+            return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
+                TErrorResponse(std::move(error)));
+        }
+
         return Execute<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
-            [request = std::move(request)] (auto& self) mutable
+            [request = std::move(request)](auto& self) mutable
             {
                 return self.Executor->ExtractResponse(
                     self.Journal->AdvanceLastAckedLsn(std::move(request)));
@@ -233,11 +260,29 @@ public:
     }
 
 private:
+    template <typename TRequest>
+    NCloud::NProto::TError ValidateRequest(const TRequest& request) const
+    {
+        if (request.GetDeviceUUID().empty()) {
+            return MakeError(E_ARGUMENT, "empty device UUID");
+        }
+
+        if (request.GetDeviceUUID() != DeviceUUID) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "the request is addressed to device "
+                                 << request.GetDeviceUUID().Quote()
+                                 << ", this is " << DeviceUUID.Quote());
+        }
+
+        return {};
+    }
+
     template <typename T, typename F>
     TFuture<T> Execute(F func)
     {
         return Executor->Execute(
-            [weakSelf = weak_from_this(), func = std::move(func)] () mutable -> T
+            [weakSelf = weak_from_this(), func = std::move(func)]() mutable -> T
             {
                 auto self = weakSelf.lock();
                 if (!self) {
@@ -313,16 +358,31 @@ private:
         return response;
     }
 
+    NCloud::NProto::TWriteLogRecordRequest MakeFlushRequest(
+        NCloud::NProto::TJournalRecord& record) const
+    {
+        NCloud::NProto::TWriteLogRecordRequest request;
+        request.MutableHeaders()->SetClientId(BackgroundClientId);
+        request.SetDeviceUUID(DeviceUUID);
+        request.SetLogSequenceNumber(record.GetLogSequenceNumber());
+        request.SetPrevLogSequenceNumber(record.GetPrevLogSequenceNumber());
+        request.MutablePageGroups()->Swap(record.MutablePageGroups());
+
+        return request;
+    }
+
     void ScheduleFlushCycle()
     {
-        Executor->Execute([weakSelf = weak_from_this()] () {
-            auto self = weakSelf.lock();
-            if (!self) {
-                return;
-            }
+        Executor->Execute(
+            [weakSelf = weak_from_this()]()
+            {
+                auto self = weakSelf.lock();
+                if (!self) {
+                    return;
+                }
 
-            self->RunFlushCycle();
-        });
+                self->RunFlushCycle();
+            });
     }
 
     void RunFlushCycle()
@@ -347,16 +407,18 @@ private:
                 break;
             }
 
-            NCloud::NProto::TWriteLogRecordRequest request;
-            request.MutablePageGroups()->Swap(record.MutablePageGroups());
+            if (record.PageGroupsSize()) {
+                auto request = MakeFlushRequest(record);
 
-            auto writeFuture = DataStore->WritePages(std::move(request));
-            auto writeResponse = Executor->WaitFor(writeFuture);
-            if (HasError(writeResponse)) {
-                STORAGE_ERROR(
-                    "unable to flush the record with lsn " << lsn << ": "
-                    << FormatError(writeResponse.GetError()));
-                break;
+                auto writeFuture = DataStore->WritePages(std::move(request));
+                auto writeResponse = Executor->WaitFor(writeFuture);
+                if (HasError(writeResponse)) {
+                    STORAGE_ERROR(
+                        "unable to flush the record with lsn "
+                        << lsn << ": "
+                        << FormatError(writeResponse.GetError()));
+                    break;
+                }
             }
 
             Journal->MarkRecordAsFlushed(lsn);
@@ -372,8 +434,8 @@ private:
         const auto& response = Executor->WaitFor(future);
         if (HasError(response)) {
             STORAGE_ERROR(
-                "unable to cleanup flushed records up to lsn " << lastFlushedLsn
-                << ": " << FormatError(response));
+                "unable to cleanup flushed records up to lsn "
+                << lastFlushedLsn << ": " << FormatError(response));
         }
 
         RunningCont()->SleepT(IdleFlushDelay);
@@ -390,13 +452,17 @@ IJournalledDevicePtr CreateJournalledDeviceV2(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
     IJournalPtr journal,
-    IDevicePtr dataStore)
+    IDevicePtr dataStore,
+    TString deviceUUID,
+    TString backgroundClientId)
 {
     return std::make_shared<TJournalledDeviceV2>(
         std::move(logging),
         std::move(executor),
         std::move(journal),
-        std::move(dataStore));
+        std::move(dataStore),
+        std::move(deviceUUID),
+        std::move(backgroundClientId));
 }
 
 }   // namespace NCloud::NJournalled
