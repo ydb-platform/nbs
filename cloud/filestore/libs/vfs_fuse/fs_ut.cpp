@@ -7180,6 +7180,103 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
     }
 
+    Y_UNIT_TEST(ShouldUseWriteBackCacheBarrierForTruncatingOpen)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        const ui32 automaticFlushPeriodMs = 0;
+        const ui64 NodeId = 123;
+        const ui64 HandleId = 456;
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,
+            automaticFlushPeriodMs);
+
+        std::atomic<int> writeDataCalled = 0;
+        std::atomic<int> writeDataCalledBeforeCreateHandle = 0;
+
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto&)
+        {
+            writeDataCalled++;
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+
+        auto createHandleCalled = NewPromise();
+        auto createHandlePromise = NewPromise<NProto::TCreateHandleResponse>();
+
+        bootstrap.Service->CreateHandleHandler = [&](auto, const auto& rq)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(NodeId, rq->GetNodeId());
+            UNIT_ASSERT(HasFlag(
+                rq->GetFlags(),
+                NProto::TCreateHandleRequest::E_TRUNCATE));
+            writeDataCalledBeforeCreateHandle = writeDataCalled.load();
+            createHandleCalled.SetValue();
+            return createHandlePromise.GetFuture();
+        };
+
+        bootstrap.Service->GetNodeAttrHandler = [&](auto, const auto&)
+        {
+            NProto::TGetNodeAttrResponse response;
+            response.MutableNode()->SetId(NodeId);
+            response.MutableNode()->SetType(NProto::E_REGULAR_NODE);
+            response.MutableNode()->SetSize(0);
+            return MakeFuture(std::move(response));
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        // This write must be flushed before the truncating CreateHandle.
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            NodeId,
+            HandleId,
+            100,
+            "abc");
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        auto openRequest = std::make_shared<TOpenHandleRequest>(NodeId);
+        openRequest->In->Body.flags |= O_WRONLY | O_TRUNC;
+        auto open = bootstrap.Fuse->SendRequest(openRequest);
+        createHandleCalled.GetFuture().GetValue(WaitTimeout);
+
+        // Keep a newer write behind the acquired barrier.
+        write = bootstrap.Fuse
+                    ->SendRequest<TWriteRequest>(NodeId, HandleId, 0, "abc");
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+
+        NProto::TCreateHandleResponse createHandleResponse;
+        createHandleResponse.SetHandle(HandleId);
+        createHandleResponse.MutableNodeAttr()->SetId(NodeId);
+        createHandleResponse.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+        createHandleResponse.MutableNodeAttr()->SetSize(0);
+        createHandlePromise.SetValue(std::move(createHandleResponse));
+
+        UNIT_ASSERT_VALUES_EQUAL(HandleId, open.GetValue(WaitTimeout));
+
+        auto getAttrRequest = std::make_shared<TGetAttrRequest>(NodeId);
+        auto getAttr = bootstrap.Fuse->SendRequest(getAttrRequest);
+        UNIT_ASSERT_NO_EXCEPTION(getAttr.GetValue(WaitTimeout));
+        const ui64 nodeSize = getAttrRequest->Out->Body.attr.size;
+
+        // Flush the newer write before checking the service call count.
+        auto flush =
+            bootstrap.Fuse->SendRequest<TFlushRequest>(NodeId, HandleId);
+        UNIT_ASSERT_NO_EXCEPTION(flush.GetValue(WaitTimeout));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalledBeforeCreateHandle.load());
+        UNIT_ASSERT_VALUES_EQUAL(3, nodeSize);
+        UNIT_ASSERT_VALUES_EQUAL(2, writeDataCalled.load());
+    }
+
     Y_UNIT_TEST(DirectReadAndWritesShouldTriggerWriteBackCacheFlush)
     {
         NProto::TFileStoreFeatures features;
