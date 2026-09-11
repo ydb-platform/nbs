@@ -2,7 +2,6 @@ syntax = "proto3";
 
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/storage/core/protos/error.proto";
-import "cloud/storage/core/protos/trace.proto";
 
 package NCloud.NBlockStore.NProto;
 
@@ -64,20 +63,16 @@ message TReadBlocksRequest
 
 message TReadBlocksResponse
 {
+    reserved 3, 5;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
 
     // Requested blocks.
     TIOVector Blocks = 2;
 
-    // Request traces. Deprecated. Use Headers.Trace instead.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 3;
-
     // Bitmask for unencrypted blocks
     bytes UnencryptedBlockMask = 4;
-
-    // Throttler delay. Deprecated. Use Headers.Throttler.Delay instead.
-    uint64 DeprecatedThrottlerDelay = 5;
 
     // If true, it means that all the data read was zeros.
     // It's a hint, false negatives are allowed.
@@ -123,14 +118,10 @@ message TWriteBlocksRequest
 
 message TWriteBlocksResponse
 {
+    reserved 2, 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces. Deprecated. Use Headers.Trace instead.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
-
-    // Throttler delay.
-    uint64 DeprecatedThrottlerDelay = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
@@ -162,14 +153,10 @@ message TZeroBlocksRequest
 
 message TZeroBlocksResponse
 {
+    reserved 2, 3;
+
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
-
-    // Request traces.
-    NCloud.NProto.TTraceInfo DeprecatedTrace = 2;
-
-    // Throttler delay. Deprecated. Use Headers.Throttler.Delay instead.
-    uint64 DeprecatedThrottlerDelay = 3;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

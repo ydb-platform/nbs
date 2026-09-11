@@ -337,43 +337,49 @@ IDs).
 For such cases we return errors to client even if client somehow managed to
 receive response.
 
-### Cleanup by both session id and pipe server id
+### Cleanup by pipe server id and by session id
 
-A pipe disconnect arrives as `TEvServerDisconnected` and is handled by
-`HandleSessionDisconnectedInWork`. Cleanup is driven by **two** keys, because a
-single key is not sufficient:
+Unconfirmed data is cleaned up by two different keys, each on its own trigger.
 
-- **By session id.** From the disconnected pipe server we resolve the matching
-  session ids (`FindSessionIdsByPipeServer`) and call
-  `DeleteUnconfirmedDataForSession` for each.
-- **By pipe server id.** We additionally call
-  `DeleteUnconfirmedDataForPipeServer(msg.ServerId)`.
+**By pipe server id on pipe disconnect.** A pipe disconnect arrives as
+`TEvServerDisconnected` and is handled by `HandleSessionDisconnectedInWork`,
+which calls `DeleteUnconfirmedDataForPipeServer(msg.ServerId)`.
+`HandleGenerateBlobIds` stores the pipe server id (`ev->Recipient`) in each
+`TTrackedUnconfirmedData` entry alongside `SessionId`, so on disconnect every
+entry owned by that pipe is dropped. This is the key that actually identifies
+the writer: `GenerateBlobIds` is sent over the shared tablet-proxy pipe (or, for
+sharded `WriteData`, over a direct write pipe created by the service write
+actor) not over the pipe that created the session. Only the pipe that
+issued `GenerateBlobIds` is relevant here; a disconnect of the session's
+control pipe does not touch unconfirmed data.
 
-Deletion by **session id** is not limited to the disconnect path.
-`DeleteUnconfirmedDataForSession` is also called when:
+**By session id — on session recovery or destruction.**
+`DeleteUnconfirmedDataForSession` is called when:
 
 - a session is **recreated/restored** — `CompleteTx_CreateSession` with
   `SessionInterrupted` set (a client `CreateSession` that recovers an existing
   session, by seqNo or via `RestoreClientSession`);
 - a session is **destroyed** — `CompleteTx_DestroySession`.
 
-So a session recreation still drops that session's unconfirmed data. Deletion by
-**pipe server id** is the part that is specific to the disconnect path.
-
-The pipe-server-id path matters for the **sharded WriteData** case. There,
-`GenerateBlobIds` can reach the shard through a *direct write pipe* created by
-the service write actor — **not** through the pipe that created the shard
-session. When such a direct write pipe disconnects, the shard cannot resolve it
-back to a session, so deleting by session id alone would leave the unconfirmed
-record behind. To cover this, `HandleGenerateBlobIds` stores the pipe server id
-(`ev->Recipient`) in each `TTrackedUnconfirmedData` entry (alongside
-`SessionId`), and on disconnect we also delete every entry owned by that pipe.
+The control pipe case is covered by the first bullet: when the pipe that
+created the session drops, the service-side session actor reconnects and
+re-sends `CreateSession`, which takes the recovery branch and deletes the
+session's unconfirmed data before the response is sent. That is what guarantees
+a reincarnated client's writes cannot be superseded by stale unconfirmed
+records from the previous incarnation `AddBlob` allocates a fresh commit id
+at execution time, so a late `ConfirmAddData` for a stale entry would otherwise
+win over a newer write. Instead it is rejected with `unconfirmed data not
+found`.
 
 Both paths funnel through the same `DeleteUnconfirmedData` helper (it just takes
 a different `shouldDelete` predicate), so they share the ordering guarantee
 described below: once commit ids are placed into the `DeletionQueue`, the
 `DeleteUnconfirmedData` tx must run before any later `AddBlob` execute, which is
 why it is kept page-fault-free.
+
+If neither trigger fires (the writer's pipe stays alive but the client never
+confirms or cancels), the record is dropped by the
+`GenerateBlobIdsReleaseCollectBarrierTimeout` timer.
 
 Some scenarios with such interruptions can be observed below. `CancelAddData`,
 generally speaking, has the same situation but in comparison with
@@ -395,7 +401,6 @@ sequenceDiagram
     V->>T: ConfirmAddData commitId (arrived early)
 
     alt Pipe / server disconnect (TEvServerDisconnected)
-        T->>T: DeleteUnconfirmedDataForSession (each matched session)
         T->>T: DeleteUnconfirmedDataForPipeServer (msg.ServerId)
     else Session recreation (CreateSession, SessionInterrupted)
         T->>T: DeleteUnconfirmedDataForSession (this session)
@@ -414,7 +419,7 @@ sequenceDiagram
     V->>T: ConfirmAddData commitId (arrived late)
     T-->>V: ConfirmAddDataResponse error unconfirmed data not found
 
-    Note over T: Session-id and pipe-id cleanup share DeleteUnconfirmedData
+    Note over T: Pipe-id and session-id cleanup share DeleteUnconfirmedData
 ```
 
 ```mermaid
@@ -435,7 +440,6 @@ sequenceDiagram
     T->>T: commitId is in progress, store PendingConfirmation
 
     alt Pipe / server disconnect (TEvServerDisconnected)
-        T->>T: DeleteUnconfirmedDataForSession (each matched session)
         T->>T: DeleteUnconfirmedDataForPipeServer (msg.ServerId)
     else Session recreation (CreateSession, SessionInterrupted)
         T->>T: DeleteUnconfirmedDataForSession (this session)
@@ -470,7 +474,6 @@ sequenceDiagram
     X->>T: Complete AddDataUnconfirmed move to UnconfirmedData
 
     alt Pipe / server disconnect (TEvServerDisconnected)
-        T->>T: DeleteUnconfirmedDataForSession (each matched session)
         T->>T: DeleteUnconfirmedDataForPipeServer (msg.ServerId)
     else Session recreation (CreateSession, SessionInterrupted)
         T->>T: DeleteUnconfirmedDataForSession (this session)

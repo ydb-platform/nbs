@@ -4,17 +4,13 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <silk/fibers/event.h>
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
-#include <silk/fibers/mutex.h>
 #include <silk/util/logger.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
-
-#include <atomic>
-#include <mutex>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -77,6 +73,10 @@ NProto::TWriteLogRecordRequest MakeWriteLogRecordRequest(
     NProto::TDeviceRequestHeaders headers,
     const TVector<TPageGroup>& pageGroups,
     ui64 lsn);
+
+NProto::TWriteLogRecordRequest MakeReplayRequest(
+    NProto::TDeviceRequestHeaders headers,
+    const NProto::TJournalRecord& record);
 
 NProto::TReadPagesRequest MakeReadPagesRequest(
     NProto::TDeviceRequestHeaders headers,

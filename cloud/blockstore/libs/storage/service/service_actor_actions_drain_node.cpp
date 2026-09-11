@@ -44,7 +44,9 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
-    void DrainNode(const TActorContext& ctx, bool keepDown);
+    void DrainNode(
+        const TActorContext& ctx,
+        const NPrivateProto::TDrainNodeRequest& drainRequest);
 
     void HandleSuccess(const TActorContext& ctx);
     void HandleError(const TActorContext& ctx, const NProto::TError& error);
@@ -74,14 +76,23 @@ void TDrainNodeActionActor::Bootstrap(const TActorContext& ctx)
         return;
     }
 
-    DrainNode(ctx, drainRequest.GetKeepDown());
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::SERVICE,
+        "Draining node started, DownPolicy=" <<
+        NCloud::NProto::EDrainDownPolicy_Name(
+            drainRequest.GetDownPolicy()));
+
+    DrainNode(ctx, drainRequest);
     Become(&TThis::StateWork);
 }
 
-void TDrainNodeActionActor::DrainNode(const TActorContext& ctx, bool keepDown)
+void TDrainNodeActionActor::DrainNode(
+    const TActorContext& ctx,
+    const NPrivateProto::TDrainNodeRequest& drainRequest)
 {
-    auto request =
-        std::make_unique<TEvHiveProxy::TEvDrainNodeRequest>(keepDown);
+    auto request = std::make_unique<TEvHiveProxy::TEvDrainNodeRequest>(
+        drainRequest.GetDownPolicy());
 
     NCloud::Send(
         ctx,

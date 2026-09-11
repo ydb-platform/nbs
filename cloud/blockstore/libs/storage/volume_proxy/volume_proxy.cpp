@@ -34,10 +34,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_HAS_MEMBER(GetDeprecatedThrottlerDelay);
-
-////////////////////////////////////////////////////////////////////////////////
-
 std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
     const TStorageConfig& config)
 {
@@ -60,20 +56,6 @@ constexpr bool IsDataPlaneMethod =
     std::is_same_v<TMethod, TEvService::TZeroBlocksMethod> ||
     std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod> ||
     std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>;
-
-template <typename TProtoMessage>
-const NProto::TTraceInfo& GetTraceInfo(const TProtoMessage& msg)
-{
-    if (msg.Record.GetHeaders().HasTrace()) {
-        return msg.Record.GetHeaders().GetTrace();
-    }
-    if constexpr (requires { msg.Record.MutableDeprecatedTrace(); }) {
-        return msg.Record.GetDeprecatedTrace();
-    }
-    return msg.Record.GetHeaders().GetTrace();
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 // VolumeProxy discovers the volume specified in the DiskId field of request,
 // establishes a connection to the tablet of this volume and redirects the
@@ -843,30 +825,20 @@ void TVolumeProxyActor::HandleResponse(
 
     if (it->second.CallContext->LWOrbit.HasShuttles()) {
         TraceSerializer->HandleTraceInfo(
-            GetTraceInfo(*msg),
+            msg->Record.GetHeaders().GetTrace(),
             it->second.CallContext->LWOrbit,
             it->second.SendTime,
             GetCycleCount());
-        if constexpr (requires { msg->Record.MutableDeprecatedTrace(); }) {
-            msg->Record.ClearDeprecatedTrace();
-        }
         msg->Record.MutableHeaders()->ClearTrace();
     }
 
-    using TProtoType = decltype(TMethod::TResponse::Record);
-    static_assert(
-        THasGetDeprecatedThrottlerDelay<TProtoType>::value ==
-        RequiresThrottling<TMethod>);
     if constexpr (RequiresThrottling<TMethod>) {
         NProto::TThrottlerInfo& throttler =
             *msg->Record.MutableHeaders()->MutableThrottler();
-        const ui64 throttlerDelay =
-            Max(msg->Record.GetDeprecatedThrottlerDelay(),
-                throttler.GetDelay());
+        const ui64 throttlerDelay = throttler.GetDelay();
         it->second.CallContext->AddTime(
             EProcessingStage::Postponed,
             TDuration::MicroSeconds(throttlerDelay));
-        msg->Record.SetDeprecatedThrottlerDelay(0);
         throttler.SetDelay(0);
         it->second.CallContext->SetPossiblePostponeDuration(TDuration::Zero());
 

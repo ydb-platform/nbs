@@ -80,12 +80,10 @@ void ProcessThrottleTime(
 {
     NProto::TThrottlerInfo& throttler =
         *localResponse.MutableHeaders()->MutableThrottler();
-    const ui64 throttlerDelay =
-        Max(localResponse.GetDeprecatedThrottlerDelay(), throttler.GetDelay());
+    const ui64 throttlerDelay = throttler.GetDelay();
     callContext->AddTime(
         EProcessingStage::Postponed,
         TDuration::MicroSeconds(throttlerDelay));
-    localResponse.SetDeprecatedThrottlerDelay(0);
     throttler.SetDelay(0);
     callContext->SetPossiblePostponeDuration(TDuration::Zero());
 
@@ -192,13 +190,10 @@ public:
 
         if (CallContext->LWOrbit.HasShuttles()) {
             TraceSerializer->HandleTraceInfo(
-                responseMsg.GetHeaders().HasTrace()
-                    ? responseMsg.GetHeaders().GetTrace()
-                    : responseMsg.GetDeprecatedTrace(),
+                responseMsg.GetHeaders().GetTrace(),
                 CallContext->LWOrbit,
                 StartTime,
                 GetCycleCount());
-            responseMsg.ClearDeprecatedTrace();
             responseMsg.MutableHeaders()->ClearTrace();
         }
 
@@ -370,13 +365,10 @@ public:
 
         if (CallContext->LWOrbit.HasShuttles()) {
             TraceSerializer->HandleTraceInfo(
-                responseMsg.GetHeaders().HasTrace()
-                    ? responseMsg.GetHeaders().GetTrace()
-                    : responseMsg.GetDeprecatedTrace(),
+                responseMsg.GetHeaders().GetTrace(),
                 CallContext->LWOrbit,
                 StartTime,
                 GetCycleCount());
-            responseMsg.ClearDeprecatedTrace();
             responseMsg.MutableHeaders()->ClearTrace();
         }
 
@@ -474,14 +466,11 @@ public:
         auto& responseMsg = static_cast<TResponse&>(*response.Proto);
 
         TraceSerializer->HandleTraceInfo(
-            responseMsg.GetHeaders().HasTrace()
-                ? responseMsg.GetHeaders().GetTrace()
-                : responseMsg.GetDeprecatedTrace(),
+            responseMsg.GetHeaders().GetTrace(),
             CallContext->LWOrbit,
             StartTime,
             GetCycleCount());
         responseMsg.MutableHeaders()->ClearTrace();
-        responseMsg.ClearDeprecatedTrace();
 
         ProcessThrottleTime(CallContext, responseMsg);
 
@@ -929,25 +918,6 @@ CreateRdmaEndpointClientAsync(
     });
 }
 
-IBlockStorePtr CreateRdmaDataEndpoint(
-    ILoggingServicePtr logging,
-    NRdma::IClientPtr client,
-    ITraceSerializerPtr traceSerializer,
-    ITaskQueuePtr taskQueue,
-    const TRdmaEndpointConfig& config)
-{
-    auto endpoint = std::make_shared<TRdmaDataEndpoint>(
-        std::move(logging),
-        std::move(traceSerializer),
-        std::move(taskQueue),
-        client->IsAlignedDataEnabled());
-
-    auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
-
-    endpoint->Init(startEndpoint.GetValue(WAIT_TIMEOUT));
-    return endpoint;
-}
-
 NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
@@ -970,6 +940,33 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
             });
         return result;
     });
+}
+
+TResultOrError<IBlockStorePtr> CreateRdmaDataEndpoint(
+    ILoggingServicePtr logging,
+    NRdma::IClientPtr client,
+    ITraceSerializerPtr traceSerializer,
+    ITaskQueuePtr taskQueue,
+    const TRdmaEndpointConfig& config,
+    NRdma::IClientEndpointHandlerPtr handler)
+{
+    auto endpoint = std::make_shared<TRdmaDataEndpoint>(
+        std::move(logging),
+        std::move(traceSerializer),
+        std::move(taskQueue),
+        client->IsAlignedDataEnabled());
+
+    auto [clientEndpoint, error] = client->StartEndpoint(
+        config.Address,
+        config.Port,
+        std::move(handler));
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    endpoint->Init(std::move(clientEndpoint));
+    return IBlockStorePtr(std::move(endpoint));
 }
 
 }   // namespace NCloud::NBlockStore::NClient

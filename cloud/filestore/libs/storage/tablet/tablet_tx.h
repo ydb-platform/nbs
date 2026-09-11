@@ -20,7 +20,6 @@
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
-#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -516,7 +515,6 @@ struct TTxIndexTablet
     struct TCreateSession: TTxIndexTabletBase, TErrorAware
     {
         /* const */ TRequestInfoPtr RequestInfo;
-        const NActors::TActorId PipeServerId;
         /* const */ NProtoPrivate::TCreateSessionRequest Request;
 
         TString SessionId;
@@ -525,10 +523,8 @@ struct TTxIndexTablet
 
         TCreateSession(
                 TRequestInfoPtr requestInfo,
-                const NActors::TActorId& pipeServerId,
                 NProtoPrivate::TCreateSessionRequest request)
             : RequestInfo(std::move(requestInfo))
-            , PipeServerId(pipeServerId)
             , Request(std::move(request))
         {}
 

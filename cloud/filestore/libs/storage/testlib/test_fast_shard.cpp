@@ -42,9 +42,10 @@ NFastShard::IFileSystemShardPtr TTestFastShards::CreateShard(
     ui32 shardNo,
     ui64 generation)
 {
-    Y_UNUSED(fileSystemId, config, shardNo, generation);
+    Y_UNUSED(fileSystemId, config, shardNo);
 
     Created.push_back(std::make_shared<TTestFastShard>());
+    Created.back()->Generation = generation;
     return Created.back();
 }
 

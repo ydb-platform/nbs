@@ -18,9 +18,11 @@ namespace {
 struct TRemoteStorage: public IStorage
 {
     const IBlockStorePtr Endpoint;
+    const ICellConnectionPtr Connection;
 
-    explicit TRemoteStorage(IBlockStorePtr endpoint)
+    TRemoteStorage(IBlockStorePtr endpoint, ICellConnectionPtr connection)
         : Endpoint(std::move(endpoint))
+        , Connection(std::move(connection))
     {}
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(
@@ -69,9 +71,13 @@ struct TRemoteStorage: public IStorage
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IStoragePtr CreateRemoteStorage(IBlockStorePtr endpoint)
+IStoragePtr CreateRemoteStorage(
+    IBlockStorePtr endpoint,
+    ICellConnectionPtr connection)
 {
-    return std::make_shared<TRemoteStorage>(std::move(endpoint));
+    return std::make_shared<TRemoteStorage>(
+        std::move(endpoint),
+        std::move(connection));
 }
 
 }   // namespace NCloud::NBlockStore::NCells

@@ -9,6 +9,7 @@ ENDIF()
 
 SRCS(
     tablet_bench.cpp
+    tablet_state_iface_bench.cpp
 )
 
 PEERDIR(

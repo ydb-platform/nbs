@@ -16,7 +16,7 @@
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_helpers.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_quorum.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
-#include <cloud/filestore/private/api/unsafe_protos/unsafe.pb.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/simple_template.h>
@@ -2173,6 +2173,8 @@ struct TStorageGroupFactory: IStorageGroupFactory
             groupConfig.RetryPolicy.BackoffIncrement =
                 TDuration::MilliSeconds(config.GetRetryBackoffIncrementMs());
         }
+
+        groupConfig.JournalRestoreEnabled = config.GetJournalRestoreEnabled();
 
         if (sg.GetType() == NProtoPrivate::TStorageGroup::E_SG_QUORUM_MIRROR) {
             return CreateQuorumMirroredStorageGroup(

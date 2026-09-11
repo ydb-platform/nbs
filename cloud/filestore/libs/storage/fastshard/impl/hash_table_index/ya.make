@@ -33,13 +33,12 @@ PEERDIR(
     cloud/filestore/libs/storage/fastshard/sn/quorum
     cloud/filestore/libs/storage/model
 
-    cloud/filestore/private/api/unsafe_protos
+    cloud/filestore/private/api/protos
 )
 
 END()
 
-# TODO(#5895): fix silk bootstrap/shutdown under msan
-IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB AND SANITIZER_TYPE != "memory")
+IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     RECURSE_FOR_TESTS(
         ut
     )

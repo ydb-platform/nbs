@@ -2,8 +2,6 @@
 
 #include <cloud/filestore/libs/storage/core/model.h>
 
-#include <util/generic/guid.h>
-
 #include <util/string/builder.h>
 #include <util/string/cast.h>
 
@@ -21,6 +19,28 @@ static_assert(MinShardIdEncodingVersion <= ShardIdAsBinaryStream);
 static_assert(ShardIdAsBinaryStream <= MaxShardIdEncodingVersion);
 
 static_assert(sizeof(TGUID::dw) == 16);
+
+
+Y_FORCE_INLINE void
+DecodedShardId(const TString& mainFsId, const ui16 shardNo, TString& shardId)
+{
+    constexpr size_t MaxDecimalDigitsInUi16 = 5;
+
+    shardId.ReserveAndResize(
+        mainFsId.size() + ShardNumPrefix.size() + MaxDecimalDigitsInUi16);
+    char* ptr = shardId.Detach();
+    const char* const start = ptr;
+
+    memcpy(ptr, mainFsId.data(), mainFsId.size());
+    ptr += mainFsId.size();
+
+    memcpy(ptr, ShardNumPrefix.data(), ShardNumPrefix.size());
+    ptr += ShardNumPrefix.size();
+
+    std::to_chars_result result =
+        std::to_chars(ptr, ptr + MaxDecimalDigitsInUi16, shardNo);
+    shardId.ReserveAndResize(result.ptr - start);
+}
 
 }   // namespace
 
@@ -80,17 +100,14 @@ bool INodeIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainF
         return false;
     }
 
-    // Decode ShardId
-    ui16 shardNo = 0;
-    char version = 0;
-    TMemoryInput shardNoIn(ShardId.data(), ShardId.size());
-    shardNoIn.Read(&version, sizeof(version));
-    shardNoIn.Read(&shardNo, sizeof(shardNo));
-
-    // As of now, only one type of encoding exists.
-    if (version != ShardIdAsBinaryStream) {
+    // The first byte in ShardId is a version.
+    if (ShardId[0] != ShardIdAsBinaryStream) {
         return false;
     }
+
+    // Get a shard number from ShardId.
+    ui16 shardNo;
+    memcpy(&shardNo, ShardId.data() + sizeof(char), sizeof(shardNo));
 
     // ShardNodeName should be GUID in binary format.
     if (ShardNodeName.size() != sizeof(TGUID::dw)) {
@@ -98,16 +115,16 @@ bool INodeIndexTabletDatabase::TNodeRef::TryToDecodeShardId(const TString& mainF
     }
 
     // Create decoded ShardId as a string.
-    ShardId = shardNo
-                  ? TStringBuilder() << mainFsId << ShardNumPrefix << shardNo
-                  : mainFsId;
+    if (shardNo) {
+        DecodedShardId(mainFsId, shardNo, ShardId);
+    } else {
+        ShardId = mainFsId;
+    }
 
     // Decode ShardNodeName
     TGUID guid;
-    TMemoryInput shardNodeNameIn(ShardNodeName.data(), ShardNodeName.size());
-    shardNodeNameIn.Read(guid.dw, sizeof(guid.dw));
-
-    ShardNodeName = guid.AsGuidString();
+    memcpy(guid.dw, ShardNodeName.data(), sizeof(guid.dw));
+    GuidToString(guid, ShardNodeName);
 
     return true;
 }

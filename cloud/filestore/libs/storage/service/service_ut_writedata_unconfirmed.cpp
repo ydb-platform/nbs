@@ -184,7 +184,7 @@ enum class EShardPipeToDisconnect
     Data,
 };
 
-void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
+void DoTestShardUnconfirmedDataOnServicePipeDisconnect(
     EShardPipeToDisconnect pipeToDisconnect)
 {
     TShardedFileSystemConfig fsConfig;
@@ -414,13 +414,12 @@ void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
         false /* updateConfig */);
 
     // At this point the write actor is blocked on blob storage, so the
-    // unconfirmed entry must stay visible until either the data pipe or the
-    // control pipe is disconnected.
+    // unconfirmed entry must stay visible until the data pipe that issued
+    // GenerateBlobIds is disconnected.
     UNIT_ASSERT_VALUES_EQUAL(
         1,
         GetStorageStats(shardTablet).GetUnconfirmedDataCount());
 
-    // Select either the shard control pipe or the active data pipe.
     struct TPipeToDisconnect
     {
         TActorId Server;
@@ -437,36 +436,43 @@ void DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
         dataPipeClientIt->second,
         serviceNodeIdx};
 
-    const TPipeToDisconnect pipeToDisconnectInfo =
-        pipeToDisconnect == EShardPipeToDisconnect::Control
-            ? controlPipeToDisconnect
-            : dataPipeToDisconnect;
+    // Close the pipe and wait until the shard observes the tablet pipe server
+    // disconnect. The disconnect dispatch can already execute and commit the
+    // cleanup tx, so querying stats after it is the synchronization point for
+    // the assertions below.
+    auto disconnectPipe = [&](const TPipeToDisconnect& pipe)
+    {
+        runtime.ClosePipe(pipe.Client, TActorId(), pipe.NodeIdx);
 
-    runtime.ClosePipe(
-        pipeToDisconnectInfo.Client,
-        TActorId(),
-        pipeToDisconnectInfo.NodeIdx);
+        TDispatchOptions disconnectOptions;
+        disconnectOptions.FinalEvents = {TDispatchOptions::TFinalEventCondition(
+            [server = pipe.Server](IEventHandle& event)
+            {
+                if (event.GetTypeRewrite() !=
+                    TEvTabletPipe::EvServerDisconnected) {
+                    return false;
+                }
 
-    // Wait until the shard observes the selected tablet pipe server
-    // disconnect.
-    TDispatchOptions disconnectOptions;
-    disconnectOptions.FinalEvents = {TDispatchOptions::TFinalEventCondition(
-        [server = pipeToDisconnectInfo.Server](IEventHandle& event)
-        {
-            if (event.GetTypeRewrite() != TEvTabletPipe::EvServerDisconnected) {
-                return false;
-            }
+                const auto* msg =
+                    event.Get<TEvTabletPipe::TEvServerDisconnected>();
+                return msg->ServerId == server;
+            })};
+        UNIT_ASSERT_C(
+            runtime.DispatchEvents(disconnectOptions, TDuration::Seconds(5)),
+            TStringBuilder() << "Timed out waiting for shard pipe disconnect "
+                             << pipe.Server);
+    };
 
-            const auto* msg = event.Get<TEvTabletPipe::TEvServerDisconnected>();
-            return msg->ServerId == server;
-        })};
-    UNIT_ASSERT_C(
-        runtime.DispatchEvents(disconnectOptions, TDuration::Seconds(5)),
-        TStringBuilder() << "Timed out waiting for shard pipe disconnect "
-                         << pipeToDisconnectInfo.Server);
+    if (pipeToDisconnect == EShardPipeToDisconnect::Control) {
+        // The control pipe only carried CreateSession. Unconfirmed data is
+        // owned by the pipe that issued GenerateBlobIds, so it must survive.
+        disconnectPipe(controlPipeToDisconnect);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            GetStorageStats(shardTablet).GetUnconfirmedDataCount());
+    }
 
-    // The disconnect dispatch can already execute and commit the cleanup tx.
-    // Querying stats after it is the synchronization point for the assertion.
+    disconnectPipe(dataPipeToDisconnect);
     UNIT_ASSERT_VALUES_EQUAL(
         0,
         GetStorageStats(shardTablet).GetUnconfirmedDataCount());
@@ -1496,13 +1502,13 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
 
     Y_UNIT_TEST(ShouldDeleteShardUnconfirmedDataOnServiceDataPipeDisconnect)
     {
-        DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
+        DoTestShardUnconfirmedDataOnServicePipeDisconnect(
             EShardPipeToDisconnect::Data);
     }
 
-    Y_UNIT_TEST(ShouldDeleteShardUnconfirmedDataOnServiceControlPipeDisconnect)
+    Y_UNIT_TEST(ShouldKeepShardUnconfirmedDataOnServiceControlPipeDisconnect)
     {
-        DoShouldDeleteShardUnconfirmedDataOnServicePipeDisconnect(
+        DoTestShardUnconfirmedDataOnServicePipeDisconnect(
             EShardPipeToDisconnect::Control);
     }
 

@@ -69,6 +69,7 @@ void OnResponse(
         traceSerializer,
         systemCounters,
         fileSystemId,
+        true /* isFastShard */,
         metrics,
         response->Record,
         callContext,
@@ -82,9 +83,11 @@ void OnResponse(
         FormatError(response->Record.GetError()).c_str(),
         builtTraceInfo);
     LOG_TRACE(*ass, TFileStoreComponents::TABLET,
-        "%s " Y_STRINGIZE(name) " response %s",
+        "%s %s #%lu response: %s",
         logTag.c_str(),
-        response->Record.ShortUtf8DebugString().Quote().c_str());
+        TMethod::Name,
+        callContext->RequestId,
+        TProtoMessagePrinter().ToString(response->Record).c_str());
 
     ass->Send(sender, response.release(), 0 /* flags */, cookie);
 
@@ -107,7 +110,7 @@ void TIndexTabletActor::HandleAdapter##name(                                   \
     LOG_TRACE(ctx, TFileStoreComponents::TABLET,                               \
         "%s " Y_STRINGIZE(name) " request %s",                                 \
         LogTag.c_str(),                                                        \
-        msg->Record.ShortUtf8DebugString().Quote().c_str());                   \
+        ProtoMessagePrinter.ToString(msg->Record).c_str());                    \
     using TMethod = ns::T##name##Method;                                       \
     const bool accepted = AcceptRequestNoSession<TMethod>(                     \
         ev,                                                                    \

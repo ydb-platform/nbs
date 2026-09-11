@@ -50,9 +50,9 @@ struct TRangeCompactionInfo
     const TBlockMask DataBlobSkipMask;
     const TPartialBlobId ZeroBlobId;
     const TBlockMask ZeroBlobSkipMask;
-    const ui32 BlobsSkippedByCompaction;
-    const ui32 BlocksSkippedByCompaction;
-    const ui32 MixedBlockCountSkippedByCompaction;
+    ui32 BlobsSkippedByCompaction;
+    ui32 BlocksSkippedByCompaction;
+    ui32 MixedBlockCountSkippedByCompaction;
     TVector<std::optional<ui32>> BlockChecksums;
     const EChannelDataKind ChannelDataKind;
 
@@ -114,11 +114,23 @@ void ApplyBlobsSkipping(
     const TStorageConfig& config,
     const ui32 maxSkippedBlobs,
     TPartitionState& state,
-    TTxPartition::TRangeCompaction& args);
+    TTxPartition::TRangeCompaction& args,
+    TAffectedBlobs& skippedBlobs);
 
-////////////////////////////////////////////////////////////////////////////////
+void RecreateBlobMetas(
+    TTxPartition::TRangeCompaction& args,
+    ui64 commitId,
+    ui64 tabletId);
 
-void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId);
+// Account for blobs and blocks skipped by incremental compaction or commit ID.
+void AccountSkippedBlobsAndBlocks(
+    const ui64 commitId,
+    const ui64 tabletId,
+    const TAffectedBlobs& affectedBlobs,
+    const TAffectedBlobs& skippedBlobs,
+    ui32& blobsSkipped,
+    ui32& blocksSkipped,
+    ui32& mixedBlocksSkipped);
 
 ////////////////////////////////////////////////////////////////////////////////
 

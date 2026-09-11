@@ -1202,6 +1202,7 @@ void TIndexTabletActor::CompleteTx_ReadData(
         *Config,
         *SystemCounters,
         GetFileSystemId(),
+        false /* isFastShard */,
         Metrics->CPUUsageRate,
         &backendInfo);
 

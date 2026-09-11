@@ -21,6 +21,7 @@ struct ICellHostEndpointBootstrap
         NThreading::TFuture<NClient::IMultiClientEndpointPtr>;
     using TRdmaEndpointBootstrapFuture =
         NThreading::TFuture<TResultOrError<IBlockStorePtr>>;
+    using TRdmaEndpointBootstrapResult = TResultOrError<IBlockStorePtr>;
     using TShutdownEndpointFuture = NThreading::TFuture<void>;
 
     virtual TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
@@ -30,6 +31,11 @@ struct ICellHostEndpointBootstrap
     virtual TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) = 0;
+
+    virtual TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
+        const TBootstrap& bootstrap,
+        const TCellHostConfig& config,
+        NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler) = 0;
 
     virtual ~ICellHostEndpointBootstrap() = default;
 };

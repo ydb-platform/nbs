@@ -163,7 +163,6 @@ void TCompactRangeActionActor::HandleCompactRangeResponse(
         HandleError(ctx, error);
         return;
     }
-    msg->Record.ClearDeprecatedTrace();
     msg->Record.MutableHeaders()->ClearTrace();
 
     TString response;

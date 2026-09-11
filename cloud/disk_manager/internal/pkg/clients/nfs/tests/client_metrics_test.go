@@ -14,8 +14,7 @@ import (
 	client_metrics_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/metrics/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
-	stats_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos"
-	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/unsafe_protos"
+	private_protos "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos"
 	protos "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos"
 	nfs_client "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	nfs_client_mocks "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client/mocks"
@@ -361,15 +360,15 @@ func TestClientGetStorageStatsSuccess(t *testing.T) {
 		mock.Anything,
 		"getstoragestats",
 		matchesActionRequest(
-			&stats_protos.TGetStorageStatsRequest{
+			&private_protos.TGetStorageStatsRequest{
 				FileSystemId: "fs-1",
 			},
 		),
 	).Return(
 		marshalActionResponse(
 			t,
-			&stats_protos.TGetStorageStatsResponse{
-				Stats: &stats_protos.TStorageStats{
+			&private_protos.TGetStorageStatsResponse{
+				Stats: &private_protos.TStorageStats{
 					UsedNodesCount:   42,
 					UsedBlocksCount:  100,
 					TotalBlocksCount: 1024,
@@ -1172,7 +1171,7 @@ func TestClientGetStorageStatsResponseWrappedError(t *testing.T) {
 	).Return(
 		marshalActionResponse(
 			t,
-			&stats_protos.TGetStorageStatsResponse{
+			&private_protos.TGetStorageStatsResponse{
 				Error: &coreprotos.TError{
 					Code:    testNfsClientError.Code,
 					Message: testNfsClientError.Message,
@@ -1964,7 +1963,7 @@ func TestClientGetStorageStatsResponseNonRetriableError(t *testing.T) {
 	).Return(
 		marshalActionResponse(
 			t,
-			&stats_protos.TGetStorageStatsResponse{
+			&private_protos.TGetStorageStatsResponse{
 				Error: &coreprotos.TError{
 					Code:    testNfsClientNonRetriableError.Code,
 					Message: testNfsClientNonRetriableError.Message,

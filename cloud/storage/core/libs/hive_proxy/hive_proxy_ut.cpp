@@ -52,6 +52,8 @@ struct THiveMockState
     THashMap<ui64, ui32> KnownGenerations;
     THashSet<ui32> DrainableNodeIds;
     THashSet<ui32> DownNodeIds;
+    NKikimrHive::EDrainDownPolicy DrainDownPolicy =
+        NKikimrHive::DRAIN_POLICY_NO_DOWN;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -383,8 +385,11 @@ private:
 
         NKikimrProto::EReplyStatus replyStatus = NKikimrProto::OK;
         ui64 nodeId = msg->Record.GetNodeID();
+        State->DrainDownPolicy = msg->Record.GetDownPolicy();
         if (State->DrainableNodeIds.contains(nodeId)) {
-            if (msg->Record.GetKeepDown()) {
+            if (msg->Record.GetDownPolicy() !=
+                NKikimrHive::DRAIN_POLICY_NO_DOWN)
+            {
                 State->DownNodeIds.insert(nodeId);
             }
         } else {
@@ -707,13 +712,13 @@ struct TTestEnv
 
     TEvHiveProxy::TDrainNodeResponse SendDrainNodeRequest(
         const TActorId& sender,
-        bool keepDown,
+        NProto::EDrainDownPolicy downPolicy,
         ui32 errorCode)
     {
         Runtime.Send(new IEventHandle(
             MakeHiveProxyServiceId(),
             sender,
-            new TEvHiveProxy::TEvDrainNodeRequest(keepDown)
+            new TEvHiveProxy::TEvDrainNodeRequest(downPolicy)
         ));
         using TResponse = TEvHiveProxy::TEvDrainNodeResponse;
         auto ev = Runtime.GrabEdgeEvent<TResponse>(sender);
@@ -1171,14 +1176,23 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
         auto sender = runtime.AllocateEdgeActor();
 
-        env.SendDrainNodeRequest(sender, false, E_FAIL);
+        env.SendDrainNodeRequest(
+            sender,
+            NProto::DRAIN_POLICY_NO_DOWN,
+            E_FAIL);
 
         env.HiveState->DrainableNodeIds.insert(sender.NodeId());
-        env.SendDrainNodeRequest(sender, false, S_OK);
+        env.SendDrainNodeRequest(
+            sender,
+            NProto::DRAIN_POLICY_NO_DOWN,
+            S_OK);
 
         UNIT_ASSERT(!env.HiveState->DownNodeIds.contains(sender.NodeId()));
 
-        env.SendDrainNodeRequest(sender, true, S_OK);
+        env.SendDrainNodeRequest(
+            sender,
+            NProto::DRAIN_POLICY_KEEP_DOWN,
+            S_OK);
         UNIT_ASSERT(env.HiveState->DownNodeIds.contains(sender.NodeId()));
     }
 
@@ -2419,6 +2433,35 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         auto result2 = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
         UNIT_ASSERT(result2.StorageInfo);
         UNIT_ASSERT_VALUES_EQUAL(2u, result2.SuggestedGeneration);
+    }
+
+    Y_UNIT_TEST(ShouldForwardDrainDownPolicy)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+
+        auto sender = runtime.AllocateEdgeActor();
+        env.HiveState->DrainableNodeIds.insert(sender.NodeId());
+
+        const auto assertPolicy = [&] (
+            NProto::EDrainDownPolicy policy,
+            NKikimrHive::EDrainDownPolicy expectedPolicy)
+        {
+            env.SendDrainNodeRequest(sender, policy, S_OK);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(expectedPolicy),
+                static_cast<int>(env.HiveState->DrainDownPolicy));
+        };
+
+        assertPolicy(
+            NProto::DRAIN_POLICY_NO_DOWN,
+            NKikimrHive::DRAIN_POLICY_NO_DOWN);
+        assertPolicy(
+            NProto::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART,
+            NKikimrHive::DRAIN_POLICY_KEEP_DOWN_UNTIL_RESTART);
+        assertPolicy(
+            NProto::DRAIN_POLICY_KEEP_DOWN,
+            NKikimrHive::DRAIN_POLICY_KEEP_DOWN);
     }
 }
 

@@ -291,7 +291,6 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
                 map.Flip();
             }
 
-            response.SetDeprecatedThrottlerDelay(blocksCount);
             response.MutableHeaders()->MutableThrottler()->SetDelay(
                 blocksCount);
             throttlerDelaySum += blocksCount;
@@ -301,9 +300,6 @@ Y_UNIT_TEST_SUITE(TSplitRequestTest)
 
         auto mergedResponse = MergeReadResponses(responses);
         UNIT_ASSERT(!HasError(mergedResponse.GetError()));
-        UNIT_ASSERT_VALUES_EQUAL(
-            throttlerDelaySum,
-            mergedResponse.GetDeprecatedThrottlerDelay());
         UNIT_ASSERT_VALUES_EQUAL(
             throttlerDelaySum,
             mergedResponse.GetHeaders().GetThrottler().GetDelay());

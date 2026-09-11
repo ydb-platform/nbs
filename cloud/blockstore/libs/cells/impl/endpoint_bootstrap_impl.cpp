@@ -41,6 +41,26 @@ auto TCellCellHostEndpointBootstrap::SetupHostRdmaEndpoint(
         rdmaEndpoint);
 }
 
+auto TCellCellHostEndpointBootstrap::SetupHostRdmaEndpoint(
+    const TBootstrap& bootstrap,
+    const TCellHostConfig& config,
+    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler)
+    -> TRdmaEndpointBootstrapResult
+{
+    NClient::TRdmaEndpointConfig rdmaEndpoint{
+        .Address = config.GetFqdn(),
+        .Port = config.GetRdmaPort(),
+    };
+
+    return CreateRdmaDataEndpoint(
+        bootstrap.Logging,
+        bootstrap.RdmaClient,
+        bootstrap.TraceSerializer,
+        bootstrap.RdmaTaskQueue,
+        rdmaEndpoint,
+        std::move(handler));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ICellHostEndpointBootstrapPtr CreateCellHostEndpointBootstrap()

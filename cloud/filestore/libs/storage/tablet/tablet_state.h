@@ -852,13 +852,6 @@ public:
         ui64 sessionSeqNo,
         bool readOnly,
         const NActors::TActorId& owner);
-    void RegisterSessionByPipeServer(
-        const NActors::TActorId& pipeServer,
-        const TString& sessionId);
-    void UnregisterSessionByPipeServer(const TString& sessionId);
-    const TVector<TString>& FindSessionIdsByPipeServer(
-        const NActors::TActorId& pipeServer) const;
-    void RemoveSessionByPipeServer(const NActors::TActorId& pipeServer);
     void OrphanSession(const NActors::TActorId& owner, TInstant inactivityDeadline);
     void ResetSession(IIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
