@@ -261,16 +261,16 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
     TManualEvent WriteBlocked;
     TVector<TBlockedWrite> BlockedWrites;
 
-    TFuture<TResultOrError<TKeyBuffers>> Restore() override
+    TFuture<TRestoreResult> Restore() override
     {
         if (FailRestore.load()) {
-            return MakeFuture<TResultOrError<TKeyBuffers>>(
+            return MakeFuture<TRestoreResult>(
                 MakeError(E_IO, "restore failed"));
         }
 
         auto response = Impl->Restore().GetValueSync();
         if (HasError(response)) {
-            return MakeFuture<TResultOrError<TKeyBuffers>>(
+            return MakeFuture<TRestoreResult>(
                 response.GetError());
         }
 
@@ -279,7 +279,7 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
         auto buffers = response.ExtractResult();
         Reverse(buffers.begin(), buffers.end());
 
-        return MakeFuture<TResultOrError<TKeyBuffers>>(std::move(buffers));
+        return MakeFuture<TRestoreResult>(std::move(buffers));
     }
 
     TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override

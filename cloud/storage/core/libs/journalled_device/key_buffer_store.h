@@ -7,9 +7,10 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/buffer.h>
-#include <util/generic/map.h>
+#include <util/generic/vector.h>
 
 #include <memory>
+#include <utility>
 
 namespace NCloud::NJournalled {
 
@@ -17,15 +18,16 @@ namespace NCloud::NJournalled {
 
 struct IKeyBufferStore
 {
+    using TRestoreResult = TResultOrError<TVector<std::pair<ui64, TBuffer>>>;
+
     virtual ~IKeyBufferStore() = default;
 
-    [[nodiscard]] virtual auto Restore()
-        -> NThreading::TFuture<TResultOrError<TMap<ui64, TBuffer>>> = 0;
+    [[nodiscard]] virtual NThreading::TFuture<TRestoreResult> Restore() = 0;
 
     [[nodiscard]] virtual auto Write(ui64 key, TBuffer buffer)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
 
-    [[nodiscard]] virtual auto EraseUpTo(ui64 lastKey)
+    [[nodiscard]] virtual auto EraseBelow(ui64 key)
         -> NThreading::TFuture<NCloud::NProto::TError> = 0;
 };
 
