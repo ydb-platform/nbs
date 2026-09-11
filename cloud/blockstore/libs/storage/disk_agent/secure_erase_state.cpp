@@ -54,11 +54,12 @@ std::optional<NProto::TError> TSecureEraseState::HandleRequest(
     }
 
     auto& erase = GetOrAdd(deviceId);
-    const bool eraseWithThisIdempotencyKeyAlreadyCompleted =
+    const bool eraseWithThisIdempotencyKeyAlreadyCompletedSuccessfully =
         generation != 0 && erase.Generation == generation &&
         erase.IdempotencyKey == idempotencyKey &&
-        erase.Status == ESecureEraseStatus::Completed;
-    if (eraseWithThisIdempotencyKeyAlreadyCompleted) {
+        erase.Status == ESecureEraseStatus::Completed &&
+        !HasError(erase.Error);
+    if (eraseWithThisIdempotencyKeyAlreadyCompletedSuccessfully) {
         return erase.Error;
     }
 

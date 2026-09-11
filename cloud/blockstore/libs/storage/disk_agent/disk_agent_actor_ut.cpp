@@ -3771,6 +3771,53 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         secureErase(S_OK);
     }
 
+    Y_UNIT_TEST(ShouldRetryFailedSecureEraseWithSameIdempotencyKey)
+    {
+        TTestBasicRuntime runtime;
+
+        const TString deviceId = "MemoryDevice1";
+        const TString clientId = "client-1";
+        constexpr ui64 idempotencyKey = 42;
+        constexpr ui32 generation = 1;
+
+        auto env = TTestEnvBuilder(runtime)
+            .With(DiskAgentConfig({deviceId}))
+            .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.AcquireDevices(
+            TVector<TString>{deviceId},
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        auto secureErase = [&] (auto expectedErrorCode) {
+            diskAgent.SendSecureEraseDeviceRequest(
+                deviceId,
+                idempotencyKey,
+                generation);
+
+            auto response = diskAgent.RecvSecureEraseDeviceResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedErrorCode,
+                response->Record.GetError().GetCode());
+        };
+
+        secureErase(E_INVALID_STATE);
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(10));
+
+        secureErase(S_OK);
+
+        diskAgent.AcquireDevices(
+            TVector<TString>{deviceId},
+            clientId,
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
+        secureErase(S_OK);
+    }
+
     Y_UNIT_TEST(ShouldRegisterDevices)
     {
         TVector<NProto::TDeviceConfig> devices;
