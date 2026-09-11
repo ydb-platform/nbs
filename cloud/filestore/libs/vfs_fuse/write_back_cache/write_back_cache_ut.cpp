@@ -2875,6 +2875,79 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // eviction
         UNIT_ASSERT(!HasError(flushFuture.GetValue()));
     }
+
+    Y_UNIT_TEST(ShouldNotFlushCachedDataOnNonTruncatingCreateHandle)
+    {
+        TBootstrap b;
+
+        b.WriteToCacheSync(1, 100, "abc");
+        UNIT_ASSERT_VALUES_EQUAL(0, b.SessionWriteDataHandlerCalled.load());
+
+        b.Session->CreateHandleHandler = [&](auto, const auto& request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(1, request->GetNodeId());
+            UNIT_ASSERT(!HasFlag(
+                request->GetFlags(),
+                NProto::TCreateHandleRequest::E_TRUNCATE));
+
+            return MakeFuture(NProto::TCreateHandleResponse());
+        };
+
+        auto request = std::make_shared<NProto::TCreateHandleRequest>();
+        request->SetNodeId(1);
+        request->SetFlags(ProtoFlag(NProto::TCreateHandleRequest::E_READ));
+
+        const auto response =
+            b.Cache.CreateHandle(b.CallContext, std::move(request))
+                .GetValueSync();
+
+        UNIT_ASSERT(!HasError(response));
+        UNIT_ASSERT_VALUES_EQUAL(0, b.SessionWriteDataHandlerCalled.load());
+        UNIT_ASSERT_VALUES_EQUAL(103, b.Cache.GetMaxWrittenOffset(1));
+
+        b.FlushCache(1);
+        UNIT_ASSERT_VALUES_EQUAL(1, b.SessionWriteDataHandlerCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldKeepMaxWrittenOffsetOnFailedTruncatingCreateHandle)
+    {
+        TBootstrap b;
+
+        b.WriteToCacheSync(1, 100, "abc");
+        UNIT_ASSERT_VALUES_EQUAL(103, b.Cache.GetMaxWrittenOffset(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, b.SessionWriteDataHandlerCalled.load());
+
+        auto createHandlePromise = NewPromise<NProto::TCreateHandleResponse>();
+
+        b.Session->CreateHandleHandler = [&](auto, const auto& request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(1, request->GetNodeId());
+            UNIT_ASSERT(HasFlag(
+                request->GetFlags(),
+                NProto::TCreateHandleRequest::E_TRUNCATE));
+            UNIT_ASSERT_VALUES_EQUAL(1, b.SessionWriteDataHandlerCalled.load());
+            return createHandlePromise.GetFuture();
+        };
+
+        auto request = std::make_shared<NProto::TCreateHandleRequest>();
+        request->SetNodeId(1);
+        request->SetFlags(
+            ProtoFlag(NProto::TCreateHandleRequest::E_WRITE) |
+            ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE));
+
+        auto future = b.Cache.CreateHandle(b.CallContext, std::move(request));
+
+        b.WriteToCacheSync(1, 50, "def");
+        UNIT_ASSERT_VALUES_EQUAL(103, b.Cache.GetMaxWrittenOffset(1));
+
+        NProto::TCreateHandleResponse response;
+        response.MutableError()->SetCode(E_REJECTED);
+        createHandlePromise.SetValue(std::move(response));
+
+        UNIT_ASSERT(HasError(future.GetValueSync()));
+        UNIT_ASSERT_VALUES_EQUAL(103, b.Cache.GetMaxWrittenOffset(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, b.SessionWriteDataHandlerCalled.load());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse

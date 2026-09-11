@@ -7500,6 +7500,117 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
     }
 
+    Y_UNIT_TEST(ShouldUseWriteBackCacheBarrierForTruncatingOpen)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        const ui32 automaticFlushPeriodMs = 0;
+        const ui64 NodeId = 123;
+        const ui64 HandleId = 456;
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,
+            automaticFlushPeriodMs);
+
+        auto firstWriteDataCalled = NewPromise();
+        auto firstWriteDataCalledFuture = firstWriteDataCalled.GetFuture();
+        auto firstWriteDataPromise = NewPromise<NProto::TWriteDataResponse>();
+
+        std::atomic<int> writeDataCalled = 0;
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto& rq)
+        {
+            const int call = writeDataCalled++;
+            if (call == 0) {
+                UNIT_ASSERT_VALUES_EQUAL(100, rq->GetOffset());
+                firstWriteDataCalled.SetValue();
+                return firstWriteDataPromise.GetFuture();
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(1, call);
+            UNIT_ASSERT_VALUES_EQUAL(0, rq->GetOffset());
+            return MakeFuture(NProto::TWriteDataResponse());
+        };
+
+        auto createHandleCalled = NewPromise();
+        auto createHandleCalledFuture = createHandleCalled.GetFuture();
+        auto createHandlePromise = NewPromise<NProto::TCreateHandleResponse>();
+
+        bootstrap.Service->CreateHandleHandler = [&](auto, const auto& rq)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(NodeId, rq->GetNodeId());
+            UNIT_ASSERT(HasFlag(
+                rq->GetFlags(),
+                NProto::TCreateHandleRequest::E_TRUNCATE));
+            createHandleCalled.SetValue();
+            return createHandlePromise.GetFuture();
+        };
+
+        bootstrap.Service->GetNodeAttrHandler = [&](auto, const auto&)
+        {
+            NProto::TGetNodeAttrResponse response;
+            response.MutableNode()->SetId(NodeId);
+            response.MutableNode()->SetType(NProto::E_REGULAR_NODE);
+            response.MutableNode()->SetSize(0);
+            return MakeFuture(std::move(response));
+        };
+
+        bootstrap.Start();
+        Y_DEFER
+        {
+            bootstrap.Stop();
+        };
+
+        // This write must be flushed before the truncating CreateHandle.
+        auto write1 = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            NodeId,
+            HandleId,
+            100,
+            "abc");
+        UNIT_ASSERT_NO_EXCEPTION(write1.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(0, writeDataCalled.load());
+
+        // This request is executed under barrier and triggers flush
+        auto openRequest = std::make_shared<TOpenHandleRequest>(NodeId);
+        openRequest->In->Body.flags |= O_WRONLY | O_TRUNC;
+        auto open = bootstrap.Fuse->SendRequest(openRequest);
+        firstWriteDataCalledFuture.GetValue(WaitTimeout);
+
+        // The second write cannot be flushed until the barrier is released
+        auto write2 = bootstrap.Fuse->SendRequest<TWriteRequest>(
+            NodeId,
+            HandleId,
+            0,
+            "abc");
+        UNIT_ASSERT_NO_EXCEPTION(write2.GetValue(WaitTimeout));
+
+        // Dispatching the first write is not enough: CreateHandle must wait for
+        // the WriteData response.
+        UNIT_ASSERT(!createHandleCalledFuture.Wait(TDuration::Seconds(1)));
+        firstWriteDataPromise.SetValue(NProto::TWriteDataResponse());
+        createHandleCalledFuture.GetValue(WaitTimeout);
+
+        NProto::TCreateHandleResponse createHandleResponse;
+        createHandleResponse.SetHandle(HandleId);
+        createHandleResponse.MutableNodeAttr()->SetId(NodeId);
+        createHandleResponse.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+        createHandleResponse.MutableNodeAttr()->SetSize(0);
+        createHandlePromise.SetValue(std::move(createHandleResponse));
+
+        UNIT_ASSERT_VALUES_EQUAL(HandleId, open.GetValue(WaitTimeout));
+
+        auto getAttrRequest = std::make_shared<TGetAttrRequest>(NodeId);
+        auto getAttr = bootstrap.Fuse->SendRequest(getAttrRequest);
+        UNIT_ASSERT_NO_EXCEPTION(getAttr.GetValue(WaitTimeout));
+        const ui64 nodeSize = getAttrRequest->Out->Body.attr.size;
+
+        UNIT_ASSERT_VALUES_EQUAL(3, nodeSize);
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+    }
+
     Y_UNIT_TEST(DirectReadAndWritesShouldTriggerWriteBackCacheFlush)
     {
         NProto::TFileStoreFeatures features;

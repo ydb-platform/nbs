@@ -418,6 +418,46 @@ public:
             std::move(callback));
     }
 
+    TFuture<NProto::TCreateHandleResponse> CreateHandle(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TCreateHandleRequest> request)
+    {
+        const bool nodeSizeNotAffected =
+            (request->GetFlags() &
+             ProtoFlag(NProto::TCreateHandleRequest::E_TRUNCATE)) == 0;
+
+        if (nodeSizeNotAffected) {
+            return Session->CreateHandle(
+                std::move(callContext),
+                std::move(request));
+        }
+
+        // Apply the same logic as in SetNodeAttr
+
+        const ui64 nodeId = request->GetNodeId();
+
+        auto executor = [this,
+                         callContext = std::move(callContext),
+                         request = std::move(request)]() mutable
+        {
+            return Session->CreateHandle(
+                std::move(callContext),
+                std::move(request));
+        };
+
+        auto callback = [this, nodeId](const auto& response)
+        {
+            if (!HasError(response)) {
+                State.ResetMaxWrittenOffset(nodeId);
+            }
+        };
+
+        return ExecuteRequestUnderBarrier<NProto::TCreateHandleResponse>(
+            nodeId,
+            std::move(executor),
+            std::move(callback));
+    }
+
     ui64 AcquireNodeStateRef()
     {
         return State.PinNodeStates();
@@ -753,6 +793,13 @@ TFuture<NProto::TSetNodeAttrResponse> TWriteBackCache::SetNodeAttr(
     std::shared_ptr<NProto::TSetNodeAttrRequest> request)
 {
     return Impl->SetNodeAttr(std::move(callContext), std::move(request));
+}
+
+TFuture<NProto::TCreateHandleResponse> TWriteBackCache::CreateHandle(
+    TCallContextPtr callContext,
+    std::shared_ptr<NProto::TCreateHandleRequest> request)
+{
+    return Impl->CreateHandle(std::move(callContext), std::move(request));
 }
 
 ui64 TWriteBackCache::AcquireNodeStateRef()
