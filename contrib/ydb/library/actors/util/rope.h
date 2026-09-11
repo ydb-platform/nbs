@@ -16,6 +16,8 @@
 
 #include "rc_buf.h"
 
+#include <contrib/restricted/abseil-cpp-tstring/y_absl/crc/internal/non_temporal_memcpy.h>
+
 class TRopeAlignedBuffer : public IContiguousChunk {
     static constexpr size_t Alignment = 16;
     static constexpr size_t MallocAlignment = sizeof(size_t);
@@ -982,6 +984,19 @@ struct TRopeUtils {
         }
     }
 
+    static void MemcpyNoCache(TRope::TConstIterator dst, TRope::TConstIterator src, size_t size) {
+        while (size) {
+            Y_DEBUG_ABORT_UNLESS(dst.Valid() && src.Valid(),
+                    "Invalid iterator in memcpy: dst.Valid() - %" PRIu32 ", src.Valid() - %" PRIu32,
+                      (ui32)dst.Valid(), (ui32)src.Valid());
+            size_t len = std::min(size, std::min(dst.ContiguousSize(), src.ContiguousSize()));
+            y_absl::crc_internal::non_temporal_store_memcpy_avx(const_cast<char*>(dst.ContiguousData()), src.ContiguousData(), len);
+            dst += len;
+            src += len;
+            size -= len;
+        }
+    }
+
     static void Memcpy(TRope::TConstIterator dst, const char* src, size_t size) {
         while (size) {
             Y_DEBUG_ABORT_UNLESS(dst.Valid());
@@ -993,11 +1008,33 @@ struct TRopeUtils {
         }
     }
 
+    static void MemcpyNoCache(TRope::TConstIterator dst, const char* src, size_t size) {
+        while (size) {
+            Y_DEBUG_ABORT_UNLESS(dst.Valid());
+            size_t len = std::min(size, dst.ContiguousSize());
+            y_absl::crc_internal::non_temporal_store_memcpy_avx(const_cast<char*>(dst.ContiguousData()), src, len);
+            size -= len;
+            dst += len;
+            src += len;
+        }
+    }
+
     static void Memcpy(char* dst, TRope::TConstIterator src, size_t size) {
         while (size) {
             Y_DEBUG_ABORT_UNLESS(src.Valid());
             size_t len = std::min(size, src.ContiguousSize());
             memcpy(dst, src.ContiguousData(), len);
+            size -= len;
+            dst += len;
+            src += len;
+        }
+    }
+
+    static void MemcpyNoCache(char* dst, TRope::TConstIterator src, size_t size) {
+        while (size) {
+            Y_DEBUG_ABORT_UNLESS(src.Valid());
+            size_t len = std::min(size, src.ContiguousSize());
+            y_absl::crc_internal::non_temporal_store_memcpy_avx(dst, src.ContiguousData(), len);
             size -= len;
             dst += len;
             src += len;
