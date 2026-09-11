@@ -344,3 +344,302 @@ Important classifications include:
 `YaEvlog.from_raw` freezes the nodes and failures and constructs
 `YaBuildStatistics` and `YaCriticalPath`. Projection remains outside these
 models.
+
+## Bound OTLP projection
+
+[`SpanProjector`](projector.py) carries the context repeated by every span:
+
+```text
+Trace + trace ID + resource + instrumentation scope + parent span ID
+```
+
+Its small API makes parentage explicit:
+
+```python
+root = projector.emit(...)
+children = projector.under(root)
+tests = children.scoped("ya.test")
+test_span = tests.emit(...)
+```
+
+- `span_id(*identity)` derives a deterministic eight-byte ID.
+- `under(span)` returns a context bound to that parent.
+- `scoped(name)` returns a context bound to an OTLP instrumentation scope.
+- `make(...)` constructs a span without inserting it.
+- `emit(...)` constructs and inserts a span into `Trace`.
+
+Trace and span IDs use SHA-256 over length- and type-framed identity parts.
+Framing prevents ambiguous concatenations such as `("ab", "c")` and
+`("a", "bc")` from producing the same input bytes.
+
+The local [`otlp`](otlp) package wraps official
+`opentelemetry-proto-json` messages. `Trace`, `SpanProjector`, `Ns`, and
+`ResourceAttributes` are convenience APIs; the stored objects are ordinary
+OTLP `TracesData`, `Resource`, `InstrumentationScope`, and `Span` messages.
+
+## Projection pass 1: logical tests
+
+[`build_ya_trace`](yatrace/projection.py) creates the root span and invokes
+[`YaTraceSpanProjector`](yatrace/trace_spans.py) for every `SuiteTrace`.
+
+| Normalized source | OTLP scope | Span name |
+| --- | --- | --- |
+| CLI invocation | `ya` | `ya make tests` or `ya make build` |
+| `SuiteTrace.suite_record` | `ya.suite` | `<suite> [<folder> suite]` |
+| `Chunk` | `ya.chunk` | `<suite> [<folder> chunk N/M]` |
+| Finished `TestAttempt` | `ya.test` | `<class>::<test>` |
+| `suite_*_(seconds)` metric | `ya.test.stage` | `test stage: <stage>` |
+
+### Chunk interval resolution
+
+`Chunk.interval(root)` prefers `suite_start_timestamp` and
+`suite_finish_timestamp`. `wall_time` can recover a missing endpoint and can
+refine second-rounded start/finish values using the chunk record timestamp.
+Test timestamps and the root interval are fallbacks. The final interval is
+always clamped to the root `ya make` interval.
+
+### Inferred test spans and result markers
+
+Final `ytest.report.trace` files report a test duration but no trustworthy
+absolute test interval. Their `subtest-finished.timestamp` records when the
+result was written to the report, which can be later than the chunk interval.
+For flat, complete results whose total reported duration fits inside the chunk,
+The converter lays tests out sequentially in report-record order. It uses
+`suite_delay_until_first_test_secs - suite_binary_startup_secs` as the sequence
+offset when available, capped so the sequence fits; otherwise it right-aligns
+the sequence to the chunk end. These spans carry `test.timing.inferred=true`
+and `test.timing.source=chunk-order-and-reported-duration`.
+
+This is not valid for every runner. Go parent tests include their subtests'
+durations, and other runners may produce a duration sum larger than the chunk.
+Nested, overflowing, or incomplete results therefore remain zero-duration
+markers at their report-record timestamps. A missing timestamp falls back to
+the chunk end and is marked with `ya.test.result.timestamp.inferred=true`.
+
+Both representations preserve the measured duration in
+`test.duration.reported_seconds`; the HTML duration column always shows that
+value. Status, metrics, errors, and log paths remain span attributes. A failing
+or incomplete result also marks the chunk as failed.
+
+### Test-stage spans
+
+A chunk metric such as
+
+```json
+{
+  "suite_prepare_recipes_(seconds)": 0.8
+}
+```
+
+produces both a normalized chunk metric and a child span:
+
+```text
+name                                  test stage: prepare recipes
+scope                                 ya.test.stage
+duration                              0.8 s
+ya.test.stage.name                    prepare_recipes
+ya.test.stage.reported_seconds        0.8
+ya.test.stage.timing.source           ya-chunk-cumulative-stage-duration
+test.timing.inferred                  true
+```
+
+Ya reports stage durations but not their absolute timestamps. The converter lays these
+spans sequentially from the chunk start in metric insertion order. Their
+durations are real reported values; their waterfall positions are inferred.
+The chunk records the reported total and its residual against chunk wall time.
+
+## Projection pass 2: event-log execution
+
+[`project_evlog`](yatrace/evlog.py) adds physical execution spans and matches
+them to the logical test tree.
+
+```mermaid
+flowchart TD
+    ROOT["ya make tests<br/>ya"]
+    GRAPH["ya phase: build graph<br/>ya.phase"]
+    DISPATCH["ya phase: execute graph<br/>ya.phase"]
+    BUILD["build operations<br/>ya.build"]
+    BNODE["build node<br/>ya.build.node"]
+    BCMD["command<br/>ya.build.command"]
+    TESTOPS["test operations<br/>ya.test.operations"]
+    WORKER["matched test worker<br/>ya.test.worker"]
+    WPHASE["setup / exec command / finalize<br/>ya.test.worker.phase"]
+    TNODE["aggregation / cache / unmatched worker<br/>ya.test.node"]
+    CHUNK["suite [folder chunk N/M]<br/>ya.chunk"]
+    STAGE["prepare recipes, etc.<br/>ya.test.stage"]
+    TEST["Class::test<br/>inferred sequential span or timestamp marker"]
+    SUITE["suite summary<br/>ya.suite"]
+
+    ROOT --> GRAPH
+    ROOT --> DISPATCH
+    DISPATCH --> BUILD --> BNODE --> BCMD
+    DISPATCH --> TESTOPS
+    TESTOPS --> WORKER
+    WORKER --> WPHASE
+    WORKER --> CHUNK
+    CHUNK --> STAGE
+    CHUNK --> TEST
+    TESTOPS --> TNODE
+    TESTOPS --> SUITE
+```
+
+Only recognized top-level stages are rendered. `dispatch_build` bounds the
+reported test hierarchy and becomes the parent of build/test operations. If it
+is missing, the root interval and root parent are used.
+
+### Matching workers to chunks
+
+[`YaTestOperations`](yatrace/test_operations.py) creates a `TestChunk` view for
+each `ya.chunk` span and directly matches test-execution `YaNode` indexes to
+chunk indexes:
+
+1. Prefer exact `(suite, result-folder, chunk-index)` extracted from the
+   worker's `$(BUILD_ROOT)/.../test-results/...` output.
+2. Reject explicit incompatible identities or chunk indexes.
+3. Rank remaining candidates by identity match, index match, interval overlap,
+   and inverse boundary distance.
+4. Remove the selected chunk so matching is one-to-one.
+
+A matched worker becomes the chunk's parent. Worker identity is copied to the
+chunk, and `test.size` is copied to the chunk and its test results. The worker
+interval is the envelope of the reported worker and chunk intervals; the
+unadjusted duration remains in `ya.test.worker.reported_seconds`.
+
+Unmatched executions and aggregation, merge, cache, materialization, and other
+test graph nodes remain visible as `ya.test.node` spans.
+
+### Build operations
+
+[`YaBuildOperations`](yatrace/build_operations.py) works directly with
+normalized `YaNode` indexes. `build operations` is the envelope of cache
+restore, execution, and materialization workers, not the full invocation.
+
+Selected nodes become `ya.build.node`; selected `exec_cmd` details become
+`ya.build.command`. Aggregate attributes include counts by kind, cumulative
+worker/command seconds, tools, cache statistics, failures, and time to the
+first test worker. Cumulative seconds may exceed wall time because workers run
+in parallel.
+
+Large graphs are capped. Failed and critical-path nodes are protected first;
+the longest remaining nodes fill the budget. Ordinary cache-store nodes omitted
+by policy are counted separately from nodes dropped by this limit, so total
+nodes equal rendered, policy-omitted, and limit-dropped nodes. These counts stay
+on the operation/root attributes.
+
+### Critical path and longest tests
+
+The converter imports ya's `statistics.critical_path`; it does not recompute the graph's
+critical path.
+
+- Build entries prefer UID matches, then compatible timing/tool matches.
+- Test entries are matched to a test worker and then to a chunk. Because ya's
+  evidence is chunk-granular, the chunk and its tests are marked with
+  `granularity=test-chunk` and `inferred=true`.
+
+Finally, the ten longest complete and launched tests receive
+`ya.test.duration.rank=1..10`, ranked by `test.duration.reported_seconds`
+rather than the marker or inferred interval.
+
+## Worked conversion example
+
+Assume the raw examples above and a root attempt interval of `100–110` seconds.
+The normalized logical values are approximately:
+
+```text
+SuiteTrace
+  suite:         cloud/blockstore/libs/root_kms/impl/client_ut
+  result_folder: unittest
+  chunks:
+    - Chunk(index=0, total=1, interval=105–109 s)
+      attempts:
+        - TestAttempt(
+            start=ClientTest::Encrypt at 107.0 s,
+            finish=ClientTest::Encrypt at 108.2 s, status=good,
+          )
+      metrics:
+        suite_prepare_recipes_(seconds): 0.8
+
+YaNode
+  kind:          test_execute
+  tool:          TS
+  interval:      105.5–109.2 s
+  uid:           test-node-1
+  test_identity: (cloud/blockstore/libs/root_kms/impl/client_ut, unittest)
+  test_size:     small
+  details:
+    - exec_cmd, 106.0–108.8 s
+```
+
+Before event-log enrichment:
+
+```text
+ya make tests                                                   10.0 s  [ya]
+└── cloud/blockstore/libs/root_kms/impl/client_ut
+    [unittest chunk 1/1]                                         4.0 s  [ya.chunk]
+    ├── test stage: prepare recipes                              0.8 s  [ya.test.stage]
+    └── ClientTest::Encrypt                             1.2 s reported  [ya.test]
+```
+
+After matching the worker:
+
+```text
+ya make tests                                                   10.0 s  [ya]
+└── ya phase: execute graph                                      6.0 s  [ya.phase]
+    └── test operations                                          4.2 s  [ya.test.operations]
+        └── test worker: ... [unittest chunk 1/1]                 4.2 s  [ya.test.worker]
+            ├── worker phase: exec command                        2.8 s  [ya.test.worker.phase]
+            └── ... [unittest chunk 1/1]                          4.0 s  [ya.chunk]
+                ├── test stage: prepare recipes                   0.8 s  [ya.test.stage]
+                └── ClientTest::Encrypt                  1.2 s reported  [ya.test]
+```
+
+The stage's `105.0–105.8` placement is inferred from cumulative duration. With
+no first-test-delay metric, the single test is right-aligned to the chunk as
+`107.8–109.0`; that placement is inferred, while its `1.2`-second duration is
+reported. The worker expands from its reported `105.5–109.2` interval to
+`105.0–109.2` so it contains the chunk.
+
+The field-level mapping is:
+
+| Raw input | Normalized model | OTLP result |
+| --- | --- | --- |
+| trace path before `/test-results/` | `SuiteTrace.suite` | `test.suite` on suite/chunk |
+| `unittest` result folder | `SuiteTrace.result_folder` | `ya.test_results.folder` |
+| `chunk_index=0`, `nchunks=1` | `Chunk(index=0,total=1)` | chunk attributes and `chunk 1/1` label |
+| finish record order | `TestAttempt.finish.record.order` | sequential position inside the chunk |
+| `status=good` | `TestEvent(status="good",status_code=1)` | span status and `test.status=good` |
+| `time=1.2` | `duration_ns=1200000000` | inferred span length and `test.duration.reported_seconds=1.2` |
+| prepare-recipes metric `0.8` | chunk metric | inferred 0.8-second stage span |
+| worker output path | `YaNode.test_identity` | worker-to-chunk association |
+| tag `TS` | `kind=test_execute`, `size=small` | worker/chunk/test attributes |
+
+An abbreviated standard OTLP proto-JSON inferred test span is shown below. IDs
+are illustrative; real span IDs are deterministic for the resource, attempt,
+and test identity.
+
+```json
+{
+  "scope": {"name": "ya.test"},
+  "span": {
+    "traceId": "1d5814f955403040cb496052675e42f9",
+    "spanId": "6aec930ba5b3332a",
+    "parentSpanId": "af6df7293dc72727",
+    "name": "ClientTest::Encrypt",
+    "kind": 1,
+    "startTimeUnixNano": "107800000000",
+    "endTimeUnixNano": "109000000000",
+    "attributes": [
+      {"key": "test.status", "value": {"stringValue": "good"}},
+      {"key": "test.duration.reported_seconds", "value": {"doubleValue": 1.2}},
+      {"key": "test.timing.inferred", "value": {"boolValue": true}},
+      {"key": "test.timing.source", "value": {"stringValue": "chunk-order-and-reported-duration"}},
+      {"key": "ya.test.result.timestamp.source", "value": {"stringValue": "subtest-finished.timestamp"}}
+    ],
+    "status": {"code": 1}
+  }
+}
+```
+
+The actual file uses the standard nesting
+`TracesData.resourceSpans[].scopeSpans[].spans[]`. `scope` and `span` are shown
+side by side only to keep the example readable.

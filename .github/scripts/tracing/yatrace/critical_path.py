@@ -132,8 +132,8 @@ class YaCriticalPath:
         distance_ns = entry.interval.boundary_distance(node.interval)
         return (
             int(entry.base_type in {node.tool, node.tag}),
-            overlap_ns,
-            -distance_ns,
+            overlap_ns.value,
+            -distance_ns.value,
             len(node.interval),
         )
 
@@ -190,8 +190,8 @@ class YaCriticalPath:
                     return max(
                         matching_uid,
                         key=lambda record: (
-                            interval.overlap(record.interval),
-                            -interval.boundary_distance(record.interval),
+                            interval.overlap(record.interval).value,
+                            -interval.boundary_distance(record.interval).value,
                         ),
                     )
                 return max(
@@ -201,7 +201,9 @@ class YaCriticalPath:
         if interval is None:
             return None
         overlapping = [
-            record for record in test_nodes if interval.overlap(record.interval)
+            record
+            for record in test_nodes
+            if interval.overlap(record.interval).value > 0
         ]
         if not overlapping:
             return None
@@ -209,7 +211,7 @@ class YaCriticalPath:
             overlapping,
             key=lambda record: (
                 bool(record.test_identity and record.test_identity[0] in entry.text),
-                interval.overlap(record.interval),
+                interval.overlap(record.interval).value,
             ),
         )
 
@@ -254,7 +256,9 @@ class YaCriticalPath:
                     or chunks_by_suite.get(identity[0])
                     or chunks
                 )
-            candidates = [chunk for chunk in candidate_pool if chunk.overlap(interval)]
+            candidates = [
+                chunk for chunk in candidate_pool if chunk.overlap(interval).value > 0
+            ]
             if not candidates:
                 continue
 
@@ -262,7 +266,7 @@ class YaCriticalPath:
                 candidates,
                 key=lambda candidate: (
                     bool(candidate.suite) and candidate.suite in entry.text,
-                    candidate.overlap(interval),
+                    candidate.overlap(interval).value,
                 ),
             )
             attributes = entry.span_attributes(test=True)
