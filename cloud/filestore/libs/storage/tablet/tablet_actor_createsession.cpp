@@ -250,6 +250,10 @@ protected:
     }
 };
 
+using TDestroyStaleShardSessionActor = TShardRequestActor<
+    TEvIndexTablet::TEvDestroySessionRequest,
+    TEvIndexTablet::TEvDestroySessionResponse>;
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -582,6 +586,27 @@ void TIndexTabletActor::HandleSyncShardSessions(
     for (auto& s: *ev->Get()->Sessions.MutableSessions()) {
         if (!s.GetIsOrphan()) {
             filter.insert(*s.MutableSessionId());
+        }
+
+        // The shard has a session the main tablet doesn't know about at
+        // all (not even as orphan) - stale, remove it. We don't touch a
+        // session that is orphan on main: it may still come back before
+        // its InactivityDeadline.
+        if (!FindSession(s.GetSessionId())) {
+            NProtoPrivate::TDestroySessionRequest request;
+            request.MutableHeaders()->SetClientId(s.GetClientId());
+            request.MutableHeaders()->SetSessionId(s.GetSessionId());
+
+            auto actor = std::make_unique<TDestroyStaleShardSessionActor>(
+                LogTag,
+                SelfId(),
+                nullptr,   // requestInfo
+                std::move(request),
+                TVector<TString>{ev->Get()->ShardId},
+                nullptr);   // response
+
+            auto actorId = NCloud::Register(ctx, std::move(actor));
+            WorkerActors.insert(actorId);
         }
     }
     TEvIndexTabletPrivate::TShardSessionsInfo info;
