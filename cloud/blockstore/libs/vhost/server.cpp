@@ -41,6 +41,28 @@ TVector<TExecutor*> NormalizeExecutors(
     return normalized;
 }
 
+void RequestEndpointStop(
+    const TEndpointPtr& endpoint,
+    bool deleteSocket,
+    TPromise<NProto::TError> stopPromise)
+{
+    const auto error = SafeExecute<NProto::TError>(
+        [&]
+        {
+            endpoint->Stop(deleteSocket).Subscribe(
+                [stopPromise](const auto& future) mutable
+                {
+                    stopPromise.SetValue(
+                        SafeExecute<NProto::TError>(
+                            [&] { return future.GetValue(); }));
+                });
+            return NProto::TError();
+        });
+    if (HasError(error)) {
+        stopPromise.SetValue(error);
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TServer final
@@ -100,6 +122,19 @@ private:
     // Picks |count| distinct executors with the lowest number of assigned
     // vhost queues. Must be called under Lock.
     TVector<TExecutor*> PickExecutors(ui32 count);
+
+    struct TStopRequest
+    {
+        // Has to be completed by RequestEndpointStop().
+        TPromise<NProto::TError> Promise;
+        // Resolved once HandleStoppedEndpoint() has dropped the endpoint.
+        TFuture<NProto::TError> Future;
+    };
+
+    // Must be called under Lock.
+    TStopRequest RegisterStoppingEndpoint(
+        const TString& socketPath,
+        TEndpointPtr endpoint);
 
     void StopAllEndpoints();
 
@@ -220,6 +255,10 @@ TFuture<NProto::TError> TServer::StartEndpoint(
             return MakeFuture(MakeError(E_FAIL, "Vhost server is stopped"));
         }
 
+        if (StoppingEndpoints.contains(socketPath)) {
+            return MakeFuture(MakeError(E_REJECTED, "endpoint is stopping"));
+        }
+
         auto it = Endpoints.find(socketPath);
         if (it != Endpoints.end()) {
             NProto::TError error;
@@ -286,6 +325,33 @@ TFuture<NProto::TError> TServer::StartEndpoint(
     return MakeFuture<NProto::TError>();
 }
 
+TServer::TStopRequest TServer::RegisterStoppingEndpoint(
+    const TString& socketPath,
+    TEndpointPtr endpoint)
+{
+    auto promise = NewPromise<NProto::TError>();
+
+    // Keeps the server alive until the stop completes. Empty when called from
+    // ~TServer() via Stop().
+    auto self = weak_from_this().lock();
+
+    auto stopFuture = promise.GetFuture().Apply(
+        [this, self = std::move(self), socketPath](const auto& future)
+        {
+            Y_UNUSED(self);
+            const auto& error = future.GetValue();
+            HandleStoppedEndpoint(socketPath, error);
+            return error;
+        });
+
+    auto [it, inserted] = StoppingEndpoints.emplace(
+        socketPath,
+        TStoppingEndpoint{std::move(endpoint), stopFuture});
+    Y_ABORT_UNLESS(inserted);
+
+    return {std::move(promise), std::move(stopFuture)};
+}
+
 TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
 {
     if (ShouldStop.test()) {
@@ -296,9 +362,15 @@ TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
     }
 
     TEndpointPtr endpoint;
-    TFuture<NProto::TError> stopFuture;
+    TStopRequest stopRequest;
 
     with_lock (Lock) {
+        if (auto stoppingIt = StoppingEndpoints.find(socketPath);
+            stoppingIt != StoppingEndpoints.end())
+        {
+            return stoppingIt->second.Future;
+        }
+
         auto it = Endpoints.find(socketPath);
         if (it == Endpoints.end()) {
             NProto::TError error;
@@ -312,20 +384,11 @@ TFuture<NProto::TError> TServer::StopEndpoint(const TString& socketPath)
         endpoint = std::move(it->second);
         Endpoints.erase(it);
 
-        stopFuture = endpoint->Stop(true);
-        StoppingEndpoints.emplace(
-            socketPath,
-            TStoppingEndpoint{std::move(endpoint), stopFuture});
+        stopRequest = RegisterStoppingEndpoint(socketPath, endpoint);
     }
 
-    auto ptr = shared_from_this();
-    return stopFuture.Apply(
-        [ptr = std::move(ptr), socketPath](const auto& future)
-        {
-            const auto& error = future.GetValue();
-            ptr->HandleStoppedEndpoint(socketPath, error);
-            return error;
-        });
+    RequestEndpointStop(endpoint, true, std::move(stopRequest.Promise));
+    return stopRequest.Future;
 }
 
 NProto::TError TServer::UpdateEndpoint(
@@ -363,48 +426,46 @@ NProto::TError TServer::UpdateEndpoint(
 
 void TServer::StopAllEndpoints()
 {
-    TVector<TString> sockets;
     TVector<TFuture<NProto::TError>> futures;
+    TVector<std::pair<TEndpointPtr, TPromise<NProto::TError>>> endpointsToStop;
 
     with_lock (Lock) {
-        for (const auto& [socketPath, stoppingEndpoint]: StoppingEndpoints) {
-            sockets.push_back(socketPath);
-            futures.push_back(stoppingEndpoint.Future);
+        for (const auto& entry: StoppingEndpoints) {
+            futures.push_back(entry.second.Future);
         }
 
-        for (auto& it: Endpoints) {
-            const auto& socketPath = it.first;
-            auto endpoint = std::move(it.second);
-            auto future = endpoint->Stop(false);
+        for (auto& [socketPath, endpoint]: Endpoints) {
+            auto stopRequest = RegisterStoppingEndpoint(socketPath, endpoint);
 
-            StoppingEndpoints.emplace(
-                socketPath,
-                TStoppingEndpoint{endpoint, future});
+            futures.push_back(std::move(stopRequest.Future));
 
-            sockets.push_back(socketPath);
-            futures.push_back(std::move(future));
+            endpointsToStop.emplace_back(
+                std::move(endpoint),
+                std::move(stopRequest.Promise));
         }
 
         Endpoints.clear();
     }
 
-    WaitAll(futures).Wait();
-
-    for (size_t i = 0; i < sockets.size(); ++i) {
-        const auto& socketPath = sockets[i];
-        const auto& future = futures[i];
-        HandleStoppedEndpoint(socketPath, future.GetValue());
+    for (auto& [endpoint, stopPromise]: endpointsToStop) {
+        RequestEndpointStop(endpoint, false, std::move(stopPromise));
     }
+
+    WaitAll(futures).Wait();
 }
 
 void TServer::HandleStoppedEndpoint(
     const TString& socketPath,
     const NProto::TError& error)
 {
+    // remove endpoint outside of the lock to don't make extra work inside the
+    // lock
+    TStoppingEndpoint stoppedEndpoint;
     bool erased = false;
     with_lock (Lock) {
         auto it = StoppingEndpoints.find(socketPath);
         if (it != StoppingEndpoints.end()) {
+            stoppedEndpoint = std::move(it->second);
             StoppingEndpoints.erase(it);
             erased = true;
         }
