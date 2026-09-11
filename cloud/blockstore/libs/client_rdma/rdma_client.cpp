@@ -918,25 +918,6 @@ CreateRdmaEndpointClientAsync(
     });
 }
 
-IBlockStorePtr CreateRdmaDataEndpoint(
-    ILoggingServicePtr logging,
-    NRdma::IClientPtr client,
-    ITraceSerializerPtr traceSerializer,
-    ITaskQueuePtr taskQueue,
-    const TRdmaEndpointConfig& config)
-{
-    auto endpoint = std::make_shared<TRdmaDataEndpoint>(
-        std::move(logging),
-        std::move(traceSerializer),
-        std::move(taskQueue),
-        client->IsAlignedDataEnabled());
-
-    auto startEndpoint = client->StartEndpoint(config.Address, config.Port);
-
-    endpoint->Init(startEndpoint.GetValue(WAIT_TIMEOUT));
-    return endpoint;
-}
-
 NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
     ILoggingServicePtr logging,
     NRdma::IClientPtr client,
@@ -959,6 +940,33 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
             });
         return result;
     });
+}
+
+TResultOrError<IBlockStorePtr> CreateRdmaDataEndpoint(
+    ILoggingServicePtr logging,
+    NRdma::IClientPtr client,
+    ITraceSerializerPtr traceSerializer,
+    ITaskQueuePtr taskQueue,
+    const TRdmaEndpointConfig& config,
+    NRdma::IClientEndpointHandlerPtr handler)
+{
+    auto endpoint = std::make_shared<TRdmaDataEndpoint>(
+        std::move(logging),
+        std::move(traceSerializer),
+        std::move(taskQueue),
+        client->IsAlignedDataEnabled());
+
+    auto [clientEndpoint, error] = client->StartEndpoint(
+        config.Address,
+        config.Port,
+        std::move(handler));
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    endpoint->Init(std::move(clientEndpoint));
+    return IBlockStorePtr(std::move(endpoint));
 }
 
 }   // namespace NCloud::NBlockStore::NClient

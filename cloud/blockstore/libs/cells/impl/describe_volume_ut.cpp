@@ -106,7 +106,7 @@ std::shared_ptr<TTestServiceClient> CreateCellEndpoint(
         clientAppConfig,
         host,
         service,
-        CreateRemoteStorage(service));
+        CreateRemoteStorage(service, nullptr));
     return service;
 }
 

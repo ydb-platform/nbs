@@ -1,11 +1,11 @@
 #include "transport_switcher.h"
 
-#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/string/builder.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -13,25 +13,35 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Owns itself for as long as an attempt is pending: every scheduled retry
-// holds a strong reference, and once the router is gone nothing schedules any
-// more.
+// Keeps the router pointing at the transport that can serve data right now: the
+// fallback until the preferred endpoint has connected and settled, and back
+// onto the fallback the moment that endpoint breaks.
 class TTransportSwitcher final
-    : public std::enable_shared_from_this<TTransportSwitcher>
+    : public ITransportSwitcher
+    , public std::enable_shared_from_this<TTransportSwitcher>
 {
 private:
     const std::weak_ptr<IEndpointRouter> Router;
+    const IBlockStorePtr Fallback;   // the endpoint the router started with
     const TEndpointFactory Factory;
     const ITimerPtr Timer;
     const ISchedulerPtr Scheduler;
     const TString Host;
+    const TDuration SettleTime;
 
     TLog Log;
-    TBackoffDelayProvider RetryDelay;
+
+    TAdaptiveLock Lock;
+    IBlockStorePtr Preferred;       // the rdma endpoint, once acquired
+    bool PreferredActive = false;   // is the router pointing at it
+    bool Connected = false;
+    bool EverActive = false;
+    ui64 SettleGeneration = 0;
 
 public:
     TTransportSwitcher(
             IEndpointRouterPtr router,
+            IBlockStorePtr fallback,
             TEndpointFactory factory,
             ITimerPtr timer,
             ISchedulerPtr scheduler,
@@ -39,58 +49,198 @@ public:
             TString host,
             const TTransportSwitcherConfig& config)
         : Router(std::move(router))
+        , Fallback(std::move(fallback))
         , Factory(std::move(factory))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
         , Host(std::move(host))
+        , SettleTime(config.SettleTime)
         , Log(logging->CreateLog("BLOCKSTORE_CELLS"))
-        , RetryDelay(config.InitialRetryDelay, config.MaxRetryDelay)
     {}
 
-    void Attempt()
+    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr GetEndpointHandler()
+        override;
+
+    void Start()
     {
-        if (Router.expired()) {
+        auto result = Factory(GetEndpointHandler());
+
+        if (HasError(result) || !result.GetResult()) {
+            STORAGE_WARN(
+                "[" << Host << "] can't set up the preferred transport: "
+                    << FormatError(result.GetError())
+                    << ", staying on the fallback");
             return;
         }
 
-        Factory().Subscribe(
-            [self = shared_from_this()](const auto& future)
-            { self->OnAttemptCompleted(future.GetValue()); });
+        ui64 generation = 0;
+        bool connected = false;
+
+        with_lock (Lock) {
+            Preferred = result.GetResult();
+            connected = Connected;
+            if (connected) {
+                generation = ++SettleGeneration;
+            }
+        }
+
+        if (connected) {
+            StartSettling(generation);
+        }
     }
 
-private:
-    void OnAttemptCompleted(const TResultOrError<IBlockStorePtr>& result)
+    void OnConnected()
+    {
+        ui64 generation = 0;
+
+        with_lock (Lock) {
+            Connected = true;
+            generation = ++SettleGeneration;
+        }
+
+        StartSettling(generation);
+    }
+
+    void OnDisconnected()
     {
         auto router = Router.lock();
         if (!router) {
             return;
         }
 
-        if (!HasError(result) && result.GetResult()) {
-            STORAGE_INFO(
-                "[" << Host << "] switched over to the preferred transport");
-            router->SetTarget(result.GetResult());
+        with_lock (Lock) {
+            Connected = false;
+            // invalidates a settle in flight
+            ++SettleGeneration;
+
+            if (!PreferredActive) {
+                return;
+            }
+            PreferredActive = false;
+
+            // inside the lock: a settle racing this break must not store its
+            // target after ours
+            router->SetTarget(Fallback);
+        }
+
+        STORAGE_INFO("[" << Host << "] moving data back onto the fallback");
+    }
+
+private:
+    // Starts the wait after which the data may move onto the preferred
+    // transport. The generation lets a break invalidate a wait in flight.
+    void StartSettling(ui64 generation)
+    {
+        bool everActive = false;
+
+        with_lock (Lock) {
+            everActive = EverActive;
+        }
+
+        // The wait guards a return to a link that has already proved it can
+        // drop. A link that has never carried our data has proved nothing, so
+        // making it wait would only keep the data on the slower transport.
+        if (!SettleTime || !everActive) {
+            Settle(generation);
             return;
         }
 
-        const auto delay = RetryDelay.GetDelayAndIncrease();
-
-        STORAGE_WARN(
-            "[" << Host << "] can't set up the preferred transport: "
-                << FormatError(result.GetError()) << ", retrying in " << delay);
-
         Scheduler->Schedule(
-            Timer->Now() + delay,
-            [self = shared_from_this()] { self->Attempt(); });
+            Timer->Now() + SettleTime,
+            [weakSelf = weak_from_this(), generation]
+            {
+                if (auto self = weakSelf.lock()) {
+                    self->Settle(generation);
+                }
+            });
+    }
+
+    void Settle(ui64 generation)
+    {
+        auto router = Router.lock();
+        if (!router) {
+            return;
+        }
+
+        with_lock (Lock) {
+            if (generation != SettleGeneration || !Connected ||
+                PreferredActive || !Preferred)
+            {
+                return;
+            }
+            PreferredActive = true;
+            EverActive = true;
+
+            // inside the lock: a break racing this settle must not store its
+            // target before ours
+            router->SetTarget(Preferred);
+        }
+
+        STORAGE_INFO(
+            "[" << Host << "] switched over to the preferred transport");
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Turns the endpoint state reported by the rdma client into switching
+// decisions. Holds the switcher weakly: the endpoint holds the handler, and the
+// switcher holds the endpoint, so a strong reference here would keep both alive
+// forever.
+class TEndpointHandler final
+    : public NCloud::NStorage::NRdma::IClientEndpointHandler
+{
+private:
+    const std::weak_ptr<TTransportSwitcher> Switcher;
+    const TString Host;   // only for logging: the calls carry no host
+
+    TLog Log;
+
+public:
+    TEndpointHandler(
+            std::weak_ptr<TTransportSwitcher> switcher,
+            TString host,
+            TLog log)
+        : Switcher(std::move(switcher))
+        , Host(std::move(host))
+        , Log(std::move(log))
+    {}
+
+    void HandleConnected() override
+    {
+        if (auto self = Switcher.lock()) {
+            self->OnConnected();
+        }
+    }
+
+    void HandleDisconnected() override
+    {
+        if (auto self = Switcher.lock()) {
+            self->OnDisconnected();
+        }
+    }
+
+    void HandleUnavailable() override
+    {
+        STORAGE_WARN("[" << Host << "] rdma endpoint is unavailable");
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+NCloud::NStorage::NRdma::IClientEndpointHandlerPtr
+TTransportSwitcher::GetEndpointHandler()
+{
+    return std::make_shared<TEndpointHandler>(weak_from_this(), Host, Log);
+}
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void StartTransportSwitching(
+ITransportSwitcherPtr StartTransportSwitching(
     IEndpointRouterPtr router,
+    IBlockStorePtr fallback,
     TEndpointFactory factory,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
@@ -100,6 +250,7 @@ void StartTransportSwitching(
 {
     auto switcher = std::make_shared<TTransportSwitcher>(
         std::move(router),
+        std::move(fallback),
         std::move(factory),
         std::move(timer),
         std::move(scheduler),
@@ -107,7 +258,9 @@ void StartTransportSwitching(
         std::move(host),
         config);
 
-    switcher->Attempt();
+    switcher->Start();
+
+    return switcher;
 }
 
 }   // namespace NCloud::NBlockStore::NCells

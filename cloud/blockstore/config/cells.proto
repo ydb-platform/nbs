@@ -51,10 +51,13 @@ message TCellConfig
     // Minimum number of hosts in a cell to have connections to.
     optional uint32 MinCellConnections = 10;
 
-    // While the Transport data endpoint is being set up, serve data over gRPC
-    // instead of waiting for it. The switch to Transport happens as soon as it is
-    // ready and is never undone.
+    // While the RDMA data endpoint is unavailable - either because it has not
+    // been set up yet or because the connection broke - serve data over gRPC.
     optional bool GrpcDataFallbackEnabled = 11;
+
+    // How long an RDMA connection that has dropped once has to stay up again
+    // before data is moved back onto it, in milliseconds.
+    optional uint32 RdmaSettleTime = 12;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

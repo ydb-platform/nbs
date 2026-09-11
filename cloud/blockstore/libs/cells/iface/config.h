@@ -28,6 +28,7 @@ private:
     TString Fqdn;
     NProto::ECellDataTransport Transport = NProto::CELL_DATA_TRANSPORT_UNSET;
     bool GrpcDataFallbackEnabled = false;
+    TDuration RdmaSettleTime;
 
 public:
     TCellHostConfig(
@@ -59,6 +60,11 @@ public:
     bool GetGrpcDataFallbackEnabled() const
     {
         return GrpcDataFallbackEnabled;
+    }
+
+    TDuration GetRdmaSettleTime() const
+    {
+        return RdmaSettleTime;
     }
 
     TString GetFqdn() const
@@ -95,6 +101,7 @@ public:
     [[nodiscard]] ui32 GetNbdPort() const;
     [[nodiscard]] NProto::ECellDataTransport GetTransport() const;
     [[nodiscard]] bool GetGrpcDataFallbackEnabled() const;
+    [[nodiscard]] TDuration GetRdmaSettleTime() const;
     [[nodiscard]] const TConfiguredHostsByFqdn& GetHosts() const;
     [[nodiscard]] ui32 GetDescribeVolumeHostCount() const;
     [[nodiscard]] ui32 GetMinCellConnections() const;
