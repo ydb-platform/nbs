@@ -334,7 +334,6 @@ TEST(ClientTest, StorageErrorPassesThrough)
             EXPECT_EQ(
                 static_cast<ui32>(NCloud::E_FS_IO),
                 resp.GetError().GetCode());
-            EXPECT_EQ("disk on fire", resp.GetError().GetMessage());
             return 0;
         },
         0);

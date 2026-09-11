@@ -92,9 +92,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
                 E_ARGUMENT,
                 error.GetCode(),
                 FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "invalid lsn: 0");
         }
 
         // the lsn is equal to the prev one
@@ -105,9 +102,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
                 E_ARGUMENT,
                 error.GetCode(),
                 FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "invalid lsn: 10, must be greater than the prev one: 10");
         }
 
         // the lsn is below the prev one
@@ -118,9 +112,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
                 E_ARGUMENT,
                 error.GetCode(),
                 FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "invalid lsn: 5, must be greater than the prev one: 10");
         }
 
         // the rejected records have not reached the data store

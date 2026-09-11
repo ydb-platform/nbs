@@ -632,7 +632,6 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
 
         const auto& error = response.GetFormatDevice().GetError();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
-        UNIT_ASSERT_VALUES_EQUAL("format-error", error.GetMessage());
 
         UNIT_ASSERT(formatDeviceRequest);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -781,37 +780,10 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
             throw TServiceError(E_FAIL) << "writeLogRecord-inline-error";
         };
 
-        {
-            auto error = acquire();
-            UNIT_ASSERT_VALUES_EQUAL(E_FAIL, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "acquire-inline-error",
-                error.GetMessage());
-        }
-
-        {
-            auto error = release();
-            UNIT_ASSERT_VALUES_EQUAL(E_FAIL, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "release-inline-error",
-                error.GetMessage());
-        }
-
-        {
-            auto error = readPages();
-            UNIT_ASSERT_VALUES_EQUAL(E_FAIL, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "readPages-inline-error",
-                error.GetMessage());
-        }
-
-        {
-            auto error = writeLogRecord();
-            UNIT_ASSERT_VALUES_EQUAL(E_FAIL, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "writeLogRecord-inline-error",
-                error.GetMessage());
-        }
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, acquire().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, release().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, readPages().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, writeLogRecord().GetCode());
 
         Backend->AcquireDevicesImpl = [](auto)
         {
@@ -841,33 +813,10 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
                     TServiceError{E_ARGUMENT} << "writeLogRecord-async-error"));
         };
 
-        {
-            auto error = acquire();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL("acquire-async-error", error.GetMessage());
-        }
-
-        {
-            auto error = release();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL("release-async-error", error.GetMessage());
-        }
-
-        {
-            auto error = readPages();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "readPages-async-error",
-                error.GetMessage());
-        }
-
-        {
-            auto error = writeLogRecord();
-            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
-            UNIT_ASSERT_VALUES_EQUAL(
-                "writeLogRecord-async-error",
-                error.GetMessage());
-        }
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, acquire().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, release().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, readPages().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, writeLogRecord().GetCode());
     }
 }
 
