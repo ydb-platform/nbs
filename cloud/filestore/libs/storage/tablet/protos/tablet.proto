@@ -63,7 +63,7 @@ message TFileSystem
     // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
     optional bool CompressNodeRef = 25;
 
-    NProtoPrivate.TFileSystemResizeState ResizeState = 26;
+    NProtoPrivate.TFileSystemShardCreationState ShardCreationState = 26;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

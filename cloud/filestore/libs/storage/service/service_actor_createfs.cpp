@@ -83,9 +83,9 @@ private:
     ui32 ShardsToConfigure = 0;
     bool ShardConfigurationStarted = false;
 
-    NProtoPrivate::TFileSystemResizeState ResizeState;
-    ui32 ResizeStateVersion = 0;
-    bool InitialResizeStateRead = false;
+    NProtoPrivate::TFileSystemShardCreationState ShardCreationState;
+    ui32 ShardCreationStateVersion = 0;
+    bool InitialShardCreationStateRead = false;
     ui64 ShardBitmapBitCount = 0;
     std::unique_ptr<NCloud::TCompressedBitmap> CreatedShardBitmap;
 
@@ -109,12 +109,12 @@ private:
     void ConfigureMainFileStore(const TActorContext& ctx);
 
     bool IsShardCreated(ui32 shardIndex) const;
-    void ReadResizeState(const TActorContext& ctx);
+    void ReadShardCreationState(const TActorContext& ctx);
     void SetupCreatedShardBitmap();
     void MergeCreatedShardBitmap(
         const NProtoPrivate::TCompressedBitmapData& bitmap);
     bool HasUnpersistedCreatedShards() const;
-    void UpdateResizeState(const TActorContext& ctx);
+    void UpdateShardCreationState(const TActorContext& ctx);
     void UpdateShardCreatedState(
         const TActorContext& ctx,
         ui32 shardIndex);
@@ -123,7 +123,7 @@ private:
         const TEvSSProxy::TEvCreateFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleResizeStateResponse(
+    void HandleShardCreationStateResponse(
         const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
         const TActorContext& ctx);
 
@@ -360,14 +360,14 @@ bool TCreateFileStoreActor::IsShardCreated(const ui32 shardIndex) const
     return CreatedShardBitmap && CreatedShardBitmap->Test(shardIndex);
 }
 
-void TCreateFileStoreActor::ReadResizeState(const TActorContext& ctx)
+void TCreateFileStoreActor::ReadShardCreationState(const TActorContext& ctx)
 {
     auto request =
         std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
 
     request->Record.SetFileSystemId(Request.GetFileSystemId());
     // Unset Version means just return current state.
-    request->Record.MutableResizeState();
+    request->Record.MutableShardCreationState();
 
     NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
@@ -377,7 +377,7 @@ void TCreateFileStoreActor::SetupCreatedShardBitmap()
     ShardBitmapBitCount = FileStoreConfig.ShardConfigs.size();
     CreatedShardBitmap =
         std::make_unique<NCloud::TCompressedBitmap>(LoadCompressedBitmap(
-            ResizeState.GetCreatedShardBitmap(),
+            ShardCreationState.GetCreatedShardBitmap(),
             ShardBitmapBitCount));
 }
 
@@ -397,7 +397,7 @@ bool TCreateFileStoreActor::HasUnpersistedCreatedShards() const
     Y_DEBUG_ABORT_UNLESS(CreatedShardBitmap);
 
     const auto persisted = LoadCompressedBitmap(
-        ResizeState.GetCreatedShardBitmap(),
+        ShardCreationState.GetCreatedShardBitmap(),
         ShardBitmapBitCount);
 
     for (ui64 shardIndex = 0; shardIndex < ShardBitmapBitCount; ++shardIndex) {
@@ -410,13 +410,14 @@ bool TCreateFileStoreActor::HasUnpersistedCreatedShards() const
     return false;
 }
 
-void TCreateFileStoreActor::UpdateResizeState(const TActorContext& ctx)
+void TCreateFileStoreActor::UpdateShardCreationState(const TActorContext& ctx)
 {
     if (!CreatedShardBitmap) {
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Shard bitmap not initialized, resize state unavailable",
+            "[%s] Shard bitmap not initialized, "
+            "shard creation state unavailable",
             LogTag.c_str());
         return;
     }
@@ -424,12 +425,12 @@ void TCreateFileStoreActor::UpdateResizeState(const TActorContext& ctx)
     auto request =
         std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
     request->Record.SetFileSystemId(Request.GetFileSystemId());
-    auto* resizeState = request->Record.MutableResizeState();
-    resizeState->SetVersion(ResizeStateVersion);
+    auto* shardCreationState = request->Record.MutableShardCreationState();
+    shardCreationState->SetVersion(ShardCreationStateVersion);
     SaveCompressedBitmap(
         *CreatedShardBitmap,
         ShardBitmapBitCount,
-        *resizeState->MutableCreatedShardBitmap());
+        *shardCreationState->MutableCreatedShardBitmap());
 
     NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
@@ -443,13 +444,14 @@ void TCreateFileStoreActor::UpdateShardCreatedState(
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Shard bitmap not initialized, resize state unavailable",
+            "[%s] Shard bitmap not initialized, "
+            "shard creation state unavailable",
             LogTag.c_str());
         return;
     }
 
     CreatedShardBitmap->Set(shardIndex, shardIndex + 1);
-    UpdateResizeState(ctx);
+    UpdateShardCreationState(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -517,7 +519,7 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
     MainFileSystemCreated = true;
     if (ShardsToCreate) {
         if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-            ReadResizeState(ctx);
+            ReadShardCreationState(ctx);
         } else {
             CreateShards(ctx);
         }
@@ -539,7 +541,7 @@ void TCreateFileStoreActor::HandleCreateFileStoreResponse(
     ReplyAndDie(ctx, std::move(response));
 }
 
-void TCreateFileStoreActor::HandleResizeStateResponse(
+void TCreateFileStoreActor::HandleShardCreationStateResponse(
     const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
     const TActorContext& ctx)
 {
@@ -554,36 +556,37 @@ void TCreateFileStoreActor::HandleResizeStateResponse(
         return;
     }
 
-    if (!msg->Record.HasResizeState()) {
-        if (!InitialResizeStateRead) {
+    if (!msg->Record.HasShardCreationState()) {
+        if (!InitialShardCreationStateRead) {
             // Rolling upgrade compatibility: the filesystem's old IndexTablet
-            // accepts UnsafeChangeTabletState but does not return ResizeState
-            // yet. Fallback to preexisting non-persistent create flow.
+            // accepts UnsafeChangeTabletState but does not return
+            // ShardCreationState yet. Fallback to preexisting non-persistent
+            // create flow.
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "[%s] UnsafeChangeTabletState returned no resize state, "
-                "continuing without persistent create state",
+                "[%s] UnsafeChangeTabletState returned no shard creation "
+                "state, continuing without persistent shard creation state",
                 LogTag.c_str());
 
-            InitialResizeStateRead = true;
+            InitialShardCreationStateRead = true;
             CreateShards(ctx);
         } else {
             LOG_WARN(
                 ctx,
                 TFileStoreComponents::SERVICE,
-                "[%s] UnsafeChangeTabletState returned no resize state",
+                "[%s] UnsafeChangeTabletState returned no shard creation state",
                 LogTag.c_str());
         }
 
         return;
     }
 
-    const auto& resizeState = msg->Record.GetResizeState();
-    if (!InitialResizeStateRead) {
-        ResizeState = resizeState;
-        ResizeStateVersion = resizeState.GetVersion();
-        InitialResizeStateRead = true;
+    const auto& shardCreationState = msg->Record.GetShardCreationState();
+    if (!InitialShardCreationStateRead) {
+        ShardCreationState = shardCreationState;
+        ShardCreationStateVersion = shardCreationState.GetVersion();
+        InitialShardCreationStateRead = true;
         SetupCreatedShardBitmap();
         CreateShards(ctx);
         return;
@@ -593,21 +596,22 @@ void TCreateFileStoreActor::HandleResizeStateResponse(
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
-            "[%s] Shard bitmap not initialized, resize state unavailable",
+            "[%s] Shard bitmap not initialized, "
+            "shard creation state unavailable",
             LogTag.c_str());
         return;
     }
 
-    if (resizeState.GetVersion() < ResizeStateVersion) {
+    if (shardCreationState.GetVersion() < ShardCreationStateVersion) {
         return;
     }
 
-    MergeCreatedShardBitmap(resizeState.GetCreatedShardBitmap());
-    ResizeState = resizeState;
-    ResizeStateVersion = resizeState.GetVersion();
+    MergeCreatedShardBitmap(shardCreationState.GetCreatedShardBitmap());
+    ShardCreationState = shardCreationState;
+    ShardCreationStateVersion = shardCreationState.GetVersion();
 
     if (HasUnpersistedCreatedShards()) {
-        UpdateResizeState(ctx);
+        UpdateShardCreationState(ctx);
         return;
     }
 
@@ -718,7 +722,7 @@ STFUNC(TCreateFileStoreActor::StateWork)
             HandleConfigureMainFileStoreResponse);
         HFunc(
             TEvIndexTablet::TEvUnsafeChangeTabletStateResponse,
-            HandleResizeStateResponse);
+            HandleShardCreationStateResponse);
 
         default:
             HandleUnexpectedEvent(

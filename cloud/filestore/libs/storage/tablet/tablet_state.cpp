@@ -347,11 +347,11 @@ void TIndexTabletState::SetCompressNodeRef(
     db.WriteFileSystem(FileSystem);
 }
 
-void TIndexTabletState::SetResizeState(
+void TIndexTabletState::SetShardCreationState(
     IIndexTabletDatabase& db,
-    const NProtoPrivate::TFileSystemResizeState& resizeState)
+    const NProtoPrivate::TFileSystemShardCreationState& state)
 {
-    *FileSystem.MutableResizeState() = resizeState;
+    *FileSystem.MutableShardCreationState() = state;
     db.WriteFileSystem(FileSystem);
 }
 

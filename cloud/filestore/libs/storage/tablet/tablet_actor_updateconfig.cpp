@@ -225,8 +225,9 @@ void TIndexTabletActor::HandleUpdateConfig(
     newConfig.SetStrictFileSystemSizeEnforcementEnabled(
         oldConfig.GetStrictFileSystemSizeEnforcementEnabled());
 
-    if (oldConfig.HasResizeState()) {
-        *newConfig.MutableResizeState() = oldConfig.GetResizeState();
+    if (oldConfig.HasShardCreationState()) {
+        *newConfig.MutableShardCreationState() =
+            oldConfig.GetShardCreationState();
     }
 
     // Config update occured due to alter/resize.

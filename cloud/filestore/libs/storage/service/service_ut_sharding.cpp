@@ -138,11 +138,11 @@ NProtoPrivate::TUnsafeChangeTabletStateResponse SetCompressNodeRef(
     return response;
 }
 
-bool IsShardCreatedInResizeState(
-    const NProtoPrivate::TFileSystemResizeState& resizeState,
+bool IsShardCreatedInShardCreationState(
+    const NProtoPrivate::TFileSystemShardCreationState& state,
     const ui32 shardIndex)
 {
-    const auto& proto = resizeState.GetCreatedShardBitmap();
+    const auto& proto = state.GetCreatedShardBitmap();
     const ui64 bitCount = Max<ui64>(
         proto.GetBitCount(),
         shardIndex + 1,
@@ -4784,9 +4784,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
                         const auto* msg = ev->Get<TResponse>();
                         if (failedShardCreateResponse &&
-                            msg->Record.HasResizeState() &&
-                            IsShardCreatedInResizeState(
-                                msg->Record.GetResizeState(),
+                            msg->Record.HasShardCreationState() &&
+                            IsShardCreatedInShardCreationState(
+                                msg->Record.GetShardCreationState(),
                                 failedShardCookie - 1))
                         {
                             runtime.Send(
@@ -5311,9 +5311,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
                         const auto* msg = ev->Get<TResponse>();
                         if (failedShardCreateResponse &&
-                            msg->Record.HasResizeState() &&
-                            IsShardCreatedInResizeState(
-                                msg->Record.GetResizeState(),
+                            msg->Record.HasShardCreationState() &&
+                            IsShardCreatedInShardCreationState(
+                                msg->Record.GetShardCreationState(),
                                 failedShardCookie - 1))
                         {
                             runtime.Send(
@@ -5526,7 +5526,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(6, topology.ShardFileSystemIdsSize());
     }
 
-    SERVICE_TEST(ShouldContinueThrottledResizeWithoutPersistentResizeState)
+    SERVICE_TEST(ShouldContinueThrottledResizeWithoutPersistentShardCreationState)
     {
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(1_GB);
@@ -5557,9 +5557,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         auto topology = GetFileSystemTopology(service, fsId);
         UNIT_ASSERT_VALUES_EQUAL(2, topology.ShardFileSystemIdsSize());
 
-        ui32 resizeStateReadRequests = 0;
-        ui32 resizeStateUpdateRequests = 0;
-        ui32 oldTabletResizeStateResponses = 0;
+        ui32 shardCreationStateReadRequests = 0;
+        ui32 shardCreationStateUpdateRequests = 0;
+        ui32 oldTabletShardCreationStateResponses = 0;
         auto prevFilter = env.GetRuntime().SetEventFilter(
             [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& ev)
             {
@@ -5569,14 +5569,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                             TEvUnsafeChangeTabletStateRequest;
 
                         const auto* msg = ev->Get<TRequest>();
-                        if (!msg->Record.HasResizeState()) {
+                        if (!msg->Record.HasShardCreationState()) {
                             break;
                         }
 
-                        if (msg->Record.GetResizeState().HasVersion()) {
-                            ++resizeStateUpdateRequests;
+                        if (msg->Record.GetShardCreationState().HasVersion()) {
+                            ++shardCreationStateUpdateRequests;
                         } else {
-                            ++resizeStateReadRequests;
+                            ++shardCreationStateReadRequests;
                         }
                         break;
                     }
@@ -5586,15 +5586,15 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                             TEvUnsafeChangeTabletStateResponse;
 
                         const auto* msg = ev->Get<TResponse>();
-                        if (!msg->Record.HasResizeState()) {
+                        if (!msg->Record.HasShardCreationState()) {
                             break;
                         }
 
-                        ++oldTabletResizeStateResponses;
+                        ++oldTabletShardCreationStateResponses;
                         // Simulate an old tablet binary that does not know the
-                        // ResizeState response field yet. The resize actor must
-                        // keep request throttling enabled and continue without
-                        // persistent resize state.
+                        // ShardCreationState response field yet. The resize
+                        // actor must keep request throttling enabled and
+                        // continue without persistent shard creation state.
                         runtime.Send(
                             new IEventHandle(
                                 ev->Recipient,
@@ -5626,9 +5626,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         env.GetRuntime().SetEventFilter(prevFilter);
 
-        UNIT_ASSERT(resizeStateReadRequests);
-        UNIT_ASSERT_VALUES_EQUAL(0, resizeStateUpdateRequests);
-        UNIT_ASSERT_VALUES_EQUAL(1, oldTabletResizeStateResponses);
+        UNIT_ASSERT(shardCreationStateReadRequests);
+        UNIT_ASSERT_VALUES_EQUAL(0, shardCreationStateUpdateRequests);
+        UNIT_ASSERT_VALUES_EQUAL(1, oldTabletShardCreationStateResponses);
 
         // waiting for IndexTablet start after the restart triggered by
         // configureshards
