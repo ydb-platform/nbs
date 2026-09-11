@@ -24,7 +24,7 @@ import os
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import DefaultDict, Dict, Iterable, List, Optional, Tuple, Union
+from typing import DefaultDict, Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 from tabulate import tabulate
@@ -67,29 +67,6 @@ def fmt_duration(seconds: float) -> str:
 
 def label_combo_key(labels: Iterable[str]) -> Tuple[str, ...]:
     return tuple(sorted(labels))
-
-
-#
-# PyGithub requester helper: handle variable return shapes from requestJsonAndCheck
-#
-def _req_json_and_headers(requester, path: str):
-    try:
-        res = requester.requestJsonAndCheck("GET", path, headers={})
-    except Exception:
-        raise
-    if isinstance(res, (tuple, list)):
-        if len(res) == 3:
-            data, _, headers = res
-            return data, headers or {}
-        elif len(res) == 2:
-            data, headers = res
-            return data, headers or {}
-        else:
-            data = res[0]
-            headers = res[-1] if len(res) > 1 else {}
-            return data, headers or {}
-    else:
-        return res, {}
 
 
 def get_workflow_id_by_path(repo, workflow_ref: str) -> int:
@@ -188,47 +165,6 @@ def iter_successful_runs(
         total_seen,
         yielded,
     )
-
-
-def iter_jobs_for_run(run) -> Iterable[Union[dict, object]]:
-    """
-    Yield job dicts or PyGithub Job objects for the run.
-    Prefer run.jobs() (PyGithub), else fallback to raw jobs endpoint with pagination.
-    """
-    try:
-        yield from run.jobs()
-        return
-    except Exception as e:
-        LOG.debug(
-            "run.jobs() failed for run %s: %s. Falling back to raw jobs API.",
-            getattr(run, "id", None),
-            e,
-        )
-
-    try:
-        requester = run._requester
-        owner = run.repository.owner.login
-        repo = run.repository.name
-        path = f"/repos/{owner}/{repo}/actions/runs/{run.id}/jobs?per_page=100"
-        while path:
-            data, headers = _req_json_and_headers(requester, path)
-            yield from data.get("jobs", [])
-
-            link = headers.get("link") or headers.get("Link")
-            next_url = None
-            if link:
-                parts = [p.strip() for p in link.split(",")]
-                for p in parts:
-                    if 'rel="next"' in p:
-                        next_url = p.split(";")[0].strip().strip("<>")
-                        break
-
-            if next_url and next_url.startswith("https://api.github.com"):
-                path = next_url.replace("https://api.github.com", "")
-            else:
-                path = None
-    except Exception as e:
-        LOG.error("Raw jobs API failed for run %s: %s", getattr(run, "id", None), e)
 
 
 def _extract_steps_from_job(job_obj) -> List[Dict]:
@@ -341,7 +277,7 @@ def step_duration_seconds_in_job(
 
 
 def get_job_duration_seconds(run, job_name: str, match_mode: str) -> Optional[float]:
-    jobs = list(iter_jobs_for_run(run))
+    jobs = list(run.jobs(_filter="latest"))
     LOG.debug(
         "Run %s has %d jobs (via chosen method)", getattr(run, "id", None), len(jobs)
     )

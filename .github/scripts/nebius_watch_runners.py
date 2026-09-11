@@ -6,7 +6,7 @@ from tabulate import tabulate
 from .helpers import (
     setup_logger,
     github_client,
-    get_jobs_raw,
+    get_jobs,
     compact_workflow_name,
     compact_job_name,
     date_to_hms,
@@ -86,7 +86,7 @@ async def main():
         queued_workflows_runs.append(run.id)
 
     for run in workflow_runs:
-        for job in get_jobs_raw(token, repo.full_name, run.id):
+        for job in get_jobs(g, f"{args.owner}/{args.repo}", run.id):
             if job.status in ("in_progress", "queued") and job.runner_name:
                 active_jobs[job.runner_name] = {
                     "job_name": job.name,

@@ -849,6 +849,7 @@ def load_context(gh) -> tuple[
     runs = selected_workflows(labels)
     marker = f"pr-{pr_number}-run-{os.environ['GITHUB_RUN_ID']}-attempt-{os.environ.get('GITHUB_RUN_ATTEMPT', '1')}"
     collector_url = find_current_job_url(
+        gh,
         os.environ.get("GITHUB_JOB", "nightly-builds"),
         os.environ.get("RUNNER_NAME", ""),
     )
