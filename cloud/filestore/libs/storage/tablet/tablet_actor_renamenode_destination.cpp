@@ -575,6 +575,16 @@ bool TIndexTabletActor::PrepareTx_RenameNodeInDestination(
             && args.Request.GetSourceNodeShardNodeName()
                 == args.NewChildRef->ShardNodeName;
         if (isSameExternalNode) {
+            //
+            // The old target is the source node itself. Report its location
+            // anyway - the exchange path in the source uses these fields to
+            // recreate its ref and must not receive them empty.
+            //
+
+            args.Response.SetOldTargetNodeShardId(args.NewChildRef->ShardId);
+            args.Response.SetOldTargetNodeShardNodeName(
+                args.NewChildRef->ShardNodeName);
+
             args.Error = MakeError(S_ALREADY, "is the same file");
             return true;
         }

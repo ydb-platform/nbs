@@ -236,9 +236,18 @@ bool TIndexTabletActor::PrepareTx_ListNodes(
         }
 
         if (ready) {
-            // TODO: AccessCheck
-            TABLET_VERIFY(childNode);
-            args.ChildNodes.emplace_back(std::move(childNode.GetRef()));
+            if (childNode) {
+                args.ChildNodes.emplace_back(std::move(childNode.GetRef()));
+            } else {
+                auto message = ReportListNodesLocalNodeNotFound(
+                    TStringBuilder() << "NodeId: " << args.NodeId
+                        << ", ref.Name: " << ref.Name
+                        << ", ref.ChildNodeId: " << ref.ChildNodeId
+                        << ", ref.ShardId: " << ref.ShardId
+                        << ", ref.ShardNodeName: " << ref.ShardNodeName);
+                args.Error = MakeError(E_INVALID_STATE, std::move(message));
+                break;
+            }
         }
     }
 

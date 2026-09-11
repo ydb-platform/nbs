@@ -740,7 +740,7 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNodeRef(
         std::make_unique<TEvIndexTablet::TEvUnsafeGetNodeRefResponse>();
 
     if (args.NodeRef) {
-        response->Record.SetChildId(args.NodeRef->NodeId);
+        response->Record.SetChildId(args.NodeRef->ChildNodeId);
         response->Record.SetShardId(args.NodeRef->ShardId);
         response->Record.SetShardNodeName(args.NodeRef->ShardNodeName);
     } else {

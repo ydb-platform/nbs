@@ -73,6 +73,7 @@ namespace NCloud::NFileStore{
     xxx(AvailabilityCountersUnavailableInterval)                               \
     xxx(AvailabilityCountersMissingIntervals)                                  \
     xxx(PersistentStateSessionDirNotEmpty)                                     \
+    xxx(ListNodesLocalNodeNotFound)                                            \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
@@ -98,6 +99,7 @@ namespace NCloud::NFileStore{
     xxx(UnexpectedLocalNode)                                                   \
     xxx(NoRenameNodeInDestinationRequest)                                      \
     xxx(BadChildRefUponCommitRenameNodeInSource)                               \
+    xxx(EmptyOldTargetNodeInExchangeRename)                                    \
     xxx(FailedToLockNodeRef)                                                   \
     xxx(InvalidNodeRefUponCompleteUnlinkNode)                                  \
     xxx(UnknownOpLogEntry)                                                     \
