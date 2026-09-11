@@ -1245,7 +1245,7 @@ void TIndexTabletDatabase::WriteFreshBlock(
 
     Table<TTable>()
         .Key(nodeId, blockIndex, ReverseCommitId(commitId))
-        .Update(NIceDb::TUpdate<TTable::BlockData>(TString(blockData)));
+        .Update(NIceDb::TUpdate<TTable::BlockData>(blockData));
 }
 
 void TIndexTabletDatabase::WriteFreshBlocks(
@@ -1317,7 +1317,7 @@ bool TIndexTabletDatabase::ReadFreshBlocks(TVector<TFreshBlock>& blocks)
             blockIndex,
             minCommitId,
             maxCommitId,
-            it.GetValue<TTable::BlockData>()
+            TString(it.GetValue<TTable::BlockData>())
         });
 
         if (!it.Next()) {
