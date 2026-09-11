@@ -18,9 +18,20 @@ namespace NCloud::NBlockStore::NStorage {
 
 enum class ESecureEraseStatus
 {
+    // Secure erase is scheduled and waiting to start.
     Wait,
+    // Secure erase is currently running on the device.
     InProgress,
+    // Secure erase has finished and its result is stored in the record.
     Completed,
+};
+
+enum class EIoApproveStatus
+{
+    // I/O may proceed because secure erase is absent or completed.
+    Allow,
+    // I/O must be rejected because secure erase is waiting or in progress.
+    Decline,
 };
 
 struct TSecureErase
@@ -57,11 +68,15 @@ public:
     [[nodiscard]] const TSecureErase* Find(const TString& deviceId) const;
     TSecureErase& GetOrAdd(const TString& deviceId);
 
-    [[nodiscard]] bool IsInProgress(const TString& deviceId) const;
+    [[nodiscard]] bool IsEraseInProgress(const TString& deviceId) const;
     [[nodiscard]] bool CanStart(
         const TString& deviceId,
         const TString& deviceName,
         ui32 maxParallelSecureErases) const;
+
+    // Rejects I/O while secure erase is waiting or in progress. A completed
+    // secure erase record is removed before allowing I/O.
+    [[nodiscard]] EIoApproveStatus ApproveIo(const TString& deviceId);
 
     void Start(const TString& deviceId, const TString& deviceName);
     TSecureErase& Complete(

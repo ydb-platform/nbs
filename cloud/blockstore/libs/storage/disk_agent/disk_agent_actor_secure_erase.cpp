@@ -124,7 +124,7 @@ void TDiskAgentActor::HandleSecureEraseDevice(
     auto& erase = SecureEraseState.GetOrAdd(deviceId);
     erase.Requests.emplace_back(
         CreateRequestInfo(ev->Sender, ev->Cookie, ev->Get()->CallContext));
-    if (SecureEraseState.IsInProgress(deviceId)) {
+    if (SecureEraseState.IsEraseInProgress(deviceId)) {
         return;
     }
     erase.Status = ESecureEraseStatus::Wait;

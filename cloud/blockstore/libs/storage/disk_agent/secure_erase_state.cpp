@@ -83,7 +83,7 @@ TSecureErase& TSecureEraseState::GetOrAdd(const TString& deviceId)
     return SecureErases[deviceId];
 }
 
-bool TSecureEraseState::IsInProgress(const TString& deviceId) const
+bool TSecureEraseState::IsEraseInProgress(const TString& deviceId) const
 {
     return DevicesInProgress.contains(deviceId);
 }
@@ -98,6 +98,22 @@ bool TSecureEraseState::CanStart(
            !DevicesInProgress.contains(deviceId) &&
            !DevicesNamesInProgress.contains(deviceName) &&
            DevicesInProgress.size() < maxParallelSecureErases;
+}
+
+EIoApproveStatus TSecureEraseState::ApproveIo(const TString& deviceId)
+{
+    const auto it = SecureErases.find(deviceId);
+    if (it == SecureErases.end()) {
+        return EIoApproveStatus::Allow;
+    }
+
+    if (it->second.Status != ESecureEraseStatus::Completed) {
+        return EIoApproveStatus::Decline;
+    }
+
+    SecureErases.erase(it);
+
+    return EIoApproveStatus::Allow;
 }
 
 void TSecureEraseState::Start(
