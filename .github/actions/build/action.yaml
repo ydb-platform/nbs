@@ -55,6 +55,15 @@ outputs:
   build_duration_seconds:
     description: "Elapsed time of the ya make build step in seconds"
     value: ${{ steps.build.outputs.build_duration_seconds }}
+  trace_report_url:
+    description: "URL to the static ya build trace"
+    value: ${{ steps.build-trace.outputs.html_url }}
+  trace_otlp_url:
+    description: "URL to the raw ya build OTLP bundle"
+    value: ${{ steps.build-trace.outputs.otlp_url }}
+  trace_inputs_url:
+    description: "URL to the archived raw ya build trace inputs"
+    value: ${{ steps.build-trace.outputs.inputs_url }}
 
 runs:
   using: composite
@@ -259,6 +268,7 @@ runs:
         while [ "$attempt" -lt "$RETRIES" ]; do
             attempt=$((attempt + 1))
             echo "ya build attempt ${attempt}/${RETRIES}"
+            TRACE_START_TIME_NS=$(date +%s%N)
             date
             EXIT_CODE_FILE=$(mktemp)
             set +e
@@ -268,6 +278,7 @@ runs:
             } |& tee "$TMP_DIR/ya_make_output.txt"
             set -e
             YA_MAKE_EXIT_CODE=$(< "$EXIT_CODE_FILE")
+            TRACE_END_TIME_NS=$(date +%s%N)
             rm -f "$EXIT_CODE_FILE"
             if [ "$YA_MAKE_EXIT_CODE" = "0" ]; then
                 break
@@ -283,8 +294,60 @@ runs:
         BUILD_DURATION_SECONDS=$((BUILD_END_TIME - BUILD_START_TIME))
         echo "BUILD_DURATION_SECONDS=$BUILD_DURATION_SECONDS" | tee -a "$GITHUB_ENV"
         echo "build_duration_seconds=$BUILD_DURATION_SECONDS" | tee -a "$GITHUB_OUTPUT"
-        echo "YA_MAKE_EXIT_CODE=$YA_MAKE_EXIT_CODE" >> "$GITHUB_ENV"
+        {
+            echo "YA_MAKE_EXIT_CODE=$YA_MAKE_EXIT_CODE"
+            echo "YA_BUILD_ATTEMPT=$attempt"
+            echo "TRACE_START_TIME_NS=$TRACE_START_TIME_NS"
+            echo "TRACE_END_TIME_NS=$TRACE_END_TIME_NS"
+        } >> "$GITHUB_ENV"
         date
+    - name: Install trace dependencies
+      if: always() && env.YA_MAKE_EXIT_CODE != ''
+      continue-on-error: true
+      shell: bash
+      run: |
+        pip install -r .github/scripts/requirements.txt
+    - name: Render build trace
+      id: build-trace
+      if: always() && env.YA_MAKE_EXIT_CODE != ''
+      continue-on-error: true
+      shell: bash
+      env:
+        BUILD_PRESET: ${{ inputs.build_preset }}
+        BUILD_TARGET: ${{ inputs.build_target }}
+      run: |
+        set -euo pipefail
+        export PYTHONPATH="${PYTHONPATH:-}:$GITHUB_WORKSPACE/.github"
+        BUILD_TARGET=${BUILD_TARGET//\"/}
+        TRACE_REPORT_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}trace.html"
+        TRACE_OTLP_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}trace.otlp.jsonl.gz"
+        TRACE_INPUTS_URL="${S3_WEBSITE_PREFIX}/build_logs/${COMPONENT_DIR}trace-inputs.tar.gz"
+        if [ -n "${S3_REPORTS_WEBSITE_PREFIX:-}" ]; then
+            TRACE_REPORT_URL="${S3_REPORTS_WEBSITE_PREFIX}/${COMPONENT_DIR}build/trace.html"
+            TRACE_OTLP_URL="${S3_REPORTS_WEBSITE_PREFIX}/${COMPONENT_DIR}build/trace.otlp.jsonl.gz"
+            TRACE_INPUTS_URL="${S3_REPORTS_WEBSITE_PREFIX}/${COMPONENT_DIR}build/trace-inputs.tar.gz"
+        fi
+        bash "$GITHUB_WORKSPACE/.github/scripts/tracing/render_ya_trace_bundle.sh" \
+            --warning-title "Build trace" \
+            --report-dir "$TMP_DIR" \
+            --ya-out "$TMP_DIR" \
+            --evlog "$TMP_DIR/ya_evlog.jsonl" \
+            --html-url "$TRACE_REPORT_URL" \
+            --otlp-url "$TRACE_OTLP_URL" \
+            --inputs-url "$TRACE_INPUTS_URL" \
+            --summary "$GITHUB_STEP_SUMMARY" \
+            --summary-heading "Build trace" \
+            --github-output "$GITHUB_OUTPUT" \
+            -- \
+            --attempt-start-ns "$TRACE_START_TIME_NS" \
+            --attempt-end-ns "$TRACE_END_TIME_NS" \
+            --exit-code "$YA_MAKE_EXIT_CODE" \
+            --result-code "$YA_MAKE_EXIT_CODE" \
+            --component "${COMPONENT_DIR%/}" \
+            --build-preset "$BUILD_PRESET" \
+            --build-target "$BUILD_TARGET" \
+            --retry "$YA_BUILD_ATTEMPT" \
+            --operation build
     - name: Summarize build errors
       id: build-errors
       if: env.YA_MAKE_EXIT_CODE != '' && env.YA_MAKE_EXIT_CODE != '0'
@@ -316,7 +379,21 @@ runs:
       shell: bash
       run: |
         echo "::group::s3-sync"
-        aws s3 sync --acl public-read --no-progress "$TMP_DIR/" "$S3_BUCKET_PATH/build_logs/${COMPONENT_DIR}"
+        aws s3 sync --acl public-read --no-progress \
+            --exclude ".trace-inputs.*.tar.gz.tmp" \
+            --exclude "trace-inputs.files" \
+            "$TMP_DIR/" \
+            "$S3_BUCKET_PATH/build_logs/${COMPONENT_DIR}"
+        if [ -n "${S3_REPORTS_BUCKET_PATH:-}" ]; then
+            aws s3 sync --acl public-read --follow-symlinks --no-progress \
+                --exclude "*" \
+                --include "trace.html" \
+                --include "trace.manifest.json" \
+                --include "trace.otlp.jsonl.gz" \
+                --include "trace-inputs.tar.gz" \
+                "$TMP_DIR/" \
+                "$S3_REPORTS_BUCKET_PATH/${COMPONENT_DIR}build/"
+        fi
         echo "::endgroup::"
     - name: Create directory listing on s3
       if: always()

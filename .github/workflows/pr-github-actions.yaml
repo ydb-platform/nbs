@@ -332,7 +332,8 @@ jobs:
               --html="${GITHUB_WORKSPACE}/ga-scripts-pytest-report.html" \
               --self-contained-html \
               .github/scripts/*_test.py \
-              .github/scripts/tests
+              .github/scripts/tests \
+              .github/scripts/tracing
       - name: Upload pytest test results artifact
         if: ${{ env.ACT != 'true' && always() }}
         id: upload
@@ -455,6 +456,24 @@ jobs:
               status=1
           fi
           exit "$status"
+  javascript:
+    needs: [set-env, check-running-allowed]
+    if: needs.check-running-allowed.outputs.result == 'true'
+    runs-on: [self-hosted, "self-hosted", "runner_light"]
+    steps:
+      - name: checkout
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          sparse-checkout: ".github"
+          clean: true
+      - name: set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+      - name: trace report JavaScript tests
+        run: node .github/scripts/tracing/trace_report_js_test.js
+
   workflows:
     needs: [set-env, check-running-allowed]
     if: needs.check-running-allowed.outputs.result == 'true'

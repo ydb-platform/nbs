@@ -45,6 +45,7 @@ def test_gen_summary_creates_html_and_aggregates_counters(
         "https://summary/",
         str(tmp_path),
         [("Tests", "ya-test.html", str(xml_path))],
+        trace_report_url="https://reports.example/trace.html",
     )
 
     assert summary.is_empty is False
@@ -60,6 +61,8 @@ def test_gen_summary_creates_html_and_aggregates_counters(
     assert 'id="FAIL"' in html
     assert "a/fail" in html
     assert "Summary dir file listing" in html
+    assert 'href="https://reports.example/trace.html"' in html
+    assert "best-effort basis and may be missing" in html
 
 
 def test_gen_summary_links_build_errors_in_fail_build_html(

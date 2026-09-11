@@ -4,6 +4,48 @@ For validating syntax use action-validator
 find .github/workflows .github/actions -type f \( -iname \*.yaml -o -iname \*.yml \) -print | while read path; do echo Checking $path; action-validator --verbose $path; done
 ```
 
+## Static execution traces
+
+Each `ya make` test attempt writes these files beside `summary.json`:
+
+- `trace.otlp.jsonl.gz`: canonical OTLP/JSON Lines spans;
+- `trace.manifest.json`: bundle metadata and span counts;
+- `trace.html`: a self-contained, searchable waterfall.
+
+The HTML test summary links to `trace.html`; the link warns that trace
+generation is best-effort and its target may be missing.
+
+The standalone `build` action writes the same three files beside its build
+logs and copies them to the workflow trace reports prefix. Its bundle has a
+`ya make build` root with graph, cache, build-operation, and critical-path
+spans, but no test chunks.
+
+Observed `subtest-started`/`subtest-finished` events become test spans. Older
+finish-only events use the reported test duration and are marked with
+`test.timing.inferred=true`. Ya recipe-stage durations do not have absolute
+timestamps, so their `ya.test.stage` spans are positioned from the chunk start
+and marked as inferred while retaining the reported duration.
+
+The per-attempt ya event log supplies absolute timing for graph generation,
+execution, and report-finalization phase spans. Completed worker nodes become
+searchable build spans for compilation, linking, archive creation, cache
+restores, and result materialization. Test worker nodes are matched to their
+logical chunks and provide worker and worker-phase spans around the test tree.
+The `build operations` span reports both its wall-clock execution envelope and
+the cumulative worker-node time; the latter can be larger because nodes run in
+parallel. It also carries ya's authoritative considered-task cache statistics,
+observed test-excluded worker-node cache ratios (including per-tool `CC`, `AR`,
+`LD`, and similar breakdowns), total task reuse/avoidance, execution-stage wall
+times, distributed-cache I/O, and the build-only portion of ya's reported
+critical path. Critical-path build nodes are marked on their individual spans.
+
+To render a saved OTLP bundle locally:
+
+```bash
+PYTHONPATH=.github python3 -m scripts.tracing.trace_report \
+  trace.otlp.jsonl.gz -o trace.html
+```
+
 You can use [act](https://github.com/nektos/act) as a debugging tool for pipelines it acts as a GitHub runner of some sort, using docker.
 
 It is not 100% replacement for GitHub actions altogether (i.e. you can't run self-hosted GitHub runners), but you can use it to debug some of your changes before committing
