@@ -4,11 +4,10 @@
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+#include <cloud/filestore/libs/storage/core/compressed_bitmap.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 #include <cloud/filestore/libs/storage/service/helpers.h>
-
-#include <cloud/storage/core/libs/common/compressed_bitmap.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -238,49 +237,6 @@ private:
         }
 
         return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
-    }
-
-    static NCloud::TCompressedBitmap LoadCompressedBitmap(
-        const NProtoPrivate::TCompressedBitmapData& proto,
-        const ui64 minBitCount)
-    {
-        const ui64 minBitsForBitmap = 1;
-        const ui64 bitCount =
-            Max<ui64>(proto.GetBitCount(), minBitCount, minBitsForBitmap);
-
-        NCloud::TCompressedBitmap bitmap(bitCount);
-
-        for (const auto& chunk: proto.GetChunks()) {
-            bitmap.Update({chunk.GetChunkIdx(), chunk.GetData()});
-        }
-
-        return bitmap;
-    }
-
-    static void SaveCompressedBitmap(
-        const NCloud::TCompressedBitmap& bitmap,
-        const ui64 bitCount,
-        NProtoPrivate::TCompressedBitmapData& proto)
-    {
-        proto.Clear();
-        proto.SetBitCount(bitCount);
-
-        if (!bitCount) {
-            return;
-        }
-
-        auto serializer = bitmap.RangeSerializer(0, bitCount);
-
-        NCloud::TCompressedBitmap::TSerializedChunk chunk;
-        while (serializer.Next(&chunk)) {
-            if (NCloud::TCompressedBitmap::IsZeroChunk(chunk)) {
-                continue;
-            }
-
-            auto* out = proto.AddChunks();
-            out->SetChunkIdx(chunk.ChunkIdx);
-            out->SetData(chunk.Data.data(), chunk.Data.size());
-        }
     }
 
     bool IsShardCreated(const ui32 shardIndex) const
