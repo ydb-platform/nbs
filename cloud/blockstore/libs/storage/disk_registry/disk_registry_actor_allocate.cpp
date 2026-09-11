@@ -3,8 +3,6 @@
 #include <cloud/blockstore/libs/common/safe_debug_print.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 
-#include <cloud/storage/core/libs/common/media.h>
-
 #include <util/string/join.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -135,11 +133,7 @@ void TDiskRegistryActor::ExecuteAddDisk(
         &result);
 
     if (args.Error.GetCode() == E_BS_DISK_ALLOCATION_FAILED &&
-        IsDiskRegistryLocalMediaKind(args.MediaKind) &&
-        State->CanAllocateLocalDiskAfterSecureErase(
-            args.AgentIds,
-            args.PoolName,
-            args.BlocksCount * args.BlockSize))
+        result.CanAllocateLocalAfterSecureErase)
     {
         // Note: DM and NBS uses this specific error message to identify this
         // case. Update "createEmptyDiskTask()" and "GetDiagnosticsErrorKind()"
