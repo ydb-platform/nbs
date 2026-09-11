@@ -279,7 +279,7 @@ struct TIndexTabletSchema
         // XXX is MaxCommitId needed for FreshBlocks?
         struct MaxCommitId  : Column<3, NKikimr::NScheme::NTypeIds::Uint64> {};
         struct BlockIndex   : Column<4, NKikimr::NScheme::NTypeIds::Uint32> {};
-        struct BlockData    : Column<5, NKikimr::NScheme::NTypeIds::String> {};
+        struct BlockData    : Column<5, NKikimr::NScheme::NTypeIds::String> { using Type = TStringBuf; };
 
         using TKey = TableKey<NodeId, BlockIndex, MinCommitId>;
 
