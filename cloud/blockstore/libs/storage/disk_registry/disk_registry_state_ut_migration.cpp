@@ -1,6 +1,7 @@
 #include "disk_registry_state.h"
 
 #include "disk_registry_database.h"
+#include "disk_registry_schema.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -18,6 +19,31 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NDiskRegistryStateTest;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TTableUpdateCounter final
+    : public NKikimr::NTable::ITableObserver
+{
+public:
+    size_t UpdateCount = 0;
+
+    void OnUpdate(
+        NKikimr::NTable::ERowOp,
+        TArrayRef<const NKikimr::TRawTypeValue>,
+        TArrayRef<const NKikimr::NTable::TUpdateOp>,
+        NKikimr::TRowVersion) override
+    {
+        ++UpdateCount;
+    }
+
+    void OnUpdateTx(
+        NKikimr::NTable::ERowOp,
+        TArrayRef<const NKikimr::TRawTypeValue>,
+        TArrayRef<const NKikimr::NTable::TUpdateOp>,
+        ui64) override
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -663,6 +689,11 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             db.InitSchema();
         });
 
+        auto updateCounter = MakeIntrusive<TTableUpdateCounter>();
+        executor.DB.SetTableObserver(
+            TDiskRegistrySchema::Disks::TableId,
+            updateCounter);
+
         const TVector agents {
             AgentConfig(1, { Device("dev-1", "uuid-1.1", "rack-1") }),
             AgentConfig(2, { Device("dev-1", "uuid-2.1", "rack-1") }),
@@ -708,6 +739,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) mutable {
+            updateCounter->UpdateCount = 0;
+
             bool updated = false;
             auto error = state.FinishDeviceMigration(
                 db,
@@ -719,6 +752,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
 
             UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
             UNIT_ASSERT(updated);
+            UNIT_ASSERT_VALUES_EQUAL(1, updateCounter->UpdateCount);
         });
 
         UNIT_ASSERT(state.IsMigrationListEmpty());

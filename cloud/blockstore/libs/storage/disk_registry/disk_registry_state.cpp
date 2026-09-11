@@ -6914,7 +6914,9 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
 
     *diskStateUpdated = TryUpdateDiskState(db, diskId, disk, timestamp);
 
-    db.UpdateDisk(BuildDiskConfig(diskId, disk));
+    if (!*diskStateUpdated) {
+        db.UpdateDisk(BuildDiskConfig(diskId, disk));
+    }
 
     UpdatePlacementGroup(db, diskId, disk, "FinishDeviceMigration");
 
