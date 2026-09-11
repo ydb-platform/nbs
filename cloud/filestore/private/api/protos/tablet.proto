@@ -1089,6 +1089,31 @@ message TUnsafeCreateHandleResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// FileSystem Resize State.
+
+message TCompressedBitmapChunk
+{
+    uint32 ChunkIdx = 1;
+    bytes Data = 2;
+}
+
+message TCompressedBitmapData
+{
+    uint64 BitCount = 1;
+    repeated TCompressedBitmapChunk Chunks = 2;
+}
+
+message TFileSystemShardCreationState
+{
+    // Protecting from races. When unset in Request, we do not modify during
+    // the Request the TFileSystem.ShardCreationState and just return current
+    // state.
+    optional uint32 Version = 1;
+
+    TCompressedBitmapData CreatedShardBitmap = 2;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // UnsafeChangeTabletState request/response.
 
 message TUnsafeChangeTabletStateRequest
@@ -1101,12 +1126,18 @@ message TUnsafeChangeTabletStateRequest
 
     // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
     optional bool CompressNodeRef = 3;
+
+    // Update shard creation state during large operations.
+    TFileSystemShardCreationState ShardCreationState = 4;
 }
 
 message TUnsafeChangeTabletStateResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // Returns current shard creation state.
+    TFileSystemShardCreationState ShardCreationState = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
