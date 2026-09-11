@@ -29,6 +29,8 @@
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
 
+#include <atomic>
+
 namespace NCloud::NBlockStore::NBD {
 
 using namespace NThreading;
@@ -193,6 +195,11 @@ public:
             auto error = future.GetValue(TDuration::Seconds(3));
             UNIT_ASSERT_C(!HasError(error), error);
         }
+    }
+
+    TFuture<NProto::TError> DrainEndpoint()
+    {
+        return Server->DrainEndpoint(ConnectAddress);
     }
 
     ILoggingServicePtr GetLogging()
@@ -981,6 +988,148 @@ Y_UNIT_TEST_SUITE(TServerTest)
             UNIT_ASSERT_C(IsConnectionError(error), error);
         }
 
+        bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldWaitForRequestsWhenDrainingEndpoint)
+    {
+        const ui32 startIndex = 0;
+        const ui64 blocksCount = 42;
+
+        TManualEvent requestStarted;
+        auto requestCompleted = NewPromise<NProto::TZeroBlocksResponse>();
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ZeroBlocksHandler = [&] (
+            TCallContextPtr callContext,
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(callContext);
+
+            UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
+
+            requestStarted.Signal();
+            return requestCompleted.GetFuture();
+        };
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto bootstrap = CreateBootstrap(connectAddress, storage);
+
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->SetStartIndex(startIndex);
+        request->SetBlocksCount(blocksCount);
+
+        auto requestFuture = bootstrap->GetClientEndpoint()->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+
+        requestStarted.Wait();
+
+        auto drainFuture = bootstrap->DrainEndpoint();
+        UNIT_ASSERT(!drainFuture.Wait(TDuration::MilliSeconds(100)));
+
+        requestCompleted.SetValue({});
+
+        error = drainFuture.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        UNIT_ASSERT(requestFuture.Wait(TDuration::Seconds(5)));
+
+        bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldSerializeRequestsFromDifferentConnections)
+    {
+        const ui32 startIndex = 0;
+        const ui64 blocksCount = 42;
+
+        TManualEvent firstRequestStarted;
+        TManualEvent secondRequestStarted;
+        auto firstRequestCompleted =
+            NewPromise<NProto::TZeroBlocksResponse>();
+        std::atomic<size_t> requestCount = 0;
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ZeroBlocksHandler = [&] (
+            TCallContextPtr callContext,
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(callContext);
+
+            UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
+
+            if (requestCount.fetch_add(1) == 0) {
+                firstRequestStarted.Signal();
+                return firstRequestCompleted.GetFuture();
+            }
+
+            secondRequestStarted.Signal();
+            return MakeFuture<NProto::TZeroBlocksResponse>();
+        };
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto bootstrap = CreateBootstrap(connectAddress, storage);
+
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        auto firstRequest = std::make_shared<NProto::TZeroBlocksRequest>();
+        firstRequest->SetStartIndex(startIndex);
+        firstRequest->SetBlocksCount(blocksCount);
+
+        auto firstRequestFuture = bootstrap->GetClientEndpoint()->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(firstRequest));
+
+        UNIT_ASSERT(firstRequestStarted.WaitT(TDuration::Seconds(5)));
+
+        auto secondClientEndpoint = bootstrap->GetClient()->CreateEndpoint(
+            connectAddress,
+            CreateClientHandler(
+                bootstrap->GetLogging(),
+                StructuredReply,
+                UseNbsErrors),
+            bootstrap->GetGrpcClientEndpoint());
+        secondClientEndpoint->Start();
+
+        auto mountRequest = std::make_shared<NProto::TMountVolumeRequest>();
+        mountRequest->SetDiskId(DefaultStorageOptions.DiskId);
+        auto mountResponse = secondClientEndpoint->MountVolume(
+            MakeIntrusive<TCallContext>(),
+            std::move(mountRequest)).GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(mountResponse), mountResponse);
+
+        auto secondRequest = std::make_shared<NProto::TZeroBlocksRequest>();
+        secondRequest->SetStartIndex(startIndex);
+        secondRequest->SetBlocksCount(blocksCount);
+
+        auto secondRequestFuture = secondClientEndpoint->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(secondRequest));
+
+        UNIT_ASSERT(
+            !secondRequestStarted.WaitT(TDuration::MilliSeconds(100)));
+
+        firstRequestCompleted.SetValue({});
+
+        UNIT_ASSERT(secondRequestStarted.WaitT(TDuration::Seconds(5)));
+        auto secondResponse =
+            secondRequestFuture.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(secondResponse), secondResponse);
+        UNIT_ASSERT(firstRequestFuture.Wait(TDuration::Seconds(5)));
+
+        secondClientEndpoint->Stop();
         bootstrap->Stop();
     }
 

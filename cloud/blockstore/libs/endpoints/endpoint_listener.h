@@ -33,6 +33,9 @@ struct IEndpointListener
     virtual NThreading::TFuture<NProto::TError> StopEndpoint(
         const TString& socketPath) = 0;
 
+    virtual NThreading::TFuture<NProto::TError> DrainEndpoint(
+        const TString& socketPath) = 0;
+
     virtual NProto::TError RefreshEndpoint(
         const TString& socketPath,
         const NProto::TVolume& volume) = 0;

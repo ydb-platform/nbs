@@ -95,6 +95,13 @@ public:
         return Server->StopEndpoint(address);
     }
 
+    TFuture<NProto::TError> DrainEndpoint(const TString& socketPath) override
+    {
+        auto address = TNetworkAddress(TUnixSocketPath(socketPath));
+
+        return Server->DrainEndpoint(address);
+    }
+
     NProto::TError RefreshEndpoint(
         const TString& socketPath,
         const NProto::TVolume& volume) override
