@@ -1517,6 +1517,8 @@ void TEndpointManager::DoProcessException(
         return;
     }
 
+    // Draining may yield to another coroutine, which can stop or replace the
+    // endpoint. Do not resume a stale restart.
     auto endpointIt = Endpoints.find(socketPath);
     if (endpointIt == Endpoints.end() || endpointIt->second != endpoint) {
         STORAGE_WARN(prefix << " endpoint is down, cancel restart");
@@ -1544,7 +1546,7 @@ void TEndpointManager::DoProcessException(
     }
 
     if (hasDevice) {
-        STORAGE_INFO(prefix << "start device");
+        STORAGE_INFO(prefix << " start device");
         auto device = NbdDeviceFactory->Create(
             TNetworkAddress(TUnixSocketPath(socketPath)),
             endpoint->Request->GetNbdDeviceFile(),
@@ -1553,7 +1555,7 @@ void TEndpointManager::DoProcessException(
         auto startDeviceFuture = device->Start();
         error = Executor->WaitFor(startDeviceFuture);
         if (HasError(error)) {
-            STORAGE_ERROR(prefix << "failed to start device: "
+            STORAGE_ERROR(prefix << " failed to start device: "
                 << FormatError(error));
             context->Generation++;
             ProcessException(std::move(context), std::move(prefix));
