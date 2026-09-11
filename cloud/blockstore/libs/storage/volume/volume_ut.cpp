@@ -1345,8 +1345,11 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
         NMonitoring::TDynamicCountersPtr counters = new NMonitoring::TDynamicCounters();
         InitCriticalEventsCounter(counters);
+
         auto migrationFailedCounter =
             counters->GetCounter("AppCriticalEvents/MigrationFailed", true);
+        auto migrationNonRetriableErrorCounter =
+            counters->GetCounter("AppCriticalEvents/MigrationNonRetriableError", true);
 
         TVolumeClient volume(*runtime);
 
@@ -1397,6 +1400,7 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(1, rangeMigratedCount);
         UNIT_ASSERT_VALUES_EQUAL(0, state->FinishMigrationRequests);
         UNIT_ASSERT_VALUES_EQUAL(0, migrationFailedCounter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, migrationNonRetriableErrorCounter->Val());
     }
 
     Y_UNIT_TEST(ShouldRestoreMigrationIndexAfterReboot)
