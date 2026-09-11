@@ -21,6 +21,8 @@
 #include <util/generic/map.h>
 #include <util/generic/vector.h>
 
+#include <functional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -736,13 +738,15 @@ public:
         const TDeviceId& sourceDeviceId,
         const TDeviceId& targetDeviceId);
 
-    NProto::TError FinishDeviceMigration(
+    using TFinishDeviceMigrationHandler = std::function<
+        void(const NProto::TDeviceMigrationIds& ids, NProto::TError error)>;
+
+    NProto::TError FinishDeviceMigrations(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
-        const TDeviceId& sourceId,
-        const TDeviceId& targetId,
+        const TVector<NProto::TDeviceMigrationIds>& migrations,
         TInstant timestamp,
-        bool* diskStateUpdated);
+        TFinishDeviceMigrationHandler handler);
 
     TDiskId FindReplicaByMigration(
         const TDiskId& masterDiskId,
@@ -1061,6 +1065,13 @@ private:
         TDiskRegistryDatabase& db,
         const TString& diskId,
         TDiskState& disk,
+        TInstant timestamp);
+
+    NProto::TError FinishDeviceMigration(
+        const TDiskId& diskId,
+        TDiskState& disk,
+        const TDeviceId& sourceId,
+        const TDeviceId& targetId,
         TInstant timestamp);
 
     NProto::TError TryToRemoveAgentDevices(

@@ -6856,21 +6856,66 @@ void TDiskRegistryState::ResetMigrationStartTsIfNeeded(TDiskState& disk)
     }
 }
 
-NProto::TError TDiskRegistryState::FinishDeviceMigration(
+NProto::TError TDiskRegistryState::FinishDeviceMigrations(
     TDiskRegistryDatabase& db,
     const TDiskId& diskId,
-    const TDeviceId& sourceId,
-    const TDeviceId& targetId,
+    const TVector<NProto::TDeviceMigrationIds>& migrations,
     TInstant timestamp,
-    bool* diskStateUpdated)
+    TFinishDeviceMigrationHandler handler)
 {
-    if (!Disks.contains(diskId)) {
-        return MakeError(E_NOT_FOUND, TStringBuilder() <<
-            "disk " << diskId.Quote() << " not found");
+    auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "disk " << diskId.Quote() << " not found");
     }
 
-    TDiskState& disk = Disks[diskId];
+    NProto::TError result;
+    TVector<TDeviceId> finishedDevices(Reserve(migrations.size()));
+    for (const auto& migration: migrations) {
+        auto error = FinishDeviceMigration(
+            diskId,
+            *disk,
+            migration.GetSourceDeviceId(),
+            migration.GetTargetDeviceId(),
+            timestamp);
+        if (!HasError(error)) {
+            finishedDevices.push_back(migration.GetSourceDeviceId());
+        }
 
+        if (!HasError(result)) {
+            result = error;
+        }
+
+        handler(migration, std::move(error));
+    }
+
+    if (!finishedDevices.empty()) {
+        const ui64 seqNo = AddReallocateRequest(db, diskId);
+        for (auto& deviceId: finishedDevices) {
+            disk->FinishedMigrations.push_back({
+                .DeviceId = std::move(deviceId),
+                .SeqNo = seqNo,
+                .IsCanceled = false});
+        }
+
+        if (!TryUpdateDiskState(db, diskId, *disk, timestamp)) {
+            db.UpdateDisk(BuildDiskConfig(diskId, *disk));
+        }
+
+        UpdatePlacementGroup(db, diskId, *disk, "FinishDeviceMigration");
+    }
+
+    return result;
+}
+
+NProto::TError TDiskRegistryState::FinishDeviceMigration(
+    const TDiskId& diskId,
+    TDiskState& disk,
+    const TDeviceId& sourceId,
+    const TDeviceId& targetId,
+    TInstant timestamp)
+{
     auto devIt = Find(disk.Devices, sourceId);
 
     if (devIt == disk.Devices.end()) {
@@ -6903,11 +6948,7 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
         disk.History.push_back(std::move(historyItem));
     }
 
-    const ui64 seqNo = AddReallocateRequest(db, diskId);
     *devIt = targetId;
-
-    disk.FinishedMigrations.push_back(
-        {.DeviceId = sourceId, .SeqNo = seqNo, .IsCanceled = false});
 
     if (disk.MasterDiskId) {
         const bool replaced =
@@ -6924,14 +6965,6 @@ NProto::TError TDiskRegistryState::FinishDeviceMigration(
         // targetId is actually fully initialized after migration
         ReplicaTable.MarkReplacementDevice(disk.MasterDiskId, targetId, false);
     }
-
-    *diskStateUpdated = TryUpdateDiskState(db, diskId, disk, timestamp);
-
-    if (!*diskStateUpdated) {
-        db.UpdateDisk(BuildDiskConfig(diskId, disk));
-    }
-
-    UpdatePlacementGroup(db, diskId, disk, "FinishDeviceMigration");
 
     return {};
 }

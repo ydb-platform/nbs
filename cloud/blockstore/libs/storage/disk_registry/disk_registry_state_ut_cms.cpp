@@ -1111,14 +1111,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                         migration.DiskId,
                         migration.SourceDeviceId);
                     UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
-                    bool diskStateUpdated = false;
-                    error = state.FinishDeviceMigration(
+                    error = FinishDeviceMigration(
+                        state,
                         db,
                         migration.DiskId,
                         migration.SourceDeviceId,
-                        device.GetDeviceUUID(),
-                        Now(),
-                        &diskStateUpdated);
+                        device.GetDeviceUUID());
                     UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
                 }
 
