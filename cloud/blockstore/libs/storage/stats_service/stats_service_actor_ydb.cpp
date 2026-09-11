@@ -156,6 +156,8 @@ NYdbStats::TYdbStatsRow BuildStatsForUpload(
         BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByIgnoringZeroedPerDisk);
     out.CompactionByMixedBlockCountPerRange_Throughput =
         BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByMixedBlockCountPerRange);
+    out.CompactionByMixedBlockCountPerDisk_Throughput =
+        BLOCKSTORE_CUMULATIVE_COUNTER(CompactionByMixedBlockCountPerDisk);
 
 #undef BLOCKSTORE_CUMULATIVE_COUNTER
 

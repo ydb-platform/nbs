@@ -156,6 +156,7 @@ struct TCompactionMap::TImpl
         CompareByMixedBlockCount};
 
     ui32 NonEmptyRangeCount = 0;
+    ui64 MixedBlocksCountPerDisk = 0;
 
     TImpl(ui32 rangeSize, ICompactionPolicyPtr policy)
         : RangeSize(rangeSize)
@@ -426,6 +427,9 @@ struct TCompactionMap::TImpl
                 // so recalculate the group maximum.
                 RecalculateGroupMaxMixedBlockCount(group);
             }
+
+            MixedBlocksCountPerDisk -= prev.MixedBlockCount;
+            MixedBlocksCountPerDisk += group->Stats[index].MixedBlockCount;
         }
 
         return group;
@@ -516,6 +520,11 @@ struct TCompactionMap::TImpl
     ui32 GetNonEmptyRangeCount() const
     {
         return NonEmptyRangeCount;
+    }
+
+    ui64 GetMixedBlocksCountPerDisk() const
+    {
+        return MixedBlocksCountPerDisk;
     }
 };
 
@@ -620,6 +629,7 @@ void TCompactionMap::Clear()
     Impl->GroupByGarbageBlockCount.Clear();
     Impl->GroupByGarbageIgnoringZeroed.Clear();
     Impl->GroupByMixedBlockCount.Clear();
+    Impl->MixedBlocksCountPerDisk = 0;
     Impl->Groups.Clear();
 }
 
@@ -849,6 +859,11 @@ TVector<ui32> TCompactionMap::GetNonEmptyRanges() const
 ui32 TCompactionMap::GetNonEmptyRangeCount() const
 {
     return Impl->GetNonEmptyRangeCount();
+}
+
+ui64 TCompactionMap::GetMixedBlocksCountPerDisk() const
+{
+    return Impl->GetMixedBlocksCountPerDisk();
 }
 
 ui32 TCompactionMap::GetRangeStart(ui32 blockIndex) const

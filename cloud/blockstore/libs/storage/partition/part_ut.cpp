@@ -3007,7 +3007,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto runtime = PrepareTestActorRuntime(
             config,
             MaxPartitionBlocksCount);
-
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
@@ -3066,6 +3065,126 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
         UNIT_ASSERT_VALUES_EQUAL(3, compactedRangeCount);
+    }
+
+    Y_UNIT_TEST(ShouldAutomaticallyRunCompactionForManyMixedBlocksPerDisk)
+    {
+        static constexpr ui32 mixedBlockCountPerRangeThreshold = 10;
+        static constexpr ui32 diskBlockCount = 2 * MaxBlocksCount;
+        // Scale the per-unit limit to keep the disk-wide threshold at 6 blocks.
+        static constexpr ui64 maxMixedBytesPerUnit = 6 * 1_GB / diskBlockCount;
+
+        auto config = DefaultConfig(1_MB);
+        config.SetAllocationUnitHDD(1);
+        config.SetMixedBlocksCountCompactionEnabledHDD(true);
+        config.SetMixedBytesCountCompactionThresholdHDD(
+            mixedBlockCountPerRangeThreshold * DefaultBlockSize);
+        config.SetWriteBlobThreshold(
+            mixedBlockCountPerRangeThreshold * DefaultBlockSize);
+        config.SetHDDMaxMixedBytesPerUnit(maxMixedBytesPerUnit);
+        config.SetSSDMaxMixedBytesPerUnit(
+            maxMixedBytesPerUnit + 100 * DefaultBlockSize);
+        config.SetSSDMaxBlobsPerRange(100);
+        config.SetHDDMaxBlobsPerRange(100);
+        config.SetCompactionMergedBlobThresholdHDD(1);
+
+        auto runtime = PrepareTestActorRuntime(config, diskBlockCount);
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        bool compactionRequestObserved = false;
+        bool observeCompactionRequests = false;
+        ui64 compactionByMixedBlockCountPerRange = 0;
+        ui64 compactionByMixedBlockCountPerDisk = 0;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvPartitionPrivate::EvCompactionRequest: {
+                        if (!observeCompactionRequests) {
+                            break;
+                        }
+                        const auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvCompactionRequest>();
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            static_cast<ui32>(
+                                TEvPartitionPrivate::MixedBlocksCountCompaction),
+                            static_cast<ui32>(msg->Mode));
+                        compactionRequestObserved = true;
+                        return true;
+                    }
+                    case TEvStatsService::EvVolumePartCounters: {
+                        const auto* msg = event->Get<
+                            TEvStatsService::TEvVolumePartCounters>();
+                        const auto& counters = msg->DiskCounters->Cumulative;
+                        compactionByMixedBlockCountPerRange =
+                            counters.CompactionByMixedBlockCountPerRange.Value;
+                        compactionByMixedBlockCountPerDisk =
+                            counters.CompactionByMixedBlockCountPerDisk.Value;
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        // Seed both ranges with enough used blocks, then let their initial
+        // mixed blobs compact before testing the per-disk trigger.
+        for (const ui32 startIndex: {0U, MaxBlocksCount}) {
+            partition.WriteBlocks(
+                TBlockRange32::WithLength(
+                    startIndex,
+                    mixedBlockCountPerRangeThreshold),
+                1);
+            runtime->DispatchEvents(
+                TDispatchOptions(),
+                TDuration::Seconds(1));
+        }
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+        const ui64 compactionByMixedBlockCountPerRangeBeforeTest =
+            compactionByMixedBlockCountPerRange;
+        const ui64 compactionByMixedBlockCountPerDiskBeforeTest =
+            compactionByMixedBlockCountPerDisk;
+        observeCompactionRequests = true;
+
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 1);
+        partition.Flush();
+        partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 2);
+        partition.Flush();
+        UNIT_ASSERT(!compactionRequestObserved);
+
+        partition.WriteBlocks(TBlockRange32::WithLength(MaxBlocksCount, 1), 3);
+        partition.Flush();
+        UNIT_ASSERT(!compactionRequestObserved);
+
+        partition.WriteBlocks(
+            TBlockRange32::WithLength(MaxBlocksCount + 1, 1), 4);
+        partition.Flush();
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        UNIT_ASSERT(compactionRequestObserved);
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            compactionByMixedBlockCountPerRangeBeforeTest,
+            compactionByMixedBlockCountPerRange);
+        UNIT_ASSERT_VALUES_EQUAL(
+            compactionByMixedBlockCountPerDiskBeforeTest + 1,
+            compactionByMixedBlockCountPerDisk);
     }
 
     Y_UNIT_TEST(ShouldEnableMixedBlocksCountCompactionByMediaKind)
