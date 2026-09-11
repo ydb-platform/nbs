@@ -26,6 +26,7 @@ void TIndexTabletActor::HandleWriteData(
 {
     auto* msg = ev->Get();
 
+    bool externalPayload = false;
     if (msg->GetPayloadCount() > 0 && msg->GetPayload(0).size() != 0) {
         if (!msg->Record.GetBuffer().empty()) {
             TStringStream error;
@@ -38,13 +39,7 @@ void TIndexTabletActor::HandleWriteData(
                   << ", Payload size: " << msg->GetPayload(0).size();
             ReportWriteDataRequestWithBufferAndPayload(error.Str());
         } else {
-            auto& payload = msg->GetPayload(0);
-            msg->Record.MutableBuffer()->ReserveAndResize(payload.size());
-            TRopeUtils::Memcpy(
-                msg->Record.MutableBuffer()->begin(),
-                payload.begin(),
-                payload.size());
-            msg->StripPayload();
+            externalPayload = true;
         }
     }
 
@@ -59,18 +54,9 @@ void TIndexTabletActor::HandleWriteData(
     TString& buffer = *msg->Record.MutableBuffer();
     const TByteRange range(
         msg->Record.GetOffset(),
-        buffer.size(),
+        externalPayload ? msg->GetPayload(0).GetSize() : buffer.size(),
         GetBlockSize()
     );
-
-    if (Config->GetBlockChecksumsInProfileLogEnabled()) {
-        CalculateChecksums(
-            buffer,
-            GetBlockSize(),
-            false /* ignoreBufferOverflow */,
-            GetFileSystemId(),
-            profileLogRequest);
-    }
 
     auto replyError = [&] (const NProto::TError& error)
     {
@@ -183,13 +169,31 @@ void TIndexTabletActor::HandleWriteData(
         return;
     }
 
+    TRcBuf payload;
+    if (externalPayload) {
+        TRope rope = msg->GetPayload(0);
+        payload = rope.operator TRcBuf();
+    }
+
+    if (Config->GetBlockChecksumsInProfileLogEnabled()) {
+        CalculateChecksums(
+            externalPayload ? TStringBuf(payload.data(), payload.size())
+                            : buffer,
+            GetBlockSize(),
+            false /* ignoreBufferOverflow */,
+            GetFileSystemId(),
+            profileLogRequest);
+    }
+
     auto requestInfo = CreateRequestInfo(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    auto blockBuffer = CreateBlockBuffer(range, std::move(buffer));
+    auto blockBuffer = externalPayload
+                           ? CreateBlockBuffer(range, std::move(payload))
+                           : CreateBlockBuffer(range, std::move(buffer));
 
     AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 
