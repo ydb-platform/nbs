@@ -358,46 +358,55 @@ void TFileSystem::Open(
     }
     auto requestForQueue = request;
 
-    Session->CreateHandle(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
+    auto callback = [=, ptr = weak_from_this()](const auto& future)
+    {
+        const auto& response = future.GetValue();
+        if (auto self = ptr.lock();
+            CheckResponse(self, *callContext, req, response))
+        {
             const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                const auto& response = future.GetValue();
 
-                if (response.GetHandleCreatedAsync()) {
-                    if (!asyncCreateHandle) {
-                        ReportUnexpectedAsyncCreateHandleResponse(
-                            TStringBuilder()
-                                << "CreateHandle returned an unpersisted handle "
-                                << "without client-side async create support: "
-                                << "filesystem "
-                                << self->Config->GetFileSystemId()
-                                << " #" << ino << " @" << response.GetHandle());
+            if (response.GetHandleCreatedAsync()) {
+                if (!asyncCreateHandle) {
+                    ReportUnexpectedAsyncCreateHandleResponse(
+                        TStringBuilder()
+                        << "CreateHandle returned an unpersisted handle "
+                        << "without client-side async create support: "
+                        << "filesystem " << self->Config->GetFileSystemId()
+                        << " #" << ino << " @" << response.GetHandle());
 
-                        auto fi = MakeFuseFileInfo(response, *self->Config);
-                        self->ConfirmCreateHandleAndReplyOpen(
-                            callContext,
-                            req,
-                            *requestForQueue,
-                            ino,
-                            response.GetHandle(),
-                            fi);
-                        return;
-                    }
-
-                    self->ProcessAsyncCreateHandleResponse(
+                    auto fi = MakeFuseFileInfo(response, *self->Config);
+                    self->ConfirmCreateHandleAndReplyOpen(
                         callContext,
                         req,
-                        ino,
                         *requestForQueue,
-                        response);
+                        ino,
+                        response.GetHandle(),
+                        fi);
                     return;
                 }
 
-                auto fi = MakeFuseFileInfo(response, *self->Config);
-                self->ReplyOpen(*callContext, response.GetError(), req, &fi);
+                self->ProcessAsyncCreateHandleResponse(
+                    callContext,
+                    req,
+                    ino,
+                    *requestForQueue,
+                    response);
+                return;
             }
-        });
+
+            auto fi = MakeFuseFileInfo(response, *self->Config);
+            self->ReplyOpen(*callContext, response.GetError(), req, &fi);
+        }
+    };
+
+    if (WriteBackCache) {
+        WriteBackCache.CreateHandle(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+    } else {
+        Session->CreateHandle(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+    }
 }
 
 // CreateHandle has completed, but the async response indicates that the

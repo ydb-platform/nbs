@@ -236,6 +236,13 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TSetNodeAttrRequest> request);
 
+    /* Execute CreateHandle with taking awareness of changing node size under a
+     * barrier if E_TRUNCATE flag is set or bypass to the session otherwise
+     */
+    NThreading::TFuture<NProto::TCreateHandleResponse> CreateHandle(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TCreateHandleRequest> request);
+
     // Keep information about MinNodeSize for flushed nodes
     ui64 AcquireNodeStateRef();
     void ReleaseNodeStateRef(ui64 refId);
