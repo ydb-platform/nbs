@@ -6,6 +6,28 @@ using NProto::TDeviceConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError FinishDeviceMigration(
+    TDiskRegistryState& state,
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    const TString& sourceId,
+    const TString& targetId)
+{
+    TVector<NProto::TDeviceMigrationIds> migrations(1);
+    migrations.front().SetSourceDeviceId(sourceId);
+    migrations.front().SetTargetDeviceId(targetId);
+
+    auto errors = state.FinishDeviceMigrations(
+        db,
+        diskId,
+        migrations,
+        Now());
+    Y_ABORT_UNLESS(errors.size() == 1);
+    return std::move(errors.front());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TDeviceConfig Device(
     TString name,
     TString uuid,

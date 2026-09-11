@@ -41,6 +41,15 @@ constexpr ui64 DefaultDeviceSize = 10_GB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError FinishDeviceMigration(
+    TDiskRegistryState& state,
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    const TString& sourceId,
+    const TString& targetId);
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TByDeviceUUID
 {
     template <typename T>
