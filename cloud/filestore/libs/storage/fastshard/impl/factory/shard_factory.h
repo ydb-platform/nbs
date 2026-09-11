@@ -1,8 +1,25 @@
 #pragma once
 
+#include "public.h"
+
 #include <cloud/filestore/libs/storage/fastshard/iface/public.h>
 
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IFileSystemShardFactory
+{
+    virtual ~IFileSystemShardFactory() = default;
+
+    virtual IFileSystemShardPtr CreateShard(
+        const TString& fileSystemId,
+        const NProtoPrivate::TFastShardConfig& config,
+        ui32 shardNo,
+        ui64 generation) = 0;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
