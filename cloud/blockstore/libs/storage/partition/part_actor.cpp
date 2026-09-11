@@ -94,6 +94,9 @@ TPartitionActor::TPartitionActor(
     SharedState = std::make_shared<TPartitionThreadSafeState>(
         PartitionConfig.GetDiskId(),
         TabletID());
+
+    FreshCapacityLimits =
+        GetEffectiveFreshCapacityLimits(*Config, PartitionConfig);
 }
 
 TPartitionActor::~TPartitionActor()
@@ -711,6 +714,12 @@ void TPartitionActor::HandleUpdateCounters(
     UpdateCountersScheduled = false;
 
     UpdateCounters(ctx);
+
+    // Pick up immediate-control changes without paying for the resolution on
+    // the data path.
+    FreshCapacityLimits =
+        GetEffectiveFreshCapacityLimits(*Config, PartitionConfig);
+
     ScheduleCountersUpdate(ctx);
 }
 

@@ -35,7 +35,7 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
             SharedState->UnflushedFreshBlobByteCount.load(),
             SharedState->UnflushedFreshBlocksCount.load() *
                 PartitionConfig.GetBlockSize(),
-            Config->GetFreshByteCountHardLimit(),
+            FreshCapacityLimits.FreshByteCountHardLimit,
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
     {
@@ -144,7 +144,7 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
             SharedState->UnflushedFreshBlobByteCount.load(),
             SharedState->UnflushedFreshBlocksCount.load() *
                 PartitionConfig.GetBlockSize(),
-            Config->GetFreshByteCountHardLimit(),
+            FreshCapacityLimits.FreshByteCountHardLimit,
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
     {
