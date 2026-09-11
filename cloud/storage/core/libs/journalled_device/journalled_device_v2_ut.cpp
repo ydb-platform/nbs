@@ -29,6 +29,7 @@ namespace {
 constexpr ui32 DefaultPageSize = 4096;
 constexpr TStringBuf DefaultDeviceUUID = "uuid";
 constexpr TStringBuf DefaultClientId = "test-client";
+constexpr TStringBuf BackgroundClientId = "background-ops";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -48,11 +49,12 @@ NCloud::NProto::TDevicePageGroup MakeGroup(
 }
 
 NCloud::NProto::TReadPagesRequest MakeReadRequest(
-    const TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>& refs)
+    const TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>& refs,
+    TStringBuf deviceUUID = DefaultDeviceUUID)
 {
     NCloud::NProto::TReadPagesRequest request;
     request.MutableHeaders()->SetClientId(TString{DefaultClientId});
-    request.SetDeviceUUID(TString{DefaultDeviceUUID});
+    request.SetDeviceUUID(TString{deviceUUID});
 
     for (const auto& [firstPageNo, pageCount]: refs) {
         auto& ref = *request.AddPageGroupRefs();
@@ -60,6 +62,34 @@ NCloud::NProto::TReadPagesRequest MakeReadRequest(
         ref.SetPageCount(pageCount);
         ref.SetPageSize(DefaultPageSize);
     }
+
+    return request;
+}
+
+NCloud::NProto::TWriteLogRecordRequest MakeWriteRequest(TStringBuf deviceUUID)
+{
+    NCloud::NProto::TWriteLogRecordRequest request;
+    request.SetDeviceUUID(TString{deviceUUID});
+    request.SetLogSequenceNumber(1);
+    *request.AddPageGroups() = MakeGroup(10, 1, "W");
+
+    return request;
+}
+
+NCloud::NProto::TReadJournalTailRequest MakeTailRequest(TStringBuf deviceUUID)
+{
+    NCloud::NProto::TReadJournalTailRequest request;
+    request.SetDeviceUUID(TString{deviceUUID});
+
+    return request;
+}
+
+NCloud::NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(
+    TStringBuf deviceUUID)
+{
+    NCloud::NProto::TAdvanceLsnLowWatermarkRequest request;
+    request.SetDeviceUUID(TString{deviceUUID});
+    request.SetLsnLowWatermark(1);
 
     return request;
 }
@@ -374,7 +404,13 @@ struct TFixture: public NUnitTest::TBaseFixture
         Journal = std::make_shared<TTestJournal>();
         DataStore = std::make_shared<TTestDevice>();
 
-        Device = CreateJournalledDeviceV2(Logging, Executor, Journal, DataStore);
+        Device = CreateJournalledDeviceV2(
+            Logging,
+            Executor,
+            Journal,
+            DataStore,
+            TString{DefaultDeviceUUID},
+            TString{BackgroundClientId});
     }
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
@@ -692,6 +728,110 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             "device is broken");
     }
 
+    Y_UNIT_TEST_F(ShouldRejectARequestForAnotherDevice, TFixture)
+    {
+        constexpr TStringBuf otherUUID = "another-device";
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            ReadPages(MakeReadRequest({{10, 4}}, otherUUID))
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            Device->WriteLogRecord(MakeWriteRequest(otherUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            Device->ReadJournalTail(MakeTailRequest(otherUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            Device->AdvanceLsnLowWatermark(MakeAdvanceRequest(otherUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        // none of them got anywhere near the journal or the device
+
+        UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetReadRequests().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectARequestWithNoDeviceUUID, TFixture)
+    {
+        auto response = ReadPages(MakeReadRequest({{10, 4}}, ""));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            response.GetError().GetMessage(),
+            "empty device UUID");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            Device->WriteLogRecord(MakeWriteRequest(""))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            Device->ReadJournalTail(MakeTailRequest(""))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            Device->AdvanceLsnLowWatermark(MakeAdvanceRequest(""))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
+    }
+
+    Y_UNIT_TEST_F(ShouldServeARequestForThisDevice, TFixture)
+    {
+        Journal->ReadHandler = [] (const auto& request) {
+            Y_UNUSED(request);
+            return MakeReadResponse({MakeGroup(10, 1, "J")}, 1);
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            ReadPages(MakeReadRequest({{10, 1}})).GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            Device->WriteLogRecord(MakeWriteRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            Device->ReadJournalTail(MakeTailRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            Device
+                ->AdvanceLsnLowWatermark(MakeAdvanceRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+    }
+
     Y_UNIT_TEST_F(ShouldFlushJournalRecordsToTheDataStore, TFixture)
     {
         Journal->RestoreResponse = 3;
@@ -710,6 +850,19 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL("10:[J10,J11]", DescribeGroups(writes[0]));
         UNIT_ASSERT_VALUES_EQUAL("20:[J20]", DescribeGroups(writes[1]));
         UNIT_ASSERT_VALUES_EQUAL("30:[J30,J31,J32]", DescribeGroups(writes[2]));
+
+        // the flush has no client request behind it, so it goes out under the
+        // identity of the device itself - a real device refuses a write
+        // without one
+
+        for (size_t i = 0; i < writes.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(DefaultDeviceUUID, writes[i].GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                BackgroundClientId,
+                writes[i].GetHeaders().GetClientId());
+            UNIT_ASSERT_VALUES_EQUAL(i + 1, writes[i].GetLogSequenceNumber());
+            UNIT_ASSERT_VALUES_EQUAL(i, writes[i].GetPrevLogSequenceNumber());
+        }
 
         // every flushed record has been acked in the journal
 
