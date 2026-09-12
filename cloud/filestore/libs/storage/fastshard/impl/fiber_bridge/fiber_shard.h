@@ -16,10 +16,17 @@
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
-// TODO(#6958):
-// * strerror -> strerror_r (it's thread-safe)
-// * deal with SetValue being called from fiber context (it triggers arbitrary
-//  callback invocation)
+
+//
+// The GNU strerror_r variant - the build defines _GNU_SOURCE. Thread-safe,
+// unlike strerror.
+//
+
+inline TString FiberSpawnErrorText(int err)
+{
+    char buf[64] = {};
+    return ::strerror_r(err, buf, sizeof(buf));
+}
 
 template <typename TFiberShardImpl>
 class TFiberShard: public IFileSystemShard
@@ -44,6 +51,16 @@ private:
     static int name##FiberMain(TFiberShard##name##Params* params) noexcept     \
     {                                                                          \
         auto response = params->Impl->name(std::move(*params->Request));       \
+                                                                               \
+        /*                                                                     \
+         * SetValue synchronously runs the subscribed callbacks. Thread mode   \
+         * moves this fiber to the worker pool for the duration of the call,   \
+         * so a slow or blocking callback cannot stall the fibers homed on     \
+         * this scheduler thread. The callbacks still run on the fiber's       \
+         * 64KiB stack.                                                        \
+         */                                                                    \
+                                                                               \
+        silk::FiberScheduler::ThreadModeScope threadModeScope;                 \
         params->Promise.SetValue(std::move(response));                         \
         return 0;                                                              \
     }                                                                          \
@@ -65,6 +82,12 @@ private:
         noexcept
     {
         auto e = params->Impl->CollectStats(params->Stats);
+
+        //
+        // See the comment about SetValue in the request method fiber main.
+        //
+
+        silk::FiberScheduler::ThreadModeScope threadModeScope;
         params->Promise.SetValue(std::move(e));
         return 0;
     }
@@ -77,7 +100,14 @@ private:
 
     static int InitFiberMain(TFiberShardInitParams* params) noexcept
     {
-        params->Promise.SetValue(params->Impl->Init());
+        auto e = params->Impl->Init();
+
+        //
+        // See the comment about SetValue in the request method fiber main.
+        //
+
+        silk::FiberScheduler::ThreadModeScope threadModeScope;
+        params->Promise.SetValue(std::move(e));
         return 0;
     }
 
@@ -106,7 +136,7 @@ public:
             promise.SetValue(MakeError(
                 E_FAIL,
                 TStringBuilder()
-                    << "failed to spawn fiber: " << ::strerror(r)));
+                    << "failed to spawn fiber: " << FiberSpawnErrorText(r)));
         }
 
         return future;
@@ -119,7 +149,9 @@ public:
             TFiberShardTearDownParams{.Impl = Impl},
             nullptr /* future */);
         if (r) {
-            SILK_ERROR("failed to spawn tear-down fiber: %s", ::strerror(r));
+            SILK_ERROR(
+                "failed to spawn tear-down fiber: %s",
+                FiberSpawnErrorText(r).c_str());
         }
     }
 
@@ -144,7 +176,7 @@ public:
             *response.MutableError() = MakeError(                              \
                 E_FAIL,                                                        \
                 TStringBuilder()                                               \
-                    << "failed to spawn fiber: " << ::strerror(r));            \
+                    << "failed to spawn fiber: " << FiberSpawnErrorText(r));   \
             promise.SetValue(std::move(response));                             \
         }                                                                      \
                                                                                \
@@ -175,7 +207,7 @@ public:
             promise.SetValue(MakeError(
                 E_FAIL,
                 TStringBuilder()
-                    << "failed to spawn fiber: " << ::strerror(r)));
+                    << "failed to spawn fiber: " << FiberSpawnErrorText(r)));
         }
 
         return future;
