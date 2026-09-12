@@ -529,6 +529,8 @@ public:
     TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
 
     TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
+    TDeviceList::TEraseIdempotencyKey GetEraseIdempotencyKey(
+        const TDeviceId& deviceId) const;
 
     /// Mark selected device as clean and remove it
     /// from lists of suspended/dirty/pending cleanup devices

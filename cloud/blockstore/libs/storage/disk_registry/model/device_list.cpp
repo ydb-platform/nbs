@@ -4,6 +4,7 @@
 
 #include <util/generic/algorithm.h>
 #include <util/generic/iterator_range.h>
+#include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/string/printf.h>
 
@@ -95,12 +96,15 @@ TDeviceList::TDeviceList(
     : AllocatedDevices(
           std::make_move_iterator(allocatedDevices.begin()),
           std::make_move_iterator(allocatedDevices.end()))
-    , DirtyDevices(
-          std::make_move_iterator(dirtyDevices.begin()),
-          std::make_move_iterator(dirtyDevices.end()))
     , AlwaysAllocateLocalDisks(alwaysAllocateLocalDisks)
     , AttachDetachPathsEnabled(attachDetachPathsEnabled)
 {
+    for (auto& deviceId: dirtyDevices) {
+        DirtyDevices.emplace(
+            std::move(deviceId),
+            RandomNumber<TEraseIdempotencyKey>());
+    }
+
     for (auto& device: suspendedDevices) {
         auto id = device.GetId();
         SuspendedDevices.emplace(std::move(id), std::move(device));
@@ -716,7 +720,7 @@ bool TDeviceList::ReleaseDevice(const TDeviceId& id)
         return false;
     }
 
-    DirtyDevices.insert(id);
+    DirtyDevices.emplace(id, RandomNumber<TEraseIdempotencyKey>());
 
     return true;
 }
@@ -733,7 +737,9 @@ bool TDeviceList::MarkDeviceAsClean(const TDeviceId& id)
 
 void TDeviceList::MarkDeviceAsDirty(const TDeviceId& id)
 {
-    DirtyDevices.insert(id);
+    if (!DirtyDevices.contains(id)) {
+        DirtyDevices.emplace(id, RandomNumber<TEraseIdempotencyKey>());
+    }
     RemoveDeviceFromFreeList(id);
 }
 
@@ -783,7 +789,7 @@ TVector<NProto::TDeviceConfig> TDeviceList::GetDirtyDevices() const
     TVector<NProto::TDeviceConfig> devices;
     devices.reserve(DirtyDevices.size());
 
-    for (const auto& id: DirtyDevices) {
+    for (const auto& [id, _]: DirtyDevices) {
         auto it = SuspendedDevices.find(id);
         if (it != SuspendedDevices.end() && !it->second.GetResumeAfterErase()) {
             continue;
@@ -800,12 +806,26 @@ TVector<NProto::TDeviceConfig> TDeviceList::GetDirtyDevices() const
 
 TVector<TString> TDeviceList::GetDirtyDevicesId() const
 {
-    return {DirtyDevices.begin(), DirtyDevices.end()};
+    TVector<TString> result;
+    result.reserve(DirtyDevices.size());
+    for (const auto& [deviceId, _]: DirtyDevices) {
+        result.push_back(deviceId);
+    }
+    return result;
 }
 
 bool TDeviceList::IsDirtyDevice(const TDeviceId& uuid) const
 {
     return DirtyDevices.contains(uuid);
+}
+
+TDeviceList::TEraseIdempotencyKey TDeviceList::GetEraseIdempotencyKey(
+    const TDeviceId& deviceId) const
+{
+    if (const auto* key = DirtyDevices.FindPtr(deviceId)) {
+        return *key;
+    }
+    return 0;
 }
 
 NProto::EDeviceState TDeviceList::GetDeviceState(const TDeviceId& uuid) const

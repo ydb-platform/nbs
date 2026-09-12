@@ -46,13 +46,18 @@ class TSecureEraseActor final
     : public TActorBootstrapped<TSecureEraseActor>
 {
 private:
+    using TDeviceId = TDeviceList::TDeviceId;
+    using TEraseIdempotencyKey = TDeviceList::TEraseIdempotencyKey;
+
     const TChildLogTitle LogTitle;
     const TActorId Owner;
+    const ui32 Generation;
     const TRequestInfoPtr Request;
     const TDuration RequestTimeout;
 
     const TString PoolName;
     TVector<NProto::TDeviceConfig> Devices;
+    const THashMap<TDeviceId, TEraseIdempotencyKey> EraseIdempotencyKeys;
     TVector<TString> CleanDevices;
 
     int PendingRequests = 0;
@@ -61,10 +66,12 @@ public:
     TSecureEraseActor(
         const TLogTitle& logTitle,
         const TActorId& owner,
+        ui32 generation,
         TRequestInfoPtr request,
         TDuration requestTimeout,
         TString poolName,
-        TVector<NProto::TDeviceConfig> devicesToClean);
+        TVector<NProto::TDeviceConfig> devicesToClean,
+        THashMap<TDeviceId, TEraseIdempotencyKey> eraseIdempotencyKeys);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -102,29 +109,41 @@ private:
 TSecureEraseActor::TSecureEraseActor(
         const TLogTitle& logTitle,
         const TActorId& owner,
+        ui32 generation,
         TRequestInfoPtr request,
         TDuration requestTimeout,
         TString poolName,
-        TVector<NProto::TDeviceConfig> devicesToClean)
+        TVector<NProto::TDeviceConfig> devicesToClean,
+        THashMap<TDeviceId, TEraseIdempotencyKey> eraseIdempotencyKeys)
     : LogTitle(logTitle.GetChildWithTags(
           GetCycleCount(),
           {{"pool", TStringBuf(poolName)}}))
     , Owner(owner)
+    , Generation(generation)
     , Request(std::move(request))
     , RequestTimeout(requestTimeout)
     , PoolName(std::move(poolName))
     , Devices(std::move(devicesToClean))
+    , EraseIdempotencyKeys(std::move(eraseIdempotencyKeys))
 {}
 
 void TSecureEraseActor::Bootstrap(const TActorContext& ctx)
 {
     Become(&TThis::StateErase);
 
+    Y_DEBUG_ABORT_UNLESS(EraseIdempotencyKeys.size() == Devices.size());
+
     for (ui64 i = 0; i != Devices.size(); ++i) {
         auto& device = Devices[i];
 
         auto request = std::make_unique<TEvDiskAgent::TEvSecureEraseDeviceRequest>();
         request->Record.SetDeviceUUID(device.GetDeviceUUID());
+        request->Record.SetGeneration(Generation);
+        if (const auto* key =
+                EraseIdempotencyKeys.FindPtr(device.GetDeviceUUID()))
+        {
+            request->Record.SetIdempotencyKey(*key);
+        }
 
         auto event = std::make_unique<IEventHandle>(
             MakeDiskAgentServiceId(device.GetNodeId()),
@@ -454,18 +473,27 @@ void TDiskRegistryActor::HandleSecureErase(
         LogTitle.GetWithTime().c_str(),
         MakeDevicesNamesString(msg->DirtyDevices).c_str());
 
+    THashMap<TDeviceList::TDeviceId, TDeviceList::TEraseIdempotencyKey>
+        eraseIdempotencyKeys;
+
     for (const auto& device: msg->DirtyDevices) {
-        DeviceEraseStartTs[device.GetDeviceUUID()] = ctx.Now();
+        const auto& deviceId = device.GetDeviceUUID();
+        DeviceEraseStartTs[deviceId] = ctx.Now();
+        eraseIdempotencyKeys.emplace(
+            deviceId,
+            State->GetEraseIdempotencyKey(deviceId));
     }
 
     auto actor = NCloud::Register<TSecureEraseActor>(
         ctx,
         LogTitle,
         ctx.SelfID,
+        Executor()->Generation(),
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
         msg->RequestTimeout,
         msg->PoolName,
-        std::move(msg->DirtyDevices));
+        std::move(msg->DirtyDevices),
+        std::move(eraseIdempotencyKeys));
     Actors.insert(actor);
 }
 
