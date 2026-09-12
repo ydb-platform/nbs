@@ -30,6 +30,12 @@ public:
         TVector<TPageGroup>& logRecord) = 0;
     [[nodiscard]] virtual NProto::TError
     ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const = 0;
+
+    /**
+     * Drops all cached pages. Only committed pages may be cached at the
+     * moment of the call.
+     */
+    virtual void Clear() = 0;
 };
 
 using IPageStorePtr = std::shared_ptr<IPageStore>;

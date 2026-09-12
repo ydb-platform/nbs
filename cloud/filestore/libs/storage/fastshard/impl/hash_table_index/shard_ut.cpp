@@ -487,6 +487,140 @@ TEST(HashTableIndexShardTest, CreatesHandles)
     }
 }
 
+TEST(HashTableIndexShardTest, Formats)
+{
+    TStorageFixture fx;
+
+    auto shard = CreateHashTableIndexFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
+
+    const TString file1 = "file1";
+    const ui32 createHandleFlags = ProtoFlag(TCreateHandleRequest::E_CREATE) |
+                                   ProtoFlag(TCreateHandleRequest::E_READ) |
+                                   ProtoFlag(TCreateHandleRequest::E_WRITE);
+
+    //
+    // Populate the shard: a node, a handle and some data pages.
+    //
+
+    ui64 handle = 0;
+    {
+        TCreateHandleRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        request.SetMode(0644);
+        request.SetFlags(createHandleFlags);
+        auto response = shard->CreateHandle(request).GetValueSync();
+        ASSERT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        handle = response.GetHandle();
+    }
+
+    const auto data = GenerateValidateData(64_KB);
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(0);
+        *request.MutableBuffer() = data;
+        auto response = shard->WriteData(request).GetValueSync();
+        ASSERT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TFileSystemShardStats stats;
+        auto e = shard->CollectStats(&stats).GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << FormatError(e);
+        EXPECT_EQ(1ULL, stats.UsedNodeCount);
+        EXPECT_EQ(1ULL, stats.UsedNameCount);
+        EXPECT_EQ(1ULL, stats.UsedHandleCount);
+        EXPECT_LT(0ULL, stats.UsedPageCount);
+    }
+
+    {
+        auto e = shard->Format().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << FormatError(e);
+    }
+
+    //
+    // Everything is gone: stats are zero, the node is not findable, the
+    // handle is dead.
+    //
+
+    {
+        TFileSystemShardStats stats;
+        auto e = shard->CollectStats(&stats).GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << FormatError(e);
+        EXPECT_EQ(0ULL, stats.UsedNodeCount);
+        EXPECT_EQ(0ULL, stats.UsedNameCount);
+        EXPECT_EQ(0ULL, stats.UsedHandleCount);
+        EXPECT_EQ(0ULL, stats.UsedPageCount);
+    }
+
+    {
+        TGetNodeAttrRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        auto response = shard->GetNodeAttr(request).GetValueSync();
+        EXPECT_EQ(NCloud::E_FS_NOENT, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TReadDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(0);
+        request.SetLength(4_KB);
+        auto response = shard->ReadData(request).GetValueSync();
+        EXPECT_TRUE(HasError(response.GetError()))
+            << FormatError(response.GetError());
+    }
+
+    //
+    // The shard stays usable: the same flow works again from scratch.
+    //
+
+    {
+        TCreateHandleRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(file1);
+        request.SetMode(0644);
+        request.SetFlags(createHandleFlags);
+        auto response = shard->CreateHandle(request).GetValueSync();
+        ASSERT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        handle = response.GetHandle();
+    }
+
+    {
+        TWriteDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(0);
+        *request.MutableBuffer() = data;
+        auto response = shard->WriteData(request).GetValueSync();
+        ASSERT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+    }
+
+    {
+        TReadDataRequest request;
+        request.SetHandle(handle);
+        request.SetOffset(0);
+        request.SetLength(data.size());
+        auto response = shard->ReadData(request).GetValueSync();
+        ASSERT_EQ(S_OK, response.GetError().GetCode())
+            << FormatError(response.GetError());
+        EXPECT_EQ(data, response.GetBuffer());
+    }
+}
+
 TEST(HashTableIndexShardTest, WritesAndReadsFiles)
 {
     TStorageFixture fx;
