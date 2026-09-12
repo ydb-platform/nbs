@@ -408,6 +408,24 @@ auto GetFileSystemCounters(TTestEnv& env, const TString& fsId)
     return subgroup;
 }
 
+void SetQuota(
+    TServiceClient& service,
+    const TString& fsId,
+    ui32 quotaId,
+    ui64 maxBytes,
+    ui64 maxNodes)
+{
+    NProtoPrivate::TSetQuotaRequest request;
+    request.SetFileSystemId(fsId);
+    request.SetQuotaId(quotaId);
+    request.SetMaxBytes(maxBytes);
+    request.SetMaxNodes(maxNodes);
+
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+    service.ExecuteAction("setquota", buf);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -2890,6 +2908,228 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         linkNodeResponse = service.AssertCreateNodeFailed(
             headers,
             TCreateNodeArgs::Link(RootNodeId, "file3", nodeId1 + 100));
+    }
+
+    SERVICE_TEST(ShouldRejectCrossShardHardLinkAcrossQuotaDomains)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        SetQuota(service, fsConfig.FsId, 1, 1_GB, 100);
+        SetQuota(service, fsConfig.FsId, 2, 1_GB, 100);
+
+        const auto dirAId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dirA"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            TSetNodeAttrArgs(dirAId).SetQuotaId(1));
+
+        const auto dirBId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dirB"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            TSetNodeAttrArgs(dirBId).SetQuotaId(2));
+
+        // target inherits QuotaId 1 from dirA and lands in a shard,
+        // external to both dirA and dirB
+        const auto targetId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(dirAId, "target"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(targetId));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            service.GetNodeAttr(headers, fsConfig.FsId, targetId, "")
+                ->Record.GetNode()
+                .GetLinks());
+
+        // dirB is a different quota domain - the cross-shard hard link is
+        // rejected outright
+        service.AssertCreateNodeFailed(
+            headers,
+            TCreateNodeArgs::Link(dirBId, "linked", targetId));
+
+        // the shard's link count must have been reverted, not left at 2
+        // with nothing to show for it
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            service.GetNodeAttr(headers, fsConfig.FsId, targetId, "")
+                ->Record.GetNode()
+                .GetLinks());
+
+        // no ref should have been left behind under dirB either
+        service.AssertGetNodeAttrFailed(
+            headers,
+            fsConfig.FsId,
+            dirBId,
+            "linked");
+
+        // a same-domain cross-shard hard link still works
+        const auto dirCId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::Directory(RootNodeId, "dirC"))
+                ->Record.GetNode()
+                .GetId();
+        service.SetNodeAttr(
+            headers,
+            fsConfig.FsId,
+            TSetNodeAttrArgs(dirCId).SetQuotaId(1));
+
+        auto linkResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Link(dirCId, "linked", targetId));
+        UNIT_ASSERT_C(
+            SUCCEEDED(linkResponse->GetStatus()),
+            linkResponse->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(2u, linkResponse->Record.GetNode().GetLinks());
+    }
+
+    SERVICE_TEST(ShouldNotLeaveDanglingLinksForInvalidHardLinks)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto targetId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "target"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(targetId));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            service.GetNodeAttr(headers, fsConfig.FsId, targetId, "")
+                ->Record.GetNode()
+                .GetLinks());
+
+        // a local file already occupies the destination name on the leader
+        const auto existingId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "existing"))
+                ->Record.GetNode()
+                .GetId();
+
+        // the cross-shard hard link is rejected with E_FS_EXIST at the
+        // leader, after the shard has already created its side of the link
+        service.AssertCreateNodeFailed(
+            headers,
+            TCreateNodeArgs::Link(RootNodeId, "existing", targetId));
+
+        // TLinkActor's compensating undo must have reverted the shard's
+        // link count - not left it at 2 with nothing to show for it
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            service.GetNodeAttr(headers, fsConfig.FsId, targetId, "")
+                ->Record.GetNode()
+                .GetLinks());
+
+        // the pre-existing "existing" entry must be untouched
+        UNIT_ASSERT_VALUES_EQUAL(
+            existingId,
+            service.GetNodeAttr(headers, fsConfig.FsId, RootNodeId, "existing")
+                ->Record.GetNode()
+                .GetId());
+
+        // now make the undo itself fail non-retriably and check that this
+        // is reported as a critical event rather than swallowed silently
+        const auto target2Id =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "target2"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(target2Id));
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter =
+            counters->GetCounter("AppCriticalEvents/HardLinkUndoFailed");
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite()
+                        == TEvService::EvUnlinkNodeResponse)
+                {
+                    using TResponse = TEvService::TEvUnlinkNodeResponse;
+                    auto* msg = event->Get<TResponse>();
+                    *msg->Record.MutableError() =
+                        MakeError(E_ARGUMENT, "injected undo failure");
+                }
+                return false;
+            });
+
+        // same collision as above, once again forcing the leader to reject
+        // the link after the shard already created its side of it
+        service.AssertCreateNodeFailed(
+            headers,
+            TCreateNodeArgs::Link(RootNodeId, "existing", target2Id));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
+
+        // E_FS_NOENT on the undo is acceptable
+        const auto target3Id =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::File(RootNodeId, "target3"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(target3Id));
+
+        ui32 unlinkResponseCount = 0;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeResponse)
+                {
+                    using TResponse = TEvService::TEvUnlinkNodeResponse;
+                    auto* msg = event->Get<TResponse>();
+
+                    if (!msg->Record.GetError().GetMessage().Contains(
+                            "injected")) {
+                        *msg->Record.MutableError() =
+                            ++unlinkResponseCount == 1
+                                ? MakeError(E_REJECTED, "injected retriable")
+                                : MakeError(E_FS_NOENT, "injected no ent");
+                    }
+                }
+                return false;
+            });
+
+        service.AssertCreateNodeFailed(
+            headers,
+            TCreateNodeArgs::Link(RootNodeId, "existing", target3Id));
+
+        UNIT_ASSERT_VALUES_EQUAL(2u, unlinkResponseCount);
+
+        // no new critical event - the counter must stay exactly where the
+        // previous (genuine failure) scenario left it
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
+
+        // the real unlink went through regardless of the injected responses
+        UNIT_ASSERT_VALUES_EQUAL(
+            1u,
+            service.GetNodeAttr(headers, fsConfig.FsId, target3Id, "")
+                ->Record.GetNode()
+                .GetLinks());
     }
 
     SERVICE_TEST(ShouldAggregateFileSystemMetrics)

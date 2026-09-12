@@ -37,6 +37,9 @@ private:
     // Response data
     bool ShardResponded = false;
 
+    // Leader's rejection, stashed while UndoShardLink runs
+    TMaybe<NProto::TError> LeaderError;
+
     // Stats for reporting
     IProfileLogPtr ProfileLog;
 
@@ -76,6 +79,12 @@ private:
         NProto::TCreateNodeResponse shardResponse);
 
     void HandleError(const TActorContext& ctx, NProto::TError error);
+
+    void UndoShardLink(const TActorContext& ctx);
+
+    void HandleUndoShardLinkResponse(
+        const TEvService::TEvUnlinkNodeResponse::TPtr& ev,
+        const TActorContext& ctx);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -199,7 +208,8 @@ void TLinkActor::HandleLeaderResponse(
             CreateNodeRequest.GetLink().GetTargetNode(),
             FormatError(msg->GetError()).Quote().c_str());
 
-        HandleError(ctx, msg->GetError());
+        LeaderError = msg->GetError();
+        UndoShardLink(ctx);
         return;
     }
 
@@ -223,6 +233,70 @@ void TLinkActor::HandleCreateResponse(
     } else {
         HandleLeaderResponse(ev, ctx);
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TLinkActor::UndoShardLink(const TActorContext& ctx)
+{
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Undoing shard link in %s, %s after leader rejection",
+        LogTag.c_str(),
+        ShardId.c_str(),
+        ShardNodeName.c_str());
+
+    auto request = std::make_unique<TEvService::TEvUnlinkNodeRequest>();
+    request->Record.MutableHeaders()->CopyFrom(CreateNodeRequest.GetHeaders());
+    request->Record.MutableHeaders()->SetBehaveAsDirectoryTablet(false);
+    request->Record.SetFileSystemId(ShardId);
+    request->Record.SetNodeId(RootNodeId);
+    request->Record.SetName(ShardNodeName);
+
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+}
+
+void TLinkActor::HandleUndoShardLinkResponse(
+    const TEvService::TEvUnlinkNodeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    if (HasError(msg->GetError())) {
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "[%s] Failed to undo shard link in %s, %s with error %s,"
+                " retrying",
+                LogTag.c_str(),
+                ShardId.c_str(),
+                ShardNodeName.c_str(),
+                FormatError(msg->GetError()).Quote().c_str());
+
+            UndoShardLink(ctx);
+            return;
+        }
+
+        if (msg->GetError().GetCode() == E_FS_NOENT) {
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "[%s] Shard link in %s, %s already gone",
+                LogTag.c_str(),
+                ShardId.c_str(),
+                ShardNodeName.c_str());
+        } else {
+            ReportHardLinkUndoFailed(
+                TStringBuilder()
+                << "shard " << ShardId << ", node " << ShardNodeName << ": "
+                << FormatError(msg->GetError()));
+        }
+    }
+
+    Y_ABORT_UNLESS(LeaderError.Defined());
+    HandleError(ctx, std::move(*LeaderError));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -265,6 +339,7 @@ STFUNC(TLinkActor::StateWork)
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         HFunc(TEvService::TEvCreateNodeResponse, HandleCreateResponse);
+        HFunc(TEvService::TEvUnlinkNodeResponse, HandleUndoShardLinkResponse);
 
         default:
             HandleUnexpectedEvent(

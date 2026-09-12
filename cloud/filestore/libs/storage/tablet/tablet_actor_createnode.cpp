@@ -727,6 +727,30 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
                 args.Error = ErrorMaxLink(args.ChildNodeId);
                 return true;
             }
+
+            // hard link must stay within the target's quota domain
+            if (!behaveAsShard
+                    && args.ParentNode->Attrs.GetQuotaId()
+                        != args.ChildNode->Attrs.GetQuotaId())
+            {
+                args.Error = ErrorCrossQuotaDomainHardLinkNotSupported(
+                    args.ParentNodeId,
+                    args.ChildNodeId);
+                return true;
+            }
+        } else {
+            // same check for the cross-shard second hop; the target's
+            // QuotaId comes from ShardNodeAttr since it isn't local here.
+            // A rejection makes TLinkActor undo the shard's already
+            // incremented link count (issue #2667)
+            if (args.ParentNode->Attrs.GetQuotaId()
+                    != args.Request.GetShardNodeAttr().GetQuotaId())
+            {
+                args.Error = ErrorCrossQuotaDomainHardLinkNotSupported(
+                    args.ParentNodeId,
+                    args.TargetNodeId);
+                return true;
+            }
         }
 
         // TODO: AccessCheck

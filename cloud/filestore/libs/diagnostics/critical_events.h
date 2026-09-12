@@ -63,6 +63,7 @@ namespace NCloud::NFileStore{
     xxx(ConfirmBlobsFailed)                                                    \
     xxx(UnconfirmedFlowProxyRetryThresholdReached)                             \
     xxx(HardLinkFromShardDirToMainTabletNode)                                  \
+    xxx(HardLinkUndoFailed)                                                    \
     xxx(ReadDataResponseParserFailed)                                          \
     xxx(MalformedShardNodeRef)                                                 \
     xxx(MalformedEncodedShardNodeRef)                                          \
