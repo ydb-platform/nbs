@@ -9,6 +9,8 @@
 #include <util/generic/utility.h>
 #include <util/generic/ymath.h>
 
+#include <cmath>
+
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
@@ -111,6 +113,7 @@ TPartitionState::TPartitionState(
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
+        ui64 maxMixedBytesPerUnit,
         ui32 maxBlobsPerRange,
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
@@ -148,6 +151,9 @@ TPartitionState::TPartitionState(
           Max(Config.GetBlocksCount() * Config.GetBlockSize() / allocationUnit,
               1ul) *
           maxBlobsPerUnit)
+    , MaxMixedBlocksPerDisk(std::ceil(
+          static_cast<double>(Config.GetBlocksCount()) * maxMixedBytesPerUnit /
+          allocationUnit))
     , MaxBlobsPerRange(maxBlobsPerRange)
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupQueue(GetBlockSize())

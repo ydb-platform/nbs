@@ -1715,4 +1715,11 @@ message TStorageServiceConfig
 
     // Number of ranges to process in a single mixed-block-count compaction run.
     optional uint32 MixedBlocksCountCompactionRangeCountPerRun = 534;
+
+    // Maximum mixed bytes per allocation unit for SSD/HDD volumes.
+    // The disk-wide limit scales proportionally with disk size, including disks
+    // smaller than one allocation unit. Zero disables the per-disk
+    // mixed-block-count compaction trigger.
+    optional uint64 SSDMaxMixedBytesPerUnit = 535;
+    optional uint64 HDDMaxMixedBytesPerUnit = 536;
 }

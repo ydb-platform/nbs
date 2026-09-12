@@ -84,6 +84,7 @@ namespace NCloud::NBlockStore::NYdbStats {
     xxx(CompactionByIgnoringZeroedPerRange_Throughput,  __VA_ARGS__)           \
     xxx(CompactionByIgnoringZeroedPerDisk_Throughput,   __VA_ARGS__)           \
     xxx(CompactionByMixedBlockCountPerRange_Throughput, __VA_ARGS__)           \
+    xxx(CompactionByMixedBlockCountPerDisk_Throughput,  __VA_ARGS__)           \
 // YDB_CUMULATIVE_COUNTERS
 
 #define YDB_DEFINE_CUMULATIVE_COUNTER(name, ...)                               \

@@ -982,8 +982,11 @@ public:
 
     [[nodiscard]] ui32 GetMixedBytesCountCompactionThresholdSSD() const;
 
-    [[nodiscard]] ui32
-    GetMixedBlocksCountCompactionRangeCountPerRun() const;
+    [[nodiscard]] ui32 GetMixedBlocksCountCompactionRangeCountPerRun() const;
+
+    [[nodiscard]] ui64 GetSSDMaxMixedBytesPerUnit() const;
+
+    [[nodiscard]] ui64 GetHDDMaxMixedBytesPerUnit() const;
 };
 
 ui64 GetAllocationUnit(
