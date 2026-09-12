@@ -12,7 +12,7 @@
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
 #include <cloud/filestore/libs/storage/core/config.h>
-#include <cloud/filestore/libs/storage/fastshard/impl/factory/factory.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/factory/shard_factory.h>
 #include <cloud/filestore/libs/storage/init/actorsystem.h>
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
