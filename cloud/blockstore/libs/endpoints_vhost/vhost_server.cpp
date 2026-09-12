@@ -97,6 +97,13 @@ public:
         return Server->StopEndpoint(socketPath);
     }
 
+    TFuture<NProto::TError> DrainEndpoint(const TString& socketPath) override
+    {
+        Y_UNUSED(socketPath);
+
+        return MakeFuture(NProto::TError());
+    }
+
     NProto::TError RefreshEndpoint(
         const TString& socketPath,
         const NProto::TVolume& volume) override

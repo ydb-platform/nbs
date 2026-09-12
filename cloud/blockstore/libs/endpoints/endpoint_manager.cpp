@@ -702,6 +702,12 @@ private:
         const NProto::TStartEndpointRequest& request,
         const TSessionInfo& sessionInfo);
 
+    NProto::TError DrainAllEndpointSockets(
+        const NProto::TStartEndpointRequest& request);
+
+    NProto::TError DrainEndpointSocket(
+        const NProto::TStartEndpointRequest& request);
+
     void CloseAllEndpointSockets(const NProto::TStartEndpointRequest& request);
     void CloseEndpointSocket(const NProto::TStartEndpointRequest& request);
 
@@ -1498,10 +1504,29 @@ void TEndpointManager::DoProcessException(
         endpoint->Device.reset();
     }
 
+    const auto& socketPath = endpoint->Request->GetUnixSocketPath();
+
+    STORAGE_INFO(prefix << " drain socket");
+    if (auto error = DrainAllEndpointSockets(*endpoint->Request);
+        HasError(error))
+    {
+        STORAGE_ERROR(
+            prefix << " failed to drain socket: " << FormatError(error));
+        context->Generation++;
+        ProcessException(std::move(context), std::move(prefix));
+        return;
+    }
+
+    // Draining may yield to another coroutine, which can stop or replace the
+    // endpoint. Do not resume a stale restart.
+    auto endpointIt = Endpoints.find(socketPath);
+    if (endpointIt == Endpoints.end() || endpointIt->second != endpoint) {
+        STORAGE_WARN(prefix << " endpoint is down, cancel restart");
+        return;
+    }
+
     STORAGE_INFO(prefix << " close socket");
     CloseAllEndpointSockets(*endpoint->Request);
-
-    auto socketPath = endpoint->Request->GetUnixSocketPath();
 
     STORAGE_INFO(prefix << " update error handler");
     NbdErrorHandlerMap->Erase(socketPath);
@@ -1521,7 +1546,7 @@ void TEndpointManager::DoProcessException(
     }
 
     if (hasDevice) {
-        STORAGE_INFO(prefix << "start device");
+        STORAGE_INFO(prefix << " start device");
         auto device = NbdDeviceFactory->Create(
             TNetworkAddress(TUnixSocketPath(socketPath)),
             endpoint->Request->GetNbdDeviceFile(),
@@ -1530,7 +1555,7 @@ void TEndpointManager::DoProcessException(
         auto startDeviceFuture = device->Start();
         error = Executor->WaitFor(startDeviceFuture);
         if (HasError(error)) {
-            STORAGE_ERROR(prefix << "failed to start device: "
+            STORAGE_ERROR(prefix << " failed to start device: "
                 << FormatError(error));
             context->Generation++;
             ProcessException(std::move(context), std::move(prefix));
@@ -1587,6 +1612,41 @@ NProto::TError TEndpointManager::OpenEndpointSocket(
         sessionInfo.Volume,
         sessionInfo.Session);
 
+    return Executor->WaitFor(future);
+}
+
+// waits for requests accepted through the endpoint sockets to complete
+NProto::TError TEndpointManager::DrainAllEndpointSockets(
+    const NProto::TStartEndpointRequest& request)
+{
+    auto error = DrainEndpointSocket(request);
+    if (HasError(error)) {
+        return error;
+    }
+
+    auto nbdRequest = CreateNbdStartEndpointRequest(request);
+    if (nbdRequest) {
+        STORAGE_INFO("Drain additional endpoint: "
+            << nbdRequest->GetUnixSocketPath().Quote());
+        error = DrainEndpointSocket(*nbdRequest);
+    }
+
+    return error;
+}
+
+NProto::TError TEndpointManager::DrainEndpointSocket(
+    const NProto::TStartEndpointRequest& request)
+{
+    auto ipcType = request.GetIpcType();
+    const auto& socketPath = request.GetUnixSocketPath();
+
+    auto listenerIt = EndpointListeners.find(ipcType);
+    STORAGE_VERIFY(
+        listenerIt != EndpointListeners.end(),
+        TWellKnownEntityTypes::ENDPOINT,
+        socketPath);
+
+    auto future = listenerIt->second->DrainEndpoint(socketPath);
     return Executor->WaitFor(future);
 }
 
