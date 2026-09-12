@@ -22,6 +22,7 @@ jobs:
 
                 const exemptLeftFolders  = [
                     /* paths that remove the *left-team* requirement */
+                    'cloud/blockstore/libs/cells/',
                 ];
 
                 const exemptRightFolders = [
