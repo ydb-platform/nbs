@@ -210,8 +210,8 @@ struct TScrubbingInfo
 class TVolumeState
 {
 private:
-    TStorageConfigPtr StorageConfig;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    TStorageConfigConstPtr StorageConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     NProto::TVolumeMeta Meta;
     TVector<TVolumeMetaHistoryItem> MetaHistory;
     const NProto::TPartitionConfig* Config;
@@ -291,8 +291,8 @@ private:
 
 public:
     TVolumeState(
-        TStorageConfigPtr storageConfig,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TStorageConfigConstPtr storageConfig,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         NProto::TVolumeMeta meta,
         TVector<TVolumeMetaHistoryItem> metaHistory,
         TVector<TRuntimeVolumeParamsValue> volumeParams,

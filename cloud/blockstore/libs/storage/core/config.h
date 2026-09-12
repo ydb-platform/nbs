@@ -131,8 +131,8 @@ public:
 
     void Register(NKikimr::TControlBoard& controlBoard);
 
-    static TStorageConfigPtr Merge(
-        TStorageConfigPtr config,
+    static TStorageConfigConstPtr Merge(
+        TStorageConfigConstPtr config,
         const NProto::TStorageServiceConfig& patch);
 
     struct TValueByName

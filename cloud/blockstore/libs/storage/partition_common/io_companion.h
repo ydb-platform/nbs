@@ -37,13 +37,13 @@ public:
 class TIOCompanion
 {
 private:
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const NProto::TPartitionConfig& PartitionConfig;
     const NKikimr::TTabletStorageInfoPtr TabletStorageInfo;
     const ui64 TabletID;
     const NBlockCodecs::ICodec* BlobCodec;
     const NActors::TActorId VolumeActorId;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const EStorageAccessMode StorageAccessMode;
 
     TBSGroupOperationTimeTracker& BSGroupOperationTimeTracker;
@@ -68,13 +68,13 @@ private:
 
 public:
     TIOCompanion(
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         const NProto::TPartitionConfig& partitionConfig,
         NKikimr::TTabletStorageInfoPtr tabletStorageInfo,
         ui64 tabletID,
         const NBlockCodecs::ICodec* blobCodec,
         const NActors::TActorId& volumeActorId,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         EStorageAccessMode storageAccessMode,
         TBSGroupOperationTimeTracker& bsGroupOperationTimeTracker,
         ui64& bsGroupOperationId,

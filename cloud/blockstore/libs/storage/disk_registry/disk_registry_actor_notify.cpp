@@ -23,7 +23,7 @@ private:
     const TActorId Owner;
     const TChildLogTitle LogTitle;
     const TRequestInfoPtr RequestInfo;
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const TVector<TDiskNotification> DiskNotifications;
 
     TVector<TDiskNotificationResult> NotifiedDisks;
@@ -34,7 +34,7 @@ public:
         const TActorId& owner,
         const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TVector<TDiskNotification> diskIds);
 
     void Bootstrap(const TActorContext& ctx);
@@ -65,7 +65,7 @@ TNotifyActor::TNotifyActor(
         const TActorId& owner,
         const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TVector<TDiskNotification> diskIds)
     : Owner(owner)
     , LogTitle(logTitle.GetChildWithTags(

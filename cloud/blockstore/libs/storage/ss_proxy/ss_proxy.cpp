@@ -13,7 +13,7 @@ using namespace NKikimr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IActorPtr CreateSSProxy(TStorageConfigPtr config)
+IActorPtr CreateSSProxy(TStorageConfigConstPtr config)
 {
     if (config->GetSSProxyFallbackMode()) {
         return std::make_unique<TSSProxyFallbackActor>(std::move(config));

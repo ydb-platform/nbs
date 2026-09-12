@@ -55,8 +55,8 @@ const TString PartitionTransactions[] = {
 TPartitionActor::TPartitionActor(
     const TActorId& owner,
     TTabletStorageInfoPtr storage,
-    TStorageConfigPtr config,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TStorageConfigConstPtr config,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,

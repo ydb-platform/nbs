@@ -15,8 +15,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr CreateNonreplicatedPartition(
-    TStorageConfigPtr config,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TStorageConfigConstPtr config,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
     NActors::TActorId volumeActorId,
     NActors::TActorId statActorId,

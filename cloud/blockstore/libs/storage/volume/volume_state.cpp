@@ -112,8 +112,8 @@ void TCachedVolumeMountHistory::CleanupHistoryIfNeeded(TInstant oldest)
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeState::TVolumeState(
-        TStorageConfigPtr storageConfig,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TStorageConfigConstPtr storageConfig,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         NProto::TVolumeMeta meta,
         TVector<TVolumeMetaHistoryItem> metaHistory,
         TVector<TRuntimeVolumeParamsValue> volumeParams,

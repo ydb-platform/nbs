@@ -141,7 +141,7 @@ STFUNC(TRemoteVolumeStatActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeBalancerActor::TVolumeBalancerActor(
-        TStorageConfigPtr storageConfig,
+        TStorageConfigConstPtr storageConfig,
         IVolumeStatsPtr volumeStats,
         NCloud::NStorage::IStatsFetcherPtr statsFetcher,
         IVolumeBalancerSwitchPtr volumeBalancerSwitch,

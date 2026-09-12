@@ -24,8 +24,8 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 ////////////////////////////////////////////////////////////////////////////////
 
 TMirrorPartitionResyncActor::TMirrorPartitionResyncActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TStorageConfigConstPtr config,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString rwClientId,

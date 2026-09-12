@@ -19,12 +19,12 @@ class TSSProxyFallbackActor final
     : public NActors::TActorBootstrapped<TSSProxyFallbackActor>
 {
 private:
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
 
     NActors::TActorId PathDescriptionBackup;
 
 public:
-    explicit TSSProxyFallbackActor(TStorageConfigPtr config);
+    explicit TSSProxyFallbackActor(TStorageConfigConstPtr config);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

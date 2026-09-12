@@ -31,8 +31,8 @@ using namespace NCloud::NStorage;
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskRegistryProxyActor::TDiskRegistryProxyActor(
-        TStorageConfigPtr config,
-        TDiskRegistryProxyConfigPtr diskRegistryProxyConfig)
+        TStorageConfigConstPtr config,
+        TDiskRegistryProxyConfigConstPtr diskRegistryProxyConfig)
     : StorageConfig(std::move(config))
     , Config(std::move(diskRegistryProxyConfig))
 {}

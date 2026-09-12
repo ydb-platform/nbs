@@ -1428,8 +1428,8 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
 
 #undef BLOCKSTORE_STRING_FEATURE_GETTER
 
-TStorageConfigPtr TStorageConfig::Merge(
-    TStorageConfigPtr config,
+TStorageConfigConstPtr TStorageConfig::Merge(
+    TStorageConfigConstPtr config,
     const NProto::TStorageServiceConfig& patch)
 {
     auto controls = config->GetStorageConfigControls();

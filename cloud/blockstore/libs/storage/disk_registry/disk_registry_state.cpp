@@ -382,7 +382,7 @@ TString TDiskInfo::GetPoolName() const
 
 TDiskRegistryState::TDiskRegistryState(
         ILoggingServicePtr logging,
-        TStorageConfigPtr storageConfig,
+        TStorageConfigConstPtr storageConfig,
         NMonitoring::TDynamicCountersPtr counters,
         NProto::TDiskRegistryConfig config,
         TVector<NProto::TAgentConfig> agents,

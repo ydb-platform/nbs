@@ -52,11 +52,11 @@ using TClientInfoList = TIntrusiveListWithAutoDelete<TClientInfo, TDelete>;
 struct TSharedServiceCounters
     : TAtomicRefCount<TSharedServiceCounters>
 {
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
 
     TAtomic LocalVolumeCount = 0;
 
-    TSharedServiceCounters(TStorageConfigPtr config)
+    TSharedServiceCounters(TStorageConfigConstPtr config)
         : Config(std::move(config))
     {}
 

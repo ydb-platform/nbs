@@ -40,8 +40,8 @@ EDirectCopyPolicy GetDirectCopyUsage(const TFollowerDiskActorParams& params)
 
 TFollowerDiskActor::TFollowerDiskActor(
         const TLogTitle& parentLogTitle,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticConfig,
+        TStorageConfigConstPtr config,
+        TDiagnosticsConfigConstPtr diagnosticConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TFollowerDiskActorParams params)

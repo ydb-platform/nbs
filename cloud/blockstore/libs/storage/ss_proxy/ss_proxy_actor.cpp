@@ -47,7 +47,7 @@ std::unique_ptr<NTabletPipe::IClientCache> CreateTabletPipeClientCache(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSSProxyActor::TSSProxyActor(TStorageConfigPtr config)
+TSSProxyActor::TSSProxyActor(TStorageConfigConstPtr config)
     : Config(config)
     , ClientCache(CreateTabletPipeClientCache(*config))
 {}

@@ -29,7 +29,7 @@ public:
     };
 
 private:
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const TVector<TDeviceStat>* const DeviceStats = nullptr;
 
@@ -41,7 +41,7 @@ public:
 
     TGetDeviceForRangeCompanion(
         EAllowedOperation allowedOperation,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TNonreplicatedPartitionConfigPtr partConfig,
         const TVector<TDeviceStat>* const deviceStats);
 

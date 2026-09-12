@@ -17,8 +17,8 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 TServiceActor::TServiceActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TStorageConfigConstPtr config,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         NDiscovery::IDiscoveryServicePtr discoveryService,
