@@ -124,6 +124,7 @@ using TCritEventParams =
     xxx(DiskAllocationFailure)                                                 \
     xxx(CollectGarbageError)                                                   \
     xxx(MigrationFailed)                                                       \
+    xxx(MigrationNonRetriableError)                                            \
     xxx(BadMigrationConfig)                                                    \
     xxx(InitFreshBlocksError)                                                  \
     xxx(TrimFreshLogError)                                                     \
