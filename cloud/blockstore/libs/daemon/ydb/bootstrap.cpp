@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/cells/impl/cell_manager.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
+#include <cloud/blockstore/libs/config/blockstore_config.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -572,6 +573,15 @@ void TBootstrapYdb::InitKikimrService()
 
     Configs->InitDiskAgentConfig();
 
+    if (Configs->Options->RdmaConfig) {
+        Configs->InitRdmaConfig();
+        STORAGE_INFO("RDMA config initialized");
+    }
+
+    auto staticBlockstoreConfig = Configs->GetCurrentBlockstoreConfig();
+    registerOpts.UseYamlConfig = staticBlockstoreConfig.GetServer()
+        .GetServerConfig().GetDynamicYamlConfigurationEnabled();
+
     STORAGE_INFO("Configs initialized");
 
     auto registrant =
@@ -589,12 +599,22 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("CMS configs initialized");
 
-    // InitRdmaConfig should be called after InitDiskAgentConfig,
-    // InitServerConfig and ApplyCMSConfigs to backport legacy
-    // RDMA config
-    Configs->InitRdmaConfig();
+    // If no --rdma-file provided, InitRdmaConfig should be called after
+    // InitDiskAgentConfig, InitServerConfig and ApplyCMSConfigs
+    // to backport legacy RDMA config
+    if (!Configs->Options->RdmaConfig) {
+        Configs->InitRdmaConfig();
+        STORAGE_INFO("RDMA config initialized");
+    }
 
-    STORAGE_INFO("RDMA config initialized");
+    auto startupBlockstoreConfigProto = Configs->GetCurrentBlockstoreConfig();
+    StartupBlockstoreConfig = MakeBlockstoreConfig(
+        startupBlockstoreConfigProto,
+        {},
+        *Configs->StorageConfig,
+        *Configs->DiskAgentConfig);
+
+    STORAGE_INFO("Aggregate Blockstore config initialized");
 
     auto logging = std::make_shared<TLoggingProxy>();
     TraceSerializer = CreateTraceSerializer(
@@ -841,11 +861,9 @@ void TBootstrapYdb::InitKikimrService()
     args.NodeId = nodeId;
     args.ScopeId = scopeId;
     args.AppConfig = Configs->KikimrConfig;
-    args.DiagnosticsConfig = Configs->DiagnosticsConfig;
-    args.StorageConfig = Configs->StorageConfig;
-    args.DiskAgentConfig = Configs->DiskAgentConfig;
-    args.RdmaConfig = Configs->RdmaConfig;
-    args.DiskRegistryProxyConfig = Configs->DiskRegistryProxyConfig;
+    args.StaticBlockstoreConfigProto = std::move(staticBlockstoreConfig);
+    args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
+    args.StartupBlockstoreConfig = StartupBlockstoreConfig;
     args.AsyncLogger = AsyncLogger;
     args.StatsAggregator = StatsAggregator;
     args.StatsUploader = StatsUploader;

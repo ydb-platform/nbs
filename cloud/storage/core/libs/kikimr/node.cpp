@@ -28,6 +28,8 @@
 #include <util/stream/file.h>
 #include <util/system/hostname.h>
 
+#include <optional>
+
 namespace NCloud::NStorage {
 
 using namespace NActors;
@@ -110,8 +112,9 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TODO: this function is modified copy-paste of function from ydb 24-3
-// Replace it with the one from ydb repo when sync occurs
+// This function is modified copy-paste of function from ydb
+// contrib/ydb/core/config/init/init.cpp, which is not accessible via the public
+// interface
 NKikimrConfig::TAppConfig GetYamlConfigFromResult(
     const NKikimr::NClient::TConfigurationResult& result,
     const TMap<TString, TString>& labels)
@@ -123,8 +126,12 @@ NKikimrConfig::TAppConfig GetYamlConfigFromResult(
             result.GetVolatileYamlConfigs(),
             labels,
             appConfig,
-            std::nullopt,
-            nullptr);
+            result.HasDatabaseYamlConfig()
+                ? std::optional{result.GetDatabaseYamlConfig()}
+                : std::nullopt,
+            nullptr,   // resolvedYamlConfig
+            nullptr    // resolvedJsonConfig
+        );
     }
     return appConfig;
 }
@@ -164,20 +171,29 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
             nsConfig.GetSuppressVersionCheck());
     }
     try {
-        auto yamlConfig = GetYamlConfigFromResult(configResult, options.Labels);
-
-        // TODO: this is an adapted version of GetActualDynConfig function from ydb24-3
-        // Here we ignore YAML config except for our section and don't provide
-        // metric for updates. We should start using yaml config: ISSUE
-        cmsConfig.MutableBlockstoreConfig()->CopyFrom(
-            yamlConfig.GetBlockstoreConfig());
+        auto yamlConfig = GetYamlConfigFromResult(
+            configResult,
+            options.Labels);
+        return SelectCmsAppConfig(
+            std::move(cmsConfig),
+            std::move(yamlConfig),
+            options.UseYamlConfig);
     } catch (const std::exception& e) {
-        ReportGetConfigsFromCmsYamlParseError(
-            TStringBuilder() << "Failed to parse YAML config from CMS: "
-            << e.what());
-    }
+        TString msg = "Failed to parse YAML config from CMS";
 
-    return cmsConfig;
+        ReportGetConfigsFromCmsYamlParseError(
+            TStringBuilder() << msg << ": " << e.what());
+
+        if (options.UseYamlConfig) {
+            // YAML config is primary, continue without CMS config
+            return NKikimrConfig::TAppConfig{};
+        }
+        else {
+            // PROTO config is primary, continue with PROTO config
+            // without YAML additions
+            return cmsConfig;
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -60,6 +60,12 @@ struct TRegisterDynamicNodeOptions
 
     bool LoadCmsConfigs = false;
 
+    // YAML source selection: true selects the full YAML config when its
+    // YamlConfigEnabled is true; false uses PROTO with
+    // TAppConfig::BlockstoreConfig from YAML. Used only when LoadCmsConfigs
+    // is true.
+    bool UseYamlConfig = false;
+
     TNodeRegistrationSettings Settings;
 
     TNodeLabels Labels;

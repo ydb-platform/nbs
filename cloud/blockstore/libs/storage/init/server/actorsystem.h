@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/common/public.h>
+#include <cloud/blockstore/libs/config/blockstore_config.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/encryption/public.h>
@@ -40,11 +41,15 @@ struct TServerActorSystemArgs
     NActors::TScopeId ScopeId;
     NKikimrConfig::TAppConfigPtr AppConfig;
 
-    TDiagnosticsConfigPtr DiagnosticsConfig;
-    TStorageConfigPtr StorageConfig;
-    TDiskAgentConfigPtr DiskAgentConfig;
-    NRdma::TRdmaConfigPtr RdmaConfig;
-    TDiskRegistryProxyConfigPtr DiskRegistryProxyConfig;
+    // Local settings with CLI overrides, captured before CMS. RDMA is present
+    // only when loaded from its own file.
+    NProto::TBlockstoreConfig StaticBlockstoreConfigProto;
+
+    // Startup configuration after CMS and RDMA initialization,
+    // before private_database_config from YAML applied
+    // (both proto and IBlockstoreConfig).
+    NProto::TBlockstoreConfig StartupBlockstoreConfigProto;
+    IBlockstoreConfigPtr StartupBlockstoreConfig;
 
     ILoggingServicePtr Logging;
     IAsyncLoggerPtr AsyncLogger;

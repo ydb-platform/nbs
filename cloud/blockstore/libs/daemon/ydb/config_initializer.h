@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/config/blockstore.pb.h>
 #include <cloud/blockstore/config/grpc_client.pb.h>
 #include <cloud/blockstore/config/root_kms.pb.h>
 
@@ -57,6 +58,10 @@ struct TConfigInitializerYdb final
 
     NYdbStats::TYdbStatsConfigPtr StatsConfig;
     NStorage::TStorageConfigPtr StorageConfig;
+
+    // ICB controls reused when StorageConfig is replaced. Created by
+    // InitStorageConfig if the local DynamicYamlConfigurationEnabled is true.
+    NStorage::TStorageConfigControlsPtr StorageConfigControls;
     NFeatures::TFeaturesConfigPtr FeaturesConfig;
     NLogbroker::TLogbrokerConfigPtr LogbrokerConfig;
     NNotify::TNotifyConfigPtr NotifyConfig;
@@ -78,6 +83,9 @@ struct TConfigInitializerYdb final
     void InitRootKmsConfig();
     void InitComputeClientConfig();
     void InitLocalNVMeConfig();
+
+    // Return current configiration as TBlockstoreConfig
+    NProto::TBlockstoreConfig GetCurrentBlockstoreConfig() const;
 
     bool GetUseNonreplicatedRdmaActor() const override;
     TDuration GetInactiveClientsTimeout() const override;
@@ -107,6 +115,11 @@ struct TConfigInitializerYdb final
         const NKikimrConfig::TAppConfig& config);
 
 private:
+    // Build TBlockstoreConfig with current configuration sections.
+    NProto::TBlockstoreConfig BuildCurrentBlockstoreConfig() const;
+
+    // Replace StorageConfig using the ICB controls selected during initialization.
+    void SetStorageConfig(NProto::TStorageServiceConfig config);
     void SetupStorageConfig(NProto::TStorageServiceConfig& config) const;
 };
 

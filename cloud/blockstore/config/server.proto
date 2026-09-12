@@ -308,6 +308,11 @@ message TServerConfig
     optional uint32 VhostEndpointThreadCountNonReplicated = 137;
     optional uint32 VhostEndpointThreadCountMirror2 = 138;
     optional uint32 VhostEndpointThreadCountMirror3 = 139;
+
+    // Enable dynamic YAML configuration.
+    // Only static configuration value is used. Runtime configuration updates
+    // do not affect the value used.
+    optional bool DynamicYamlConfigurationEnabled = 140;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

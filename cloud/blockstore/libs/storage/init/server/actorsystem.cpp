@@ -1,5 +1,6 @@
 #include "actorsystem.h"
 
+#include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -73,6 +74,22 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// ConfigsDispatcher must be enabled both when the static
+// DynamicYamlConfigurationEnabled flag from static config or
+// ConfigsDispatcherServiceEnabled from startup config is enabled.
+bool ShouldEnableConfigsDispatcher(
+    const NProto::TBlockstoreConfig& staticBlockstoreConfig,
+    const NProto::TBlockstoreConfig& startupBlockstoreConfig)
+{
+    return staticBlockstoreConfig.GetServer()
+               .GetServerConfig()
+               .GetDynamicYamlConfigurationEnabled() ||
+           startupBlockstoreConfig.GetStorageService()
+               .GetConfigsDispatcherServiceEnabled();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TCustomTabletStateClassifier final
     : public TTabletStateClassifier
 {
@@ -121,13 +138,20 @@ public:
         TActorSystemSetup* setup,
         const TAppData* appData) override
     {
-        Args.StorageConfig->Register(*appData->Icb);
+        const auto config = Args.StartupBlockstoreConfig;
+        const auto storageConfig = config->GetStorageConfig();
+
+        storageConfig->Register(*appData->Icb);
+
+        // TODO: the result shall be used by further dynamic YAML configuration
+        // implementation
+        (void)InitializeBlockstoreConfigProvider(Args.StartupBlockstoreConfig);
 
         //
         // SSProxy
         //
 
-        auto ssProxy = CreateSSProxy(Args.StorageConfig);
+        auto ssProxy = CreateSSProxy(storageConfig);
 
         setup->LocalServices.emplace_back(
             MakeSSProxyServiceId(),
@@ -142,29 +166,29 @@ public:
 
         THiveProxyConfig hiveProxyConfig{
             .PipeClientRetryCount =
-                Args.StorageConfig->GetPipeClientRetryCount(),
+                storageConfig->GetPipeClientRetryCount(),
             .PipeClientMinRetryTime =
-                Args.StorageConfig->GetPipeClientMinRetryTime(),
+                storageConfig->GetPipeClientMinRetryTime(),
             .HiveLockExpireTimeout =
-                Args.StorageConfig->GetHiveLockExpireTimeout(),
+                storageConfig->GetHiveLockExpireTimeout(),
             .LogComponent = TBlockStoreComponents::HIVE_PROXY,
             .TabletBootInfoBackupFilePath =
                 Args.TemporaryServer
                     ? ""
-                    : Args.StorageConfig->GetTabletBootInfoBackupFilePath(),
+                    : storageConfig->GetTabletBootInfoBackupFilePath(),
             .UseBinaryFormatForTabletBootInfoBackup =
-                Args.StorageConfig->GetUseBinaryFormatForTabletBootInfoBackup(),
-            .FallbackMode = Args.StorageConfig->GetHiveProxyFallbackMode(),
-            .TenantHiveTabletId = Args.StorageConfig->GetTenantHiveTabletId(),
+                storageConfig->GetUseBinaryFormatForTabletBootInfoBackup(),
+            .FallbackMode = storageConfig->GetHiveProxyFallbackMode(),
+            .TenantHiveTabletId = storageConfig->GetTenantHiveTabletId(),
             .GoldenTabletBootInfoBackupFilePath =
                 Args.TemporaryServer
                     ? ""
-                    : Args.StorageConfig
+                    : storageConfig
                           ->GetGoldenTabletBootInfoBackupFilePath(),
         };
 
-        if (Args.StorageConfig->GetEnableHiveProxyRuntimeFallback()) {
-            auto storageConfig = Args.StorageConfig;
+        if (storageConfig->GetEnableHiveProxyRuntimeFallback()) {
+            auto storageConfig = config->GetStorageConfig();
             hiveProxyConfig.FallbackModeProvider = [storageConfig]
             {
                 return storageConfig->GetHiveProxyFallbackMode();
@@ -188,7 +212,7 @@ public:
         //
 
         auto volumeProxy = CreateVolumeProxy(
-            Args.StorageConfig,
+            storageConfig,
             Args.TraceSerializer,
             Args.TemporaryServer);
 
@@ -204,8 +228,8 @@ public:
         //
 
         auto diskRegistryProxy = CreateDiskRegistryProxy(
-            Args.StorageConfig,
-            Args.DiskRegistryProxyConfig);
+            storageConfig,
+            config->GetDiskRegistryProxyConfig());
 
         setup->LocalServices.emplace_back(
             MakeDiskRegistryProxyServiceId(),
@@ -219,8 +243,8 @@ public:
         //
 
         auto storageStatsService = CreateStorageStatsService(
-            Args.StorageConfig,
-            Args.DiagnosticsConfig,
+            storageConfig,
+            config->GetDiagnosticsConfig(),
             Args.StatsUploader,
             Args.StatsAggregator);
 
@@ -236,8 +260,8 @@ public:
         //
 
         auto storageService = CreateStorageService(
-            Args.StorageConfig,
-            Args.DiagnosticsConfig,
+            storageConfig,
+            config->GetDiagnosticsConfig(),
             Args.ProfileLog,
             Args.BlockDigestGeneratorFactory,
             Args.DiscoveryService,
@@ -295,8 +319,8 @@ public:
         auto authorizer = CreateAuthorizerActor(
             TBlockStoreComponents::AUTH,
             "blockstore",
-            Args.StorageConfig->GetFolderId(),
-            Args.StorageConfig->GetAuthorizationMode(),
+            storageConfig->GetFolderId(),
+            storageConfig->GetAuthorizationMode(),
             Args.AppConfig->HasAuthConfig());
 
         setup->LocalServices.emplace_back(
@@ -310,11 +334,11 @@ public:
         // DiskAgent
         //
 
-        if (Args.DiskAgentConfig->GetEnabled()) {
+        if (config->GetDiskAgentConfig()->GetEnabled()) {
             auto diskAgent = CreateDiskAgent(
-                Args.StorageConfig,
-                Args.DiskAgentConfig,
-                Args.RdmaConfig,
+                storageConfig,
+                config->GetDiskAgentConfig(),
+                config->GetRdmaConfig(),
                 Args.Spdk,
                 Args.Allocator,
                 Args.LocalStorageProvider,
@@ -339,7 +363,7 @@ public:
         //
 
         auto volumeBalancerService = CreateVolumeBalancerActor(
-            Args.StorageConfig,
+            storageConfig,
             Args.VolumeStats,
             Args.StatsFetcher,
             Args.VolumeBalancerSwitch,
@@ -356,9 +380,9 @@ public:
         // Volume Throttling Manager
         //
 
-        if (Args.StorageConfig->GetVolumeThrottlingManagerEnabled()) {
+        if (storageConfig->GetVolumeThrottlingManagerEnabled()) {
             auto volumeThrottlingManagerService = CreateVolumeThrottlingManager(
-                Args.StorageConfig
+                storageConfig
                     ->GetVolumeThrottlingManagerNotificationPeriodSeconds());
 
             setup->LocalServices.emplace_back(
@@ -373,7 +397,7 @@ public:
         // BlobStorage LoadActorService
         //
 
-        if (Args.StorageConfig->GetEnableLoadActor()) {
+        if (storageConfig->GetEnableLoadActor()) {
             IActorPtr loadActorService(CreateLoadTestActor(appData->Counters));
 
             setup->LocalServices.emplace_back(
@@ -394,8 +418,8 @@ class TCustomLocalServiceInitializer final
 private:
     const NKikimrConfig::TAppConfig& AppConfig;
     const ILoggingServicePtr Logging;
-    const TStorageConfigPtr StorageConfig;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TStorageConfigConstPtr StorageConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
@@ -412,8 +436,8 @@ public:
     TCustomLocalServiceInitializer(
             const NKikimrConfig::TAppConfig& appConfig,
             ILoggingServicePtr logging,
-            TStorageConfigPtr storageConfig,
-            TDiagnosticsConfigPtr diagnosticsConfig,
+            TStorageConfigConstPtr storageConfig,
+            TDiagnosticsConfigConstPtr diagnosticsConfig,
             IProfileLogPtr profileLog,
             IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
             IBlockDigestGeneratorPtr blockDigestGenerator,
@@ -569,12 +593,27 @@ public:
 
 IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 {
+    Y_ABORT_UNLESS(sArgs.StartupBlockstoreConfig);
+
+    const auto startupStorageConfig =
+        sArgs.StartupBlockstoreConfig->GetStorageConfig();
+
+    const auto& staticServerConfig =
+        sArgs.StaticBlockstoreConfigProto.GetServer().GetServerConfig();
+    Y_ABORT_UNLESS(
+        !staticServerConfig.GetDynamicYamlConfigurationEnabled() ||
+        startupStorageConfig->GetStorageConfigControls());
+
+    const bool enableConfigsDispatcher = ShouldEnableConfigsDispatcher(
+        sArgs.StaticBlockstoreConfigProto,
+        sArgs.StartupBlockstoreConfigProto);
+
     auto prepareKikimrRunConfig = [&] (TKikimrRunConfig& runConfig) {
-        if (sArgs.StorageConfig->GetConfigsDispatcherServiceEnabled()) {
+        if (enableConfigsDispatcher) {
             SetupConfigDispatcher(
-                sArgs.StorageConfig->GetConfigDispatcherSettings(),
-                sArgs.StorageConfig->GetSchemeShardDir(),
-                sArgs.StorageConfig->GetNodeType(),
+                startupStorageConfig->GetConfigDispatcherSettings(),
+                startupStorageConfig->GetSchemeShardDir(),
+                startupStorageConfig->GetNodeType(),
                 &runConfig.ConfigsDispatcherInitInfo);
             runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
         }
@@ -594,8 +633,8 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
         initializers.AddServiceInitializer(new TCustomLocalServiceInitializer(
             *sArgs.AppConfig,
             sArgs.Logging,
-            sArgs.StorageConfig,
-            sArgs.DiagnosticsConfig,
+            sArgs.StartupBlockstoreConfig->GetStorageConfig(),
+            sArgs.StartupBlockstoreConfig->GetDiagnosticsConfig(),
             sArgs.ProfileLog,
             sArgs.BlockDigestGeneratorFactory,
             sArgs.BlockDigestGenerator,
@@ -609,7 +648,6 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             sArgs.IsHiveLocalServiceEnabled));
     };
 
-    auto storageConfig = sArgs.StorageConfig;
     TBasicKikimrServicesMask servicesMask;
     servicesMask.DisableAll();
     servicesMask.EnableBasicServices = 1;
@@ -631,11 +669,10 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
     servicesMask.EnableIcbService = 1;
     servicesMask.EnableLocalService = 0;    // configured manually
     servicesMask.EnableSchemeBoardMonitoring = 1;
-    servicesMask.EnableConfigsDispatcher =
-        storageConfig->GetConfigsDispatcherServiceEnabled();
+    servicesMask.EnableConfigsDispatcher = enableConfigsDispatcher;
     servicesMask.EnableViewerService =
-        storageConfig->GetYdbViewerServiceEnabled();
-    servicesMask.EnableLoadService = storageConfig->GetEnableLoadActor();
+        startupStorageConfig->GetYdbViewerServiceEnabled();
+    servicesMask.EnableLoadService = startupStorageConfig->GetEnableLoadActor();
 
     auto nodeId = sArgs.NodeId;
     auto onStart = [=] (IActorSystem& actorSystem) {
@@ -649,7 +686,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             actorSystem.Send(
                 wb,
                 std::make_unique<TEvWhiteboard::TEvSystemStateSetTenant>(
-                    storageConfig->GetSchemeShardDir()));
+                    startupStorageConfig->GetSchemeShardDir()));
         }
     };
 

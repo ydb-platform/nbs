@@ -3,6 +3,7 @@
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
+#include <cloud/blockstore/libs/config/blockstore_config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/discovery/config.h>
 #include <cloud/blockstore/libs/logbroker/iface/config.h>
@@ -18,6 +19,7 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
+#include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/feature_flags.pb.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
@@ -49,6 +51,34 @@ TOptionsYdbPtr CreateOptions()
     return options;
 }
 
+// Initialize static sections, including RDMA only when its file is provided.
+void InitStaticConfigs(TConfigInitializerYdb& ci)
+{
+    // Initialize Server and Features before the sections that depend on them.
+    ci.InitServerConfig();
+    ci.InitEndpointConfig();
+    ci.InitHostPerformanceProfile();
+    ci.InitFeaturesConfig();
+    ci.InitStorageConfig();
+    ci.InitDiskRegistryProxyConfig();
+    ci.InitDiagnosticsConfig();
+    ci.InitStatsUploadConfig();
+    ci.InitDiscoveryConfig();
+    ci.InitSpdkEnvConfig();
+    ci.InitLogbrokerConfig();
+    ci.InitNotifyConfig();
+    ci.InitIamClientConfig();
+    ci.InitKmsClientConfig();
+    ci.InitRootKmsConfig();
+    ci.InitComputeClientConfig();
+    ci.InitCellsConfig();
+    ci.InitLocalNVMeConfig();
+    ci.InitDiskAgentConfig();
+    if (ci.Options->RdmaConfig) {
+        ci.InitRdmaConfig();
+    }
+}
+
 /**
  * *LoadKikimrFeaturesFromCms implementation
  */
@@ -60,6 +90,7 @@ void ShouldLoadKikimrFeatureFromCms(
 {
     auto ci = TConfigInitializerYdb(CreateOptions());
     ci.InitKikimrConfig();
+    InitStaticConfigs(ci);
 
     NKikimrConfig::TAppConfig appCfg;
     auto* cmsFeatureFlags = appCfg.MutableFeatureFlags();
@@ -156,10 +187,276 @@ void ShouldLoadKikimrFeaturesFromCms(
 
 Y_UNIT_TEST_SUITE(TConfigInitializerTest)
 {
+    // Verify that DynamicYamlConfigurationEnabled is false by default and
+    // can be set to true.
+    Y_UNIT_TEST(ShouldExposeDynamicYamlConfigurationFlag)
+    {
+        TServerAppConfig defaultConfig;
+        UNIT_ASSERT(!defaultConfig.GetDynamicYamlConfigurationEnabled());
+
+        NProto::TServerAppConfig proto;
+        proto.MutableServerConfig()->SetDynamicYamlConfigurationEnabled(true);
+        TServerAppConfig enabledConfig(proto);
+        UNIT_ASSERT(enabledConfig.GetDynamicYamlConfigurationEnabled());
+    }
+
+    // Verify that CMS changes the current ServerConfig without changing the
+    // saved static snapshot or the ICB controls selected before CMS.
+    Y_UNIT_TEST(ShouldKeepStaticSnapshotAndSharedControls)
+    {
+        for (const bool staticValue: {false, true}) {
+            // Initialize with each static DynamicYamlConfigurationEnabled
+            // value.
+            TTempDir dir;
+            auto configPath = dir.Path() / "server.txt";
+            TOFStream(configPath.GetPath()).Write(TStringBuilder()
+                << "ServerConfig { DynamicYamlConfigurationEnabled: "
+                << (staticValue ? "true" : "false") << " }");
+
+            auto options = CreateOptions();
+            options->ServerConfig = configPath.GetPath();
+            auto ci = TConfigInitializerYdb(std::move(options));
+
+            InitStaticConfigs(ci);
+            const auto staticConfig = ci.GetCurrentBlockstoreConfig();
+            const auto staticText = staticConfig.SerializeAsString();
+            auto* controls = ci.StorageConfigControls.get();
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                staticValue,
+                ci.GetDynamicYamlConfigurationEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(staticValue, controls != nullptr);
+
+            // Apply CMS with the opposite DynamicYamlConfigurationEnabled
+            // value.
+            ci.ApplyServerAppConfig(TStringBuilder()
+                << "ServerConfig { DynamicYamlConfigurationEnabled: "
+                << (!staticValue ? "true" : "false") << " }");
+
+            // Accept the CMS value in ServerConfig while preserving the
+            // original snapshot and controls used by StorageConfig.
+            UNIT_ASSERT_VALUES_EQUAL(
+                !staticValue,
+                ci.GetDynamicYamlConfigurationEnabled());
+            UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
+            UNIT_ASSERT_EQUAL(
+                controls,
+                ci.StorageConfig->GetStorageConfigControls().get());
+            UNIT_ASSERT_VALUES_EQUAL(
+                staticValue,
+                staticConfig.GetServer()
+                    .GetServerConfig()
+                    .GetDynamicYamlConfigurationEnabled());
+
+            // Omit the flag in another update. Its default must not change
+            // the saved static configuration or the selected controls.
+            ci.ApplyServerAppConfig("ServerConfig {}");
+            UNIT_ASSERT(!ci.GetDynamicYamlConfigurationEnabled());
+            UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
+            UNIT_ASSERT_EQUAL(
+                controls,
+                ci.StorageConfig->GetStorageConfigControls().get());
+            UNIT_ASSERT_VALUES_EQUAL(
+                staticText,
+                staticConfig.SerializeAsString());
+        }
+    }
+
+    // Verify that only PROTO configuration applies NamedConfigs and allowed
+    // feature flags, while both modes apply the same direct config sections.
+    Y_UNIT_TEST(ShouldApplyNamedConfigsOnlyWhenDynamicYamlIsDisabled)
+    {
+        for (const bool useYamlConfig: {false, true}) {
+            // Set DynamicYamlConfigurationEnabled locally and give CMS
+            // different values to check which source each mode applies.
+            TTempDir dir;
+            const auto serverPath = dir.Path() / "server.txt";
+            TOFStream(serverPath.GetPath()).Write(TStringBuilder()
+                << "ServerConfig { DynamicYamlConfigurationEnabled: "
+                << (useYamlConfig ? "true" : "false") << " }");
+            auto options = CreateOptions();
+            options->ServerConfig = serverPath.GetPath();
+            options->MonitoringPort = 1234;
+            auto ci = TConfigInitializerYdb(std::move(options));
+            ci.InitKikimrConfig();
+            InitStaticConfigs(ci);
+            ci.KikimrConfig->MutableLogConfig()->SetDefaultLevel(3);
+            ci.KikimrConfig->MutableFeatureFlags()
+                ->SetEnableNodeBrokerDeltaProtocol(true);
+            const auto localThreshold =
+                ci.StorageConfig->GetWriteBlobThreshold();
+
+            // Supply supported sections and conflicting direct/named values.
+            NKikimrConfig::TAppConfig cms;
+            ParseProtoTextFromString(R"(
+                BlobStorageConfig {
+                    ServiceSet { AvailabilityDomains: 42 }
+                }
+                DomainsConfig { Domain { Name: "cms" } }
+                NameserviceConfig { ClusterUUID: "cms" }
+                DynamicNameserviceConfig { MaxStaticNodeId: 456 }
+                LogConfig { DefaultLevel: 9 }
+                MonitoringConfig { MonitoringPort: 4321 }
+                InterconnectConfig { StartTcp: false }
+                FeatureFlags {
+                    EnableNodeBrokerDeltaProtocol: false
+                    EnableVPatch: false
+                }
+                BlockstoreConfig {
+                    VolumePreemptionType: PREEMPTION_MOVE_LEAST_HEAVY
+                }
+                NamedConfigs {
+                    Name: "Cloud.NBS.LogConfig"
+                    Config: "DefaultLevel: 7"
+                }
+                NamedConfigs {
+                    Name: "Cloud.NBS.StorageServiceConfig"
+                    Config: "WriteBlobThreshold: 42"
+                }
+            )", cms);
+
+            // Apply CMS through the common entry point in both modes.
+            ci.ApplyCMSConfigs(cms);
+
+            // Apply BlobStorageConfig, DomainsConfig, NameserviceConfig and
+            // DynamicNameserviceConfig in both configuration modes.
+            const auto& config = *ci.KikimrConfig;
+            UNIT_ASSERT_VALUES_EQUAL(42, config.GetBlobStorageConfig()
+                .GetServiceSet().GetAvailabilityDomains(0));
+            UNIT_ASSERT_VALUES_EQUAL(
+                "cms", config.GetDomainsConfig().GetDomain(0).GetName());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "cms", config.GetNameserviceConfig().GetClusterUUID());
+            UNIT_ASSERT_VALUES_EQUAL(
+                456, config.GetDynamicNameserviceConfig().GetMaxStaticNodeId());
+
+            // Keep local LogConfig, StorageConfig and feature flags in YAML
+            // mode. Preserve CLI monitoring and interconnect in both modes.
+            UNIT_ASSERT_VALUES_EQUAL(
+                useYamlConfig ? 3 : 7, config.GetLogConfig().GetDefaultLevel());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1234, config.GetMonitoringConfig().GetMonitoringPort());
+            UNIT_ASSERT(config.GetInterconnectConfig().GetStartTcp());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useYamlConfig ? localThreshold : 42,
+                ci.StorageConfig->GetWriteBlobThreshold());
+            UNIT_ASSERT_EQUAL(
+                NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+                ci.StorageConfig->GetVolumePreemptionType());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useYamlConfig,
+                config.GetFeatureFlags().GetEnableNodeBrokerDeltaProtocol());
+            UNIT_ASSERT(config.GetFeatureFlags().GetEnableVPatch());
+        }
+    }
+
+    // Verify that the static configuration includes all sections when an RDMA
+    // file is provided
+    Y_UNIT_TEST(ShouldBuildAllBlockstoreConfigs)
+    {
+        TTempDir dir;
+        const auto rdmaPath = dir.Path() / "rdma.txt";
+        TOFStream(rdmaPath.GetPath()).Write("ClientEnabled: true");
+        auto options = CreateOptions();
+        options->RdmaConfig = rdmaPath.GetPath();
+        auto ci = TConfigInitializerYdb(std::move(options));
+        InitStaticConfigs(ci);
+
+        const auto config = ci.GetCurrentBlockstoreConfig();
+        TVector<const google::protobuf::FieldDescriptor*> fields;
+        config.GetReflection()->ListFields(config, &fields);
+
+        UNIT_ASSERT_VALUES_EQUAL(19, fields.size());
+    }
+
+    // Verify that the Server flag selects shared controls before other sections
+    // are initialized.
+    Y_UNIT_TEST(ShouldInitializeSharedControlsFromServerConfig)
+    {
+        // Initialize ServerConfig with dynamic YAML enabled.
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        NProto::TServerAppConfig server;
+        server.MutableServerConfig()->SetDynamicYamlConfigurationEnabled(true);
+        ci.ServerConfig = std::make_shared<TServerAppConfig>(server);
+
+        // Create shared ICB controls before initializing the remaining
+        // sections.
+        ci.InitFeaturesConfig();
+        ci.InitStorageConfig();
+
+        UNIT_ASSERT(ci.GetDynamicYamlConfigurationEnabled());
+        UNIT_ASSERT(ci.StorageConfigControls);
+    }
+
+    // Verify that CMS-derived RDMA settings appear only in the current
+    // configuration and previously returned snapshots remain unchanged.
+    Y_UNIT_TEST(ShouldBuildIndependentBlockstoreConfigSnapshots)
+    {
+        // Save the initialized configuration before applying CMS.
+        auto ci = TConfigInitializerYdb(CreateOptions());
+        InitStaticConfigs(ci);
+        const auto staticConfig = ci.GetCurrentBlockstoreConfig();
+        const auto staticText = staticConfig.SerializeAsString();
+        UNIT_ASSERT(!staticConfig.HasRdma());
+        UNIT_ASSERT(!ci.RdmaConfig);
+        UNIT_ASSERT_VALUES_EQUAL(
+            staticText,
+            ci.GetCurrentBlockstoreConfig().SerializeAsString());
+
+        // Apply CMS ports, RDMA settings and the ServerConfig YAML flag.
+        NKikimrConfig::TAppConfig cms;
+        auto* server = cms.AddNamedConfigs();
+        server->SetName("Cloud.NBS.ServerAppConfig");
+        server->SetConfig(R"(ServerConfig {
+            Port: 12345
+            DynamicYamlConfigurationEnabled: true
+            RdmaClientEnabled: true
+        })");
+        auto* diagnostics = cms.AddNamedConfigs();
+        diagnostics->SetName("Cloud.NBS.DiagnosticsConfig");
+        diagnostics->SetConfig("NbsMonPort: 23456");
+        ci.ApplyCustomCMSConfigs(cms);
+        ci.InitRdmaConfig();
+
+        // Check that both the current proto and the startup configuration
+        // contain the CMS port values.
+        auto current = ci.GetCurrentBlockstoreConfig();
+        UNIT_ASSERT_VALUES_EQUAL(
+            12345,
+            current.GetServer().GetServerConfig().GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            23456,
+            current.GetDiagnostics().GetNbsMonPort());
+        UNIT_ASSERT(current.GetRdma().GetClientEnabled());
+        UNIT_ASSERT(
+            current.GetServer().GetServerConfig()
+                .GetDynamicYamlConfigurationEnabled());
+        const auto aggregate = MakeBlockstoreConfig(
+            current,
+            {},
+            *ci.StorageConfig,
+            *ci.DiskAgentConfig);
+        UNIT_ASSERT_VALUES_EQUAL(
+            12345,
+            aggregate->GetServerConfig()->GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            23456,
+            aggregate->GetDiagnosticsConfig()->GetNbsMonPort());
+
+        // Change the returned protobuf message. Check that the initializer
+        // still returns the CMS values and the initial snapshot remains
+        // unchanged.
+        current.MutableDiagnostics()->SetNbsMonPort(34567);
+        UNIT_ASSERT_VALUES_EQUAL(
+            23456,
+            ci.GetCurrentBlockstoreConfig().GetDiagnostics().GetNbsMonPort());
+        UNIT_ASSERT_VALUES_EQUAL(staticText, staticConfig.SerializeAsString());
+    }
+
     Y_UNIT_TEST(ShouldLoadStorageConfigFromCms)
     {
         auto ci = TConfigInitializerYdb(CreateOptions());
-        ci.InitStorageConfig();
+        InitStaticConfigs(ci);
 
         NKikimrConfig::TAppConfig appCfg;
         auto& featuresCfg = *appCfg.MutableNamedConfigs();
@@ -190,7 +487,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
     Y_UNIT_TEST(ShouldUpdateStorageConfigWithFeaturesFromCms)
     {
         auto ci = TConfigInitializerYdb(CreateOptions());
-        ci.InitStorageConfig();
+        InitStaticConfigs(ci);
 
         {
             NProto::TFeaturesConfig config;
@@ -369,6 +666,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         // clang-format on
 
         auto ci = TConfigInitializerYdb(CreateOptions());
+        InitStaticConfigs(ci);
 
         ci.KikimrConfig = std::make_shared<NKikimrConfig::TAppConfig>();
         NKikimrConfig::TAppConfig appCfg;
@@ -415,6 +713,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         // clang-format on
 
         auto ci = TConfigInitializerYdb(CreateOptions());
+        InitStaticConfigs(ci);
 
         // To detect possible mutual dependencies:
         //  - one at time
@@ -740,7 +1039,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
     Y_UNIT_TEST(ShouldAdaptNodeRegistrationParamsWhenLoadingFromCms)
     {
         auto ci = TConfigInitializerYdb(CreateOptions());
-        ci.InitStorageConfig();
+        InitStaticConfigs(ci);
 
         NKikimrConfig::TAppConfig appCfg;
         auto* serverCfg = appCfg.MutableNamedConfigs()->Add();
@@ -774,7 +1073,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
     Y_UNIT_TEST(ShouldNotReplaceNodeRegistrationParamsInStorageConfigWithCms)
     {
         auto ci = TConfigInitializerYdb(CreateOptions());
-        ci.InitStorageConfig();
+        InitStaticConfigs(ci);
 
         NKikimrConfig::TAppConfig appCfg;
         auto* serverCfg = appCfg.MutableNamedConfigs()->Add();

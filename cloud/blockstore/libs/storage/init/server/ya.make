@@ -6,6 +6,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/config
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/spdk/iface

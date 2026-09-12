@@ -161,6 +161,7 @@ public:
     ui32 GetVhostEndpointThreadCountNonReplicated() const;
     ui32 GetVhostEndpointThreadCountMirror2() const;
     ui32 GetVhostEndpointThreadCountMirror3() const;
+    bool GetDynamicYamlConfigurationEnabled() const;
 
     void Dump(IOutputStream& out) const override;
     void DumpHtml(IOutputStream& out) const override;

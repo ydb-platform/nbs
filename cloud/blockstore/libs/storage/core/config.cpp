@@ -1294,7 +1294,7 @@ void TStorageConfig::SetVolumePreemptionType(
     Impl->SetVolumePreemptionType(volumePreemptionType);
 }
 
-void TStorageConfig::Register(TControlBoard& controlBoard)
+void TStorageConfig::Register(TControlBoard& controlBoard) const
 {
     Impl->Controls->Register(controlBoard);
 }
