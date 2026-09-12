@@ -31,8 +31,10 @@ static constexpr int MODE0660 = S_IRGRP | S_IWGRP | S_IRUSR | S_IWUSR;
                                                                                \
     xxx(HandleOpsQueuePath,                         TString,    ""            )\
     xxx(HandleOpsQueueSize,                         ui32,       1_GB          )\
+    xxx(HandleOpsQueueTotalSizeLimit,               ui64,       0             )\
     xxx(WriteBackCachePath,                         TString,    ""            )\
     xxx(WriteBackCacheCapacity,                     ui64,       1_GB          )\
+    xxx(WriteBackCacheTotalSizeLimit,               ui64,       10_GB         )\
     xxx(WriteBackCacheAutomaticFlushPeriod,                                    \
         TDuration,                                                             \
         TDuration::MilliSeconds(100)                                          )\

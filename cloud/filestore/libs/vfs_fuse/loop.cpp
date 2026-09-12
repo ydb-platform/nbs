@@ -982,9 +982,19 @@ private:
                     }
 
                     HandleOpsQueueStateFileGuard = result.ExtractResult();
-                    handleOpsQueue = CreateHandleOpsQueue(
-                        HandleOpsQueueStateFileGuard.GetFilePath(),
-                        Config->GetHandleOpsQueueSize());
+                    if (HandleOpsQueueStateFileGuard) {
+                        handleOpsQueue = CreateHandleOpsQueue(
+                            HandleOpsQueueStateFileGuard.GetFilePath(),
+                            Config->GetHandleOpsQueueSize());
+                    } else {
+                        // The total size limit of the state files is reached
+                        STORAGE_WARN(
+                            "[f:%s][c:%s] HandleOpsQueue is not created: "
+                            "the total size limit of its state files is "
+                            "reached",
+                            Config->GetFileSystemId().Quote().c_str(),
+                            Config->GetClientId().Quote().c_str());
+                    }
                 }
             } else if (ShouldCreateHandleOpsQueue(*FileSystemConfig)) {
                 ReportHandleOpsQueueCreatingOrDeletingError(Sprintf(
@@ -1016,52 +1026,15 @@ private:
                     }
 
                     WriteBackCacheStateFileGuard = result.ExtractResult();
-                    WriteBackCache = TWriteBackCache(
-                        {.Session = Session,
-                         .Scheduler = Scheduler,
-                         .Timer = Timer,
-                         .Stats = NWriteBackCache::CreateWriteBackCacheStats(),
-                         .Log = Log,
-                         .FileSystemId = Config->GetFileSystemId(),
-                         .ClientId = Config->GetClientId(),
-                         .FilePath = WriteBackCacheStateFileGuard.GetFilePath(),
-                         .CapacityBytes = Config->GetWriteBackCacheCapacity(),
-                         .AutomaticFlushPeriod =
-                             Config->GetWriteBackCacheAutomaticFlushPeriod(),
-                         .FlushRetryPeriod =
-                             Config->GetWriteBackCacheFlushRetryPeriod(),
-                         .FlushMaxWriteRequestSize =
-                             Config
-                                 ->GetWriteBackCacheFlushMaxWriteRequestSize(),
-                         .FlushMaxWriteRequestsCount =
-                             Config
-                                 ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
-                         .FlushMaxSumWriteRequestsSize =
-                             Config
-                                 ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
-                         .MaxQueuedFlushBatchesPerNode =
-                             Config
-                                 ->GetWriteBackCacheMaxQueuedFlushBatchesPerNode(),
-                         .ZeroCopyWriteEnabled =
-                             FileSystemConfig->GetZeroCopyWriteEnabled(),
-                         .FlushWritesInParallelEnabled =
-                             FileSystemConfig
-                                 ->GetServerWriteBackCacheFlushWritesInParallelEnabled()});
-
-                    if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
-                        auto future = WriteBackCache.Drain();
-                        // Drain will run asynchronously in background
-                        // No need to wait for it
-                        Y_UNUSED(future);
+                    if (!WriteBackCacheStateFileGuard) {
+                        // The total size limit of the state files is reached
+                        STORAGE_WARN(
+                            "[f:%s][c:%s] WriteBackCache is not created: "
+                            "the total size limit of its state files is "
+                            "reached",
+                            Config->GetFileSystemId().Quote().c_str(),
+                            Config->GetClientId().Quote().c_str());
                     }
-
-                    ModuleStatsRegistry->Register(
-                        {.FileSystemId = Config->GetFileSystemId(),
-                         .ClientId = Config->GetClientId(),
-                         .CloudId = response.GetFileStore().GetCloudId(),
-                         .FolderId = response.GetFileStore().GetFolderId(),
-                         .SessionId = SessionId,
-                         .ModuleStats = WriteBackCache.CreateModuleStats()});
                 }
             } else if (FileSystemConfig->GetServerWriteBackCacheEnabled()) {
                 ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1069,6 +1042,55 @@ private:
                     "WriteBackCachePath is not set",
                     Config->GetFileSystemId().Quote().c_str(),
                     Config->GetClientId().Quote().c_str()));
+            }
+
+            if (WriteBackCacheStateFileGuard) {
+                WriteBackCache = TWriteBackCache(
+                    {.Session = Session,
+                     .Scheduler = Scheduler,
+                     .Timer = Timer,
+                     .Stats = NWriteBackCache::CreateWriteBackCacheStats(),
+                     .Log = Log,
+                     .FileSystemId = Config->GetFileSystemId(),
+                     .ClientId = Config->GetClientId(),
+                     .FilePath = WriteBackCacheStateFileGuard.GetFilePath(),
+                     .CapacityBytes = Config->GetWriteBackCacheCapacity(),
+                     .AutomaticFlushPeriod =
+                         Config->GetWriteBackCacheAutomaticFlushPeriod(),
+                     .FlushRetryPeriod =
+                         Config->GetWriteBackCacheFlushRetryPeriod(),
+                     .FlushMaxWriteRequestSize =
+                         Config
+                             ->GetWriteBackCacheFlushMaxWriteRequestSize(),
+                     .FlushMaxWriteRequestsCount =
+                         Config
+                             ->GetWriteBackCacheFlushMaxWriteRequestsCount(),
+                     .FlushMaxSumWriteRequestsSize =
+                         Config
+                             ->GetWriteBackCacheFlushMaxSumWriteRequestsSize(),
+                     .MaxQueuedFlushBatchesPerNode =
+                         Config
+                             ->GetWriteBackCacheMaxQueuedFlushBatchesPerNode(),
+                     .ZeroCopyWriteEnabled =
+                         FileSystemConfig->GetZeroCopyWriteEnabled(),
+                     .FlushWritesInParallelEnabled =
+                         FileSystemConfig
+                             ->GetServerWriteBackCacheFlushWritesInParallelEnabled()});
+
+                if (!FileSystemConfig->GetServerWriteBackCacheEnabled()) {
+                    auto future = WriteBackCache.Drain();
+                    // Drain will run asynchronously in background
+                    // No need to wait for it
+                    Y_UNUSED(future);
+                }
+
+                ModuleStatsRegistry->Register(
+                    {.FileSystemId = Config->GetFileSystemId(),
+                     .ClientId = Config->GetClientId(),
+                     .CloudId = response.GetFileStore().GetCloudId(),
+                     .FolderId = response.GetFileStore().GetFolderId(),
+                     .SessionId = SessionId,
+                     .ModuleStats = WriteBackCache.CreateModuleStats()});
             }
 
             IDirectoryHandleStorageStatsPtr directoryHandleStorageStats;

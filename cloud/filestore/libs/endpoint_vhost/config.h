@@ -33,9 +33,11 @@ public:
 
     TString GetHandleOpsQueuePath() const;
     ui32 GetHandleOpsQueueSize() const;
+    ui64 GetHandleOpsQueueTotalSizeLimit() const;
 
     TString GetWriteBackCachePath() const;
     ui64 GetWriteBackCacheCapacity() const;
+    ui64 GetWriteBackCacheTotalSizeLimit() const;
     TDuration GetWriteBackCacheAutomaticFlushPeriod() const;
     TDuration GetWriteBackCacheFlushRetryPeriod() const;
     ui32 GetWriteBackCacheFlushMaxWriteRequestSize() const;

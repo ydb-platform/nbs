@@ -116,6 +116,18 @@ message TVhostServiceConfig
     // The value is compared with the number of flush batches needed to drain
     // unflushed WriteData requests.
     optional uint32 WriteBackCacheMaxQueuedFlushBatchesPerNode = 25;
+
+    // Limit of the total size (in bytes) of the HandleOpsQueue state files of
+    // all sessions under HandleOpsQueuePath. Once it is reached, a session
+    // which has no state file yet is started without HandleOpsQueue.
+    // 0 disables the limiting. Default: 0.
+    optional uint64 HandleOpsQueueTotalSizeLimit = 26;
+
+    // Limit of the total size (in bytes) of the WriteBackCache state files of
+    // all sessions under WriteBackCachePath. Once it is reached, a session
+    // which has no state file yet is started without WriteBackCache.
+    // 0 disables the limiting. Default: 10 GiB.
+    optional uint64 WriteBackCacheTotalSizeLimit = 27;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
