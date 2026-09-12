@@ -38,6 +38,12 @@ struct TFileSystemShardStub: IFileSystemShard
         return NThreading::MakeFuture(NCloud::NProto::TError{});
     }
 
+    [[nodiscard]] NThreading::TFuture<NCloud::NProto::TError>
+    Format() override
+    {
+        return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+    }
+
     void TearDown() override
     {}
 

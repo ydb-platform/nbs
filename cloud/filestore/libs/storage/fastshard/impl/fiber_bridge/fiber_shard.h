@@ -111,6 +111,25 @@ private:
         return 0;
     }
 
+    struct TFiberShardFormatParams
+    {
+        std::shared_ptr<TFiberShardImpl> Impl;
+        NThreading::TPromise<NProto::TError> Promise;
+    };
+
+    static int FormatFiberMain(TFiberShardFormatParams* params) noexcept
+    {
+        auto e = params->Impl->Format();
+
+        //
+        // See the comment about SetValue in the request method fiber main.
+        //
+
+        silk::FiberScheduler::ThreadModeScope threadModeScope;
+        params->Promise.SetValue(e);
+        return 0;
+    }
+
     struct TFiberShardTearDownParams
     {
         std::shared_ptr<TFiberShardImpl> Impl;
@@ -131,6 +150,25 @@ public:
         const int r = silk::FiberScheduler::run(
             InitFiberMain,
             TFiberShardInitParams{.Impl = Impl, .Promise = promise},
+            nullptr /* future */);
+        if (r) {
+            promise.SetValue(MakeError(
+                E_FAIL,
+                TStringBuilder()
+                    << "failed to spawn fiber: " << FiberSpawnErrorText(r)));
+        }
+
+        return future;
+    }
+
+    [[nodiscard]] NThreading::TFuture<NProto::TError> Format() override
+    {
+        auto promise = NThreading::NewPromise<NProto::TError>();
+        auto future = promise.GetFuture();
+
+        const int r = silk::FiberScheduler::run(
+            FormatFiberMain,
+            TFiberShardFormatParams{.Impl = Impl, .Promise = promise},
             nullptr /* future */);
         if (r) {
             promise.SetValue(MakeError(
