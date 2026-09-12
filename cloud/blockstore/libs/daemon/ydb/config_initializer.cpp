@@ -2,6 +2,7 @@
 
 #include "options.h"
 
+#include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -47,6 +48,79 @@ TConfigInitializerYdb::TConfigInitializerYdb(TOptionsYdbPtr options)
     , Options(options)
 {}
 
+NProto::TBlockstoreConfig
+TConfigInitializerYdb::GetCurrentBlockstoreConfig() const
+{
+    return BuildCurrentBlockstoreConfig();
+}
+
+NProto::TBlockstoreConfig
+TConfigInitializerYdb::BuildCurrentBlockstoreConfig() const
+{
+    NProto::TBlockstoreConfig config;
+
+    if (ServerConfig) {
+        config.MutableServer()->CopyFrom(ServerConfig->GetAppConfig());
+    }
+    if (EndpointConfig) {
+        config.MutableEndpoint()->CopyFrom(EndpointConfig->GetConfigProto());
+    }
+    if (FeaturesConfig) {
+        config.MutableFeatures()->CopyFrom(FeaturesConfig->GetConfigProto());
+    }
+    if (StorageConfig) {
+        config.MutableStorageService()->CopyFrom(
+            StorageConfig->GetEffectiveStorageConfigProto());
+    }
+    if (DiskRegistryProxyConfig) {
+        config.MutableDiskRegistryProxy()->CopyFrom(
+            DiskRegistryProxyConfig->GetConfigProto());
+    }
+    if (DiagnosticsConfig) {
+        config.MutableDiagnostics()->CopyFrom(
+            DiagnosticsConfig->GetConfigProto());
+    }
+    if (StatsConfig) {
+        config.MutableYdbStats()->CopyFrom(StatsConfig->GetConfigProto());
+    }
+    if (DiscoveryConfig) {
+        config.MutableDiscoveryService()->CopyFrom(
+            *DiscoveryConfig->GetConfig());
+    }
+    if (SpdkEnvConfig) {
+        config.MutableSpdkEnv()->CopyFrom(SpdkEnvConfig->GetConfigProto());
+    }
+    if (LogbrokerConfig) {
+        config.MutableLogbroker()->CopyFrom(*LogbrokerConfig->GetConfig());
+    }
+    if (NotifyConfig) {
+        config.MutableNotify()->CopyFrom(*NotifyConfig->GetConfig());
+    }
+    if (IamClientConfig) {
+        config.MutableIamClient()->CopyFrom(
+            IamClientConfig->GetIamServiceConfig());
+    }
+
+    config.MutableKmsClient()->CopyFrom(KmsClientConfig);
+    config.MutableRootKms()->CopyFrom(RootKmsConfig);
+    config.MutableComputeClient()->CopyFrom(ComputeClientConfig);
+
+    if (CellsConfig) {
+        config.MutableCells()->CopyFrom(CellsConfig->GetCellsConfig());
+    }
+    if (LocalNVMeConfig) {
+        config.MutableLocalNVMe()->CopyFrom(LocalNVMeConfig->GetConfigProto());
+    }
+    if (DiskAgentConfig) {
+        config.MutableDiskAgent()->CopyFrom(DiskAgentConfig->GetConfigProto());
+    }
+    if (RdmaConfig) {
+        config.MutableRdma()->CopyFrom(RdmaConfig->GetConfigProto());
+    }
+
+    return config;
+}
+
 void TConfigInitializerYdb::InitStatsUploadConfig()
 {
     NProto::TYdbStatsConfig statsConfig;
@@ -81,9 +155,12 @@ void TConfigInitializerYdb::InitStorageConfig()
         storageConfig.SetDisableManuallyPreemptedVolumesTracking(true);
     }
 
-    StorageConfig = std::make_shared<NStorage::TStorageConfig>(
-        storageConfig,
-        FeaturesConfig);
+    if (GetDynamicYamlConfigurationEnabled()) {
+        StorageConfigControls =
+            std::make_shared<NStorage::TStorageConfigControls>();
+    }
+
+    SetStorageConfig(std::move(storageConfig));
 }
 
 void TConfigInitializerYdb::InitFeaturesConfig()
@@ -220,6 +297,16 @@ void TConfigInitializerYdb::SetupStorageConfig(NProto::TStorageServiceConfig& co
     config.SetServiceVersionInfo(GetFullVersionString());
 }
 
+// Replace StorageConfig using the ICB controls selected during initialization.
+void TConfigInitializerYdb::SetStorageConfig(
+    NProto::TStorageServiceConfig config)
+{
+    StorageConfig = std::make_shared<NStorage::TStorageConfig>(
+        std::move(config),
+        FeaturesConfig,
+        StorageConfigControls);
+}
+
 void TConfigInitializerYdb::ApplyYdbStatsConfig(const TString& text)
 {
     NProto::TYdbStatsConfig statsConfig;
@@ -238,9 +325,7 @@ void TConfigInitializerYdb::ApplyFeaturesConfig(const TString& text)
 
     // features config has changed, update storage config
     if (!StorageConfig) {
-        StorageConfig = std::make_shared<NStorage::TStorageConfig>(
-            NProto::TStorageServiceConfig(),
-            nullptr);
+        SetStorageConfig({});
     }
     StorageConfig->SetFeaturesConfig(FeaturesConfig);
 }
@@ -334,9 +419,7 @@ void TConfigInitializerYdb::ApplyStorageServiceConfig(const TString& text)
         storageConfig.SetDisableManuallyPreemptedVolumesTracking(true);
     }
 
-    StorageConfig = std::make_shared<NStorage::TStorageConfig>(
-        storageConfig,
-        FeaturesConfig);
+    SetStorageConfig(std::move(storageConfig));
 
     Y_ENSURE(!Options->SchemeShardDir ||
         GetFullSchemeShardDir() == StorageConfig->GetSchemeShardDir());
@@ -523,9 +606,12 @@ void TConfigInitializerYdb::ApplyAllowedKikimrFeatureFlags(
 void TConfigInitializerYdb::ApplyCustomCMSConfigs(
     const NKikimrConfig::TAppConfig& config)
 {
-    ApplyNamedConfigs(config);
+    if (!GetDynamicYamlConfigurationEnabled()) {
+        ApplyNamedConfigs(config);
+        ApplyAllowedKikimrFeatureFlags(config);
+    }
+
     ApplyBlockstoreConfig(config);
-    ApplyAllowedKikimrFeatureFlags(config);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

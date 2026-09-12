@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/config/blockstore_config.h>
 #include <cloud/blockstore/libs/daemon/common/bootstrap.h>
 #include <cloud/blockstore/libs/kms/iface/public.h>
 #include <cloud/blockstore/libs/local_nvme/public.h>
@@ -101,6 +102,9 @@ private:
     std::shared_ptr<TServerModuleFactories> ServerModuleFactories;
 
     TConfigInitializerYdbPtr Configs;
+
+    // Static configuration with CMS applied
+    IBlockstoreConfigPtr StartupBlockstoreConfig;
 
     IActorSystemPtr ActorSystem;
     IAsyncLoggerPtr AsyncLogger;

@@ -51,7 +51,7 @@ TString BuildNVMeDeviceName(const TString& baseName, ui32 nsid)
 class TSpdkInitializer
 {
 private:
-    const TDiskAgentConfigPtr AgentConfig;
+    const TDiskAgentConfigConstPtr AgentConfig;
     const NSpdk::ISpdkEnvPtr Spdk;
     const ICachingAllocatorPtr Allocator;
 
@@ -64,7 +64,7 @@ private:
 
 public:
     TSpdkInitializer(
-        TDiskAgentConfigPtr agentConfig,
+        TDiskAgentConfigConstPtr agentConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator);
 
@@ -112,7 +112,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TSpdkInitializer::TSpdkInitializer(
-        TDiskAgentConfigPtr agentConfig,
+        TDiskAgentConfigConstPtr agentConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator)
     : AgentConfig(std::move(agentConfig))
@@ -487,7 +487,7 @@ void TSpdkInitializer::HandleCurrentException()
 ////////////////////////////////////////////////////////////////////////////////
 
 TFuture<TInitializeSpdkResult> InitializeSpdk(
-    TDiskAgentConfigPtr agentConfig,
+    TDiskAgentConfigConstPtr agentConfig,
     NSpdk::ISpdkEnvPtr spdk,
     ICachingAllocatorPtr allocator)
 {

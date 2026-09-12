@@ -46,7 +46,7 @@ namespace {
 constexpr TInstant DRTabletIdRequestRetryInterval = TInstant::Seconds(3);
 
 bool ShapingThrottlerEnabled(
-    const TStorageConfigPtr& config,
+    const TStorageConfigConstPtr& config,
     NProto::EStorageMediaKind mediaKind)
 {
     switch (mediaKind) {
@@ -88,8 +88,8 @@ const TString VolumeTransactions[] = {
 TVolumeActor::TVolumeActor(
     const TActorId& owner,
     TTabletStorageInfoPtr storage,
-    TStorageConfigPtr config,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TStorageConfigConstPtr config,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,

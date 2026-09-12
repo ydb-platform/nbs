@@ -27,14 +27,14 @@ class TSetupChannelsActionActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
 
     NPrivateProto::TSetupChannelsRequest Request;
 
 public:
     TSetupChannelsActionActor(TRequestInfoPtr requestInfo,
         TString input,
-        TStorageConfigPtr config);
+        TStorageConfigConstPtr config);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -57,7 +57,7 @@ private:
 TSetupChannelsActionActor::TSetupChannelsActionActor(
         TRequestInfoPtr requestInfo,
         TString input,
-        TStorageConfigPtr config)
+        TStorageConfigConstPtr config)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
     , Config(config)

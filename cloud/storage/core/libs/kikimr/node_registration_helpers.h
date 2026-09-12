@@ -12,6 +12,13 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Select the CMS config using useYamlConfig and YAML YamlConfigEnabled.
+// In PROTO mode, replace only TAppConfig::BlockstoreConfig with its YAML value.
+NKikimrConfig::TAppConfig SelectCmsAppConfig(
+    NKikimrConfig::TAppConfig regularConfig,
+    NKikimrConfig::TAppConfig yamlConfig,
+    bool useYamlConfig);
+
 NKikimrNodeBroker::TNodeInfo CreateNodeInfo(
     const NYdb::NDiscovery::TNodeInfo& info,
     std::optional<TString> nodeName);

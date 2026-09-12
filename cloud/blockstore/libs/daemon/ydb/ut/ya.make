@@ -4,6 +4,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 PEERDIR(
     cloud/blockstore/libs/client
+    cloud/blockstore/libs/config
     cloud/blockstore/libs/discovery
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/server

@@ -1,8 +1,33 @@
 #include "node_registration_helpers.h"
 
+#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
+#include <contrib/ydb/library/yaml_config/yaml_config.h>
+
 namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+NKikimrConfig::TAppConfig SelectCmsAppConfig(
+    NKikimrConfig::TAppConfig regularConfig,
+    NKikimrConfig::TAppConfig yamlConfig,
+    bool useYamlConfig)
+{
+    if (!useYamlConfig) {
+        // Even if empty
+        regularConfig.MutableBlockstoreConfig()->CopyFrom(
+            yamlConfig.GetBlockstoreConfig());
+        return regularConfig;
+    }
+
+    if (yamlConfig.GetYamlConfigEnabled()) {
+        // Take NameserviceConfig, NetClassifierDistributableConfig and
+        // NamedConfigs from PROTO, as required by YDB YAML selection.
+        NKikimr::NYamlConfig::ReplaceUnmanagedKinds(regularConfig, yamlConfig);
+        return yamlConfig;
+    }
+
+    return regularConfig;
+}
 
 NKikimrNodeBroker::TNodeInfo CreateNodeInfo(
     const NYdb::NDiscovery::TNodeInfo& info,

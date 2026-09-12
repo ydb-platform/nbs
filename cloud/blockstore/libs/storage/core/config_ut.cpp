@@ -227,7 +227,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
     {
         NProto::TStorageServiceConfig globalConfigProto;
         globalConfigProto.SetMaxMigrationIoDepth(4);
-        auto globalConfig = std::make_shared<TStorageConfig>(
+        auto globalConfig = std::make_shared<const TStorageConfig>(
             globalConfigProto,
             std::make_shared<NFeatures::TFeaturesConfig>());
 

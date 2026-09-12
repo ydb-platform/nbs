@@ -11,8 +11,8 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 IActorPtr CreateNonreplicatedPartition(
-    TStorageConfigPtr config,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TStorageConfigConstPtr config,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
     TActorId volumeActorId,
     TActorId statActorId,

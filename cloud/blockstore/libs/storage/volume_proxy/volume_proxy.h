@@ -48,7 +48,7 @@ VolumeActor        v                  |                 |         |     |
 */
 
 NActors::IActorPtr CreateVolumeProxy(
-    TStorageConfigPtr config,
+    TStorageConfigConstPtr config,
     ITraceSerializerPtr traceSerialize,
     bool temporaryServer);
 

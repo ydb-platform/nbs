@@ -22,7 +22,7 @@ private:
     const TActorId Owner;
     const TChildLogTitle LogTitle;
     const TRequestInfoPtr RequestInfo;
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
 
     TVector<TString> DiskIds;
     int PendingOperations = 0;
@@ -32,7 +32,7 @@ public:
         const TActorId& owner,
         const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TVector<TString> diskIds);
 
     void Bootstrap(const TActorContext& ctx);
@@ -59,7 +59,7 @@ TDestroyActor::TDestroyActor(
         const TActorId& owner,
         const TLogTitle& logTitle,
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TVector<TString> diskIds)
     : Owner(owner)
     , LogTitle(logTitle.GetChildWithTags(

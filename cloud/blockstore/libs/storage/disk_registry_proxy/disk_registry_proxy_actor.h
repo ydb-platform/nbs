@@ -31,8 +31,8 @@ private:
     using TActiveRequests = THashMap<ui64, NActors::IEventHandlePtr>;
 
 private:
-    const TStorageConfigPtr StorageConfig;
-    const TDiskRegistryProxyConfigPtr Config;
+    const TStorageConfigConstPtr StorageConfig;
+    const TDiskRegistryProxyConfigConstPtr Config;
 
     ui64 DiskRegistryTabletId = 0;
     NActors::TActorId TabletClientId;
@@ -47,8 +47,8 @@ private:
 
 public:
     TDiskRegistryProxyActor(
-        TStorageConfigPtr config,
-        TDiskRegistryProxyConfigPtr diskRegistryProxyConfig);
+        TStorageConfigConstPtr config,
+        TDiskRegistryProxyConfigConstPtr diskRegistryProxyConfig);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

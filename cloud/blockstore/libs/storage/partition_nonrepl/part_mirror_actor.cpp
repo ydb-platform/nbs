@@ -49,8 +49,8 @@ TDuration CalculateScrubbingInterval(
 ////////////////////////////////////////////////////////////////////////////////
 
 TMirrorPartitionActor::TMirrorPartitionActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TStorageConfigConstPtr config,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr digestGenerator,
         TString rwClientId,

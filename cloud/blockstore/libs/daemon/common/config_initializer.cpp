@@ -230,6 +230,12 @@ void TConfigInitializerCommon::InitSpdkEnvConfig()
     SpdkEnvConfig = std::make_shared<NSpdk::TSpdkEnvConfig>(config);
 }
 
+bool TConfigInitializerCommon::GetDynamicYamlConfigurationEnabled() const
+{
+    Y_ABORT_UNLESS(ServerConfig);
+    return ServerConfig->GetDynamicYamlConfigurationEnabled();
+}
+
 void TConfigInitializerCommon::SetupDiscoveryPorts(
     NProto::TDiscoveryServiceConfig& discoveryConfig) const
 {

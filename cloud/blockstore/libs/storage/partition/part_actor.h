@@ -120,10 +120,10 @@ class TPartitionActor final
 
 private:
     const ui64 StartTime = GetCycleCount();
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
     const TVolumeLabelsConstPtr VolumeLabels;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
     const EStorageAccessMode StorageAccessMode;
@@ -190,8 +190,8 @@ public:
     TPartitionActor(
         const NActors::TActorId& owner,
         NKikimr::TTabletStorageInfoPtr storage,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TStorageConfigConstPtr config,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,

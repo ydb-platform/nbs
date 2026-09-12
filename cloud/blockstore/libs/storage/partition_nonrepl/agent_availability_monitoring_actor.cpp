@@ -48,7 +48,7 @@ std::optional<ui32> GetLaggingAgentNodeId(
 ///////////////////////////////////////////////////////////////////////////////
 
 TAgentAvailabilityMonitoringActor::TAgentAvailabilityMonitoringActor(
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TNonreplicatedPartitionConfigPtr partConfig,
         RepeatedPtrField<NProto::TDeviceMigration> migrations,
         TActorId nonreplPartitionActorId,

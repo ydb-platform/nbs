@@ -125,6 +125,7 @@ constexpr TDuration Seconds(int s)
     xxx(VhostEndpointThreadCountNonReplicated, ui32,         0                )\
     xxx(VhostEndpointThreadCountMirror2,       ui32,         0                )\
     xxx(VhostEndpointThreadCountMirror3,       ui32,         0                )\
+    xxx(DynamicYamlConfigurationEnabled, bool,               false            )\
 // BLOCKSTORE_SERVER_CONFIG
 
 // clang-format on

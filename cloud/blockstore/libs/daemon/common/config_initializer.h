@@ -60,6 +60,9 @@ struct TConfigInitializerCommon
     virtual bool GetUseNonreplicatedRdmaActor() const = 0;
     virtual TDuration GetInactiveClientsTimeout() const = 0;
 
+    // Read DynamicYamlConfigurationEnabled; require initialized ServerConfig.
+    bool GetDynamicYamlConfigurationEnabled() const;
+
 protected:
     std::optional<NJson::TJsonValue> ReadJsonFile(const TString& filename);
 

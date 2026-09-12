@@ -22,9 +22,9 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentActor::TDiskAgentActor(
-        TStorageConfigPtr config,
-        TDiskAgentConfigPtr agentConfig,
-        NRdma::TRdmaConfigPtr rdmaConfig,
+        TStorageConfigConstPtr config,
+        TDiskAgentConfigConstPtr agentConfig,
+        NRdma::TRdmaConfigConstPtr rdmaConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,
