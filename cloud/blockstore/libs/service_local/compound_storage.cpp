@@ -421,6 +421,10 @@ TFuture<NProto::TReadBlocksLocalResponse> TCompoundStorage::ReadBlocksLocal(
             std::move(request));
     }
 
+    if (callContext) {
+        callContext->SetHasParallelSubRequests();
+    }
+
     TSgListBlockRange src(guard.Get(), BlockSize);
 
     auto requestContext = std::make_shared<TReadBlocksLocalCtx>(
@@ -493,6 +497,10 @@ TFuture<NProto::TWriteBlocksLocalResponse> TCompoundStorage::WriteBlocksLocal(
         return Storages[storageBlockRange.Storage]->WriteBlocksLocal(
             std::move(callContext),
             std::move(request));
+    }
+
+    if (callContext) {
+        callContext->SetHasParallelSubRequests();
     }
 
     TSgListBlockRange dst(guard.Get(), BlockSize);

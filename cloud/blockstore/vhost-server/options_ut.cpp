@@ -2,6 +2,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/yexception.h>
+
 namespace NCloud::NBlockStore::NVHostServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -52,6 +54,92 @@ Y_UNIT_TEST_SUITE(TOptionsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, options.Layout[0].Offset);
         UNIT_ASSERT_VALUES_EQUAL(1111111, options.Layout[1].Offset);
         UNIT_ASSERT_VALUES_EQUAL(0, options.Layout[2].Offset);
+    }
+
+    Y_UNIT_TEST(ShouldParseLatencyThresholdsConfigV1)
+    {
+        const auto ladder = ParseLatencyThresholdsConfigV1("0:5:7,4096:11:13");
+
+        UNIT_ASSERT_VALUES_EQUAL(2, ladder.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, ladder[0].MinRequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(5),
+            ladder[0].ReadThreshold);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(7),
+            ladder[0].WriteThreshold);
+        UNIT_ASSERT_VALUES_EQUAL(4096, ladder[1].MinRequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(11),
+            ladder[1].ReadThreshold);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(13),
+            ladder[1].WriteThreshold);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "0:5:7,4096:11:13",
+            SerializeLatencyThresholdsConfigV1(&ladder));
+
+        UNIT_ASSERT(ParseLatencyThresholdsConfigV1("unconfigured").empty());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "unconfigured",
+            SerializeLatencyThresholdsConfigV1(nullptr));
+    }
+
+    Y_UNIT_TEST(ShouldRejectInvalidLatencyThresholdsConfigV1)
+    {
+        for (TStringBuf value: {
+                 "",
+                 "1:5:7",
+                 "0:0:7",
+                 "0:5:0",
+                 "0:5:7,0:11:13",
+                 "0:5:7,4096:11",
+                 "0:5:7,",
+             })
+        {
+            UNIT_ASSERT_EXCEPTION(
+                ParseLatencyThresholdsConfigV1(value),
+                yexception);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectTooManyLatencyBuckets)
+    {
+        TStringBuilder config;
+        for (size_t i = 0;
+             i <= MaxLatencyThresholdBucketsPerMediaKind;
+             ++i)
+        {
+            if (i) {
+                config << ',';
+            }
+            config << i << ":1:1";
+        }
+        const TString value = config;
+
+        UNIT_ASSERT_EXCEPTION(
+            ParseLatencyThresholdsConfigV1(value),
+            yexception);
+    }
+
+    Y_UNIT_TEST(ShouldAcceptMaximumLatencyBucketCount)
+    {
+        TStringBuilder config;
+        for (size_t i = 0;
+             i < MaxLatencyThresholdBucketsPerMediaKind;
+             ++i)
+        {
+            if (i) {
+                config << ',';
+            }
+            config << i << ":1:1";
+        }
+        const TString value = config;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            MaxLatencyThresholdBucketsPerMediaKind,
+            ParseLatencyThresholdsConfigV1(value).size());
     }
 }
 
