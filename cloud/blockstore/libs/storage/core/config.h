@@ -129,7 +129,7 @@ public:
     void SetVolumePreemptionType(
         NProto::EVolumePreemptionType volumePreemptionType);
 
-    void Register(NKikimr::TControlBoard& controlBoard);
+    void Register(NKikimr::TControlBoard& controlBoard) const;
 
     static TStorageConfigConstPtr Merge(
         TStorageConfigConstPtr config,
