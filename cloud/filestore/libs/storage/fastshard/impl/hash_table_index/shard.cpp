@@ -586,8 +586,10 @@ private:
     TPageIndex PageIndex;
     TPageAllocator PageAllocator;
 
-    // Filled once in the ctor, immutable afterwards - safe to read
-    // without Mutex from any thread.
+    // Written exactly once - upon the first InitDataStructures call.
+    // The layout dump reads it lock-free from non-fiber threads, so it
+    // must never be reassigned; Format-triggered re-inits recompute the
+    // same values and skip the write.
     TVector<TComponentLayout> Layout;
 
     mutable silk::FiberMutex Mutex;
@@ -612,6 +614,18 @@ public:
         Storage = StorageGroupFactory->MakeStorageGroup(Config, Generation);
         PageStore = CreatePageStore(Storage, PageSize);
 
+        InitDataStructures();
+    }
+
+private:
+    //
+    // (Re)creates the in-memory wrappers over the persistent structures,
+    // dropping all their cached state (free-bit stacks, slot pointers).
+    // Called from the ctor and from Format after the page wipe.
+    //
+
+    void InitDataStructures()
+    {
         ui64 firstPageNo = 0;
         const ui64 nodeTableOffset = firstPageNo * PageSize;
         SILK_INFO("node table offset=%lu", nodeTableOffset);
@@ -656,7 +670,7 @@ public:
         SILK_INFO("page index table slots=%lu", PageIndex.GetSlotCount());
         SILK_INFO("page allocator bits=%lu", PageAllocator.GetBitCount());
 
-        Layout = {
+        TVector<TComponentLayout> layout = {
             {
                 .Name = "NodeTable",
                 .OffsetBytes = nodeTableOffset,
@@ -700,9 +714,12 @@ public:
                 .SlotCount = PageAllocator.GetBitCount(),
             },
         };
+
+        if (Layout.empty()) {
+            Layout = std::move(layout);
+        }
     }
 
-private:
     TLoggingContext MakeLoggingContext() const
     {
         TLoggingContext lc;
@@ -2142,6 +2159,104 @@ public:
     {
         Ready = false;
         Storage->TearDown();
+    }
+
+    NProto::TError Format()
+    {
+        auto error = CheckReady();
+        if (HasError(error)) {
+            return error;
+        }
+
+        //
+        // The whole format runs under Mutex - no other shard op can
+        // interleave with it.
+        //
+
+        std::lock_guard g(Mutex);
+
+        //
+        // The layout covers all the pages this shard may ever touch: the
+        // metadata structures and the data region sized from
+        // ExpectedGroupCapacity.
+        //
+
+        ui64 totalPageCount = 0;
+        for (const auto& c: Layout) {
+            totalPageCount = Max(
+                totalPageCount,
+                (c.OffsetBytes + c.SizeBytes) / PageSize);
+        }
+
+        SILK_INFO(
+            "[F=%s] Format: wiping %lu pages",
+            FileSystemId.c_str(),
+            totalPageCount);
+
+        constexpr ui64 WipeBatchPageCount = 256;
+
+        for (ui64 batchStart = 0; batchStart < totalPageCount;
+                batchStart += WipeBatchPageCount)
+        {
+            const ui64 batchEnd =
+                Min(batchStart + WipeBatchPageCount, totalPageCount);
+
+            TWriteContext writeContext;
+            TWriteContextGuard wcg(writeContext, *PageStore);
+            wcg.Init();
+
+            for (ui64 pageNo = batchStart; pageNo < batchEnd; ++pageNo) {
+                TBuffer zeroPage;
+                zeroPage.Fill(0, PageSize);
+                error = PageStore->WritePage(
+                    writeContext.Lsn,
+                    pageNo,
+                    std::move(zeroPage),
+                    writeContext.PageGroups);
+                if (HasError(error)) {
+                    SILK_ERROR(
+                        "[F=%s] Format::WritePage pageNo=%lu error=%s",
+                        FileSystemId.c_str(),
+                        pageNo,
+                        FormatError(error).c_str());
+                    return error;
+                }
+            }
+
+            auto pages = CollectPages(writeContext);
+            error = Storage->WriteLogRecord(
+                std::move(writeContext.Headers),
+                std::move(writeContext.PageGroups),
+                writeContext.Lsn);
+            if (HasError(error)) {
+                SILK_ERROR(
+                    "[F=%s] Format::WriteLogRecord error=%s",
+                    FileSystemId.c_str(),
+                    FormatError(error).c_str());
+                PageStore->RollbackPages(pages);
+                return error;
+            }
+
+            PageStore->CommitPages(pages);
+
+            //
+            // Dropping the batch from the page cache right away - otherwise
+            // the cache would grow to the whole group capacity by the end of
+            // the wipe.
+            //
+
+            PageStore->Clear();
+        }
+
+        //
+        // Everything on the storage side is zero now - drop all cached
+        // in-memory state so subsequent operations observe the empty shard.
+        //
+
+        InitDataStructures();
+
+        SILK_INFO("[F=%s] Format complete", FileSystemId.c_str());
+        return {};
     }
 };
 

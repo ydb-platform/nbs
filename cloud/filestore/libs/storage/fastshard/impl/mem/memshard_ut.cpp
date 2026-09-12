@@ -40,6 +40,67 @@ Y_UNIT_TEST_SUITE(TMemShardTest)
         UNIT_ASSERT_VALUES_EQUAL("{}", json.Str());
     }
 
+    Y_UNIT_TEST(ShouldFormat)
+    {
+        constexpr ui32 ShardNo = 77;
+
+        NProtoPrivate::TMemFastShardConfig config;
+        config.SetCreateNodeUponAccess(true);
+        auto s = CreateMemFileSystemShard(ShardNo, config);
+
+        {
+            NProto::TGetNodeAttrRequest request;
+            request.SetNodeId(RootNodeId);
+            request.SetName("f0");
+            auto response = s->GetNodeAttr(request).GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+
+        {
+            TFileSystemShardStats stats;
+            auto e = s->CollectStats(&stats).GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, e.GetCode(), FormatError(e));
+            UNIT_ASSERT_VALUES_EQUAL(1, stats.UsedNodeCount);
+        }
+
+        {
+            auto e = s->Format().GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, e.GetCode(), FormatError(e));
+        }
+
+        //
+        // All the structures are empty after the format.
+        //
+
+        {
+            TFileSystemShardStats stats;
+            auto e = s->CollectStats(&stats).GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, e.GetCode(), FormatError(e));
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.UsedNodeCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.UsedNameCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.UsedHandleCount);
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.UsedPageCount);
+        }
+
+        //
+        // The shard is usable after the format.
+        //
+
+        {
+            NProto::TGetNodeAttrRequest request;
+            request.SetNodeId(RootNodeId);
+            request.SetName("f1");
+            auto response = s->GetNodeAttr(request).GetValue();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response.GetError().GetCode(),
+                FormatError(response.GetError()));
+        }
+    }
+
     Y_UNIT_TEST(ShouldCreateNodeUponAccess)
     {
         constexpr ui32 ShardNo = 77;

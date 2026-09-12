@@ -72,6 +72,16 @@ struct IFileSystemShard
     Init() = 0;
 
     /**
+     * Wipes all shard data - both the metadata structures and the file
+     * data. No other shard operation runs while the format is in
+     * progress.
+     *
+     * @return - Error code future.
+     */
+    [[nodiscard]] virtual NThreading::TFuture<NCloud::NProto::TError>
+    Format() = 0;
+
+    /**
      * Releases the shard's storage and stops all internal activities.
      */
     virtual void TearDown() = 0;
