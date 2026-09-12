@@ -181,10 +181,19 @@ func run(
 	nbsClientMetricsRegistry := mon.NewRegistry("nbs_client")
 	nbsSessionMetricsRegistry := mon.NewRegistry("nbs_session")
 	nbsConfig := config.GetNbsConfig()
+	nbsRefreshCertsPeriod, err := time.ParseDuration(
+		nbsConfig.GetRefreshCertsPeriod(),
+	)
+	if err != nil {
+		return err
+	}
+
 	nbsTlsProvider, err := common.NewGrpcClientTlsProvider(
+		ctx,
 		nbsConfig.GetInsecure(),
 		common.GrpcClientTlsProviderConfig{
 			RootCertsFile: nbsConfig.GetRootCertsFile(),
+			RefreshPeriod: nbsRefreshCertsPeriod,
 		},
 		nbsClientMetricsRegistry,
 	)
@@ -207,10 +216,19 @@ func run(
 
 	nfsConfig := config.GetNfsConfig()
 	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
+	nfsRefreshCertsPeriod, err := time.ParseDuration(
+		nfsConfig.GetRefreshCertsPeriod(),
+	)
+	if err != nil {
+		return err
+	}
+
 	nfsTlsProvider, err := common.NewGrpcClientTlsProvider(
+		ctx,
 		nfsConfig.GetInsecure(),
 		common.GrpcClientTlsProviderConfig{
 			RootCertsFile: nfsConfig.GetRootCertsFile(),
+			RefreshPeriod: nfsRefreshCertsPeriod,
 		},
 		nfsClientMetricsRegistry,
 	)
