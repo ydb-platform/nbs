@@ -7,6 +7,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/filestore/libs/storage/fastshard/impl/factory
     cloud/filestore/libs/storage/fastshard/impl/hash_table_index
     cloud/filestore/libs/storage/fastshard/sn/impl
     cloud/filestore/libs/storage/fastshard/sn/server

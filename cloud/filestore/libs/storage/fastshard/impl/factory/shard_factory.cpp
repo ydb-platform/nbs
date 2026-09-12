@@ -1,4 +1,6 @@
-#include "factory.h"
+#include "shard_factory.h"
+
+#include "group_factory.h"
 
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
@@ -38,6 +40,7 @@ public:
             fileSystemId,
             shardNo,
             generation,
+            CreateStorageGroupFactory(),
             config.GetPersistentConfig());
     }
 };

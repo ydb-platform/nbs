@@ -10,7 +10,7 @@
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
 #include <cloud/filestore/libs/storage/core/tablet_tx_rescheduler.h>
-#include <cloud/filestore/libs/storage/fastshard/impl/factory/factory.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/factory/shard_factory.h>
 #include <cloud/filestore/libs/storage/tablet/tablet.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
