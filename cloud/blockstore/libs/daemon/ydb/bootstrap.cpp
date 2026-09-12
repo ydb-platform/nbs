@@ -1009,7 +1009,8 @@ void TBootstrapYdb::SetupCellManager()
                     ->GetSubgroup("component", "cells"),
                 grpcConfig.GetRootCertsFile(),
                 std::move(certList),
-                Configs->ServerConfig->GetRefreshCertsPeriod());
+                Configs->ServerConfig->GetRefreshCertsPeriod(),
+                Timer);
         }
 
         CellManager = CreateCellManager(
