@@ -8,9 +8,6 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IFileSystemShardFactory;
-using IFileSystemShardFactoryPtr = std::shared_ptr<IFileSystemShardFactory>;
-
 struct IStorageGroupFactory;
 using IStorageGroupFactoryPtr = std::shared_ptr<IStorageGroupFactory>;
 

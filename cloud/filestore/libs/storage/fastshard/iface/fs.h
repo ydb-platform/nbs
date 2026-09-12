@@ -98,6 +98,19 @@ struct IFileSystemShard
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IFileSystemShardFactory
+{
+    virtual ~IFileSystemShardFactory() = default;
+
+    virtual IFileSystemShardPtr CreateShard(
+        const TString& fileSystemId,
+        const NProtoPrivate::TFastShardConfig& config,
+        ui32 shardNo,
+        ui64 generation) = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IFileSystemShardPtr CreateFileSystemShardStub();
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
