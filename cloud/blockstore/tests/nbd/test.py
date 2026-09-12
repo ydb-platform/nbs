@@ -14,7 +14,6 @@ from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD, \
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator
 from cloud.blockstore.tests.python.lib.daemon import start_ydb, start_nbs
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
-from cloud.blockstore.config.client_pb2 import TClientConfig, TClientAppConfig
 from cloud.storage.core.protos.endpoints_pb2 import EEndpointStorageType
 
 import yatest.common as common

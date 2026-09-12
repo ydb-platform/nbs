@@ -281,6 +281,12 @@ public:
         return Result;
     }
 
+    TFuture<NProto::TError> DrainEndpoint(const TString& socketPath) override
+    {
+        Y_UNUSED(socketPath);
+        return {};
+    }
+
     NProto::TError RefreshEndpoint(
         const TString& socketPath,
         const NProto::TVolume& volume) override
