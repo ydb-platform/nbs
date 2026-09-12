@@ -371,9 +371,10 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
 
     Y_UNIT_TEST_F(ShouldNotDeleteUnheldSiblingStateFiles, TFixture)
     {
-        // A state file of a component which is not configured anymore (or
-        // just not acquired) is left in the session directory. Deleting the
-        // state file of another component must not take it away.
+        // A state file of a component which is just not acquired is left in
+        // the session directory. Deleting the state file of another component
+        // must not take it away, and, since the file is known from the
+        // listing, the directory is simply left alone: nothing to report.
         TFsPath unheld;
         {
             auto previous = CreateManager();
@@ -399,9 +400,45 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!dhsPath.Exists());
         UNIT_ASSERT(unheld.Exists());
         UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
+        UNIT_ASSERT_VALUES_EQUAL(0, SessionDirNotEmptyCounter->Val());
+    }
 
-        // ... but the untracked leftover is reported, since nobody is going
-        // to clean it up.
+    Y_UNIT_TEST_F(ShouldReportSessionDirNotEmptyForUnknownStateFiles, TFixture)
+    {
+        // A state file of a component which is not configured anymore is left
+        // in the session directory: it is not listed, so the registry knows
+        // nothing of it. Deleting the last known state file finds the
+        // directory not empty, which is worth reporting since nobody is going
+        // to clean that file up. It is not touched though.
+        TFsPath unknown;
+        {
+            auto previous = CreateManager();
+            auto result = previous->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            unknown = result.ExtractResult().GetFilePath();
+        }
+        UNIT_ASSERT(unknown.Exists());
+
+        auto manager = CreatePersistentStateManager({
+            .HandleOpsQueueBasePath = StatePath,
+            // WriteBackCacheBasePath is left empty on purpose
+            .DirectoryHandlesStorageBasePath = StatePath,
+        });
+        auto result = manager->AcquireDirectoryHandleStorageStateFile(
+            FileSystemId,
+            SessionId);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        auto dhs = result.ExtractResult();
+        const auto dhsPath = dhs.GetFilePath();
+
+        auto error = dhs.DeleteStateFile();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+
+        UNIT_ASSERT(!dhsPath.Exists());
+        UNIT_ASSERT(unknown.Exists());
+        UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
         UNIT_ASSERT_VALUES_EQUAL(1, SessionDirNotEmptyCounter->Val());
     }
 
