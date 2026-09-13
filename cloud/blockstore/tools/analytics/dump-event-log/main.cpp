@@ -11,6 +11,7 @@
 #include <library/cpp/getopt/small/last_getopt.h>
 
 #include <util/stream/file.h>
+#include <util/generic/yexception.h>
 
 using namespace NCloud::NBlockStore;
 
@@ -54,6 +55,7 @@ struct TEventProcessor: TProtobufEventProcessor
     TString FilterByDiskIdFile;
     TString FilterByRequestTypeFile;
 
+    bool RequestTiming = false;
     bool Initialized = false;
     TSet<TString> FilterByDiskIdSet;
     TSet<ui32> RequestTypeSet;
@@ -66,6 +68,12 @@ struct TEventProcessor: TProtobufEventProcessor
             return;
         }
         Initialized = true;
+        Y_ENSURE(
+            !RequestTiming ||
+                !(OutputFilename || OutputDatabaseFilename ||
+                  OutputZeroRangesStatFilename || OutputInflightStatFilename ||
+                  IODistributionStatFilename),
+            "--request-timing cannot be combined with file output modes");
 
         if (FilterByDiskIdFile) {
             FilterByDiskIdSet = LoadDiskIds(FilterByDiskIdFile);
@@ -126,6 +134,13 @@ struct TEventProcessor: TProtobufEventProcessor
         const TVector<TItemDescriptor> order = GetItemOrder(*message);
         for (const auto& [type, index]: order) {
             if (!ShouldDump(*message, type, index)) {
+                continue;
+            }
+
+            if (RequestTiming) {
+                if (type == EItemType::Request) {
+                    DumpRequestTiming(*message, index, out);
+                }
                 continue;
             }
 
@@ -255,6 +270,12 @@ public:
 
     void AddOptions(NLastGetopt::TOpts& opts) override
     {
+        opts.AddLongOption(
+                "request-timing",
+                "Output diagnostic request timing as JSONL, including missing data")
+            .NoArgument()
+            .StoreTrue(&Processor->RequestTiming);
+
         opts.AddLongOption(
                 "output-binary-log-file",
                 "Enables output to the specified file, original binary "

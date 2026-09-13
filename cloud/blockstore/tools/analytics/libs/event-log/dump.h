@@ -38,6 +38,12 @@ struct TItemDescriptor
 
 TVector<TItemDescriptor> GetItemOrder(const NProto::TProfileLogRecord& record);
 
+// Explicit JSONL opt-in; historical tab-separated output stays unchanged.
+void DumpRequestTiming(
+    const NProto::TProfileLogRecord& record,
+    int index,
+    IOutputStream* out);
+
 void DumpRequest(
     const NProto::TProfileLogRecord& record,
     int i,

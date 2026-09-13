@@ -12,6 +12,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
+#include <library/cpp/json/json_reader.h>
+
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -20,6 +22,18 @@ namespace NCloud::NBlockStore {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+struct TCapturingProfileLog final: IProfileLog
+{
+    TVector<TRecord> Records;
+    void Start() override {}
+    void Stop() override {}
+    void Write(TRecord record) override
+    {
+        Records.push_back(std::move(record));
+    }
+    bool Flush() override { return true; }
+};
 
 struct TTestDumpable
     : public IDumpable
@@ -444,6 +458,54 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("request", "DescribeVolume")
             ->GetCounter("Errors")->Val());
     }
+    Y_UNIT_TEST(ShouldPublishSeparateTimingForSuccessAndError)
+    {
+        for (const bool fail: {false, true}) {
+            auto timer = std::make_shared<TTestTimer>();
+            auto monitoring = CreateMonitoringServiceStub();
+            auto profileLog = std::make_shared<TCapturingProfileLog>();
+            auto serverGroup = monitoring->GetCounters()
+                                   ->GetSubgroup("counters", "blockstore");
+            auto volumeStats = CreateVolumeStats(
+                monitoring, {}, EVolumeStatsType::EServerStats,
+                CreateWallClockTimer());
+            auto serverStats = CreateServerStats(
+                std::make_shared<TTestDumpable>(),
+                std::make_shared<TDiagnosticsConfig>(),
+                monitoring, profileLog,
+                CreateServerRequestStats(
+                    serverGroup, timer,
+                    EHistogramCounterOption::ReportMultipleCounters, {}),
+                volumeStats);
+            TMetricRequest request{EBlockStoreRequest::WriteBlocks};
+            serverStats->PrepareMetricRequest(
+                request, "client", "volume", 0, 4096, false);
+            auto context = CreateCallContext(7772);
+            TLog log;
+            serverStats->RequestStarted(log, request, *context, "test");
+            context->AddTime(
+                EProcessingStage::Postponed, TDuration::MicroSeconds(1));
+            serverStats->RequestCompleted(
+                log, request, *context,
+                fail ? MakeError(E_REJECTED, "test") : MakeError(S_OK));
+            UNIT_ASSERT_VALUES_EQUAL(profileLog->Records.size(), 1);
+            const auto& record = std::get<IProfileLog::TReadWriteRequest>(
+                profileLog->Records[0].Request);
+            UNIT_ASSERT_VALUES_EQUAL(
+                record.PostponedTime, TDuration::MicroSeconds(1));
+            UNIT_ASSERT(record.RequestTimingJson.empty());
+            UNIT_ASSERT(record.RequestTiming.HasData());
+            NJson::TJsonValue json;
+            UNIT_ASSERT(NJson::ReadJsonTree(
+                record.RequestTiming.Serialize(), &json, true));
+            UNIT_ASSERT(!json["complete"].GetBoolean());
+            UNIT_ASSERT(json["without_waits_us"].IsNull());
+            UNIT_ASSERT_VALUES_EQUAL(
+                json["total_us"].GetUInteger(), record.Duration.MicroSeconds());
+            UNIT_ASSERT_VALUES_EQUAL(json["request_id"].GetUInteger(), 7772);
+        }
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore

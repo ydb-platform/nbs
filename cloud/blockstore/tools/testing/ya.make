@@ -17,6 +17,7 @@ RECURSE(
     pd-metadata-bench
     plugintest
     rdma-test
+    request_timing_workload
     stable-plugin
     verify-test
 )

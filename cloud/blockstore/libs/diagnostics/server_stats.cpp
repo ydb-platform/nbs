@@ -337,6 +337,9 @@ void TServerStats::RequestStarted(
         req.AccessMode,
         req.MountMode);
     callContext.SetRequestStartedCycles(started);
+    if (ProfileLog && IsReadWriteRequest(req.RequestType)) {
+        callContext.EnableRequestTiming();
+    }
 
     if (req.VolumeInfo) {
         req.VolumeInfo->RequestStarted(req.RequestType, req.RequestBytes);
@@ -476,17 +479,17 @@ void TServerStats::RequestCompleted(
 
         if (IsReadWriteRequest(req.RequestType)) {
             if (req.RequestBytes) {
-                record.Request = IProfileLog::TReadWriteRequest{
-                    req.RequestType,
-                    requestTime,
-                    postponedTime,
-                    {
-                        TBlockRange64::WithLength(
-                            req.StartIndex,
-                            req.RequestBytes / blockSize
-                        )
-                    },
-                };
+                // TRecord starts in its read/write alternative. Fill that
+                // value in place instead of moving a second large snapshot.
+                auto& rw =
+                    std::get<IProfileLog::TReadWriteRequest>(record.Request);
+                rw.RequestType = req.RequestType;
+                rw.Duration = requestTime;
+                rw.PostponedTime = postponedTime;
+                rw.Range = TBlockRange64::WithLength(
+                    req.StartIndex, req.RequestBytes / blockSize);
+                rw.RequestTiming = callContext.FreezeRequestTiming(
+                    requestTime, error.GetCode());
                 requestSet = true;
             }
         } else if (req.RequestType == EBlockStoreRequest::MountVolume) {

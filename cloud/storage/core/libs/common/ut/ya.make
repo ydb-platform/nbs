@@ -4,6 +4,7 @@ SRCDIR(cloud/storage/core/libs/common)
 
 PEERDIR(
     cloud/storage/core/libs/common
+    library/cpp/json
     library/cpp/testing/gmock_in_unittest
 )
 
@@ -23,6 +24,7 @@ SRCS(
     byte_range_ut.cpp
     concurrent_queue_ut.cpp
     context_ut.cpp
+    request_timing_ut.cpp
     disjoint_interval_map_ut.cpp
     error_ut.cpp
     file_io_service_ut.cpp

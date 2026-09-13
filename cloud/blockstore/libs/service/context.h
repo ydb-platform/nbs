@@ -11,11 +11,14 @@ namespace NCloud::NBlockStore {
 struct TCallContext final: public TCallContextBase
 {
 private:
+    TCallContext* Parent = nullptr;
     TAtomic SilenceRetriableErrors = false;
     TAtomic HasUncountableRejects = false;
 
 public:
-    TCallContext(ui64 requestId = 0);
+    TCallContext(ui64 requestId = 0, TCallContextPtr parent = {});
+
+    TCallContextPtr CreateChild(ui32 fork, ui64 nowCycles);
 
     bool GetSilenceRetriableErrors() const;
     void SetSilenceRetriableErrors(bool silence);

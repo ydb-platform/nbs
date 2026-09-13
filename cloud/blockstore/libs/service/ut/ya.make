@@ -15,6 +15,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/diagnostics
+    library/cpp/json
 )
 
 END()

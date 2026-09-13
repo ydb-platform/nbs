@@ -9,7 +9,16 @@
 #include <cloud/storage/core/libs/common/sglist.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 
+#include <library/cpp/json/json_reader.h>
+#include <util/datetime/cputimer.h>
+
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <atomic>
+#include <exception>
+#include <functional>
+#include <future>
+#include <thread>
 
 namespace NCloud::NBlockStore {
 
@@ -79,6 +88,7 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
 
         TPromise<TResponse> Promise = NewPromise<TResponse>();
         std::shared_ptr<TRequest> Request;
+        TCallContextPtr CallContext;
     };
 
     TMap<
@@ -108,6 +118,7 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
         ZeroBlocksPromises;
 
     std::optional<NProto::TError> SyncZeroBlocksError;
+    std::function<void(TCallContextPtr)> OnReadBlocks;
 
     TStorageBuffer AllocateBuffer(size_t bytesCount) override
     {
@@ -127,9 +138,14 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
     {
         Y_UNUSED(callContext);
 
+        if (OnReadBlocks) {
+            OnReadBlocks(callContext);
+        }
+
         auto range = TBlockRangeHelper::GetRange(*request, DefaultBlockSize);
         auto& info =
-            ReadBlocksPromises[range] = {.Request = std::move(request)};
+            ReadBlocksPromises[range] = {.Request = std::move(request),
+                                        .CallContext = std::move(callContext)};
         return info.Promise;
     }
 
@@ -141,7 +157,8 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
 
         auto range = TBlockRangeHelper::GetRange(*request, DefaultBlockSize);
         auto& info =
-            ReadBlocksLocalPromises[range] = {.Request = std::move(request)};
+            ReadBlocksLocalPromises[range] = {.Request = std::move(request),
+                                        .CallContext = std::move(callContext)};
         return info.Promise;
     }
 
@@ -153,7 +170,8 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
 
         auto range = TBlockRangeHelper::GetRange(*request, DefaultBlockSize);
         auto& info =
-            WriteBlocksPromises[range] = {.Request = std::move(request)};
+            WriteBlocksPromises[range] = {.Request = std::move(request),
+                                        .CallContext = std::move(callContext)};
         return info.Promise;
     }
 
@@ -165,7 +183,8 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
 
         auto range = TBlockRangeHelper::GetRange(*request, DefaultBlockSize);
         auto& info =
-            WriteBlocksLocalPromises[range] = {.Request = std::move(request)};
+            WriteBlocksLocalPromises[range] = {.Request = std::move(request),
+                                        .CallContext = std::move(callContext)};
         return info.Promise;
     }
 
@@ -183,7 +202,8 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
 
         auto range = TBlockRangeHelper::GetRange(*request, DefaultBlockSize);
         auto& info =
-            ZeroBlocksPromises[range] = {.Request = std::move(request)};
+            ZeroBlocksPromises[range] = {.Request = std::move(request),
+                                        .CallContext = std::move(callContext)};
         return info.Promise;
     }
 
@@ -983,6 +1003,408 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
 
         }
     }
+    Y_UNIT_TEST(ShouldExposeCompleteSplitReadAndEarlyError)
+    {
+        for (bool fail: {false, true}) {
+            TTestEnvironment env;
+            env.MountVolume();
+            auto root = CreateCallContext(7772);
+            const ui64 start = GetCycleCount();
+            root->SetRequestStartedCycles(start);
+            root->EnableRequestTiming();
+            auto request = std::make_shared<NProto::TReadBlocksRequest>();
+            env.SetupRequest(request, TBlockRange64::WithLength(1, 10));
+            auto future = env.SplitRequestService->ReadBlocks(root, request);
+            auto& a = *env.Storage->ReadBlocksPromises.FindPtr(
+                TBlockRange64::WithLength(1, 5));
+            auto& b = *env.Storage->ReadBlocksPromises.FindPtr(
+                TBlockRange64::WithLength(6, 5));
+            UNIT_ASSERT(a.CallContext.Get() != b.CallContext.Get());
+            UNIT_ASSERT_VALUES_EQUAL(&a.CallContext->LWOrbit, &root->LWOrbit);
+            NProto::TReadBlocksResponse response;
+            response.MutableBlocks()->AddBuffers("aabbccddee");
+            if (fail) {
+                *response.MutableError() = MakeError(E_REJECTED, "test error");
+                // An unlocated wait in a noncausal sibling must not suppress
+                // the complete diagnostic result for the early error.
+                b.CallContext->AddTime(
+                    EProcessingStage::Postponed, TDuration::MicroSeconds(5));
+            }
+            a.Promise.SetValue(std::move(response));
+            if (!fail) {
+                UNIT_ASSERT(!future.HasValue());
+                NProto::TReadBlocksResponse other;
+                other.MutableBlocks()->AddBuffers("ffgghhjjkk");
+                b.Promise.SetValue(std::move(other));
+            }
+            UNIT_ASSERT(future.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(
+                future.GetValue().GetError().GetCode(),
+                fail ? E_REJECTED : S_OK);
+            if (!fail) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetDataFromResponse(future.GetValue()),
+                    "aabbccddeeffgghhjjkk");
+            }
+            const auto total = CyclesToDurationSafe(GetCycleCount() - start);
+            const auto snapshot = root->CompleteRequestTiming(total);
+            NJson::TJsonValue json;
+            UNIT_ASSERT(NJson::ReadJsonTree(snapshot, &json, true));
+            UNIT_ASSERT_C(
+                json["complete"].GetBoolean(), json["reason"].GetString());
+            UNIT_ASSERT_VALUES_EQUAL(
+                json["without_waits_us"].GetUInteger(), total.MicroSeconds());
+            if (fail) {
+                // The response is already visible while the sibling is pending.
+                UNIT_ASSERT(!b.Promise.GetFuture().HasValue());
+                b.Promise.SetValue(NProto::TReadBlocksResponse());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    root->CompleteRequestTiming(total), snapshot);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldExposeMissingSplitWriteTimingWithoutChangingData)
+    {
+        TTestEnvironment env;
+        env.MountVolume();
+        auto root = CreateCallContext(7772);
+        const ui64 start = GetCycleCount();
+        root->SetRequestStartedCycles(start);
+        root->EnableRequestTiming();
+        auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+        env.SetupRequest(
+            request, TBlockRange64::WithLength(1, 10), "aabbccddeeffgghhjjkk");
+        auto future = env.SplitRequestService->WriteBlocks(root, request);
+        auto& a = *env.Storage->WriteBlocksPromises.FindPtr(
+            TBlockRange64::WithLength(1, 5));
+        auto& b = *env.Storage->WriteBlocksPromises.FindPtr(
+            TBlockRange64::WithLength(6, 5));
+        UNIT_ASSERT_VALUES_EQUAL(GetDataFromRequest(a.Request), "aabbccddee");
+        UNIT_ASSERT_VALUES_EQUAL(GetDataFromRequest(b.Request), "ffgghhjjkk");
+        a.CallContext->AddTime(
+            EProcessingStage::Shaping, TDuration::MicroSeconds(5));
+        a.Promise.SetValue(NProto::TWriteBlocksResponse());
+        UNIT_ASSERT(!future.HasValue());
+        b.Promise.SetValue(NProto::TWriteBlocksResponse());
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(future.GetValue().GetError().GetCode(), S_OK);
+        const auto total = CyclesToDurationSafe(GetCycleCount() - start);
+        NJson::TJsonValue json;
+        UNIT_ASSERT(NJson::ReadJsonTree(
+            root->CompleteRequestTiming(total), &json, true));
+        UNIT_ASSERT(!json["complete"].GetBoolean());
+        UNIT_ASSERT(json["without_waits_us"].IsNull());
+        UNIT_ASSERT(json["wait_impact_us"].IsNull());
+        UNIT_ASSERT_VALUES_EQUAL(json["total_us"].GetUInteger(),
+                                 total.MicroSeconds());
+        UNIT_ASSERT_VALUES_EQUAL(root->Time(EProcessingStage::Shaping),
+                                 TDuration::MicroSeconds(5));
+    }
+
+
+    Y_UNIT_TEST(ShouldMarkWaitInsidePendingDispatchIncomplete)
+    {
+        for (bool unlocated: {false, true}) {
+            for (bool earlyError: {false, true}) {
+                TTestEnvironment env;
+                env.MountVolume();
+                auto root = CreateCallContext(7772);
+                const auto start = GetCycleCount();
+                root->SetRequestStartedCycles(start);
+                root->EnableRequestTiming();
+                env.Storage->OnReadBlocks = [&](TCallContextPtr context) {
+                    if (env.Storage->ReadBlocksPromises.empty()) {
+                        if (unlocated) {
+                            context->AddTime(
+                                EProcessingStage::Shaping,
+                                TDuration::MicroSeconds(5));
+                        } else {
+                            // Equal endpoints make this structural test
+                            // independent of wall time and CPU calibration.
+                            const auto now = GetCycleCount();
+                            context->AddTimedWait(
+                                EProcessingStage::Shaping, now, now);
+                        }
+                    }
+                };
+                auto request = std::make_shared<NProto::TReadBlocksRequest>();
+                env.SetupRequest(request, TBlockRange64::WithLength(1, 10));
+                auto future = env.SplitRequestService->ReadBlocks(root, request);
+                UNIT_ASSERT(!future.HasValue());
+                auto& a = *env.Storage->ReadBlocksPromises.FindPtr(
+                    TBlockRange64::WithLength(1, 5));
+                auto& b = *env.Storage->ReadBlocksPromises.FindPtr(
+                    TBlockRange64::WithLength(6, 5));
+                NProto::TReadBlocksResponse second;
+                second.MutableBlocks()->AddBuffers("ffgghhjjkk");
+                if (earlyError) {
+                    *second.MutableError() = MakeError(E_REJECTED, "later part");
+                }
+                b.Promise.SetValue(std::move(second));
+                UNIT_ASSERT_VALUES_EQUAL(future.HasValue(), earlyError);
+                if (!earlyError) {
+                    NProto::TReadBlocksResponse first;
+                    first.MutableBlocks()->AddBuffers("aabbccddee");
+                    a.Promise.SetValue(std::move(first));
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        GetDataFromResponse(future.GetValue()),
+                        "aabbccddeeffgghhjjkk");
+                }
+                UNIT_ASSERT_VALUES_EQUAL(
+                    future.GetValue().GetError().GetCode(),
+                    earlyError ? E_REJECTED : S_OK);
+                const auto total = CyclesToDurationSafe(GetCycleCount() - start);
+                const auto snapshot = root->CompleteRequestTiming(total);
+                NJson::TJsonValue json;
+                UNIT_ASSERT(NJson::ReadJsonTree(snapshot, &json, true));
+                UNIT_ASSERT(!json["complete"].GetBoolean());
+                UNIT_ASSERT(json["without_waits_us"].IsNull());
+                UNIT_ASSERT(json["wait_impact_us"].IsNull());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    json["reason"].GetString(),
+                    "synchronous_dispatch_dependency_not_recorded");
+                UNIT_ASSERT_VALUES_EQUAL(
+                    root->Time(EProcessingStage::Shaping),
+                    TDuration::MicroSeconds(unlocated ? 5 : 0));
+                if (earlyError) {
+                    a.Promise.SetValue(NProto::TReadBlocksResponse());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        root->CompleteRequestTiming(total), snapshot);
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepTimingEventSequenceLocalToDispatchThread)
+    {
+        const auto before = TCallContextBase::GetThreadTimingEventSequence();
+        std::thread worker([] {
+            auto context = CreateCallContext();
+            const auto now = GetCycleCount();
+            context->SetRequestStartedCycles(now);
+            context->EnableRequestTiming();
+            context->AddTimedWait(EProcessingStage::Backoff, now, now);
+            context->AddTime(
+                EProcessingStage::Shaping, TDuration::MicroSeconds(1));
+        });
+        worker.join();
+        UNIT_ASSERT_VALUES_EQUAL(
+            TCallContextBase::GetThreadTimingEventSequence(), before);
+    }
+
+
+    Y_UNIT_TEST(ShouldFreezeTimingForConcurrentReadResponses)
+    {
+        struct TCase
+        {
+            ui32 FirstError;
+            ui32 SecondError;
+        };
+        const TCase cases[] = {
+            {S_OK, S_OK},
+            {E_REJECTED, S_OK},
+            {E_REJECTED, E_CANCELLED},
+        };
+        for (const auto& test: cases) {
+            TTestEnvironment env;
+            env.MountVolume();
+            auto root = CreateCallContext(7772);
+            const auto start = GetCycleCount();
+            root->SetRequestStartedCycles(start);
+            root->EnableRequestTiming();
+            auto request = std::make_shared<NProto::TReadBlocksRequest>();
+            env.SetupRequest(request, TBlockRange64::WithLength(1, 10));
+            auto future = env.SplitRequestService->ReadBlocks(root, request);
+            auto& a = *env.Storage->ReadBlocksPromises.FindPtr(
+                TBlockRange64::WithLength(1, 5));
+            auto& b = *env.Storage->ReadBlocksPromises.FindPtr(
+                TBlockRange64::WithLength(6, 5));
+            NProto::TReadBlocksResponse first;
+            first.MutableBlocks()->AddBuffers("aabbccddee");
+            *first.MutableError() = MakeError(test.FirstError, "first");
+            NProto::TReadBlocksResponse second;
+            second.MutableBlocks()->AddBuffers("ffgghhjjkk");
+            *second.MutableError() = MakeError(test.SecondError, "second");
+
+            std::atomic<ui32> completions{0};
+            TDuration frozenTotal;
+            ui32 frozenError = S_OK;
+            TString snapshot;
+            std::exception_ptr callbackError;
+            future.Subscribe(
+                [&](const TFuture<NProto::TReadBlocksResponse>& completed) {
+                    completions.fetch_add(1, std::memory_order_relaxed);
+                    try {
+                        frozenTotal = CyclesToDurationSafe(GetCycleCount() - start);
+                        frozenError = completed.GetValue().GetError().GetCode();
+                        snapshot = root->CompleteRequestTiming(
+                            frozenTotal, frozenError);
+                    } catch (...) {
+                        callbackError = std::current_exception();
+                    }
+                });
+
+            std::promise<void> startPromise;
+            auto startFuture = startPromise.get_future().share();
+            std::promise<void> readyPromise;
+            auto readyFuture = readyPromise.get_future();
+            std::atomic<ui32> ready{0};
+            std::exception_ptr workerErrors[2];
+            auto release = [&](ui32 index, auto& promise, auto& response) {
+                try {
+                    if (ready.fetch_add(1, std::memory_order_acq_rel) == 1) {
+                        readyPromise.set_value();
+                    }
+                    startFuture.get();
+                    promise.SetValue(std::move(response));
+                } catch (...) {
+                    workerErrors[index] = std::current_exception();
+                }
+            };
+            std::thread firstWorker([&] { release(0, a.Promise, first); });
+            std::thread secondWorker([&] { release(1, b.Promise, second); });
+            readyFuture.get();
+            startPromise.set_value();
+            firstWorker.join();
+            secondWorker.join();
+            for (const auto& error: workerErrors) {
+                if (error) {
+                    std::rethrow_exception(error);
+                }
+            }
+            if (callbackError) {
+                std::rethrow_exception(callbackError);
+            }
+            UNIT_ASSERT(future.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(completions.load(), 1);
+            const auto& response = future.GetValue();
+            if (!test.FirstError && !test.SecondError) {
+                UNIT_ASSERT_VALUES_EQUAL(response.GetError().GetCode(), S_OK);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    GetDataFromResponse(response), "aabbccddeeffgghhjjkk");
+            } else if (!test.SecondError) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    response.GetError().GetCode(), test.FirstError);
+            } else {
+                UNIT_ASSERT(
+                    response.GetError().GetCode() == test.FirstError ||
+                    response.GetError().GetCode() == test.SecondError);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(frozenError, response.GetError().GetCode());
+            NJson::TJsonValue json;
+            UNIT_ASSERT(NJson::ReadJsonTree(snapshot, &json, true));
+            UNIT_ASSERT_C(json["complete"].GetBoolean(), json["reason"].GetString());
+            UNIT_ASSERT_VALUES_EQUAL(
+                json["without_waits_us"].GetUInteger(),
+                frozenTotal.MicroSeconds());
+
+            TString lateSnapshot;
+            std::exception_ptr lateError;
+            std::thread lateWorker([&] {
+                try {
+                    const auto now = GetCycleCount();
+                    a.CallContext->AddTimedWait(
+                        EProcessingStage::Postponed, now, now);
+                    a.CallContext->AddTime(
+                        EProcessingStage::Postponed,
+                        TDuration::MicroSeconds(5));
+                    a.CallContext->FinishRequestTiming(now);
+                    root->MarkRequestTimingIncomplete("late_after_freeze");
+                    lateSnapshot = root->CompleteRequestTiming(
+                        frozenTotal + TDuration::MilliSeconds(1),
+                        frozenError ? S_OK : E_REJECTED);
+                } catch (...) {
+                    lateError = std::current_exception();
+                }
+            });
+            lateWorker.join();
+            if (lateError) {
+                std::rethrow_exception(lateError);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(lateSnapshot, snapshot);
+            UNIT_ASSERT_VALUES_EQUAL(
+                root->CompleteRequestTiming(frozenTotal, frozenError), snapshot);
+        }
+    }
+
+
+    Y_UNIT_TEST(ShouldMarkFinalDispatchDelayingEarlyErrorIncomplete)
+    {
+        for (bool unlocated: {false, true}) {
+            TTestEnvironment env;
+            env.MountVolume();
+            auto root = CreateCallContext(7772);
+            const auto start = GetCycleCount();
+            root->SetRequestStartedCycles(start);
+            root->EnableRequestTiming();
+            env.Storage->OnReadBlocks = [&](TCallContextPtr context) {
+                if (!env.Storage->ReadBlocksPromises.empty()) {
+                    auto& first = *env.Storage->ReadBlocksPromises.FindPtr(
+                        TBlockRange64::WithLength(1, 5));
+                    NProto::TReadBlocksResponse response;
+                    *response.MutableError() = MakeError(E_REJECTED, "early");
+                    // The first callback cancels observation of this part
+                    // while the final Execute has not returned to its caller.
+                    first.Promise.SetValue(std::move(response));
+                    if (unlocated) {
+                        context->AddTime(
+                            EProcessingStage::Shaping,
+                            TDuration::MicroSeconds(5));
+                    } else {
+                        const auto now = GetCycleCount();
+                        context->AddTimedWait(EProcessingStage::Shaping, now, now);
+                    }
+                }
+            };
+            auto request = std::make_shared<NProto::TReadBlocksRequest>();
+            env.SetupRequest(request, TBlockRange64::WithLength(1, 10));
+            auto future = env.SplitRequestService->ReadBlocks(root, request);
+            UNIT_ASSERT(future.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(
+                future.GetValue().GetError().GetCode(), E_REJECTED);
+            const auto total = CyclesToDurationSafe(GetCycleCount() - start);
+            const auto snapshot = root->CompleteRequestTiming(total, E_REJECTED);
+            NJson::TJsonValue json;
+            UNIT_ASSERT(NJson::ReadJsonTree(snapshot, &json, true));
+            UNIT_ASSERT(!json["complete"].GetBoolean());
+            UNIT_ASSERT(json["without_waits_us"].IsNull());
+            UNIT_ASSERT_VALUES_EQUAL(
+                json["reason"].GetString(),
+                "synchronous_dispatch_dependency_not_recorded");
+            auto& last = *env.Storage->ReadBlocksPromises.FindPtr(
+                TBlockRange64::WithLength(6, 5));
+            UNIT_ASSERT(!last.Promise.GetFuture().HasValue());
+            last.Promise.SetValue(NProto::TReadBlocksResponse());
+            UNIT_ASSERT_VALUES_EQUAL(
+                root->CompleteRequestTiming(total, E_REJECTED), snapshot);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldMarkUnknownSynchronousDispatchDependency)
+    {
+        TTestEnvironment env;
+        env.MountVolume();
+        env.Storage->SyncZeroBlocksError = MakeError(E_REJECTED, "sync fail");
+        auto root = CreateCallContext();
+        const auto start = GetCycleCount();
+        root->SetRequestStartedCycles(start);
+        root->EnableRequestTiming();
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        env.SetupRequest(request, TBlockRange64::WithLength(1, 10));
+        auto future = env.SplitRequestService->ZeroBlocks(root, request);
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            future.GetValue().GetError().GetCode(), E_REJECTED);
+        NJson::TJsonValue json;
+        UNIT_ASSERT(NJson::ReadJsonTree(
+            root->CompleteRequestTiming(
+                CyclesToDurationSafe(GetCycleCount() - start)),
+            &json, true));
+        UNIT_ASSERT(!json["complete"].GetBoolean());
+        UNIT_ASSERT(json["without_waits_us"].IsNull());
+    }
+
 }
 
 }   // namespace NCloud::NBlockStore

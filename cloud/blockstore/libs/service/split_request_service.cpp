@@ -1,6 +1,7 @@
 #include "split_request_service.h"
 
 #include "service.h"
+#include "context.h"
 #include "service_method.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
@@ -14,6 +15,7 @@
 #include <library/cpp/threading/hot_swap/hot_swap.h>
 
 #include <util/generic/hash.h>
+#include <util/datetime/cputimer.h>
 #include <util/system/spinlock.h>
 
 using namespace NThreading;
@@ -168,6 +170,8 @@ class TCompositeRequest
 private:
     std::shared_ptr<TRequest> Request;
     TVector<TResponse> SubResponses;
+    TCallContextPtr CallContext;
+    TVector<TCallContextPtr> SubContexts;
     TPromise<TResponse> Promise = NewPromise<TResponse>();
 
     TAdaptiveLock Lock;
@@ -194,6 +198,15 @@ public:
         }
 
         SubResponses.resize(subRequests.size());
+        CallContext = std::move(callContext);
+        const auto fork = CallContext->ForkRequestTiming(GetCycleCount());
+        if (CallContext->IsRequestTimingEnabled()) {
+            SubContexts.reserve(subRequests.size());
+            for (size_t i = 0; i < subRequests.size(); ++i) {
+                SubContexts.push_back(
+                    CallContext->CreateChild(fork, GetCycleCount()));
+            }
+        }
 
         // Acquire the future before subscribing to sub-request callbacks.
         // A sub-request can be completed synchronously and swapped with another
@@ -201,15 +214,37 @@ public:
         auto future = Promise.GetFuture();
 
         for (size_t i = 0; i < subRequests.size(); ++i) {
+            const ui64 timingEventsBefore = SubContexts.empty()
+                ? 0
+                : TCallContextBase::GetThreadTimingEventSequence();
             auto subFuture = TBlockStoreAdapter::Execute(
                 service,
-                callContext,
+                SubContexts.empty() ? CallContext : SubContexts[i],
                 subRequests[i]);
+            const bool hasLaterDispatch = i + 1 < subRequests.size();
+            if (!SubContexts.empty() &&
+                ((hasLaterDispatch && subFuture.HasValue()) ||
+                 ((hasLaterDispatch || future.HasValue()) &&
+                  timingEventsBefore !=
+                      TCallContextBase::GetThreadTimingEventSequence())))
+            {
+                // Execute can wait synchronously and still return a pending
+                // future. This can delay a later launch or delivery of an early
+                // error while the final Execute has not yet returned.
+                // Cancelled-part events still expose this dispatch dependency;
+                // events on other threads do not change the thread sequence.
+                CallContext->MarkRequestTimingIncomplete(
+                    "synchronous_dispatch_dependency_not_recorded");
+            }
             subFuture.Subscribe(
                 [self = this->shared_from_this(), requestIndex = i]   //
                 (const TFuture<TResponse>& f)
                 {
                     self->SubResponses[requestIndex] = UnsafeExtractValue(f);
+                    if (!self->SubContexts.empty()) {
+                        self->SubContexts[requestIndex]->FinishRequestTiming(
+                            GetCycleCount());
+                    }
                     self->OnSubResponse(requestIndex);
                 });
         }
@@ -241,6 +276,18 @@ private:
                 return;
             }
 
+            if (!SubContexts.empty()) {
+                TVector<TCallContextBasePtr> dependencies;
+                const auto now = GetCycleCount();
+                for (size_t i = 0; i < SubContexts.size(); ++i) {
+                    if (!hasError || i == requestIndex) {
+                        dependencies.push_back(SubContexts[i]);
+                    } else {
+                        SubContexts[i]->CancelRequestTiming(now);
+                    }
+                }
+                CallContext->JoinRequestTiming(dependencies, now);
+            }
             promise.Swap(Promise);
         }
         // Reply to client without lock.

@@ -3,6 +3,11 @@
 #include <cloud/blockstore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <cloud/blockstore/libs/service/request.h>
 
+#include <cloud/storage/core/libs/common/request_timing.h>
+
+#include <library/cpp/json/json_reader.h>
+#include <library/cpp/json/json_writer.h>
+
 #include <util/generic/algorithm.h>
 #include <util/string/cast.h>
 #include <util/string/printf.h>
@@ -25,8 +30,7 @@ using TBlobUpdates =
     google::protobuf::RepeatedPtrField<NProto::TProfileLogBlobUpdate>;
 
 void OutputChecksums(
-    const TReplicaChecksums& replicaChecksums,
-    IOutputStream& out)
+    const TReplicaChecksums& replicaChecksums, IOutputStream& out)
 {
     if (replicaChecksums.empty()) {
         return;
@@ -63,44 +67,40 @@ void OutputBlockInfos(const TBlockInfos& blockInfos, IOutputStream* out)
         if (i) {
             (*out) << " ";
         }
-        (*out) << blockInfos[i].GetBlockIndex()
-            << ":" << blockInfos[i].GetChecksum();
+        (*out) << blockInfos[i].GetBlockIndex() << ":"
+               << blockInfos[i].GetChecksum();
     }
 }
 
 void OutputBlockCommitIds(
-    const TBlockCommitIds& blockCommitIds,
-    IOutputStream* out)
+    const TBlockCommitIds& blockCommitIds, IOutputStream* out)
 {
     for (int i = 0; i < blockCommitIds.size(); ++i) {
         if (i) {
             (*out) << " ";
         }
-        (*out) << blockCommitIds[i].GetBlockIndex()
-            << ":" << blockCommitIds[i].GetMinCommitIdOld()
-            << ":" << blockCommitIds[i].GetMaxCommitIdOld()
-            << ":" << blockCommitIds[i].GetMinCommitIdNew()
-            << ":" << blockCommitIds[i].GetMaxCommitIdNew();
+        (*out) << blockCommitIds[i].GetBlockIndex() << ":"
+               << blockCommitIds[i].GetMinCommitIdOld() << ":"
+               << blockCommitIds[i].GetMaxCommitIdOld() << ":"
+               << blockCommitIds[i].GetMinCommitIdNew() << ":"
+               << blockCommitIds[i].GetMaxCommitIdNew();
     }
 }
 
-void OutputBlobUpdates(
-    const TBlobUpdates& blobUpdates,
-    IOutputStream* out)
+void OutputBlobUpdates(const TBlobUpdates& blobUpdates, IOutputStream* out)
 {
     for (int i = 0; i < blobUpdates.size(); ++i) {
         if (i) {
             (*out) << " ";
         }
-        (*out) << blobUpdates[i].GetCommitId()
-            << ":" << blobUpdates[i].GetBlockRange().GetBlockIndex()
-            << "," << blobUpdates[i].GetBlockRange().GetBlockCount();
+        (*out) << blobUpdates[i].GetCommitId() << ":"
+               << blobUpdates[i].GetBlockRange().GetBlockIndex() << ","
+               << blobUpdates[i].GetBlockRange().GetBlockCount();
     }
 }
 
 auto GetTimestampMcs(
-    const NProto::TProfileLogRecord& record,
-    const TItemDescriptor& item)
+    const NProto::TProfileLogRecord& record, const TItemDescriptor& item)
 {
     switch (item.Type) {
         case EItemType::Request: {
@@ -129,11 +129,8 @@ TVector<TItemDescriptor> GetItemOrder(const NProto::TProfileLogRecord& record)
 {
     TVector<TItemDescriptor> order;
     order.reserve(
-        record.RequestsSize() +
-        record.BlockInfoListsSize() +
-        record.BlockCommitIdListsSize() +
-        record.BlobUpdateListsSize()
-    );
+        record.RequestsSize() + record.BlockInfoListsSize() +
+        record.BlockCommitIdListsSize() + record.BlobUpdateListsSize());
 
     for (ui32 i = 0; i < record.RequestsSize(); ++i) {
         order.emplace_back(EItemType::Request, i);
@@ -151,32 +148,56 @@ TVector<TItemDescriptor> GetItemOrder(const NProto::TProfileLogRecord& record)
     Sort(
         order.begin(),
         order.end(),
-        [&] (const auto& i, const auto& j) {
-            return GetTimestampMcs(record, i) < GetTimestampMcs(record, j);
-        }
-    );
+        [&](const auto& i, const auto& j)
+        { return GetTimestampMcs(record, i) < GetTimestampMcs(record, j); });
 
     return order;
 }
 
+void DumpRequestTiming(
+    const NProto::TProfileLogRecord& record, int index, IOutputStream* out)
+{
+    const auto& request = record.GetRequests(index);
+    NJson::TJsonValue result(NJson::JSON_MAP);
+    result["disk_id"] = record.GetDiskId();
+    result["timestamp_us"] = request.GetTimestampMcs();
+    result["request_type"] = request.GetRequestType();
+    result["duration_us"] = request.GetDurationMcs();
+    result["postponed_time_us"] = request.GetPostponedTimeMcs();
+    NJson::TJsonValue timing;
+    if (request.HasRequestTimingTrace()) {
+        // Never mask a malformed/unknown trace with a legacy JSON fallback.
+        NJson::ReadJsonTree(
+            FormatRequestTimingTrace(request.GetRequestTimingTrace()),
+            &timing, true);
+    } else if (
+        !request.HasRequestTimingJson() ||
+        !NJson::ReadJsonTree(request.GetRequestTimingJson(), &timing, false))
+    {
+        timing.SetType(NJson::JSON_MAP);
+        timing["complete"] = false;
+        timing["reason"] = request.HasRequestTimingJson()
+                               ? "invalid_timing_json"
+                               : "not_recorded";
+        timing["without_waits_us"] = NJson::TJsonValue(NJson::JSON_NULL);
+        timing["wait_impact_us"] = NJson::TJsonValue(NJson::JSON_NULL);
+    }
+    result["timing"] = std::move(timing);
+    *out << NJson::WriteJson(result, false) << '\n';
+}
+
 void DumpRequest(
-    const NProto::TProfileLogRecord& record,
-    int i,
-    IOutputStream* out)
+    const NProto::TProfileLogRecord& record, int i, IOutputStream* out)
 {
     const auto& r = record.GetRequests(i);
 
-    (*out) << TInstant::MicroSeconds(r.GetTimestampMcs())
-        << "\t" << record.GetDiskId()
-        << "\t" << record.GetVersion()
-        << "\t" << RequestName(r.GetRequestType())
-        << "\tR"
-        << "\t" << r.GetDurationMcs()
-        << "\t";
+    (*out) << TInstant::MicroSeconds(r.GetTimestampMcs()) << "\t"
+           << record.GetDiskId() << "\t" << record.GetVersion() << "\t"
+           << RequestName(r.GetRequestType()) << "\tR"
+           << "\t" << r.GetDurationMcs() << "\t";
     if (r.GetRanges().empty()) {
         // legacy branch
-        (*out) << r.GetBlockIndex()
-            << "," << r.GetBlockCount();
+        (*out) << r.GetBlockIndex() << "," << r.GetBlockCount();
     } else {
         OutputRanges(r.GetRanges(), *out);
     }
@@ -184,58 +205,43 @@ void DumpRequest(
 }
 
 void DumpBlockInfoList(
-    const NProto::TProfileLogRecord& record,
-    int i,
-    IOutputStream* out)
+    const NProto::TProfileLogRecord& record, int i, IOutputStream* out)
 {
     const auto& bl = record.GetBlockInfoLists(i);
 
-    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs())
-        << "\t" << record.GetDiskId()
-        << "\t" << record.GetVersion()
-        << "\t" << RequestName(bl.GetRequestType())
-        << "\tB"
-        << "\t" << bl.GetCommitId()
-        << "\t";
+    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs()) << "\t"
+           << record.GetDiskId() << "\t" << record.GetVersion() << "\t"
+           << RequestName(bl.GetRequestType()) << "\tB"
+           << "\t" << bl.GetCommitId() << "\t";
     OutputBlockInfos(bl.GetBlockInfos(), out);
     (*out) << "\n";
 }
 
 void DumpBlockCommitIdList(
-    const NProto::TProfileLogRecord& record,
-    int i,
-    IOutputStream* out)
+    const NProto::TProfileLogRecord& record, int i, IOutputStream* out)
 {
     const auto& bl = record.GetBlockCommitIdLists(i);
 
-    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs())
-        << "\t" << record.GetDiskId()
-        << "\t" << record.GetVersion()
-        << "\t" << RequestName(bl.GetRequestType())
-        << "\tC"
-        << "\t" << bl.GetCommitId()
-        << "\t";
+    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs()) << "\t"
+           << record.GetDiskId() << "\t" << record.GetVersion() << "\t"
+           << RequestName(bl.GetRequestType()) << "\tC"
+           << "\t" << bl.GetCommitId() << "\t";
     OutputBlockCommitIds(bl.GetBlockCommitIds(), out);
     (*out) << "\n";
 }
 
 void DumpBlobUpdateList(
-    const NProto::TProfileLogRecord& record,
-    int i,
-    IOutputStream* out)
+    const NProto::TProfileLogRecord& record, int i, IOutputStream* out)
 {
     const auto& bl = record.GetBlobUpdateLists(i);
 
-    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs())
-        << "\t" << record.GetDiskId()
-        << "\t" << record.GetVersion()
-        << "\t" << "Cleanup"
-        << "\tU"
-        << "\t" << bl.GetCleanupCommitId()
-        << "\t";
+    (*out) << TInstant::MicroSeconds(bl.GetTimestampMcs()) << "\t"
+           << record.GetDiskId() << "\t" << record.GetVersion() << "\t"
+           << "Cleanup"
+           << "\tU"
+           << "\t" << bl.GetCleanupCommitId() << "\t";
     OutputBlobUpdates(bl.GetBlobUpdates(), out);
     (*out) << "\n";
-
 }
 
 TString RequestName(const ui32 requestType)
@@ -243,16 +249,12 @@ TString RequestName(const ui32 requestType)
     TString name;
     if (requestType < static_cast<int>(EBlockStoreRequest::MAX)) {
         name = GetBlockStoreRequestName(
-            static_cast<EBlockStoreRequest>(requestType)
-        );
+            static_cast<EBlockStoreRequest>(requestType));
     } else if (requestType < static_cast<int>(ESysRequestType::MAX)) {
-        name = GetSysRequestName(
-            static_cast<ESysRequestType>(requestType)
-        );
+        name = GetSysRequestName(static_cast<ESysRequestType>(requestType));
     } else {
         name = GetPrivateRequestName(
-            static_cast<EPrivateRequestType>(requestType)
-        );
+            static_cast<EPrivateRequestType>(requestType));
     }
 
     // XXX

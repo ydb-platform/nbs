@@ -6,6 +6,7 @@ PEERDIR(
     cloud/blockstore/tools/analytics/libs/event-log
     cloud/storage/core/libs/common
 
+    library/cpp/json
     library/cpp/eventlog/dumper
     library/cpp/resource
 )

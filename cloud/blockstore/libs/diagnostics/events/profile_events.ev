@@ -1,6 +1,7 @@
 option optimize_for = SPEED;
 
 import "library/cpp/eventlog/proto/events_extension.proto";
+import "cloud/storage/core/protos/request_timing.proto";
 
 package NCloud.NBlockStore.NProto;
 
@@ -70,6 +71,12 @@ message TProfileLogRequestInfo {
     optional uint32 BlockCount = 5; // legacy, use Ranges
     repeated TProfileLogBlockRange Ranges = 6;
     optional uint64 PostponedTimeMcs = 7;
+    // Additive versioned diagnostic result. Absence means no recording.
+    // Existing DurationMcs/PostponedTimeMcs retain their historical meanings.
+    optional string RequestTimingJson = 8;
+    // Compact observations. Evaluated only by an explicitly opted-in reader.
+    // When both fields exist, this versioned trace is authoritative.
+    optional NCloud.NProto.TRequestTimingTrace RequestTimingTrace = 9;
 };
 
 message TProfileLogRecord {

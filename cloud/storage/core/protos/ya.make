@@ -18,6 +18,7 @@ SRCS(
     media.proto
     rdma.proto
     request_source.proto
+    request_timing.proto
     tablet.proto
     throttler.proto
     trace.proto

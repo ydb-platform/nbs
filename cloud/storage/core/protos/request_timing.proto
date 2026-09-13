@@ -1,0 +1,62 @@
+syntax = "proto2";
+
+package NCloud.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/protos";
+
+// Compact observations, not an evaluated result. Only the offline reader
+// calculates the critical path and renders the version-1 diagnostic JSON.
+message TRequestTimingTrace
+{
+    message TWait
+    {
+        optional uint64 Begin = 1;
+        optional uint64 End = 2;
+        optional uint32 Categories = 3;
+    }
+
+    message TDependency
+    {
+        optional uint32 Node = 1;
+        optional uint64 Lag = 2;
+    }
+
+    message TStage
+    {
+        optional uint64 Begin = 1;
+        optional uint64 End = 2;
+        optional uint64 NotBefore = 3;
+        optional uint32 MissingCategories = 4;
+        repeated uint64 UnlocatedWaits = 5 [packed = true];
+        repeated TDependency Dependencies = 6;
+        repeated TWait Waits = 7;
+        optional uint32 Part = 8;
+        optional bool DiagnosticOnly = 9;
+        optional string IncompleteReason = 10;
+    }
+
+    message TPart
+    {
+        optional uint32 Parent = 1;
+        optional bool Closed = 2;
+        optional bool ObservationStopped = 3;
+    }
+
+    optional uint32 Version = 1;
+    optional uint64 RequestId = 2;
+    optional uint64 TotalMicros = 3;
+    optional uint32 SelectedCategories = 4;
+    optional uint32 ErrorCode = 5;
+    // Lossless shorthand for a complete, single root with no observed events.
+    optional bool ImplicitRoot = 6;
+    repeated TPart Parts = 7;
+    repeated TStage Stages = 8;
+    optional uint32 CompletionNode = 9;
+    optional string Failure = 10;
+
+    // Version 2 uses only the common scalar header and this ordered stream.
+    // Opcodes/arity are defined in request_timing_journal.h. It preserves every
+    // observation without constructing a graph in the request or log writer.
+    // Version 1 and its implicit-root representation remain readable.
+    repeated uint64 Journal = 11 [packed = true];
+}

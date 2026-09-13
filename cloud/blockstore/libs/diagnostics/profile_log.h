@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/service/request.h>
+
+#include <cloud/storage/core/libs/common/request_timing_snapshot.h>
 #include <cloud/storage/core/libs/common/startable.h>
 
 #include <util/datetime/base.h>
@@ -14,8 +16,7 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IProfileLog
-    : IStartable
+struct IProfileLog: IStartable
 {
     struct TBlockInfo
     {
@@ -23,7 +24,8 @@ struct IProfileLog
         ui32 Checksum = 0;
     };
 
-    struct TReplicaChecksums {
+    struct TReplicaChecksums
+    {
         ui32 ReplicaId = 0;
         TVector<ui32> Checksums;
     };
@@ -89,6 +91,9 @@ struct IProfileLog
         TDuration Duration;
         TDuration PostponedTime;
         TBlockRange64 Range;
+        // Legacy JSON input remains readable; new requests enqueue a snapshot.
+        TString RequestTimingJson;
+        TRequestTimingSnapshot RequestTiming;
     };
 
     struct TReadWriteRequestBlockInfos
@@ -124,8 +129,8 @@ struct IProfileLog
             TSysReadWriteRequestBlockCommitIds,
             TDescribeBlocksRequest,
             TMiscRequest,
-            TCleanupRequestBlobUpdates
-        > Request;
+            TCleanupRequestBlobUpdates>
+            Request;
     };
 
     virtual void Write(TRecord record) = 0;
@@ -141,9 +146,7 @@ struct TProfileLogSettings
 };
 
 IProfileLogPtr CreateProfileLog(
-    TProfileLogSettings settings,
-    ITimerPtr timer,
-    ISchedulerPtr scheduler);
+    TProfileLogSettings settings, ITimerPtr timer, ISchedulerPtr scheduler);
 
 IProfileLogPtr CreateProfileLogStub();
 

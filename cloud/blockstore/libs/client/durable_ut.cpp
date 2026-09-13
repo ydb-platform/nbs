@@ -18,8 +18,10 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/json/json_reader.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/datetime/cputimer.h>
 #include <util/generic/scope.h>
 
 namespace NCloud::NBlockStore::NClient {
@@ -1438,6 +1440,117 @@ Y_UNIT_TEST_SUITE(TDurableClientTest)
 
         UNIT_ASSERT_GE_C(
             callContext->Time(EProcessingStage::Postponed), expectedDelay, errorText);
+    }
+
+    Y_UNIT_TEST(ShouldRecordBackoffIntervalForReadBlocksRetry)
+    {
+        NProto::TClientAppConfig configProto;
+        configProto.MutableClientConfig()->SetRetryTimeoutIncrement(
+            TDuration::Seconds(1).MilliSeconds());
+        auto config = std::make_shared<TClientAppConfig>(configProto);
+        auto service = std::make_shared<TTestService>();
+        auto scheduler = std::make_shared<TTestScheduler>();
+        auto durable = CreateDurableClient(
+            config,
+            service,
+            CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT),
+            CreateLoggingService("console"),
+            CreateCpuCycleTimer(),
+            scheduler,
+            CreateRequestStatsStub(),
+            CreateVolumeStatsStub());
+
+        ui32 attempts = 0;
+        bool validRequests = true;
+        service->ReadBlocksHandler =
+            [&](std::shared_ptr<NProto::TReadBlocksRequest> request)
+            {
+                ++attempts;
+                validRequests = validRequests &&
+                    request->GetDiskId() == "volume" &&
+                    request->GetBlocksCount() == 1;
+                NProto::TReadBlocksResponse response;
+                if (attempts == 1) {
+                    response = TErrorResponse{E_REJECTED, "Some failure"};
+                } else {
+                    response.MutableBlocks()->AddBuffers()->assign(4096, 'x');
+                }
+                return MakeFuture(std::move(response));
+            };
+
+        auto context = MakeIntrusive<TCallContext>();
+        const auto start = GetCycleCount();
+        context->SetRequestStartedCycles(start);
+        context->EnableRequestTiming();
+        auto request = std::make_shared<NProto::TReadBlocksRequest>();
+        request->SetDiskId("volume");
+        request->SetBlocksCount(1);
+        auto scheduled = scheduler->WaitForTaskSchedule();
+        auto future = durable->ReadBlocks(context, request);
+        UNIT_ASSERT_VALUES_EQUAL(attempts, 1);
+        UNIT_ASSERT(!future.HasValue());
+        UNIT_ASSERT(scheduled.HasValue());
+
+        // Trigger the retry without sleeping. This checks interval recording,
+        // not elapsed wall time or the scheduler's handling of its deadline.
+        scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(attempts, 2);
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT(validRequests);
+        const auto& response = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(response.GetError().GetCode(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(response.GetBlocks().GetBuffers().size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            response.GetBlocks().GetBuffers()[0], TString(4096, 'x'));
+
+        const auto total = CyclesToDurationSafe(GetCycleCount() - start);
+        const auto legacyBackoff =
+            context->Time(EProcessingStage::Backoff).MicroSeconds();
+        const auto snapshot = context->CompleteRequestTiming(total);
+        NJson::TJsonValue json;
+        UNIT_ASSERT(NJson::ReadJsonTree(snapshot, &json, true));
+        UNIT_ASSERT_C(
+            json["complete"].GetBoolean(), json["reason"].GetString());
+        UNIT_ASSERT_VALUES_EQUAL(json["error_code"].GetUInteger(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(json["selected_categories"].GetUInteger(), 7);
+        UNIT_ASSERT_VALUES_EQUAL(
+            json["total_us"].GetUInteger(), total.MicroSeconds());
+        const auto& stages = json["stages"].GetArray();
+        UNIT_ASSERT_VALUES_EQUAL(stages.size(), 1);
+        const auto& stage = stages[0];
+        UNIT_ASSERT_VALUES_EQUAL(stage["missing_categories"].GetUInteger(), 0);
+        const auto& unlocated = stage["unlocated_wait_us"].GetArray();
+        UNIT_ASSERT_VALUES_EQUAL(unlocated.size(), 3);
+        for (const auto& value: unlocated) {
+            UNIT_ASSERT_VALUES_EQUAL(value.GetUInteger(), 0);
+        }
+        const auto& waits = stage["waits"].GetArray();
+        UNIT_ASSERT_VALUES_EQUAL(waits.size(), 1);
+        const auto& wait = waits[0];
+        UNIT_ASSERT_VALUES_EQUAL(wait["categories"].GetUInteger(), 2);
+        const auto begin = wait["begin_us"].GetUInteger();
+        const auto end = wait["end_us"].GetUInteger();
+        UNIT_ASSERT(stage["begin_us"].GetUInteger() <= begin);
+        UNIT_ASSERT(begin <= end);
+        UNIT_ASSERT(end <= stage["end_us"].GetUInteger());
+        UNIT_ASSERT(end <= total.MicroSeconds());
+        const auto interval = end - begin;
+        const auto roundingDelta = legacyBackoff > interval
+            ? legacyBackoff - interval
+            : interval - legacyBackoff;
+        UNIT_ASSERT_C(roundingDelta <= 1, roundingDelta);
+        UNIT_ASSERT_VALUES_EQUAL(
+            json["wait_impact_us"].GetUInteger(), interval);
+        UNIT_ASSERT_VALUES_EQUAL(
+            json["without_waits_us"].GetUInteger(),
+            total.MicroSeconds() - interval);
+
+        const auto late = GetCycleCount();
+        context->AddTimedWait(EProcessingStage::Backoff, late, late + 1);
+        context->AddTime(EProcessingStage::Backoff, TDuration::MicroSeconds(5));
+        UNIT_ASSERT_VALUES_EQUAL(
+            context->CompleteRequestTiming(total + TDuration::MicroSeconds(1)),
+            snapshot);
     }
 
     Y_UNIT_TEST(ShouldCountBackoffTimeAsPostponedForThrottledRequests)

@@ -332,9 +332,10 @@ private:
                         if (throttling) {
                             state->CallContext->Advance(nowCycles);
                         } else {
-                            state->CallContext->AddTime(
+                            state->CallContext->AddTimedWait(
                                 EProcessingStage::Backoff,
-                                CyclesToDurationSafe(nowCycles - postponeCycles));
+                                postponeCycles,
+                                nowCycles);
                         }
 
                         if (auto p = weakSelf.lock()) {

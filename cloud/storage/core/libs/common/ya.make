@@ -16,6 +16,11 @@ SRCS(
     compressed_bitmap.cpp
     concurrent_queue.cpp
     context.cpp
+    request_timing.cpp
+    request_timing_collector.cpp
+    request_timing_graph_builder.cpp
+    request_timing_journal.cpp
+    request_timing_trace.cpp
     disjoint_interval_map.cpp
     error.cpp
     file_io_service.cpp

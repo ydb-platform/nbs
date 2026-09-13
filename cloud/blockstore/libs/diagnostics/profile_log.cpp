@@ -11,6 +11,8 @@
 #include <util/generic/hash.h>
 #include <util/thread/lfstack.h>
 
+#include <google/protobuf/arena.h>
+
 namespace NCloud::NBlockStore {
 
 namespace {
@@ -43,7 +45,8 @@ void AddRangeWithChecksums(
 }
 
 template <typename TRequest>
-void FillBlockInfos(const TRequest& request, NProto::TProfileLogBlockInfoList& ri)
+void FillBlockInfos(
+    const TRequest& request, NProto::TProfileLogBlockInfoList& ri)
 {
     for (const auto& bi: request.BlockInfos) {
         auto* blockInfo = ri.AddBlockInfos();
@@ -55,8 +58,7 @@ void FillBlockInfos(const TRequest& request, NProto::TProfileLogBlockInfoList& r
 NProto::TProfileLogRequestInfo* AddRequest(
     const IProfileLog::TRecord& record,
     const TDuration duration,
-    const TDuration postponedTime,
-    NProto::TProfileLogRecord& pb)
+    const TDuration postponedTime, NProto::TProfileLogRecord& pb)
 {
     auto* ri = pb.AddRequests();
     ri->SetTimestampMcs(record.Ts.MicroSeconds());
@@ -67,8 +69,7 @@ NProto::TProfileLogRequestInfo* AddRequest(
 
 NProto::TProfileLogRequestInfo* AddRequest(
     const IProfileLog::TRecord& record,
-    const TDuration duration,
-    NProto::TProfileLogRecord& pb)
+    const TDuration duration, NProto::TProfileLogRecord& pb)
 {
     auto* ri = pb.AddRequests();
     ri->SetTimestampMcs(record.Ts.MicroSeconds());
@@ -77,8 +78,7 @@ NProto::TProfileLogRequestInfo* AddRequest(
 }
 
 NProto::TProfileLogBlockInfoList* AddBlockInfoList(
-    const IProfileLog::TRecord& record,
-    NProto::TProfileLogRecord& pb)
+    const IProfileLog::TRecord& record, NProto::TProfileLogRecord& pb)
 {
     auto* bl = pb.AddBlockInfoLists();
     bl->SetTimestampMcs(record.Ts.MicroSeconds());
@@ -86,8 +86,7 @@ NProto::TProfileLogBlockInfoList* AddBlockInfoList(
 }
 
 NProto::TProfileLogBlockCommitIdList* AddBlockCommitIdList(
-    const IProfileLog::TRecord& record,
-    NProto::TProfileLogRecord& pb)
+    const IProfileLog::TRecord& record, NProto::TProfileLogRecord& pb)
 {
     auto* bci = pb.AddBlockCommitIdLists();
     bci->SetTimestampMcs(record.Ts.MicroSeconds());
@@ -95,8 +94,7 @@ NProto::TProfileLogBlockCommitIdList* AddBlockCommitIdList(
 }
 
 NProto::TProfileLogBlobUpdateList* AddBlobUpdateList(
-    const IProfileLog::TRecord& record,
-    NProto::TProfileLogRecord& pb)
+    const IProfileLog::TRecord& record, NProto::TProfileLogRecord& pb)
 {
     auto* bul = pb.AddBlobUpdateLists();
     bul->SetTimestampMcs(record.Ts.MicroSeconds());
@@ -123,15 +121,12 @@ private:
 
 public:
     TProfileLog(
-            TProfileLogSettings settings,
-            ITimerPtr timer,
-            ISchedulerPtr scheduler)
+        TProfileLogSettings settings, ITimerPtr timer, ISchedulerPtr scheduler)
         : EventLog(settings.FilePath, NEvClass::Factory()->CurrentFormat())
         , Settings(std::move(settings))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
-    {
-    }
+    {}
 
     ~TProfileLog() override;
 
@@ -199,54 +194,89 @@ bool TProfileLog::Flush()
 void TProfileLog::DoFlush()
 {
     auto guard = Guard(FlushLock);
-    TVector<TRecord> records;
+
+    struct TGroupedRecords
+    {
+        THashMap<TString, TVector<TRecord>> ByDisk;
+
+        void push_back(TRecord&& record)
+        {
+            ByDisk[record.DiskId].push_back(std::move(record));
+        }
+    } records;
+
+    // Drain directly into disk groups. The previous intermediate vector moved
+    // each large record during growth, then allocated another vector of
+    // indices. Per-disk dequeue order and the single-consumer synchronization
+    // stay intact.
     Records.DequeueAllSingleConsumer(&records);
 
-    if (records.size()) {
+    if (!records.ByDisk.empty()) {
         TSelfFlushLogFrame logFrame(EventLog);
-        THashMap<TString, TVector<ui32>> diskId2records;
-
-        for (ui32 i = 0; i < records.size(); ++i) {
-            diskId2records[records[i].DiskId].push_back(i);
-        }
-
-        for (auto& x: diskId2records) {
-            NProto::TProfileLogRecord pb;
+        for (auto& x: records.ByDisk) {
+            // LogEvent serializes into the frame before returning. Release
+            // this group's messages together, without retaining other disks.
+            google::protobuf::Arena arena;
+            auto& pb = *google::protobuf::Arena::CreateMessage<
+                NProto::TProfileLogRecord>(&arena);
             pb.SetDiskId(x.first);
-            for (const auto r: x.second) {
-                const auto& record = records[r];
-
-                if (auto* rw = std::get_if<TReadWriteRequest>(&record.Request)) {
-                    auto* ri = AddRequest(record, rw->Duration, rw->PostponedTime, pb);
+            for (const auto& record: x.second) {
+                if (auto* rw = std::get_if<TReadWriteRequest>(&record.Request))
+                {
+                    auto* ri =
+                        AddRequest(record, rw->Duration, rw->PostponedTime, pb);
                     AddRange(rw->Range, *ri);
                     ri->SetRequestType(static_cast<ui32>(rw->RequestType));
-                } else if (auto* srw = std::get_if<TSysReadWriteRequest>(&record.Request)) {
+                    if (rw->RequestTiming.HasData()) {
+                        rw->RequestTiming.FillTrace(
+                            *ri->MutableRequestTimingTrace());
+                    } else if (!rw->RequestTimingJson.empty()) {
+                        ri->SetRequestTimingJson(rw->RequestTimingJson);
+                    }
+                } else if (
+                    auto* srw =
+                        std::get_if<TSysReadWriteRequest>(&record.Request))
+                {
                     auto* ri = AddRequest(record, srw->Duration, pb);
                     for (const auto& r: srw->Ranges) {
                         AddRange(r, *ri);
                     }
                     ri->SetRequestType(static_cast<ui32>(srw->RequestType));
-                } else if (auto* srw = std::get_if<TSysReadWriteRequestWithChecksums>(&record.Request)) {
+                } else if (
+                    auto* srw = std::get_if<TSysReadWriteRequestWithChecksums>(
+                        &record.Request))
+                {
                     auto* ri = AddRequest(record, srw->Duration, pb);
                     AddRangeWithChecksums(
                         srw->RangeInfo.Range,
-                        srw->RangeInfo.ReplicaChecksums,
-                        *ri);
+                        srw->RangeInfo.ReplicaChecksums, *ri);
                     ri->SetRequestType(static_cast<ui32>(srw->RequestType));
-                } else if (auto* misc = std::get_if<TMiscRequest>(&record.Request)) {
+                } else if (
+                    auto* misc = std::get_if<TMiscRequest>(&record.Request))
+                {
                     auto* ri = AddRequest(record, misc->Duration, pb);
                     ri->SetRequestType(static_cast<ui32>(misc->RequestType));
-                } else if (auto* rwbi = std::get_if<TReadWriteRequestBlockInfos>(&record.Request)) {
+                } else if (
+                    auto* rwbi = std::get_if<TReadWriteRequestBlockInfos>(
+                        &record.Request))
+                {
                     auto* bl = AddBlockInfoList(record, pb);
                     FillBlockInfos(*rwbi, *bl);
                     bl->SetRequestType(static_cast<ui32>(rwbi->RequestType));
                     bl->SetCommitId(rwbi->CommitId);
-                } else if (auto* srwbi = std::get_if<TSysReadWriteRequestBlockInfos>(&record.Request)) {
+                } else if (
+                    auto* srwbi = std::get_if<TSysReadWriteRequestBlockInfos>(
+                        &record.Request))
+                {
                     auto* bl = AddBlockInfoList(record, pb);
                     FillBlockInfos(*srwbi, *bl);
                     bl->SetRequestType(static_cast<ui32>(srwbi->RequestType));
                     bl->SetCommitId(srwbi->CommitId);
-                } else if (auto* srwbc = std::get_if<TSysReadWriteRequestBlockCommitIds>(&record.Request)) {
+                } else if (
+                    auto* srwbc =
+                        std::get_if<TSysReadWriteRequestBlockCommitIds>(
+                            &record.Request))
+                {
                     auto* bl = AddBlockCommitIdList(record, pb);
                     for (const auto& bc: srwbc->BlockCommitIds) {
                         auto* blockCommitId = bl->AddBlockCommitIds();
@@ -258,11 +288,17 @@ void TProfileLog::DoFlush()
                     }
                     bl->SetRequestType(static_cast<ui32>(srwbc->RequestType));
                     bl->SetCommitId(srwbc->CommitId);
-                } else if (auto* req = std::get_if<TDescribeBlocksRequest>(&record.Request)) {
+                } else if (
+                    auto* req =
+                        std::get_if<TDescribeBlocksRequest>(&record.Request))
+                {
                     auto* ri = AddRequest(record, req->Duration, pb);
                     AddRange(req->Range, *ri);
                     ri->SetRequestType(static_cast<ui32>(req->RequestType));
-                } else if (auto* cbu = std::get_if<TCleanupRequestBlobUpdates>(&record.Request)) {
+                } else if (
+                    auto* cbu = std::get_if<TCleanupRequestBlobUpdates>(
+                        &record.Request))
+                {
                     auto* bul = AddBlobUpdateList(record, pb);
                     for (const auto& bu: cbu->BlobUpdates) {
                         auto* blobUpdate = bul->AddBlobUpdates();
@@ -309,15 +345,10 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IProfileLogPtr CreateProfileLog(
-    TProfileLogSettings settings,
-    ITimerPtr timer,
-    ISchedulerPtr scheduler)
+    TProfileLogSettings settings, ITimerPtr timer, ISchedulerPtr scheduler)
 {
     return std::make_shared<TProfileLog>(
-        std::move(settings),
-        std::move(timer),
-        std::move(scheduler)
-    );
+        std::move(settings), std::move(timer), std::move(scheduler));
 }
 
 IProfileLogPtr CreateProfileLogStub()
