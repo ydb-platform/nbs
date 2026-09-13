@@ -33,12 +33,16 @@ struct TFixture: public NUnitTest::TBaseFixture
     NMonitoring::TDynamicCountersPtr Counters =
         MakeIntrusive<NMonitoring::TDynamicCounters>();
     NMonitoring::TDynamicCounters::TCounterPtr SessionDirNotEmptyCounter;
+    NMonitoring::TDynamicCounters::TCounterPtr UnstatableEntryCounter;
 
     TFixture()
     {
         InitCriticalEventsCounter(Counters);
         SessionDirNotEmptyCounter = Counters->GetCounter(
             GetCriticalEventForPersistentStateSessionDirNotEmpty(),
+            true);
+        UnstatableEntryCounter = Counters->GetCounter(
+            GetCriticalEventForPersistentStateUnstatableEntry(),
             true);
     }
 
@@ -645,6 +649,38 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
         UNIT_ASSERT(HasError(result));
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, result.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldReportUnstatableEntryAndCarryOn, TFixture)
+    {
+        // Existing state which the discovery must find regardless.
+        {
+            auto previous = CreateManager();
+            auto result = previous->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        }
+
+        // An entry whose type cannot be established (a symlink loop makes
+        // stat() fail deterministically with ELOOP whatever the privileges,
+        // standing in for EACCES or EIO) must not fail the discovery: one
+        // stray entry would otherwise block every session start. It must
+        // not go unnoticed either: a state file under it would never be
+        // found, which is worth an alarm.
+        const TFsPath loop = TFsPath(StatePath) / "loop";
+        UNIT_ASSERT(NFs::SymLink("loop", loop.GetPath()));
+
+        auto manager = CreateManager();
+        UNIT_ASSERT(HasWriteBackCacheState(manager, FileSystemId, SessionId));
+
+        // One report per component listing sharing the base path.
+        UNIT_ASSERT_VALUES_EQUAL(3, UnstatableEntryCounter->Val());
+
+        // The registry is initialized in one go: no relisting and no
+        // repeated reports on further queries.
+        UNIT_ASSERT(HasWriteBackCacheState(manager, FileSystemId, SessionId));
+        UNIT_ASSERT_VALUES_EQUAL(3, UnstatableEntryCounter->Val());
     }
 
     Y_UNIT_TEST_F(ShouldReportErrorInsteadOfThrowingOnAcquireFailure, TFixture)

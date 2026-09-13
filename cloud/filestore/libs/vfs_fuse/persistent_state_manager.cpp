@@ -10,6 +10,7 @@
 #include <util/system/error.h>
 #include <util/system/file_lock.h>
 #include <util/system/fs.h>
+#include <util/system/fstat.h>
 #include <util/system/guard.h>
 #include <util/system/mutex.h>
 #include <util/system/yassert.h>
@@ -310,6 +311,26 @@ TFsPath TPersistentStateManager::GetSessionDir(
     return TFsPath(component.BasePath) / fileSystemId / sessionId;
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+// Whether the path is a directory to descend into. We should report weird
+// (non-directory) entries, but must not fail every session start.
+bool IsDirectory(const TFsPath& path)
+{
+    const TFileStat stat(path);
+    if (stat.IsNull()) {
+        const int err = LastSystemError();
+        if (err != ENOENT) {
+            ReportPersistentStateUnstatableEntry(
+                TStringBuilder() << "Failed to stat " << path
+                                 << ", reason: " << LastSystemErrorText(err));
+        }
+        return false;
+    }
+
+    return stat.IsDir();
+}
+
 NProto::TError TPersistentStateManager::ListStateFilesLocked(
     const TComponentConfig& component)
 {
@@ -329,9 +350,7 @@ NProto::TError TPersistentStateManager::ListStateFilesLocked(
     // failure. The base path is not checked for existence beforehand on
     // purpose: such a check reads any failure, e.g. an I/O error, as
     // "absent", which would make the listing come out empty and every state
-    // file on disk go unnoticed. Only a genuinely absent base path is fine:
-    // nothing has ever been created there, and the files created from now
-    // on are tracked just the same.
+    // file on disk go unnoticed.
     TVector<TFsPath> fileSystemDirs;
     try {
         basePath.List(fileSystemDirs);
@@ -339,6 +358,7 @@ NProto::TError TPersistentStateManager::ListStateFilesLocked(
         if (e.Status() == ENOENT) {
             return {};
         }
+
         return makeError(e);
     } catch (const yexception& e) {
         return makeError(e);
@@ -347,14 +367,14 @@ NProto::TError TPersistentStateManager::ListStateFilesLocked(
     // Layout is <basePath>/<fileSystemId>/<sessionId>/<stateFileName>
     try {
         for (const auto& fileSystemDir: fileSystemDirs) {
-            if (!fileSystemDir.IsDirectory()) {
+            if (!IsDirectory(fileSystemDir)) {
                 continue;
             }
 
             TVector<TFsPath> sessionDirs;
             fileSystemDir.List(sessionDirs);
             for (const auto& sessionDir: sessionDirs) {
-                if (!sessionDir.IsDirectory()) {
+                if (!IsDirectory(sessionDir)) {
                     continue;
                 }
 
@@ -419,8 +439,7 @@ NProto::TError TPersistentStateManager::ReleaseStateFile(
         // without any chance of failure, unlike an explicit Release(). It
         // has to happen while the mutex is still held: otherwise an
         // acquisition racing with us finds the file not acquired but still
-        // locked. The file itself is kept together with its session
-        // directory.
+        // locked.
         impl.Lock.Reset();
         return {};
     }
@@ -443,7 +462,7 @@ NProto::TError TPersistentStateManager::ReleaseStateFile(
     NProto::TError removeError;
     bool fileDeleted = true;
     if (!NFs::Remove(impl.FilePath)) {
-        // A file already gone, e.g. removed by hand, is as good as deleted
+        // A file already gone, e.g. removed by hand, is as good as deleted.
         const int err = LastSystemError();
         if (err != ENOENT) {
             fileDeleted = false;
@@ -454,7 +473,7 @@ NProto::TError TPersistentStateManager::ReleaseStateFile(
         }
     }
 
-    // Whatever happened to the file, it is not acquired anymore
+    // Whatever happened to the file, it is not acquired anymore.
     const bool noStateFilesLeftInDir =
         Registry.Unregister(impl.Dir.GetPath(), impl.FileName, fileDeleted);
 

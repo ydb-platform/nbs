@@ -74,6 +74,7 @@ namespace NCloud::NFileStore{
     xxx(AvailabilityCountersMissingIntervals)                                  \
     xxx(PersistentStateSessionDirNotEmpty)                                     \
     xxx(ListNodesLocalNodeNotFound)                                            \
+    xxx(PersistentStateUnstatableEntry)                                        \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
