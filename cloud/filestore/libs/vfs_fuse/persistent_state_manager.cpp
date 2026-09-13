@@ -17,7 +17,6 @@
 #include <util/system/yassert.h>
 
 #include <functional>
-#include <optional>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -56,23 +55,23 @@ struct TComponentConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Keeps track of the state files: which ones are on disk, how big they are
-// and which ones are registered, i.e. acquired by a guard. Created from a
-// listing of the state
-// files on disk, and kept up to date by its operations from then on, which is
-// valid as long as the manager is the only one to create and delete the
-// files. Not thread-safe: the manager guards it with its mutex.
+// Keeps track of the state files: which ones are present, how big they are
+// and which ones are acquired by a guard. Filled from a listing of the state
+// files, and kept up to date by its operations from then on, which is valid as
+// long as the manager is the only one to create and delete the files.
+//
+// Not thread-safe: the manager guards it with its mutex.
 class TStateFileRegistry
 {
 public:
     struct TStateFile
     {
-        // The size the file is known to have on disk: the actual one for a
-        // listed file, the one it was created with otherwise (a component
-        // may adjust it slightly, which is only picked up by a listing).
+        // The size the file is known: the actual one for a listed file, the one
+        // it was created with otherwise (a component may adjust it slightly,
+        // which is only picked up by a listing).
         ui64 Size = 0;
-        // Whether the file is registered, i.e. acquired by a guard.
-        bool Registered = false;
+        // Whether the file is acquired by a guard.
+        bool Acquired = false;
     };
 
     // The state files, by session directory and by file name (i.e. by
@@ -83,29 +82,31 @@ private:
     TStateFiles StateFiles;
 
 public:
-    explicit TStateFileRegistry(TStateFiles stateFiles)
-        : StateFiles(std::move(stateFiles))
-    {}
-
-    bool IsRegistered(const TString& dir, const TString& fileName) const
+    bool IsAcquired(const TString& dir, const TString& fileName) const
     {
         const auto* dirFiles = StateFiles.FindPtr(dir);
         const auto* file = dirFiles ? dirFiles->FindPtr(fileName) : nullptr;
-        return file && file->Registered;
+        return file && file->Acquired;
     }
 
     // Registers the state file, adding it with the given size if it is not
     // known yet (the size of a known one is left as is).
-    void Register(const TString& dir, const TString& fileName, ui64 size)
+    // A file found (listed) is registered as not acquired, it might be later
+    // acquired by a guard as such.
+    void Register(
+        const TString& dir,
+        const TString& fileName,
+        ui64 size,
+        bool fileAcquired)
     {
-        const TStateFile unknownFile{.Size = size, .Registered = false};
+        const TStateFile unknownFile{.Size = size, .Acquired = false};
         auto it = StateFiles[dir].insert({fileName, unknownFile}).first;
-        it->second.Registered = true;
+        it->second.Acquired = fileAcquired;
     }
 
     // Unregisters the state file, forgetting it altogether if it has been
-    // deleted from disk. Returns whether no state file is known to be in the
-    // directory anymore.
+    // deleted. Returns whether no state file is known to be in the directory
+    // anymore.
     bool Unregister(
         const TString& dir,
         const TString& fileName,
@@ -119,13 +120,14 @@ public:
         if (fileDeleted) {
             dirFiles->erase(fileName);
         } else if (auto* file = dirFiles->FindPtr(fileName)) {
-            file->Registered = false;
+            file->Acquired = false;
         }
 
         if (!dirFiles->empty()) {
             return false;
         }
 
+        // Erase the directory, since it no longer contains any files.
         StateFiles.erase(dir);
         return true;
     }
@@ -157,8 +159,9 @@ struct TAcquireStateFileGuard::TImpl
     THolder<TFileLock> Lock;
 
     // Hands the state file back to the manager, which owns the bookkeeping
-    // and the synchronization: with |deleteFile| the file is removed from
-    // disk, otherwise it is only released and kept for a future session.
+    // and the synchronization: with |deleteFile| the file is removed, otherwise
+    // it is only released and kept for a future session.
+    //
     // Keeps the manager alive for as long as the guard lives.
     std::function<NProto::TError(TImpl& impl, bool deleteFile)> Release;
 };
@@ -234,9 +237,10 @@ private:
     // Guards the registry and the filesystem operations on the state files.
     TMutex Mutex;
 
-    // Created from a listing of the state files on disk, before the first
-    // operation on them, see EnsureRegistryInitializedLocked().
-    std::optional<TStateFileRegistry> Registry;
+    // Filled from a listing of the state files before the first operation on
+    // them, see EnsureRegistryInitializedLocked().
+    TStateFileRegistry Registry;
+    bool RegistryInitialized = false;
 
     const TComponentConfig HandleOpsQueue;
     const TComponentConfig WriteBackCache;
@@ -280,12 +284,11 @@ private:
         const TString& sessionId) const;
 
     // Lists the state files of the component found under its base path, of
-    // all the filesystems and sessions.
-    NProto::TError ListStateFiles(
-        const TComponentConfig& component,
-        TStateFileRegistry::TStateFiles& stateFiles) const;
+    // all the filesystems and sessions, into the registry. Must be called
+    // with Mutex locked.
+    NProto::TError ListStateFilesLocked(const TComponentConfig& component);
 
-    // Creates the registry from a listing of the state files of all the
+    // Fills the registry from a listing of the state files of all the
     // configured components, unless that has been done already. Must be
     // called with Mutex locked.
     NProto::TError EnsureRegistryInitializedLocked();
@@ -340,9 +343,8 @@ TFsPath TPersistentStateManager::GetSessionDir(
     return TFsPath(component.BasePath) / fileSystemId / sessionId;
 }
 
-NProto::TError TPersistentStateManager::ListStateFiles(
-    const TComponentConfig& component,
-    TStateFileRegistry::TStateFiles& stateFiles) const
+NProto::TError TPersistentStateManager::ListStateFilesLocked(
+    const TComponentConfig& component)
 {
     // Listing an absent base path yields nothing, which is fine: the files
     // created from now on are tracked just the same.
@@ -377,7 +379,11 @@ NProto::TError TPersistentStateManager::ListStateFiles(
                 }
 
                 const ui64 size = TFileStat(filePath.GetPath()).Size;
-                stateFiles[sessionDir.GetPath()][fileName].Size = size;
+                Registry.Register(
+                    sessionDir.GetPath(),
+                    fileName,
+                    size,
+                    false /* fileAcquired */);
             }
         }
     } catch (const yexception& e) {
@@ -393,11 +399,10 @@ NProto::TError TPersistentStateManager::ListStateFiles(
 
 NProto::TError TPersistentStateManager::EnsureRegistryInitializedLocked()
 {
-    if (Registry) {
+    if (RegistryInitialized) {
         return {};
     }
 
-    TStateFileRegistry::TStateFiles stateFiles;
     for (const auto* component:
          {&HandleOpsQueue, &WriteBackCache, &DirectoryHandleStorage})
     {
@@ -405,14 +410,14 @@ NProto::TError TPersistentStateManager::EnsureRegistryInitializedLocked()
             continue;
         }
 
-        if (auto error = ListStateFiles(*component, stateFiles);
-            HasError(error))
-        {
+        if (auto error = ListStateFilesLocked(*component); HasError(error)) {
+            // Start over next time rather than build on a partial listing.
+            Registry = {};
             return error;
         }
     }
 
-    Registry.emplace(std::move(stateFiles));
+    RegistryInitialized = true;
     return {};
 }
 
@@ -423,7 +428,7 @@ NProto::TError TPersistentStateManager::ReleaseStateFile(
     TGuard guard(Mutex);
 
     if (!deleteFile) {
-        Registry->Unregister(
+        Registry.Unregister(
             impl.Dir.GetPath(),
             impl.FileName,
             false /* fileDeleted */);
@@ -431,7 +436,7 @@ NProto::TError TPersistentStateManager::ReleaseStateFile(
         // Destroying the lock closes the file, which releases the lock
         // without any chance of failure, unlike an explicit Release(). It
         // has to happen while the mutex is still held: otherwise an
-        // acquisition racing with us finds the file unregistered but still
+        // acquisition racing with us finds the file not acquired but still
         // locked. The file itself is kept together with its session
         // directory.
         impl.Lock.Reset();
@@ -452,7 +457,7 @@ NProto::TError TPersistentStateManager::ReleaseStateFile(
     impl.Lock.Reset();
 
     // Only this very file is removed: the directory may hold state files of
-    // other components, whether registered or not.
+    // other components, whether acquired or not.
     NProto::TError removeError;
     const bool fileDeleted =
         !impl.FilePath.Exists() || NFs::Remove(impl.FilePath);
@@ -463,9 +468,9 @@ NProto::TError TPersistentStateManager::ReleaseStateFile(
                              << ", reason: " << LastSystemErrorText());
     }
 
-    // Whatever happened to the file, it is not registered anymore
+    // Whatever happened to the file, it is not acquired anymore
     const bool noStateFilesLeftInDir =
-        Registry->Unregister(impl.Dir.GetPath(), impl.FileName, fileDeleted);
+        Registry.Unregister(impl.Dir.GetPath(), impl.FileName, fileDeleted);
 
     if (HasError(removeError)) {
         return removeError;
@@ -533,7 +538,7 @@ TPersistentStateManager::AcquireStateFile(
         return error;
     }
 
-    if (Registry->IsRegistered(dir.GetPath(), fileName)) {
+    if (Registry.IsAcquired(dir.GetPath(), fileName)) {
         return MakeError(
             E_INVALID_STATE,
             TStringBuilder() << "State file " << filePath
@@ -546,7 +551,7 @@ TPersistentStateManager::AcquireStateFile(
     // used by the session at all, which is what an empty guard means.
     const bool isNew = !filePath.Exists();
     if (isNew && component.TotalSizeLimit &&
-        Registry->GetTotalSize(fileName) + component.StateFileSize >
+        Registry.GetTotalSize(fileName) + component.StateFileSize >
             component.TotalSizeLimit)
     {
         // State file is not created: the total file size limit has been
@@ -590,7 +595,11 @@ TPersistentStateManager::AcquireStateFile(
                              << ", reason: " << e.what());
     }
 
-    Registry->Register(dir.GetPath(), fileName, component.StateFileSize);
+    Registry.Register(
+        dir.GetPath(),
+        fileName,
+        component.StateFileSize,
+        true /* fileAcquired */);
 
     return TAcquireStateFileGuard(MakeHolder<TAcquireStateFileGuard::TImpl>(
         TAcquireStateFileGuard::TImpl{
