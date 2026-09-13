@@ -352,21 +352,39 @@ TFsPath TPersistentStateManager::GetSessionDir(
 NProto::TError TPersistentStateManager::ListStateFilesLocked(
     const TComponentConfig& component)
 {
-    // Listing an absent base path yields nothing, which is fine: the files
-    // created from now on are tracked just the same.
     const TFsPath basePath(component.BasePath);
-    if (!basePath.Exists()) {
-        return {};
-    }
-
     const TString fileName(component.FileName);
 
-    // Listing reports failures by throwing.
-    //
+    const auto makeError = [&](const yexception& e)
+    {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "Failed to list " << fileName
+                             << " state files under " << basePath
+                             << ", reason: " << e.what());
+    };
+
+    // Listing reports failures by throwing, with the errno of the underlying
+    // failure. The base path is not checked for existence beforehand on
+    // purpose: such a check reads any failure, e.g. an I/O error, as
+    // "absent", which would make the listing come out empty and every state
+    // file on disk go unnoticed. Only a genuinely absent base path is fine:
+    // nothing has ever been created there, and the files created from now
+    // on are tracked just the same.
+    TVector<TFsPath> fileSystemDirs;
+    try {
+        basePath.List(fileSystemDirs);
+    } catch (const TSystemError& e) {
+        if (e.Status() == ENOENT) {
+            return {};
+        }
+        return makeError(e);
+    } catch (const yexception& e) {
+        return makeError(e);
+    }
+
     // Layout is <basePath>/<fileSystemId>/<sessionId>/<stateFileName>
     try {
-        TVector<TFsPath> fileSystemDirs;
-        basePath.List(fileSystemDirs);
         for (const auto& fileSystemDir: fileSystemDirs) {
             if (!fileSystemDir.IsDirectory()) {
                 continue;
@@ -395,11 +413,7 @@ NProto::TError TPersistentStateManager::ListStateFilesLocked(
             }
         }
     } catch (const yexception& e) {
-        return MakeError(
-            E_FAIL,
-            TStringBuilder() << "Failed to list " << fileName
-                             << " state files under " << basePath
-                             << ", reason: " << e.what());
+        return makeError(e);
     }
 
     return {};

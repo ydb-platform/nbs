@@ -591,6 +591,27 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT_C(!HasError(retried), retried.GetError().GetMessage());
     }
 
+    Y_UNIT_TEST_F(ShouldReportUnlistableBasePathInsteadOfIgnoringIt, TFixture)
+    {
+        // A base path which exists but cannot be listed must not be taken
+        // for an absent one: that would leave every state file on disk
+        // unnoticed and let the next session overwrite its own state. Here
+        // a regular file stands in for the base path.
+        TFsPath(StatePath).Touch();
+
+        auto manager = CreateManager();
+
+        auto hasState =
+            manager->HasWriteBackCacheState(FileSystemId, SessionId);
+        UNIT_ASSERT(HasError(hasState));
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, hasState.GetError().GetCode());
+
+        auto result =
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, result.GetError().GetCode());
+    }
+
     Y_UNIT_TEST_F(ShouldReportErrorInsteadOfThrowingOnAcquireFailure, TFixture)
     {
         auto manager = CreateManager();
