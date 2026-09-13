@@ -293,10 +293,12 @@ struct TBootstrap
 
         auto config = std::make_shared<TVFSConfig>(std::move(proto));
         if (!persistentStateManager) {
-            persistentStateManager = CreatePersistentStateManager(
-                config->GetHandleOpsQueuePath(),
-                config->GetWriteBackCachePath(),
-                config->GetDirectoryHandlesStoragePath());
+            persistentStateManager = CreatePersistentStateManager({
+                .HandleOpsQueueBasePath = config->GetHandleOpsQueuePath(),
+                .WriteBackCacheBasePath = config->GetWriteBackCachePath(),
+                .DirectoryHandlesStorageBasePath =
+                    config->GetDirectoryHandlesStoragePath(),
+            });
         }
 
         Loop = NFuse::CreateFuseLoop(
@@ -5381,8 +5383,11 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         // A single manager is shared by all the loops and all the components
         // share one base path, as in production
         const TString statePath = TempDir.Path() / "SharedState";
-        auto persistentStateManager =
-            CreatePersistentStateManager(statePath, statePath, statePath);
+        auto persistentStateManager = CreatePersistentStateManager({
+            .HandleOpsQueueBasePath = statePath,
+            .WriteBackCacheBasePath = statePath,
+            .DirectoryHandlesStorageBasePath = statePath,
+        });
 
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
