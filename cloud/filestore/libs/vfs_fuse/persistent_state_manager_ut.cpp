@@ -583,6 +583,49 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT_C(!HasError(retried), retried.GetError().GetMessage());
     }
 
+    Y_UNIT_TEST_F(ShouldKeepStateFileRegisteredWhenLockingFails, TFixture)
+    {
+        auto manager = CreateManager();
+
+        // Let the initial listing happen while there is nothing on disk.
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
+
+        // A foreign owner (e.g. another process) creates and locks the state
+        // file behind the manager's back.
+        const auto dir = SessionDir(FileSystemId, SessionId);
+        UNIT_ASSERT(NFs::MakeDirectoryRecursive(dir));
+        const auto filePath = dir / "handle_ops_queue";
+        TFileLock foreign(filePath);
+        UNIT_ASSERT(foreign.TryAcquire());
+
+        // The acquisition fails, but the file it stumbled upon must not
+        // become invisible: it is on disk, so the registry must know it.
+        auto result =
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
+        UNIT_ASSERT(filePath.Exists());
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, SessionId));
+
+        // Deleting a sibling state file must see the file as present: the
+        // session directory is kept and nothing is reported.
+        auto dhsResult = manager->AcquireDirectoryHandleStorageStateFile(
+            FileSystemId,
+            SessionId);
+        UNIT_ASSERT_C(!HasError(dhsResult), dhsResult.GetError().GetMessage());
+        auto error = dhsResult.ExtractResult().DeleteStateFile();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+        UNIT_ASSERT(filePath.Exists());
+        UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
+        UNIT_ASSERT_VALUES_EQUAL(0, SessionDirNotEmptyCounter->Val());
+
+        // Once the foreign owner is gone the file is acquirable as usual.
+        foreign.Release();
+        auto retried =
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT_C(!HasError(retried), retried.GetError().GetMessage());
+    }
+
     Y_UNIT_TEST_F(ShouldReportUnlistableBasePathInsteadOfIgnoringIt, TFixture)
     {
         // A base path which exists but cannot be listed must not be taken

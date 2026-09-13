@@ -544,12 +544,21 @@ TPersistentStateManager::AcquireStateFile(
                              << ", reason: " << LastSystemErrorText());
     }
 
-    // Touch(), the TFileLock constructor (which opens the file) and
-    // TryAcquire() all report failures by throwing.
-    THolder<TFileLock> lock;
     try {
         filePath.Touch();
+    } catch (const yexception& e) {
+        return MakeError(
+            E_FAIL,
+            TStringBuilder() << "Failed to create file, path: " << filePath
+                             << ", reason: " << e.what());
+    }
 
+    // The file exists from this point on whatever happens below, so the
+    // registry has to know it even if the lock cannot be taken.
+    Registry.Register(dir.GetPath(), fileName, false /* fileAcquired */);
+
+    THolder<TFileLock> lock;
+    try {
         lock = MakeHolder<TFileLock>(filePath);
         if (!lock->TryAcquire()) {
             return MakeError(
@@ -564,9 +573,7 @@ TPersistentStateManager::AcquireStateFile(
                              << ", reason: " << e.what());
     }
 
-    Registry.Register(dir.GetPath(), fileName, true /* fileAcquired */);
-
-    return TAcquireStateFileGuard(MakeHolder<TAcquireStateFileGuard::TImpl>(
+    auto impl = MakeHolder<TAcquireStateFileGuard::TImpl>(
         TAcquireStateFileGuard::TImpl{
             .Dir = std::move(dir),
             .FileName = std::move(fileName),
@@ -577,7 +584,14 @@ TPersistentStateManager::AcquireStateFile(
                            bool deleteFile)
             {
                 return manager->ReleaseStateFile(impl, deleteFile);
-            }}));
+            }});
+
+    // Marking the file acquired is the last step and cannot fail (the
+    // registry entry exists already), so a file never ends up marked
+    // acquired without a guard actually holding it.
+    Registry.Register(impl->Dir.GetPath(), impl->FileName, true /* fileAcquired */);
+
+    return TAcquireStateFileGuard(std::move(impl));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
