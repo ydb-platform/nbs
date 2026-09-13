@@ -293,10 +293,12 @@ struct TBootstrap
 
         auto config = std::make_shared<TVFSConfig>(std::move(proto));
         if (!persistentStateManager) {
-            persistentStateManager = CreatePersistentStateManager(
-                config->GetHandleOpsQueuePath(),
-                config->GetWriteBackCachePath(),
-                config->GetDirectoryHandlesStoragePath());
+            persistentStateManager = CreatePersistentStateManager({
+                .HandleOpsQueueBasePath = config->GetHandleOpsQueuePath(),
+                .WriteBackCacheBasePath = config->GetWriteBackCachePath(),
+                .DirectoryHandlesStorageBasePath =
+                    config->GetDirectoryHandlesStoragePath(),
+            });
         }
 
         Loop = NFuse::CreateFuseLoop(
@@ -5376,13 +5378,76 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, static_cast<int>(*writeBackCacheError));
     }
 
+    Y_UNIT_TEST(ShouldStartWithoutWriteBackCacheWhenTotalSizeLimitIsReached)
+    {
+        // A manager whose write-back cache limit leaves no room for a new
+        // state file at all
+        const TString statePath = TempDir.Path() / "LimitedState";
+        auto persistentStateManager = CreatePersistentStateManager({
+            .HandleOpsQueueBasePath = statePath,
+            .WriteBackCacheBasePath = statePath,
+            .WriteBackCacheStateFileSize = 4096,
+            .WriteBackCacheTotalSizeLimit = 1,
+            .DirectoryHandlesStorageBasePath = statePath,
+        });
+
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features,
+            1000,
+            1000,
+            WriteBackCacheCapacity,
+            0,
+            0,
+            CreateFileMapMemoryLimiterStub(),
+            persistentStateManager);
+
+        std::atomic<int> writeDataCalled = 0;
+        bootstrap.Service->WriteDataHandler = [&](auto, const auto&)
+        {
+            writeDataCalled++;
+            NProto::TWriteDataResponse result;
+            return MakeFuture(result);
+        };
+
+        auto error = bootstrap.Start();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+
+        // No state file was created, so the session runs without the cache:
+        // a write goes straight to the server instead of being cached
+        const auto stateFile = TFsPath(statePath) / FileSystemId / SessionId /
+                               "write_back_cache";
+        UNIT_ASSERT(!stateFile.Exists());
+
+        const ui64 nodeId = 123;
+        const ui64 handleId = 456;
+        auto reqWrite = std::make_shared<TWriteRequest>(
+            nodeId,
+            handleId,
+            0,
+            CreateBuffer(4096, 'a'));
+        reqWrite->In->Body.flags |= O_WRONLY;
+        auto write = bootstrap.Fuse->SendRequest<TWriteRequest>(reqWrite);
+        UNIT_ASSERT_NO_EXCEPTION(write.GetValue(WaitTimeout));
+        UNIT_ASSERT_VALUES_EQUAL(1, writeDataCalled.load());
+
+        bootstrap.Stop();
+    }
+
     Y_UNIT_TEST(ShouldStartAfterPreviousLoopWasDestroyedWithoutStop)
     {
         // A single manager is shared by all the loops and all the components
         // share one base path, as in production
         const TString statePath = TempDir.Path() / "SharedState";
-        auto persistentStateManager =
-            CreatePersistentStateManager(statePath, statePath, statePath);
+        auto persistentStateManager = CreatePersistentStateManager({
+            .HandleOpsQueueBasePath = statePath,
+            .WriteBackCacheBasePath = statePath,
+            .DirectoryHandlesStorageBasePath = statePath,
+        });
 
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);

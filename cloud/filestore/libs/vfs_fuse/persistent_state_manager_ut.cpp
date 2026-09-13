@@ -9,8 +9,10 @@
 
 #include <util/folder/path.h>
 #include <util/folder/tempdir.h>
+#include <util/generic/size_literals.h>
 #include <util/system/file_lock.h>
 #include <util/system/fs.h>
+#include <util/system/fstat.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -42,9 +44,62 @@ struct TFixture: public NUnitTest::TBaseFixture
             true);
     }
 
-    IPersistentStateManagerPtr CreateManager()
+    // In production all the components share one base path, so does every
+    // manager created here.
+    // Has*State() of the interface, whose answer must not be an error
+    template <typename TQuery>
+    static bool HasState(TQuery query)
     {
-        return CreatePersistentStateManager(StatePath, StatePath, StatePath);
+        const auto result = query();
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        return result.GetResult();
+    }
+
+    static bool HasHandleOpsQueueState(
+        const IPersistentStateManagerPtr& manager,
+        const TString& fileSystemId,
+        const TString& sessionId)
+    {
+        return HasState([&] {
+            return manager->HasHandleOpsQueueState(fileSystemId, sessionId);
+        });
+    }
+
+    static bool HasWriteBackCacheState(
+        const IPersistentStateManagerPtr& manager,
+        const TString& fileSystemId,
+        const TString& sessionId)
+    {
+        return HasState([&] {
+            return manager->HasWriteBackCacheState(fileSystemId, sessionId);
+        });
+    }
+
+    static bool HasDirectoryHandleStorageState(
+        const IPersistentStateManagerPtr& manager,
+        const TString& fileSystemId,
+        const TString& sessionId)
+    {
+        return HasState([&] {
+            return manager->HasDirectoryHandleStorageState(
+                fileSystemId,
+                sessionId);
+        });
+    }
+
+    IPersistentStateManagerPtr CreateManager(
+        ui64 stateFileSize = 0,
+        ui64 totalSizeLimit = 0)
+    {
+        return CreatePersistentStateManager({
+            .HandleOpsQueueBasePath = StatePath,
+            .HandleOpsQueueStateFileSize = stateFileSize,
+            .HandleOpsQueueTotalSizeLimit = totalSizeLimit,
+            .WriteBackCacheBasePath = StatePath,
+            .WriteBackCacheStateFileSize = stateFileSize,
+            .WriteBackCacheTotalSizeLimit = totalSizeLimit,
+            .DirectoryHandlesStorageBasePath = StatePath,
+        });
     }
 
     TFsPath SessionDir(
@@ -75,7 +130,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
     {
         auto manager = CreateManager();
 
-        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
 
         auto result =
             manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
@@ -90,7 +145,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             expected.GetPath(),
             guard.GetFilePath().GetPath());
         UNIT_ASSERT(guard.GetFilePath().Exists());
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, SessionId));
         UNIT_ASSERT(IsLocked(guard.GetFilePath()));
     }
 
@@ -130,7 +185,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!guard);
         UNIT_ASSERT(!filePath.Exists());
         UNIT_ASSERT(!SessionDir(FileSystemId, SessionId).Exists());
-        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
     }
 
     Y_UNIT_TEST_F(ShouldTreatRepeatedDeleteAsNoop, TFixture)
@@ -176,7 +231,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         // same manager.
         UNIT_ASSERT(filePath.Exists());
         UNIT_ASSERT(!IsLocked(filePath));
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, SessionId));
 
         auto result =
             manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
@@ -308,23 +363,23 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             first.GetFilePath().Parent().GetPath(),
             second.GetFilePath().Parent().GetPath());
 
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-1"));
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-2"));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, "session-1"));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, "session-2"));
 
         auto error = first.DeleteStateFile();
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
 
         UNIT_ASSERT(
-            !manager->HasHandleOpsQueueState(FileSystemId, "session-1"));
+            !HasHandleOpsQueueState(manager, FileSystemId, "session-1"));
         UNIT_ASSERT(!SessionDir(FileSystemId, "session-1").Exists());
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-2"));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, "session-2"));
         UNIT_ASSERT(second.GetFilePath().Exists());
     }
 
     Y_UNIT_TEST_F(ShouldDeleteStateFileLeftByPreviousSession, TFixture)
     {
         // Emulate an orphan file: acquire it and let the guard go away, so
-        // the file stays on disk without being held. Then, as the loop does
+        // the file stays alive without being held. Then, as the loop does
         // for a disabled component, acquire it again just to delete it.
         TFsPath orphan;
         {
@@ -339,7 +394,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
 
         auto manager = CreateManager();
         UNIT_ASSERT(
-            manager->HasDirectoryHandleStorageState(FileSystemId, SessionId));
+            HasDirectoryHandleStorageState(manager, FileSystemId, SessionId));
 
         auto result = manager->AcquireDirectoryHandleStorageStateFile(
             FileSystemId,
@@ -352,14 +407,15 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!orphan.Exists());
         UNIT_ASSERT(!SessionDir(FileSystemId, SessionId).Exists());
         UNIT_ASSERT(
-            !manager->HasDirectoryHandleStorageState(FileSystemId, SessionId));
+            !HasDirectoryHandleStorageState(manager, FileSystemId, SessionId));
     }
 
     Y_UNIT_TEST_F(ShouldNotDeleteUnheldSiblingStateFiles, TFixture)
     {
-        // A state file of a component which is not configured anymore (or
-        // just not acquired) is left in the session directory. Deleting the
-        // state file of another component must not take it away.
+        // A state file of a component which is just not acquired is left in
+        // the session directory. Deleting the state file of another component
+        // must not take it away, and, since the file is known from the
+        // listing, the directory is simply left alone: nothing to report.
         TFsPath unheld;
         {
             auto previous = CreateManager();
@@ -385,17 +441,53 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!dhsPath.Exists());
         UNIT_ASSERT(unheld.Exists());
         UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
+        UNIT_ASSERT_VALUES_EQUAL(0, SessionDirNotEmptyCounter->Val());
+    }
 
-        // ... but the untracked leftover is reported, since nobody is going
-        // to clean it up.
+    Y_UNIT_TEST_F(ShouldReportSessionDirNotEmptyForUnknownStateFiles, TFixture)
+    {
+        // A state file of a component which is not configured anymore is left
+        // in the session directory: it is not listed, so the registry knows
+        // nothing of it. Deleting the last known state file finds the
+        // directory not empty, which is worth reporting since nobody is going
+        // to clean that file up. It is not touched though.
+        TFsPath unknown;
+        {
+            auto previous = CreateManager();
+            auto result = previous->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            unknown = result.ExtractResult().GetFilePath();
+        }
+        UNIT_ASSERT(unknown.Exists());
+
+        auto manager = CreatePersistentStateManager({
+            .HandleOpsQueueBasePath = StatePath,
+            // WriteBackCacheBasePath is left empty on purpose
+            .DirectoryHandlesStorageBasePath = StatePath,
+        });
+        auto result = manager->AcquireDirectoryHandleStorageStateFile(
+            FileSystemId,
+            SessionId);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        auto dhs = result.ExtractResult();
+        const auto dhsPath = dhs.GetFilePath();
+
+        auto error = dhs.DeleteStateFile();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+
+        UNIT_ASSERT(!dhsPath.Exists());
+        UNIT_ASSERT(unknown.Exists());
+        UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
         UNIT_ASSERT_VALUES_EQUAL(1, SessionDirNotEmptyCounter->Val());
     }
 
     Y_UNIT_TEST_F(ShouldNotDisturbHeldSiblingWhenDeletingOrphan, TFixture)
     {
         // Emulate a session start with the directory handle storage disabled
-        // after it had been enabled: its file is left on disk unheld, while
-        // the other components' files in the same directory are held.
+        // after it had been enabled: its file is left unheld, while the other
+        // components' files in the same directory are held.
         TFsPath orphan;
         {
             auto previous = CreateManager();
@@ -453,12 +545,13 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
 
     Y_UNIT_TEST_F(ShouldFailToAcquireUnconfiguredComponent, TFixture)
     {
-        auto manager = CreatePersistentStateManager(
-            StatePath,
-            {},   // writeBackCacheBasePath
-            StatePath);
+        auto manager = CreatePersistentStateManager({
+            .HandleOpsQueueBasePath = StatePath,
+            // WriteBackCacheBasePath is left empty on purpose
+            .DirectoryHandlesStorageBasePath = StatePath,
+        });
 
-        UNIT_ASSERT(!manager->HasWriteBackCacheState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasWriteBackCacheState(manager, FileSystemId, SessionId));
 
         auto result =
             manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
@@ -498,6 +591,27 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT_C(!HasError(retried), retried.GetError().GetMessage());
     }
 
+    Y_UNIT_TEST_F(ShouldReportUnlistableBasePathInsteadOfIgnoringIt, TFixture)
+    {
+        // A base path which exists but cannot be listed must not be taken
+        // for an absent one: that would leave every state file on disk
+        // unnoticed and let the next session overwrite its own state. Here
+        // a regular file stands in for the base path.
+        TFsPath(StatePath).Touch();
+
+        auto manager = CreateManager();
+
+        auto hasState =
+            manager->HasWriteBackCacheState(FileSystemId, SessionId);
+        UNIT_ASSERT(HasError(hasState));
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, hasState.GetError().GetCode());
+
+        auto result =
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, result.GetError().GetCode());
+    }
+
     Y_UNIT_TEST_F(ShouldReportErrorInsteadOfThrowingOnAcquireFailure, TFixture)
     {
         auto manager = CreateManager();
@@ -520,14 +634,235 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, error.GetCode());
     }
 
-    Y_UNIT_TEST(ShouldTreatStubAsUnconfigured)
+    Y_UNIT_TEST_F(ShouldCreateStateFileWithConfiguredSize, TFixture)
+    {
+        constexpr ui64 StateFileSize = 64_KB;
+        auto manager = CreateManager(StateFileSize);
+
+        auto result =
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        auto guard = result.ExtractResult();
+        UNIT_ASSERT(guard);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            StateFileSize,
+            TFileStat(guard.GetFilePath().GetPath()).Size);
+    }
+
+    Y_UNIT_TEST_F(ShouldNotResizeExistingStateFile, TFixture)
+    {
+        constexpr ui64 StateFileSize = 64_KB;
+
+        // The size of an existing file is part of the state it carries
+        TFsPath filePath;
+        {
+            auto manager = CreateManager(4_KB);
+            auto result = manager->AcquireHandleOpsQueueStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            filePath = result.ExtractResult().GetFilePath();
+        }
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, TFileStat(filePath.GetPath()).Size);
+
+        auto manager = CreateManager(StateFileSize);
+        auto result =
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(4_KB, TFileStat(filePath.GetPath()).Size);
+    }
+
+    Y_UNIT_TEST_F(ShouldReturnEmptyGuardWhenTotalSizeLimitIsReached, TFixture)
+    {
+        // Room for exactly two state files
+        constexpr ui64 StateFileSize = 4_KB;
+        auto manager = CreateManager(StateFileSize, 2 * StateFileSize);
+
+        auto first =
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, "session-1");
+        auto second =
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, "session-2");
+        UNIT_ASSERT_C(!HasError(first), first.GetError().GetMessage());
+        UNIT_ASSERT_C(!HasError(second), second.GetError().GetMessage());
+        auto firstGuard = first.ExtractResult();
+        auto secondGuard = second.ExtractResult();
+        UNIT_ASSERT(firstGuard);
+        UNIT_ASSERT(secondGuard);
+
+        // The third one does not fit: no error, but nothing is acquired and
+        // nothing is created either
+        auto third =
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, "session-3");
+        UNIT_ASSERT_C(!HasError(third), third.GetError().GetMessage());
+        UNIT_ASSERT(!third.GetResult());
+        UNIT_ASSERT(
+            !HasWriteBackCacheState(manager, FileSystemId, "session-3"));
+        UNIT_ASSERT(!SessionDir(FileSystemId, "session-3").Exists());
+
+        // Deleting a state file makes room again
+        auto error = firstGuard.DeleteStateFile();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+
+        third =
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, "session-3");
+        UNIT_ASSERT_C(!HasError(third), third.GetError().GetMessage());
+        UNIT_ASSERT(third.GetResult());
+    }
+
+    Y_UNIT_TEST_F(ShouldAccountStateFilesOfAllFileSystemsAndSessions, TFixture)
+    {
+        constexpr ui64 StateFileSize = 4_KB;
+
+        // Files of other filesystems and sessions count, whether they are
+        // held by anyone or not
+        {
+            auto other = CreateManager(StateFileSize);
+            auto held =
+                other->AcquireWriteBackCacheStateFile("fs-1", "s-1");
+            auto released =
+                other->AcquireWriteBackCacheStateFile("fs-2", "s-2");
+            UNIT_ASSERT_C(!HasError(held), held.GetError().GetMessage());
+            UNIT_ASSERT_C(
+                !HasError(released),
+                released.GetError().GetMessage());
+            auto heldGuard = held.ExtractResult();
+            released.ExtractResult();
+
+            auto manager = CreateManager(StateFileSize, 2 * StateFileSize);
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(!result.GetResult());
+        }
+
+        // ... but only the files of the component in question do
+        {
+            auto manager = CreateManager(StateFileSize, 2 * StateFileSize);
+            auto result = manager->AcquireHandleOpsQueueStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(result.GetResult());
+        }
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldCountLimitedComponentsIndependentlyEvenIfTheyShareSessionDirectory,
+        TFixture)
+    {
+        // The components may share a single directory per session, and a
+        // session may have state files for only some of the components, e.g.
+        // when it was refused one by the limit. Counting the state files of a
+        // component must simply skip the sessions which have none, whatever the
+        // other components' files there.
+        constexpr ui64 StateFileSize = 4_KB;
+
+        // session-1: both files, session-2: handle ops queue only.
+        auto other = CreateManager(StateFileSize);
+        auto hoq1 = other->AcquireHandleOpsQueueStateFile(FileSystemId, "s-1");
+        auto wbc1 = other->AcquireWriteBackCacheStateFile(FileSystemId, "s-1");
+        auto hoq2 = other->AcquireHandleOpsQueueStateFile(FileSystemId, "s-2");
+        UNIT_ASSERT_C(!HasError(hoq1), hoq1.GetError().GetMessage());
+        UNIT_ASSERT_C(!HasError(wbc1), wbc1.GetError().GetMessage());
+        UNIT_ASSERT_C(!HasError(hoq2), hoq2.GetError().GetMessage());
+        auto hoq1Guard = hoq1.ExtractResult();
+        auto wbc1Guard = wbc1.ExtractResult();
+        auto hoq2Guard = hoq2.ExtractResult();
+        UNIT_ASSERT(!SessionDir(FileSystemId, "s-2")
+                         .Child("write_back_cache")
+                         .Exists());
+
+        // Exactly one write-back cache file is present, so there is room for
+        // one more under a limit of two, and for none under a limit of one:
+        // neither is an error.
+        {
+            auto manager = CreateManager(StateFileSize, 2 * StateFileSize);
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(result.GetResult());
+        }
+        {
+            auto manager = CreateManager(StateFileSize, StateFileSize);
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                "s-3");
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(!result.GetResult());
+        }
+
+        // Two handle ops queue files are present, one of them in a session
+        // which has no write-back cache file.
+        {
+            auto manager = CreateManager(StateFileSize, 3 * StateFileSize);
+            auto result = manager->AcquireHandleOpsQueueStateFile(
+                FileSystemId,
+                "s-3");
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(result.GetResult());
+        }
+        {
+            auto manager = CreateManager(StateFileSize, 2 * StateFileSize);
+            auto result = manager->AcquireHandleOpsQueueStateFile(
+                FileSystemId,
+                "s-4");
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            UNIT_ASSERT(!result.GetResult());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreExistingStateFileRegardlessOfLimit, TFixture)
+    {
+        constexpr ui64 StateFileSize = 4_KB;
+
+        TFsPath filePath;
+        {
+            auto manager = CreateManager(StateFileSize);
+            auto result = manager->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            filePath = result.ExtractResult().GetFilePath();
+        }
+
+        // The state of a previous session must be restored even though the
+        // limit does not allow creating anything at all
+        auto manager = CreateManager(StateFileSize, 1);
+        auto result =
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        UNIT_ASSERT(result.GetResult());
+        UNIT_ASSERT_VALUES_EQUAL(
+            filePath.GetPath(),
+            result.GetResult().GetFilePath().GetPath());
+    }
+
+    Y_UNIT_TEST_F(ShouldNotLimitDirectoryHandleStorage, TFixture)
+    {
+        // Only HandleOpsQueue and WriteBackCache are sized and limited
+        auto manager = CreateManager(4_KB, 1);
+
+        auto result = manager->AcquireDirectoryHandleStorageStateFile(
+            FileSystemId,
+            SessionId);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        UNIT_ASSERT(result.GetResult());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            TFileStat(result.GetResult().GetFilePath().GetPath()).Size);
+    }
+
+    Y_UNIT_TEST_F(ShouldTreatStubAsUnconfigured, TFixture)
     {
         auto manager = CreatePersistentStateManagerStub();
 
-        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
-        UNIT_ASSERT(!manager->HasWriteBackCacheState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
+        UNIT_ASSERT(!HasWriteBackCacheState(manager, FileSystemId, SessionId));
         UNIT_ASSERT(
-            !manager->HasDirectoryHandleStorageState(FileSystemId, SessionId));
+            !HasDirectoryHandleStorageState(manager, FileSystemId, SessionId));
 
         UNIT_ASSERT(HasError(
             manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId)));
