@@ -46,6 +46,47 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     // In production all the components share one base path, so does every
     // manager created here.
+    // Has*State() of the interface, whose answer must not be an error
+    template <typename TQuery>
+    static bool HasState(TQuery query)
+    {
+        const auto result = query();
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        return result.GetResult();
+    }
+
+    static bool HasHandleOpsQueueState(
+        const IPersistentStateManagerPtr& manager,
+        const TString& fileSystemId,
+        const TString& sessionId)
+    {
+        return HasState([&] {
+            return manager->HasHandleOpsQueueState(fileSystemId, sessionId);
+        });
+    }
+
+    static bool HasWriteBackCacheState(
+        const IPersistentStateManagerPtr& manager,
+        const TString& fileSystemId,
+        const TString& sessionId)
+    {
+        return HasState([&] {
+            return manager->HasWriteBackCacheState(fileSystemId, sessionId);
+        });
+    }
+
+    static bool HasDirectoryHandleStorageState(
+        const IPersistentStateManagerPtr& manager,
+        const TString& fileSystemId,
+        const TString& sessionId)
+    {
+        return HasState([&] {
+            return manager->HasDirectoryHandleStorageState(
+                fileSystemId,
+                sessionId);
+        });
+    }
+
     IPersistentStateManagerPtr CreateManager(
         ui64 stateFileSize = 0,
         ui64 totalSizeLimit = 0)
@@ -89,7 +130,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
     {
         auto manager = CreateManager();
 
-        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
 
         auto result =
             manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
@@ -104,7 +145,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             expected.GetPath(),
             guard.GetFilePath().GetPath());
         UNIT_ASSERT(guard.GetFilePath().Exists());
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, SessionId));
         UNIT_ASSERT(IsLocked(guard.GetFilePath()));
     }
 
@@ -144,7 +185,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!guard);
         UNIT_ASSERT(!filePath.Exists());
         UNIT_ASSERT(!SessionDir(FileSystemId, SessionId).Exists());
-        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
     }
 
     Y_UNIT_TEST_F(ShouldTreatRepeatedDeleteAsNoop, TFixture)
@@ -190,7 +231,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         // same manager.
         UNIT_ASSERT(filePath.Exists());
         UNIT_ASSERT(!IsLocked(filePath));
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, SessionId));
 
         auto result =
             manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
@@ -322,16 +363,16 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             first.GetFilePath().Parent().GetPath(),
             second.GetFilePath().Parent().GetPath());
 
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-1"));
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-2"));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, "session-1"));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, "session-2"));
 
         auto error = first.DeleteStateFile();
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
 
         UNIT_ASSERT(
-            !manager->HasHandleOpsQueueState(FileSystemId, "session-1"));
+            !HasHandleOpsQueueState(manager, FileSystemId, "session-1"));
         UNIT_ASSERT(!SessionDir(FileSystemId, "session-1").Exists());
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-2"));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, "session-2"));
         UNIT_ASSERT(second.GetFilePath().Exists());
     }
 
@@ -353,7 +394,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
 
         auto manager = CreateManager();
         UNIT_ASSERT(
-            manager->HasDirectoryHandleStorageState(FileSystemId, SessionId));
+            HasDirectoryHandleStorageState(manager, FileSystemId, SessionId));
 
         auto result = manager->AcquireDirectoryHandleStorageStateFile(
             FileSystemId,
@@ -366,7 +407,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!orphan.Exists());
         UNIT_ASSERT(!SessionDir(FileSystemId, SessionId).Exists());
         UNIT_ASSERT(
-            !manager->HasDirectoryHandleStorageState(FileSystemId, SessionId));
+            !HasDirectoryHandleStorageState(manager, FileSystemId, SessionId));
     }
 
     Y_UNIT_TEST_F(ShouldNotDeleteUnheldSiblingStateFiles, TFixture)
@@ -510,7 +551,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             .DirectoryHandlesStorageBasePath = StatePath,
         });
 
-        UNIT_ASSERT(!manager->HasWriteBackCacheState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasWriteBackCacheState(manager, FileSystemId, SessionId));
 
         auto result =
             manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
@@ -635,7 +676,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT_C(!HasError(third), third.GetError().GetMessage());
         UNIT_ASSERT(!third.GetResult());
         UNIT_ASSERT(
-            !manager->HasWriteBackCacheState(FileSystemId, "session-3"));
+            !HasWriteBackCacheState(manager, FileSystemId, "session-3"));
         UNIT_ASSERT(!SessionDir(FileSystemId, "session-3").Exists());
 
         // Deleting a state file makes room again
@@ -793,14 +834,14 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             TFileStat(result.GetResult().GetFilePath().GetPath()).Size);
     }
 
-    Y_UNIT_TEST(ShouldTreatStubAsUnconfigured)
+    Y_UNIT_TEST_F(ShouldTreatStubAsUnconfigured, TFixture)
     {
         auto manager = CreatePersistentStateManagerStub();
 
-        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
-        UNIT_ASSERT(!manager->HasWriteBackCacheState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
+        UNIT_ASSERT(!HasWriteBackCacheState(manager, FileSystemId, SessionId));
         UNIT_ASSERT(
-            !manager->HasDirectoryHandleStorageState(FileSystemId, SessionId));
+            !HasDirectoryHandleStorageState(manager, FileSystemId, SessionId));
 
         UNIT_ASSERT(HasError(
             manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId)));

@@ -66,10 +66,11 @@ struct IPersistentStateManager
     // HandleOpsQueue
 
     // Returns true iff the component is configured and the state file of the
-    // given session is present.
-    virtual bool HasHandleOpsQueueState(
+    // given session is present, as known from the listing of the state
+    // files (which is what the error, if any, is about).
+    virtual TResultOrError<bool> HasHandleOpsQueueState(
         const TString& fileSystemId,
-        const TString& sessionId) const = 0;
+        const TString& sessionId) = 0;
     // If the corresponding state file exists, acquires the advisory lock and
     // returns the file, otherwise creates the file first, unless the total
     // size limit of the component is reached: then an empty guard is
@@ -81,9 +82,9 @@ struct IPersistentStateManager
 
     // WriteBackCache
 
-    virtual bool HasWriteBackCacheState(
+    virtual TResultOrError<bool> HasWriteBackCacheState(
         const TString& fileSystemId,
-        const TString& sessionId) const = 0;
+        const TString& sessionId) = 0;
     // If the corresponding state file exists, acquires the advisory lock and
     // returns the file, otherwise creates the file first, unless the total
     // size limit of the component is reached: then an empty guard is
@@ -95,9 +96,9 @@ struct IPersistentStateManager
 
     // DirectoryHandleStorage
 
-    virtual bool HasDirectoryHandleStorageState(
+    virtual TResultOrError<bool> HasDirectoryHandleStorageState(
         const TString& fileSystemId,
-        const TString& sessionId) const = 0;
+        const TString& sessionId) = 0;
     // If the corresponding state file exists, acquires the advisory lock and
     // returns the file, otherwise creates the file first.
     virtual TResultOrError<TAcquireStateFileGuard>

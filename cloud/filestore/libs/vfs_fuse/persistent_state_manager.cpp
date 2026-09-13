@@ -82,6 +82,12 @@ private:
     TStateFiles StateFiles;
 
 public:
+    bool IsRegistered(const TString& dir, const TString& fileName) const
+    {
+        const auto* dirFiles = StateFiles.FindPtr(dir);
+        return dirFiles && dirFiles->contains(fileName);
+    }
+
     bool IsAcquired(const TString& dir, const TString& fileName) const
     {
         const auto* dirFiles = StateFiles.FindPtr(dir);
@@ -251,27 +257,27 @@ public:
 
     // HandleOpsQueue
 
-    bool HasHandleOpsQueueState(
+    TResultOrError<bool> HasHandleOpsQueueState(
         const TString& fileSystemId,
-        const TString& sessionId) const override;
+        const TString& sessionId) override;
     TResultOrError<TAcquireStateFileGuard> AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
         const TString& sessionId) override;
 
     // WriteBackCache
 
-    bool HasWriteBackCacheState(
+    TResultOrError<bool> HasWriteBackCacheState(
         const TString& fileSystemId,
-        const TString& sessionId) const override;
+        const TString& sessionId) override;
     TResultOrError<TAcquireStateFileGuard> AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
         const TString& sessionId) override;
 
     // DirectoryHandleStorage
 
-    bool HasDirectoryHandleStorageState(
+    TResultOrError<bool> HasDirectoryHandleStorageState(
         const TString& fileSystemId,
-        const TString& sessionId) const override;
+        const TString& sessionId) override;
     TResultOrError<TAcquireStateFileGuard>
     AcquireDirectoryHandleStorageStateFile(
         const TString& fileSystemId,
@@ -299,10 +305,10 @@ private:
         TAcquireStateFileGuard::TImpl& impl,
         bool deleteFile);
 
-    bool HasState(
+    TResultOrError<bool> HasState(
         const TComponentConfig& component,
         const TString& fileSystemId,
-        const TString& sessionId) const;
+        const TString& sessionId);
 
     TResultOrError<TAcquireStateFileGuard> AcquireStateFile(
         const TComponentConfig& component,
@@ -373,17 +379,19 @@ NProto::TError TPersistentStateManager::ListStateFilesLocked(
                     continue;
                 }
 
-                const auto filePath = sessionDir / fileName;
-                if (!filePath.Exists()) {
-                    continue;
-                }
+                TVector<TFsPath> files;
+                sessionDir.List(files);
+                for (const auto& file: files) {
+                    if (file.GetName() != fileName) {
+                        continue;
+                    }
 
-                const ui64 size = TFileStat(filePath.GetPath()).Size;
-                Registry.Register(
-                    sessionDir.GetPath(),
-                    fileName,
-                    size,
-                    false /* fileAcquired */);
+                    Registry.Register(
+                        sessionDir.GetPath(),
+                        fileName,
+                        TFileStat(file.GetPath()).Size,
+                        false /* fileAcquired */);
+                }
             }
         }
     } catch (const yexception& e) {
@@ -459,13 +467,17 @@ NProto::TError TPersistentStateManager::ReleaseStateFile(
     // Only this very file is removed: the directory may hold state files of
     // other components, whether acquired or not.
     NProto::TError removeError;
-    const bool fileDeleted =
-        !impl.FilePath.Exists() || NFs::Remove(impl.FilePath);
-    if (!fileDeleted) {
-        removeError = MakeError(
-            E_FAIL,
-            TStringBuilder() << "Failed to remove file " << impl.FilePath
-                             << ", reason: " << LastSystemErrorText());
+    bool fileDeleted = true;
+    if (!NFs::Remove(impl.FilePath)) {
+        // A file already gone, e.g. removed by hand, is as good as deleted
+        const int err = LastSystemError();
+        if (err != ENOENT) {
+            fileDeleted = false;
+            removeError = MakeError(
+                E_FAIL,
+                TStringBuilder() << "Failed to remove file " << impl.FilePath
+                                 << ", reason: " << LastSystemErrorText(err));
+        }
     }
 
     // Whatever happened to the file, it is not acquired anymore
@@ -500,19 +512,25 @@ NProto::TError TPersistentStateManager::ReleaseStateFile(
     return releaseError;
 }
 
-bool TPersistentStateManager::HasState(
+TResultOrError<bool> TPersistentStateManager::HasState(
     const TComponentConfig& component,
     const TString& fileSystemId,
-    const TString& sessionId) const
+    const TString& sessionId)
 {
     if (!component.BasePath) {
         return false;
     }
 
-    const auto filePath =
-        GetSessionDir(component, fileSystemId, sessionId) / component.FileName;
+    const auto dir = GetSessionDir(component, fileSystemId, sessionId);
+    const TString fileName(component.FileName);
 
-    return filePath.Exists();
+    TGuard guard(Mutex);
+
+    if (auto error = EnsureRegistryInitializedLocked(); HasError(error)) {
+        return error;
+    }
+
+    return Registry.IsRegistered(dir.GetPath(), fileName);
 }
 
 TResultOrError<TAcquireStateFileGuard>
@@ -549,7 +567,7 @@ TPersistentStateManager::AcquireStateFile(
     // state of a previous session is always restored. A new one is created
     // only if it fits into the limit, otherwise the component is not to be
     // used by the session at all, which is what an empty guard means.
-    const bool isNew = !filePath.Exists();
+    const bool isNew = !Registry.IsRegistered(dir.GetPath(), fileName);
     if (isNew && component.TotalSizeLimit &&
         Registry.GetTotalSize(fileName) + component.StateFileSize >
             component.TotalSizeLimit)
@@ -618,9 +636,9 @@ TPersistentStateManager::AcquireStateFile(
 ////////////////////////////////////////////////////////////////////////////////
 // HandleOpsQueue
 
-bool TPersistentStateManager::HasHandleOpsQueueState(
+TResultOrError<bool> TPersistentStateManager::HasHandleOpsQueueState(
     const TString& fileSystemId,
-    const TString& sessionId) const
+    const TString& sessionId)
 {
     return HasState(HandleOpsQueue, fileSystemId, sessionId);
 }
@@ -636,9 +654,9 @@ TPersistentStateManager::AcquireHandleOpsQueueStateFile(
 ////////////////////////////////////////////////////////////////////////////////
 // WriteBackCache
 
-bool TPersistentStateManager::HasWriteBackCacheState(
+TResultOrError<bool> TPersistentStateManager::HasWriteBackCacheState(
     const TString& fileSystemId,
-    const TString& sessionId) const
+    const TString& sessionId)
 {
     return HasState(WriteBackCache, fileSystemId, sessionId);
 }
@@ -654,9 +672,9 @@ TPersistentStateManager::AcquireWriteBackCacheStateFile(
 ////////////////////////////////////////////////////////////////////////////////
 // DirectoryHandleStorage
 
-bool TPersistentStateManager::HasDirectoryHandleStorageState(
+TResultOrError<bool> TPersistentStateManager::HasDirectoryHandleStorageState(
     const TString& fileSystemId,
-    const TString& sessionId) const
+    const TString& sessionId)
 {
     return HasState(DirectoryHandleStorage, fileSystemId, sessionId);
 }
@@ -677,9 +695,9 @@ class TPersistentStateManagerStub final
 public:
     // HandleOpsQueue
 
-    bool HasHandleOpsQueueState(
+    TResultOrError<bool> HasHandleOpsQueueState(
         const TString& fileSystemId,
-        const TString& sessionId) const override
+        const TString& sessionId) override
     {
         Y_UNUSED(fileSystemId, sessionId);
         return false;
@@ -695,9 +713,9 @@ public:
 
     // WriteBackCache
 
-    bool HasWriteBackCacheState(
+    TResultOrError<bool> HasWriteBackCacheState(
         const TString& fileSystemId,
-        const TString& sessionId) const override
+        const TString& sessionId) override
     {
         Y_UNUSED(fileSystemId, sessionId);
         return false;
@@ -713,9 +731,9 @@ public:
 
     // DirectoryHandleStorage
 
-    bool HasDirectoryHandleStorageState(
+    TResultOrError<bool> HasDirectoryHandleStorageState(
         const TString& fileSystemId,
-        const TString& sessionId) const override
+        const TString& sessionId) override
     {
         Y_UNUSED(fileSystemId, sessionId);
         return false;
