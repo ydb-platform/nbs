@@ -2,6 +2,8 @@
 
 #include "device.h"
 
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/algorithm.h>
@@ -28,15 +30,15 @@ TString AsString(const TBuffer& buffer)
     return TString(buffer.Data(), buffer.Size());
 }
 
-using TKeyBuffers = TVector<std::pair<ui64, TBuffer>>;
+using TKeyBuffers = TVector<TKeyBuffer>;
 
 TString Get(const TKeyBuffers& buffers, ui64 key)
 {
     auto it = FindIf(buffers, [key](const auto& entry) {
-        return entry.first == key;
+        return entry.Key == key;
     });
     UNIT_ASSERT_C(it != buffers.end(), "key " << key << " is missing");
-    return AsString(it->second);
+    return AsString(it->Buffer);
 }
 
 TKeyBuffers Restore(const IKeyBufferStorePtr& store)
@@ -52,7 +54,7 @@ TKeyBuffers Restore(const IKeyBufferStorePtr& store)
 // "<key>=<buffer>|..." in the key order
 TString Describe(TKeyBuffers buffers)
 {
-    SortBy(buffers, [](const auto& entry) { return entry.first; });
+    SortBy(buffers, [](const auto& entry) { return entry.Key; });
 
     TStringBuilder sb;
     for (const auto& [key, buffer]: buffers) {
@@ -79,11 +81,27 @@ ui32 EraseBelow(const IKeyBufferStorePtr& store, ui64 key)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+ILoggingServicePtr TestLogging()
+{
+    static const ILoggingServicePtr logging = [] {
+        auto logging = CreateLoggingService(
+            "console",
+            {.FiltrationLevel = TLOG_RESOURCES});
+        logging->Start();
+        return logging;
+    }();
+    return logging;
+}
+
 IKeyBufferStorePtr CreateTestStore(
     const IDevicePtr& device,
     ui64 pageCount = TestPageCount)
 {
-    return CreateDeviceKeyBufferStore(device, pageCount, TestPageSize);
+    return CreateDeviceKeyBufferStore(
+        TestLogging(),
+        device,
+        pageCount,
+        TestPageSize);
 }
 
 // a store instance restored from the device
@@ -220,7 +238,8 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
     {
         auto store = CreateInMemoryKeyBufferStore();
 
-        UNIT_ASSERT(Restore(store).empty());
+        auto buffers = Restore(store);
+        UNIT_ASSERT(buffers.empty());
     }
 
     Y_UNIT_TEST(ShouldInsertAndGet)
@@ -230,7 +249,8 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         Write(store, 1, "one");
         Write(store, 2, "two");
 
-        UNIT_ASSERT_VALUES_EQUAL("1=one|2=two", Describe(Restore(store)));
+        auto buffers = Restore(store);
+        UNIT_ASSERT_VALUES_EQUAL("1=one|2=two", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldOverwriteAnExistingKey)
@@ -240,7 +260,8 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         Write(store, 1, "first");
         Write(store, 1, "second");
 
-        UNIT_ASSERT_VALUES_EQUAL("1=second", Describe(Restore(store)));
+        auto buffers = Restore(store);
+        UNIT_ASSERT_VALUES_EQUAL("1=second", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldEraseASingleKey)
@@ -249,11 +270,15 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
 
         Write(store, 1, "one");
 
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 2));
-        UNIT_ASSERT(Restore(store).empty());
+        auto code = EraseBelow(store, 2);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
+
+        auto buffers = Restore(store);
+        UNIT_ASSERT(buffers.empty());
 
         // removing what is not there reports that nothing was done
-        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, EraseBelow(store, 2));
+        code = EraseBelow(store, 2);
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
     }
 
     Y_UNIT_TEST(ShouldEraseEveryKeyBelowTheGivenOne)
@@ -265,12 +290,16 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         }
 
         // the bound itself is kept
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 5));
-        UNIT_ASSERT_VALUES_EQUAL("5=x|7=x", Describe(Restore(store)));
+        auto code = EraseBelow(store, 5);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
+        auto buffers = Restore(store);
+        UNIT_ASSERT_VALUES_EQUAL("5=x|7=x", Describe(buffers));
 
         // and it need not be a stored key
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 6));
-        UNIT_ASSERT_VALUES_EQUAL("7=x", Describe(Restore(store)));
+        code = EraseBelow(store, 6);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
+        buffers = Restore(store);
+        UNIT_ASSERT_VALUES_EQUAL("7=x", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldEraseNothingBelowTheLowestKey)
@@ -279,12 +308,16 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
 
         Write(store, 5, "x");
 
-        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, EraseBelow(store, 5));
-        UNIT_ASSERT_VALUES_EQUAL("5=x", Describe(Restore(store)));
+        auto code = EraseBelow(store, 5);
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
+        auto buffers = Restore(store);
+        UNIT_ASSERT_VALUES_EQUAL("5=x", Describe(buffers));
 
         // and on an empty store
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 6));
-        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, EraseBelow(store, Max<ui64>()));
+        code = EraseBelow(store, 6);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
+        code = EraseBelow(store, Max<ui64>());
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
     }
 
     Y_UNIT_TEST(ShouldEraseKeyZeroLikeAnyOther)
@@ -295,13 +328,15 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         Write(store, 10, "record");
 
         // the store gives key 0 no special meaning
-        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, EraseBelow(store, 0));
-        UNIT_ASSERT_VALUES_EQUAL(
-            "0=metadata|10=record",
-            Describe(Restore(store)));
+        auto code = EraseBelow(store, 0);
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
+        auto buffers = Restore(store);
+        UNIT_ASSERT_VALUES_EQUAL("0=metadata|10=record", Describe(buffers));
 
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 11));
-        UNIT_ASSERT(Restore(store).empty());
+        code = EraseBelow(store, 11);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
+        buffers = Restore(store);
+        UNIT_ASSERT(buffers.empty());
     }
 
     Y_UNIT_TEST(ShouldRefuseToWriteAnErasedKey)
@@ -309,17 +344,17 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         auto store = CreateInMemoryKeyBufferStore();
 
         Write(store, 5, "x");
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 6));
+        auto code = EraseBelow(store, 6);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            store->Write(5, MakeBuffer("x")).GetValueSync().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            store->Write(3, MakeBuffer("x")).GetValueSync().GetCode());
+        auto error = store->Write(5, MakeBuffer("x")).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+        error = store->Write(3, MakeBuffer("x")).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
 
         Write(store, 6, "y");
-        UNIT_ASSERT_VALUES_EQUAL("6=y", Describe(Restore(store)));
+        auto buffers = Restore(store);
+        UNIT_ASSERT_VALUES_EQUAL("6=y", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldReadKeysInAscendingOrder)
@@ -330,7 +365,8 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
             Write(store, key, "x");
         }
 
-        UNIT_ASSERT_VALUES_EQUAL("1=x|3=x|5=x", Describe(Restore(store)));
+        auto buffers = Restore(store);
+        UNIT_ASSERT_VALUES_EQUAL("1=x|3=x|5=x", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldKeepAnIndependentCopyOfTheBuffer)
@@ -338,13 +374,13 @@ Y_UNIT_TEST_SUITE(TInMemoryKeyBufferStoreTest)
         auto store = CreateInMemoryKeyBufferStore();
 
         TBuffer buffer = MakeBuffer("original");
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            store->Write(1, buffer).GetValueSync().GetCode());
+        auto error = store->Write(1, buffer).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         buffer.Clear();
 
-        UNIT_ASSERT_VALUES_EQUAL("1=original", Describe(Restore(store)));
+        auto buffers = Restore(store);
+        UNIT_ASSERT_VALUES_EQUAL("1=original", Describe(buffers));
     }
 }
 
@@ -357,20 +393,20 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         auto device = CreateInMemoryDevice();
         auto store = CreateTestStore(device);
 
-        UNIT_ASSERT(Restore(store).empty());
-        UNIT_ASSERT(Reopen(device).empty());
+        auto buffers = Restore(store);
+        UNIT_ASSERT(buffers.empty());
+        buffers = Reopen(device);
+        UNIT_ASSERT(buffers.empty());
     }
 
     Y_UNIT_TEST(ShouldRequireRestoreBeforeUse)
     {
         auto store = CreateTestStore(CreateInMemoryDevice());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            store->Write(1, MakeBuffer("x")).GetValueSync().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_INVALID_STATE,
-            store->EraseBelow(2).GetValueSync().GetCode());
+        auto error = store->Write(1, MakeBuffer("x")).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
+        error = store->EraseBelow(2).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
     }
 
     Y_UNIT_TEST(ShouldKeepTheBuffersAcrossRestores)
@@ -384,7 +420,8 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             Write(store, 3, "");
         }
 
-        UNIT_ASSERT_VALUES_EQUAL("1=one|2=two|3=", Describe(Reopen(device)));
+        auto buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("1=one|2=two|3=", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldSplitABufferAcrossPages)
@@ -414,9 +451,11 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         auto store = OpenTestStore(device);
         Write(store, 1, "0123456789abcdefghijklmnopqrstuvwxyzABCD");
         Write(store, 2, "x");
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 2));
+        auto code = EraseBelow(store, 2);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
 
-        UNIT_ASSERT(IsZeroDevicePage(device, TestPageCount));
+        const bool isZero = IsZeroDevicePage(device, TestPageCount);
+        UNIT_ASSERT(isZero);
     }
 
     Y_UNIT_TEST(ShouldRejectABufferThatDoesNotFit)
@@ -425,21 +464,17 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         auto store = OpenTestStore(device);
 
         // 6 entry pages of 16 bytes payload each
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            store->Write(1, TBuffer(TString(97, 'x').data(), 97))
-                .GetValueSync()
-                .GetCode());
+        auto error =
+            store->Write(1, MakeBuffer(TString(97, 'x'))).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         Write(store, 1, TString(96, 'x'));
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            store->Write(2, MakeBuffer("x")).GetValueSync().GetCode());
+        error = store->Write(2, MakeBuffer("x")).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "1=" + TString(96, 'x'),
-            Describe(Reopen(device)));
+        auto buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("1=" + TString(96, 'x'), Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldReuseThePagesOfErasedBuffers)
@@ -451,21 +486,21 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             Write(store, key, "x");
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            store->Write(7, MakeBuffer("x")).GetValueSync().GetCode());
+        auto error = store->Write(7, MakeBuffer("x")).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 4));
+        auto code = EraseBelow(store, 4);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
 
         Write(store, 7, "0123456789abcdefghijklmnopqrstuvwxyzABCD");
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            store->Write(8, MakeBuffer("x")).GetValueSync().GetCode());
+        error = store->Write(8, MakeBuffer("x")).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
+        auto buffers = Reopen(device);
         UNIT_ASSERT_VALUES_EQUAL(
             "4=x|5=x|6=x|7=0123456789abcdefghijklmnopqrstuvwxyzABCD",
-            Describe(Reopen(device)));
+            Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldPersistTheErasedBound)
@@ -477,34 +512,39 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             Write(store, 1, "one");
             Write(store, 2, "two");
             Write(store, 3, "three");
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 3));
+            auto code = EraseBelow(store, 3);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
         }
 
         // the erased pages were not reused, the bound drops them anyway
         {
             auto store = CreateTestStore(device);
-            UNIT_ASSERT_VALUES_EQUAL("3=three", Describe(Restore(store)));
+            auto buffers = Restore(store);
+            UNIT_ASSERT_VALUES_EQUAL("3=three", Describe(buffers));
 
-            UNIT_ASSERT_VALUES_EQUAL(S_FALSE, EraseBelow(store, 3));
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_ARGUMENT,
-                store->Write(2, MakeBuffer("x")).GetValueSync().GetCode());
+            auto code = EraseBelow(store, 3);
+            UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
+            auto error = store->Write(2, MakeBuffer("x")).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
 
             // a bound without live keys is persisted all the same
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 4));
-            UNIT_ASSERT_VALUES_EQUAL(S_FALSE, EraseBelow(store, 11));
+            code = EraseBelow(store, 4);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
+            code = EraseBelow(store, 11);
+            UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
         }
 
         {
             auto store = CreateTestStore(device);
-            UNIT_ASSERT(Restore(store).empty());
-            UNIT_ASSERT_VALUES_EQUAL(
-                E_ARGUMENT,
-                store->Write(10, MakeBuffer("x")).GetValueSync().GetCode());
+            auto buffers = Restore(store);
+            UNIT_ASSERT(buffers.empty());
+            auto error = store->Write(10, MakeBuffer("x")).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
             Write(store, 11, "x");
         }
 
-        UNIT_ASSERT_VALUES_EQUAL("11=x", Describe(Reopen(device)));
+        auto buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("11=x", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldKeepTheNewestCopyOfARewrittenKey)
@@ -521,11 +561,13 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         // a later instance wins even though it may land on lower pages
         {
             auto store = CreateTestStore(device);
-            UNIT_ASSERT_VALUES_EQUAL("1=second", Describe(Restore(store)));
+            auto buffers = Restore(store);
+            UNIT_ASSERT_VALUES_EQUAL("1=second", Describe(buffers));
             Write(store, 1, "third");
         }
 
-        UNIT_ASSERT_VALUES_EQUAL("1=third", Describe(Reopen(device)));
+        auto buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("1=third", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldFreeThePagesOfTheOverwrittenCopy)
@@ -538,9 +580,8 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             Write(store, 1, TString(40, static_cast<char>('a' + i)));
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "1=" + TString(40, 't'),
-            Describe(Reopen(device)));
+        auto buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("1=" + TString(40, 't'), Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldDropATornBuffer)
@@ -557,7 +598,8 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         // key 2 takes the entry pages 1, 2 and 3
         CorruptDevicePage(device, FirstEntryPageNo + 2);
 
-        UNIT_ASSERT_VALUES_EQUAL("1=one|3=three", Describe(Reopen(device)));
+        auto buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("1=one|3=three", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldKeepTheOldCopyWhenTheRewriteIsTorn)
@@ -573,7 +615,8 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         // the old copy sits at the entry page 0, the new one at 1, 2 and 3
         CorruptDevicePage(device, FirstEntryPageNo + 1);
 
-        UNIT_ASSERT_VALUES_EQUAL("1=first", Describe(Reopen(device)));
+        auto buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("1=first", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldSurviveATornSuperblock)
@@ -585,14 +628,17 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             Write(store, 1, "one");
             Write(store, 2, "two");
             Write(store, 3, "three");
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 2));   // slot 0
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, EraseBelow(store, 3));   // slot 1
+            auto code = EraseBelow(store, 2);   // slot 0
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
+            code = EraseBelow(store, 3);   // slot 1
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
         }
 
         // the newest superblock is lost, the previous bound applies
         CorruptDevicePage(device, 1, 20);
 
-        UNIT_ASSERT_VALUES_EQUAL("2=two|3=three", Describe(Reopen(device)));
+        auto buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("2=two|3=three", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldIgnoreGarbageOnTheDevice)
@@ -604,10 +650,12 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         }
 
         auto store = CreateTestStore(device);
-        UNIT_ASSERT(Restore(store).empty());
+        auto buffers = Restore(store);
+        UNIT_ASSERT(buffers.empty());
 
         Write(store, 1, "one");
-        UNIT_ASSERT_VALUES_EQUAL("1=one", Describe(Reopen(device)));
+        buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("1=one", Describe(buffers));
     }
 
     Y_UNIT_TEST(ShouldRestoreALargeRangeInSeveralReads)
@@ -640,40 +688,44 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         auto write2 = store->Write(2, MakeBuffer("two"));
         auto write3 = store->Write(3, MakeBuffer("three"));
         device->ReleaseAll();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, write1.GetValueSync().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, write2.GetValueSync().GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, write3.GetValueSync().GetCode());
+        auto error = write1.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        error = write2.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        error = write3.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         auto erase = store->EraseBelow(3);
         UNIT_ASSERT_VALUES_EQUAL(1, device->PendingCount());
         UNIT_ASSERT(!erase.HasValue());
 
         // a second erase has to wait for the first one to complete
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            store->EraseBelow(4).GetValueSync().GetCode());
+        error = store->EraseBelow(4).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         // even a lower bound - it is not persisted until the write is done
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            store->EraseBelow(2).GetValueSync().GetCode());
+        error = store->EraseBelow(2).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         // an erased key is refused right away
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_ARGUMENT,
-            store->Write(2, MakeBuffer("x")).GetValueSync().GetCode());
+        error = store->Write(2, MakeBuffer("x")).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
 
         device->ReleaseAll();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, erase.GetValueSync().GetCode());
+        error = erase.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         UNIT_ASSERT_VALUES_EQUAL(0, device->PendingCount());
 
-        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, EraseBelow(store, 2));
+        auto code = EraseBelow(store, 2);
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, code);
 
         auto erase3 = store->EraseBelow(4);
         device->ReleaseAll();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, erase3.GetValueSync().GetCode());
+        error = erase3.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        UNIT_ASSERT(Reopen(device).empty());
+        auto buffers = Reopen(device);
+        UNIT_ASSERT(buffers.empty());
     }
 
     Y_UNIT_TEST(ShouldReportTheDeviceWriteError)
@@ -684,18 +736,15 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
         auto write = store->Write(1, MakeBuffer("one"));
         device->ReleaseAll();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, write.GetValueSync().GetCode());
+        auto error = write.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
         device->Broken = true;
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_IO,
-            store->Write(2, TBuffer(TString(40, 'x').data(), 40))
-                .GetValueSync()
-                .GetCode());
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_IO,
-            store->EraseBelow(2).GetValueSync().GetCode());
+        error = store->Write(2, MakeBuffer(TString(40, 'x'))).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, error.GetCode());
+        error = store->EraseBelow(2).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, error.GetCode());
 
         device->Broken = false;
 
@@ -707,20 +756,20 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
         }
         device->ReleaseAll();
         for (auto& future: writes) {
-            UNIT_ASSERT_VALUES_EQUAL(S_OK, future.GetValueSync().GetCode());
+            error = future.GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         }
-        UNIT_ASSERT_VALUES_EQUAL(
-            E_REJECTED,
-            store->Write(7, MakeBuffer("x")).GetValueSync().GetCode());
+        error = store->Write(7, MakeBuffer("x")).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
 
         // the failed erase changed nothing, it can be retried
         auto erase = store->EraseBelow(2);
         device->ReleaseAll();
-        UNIT_ASSERT_VALUES_EQUAL(S_OK, erase.GetValueSync().GetCode());
+        error = erase.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            "2=x|3=x|4=x|5=x|6=x",
-            Describe(Reopen(device)));
+        auto buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("2=x|3=x|4=x|5=x|6=x", Describe(buffers));
     }
 }
 

@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -15,9 +16,17 @@ namespace NCloud::NJournalled {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TKeyBuffer
+{
+    ui64 Key = 0;
+    TBuffer Buffer;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IKeyBufferStore
 {
-    using TRestoreResult = TResultOrError<TVector<std::pair<ui64, TBuffer>>>;
+    using TRestoreResult = TResultOrError<TVector<TKeyBuffer>>;
 
     virtual ~IKeyBufferStore() = default;
 
@@ -35,6 +44,7 @@ struct IKeyBufferStore
 IKeyBufferStorePtr CreateInMemoryKeyBufferStore();
 
 IKeyBufferStorePtr CreateDeviceKeyBufferStore(
+    ILoggingServicePtr logging,
     IDevicePtr device,
     ui64 pageCount,
     ui32 pageSize);

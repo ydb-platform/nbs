@@ -4,22 +4,25 @@
 #include "device_page_store.h"
 
 #include <cloud/storage/core/libs/common/future_helper.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
+
+#include <util/digest/multi.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
 #include <util/generic/utility.h>
-#include <util/generic/ylimits.h>
-#include <util/stream/buffer.h>
-#include <util/stream/mem.h>
+#include <util/generic/ymath.h>
 #include <util/string/builder.h>
 #include <util/system/spinlock.h>
 #include <util/system/yassert.h>
-#include <util/ysaveload.h>
 
+#include <cstddef>
+#include <cstring>
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 namespace NCloud::NJournalled {
@@ -40,12 +43,12 @@ private:
 public:
     TFuture<TRestoreResult> Restore() override
     {
-        TVector<std::pair<ui64, TBuffer>> buffers;
+        TVector<TKeyBuffer> buffers;
 
         with_lock (Lock) {
             buffers.reserve(Buffers.size());
             for (const auto& [key, buffer]: Buffers) {
-                buffers.emplace_back(key, buffer);
+                buffers.push_back({.Key = key, .Buffer = buffer});
             }
         }
 
@@ -91,63 +94,88 @@ constexpr ui32 StoreFormatVersion = 1;
 
 constexpr ui64 SuperblockSlotCount = 2;
 
-// Magic, Seq, Key, PayloadSize, Version, PageIndex, PageCount, Crc. The
-// checksum covers the fields before it and the chunk that follows.
-constexpr ui32 EntryHeaderSize = 4 * sizeof(ui64) + 4 * sizeof(ui32);
-
-// Magic, Seq, ErasedBelowKey, Version, Crc. The checksum covers the fields
-// before it.
-constexpr ui32 SuperblockSize = 3 * sizeof(ui64) + 2 * sizeof(ui32);
-
-constexpr ui64 MaxPagesPerReadRequest = 1024;
-
 struct TEntryHeader
 {
+    ui64 Magic = 0;
     ui64 Seq = 0;
     ui64 Key = 0;
     ui64 PayloadSize = 0;
-    ui32 PageIndex = 0;
-    ui32 PageCount = 0;
+    ui32 Version = 0;
+    ui32 ChunkIndex = 0;
+    ui32 ChunkCount = 0;
+    ui32 Crc = 0;
 };
 
 struct TSuperblock
 {
+    ui64 Magic = 0;
     ui64 Seq = 0;
     ui64 ErasedBelowKey = 0;
+    ui32 Version = 0;
+    ui32 Crc = 0;
 };
 
-ui64 EntryPageCountFor(ui64 payloadSize, ui64 chunkCapacity)
+constexpr ui32 EntryHeaderSize = sizeof(TEntryHeader);
+constexpr ui32 SuperblockSize = sizeof(TSuperblock);
+
+static_assert(EntryHeaderSize == 48);
+static_assert(SuperblockSize == 32);
+
+// The headers are copied to and from the pages as raw bytes, so they must
+// be trivially copyable and must not contain padding.
+static_assert(std::is_trivially_copyable_v<TEntryHeader>);
+static_assert(std::is_trivially_copyable_v<TSuperblock>);
+static_assert(std::has_unique_object_representations_v<TEntryHeader>);
+static_assert(std::has_unique_object_representations_v<TSuperblock>);
+
+constexpr ui64 MaxPagesPerReadRequest = 1024;
+
+struct TEntryPage
 {
-    return Max<ui64>(1, (payloadSize + chunkCapacity - 1) / chunkCapacity);
+    TEntryHeader Header;
+    TStringBuf Chunk;
+};
+
+// Identifies the version of a key written under a particular seq.
+struct TEntryId
+{
+    ui64 Key = 0;
+    ui64 Seq = 0;
+
+    bool operator==(const TEntryId&) const = default;
+};
+
+struct TEntryIdHash
+{
+    size_t operator()(const TEntryId& id) const
+    {
+        return MultiHash(id.Key, id.Seq);
+    }
+};
+
+ui64 ChunkCountFor(ui64 payloadSize, ui64 chunkCapacity)
+{
+    return Max<ui64>(1, CeilDiv(payloadSize, chunkCapacity));
 }
 
 ui64 ChunkSizeOf(const TEntryHeader& header, ui64 chunkCapacity)
 {
-    if (header.PageIndex + 1 < header.PageCount) {
+    if (header.ChunkIndex + 1 < header.ChunkCount) {
         return chunkCapacity;
     }
-    return header.PayloadSize - chunkCapacity * header.PageIndex;
+    return header.PayloadSize - chunkCapacity * header.ChunkIndex;
 }
 
-TBuffer
-MakeEntryPage(const TEntryHeader& header, TStringBuf chunk, ui32 pageSize)
+TBuffer MakeEntryPage(TEntryHeader header, TStringBuf chunk, ui32 pageSize)
 {
+    header.Magic = EntryMagic;
+    header.Version = StoreFormatVersion;
+    header.Crc = Crc32c(&header, offsetof(TEntryHeader, Crc));
+    header.Crc = Crc32cExtend(header.Crc, chunk.data(), chunk.size());
+
     TBuffer page(pageSize);
-    TBufferOutput out(page);
-
-    Save(&out, EntryMagic);
-    Save(&out, header.Seq);
-    Save(&out, header.Key);
-    Save(&out, header.PayloadSize);
-    Save(&out, StoreFormatVersion);
-    Save(&out, header.PageIndex);
-    Save(&out, header.PageCount);
-
-    ui32 crc = Crc32c(page.Data(), page.Size());
-    crc = Crc32cExtend(crc, chunk.data(), chunk.size());
-    Save(&out, crc);
-
-    out.Write(chunk.data(), chunk.size());
+    page.Append(reinterpret_cast<const char*>(&header), sizeof(header));
+    page.Append(chunk.data(), chunk.size());
     page.Fill('\0', pageSize - page.Size());
 
     return page;
@@ -155,38 +183,23 @@ MakeEntryPage(const TEntryHeader& header, TStringBuf chunk, ui32 pageSize)
 
 // Returns the header and the chunk of a valid entry page, nothing for a page
 // that holds anything else.
-std::optional<std::pair<TEntryHeader, TStringBuf>> ParseEntryPage(
-    TStringBuf page,
-    ui32 pageSize)
+std::optional<TEntryPage> ParseEntryPage(TStringBuf page, ui32 pageSize)
 {
     if (page.size() != pageSize) {
         return std::nullopt;
     }
 
-    TMemoryInput in(page.data(), page.size());
-
-    ui64 magic = 0;
-    ui32 version = 0;
-    ui32 crc = 0;
     TEntryHeader header;
+    memcpy(&header, page.data(), sizeof(header));
 
-    Load(&in, magic);
-    Load(&in, header.Seq);
-    Load(&in, header.Key);
-    Load(&in, header.PayloadSize);
-    Load(&in, version);
-    Load(&in, header.PageIndex);
-    Load(&in, header.PageCount);
-    Load(&in, crc);
-
-    if (magic != EntryMagic || version != StoreFormatVersion) {
+    if (header.Magic != EntryMagic || header.Version != StoreFormatVersion) {
         return std::nullopt;
     }
 
     const ui64 chunkCapacity = pageSize - EntryHeaderSize;
-    if (header.PageIndex >= header.PageCount ||
-        header.PageCount !=
-            EntryPageCountFor(header.PayloadSize, chunkCapacity))
+    if (header.ChunkIndex >= header.ChunkCount ||
+        header.ChunkCount !=
+            ChunkCountFor(header.PayloadSize, chunkCapacity))
     {
         return std::nullopt;
     }
@@ -194,29 +207,25 @@ std::optional<std::pair<TEntryHeader, TStringBuf>> ParseEntryPage(
     const ui64 chunkSize = ChunkSizeOf(header, chunkCapacity);
     TStringBuf chunk = page.SubStr(EntryHeaderSize, chunkSize);
 
-    ui32 expectedCrc = Crc32c(page.data(), EntryHeaderSize - sizeof(ui32));
+    ui32 expectedCrc = Crc32c(page.data(), offsetof(TEntryHeader, Crc));
     expectedCrc = Crc32cExtend(expectedCrc, chunk.data(), chunk.size());
 
-    if (crc != expectedCrc) {
+    if (header.Crc != expectedCrc) {
         return std::nullopt;
     }
 
-    return std::make_pair(header, chunk);
+    return TEntryPage{.Header = header, .Chunk = chunk};
 }
 
-TBuffer MakeSuperblockPage(const TSuperblock& superblock, ui32 pageSize)
+// Fills in the magic, the version and the checksum of the header.
+TBuffer MakeSuperblockPage(TSuperblock header, ui32 pageSize)
 {
+    header.Magic = SuperblockMagic;
+    header.Version = StoreFormatVersion;
+    header.Crc = Crc32c(&header, offsetof(TSuperblock, Crc));
+
     TBuffer page(pageSize);
-    TBufferOutput out(page);
-
-    Save(&out, SuperblockMagic);
-    Save(&out, superblock.Seq);
-    Save(&out, superblock.ErasedBelowKey);
-    Save(&out, StoreFormatVersion);
-
-    ui32 crc = Crc32c(page.Data(), page.Size());
-    Save(&out, crc);
-
+    page.Append(reinterpret_cast<const char*>(&header), sizeof(header));
     page.Fill('\0', pageSize - page.Size());
 
     return page;
@@ -228,26 +237,17 @@ std::optional<TSuperblock> ParseSuperblockPage(TStringBuf page, ui32 pageSize)
         return std::nullopt;
     }
 
-    TMemoryInput in(page.data(), page.size());
+    TSuperblock header;
+    memcpy(&header, page.data(), sizeof(header));
 
-    ui64 magic = 0;
-    ui32 version = 0;
-    ui32 crc = 0;
-    TSuperblock superblock;
-
-    Load(&in, magic);
-    Load(&in, superblock.Seq);
-    Load(&in, superblock.ErasedBelowKey);
-    Load(&in, version);
-    Load(&in, crc);
-
-    if (magic != SuperblockMagic || version != StoreFormatVersion ||
-        crc != Crc32c(page.data(), SuperblockSize - sizeof(ui32)))
+    if (header.Magic != SuperblockMagic ||
+        header.Version != StoreFormatVersion ||
+        header.Crc != Crc32c(page.data(), offsetof(TSuperblock, Crc)))
     {
         return std::nullopt;
     }
 
-    return superblock;
+    return header;
 }
 
 // Merges the consecutive page numbers into ranges.
@@ -271,6 +271,30 @@ TVector<TPageRange> ToPageRanges(const TVector<ui64>& pageNos)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Stores the buffers on a device of PageCount pages of PageSize bytes.
+//
+// The first SuperblockSlotCount pages are the superblock slots, the rest hold
+// entries. A buffer is split into chunks of ChunkCapacity bytes, one page per
+// chunk behind a TEntryHeader with the key, the seq of the write, the chunk
+// index and the chunk count. Every page carries a checksum.
+//
+// Each write and erase takes the next seq from a counter that only grows,
+// also across restores. A write goes to free pages only and the previous copy
+// of the key is released after the new one has landed, so a torn rewrite
+// keeps the old copy. Freed pages are not wiped, stale entries are told apart
+// by their seq.
+//
+// EraseBelow persists the bound in a superblock written to the slot next to
+// the current one, so a torn superblock write keeps the previous bound. The
+// erased keys are refused right away, the pages are released once the
+// superblock has landed. Only one erase may be in flight at a time.
+//
+// Restore reads the whole device, groups the valid pages into candidates by
+// (key, seq), drops the incomplete ones and the keys below the bound of the
+// newest superblock, and keeps the highest seq of every key. The pages of the
+// winners are marked allocated, the seq counter resumes past the highest seq
+// seen.
+
 class TDeviceKeyBufferStore final
     : public IKeyBufferStore
     , public std::enable_shared_from_this<TDeviceKeyBufferStore>
@@ -287,6 +311,8 @@ private:
     const ui32 PageSize;
     const ui64 ChunkCapacity;
     const IDevicePageStorePtr Pages;
+
+    TLog Log;
 
     TAdaptiveLock Lock;
 
@@ -305,7 +331,11 @@ private:
     ui64 NextSuperblockSlot = 0;
 
 public:
-    TDeviceKeyBufferStore(IDevicePtr device, ui64 pageCount, ui32 pageSize);
+    TDeviceKeyBufferStore(
+        ILoggingServicePtr logging,
+        IDevicePtr device,
+        ui64 pageCount,
+        ui32 pageSize);
 
     TFuture<TRestoreResult> Restore() override;
 
@@ -330,6 +360,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDeviceKeyBufferStore::TDeviceKeyBufferStore(
+    ILoggingServicePtr logging,
     IDevicePtr device,
     ui64 pageCount,
     ui32 pageSize)
@@ -338,6 +369,7 @@ TDeviceKeyBufferStore::TDeviceKeyBufferStore(
     , PageSize(pageSize)
     , ChunkCapacity(pageSize - EntryHeaderSize)
     , Pages(CreateDevicePageStore(Device, PageCount, PageSize))
+    , Log(logging->CreateLog("KEY_BUFFER_STORE"))
 {
     // the superblock slots are never given to an entry
     auto error = Pages->AllocateAt(
@@ -424,15 +456,9 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::Write(
         seq = NextSeq++;
     }
 
-    const ui64 pageCount = EntryPageCountFor(buffer.Size(), ChunkCapacity);
-    if (pageCount > Max<ui32>()) {
-        return MakeFuture(MakeError(
-            E_ARGUMENT,
-            TStringBuilder() << "a buffer of " << buffer.Size()
-                             << " bytes is too large for the store"));
-    }
+    const ui64 chunkCount = ChunkCountFor(buffer.Size(), ChunkCapacity);
 
-    auto locations = Pages->Allocate(pageCount);
+    auto locations = Pages->Allocate(chunkCount);
     if (locations.empty()) {
         return MakeFuture(MakeError(
             E_REJECTED,
@@ -441,16 +467,16 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::Write(
     }
 
     TVector<TBuffer> pages;
-    pages.reserve(pageCount);
+    pages.reserve(chunkCount);
 
     TStringBuf payload(buffer.Data(), buffer.Size());
-    for (ui64 i = 0; i < pageCount; ++i) {
+    for (ui64 i = 0; i < chunkCount; ++i) {
         TEntryHeader header = {
             .Seq = seq,
             .Key = key,
             .PayloadSize = buffer.Size(),
-            .PageIndex = static_cast<ui32>(i),
-            .PageCount = static_cast<ui32>(pageCount),
+            .ChunkIndex = static_cast<ui32>(i),
+            .ChunkCount = static_cast<ui32>(chunkCount),
         };
 
         pages.push_back(MakeEntryPage(
@@ -510,7 +536,7 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
 {
     struct TCandidate
     {
-        ui32 PageCount = 0;
+        ui32 ChunkCount = 0;
         ui64 PayloadSize = 0;
         bool Broken = false;
         TVector<std::optional<TStringBuf>> Chunks;
@@ -536,7 +562,7 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
     }
 
     // the pages of a single (key, seq) entry
-    THashMap<std::pair<ui64, ui64>, TCandidate> candidates;
+    THashMap<TEntryId, TCandidate, TEntryIdHash> candidates;
 
     for (ui64 i = SuperblockSlotCount; i < pages.size(); ++i) {
         auto parsed = ParseEntryPage(pages[i], PageSize);
@@ -547,24 +573,25 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
         const auto& [header, chunk] = *parsed;
         maxSeq = Max(maxSeq, header.Seq);
 
-        auto& candidate = candidates[std::pair(header.Key, header.Seq)];
+        auto& candidate =
+            candidates[TEntryId{.Key = header.Key, .Seq = header.Seq}];
         if (candidate.Chunks.empty()) {
-            candidate.PageCount = header.PageCount;
+            candidate.ChunkCount = header.ChunkCount;
             candidate.PayloadSize = header.PayloadSize;
-            candidate.Chunks.resize(header.PageCount);
-            candidate.PageNos.resize(header.PageCount);
+            candidate.Chunks.resize(header.ChunkCount);
+            candidate.PageNos.resize(header.ChunkCount);
         }
 
-        if (candidate.PageCount != header.PageCount ||
+        if (candidate.ChunkCount != header.ChunkCount ||
             candidate.PayloadSize != header.PayloadSize ||
-            candidate.Chunks[header.PageIndex])
+            candidate.Chunks[header.ChunkIndex])
         {
             candidate.Broken = true;
             continue;
         }
 
-        candidate.Chunks[header.PageIndex] = chunk;
-        candidate.PageNos[header.PageIndex] = i;
+        candidate.Chunks[header.ChunkIndex] = chunk;
+        candidate.PageNos[header.ChunkIndex] = i;
     }
 
     // the newest intact candidate of a key wins
@@ -576,10 +603,8 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
 
     THashMap<ui64, TWinner> winners;
 
-    for (const auto& [keyAndSeq, candidate]: candidates) {
-        const auto& [key, seq] = keyAndSeq;
-
-        if (superblock && key < superblock->ErasedBelowKey) {
+    for (const auto& [id, candidate]: candidates) {
+        if (superblock && id.Key < superblock->ErasedBelowKey) {
             continue;
         }
 
@@ -595,13 +620,13 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
             continue;
         }
 
-        auto& winner = winners[key];
-        if (!winner.Candidate || winner.Seq < seq) {
-            winner = {.Seq = seq, .Candidate = &candidate};
+        auto& winner = winners[id.Key];
+        if (!winner.Candidate || winner.Seq < id.Seq) {
+            winner = {.Seq = id.Seq, .Candidate = &candidate};
         }
     }
 
-    TVector<std::pair<ui64, TBuffer>> buffers;
+    TVector<TKeyBuffer> buffers;
     buffers.reserve(winners.size());
     TMap<ui64, TEntry> entries;
 
@@ -621,7 +646,7 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
             .Seq = winner.Seq,
             .Locations = std::move(locations),
         };
-        buffers.emplace_back(key, std::move(buffer));
+        buffers.push_back({.Key = key, .Buffer = std::move(buffer)});
     }
 
     with_lock (Lock) {
@@ -647,7 +672,12 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
 {
     auto error = future.GetValue();
     if (HasError(error)) {
-        Y_UNUSED(Pages->Free(locations));
+        auto freeError = Pages->Free(locations);
+        if (HasError(freeError)) {
+            STORAGE_ERROR(
+                "failed to free the pages of the failed write of key "
+                << key << ": " << FormatError(freeError));
+        }
         return error;
     }
 
@@ -674,7 +704,12 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
     }
 
     if (!stalePages.empty()) {
-        Y_UNUSED(Pages->Free(stalePages));
+        auto freeError = Pages->Free(stalePages);
+        if (HasError(freeError)) {
+            STORAGE_ERROR(
+                "failed to free the stale pages of key " << key << ": "
+                << FormatError(freeError));
+        }
     }
 
     return error;
@@ -709,7 +744,12 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
     }
 
     if (!pagesToFree.empty()) {
-        Y_UNUSED(Pages->Free(pagesToFree));
+        auto freeError = Pages->Free(pagesToFree);
+        if (HasError(freeError)) {
+            STORAGE_ERROR(
+                "failed to free the pages erased below key " << key << ": "
+                << FormatError(freeError));
+        }
     }
 
     return MakeError(erasedAny ? S_OK : S_FALSE);
@@ -724,8 +764,11 @@ IKeyBufferStorePtr CreateInMemoryKeyBufferStore()
     return std::make_shared<TInMemoryKeyBufferStore>();
 }
 
-IKeyBufferStorePtr
-CreateDeviceKeyBufferStore(IDevicePtr device, ui64 pageCount, ui32 pageSize)
+IKeyBufferStorePtr CreateDeviceKeyBufferStore(
+    ILoggingServicePtr logging,
+    IDevicePtr device,
+    ui64 pageCount,
+    ui32 pageSize)
 {
     Y_ABORT_UNLESS(
         pageCount > SuperblockSlotCount,
@@ -737,6 +780,7 @@ CreateDeviceKeyBufferStore(IDevicePtr device, ui64 pageCount, ui32 pageSize)
         pageSize);
 
     return std::make_shared<TDeviceKeyBufferStore>(
+        std::move(logging),
         std::move(device),
         pageCount,
         pageSize);
