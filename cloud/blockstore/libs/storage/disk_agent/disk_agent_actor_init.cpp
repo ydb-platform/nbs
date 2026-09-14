@@ -48,6 +48,16 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
     TDeviceClientPtr deviceClient,
     const NProto::TDeviceConfig& device)
 {
+    // TODO: temporary, to compare the journal speed with the V1 device
+    // serving the whole device
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
+        "Journalled device " << device.GetDeviceUUID().Quote() << ": V1");
+
+    return NJournalled::CreateJournalledDevice(
+        CreateDeviceAdapter(timer, device.GetDeviceUUID(), deviceClient));
+
     const ui64 blockSize = device.GetBlockSize();
     const ui64 deviceSize = blockSize * device.GetBlocksCount();
     if (!blockSize) {
@@ -88,10 +98,10 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
             {.Offset = offset, .Size = size});
     };
 
-    auto logMetaStore = NJournalled::CreateDeviceKeyBufferStore(
-        createAdapter(0, logMetaSize),
-        logMetaSize / blockSize,
-        blockSize);
+    // TODO: temporary, to compare the journal speed with the device-backed
+    // store; the journal metadata part of the device stays unused and the
+    // journal does not survive a restart
+    auto logMetaStore = NJournalled::CreateInMemoryKeyBufferStore();
 
     auto logDataStore = NJournalled::CreateDevicePageStore(
         createAdapter(logMetaSize, logDataSize),
