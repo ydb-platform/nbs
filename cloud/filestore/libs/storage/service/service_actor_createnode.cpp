@@ -38,7 +38,7 @@ private:
     bool ShardResponded = false;
 
     // Leader's rejection, stashed while UndoShardLink runs
-    TMaybe<NProto::TError> LeaderError;
+    NProto::TError LeaderError;
 
     // Stats for reporting
     IProfileLogPtr ProfileLog;
@@ -184,7 +184,7 @@ void TLinkActor::HandleShardResponse(
 
     CreateNodeRequest.MutableShardNodeAttr()->Swap(shardResponse.MutableNode());
 
-    request->Record = std::move(CreateNodeRequest);
+    request->Record.CopyFrom(CreateNodeRequest);
 
     ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
 
@@ -207,6 +207,14 @@ void TLinkActor::HandleLeaderResponse(
             LogTag.c_str(),
             CreateNodeRequest.GetLink().GetTargetNode(),
             FormatError(msg->GetError()).Quote().c_str());
+
+        if (GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable) {
+            // a retriable error here is ambiguous - the leader's CreateNode
+            // may have actually committed. Undoing in that would create a
+            // hanging link
+            HandleError(ctx, msg->GetError());
+            return;
+        }
 
         LeaderError = msg->GetError();
         UndoShardLink(ctx);
@@ -295,8 +303,7 @@ void TLinkActor::HandleUndoShardLinkResponse(
         }
     }
 
-    Y_ABORT_UNLESS(LeaderError.Defined());
-    HandleError(ctx, std::move(*LeaderError));
+    HandleError(ctx, LeaderError);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

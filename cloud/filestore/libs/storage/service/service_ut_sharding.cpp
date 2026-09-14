@@ -3130,6 +3130,92 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             service.GetNodeAttr(headers, fsConfig.FsId, target3Id, "")
                 ->Record.GetNode()
                 .GetLinks());
+
+        // a retriable error from the leader is ambiguous - its CreateNode
+        // may have actually committed despite it (e.g. a pipe reset can
+        // surface as E_REJECTED for an already-committed request). Undoing
+        // here would risk deleting a live shard-side link, so it must be
+        // left alone and the error simply propagated instead.
+        const auto target4Id =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::File(RootNodeId, "target4"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(target4Id));
+
+        // intercept the leader-bound hop specifically (identified by
+        // ShardNodeAttr - only set on the 2nd, leader-bound request) and
+        // answer it with a synthetic retriable error before it ever reaches
+        // the leader tablet, mirroring ShouldRetryNodeCreationInShard's
+        // interception style
+        TAutoPtr<IEventHandle> leaderCreateResponse;
+        bool intercept = true;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite()
+                        == TEvService::EvCreateNodeRequest)
+                {
+                    const auto* msg =
+                        event->Get<TEvService::TEvCreateNodeRequest>();
+                    if (intercept && msg->Record.HasShardNodeAttr()) {
+                        auto response = std::make_unique<
+                            TEvService::TEvCreateNodeResponse>(
+                            MakeError(
+                                E_REJECTED,
+                                "injected retriable leader error"));
+
+                        leaderCreateResponse = new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0,   // flags
+                            event->Cookie);
+
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        service.SendCreateNodeRequest(
+            headers,
+            TCreateNodeArgs::Link(RootNodeId, "target4link", target4Id));
+
+        ui32 iterations = 0;
+        while (!leaderCreateResponse && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT(leaderCreateResponse);
+        intercept = false;
+        env.GetRuntime().Send(leaderCreateResponse.Release(), nodeIdx);
+
+        auto createResponse = service.RecvCreateNodeResponse();
+        UNIT_ASSERT_C(
+            FAILED(createResponse->GetStatus()),
+            "CreateNode has not failed as expected");
+
+        // never actually reached the leader tablet - no nodeRef was created
+        service.AssertGetNodeAttrFailed(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "target4link");
+
+        // the shard-side link count must be left alone - undoing it would
+        // have deleted a link that, for all TLinkActor knows, a leader
+        // nodeRef might still point to
+        UNIT_ASSERT_VALUES_EQUAL(
+            2u,
+            service.GetNodeAttr(headers, fsConfig.FsId, target4Id, "")
+                ->Record.GetNode()
+                .GetLinks());
+
+        // no critical event either - undo was never attempted
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
     }
 
     SERVICE_TEST(ShouldAggregateFileSystemMetrics)
