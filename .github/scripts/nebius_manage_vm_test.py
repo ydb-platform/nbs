@@ -2,6 +2,7 @@ import asyncio
 import argparse
 import sys
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -616,6 +617,45 @@ def test_remove_runner_from_github_retries_github_remove_errors(monkeypatch):
     assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC]
 
 
+def test_remove_runner_from_github_skips_recovered_runner(monkeypatch):
+    runner = SimpleNamespace(
+        name="vm-id",
+        id="runner-id",
+        status="online",
+        busy=False,
+    )
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setattr(
+        m,
+        "find_runner_by_name",
+        Mock(return_value=runner.id),
+    )
+    monkeypatch.setattr(
+        m,
+        "get_self_hosted_runner",
+        Mock(return_value=runner),
+    )
+    remove_runner = Mock()
+    monkeypatch.setattr(
+        m,
+        "remove_self_hosted_runner",
+        remove_runner,
+    )
+
+    result = m.remove_runner_from_github(
+        object(),
+        "owner",
+        "repo",
+        "vm-id",
+        True,
+        require_offline=True,
+    )
+
+    assert result == "online"
+    remove_runner.assert_not_called()
+
+
 def test_retry_retries_async_function_and_passes_attempt(monkeypatch):
     attempts = []
     sleeps = []
@@ -1088,7 +1128,7 @@ def test_remove_vm_resolves_disk_id_before_removing_resources(monkeypatch):
         )
 
     def fake_remove_runner_from_github(*args):
-        assert len(args) == 5
+        assert len(args) == 6
         return "not_found"
 
     def fake_instance_service_client(service_sdk):
@@ -1107,6 +1147,7 @@ def test_remove_vm_resolves_disk_id_before_removing_resources(monkeypatch):
         github_repo_owner="owner",
         github_repo="repo",
         apply=True,
+        require_offline=False,
     )
 
     asyncio.run(m.remove_vm(sdk, args))

@@ -148,10 +148,12 @@ jobs:
     runs-on: "ubuntu-latest"
     strategy:
       max-parallel: 5
+      fail-fast: false
       matrix:
         vms_to_remove: ${{ fromJson(needs.calculate_missing_vms.outputs.vms_to_remove) }}
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v7
         with:
           sparse-checkout: '.github'
@@ -163,6 +165,9 @@ jobs:
       - name: Remove VM ${{ matrix.vms_to_remove }}
         id: remove-runner
         uses: ./.github/actions/nebius_runner_remove
+        # we do not want removal to be interrupted by cancellation, which can prevent 
+        # proper cleanup of VM and its disk
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
         timeout-minutes: 60
         with:
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
@@ -175,13 +180,15 @@ jobs:
     needs: calculate_missing_vms
     name: Broken ${{ inputs.flavor }} VMs
     if: needs.calculate_missing_vms.outputs.broken_vms_to_remove != '[]' && always()
-    runs-on: ${{ inputs.provision_mode == 'initial' && fromJson('["ubuntu-latest"]') || fromJson('["self-hosted", "runner_light"]') }}
+    runs-on: "ubuntu-latest"
     strategy:
       max-parallel: 5
+      fail-fast: false
       matrix:
         broken_vms_to_remove: ${{ fromJson(needs.calculate_missing_vms.outputs.broken_vms_to_remove) }}
     steps:
       - name: Checkout
+        id: checkout
         uses: actions/checkout@v7
         with:
           sparse-checkout: '.github'
@@ -193,6 +200,7 @@ jobs:
       - name: Remove Broken VM ${{ matrix.broken_vms_to_remove }}
         id: remove-runner
         uses: ./.github/actions/nebius_runner_remove
+        if: ${{ always() && steps.checkout.outcome == 'success' }}
         timeout-minutes: 60
         with:
           token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
@@ -201,6 +209,7 @@ jobs:
           nebius_config_yaml: ${{ secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           vm_parent_id: ${{ env.parent_id }}
           vm_id: ${{ matrix.broken_vms_to_remove }}
+          vm_require_offline: 'true'
   create_vms:
     needs: calculate_missing_vms
     name: Create ${{ inputs.flavor }} VMs

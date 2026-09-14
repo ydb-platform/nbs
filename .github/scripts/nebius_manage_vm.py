@@ -651,7 +651,12 @@ def remove_self_hosted_runner(github: Github, repo: str, runner_id: str) -> bool
 
 
 def remove_runner_from_github(
-    github: Github, github_repo_owner: str, github_repo: str, vm_id: str, apply: bool
+    github: Github,
+    github_repo_owner: str,
+    github_repo: str,
+    vm_id: str,
+    apply: bool,
+    require_offline: bool = False,
 ) -> str:
     runner_id = find_runner_by_name(github, github_repo_owner, github_repo, vm_id)
     repo = os.environ.get("GITHUB_REPOSITORY")
@@ -673,6 +678,12 @@ def remove_runner_from_github(
         runner.status,
         runner.busy,
     )
+    if require_offline and runner.status != "offline":
+        logger.info(
+            "Runner with name %s is no longer offline, skipping",
+            vm_id,
+        )
+        return "online"
     if runner.busy:
         logger.info("Runner with name %s is busy, skipping", vm_id)
         return "busy"
@@ -966,12 +977,20 @@ async def remove_vm(sdk: SDK, args: argparse.Namespace):
     github = github_client_from_env()
 
     result = remove_runner_from_github(
-        github, args.github_repo_owner, args.github_repo, args.id, args.apply
+        github,
+        args.github_repo_owner,
+        args.github_repo,
+        args.id,
+        args.apply,
+        args.require_offline,
     )
     if result == "not_found":
         logger.info("Runner with name %s not found in github, we can continue", args.id)
     elif result == "busy":
         logger.info("Runner with name %s is busy, skipping", args.id)
+        return
+    elif result == "online":
+        logger.info("Runner with name %s is no longer offline, skipping", args.id)
         return
     elif result == "failed":
         logger.error("Failed to remove runner with name %s, we can ignore it", args.id)
@@ -1147,6 +1166,11 @@ async def main() -> None:
         "--timeout", default=600, help="How long to wait for removal (seconds)"
     )
     remove.add_argument("--apply", action="store_true", help="Apply the changes")
+    remove.add_argument(
+        "--require-offline",
+        action="store_true",
+        help="Delete the VM only if its GitHub runner is still offline",
+    )
 
     remove_by_ids = subparsers.add_parser(
         "remove-by-ids",
