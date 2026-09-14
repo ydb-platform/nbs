@@ -441,6 +441,15 @@ void TFileSystem::ProcessDelayedRelease()
 void TFileSystem::ProcessHandleOpsQueue()
 {
     TGuard g{HandleOpsQueueLock};
+
+    if (HandleOpsQueue->IsCorrupted()) {
+        ReportHandleOpsQueueProcessError(
+            TStringBuilder()
+            << "HandleOpsQueue is corrupted, filesystem: "
+            << Config->GetFileSystemId());
+        return;
+    }
+
     if (HandleOpsQueue->Empty()) {
         ScheduleProcessHandleOpsQueue(
             Config->GetAsyncHandleOperationIdlePeriod());
