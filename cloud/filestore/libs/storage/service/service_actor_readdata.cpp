@@ -35,6 +35,22 @@ using namespace NKikimr;
 
 namespace {
 
+#if defined(__x86_64__)
+#include <contrib/restricted/abseil-cpp-tstring/y_absl/crc/internal/non_temporal_memcpy.h>
+#endif
+
+Y_FORCE_INLINE void MemcpyNoCacheImpl(void* dst, const void* src, size_t len) {
+#if defined(__x86_64__)
+    y_absl::crc_internal::non_temporal_store_memcpy_avx(dst, src, len);
+#else
+    memcpy(dst, src, len);
+#endif
+}
+
+} // namespace
+
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
@@ -376,7 +392,7 @@ void ApplyFreshDataRange(
     }
 
     const ui64 relOffset = commonRange.Offset - targetByteRange.Offset;
-    TRopeUtils::Memcpy(
+    TRopeUtils::MemcpyNoCache(
         targetBuffer.Begin() + relOffset,
         sourceFreshData.GetContent().data() +
             (commonRange.Offset - sourceByteRange.Offset),
@@ -652,7 +668,7 @@ void TReadDataActor::HandleReadBlobResponse(
             const auto relOffset = commonRange.Offset - OriginByteRange.Offset;
             auto dataIter = response.Buffer.begin();
             dataIter += commonRange.Offset - blobByteRange.Offset;
-            TRopeUtils::Memcpy(
+            TRopeUtils::MemcpyNoCache(
                 TargetBuffers.Begin() + relOffset,
                 dataIter,
                 commonRange.Length);
@@ -768,7 +784,7 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
             if (dataToWrite == 0) {
                 break;
             }
-            TRopeUtils::Memcpy(
+            TRopeUtils::MemcpyNoCache(
                 reinterpret_cast<char*>(iovec.GetBase()),
                 it,
                 dataToWrite);
@@ -788,7 +804,7 @@ NProto::TError TReadDataActor::ProcessExternalPayload(
     } else {
         auto& buffer = *readDataResponse.MutableBuffer();
         buffer.ReserveAndResize(remainingBufferSize);
-        TRopeUtils::Memcpy(buffer.begin(), it, remainingBufferSize);
+        TRopeUtils::MemcpyNoCache(buffer.begin(), it, remainingBufferSize);
     }
 
     // Set the buffer offset to 0 because the response buffer/iovecs do not
@@ -905,7 +921,7 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
                 dataToWrite,
                 currentOffset,
                 targetData);
-            memcpy(
+            MemcpyNoCacheImpl(
                 targetData,
                 response.GetBuffer().data() + currentOffset,
                 dataToWrite);
