@@ -646,6 +646,150 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    SERVICE_TEST(
+        ShouldRemoveStaleSessionFromShardDuringSyncAfterDestroyPushFails)
+    {
+        constexpr TDuration IdleSessionTimeout = TDuration::Seconds(5);
+        config.SetIdleSessionTimeout(IdleSessionTimeout.MilliSeconds());
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        // When the main tablet destroys the session, it also sends a
+        // DestroySessionRequest straight to each shard. Drop the first one
+        // going to Shard1Id, so only the sync process can remove it there -
+        // this is what would happen if the main tablet died before that
+        // direct request reached the shard. Only the first one is dropped,
+        // so a later retry sent by sync still gets through.
+        bool droppedDestroyPushToShard1 = false;
+        bool sawSyncTick = false;
+        // Set when a second (non-dropped) DestroySessionRequest reaches
+        // Shard1Id - this is the sync actually deleting the stale
+        // session there.
+        bool sawStaleSessionDeleteRequest = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvDestroySessionRequest: {
+                        const auto* msg = event->Get<
+                            TEvIndexTablet::TEvDestroySessionRequest>();
+                        if (msg->Record.GetFileSystemId() ==
+                            fsConfig.Shard1Id) {
+                            if (!droppedDestroyPushToShard1) {
+                                droppedDestroyPushToShard1 = true;
+                                return true;
+                            }
+                            sawStaleSessionDeleteRequest = true;
+                        }
+                        break;
+                    }
+                    case TEvIndexTablet::EvDescribeSessionsRequest: {
+                        const auto* msg = event->Get<
+                            TEvIndexTablet::TEvDescribeSessionsRequest>();
+                        if (msg->Record.GetFileSystemId() ==
+                            fsConfig.Shard1Id) {
+                            sawSyncTick = true;
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto describeShardSessions = [&](const TString& fsId)
+        {
+            NProtoPrivate::TDescribeSessionsRequest request;
+            request.SetFileSystemId(fsId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("describesessions", buf);
+            NProtoPrivate::TDescribeSessionsResponse response;
+            UNIT_ASSERT(
+                google::protobuf::util::JsonStringToMessage(
+                    jsonResponse->Record.GetOutput(),
+                    &response)
+                    .ok());
+            return response;
+        };
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            fsInfo.MainTabletId);
+        tablet.InitSession("client", "session");
+
+        // Check: the session already exists in the shard, and it is not
+        // orphan yet.
+        {
+            auto response = describeShardSessions(fsConfig.Shard1Id);
+            UNIT_ASSERT_VALUES_EQUAL(1, response.GetSessions().size());
+            UNIT_ASSERT(!response.GetSessions(0).GetIsOrphan());
+        }
+
+        // Rebooting reloads sessions from the DB through LoadSessions, and
+        // LoadSessions always marks a session as orphan with a
+        // IdleSessionTimeout deadline
+        tablet.RebootTablet();
+
+        // Force a sync tick while the session is still inside its grace
+        // period on main and confirm it actually ran. The session must
+        // still exist in the shard.
+        sawSyncTick = false;
+        env.GetRuntime().AdvanceCurrentTime(
+            IdleSessionTimeout / 3 + TDuration::MilliSeconds(500));
+        tablet.SendRequest(
+            std::make_unique<TEvIndexTabletPrivate::TEvSyncSessionsRequest>());
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return sawSyncTick;
+            };
+            env.GetRuntime().DispatchEvents(options);
+        }
+        UNIT_ASSERT_C(sawSyncTick, "sync did not run");
+        {
+            auto response = describeShardSessions(fsConfig.Shard1Id);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1,
+                response.GetSessions().size(),
+                "session removed from shard too early");
+            UNIT_ASSERT(!response.GetSessions(0).GetIsOrphan());
+        }
+
+        // Advance past the orphan grace period, force the cleanup tick
+        // (which destroys the now-expired session on main) immediately
+        // followed by the next sync tick, and stop as soon as sync
+        // actually deletes the stale session from the shard.
+        env.GetRuntime().AdvanceCurrentTime(IdleSessionTimeout);
+        tablet.SendRequest(
+            std::make_unique<
+                TEvIndexTabletPrivate::TEvCleanupSessionsRequest>());
+        tablet.SendRequest(
+            std::make_unique<TEvIndexTabletPrivate::TEvSyncSessionsRequest>());
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return sawStaleSessionDeleteRequest;
+            };
+            env.GetRuntime().DispatchEvents(options);
+        }
+        UNIT_ASSERT_C(
+            sawStaleSessionDeleteRequest,
+            "sync delete session did not run");
+        {
+            auto response = describeShardSessions(fsConfig.Shard1Id);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                0,
+                response.GetSessions().size(),
+                "stale session was not removed from the shard during sync");
+        }
+    }
+
     SERVICE_TEST(ShouldPropagateQuotasToShards)
     {
         TShardedFileSystemConfig fsConfig;

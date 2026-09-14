@@ -194,7 +194,7 @@ TSession* TIndexTabletState::CreateSession(
 
     Impl->Sessions.PushBack(session.get());
     Impl->SessionById.emplace(session->GetSessionId(), session.get());
-    Impl->SessionByOwner.emplace(owner, session.get());
+    TrackSessionOwner(owner, session.get());
     Impl->SessionByClient.emplace(session->GetClientId(), session.get());
 
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
@@ -205,6 +205,20 @@ TSession* TIndexTabletState::CreateSession(
         owner.ToString().c_str());
 
     return session.release();
+}
+
+void TIndexTabletState::TrackSessionOwner(
+    const TActorId& owner,
+    TSession* session)
+{
+    // The main tablet holds the sessions: it tracks and destroys them,
+    // and sends them to shards through SyncSessions (see
+    // ScheduleSyncSessions). SessionByOwner is only used by the logic that
+    // marks a session as orphan when its pipe disconnects, and only the
+    // main tablet marks sessions as orphan.
+    if (IsMainTablet()) {
+        Impl->SessionByOwner.emplace(owner, session);
+    }
 }
 
 NActors::TActorId TIndexTabletState::RecoverSession(
@@ -236,7 +250,7 @@ NActors::TActorId TIndexTabletState::RecoverSession(
         session->Unlink();
         Impl->Sessions.PushBack(session);
 
-        Impl->SessionByOwner.emplace(owner, session);
+        TrackSessionOwner(owner, session);
 
         LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
             "%s added new owner for session c: %s, s: %s, owner: %s",
