@@ -25,6 +25,8 @@ private:
     TIntrusiveList<TEntry> List;
     size_t Capacity = 0;
 
+    NProto::TError CommitResult = {};
+
 public:
     explicit TTestStorage(IPersistentStorageStatsPtr stats);
 
@@ -33,6 +35,7 @@ public:
     NProto::TError Visit(const TVisitor& visitor) override;
     ui64 GetMaxSupportedAllocationByteCount() const override;
     TResultOrError<char*> Alloc(size_t size) override;
+    NProto::TError CancelAlloc(const void* ptr) override;
     NProto::TError Commit(const void* ptr) override;
     NProto::TError Commit(const void* ptr, ui32 crc32) override;
     NProto::TError Free(const void* ptr) override;
@@ -40,6 +43,7 @@ public:
     void UpdateStats() const override;
 
     void SetCapacity(size_t capacity);
+    void SetCommitResult(NProto::TError error);
 
 private:
     void SetStats();

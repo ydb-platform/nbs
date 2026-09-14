@@ -49,17 +49,22 @@ TResultOrError<char*> TTestStorage::Alloc(size_t size)
     return res;
 }
 
+NProto::TError TTestStorage::CancelAlloc(const void* ptr)
+{
+    return Free(ptr);
+}
+
 NProto::TError TTestStorage::Commit(const void* ptr)
 {
     Y_UNUSED(ptr);
-    return {};
+    return CommitResult;
 }
 
 NProto::TError TTestStorage::Commit(const void* ptr, ui32 crc32)
 {
     Y_UNUSED(ptr);
     Y_UNUSED(crc32);
-    return {};
+    return CommitResult;
 }
 
 NProto::TError TTestStorage::Free(const void* ptr)
@@ -93,6 +98,11 @@ void TTestStorage::SetCapacity(size_t capacity)
 {
     Capacity = capacity;
     SetStats();
+}
+
+void TTestStorage::SetCommitResult(NProto::TError error)
+{
+    CommitResult = std::move(error);
 }
 
 void TTestStorage::SetStats()

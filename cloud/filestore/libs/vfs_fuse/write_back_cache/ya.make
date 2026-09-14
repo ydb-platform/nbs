@@ -19,6 +19,7 @@ SRCS(
     write_back_cache_state.cpp
     write_back_cache_state_stats.cpp
     write_back_cache_stats.cpp
+    write_data_request.cpp
     write_data_request_builder.cpp
     write_data_request_manager.cpp
     write_data_request_manager_stats.cpp
