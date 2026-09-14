@@ -10,6 +10,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 
 namespace NCloud::NFileStore {
@@ -181,11 +182,28 @@ private:
                 return;
             }
 
-            response.GetFuture().Subscribe(
-                [sc = SideChannel] (TFuture<typename T::TResponse> f) {
-                    const auto& i = f.GetValue().GetHeaders().GetBackendInfo();
-                    sc->Update(i);
+            //
+            // The caller extracts the response destructively, so no one
+            // else may subscribe on the caller's future. The main channel
+            // gets an inner promise instead; its only consumer below reads
+            // the backend info and then forwards the value to the caller.
+            //
+
+            auto inner = NewPromise<typename T::TResponse>();
+            inner.GetFuture().Subscribe(
+                [sc = SideChannel, response = std::move(response)] (
+                    TFuture<typename T::TResponse> f) mutable
+                {
+                    auto value = UnsafeExtractValue(f);
+                    sc->Update(value.GetHeaders().GetBackendInfo());
+                    response.SetValue(std::move(value));
                 });
+
+            ExecuteRequestImpl<T>(
+                std::move(callContext),
+                std::move(request),
+                std::move(inner));
+            return;
         }
 
         ExecuteRequestImpl<T>(
