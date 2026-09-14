@@ -33,6 +33,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     NMonitoring::TDynamicCountersPtr Counters =
         MakeIntrusive<NMonitoring::TDynamicCounters>();
     NMonitoring::TDynamicCounters::TCounterPtr SessionDirNotEmptyCounter;
+    NMonitoring::TDynamicCounters::TCounterPtr UnstatableEntryCounter;
 
     TFixture()
     {
@@ -40,11 +41,61 @@ struct TFixture: public NUnitTest::TBaseFixture
         SessionDirNotEmptyCounter = Counters->GetCounter(
             GetCriticalEventForPersistentStateSessionDirNotEmpty(),
             true);
+        UnstatableEntryCounter = Counters->GetCounter(
+            GetCriticalEventForPersistentStateUnstatableEntry(),
+            true);
+    }
+
+    // In production all the components share one base path, so does every
+    // manager created here.
+    // Has*State() of the interface, whose answer must not be an error
+    template <typename TQuery>
+    static bool HasState(TQuery query)
+    {
+        const auto result = query();
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        return result.GetResult();
+    }
+
+    static bool HasHandleOpsQueueState(
+        const IPersistentStateManagerPtr& manager,
+        const TString& fileSystemId,
+        const TString& sessionId)
+    {
+        return HasState([&] {
+            return manager->HasHandleOpsQueueState(fileSystemId, sessionId);
+        });
+    }
+
+    static bool HasWriteBackCacheState(
+        const IPersistentStateManagerPtr& manager,
+        const TString& fileSystemId,
+        const TString& sessionId)
+    {
+        return HasState([&] {
+            return manager->HasWriteBackCacheState(fileSystemId, sessionId);
+        });
+    }
+
+    static bool HasDirectoryHandleStorageState(
+        const IPersistentStateManagerPtr& manager,
+        const TString& fileSystemId,
+        const TString& sessionId)
+    {
+        return HasState([&] {
+            return manager->HasDirectoryHandleStorageState(
+                fileSystemId,
+                sessionId);
+        });
     }
 
     IPersistentStateManagerPtr CreateManager()
     {
-        return CreatePersistentStateManager(StatePath, StatePath, StatePath);
+        return CreatePersistentStateManager({
+            .HandleOpsQueueBasePath = StatePath,
+            .WriteBackCacheBasePath = StatePath,
+            .DirectoryHandlesStorageBasePath = StatePath,
+        });
     }
 
     TFsPath SessionDir(
@@ -75,7 +126,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
     {
         auto manager = CreateManager();
 
-        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
 
         auto result =
             manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
@@ -90,7 +141,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             expected.GetPath(),
             guard.GetFilePath().GetPath());
         UNIT_ASSERT(guard.GetFilePath().Exists());
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, SessionId));
         UNIT_ASSERT(IsLocked(guard.GetFilePath()));
     }
 
@@ -130,7 +181,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!guard);
         UNIT_ASSERT(!filePath.Exists());
         UNIT_ASSERT(!SessionDir(FileSystemId, SessionId).Exists());
-        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
     }
 
     Y_UNIT_TEST_F(ShouldTreatRepeatedDeleteAsNoop, TFixture)
@@ -176,7 +227,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         // same manager.
         UNIT_ASSERT(filePath.Exists());
         UNIT_ASSERT(!IsLocked(filePath));
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, SessionId));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, SessionId));
 
         auto result =
             manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
@@ -308,23 +359,23 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             first.GetFilePath().Parent().GetPath(),
             second.GetFilePath().Parent().GetPath());
 
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-1"));
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-2"));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, "session-1"));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, "session-2"));
 
         auto error = first.DeleteStateFile();
         UNIT_ASSERT_C(!HasError(error), error.GetMessage());
 
         UNIT_ASSERT(
-            !manager->HasHandleOpsQueueState(FileSystemId, "session-1"));
+            !HasHandleOpsQueueState(manager, FileSystemId, "session-1"));
         UNIT_ASSERT(!SessionDir(FileSystemId, "session-1").Exists());
-        UNIT_ASSERT(manager->HasHandleOpsQueueState(FileSystemId, "session-2"));
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, "session-2"));
         UNIT_ASSERT(second.GetFilePath().Exists());
     }
 
     Y_UNIT_TEST_F(ShouldDeleteStateFileLeftByPreviousSession, TFixture)
     {
         // Emulate an orphan file: acquire it and let the guard go away, so
-        // the file stays on disk without being held. Then, as the loop does
+        // the file stays alive without being held. Then, as the loop does
         // for a disabled component, acquire it again just to delete it.
         TFsPath orphan;
         {
@@ -339,7 +390,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
 
         auto manager = CreateManager();
         UNIT_ASSERT(
-            manager->HasDirectoryHandleStorageState(FileSystemId, SessionId));
+            HasDirectoryHandleStorageState(manager, FileSystemId, SessionId));
 
         auto result = manager->AcquireDirectoryHandleStorageStateFile(
             FileSystemId,
@@ -352,14 +403,15 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!orphan.Exists());
         UNIT_ASSERT(!SessionDir(FileSystemId, SessionId).Exists());
         UNIT_ASSERT(
-            !manager->HasDirectoryHandleStorageState(FileSystemId, SessionId));
+            !HasDirectoryHandleStorageState(manager, FileSystemId, SessionId));
     }
 
     Y_UNIT_TEST_F(ShouldNotDeleteUnheldSiblingStateFiles, TFixture)
     {
-        // A state file of a component which is not configured anymore (or
-        // just not acquired) is left in the session directory. Deleting the
-        // state file of another component must not take it away.
+        // A state file of a component which is just not acquired is left in
+        // the session directory. Deleting the state file of another component
+        // must not take it away, and, since the file is known from the
+        // listing, the directory is simply left alone: nothing to report.
         TFsPath unheld;
         {
             auto previous = CreateManager();
@@ -385,17 +437,53 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(!dhsPath.Exists());
         UNIT_ASSERT(unheld.Exists());
         UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
+        UNIT_ASSERT_VALUES_EQUAL(0, SessionDirNotEmptyCounter->Val());
+    }
 
-        // ... but the untracked leftover is reported, since nobody is going
-        // to clean it up.
+    Y_UNIT_TEST_F(ShouldReportSessionDirNotEmptyForUnknownStateFiles, TFixture)
+    {
+        // A state file of a component which is not configured anymore is left
+        // in the session directory: it is not listed, so the registry knows
+        // nothing of it. Deleting the last known state file finds the
+        // directory not empty, which is worth reporting since nobody is going
+        // to clean that file up. It is not touched though.
+        TFsPath unknown;
+        {
+            auto previous = CreateManager();
+            auto result = previous->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            unknown = result.ExtractResult().GetFilePath();
+        }
+        UNIT_ASSERT(unknown.Exists());
+
+        auto manager = CreatePersistentStateManager({
+            .HandleOpsQueueBasePath = StatePath,
+            // WriteBackCacheBasePath is left empty on purpose
+            .DirectoryHandlesStorageBasePath = StatePath,
+        });
+        auto result = manager->AcquireDirectoryHandleStorageStateFile(
+            FileSystemId,
+            SessionId);
+        UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        auto dhs = result.ExtractResult();
+        const auto dhsPath = dhs.GetFilePath();
+
+        auto error = dhs.DeleteStateFile();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+
+        UNIT_ASSERT(!dhsPath.Exists());
+        UNIT_ASSERT(unknown.Exists());
+        UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
         UNIT_ASSERT_VALUES_EQUAL(1, SessionDirNotEmptyCounter->Val());
     }
 
     Y_UNIT_TEST_F(ShouldNotDisturbHeldSiblingWhenDeletingOrphan, TFixture)
     {
         // Emulate a session start with the directory handle storage disabled
-        // after it had been enabled: its file is left on disk unheld, while
-        // the other components' files in the same directory are held.
+        // after it had been enabled: its file is left unheld, while the other
+        // components' files in the same directory are held.
         TFsPath orphan;
         {
             auto previous = CreateManager();
@@ -453,12 +541,13 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
 
     Y_UNIT_TEST_F(ShouldFailToAcquireUnconfiguredComponent, TFixture)
     {
-        auto manager = CreatePersistentStateManager(
-            StatePath,
-            {},   // writeBackCacheBasePath
-            StatePath);
+        auto manager = CreatePersistentStateManager({
+            .HandleOpsQueueBasePath = StatePath,
+            // WriteBackCacheBasePath is left empty on purpose
+            .DirectoryHandlesStorageBasePath = StatePath,
+        });
 
-        UNIT_ASSERT(!manager->HasWriteBackCacheState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasWriteBackCacheState(manager, FileSystemId, SessionId));
 
         auto result =
             manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
@@ -498,6 +587,102 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT_C(!HasError(retried), retried.GetError().GetMessage());
     }
 
+    Y_UNIT_TEST_F(ShouldKeepStateFileRegisteredWhenLockingFails, TFixture)
+    {
+        auto manager = CreateManager();
+
+        // Let the initial listing happen while there is nothing on disk.
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
+
+        // A foreign owner (e.g. another process) creates and locks the state
+        // file behind the manager's back.
+        const auto dir = SessionDir(FileSystemId, SessionId);
+        UNIT_ASSERT(NFs::MakeDirectoryRecursive(dir));
+        const auto filePath = dir / "handle_ops_queue";
+        TFileLock foreign(filePath);
+        UNIT_ASSERT(foreign.TryAcquire());
+
+        // The acquisition fails, but the file it stumbled upon must not
+        // become invisible: it is on disk, so the registry must know it.
+        auto result =
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
+        UNIT_ASSERT(filePath.Exists());
+        UNIT_ASSERT(HasHandleOpsQueueState(manager, FileSystemId, SessionId));
+
+        // Deleting a sibling state file must see the file as present: the
+        // session directory is kept and nothing is reported.
+        auto dhsResult = manager->AcquireDirectoryHandleStorageStateFile(
+            FileSystemId,
+            SessionId);
+        UNIT_ASSERT_C(!HasError(dhsResult), dhsResult.GetError().GetMessage());
+        auto error = dhsResult.ExtractResult().DeleteStateFile();
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+        UNIT_ASSERT(filePath.Exists());
+        UNIT_ASSERT(SessionDir(FileSystemId, SessionId).Exists());
+        UNIT_ASSERT_VALUES_EQUAL(0, SessionDirNotEmptyCounter->Val());
+
+        // Once the foreign owner is gone the file is acquirable as usual.
+        foreign.Release();
+        auto retried =
+            manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT_C(!HasError(retried), retried.GetError().GetMessage());
+    }
+
+    Y_UNIT_TEST_F(ShouldReportUnlistableBasePathInsteadOfIgnoringIt, TFixture)
+    {
+        // A base path which exists but cannot be listed must not be taken
+        // for an absent one: that would leave every state file on disk
+        // unnoticed and let the next session overwrite its own state. Here
+        // a regular file stands in for the base path.
+        TFsPath(StatePath).Touch();
+
+        auto manager = CreateManager();
+
+        auto hasState =
+            manager->HasWriteBackCacheState(FileSystemId, SessionId);
+        UNIT_ASSERT(HasError(hasState));
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, hasState.GetError().GetCode());
+
+        auto result =
+            manager->AcquireWriteBackCacheStateFile(FileSystemId, SessionId);
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, result.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldReportUnstatableEntryAndCarryOn, TFixture)
+    {
+        // Existing state which the discovery must find regardless.
+        {
+            auto previous = CreateManager();
+            auto result = previous->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        }
+
+        // An entry whose type cannot be established (a symlink loop makes
+        // stat() fail deterministically with ELOOP whatever the privileges,
+        // standing in for EACCES or EIO) must not fail the discovery: one
+        // stray entry would otherwise block every session start. It must
+        // not go unnoticed either: a state file under it would never be
+        // found, which is worth an alarm.
+        const TFsPath loop = TFsPath(StatePath) / "loop";
+        UNIT_ASSERT(NFs::SymLink("loop", loop.GetPath()));
+
+        auto manager = CreateManager();
+        UNIT_ASSERT(HasWriteBackCacheState(manager, FileSystemId, SessionId));
+
+        // One report per component listing sharing the base path.
+        UNIT_ASSERT_VALUES_EQUAL(3, UnstatableEntryCounter->Val());
+
+        // The registry is initialized in one go: no relisting and no
+        // repeated reports on further queries.
+        UNIT_ASSERT(HasWriteBackCacheState(manager, FileSystemId, SessionId));
+        UNIT_ASSERT_VALUES_EQUAL(3, UnstatableEntryCounter->Val());
+    }
+
     Y_UNIT_TEST_F(ShouldReportErrorInsteadOfThrowingOnAcquireFailure, TFixture)
     {
         auto manager = CreateManager();
@@ -520,14 +705,14 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, error.GetCode());
     }
 
-    Y_UNIT_TEST(ShouldTreatStubAsUnconfigured)
+    Y_UNIT_TEST_F(ShouldTreatStubAsUnconfigured, TFixture)
     {
         auto manager = CreatePersistentStateManagerStub();
 
-        UNIT_ASSERT(!manager->HasHandleOpsQueueState(FileSystemId, SessionId));
-        UNIT_ASSERT(!manager->HasWriteBackCacheState(FileSystemId, SessionId));
+        UNIT_ASSERT(!HasHandleOpsQueueState(manager, FileSystemId, SessionId));
+        UNIT_ASSERT(!HasWriteBackCacheState(manager, FileSystemId, SessionId));
         UNIT_ASSERT(
-            !manager->HasDirectoryHandleStorageState(FileSystemId, SessionId));
+            !HasDirectoryHandleStorageState(manager, FileSystemId, SessionId));
 
         UNIT_ASSERT(HasError(
             manager->AcquireHandleOpsQueueStateFile(FileSystemId, SessionId)));

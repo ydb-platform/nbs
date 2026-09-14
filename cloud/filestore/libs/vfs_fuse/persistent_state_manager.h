@@ -14,7 +14,7 @@ namespace NCloud::NFileStore::NFuse {
 
 // Holds the advisory lock on an acquired state file. The guard is owned by
 // the loop that has acquired the file, so the lock lives as long as the loop
-// does: destroying the guard releases the lock keeping the file on disk, so
+// does: destroying the guard releases the lock keeping the file alive, so
 // that a future session can restore the state, e.g. when the loop is
 // suspended or dropped because its start has failed. DeleteStateFile() is
 // for the case when the state is not needed anymore, i.e. when the session
@@ -66,10 +66,11 @@ struct IPersistentStateManager
     // HandleOpsQueue
 
     // Returns true iff the component is configured and the state file of the
-    // given session is present on disk.
-    virtual bool HasHandleOpsQueueState(
+    // given session is present, as known from the listing of the state
+    // files (which is what the error, if any, is about).
+    virtual TResultOrError<bool> HasHandleOpsQueueState(
         const TString& fileSystemId,
-        const TString& sessionId) const = 0;
+        const TString& sessionId) = 0;
     // If the corresponding state file exists, acquires the advisory lock and
     // returns the file, otherwise creates the file first.
     virtual TResultOrError<TAcquireStateFileGuard>
@@ -79,9 +80,9 @@ struct IPersistentStateManager
 
     // WriteBackCache
 
-    virtual bool HasWriteBackCacheState(
+    virtual TResultOrError<bool> HasWriteBackCacheState(
         const TString& fileSystemId,
-        const TString& sessionId) const = 0;
+        const TString& sessionId) = 0;
     // If the corresponding state file exists, acquires the advisory lock and
     // returns the file, otherwise creates the file first.
     virtual TResultOrError<TAcquireStateFileGuard>
@@ -91,9 +92,9 @@ struct IPersistentStateManager
 
     // DirectoryHandleStorage
 
-    virtual bool HasDirectoryHandleStorageState(
+    virtual TResultOrError<bool> HasDirectoryHandleStorageState(
         const TString& fileSystemId,
-        const TString& sessionId) const = 0;
+        const TString& sessionId) = 0;
     // If the corresponding state file exists, acquires the advisory lock and
     // returns the file, otherwise creates the file first.
     virtual TResultOrError<TAcquireStateFileGuard>
@@ -104,16 +105,23 @@ struct IPersistentStateManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Creates the manager which keeps the state files on disk under the given
-// base paths, following the layout <basePath>/<fileSystemId>/<sessionId>/
-// <fileName>. A component whose base path is empty is not configured:
-// acquiring its state file fails with an error and Has*State() returns
-// false for it. Different components may be configured with the same base
-// path and thus share a session directory.
+struct TPersistentStateManagerConfig
+{
+    TString HandleOpsQueueBasePath;
+    TString WriteBackCacheBasePath;
+    TString DirectoryHandlesStorageBasePath;
+};
+
+// Creates the manager which keeps the state files under the configured base
+// paths, following the layout:
+// <basePath>/<fileSystemId>/<sessionId>/<stateFileName>
+//
+// A component whose base path is empty is not
+// configured: acquiring its state file fails with an error and Has*State()
+// returns false for it. Different components may be configured with the same
+// base path and thus share a session directory.
 IPersistentStateManagerPtr CreatePersistentStateManager(
-    TString handleOpsQueueBasePath,
-    TString writeBackCacheBasePath,
-    TString directoryHandlesStorageBasePath);
+    TPersistentStateManagerConfig config);
 
 // Creates a manager which manages no state files at all: Has*State() returns
 // false and Acquire*StateFile() fails. Suitable for the cases where no state
