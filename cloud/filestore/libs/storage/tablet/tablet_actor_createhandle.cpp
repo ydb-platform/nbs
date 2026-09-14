@@ -1,6 +1,7 @@
 #include "tablet_actor.h"
 
 #include "helpers.h"
+#include "model/xattr_acl_helpers.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
@@ -292,6 +293,32 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                 }
             }
 
+            if (!behaveAsShard && Config->GetGuestPosixAclEnabled()) {
+                TMaybe<INodeIndexTabletDatabase::TNodeAttr> parentDefaultAcl;
+                if (!ReadNodeAttr(
+                        *db,
+                        args.NodeId,
+                        args.ReadCommitId,
+                        PosixAclDefaultXAttr,
+                        parentDefaultAcl))
+                {
+                    return false;
+                }
+
+                if (parentDefaultAcl) {
+                    args.ParentDefaultAcl = parentDefaultAcl->Value;
+                    args.ChildAccessAcl = args.ParentDefaultAcl;
+                    args.Error = GetChildXattrAcl(
+                        args.ChildAccessAcl,
+                        args.Mode);
+                    if (HasError(args.Error)) {
+                        return true;
+                    }
+                } else {
+                    args.Mode &= ~args.Request.GetUmask();
+                }
+            }
+
             auto shardId = args.RequestShardId;
             if (!behaveAsShard
                     && !GetFileSystem().GetShardFileSystemIds().empty())
@@ -413,6 +440,15 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
                 args.WriteCommitId,
                 InvalidCommitId
             };
+
+            if (args.ParentDefaultAcl) {
+                CreateNodeAttr(
+                    *db,
+                    args.TargetNodeId,
+                    args.WriteCommitId,
+                    PosixAclAccessXAttr,
+                    args.ChildAccessAcl);
+            }
         }
 
         // TODO: support for O_TMPFILE
@@ -527,6 +563,10 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         shardRequest->ClearShardFileSystemId();
         shardRequest->SetOriginalNodeId(args.NodeId);
         shardRequest->SetOriginalName(args.Name);
+        if (args.ParentDefaultAcl) {
+            shardRequest->SetParentDefaultAcl(args.ParentDefaultAcl);
+            shardRequest->SetChildAccessAcl(args.ChildAccessAcl);
+        }
         const bool serialized = args.ProfileLogRequest.SerializeToString(
             args.OpLogEntry.MutableProfileLogRequest());
         if (!serialized) {

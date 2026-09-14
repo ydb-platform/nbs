@@ -1958,7 +1958,7 @@ struct TTxIndexTablet
         const ui64 NodeId;
         const TString Name;
         const ui32 Flags;
-        const ui32 Mode;
+        ui32 Mode;
         const ui32 Uid;
         ui32 Gid;
         ui32 QuotaId = 0;
@@ -1974,6 +1974,8 @@ struct TTxIndexTablet
         const bool IsNodeRefLocked;
         TMaybe<INodeIndexTabletDatabase::TNode> TargetNode;
         TMaybe<INodeIndexTabletDatabase::TNode> ParentNode;
+        TString ParentDefaultAcl;
+        TString ChildAccessAcl;
         TVector<ui64> UpdatedNodes;
 
         NProto::TOpLogEntry OpLogEntry;
@@ -2009,12 +2011,15 @@ struct TTxIndexTablet
 
             ReadCommitId = InvalidCommitId;
             WriteCommitId = InvalidCommitId;
+            Mode = Request.GetMode();
             TargetNodeId = InvalidNodeId;
             ShardId.clear();
             ShardNodeName.clear();
             IsNewShardNode = false;
             TargetNode.Clear();
             ParentNode.Clear();
+            ParentDefaultAcl.clear();
+            ChildAccessAcl.clear();
             UpdatedNodes.clear();
             QuotaId = 0;
 
