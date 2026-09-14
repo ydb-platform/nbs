@@ -65,8 +65,16 @@ void TIndexTabletActor::HandleFastShardCommand(
             const auto sender = ev->Sender;
             const ui64 cookie = ev->Cookie;
 
+            //
+            // The shard is captured to pin its lifetime: the interface does
+            // not promise that the future may outlive the shard object, and
+            // the actor may die and drop its reference before the callback
+            // runs.
+            //
+
             FastShard->CollectStats(stats.get()).Subscribe(
-                [ass, sender, cookie, stats] (const auto& f) {
+                [ass, sender, cookie, stats, shard = FastShard] (
+                    const auto& f) {
                     auto response = std::make_unique<TResponse>(f.GetValue());
                     if (!HasError(response->Record.GetError())) {
                         auto* s = response->Record.MutableStats();

@@ -83,8 +83,14 @@ void TIndexTabletActor::HandleHttpInfo_FastShardStatsJson(
     const auto sender = requestInfo->Sender;
     const ui64 cookie = requestInfo->Cookie;
 
+    //
+    // The shard is captured to pin its lifetime: the interface does not
+    // promise that the future may outlive the shard object, and the actor
+    // may die and drop its reference before the callback runs.
+    //
+
     FastShard->CollectStats(stats.get()).Subscribe(
-        [ass, sender, cookie, stats] (const auto& f) {
+        [ass, sender, cookie, stats, shard = FastShard] (const auto& f) {
             const auto& error = f.GetValue();
             TString json =
                 HasError(error) ? JsonError(error) : StatsToJson(*stats);
