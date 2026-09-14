@@ -10,6 +10,7 @@
 
 #include <cloud/storage/core/protos/config_dispatcher_settings.pb.h>
 
+#include <contrib/ydb/core/config/init/init.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/library/actors/core/defs.h>
@@ -22,6 +23,22 @@ namespace NCloud::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// CMS response loaded during node registration. AppConfig holds the selected
+// PROTO or YAML configuration; PrivateDatabaseConfig carries the caller's
+// parsed PrivateDatabaseConfig section or its parsing error.
+struct TCmsConfig
+{
+    // AppConfig selected according to UseYamlConfig and YAML YamlConfigEnabled.
+    NKikimrConfig::TAppConfig AppConfig;
+
+    // Parsed PrivateDatabaseConfig or NCloud::NProto::TError on failure.
+    // Null if the section was not parsed. A successfully parsed empty section
+    // holds a non-null message.
+    std::shared_ptr<const google::protobuf::Message> PrivateDatabaseConfig;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct INodeRegistrant
 {
     using TRegistrationResult = std::tuple<ui32, NActors::TScopeId>;
@@ -31,7 +48,7 @@ struct INodeRegistrant
     virtual TResultOrError<TRegistrationResult> RegisterNode(
         const TString& nodeBrokerAddress) = 0;
 
-    virtual TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
+    virtual TResultOrError<TCmsConfig> GetConfigs(
         const TString& nodeBrokerAddress,
         ui32 nodeId) = 0;
 };
@@ -69,12 +86,16 @@ struct TRegisterDynamicNodeOptions
     TNodeRegistrationSettings Settings;
 
     TNodeLabels Labels;
+
+    // Parser for PrivateDatabaseConfigItem; empty disables its parsing.
+    // Called only for a present section in the selected YAML configuration.
+    NKikimr::NConfig::TOpaqueConfigParser PrivateDatabaseConfigParser;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 using TRegisterDynamicNodeResult =
-    std::tuple<ui32, NActors::TScopeId, TMaybe<NKikimrConfig::TAppConfig>>;
+    std::tuple<ui32, NActors::TScopeId, TMaybe<TCmsConfig>>;
 
 INodeRegistrantPtr CreateNodeRegistrant(
     NKikimrConfig::TAppConfigPtr appConfig,
