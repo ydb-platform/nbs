@@ -234,6 +234,15 @@ build {
     scripts         = ["scripts/tmpfs.sh"]
   }
 
+  provisioner "shell" {
+    inline = [
+      "echo Resetting cloud-init and caches",
+      "sudo apt clean",
+      "sudo cloud-init clean --logs",
+      "sudo sync",
+    ]
+  }
+
   provisioner "shell-local" {
     inline = ["mkdir -p reports"]
   }
