@@ -361,12 +361,16 @@ private:
         return Validate();
     }
 
+    // The visitor may return false to stop the traversal early once it has
+    // seen enough entries
     void VisitEntries(auto&& visitor)
     {
         auto e = GetFrontEntry();
 
         while (e.HasValue()) {
-            visitor(e);
+            if (!visitor(e)) {
+                return;
+            }
             e = GetNextEntry(e);
         }
 
@@ -494,6 +498,7 @@ public:
                         MaxObservedEntryByteCount,
                         e.Header.DataSize);
                 }
+                return true;
             });
 
         if (!IsCorrupted()) {
@@ -878,6 +883,38 @@ public:
                 if (!e.GetFreeFlag()) {
                     visitor(e.Header.DataChecksum, e.GetTag(), e.GetData());
                 }
+                return true;
+            });
+
+        if (IsCorrupted()) {
+            // VisitEntries may set IsCorrupted flag during entry enumeration
+            return MakeBufferIsCorruptError();
+        }
+
+        return {};
+    }
+
+    NProto::TError VisitFirst(size_t count, const TVisitor& visitor)
+    {
+        if (!ValidateAccess("VisitFirst")) {
+            return MakeBufferIsCorruptError();
+        }
+
+        if (count == 0) {
+            return {};
+        }
+
+        size_t visited = 0;
+        VisitEntries(
+            [&](const TEntryInfo& e)
+            {
+                if (!e.GetFreeFlag()) {
+                    visitor(e.Header.DataChecksum, e.GetTag(), e.GetData());
+                    if (++visited == count) {
+                        return false;
+                    }
+                }
+                return true;
             });
 
         if (IsCorrupted()) {
@@ -1089,6 +1126,13 @@ bool TFileRingBuffer::Validate()
 NProto::TError TFileRingBuffer::Visit(const TVisitor& visitor)
 {
     return Impl->Visit(visitor);
+}
+
+NProto::TError TFileRingBuffer::VisitFirst(
+    size_t count,
+    const TVisitor& visitor)
+{
+    return Impl->VisitFirst(count, visitor);
 }
 
 bool TFileRingBuffer::IsCorrupted() const

@@ -89,6 +89,30 @@ std::optional<NProto::TQueueEntry> THandleOpsQueue::Front()
     return entry;
 }
 
+THandleOpsQueue::TFrontResult THandleOpsQueue::Front(ui32 count)
+{
+    TFrontResult result;
+    result.Entries.reserve(count);
+
+    result.Error = RequestsToProcess.VisitFirst(
+        count,
+        [&](ui32 checksum, ui32 tag, TStringBuf entry)
+        {
+            Y_UNUSED(checksum);
+            Y_UNUSED(tag);
+
+            NProto::TQueueEntry queueEntry;
+            if (!queueEntry.ParseFromArray(entry.data(), entry.size())) {
+                Stats->IncrementParseErrorCount();
+                result.Entries.push_back(std::nullopt);
+            } else {
+                result.Entries.push_back(queueEntry);
+            }
+        });
+
+    return result;
+}
+
 bool THandleOpsQueue::Empty() const
 {
     return RequestsToProcess.Empty();
@@ -103,6 +127,14 @@ void THandleOpsQueue::PopFront()
     Y_UNUSED(popFrontResult);
 
     Stats->SetEntryCount(RequestsToProcess.Size());
+}
+
+void THandleOpsQueue::PopFront(ui32 count)
+{
+    while (count && !RequestsToProcess.Empty()) {
+        PopFront();
+        --count;
+    }
 }
 
 ui64 THandleOpsQueue::Size() const

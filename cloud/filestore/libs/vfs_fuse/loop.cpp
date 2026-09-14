@@ -1303,6 +1303,12 @@ private:
         }
         config.SetAsyncHandleOperationDrainPeriod(
             features.GetAsyncHandleOperationDrainPeriod());
+        // If the batch size is not published by the server, fall back to
+        // the default batch size.
+        if (features.GetAsyncHandleOperationBatchSize()) {
+            config.SetAsyncHandleOperationBatchSize(
+                features.GetAsyncHandleOperationBatchSize());
+        }
 
         config.SetDirectIoEnabled(features.GetDirectIoEnabled());
         config.SetDirectIoAlign(features.GetDirectIoAlign());
