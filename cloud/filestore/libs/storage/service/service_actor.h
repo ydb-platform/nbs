@@ -385,6 +385,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateFastShardCommandActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateGetFileSystemTopologyActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

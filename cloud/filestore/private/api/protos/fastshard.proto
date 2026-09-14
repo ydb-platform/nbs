@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+import "cloud/storage/core/protos/error.proto";
+import "cloud/filestore/public/api/protos/headers.proto";
+
+package NCloud.NFileStore.NProtoPrivate;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/private/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// FastShardCommand request/response. Forwards misc admin commands to the
+// fast shard hosted by the tablet.
+
+message TDumpLayoutJsonCommand
+{
+}
+
+message TCollectStatsCommand
+{
+}
+
+message TFastShardCommandRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    oneof Command
+    {
+        TDumpLayoutJsonCommand DumpLayoutJson = 3;
+        TCollectStatsCommand CollectStats = 4;
+    }
+}
+
+message TFastShardStats
+{
+    uint64 UsedNodeCount = 1;
+    uint64 TotalNodeCount = 2;
+    uint64 UsedNameCount = 3;
+    uint64 TotalNameCount = 4;
+    uint64 UsedHandleCount = 5;
+    uint64 TotalHandleCount = 6;
+    uint64 UsedPageCount = 7;
+    uint64 TotalPageCount = 8;
+}
+
+message TFastShardCommandResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // Set for the DumpLayoutJson command.
+    string LayoutJson = 2;
+
+    // Set for the CollectStats command.
+    TFastShardStats Stats = 3;
+}

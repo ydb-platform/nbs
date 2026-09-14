@@ -10,6 +10,7 @@ PEERDIR(
 
 SRCS(
     actions.proto
+    fastshard.proto
     tablet.proto
 )
 

@@ -6,6 +6,7 @@
 #include "events.h"
 
 #include <cloud/filestore/libs/service/filestore.h>
+#include <cloud/filestore/private/api/protos/fastshard.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
@@ -70,6 +71,8 @@ namespace NCloud::NFileStore::NStorage {
     xxx(DeleteQuota,                __VA_ARGS__)                               \
     xxx(ListQuotas,                 __VA_ARGS__)                               \
                                                                                \
+    xxx(FastShardCommand,           __VA_ARGS__)                               \
+                                                                               \
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
 
@@ -88,6 +91,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetStorageConfig,           __VA_ARGS__)                               \
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
     xxx(RestartTablet,              __VA_ARGS__)                               \
+    xxx(FastShardCommand,           __VA_ARGS__)                               \
 // FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN
 
 #define FILESTORE_TABLET_ADAPTER_REQUESTS(xxx, ...)                            \
@@ -246,6 +250,9 @@ struct TEvIndexTablet
 
         EvLinkNodeInShardRequest = EvBegin + 93,
         EvLinkNodeInShardResponse,
+
+        EvFastShardCommandRequest = EvBegin + 95,
+        EvFastShardCommandResponse,
 
         // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
         // sub-namespaces which don't have any non-local events so if we run out

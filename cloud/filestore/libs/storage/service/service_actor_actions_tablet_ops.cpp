@@ -37,6 +37,21 @@ IActorPtr TStorageServiceActor::CreateForcedOperationStatusActionActor(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// FastShard
+
+IActorPtr TStorageServiceActor::CreateFastShardCommandActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TFastShardCommandActor = TTabletActionActor<
+        TEvIndexTablet::TEvFastShardCommandRequest,
+        TEvIndexTablet::TEvFastShardCommandResponse>;
+    return std::make_unique<TFastShardCommandActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Stats
 
 IActorPtr TStorageServiceActor::CreateGetStorageStatsActionActor(
