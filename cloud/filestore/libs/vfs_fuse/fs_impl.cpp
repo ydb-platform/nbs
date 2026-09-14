@@ -414,36 +414,37 @@ void TFileSystem::CompleteHandleOpsQueueBatch(ui32 batchSize)
         HandleOpsQueue->PopFront(batchSize);
     }
 
-    for (ui32 i = 0; i < batchSize; ++i) {
-        if (!ProcessDelayedRelease()) {
-            break;
+    // Move delayed releases into HandleOpsQueue until it is full
+    // or there are no delayed releases left.
+    for (;;) {
+        std::optional<TReleaseRequest> request;
+        THandleOpsQueue::EResult result;
+
+        with_lock (HandleOpsQueueLock) {
+            if (DelayedReleaseQueue.empty()) {
+                break;
+            }
+
+            request = DelayedReleaseQueue.front();
+            result = HandleOpsQueue->AddDestroyRequest(
+                request->Ino,
+                request->Fh);
+            if (result == THandleOpsQueue::EResult::QueueOverflow) {
+                STORAGE_DEBUG(
+                    "HandleOpsQueue overflow, can't add destroy handle "
+                    "request to queue #"
+                    << request->Ino << " @" << request->Fh);
+                break;
+            }
+
+            DelayedReleaseQueue.pop();
         }
+
+        CompleteAsyncRelease(*request, result);
     }
+
     ScheduleProcessHandleOpsQueue(
         Config->GetAsyncHandleOperationDrainPeriod());
-}
-
-bool TFileSystem::ProcessDelayedRelease()
-{
-    with_lock (DelayedReleaseQueueLock) {
-        if (DelayedReleaseQueue.empty()) {
-            return false;
-        }
-        const auto& request = DelayedReleaseQueue.front();
-        if (!ProcessAsyncRelease(
-                request.CallContext,
-                request.Req,
-                request.Ino,
-                request.Fh,
-                request.WriteBackCacheError))
-        {
-            // HandleOpsQueue is full: the remaining iterations would
-            // retry the same head entry with no new capacity, so stop here.
-            return false;
-        }
-        DelayedReleaseQueue.pop();
-        return true;
-    }
 }
 
 TFuture<void> TFileSystem::ProcessHandleOpsQueueEntry(

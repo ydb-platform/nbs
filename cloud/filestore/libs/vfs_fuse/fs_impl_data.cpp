@@ -465,41 +465,66 @@ void TFileSystem::ProcessAsyncCreateHandleResponse(
         fi);
 }
 
-bool TFileSystem::ProcessAsyncRelease(
+void TFileSystem::ProcessAsyncRelease(
     TCallContextPtr callContext,
     fuse_req_t req,
     fuse_ino_t ino,
     ui64 fh,
     const NCloud::NProto::TError& writeBackCacheError)
 {
+    TReleaseRequest request{
+        std::move(callContext),
+        req,
+        ino,
+        fh,
+        writeBackCacheError};
+
+    THandleOpsQueue::EResult result;
     with_lock (HandleOpsQueueLock) {
-        const auto res = HandleOpsQueue->AddDestroyRequest(ino, fh);
-        if (res == THandleOpsQueue::EResult::QueueOverflow) {
-            STORAGE_DEBUG(
-                "HandleOpsQueue overflow, can't add destroy handle request to "
-                "queue #"
-                << ino << " @" << fh);
-            return false;
-        }
-        if (res == THandleOpsQueue::EResult::SerializationError) {
-            TStringBuilder msg;
-            msg << "Unable to add DestroyHandleRequest to HandleOpsQueue #"
-                << ino << " @" << fh << ". Serialization failed";
-
-            ReportHandleOpsQueueProcessError(msg);
-
-            ReplyError(*callContext, MakeError(E_FAIL, msg), req, 0);
-            return true;
+        result = HandleOpsQueue->AddDestroyRequest(ino, fh);
+        if (result == THandleOpsQueue::EResult::QueueOverflow) {
+            DelayedReleaseQueue.push(std::move(request));
         }
     }
 
+    if (result == THandleOpsQueue::EResult::QueueOverflow) {
+        STORAGE_DEBUG(
+            "Postponing destroy handle request until HandleOpsQueue has "
+            "capacity #"
+            << ino << " @" << fh);
+        return;
+    }
+
+    CompleteAsyncRelease(request, result);
+}
+
+void TFileSystem::CompleteAsyncRelease(
+    const TReleaseRequest& request,
+    THandleOpsQueue::EResult result)
+{
+    if (result == THandleOpsQueue::EResult::SerializationError) {
+        TStringBuilder msg;
+        msg << "Unable to add DestroyHandleRequest to HandleOpsQueue #"
+            << request.Ino << " @" << request.Fh << ". Serialization failed";
+
+        ReportHandleOpsQueueProcessError(msg);
+
+        ReplyError(*request.CallContext, MakeError(E_FAIL, msg), request.Req, 0);
+        return;
+    }
+
+    Y_ABORT_UNLESS(result == THandleOpsQueue::EResult::Ok);
     STORAGE_DEBUG(
-        "Destroy handle request added to queue #" << ino << " @" << fh);
+        "Destroy handle request added to queue #"
+        << request.Ino << " @" << request.Fh);
 
-    if (CheckError(*callContext, req, writeBackCacheError)) {
-        ReplyError(*callContext, {}, req, 0);
+    if (CheckError(
+            *request.CallContext,
+            request.Req,
+            request.WriteBackCacheError))
+    {
+        ReplyError(*request.CallContext, {}, request.Req, 0);
     }
-    return true;
 }
 
 void TFileSystem::ReleaseImpl(
@@ -519,22 +544,12 @@ void TFileSystem::ReleaseImpl(
     // - DestroyHandle succeeds -> return writeBackCacheError
 
     if (processAsynchronously) {
-        if (!ProcessAsyncRelease(
-                callContext,
-                req,
-                ino,
-                handle,
-                writeBackCacheError))
-        {
-            with_lock (DelayedReleaseQueueLock) {
-                DelayedReleaseQueue.push(TReleaseRequest(
-                    callContext,
-                    req,
-                    ino,
-                    handle,
-                    writeBackCacheError));
-            }
-        }
+        ProcessAsyncRelease(
+            std::move(callContext),
+            req,
+            ino,
+            handle,
+            writeBackCacheError);
         return;
     }
 

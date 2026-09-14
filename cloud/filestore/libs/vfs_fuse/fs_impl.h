@@ -97,11 +97,9 @@ private:
     TXAttrCache XAttrCache;
     TMutex XAttrCacheLock;
 
-    THandleOpsQueuePtr HandleOpsQueue;
     TMutex HandleOpsQueueLock;
-
+    THandleOpsQueuePtr HandleOpsQueue;
     TQueue<TReleaseRequest> DelayedReleaseQueue;
-    TMutex DelayedReleaseQueueLock;
 
     TWriteBackCache WriteBackCache;
 
@@ -490,12 +488,15 @@ private:
         fuse_ino_t ino,
         const NProto::TCreateHandleRequest& originalRequest,
         const NProto::TCreateHandleResponse& asyncResponse);
-    bool ProcessAsyncRelease(
+    void ProcessAsyncRelease(
         TCallContextPtr callContext,
         fuse_req_t req,
         fuse_ino_t ino,
         ui64 handle,
         const NCloud::NProto::TError& writeBackCacheError);
+    void CompleteAsyncRelease(
+        const TReleaseRequest& request,
+        THandleOpsQueue::EResult result);
     void ReleaseImpl(
         TCallContextPtr callContext,
         fuse_req_t req,
@@ -510,7 +511,6 @@ private:
         TCallContext& callContext,
         const NProto::TConfirmCreateHandleResponse& response);
     void CompleteHandleOpsQueueBatch(ui32 batchSize);
-    bool ProcessDelayedRelease();
 
     void ClearDirectoryCache();
 
