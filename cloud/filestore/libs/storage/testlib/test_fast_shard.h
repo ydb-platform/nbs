@@ -36,6 +36,7 @@ struct TTestFastShard: NFastShard::IFileSystemShard
 #undef FAST_SHARD_NOT_IMPLEMENTED
 
     NThreading::TFuture<NCloud::NProto::TError> Init() override;
+    NThreading::TFuture<NCloud::NProto::TError> Format() override;
     void TearDown() override;
     NThreading::TFuture<NCloud::NProto::TError> CollectStats(
         NFastShard::TFileSystemShardStats* stats) const override;

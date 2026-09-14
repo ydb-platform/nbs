@@ -535,6 +535,20 @@ public:
         return MakeFuture(NCloud::NProto::TError{});
     }
 
+    [[nodiscard]] TFuture<NCloud::NProto::TError> Format() override
+    {
+        auto g = Guard(Lock);
+
+        Root = {};
+        Attrs.clear();
+        Files.clear();
+        Handles.clear();
+        LastNodeId = RootNodeId;
+        LastHandleId = 0;
+
+        return MakeFuture(NCloud::NProto::TError{});
+    }
+
     void TearDown() override
     {}
 

@@ -11,6 +11,11 @@ NThreading::TFuture<NCloud::NProto::TError> TTestFastShard::Init()
     return InitResult.GetFuture();
 }
 
+NThreading::TFuture<NCloud::NProto::TError> TTestFastShard::Format()
+{
+    return NThreading::MakeFuture(MakeError(E_NOT_IMPLEMENTED));
+}
+
 void TTestFastShard::TearDown()
 {
     TornDown = true;

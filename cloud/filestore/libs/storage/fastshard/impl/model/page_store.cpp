@@ -56,6 +56,7 @@ public:
         TVector<TPageGroup>& logRecord) override;
     NProto::TError
     ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const override;
+    void Clear() override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -145,6 +146,15 @@ NProto::TError TPageStore::WritePage(
     p = {.Content = std::move(page), .Lsn = lsn, .Dirty = true};
 
     return {};
+}
+
+void TPageStore::Clear()
+{
+    std::lock_guard g(Mutex);
+    for ([[maybe_unused]] const auto& [pageNo, page]: PageCache) {
+        Y_ABORT_UNLESS(!page.Dirty, "dirty page in Clear: %lu", pageNo);
+    }
+    PageCache.clear();
 }
 
 NProto::TError TPageStore::ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const
