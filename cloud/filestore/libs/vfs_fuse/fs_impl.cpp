@@ -545,41 +545,32 @@ void TFileSystem::ProcessHandleOpsQueue()
 
     // A queued confirm followed later in this batch by a destroy for the
     // same handle is redundant: sending both races on the tablet and can
-    // resurrect a handle that Destroy already removed. Skip the confirm -
+    // resurrect a handle that Destroy already removed. Skip such confirms -
     // Destroy alone is enough, whether or not the handle was actually
     // persisted yet (if it wasn't, Destroy just gets S_ALREADY, a no-op).
-    THashMap<ui64, size_t> pendingConfirmIndexByHandle;
-    TVector<bool> skipConfirm(entries.size(), false);
-    for (size_t i = 0; i < entries.size(); ++i) {
-        const auto& entry = entries[i];
-        if (!entry) {
-            continue;
-        }
-        if (entry->HasQueuedCreateHandleRequest()) {
-            pendingConfirmIndexByHandle[
-                entry->GetQueuedCreateHandleRequest().GetHandle()] = i;
-        } else if (entry->HasDestroyHandleRequest()) {
-            auto it = pendingConfirmIndexByHandle.find(
+    THashSet<ui64> destroyedHandles;
+    for (const auto& entry: entries) {
+        if (entry && entry->HasDestroyHandleRequest()) {
+            destroyedHandles.insert(
                 entry->GetDestroyHandleRequest().GetHandle());
-            if (it != pendingConfirmIndexByHandle.end()) {
-                skipConfirm[it->second] = true;
-                pendingConfirmIndexByHandle.erase(it);
-            }
         }
     }
 
     TVector<TFuture<void>> futures;
     futures.reserve(entries.size());
 
-    for (size_t i = 0; i < entries.size(); ++i) {
-        if (skipConfirm[i]) {
+    for (const auto& entry: entries) {
+        if (entry && entry->HasQueuedCreateHandleRequest() &&
+            destroyedHandles.contains(
+                entry->GetQueuedCreateHandleRequest().GetHandle()))
+        {
             STORAGE_DEBUG(
                 "Skipping superseded create handle confirmation: "
                 << "filesystem " << Config->GetFileSystemId());
             futures.push_back(MakeFuture());
             continue;
         }
-        futures.push_back(ProcessHandleOpsQueueEntry(entries[i]));
+        futures.push_back(ProcessHandleOpsQueueEntry(entry));
     }
 
     WaitAll(futures).Subscribe(

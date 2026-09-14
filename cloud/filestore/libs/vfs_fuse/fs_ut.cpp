@@ -3233,6 +3233,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
     {
         NProto::TFileStoreFeatures features;
         features.SetAsyncDestroyHandleEnabled(true);
+        // This test specifically checks strictly sequential processing
+        // (one in-flight request at a time), so pin the batch size to 1
+        // rather than relying on the default.
+        features.SetAsyncHandleOperationBatchSize(1);
         auto scheduler = std::make_shared<TTestScheduler>();
         TBootstrap bootstrap(CreateWallClockTimer(), scheduler, features);
 
@@ -3445,6 +3449,92 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1, getEntryCount());
 
         destroyPromises[2].SetValue(NProto::TDestroyHandleResponse{});
+        UNIT_ASSERT_VALUES_EQUAL(0, getEntryCount());
+    }
+
+    Y_UNIT_TEST(ShouldSkipConfirmWhenDestroyForSameHandleIsInTheSameBatch)
+    {
+        constexpr ui32 batchSize = 10;
+
+        NProto::TFileStoreFeatures features;
+        features.SetAsyncCreateHandleEnabled(true);
+        features.SetAsyncDestroyHandleEnabled(true);
+        features.SetAsyncHandleOperationBatchSize(batchSize);
+        features.SetAsyncHandleOperationIdlePeriod(50);
+        features.SetAsyncHandleOperationDrainPeriod(0);
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto scheduler = std::make_shared<TTestScheduler>(timer->Now());
+        TBootstrap bootstrap(timer, scheduler, features);
+
+        ui32 confirmCalled = 0;
+        ui32 destroyCalled = 0;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto, auto request)
+            {
+                UNIT_ASSERT(request->GetAllowAsyncCreateHandle());
+
+                NProto::TCreateHandleResponse response;
+                response.SetHandle(request->GetNodeId() + 100);
+                response.SetHandleCreatedAsync(true);
+                response.MutableNodeAttr()->SetId(request->GetNodeId());
+                response.MutableNodeAttr()->SetType(NProto::E_REGULAR_NODE);
+                return MakeFuture(response);
+            });
+
+        bootstrap.Service->SetHandlerConfirmCreateHandle(
+            [&](auto, auto)
+            {
+                ++confirmCalled;
+                return MakeFuture(NProto::TConfirmCreateHandleResponse{});
+            });
+
+        bootstrap.Service->SetHandlerDestroyHandle(
+            [&](auto, auto)
+            {
+                ++destroyCalled;
+                return MakeFuture(NProto::TDestroyHandleResponse{});
+            });
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        auto entryCount =
+            bootstrap.GetHandleOpsQueueCounters()->FindCounter("EntryCount");
+        UNIT_ASSERT(entryCount);
+        auto getEntryCount = [&]
+        {
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            return entryCount->GetAtomic();
+        };
+
+        const ui64 nodeId = 10;
+        const ui64 handle = nodeId + 100;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            handle,
+            bootstrap.Fuse->SendRequest<TOpenHandleRequest>(nodeId)
+                .GetValue(WaitTimeout));
+
+        auto release = bootstrap.Fuse->SendRequest<TReleaseRequest>(
+            nodeId,
+            handle,
+            O_RDONLY);
+        UNIT_ASSERT_NO_EXCEPTION(release.GetValue(WaitTimeout));
+
+        // The confirmation and the destroy request for the same handle are
+        // both sitting undispatched in the queue before the batch runs.
+        UNIT_ASSERT_VALUES_EQUAL(2, getEntryCount());
+
+        scheduler->RunAllScheduledTasksUntilNow();
+
+        // The confirm is skipped - only the destroy is actually sent to the
+        // tablet - and both queue entries are popped together as one batch.
+        UNIT_ASSERT_VALUES_EQUAL(0, confirmCalled);
+        UNIT_ASSERT_VALUES_EQUAL(1, destroyCalled);
         UNIT_ASSERT_VALUES_EQUAL(0, getEntryCount());
     }
 
