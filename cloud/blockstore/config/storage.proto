@@ -208,7 +208,8 @@ message TStorageServiceConfig
     optional uint32 WriteBlobThreshold = 6;
 
     // The size of data (in bytes) in the fresh blocks table that triggers flushing.
-    optional uint32 FlushThreshold = 7;
+    // An upper bound; see BytesPerFreshCapacityUnitHDD.
+    optional uint64 FlushThreshold = 7;
 
     // Maximum number of fresh blocks to keep.
     // optional uint32 MaxFreshBlocks = 8; // obsolete
@@ -337,8 +338,10 @@ message TStorageServiceConfig
     optional uint32 CompactionScoreLimitForBackpressure = 64;
     optional uint32 CompactionScoreThresholdForBackpressure = 65;
     optional uint32 CompactionScoreFeatureMaxValue = 66;
-    optional uint32 FreshByteCountLimitForBackpressure = 67;
-    optional uint32 FreshByteCountThresholdForBackpressure = 68;
+    // The two Fresh settings below are upper bounds;
+    // see BytesPerFreshCapacityUnitHDD.
+    optional uint64 FreshByteCountLimitForBackpressure = 67;
+    optional uint64 FreshByteCountThresholdForBackpressure = 68;
     optional uint32 FreshByteCountFeatureMaxValue = 69;
     optional uint64 CleanupQueueBytesLimitForBackpressure = 311;
     optional uint64 CleanupQueueBytesThresholdForBackpressure = 312;
@@ -635,7 +638,8 @@ message TStorageServiceConfig
     optional uint32 MigrationIndexCachingInterval = 189;
 
     // Flush threshold for fresh blobs count in fresh channel.
-    optional uint32 FreshBlobCountFlushThreshold = 190;
+    // An upper bound; see BytesPerFreshCapacityUnitHDD.
+    optional uint64 FreshBlobCountFlushThreshold = 190;
 
     // Max bandwidth used by migration in MiB/s (actual bandwidth is x2 due to
     // the need to read and write).
@@ -704,7 +708,8 @@ message TStorageServiceConfig
     optional uint32 MaxLocalVolumes = 211;
 
     // Flush threshold for fresh blob byte count.
-    optional uint32 FreshBlobByteCountFlushThreshold = 212;
+    // An upper bound; see BytesPerFreshCapacityUnitHDD.
+    optional uint64 FreshBlobByteCountFlushThreshold = 212;
 
     // Max block count in one transaction for updating logicalUsedBlocks.
     optional uint32 LogicalUsedBlocksUpdateBlockCount = 213;
@@ -881,7 +886,8 @@ message TStorageServiceConfig
     optional string DiskRegistryCountersHost = 283;
 
     // Maximum allowed fresh byte count after which we start to reject writes.
-    optional uint32 FreshByteCountHardLimit = 284;
+    // An upper bound; see BytesPerFreshCapacityUnitHDD.
+    optional uint64 FreshByteCountHardLimit = 284;
 
     // Interval to postpone volume push/pull.
     optional uint32 BalancerActionDelayInterval = 285;
@@ -1697,22 +1703,39 @@ message TStorageServiceConfig
     // fresh after which we start to reject write and zero requests.
     optional uint64 FreshLogicalBlocksByteCountHardLimit = 529;
 
+    // SSD-specific Fresh limits, used by partition v1 for STORAGE_MEDIA_SSD;
+    // the unsuffixed settings are used for HDD and other replicated media.
+    // Upper bounds; see BytesPerFreshCapacityUnitSSD below.
+    optional uint64 FlushThresholdSSD = 530;
+    optional uint64 FreshByteCountLimitForBackpressureSSD = 531;
+    optional uint64 FreshByteCountThresholdForBackpressureSSD = 532;
+    optional uint64 FreshBlobCountFlushThresholdSSD = 533;
+    optional uint64 FreshBlobByteCountFlushThresholdSSD = 534;
+    optional uint64 FreshByteCountHardLimitSSD = 535;
+
+    // Partition bytes granting one unit of Fresh capacity. Partition v1
+    // resolves each Fresh limit of the selected media kind as
+    //     min(limit, compiledDefault * ceil(partitionBytes / unitBytes))
+    // Zero - the default - turns scaling off and makes the limits exact.
+    optional uint64 BytesPerFreshCapacityUnitHDD = 536;
+    optional uint64 BytesPerFreshCapacityUnitSSD = 537;
+
     // Enables compaction triggered by the number of mixed blocks for HDD
     // volumes.
-    optional bool MixedBlocksCountCompactionEnabledHDD = 530;
+    optional bool MixedBlocksCountCompactionEnabledHDD = 538;
 
     // Enables compaction triggered by the number of mixed blocks for SSD
     // volumes.
-    optional bool MixedBlocksCountCompactionEnabledSSD = 531;
+    optional bool MixedBlocksCountCompactionEnabledSSD = 539;
 
     // Number of mixed bytes in a compaction range that triggers compaction for
     // HDD volumes. Zero means using WriteBlobThreshold.
-    optional uint32 MixedBytesCountCompactionThresholdHDD = 532;
+    optional uint32 MixedBytesCountCompactionThresholdHDD = 540;
 
     // Number of mixed bytes in a compaction range that triggers compaction for
     // SSD volumes. Zero means using WriteBlobThresholdSSD.
-    optional uint32 MixedBytesCountCompactionThresholdSSD = 533;
+    optional uint32 MixedBytesCountCompactionThresholdSSD = 541;
 
     // Number of ranges to process in a single mixed-block-count compaction run.
-    optional uint32 MixedBlocksCountCompactionRangeCountPerRun = 534;
+    optional uint32 MixedBlocksCountCompactionRangeCountPerRun = 542;
 }
