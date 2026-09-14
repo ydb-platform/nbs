@@ -2411,10 +2411,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto read2 =
             bootstrap.Fuse->SendRequest<TReadDirRequest>(nodeId, handleId);
-        UNIT_ASSERT_EXCEPTION_CONTAINS(
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
             read2.GetValueSync(),
-            yexception,
-            "Unknown error -4");
+            TSystemError,
+            [](const TSystemError& e) { return e.Status() == EINTR; });
 
         response.SetValue(NProto::TListNodesResponse{});
         UNIT_ASSERT(stop.Wait(WaitTimeout));
@@ -2439,10 +2439,94 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         });
 
         auto lookup = bootstrap.Fuse->SendRequest<TLookupRequest>("test", RootNodeId);
-        UNIT_ASSERT_EXCEPTION_CONTAINS(
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
             lookup.GetValue(WaitTimeout),
-            yexception,
-            "Unknown error -5");
+            TSystemError,
+            [](const TSystemError& e) { return e.Status() == EIO; });
+    }
+
+    Y_UNIT_TEST(ShouldReplyStaleWhenNodeAddressedByInoIsMissing)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        // The node was replaced via another session: the guest kernel still
+        // holds the old ino, the tablet has already destroyed the node.
+        const ui64 staleNodeId = 10;
+
+        bootstrap.Service->SetHandlerCreateHandle(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(staleNodeId, request->GetNodeId());
+                return MakeFuture<NProto::TCreateHandleResponse>(
+                    TErrorResponse(ErrorInvalidTarget(staleNodeId)));
+            });
+        bootstrap.Service->SetHandlerGetNodeAttr(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                return MakeFuture<NProto::TGetNodeAttrResponse>(
+                    TErrorResponse(ErrorInvalidTarget(request->GetNodeId())));
+            });
+        bootstrap.Service->SetHandlerSetNodeAttr(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(staleNodeId, request->GetNodeId());
+                return MakeFuture<NProto::TSetNodeAttrResponse>(
+                    TErrorResponse(ErrorInvalidTarget(staleNodeId)));
+            });
+        bootstrap.Service->SetHandlerGetNodeXAttr(
+            [&](auto callContext, auto request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(FileSystemId, callContext->FileSystemId);
+                UNIT_ASSERT_VALUES_EQUAL(staleNodeId, request->GetNodeId());
+                return MakeFuture<NProto::TGetNodeXAttrResponse>(
+                    TErrorResponse(ErrorInvalidTarget(staleNodeId)));
+            });
+
+        auto isStale = [](const TSystemError& e) {
+            return e.Status() == ESTALE;
+        };
+
+        // ESTALE makes the kernel redo the path walk with a fresh lookup
+        auto open = bootstrap.Fuse->SendRequest<TOpenHandleRequest>(staleNodeId);
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            open.GetValue(WaitTimeout),
+            TSystemError,
+            isStale);
+
+        auto getAttr = bootstrap.Fuse->SendRequest<TGetAttrRequest>(staleNodeId);
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            getAttr.GetValue(WaitTimeout),
+            TSystemError,
+            isStale);
+
+        auto setAttr = bootstrap.Fuse->SendRequest<TSetAttrRequest>(
+            staleNodeId,
+            0);
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            setAttr.GetValue(WaitTimeout),
+            TSystemError,
+            isStale);
+
+        auto getXAttr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>(
+            "user.name",
+            staleNodeId);
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
+            getXAttr.GetValue(WaitTimeout),
+            TSystemError,
+            isStale);
+
+        // Lookup by name is not affected: a missing name is a negative entry
+        auto lookup = bootstrap.Fuse->SendRequest<TLookupRequest>(
+            "missing",
+            RootNodeId);
+        UNIT_ASSERT_VALUES_EQUAL(0, lookup.GetValue(WaitTimeout));
     }
 
     Y_UNIT_TEST(ShouldCacheXAttrValueOnGet)
@@ -2612,18 +2696,18 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", 6);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
-            UNIT_ASSERT_EXCEPTION_CONTAINS(
+            UNIT_ASSERT_EXCEPTION_SATISFIES(
                 xattr.GetValue(),
-                yexception,
-                "-61"); // NODATA error code
+                TSystemError,
+                [](const TSystemError& e) { return e.Status() == ENODATA; });
         }
         {
             auto xattr = bootstrap.Fuse->SendRequest<TGetXAttrValueRequest>("name", 6);
             UNIT_ASSERT(xattr.Wait(WaitTimeout));
-            UNIT_ASSERT_EXCEPTION_CONTAINS(
+            UNIT_ASSERT_EXCEPTION_SATISFIES(
                 xattr.GetValue(),
-                yexception,
-                "-61"); // NODATA error code
+                TSystemError,
+                [](const TSystemError& e) { return e.Status() == ENODATA; });
             UNIT_ASSERT_VALUES_EQUAL(1, callCount.load());
         }
     }
@@ -4174,10 +4258,10 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(1U, destroyCalled.load());
 
         destroyPromise.SetValue(NProto::TDestroyHandleResponse{});
-        UNIT_ASSERT_EXCEPTION_CONTAINS(
+        UNIT_ASSERT_EXCEPTION_SATISFIES(
             future.GetValue(WaitTimeout),
-            yexception,
-            ToString(-ENOENT));
+            TSystemError,
+            [](const TSystemError& e) { return e.Status() == ESTALE; });
 
         // The create was never queued, so background queue processing must not
         // retry the failed synchronous confirmation.

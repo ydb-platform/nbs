@@ -180,11 +180,7 @@ void TFileSystem::CleanupFailedCreateHandle(
                         << " error: " << FormatError(destroyError));
                 }
 
-                self->ReplyError(
-                    *callContext,
-                    confirmError,
-                    req,
-                    ErrnoFromError(confirmError.GetCode()));
+                self->CheckNodeError(*callContext, req, confirmError);
             });
 }
 
@@ -361,7 +357,8 @@ void TFileSystem::Open(
     Session->CreateHandle(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
+            auto self = ptr.lock();
+            if (self && self->CheckNodeError(*callContext, req, response.GetError())) {
                 const auto& response = future.GetValue();
 
                 if (response.GetHandleCreatedAsync()) {

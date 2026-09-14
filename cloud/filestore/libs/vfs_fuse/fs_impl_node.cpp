@@ -437,16 +437,23 @@ void TFileSystem::ReadLink(
     auto request = StartRequest<NProto::TReadLinkRequest>(ino);
 
     Session->ReadLink(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyReadLink(
-                    *callContext,
-                    response.GetError(),
-                    req,
-                    response.GetSymLink().data());
-            }
-        });
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                const auto& response = future.GetValue();
+                auto self = ptr.lock();
+                if (self && self->CheckNodeError(
+                                *callContext,
+                                req,
+                                response.GetError()))
+                {
+                    self->ReplyReadLink(
+                        *callContext,
+                        response.GetError(),
+                        req,
+                        response.GetSymLink().data());
+                }
+            });
 }
 
 void TFileSystem::Access(
@@ -465,12 +472,19 @@ void TFileSystem::Access(
     request->SetMask(mask);
 
     Session->AccessNode(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
-            const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
-                self->ReplyError(*callContext, response.GetError(), req, 0);
-            }
-        });
+        .Subscribe(
+            [=, ptr = weak_from_this()](const auto& future)
+            {
+                const auto& response = future.GetValue();
+                auto self = ptr.lock();
+                if (self && self->CheckNodeError(
+                                *callContext,
+                                req,
+                                response.GetError()))
+                {
+                    self->ReplyError(*callContext, response.GetError(), req, 0);
+                }
+            });
 }
 
 }   // namespace NCloud::NFileStore::NFuse

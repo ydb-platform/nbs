@@ -420,6 +420,11 @@ private:
         fuse_req_t req,
         const NProto::TError& error);
 
+    bool CheckNodeError(
+        TCallContext& callContext,
+        fuse_req_t req,
+        const NProto::TError& error);
+
     bool ValidateNodeId(
         TCallContext& callContext,
         fuse_req_t req,

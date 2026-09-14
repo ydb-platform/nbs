@@ -5,6 +5,7 @@
 #include <contrib/libs/linux-headers/linux/fuse.h>
 
 #include <util/generic/string.h>
+#include <util/generic/yexception.h>
 #include <util/string/builder.h>
 
 #include <sys/stat.h>
@@ -105,7 +106,8 @@ struct TRequestBase
             return;
         }
         if (Out->Header.error) {
-            Result.SetException(LastSystemErrorText(Out->Header.error));
+            Result.SetException(
+                std::make_exception_ptr(TSystemError(-Out->Header.error)));
             return;
         }
 
@@ -129,7 +131,8 @@ struct TRequestBase<TInPayload, TOutPayload, void>
     void OnCompletion()
     {
         if (Out->Header.error) {
-            Result.SetException(LastSystemErrorText(Out->Header.error));
+            Result.SetException(
+                std::make_exception_ptr(TSystemError(-Out->Header.error)));
             return;
         }
 

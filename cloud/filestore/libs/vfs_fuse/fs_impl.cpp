@@ -129,6 +129,22 @@ bool TFileSystem::CheckError(
     return true;
 }
 
+bool TFileSystem::CheckNodeError(
+    TCallContext& callContext,
+    fuse_req_t req,
+    const NProto::TError& error)
+{
+    if (error.GetCode() != E_FS_NOENT) {
+        return CheckError(callContext, req, error);
+    }
+
+    STORAGE_DEBUG("request #" << fuse_req_unique(req)
+        << " failed on a stale node: " << FormatError(error));
+
+    ReplyError(callContext, error, req, ESTALE);
+    return false;
+}
+
 bool TFileSystem::ValidateNodeId(
     TCallContext& callContext,
     fuse_req_t req,
