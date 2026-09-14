@@ -1,8 +1,12 @@
+import collections
 import os
 import re
 import tempfile
 
 import yatest.common as common
+
+ProfileLogEvent = collections.namedtuple(
+    "ProfileLogEvent", ["request_type", "result", "body"])
 
 
 def _iter_profile_log_lines(profile_tool_bin_path,
@@ -44,7 +48,6 @@ def _parse_profile_log_event(line):
     if parts is None:
         return None
 
-    request_type = parts[2]
     body_dict = {}
     for i in range(5, len(parts)):
         body_str = re.sub(r"[{}\[\]]", "", parts[i])
@@ -53,7 +56,10 @@ def _parse_profile_log_event(line):
             kv = body_part.split("=", 1)
             body_dict[kv[0]] = kv[1] if len(kv) == 2 else None
 
-    return request_type, body_dict
+    return ProfileLogEvent(
+        request_type=parts[2],
+        result=parts[4] if len(parts) > 4 else None,
+        body=body_dict)
 
 
 def analyze_profile_log(profile_tool_bin_path,

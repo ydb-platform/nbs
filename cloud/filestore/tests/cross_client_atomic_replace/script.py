@@ -1,4 +1,5 @@
 import collections
+import errno
 import json
 import os
 import sys
@@ -19,7 +20,7 @@ def read(path):
         with open(path) as f:
             return json.load(f)
     except OSError as e:
-        return {"errno": e.errno}
+        return {"error": errno.errorcode[e.errno]}
 
 
 def touch(path):
@@ -58,8 +59,8 @@ def reader(root):
     while not os.path.exists(os.path.join(root, WRITER_DONE)):
         result = read(os.path.join(root, TARGET))
         samples += 1
-        if "errno" in result:
-            errors[str(result["errno"])] += 1
+        if "error" in result:
+            errors[result["error"]] += 1
         time.sleep(READ_PERIOD_SECONDS)
     print(json.dumps({"samples": samples, "errors": errors}))
 

@@ -8,8 +8,13 @@ TEST_SRCS(
     test.py
 )
 
+DEPENDS(
+    cloud/filestore/tools/analytics/profile_tool
+)
+
 PEERDIR(
     cloud/filestore/tests/python/lib
+    cloud/filestore/tools/testing/profile_log
 
     cloud/storage/core/tools/testing/qemu/lib
 )
@@ -18,8 +23,6 @@ SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
 )
-
-SET(NFS_FORCE_VERBOSE 1)
 
 SET(QEMU_VIRTIO fs)
 SET(QEMU_INSTANCE_COUNT 2)

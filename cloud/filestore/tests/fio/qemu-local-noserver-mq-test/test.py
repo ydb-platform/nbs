@@ -38,7 +38,7 @@ def test_fio(name):
 
     thread_ids = set()
     for event in events:
-        loop_thread_id = event[1].get("loop_thread_id")
+        loop_thread_id = event.body.get("loop_thread_id")
         if loop_thread_id is not None:
             thread_ids.add(loop_thread_id)
 

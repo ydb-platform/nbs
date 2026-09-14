@@ -1005,14 +1005,14 @@ def test_io_telemetry():
         io_events = ["ReadData", "DescribeData", "WriteData", "AddData"]
 
         lines = []
-        for event_type, event_body in profile_log_events:
-            if event_type not in io_events:
+        for event in profile_log_events:
+            if event.request_type not in io_events:
                 continue
             try:
-                del event_body["handle"]
-                lines.append("%s\t%s\n" % (event_type, event_body))
+                del event.body["handle"]
+                lines.append("%s\t%s\n" % (event.request_type, event.body))
             except Exception as e:
-                logging.error("failed to process event: %s" % event_body)
+                logging.error("failed to process event: %s" % event.body)
                 raise e
 
         lines.sort()
