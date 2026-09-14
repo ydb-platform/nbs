@@ -134,8 +134,13 @@ void TIndexTabletActor::HandleAdapter##name(                                   \
     ui64 cookie = ev->Cookie;                                                  \
     TInstant startedTs = ctx.Now();                                            \
     const ui64 requestBytes = CalculateByteCount(msg->Record);                 \
+    /*                                                                         \
+     * The shard is captured to pin its lifetime: the interface does not      \
+     * promise that the future may outlive the shard object, and the actor    \
+     * may die and drop its reference before the callback runs.               \
+     */                                                                       \
     FastShard->name(std::move(msg->Record)).Subscribe(                         \
-        [=] (const auto& f) {                                                  \
+        [=, shard = FastShard] (const auto& f) {                               \
             OnResponse<TMethod>(                                               \
                 ass,                                                           \
                 *config,                                                       \

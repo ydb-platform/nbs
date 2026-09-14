@@ -16,6 +16,7 @@ SRCS(
     tablet_actor_acquirelock.cpp
     tablet_actor_adapter.cpp
     tablet_actor_adapterinit.cpp
+    tablet_actor_fastshard_command.cpp
     tablet_actor_addblob.cpp
     tablet_actor_adddata.cpp
     tablet_actor_adddata_unconfirmed.cpp

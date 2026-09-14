@@ -133,6 +133,10 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateRestartTabletActionActor
         },
         {
+            "fastshardcommand",
+            &TStorageServiceActor::CreateFastShardCommandActionActor
+        },
+        {
             "getfilesystemtopology",
             &TStorageServiceActor::CreateGetFileSystemTopologyActionActor
         },

@@ -142,6 +142,107 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
         }
     }
 
+    Y_UNIT_TEST(ShouldHandleFastShardCommand)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.WaitReady();
+
+        //
+        // A regular tablet rejects the command.
+        //
+
+        {
+            NProtoPrivate::TFastShardCommandRequest record;
+            record.MutableCollectStats();
+            auto request = std::make_unique<
+                TEvIndexTablet::TEvFastShardCommandRequest>();
+            request->Record = record;
+            tablet.SendRequest(std::move(request));
+            auto response = tablet.RecvResponse<
+                TEvIndexTablet::TEvFastShardCommandResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_INVALID_STATE,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            false /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            NProtoPrivate::TFastShardConfig(),
+            true /* isFastShard */);
+
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+
+        //
+        // CollectStats over the mem shard: zero used counts.
+        //
+
+        {
+            NProtoPrivate::TFastShardCommandRequest record;
+            record.MutableCollectStats();
+            auto request = std::make_unique<
+                TEvIndexTablet::TEvFastShardCommandRequest>();
+            request->Record = record;
+            tablet.SendRequest(std::move(request));
+            auto response = tablet.RecvResponse<
+                TEvIndexTablet::TEvFastShardCommandResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT(response->Record.HasStats());
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                response->Record.GetStats().GetUsedNodeCount());
+        }
+
+        //
+        // DumpLayoutJson over the mem shard: empty json document.
+        //
+
+        {
+            NProtoPrivate::TFastShardCommandRequest record;
+            record.MutableDumpLayoutJson();
+            auto request = std::make_unique<
+                TEvIndexTablet::TEvFastShardCommandRequest>();
+            request->Record = record;
+            tablet.SendRequest(std::move(request));
+            auto response = tablet.RecvResponse<
+                TEvIndexTablet::TEvFastShardCommandResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            UNIT_ASSERT_VALUES_EQUAL("{}", response->Record.GetLayoutJson());
+        }
+
+        //
+        // A request without a command is rejected.
+        //
+
+        {
+            auto request = std::make_unique<
+                TEvIndexTablet::TEvFastShardCommandRequest>();
+            tablet.SendRequest(std::move(request));
+            auto response = tablet.RecvResponse<
+                TEvIndexTablet::TEvFastShardCommandResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleHttpInfo_Diagnostics)
     {
         TTestEnv env;
