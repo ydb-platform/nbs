@@ -3217,10 +3217,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
                 error.GetMessage());
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetBrokenDisks().size());
-            UNIT_ASSERT_VALUES_EQUAL("disk-4", state.GetBrokenDisks()[0].DiskId);
+            UNIT_ASSERT(state.GetBrokenDisks().contains("disk-4"));
             UNIT_ASSERT_VALUES_EQUAL(
                 TInstant::Seconds(105),
-                state.GetBrokenDisks()[0].TsToDestroy
+                state.GetBrokenDisks().at("disk-4")
             );
 
             error = AllocateDisk(
@@ -3238,22 +3238,48 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
                 error.GetMessage());
 
-            auto brokenDisks = state.GetBrokenDisks();
-            SortBy(brokenDisks, [] (const auto& info) {
-                return info.DiskId;
-            });
+            const auto& brokenDisks = state.GetBrokenDisks();
 
             UNIT_ASSERT_VALUES_EQUAL(2, brokenDisks.size());
-            UNIT_ASSERT_VALUES_EQUAL("disk-4", brokenDisks[0].DiskId);
+            UNIT_ASSERT(brokenDisks.contains("disk-4"));
             UNIT_ASSERT_VALUES_EQUAL(
                 TInstant::Seconds(105),
-                brokenDisks[0].TsToDestroy
+                brokenDisks.at("disk-4")
             );
-            UNIT_ASSERT_VALUES_EQUAL("disk-5", brokenDisks[1].DiskId);
+            UNIT_ASSERT(brokenDisks.contains("disk-5"));
             UNIT_ASSERT_VALUES_EQUAL(
                 TInstant::Seconds(106),
-                brokenDisks[1].TsToDestroy
+                brokenDisks.at("disk-5")
             );
+
+            // Marking a disk broken twice must not duplicate it: the
+            // BrokenDisks table is keyed by DiskId, so the in-memory list has
+            // to be keyed the same way. The destruction deadline moves
+            // forward, just like db.AddBrokenDisk does.
+            error = AllocateDisk(
+                db,
+                state,
+                "disk-5",
+                "group-1",
+                0,
+                10_GB,
+                devices,
+                TInstant::Seconds(110)
+            );
+            UNIT_ASSERT_VALUES_EQUAL(E_BS_RESOURCE_EXHAUSTED, error.GetCode());
+
+            UNIT_ASSERT_VALUES_EQUAL(2, brokenDisks.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TInstant::Seconds(115),
+                brokenDisks.at("disk-5")
+            );
+        });
+
+        executor.ReadTx([&] (TDiskRegistryDatabase db) {
+            // ... and the LocalDB agrees.
+            TVector<TBrokenDiskInfo> diskInfos;
+            UNIT_ASSERT(db.ReadBrokenDisks(diskInfos));
+            UNIT_ASSERT_VALUES_EQUAL(2, diskInfos.size());
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -3265,7 +3291,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             state.DeleteBrokenDisks(db, {"disk-4"});
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetBrokenDisks().size());
-            UNIT_ASSERT_VALUES_EQUAL("disk-5", state.GetBrokenDisks()[0].DiskId);
+            UNIT_ASSERT(state.GetBrokenDisks().contains("disk-5"));
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -3276,7 +3302,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
 
             state.DeleteBrokenDisks(db, {"unknown-1", "unknown-2"});
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetBrokenDisks().size());
-            UNIT_ASSERT_VALUES_EQUAL("disk-5", state.GetBrokenDisks()[0].DiskId);
+            UNIT_ASSERT(state.GetBrokenDisks().contains("disk-5"));
+
+            // Duplicate ids are tolerated.
+            state.DeleteBrokenDisks(db, {"unknown-1", "unknown-1"});
+            UNIT_ASSERT_VALUES_EQUAL(1, state.GetBrokenDisks().size());
+            UNIT_ASSERT(state.GetBrokenDisks().contains("disk-5"));
         });
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
@@ -3351,10 +3382,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 HasProtoFlag(error.GetFlags(), NProto::EF_SILENT),
                 error.GetMessage());
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetBrokenDisks().size());
-            UNIT_ASSERT_VALUES_EQUAL("disk-5", state.GetBrokenDisks()[0].DiskId);
+            UNIT_ASSERT(state.GetBrokenDisks().contains("disk-5"));
             UNIT_ASSERT_VALUES_EQUAL(
                 TInstant::Seconds(108),
-                state.GetBrokenDisks()[0].TsToDestroy
+                state.GetBrokenDisks().at("disk-5")
             );
         });
 
@@ -12793,6 +12824,117 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateTest)
                 // Cannot allocate disk of 1 device
                 UNIT_ASSERT(!canAllocateLater(1));
             });
+    }
+
+    void DoTestBrokenLocalDiskWaitingForSecureErase(bool asyncDeallocation)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        constexpr ui64 LocalDeviceSize = 99999997952;   // ~ 93.13 GiB
+        constexpr ui64 LocalDeviceDefaultLogicalBlockSize = 512;   // 512 B
+
+        auto makeLocalDevice = [](const auto* name, const auto* uuid)
+        {
+            return Device(name, uuid) |
+                   WithPool("local-ssd", NProto::DEVICE_POOL_KIND_LOCAL) |
+                   WithTotalSize(
+                       LocalDeviceSize,
+                       LocalDeviceDefaultLogicalBlockSize);
+        };
+
+        auto agentConfig = AgentConfig(
+            1,
+            {
+                makeLocalDevice("NVMELOCAL01", "uuid-1"),
+                makeLocalDevice("NVMELOCAL02", "uuid-2"),
+                makeLocalDevice("NVMELOCAL03", "uuid-3"),
+            });
+        const TVector agents{agentConfig};
+
+        auto statePtr =
+            TDiskRegistryStateBuilder()
+                .WithConfig(
+                    [&]
+                    {
+                        auto config = MakeConfig(0, agents);
+
+                        auto* pool = config.AddDevicePoolConfigs();
+                        pool->SetName("local-ssd");
+                        pool->SetKind(NProto::DEVICE_POOL_KIND_LOCAL);
+                        pool->SetAllocationUnit(LocalDeviceSize);
+
+                        return config;
+                    }())
+                .WithStorageConfig(
+                    [&]
+                    {
+                        auto config = CreateDefaultStorageConfigProto();
+                        config.SetNonReplicatedDontSuspendDevices(true);
+                        config.SetLocalDiskAsyncDeallocationEnabled(
+                            asyncDeallocation);
+                        return config;
+                    }())
+                .WithAgents(agents)
+                // One dirty device: allocating all three fails now, but will
+                // succeed once the secure erase finishes.
+                .WithDirtyDevices({TDirtyDevice{"uuid-2", {}}})
+                .Build();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                UNIT_ASSERT_SUCCESS(
+                    RegisterAgent(state, db, agentConfig, Now()));
+            });
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                TDiskRegistryState::TAllocateDiskResult result;
+
+                const auto error = state.AllocateDisk(
+                    TInstant::Seconds(100),
+                    db,
+                    TDiskRegistryState::TAllocateDiskParams{
+                        .DiskId = "local0",
+                        .BlockSize = LocalDeviceDefaultLogicalBlockSize,
+                        .BlocksCount = 3 * LocalDeviceSize /
+                                       LocalDeviceDefaultLogicalBlockSize,
+                        .AgentIds = {"agent-1"},
+                        .PoolName = "local-ssd",
+                        .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL,
+                    },
+                    &result);
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    E_BS_DISK_ALLOCATION_FAILED,
+                    error.GetCode());
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    asyncDeallocation,
+                    result.CanAllocateLocalAfterSecureErase);
+
+                // Only keeping the volume alive is gated on the flag. With the
+                // feature off we fall back to destroying it.
+                UNIT_ASSERT_VALUES_EQUAL(
+                    asyncDeallocation ? 0 : 1,
+                    state.GetBrokenDisks().size());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    !asyncDeallocation,
+                    state.GetBrokenDisks().contains("local0"));
+            });
+    }
+
+    Y_UNIT_TEST(ShouldNotBreakLocalDiskWaitingForSecureErase)
+    {
+        DoTestBrokenLocalDiskWaitingForSecureErase(true);
+    }
+
+    Y_UNIT_TEST(ShouldBreakLocalDiskWhenAsyncDeallocationIsDisabled)
+    {
+        DoTestBrokenLocalDiskWaitingForSecureErase(false);
     }
 
     Y_UNIT_TEST(ShouldPreserveDeviceModelAfterRegisterAgent)

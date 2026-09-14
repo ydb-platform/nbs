@@ -1407,11 +1407,11 @@ void TDiskRegistryActor::RenderBrokenDiskList(IOutputStream& out) const
                 }
             }
 
-            for (const auto& x: State->GetBrokenDisks()) {
+            for (const auto& [diskId, tsToDestroy]: State->GetBrokenDisks()) {
                 TABLER() {
-                    TABLED() { DumpDiskLink(out, TabletID(), x.DiskId); }
-                    TABLED() { out << x.TsToDestroy; }
-                    auto it = Find(DisksBeingDestroyed, x.DiskId);
+                    TABLED() { DumpDiskLink(out, TabletID(), diskId); }
+                    TABLED() { out << tsToDestroy; }
+                    auto it = Find(DisksBeingDestroyed, diskId);
 
                     if (it != DisksBeingDestroyed.end()) {
                         TABLED() { out << BrokenDisksDestructionStartTs; }

@@ -18,7 +18,6 @@
 
 #include <util/generic/algorithm.h>
 #include <util/generic/iterator_range.h>
-#include <util/generic/overloaded.h>
 #include <util/generic/size_literals.h>
 #include <util/string/builder.h>
 #include <util/string/join.h>
@@ -267,6 +266,17 @@ auto CollectDirtyDeviceUUIDs(const TVector<TDirtyDevice>& dirtyDevices)
     return uuids;
 }
 
+auto CollectBrokenDisks(const TVector<TBrokenDiskInfo>& brokenDisks)
+{
+    TMap<TString, TInstant> r;
+
+    for (const auto& [diskId, tsToDestroy]: brokenDisks) {
+        r[diskId] = tsToDestroy;
+    }
+
+    return r;
+}
+
 auto CollectAllocatedDevices(const TVector<NProto::TDiskConfig>& disks)
 {
     TVector<std::pair<TString, TString>> r;
@@ -418,7 +428,7 @@ TDiskRegistryState::TDiskRegistryState(
         CollectAllocatedDevices(disks),
         StorageConfig->GetDiskRegistryAlwaysAllocatesLocalDisks(),
         StorageConfig->GetAttachDetachPathsEnabled())
-    , BrokenDisks(std::move(brokenDisks))
+    , BrokenDisks(CollectBrokenDisks(brokenDisks))
     , AutomaticallyReplacedDevices(std::move(automaticallyReplacedDevices))
     , CurrentConfig(std::move(config))
     , NotificationSystem {
@@ -2975,16 +2985,26 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     const bool isShadowDiskAllocation =
         !checkpointParams.GetCheckpointId().empty();
 
-    auto onError = [&] {
+    auto onError = [&]
+    {
         const bool isNewDisk = disk.Devices.empty();
 
         if (isNewDisk) {
             Disks.erase(params.DiskId);
 
             if (!params.MasterDiskId && !isShadowDiskAllocation) {
-                // failed to allocate storage for the new volume, need to
-                // destroy this volume
-                AddToBrokenDisks(now, db, params.DiskId);
+                if (result->CanAllocateLocalAfterSecureErase) {
+                    // Keep the volume while a local allocation is only waiting
+                    // for secure erase: the volume will retry the allocation.
+                    // Drop the broken marker left by an earlier attempt.
+                    if (BrokenDisks.contains(params.DiskId)) {
+                        DeleteBrokenDisks(db, {params.DiskId});
+                    }
+                } else {
+                    // failed to allocate storage for the new volume, need to
+                    // destroy this volume
+                    AddToBrokenDisks(now, db, params.DiskId);
+                }
             }
         }
     };
@@ -2999,7 +3019,8 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     result->MuteIOErrors =
         disk.State >= NProto::DISK_STATE_TEMPORARILY_UNAVAILABLE;
 
-    const TDiskPlacementInfo placementInfo = CreateDiskPlacementInfo(disk, params);
+    const TDiskPlacementInfo placementInfo =
+        CreateDiskPlacementInfo(disk, params);
 
     if (placementInfo.PlacementGroupId) {
         auto error = CheckDiskPlacementInfo(placementInfo);
@@ -3073,6 +3094,14 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     auto allocatedDevices = DeviceList.AllocateDevices(params.DiskId, query);
 
     if (!allocatedDevices) {
+        result->CanAllocateLocalAfterSecureErase =
+            StorageConfig->GetLocalDiskAsyncDeallocationEnabled() &&
+            IsDiskRegistryLocalMediaKind(params.MediaKind) &&
+            CanAllocateLocalDiskAfterSecureErase(
+                params.AgentIds,
+                params.PoolName,
+                requestedSize);
+
         onError();
 
         return MakeError(E_BS_DISK_ALLOCATION_FAILED, TStringBuilder() <<
@@ -3394,7 +3423,7 @@ void TDiskRegistryState::AddToBrokenDisks(
         now + StorageConfig->GetBrokenDiskDestructionDelay()
     };
     db.AddBrokenDisk(brokenDiskInfo);
-    BrokenDisks.push_back(brokenDiskInfo);
+    BrokenDisks[diskId] = brokenDiskInfo.TsToDestroy;
 }
 
 NProto::TDeviceConfig TDiskRegistryState::GetDevice(const TString& id) const
@@ -5099,34 +5128,12 @@ const NProto::TPlacementGroupConfig* TDiskRegistryState::FindPlacementGroup(
 
 void TDiskRegistryState::DeleteBrokenDisks(
     TDiskRegistryDatabase& db,
-    TVector<TDiskId> ids)
+    const TVector<TDiskId>& ids)
 {
     for (const auto& id: ids) {
         db.DeleteBrokenDisk(id);
+        BrokenDisks.erase(id);
     }
-
-    Sort(ids);
-    SortBy(BrokenDisks, [] (const auto& d) {
-        return d.DiskId;
-    });
-
-    TVector<TBrokenDiskInfo> newList;
-
-    std::set_difference(
-        BrokenDisks.begin(),
-        BrokenDisks.end(),
-        ids.begin(),
-        ids.end(),
-        std::back_inserter(newList),
-        TOverloaded {
-            [] (const TBrokenDiskInfo& lhs, const auto& rhs) {
-                return lhs.DiskId < rhs;
-            },
-            [] (const auto& lhs, const auto& rhs) {
-                return lhs < rhs.DiskId;
-            }});
-
-    BrokenDisks.swap(newList);
 }
 
 ui64 TDiskRegistryState::UpdateAndReallocateDisk(
@@ -7236,10 +7243,10 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
         return dd;
     });
 
-    transform(BrokenDisks, backup.MutableBrokenDisks(), [] (auto& x) {
+    transform(BrokenDisks, backup.MutableBrokenDisks(), [] (auto& kv) {
         NProto::TDiskRegistryStateBackup::TBrokenDiskInfo info;
-        info.SetDiskId(x.DiskId);
-        info.SetTsToDestroy(x.TsToDestroy.MicroSeconds());
+        info.SetDiskId(kv.first);
+        info.SetTsToDestroy(kv.second.MicroSeconds());
 
         return info;
     });

@@ -300,6 +300,7 @@ class TDiskRegistryState
 
     using TCheckpoints = THashMap<TCheckpointId, TCheckpointInfo>;
     using TPlacementGroups = THashMap<TString, TPlacementGroupInfo>;
+    using TBrokenDisks = TMap<TDiskId, TInstant>;
 
 private:
     TLog Log;
@@ -318,7 +319,7 @@ private:
     TDeviceOverrides DeviceOverrides;
     TCheckpoints Checkpoints;
     TPlacementGroups PlacementGroups;
-    TVector<TBrokenDiskInfo> BrokenDisks;
+    TBrokenDisks BrokenDisks;
 
     TDeque<TAutomaticallyReplacedDeviceInfo> AutomaticallyReplacedDevices;
     THashSet<TDeviceId> AutomaticallyReplacedDeviceIds;
@@ -426,6 +427,11 @@ public:
         NProto::EVolumeIOMode IOMode = {};
         TInstant IOModeTs;
         bool MuteIOErrors = false;
+
+        // Only meaningful when the allocation failed with
+        // E_BS_DISK_ALLOCATION_FAILED: set when it is a local disk allocation
+        // that can succeed once the dirty devices are securely erased.
+        bool CanAllocateLocalAfterSecureErase = false;
     };
 
     struct TAllocateCheckpointResult: public TAllocateDiskResult
@@ -574,14 +580,14 @@ public:
     }
     const NProto::TPlacementGroupConfig* FindPlacementGroup(const TString& groupId) const;
 
-    const TVector<TBrokenDiskInfo>& GetBrokenDisks() const
+    const TBrokenDisks& GetBrokenDisks() const
     {
         return BrokenDisks;
     }
 
     void DeleteBrokenDisks(
         TDiskRegistryDatabase& db,
-        TVector<TDiskId> ids);
+        const TVector<TDiskId>& ids);
 
     const THashMap<TString, ui64>& GetDisksToReallocate() const;
     ui64 AddReallocateRequest(TDiskRegistryDatabase& db, const TString& diskId);

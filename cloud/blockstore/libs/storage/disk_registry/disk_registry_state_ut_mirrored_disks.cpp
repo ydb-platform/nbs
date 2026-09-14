@@ -259,7 +259,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL(1, state.GetBrokenDisks().size());
-        UNIT_ASSERT_VALUES_EQUAL("disk-1", state.GetBrokenDisks()[0].DiskId);
+        UNIT_ASSERT(state.GetBrokenDisks().contains("disk-1"));
 
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
             auto dd = state.GetDirtyDevices();
