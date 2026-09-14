@@ -201,12 +201,14 @@ public:
     template <typename TReq,
               typename TResp,
               typename TFillBody,
-              typename TExtractBody>
+              typename TExtractBody,
+              typename TOnComplete>
     bool Dispatch(
         const TReq& request,
         TPromise<TResp> response,
         TFillBody fillBody,
-        TExtractBody extractBody)
+        TExtractBody extractBody,
+        TOnComplete onComplete)
     {
         STORAGE_TRACE("dispatching request for"
             << ": address=" << GetAddressDebugString()
@@ -218,7 +220,8 @@ public:
         auto complete = [
             response = std::move(response),
             ep = EndpointPool,
-            extractBody
+            extractBody,
+            onComplete = std::move(onComplete)
         ](IAsyncEndpointPtr e, ui32 generation, TResponse r) mutable
         {
             TResp resp;
@@ -248,6 +251,14 @@ public:
             } else {
                 extractBody(resp, r);
             }
+
+            //
+            // The hook must run before SetValue: the caller of the promise
+            // extracts the value destructively, so nothing may touch the
+            // response once it is published.
+            //
+
+            onComplete(resp);
             response.SetValue(std::move(resp));
 
             if (!dropEndpoint) {
@@ -440,6 +451,36 @@ public:
         , Client(std::move(client))
     {}
 
+private:
+    //
+    // Requests dispatched via the side channel bypass TStorageServiceActor,
+    // so their profile log records are written by this completion hook.
+    // The hook runs on the completion path strictly before the promise is
+    // fulfilled - subscribing on the future instead would race with the
+    // consumer which extracts the value destructively.
+    //
+
+    template <typename TResponse>
+    auto MakeProfileLogHook(
+        NProto::TProfileLogRequestInfo profileLogRequest,
+        TString fileSystemId)
+    {
+        return [profileLog = ProfileLog,
+                timer = Timer,
+                fileSystemId = std::move(fileSystemId),
+                profileLogRequest = std::move(profileLogRequest)] (
+                   const TResponse& response) mutable
+        {
+            FinalizeProfileLogRequestInfo(profileLogRequest, response);
+            NFuse::FinalizeProfileLogRequestInfo(
+                std::move(profileLogRequest),
+                timer->Now(),
+                fileSystemId,
+                response.GetError(),
+                profileLog);
+        };
+    }
+
 public:
     bool ExecuteRequest(
         TCallContextPtr callContext,
@@ -465,8 +506,7 @@ public:
 
         auto channel = AccessFileSystemChannel(*request);
 
-        auto future = response.GetFuture();
-        const bool dispatched = channel->Dispatch(
+        return channel->Dispatch(
             *request,
             std::move(response),
             [](TRequest& req, const NProto::TReadDataRequest& body) {
@@ -478,16 +518,10 @@ public:
             {
                 resp = std::move(*r.MutableReadData());
                 MoveBufferToIovecs(resp, iovecs);
-            });
-
-        if (dispatched) {
-            SubscribeProfileLogging(
+            },
+            MakeProfileLogHook<NProto::TReadDataResponse>(
                 std::move(profileLogRequest),
-                request->GetFileSystemId(),
-                std::move(future));
-        }
-
-        return dispatched;
+                request->GetFileSystemId()));
     }
 
     bool ExecuteRequest(
@@ -526,8 +560,7 @@ public:
 
         auto channel = AccessFileSystemChannel(*request);
 
-        auto future = response.GetFuture();
-        const bool dispatched = channel->Dispatch(
+        return channel->Dispatch(
             *request,
             std::move(response),
             [](TRequest& req, const NProto::TWriteDataRequest& body) {
@@ -543,16 +576,10 @@ public:
             },
             [](NProto::TWriteDataResponse& resp, TResponse& r) {
                 resp = std::move(*r.MutableWriteData());
-            });
-
-        if (dispatched) {
-            SubscribeProfileLogging(
+            },
+            MakeProfileLogHook<NProto::TWriteDataResponse>(
                 std::move(profileLogRequest),
-                request->GetFileSystemId(),
-                std::move(future));
-        }
-
-        return dispatched;
+                request->GetFileSystemId()));
     }
 
     void Update(const NProto::TBackendInfo& backendInfo) override
@@ -564,34 +591,6 @@ public:
     }
 
 private:
-    //
-    // Requests dispatched via the side channel bypass TStorageServiceActor,
-    // so their profile log records are written here upon response arrival.
-    //
-
-    template <typename TResponse>
-    void SubscribeProfileLogging(
-        NProto::TProfileLogRequestInfo profileLogRequest,
-        TString fileSystemId,
-        TFuture<TResponse> future)
-    {
-        future.Subscribe(
-            [profileLog = ProfileLog,
-             timer = Timer,
-             fileSystemId = std::move(fileSystemId),
-             profileLogRequest = std::move(profileLogRequest)] (
-                const TFuture<TResponse>& f) mutable
-            {
-                const auto& response = f.GetValue();
-                FinalizeProfileLogRequestInfo(profileLogRequest, response);
-                NFuse::FinalizeProfileLogRequestInfo(
-                    std::move(profileLogRequest),
-                    timer->Now(),
-                    fileSystemId,
-                    response.GetError(),
-                    profileLog);
-            });
-    }
 
     TString MakeFileSystemId(const TString& mainFileSystemId, ui32 shardNo)
         const
