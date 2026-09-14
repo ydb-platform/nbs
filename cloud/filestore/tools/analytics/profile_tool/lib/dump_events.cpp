@@ -66,6 +66,9 @@ private:
     bool FilterSystemRequests = false;
     bool FilterExternalRequests = false;
 
+    TMaybe<TInstant> Since;
+    TMaybe<TInstant> Until;
+
 public:
     TDumpEventsCommand()
         : CommonFilterParams(Opts)
@@ -160,18 +163,18 @@ public:
                 std::move(systemRequests));
         }
 
-        const auto until = CommonFilterParams.GetUntil(parseResult);
-        if (until.Defined()) {
+        Until = CommonFilterParams.GetUntil(parseResult);
+        if (Until.Defined()) {
             Filter = CreateRequestFilterUntil(
                 std::move(Filter),
-                until.GetRef().MicroSeconds());
+                Until.GetRef().MicroSeconds());
         }
 
-        const auto since = CommonFilterParams.GetSince(parseResult);
-        if (since.Defined()) {
+        Since = CommonFilterParams.GetSince(parseResult);
+        if (Since.Defined()) {
             Filter = CreateRequestFilterSince(
                 std::move(Filter),
-                since.GetRef().MicroSeconds());
+                Since.GetRef().MicroSeconds());
         }
 
         const auto fileSystemId =
@@ -188,12 +191,25 @@ public:
     int Execute() override
     {
         TEventProcessor processor(Filter);
-        const char* path[] = {"", PathToProfileLog.c_str()};
+
+        TVector<TString> argStorage{""};
+        if (Since.Defined()) {
+            argStorage.push_back("-s");
+            argStorage.push_back(ToString(Since.GetRef().MicroSeconds()));
+        }
+        argStorage.push_back(PathToProfileLog);
+
+        TVector<const char*> argv;
+        argv.reserve(argStorage.size());
+        for (const auto& arg: argStorage) {
+            argv.push_back(arg.c_str());
+        }
+
         return IterateEventLog(
             NEvClass::Factory(),
             &processor,
-            2,
-            path);
+            static_cast<int>(argv.size()),
+            argv.data());
     }
 };
 
