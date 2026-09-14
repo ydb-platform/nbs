@@ -209,6 +209,7 @@ jobs:
           nebius_config_yaml: ${{ secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           vm_parent_id: ${{ env.parent_id }}
           vm_id: ${{ matrix.broken_vms_to_remove }}
+          vm_require_offline: 'true'
   create_vms:
     needs: calculate_missing_vms
     name: Create ${{ inputs.flavor }} VMs

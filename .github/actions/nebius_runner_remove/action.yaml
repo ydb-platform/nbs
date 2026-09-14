@@ -26,6 +26,10 @@ inputs:
     required: false
     description: "vm labels used to search for cleanup candidates when vm_id is empty"
     default: ""
+  vm_require_offline:
+    required: false
+    description: "Require the GitHub runner to still be offline before deleting its VM"
+    default: "false"
 
 runs:
   using: composite
@@ -46,8 +50,12 @@ runs:
       run: |
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         LABELS_ARG=()
+        REQUIRE_OFFLINE_ARG=()
         if [ -n "${VM_LABELS}" ]; then
             LABELS_ARG=(--labels "${VM_LABELS}")
+        fi
+        if [ "${VM_REQUIRE_OFFLINE}" = "true" ]; then
+            REQUIRE_OFFLINE_ARG=(--require-offline)
         fi
         python3 -m scripts.nebius_manage_vm remove \
             --github-repo-owner "${REPO_OWNER}" \
@@ -55,6 +63,7 @@ runs:
             --parent-id "${PARENT_ID}" \
             --id "${VM_ID}" \
             "${LABELS_ARG[@]}" \
+            "${REQUIRE_OFFLINE_ARG[@]}" \
             --apply
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
@@ -63,4 +72,5 @@ runs:
         REPO: ${{ inputs.repo }}
         VM_ID: ${{ inputs.vm_id }}
         VM_LABELS: ${{ inputs.vm_labels }}
+        VM_REQUIRE_OFFLINE: ${{ inputs.vm_require_offline }}
         PARENT_ID: ${{ inputs.vm_parent_id }}
