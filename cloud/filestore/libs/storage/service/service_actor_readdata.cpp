@@ -35,6 +35,22 @@ using namespace NKikimr;
 
 namespace {
 
+#if defined(__x86_64__)
+#include <contrib/restricted/abseil-cpp-tstring/y_absl/crc/internal/non_temporal_memcpy.h>
+#endif
+
+Y_FORCE_INLINE void MemcpyNoCacheImpl(void* dst, const void* src, size_t len) {
+#if defined(__x86_64__)
+    y_absl::crc_internal::non_temporal_store_memcpy_avx(dst, src, len);
+#else
+    memcpy(dst, src, len);
+#endif
+}
+
+} // namespace
+
+namespace {
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
@@ -905,7 +921,7 @@ void TReadDataActor::MoveBufferToIovecsIfNeeded(
                 dataToWrite,
                 currentOffset,
                 targetData);
-            memcpy(
+            MemcpyNoCacheImpl(
                 targetData,
                 response.GetBuffer().data() + currentOffset,
                 dataToWrite);
