@@ -48,7 +48,11 @@ message TCellConfig
     // lookup.
     optional uint32 DescribeVolumeHostCount = 9;
 
-    // Minimum number of hosts in a cell to have connections to.
+    // Minimum number of hosts in a cell to have connections to, maintained
+    // at all times rather than only at start. Configured hosts fill these
+    // slots first; what they cannot fill is held by hosts discovered from
+    // the tablet host of a mount, which is what keeps a way into a cell
+    // whose configured hosts are all down.
     optional uint32 MinCellConnections = 10;
 
     // While the RDMA data endpoint is unavailable - either because it has not
@@ -58,6 +62,18 @@ message TCellConfig
     // How long an RDMA connection that has dropped once has to stay up again
     // before data is moved back onto it, in milliseconds.
     optional uint32 RdmaSettleTime = 12;
+
+    // Watch the hosts of this cell over gRPC and move a connection off a host
+    // that stopped answering. Also moves it to the host where the volume
+    // tablet lives, when a mount reports one.
+    optional bool HostMigrationEnabled = 13;
+
+    // How often every known host of the cell is pinged, in milliseconds.
+    optional uint32 HostPingPeriod = 14;
+
+    // How long a ping may take before the host counts as dead, in
+    // milliseconds.
+    optional uint32 HostPingTimeout = 15;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
