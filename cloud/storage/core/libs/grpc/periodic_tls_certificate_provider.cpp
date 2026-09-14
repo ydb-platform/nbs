@@ -1,9 +1,11 @@
 #include "tls_certificate_provider.h"
+#include "stable_read.h"
 #include "tls_utils.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -125,6 +127,7 @@ class TPeriodicCertificateProvider final
     const TDuration RefreshInterval;
     const ISchedulerPtr Scheduler;
     const ITaskQueuePtr TaskQueue;
+    const ITimerPtr Timer;
 
     grpc_core::RefCountedPtr<TGrpcTlsCertificateProvider> TlsProvider;
     std::shared_ptr<grpc::experimental::CertificateProviderInterface>
@@ -132,6 +135,8 @@ class TPeriodicCertificateProvider final
 
     NTlsUtils::TRootCaPair RootCaPair;
     TVector<NTlsUtils::TCertificatePair> Certificates;
+    TStableRead<TString> RootCaStableRead;
+    TVector<TStableRead<NTlsUtils::TIdentityContent>> IdentityStableReads;
     TVector<NMonitoring::TDynamicCountersPtr> CertificateMetrics;
     NMonitoring::TDynamicCountersPtr RootCaMetrics;
 
@@ -151,17 +156,20 @@ public:
             NMonitoring::TDynamicCountersPtr serverGroup,
             TString rootCertPath,
             TVector<TCertificateFiles> certificates,
-            TDuration refreshInterval)
+            TDuration refreshInterval,
+            ITimerPtr timer)
         : Logging(std::move(logging))
         , LogComponent(std::move(logComponent))
         , ServerGroup(std::move(serverGroup))
         , RefreshInterval(refreshInterval)
         , Scheduler(std::move(scheduler))
         , TaskQueue(std::move(taskQueue))
+        , Timer(std::move(timer))
         , TlsProvider(grpc_core::MakeRefCounted<TGrpcTlsCertificateProvider>())
         , GrpcProvider(std::make_shared<TGrpcCertificateProvider>(TlsProvider))
         , RootCaPair(NTlsUtils::LoadRootCaPair(std::move(rootCertPath)))
         , Certificates(NTlsUtils::LoadCertificatePairs(std::move(certificates)))
+        , IdentityStableReads(Certificates.size())
         , CertificateMetrics(Certificates.size())
     {
     }
@@ -171,6 +179,8 @@ public:
         Y_ABORT_UNLESS(Started.load() == false);
     }
 
+    // See ICertificateProvider. The hold time is the refresh interval,
+    // repeated calls share the same future.
     NThreading::TFuture<void> UpdateCertificates() override
     {
         NThreading::TFuture<void> future;
@@ -186,7 +196,7 @@ public:
             future = PendingUpdate.GetFuture();
         }
         if (scheduleUpdate) {
-            ScheduleUpdateAt(TInstant::Now(), /*periodic=*/false);
+            ScheduleUpdateAt(Timer->Now(), /*periodic=*/false);
         }
         return future;
     }
@@ -254,9 +264,9 @@ public:
                 ->GetSubgroup("cert", GetBaseName(RootCaPair.RootCaPath));
         }
 
-        RefreshCertificates();
+        PublishInitialState();
 
-        ScheduleUpdateAt(TInstant::Now() + RefreshInterval, true);
+        ScheduleUpdateAt(Timer->Now() + RefreshInterval, true);
     }
 
     void Stop() override
@@ -316,83 +326,266 @@ private:
             }
         }
 
+        bool pending = false;
         if (run) {
-            RefreshCertificates();
+            pending = RefreshCertificates();
 
+            // The requested update is complete when no content is waiting
+            // for a stable read anymore, or when the provider is stopped.
+            // Until then repeated UpdateCertificates() calls share the same
+            // future instead of triggering extra reads.
             NThreading::TPromise<void> promise;
             {
                 TGuard<TMutex> lock(UpdateMutex);
-                promise = std::exchange(PendingUpdate, {});
                 UpdateInProgress = false;
+                if (!pending || !Started.load()) {
+                    promise = std::exchange(PendingUpdate, {});
+                }
             }
             if (promise.Initialized()) {
                 promise.SetValue();
             }
         }
 
+        bool alive = false;
+        {
+            TGuard<TMutex> lock(UpdateMutex);
+            alive = Started;
+        }
+        if (!alive) {
+            return;
+        }
+
+        // Files are checked once per interval and new content must stay
+        // unchanged for an interval, so a change takes effect within two
+        // intervals.
         if (periodic) {
-            bool alive = false;
-            {
-                TGuard<TMutex> lock(UpdateMutex);
-                alive = Started;
-            }
-            if (alive) {
-                ScheduleUpdateAt(
-                    TInstant::Now() + RefreshInterval,
-                    true);
-            }
+            ScheduleUpdateAt(Timer->Now() + RefreshInterval, true);
         }
     }
 
-    void RefreshCertificates()
+    void PublishRootCaFingerprint()
     {
-        auto certPairs = Certificates;
-
-        const TString oldRootCa = RootCaPair.RootCa;
-        auto result = NTlsUtils::UpdateCertificates(certPairs, RootCaPair, Log);
-        RootCaPair.RootCa = result.RootCa.GetOrElse(oldRootCa);
-        const bool rootChanged = oldRootCa != RootCaPair.RootCa;
-
         if (RootCaMetrics) {
             const ui64 fingerprint = RootCaFingerprint(RootCaPair.RootCa);
             *RootCaMetrics->GetCounter("Fingerprint", false) = fingerprint;
         }
+    }
 
+    void PublishExpireTs(size_t index, TInstant notValidAfter)
+    {
+        if (CertificateMetrics[index] && notValidAfter) {
+            *CertificateMetrics[index]->GetCounter("ExpireTs", false) =
+                notValidAfter.Seconds();
+        }
+    }
+
+    void PublishCerts()
+    {
         PemKeyCertPairList identityPairs;
-        for (size_t i = 0; i < Certificates.size(); ++i) {
-            auto& certificate = Certificates[i];
-            const auto& newCert = result.Certificates[i];
-
-            if (!newCert.Defined()) {
+        for (const auto& certificate: Certificates) {
+            if (certificate.PrivateKey.empty() ||
+                certificate.CertChain.empty())
+            {
                 continue;
             }
-
-            if (CertificateMetrics[i] && newCert->NotValidAfter) {
-                *CertificateMetrics[i]->GetCounter("ExpireTs", false) =
-                    newCert->NotValidAfter.Seconds();
-            }
-
-            const auto& chain = newCert->CertificatesChain;
-            const bool identityChanged =
-                chain.front().private_key() != certificate.PrivateKey ||
-                chain.front().cert_chain() != certificate.CertChain;
-
-            if (identityChanged || rootChanged) {
-                certificate.PrivateKey = TString(chain.front().private_key());
-                certificate.CertChain = TString(chain.front().cert_chain());
-            }
-
-            identityPairs.insert(identityPairs.end(), chain.begin(), chain.end());
+            identityPairs.emplace_back(
+                certificate.PrivateKey,
+                certificate.CertChain);
         }
 
         TMaybe<TString> rootCert = RootCaPair.RootCa.empty()
             ? Nothing()
             : TMaybe<TString>(RootCaPair.RootCa);
-        const bool hasMaterialsToPublish =
-            rootCert.Defined() || !identityPairs.empty();
-        if (hasMaterialsToPublish) {
+        if (rootCert.Defined() || !identityPairs.empty()) {
             TlsProvider->PublishCerts(rootCert, std::move(identityPairs));
         }
+    }
+
+    // The initial load is lenient so that the service is able to start, and
+    // unchanged files are never re-validated, so this is the only place where
+    // certificates that are already invalid on disk get reported.
+    void PublishInitialState()
+    {
+        PublishRootCaFingerprint();
+        for (size_t i = 0; i < Certificates.size(); ++i) {
+            const auto& cert = Certificates[i];
+            const auto& path = cert.Files.CertChainPath;
+
+            auto validity = NTlsUtils::ValidateIdentity({
+                .PrivateKey = cert.PrivateKey,
+                .CertChain = cert.CertChain,
+            });
+            if (HasError(validity.GetError())) {
+                STORAGE_WARN(
+                    "Identity certificate " << path.Quote()
+                    << " is loaded but not valid: "
+                    << FormatError(validity.GetError()));
+            }
+
+            auto notAfterTs =
+                NTlsUtils::GetCertificateNotAfterTimestampSec(cert.CertChain);
+            if (HasError(notAfterTs)) {
+                STORAGE_WARN(
+                    "Unable to parse certificate notAfter date for "
+                    << path.Quote() << ": "
+                    << FormatError(notAfterTs.GetError()));
+                continue;
+            }
+            PublishExpireTs(i, TInstant::Seconds(notAfterTs.ExtractResult()));
+        }
+        PublishCerts();
+    }
+
+    // Re-reads the certificate files. New content is applied only after it
+    // has stayed unchanged for the refresh interval, see TStableRead.
+    // The last successfully loaded content is kept if the files cannot be
+    // read, parsed or validated; new content that fails these checks is
+    // reported on every check until the files change. Every certificate is
+    // refreshed independently. Returns true if some content is waiting for a
+    // stable read.
+    bool RefreshCertificates()
+    {
+        const TInstant now = Timer->Now();
+        const TDuration holdTime = RefreshInterval;
+
+        bool pending = false;
+        bool changed = false;
+
+        if (RefreshRootCa(now, holdTime, pending)) {
+            PublishRootCaFingerprint();
+            changed = true;
+        }
+
+        for (size_t i = 0; i < Certificates.size(); ++i) {
+            if (RefreshIdentity(i, now, holdTime, pending)) {
+                changed = true;
+            }
+        }
+
+        // The distributor notifies gRPC on every publish, which rebuilds the
+        // SSL context, so publish only when something has changed.
+        if (changed) {
+            PublishCerts();
+        }
+
+        return pending;
+    }
+
+    // Returns true if the root certificate has been replaced.
+    bool RefreshRootCa(TInstant now, TDuration holdTime, bool& pending)
+    {
+        const auto& path = RootCaPair.RootCaPath;
+        if (path.empty()) {
+            return false;
+        }
+
+        auto content = NTlsUtils::TryReadFile(path);
+        if (HasError(content.GetError())) {
+            RootCaStableRead.Reset();
+            STORAGE_WARN(
+                "Root certificate update is skipped: "
+                << FormatError(content.GetError()));
+            return false;
+        }
+
+        switch (RootCaStableRead.Observe(
+            RootCaPair.RootCa,
+            content.GetResult(),
+            now,
+            holdTime))
+        {
+            case EStableReadDecision::Unchanged:
+                return false;
+            case EStableReadDecision::Wait:
+                pending = true;
+                STORAGE_INFO(
+                    "New root certificate " << path.Quote()
+                    << ", waiting for a stable read");
+                return false;
+            case EStableReadDecision::Apply:
+                break;
+        }
+
+        auto validity = NTlsUtils::IsValidPemCertificate(content.GetResult());
+        if (HasError(validity.GetError())) {
+            STORAGE_WARN(
+                "Root certificate update is skipped: "
+                << FormatError(validity.GetError()));
+            return false;
+        }
+
+        RootCaPair.RootCa = content.ExtractResult();
+        STORAGE_INFO(
+            "Root certificate " << path.Quote() << " has been updated");
+        return true;
+    }
+
+    // Returns true if the certificate has been replaced.
+    bool RefreshIdentity(
+        size_t index,
+        TInstant now,
+        TDuration holdTime,
+        bool& pending)
+    {
+        auto& cert = Certificates[index];
+        auto& stableRead = IdentityStableReads[index];
+        const auto& path = cert.Files.CertChainPath;
+
+        auto content = NTlsUtils::ReadIdentity(cert.Files);
+        if (HasError(content.GetError())) {
+            stableRead.Reset();
+            STORAGE_WARN(
+                "Identity certificate update is skipped for " << path.Quote()
+                << ": " << FormatError(content.GetError()));
+            return false;
+        }
+
+        const NTlsUtils::TIdentityContent current{
+            .PrivateKey = cert.PrivateKey,
+            .CertChain = cert.CertChain,
+        };
+        switch (stableRead.Observe(current, content.GetResult(), now, holdTime))
+        {
+            case EStableReadDecision::Unchanged:
+                return false;
+            case EStableReadDecision::Wait:
+                pending = true;
+                STORAGE_INFO(
+                    "New identity certificate " << path.Quote()
+                    << ", waiting for a stable read");
+                return false;
+            case EStableReadDecision::Apply:
+                break;
+        }
+
+        auto validity = NTlsUtils::ValidateIdentity(content.GetResult());
+        if (HasError(validity.GetError())) {
+            STORAGE_WARN(
+                "Identity certificate update is skipped for " << path.Quote()
+                << ": " << FormatError(validity.GetError()));
+            return false;
+        }
+
+        TInstant notValidAfter;
+        auto notAfterTs = NTlsUtils::GetCertificateNotAfterTimestampSec(
+            content.GetResult().CertChain);
+        if (HasError(notAfterTs)) {
+            STORAGE_WARN(
+                "Unable to parse certificate notAfter date for "
+                << path.Quote() << ": " << FormatError(notAfterTs.GetError()));
+        } else {
+            notValidAfter = TInstant::Seconds(notAfterTs.ExtractResult());
+        }
+
+        auto identity = content.ExtractResult();
+        cert.PrivateKey = std::move(identity.PrivateKey);
+        cert.CertChain = std::move(identity.CertChain);
+        PublishExpireTs(index, notValidAfter);
+        STORAGE_INFO(
+            "Identity certificate " << path.Quote() << " has been updated"
+            << ", expires at " << notValidAfter);
+        return true;
     }
 };
 
@@ -408,9 +601,11 @@ ICertificateProviderPtr CreatePeriodicCertificateProvider(
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval)
+    TDuration refreshInterval,
+    ITimerPtr timer)
 {
-    Y_ENSURE(refreshInterval, "refreshInterval should not be zero");
+    Y_ABORT_UNLESS(refreshInterval, "refreshInterval should not be zero");
+    Y_ABORT_UNLESS(timer, "timer should not be null");
 
     return std::make_shared<TPeriodicCertificateProvider>(
         std::move(logging),
@@ -420,7 +615,8 @@ ICertificateProviderPtr CreatePeriodicCertificateProvider(
         std::move(serverGroup),
         std::move(rootCertPath),
         std::move(certificates),
-        refreshInterval);
+        refreshInterval,
+        std::move(timer));
 }
 
 }   // namespace NCloud

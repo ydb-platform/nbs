@@ -362,7 +362,8 @@ void TBootstrapBase::Init()
             serverGroup,
             Configs->ServerConfig->GetRootCertsFile(),
             std::move(certPathList),
-            Configs->ServerConfig->GetRefreshCertsPeriod());
+            Configs->ServerConfig->GetRefreshCertsPeriod(),
+            Timer);
     }
 
     for (auto& event: PostponedCriticalEvents) {

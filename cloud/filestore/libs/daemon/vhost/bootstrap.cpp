@@ -92,6 +92,7 @@ struct TClientCertificateProviderFactory
     ILoggingServicePtr Logging;
     TString LogComponent;
     ISchedulerPtr Scheduler;
+    ITimerPtr Timer;
     ITaskQueuePtr LongRunningTaskExecutor;
     NMonitoring::TDynamicCountersPtr ServerGroup;
     TDuration RefreshInterval;
@@ -100,12 +101,14 @@ struct TClientCertificateProviderFactory
             ILoggingServicePtr logging,
             TString logComponent,
             ISchedulerPtr scheduler,
+            ITimerPtr timer,
             ITaskQueuePtr longRunningTaskExecutor,
             NMonitoring::TDynamicCountersPtr serverGroup,
             TDuration refreshInterval)
         : Logging(std::move(logging))
         , LogComponent(std::move(logComponent))
         , Scheduler(std::move(scheduler))
+        , Timer(std::move(timer))
         , LongRunningTaskExecutor(std::move(longRunningTaskExecutor))
         , ServerGroup(std::move(serverGroup))
         , RefreshInterval(refreshInterval)
@@ -125,7 +128,8 @@ struct TClientCertificateProviderFactory
             std::move(endpointGroup),
             std::move(rootCertPath),
             std::move(certificates),
-            RefreshInterval);
+            RefreshInterval,
+            Timer);
     }
 };
 
@@ -501,7 +505,8 @@ void TBootstrapVhost::InitComponents()
             serverCounters,
             Configs->ServerConfig->GetRootCertsFile(),
             std::move(certPathList),
-            Configs->ServerConfig->GetRefreshCertsPeriod());
+            Configs->ServerConfig->GetRefreshCertsPeriod(),
+            Timer);
     }
 
     Server = CreateServer(
@@ -568,6 +573,7 @@ void TBootstrapVhost::InitEndpoints()
         GetComponentName(
             NStorage::TFileStoreComponents::TLS_CERTIFICATE_PROVIDER),
         Scheduler,
+        Timer,
         LongRunningTaskExecutor,
         FilestoreCounters->GetSubgroup("component", VhostMetricsComponent),
         Configs->ServerConfig->GetRefreshCertsPeriod());
