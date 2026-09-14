@@ -1,6 +1,7 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
+#include <cloud/filestore/libs/storage/fastshard/sn/factory/group_factory.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>

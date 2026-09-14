@@ -1,5 +1,6 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/factory/group_factory.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/impl/storage_node.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/server/server.h>
@@ -136,6 +137,7 @@ TEST(HashTableIndexShardTest, CreatesFiles)
         "fs0",
         ShardNo,
         1 /* generation */,
+        CreateStorageGroupFactory(),
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -209,6 +211,7 @@ TEST(HashTableIndexShardTest, ValidatesRequests)
         "fs0",
         ShardNo,
         1 /* generation */,
+        CreateStorageGroupFactory(),
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -286,6 +289,7 @@ TEST(HashTableIndexShardTest, CreatesHandles)
         "fs0",
         ShardNo,
         1 /* generation */,
+        CreateStorageGroupFactory(),
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -495,6 +499,7 @@ TEST(HashTableIndexShardTest, WritesAndReadsFiles)
         "fs0",
         ShardNo,
         1 /* generation */,
+        CreateStorageGroupFactory(),
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -621,6 +626,7 @@ TEST(HashTableIndexShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
         "fs0",
         ShardNo,
         1 /* generation */,
+        CreateStorageGroupFactory(),
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -855,6 +861,7 @@ TEST(HashTableIndexShardTest, UnalignedAppend)
         "fs0",
         ShardNo,
         1 /* generation */,
+        CreateStorageGroupFactory(),
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -963,6 +970,7 @@ TEST(HashTableIndexShardTest, DeallocatesPagesUponUnlink)
         "fs0",
         ShardNo,
         1 /* generation */,
+        CreateStorageGroupFactory(),
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();
@@ -1109,6 +1117,7 @@ TEST(HashTableIndexShardTest, DeallocatesPagesUponTruncate)
         "fs0",
         ShardNo,
         1 /* generation */,
+        CreateStorageGroupFactory(),
         fx.Config);
     {
         auto e = shard->Init().GetValueSync();

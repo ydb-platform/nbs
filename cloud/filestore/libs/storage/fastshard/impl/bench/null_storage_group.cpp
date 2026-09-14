@@ -1,5 +1,7 @@
 #include "null_storage_group.h"
 
+#include <cloud/filestore/libs/storage/fastshard/sn/factory/group_factory.h>
+
 #include <silk/fibers/fiber.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {

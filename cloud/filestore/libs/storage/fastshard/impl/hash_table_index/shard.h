@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/filestore/libs/storage/fastshard/iface/public.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/factory/public.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
 
 namespace NCloud::NFileStore::NProtoPrivate {
@@ -16,34 +17,11 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IStorageGroupFactory
-{
-    virtual ~IStorageGroupFactory() = default;
-    virtual IStorageGroupPtr MakeStorageGroup(
-        const NProtoPrivate::TPersistentFastShardConfig& config,
-        ui64 generation) = 0;
-};
-
-using IStorageGroupFactoryPtr = std::shared_ptr<IStorageGroupFactory>;
-
-/**
- * An unrecognised type falls back to E_SG_MIRROR.
- */
-IStorageGroupFactoryPtr CreateStorageGroupFactory();
-
-////////////////////////////////////////////////////////////////////////////////
-
 IFileSystemShardPtr CreateHashTableIndexFileSystemShard(
     TString fileSystemId,
     ui32 shardNo,
     ui64 generation,
     IStorageGroupFactoryPtr storageGroupFactory,
-    const NProtoPrivate::TPersistentFastShardConfig& config);
-
-IFileSystemShardPtr CreateHashTableIndexFileSystemShard(
-    TString fileSystemId,
-    ui32 shardNo,
-    ui64 generation,
     const NProtoPrivate::TPersistentFastShardConfig& config);
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

@@ -1,6 +1,10 @@
 #pragma once
 
+#include "public.h"
+
 #include <cloud/filestore/libs/storage/fastshard/iface/public.h>
+
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
