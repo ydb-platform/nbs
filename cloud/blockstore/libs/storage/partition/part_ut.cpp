@@ -8582,7 +8582,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT(deleteGarbageObserved);
     }
 
-    Y_UNIT_TEST(ShouldNotReportCriticalEventForRetriableCollectGarbageError)
+    void DoTestCollectGarbageCriticalEvent(
+        ui32 errorCode,
+        TString errorMessage,
+        ui64 expectedCriticalEventCount)
     {
         const auto channelCount = 6;
         const auto groupCount = channelCount - DataChannelOffset;
@@ -8612,27 +8615,27 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, collectGarbageError->Val());
 
-        bool retriableErrorSent = false;
+        bool errorSent = false;
 
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
                         TEvPartitionPrivate::EvDeleteGarbageRequest &&
-                    !retriableErrorSent)
+                    !errorSent)
                 {
-                    retriableErrorSent = true;
+                    errorSent = true;
 
                     auto response = std::make_unique<
                         TEvPartitionPrivate::TEvDeleteGarbageResponse>(
-                        MakeError(E_REJECTED, "tablet is shutting down"));
+                        MakeError(errorCode, errorMessage));
 
                     runtime.Send(
                         new IEventHandle(
                             event->Sender,
                             event->Recipient,
                             response.release(),
-                            0,   // flags
+                            0,  // flags
                             event->Cookie),
                         0);
 
@@ -8642,24 +8645,36 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        // One pending blob is below the default automatic GC threshold.
+        // One pending blob is below default automatic GC threshold.
         partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), 1);
 
         partition.SendCollectGarbageRequest();
         const auto response = partition.RecvCollectGarbageResponse();
 
-        UNIT_ASSERT_C(
-            retriableErrorSent,
-            "EvDeleteGarbageRequest was not intercepted");
+        UNIT_ASSERT_C(errorSent, "EvDeleteGarbageRequest was not intercepted");
 
         // The error must still be returned to the caller.
-        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "tablet is shutting down",
-            response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(errorCode, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(errorMessage, response->GetErrorReason());
 
-        // But a retriable error must not produce a critical event.
-        UNIT_ASSERT_VALUES_EQUAL(0, collectGarbageError->Val());
+        // Check that the error produces the expected number of critical events.
+        UNIT_ASSERT_VALUES_EQUAL(expectedCriticalEventCount, collectGarbageError->Val());
+    }
+
+    Y_UNIT_TEST(ShouldReportCriticalEventForNonRetriableCollectGarbageError)
+    {
+        DoTestCollectGarbageCriticalEvent(
+            E_FAIL,
+            "non-retriable collect garbage error",
+            1);
+    }
+
+    Y_UNIT_TEST(ShouldNotReportCriticalEventForRetriableCollectGarbageError)
+    {
+        DoTestCollectGarbageCriticalEvent(
+            E_REJECTED,
+            "tablet is shutting down",
+            0);
     }
 
     Y_UNIT_TEST(ShouldNotReportCriticalEventForRetriableHardCollectGarbageError)
