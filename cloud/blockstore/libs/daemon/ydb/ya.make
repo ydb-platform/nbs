@@ -12,6 +12,7 @@ PEERDIR(
     cloud/blockstore/libs/client
     cloud/blockstore/libs/common
     cloud/blockstore/libs/config
+    cloud/blockstore/libs/configs_manager
     cloud/blockstore/libs/daemon/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/discovery

@@ -10,15 +10,33 @@
 
 #include <cloud/storage/core/protos/config_dispatcher_settings.pb.h>
 
+#include <contrib/ydb/core/config/init/init.h>
 #include <contrib/ydb/core/protos/config.pb.h>
 #include <contrib/ydb/core/protos/node_broker.pb.h>
 #include <contrib/ydb/library/actors/core/defs.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/map.h>
 #include <util/generic/maybe.h>
 #include <util/generic/string.h>
 
 namespace NCloud::NStorage {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// CMS response loaded during node registration. AppConfig holds the selected
+// PROTO or YAML configuration; registered parsers decode additional YAML
+// sections into messages for the caller.
+struct TCmsConfig
+{
+    // AppConfig selected according to UseYamlConfig and YAML YamlConfigEnabled.
+    NKikimrConfig::TAppConfig AppConfig;
+
+    // Parsed YAML sections or NCloud::NProto::TError for rejected sections,
+    // indexed by config kind. Messages are owned by this response and its callers.
+    THashMap<ui32, std::shared_ptr<const google::protobuf::Message>>
+        OpaqueConfigs;
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -31,7 +49,7 @@ struct INodeRegistrant
     virtual TResultOrError<TRegistrationResult> RegisterNode(
         const TString& nodeBrokerAddress) = 0;
 
-    virtual TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
+    virtual TResultOrError<TCmsConfig> GetConfigs(
         const TString& nodeBrokerAddress,
         ui32 nodeId) = 0;
 };
@@ -69,12 +87,15 @@ struct TRegisterDynamicNodeOptions
     TNodeRegistrationSettings Settings;
 
     TNodeLabels Labels;
+
+    // Parsers for additional YAML sections, indexed by config kind.
+    THashMap<ui32, NKikimr::NConfig::TOpaqueConfigParser> OpaqueConfigParsers;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 using TRegisterDynamicNodeResult =
-    std::tuple<ui32, NActors::TScopeId, TMaybe<NKikimrConfig::TAppConfig>>;
+    std::tuple<ui32, NActors::TScopeId, TMaybe<TCmsConfig>>;
 
 INodeRegistrantPtr CreateNodeRegistrant(
     NKikimrConfig::TAppConfigPtr appConfig,
