@@ -1513,10 +1513,15 @@ TEST_P(TSlowEncryptorServerTest, ShouldWaitForAllThreadPoolTasksBeforeStop)
     Sleep(TDuration::MilliSeconds(200));
 
     Server->Stop();
+    Server.reset();
 
     EXPECT_EQ(
         TDuration::MilliSeconds(requestCount * 100),
         GetTotalSleepTime());
+
+    ASSERT_TRUE(
+        NThreading::WaitAll(futures).Wait(TDuration::Seconds(5)))
+        << "client did not observe all completed requests";
 
     for (size_t i = 0; i < futures.size(); ++i) {
         ASSERT_TRUE(futures[i].HasValue())
@@ -1529,7 +1534,6 @@ TEST_P(TSlowEncryptorServerTest, ShouldWaitForAllThreadPoolTasksBeforeStop)
     }
 
     Client.DeInit();
-    Server.reset();
 }
 
 INSTANTIATE_TEST_SUITE_P(
