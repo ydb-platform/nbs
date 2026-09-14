@@ -89,7 +89,8 @@ async def filter_instances(instances, runners, args, now_ts, operation_service):
         )
         if runner is None or (runner.status == "offline" and runner.busy is False):
             logger.info(
-                "Instance %s is not associated with a runner or the runner is offline and not busy, marking as a broken VM candidate",
+                "Instance %s is not associated with a runner or the runner is "
+                "offline and not busy, marking as a broken VM candidate",
                 vm_id,
             )
 

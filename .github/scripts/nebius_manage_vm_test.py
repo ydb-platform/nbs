@@ -2,6 +2,7 @@ import asyncio
 import argparse
 import sys
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
@@ -617,7 +618,6 @@ def test_remove_runner_from_github_retries_github_remove_errors(monkeypatch):
 
 
 def test_remove_runner_from_github_skips_recovered_runner(monkeypatch):
-    removed = []
     runner = SimpleNamespace(
         name="vm-id",
         id="runner-id",
@@ -629,17 +629,18 @@ def test_remove_runner_from_github_skips_recovered_runner(monkeypatch):
     monkeypatch.setattr(
         m,
         "find_runner_by_name",
-        lambda github, owner, repo, vm_id: runner.id,
+        Mock(return_value=runner.id),
     )
     monkeypatch.setattr(
         m,
         "get_self_hosted_runner",
-        lambda github, repo, runner_id: runner,
+        Mock(return_value=runner),
     )
+    remove_runner = Mock()
     monkeypatch.setattr(
         m,
         "remove_self_hosted_runner",
-        lambda github, repo, runner_id: removed.append(runner_id),
+        remove_runner,
     )
 
     result = m.remove_runner_from_github(
@@ -652,7 +653,7 @@ def test_remove_runner_from_github_skips_recovered_runner(monkeypatch):
     )
 
     assert result == "online"
-    assert removed == []
+    remove_runner.assert_not_called()
 
 
 def test_retry_retries_async_function_and_passes_attempt(monkeypatch):
