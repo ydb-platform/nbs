@@ -98,7 +98,8 @@ void CreateConnection(
     TTestContextPtr context,
     ui16 sendQueueSize,
     ui16 recvQueueSize,
-    ui32 maxBufferSize);
+    ui32 maxBufferSize,
+    ui32 maxEagerRequestBytes);
 void Flush(TTestContextPtr context);
 void Disconnect(TTestContextPtr context);
 
@@ -112,7 +113,7 @@ void EnqueueAcceptEvent(
     size_t privateDataLen);
 
 // Enqueues an RDMA_CM_EVENT_REJECTED for the given connection with the
-// supplied private data (typically a TRejectMessage / TRejectMessage2).
+// supplied private data (typically a TRejectMessage).
 // Intended to be used from TTestContext::HandleConnect.
 void EnqueueRejectEvent(
     TTestContextPtr context,

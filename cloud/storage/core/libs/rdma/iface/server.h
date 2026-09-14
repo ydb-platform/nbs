@@ -38,6 +38,7 @@ struct TServerConfig
     ui8 QpRetryCount = 7;       // QpTimeout * QpRetryCount = ~470ms
     ui8 QpMinRnrTimer = 12;     // ~640us
     ui8 QpRnrRetryCount = 7;    // inf
+    ui32 MaxEagerRequestBytes = 0;
 
     TServerConfig();
 
