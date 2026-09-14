@@ -16,17 +16,11 @@ using namespace NThreading;
 struct TCellCellHostEndpointBootstrap: public ICellHostEndpointBootstrap
 {
     using ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture;
-    using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapFuture;
     using ICellHostEndpointBootstrap::TRdmaEndpointBootstrapResult;
 
     auto SetupHostGrpcEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) -> TGrpcEndpointBootstrapFuture override;
-
-    auto SetupHostRdmaEndpoint(
-        const TBootstrap& bootstrap,
-        const TCellHostConfig& config)
-        -> TRdmaEndpointBootstrapFuture override;
 
     auto SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,

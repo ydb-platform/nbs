@@ -23,7 +23,10 @@ namespace {
         NProto::ECellDataTransport,                                            \
         NProto::CELL_DATA_TRANSPORT_GRPC                                      )\
     xxx(GrpcDataFallbackEnabled,     bool,                   false            )\
-    xxx(RdmaSettleTime,              TDuration,   TDuration::Seconds(10)     )\
+    xxx(RdmaSettleTime,              TDuration,   TDuration::Seconds(10)      )\
+    xxx(HostMigrationEnabled,        bool,                   false            )\
+    xxx(HostPingPeriod,              TDuration,   TDuration::Seconds(5)       )\
+    xxx(HostPingTimeout,             TDuration,   TDuration::Seconds(2)       )\
 // BLOCKSTORE_CELL_DEFAULT_CONFIG
 
 #define BLOCKSTORE_CELL_DECLARE_CONFIG(name, type, value)                      \
@@ -139,6 +142,7 @@ TCellHostConfig::TCellHostConfig(
         hostConfig.GetTransport():
         cellConfig.GetTransport())
     , GrpcDataFallbackEnabled(cellConfig.GetGrpcDataFallbackEnabled())
+    , HostMigrationEnabled(cellConfig.GetHostMigrationEnabled())
     , RdmaSettleTime(cellConfig.GetRdmaSettleTime())
 {
 }

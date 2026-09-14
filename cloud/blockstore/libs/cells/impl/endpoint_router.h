@@ -8,6 +8,19 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The part of a router that decides what it points at. Kept separate so that
+// something else can stand between a chooser and the router it drives.
+struct ITransportTarget
+{
+    virtual ~ITransportTarget() = default;
+
+    virtual void SetTarget(IBlockStorePtr target) = 0;
+};
+
+using ITransportTargetPtr = std::shared_ptr<ITransportTarget>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Forwards every request to the endpoint currently selected for it. Knows
 // nothing about what makes one endpoint preferable to another: the target is
 // chosen from the outside and may be replaced at any moment, from any thread.
@@ -22,9 +35,10 @@ namespace NCloud::NBlockStore::NCells {
 // AllocateBuffer goes to whichever target is current, with nothing tying the
 // buffer to the target that will serve the request it is used for - callers
 // needing registered memory must not allocate through the router.
-struct IEndpointRouter: public IBlockStore
+struct IEndpointRouter
+    : public IBlockStore
+    , public ITransportTarget
 {
-    virtual void SetTarget(IBlockStorePtr target) = 0;
 };
 
 using IEndpointRouterPtr = std::shared_ptr<IEndpointRouter>;

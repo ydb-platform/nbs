@@ -19,8 +19,6 @@ struct ICellHostEndpointBootstrap
 {
     using TGrpcEndpointBootstrapFuture =
         NThreading::TFuture<NClient::IMultiClientEndpointPtr>;
-    using TRdmaEndpointBootstrapFuture =
-        NThreading::TFuture<TResultOrError<IBlockStorePtr>>;
     using TRdmaEndpointBootstrapResult = TResultOrError<IBlockStorePtr>;
     using TShutdownEndpointFuture = NThreading::TFuture<void>;
 
@@ -28,10 +26,8 @@ struct ICellHostEndpointBootstrap
         const TBootstrap& bootstrap,
         const TCellHostConfig& config) = 0;
 
-    virtual TRdmaEndpointBootstrapFuture SetupHostRdmaEndpoint(
-        const TBootstrap& bootstrap,
-        const TCellHostConfig& config) = 0;
-
+    // Hands the endpoint back before it has connected; the handler is how
+    // the rdma client reports its state from then on.
     virtual TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
         const TBootstrap& bootstrap,
         const TCellHostConfig& config,
