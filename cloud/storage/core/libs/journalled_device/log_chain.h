@@ -29,6 +29,7 @@ private:
     mutable TAdaptiveLock Lock;
     ui64 LastErasedLsn = 0;
     ui64 LastChainedLsn = 0;
+    ui64 ChainedRecordCount = 0;
     THashMap<ui64 /*prevLsn*/, TEntry> Records;
 
     TLogRecordPtr GetNextImpl(ui64 lsn) const;

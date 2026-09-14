@@ -12,6 +12,7 @@ void TLogRecordChain::InitLastErasedLsn(ui64 lsn)
     with_lock (Lock) {
         LastErasedLsn = lsn;
         LastChainedLsn = lsn;
+        ChainedRecordCount = 0;
     }
 }
 
@@ -63,6 +64,7 @@ bool TLogRecordChain::MarkAsReady(ui64 prevLsn)
                 break;
             }
             LastChainedLsn = next->second.Record->Lsn;
+            ++ChainedRecordCount;
         }
     }
 
@@ -109,6 +111,7 @@ TResultOrError<TVector<TLogRecordPtr>> TLogRecordChain::EraseUpTo(ui64 lsn)
             records.push_back(std::move(it->second.Record));
             Records.erase(it);
             LastErasedLsn = records.back()->Lsn;
+            --ChainedRecordCount;
         }
 
         // ready records chaining from below the watermark can never join
