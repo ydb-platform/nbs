@@ -446,11 +446,12 @@ void TNonreplicatedPartitionMigrationCommonActor::DoRegisterTrafficSource(
 void TNonreplicatedPartitionMigrationCommonActor::OnMigrationNonRetriableError(
     const NActors::TActorContext& ctx)
 {
-    ReportMigrationFailed(
+    ReportMigrationNonRetriableError(
         DiskId,
         CloudId,
         FolderId,
         "Non-retriable migration error occurred");
+
     MigrationOwner->OnMigrationError(ctx);
     MigrationEnabled = false;
 }
