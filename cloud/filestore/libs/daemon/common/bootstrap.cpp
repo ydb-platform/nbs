@@ -283,7 +283,7 @@ void TBootstrapCommon::InitActorSystem()
         Log);
 
     if (cmsConfig) {
-        Configs->ApplyCMSConfigs(std::move(*cmsConfig));
+        Configs->ApplyCMSConfigs(std::move(cmsConfig->AppConfig));
     }
 
     auto logging = std::make_shared<TLoggingProxy>();

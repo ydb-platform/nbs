@@ -378,17 +378,19 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
     // Check that both the proto value and host-only values reach the wrapper.
     Y_UNIT_TEST(ShouldPreserveDiskAgentHostContext)
     {
+        const auto currentConfig = MakeBlockstoreConfig(
+            {},
+            {},
+            NStorage::TStorageConfig({}, nullptr),
+            NStorage::TDiskAgentConfig({}, "rack-1", 42));
         NProto::TBlockstoreConfig dynamicConfig;
         dynamicConfig.MutableDiskAgent()->SetAgentId("updated-agent");
-        TBlockstoreConfigExtraParameters extraParameters;
-        extraParameters.DiskAgent.Rack = "rack-1";
-        extraParameters.DiskAgent.NetworkMbitThroughput = 42;
 
         const auto config = MakeBlockstoreConfig(
             {},
             dynamicConfig,
             std::make_shared<NStorage::TStorageConfigControls>(),
-            std::move(extraParameters));
+            GetBlockstoreConfigExtraParameters(*currentConfig));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "updated-agent",

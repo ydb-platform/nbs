@@ -7,9 +7,10 @@
 #include <cloud/blockstore/libs/cells/iface/forward_service.h>
 #include <cloud/blockstore/libs/cells/impl/cell_manager.h>
 #include <cloud/blockstore/libs/cells/impl/mon.h>
-#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/config/helpers.h>
+#include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
@@ -64,8 +65,10 @@
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
@@ -584,6 +587,11 @@ void TBootstrapYdb::InitKikimrService()
     registerOpts.UseYamlConfig =
         Configs->GetDynamicYamlConfigurationStaticallyEnabled();
 
+    if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
+        registerOpts.PrivateDatabaseConfigParser =
+            CreateBlockstoreOpaqueConfigParser();
+    }
+
     STORAGE_INFO("Configs initialized");
 
     auto registrant =
@@ -595,8 +603,42 @@ void TBootstrapYdb::InitKikimrService()
         std::move(registrant),
         Log);
 
+    NProto::TBlockstoreConfig initialDynamicBlockstoreConfig;
+
     if (cmsConfig) {
-        Configs->ApplyCMSConfigs(std::move(*cmsConfig));
+        if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
+            STORAGE_INFO(
+                "Received CMS configuration for YAML mode; "
+                "PrivateDatabaseConfig: "
+                << (cmsConfig->PrivateDatabaseConfig ? "yes" : "no"));
+        }
+
+        if (Configs->GetDynamicYamlConfigurationStaticallyEnabled() &&
+            cmsConfig->PrivateDatabaseConfig)
+        {
+            const auto payload = cmsConfig->PrivateDatabaseConfig;
+            const auto* descriptor = payload->GetDescriptor();
+
+            if (descriptor == NCloud::NProto::TError::descriptor()) {
+                NCloud::NProto::TError error;
+                error.CopyFrom(*payload);
+                ReportGetConfigsFromCmsYamlParseError(
+                    TStringBuilder()
+                    << "Failed to parse PrivateDatabaseConfig from CMS: "
+                    << FormatError(error)
+                    << ". Starting without PrivateDatabaseConfig.");
+            } else {
+                Y_ABORT_UNLESS(
+                    descriptor == NProto::TBlockstoreConfig::descriptor(),
+                    "Unexpected PrivateDatabaseConfig type from CMS: %s",
+                    descriptor->full_name().c_str());
+                initialDynamicBlockstoreConfig.CopyFrom(*payload);
+                RemoveStaticOnlyBlockstoreFields(
+                    initialDynamicBlockstoreConfig);
+            }
+        }
+
+        Configs->ApplyCMSConfigs(std::move(cmsConfig->AppConfig));
     }
 
     STORAGE_INFO("CMS configs initialized");
@@ -610,11 +652,30 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     auto startupBlockstoreConfigProto = Configs->GetCurrentBlockstoreConfig();
-    StartupBlockstoreConfig = MakeBlockstoreConfig(
-        startupBlockstoreConfigProto,
-        {},
-        *Configs->StorageConfig,
-        *Configs->DiskAgentConfig);
+    if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
+        TBlockstoreConfigExtraParameters extraParameters;
+        extraParameters.DiskAgent.Rack = Configs->DiskAgentConfig->GetRack();
+        extraParameters.DiskAgent.NetworkMbitThroughput =
+            Configs->DiskAgentConfig->GetNetworkMbitThroughput();
+
+        StartupBlockstoreConfig = MakeBlockstoreConfig(
+            startupBlockstoreConfigProto,
+            initialDynamicBlockstoreConfig,
+            Configs->StorageConfigControls,
+            std::move(extraParameters));
+
+        STORAGE_INFO(
+            (initialDynamicBlockstoreConfig.ByteSizeLong()
+                 ? "Applied startup PrivateDatabaseConfig"
+                 : "No startup PrivateDatabaseConfig applied; "
+                   "using configuration after CMS"));
+    } else {
+        StartupBlockstoreConfig = MakeBlockstoreConfig(
+            startupBlockstoreConfigProto,
+            {},
+            *Configs->StorageConfig,
+            *Configs->DiskAgentConfig);
+    }
 
     STORAGE_INFO("Aggregate Blockstore config initialized");
 
@@ -866,6 +927,8 @@ void TBootstrapYdb::InitKikimrService()
     args.StaticBlockstoreConfigProto = std::move(staticBlockstoreConfig);
     args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
     args.StartupBlockstoreConfig = StartupBlockstoreConfig;
+    args.InitialDynamicBlockstoreConfig =
+        std::move(initialDynamicBlockstoreConfig);
     args.AsyncLogger = AsyncLogger;
     args.StatsAggregator = StatsAggregator;
     args.StatsUploader = StatsUploader;
