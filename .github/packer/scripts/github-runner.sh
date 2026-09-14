@@ -18,10 +18,6 @@ function on_exit() {
     if ls -lsha "/home/${USER_TO_CREATE}/.ya"; then
         du -h -d 1 "/home/${USER_TO_CREATE}/.ya"
     fi
-    rm -f "/home/${USER_TO_CREATE}/${FILENAME}" || true
-    rm -rf "/home/${USER_TO_CREATE}/.aws" /root/.aws/ || true
-    rm -rf /var/lib/apt/lists/* || true
-    cloud-init clean --logs || true
     sync
     exit "$exit_code"
 }
