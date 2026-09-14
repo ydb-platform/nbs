@@ -1,10 +1,69 @@
 import pytest
 import logging
 from dataclasses import dataclass
-from .nebius_populate_vms import decide_scaling
+from .nebius_populate_vms import (
+    decide_scaling,
+    filter_broken_vms_to_remove,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+
+def test_broken_vm_candidates_require_consecutive_offline_iterations():
+    counts = {}
+
+    for expected_count in range(1, 5):
+        to_remove = filter_broken_vms_to_remove(
+            counts,
+            ["vm-1", "vm-2"],
+            batch_fraction=1,
+        )
+        assert to_remove == []
+        assert counts == {"vm-1": expected_count, "vm-2": expected_count}
+
+    to_remove = filter_broken_vms_to_remove(
+        counts,
+        ["vm-1", "vm-2"],
+        batch_fraction=1,
+    )
+
+    assert to_remove == ["vm-1", "vm-2"]
+
+
+def test_broken_vm_candidate_count_resets_after_recovery():
+    counts = {"vm-1": 4, "vm-2": 2}
+
+    to_remove = filter_broken_vms_to_remove(counts, ["vm-2"])
+
+    assert to_remove == []
+    assert counts == {"vm-2": 3}
+
+
+@pytest.mark.parametrize(
+    "confirmed,expected_batch_size",
+    [
+        ([], 0),
+        (["vm-1"], 1),
+        ([f"vm-{i}" for i in range(2)], 1),
+        ([f"vm-{i}" for i in range(4)], 1),
+        ([f"vm-{i}" for i in range(5)], 2),
+        ([f"vm-{i}" for i in range(20)], 5),
+    ],
+)
+def test_broken_vm_removal_batch_rounds_up_25_percent(confirmed, expected_batch_size):
+    counts = {vm_id: 4 for vm_id in confirmed}
+    batch = filter_broken_vms_to_remove(counts, confirmed)
+
+    assert len(batch) == expected_batch_size
+
+
+def test_broken_vm_removal_batch_preserves_candidate_order():
+    candidates = ["vm-3", "vm-1", "vm-4", "vm-2"]
+    counts = {vm_id: 4 for vm_id in candidates}
+    batch = filter_broken_vms_to_remove(counts, candidates)
+
+    assert batch == ["vm-3"]
 
 
 @dataclass

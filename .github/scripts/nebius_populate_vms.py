@@ -4,6 +4,7 @@ import os
 import asyncio
 import argparse
 import datetime
+import math
 from grpc import StatusCode
 from github import Github
 from typing import List
@@ -24,10 +25,13 @@ from .helpers import setup_logger, github_output
 
 logger = setup_logger()
 
+BROKEN_VM_OFFLINE_ITERATIONS = 5
+BROKEN_VM_REMOVAL_BATCH_FRACTION = 0.25
+
 
 async def filter_instances(instances, runners, args, now_ts, operation_service):
     vms_to_remove = []
-    broken_to_remove = []
+    broken_to_remove_candidates = []
     matched_vm_ids = []
     idle_vm_ids = []
     busy_vm_ids = []
@@ -85,11 +89,11 @@ async def filter_instances(instances, runners, args, now_ts, operation_service):
         )
         if runner is None or (runner.status == "offline" and runner.busy is False):
             logger.info(
-                "Instance %s is not associated with a runner or the runner is offline and not busy, marking for removal",
+                "Instance %s is not associated with a runner or the runner is offline and not busy, marking as a broken VM candidate",
                 vm_id,
             )
 
-            broken_to_remove.append(vm_id)
+            broken_to_remove_candidates.append(vm_id)
             continue
 
         matched_vm_ids.append(vm_id)
@@ -116,7 +120,46 @@ async def filter_instances(instances, runners, args, now_ts, operation_service):
             logger.info("Instance %s is busy, not marking for removal", vm_id)
             busy_vm_ids.append(vm_id)
 
-    return matched_vm_ids, idle_vm_ids, busy_vm_ids, vms_to_remove, broken_to_remove
+    return (
+        matched_vm_ids,
+        idle_vm_ids,
+        busy_vm_ids,
+        vms_to_remove,
+        broken_to_remove_candidates,
+    )
+
+
+def filter_broken_vms_to_remove(
+    candidate_counts: dict[str, int],
+    candidates: list[str],
+    required_iterations: int = BROKEN_VM_OFFLINE_ITERATIONS,
+    batch_fraction: float = BROKEN_VM_REMOVAL_BATCH_FRACTION,
+) -> list[str]:
+    if required_iterations < 1:
+        raise ValueError("required_iterations must be at least 1")
+    if not 0 < batch_fraction <= 1:
+        raise ValueError("batch_fraction must be greater than 0 and at most 1")
+
+    candidate_ids = set(candidates)
+    for vm_id in list(candidate_counts):
+        if vm_id not in candidate_ids:
+            logger.info(
+                "Broken VM candidate %s recovered; resetting its offline count",
+                vm_id,
+            )
+            del candidate_counts[vm_id]
+
+    confirmed = []
+    for vm_id in candidates:
+        candidate_counts.setdefault(vm_id, 0)
+        candidate_counts[vm_id] += 1
+        if candidate_counts[vm_id] >= required_iterations:
+            confirmed.append(vm_id)
+    if not confirmed:
+        return []
+
+    batch_size = max(1, math.ceil(len(confirmed) * batch_fraction))
+    return confirmed[:batch_size]
 
 
 # rules are:
@@ -160,7 +203,7 @@ def decide_scaling(
     if idle + busy != alive:
         raise ValueError(
             "Passed values are not valid idle=%d + busy=%d != alive=%d"
-            % (alive, idle, busy)
+            % (idle, busy, alive)
         )
 
     if alive == 0:
@@ -268,7 +311,15 @@ def decide_scaling(
 
 
 # return True if we have something to create or remove
-async def run(github: Github, sdk: SDK, args: argparse.Namespace) -> bool:
+async def run(
+    github: Github,
+    sdk: SDK,
+    args: argparse.Namespace,
+    broken_vm_candidate_counts: dict[str, int] | None = None,
+) -> bool:
+    if broken_vm_candidate_counts is None:
+        broken_vm_candidate_counts = {}
+
     now_ts = int(time.time())
     repo = github.get_repo(f"{args.github_repo_owner}/{args.github_repo}")
     instance_client = InstanceServiceClient(sdk)
@@ -299,8 +350,26 @@ async def run(github: Github, sdk: SDK, args: argparse.Namespace) -> bool:
         idle_vm_ids,
         busy_vm_ids,
         vms_to_remove,
-        broken_to_remove,
+        broken_to_remove_candidates,
     ) = await filter_instances(instances, runners, args, now_ts, operation_client)
+
+    broken_to_remove = filter_broken_vms_to_remove(
+        broken_vm_candidate_counts,
+        broken_to_remove_candidates,
+    )
+
+    logger.info(
+        "Broken VM candidates: %d total, %d selected for removal",
+        len(broken_to_remove_candidates),
+        len(broken_to_remove),
+    )
+    for vm_id in broken_to_remove_candidates:
+        logger.info(
+            "Broken VM candidate %s has been offline for %d/%d iterations",
+            vm_id,
+            broken_vm_candidate_counts[vm_id],
+            BROKEN_VM_OFFLINE_ITERATIONS,
+        )
 
     logger.info(
         "Total matched VMs: %d (Idle: %d, Busy: %d)",
@@ -308,6 +377,23 @@ async def run(github: Github, sdk: SDK, args: argparse.Namespace) -> bool:
         len(idle_vm_ids),
         len(busy_vm_ids),
     )
+
+    if broken_to_remove_candidates and not broken_to_remove:
+        logger.info(
+            "Waiting for broken VM candidates to remain offline for %d consecutive iterations",
+            BROKEN_VM_OFFLINE_ITERATIONS,
+        )
+        github_output(
+            logger,
+            "RUNNING_VMS_COUNT",
+            str(len(matched_vm_ids) + len(broken_to_remove_candidates)),
+        )
+        github_output(logger, "VMS_TO_REMOVE", "[]")
+        github_output(logger, "VMS_TO_CREATE", "[]")
+        github_output(logger, "BROKEN_VMS_TO_REMOVE", "[]")
+        github_output(logger, "DATE", str(now_ts))
+        return False
+
     # calculating number of workflows that are queued and are waiting for runner with this flavor
     # checking workflows created in the last 8 hours, format >YYYY-MM-DDTHH:MM:SS+00:00
     queued_workflows = repo.get_workflow_runs(
@@ -519,6 +605,7 @@ async def main():
     github = github_client(github_token)
 
     if args.loop:
+        broken_vm_candidate_counts: dict[str, int] = {}
         start_time = time.time()
         while True:
             elapsed_time = time.time() - start_time
@@ -528,7 +615,12 @@ async def main():
 
             result = False
             try:
-                result = await run(github, sdk, args)
+                result = await run(
+                    github,
+                    sdk,
+                    args,
+                    broken_vm_candidate_counts,
+                )
             except Exception as e:
                 logger.error("Error during run: %s", e)
 
