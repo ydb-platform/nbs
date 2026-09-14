@@ -19,6 +19,10 @@ message TCollectStatsCommand
 {
 }
 
+message TFormatCommand
+{
+}
+
 message TFastShardCommandRequest
 {
     // Optional request headers.
@@ -31,6 +35,7 @@ message TFastShardCommandRequest
     {
         TDumpLayoutJsonCommand DumpLayoutJson = 3;
         TCollectStatsCommand CollectStats = 4;
+        TFormatCommand Format = 5;
     }
 }
 

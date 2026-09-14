@@ -96,6 +96,35 @@ void TIndexTabletActor::HandleFastShardCommand(
             return;
         }
 
+        case NProtoPrivate::TFastShardCommandRequest::kFormat: {
+            //
+            // Format wipes all shard data and completes asynchronously -
+            // the reply is sent from the future callback via the actor
+            // system.
+            //
+
+            auto* ass = ctx.ActorSystem();
+            const auto sender = ev->Sender;
+            const ui64 cookie = ev->Cookie;
+
+            //
+            // The shard is captured to pin its lifetime: the interface does
+            // not promise that the future may outlive the shard object, and
+            // the actor may die and drop its reference before the callback
+            // runs.
+            //
+
+            FastShard->Format().Subscribe(
+                [ass, sender, cookie, shard = FastShard] (const auto& f) {
+                    ass->Send(
+                        sender,
+                        new TResponse(f.GetValue()),
+                        0 /* flags */,
+                        cookie);
+                });
+            return;
+        }
+
         case NProtoPrivate::TFastShardCommandRequest::COMMAND_NOT_SET: {
             NCloud::Reply(
                 ctx,

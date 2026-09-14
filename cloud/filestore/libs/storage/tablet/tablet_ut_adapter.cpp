@@ -523,6 +523,142 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             UNIT_ASSERT_VALUES_UNEQUAL("", bi.GetFastShardHost());
         }
     }
+
+    TABLET_TEST_4K_ONLY(ShouldWipeShardDataUponFastShardFormatCommand)
+    {
+        TTestEnv env(testEnvConfig);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            NProtoPrivate::TFastShardConfig(),
+            true /* isFastShard */);
+
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        {
+            auto response = tablet.InitSession("client", "session");
+            UNIT_ASSERT(response->Record.GetAdapterModeEnabled());
+        }
+
+        auto fastShardCommand = [&] (auto fillCommand) {
+            NProtoPrivate::TFastShardCommandRequest record;
+            fillCommand(record);
+            auto request = std::make_unique<
+                TEvIndexTablet::TEvFastShardCommandRequest>();
+            request->Record = record;
+            tablet.SendRequest(std::move(request));
+            auto response = tablet.RecvResponse<
+                TEvIndexTablet::TEvFastShardCommandResponse>();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                FormatError(response->GetError()));
+            return response;
+        };
+
+        //
+        // Populate the shard through the adapter data path.
+        //
+
+        const TString uuid1 = CreateGuidAsString();
+        ui64 nodeId1 = 0;
+        ui64 handle1 = 0;
+
+        {
+            auto response = tablet.SendAndRecvCreateNode(
+                TCreateNodeArgs::File(RootNodeId, uuid1));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+            nodeId1 = response->Record.GetNode().GetId();
+
+            auto hResponse = tablet.SendAndRecvCreateHandle(
+                nodeId1,
+                TCreateHandleArgs::RDWR);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                hResponse->GetStatus(),
+                hResponse->GetErrorReason());
+            handle1 = hResponse->Record.GetHandle();
+        }
+
+        {
+            auto response = tablet.SendAndRecvWriteData(
+                handle1,
+                0 /* offset */,
+                4_KB /* len */,
+                'a' /* fill */);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        {
+            auto response = fastShardCommand([] (auto& record) {
+                record.MutableCollectStats();
+            });
+            UNIT_ASSERT(response->Record.HasStats());
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_UNEQUAL(0, stats.GetUsedNodeCount());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, stats.GetUsedHandleCount());
+            UNIT_ASSERT_VALUES_UNEQUAL(0, stats.GetUsedPageCount());
+        }
+
+        //
+        // Format must reach the shard and wipe everything.
+        //
+
+        fastShardCommand([] (auto& record) {
+            record.MutableFormat();
+        });
+
+        {
+            auto response = fastShardCommand([] (auto& record) {
+                record.MutableCollectStats();
+            });
+            UNIT_ASSERT(response->Record.HasStats());
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedNodeCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedHandleCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedPageCount());
+        }
+
+        {
+            auto response = tablet.SendAndRecvGetNodeAttr(RootNodeId, uuid1);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_FS_NOENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        //
+        // The shard stays usable after the format.
+        //
+
+        {
+            auto response = tablet.SendAndRecvCreateNode(
+                TCreateNodeArgs::File(RootNodeId, uuid1));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
