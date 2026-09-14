@@ -185,6 +185,24 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         UNIT_ASSERT(b.Accessor.GetDataProcessor() == nullptr);
     }
 
+    Y_UNIT_TEST(ShouldValidateFileWithZeroHeaderRegardlessOfBody)
+    {
+        // Only the header decides: a zero header means "not initialized" even
+        // if the rest of the file is not zero (e.g. stale data of an earlier
+        // life of the file). Nothing beyond the header is read until the
+        // header says so.
+        TBootstrap b;
+        b.ResizeAndRemap(4096);
+        std::fill(
+            b.RawData.begin() + sizeof(TFileRingBufferHeader),
+            b.RawData.end(),
+            'x');
+
+        b.AssertValidateFailed(
+            "File is not initialized",
+            EValidationStatus::NotInitialized);
+    }
+
     Y_UNIT_TEST(ShouldNotValidateFileWithZeroVersionAndNonZeroContents)
     {
         TBootstrap b(false);

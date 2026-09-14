@@ -10,8 +10,12 @@
 #include <util/generic/deque.h>
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>
+#include <util/generic/algorithm.h>
 #include <util/system/filemap.h>
 #include <util/system/tempfile.h>
+#include <util/system/fstat.h>
+#include <util/system/info.h>
+#include <util/system/mincore.h>
 
 namespace NCloud {
 
@@ -1908,6 +1912,80 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         // Version downgrade
         check(EVersion::V6, EVersion::V5);
+    }
+
+    Y_UNIT_TEST(ShouldNotReadWholePreallocatedSparseFileOnOpen)
+    {
+        // A state file may be preallocated with ftruncate before the buffer
+        // opens it: such a file is all holes. The buffer must treat it as not
+        // initialized, like an empty file, and it must not find that out by
+        // reading the whole file through the mapping: each hole read that way
+        // is materialized as a zero page, i.e. the whole file would end up in
+        // memory (and, on tmpfs, stay there as the file's own pages).
+        const auto f = TTempFileHandle();
+        const ui64 preallocatedSize = 64_MB;
+        {
+            TFile file(f.GetName(), OpenExisting | RdWr);
+            file.Resize(preallocatedSize);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, TFileStat(f.GetName()).AllocationSize);
+
+        // A capacity beyond the preallocation makes the buffer grow the file
+        // rather than truncate it, so whatever pages opening it has brought
+        // into memory stay there to be counted, instead of being dropped
+        // along with a truncated tail.
+        const ui64 capacity = 128_MB;
+        TFileRingBuffer rb(f.GetName(), capacity, 0, EVersion::V5);
+        UNIT_ASSERT(rb.Validate());
+        UNIT_ASSERT(rb.Empty());
+        UNIT_ASSERT(TFileStat(f.GetName()).Size > preallocatedSize);
+
+        // Ask the kernel which pages of the last quarter of the preallocated
+        // part are resident in memory. A scan brings in every one of them.
+        // Checking the header brings in nothing there: the header, and the
+        // readahead the kernel may do around it, are at the front of the
+        // file, and so is everything the buffer touches while initializing.
+        const ui64 tailOffset = preallocatedSize * 3 / 4;
+        const ui64 tailSize = preallocatedSize - tailOffset;
+        TFileMap map(f.GetName(), TMemoryMapCommon::oRdOnly);
+        map.Map(tailOffset, tailSize);
+        const size_t pageCount = tailSize / NSystemInfo::GetPageSize();
+        TVector<unsigned char> inCore(pageCount);
+        InCoreMemory(map.Ptr(), tailSize, inCore.data(), inCore.size());
+        const size_t residentPages = CountIf(inCore, IsPageInCore);
+        UNIT_ASSERT_LT_C(
+            residentPages,
+            pageCount / 2,
+            residentPages << " of " << pageCount << " tail pages are resident");
+
+        // The buffer is fully usable afterwards
+        UNIT_ASSERT(!HasError(rb.PushBack("data").Error));
+        UNIT_ASSERT_VALUES_EQUAL("data", rb.Front().Data);
+    }
+
+    Y_UNIT_TEST(ShouldReinitializeFileWithZeroHeaderAndStaleBody)
+    {
+        // Zeroing the header of a used file turns it into a fresh one: the
+        // stale entries beyond the header are unreachable, since nothing is
+        // read outside the positions the header holds.
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, EVersion::V5);
+            UNIT_ASSERT(!HasError(rb.PushBack("stale").Error));
+            UNIT_ASSERT(!rb.Empty());
+        }
+        {
+            TFile file(f.GetName(), OpenExisting | RdWr);
+            const TVector<char> zeros(sizeof(TFileRingBufferHeader), 0);
+            file.Pwrite(zeros.data(), zeros.size(), 0);
+        }
+
+        TFileRingBuffer rb(f.GetName(), len, 0, EVersion::V5);
+        UNIT_ASSERT(rb.Validate());
+        UNIT_ASSERT(rb.Empty());
+        UNIT_ASSERT(!HasError(rb.PushBack("fresh").Error));
+        UNIT_ASSERT_VALUES_EQUAL("fresh", rb.Front().Data);
     }
 
     Y_UNIT_TEST(ShouldValidateEmptyBufferWithUnalignedPos)
