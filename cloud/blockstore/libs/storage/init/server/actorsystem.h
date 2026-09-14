@@ -46,10 +46,17 @@ struct TServerActorSystemArgs
     NProto::TBlockstoreConfig StaticBlockstoreConfigProto;
 
     // Startup configuration after CMS and RDMA initialization,
-    // before private_database_config from YAML applied
-    // (both proto and IBlockstoreConfig).
+    // before applying private_database_config from YAML.
     NProto::TBlockstoreConfig StartupBlockstoreConfigProto;
+
+    // Startup configuration after applying private_database_config from YAML.
     IBlockstoreConfigPtr StartupBlockstoreConfig;
+
+    // Parsed private_database_config applied to StartupBlockstoreConfig.
+    NProto::TBlockstoreConfig InitialDynamicBlockstoreConfig;
+
+    // Presence of InitialDynamicBlockstoreConfig, including an empty section.
+    bool InitialDynamicBlockstoreConfigPresent = false;
 
     ILoggingServicePtr Logging;
     IAsyncLoggerPtr AsyncLogger;

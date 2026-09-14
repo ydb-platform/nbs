@@ -20,6 +20,8 @@
 #include <contrib/ydb/library/actors/core/event.h>
 #include <contrib/ydb/library/yaml_config/yaml_config.h>
 
+#include <library/cpp/protobuf/json/util.h>
+
 #include <util/generic/vector.h>
 #include <util/network/address.h>
 #include <util/network/socket.h>
@@ -117,7 +119,8 @@ NGRpcProxy::TGRpcClientConfig CreateKikimrConfig(
 // interface
 NKikimrConfig::TAppConfig GetYamlConfigFromResult(
     const NKikimr::NClient::TConfigurationResult& result,
-    const TMap<TString, TString>& labels)
+    const TMap<TString, TString>& labels,
+    TString* resolvedYamlConfig)
 {
     NKikimrConfig::TAppConfig appConfig;
     if (result.HasMainYamlConfig() && !result.GetMainYamlConfig().empty()) {
@@ -129,14 +132,81 @@ NKikimrConfig::TAppConfig GetYamlConfigFromResult(
             result.HasDatabaseYamlConfig()
                 ? std::optional{result.GetDatabaseYamlConfig()}
                 : std::nullopt,
-            nullptr,   // resolvedYamlConfig
+            resolvedYamlConfig,
             nullptr    // resolvedJsonConfig
         );
     }
     return appConfig;
 }
 
-TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
+// Parse registered YAML sections into OpaqueConfigs, storing TError for
+// rejected sections and skipping absent sections.
+void ParseOpaqueConfigs(
+    const TString& resolvedYamlConfig,
+    const THashMap<ui32, NConfig::TOpaqueConfigParser>& parsers,
+    TCmsConfig* config)
+{
+    if (resolvedYamlConfig.empty() || parsers.empty()) {
+        return;
+    }
+
+    try {
+        auto document = NFyaml::TDocument::Parse(resolvedYamlConfig);
+        auto root = document.Root();
+        if (root.Empty() || root.Type() != NFyaml::ENodeType::Mapping) {
+            for (const auto& [kind, _]: parsers) {
+                config->OpaqueConfigs[kind] =
+                    std::make_shared<NProto::TError>(MakeError(
+                        E_ARGUMENT,
+                        "Resolved YAML config must be a mapping"));
+            }
+            return;
+        }
+
+        auto configMap = root.Map();
+        const auto* descriptor = NKikimrConfig::TAppConfig::descriptor();
+        for (const auto& [kind, parser]: parsers) {
+            const auto* field = descriptor->FindFieldByNumber(kind);
+            if (!field) {
+                continue;
+            }
+
+            TString name = field->name();
+            NProtobufJson::ToSnakeCaseDense(&name);
+            if (!configMap.Has(name)) {
+                continue;
+            }
+
+            TStringStream section;
+            section << configMap.at(name);
+            try {
+                auto parsed = parser(section.Str());
+                if (parsed) {
+                    config->OpaqueConfigs.emplace(kind, std::move(parsed));
+                } else {
+                    config->OpaqueConfigs[kind] =
+                        std::make_shared<NProto::TError>(MakeError(
+                            E_ARGUMENT,
+                            "Opaque config parser returned no result"));
+                }
+            } catch (...) {
+                config->OpaqueConfigs[kind] =
+                    std::make_shared<NProto::TError>(MakeError(
+                        E_ARGUMENT,
+                        "Failed to parse opaque config"));
+            }
+        }
+    } catch (...) {
+        for (const auto& [kind, _]: parsers) {
+            config->OpaqueConfigs[kind] =
+                std::make_shared<NProto::TError>(MakeError(
+                    E_ARGUMENT,
+                    "Failed to parse resolved YAML config"));
+        }
+    }
+}
+
+TResultOrError<TCmsConfig> GetConfigsFromCms(
     ui32 nodeId,
     const TString& hostName,
     const TString& nodeBrokerAddress,
@@ -164,16 +234,22 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
                 configResult.GetErrorMessage());
     }
 
-    auto cmsConfig = configResult.GetConfig();
+    TCmsConfig cmsConfig{
+        .AppConfig = configResult.GetConfig(),
+    };
 
-    if (cmsConfig.HasNameserviceConfig()) {
-        cmsConfig.MutableNameserviceConfig()->SetSuppressVersionCheck(
+    if (cmsConfig.AppConfig.HasNameserviceConfig()) {
+        cmsConfig.AppConfig.MutableNameserviceConfig()->SetSuppressVersionCheck(
             nsConfig.GetSuppressVersionCheck());
     }
 
     NKikimrConfig::TAppConfig yamlConfig;
+    TString resolvedYamlConfig;
     try {
-        yamlConfig = GetYamlConfigFromResult(configResult, options.Labels);
+        yamlConfig = GetYamlConfigFromResult(
+            configResult,
+            options.Labels,
+            &resolvedYamlConfig);
     } catch (const std::exception& e) {
         ReportGetConfigsFromCmsYamlParseError(
             TStringBuilder()
@@ -184,12 +260,20 @@ TResultOrError<NKikimrConfig::TAppConfig> GetConfigsFromCms(
                     : "Starting with PROTO-only CMS configuration without YAML "
                       "additions"));
 
-        return options.UseYamlConfig ? NKikimrConfig::TAppConfig{} : cmsConfig;
+        return options.UseYamlConfig ? TCmsConfig{} : cmsConfig;
     }
-    return SelectCmsAppConfig(
-        std::move(cmsConfig),
+
+    if (options.UseYamlConfig && yamlConfig.GetYamlConfigEnabled()) {
+        ParseOpaqueConfigs(
+            resolvedYamlConfig,
+            options.OpaqueConfigParsers,
+            &cmsConfig);
+    }
+    cmsConfig.AppConfig = SelectCmsAppConfig(
+        std::move(cmsConfig.AppConfig),
         std::move(yamlConfig),
         options.UseYamlConfig);
+    return cmsConfig;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -306,7 +390,7 @@ struct TLegacyNodeRegistrant
         return TRegistrationResult{result.GetNodeId(), result.GetScopeId()};
     }
 
-    TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
+    TResultOrError<TCmsConfig> GetConfigs(
         const TString& nodeBrokerAddress,
         ui32 nodeId) override
     {
@@ -412,7 +496,7 @@ struct TDiscoveryNodeRegistrant
                 result.GetScopePathId()}};
     }
 
-    TResultOrError<NKikimrConfig::TAppConfig> GetConfigs(
+    TResultOrError<TCmsConfig> GetConfigs(
         const TString& nodeBrokerAddress,
         ui32 nodeId) override
     {
@@ -563,7 +647,7 @@ TRegisterDynamicNodeResult RegisterDynamicNode(
         break;
     }
 
-    TMaybe<NKikimrConfig::TAppConfig> configurationResult;
+    TMaybe<TCmsConfig> configurationResult;
 
     if (!options.LoadCmsConfigs) {
         return {nodeId, scopeId, {}};
