@@ -88,9 +88,10 @@ def test_iter_profile_log_events_handles_arbitrary_values(tmp_path):
             "nfs_test",
         ))
 
-    assert events == [(
-        "ReadData",
-        {
+    assert events == [profile_log.ProfileLogEvent(
+        request_type="ReadData",
+        result="S_OK",
+        body={
             "client_id": "foo=bar",
             "name": "invalid\ufffd",
         },

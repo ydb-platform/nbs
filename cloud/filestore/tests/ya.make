@@ -16,6 +16,7 @@ RECURSE_FOR_TESTS(
     client_two_stage_read
     close_to_open_consistency
     config_dispatcher
+    cross_client_atomic_replace
     directory_handles
     dirtree
     endpoints

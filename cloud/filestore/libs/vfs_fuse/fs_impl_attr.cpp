@@ -88,7 +88,7 @@ void TFileSystem::SetAttr(
         const auto& error = response.GetError();
         self->FSyncQueue->Dequeue(reqId, error, TNodeId{ino});
 
-        if (self->CheckResponse(self, *callContext, req, response)) {
+        if (self->CheckNodeError(*callContext, req, error)) {
             InvalidateNodeInCache(ino);
 
             self->ReplyAttrWithCache(
@@ -136,7 +136,9 @@ void TFileSystem::GetAttr(
                 NProto::TGetNodeAttrResponse response =
                     UnsafeExtractValue(future);
                 auto self = ptr.lock();
-                if (CheckResponse(self, *callContext, req, response)) {
+                if (self && self->CheckNodeError(
+                        *callContext, req, response.GetError()))
+                {
                     auto* attr = response.MutableNode();
                     attr->SetSize(Max(attr->GetSize(), maxWrittenOffset));
                     self->ReplyAttrWithCache(
@@ -206,7 +208,7 @@ void TFileSystem::SetXAttr(
                 value,
                 response.GetVersion(),
                 error);
-            if (self->CheckResponse(*callContext, req, response)) {
+            if (self->CheckNodeError(*callContext, req, error)) {
                 self->ReplyError(*callContext, error, req, 0);
             }
         });
@@ -263,7 +265,7 @@ void TFileSystem::GetXAttr(
                 response.GetValue(),
                 response.GetVersion(),
                 error);
-            if (self->CheckResponse(*callContext, req, response)) {
+            if (self->CheckNodeError(*callContext, req, error)) {
                 self->ReplyXAttrInt(
                     *callContext,
                     error,
@@ -296,7 +298,8 @@ void TFileSystem::ListXAttr(
     Session->ListNodeXAttr(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             const auto& response = future.GetValue();
-            if (auto self = ptr.lock(); CheckResponse(self, *callContext, req, response)) {
+            auto self = ptr.lock();
+            if (self && self->CheckNodeError(*callContext, req, response.GetError())) {
                 TStringBuilder value;
                 for (const auto& name: response.GetNames()) {
                     value << name << '\0';
@@ -346,7 +349,7 @@ void TFileSystem::RemoveXAttr(
             const auto& error = response.GetError();
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {ino});
 
-            if (CheckResponse(self, *callContext, req, response)) {
+            if (self->CheckNodeError(*callContext, req, error)) {
                 with_lock (self->XAttrCacheLock) {
                     self->XAttrCache.Forget(ino, name);
                 }
