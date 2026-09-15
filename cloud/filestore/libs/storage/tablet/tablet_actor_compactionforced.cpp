@@ -300,7 +300,8 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         AbortForcedRangeOperation(
             msg->Mode,
             std::move(msg->Ranges),
-            std::move(msg->OperationId));
+            std::move(msg->OperationId),
+            error);
 
         if (ev->Sender == ctx.SelfID) {
             return;
@@ -311,7 +312,12 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         NCloud::Reply(ctx, *ev, std::move(response));
     };
 
-    if (msg->Ranges.empty() || msg->Ranges.size() > Max<ui32>()) {
+    if (msg->Ranges.empty()) {
+        replyError(MakeError(S_OK));
+        return;
+    }
+
+    if (msg->Ranges.size() > Max<ui32>()) {
         replyError(ErrorInvalidArgument());
         return;
     }
@@ -322,9 +328,11 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    // will lose original request info in case of enqueueing external request
     if (IsForcedRangeOperationRunning()) {
-        EnqueueForcedRangeOperation(msg->Mode, std::move(msg->Ranges));
+        EnqueueForcedRangeOperation(
+            msg->Mode,
+            std::move(msg->Ranges),
+            std::move(msg->OperationId));
         return;
     }
 
@@ -383,7 +391,7 @@ void TIndexTabletActor::HandleForcedRangeOperationCompleted(
     TABLET_VERIFY(IsForcedRangeOperationRunning());
     WorkerActors.erase(ev->Sender);
 
-    CompleteForcedRangeOperation();
+    CompleteForcedRangeOperation(msg->GetError());
     EnqueueForcedRangeOperationIfNeeded(ctx);
 }
 
