@@ -38,7 +38,7 @@ TVector<TRequestInfoPtr> TSecureEraseState::GetRequests() const
 std::optional<NProto::TError> TSecureEraseState::HandleRequest(
     const TString& deviceId,
     ui32 generation,
-    ui64 idempotencyKey)
+    TString idempotencyKey)
 {
     if (generation != 0 && generation < CurrentGeneration) {
         return MakeError(
@@ -50,7 +50,7 @@ std::optional<NProto::TError> TSecureEraseState::HandleRequest(
 
     CurrentGeneration = generation;
     if (generation == 0) {
-        idempotencyKey = 0;
+        idempotencyKey.clear();
     }
 
     auto& erase = GetOrAdd(deviceId);
@@ -64,7 +64,7 @@ std::optional<NProto::TError> TSecureEraseState::HandleRequest(
     }
 
     erase.Generation = generation;
-    erase.IdempotencyKey = idempotencyKey;
+    erase.IdempotencyKey = std::move(idempotencyKey);
     return std::nullopt;
 }
 

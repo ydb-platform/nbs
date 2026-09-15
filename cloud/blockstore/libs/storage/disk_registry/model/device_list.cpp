@@ -4,7 +4,7 @@
 
 #include <util/generic/algorithm.h>
 #include <util/generic/iterator_range.h>
-#include <util/random/random.h>
+#include <util/generic/guid.h>
 #include <util/string/builder.h>
 #include <util/string/printf.h>
 
@@ -102,7 +102,7 @@ TDeviceList::TDeviceList(
     for (auto& deviceId: dirtyDevices) {
         DirtyDevices.emplace(
             std::move(deviceId),
-            RandomNumber<TEraseIdempotencyKey>());
+            CreateGuidAsString());
     }
 
     for (auto& device: suspendedDevices) {
@@ -720,7 +720,7 @@ bool TDeviceList::ReleaseDevice(const TDeviceId& id)
         return false;
     }
 
-    DirtyDevices.emplace(id, RandomNumber<TEraseIdempotencyKey>());
+    DirtyDevices.emplace(id, CreateGuidAsString());
 
     return true;
 }
@@ -738,7 +738,7 @@ bool TDeviceList::MarkDeviceAsClean(const TDeviceId& id)
 void TDeviceList::MarkDeviceAsDirty(const TDeviceId& id)
 {
     if (!DirtyDevices.contains(id)) {
-        DirtyDevices.emplace(id, RandomNumber<TEraseIdempotencyKey>());
+        DirtyDevices.emplace(id, CreateGuidAsString());
     }
     RemoveDeviceFromFreeList(id);
 }
@@ -825,7 +825,7 @@ TDeviceList::TEraseIdempotencyKey TDeviceList::GetEraseIdempotencyKey(
     if (const auto* key = DirtyDevices.FindPtr(deviceId)) {
         return *key;
     }
-    return 0;
+    return {};
 }
 
 NProto::EDeviceState TDeviceList::GetDeviceState(const TDeviceId& uuid) const

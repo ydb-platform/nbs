@@ -81,31 +81,31 @@ Y_UNIT_TEST_SUITE(TSecureEraseStateTest)
     {
         TSecureEraseState state;
 
-        UNIT_ASSERT(!state.HandleRequest("device-1", 2, 10));
+        UNIT_ASSERT(!state.HandleRequest("device-1", 2, "key-10"));
         const auto* erase = state.Find("device-1");
         UNIT_ASSERT(erase);
         UNIT_ASSERT_VALUES_EQUAL(2, erase->Generation);
-        UNIT_ASSERT_VALUES_EQUAL(10, erase->IdempotencyKey);
+        UNIT_ASSERT_VALUES_EQUAL("key-10", erase->IdempotencyKey);
 
-        auto error = state.HandleRequest("device-2", 1, 20);
+        auto error = state.HandleRequest("device-2", 1, "key-20");
         UNIT_ASSERT(error);
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error->GetCode());
         UNIT_ASSERT(!state.Find("device-2"));
 
-        UNIT_ASSERT(!state.HandleRequest("legacy-device", 0, 123));
+        UNIT_ASSERT(!state.HandleRequest("legacy-device", 0, "legacy-key"));
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            "",
             state.Find("legacy-device")->IdempotencyKey);
     }
 
     Y_UNIT_TEST(ShouldReturnSuccessfulIdempotentResult)
     {
         TSecureEraseState state;
-        UNIT_ASSERT(!state.HandleRequest("device-1", 1, 10));
+        UNIT_ASSERT(!state.HandleRequest("device-1", 1, "key-10"));
         state.Start("device-1", "device-name-1");
         state.Complete("device-1", {});
 
-        auto error = state.HandleRequest("device-1", 1, 10);
+        auto error = state.HandleRequest("device-1", 1, "key-10");
 
         UNIT_ASSERT(error);
         UNIT_ASSERT_VALUES_EQUAL(S_OK, error->GetCode());
@@ -114,12 +114,12 @@ Y_UNIT_TEST_SUITE(TSecureEraseStateTest)
     Y_UNIT_TEST(ShouldRetryFailedOrNonIdempotentRequest)
     {
         TSecureEraseState state;
-        UNIT_ASSERT(!state.HandleRequest("device-1", 1, 10));
+        UNIT_ASSERT(!state.HandleRequest("device-1", 1, "key-10"));
         state.Start("device-1", "device-name-1");
         state.Complete("device-1", MakeError(E_IO, "erase failed"));
 
-        UNIT_ASSERT(!state.HandleRequest("device-1", 1, 10));
-        UNIT_ASSERT(!state.HandleRequest("device-1", 1, 11));
+        UNIT_ASSERT(!state.HandleRequest("device-1", 1, "key-10"));
+        UNIT_ASSERT(!state.HandleRequest("device-1", 1, "key-11"));
     }
 
     Y_UNIT_TEST(ShouldCheckWhetherSecureEraseCanStart)

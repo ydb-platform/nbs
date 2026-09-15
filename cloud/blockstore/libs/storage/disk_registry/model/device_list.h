@@ -27,7 +27,7 @@ class TDeviceList
 {
 public:
     using TDeviceId = TString;
-    using TEraseIdempotencyKey = ui64;
+    using TEraseIdempotencyKey = TString;
 
 private:
     using TDiskId = TString;

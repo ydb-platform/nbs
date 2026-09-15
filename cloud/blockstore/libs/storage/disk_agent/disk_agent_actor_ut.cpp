@@ -3777,7 +3777,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
 
         const TString deviceId = "MemoryDevice1";
         const TString clientId = "client-1";
-        constexpr ui64 idempotencyKey = 42;
+        const TString idempotencyKey = "idempotency-key";
         constexpr ui32 generation = 1;
 
         auto env = TTestEnvBuilder(runtime)
@@ -3966,21 +3966,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         TDiskAgentClient diskAgent(runtime);
         diskAgent.WaitReady();
 
-        diskAgent.SendSecureEraseDeviceRequest("foo", 0, 2);
+        diskAgent.SendSecureEraseDeviceRequest("foo", {}, 2);
         auto response = diskAgent.RecvSecureEraseDeviceResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
 
-        diskAgent.SendSecureEraseDeviceRequest("bar", 0, 1);
+        diskAgent.SendSecureEraseDeviceRequest("bar", {}, 1);
         response = diskAgent.RecvSecureEraseDeviceResponse();
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             response->Record.GetError().GetCode());
 
-        diskAgent.SendSecureEraseDeviceRequest("bar", 0, 0);
+        diskAgent.SendSecureEraseDeviceRequest("bar", {}, 0);
         response = diskAgent.RecvSecureEraseDeviceResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
 
-        diskAgent.SendSecureEraseDeviceRequest("bar", 0, 1);
+        diskAgent.SendSecureEraseDeviceRequest("bar", {}, 1);
         response = diskAgent.RecvSecureEraseDeviceResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
     }

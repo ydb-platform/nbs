@@ -39,7 +39,7 @@ struct TSecureErase
     TString DeviceName;
     ESecureEraseStatus Status = ESecureEraseStatus::Wait;
     ui32 Generation = 0;
-    ui64 IdempotencyKey = 0;
+    TString IdempotencyKey;
     TDeque<TRequestInfoPtr> Requests;
     NProto::TError Error;
 };
@@ -62,7 +62,7 @@ public:
     [[nodiscard]] std::optional<NProto::TError> HandleRequest(
         const TString& deviceId,
         ui32 generation,
-        ui64 idempotencyKey);
+        TString idempotencyKey);
 
     [[nodiscard]] TSecureErase* Find(const TString& deviceId);
     [[nodiscard]] const TSecureErase* Find(const TString& deviceId) const;
