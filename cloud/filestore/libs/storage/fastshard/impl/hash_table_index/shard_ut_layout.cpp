@@ -84,6 +84,7 @@ struct TStorageFixture
     {
         Config.SetNodesPerGroup(NodesPerGroup);
         Config.SetExpectedGroupCapacity(64_MB);
+        Config.SetPageSize(4_KB);
 
         //
         // The null storage group factory ignores the devices; they are

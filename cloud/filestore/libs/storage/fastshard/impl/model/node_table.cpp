@@ -50,10 +50,12 @@ ui64 TNodeTable::Init(
     ui64 firstPageNo,
     IPageStorePtr pageStore)
 {
+    PageSize = pageStore->GetPageSize();
+    const ui64 slotsPerPage = PageSize / NodeSlotSize;
     const ui64 pageCount =
-        Min(RoundUp(nodesPerGroup, SlotsPerPage),
-            (NodeTableSize / PageSize) * SlotsPerPage) /
-        SlotsPerPage;
+        Min(RoundUp(nodesPerGroup, slotsPerPage),
+            (NodeTableSize / PageSize) * slotsPerPage) /
+        slotsPerPage;
     const TNodeTableSlot tombstone{.Id = Max<ui64>()};
     Slots = std::make_unique<THt>(
         firstPageNo,
