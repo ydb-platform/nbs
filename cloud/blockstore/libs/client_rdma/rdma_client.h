@@ -41,15 +41,6 @@ NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaEndpointClientAsyn
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config);
 
-// Waits for the first connect: the future fails, and the endpoint is torn
-// down, if it does not come up.
-NThreading::TFuture<TResultOrError<IBlockStorePtr>> CreateRdmaDataEndpointAsync(
-    ILoggingServicePtr logging,
-    NCloud::NStorage::NRdma::IClientPtr client,
-    ITraceSerializerPtr traceSerializer,
-    ITaskQueuePtr taskQueue,
-    const TRdmaEndpointConfig& config);
-
 // The handler is how the rdma client reports the endpoint state back; it may
 // be empty when nobody listens. The endpoint is returned before it has
 // connected, so a caller that has no handler cannot tell when it is usable.
@@ -59,6 +50,6 @@ TResultOrError<IBlockStorePtr> CreateRdmaDataEndpoint(
     ITraceSerializerPtr traceSerializer,
     ITaskQueuePtr taskQueue,
     const TRdmaEndpointConfig& config,
-    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler = nullptr);
+    NCloud::NStorage::NRdma::IClientEndpointHandlerPtr handler);
 
 }   // namespace NCloud::NBlockStore::NClient
