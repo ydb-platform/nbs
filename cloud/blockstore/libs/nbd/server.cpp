@@ -66,11 +66,22 @@ private:
     ILimiterPtr Limiter;
     IServerHandlerPtr Handler;
     TSocketHolder Socket;
+    const TFuture<void> Ready;
 
     TContLockFreeQueue<TServerResponsePtr> ResponseQueue;
 
     size_t InFlightBytes = 0;
+
+    // Requests read from this connection that may still reach or be executing
+    // in the backend. Includes requests waiting in Limiter::Acquire.
+    std::atomic<size_t> ActiveRequests = 0;
+
+    // Set after the receive loop exits, so ActiveRequests can no longer grow.
+    // Drain completes when this is set and ActiveRequests reaches zero.
+    std::atomic<bool> ReceiveFinished = false;
+
     std::atomic_flag ShuttingDown = false;
+    TPromise<void> DrainResult = NewPromise<void>();
 
 public:
     TConnection(
@@ -78,13 +89,15 @@ public:
             TContExecutor* e,
             ILimiterPtr limiter,
             IServerHandlerPtr handler,
-            TSocketHolder socket)
+            TSocketHolder socket,
+            TFuture<void> ready)
         : AppCtx(appCtx)
         , Log(appCtx.Log)
         , Executor(e)
         , Limiter(std::move(limiter))
         , Handler(std::move(handler))
         , Socket(std::move(socket))
+        , Ready(std::move(ready))
         , ResponseQueue(e)
     {}
 
@@ -102,6 +115,13 @@ public:
     void Stop() override
     {
         ShutDown();
+    }
+
+    TFuture<void> Drain()
+    {
+        ShutDown();
+        TryCompleteDrain();
+        return DrainResult.GetFuture();
     }
 
     void Enqueue(ITaskPtr task) override
@@ -140,17 +160,34 @@ public:
     void SendResponse(TServerResponsePtr response) override
     {
         ResponseQueue.Enqueue(std::move(response));
+        CompleteRequest();
     }
 
     bool AcquireRequest(size_t requestBytes) override
     {
+        if (IsShuttingDown()) {
+            return false;
+        }
+
+        ActiveRequests.fetch_add(1, std::memory_order_acq_rel);
+
         if (Limiter) {
             if (!Limiter->Acquire(requestBytes)) {
+                CompleteRequest();
                 return false;
             }
 
             InFlightBytes += requestBytes;
         }
+
+        // Limiter::Acquire may yield, allowing the connection to start
+        // shutting down while this request is waiting for capacity.
+        if (IsShuttingDown()) {
+            ReleaseRequest(requestBytes);
+            CompleteRequest();
+            return false;
+        }
+
         return true;
     }
 
@@ -185,6 +222,8 @@ private:
             }
         }
 
+        ReceiveFinished.store(true, std::memory_order_release);
+        TryCompleteDrain();
         ResponseQueue.Enqueue(nullptr);
     }
 
@@ -192,7 +231,13 @@ private:
     {
         TContIO io(Socket, c);
 
-        if (Handler->NegotiateClient(io, io)) {
+        if (!Handler->NegotiateClient(io, io)) {
+            return;
+        }
+
+        CurrentThread().Executor->WaitFor(Ready);
+
+        if (!c->Cancelled() && !IsShuttingDown()) {
             Handler->ProcessRequests(this, io, io, c);
         }
     }
@@ -260,8 +305,29 @@ private:
         }
     }
 
-    bool IsShuttingDown() const {
+    bool IsShuttingDown() const
+    {
         return ShuttingDown.test(std::memory_order_acquire);
+    }
+
+    void CompleteRequest()
+    {
+        const auto previous =
+            ActiveRequests.fetch_sub(1, std::memory_order_acq_rel);
+        Y_ABORT_UNLESS(previous != 0);
+
+        if (previous == 1) {
+            TryCompleteDrain();
+        }
+    }
+
+    void TryCompleteDrain()
+    {
+        if (ReceiveFinished.load(std::memory_order_acquire) &&
+            ActiveRequests.load(std::memory_order_acquire) == 0)
+        {
+            DrainResult.TrySetValue();
+        }
     }
 };
 
@@ -349,6 +415,27 @@ public:
         });
     }
 
+    TFuture<NProto::TError> Drain()
+    {
+        auto error = SafeExecute<NProto::TError>([&] {
+            if (Listener) {
+                Listener->Stop();
+            }
+            return NProto::TError();
+        });
+
+        if (HasError(error) || !Connection) {
+            return MakeFuture(std::move(error));
+        }
+
+        return Connection->Drain().Apply(
+            [](const TFuture<void>& future)
+            {
+                future.GetValue();
+                return NProto::TError();
+            });
+    }
+
     size_t CollectRequests(const TIncompleteRequestsCollector& collector)
     {
         if (!Connection) {
@@ -370,8 +457,9 @@ private:
             SetNoDelay(socket, true);
         }
 
+        TFuture<void> ready = MakeFuture();
         if (Connection) {
-            Connection->Stop();
+            ready = Connection->Drain();
         }
 
         Connection = MakeIntrusive<TConnection>(
@@ -379,7 +467,8 @@ private:
             Executor,
             Limiter,
             HandlerFactory->CreateHandler(),
-            std::move(socket));
+            std::move(socket),
+            std::move(ready));
 
         Connection->Start();
     }
@@ -514,6 +603,29 @@ public:
         return Executor->Execute([endpoint = std::move(endpoint)] {
             return endpoint->Stop(true);
         });
+    }
+
+    TFuture<NProto::TError> DrainEndpoint(const TString& address)
+    {
+        TEndpointPtr endpoint;
+        with_lock (Lock) {
+            auto it = Endpoints.find(address);
+            if (it != Endpoints.end()) {
+                endpoint = it->second;
+            }
+        }
+
+        if (!endpoint) {
+            NProto::TError error;
+            error.SetCode(S_ALREADY);
+            error.SetMessage(
+                TStringBuilder() << "endpoint " << address.Quote()
+                                 << " has already been stopped");
+            return MakeFuture(std::move(error));
+        }
+
+        return Executor->Execute([endpoint = std::move(endpoint)]
+                                 { return endpoint->Drain(); });
     }
 
     void AddEndpoint(TString address, TEndpointPtr endpoint)
@@ -687,7 +799,7 @@ public:
         }
 
         auto address = PrintHostAndPort(listenAddress);
-        TExecutorThread* executorThread;
+        TExecutorThread* executorThread = nullptr;
 
         with_lock (Lock) {
             auto it = EndpointMap.find(address);
@@ -706,6 +818,36 @@ public:
 
         auto endpoint = executorThread->RemoveEndpoint(address);
         return executorThread->StopEndpoint(std::move(endpoint));
+    }
+
+    TFuture<NProto::TError> DrainEndpoint(
+        TNetworkAddress listenAddress) override
+    {
+        if (AtomicGet(ShouldStop) == 1) {
+            NProto::TError error;
+            error.SetCode(E_REJECTED);
+            error.SetMessage("NBD server is stopped");
+            return MakeFuture(error);
+        }
+
+        TString address = PrintHostAndPort(listenAddress);
+        TExecutorThread* executorThread = nullptr;
+
+        with_lock (Lock) {
+            auto it = EndpointMap.find(address);
+            if (it == EndpointMap.end()) {
+                NProto::TError error;
+                error.SetCode(S_ALREADY);
+                error.SetMessage(TStringBuilder()
+                    << "endpoint " << address.Quote()
+                    << " has already been stopped");
+                return MakeFuture(error);
+            }
+
+            executorThread = it->second;
+        }
+
+        return executorThread->DrainEndpoint(address);
     }
 
     size_t CollectRequests(
