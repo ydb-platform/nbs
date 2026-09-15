@@ -813,6 +813,48 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldStoreCleanupQueueAdditionalFields)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        const auto blobId = executor.MakeBlobId();
+        const ui64 deletionCommitId = 42;
+
+        NProto::TBlobMeta blobMeta;
+        auto* mixedBlocks = blobMeta.MutableMixedBlocks();
+        mixedBlocks->AddBlocks(10);
+        mixedBlocks->AddCommitIds(20);
+        blobMeta.AddBlockChecksums(30);
+        NProto::TCleanupQueueAdditionalFields additionalFields;
+        *additionalFields.MutableBlobMeta() = blobMeta;
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                db.WriteCleanupQueue(
+                    blobId,
+                    deletionCommitId,
+                    additionalFields);
+            });
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TVector<TCleanupQueueItem> items;
+                UNIT_ASSERT(db.ReadCleanupQueue(items));
+                UNIT_ASSERT_VALUES_EQUAL(1, items.size());
+
+                UNIT_ASSERT_VALUES_EQUAL(blobId, items[0].BlobId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    deletionCommitId,
+                    items[0].CommitId);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    additionalFields.SerializeAsString(),
+                    items[0].AdditionalFields.SerializeAsString());
+            });
+    }
+
     Y_UNIT_TEST(ShouldFindBlobsInBlobIndex)
     {
         TTestExecutor executor;

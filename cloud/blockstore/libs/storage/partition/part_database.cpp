@@ -1420,13 +1420,14 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCheckpoints(
 template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteCleanupQueue(
     const TPartialBlobId& blobId,
-    ui64 commitId)
+    ui64 commitId,
+    const NProto::TCleanupQueueAdditionalFields& additionalFields)
 {
     using TTable = TPartitionSchema::CleanupQueue;
 
     Table<TTable>()
         .Key(commitId, blobId.CommitId(), blobId.UniqueId())
-        .Update();
+        .Update<TTable::AdditionalFields>(additionalFields);
 }
 
 template <typename TCounters>
@@ -1460,7 +1461,10 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCleanupQueue(
             it.template GetValue<TTable::CommitId>(),
             it.template GetValue<TTable::BlobId>());
 
-        items.emplace_back(blobId, commitId);
+        auto additionalFields =
+            it.GetValueOrDefault<TTable::AdditionalFields>();
+
+        items.emplace_back(blobId, commitId, additionalFields);
 
         if (!it.Next()) {
             return false;   // not ready
