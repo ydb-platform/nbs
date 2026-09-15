@@ -580,8 +580,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
                 {RangeSize, {2, 2000, 0, 0, 0, 0, false, 0}},
                 {2 * RangeSize, {3, 3000, 0, 0, 0, 0, false, 0}},
             },
-            &used
-        );
+            &used);
 
         {
             const auto stat = map.Get(0);

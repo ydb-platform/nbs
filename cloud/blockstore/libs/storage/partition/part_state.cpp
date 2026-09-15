@@ -118,7 +118,8 @@ TPartitionState::TPartitionState(
         const std::optional<TMixedBlocksFilterConfig>
             mixedBlocksFilterConfig,
         bool checkpointAwareCleanupEnabled,
-        bool useBlobChannelDataKindForCounters)
+        bool useBlobChannelDataKindForCounters,
+        bool compactionStatsTrackerEnabled)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -154,6 +155,10 @@ TPartitionState::TPartitionState(
     , CleanupScoreHistory(cleanupScoreHistorySize)
     , CheckpointAwareCleanupEnabled(checkpointAwareCleanupEnabled)
 {
+    if (compactionStatsTrackerEnabled) {
+        CompactionStatsTracker.emplace(tabletId, CompactionMap, UsedBlocks);
+    }
+
     if (mixedBlocksFilterConfig) {
         MixedBlocksFilter.emplace(
             tabletId,

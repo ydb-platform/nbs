@@ -2076,12 +2076,19 @@ void TPartitionActor::HandleCompaction(
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
 
+    TVector<ui32> rangeIndices;
+    for (auto& range: ranges) {
+        rangeIndices.push_back(range.first);
+    }
+
     if (auto* filter = State->AccessMixedBlocksFilter()) {
-        TVector<ui32> rangeIndices;
-        for (auto& range: ranges) {
-            rangeIndices.push_back(range.first);
-        }
-        filter->CompactionStarted(std::move(rangeIndices), commitId);
+        filter->CompactionStarted(rangeIndices, commitId);
+    }
+
+    if (auto* compactionStatsTracker = State->AccessCompactionStatsTracker()) {
+        compactionStatsTracker->CompactionStarted(
+            commitId,
+            std::move(rangeIndices));
     }
 
     auto tx = CreateTx<TCompaction>(
@@ -2092,6 +2099,8 @@ void TPartitionActor::HandleCompaction(
         std::move(ranges),
         ctx.Now());
 
+    // Wait for all previous commits to complete before starting the new
+    // compaction.
     SharedState->WaitCommitForCompaction(ctx, std::move(tx), commitId);
 }
 
@@ -2129,6 +2138,12 @@ void TPartitionActor::HandleCompactionCompleted(
             filter->CompactionFailed();
         } else {
             filter->CompactionFinished();
+        }
+    }
+
+    if (auto* compactionStatsTracker = State->AccessCompactionStatsTracker()) {
+        if (HasError(msg->GetError())) {
+            compactionStatsTracker->CompactionFailed(commitId);
         }
     }
 
@@ -2215,6 +2230,10 @@ bool TPartitionActor::PrepareCompaction(
 {
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
+
+    if (auto* compactionStatsTracker = State->AccessCompactionStatsTracker()) {
+        compactionStatsTracker->ClearCountersForCompaction(args.CommitId);
+    }
 
     const bool incrementalCompactionEnabled =
         Config->GetIncrementalCompactionEnabled() ||
