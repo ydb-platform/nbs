@@ -11,6 +11,7 @@ SRCS(
     create_overlay_disk_task.go
     delete_disk_task.go
     migrate_disk_task.go
+    nbs_factory_for_disk_kind.go
     resize_disk_task.go
     unassign_disk_task.go
 

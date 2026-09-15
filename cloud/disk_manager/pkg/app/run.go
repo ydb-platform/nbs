@@ -205,6 +205,44 @@ func run(
 		return err
 	}
 
+	var ssdDirectMirror3Of5GroupNbsFactory nbs.Factory
+	ssdDirectMirror3Of5GroupNbsConfig := config.GetSsdDirectMirror3Of5GroupNbsConfig()
+	if ssdDirectMirror3Of5GroupNbsConfig != nil {
+		clientMetricsRegistry := mon.NewRegistry(
+			"ssd_direct_mirror3of5_group_nbs_client",
+		)
+		sessionMetricsRegistry := mon.NewRegistry(
+			"ssd_direct_mirror3of5_group_nbs_session",
+		)
+		tlsProvider, err := common.NewGrpcClientTlsProvider(
+			ssdDirectMirror3Of5GroupNbsConfig.GetInsecure(),
+			common.GrpcClientTlsProviderConfig{
+				RootCertsFile: ssdDirectMirror3Of5GroupNbsConfig.GetRootCertsFile(),
+			},
+			clientMetricsRegistry,
+		)
+		if err != nil {
+			return err
+		}
+
+		ssdDirectMirror3Of5GroupNbsFactory, err = nbs.NewFactoryWithCreds(
+			ctx,
+			ssdDirectMirror3Of5GroupNbsConfig,
+			creds,
+			clientMetricsRegistry,
+			sessionMetricsRegistry,
+			tlsProvider,
+		)
+		if err != nil {
+			logging.Error(
+				ctx,
+				"Failed to create ssd-direct-mirror3of5-group nbs factory: %v",
+				err,
+			)
+			return err
+		}
+	}
+
 	nfsConfig := config.GetNfsConfig()
 	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
 	nfsTlsProvider, err := common.NewGrpcClientTlsProvider(
@@ -408,6 +446,7 @@ func run(
 			taskRegistry,
 			taskScheduler,
 			nbsFactory,
+			ssdDirectMirror3Of5GroupNbsFactory,
 			nfsClientMetricsRegistry,
 			nfsTlsProvider,
 		)

@@ -19,12 +19,13 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createEmptyDiskTask struct {
-	storage      resources.Storage
-	scheduler    tasks.Scheduler
-	nbsFactory   nbs.Factory
-	params       *protos.CreateDiskParams
-	state        *protos.CreateEmptyDiskTaskState
-	cellSelector cells.CellSelector
+	storage                            resources.Storage
+	scheduler                          tasks.Scheduler
+	nbsFactory                         nbs.Factory
+	ssdDirectMirror3Of5GroupNbsFactory nbs.Factory
+	params                             *protos.CreateDiskParams
+	state                              *protos.CreateEmptyDiskTaskState
+	cellSelector                       cells.CellSelector
 }
 
 func (t *createEmptyDiskTask) Save() ([]byte, error) {
@@ -47,15 +48,38 @@ func (t *createEmptyDiskTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	client, err := SelectCellForDisk(
-		ctx,
-		execCtx,
-		t.state,
-		t.params,
-		t.cellSelector,
-		t.nbsFactory,
-		t.storage,
-	)
+	var client nbs.Client
+	var err error
+
+	if common.IsSsdDirectMirror3Of5GroupDiskKind(t.params.Kind) {
+		var nbsFactory nbs.Factory
+		nbsFactory, err = nbsFactoryForDiskKind(
+			t.nbsFactory,
+			t.ssdDirectMirror3Of5GroupNbsFactory,
+			t.params.Kind,
+		)
+		if err != nil {
+			return err
+		}
+
+		t.state.SelectedCellId = t.params.Disk.ZoneId
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+
+		client, err = nbsFactory.GetClient(ctx, t.params.Disk.ZoneId)
+	} else {
+		client, err = SelectCellForDisk(
+			ctx,
+			execCtx,
+			t.state,
+			t.params,
+			t.cellSelector,
+			t.nbsFactory,
+			t.storage,
+		)
+	}
 	if err != nil {
 		return err
 	}
@@ -130,7 +154,16 @@ func (t *createEmptyDiskTask) Cancel(
 		return nil
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
+	nbsFactory, err := nbsFactoryForDiskKindString(
+		t.nbsFactory,
+		t.ssdDirectMirror3Of5GroupNbsFactory,
+		diskMeta.Kind,
+	)
+	if err != nil {
+		return err
+	}
+
+	client, err := nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 	if err != nil {
 		return err
 	}

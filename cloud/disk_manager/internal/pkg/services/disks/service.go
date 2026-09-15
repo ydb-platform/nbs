@@ -152,27 +152,28 @@ func getBlocksCountForSize(size uint64, blockSize uint32) (uint64, error) {
 ////////////////////////////////////////////////////////////////////////////////
 
 type service struct {
-	taskScheduler   tasks.Scheduler
-	taskStorage     tasks_storage.Storage
-	config          *disks_config.DisksConfig
-	nbsFactory      nbs.Factory
-	poolService     pools.Service
-	resourceStorage resources.Storage
-	cellSelector    cells.CellSelector
+	taskScheduler                      tasks.Scheduler
+	taskStorage                        tasks_storage.Storage
+	config                             *disks_config.DisksConfig
+	nbsFactory                         nbs.Factory
+	ssdDirectMirror3Of5GroupNbsFactory nbs.Factory
+	poolService                        pools.Service
+	resourceStorage                    resources.Storage
+	cellSelector                       cells.CellSelector
 }
 
-func (s *service) getZoneIDForExistingDisk(
+func (s *service) getExistingDiskMeta(
 	ctx context.Context,
 	diskID *disk_manager.DiskId,
-) (string, error) {
+) (*resources.DiskMeta, error) {
 
 	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, diskID.DiskId)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if diskMeta == nil {
-		return "", common.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"no such disk: %v",
 			diskID,
 		)
@@ -180,14 +181,49 @@ func (s *service) getZoneIDForExistingDisk(
 
 	if diskMeta.ZoneID != diskID.ZoneId &&
 		!s.cellSelector.ZoneContainsCell(diskID.ZoneId, diskMeta.ZoneID) {
-		return "", common.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"provided zone ID %v does not match with an actual zone ID %v",
 			diskID.ZoneId,
 			diskMeta.ZoneID,
 		)
 	}
 
+	return diskMeta, nil
+}
+
+func (s *service) getZoneIDForExistingDisk(
+	ctx context.Context,
+	diskID *disk_manager.DiskId,
+) (string, error) {
+
+	diskMeta, err := s.getExistingDiskMeta(ctx, diskID)
+	if err != nil {
+		return "", err
+	}
+
 	return diskMeta.ZoneID, nil
+}
+
+func (s *service) getNbsClientForExistingDisk(
+	ctx context.Context,
+	diskID *disk_manager.DiskId,
+) (nbs.Client, error) {
+
+	diskMeta, err := s.getExistingDiskMeta(ctx, diskID)
+	if err != nil {
+		return nil, err
+	}
+
+	nbsFactory, err := nbsFactoryForDiskKindString(
+		s.nbsFactory,
+		s.ssdDirectMirror3Of5GroupNbsFactory,
+		diskMeta.Kind,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 }
 
 func (s *service) prepareCreateDiskParams(
@@ -751,12 +787,7 @@ func (s *service) StatDisk(
 		)
 	}
 
-	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
-	if err != nil {
-		return nil, err
-	}
-
-	client, err := s.nbsFactory.GetClient(ctx, zoneID)
+	client, err := s.getNbsClientForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
 	}
@@ -895,12 +926,7 @@ func (s *service) DescribeDisk(
 		)
 	}
 
-	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
-	if err != nil {
-		return nil, err
-	}
-
-	client, err := s.nbsFactory.GetClient(ctx, zoneID)
+	client, err := s.getNbsClientForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
 	}
@@ -967,18 +993,20 @@ func NewService(
 	taskStorage tasks_storage.Storage,
 	config *disks_config.DisksConfig,
 	nbsFactory nbs.Factory,
+	ssdDirectMirror3Of5GroupNbsFactory nbs.Factory,
 	poolService pools.Service,
 	resourceStorage resources.Storage,
 	cellSelector cells.CellSelector,
 ) Service {
 
 	return &service{
-		taskScheduler:   taskScheduler,
-		taskStorage:     taskStorage,
-		config:          config,
-		nbsFactory:      nbsFactory,
-		poolService:     poolService,
-		resourceStorage: resourceStorage,
-		cellSelector:    cellSelector,
+		taskScheduler:                      taskScheduler,
+		taskStorage:                        taskStorage,
+		config:                             config,
+		nbsFactory:                         nbsFactory,
+		ssdDirectMirror3Of5GroupNbsFactory: ssdDirectMirror3Of5GroupNbsFactory,
+		poolService:                        poolService,
+		resourceStorage:                    resourceStorage,
+		cellSelector:                       cellSelector,
 	}
 }

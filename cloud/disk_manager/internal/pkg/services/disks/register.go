@@ -26,6 +26,7 @@ func RegisterForExecution(
 	taskScheduler tasks.Scheduler,
 	poolService pools.Service,
 	nbsFactory nbs.Factory,
+	ssdDirectMirror3Of5GroupNbsFactory nbs.Factory,
 	cellSelector cells.CellSelector,
 ) error {
 
@@ -45,10 +46,11 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.CreateEmptyDisk", func() tasks.Task {
 		return &createEmptyDiskTask{
-			storage:      resourceStorage,
-			scheduler:    taskScheduler,
-			nbsFactory:   nbsFactory,
-			cellSelector: cellSelector,
+			storage:                            resourceStorage,
+			scheduler:                          taskScheduler,
+			nbsFactory:                         nbsFactory,
+			ssdDirectMirror3Of5GroupNbsFactory: ssdDirectMirror3Of5GroupNbsFactory,
+			cellSelector:                       cellSelector,
 		}
 	})
 	if err != nil {
@@ -94,11 +96,12 @@ func RegisterForExecution(
 
 	err = taskRegistry.RegisterForExecution("disks.DeleteDisk", func() tasks.Task {
 		return &deleteDiskTask{
-			performanceConfig: performanceConfig,
-			storage:           resourceStorage,
-			scheduler:         taskScheduler,
-			poolService:       poolService,
-			nbsFactory:        nbsFactory,
+			performanceConfig:                  performanceConfig,
+			storage:                            resourceStorage,
+			scheduler:                          taskScheduler,
+			poolService:                        poolService,
+			nbsFactory:                         nbsFactory,
+			ssdDirectMirror3Of5GroupNbsFactory: ssdDirectMirror3Of5GroupNbsFactory,
 		}
 	})
 	if err != nil {
