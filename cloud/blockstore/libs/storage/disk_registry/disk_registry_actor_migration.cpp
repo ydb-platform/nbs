@@ -5,6 +5,8 @@
 
 #include <cloud/storage/core/libs/common/format.h>
 
+#include <library/cpp/iterator/zip.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -178,7 +180,7 @@ void TDiskRegistryActor::HandleFinishMigration(
         ev->Get()->CallContext);
 
     auto diskId = record.GetDiskId();
-    auto migrations = record.GetMigrations();
+    auto& migrations = *record.MutableMigrations();
 
     if (State->IsMasterDisk(record.GetDiskId())) {
         TString replicaId;
@@ -230,7 +232,9 @@ void TDiskRegistryActor::HandleFinishMigration(
         ctx,
         std::move(requestInfo),
         std::move(diskId),
-        std::move(migrations),
+        TVector<NProto::TDeviceMigrationIds>(
+            std::make_move_iterator(migrations.begin()),
+            std::make_move_iterator(migrations.end())),
         ctx.Now()
     );
 }
@@ -255,17 +259,14 @@ void TDiskRegistryActor::ExecuteFinishMigration(
     TTxDiskRegistry::TFinishMigration& args)
 {
     TDiskRegistryDatabase db(tx.DB);
-    for (auto& x: args.Migrations) {
-        bool updated = false;
-        auto error = State->FinishDeviceMigration(
-            db,
-            args.DiskId,
-            x.GetSourceDeviceId(),
-            x.GetTargetDeviceId(),
-            args.Timestamp,
-            &updated);
-        Y_UNUSED(updated);
+    auto errors = State->FinishDeviceMigrations(
+        db,
+        args.DiskId,
+        args.Migrations,
+        args.Timestamp);
 
+    Y_DEBUG_ABORT_UNLESS(errors.size() == args.Migrations.size());
+    for (const auto& [x, error]: Zip(args.Migrations, errors)) {
         if (HasError(error)) {
             LOG_ERROR(
                 ctx,
@@ -302,7 +303,7 @@ void TDiskRegistryActor::CompleteFinishMigration(
     LOG_INFO(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s FinishMigration complete. DiskId=%s Migrations=%d",
+        "%s FinishMigration complete. DiskId=%s Migrations=%zu",
         LogTitle.GetWithTime().c_str(),
         args.DiskId.c_str(),
         args.Migrations.size());

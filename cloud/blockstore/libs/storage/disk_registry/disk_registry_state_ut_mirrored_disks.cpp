@@ -3061,16 +3061,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
                 migrations[0].GetTargetDevice().GetDeviceUUID());
             ASSERT_VECTORS_EQUAL(TVector<TString>(), deviceReplacementIds);
 
-            bool diskStateUpdated = false;
-            state.FinishDeviceMigration(
+            UNIT_ASSERT_SUCCESS(FinishDeviceMigration(
+                state,
                 db,
                 "disk-1/0",
                 "uuid-1",
-                targetUuid,
-                Now(),
-                &diskStateUpdated);
-
-            UNIT_ASSERT(diskStateUpdated);
+                targetUuid));
 
             error = AllocateMirroredDisk(
                 db,
