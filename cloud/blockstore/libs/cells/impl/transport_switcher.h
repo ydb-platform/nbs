@@ -45,7 +45,7 @@ struct ITransportSwitcher
 using ITransportSwitcherPtr = std::shared_ptr<ITransportSwitcher>;
 
 ITransportSwitcherPtr StartTransportSwitching(
-    IEndpointRouterPtr router,
+    ITransportTargetPtr target,
     IBlockStorePtr fallback,
     TEndpointFactory factory,
     ITimerPtr timer,

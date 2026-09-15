@@ -21,7 +21,7 @@ class TTransportSwitcher final
     , public std::enable_shared_from_this<TTransportSwitcher>
 {
 private:
-    const std::weak_ptr<IEndpointRouter> Router;
+    const std::weak_ptr<ITransportTarget> Target;
     const IBlockStorePtr Fallback;   // the endpoint the router started with
     const TEndpointFactory Factory;
     const ITimerPtr Timer;
@@ -40,7 +40,7 @@ private:
 
 public:
     TTransportSwitcher(
-            IEndpointRouterPtr router,
+            ITransportTargetPtr target,
             IBlockStorePtr fallback,
             TEndpointFactory factory,
             ITimerPtr timer,
@@ -48,7 +48,7 @@ public:
             const ILoggingServicePtr& logging,
             TString host,
             const TTransportSwitcherConfig& config)
-        : Router(std::move(router))
+        : Target(std::move(target))
         , Fallback(std::move(fallback))
         , Factory(std::move(factory))
         , Timer(std::move(timer))
@@ -103,8 +103,8 @@ public:
 
     void OnDisconnected()
     {
-        auto router = Router.lock();
-        if (!router) {
+        auto target = Target.lock();
+        if (!target) {
             return;
         }
 
@@ -120,7 +120,7 @@ public:
 
             // inside the lock: a settle racing this break must not store its
             // target after ours
-            router->SetTarget(Fallback);
+            target->SetTarget(Fallback);
         }
 
         STORAGE_INFO("[" << Host << "] moving data back onto the fallback");
@@ -157,10 +157,12 @@ private:
 
     void Settle(ui64 generation)
     {
-        auto router = Router.lock();
-        if (!router) {
+        auto target = Target.lock();
+        if (!target) {
             return;
         }
+
+        bool firstTime = false;
 
         with_lock (Lock) {
             if (generation != SettleGeneration || !Connected ||
@@ -169,15 +171,18 @@ private:
                 return;
             }
             PreferredActive = true;
+            firstTime = !EverActive;
             EverActive = true;
 
             // inside the lock: a break racing this settle must not store its
             // target before ours
-            router->SetTarget(Preferred);
+            target->SetTarget(Preferred);
         }
 
         STORAGE_INFO(
-            "[" << Host << "] switched over to the preferred transport");
+            "[" << Host << "] "
+                << (firstTime ? "switched over to" : "returned to")
+                << " the preferred transport");
     }
 };
 
@@ -239,7 +244,7 @@ TTransportSwitcher::GetEndpointHandler()
 ////////////////////////////////////////////////////////////////////////////////
 
 ITransportSwitcherPtr StartTransportSwitching(
-    IEndpointRouterPtr router,
+    ITransportTargetPtr target,
     IBlockStorePtr fallback,
     TEndpointFactory factory,
     ITimerPtr timer,
@@ -249,7 +254,7 @@ ITransportSwitcherPtr StartTransportSwitching(
     TTransportSwitcherConfig config)
 {
     auto switcher = std::make_shared<TTransportSwitcher>(
-        std::move(router),
+        std::move(target),
         std::move(fallback),
         std::move(factory),
         std::move(timer),

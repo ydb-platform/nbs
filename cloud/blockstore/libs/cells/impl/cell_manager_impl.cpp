@@ -82,6 +82,12 @@ void TCellManager::Start()
 
 void TCellManager::Stop()
 {
+    // before the client goes down: a sweep that outlived it would find
+    // every host unreachable and migrate every connection on the way out
+    for (auto& pool: Pools) {
+        pool.second->Stop();
+    }
+
     Bootstrap.GrpcClient->Stop();
     Bootstrap.CertProvider->Stop();
 }
@@ -103,7 +109,7 @@ TCellConnectionFuture TCellManager::CreateConnection(
     if (fqdn) {
         hostConfig = (*pool)->MakeHostConfig(fqdn);
     } else {
-        auto picked = (*pool)->PickConfiguredHost();
+        auto picked = (*pool)->PickHost();
         if (HasError(picked)) {
             return MakeFuture(
                 TResultOrError<ICellConnectionPtr>(picked.GetError()));

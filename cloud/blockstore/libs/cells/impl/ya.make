@@ -6,6 +6,7 @@ SRCS(
     cell_manager.cpp
     connection.cpp
     describe_volume.cpp
+    detachable_target.cpp
     endpoint_bootstrap_impl.cpp
     endpoint_bootstrap.cpp
     endpoint_router.cpp
