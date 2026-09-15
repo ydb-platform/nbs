@@ -46,6 +46,11 @@ public:
     {}
 
 public:
+    ui64 GetPageSize() const override
+    {
+        return PageSize;
+    }
+
     ui64 AllocateLsn() override;
     void CommitPages(const TVector<ui64>& pages) override;
     void RollbackPages(const TVector<ui64>& pages) override;

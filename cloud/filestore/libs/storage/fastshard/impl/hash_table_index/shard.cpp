@@ -43,11 +43,10 @@ namespace {
 // page index layout
 
 constexpr ui64 PageClusterPageCount = 8;
-constexpr ui64 PageClusterSize = PageClusterPageCount * PageSize;
 constexpr ui64 NodePageClusterSlotSize = 24;
 constexpr ui64 MaxSpacePerStorageGroup = 100_GB;
 constexpr ui64 MaxNodePageClusterTableSlotCount =
-    MaxSpacePerStorageGroup / PageClusterSize;
+    MaxSpacePerStorageGroup / (PageClusterPageCount * DefaultBlockSize);
 constexpr ui64 MaxNodePageClusterTableSize =
     MaxNodePageClusterTableSlotCount * NodePageClusterSlotSize;
 constexpr ui64 InvalidStoragePageClusterId = Max<ui64>();
@@ -76,20 +75,18 @@ static_assert(sizeof(TNodePageClusterSlot) <= NodePageClusterSlotSize);
 ////////////////////////////////////////////////////////////////////////////////
 
 ui64 CalcPageClusterCount(
-    const NProtoPrivate::TPersistentFastShardConfig& config)
+    const NProtoPrivate::TPersistentFastShardConfig& config,
+    ui64 pageSize)
 {
     const ui64 dataPageCount =
-        Min(config.GetExpectedGroupCapacity() / PageSize,
-            MaxSpacePerStorageGroup / PageSize);
+        Min(config.GetExpectedGroupCapacity() / pageSize,
+            MaxSpacePerStorageGroup / pageSize);
     return RoundUp(dataPageCount, PageClusterPageCount) / PageClusterPageCount;
 }
 
 class TPageIndex
 {
 private:
-    static constexpr ui64 SlotsPerPage = 160;
-    static_assert(SlotsPerPage * NodePageClusterSlotSize <= PageSize);
-
     using THt = TPersistentHashTable<TNodePageClusterKey, TNodePageClusterSlot>;
     std::unique_ptr<THt> Slots;
 
@@ -99,15 +96,17 @@ public:
         ui64 firstPageNo,
         IPageStorePtr pageStore)
     {
-        const ui64 pageClusterCount = CalcPageClusterCount(config);
+        const ui64 pageSize = pageStore->GetPageSize();
+        const ui64 slotsPerPage = pageSize / NodePageClusterSlotSize;
+        const ui64 pageClusterCount = CalcPageClusterCount(config, pageSize);
         const ui64 indexPageCount =
-            RoundUp(pageClusterCount, SlotsPerPage) / SlotsPerPage;
+            RoundUp(pageClusterCount, slotsPerPage) / slotsPerPage;
         TNodePageClusterSlot tombstone{};
         tombstone.Key.NodeId = Max<ui64>();
         Slots = std::make_unique<THt>(
             firstPageNo,
             indexPageCount,
-            PageSize,
+            pageSize,
             NodePageClusterSlotSize,
             tombstone,
             std::move(pageStore),
@@ -246,6 +245,7 @@ class TPageAllocator
 {
 private:
     std::unique_ptr<TPersistentBitmap> Bitmap;
+    ui64 PageClusterSize = 0;
     ui64 FirstStoragePageClusterId = 0;
     ui64 BitCount = 0;
     ui64 BitmapSize = 0;
@@ -256,14 +256,16 @@ public:
         ui64 firstPageNo,
         IPageStorePtr pageStore)
     {
-        const ui64 pageClusterCount = CalcPageClusterCount(config);
+        const ui64 pageSize = pageStore->GetPageSize();
+        PageClusterSize = PageClusterPageCount * pageSize;
+        const ui64 pageClusterCount = CalcPageClusterCount(config, pageSize);
         BitCount = pageClusterCount;
         Bitmap = std::make_unique<TPersistentBitmap>(
             firstPageNo,
             BitCount,
-            PageSize,
+            pageSize,
             std::move(pageStore));
-        BitmapSize = Bitmap->GetPageCount() * PageSize;
+        BitmapSize = Bitmap->GetPageCount() * pageSize;
         firstPageNo += Bitmap->GetPageCount();
         FirstStoragePageClusterId = RoundUp(firstPageNo, PageClusterPageCount)
             / PageClusterPageCount;
@@ -575,6 +577,8 @@ private:
     const ui64 Generation;
     const IStorageGroupFactoryPtr StorageGroupFactory;
     const NProtoPrivate::TPersistentFastShardConfig Config;
+    const ui64 PageSize;
+    const ui64 PageClusterSize;
 
     IStorageGroupPtr Storage;
     std::atomic<bool> Ready = false;
@@ -605,6 +609,9 @@ public:
         , Generation(generation)
         , StorageGroupFactory(std::move(storageGroupFactory))
         , Config(std::move(config))
+        // TODO(#6957): take the page size from the config.
+        , PageSize(DefaultBlockSize)
+        , PageClusterSize(PageClusterPageCount * PageSize)
     {
         //
         // Using only one storage group for now.
