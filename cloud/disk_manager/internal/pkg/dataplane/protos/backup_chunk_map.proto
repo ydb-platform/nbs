@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Content of map.bin in the slave: full chunk map of a snapshot, one entry per
+// chunk index. Empty chunk id is a zero chunk.
+message BackupChunkMap {
+    uint32 ChunkCount = 1;
+    repeated string ChunkIds = 2;
+}
