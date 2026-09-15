@@ -20,5 +20,11 @@ type Storage interface {
 
 	RefChunk(ctx context.Context, referer string, chunkID string) (err error)
 
-	UnrefChunk(ctx context.Context, referer string, chunkID string) (err error)
+	// Returns true if the chunk data has been deleted, i.e. the last
+	// reference is gone.
+	UnrefChunk(
+		ctx context.Context,
+		referer string,
+		chunkID string,
+	) (deleted bool, err error)
 }

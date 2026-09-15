@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/layout"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
@@ -583,26 +584,52 @@ func (s *storageYDB) deleteSnapshotData(
 	snapshotID string,
 ) error {
 
+	// Backup slave and disk id are needed to remove the copy of the snapshot
+	// from the slave.
+	state, err := s.getSnapshot(ctx, snapshotID)
+	if err != nil {
+		return err
+	}
+
+	var backupSlave, diskID string
+	if state != nil {
+		backupSlave = state.backupSlave
+		diskID = state.diskID
+	}
+
 	entries, errors := s.readChunkMap(ctx, session, snapshotID, 0, nil)
 
-	err := s.processChunkMapEntries(
+	err = s.processChunkMapEntries(
 		ctx,
 		entries,
 		s.deleteWorkerCount,
 		func(ctx context.Context, entry ChunkMapEntry) error {
-			return s.deleteChunk(ctx, snapshotID, entry)
+			return s.deleteChunk(ctx, snapshotID, backupSlave, entry)
 		},
 	)
 	if err != nil {
 		return err
 	}
 
-	return <-errors
+	err = <-errors
+	if err != nil {
+		return err
+	}
+
+	if len(backupSlave) == 0 {
+		return nil
+	}
+
+	return s.EnqueueBackupDeleting(ctx, []BackupDeletingEntry{
+		{Object: layout.MetaObject(diskID, snapshotID), Slave: backupSlave},
+		{Object: layout.MapObject(diskID, snapshotID), Slave: backupSlave},
+	})
 }
 
 func (s *storageYDB) deleteChunk(
 	ctx context.Context,
 	snapshotID string,
+	backupSlave string,
 	entry ChunkMapEntry,
 ) (err error) {
 
@@ -612,9 +639,21 @@ func (s *storageYDB) deleteChunk(
 	// map entry to avoid orphaning blobs.
 	if len(entry.ChunkID) != 0 {
 		chunkStorage := s.getChunkStorage(entry.StoredInS3)
-		err := chunkStorage.UnrefChunk(ctx, snapshotID, entry.ChunkID)
+		deleted, err := chunkStorage.UnrefChunk(ctx, snapshotID, entry.ChunkID)
 		if err != nil {
 			return err
+		}
+
+		// The copy in the slave mirrors refcnt: it goes away together with
+		// the object.
+		if deleted && entry.StoredInS3 && len(backupSlave) != 0 {
+			err = s.EnqueueBackupDeleting(ctx, []BackupDeletingEntry{{
+				Object: layout.ChunkObject(entry.ChunkID),
+				Slave:  backupSlave,
+			}})
+			if err != nil {
+				return err
+			}
 		}
 	}
 

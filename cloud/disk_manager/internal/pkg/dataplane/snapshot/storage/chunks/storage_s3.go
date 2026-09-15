@@ -132,21 +132,21 @@ func (s *StorageS3) UnrefChunk(
 	ctx context.Context,
 	referer string,
 	chunkID string,
-) (err error) {
+) (deleted bool, err error) {
 
 	defer s.metrics.StatOperation(metrics.OperationUnrefChunkBlob)(&err)
 
 	var refCount uint32
 	refCount, err = s.unrefChunkMetadata(ctx, referer, chunkID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if refCount == 0 {
-		return s.deleteChunkData(ctx, chunkID)
+		return true, s.deleteChunkData(ctx, chunkID)
 	}
 
-	return nil
+	return false, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

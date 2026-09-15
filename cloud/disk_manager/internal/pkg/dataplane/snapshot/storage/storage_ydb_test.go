@@ -1839,3 +1839,106 @@ func TestSetBackupSlave(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "a", meta.BackupSlave)
 }
+
+func TestDeleteSnapshotDataEnqueuesBackupDeleting(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	disk := &types.Disk{ZoneId: "zone", DiskId: "disk1"}
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snap1", Disk: disk})
+	require.NoError(t, err)
+
+	chunkID, err := f.storage.WriteChunk(
+		f.ctx,
+		"task",
+		"snap1",
+		makeChunk(0, "abc"),
+		true, // useS3
+	)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snap1", 4096, 4096, 1, nil)
+	require.NoError(t, err)
+
+	err = f.storage.SetBackupSlave(f.ctx, "snap1", "a")
+	require.NoError(t, err)
+
+	// snap2 shares the chunk with snap1.
+	_, err = f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snap2"})
+	require.NoError(t, err)
+
+	err = f.storage.ShallowCopyChunk(
+		f.ctx,
+		ChunkMapEntry{ChunkIndex: 0, ChunkID: chunkID, StoredInS3: true},
+		"snap2",
+	)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snap2", 4096, 4096, 1, nil)
+	require.NoError(t, err)
+
+	err = f.storage.SetBackupSlave(f.ctx, "snap2", "a")
+	require.NoError(t, err)
+
+	// Deleting snap1 keeps the chunk: snap2 still refers to it.
+	_, err = f.storage.DeletingSnapshot(f.ctx, "snap1", "task")
+	require.NoError(t, err)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "snap1")
+	require.NoError(t, err)
+
+	got, err := f.storage.GetBackupDeleting(f.ctx, 10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []BackupDeletingEntry{
+		{Object: "snapshots/disk1/snap1/meta.json", Slave: "a"},
+		{Object: "snapshots/disk1/snap1/map.bin", Slave: "a"},
+	}, got)
+
+	err = f.storage.ClearBackupDeleting(f.ctx, got)
+	require.NoError(t, err)
+
+	// Deleting snap2 removes the last reference and the chunk itself.
+	_, err = f.storage.DeletingSnapshot(f.ctx, "snap2", "task")
+	require.NoError(t, err)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "snap2")
+	require.NoError(t, err)
+
+	got, err = f.storage.GetBackupDeleting(f.ctx, 10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []BackupDeletingEntry{
+		{Object: "chunks/" + chunkID, Slave: "a"},
+		{Object: "snapshots/-/snap2/meta.json", Slave: "a"},
+		{Object: "snapshots/-/snap2/map.bin", Slave: "a"},
+	}, got)
+}
+
+func TestDeleteSnapshotDataWithoutBackupSlave(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snap1"})
+	require.NoError(t, err)
+
+	_, err = f.storage.WriteChunk(
+		f.ctx,
+		"task",
+		"snap1",
+		makeChunk(0, "abc"),
+		true, // useS3
+	)
+	require.NoError(t, err)
+
+	err = f.storage.SnapshotCreated(f.ctx, "snap1", 4096, 4096, 1, nil)
+	require.NoError(t, err)
+
+	_, err = f.storage.DeletingSnapshot(f.ctx, "snap1", "task")
+	require.NoError(t, err)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "snap1")
+	require.NoError(t, err)
+
+	got, err := f.storage.GetBackupDeleting(f.ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
