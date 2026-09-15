@@ -82,7 +82,6 @@ private:
     ILocalNVMeServicePtr LocalNVMeService;
 
     TProgramShouldContinue ShouldContinue;
-    TVector<TString> PostponedCriticalEvents;
 
     std::unique_ptr<NCloud::NStorage::TSimpleHttpServer> StubMonPageServer;
     bool Initialized = false;

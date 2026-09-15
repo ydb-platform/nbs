@@ -252,11 +252,6 @@ private:
         const TEvDiskAgentPrivate::TEvWriteOrZeroCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
-    void HandleReportDelayedDiskAgentConfigMismatch(
-        const TEvDiskAgentPrivate::TEvReportDelayedDiskAgentConfigMismatch::
-            TPtr& ev,
-        const NActors::TActorContext& ctx);
-
     void HandleUpdateSessionCacheResponse(
         const TEvDiskAgentPrivate::TEvUpdateSessionCacheResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
