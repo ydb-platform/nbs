@@ -27,6 +27,9 @@ type SnapshotMeta struct {
 	ChunkCount  uint32
 	Encryption  *types.EncryptionDesc
 	Ready       bool
+	CreatedAt   time.Time
+	// Slave that keeps the backup of this snapshot, empty if not backed up.
+	BackupSlave string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,6 +38,22 @@ type ChunkMapEntry struct {
 	ChunkIndex uint32
 	ChunkID    string
 	StoredInS3 bool
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Chunk that should be copied to the slave.
+type BackupQueueEntry struct {
+	SnapshotID string
+	ChunkID    string
+	Slave      string
+}
+
+// Object that should be removed from the slave. Object is a key relative to
+// the slave prefix, see backup/layout.
+type BackupDeletingEntry struct {
+	Object string
+	Slave  string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,4 +165,30 @@ type Storage interface {
 	) (snapshotID string, checkpointID string, err error)
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
+
+	SetBackupSlave(ctx context.Context, snapshotID string, slave string) error
+
+	EnqueueBackupChunks(ctx context.Context, entries []BackupQueueEntry) error
+
+	GetBackupQueue(ctx context.Context, limit int) ([]BackupQueueEntry, error)
+
+	HasBackupQueueEntries(ctx context.Context, snapshotID string) (bool, error)
+
+	ClearBackupQueue(ctx context.Context, entries []BackupQueueEntry) error
+
+	GetBackupQueueLength(ctx context.Context) (uint64, error)
+
+	EnqueueBackupDeleting(
+		ctx context.Context,
+		entries []BackupDeletingEntry,
+	) error
+
+	GetBackupDeleting(
+		ctx context.Context,
+		limit int,
+	) ([]BackupDeletingEntry, error)
+
+	ClearBackupDeleting(ctx context.Context, entries []BackupDeletingEntry) error
+
+	GetBackupDeletingLength(ctx context.Context) (uint64, error)
 }

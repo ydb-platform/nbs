@@ -121,6 +121,39 @@ func Create(
 	}
 	logging.Info(ctx, "Created chunk_map table")
 
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("slave", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_queue table")
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_deleting",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("object", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("slave", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithPrimaryKeyColumn("object"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_deleting table")
+
 	if s3 != nil && len(config.GetS3Bucket()) != 0 {
 		exists, err := s3.BucketExists(ctx, config.GetS3Bucket())
 		if err != nil {
@@ -193,6 +226,18 @@ func Drop(
 	}
 	logging.Info(ctx, "Dropped chunk_map table")
 
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_queue table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_deleting")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_deleting table")
+
 	logging.Info(ctx, "Dropped schema for dataplane snapshot storage")
 
 	return nil
@@ -243,6 +288,7 @@ func snapshotStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
 		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
+		persistence.WithColumn("backup_slave", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithPrimaryKeyColumn("id"),
 	)
 }

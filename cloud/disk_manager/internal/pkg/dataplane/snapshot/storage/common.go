@@ -61,6 +61,7 @@ type snapshotState struct {
 	encryptionMode    uint32
 	encryptionKeyHash []byte
 	status            snapshotStatus
+	backupSlave       string
 }
 
 func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
@@ -89,7 +90,9 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 				KeyHash: s.encryptionKeyHash,
 			},
 		},
-		Ready: s.status == snapshotStatusReady,
+		Ready:       s.status == snapshotStatusReady,
+		CreatedAt:   s.createdAt,
+		BackupSlave: s.backupSlave,
 	}
 }
 
@@ -112,6 +115,7 @@ func (s *snapshotState) structValue() persistence.Value {
 		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
 		persistence.StructFieldValue("encryption_keyhash", persistence.StringValue(s.encryptionKeyHash)),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
+		persistence.StructFieldValue("backup_slave", persistence.UTF8Value(s.backupSlave)),
 	)
 }
 
@@ -134,6 +138,7 @@ func scanSnapshotState(res persistence.Result) (state snapshotState, err error) 
 		persistence.OptionalWithDefault("encryption_mode", &state.encryptionMode),
 		persistence.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
 		persistence.OptionalWithDefault("status", &state.status),
+		persistence.OptionalWithDefault("backup_slave", &state.backupSlave),
 	)
 	if err != nil {
 		return state, errors.NewNonRetriableErrorf(
@@ -179,5 +184,6 @@ func snapshotStateStructTypeString() string {
 		lock_task_id: Utf8,
 		encryption_mode: Uint32,
 		encryption_keyhash: String,
-		status: Int64>`
+		status: Int64,
+		backup_slave: Utf8>`
 }

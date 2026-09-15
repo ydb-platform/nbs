@@ -1720,3 +1720,122 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 		}()
 	}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestBackupQueue(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	entries := []BackupQueueEntry{
+		{SnapshotID: "snap1", ChunkID: "t.snap1.0", Slave: "a"},
+		{SnapshotID: "snap1", ChunkID: "t.snap1.1", Slave: "a"},
+		{SnapshotID: "snap2", ChunkID: "t.snap2.0", Slave: "a"},
+	}
+	err := f.storage.EnqueueBackupChunks(f.ctx, entries)
+	require.NoError(t, err)
+
+	// Check idempotency.
+	err = f.storage.EnqueueBackupChunks(f.ctx, entries[:1])
+	require.NoError(t, err)
+
+	length, err := f.storage.GetBackupQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, length)
+
+	got, err := f.storage.GetBackupQueue(f.ctx, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	has, err := f.storage.HasBackupQueueEntries(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.True(t, has)
+
+	err = f.storage.ClearBackupQueue(f.ctx, entries[:2])
+	require.NoError(t, err)
+
+	has, err = f.storage.HasBackupQueueEntries(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.False(t, has)
+
+	got, err = f.storage.GetBackupQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, entries[2:], got)
+
+	err = f.storage.ClearBackupQueue(f.ctx, got)
+	require.NoError(t, err)
+
+	got, err = f.storage.GetBackupQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	length, err = f.storage.GetBackupQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, length)
+}
+
+func TestBackupDeleting(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	entries := []BackupDeletingEntry{
+		{Object: "chunks/t.snap1.0", Slave: "a"},
+		{Object: "snapshots/disk1/snap1/meta.json", Slave: "a"},
+		{Object: "snapshots/disk1/snap1/map.bin", Slave: "a"},
+	}
+	err := f.storage.EnqueueBackupDeleting(f.ctx, entries)
+	require.NoError(t, err)
+
+	// Check idempotency.
+	err = f.storage.EnqueueBackupDeleting(f.ctx, entries[:1])
+	require.NoError(t, err)
+
+	length, err := f.storage.GetBackupDeletingLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, length)
+
+	got, err := f.storage.GetBackupDeleting(f.ctx, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	got, err = f.storage.GetBackupDeleting(f.ctx, 10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, entries, got)
+
+	err = f.storage.ClearBackupDeleting(f.ctx, got)
+	require.NoError(t, err)
+
+	got, err = f.storage.GetBackupDeleting(f.ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+}
+
+func TestSetBackupSlave(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.CreateSnapshot(f.ctx, SnapshotMeta{ID: "snap1"})
+	require.NoError(t, err)
+
+	meta, err := f.storage.GetSnapshotMeta(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.Empty(t, meta.BackupSlave)
+
+	err = f.storage.SetBackupSlave(f.ctx, "snap1", "a")
+	require.NoError(t, err)
+
+	meta, err = f.storage.GetSnapshotMeta(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.Equal(t, "a", meta.BackupSlave)
+
+	// Setting the slave again keeps the snapshot ready.
+	err = f.storage.SnapshotCreated(f.ctx, "snap1", 0, 0, 0, nil)
+	require.NoError(t, err)
+
+	err = f.storage.SetBackupSlave(f.ctx, "snap1", "a")
+	require.NoError(t, err)
+
+	meta, err = f.storage.CheckSnapshotReady(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.Equal(t, "a", meta.BackupSlave)
+}
