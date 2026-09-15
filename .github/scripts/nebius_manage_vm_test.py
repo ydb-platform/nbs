@@ -1258,15 +1258,19 @@ def test_remove_vm_honors_github_error_policy(
             return SimpleNamespace(metadata=SimpleNamespace(name="runner-name"))
 
     async def fake_find_disk(search_sdk, args, instance_name):
+        assert search_sdk is sdk
+        assert args.id == "computeinstance-instance-id"
+        assert instance_name == "runner-name"
         return SimpleNamespace(metadata=SimpleNamespace(id="computedisk-disk-id"))
 
     async def fake_remove_resources(cleanup_sdk, instance_id, disk_id):
+        assert cleanup_sdk is sdk
         events.append(("remove-resources", instance_id, disk_id))
 
     monkeypatch.setattr(m, "github_client_from_env", lambda: object())
-    monkeypatch.setattr(m, "remove_runner_from_github", lambda *args: "failed")
+    monkeypatch.setattr(m, "remove_runner_from_github", Mock(return_value="failed"))
     monkeypatch.setattr(
-        m, "InstanceServiceClient", lambda service_sdk: FakeInstanceService()
+        m, "InstanceServiceClient", Mock(return_value=FakeInstanceService())
     )
     monkeypatch.setattr(m, "find_disk_by_instance_name", fake_find_disk)
     monkeypatch.setattr(m, "remove_vm_and_disk_by_ids", fake_remove_resources)
