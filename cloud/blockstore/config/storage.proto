@@ -1691,8 +1691,8 @@ message TStorageServiceConfig
 /////////////////////////////// Partition v2 ///////////////////////////////
 
     // L0 range size for partition v2.
-    optional uint64 L0RangeSizeV2 = 523;
+    optional uint64 L0RangeSizeV2 = 530;
 
     // L1 range size for partition v2.
-    optional uint64 L1RangeSizeV2 = 524;
+    optional uint64 L1RangeSizeV2 = 531;
 }
