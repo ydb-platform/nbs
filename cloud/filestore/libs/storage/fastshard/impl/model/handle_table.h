@@ -36,11 +36,6 @@ static_assert(sizeof(TNodeHandlesSlot) <= NodeHandlesSlotSize);
 class THandleTable
 {
 private:
-    static constexpr ui64 HandleSlotsPerPage = 256;
-    static_assert(HandleSlotsPerPage * HandleSlotSize <= PageSize);
-    static constexpr ui64 NodeHandlesSlotsPerPage = 256;
-    static_assert(NodeHandlesSlotsPerPage * NodeHandlesSlotSize <= PageSize);
-
     using THandles = TPersistentHashTable<ui64, THandleSlot>;
     std::unique_ptr<THandles> Handles;
     using TNodeId2HandleCount = TPersistentHashTable<ui64, TNodeHandlesSlot>;

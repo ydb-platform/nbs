@@ -28,9 +28,6 @@ static_assert(sizeof(TNameTableSlot) <= NameSlotSize);
 class TNameTable
 {
 private:
-    static constexpr ui64 SlotsPerPage = PageSize / NameSlotSize;
-    static_assert(SlotsPerPage * NameSlotSize <= PageSize);
-
     using THt = TPersistentHashTable<TStringBuf, TNameTableSlot>;
     TNameTableSlot Tombstone{};
     std::unique_ptr<THt> Slots;
