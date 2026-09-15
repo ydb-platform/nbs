@@ -26,10 +26,10 @@ constexpr size_t RDMA_MAX_DATA_LEN = Max<ui32>();
 
 enum {
     RDMA_PROTO_VERSION_0        = 0,
-    RDMA_PROTO_VERSION_1        = 1,
     RDMA_PROTO_VERSION_2        = 2,
-    RDMA_PROTO_PREV_VERSION     = RDMA_PROTO_VERSION_1,
-    RDMA_PROTO_VERSION          = RDMA_PROTO_VERSION_2,
+    RDMA_PROTO_VERSION_3        = 3,
+    RDMA_PROTO_MIN_VERSION      = RDMA_PROTO_VERSION_2,
+    RDMA_PROTO_VERSION          = RDMA_PROTO_VERSION_3,
 };
 
 enum {
@@ -102,6 +102,8 @@ struct Y_PACKED TConnectMessage
             ui32 SendQueueSize : 16;
             ui32 RecvQueueSize : 16;
             ui32 MaxBufferSize;
+            // v3+: largest request payload sent eagerly, 0 disables
+            ui32 MaxEagerRequestBytes;
         };
         ui8 Padding[RDMA_PRIVATE_SIZE];
     };
@@ -118,6 +120,8 @@ struct Y_PACKED TAcceptMessage
             TMessageHeader Header;
             ui32 Unused : 16;
             ui32 KeepAliveTimeout : 16;
+            // v3+: effective eager limit, min(client request, server config)
+            ui32 MaxEagerRequestBytes;
         };
         ui8 Padding[RDMA_PRIVATE_SIZE];
     };
@@ -134,25 +138,6 @@ struct Y_PACKED TRejectMessage
         {
             TMessageHeader Header;
             ui32 Status : 16;
-            ui32 QueueSize : 16;
-            ui32 MaxBufferSize;
-        };
-
-        ui8 Padding[RDMA_PRIVATE_SIZE];
-    };
-};
-
-static_assert(sizeof(TRejectMessage) == RDMA_PRIVATE_SIZE);
-
-////////////////////////////////////////////////////////////////////////////////
-
-struct Y_PACKED TRejectMessage2
-{
-    union {
-        struct
-        {
-            TMessageHeader Header;
-            ui32 Status : 16;
             ui32 Unused : 16;   // padding
             ui32 SendQueueSize : 16;
             ui32 RecvQueueSize : 16;
@@ -163,7 +148,7 @@ struct Y_PACKED TRejectMessage2
     };
 };
 
-static_assert(sizeof(TRejectMessage2) == RDMA_PRIVATE_SIZE);
+static_assert(sizeof(TRejectMessage) == RDMA_PRIVATE_SIZE);
 
 ////////////////////////////////////////////////////////////////////////////////
 
