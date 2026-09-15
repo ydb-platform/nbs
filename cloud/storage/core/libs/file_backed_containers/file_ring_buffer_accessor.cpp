@@ -375,8 +375,16 @@ EValidationStatus TFileRingBufferAccessor::DoValidateAndInitialize()
 
     Header = reinterpret_cast<TFileRingBufferHeader*>(RawData.data());
 
-    const bool allZeros = AllOf(RawData, [](char c) { return c == 0; });
-    if (allZeros) {
+    // A file whose header is all zeros has never been initialized, whatever
+    // the rest of it contains. So only the header is checked.
+    // We explicitly want to avoid scanning the whole file, as it would be
+    // harmful: for a file in tmpfs, a sparse file (e.g. one preallocated
+    // with ftruncate) would be fully committed to memory just to find out
+    // that it is empty (all zeros). It is crucial for us to avoid this
+    // overhead.
+    const auto header = RawData.subspan(0, sizeof(TFileRingBufferHeader));
+    const bool headerIsZero = AllOf(header, [](char c) { return c == 0; });
+    if (headerIsZero) {
         LastValidationError = MakeError("File is not initialized");
         return EValidationStatus::NotInitialized;
     }
