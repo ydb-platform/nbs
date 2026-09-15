@@ -27,6 +27,7 @@ GO_TEST_SRCS(
 END()
 
 RECURSE(
+    backup
     common
     config
     filesystem
