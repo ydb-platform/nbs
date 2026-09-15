@@ -45,11 +45,9 @@ TNodeTableSlot Convert(const NProto::TNodeAttr& attr);
 class TNodeTable
 {
 private:
-    static constexpr ui64 SlotsPerPage = 42;
-    static_assert(SlotsPerPage * NodeSlotSize <= PageSize);
-
     using THt = TPersistentHashTable<ui64, TNodeTableSlot>;
     std::unique_ptr<THt> Slots;
+    ui64 PageSize = 0;
 
 public:
     ui64 Init(ui64 nodesPerGroup, ui64 firstPageNo, IPageStorePtr pageStore);

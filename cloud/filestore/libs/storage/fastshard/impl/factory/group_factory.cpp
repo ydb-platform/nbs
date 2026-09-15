@@ -37,6 +37,7 @@ struct TStorageGroupFactory: IStorageGroupFactory
         }
 
         groupConfig.JournalRestoreEnabled = config.GetJournalRestoreEnabled();
+        groupConfig.PageSize = config.GetPageSize();
 
         if (sg.GetType() == NProtoPrivate::TStorageGroup::E_SG_QUORUM_MIRROR) {
             return CreateQuorumMirroredStorageGroup(

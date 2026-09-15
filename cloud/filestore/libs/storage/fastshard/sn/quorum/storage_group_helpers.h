@@ -10,9 +10,33 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
+#include <util/stream/output.h>
 #include <util/string/builder.h>
 
+#include <type_traits>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Layout header for initialized groups. Pages 1-7 reserved for the future
+ */
+struct TStorageGroupHeader
+{
+    static constexpr ui64 Magic = 0x4653545348415244; // FSTSHARD
+    static constexpr ui32 CurrentVersion = 1;
+    static constexpr ui32 StorageGroupReservedPages = 8;
+
+    ui64 MagicNumber = Magic;
+    ui32 Version:8 = CurrentVersion;
+    ui32 GroupType:24 = 0;
+    ui32 PageSize = 0;
+    ui64 DeviceUUIDHash = 0;
+};
+
+static_assert(sizeof(TStorageGroupHeader) == 24);
+static_assert(std::is_trivially_copyable_v<TStorageGroupHeader>);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,7 +104,8 @@ NProto::TWriteLogRecordRequest MakeReplayRequest(
 
 NProto::TReadPagesRequest MakeReadPagesRequest(
     NProto::TDeviceRequestHeaders headers,
-    const TVector<TPageGroupRef>& pageGroupRefs);
+    const TVector<TPageGroupRef>& pageGroupRefs,
+    ui32 pageSize);
 
 void ExtractPageGroups(
     const NProto::TReadPagesResponse& response,

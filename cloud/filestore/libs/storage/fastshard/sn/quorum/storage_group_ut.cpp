@@ -1,8 +1,10 @@
 #include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
+#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_helpers.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_quorum.h>
 #include <cloud/filestore/libs/storage/fastshard/testlib/fake_storage_node.h>
 #include <cloud/filestore/libs/storage/fastshard/testlib/silk_env.h>
+#include <cloud/filestore/private/api/protos/tablet.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
@@ -12,6 +14,7 @@
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
 
+#include <util/digest/city.h>
 #include <util/generic/string.h>
 #include <util/string/builder.h>
 
@@ -19,6 +22,7 @@
 
 using namespace NCloud;
 using namespace NFileStore::NStorage::NFastShard;
+using NFileStore::NProtoPrivate::TStorageGroup;
 using silk::FiberScheduler;
 
 namespace {
@@ -30,12 +34,56 @@ namespace {
 
 const NProto::TDeviceRequestHeaders defaultHeaders;
 
+constexpr ui64 ReservedPages = TStorageGroupHeader::StorageGroupReservedPages;
+
+// The page the tests write and read, and where it lands on the devices.
+constexpr ui64 PageNo = 111;
+constexpr ui64 DevicePageNo = PageNo + ReservedPages;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TStorageGroupHeader QuorumHeader(TStringBuf deviceUUID, ui32 pageSize)
+{
+    TStorageGroupHeader header;
+    header.GroupType = TStorageGroup::E_SG_QUORUM_MIRROR;
+    header.PageSize = pageSize;
+    header.DeviceUUIDHash = CityHash64(deviceUUID.data(), deviceUUID.size());
+    return header;
+}
+
+TString HeaderPage(const TStorageGroupHeader& header, ui32 pageSize)
+{
+    TString page(pageSize, '\0');
+    memcpy(page.begin(), &header, sizeof(header));
+    return page;
+}
+
+TStorageGroupHeader ParseHeader(const TString& page)
+{
+    TStorageGroupHeader header;
+    EXPECT_GE(page.size(), sizeof(header));
+    memcpy(&header, page.data(), sizeof(header));
+    return header;
+}
+
+bool IsHeaderRead(const NProto::TReadPagesRequest& request)
+{
+    return request.PageGroupRefsSize() == 1 &&
+           request.GetPageGroupRefs(0).GetFirstPageNo() == 0 &&
+           request.GetPageGroupRefs(0).GetPageCount() == 1;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
  * Storage node whose WriteLogRecord parks the calling fiber on a gate until the
  * test opens it. Lets a test hold one replica back and observe what the group
  * does with the remaining ones.
+ *
+ * Also models page 0, where the group keeps its header: a read of that page is
+ * served from HeaderPage (a blank device when empty) without being recorded in
+ * ReadCalls, and a write to it is recorded like any other write and then kept
+ * in HeaderPage.
  */
 struct TPausableStorageNode: public TFakeStorageNode
 {
@@ -43,6 +91,40 @@ struct TPausableStorageNode: public TFakeStorageNode
     std::atomic<bool> Paused = false;
     std::atomic<ui64> HoldLsn = 0;
     std::atomic<ui32> Parked = 0;
+
+    TString HeaderPage;
+    NProto::TError HeaderReadError;
+    NProto::TReadPagesRequest LastHeaderRead;
+    std::atomic<ui32> HeaderReads = 0;
+
+    NProto::TReadPagesResponse ReadPages(
+        NProto::TReadPagesRequest request) override
+    {
+        if (!IsHeaderRead(request)) {
+            return TFakeStorageNode::ReadPages(std::move(request));
+        }
+
+        NProto::TReadPagesResponse response;
+        with_lock (Lock) {
+            ++HeaderReads;
+            LastHeaderRead = request;
+            if (HasError(HeaderReadError)) {
+                *response.MutableError() = HeaderReadError;
+                return response;
+            }
+
+            auto* pg = response.AddPageGroups();
+            pg->SetFirstPageNo(0);
+            if (HeaderPage) {
+                pg->AddContent(HeaderPage);
+            } else {
+                pg->AddContent(
+                    TString(request.GetPageGroupRefs(0).GetPageSize(), '\0'));
+            }
+        }
+
+        return response;
+    }
 
     NProto::TWriteLogRecordResponse WriteLogRecord(
         NProto::TWriteLogRecordRequest request) override
@@ -54,7 +136,21 @@ struct TPausableStorageNode: public TFakeStorageNode
             Gate.wait();
         }
 
-        return TFakeStorageNode::WriteLogRecord(std::move(request));
+        TString headerPage;
+        for (const auto& pg: request.GetPageGroups()) {
+            if (pg.GetFirstPageNo() == 0 && pg.ContentSize()) {
+                headerPage = pg.GetContent(0);
+            }
+        }
+
+        auto response = TFakeStorageNode::WriteLogRecord(std::move(request));
+        if (headerPage && !HasError(response.GetError())) {
+            with_lock (Lock) {
+                HeaderPage = std::move(headerPage);
+            }
+        }
+
+        return response;
     }
 
     void Unpause()
@@ -104,9 +200,14 @@ struct TStorageFixture
             ITimerPtr timer = nullptr)
         : StorageNodes(NodeCount)
     {
+        // Every device starts out formatted for this config; a test that
+        // wants a blank or a foreign device rewrites HeaderPage before Init.
         TVector<TStorageDevice> devices(NodeCount);
         for (ui32 i = 0; i < NodeCount; ++i) {
             StorageNodes[i] = std::make_shared<TPausableStorageNode>();
+            StorageNodes[i]->HeaderPage = HeaderPage(
+                QuorumHeader(DeviceUUIDs[i], config.PageSize),
+                config.PageSize);
             devices[i] = {
                 .Node = StorageNodes[i],
                 .DeviceUUID = DeviceUUIDs[i],
@@ -299,7 +400,7 @@ NProto::TReadPagesResponse ReadErrorResponse(ui32 code)
 
 NProto::TError WriteSomething(IStorageGroup& group, ui64 lsn = 1234)
 {
-    TPageGroup pageGroup{.FirstPageNo = 111};
+    TPageGroup pageGroup{.FirstPageNo = PageNo};
     pageGroup.Content.emplace_back("page1", 5U /* len */);
     TVector<TPageGroup> pageGroups;
     pageGroups.push_back(std::move(pageGroup));
@@ -312,9 +413,8 @@ NProto::TError ReadSomething(
     TVector<TPageGroup>* pageGroups)
 {
     TVector<TPageGroupRef> pageGroupRefs = {{
-        .FirstPageNo = 111,
+        .FirstPageNo = PageNo,
         .PageCount = 1,
-        .PageSize = 4_KB,
     }};
 
     return group.ReadPages(defaultHeaders, pageGroupRefs, pageGroups);
@@ -380,7 +480,7 @@ TEST(NaiveGroupTest, MirrorsWrites)
             TStorageFixture fx;
 
             {
-                TPageGroup pageGroup{.FirstPageNo = 111};
+                TPageGroup pageGroup{.FirstPageNo = PageNo};
                 pageGroup.Content.emplace_back("page1", 5U /* len */);
                 pageGroup.Content.emplace_back("page2", 5U /* len */);
                 TVector<TPageGroup> pageGroups;
@@ -400,7 +500,7 @@ TEST(NaiveGroupTest, MirrorsWrites)
                 EXPECT_EQ(1U, sn->WriteCalls[0].PageGroupsSize());
                 EXPECT_EQ(1234U, sn->WriteCalls[0].GetLogSequenceNumber());
                 const auto& pg = sn->WriteCalls[0].GetPageGroups(0);
-                EXPECT_EQ(111U, pg.GetFirstPageNo());
+                EXPECT_EQ(PageNo, pg.GetFirstPageNo());
                 EXPECT_EQ(2U, pg.ContentSize());
                 EXPECT_EQ("page1", pg.GetContent(0));
                 EXPECT_EQ("page2", pg.GetContent(1));
@@ -423,7 +523,7 @@ TEST(NaiveGroupTest, RoundRobinsRead)
                 TStorageFixture::NodeCount);
             for (ui64 i = 0; i < TStorageFixture::NodeCount; ++i) {
                 auto* pg = readResponses[i].AddPageGroups();
-                pg->SetFirstPageNo(111);
+                pg->SetFirstPageNo(PageNo);
                 pg->AddContent(TStringBuilder() << "aaa" << i);
                 fx.StorageNodes[i]->ReadResp = readResponses[i];
             }
@@ -433,10 +533,9 @@ TEST(NaiveGroupTest, RoundRobinsRead)
 
                 {
                     TVector<TPageGroupRef> pageGroupRefs = {{
-                        .FirstPageNo = 111,
+                        .FirstPageNo = PageNo,
                         .PageCount = 100,
-                        .PageSize = 4_KB,
-                    }};
+                                    }};
 
                     TVector<TPageGroup> pageGroups;
 
@@ -477,7 +576,7 @@ TEST(NaiveGroupTest, RoundRobinsRead)
                 const auto& pg = sn->ReadCalls[cnt - 1].GetPageGroupRefs(0);
                 EXPECT_EQ(4_KB, pg.GetPageSize());
                 EXPECT_EQ(100U, pg.GetPageCount());
-                EXPECT_EQ(111U, pg.GetFirstPageNo());
+                EXPECT_EQ(PageNo, pg.GetFirstPageNo());
             }
 
             return 0;
@@ -601,7 +700,7 @@ TEST(NaiveGroupTest, RetriesReadsOnAnotherDevice)
 
             NProto::TReadPagesResponse goodResp;
             auto* rpg = goodResp.AddPageGroups();
-            rpg->SetFirstPageNo(111);
+            rpg->SetFirstPageNo(PageNo);
             rpg->AddContent("bbb");
             fx.StorageNodes[1]->ReadResp = goodResp;
 
@@ -626,7 +725,7 @@ TEST(NaiveGroupTest, RetriesReadsOnAnotherDevice)
                 fx.StorageNodes[1]->ReadCalls[0].GetDeviceUUID());
 
             EXPECT_EQ(1U, pageGroups.size());
-            EXPECT_EQ(111U, pageGroups[0].FirstPageNo);
+            EXPECT_EQ(PageNo, pageGroups[0].FirstPageNo);
             EXPECT_EQ(1U, pageGroups[0].Content.size());
             const auto& c = pageGroups[0].Content[0];
             EXPECT_EQ("bbb", TString(c.Data(), c.Size()));
@@ -726,7 +825,7 @@ struct TConcurrentWriteParams
 
 int ConcurrentWriteFiberMain(TConcurrentWriteParams* params) noexcept
 {
-    TPageGroup pageGroup{.FirstPageNo = 111};
+    TPageGroup pageGroup{.FirstPageNo = PageNo};
     pageGroup.Content.emplace_back("page1", 5U /* len */);
     TVector<TPageGroup> pageGroups;
     pageGroups.push_back(std::move(pageGroup));
@@ -1336,7 +1435,7 @@ TEST(QuorumGroupTest, ReadSkipsReplicaBehindQuorumLsn)
 
             for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
                 auto* pg = fx.StorageNodes[i]->ReadResp.AddPageGroups();
-                pg->SetFirstPageNo(111);
+                pg->SetFirstPageNo(DevicePageNo);
                 pg->AddContent(TStringBuilder() << "aaa" << i);
             }
 
@@ -1597,12 +1696,12 @@ TEST(QuorumGroupTest, DeliversPayloadToEachDevice)
 
             for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
                 auto* pg = fx.StorageNodes[i]->ReadResp.AddPageGroups();
-                pg->SetFirstPageNo(111);
+                pg->SetFirstPageNo(DevicePageNo);
                 pg->AddContent(TStringBuilder() << "aaa" << i);
             }
 
             {
-                TPageGroup pageGroup{.FirstPageNo = 111};
+                TPageGroup pageGroup{.FirstPageNo = PageNo};
                 pageGroup.Content.emplace_back("page1", 5U /* len */);
                 pageGroup.Content.emplace_back("page2", 5U /* len */);
                 TVector<TPageGroup> pageGroups;
@@ -1627,7 +1726,7 @@ TEST(QuorumGroupTest, DeliversPayloadToEachDevice)
                 if (w.PageGroupsSize() != 1) {
                     return 1;
                 }
-                EXPECT_EQ(111U, w.GetPageGroups(0).GetFirstPageNo());
+                EXPECT_EQ(DevicePageNo, w.GetPageGroups(0).GetFirstPageNo());
                 EXPECT_EQ(2U, w.GetPageGroups(0).ContentSize());
                 if (w.GetPageGroups(0).ContentSize() != 2) {
                     return 1;
@@ -1644,7 +1743,7 @@ TEST(QuorumGroupTest, DeliversPayloadToEachDevice)
             if (pageGroups.size() != 1 || pageGroups[0].Content.size() != 1) {
                 return 1;
             }
-            EXPECT_EQ(111U, pageGroups[0].FirstPageNo);
+            EXPECT_EQ(PageNo, pageGroups[0].FirstPageNo);
 
             ui32 served = TStorageFixture::NodeCount;
             for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
@@ -1660,6 +1759,660 @@ TEST(QuorumGroupTest, DeliversPayloadToEachDevice)
                 TStringBuilder() << "aaa" << served,
                 TString(pageGroups[0].Content[0].Data(),
                         pageGroups[0].Content[0].Size()));
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Reserved pages: client page n lives at device page n + ReservedPages.
+
+// Writes client page 0 and reads it back: the devices must see it past the
+// reserved area, the caller must see it at 0 again.
+TEST(QuorumGroupTest, ShiftsClientPagesPastTheReservedOnes)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            {
+                TPageGroup pageGroup{.FirstPageNo = 0};
+                pageGroup.Content.emplace_back("page0", 5U /* len */);
+                TVector<TPageGroup> pageGroups;
+                pageGroups.push_back(std::move(pageGroup));
+
+                auto error = fx.Group->WriteLogRecord(
+                    defaultHeaders,
+                    std::move(pageGroups),
+                    1234);
+                EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            }
+            WaitFor([&] { return TotalWriteCalls(fx) == fx.NodeCount; });
+
+            for (const auto& sn: fx.StorageNodes) {
+                EXPECT_EQ(1U, sn->WriteCalls.size());
+                EXPECT_EQ(
+                    ReservedPages,
+                    sn->WriteCalls[0].GetPageGroups(0).GetFirstPageNo());
+                // Page 0 of the device is untouched by a client write.
+                EXPECT_EQ(
+                    TStorageGroupHeader::Magic,
+                    ParseHeader(sn->HeaderPage).MagicNumber);
+            }
+
+            for (const auto& sn: fx.StorageNodes) {
+                sn->ReadResp = NProto::TReadPagesResponse{};
+                auto* pg = sn->ReadResp.AddPageGroups();
+                pg->SetFirstPageNo(ReservedPages);
+                pg->AddContent("page0");
+            }
+
+            TVector<TPageGroupRef> pageGroupRefs = {{
+                .FirstPageNo = 0,
+                .PageCount = 1,
+            }};
+            TVector<TPageGroup> pageGroups;
+            auto error =
+                fx.Group->ReadPages(defaultHeaders, pageGroupRefs, &pageGroups);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            ui32 reads = 0;
+            for (const auto& sn: fx.StorageNodes) {
+                for (const auto& call: sn->ReadCalls) {
+                    ++reads;
+                    EXPECT_EQ(1U, call.PageGroupRefsSize());
+                    EXPECT_EQ(
+                        ReservedPages,
+                        call.GetPageGroupRefs(0).GetFirstPageNo());
+                    EXPECT_EQ(1U, call.GetPageGroupRefs(0).GetPageCount());
+                    EXPECT_EQ(4_KB, call.GetPageGroupRefs(0).GetPageSize());
+                }
+            }
+            EXPECT_EQ(1U, reads);
+
+            EXPECT_EQ(1U, pageGroups.size());
+            if (pageGroups.size() != 1) {
+                return 1;
+            }
+            EXPECT_EQ(0U, pageGroups[0].FirstPageNo);
+            EXPECT_EQ(1U, pageGroups[0].Content.size());
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+// Page numbers whose shifted range would wrap around ui64 are refused before
+// anything reaches a device.
+TEST(QuorumGroupTest, RejectsPageRangesThatWrapAround)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            {
+                TPageGroup pageGroup{.FirstPageNo = Max<ui64>()};
+                pageGroup.Content.emplace_back("page", 4U /* len */);
+                TVector<TPageGroup> pageGroups;
+                pageGroups.push_back(std::move(pageGroup));
+
+                auto error = fx.Group->WriteLogRecord(
+                    defaultHeaders,
+                    std::move(pageGroups),
+                    1234);
+                EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+            }
+
+            {
+                TVector<TPageGroupRef> pageGroupRefs = {{
+                    .FirstPageNo = Max<ui64>() - ReservedPages - 1,
+                    .PageCount = 2,
+            }};
+                TVector<TPageGroup> pageGroups;
+                auto error = fx.Group->ReadPages(
+                    defaultHeaders,
+                    pageGroupRefs,
+                    &pageGroups);
+                EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+            }
+
+            for (const auto& sn: fx.StorageNodes) {
+                EXPECT_EQ(0U, sn->WriteCalls.size());
+                EXPECT_EQ(0U, sn->ReadCalls.size());
+            }
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, RejectsAReplyFromTheReservedArea)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            for (const auto& sn: fx.StorageNodes) {
+                auto* pg = sn->ReadResp.AddPageGroups();
+                pg->SetFirstPageNo(ReservedPages - 1);
+                pg->AddContent("oops");
+            }
+
+            TVector<TPageGroup> pageGroups;
+            auto error = ReadSomething(*fx.Group, &pageGroups);
+            EXPECT_EQ(E_BADMSG, error.GetCode()) << error.GetMessage();
+            EXPECT_TRUE(pageGroups.empty());
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, ReplayKeepsDevicePageNumbers)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false /* init */);
+
+            // The journal is in device coordinates already: whatever page
+            // numbers it holds go onto dev-c verbatim.
+            fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({1, 2});
+            fx.StorageNodes[1]->ReadJournalTailResp = JournalTail({1, 2});
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            const auto& writes = fx.StorageNodes[2]->WriteCalls;
+            EXPECT_EQ(2U, writes.size());
+            for (const auto& w: writes) {
+                EXPECT_EQ(1U, w.PageGroupsSize());
+                EXPECT_EQ(
+                    w.GetLogSequenceNumber(),
+                    w.GetPageGroups(0).GetFirstPageNo());
+            }
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Header page: Init reads page 0 of every device, formats blank ones and
+// refuses ones formatted for something else.
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+ui32 TotalHeaderReads(const TStorageFixture& fx)
+{
+    ui32 total = 0;
+    for (const auto& sn: fx.StorageNodes) {
+        total += sn->HeaderReads;
+    }
+    return total;
+}
+
+void ExpectNoWrites(const TStorageFixture& fx)
+{
+    for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+        EXPECT_EQ(0U, fx.StorageNodes[i]->WriteCalls.size()) << "dev " << i;
+    }
+}
+
+// Formats device @p i with @p header, then inits: the mismatch must be
+// reported by name and nothing must be written or replayed anywhere.
+void ExpectHeaderRejected(ui32 i, const TStorageGroupHeader& header)
+{
+    TQuorumFixture fx(false /* init */);
+    fx.StorageNodes[i]->HeaderPage = HeaderPage(header, 4_KB);
+
+    auto error = fx.Group->Init();
+    EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+    EXPECT_NE(TString::npos, error.GetMessage().find(fx.DeviceUUIDs[i]))
+        << error.GetMessage();
+    EXPECT_NE(TString::npos, error.GetMessage().find("header mismatch"))
+        << error.GetMessage();
+
+    ExpectNoWrites(fx);
+    for (const auto& sn: fx.StorageNodes) {
+        EXPECT_EQ(0U, sn->ReadJournalTailCalls.size());
+    }
+}
+
+}   // namespace
+
+TEST(QuorumGroupTest, InitReadsTheHeaderPageOfEveryDevice)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                const auto& sn = *fx.StorageNodes[i];
+                EXPECT_EQ(1U, sn.HeaderReads) << "dev " << i;
+                EXPECT_EQ(fx.DeviceUUIDs[i], sn.LastHeaderRead.GetDeviceUUID());
+                EXPECT_EQ(
+                    "test-client",
+                    sn.LastHeaderRead.GetHeaders().GetClientId());
+                const auto& ref = sn.LastHeaderRead.GetPageGroupRefs(0);
+                EXPECT_EQ(0U, ref.GetFirstPageNo());
+                EXPECT_EQ(1U, ref.GetPageCount());
+                EXPECT_EQ(4_KB, ref.GetPageSize());
+                EXPECT_EQ(0U, sn.ReadCalls.size());
+            }
+
+            // Formatted already: nothing to write.
+            ExpectNoWrites(fx);
+            ExpectEveryReplicaServes(fx);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitReadsTheHeaderWithTheConfiguredPageSize)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            auto config = MakeTestConfig();
+            config.PageSize = 8_KB;
+            TQuorumFixture fx(true /* init */, config);
+
+            for (const auto& sn: fx.StorageNodes) {
+                EXPECT_EQ(
+                    8_KB,
+                    sn->LastHeaderRead.GetPageGroupRefs(0).GetPageSize());
+            }
+            ExpectNoWrites(fx);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitFormatsABlankDevice)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false /* init */);
+            fx.StorageNodes[1]->HeaderPage.clear();
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            EXPECT_EQ(0U, fx.StorageNodes[0]->WriteCalls.size());
+            EXPECT_EQ(0U, fx.StorageNodes[2]->WriteCalls.size());
+
+            const auto& writes = fx.StorageNodes[1]->WriteCalls;
+            EXPECT_EQ(1U, writes.size());
+            if (writes.size() != 1) {
+                return 1;
+            }
+
+            // The header goes with lsn 0, so the journal position of the
+            // device is not disturbed.
+            const auto& w = writes[0];
+            EXPECT_EQ(fx.DeviceUUIDs[1], w.GetDeviceUUID());
+            EXPECT_EQ("test-client", w.GetHeaders().GetClientId());
+            EXPECT_EQ(0U, w.GetLogSequenceNumber());
+            EXPECT_EQ(0U, w.GetPrevLogSequenceNumber());
+            EXPECT_EQ(1U, w.PageGroupsSize());
+            if (w.PageGroupsSize() != 1) {
+                return 1;
+            }
+            EXPECT_EQ(0U, w.GetPageGroups(0).GetFirstPageNo());
+            EXPECT_EQ(1U, w.GetPageGroups(0).ContentSize());
+            if (w.GetPageGroups(0).ContentSize() != 1) {
+                return 1;
+            }
+
+            const auto& page = w.GetPageGroups(0).GetContent(0);
+            EXPECT_EQ(4_KB, page.size());
+            const auto header = ParseHeader(page);
+            EXPECT_EQ(TStorageGroupHeader::Magic, header.MagicNumber);
+            EXPECT_EQ(TStorageGroupHeader::CurrentVersion, header.Version);
+            EXPECT_EQ(
+                static_cast<ui32>(TStorageGroup::E_SG_QUORUM_MIRROR),
+                header.GroupType);
+            EXPECT_EQ(4_KB, header.PageSize);
+            EXPECT_EQ(
+                CityHash64(fx.DeviceUUIDs[1].data(), fx.DeviceUUIDs[1].size()),
+                header.DeviceUUIDHash);
+            for (size_t i = sizeof(header); i < page.size(); ++i) {
+                if (page[i] != 0) {
+                    ADD_FAILURE() << "non-zero byte at " << i;
+                    break;
+                }
+            }
+
+            // Which is exactly what a formatted device looks like.
+            EXPECT_EQ(
+                HeaderPage(QuorumHeader(fx.DeviceUUIDs[1], 4_KB), 4_KB),
+                page);
+
+            ExpectEveryReplicaServes(fx);
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitFormatsEveryBlankDeviceWithItsOwnId)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false /* init */);
+            for (auto& sn: fx.StorageNodes) {
+                sn->HeaderPage.clear();
+            }
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            TVector<ui64> hashes;
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                const auto& sn = *fx.StorageNodes[i];
+                EXPECT_EQ(1U, sn.WriteCalls.size()) << "dev " << i;
+                const auto header = ParseHeader(sn.HeaderPage);
+                EXPECT_EQ(
+                    CityHash64(
+                        fx.DeviceUUIDs[i].data(),
+                        fx.DeviceUUIDs[i].size()),
+                    header.DeviceUUIDHash);
+                hashes.push_back(header.DeviceUUIDHash);
+            }
+            EXPECT_NE(hashes[0], hashes[1]);
+            EXPECT_NE(hashes[1], hashes[2]);
+            EXPECT_NE(hashes[0], hashes[2]);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, FormattedDeviceIsAcceptedOnTheNextInit)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false /* init */);
+            fx.StorageNodes[1]->HeaderPage.clear();
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(1U, fx.StorageNodes[1]->WriteCalls.size());
+            fx.Group->TearDown();
+
+            // The next group over the same devices finds them formatted.
+            TVector<TStorageDevice> devices;
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                devices.push_back({
+                    .Node = fx.StorageNodes[i],
+                    .DeviceUUID = fx.DeviceUUIDs[i],
+                });
+            }
+            auto again = CreateQuorumMirroredStorageGroup(
+                MakeTestConfig(),
+                std::move(devices),
+                fx.Timer);
+
+            error = again->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(2U, fx.StorageNodes[1]->HeaderReads);
+            EXPECT_EQ(1U, fx.StorageNodes[1]->WriteCalls.size());
+            again->TearDown();
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitRejectsAHeaderFromAnotherDevice)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            // dev-b carries dev-a's header: the devices were swapped.
+            ExpectHeaderRejected(1, QuorumHeader("dev-a", 4_KB));
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitRejectsAHeaderWithAnotherPageSize)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            ExpectHeaderRejected(2, QuorumHeader("dev-c", 8_KB));
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitRejectsAHeaderOfAnotherGroupType)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            auto header = QuorumHeader("dev-a", 4_KB);
+            header.GroupType = TStorageGroup::E_SG_MIRROR;
+            ExpectHeaderRejected(0, header);
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitRejectsAHeaderOfAnotherVersion)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            auto header = QuorumHeader("dev-a", 4_KB);
+            header.Version = TStorageGroupHeader::CurrentVersion + 1;
+            ExpectHeaderRejected(0, header);
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitRejectsGarbageOnPageZero)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            // Not blank, not ours: refused rather than formatted over.
+            TQuorumFixture fx(false /* init */);
+            fx.StorageNodes[0]->HeaderPage = TString(4_KB, 'x');
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+            EXPECT_NE(TString::npos, error.GetMessage().find("header mismatch"))
+                << error.GetMessage();
+            ExpectNoWrites(fx);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitFailsIfTheHeaderPageCannotBeRead)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false /* init */);
+            fx.StorageNodes[0]->HeaderReadError = MakeError(E_IO, "bad disk");
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_IO, error.GetCode()) << error.GetMessage();
+            EXPECT_NE(TString::npos, error.GetMessage().find("dev-a"))
+                << error.GetMessage();
+            EXPECT_NE(TString::npos, error.GetMessage().find("header read"))
+                << error.GetMessage();
+            ExpectNoWrites(fx);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitFailsIfTheHeaderReadIsShort)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false /* init */);
+            fx.StorageNodes[2]->HeaderPage =
+                fx.StorageNodes[2]->HeaderPage.substr(0, 100);
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+            EXPECT_NE(TString::npos, error.GetMessage().find("dev-c"))
+                << error.GetMessage();
+            EXPECT_NE(
+                TString::npos,
+                error.GetMessage().find("header page is 100 bytes"))
+                << error.GetMessage();
+            ExpectNoWrites(fx);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitFailsIfTheHeaderWriteIsRefused)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false /* init */);
+            fx.StorageNodes[1]->HeaderPage.clear();
+            fx.StorageNodes[1]->WriteRespQueue.push_back(
+                WriteErrorResponse(E_ARGUMENT));
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+            EXPECT_NE(TString::npos, error.GetMessage().find("dev-b"))
+                << error.GetMessage();
+            EXPECT_NE(TString::npos, error.GetMessage().find("header write"))
+                << error.GetMessage();
+
+            // The refused write leaves the device blank.
+            EXPECT_EQ(1U, fx.StorageNodes[1]->WriteCalls.size());
+            EXPECT_TRUE(fx.StorageNodes[1]->HeaderPage.empty());
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitRetriesTheHeaderWrite)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false /* init */);
+            fx.StorageNodes[1]->HeaderPage.clear();
+            fx.StorageNodes[1]->WriteRespQueue.push_back(
+                WriteErrorResponse(E_REJECTED));
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(2U, fx.StorageNodes[1]->WriteCalls.size());
+            EXPECT_FALSE(fx.StorageNodes[1]->HeaderPage.empty());
+            CheckBackoffDurations(
+                fx.Timer->GetSleepDurations(),
+                1 /* expectedCount */);
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitValidatesEveryDeviceEvenIfOneFails)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false /* init */);
+            fx.StorageNodes[0]->HeaderPage = TString(4_KB, 'x');
+            fx.StorageNodes[2]->HeaderPage.clear();
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+            EXPECT_NE(TString::npos, error.GetMessage().find("dev-a"))
+                << error.GetMessage();
+
+            // All three were looked at, and the blank one was still
+            // formatted: the failure of one device does not cut the others
+            // short.
+            EXPECT_EQ(3U, TotalHeaderReads(fx));
+            EXPECT_EQ(1U, fx.StorageNodes[2]->WriteCalls.size());
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitReadsHeadersOnlyAfterAcquire)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx(false /* init */);
+            *fx.StorageNodes[1]->AcquireResp.MutableError() =
+                MakeError(E_ARGUMENT, "not yours");
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(0U, TotalHeaderReads(fx));
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(QuorumGroupTest, InitRejectsAPageSizeThatIsNotAMultipleOf4K)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            auto config = MakeTestConfig();
+            config.PageSize = 6_KB;
+            TQuorumFixture fx(false /* init */, config);
+
+            auto error = fx.Group->Init();
+            EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(0U, TotalHeaderReads(fx));
 
             return 0;
         },

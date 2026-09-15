@@ -11,15 +11,12 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 PageSize = 4_KB;
-
-////////////////////////////////////////////////////////////////////////////////
-
 class IPageStore
 {
 public:
     virtual ~IPageStore() = default;
 
+    [[nodiscard]] virtual ui64 GetPageSize() const = 0;
     virtual ui64 AllocateLsn() = 0;
     virtual void CommitPages(const TVector<ui64>& pages) = 0;
     virtual void RollbackPages(const TVector<ui64>& pages) = 0;
