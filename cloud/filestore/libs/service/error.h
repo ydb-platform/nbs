@@ -33,6 +33,9 @@ NProto::TError ErrorIsNotDirectory(ui64 nodeId);
 NProto::TError ErrorIsNotEmpty(ui64 nodeId);
 NProto::TError ErrorIsPreparedForUnlink(ui64 nodeId);
 NProto::TError ErrorRenameNotSupported(ui64 parentId, ui64 newParentId);
+NProto::TError ErrorCrossQuotaDomainHardLinkNotSupported(
+    ui64 parentId,
+    ui64 targetId);
 
 //
 // Limits.

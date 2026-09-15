@@ -150,6 +150,17 @@ NProto::TError ErrorRenameNotSupported(ui64 parentId, ui64 newParentId)
             << newParentId);
 }
 
+NProto::TError ErrorCrossQuotaDomainHardLinkNotSupported(
+    ui64 parentId,
+    ui64 targetId)
+{
+    return MakeError(
+        E_FS_XDEV,
+        TStringBuilder() << "cannot hard link node " << targetId
+            << " under parent " << parentId
+            << ": crosses a quota domain boundary");
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 NProto::TError ErrorNameTooLong(const TString& name)
