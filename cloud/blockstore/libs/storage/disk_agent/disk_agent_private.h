@@ -56,7 +56,6 @@ struct TEvDiskAgentPrivate
     {
         TVector<NProto::TDeviceConfig> Configs;
         TVector<TString> Errors;
-        TVector<TString> ConfigMismatchErrors;
         TVector<TString> DevicesWithSuspendedIO;
         TVector<TString> JournalledDeviceIds;
 
@@ -65,12 +64,10 @@ struct TEvDiskAgentPrivate
         TInitAgentCompleted(
                 TVector<NProto::TDeviceConfig> configs,
                 TVector<TString> errors,
-                TVector<TString> configMismatchErrors,
                 TVector<TString> devicesWithSuspendedIO,
                 TVector<TString> journalledDeviceIds)
             : Configs(std::move(configs))
             , Errors(std::move(errors))
-            , ConfigMismatchErrors(std::move(configMismatchErrors))
             , DevicesWithSuspendedIO(std::move(devicesWithSuspendedIO))
             , JournalledDeviceIds(std::move(journalledDeviceIds))
         {}
@@ -142,19 +139,6 @@ struct TEvDiskAgentPrivate
             , Range(range)
             , DeviceUUID(std::move(deviceUUID))
             , Success(success)
-        {}
-    };
-
-    //
-    // TReportDelayedDiskAgentConfigMismatch
-    //
-
-    struct TReportDelayedDiskAgentConfigMismatch
-    {
-        TString ErrorText;
-
-        explicit TReportDelayedDiskAgentConfigMismatch(TString errorText)
-            : ErrorText(std::move(errorText))
         {}
     };
 
@@ -308,7 +292,8 @@ struct TEvDiskAgentPrivate
         EvInitAgentCompleted,
         EvSecureEraseCompleted,
         EvWriteOrZeroCompleted,
-        EvReportDelayedDiskAgentConfigMismatch,
+        // Retired startup-report slot; preserve subsequent private event IDs.
+        EvReservedConfigMismatchReport,
         EvCancelSuspensionRequest,
 
         EvParsedReadDeviceBlocksRequest,
@@ -345,10 +330,6 @@ struct TEvDiskAgentPrivate
     using TEvWriteOrZeroCompleted = TResponseEvent<
         TWriteOrZeroCompleted,
         EvWriteOrZeroCompleted>;
-
-    using TEvReportDelayedDiskAgentConfigMismatch = TResponseEvent<
-        TReportDelayedDiskAgentConfigMismatch,
-        EvReportDelayedDiskAgentConfigMismatch>;
 
     using TEvCancelSuspensionRequest = TRequestEvent<
         TCancelSuspensionRequest,
