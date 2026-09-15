@@ -455,6 +455,154 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetSubgroup("request", "DescribeVolume")
             ->GetCounter("Errors")->Val());
     }
+
+    Y_UNIT_TEST(ShouldKeepParallelRequestsAndUseConservativeLatency)
+    {
+        auto timer = std::make_shared<TTestTimer>();
+        auto monitoring = CreateMonitoringServiceStub();
+
+        NProto::TDiagnosticsConfig protoConfig;
+        protoConfig.SetLatencyThresholdsEnabled(true);
+        auto* mediaKindThresholds = protoConfig.AddLatencyThresholds();
+        mediaKindThresholds->SetMediaKind(NProto::STORAGE_MEDIA_SSD);
+        auto* bucket = mediaKindThresholds->AddBuckets();
+        bucket->SetMinRequestBytes(0);
+        bucket->SetReadThresholdMs(10);
+        bucket->SetWriteThresholdMs(10);
+        auto diagnosticsConfig =
+            std::make_shared<TDiagnosticsConfig>(protoConfig);
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            diagnosticsConfig,
+            TDuration::Max(),
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto serverStats = CreateServerStats(
+            std::make_shared<TTestDumpable>(),
+            diagnosticsConfig,
+            monitoring,
+            CreateProfileLogStub(),
+            CreateServerRequestStats(
+                monitoring->GetCounters(),
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            std::move(volumeStats));
+
+        NProto::TVolume volume;
+        volume.SetBlockSize(4096);
+        volume.SetDiskId("volume");
+        volume.SetCloudId("cloud");
+        volume.SetFolderId("folder");
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+        serverStats->MountVolume(volume, "client", "instance");
+
+        TMetricRequest request{EBlockStoreRequest::WriteBlocks};
+        serverStats->PrepareMetricRequest(
+            request,
+            "client",
+            "volume",
+            0,
+            4096,
+            false);
+        UNIT_ASSERT(request.VolumeInfo);
+
+        auto counters = monitoring->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "sli_volume")
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "volume")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "cloud")
+            ->GetSubgroup("folder", "folder")
+            ->GetSubgroup("type", "network-ssd");
+        auto total = counters->GetCounter("LatencyTotalOps");
+        auto good = counters->GetCounter("LatencyGoodOps");
+        auto skipped =
+            counters->GetCounter("LatencyThresholdsSkippedOps");
+
+        const auto makeContext = [](
+            TDuration elapsed,
+            TDuration postponed,
+            TDuration backoff,
+            TDuration shaping)
+        {
+            auto callContext = MakeIntrusive<TCallContext>();
+            callContext->SetHasParallelSubRequests();
+            callContext->SetRequestStartedCycles(1);
+            callContext->SetResponseSentCycles(
+                1 + DurationToCyclesSafe(elapsed));
+            callContext->AddTime(EProcessingStage::Postponed, postponed);
+            callContext->AddTime(EProcessingStage::Backoff, backoff);
+            callContext->AddTime(EProcessingStage::Shaping, shaping);
+            return callContext;
+        };
+
+        // The two branch shaping intervals may overlap or be hidden behind
+        // useful work in another branch. Their sum cannot be subtracted
+        // exactly, so a parallel request is judged using its full elapsed
+        // time. This request would look good after subtracting 95ms, but must
+        // conservatively remain bad and in the sample.
+        auto shapedContext = makeContext(
+            TDuration::MilliSeconds(100),
+            TDuration::Zero(),
+            TDuration::Zero(),
+            TDuration::MilliSeconds(95));
+        serverStats->RecordLatencyCompletion(
+            request,
+            *shapedContext,
+            4096,
+            {});
+        UNIT_ASSERT_VALUES_EQUAL(1, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, skipped->Val());
+
+        // Generic postponed time and retry backoff are user-visible service
+        // latency. They neither get subtracted nor make a split request
+        // unjudged.
+        auto serviceWaitContext = makeContext(
+            TDuration::MilliSeconds(100),
+            TDuration::MilliSeconds(95),
+            TDuration::MilliSeconds(95),
+            TDuration::Zero());
+        serverStats->RecordLatencyCompletion(
+            request,
+            *serviceWaitContext,
+            4096,
+            {});
+        UNIT_ASSERT_VALUES_EQUAL(2, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, skipped->Val());
+
+        // Splitting alone does not reduce coverage or change a fast verdict.
+        auto fastContext = makeContext(
+            TDuration::MilliSeconds(1),
+            TDuration::Zero(),
+            TDuration::Zero(),
+            TDuration::Zero());
+        serverStats->RecordLatencyCompletion(
+            request,
+            *fastContext,
+            4096,
+            {});
+        UNIT_ASSERT_VALUES_EQUAL(3, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, skipped->Val());
+
+        // A final service failure does not need a latency measurement. It
+        // must keep the ordinary classifier semantics: one bad operation,
+        // not a skipped operation.
+        serverStats->RecordLatencyCompletion(
+            request,
+            *shapedContext,
+            4096,
+            MakeError(E_FAIL));
+        UNIT_ASSERT_VALUES_EQUAL(4, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, skipped->Val());
+    }
 }
 
 }   // namespace NCloud::NBlockStore

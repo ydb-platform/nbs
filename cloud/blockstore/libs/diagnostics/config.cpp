@@ -69,6 +69,11 @@ namespace {
     xxx(VolumeCriticalEventsReportingMode,                                                               \
                                         NProto::EVolumeCriticalEventsReportingMode,                      \
                                                                  NProto::EVolumeCriticalEventsReportingMode::APP_ONLY)\
+                                                                                                         \
+    xxx(LatencyThresholdsEnabled,       bool,                    false                                  )\
+    xxx(LatencyThresholds,                                                                               \
+        TVector<NProto::TMediaKindLatencyThresholds>,                                                    \
+                                        {}                                                                )\
 
 // BLOCKSTORE_DIAGNOSTICS_CONFIG
 // clang-format on
@@ -142,6 +147,18 @@ TVector<TSizeInterval> ConvertValue(
     return v;
 }
 
+template <>
+TVector<NProto::TMediaKindLatencyThresholds> ConvertValue(
+    const google::protobuf::RepeatedPtrField<
+        NProto::TMediaKindLatencyThresholds>& value)
+{
+    TVector<NProto::TMediaKindLatencyThresholds> v;
+    for (const auto& x : value) {
+        v.push_back(x);
+    }
+    return v;
+}
+
 template <typename T>
 void DumpImpl(const T& t, IOutputStream& os)
 {
@@ -167,6 +184,19 @@ void DumpImpl(const TVector<TSizeInterval>& value, IOutputStream& os)
             os << ",";
         }
         os << ToString(value[i]);
+    }
+}
+
+template <>
+void DumpImpl(
+    const TVector<NProto::TMediaKindLatencyThresholds>& value,
+    IOutputStream& os)
+{
+    for (size_t i = 0; i < value.size(); ++i) {
+        if (i) {
+            os << ",";
+        }
+        SerializeToTextFormat(value[i], os);
     }
 }
 
