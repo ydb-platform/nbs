@@ -1720,3 +1720,56 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 		}()
 	}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestBackupQueue(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	entries := []BackupQueueEntry{
+		{SnapshotID: "snap1", ChunkID: "t.snap1.0"},
+		{SnapshotID: "snap1", ChunkID: "t.snap1.1"},
+		{SnapshotID: "snap2", ChunkID: "t.snap2.0"},
+	}
+	err := f.storage.EnqueueBackupChunks(f.ctx, entries)
+	require.NoError(t, err)
+
+	// Check idempotency.
+	err = f.storage.EnqueueBackupChunks(f.ctx, entries[:1])
+	require.NoError(t, err)
+
+	length, err := f.storage.GetBackupQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, length)
+
+	got, err := f.storage.GetBackupQueue(f.ctx, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	has, err := f.storage.HasBackupQueueEntries(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.True(t, has)
+
+	err = f.storage.ClearBackupQueue(f.ctx, entries[:2])
+	require.NoError(t, err)
+
+	has, err = f.storage.HasBackupQueueEntries(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.False(t, has)
+
+	got, err = f.storage.GetBackupQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, entries[2:], got)
+
+	err = f.storage.ClearBackupQueue(f.ctx, got)
+	require.NoError(t, err)
+
+	got, err = f.storage.GetBackupQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	length, err = f.storage.GetBackupQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, length)
+}

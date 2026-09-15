@@ -258,6 +258,50 @@ func NewStorageMock() *StorageMock {
 	return &StorageMock{}
 }
 
+func (s *StorageMock) EnqueueBackupChunks(
+	ctx context.Context,
+	entries []storage.BackupQueueEntry,
+) error {
+
+	args := s.Called(ctx, entries)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetBackupQueue(
+	ctx context.Context,
+	limit int,
+) ([]storage.BackupQueueEntry, error) {
+
+	args := s.Called(ctx, limit)
+	return args.Get(0).([]storage.BackupQueueEntry), args.Error(1)
+}
+
+func (s *StorageMock) HasBackupQueueEntries(
+	ctx context.Context,
+	snapshotID string,
+) (bool, error) {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Bool(0), args.Error(1)
+}
+
+func (s *StorageMock) ClearBackupQueue(
+	ctx context.Context,
+	entries []storage.BackupQueueEntry,
+) error {
+
+	args := s.Called(ctx, entries)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetBackupQueueLength(
+	ctx context.Context,
+) (uint64, error) {
+
+	args := s.Called(ctx)
+	return args.Get(0).(uint64), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Ensure that StorageMock implements storage.Storage.

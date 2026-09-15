@@ -27,6 +27,7 @@ type SnapshotMeta struct {
 	ChunkCount  uint32
 	Encryption  *types.EncryptionDesc
 	Ready       bool
+	CreatedAt   time.Time
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,6 +36,14 @@ type ChunkMapEntry struct {
 	ChunkIndex uint32
 	ChunkID    string
 	StoredInS3 bool
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Chunk that should be copied to the slave.
+type BackupQueueEntry struct {
+	SnapshotID string
+	ChunkID    string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,4 +155,14 @@ type Storage interface {
 	) (snapshotID string, checkpointID string, err error)
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
+
+	EnqueueBackupChunks(ctx context.Context, entries []BackupQueueEntry) error
+
+	GetBackupQueue(ctx context.Context, limit int) ([]BackupQueueEntry, error)
+
+	HasBackupQueueEntries(ctx context.Context, snapshotID string) (bool, error)
+
+	ClearBackupQueue(ctx context.Context, entries []BackupQueueEntry) error
+
+	GetBackupQueueLength(ctx context.Context) (uint64, error)
 }
