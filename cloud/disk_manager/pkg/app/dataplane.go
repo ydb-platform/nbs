@@ -86,6 +86,20 @@ func initDataplane(
 		}
 	}
 
+	var backupS3 *persistence.S3Client
+	backupConfig := dataplaneConfig.GetSnapshotStorageBackupConfig()
+	if backupConfig != nil {
+		backupS3, err = persistence.NewS3ClientFromConfig(
+			backupConfig.GetS3Config(),
+			mon.NewRegistry("backup_s3_client"),
+			nil, // availabilityMonitoring
+			creds,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	return dataplane.RegisterForExecution(
 		ctx,
 		dataplaneConfig,
@@ -99,6 +113,8 @@ func initDataplane(
 		urlMetricsRegistry,
 		migrationDstStorage,
 		useS3InSnapshotMigration,
+		s3,
+		backupS3,
 	)
 }
 

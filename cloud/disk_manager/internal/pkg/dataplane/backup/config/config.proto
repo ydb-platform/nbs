@@ -1,0 +1,19 @@
+syntax = "proto2";
+
+package backup;
+
+import "cloud/tasks/persistence/config/config.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/config";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message SnapshotStorageBackupConfig {
+    required persistence.S3Config S3Config = 1;
+    required string S3Bucket = 2;
+    optional string S3KeyPrefix = 3;
+    optional uint32 EnqueueBatchSize = 4 [default = 1000];
+    optional uint32 BackupChunksBatchSize = 5 [default = 100];
+    optional uint32 BackupChunksWorkerCount = 6 [default = 10];
+    optional string BackupChunksTaskScheduleInterval = 7 [default = "10s"];
+}

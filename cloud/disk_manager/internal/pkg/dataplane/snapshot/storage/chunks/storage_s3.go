@@ -97,6 +97,17 @@ func (s *StorageS3) ReadChunk(
 	return nil
 }
 
+// Chunk object as it is stored in s3: compressed data with its metadata.
+func (s *StorageS3) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+) (object persistence.S3Object, err error) {
+
+	defer s.metrics.StatOperation(metrics.OperationReadChunkBlob)(&err)
+
+	return s.s3.GetObject(ctx, s.bucket, s.newS3Key(chunkID))
+}
+
 func (s *StorageS3) WriteChunk(
 	ctx context.Context,
 	referer string,

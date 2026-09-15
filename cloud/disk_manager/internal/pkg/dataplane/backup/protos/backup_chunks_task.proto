@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package dataplane_backup;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message BackupChunksTaskState {}

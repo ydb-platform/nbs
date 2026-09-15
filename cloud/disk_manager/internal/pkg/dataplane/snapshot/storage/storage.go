@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -27,6 +28,7 @@ type SnapshotMeta struct {
 	ChunkCount  uint32
 	Encryption  *types.EncryptionDesc
 	Ready       bool
+	CreatedAt   time.Time
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,6 +37,14 @@ type ChunkMapEntry struct {
 	ChunkIndex uint32
 	ChunkID    string
 	StoredInS3 bool
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Chunk that should be copied to the backup bucket.
+type BackupQueueEntry struct {
+	SnapshotID string
+	ChunkID    string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -146,4 +156,17 @@ type Storage interface {
 	) (snapshotID string, checkpointID string, err error)
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
+
+	// Chunk object of the s3 chunk storage as is, for copying to the backup.
+	ReadChunkBlob(ctx context.Context, chunkID string) (persistence.S3Object, error)
+
+	EnqueueBackupChunks(ctx context.Context, entries []BackupQueueEntry) error
+
+	GetBackupQueue(ctx context.Context, limit int) ([]BackupQueueEntry, error)
+
+	HasBackupQueueEntries(ctx context.Context, snapshotID string) (bool, error)
+
+	ClearBackupQueue(ctx context.Context, entries []BackupQueueEntry) error
+
+	GetBackupQueueLength(ctx context.Context) (uint64, error)
 }
