@@ -719,16 +719,11 @@ private:
                 Args.CommitId,
                 compactionRangeIdx);
 
-            TCompactionMap::UpdateCompactionCounter(
-                counter->Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
-                &counter->Stat.BlockCount);
-            TCompactionMap::UpdateCompactionCounter(
-                counter->Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                &counter->Stat.BlobCount);
-            TCompactionMap::UpdateCompactionCounter(
-                counter->Stat.MixedBlockCount +
-                    kv.second.MixedBlockCountSkippedByCompaction,
-                &counter->Stat.MixedBlockCount);
+            AddCompactionStats(
+                &counter->Stat,
+                kv.second.BlocksSkippedByCompaction,
+                kv.second.BlobsSkippedByCompaction,
+                kv.second.MixedBlockCountSkippedByCompaction);
 
             auto rangeStat = cm.Get(kv.first);
             newlyZeroedBlocksToDecrement += rangeStat.NewlyZeroedBlocks;
