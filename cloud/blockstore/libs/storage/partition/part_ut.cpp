@@ -3069,7 +3069,6 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldAutomaticallyRunCompactionForManyMixedBlocksPerDisk)
     {
-        static constexpr ui32 mixedBlockCountPerRangeThreshold = 10;
         static constexpr ui32 diskBlockCount = 2 * MaxBlocksCount;
         // Scale the per-unit limit to keep the disk-wide threshold at 6 blocks.
         static constexpr ui64 maxMixedBytesPerUnit = 6 * 1_GB / diskBlockCount;
@@ -3077,16 +3076,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig(1_MB);
         config.SetAllocationUnitHDD(1);
         config.SetMixedBlocksCountCompactionEnabledHDD(true);
-        config.SetMixedBytesCountCompactionThresholdHDD(
-            mixedBlockCountPerRangeThreshold * DefaultBlockSize);
-        config.SetWriteBlobThreshold(
-            mixedBlockCountPerRangeThreshold * DefaultBlockSize);
         config.SetHDDMaxMixedBytesPerUnit(maxMixedBytesPerUnit);
-        config.SetSSDMaxMixedBytesPerUnit(
-            maxMixedBytesPerUnit + 100 * DefaultBlockSize);
-        config.SetSSDMaxBlobsPerRange(100);
-        config.SetHDDMaxBlobsPerRange(100);
-        config.SetCompactionMergedBlobThresholdHDD(1);
 
         auto runtime = PrepareTestActorRuntime(config, diskBlockCount);
 
@@ -3128,17 +3118,15 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return false;
             });
 
-        // Seed both ranges with enough used blocks, then let their initial
-        // mixed blobs compact before testing the per-disk trigger.
-        for (const ui32 startIndex: {0U, MaxBlocksCount}) {
+        // Fill each compaction range with one 4 MiB merged write to satisfy
+        // the used-blocks gate and keep the ranges non-empty.
+        for (ui32 startIndex = 0; startIndex < diskBlockCount;
+             startIndex += MaxBlocksCount)
+        {
             partition.WriteBlocks(
-                TBlockRange32::WithLength(
-                    startIndex,
-                    mixedBlockCountPerRangeThreshold),
+                TBlockRange32::WithLength(startIndex, MaxBlocksCount),
                 1);
-            runtime->DispatchEvents(
-                TDispatchOptions(),
-                TDuration::Seconds(1));
+            runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         }
 
         partition.SendToPipe(
@@ -3149,10 +3137,9 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 TEvStatsService::EvVolumePartCounters);
             runtime->DispatchEvents(options);
         }
-        const ui64 compactionByMixedBlockCountPerRangeBeforeTest =
-            compactionByMixedBlockCountPerRange;
-        const ui64 compactionByMixedBlockCountPerDiskBeforeTest =
-            compactionByMixedBlockCountPerDisk;
+        // Each stats push reports deltas; seeding must trigger no compactions.
+        UNIT_ASSERT_VALUES_EQUAL(0, compactionByMixedBlockCountPerRange);
+        UNIT_ASSERT_VALUES_EQUAL(0, compactionByMixedBlockCountPerDisk);
         observeCompactionRequests = true;
 
         partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 1);
@@ -3179,12 +3166,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 TEvStatsService::EvVolumePartCounters);
             runtime->DispatchEvents(options);
         }
-        UNIT_ASSERT_VALUES_EQUAL(
-            compactionByMixedBlockCountPerRangeBeforeTest,
-            compactionByMixedBlockCountPerRange);
-        UNIT_ASSERT_VALUES_EQUAL(
-            compactionByMixedBlockCountPerDiskBeforeTest + 1,
-            compactionByMixedBlockCountPerDisk);
+        UNIT_ASSERT_VALUES_EQUAL(0, compactionByMixedBlockCountPerRange);
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionByMixedBlockCountPerDisk);
     }
 
     Y_UNIT_TEST(ShouldEnableMixedBlocksCountCompactionByMediaKind)
