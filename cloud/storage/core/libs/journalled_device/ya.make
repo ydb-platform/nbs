@@ -18,6 +18,7 @@ PEERDIR(
     cloud/storage/core/libs/coroutine
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/protos
+    library/cpp/digest/crc32c
 )
 
 END()
