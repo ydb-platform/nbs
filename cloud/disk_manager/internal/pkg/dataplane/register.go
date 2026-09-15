@@ -5,12 +5,15 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -28,7 +31,21 @@ func RegisterForExecution(
 	urlMetricsRegistry metrics.Registry,
 	migrationDstStorage storage.Storage,
 	useS3InMigration bool,
+	s3 *persistence.S3Client,
+	backupSlaves backup.Slaves,
 ) error {
+
+	// Snapshots are backed up only when slaves are configured.
+	var backupSlave string
+	if backupSlaves != nil {
+		if s3 == nil {
+			return errors.NewNonRetriableErrorf(
+				"snapshot backup requires s3 chunk storage",
+			)
+		}
+
+		backupSlave = config.GetBackupConfig().GetDefaultSlave()
+	}
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
@@ -36,6 +53,8 @@ func RegisterForExecution(
 			performanceConfig: performanceConfig,
 			nbsFactory:        nbsFactory,
 			storage:           storage,
+			scheduler:         taskScheduler,
+			backupSlave:       backupSlave,
 		}
 	})
 	if err != nil {
@@ -221,6 +240,7 @@ func RegisterForExecution(
 				storage:                   storage,
 				storageQuotaReporter:      snapshotStorageQuotaReporter,
 				metricsCollectionInterval: snapshotMetricsCollectionInterval,
+				backupEnabled:             backupSlaves != nil,
 			}
 		},
 	)
@@ -257,7 +277,7 @@ func RegisterForExecution(
 		return err
 	}
 
-	return taskRegistry.RegisterForExecution(
+	err = taskRegistry.RegisterForExecution(
 		"dataplane.CreateDRBasedDiskCheckpoint",
 		func() tasks.Task {
 			return &createDRBasedDiskCheckpointTask{
@@ -266,6 +286,111 @@ func RegisterForExecution(
 			}
 		},
 	)
+	if err != nil {
+		return err
+	}
+
+	if backupSlaves == nil {
+		return nil
+	}
+
+	return registerBackupTasksForExecution(
+		ctx,
+		config,
+		taskRegistry,
+		taskScheduler,
+		storage,
+		s3,
+		backupSlaves,
+		metricsRegistry,
+	)
+}
+
+func registerBackupTasksForExecution(
+	ctx context.Context,
+	config *config.DataplaneConfig,
+	taskRegistry *tasks.Registry,
+	taskScheduler tasks.Scheduler,
+	storage storage.Storage,
+	s3 *persistence.S3Client,
+	backupSlaves backup.Slaves,
+	metricsRegistry metrics.Registry,
+) error {
+
+	backupConfig := config.GetBackupConfig()
+	snapshotConfig := config.GetSnapshotConfig()
+
+	err := taskRegistry.RegisterForExecution("dataplane.BackupSnapshot", func() tasks.Task {
+		return &backupSnapshotTask{
+			config:  config,
+			storage: storage,
+			slaves:  backupSlaves,
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	err = taskRegistry.RegisterForExecution("dataplane.BackupChunks", func() tasks.Task {
+		return &backupChunksTask{
+			storage:      storage,
+			srcS3:        s3,
+			srcBucket:    snapshotConfig.GetS3Bucket(),
+			srcKeyPrefix: snapshotConfig.GetChunkBlobsS3KeyPrefix(),
+			slaves:       backupSlaves,
+			batchSize:    int(backupConfig.GetBackupChunksBatchSize()),
+			workerCount:  int(backupConfig.GetBackupChunksWorkerCount()),
+			registry:     metricsRegistry,
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	backupChunksTaskScheduleInterval, err := time.ParseDuration(
+		backupConfig.GetBackupChunksTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	taskScheduler.ScheduleRegularTasks(
+		ctx,
+		"dataplane.BackupChunks",
+		tasks.TaskSchedule{
+			ScheduleInterval: backupChunksTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
+	)
+
+	err = taskRegistry.RegisterForExecution("dataplane.DeleteBackup", func() tasks.Task {
+		return &deleteBackupTask{
+			storage:   storage,
+			slaves:    backupSlaves,
+			batchSize: int(backupConfig.GetDeleteBackupBatchSize()),
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	deleteBackupTaskScheduleInterval, err := time.ParseDuration(
+		backupConfig.GetDeleteBackupTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	taskScheduler.ScheduleRegularTasks(
+		ctx,
+		"dataplane.DeleteBackup",
+		tasks.TaskSchedule{
+			ScheduleInterval: deleteBackupTaskScheduleInterval,
+			MaxTasksInflight: 1,
+		},
+	)
+
+	return nil
 }
 
 func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
@@ -294,4 +419,7 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.DeleteSnapshotData":          func() tasks.Task { return &deleteSnapshotDataTask{} },
 	"dataplane.DeleteDiskFromIncremental":   func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
 	"dataplane.CreateDRBasedDiskCheckpoint": func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
+	"dataplane.BackupSnapshot":              func() tasks.Task { return &backupSnapshotTask{} },
+	"dataplane.BackupChunks":                func() tasks.Task { return &backupChunksTask{} },
+	"dataplane.DeleteBackup":                func() tasks.Task { return &deleteBackupTask{} },
 }

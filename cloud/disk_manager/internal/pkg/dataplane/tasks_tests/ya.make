@@ -4,6 +4,9 @@ SET_APPEND(RECIPE_ARGS --nbs-only)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 GO_TEST_SRCS(
+    ../backup_chunks_task_test.go
+    ../backup_snapshot_task_test.go
+    ../delete_backup_task_test.go
     ../delete_snapshot_data_task_test.go
 )
 
