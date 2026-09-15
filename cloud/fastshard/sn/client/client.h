@@ -27,6 +27,10 @@ struct TStorageNodeClientMetrics
 
     // Requests that completed without a transport error.
     std::atomic<ui64> RequestsCompleted{0};
+
+    // Wall time spent establishing TCP connections (name resolution and
+    // connect, successful or not), in microseconds.
+    std::atomic<ui64> ConnectTimeUs{0};
 };
 
 using TStorageNodeClientMetricsPtr =
