@@ -195,6 +195,7 @@ class TTestVhostQueue final
 {
 private:
     TManualEvent& FailedEvent;
+    const std::function<void()> DequeueRequestHandler;
 
     enum EState {
         Undefined = 0,
@@ -208,8 +209,11 @@ private:
     TVector<std::weak_ptr<TTestVhostDevice>> Devices;
 
 public:
-    TTestVhostQueue(TManualEvent& failedEvent)
+    TTestVhostQueue(
+        TManualEvent& failedEvent,
+        std::function<void()> dequeueRequestHandler)
         : FailedEvent(failedEvent)
+        , DequeueRequestHandler(std::move(dequeueRequestHandler))
     {}
 
     int Run() override
@@ -248,6 +252,9 @@ public:
 
     TVhostRequestPtr DequeueRequest() override
     {
+        if (DequeueRequestHandler) {
+            DequeueRequestHandler();
+        }
         if (State.load() == Running) {
             with_lock (Lock) {
                 for (auto& device: Devices) {
@@ -293,7 +300,9 @@ public:
 
 IVhostQueuePtr TTestVhostQueueFactory::CreateQueue()
 {
-    auto queue = std::make_shared<TTestVhostQueue>(FailedEvent);
+    auto queue = std::make_shared<TTestVhostQueue>(
+        FailedEvent,
+        DequeueRequestHandler);
     Queues.push_back(queue);
     return queue;
 }

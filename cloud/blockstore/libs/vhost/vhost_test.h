@@ -50,6 +50,8 @@ struct TTestVhostQueueFactory final
 {
     TManualEvent FailedEvent;
     TVector<std::shared_ptr<ITestVhostQueue>> Queues;
+    // Called before dequeueing, after processing the previous request returns.
+    std::function<void()> DequeueRequestHandler;
     std::function<void()> RequestCompletionHandler;
     // Models the synchronous part of libvhost device unregistration.
     std::function<void(const TString&)> DeviceStopHandler;
