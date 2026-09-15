@@ -46,9 +46,15 @@ private:
     YDB_READONLY(ui32, IndexId, 0);
     YDB_READONLY(TString, StorageId, IStoragesManager::DefaultStorageId);
 
-    virtual std::shared_ptr<NReader::NCommon::IKernelFetchLogic> DoBuildFetchTask(const THashSet<NRequest::TOriginalDataAddress>& dataAddresses,
+    std::shared_ptr<NReader::NCommon::IKernelFetchLogic> BuildDefaultFetchTask(const THashSet<NRequest::TOriginalDataAddress>& dataAddresses,
         const std::shared_ptr<IIndexMeta>& selfPtr,
         const std::shared_ptr<IStoragesManager>& storagesManager) const;
+
+    virtual std::shared_ptr<NReader::NCommon::IKernelFetchLogic> DoBuildFetchTask(const THashSet<NRequest::TOriginalDataAddress>& dataAddresses,
+        const std::shared_ptr<IIndexMeta>& selfPtr,
+        const std::shared_ptr<IStoragesManager>& storagesManager) const {
+        return BuildDefaultFetchTask(dataAddresses, selfPtr, storagesManager);
+    }
 
     virtual TConclusion<std::shared_ptr<IIndexHeader>> DoBuildHeader(const TChunkOriginalData& data) const {
         return std::make_shared<TDefaultHeader>(data.GetSize());

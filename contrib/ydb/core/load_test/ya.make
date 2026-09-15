@@ -14,7 +14,6 @@ PEERDIR(
     contrib/ydb/core/jaeger_tracing
     contrib/ydb/core/kqp/common
     contrib/ydb/core/kqp/rm_service
-    contrib/ydb/core/tx/columnshard
     contrib/ydb/core/tx/datashard
     contrib/ydb/library/workload/abstract
     contrib/ydb/library/workload/kv
