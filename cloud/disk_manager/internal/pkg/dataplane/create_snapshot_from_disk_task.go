@@ -15,6 +15,7 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -25,6 +26,8 @@ type createSnapshotFromDiskTask struct {
 	performanceConfig *performance_config.PerformanceConfig
 	nbsFactory        nbs_client.Factory
 	storage           storage.Storage
+	scheduler         tasks.Scheduler
+	backupEnabled     bool
 	request           *protos.CreateSnapshotFromDiskRequest
 	state             *protos.CreateSnapshotFromDiskTaskState
 }
@@ -50,6 +53,11 @@ func (t *createSnapshotFromDiskTask) Run(
 ) error {
 
 	err := t.run(ctx, execCtx)
+	if err != nil {
+		return err
+	}
+
+	err = t.scheduleBackup(ctx, execCtx)
 	if err != nil {
 		return err
 	}
@@ -412,6 +420,27 @@ func (t *createSnapshotFromDiskTask) run(
 		t.state.ChunkCount,
 		diskParams.EncryptionDesc,
 	)
+}
+
+func (t *createSnapshotFromDiskTask) scheduleBackup(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+) error {
+
+	if !t.backupEnabled {
+		return nil
+	}
+
+	_, err := t.scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()+"_backup"),
+		"dataplane.BackupSnapshot",
+		"",
+		&protos.BackupSnapshotRequest{
+			SnapshotId: t.request.DstSnapshotId,
+			FolderId:   t.request.FolderId,
+		},
+	)
+	return err
 }
 
 ////////////////////////////////////////////////////////////////////////////////
