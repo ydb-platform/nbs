@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from scripts.tests import transform_ya_junit as tyj
+import scripts.tracing.yatrace.limits as yatrace_limits
 
 
 def _write_junit(path: Path) -> None:
@@ -184,6 +185,36 @@ def test_transform_adds_links_and_copies_logs(tmp_path: Path) -> None:
         == "https://data/suite-name/logs"  # noqa: W503
     )
     assert (logs_out / "suite-name" / "stdout.log").exists()
+
+
+def test_transform_continues_when_ya_traces_exceed_limit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    report = tmp_path / "junit.xml"
+    ya_out = tmp_path / "ya-out"
+    _write_junit(report)
+    _write_trace(ya_out)
+    monkeypatch.setattr(yatrace_limits, "MAX_YA_TRACE_BYTES", 1)
+    with report.open("r") as fp:
+        tyj.transform(
+            fp,
+            tyj.YaMuteCheck(),
+            str(ya_out),
+            True,
+            "https://logs/",
+            None,
+            0,
+            None,
+            "https://data",
+        )
+
+    case = ET.parse(report).getroot().find("./testsuite/testcase")
+    assert case is not None
+    assert case.get("classname") == "suite-name"
+    assert case.find("failure") is not None
+    assert "Ya trace enrichment is unavailable" in capsys.readouterr().err
 
 
 def test_save_log_applies_truncation(tmp_path: Path) -> None:
