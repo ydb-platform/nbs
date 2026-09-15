@@ -1,5 +1,7 @@
 #include "storage_group_helpers.h"
 
+#include <util/stream/format.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,3 +115,19 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
+
+////////////////////////////////////////////////////////////////////////////////
+
+using NCloud::NFileStore::NStorage::NFastShard::TStorageGroupHeader;
+
+template <>
+void Out<TStorageGroupHeader>(
+    IOutputStream& out,
+    const TStorageGroupHeader& header)
+{
+    out << "{Magic: " << Hex(header.MagicNumber)
+        << ", Version: " << static_cast<ui32>(header.Version)
+        << ", GroupType: " << static_cast<ui32>(header.GroupType)
+        << ", PageSize: " << header.PageSize
+        << ", DeviceUUIDHash: " << Hex(header.DeviceUUIDHash) << "}";
+}
