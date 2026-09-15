@@ -19,6 +19,7 @@ message CreateSnapshotFromDiskRequest {
     bool UseS3 = 7;
     bool UseProxyOverlayDisk = 8;
     string StorageClass = 9;
+    string FolderId = 10;
 }
 
 message CreateSnapshotFromDiskResponse {

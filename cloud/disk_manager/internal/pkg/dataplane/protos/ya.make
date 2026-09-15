@@ -3,11 +3,15 @@ PROTO_LIBRARY()
 ONLY_TAGS(GO_PROTO)
 
 SRCS(
+    backup_chunk_map.proto
+    backup_chunks_task.proto
+    backup_snapshot_task.proto
     collect_snapshots_task.proto
     create_dr_based_disk_checkpoint_task.proto
     create_snapshot_from_disk_task.proto
     create_snapshot_from_snapshot_task.proto
     create_snapshot_from_url_task.proto
+    delete_backup_task.proto
     delete_disk_from_incremental.proto
     delete_snapshot_data_task.proto
     delete_snapshot_task.proto

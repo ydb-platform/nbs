@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message BackupSnapshotRequest {
+    string SnapshotId = 1;
+    string FolderId = 2;
+    string Slave = 3;
+}
+
+message BackupSnapshotTaskState {
+    uint32 MilestoneChunkIndex = 1;
+    uint32 ChunkCount = 2;
+    bool MetaWritten = 3;
+    uint32 EnqueuedChunkCount = 4;
+    double Progress = 5;
+}
+
+message BackupSnapshotMetadata {
+    double Progress = 1;
+}
