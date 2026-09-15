@@ -9,10 +9,12 @@
 
 #include <util/folder/path.h>
 #include <util/folder/tempdir.h>
+#include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
 #include <util/system/file_lock.h>
 #include <util/system/fs.h>
 #include <util/system/fstat.h>
+#include <util/system/sysstat.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -36,6 +38,7 @@ struct TFixture: public NUnitTest::TBaseFixture
         MakeIntrusive<NMonitoring::TDynamicCounters>();
     NMonitoring::TDynamicCounters::TCounterPtr SessionDirNotEmptyCounter;
     NMonitoring::TDynamicCounters::TCounterPtr UnstatableEntryCounter;
+    NMonitoring::TDynamicCounters::TCounterPtr UnlistableDirCounter;
 
     TFixture()
     {
@@ -45,6 +48,9 @@ struct TFixture: public NUnitTest::TBaseFixture
             true);
         UnstatableEntryCounter = Counters->GetCounter(
             GetCriticalEventForPersistentStateUnstatableEntry(),
+            true);
+        UnlistableDirCounter = Counters->GetCounter(
+            GetCriticalEventForPersistentStateUnlistableDir(),
             true);
     }
 
@@ -689,6 +695,58 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         // repeated reports on further queries.
         UNIT_ASSERT(HasWriteBackCacheState(manager, FileSystemId, SessionId));
         UNIT_ASSERT_VALUES_EQUAL(3, UnstatableEntryCounter->Val());
+    }
+
+    Y_UNIT_TEST_F(ShouldReportUnlistableDirAndCarryOn, TFixture)
+    {
+        // Existing state which the discovery must find regardless, and
+        // state under a directory which is then made unlistable.
+        {
+            auto previous = CreateManager();
+            auto result = previous->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                SessionId);
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+            result = previous->AcquireWriteBackCacheStateFile(
+                FileSystemId,
+                "unlistable");
+            UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
+        }
+
+        // A session directory which cannot be listed (here for want of
+        // permissions, standing in for EIO) must not fail the discovery: it
+        // is reported, since the state file under it goes unnoticed, and
+        // skipped.
+        const TFsPath unlistable = SessionDir(FileSystemId, "unlistable");
+        UNIT_ASSERT(Chmod(unlistable.GetPath().c_str(), 0) == 0);
+        Y_DEFER {
+            Chmod(unlistable.GetPath().c_str(), 0700);
+        };
+
+        // Whether the permission is enforced at all (it is not for root) is
+        // found out by listing the directory here.
+        bool enforced = false;
+        try {
+            TVector<TFsPath> children;
+            unlistable.List(children);
+        } catch (const TSystemError&) {
+            enforced = true;
+        }
+
+        auto manager = CreateManager();
+        UNIT_ASSERT(HasWriteBackCacheState(manager, FileSystemId, SessionId));
+
+        if (enforced) {
+            UNIT_ASSERT(
+                !HasWriteBackCacheState(manager, FileSystemId, "unlistable"));
+            // One report per component listing sharing the base path.
+            UNIT_ASSERT_VALUES_EQUAL(3, UnlistableDirCounter->Val());
+        } else {
+            UNIT_ASSERT(
+                HasWriteBackCacheState(manager, FileSystemId, "unlistable"));
+            UNIT_ASSERT_VALUES_EQUAL(0, UnlistableDirCounter->Val());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, UnstatableEntryCounter->Val());
     }
 
     Y_UNIT_TEST_F(ShouldReportErrorInsteadOfThrowingOnAcquireFailure, TFixture)

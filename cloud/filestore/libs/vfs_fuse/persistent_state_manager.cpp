@@ -369,6 +369,34 @@ bool IsDirectory(const TFsPath& path)
     return stat.IsDir();
 }
 
+// Lists the children of a directory found under a base path. Such a
+// directory being unlistable is reported but, just like an unstatable entry
+// (see IsDirectory()), must not fail every session start: only what is
+// under it goes unnoticed. A directory which has just disappeared is not
+// worth reporting though.
+bool ListDirectory(const TFsPath& dir, TVector<TFsPath>& children)
+{
+    const auto report = [&](const yexception& e)
+    {
+        ReportPersistentStateUnlistableDir(
+            TStringBuilder() << "Failed to list " << dir
+                             << ", reason: " << e.what());
+    };
+
+    try {
+        dir.List(children);
+        return true;
+    } catch (const TSystemError& e) {
+        if (e.Status() != ENOENT) {
+            report(e);
+        }
+        return false;
+    } catch (const yexception& e) {
+        report(e);
+        return false;
+    }
+}
+
 NProto::TError TPersistentStateManager::ListStateFilesLocked(
     const TComponentConfig& component)
 {
@@ -402,37 +430,54 @@ NProto::TError TPersistentStateManager::ListStateFilesLocked(
         return makeError(e);
     }
 
-    // Layout is <basePath>/<fileSystemId>/<sessionId>/<stateFileName>
-    try {
-        for (const auto& fileSystemDir: fileSystemDirs) {
-            if (!IsDirectory(fileSystemDir)) {
+    // Layout is <basePath>/<fileSystemId>/<sessionId>/<stateFileName>.
+    //
+    // Unlike the base path, a failure at any of the entries under it is not
+    // a failure of the listing: the entry is reported and skipped, see
+    // IsDirectory() and ListDirectory().
+    for (const auto& fileSystemDir: fileSystemDirs) {
+        TVector<TFsPath> sessionDirs;
+        if (!IsDirectory(fileSystemDir) ||
+            !ListDirectory(fileSystemDir, sessionDirs))
+        {
+            continue;
+        }
+
+        for (const auto& sessionDir: sessionDirs) {
+            TVector<TFsPath> files;
+            if (!IsDirectory(sessionDir) ||
+                !ListDirectory(sessionDir, files))
+            {
                 continue;
             }
 
-            TVector<TFsPath> sessionDirs;
-            fileSystemDir.List(sessionDirs);
-            for (const auto& sessionDir: sessionDirs) {
-                if (!IsDirectory(sessionDir)) {
+            for (const auto& file: files) {
+                if (file.GetName() != fileName) {
                     continue;
                 }
 
-                TVector<TFsPath> files;
-                sessionDir.List(files);
-                for (const auto& file: files) {
-                    if (file.GetName() != fileName) {
-                        continue;
+                // The same rule for the state file itself: if its size
+                // cannot be established, the file is not registered at all
+                // rather than counted as empty.
+                const TFileStat stat(file);
+                if (stat.IsNull()) {
+                    const int err = LastSystemError();
+                    if (err != ENOENT) {
+                        ReportPersistentStateUnstatableEntry(
+                            TStringBuilder()
+                            << "Failed to stat " << file
+                            << ", reason: " << LastSystemErrorText(err));
                     }
-
-                    Registry.Register(
-                        sessionDir.GetPath(),
-                        fileName,
-                        TFileStat(file.GetPath()).Size,
-                        false /* fileAcquired */);
+                    continue;
                 }
+
+                Registry.Register(
+                    sessionDir.GetPath(),
+                    fileName,
+                    stat.Size,
+                    false /* fileAcquired */);
             }
         }
-    } catch (const yexception& e) {
-        return makeError(e);
     }
 
     return {};
