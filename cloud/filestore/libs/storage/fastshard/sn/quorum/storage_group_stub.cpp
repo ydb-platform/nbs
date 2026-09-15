@@ -1,4 +1,5 @@
 #include "storage_group.h"
+#include "storage_group_quorum.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -45,6 +46,16 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IStorageGroupPtr CreateNaiveMirroredStorageGroup(
+    TStorageGroupConfig config,
+    TVector<TStorageDevice> devices,
+    ITimerPtr timer)
+{
+    Y_UNUSED(config, devices, timer);
+
+    return std::make_shared<TStorageGroupStub>();
+}
+
+IStorageGroupPtr CreateQuorumMirroredStorageGroup(
     TStorageGroupConfig config,
     TVector<TStorageDevice> devices,
     ITimerPtr timer)
