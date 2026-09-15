@@ -82,7 +82,6 @@ TStorageGroupConfig MakeTestConfig()
     config.ClientId = "test-client";
     config.AcquireGeneration = 42;
     config.LowWatermarkPeriod = TDuration::Zero();
-    config.JournalRestoreEnabled = true;
     return config;
 }
 
@@ -987,43 +986,6 @@ TEST(QuorumGroupTest, InitFailsIfAReplayIsRefused)
             TVector<TPageGroup> pageGroups;
             error = ReadSomething(*fx.Group, &pageGroups);
             EXPECT_EQ(E_REJECTED, error.GetCode()) << error.GetMessage();
-
-            return 0;
-        },
-        0);
-    EXPECT_EQ(0, r);
-}
-
-TEST(QuorumGroupTest, InitWithoutJournalRestoreOnlyAcquires)
-{
-    const int r = FiberScheduler::run(
-        +[](int*) noexcept -> int
-        {
-            // Restore off, watermark period on: neither may touch the
-            // devices, which do not implement either call.
-            auto config = WatermarkConfig();
-            config.JournalRestoreEnabled = false;
-            TQuorumFixture fx(false /* init */, config);
-
-            for (auto& sn: fx.StorageNodes) {
-                *sn->ReadJournalTailResp.MutableError() =
-                    MakeError(E_NOT_IMPLEMENTED, "ReadJournalTail");
-                *sn->AdvanceLsnLowWatermarkResp.MutableError() =
-                    MakeError(E_NOT_IMPLEMENTED, "AdvanceLsnLowWatermark");
-            }
-
-            auto error = fx.Group->Init();
-            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-            ExpectEveryReplicaServes(fx);
-
-            error = WriteSomething(*fx.Group);
-            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
-            WaitFor([&] { return TotalWriteCalls(fx) == 3; });
-
-            for (auto& sn: fx.StorageNodes) {
-                EXPECT_EQ(0U, sn->ReadJournalTailCalls.size());
-                EXPECT_EQ(0U, sn->AdvanceLsnLowWatermarkCalls.size());
-            }
 
             return 0;
         },

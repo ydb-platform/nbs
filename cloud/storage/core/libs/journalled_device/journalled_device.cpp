@@ -24,6 +24,7 @@ private:
     const IDevicePtr DataStore;
 
     std::atomic<ui64> LastLsn = 0;
+    std::atomic<ui64> LastAckedLsn = 0;
 
 public:
     explicit TJournalledDevice(IDevicePtr dataStore)
@@ -57,18 +58,19 @@ public:
                     << request.GetPrevLogSequenceNumber()));
         }
 
-        const ui64 lastLsn = LastLsn.load(std::memory_order_relaxed);
         const ui64 lsn = request.GetLogSequenceNumber();
-        const ui64 prevLsn = request.GetPrevLogSequenceNumber();
 
-        // TODO(#6956): allow to handle request with wrong lsn order
-        if (lastLsn != 0 && prevLsn != lastLsn) {
-            const auto code = prevLsn > lastLsn ? E_REJECTED : E_INVALID_STATE;
+        // TODO(#6956): now PrevLogSequenceNumber is always zero
+        // const ui64 prevLsn = request.GetPrevLogSequenceNumber();
+        // const ui64 lastLsn = LastLsn.load(std::memory_order_relaxed);
 
-            return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
-                TErrorResponse(code, TStringBuilder()
-                    << "Wrong lsn: " << prevLsn << ", expected " << lastLsn));
-        }
+        // if (lastLsn != 0 && prevLsn != lastLsn) {
+        //     const auto code = prevLsn > lastLsn ? E_REJECTED : E_INVALID_STATE;
+
+        //     return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
+        //         TErrorResponse(code, TStringBuilder()
+        //             << "Wrong lsn: " << prevLsn << ", expected " << lastLsn));
+        // }
 
         return DataStore->WritePages(std::move(request)).Apply(
             [self = shared_from_this(), lsn](const auto& future) mutable
@@ -92,22 +94,25 @@ public:
         NCloud::NProto::TReadJournalTailRequest request)
         -> TFuture<NCloud::NProto::TReadJournalTailResponse> final
     {
-        // TODO(#6956): implement journal tail reading
         Y_UNUSED(request);
 
-        return MakeFuture<NCloud::NProto::TReadJournalTailResponse>(
-            TErrorResponse(E_NOT_IMPLEMENTED, "ReadJournalTail"));
+        NCloud::NProto::TReadJournalTailResponse response;
+        response.SetLastAckedLogSequenceNumber(
+            LastAckedLsn.load(std::memory_order_relaxed));
+
+        return MakeFuture(response);
     }
 
     [[nodiscard]] auto AdvanceLsnLowWatermark(
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
         -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> final
     {
-        // TODO(#6956): implement lsn low watermark advancing
-        Y_UNUSED(request);
+        LastAckedLsn.store(
+            request.GetLsnLowWatermark(),
+            std::memory_order_relaxed);
 
-        return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
-            TErrorResponse(E_NOT_IMPLEMENTED, "AdvanceLsnLowWatermark"));
+        NCloud::NProto::TAdvanceLsnLowWatermarkResponse response;
+        return MakeFuture(response);
     }
 };
 

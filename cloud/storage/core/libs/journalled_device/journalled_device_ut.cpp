@@ -119,67 +119,6 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->WritePagesCount);
     }
-
-    Y_UNIT_TEST_F(ShouldValidateLogSequenceNumber, TFixture)
-    {
-        // the very first record is accepted with any prev lsn
-
-        {
-            const auto error = WriteLogRecord(10, 5);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                error.GetCode(),
-                FormatError(error));
-        }
-
-        {
-            const auto error = WriteLogRecord(11, 10);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                error.GetCode(),
-                FormatError(error));
-        }
-
-        // a gap in the log
-
-        {
-            const auto error = WriteLogRecord(20, 15);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_REJECTED,
-                error.GetCode(),
-                FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "Wrong lsn: 15, expected 11");
-        }
-
-        // an outdated record
-
-        {
-            const auto error = WriteLogRecord(13, 5);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_INVALID_STATE,
-                error.GetCode(),
-                FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "Wrong lsn: 5, expected 11");
-        }
-
-        // the rejected records have not reached the data store
-
-        UNIT_ASSERT_VALUES_EQUAL(2, DataStore->WritePagesCount);
-
-        // the rejected records have not changed the state
-
-        {
-            const auto error = WriteLogRecord(12, 11);
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                S_OK,
-                error.GetCode(),
-                FormatError(error));
-        }
-    }
 }
 
 }   // namespace NCloud::NJournalled

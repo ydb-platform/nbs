@@ -627,11 +627,6 @@ public:
             return error;
         }
 
-        if (!State->Config.JournalRestoreEnabled) {
-            State->Initialized = true;
-            return {};
-        }
-
         error = RebuildJournal(State);
         if (HasError(error)) {
             return error;
