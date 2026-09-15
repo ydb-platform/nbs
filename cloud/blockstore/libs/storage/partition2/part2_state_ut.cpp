@@ -149,7 +149,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            1_MB
         );
 
         const auto initialBackpressure = state.CalculateCurrentBackpressure();
@@ -219,7 +220,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            1_MB
         );
 
         state.AccessCompactionMap().Update(0, 30, 30, 30, 0, false);
@@ -255,7 +257,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            1_MB
         );
 
         state.GetLogicalUsedBlocks().Set(0, 9);
@@ -341,7 +344,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            1_MB
         );
 
         state.IncrementMergedBlocksCount(5_GB / DefaultBlockSize);
@@ -385,7 +389,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            1_MB
         );
 
         TTestExecutor executor;
@@ -524,7 +529,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             100,     // maxBlobsPerUnit
             10,      // maxBlobsPerRange
             1,       // compactionRangeCountPerRun
-            threadSafeState);
+            threadSafeState,
+            1_MB);
 
         auto& l0Filter = state.GetBlocksFilterL0();
         SetRangeBaseline(l0Filter, 0, 10);
@@ -634,7 +640,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             maxBlobsPerUnit, // maxBlobsPerUnit
             10,  // maxBlobsPerRange,
             1,   // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            1_MB
         );
         UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
     }
@@ -668,7 +675,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            1_MB
         );
 
         TCleanupQueueItem b1 {{1, 1, 4, 4_MB, 0, 0}, 111, {}};
@@ -714,7 +722,8 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
             100,    // maxBlobsPerUnit
             10,     // maxBlobsPerRange,
             1,      // compactionRangeCountPerRun
-            threadSafeState
+            threadSafeState,
+            1_MB
         );
 
         const ui32 blockIndex = 0;

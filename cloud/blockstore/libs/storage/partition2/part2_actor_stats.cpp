@@ -61,6 +61,21 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     PartCounters->Simple.StoredBytesCountToDiskSizeRatio.Set(
         std::round(State->GetStoredBytesCountToDiskSizeRatio() * 100.0));
 
+    PartCounters->Simple.HugeBlobsCount.Set(State->GetHugeBlobsCount());
+    PartCounters->Simple.NonHugeBlobsCount.Set(State->GetNonHugeBlobsCount());
+    PartCounters->Simple.L0BlobsCount.Set(State->GetL0BlobsCount());
+    PartCounters->Simple.L1BlobsCount.Set(State->GetL1BlobsCount());
+    PartCounters->Simple.L0HugeBlobsCount.Set(State->GetL0HugeBlobsCount());
+    PartCounters->Simple.L0NonHugeBlobsCount.Set(
+        State->GetL0NonHugeBlobsCount());
+    PartCounters->Simple.L1HugeBlobsCount.Set(State->GetL1HugeBlobsCount());
+    PartCounters->Simple.L1NonHugeBlobsCount.Set(
+        State->GetL1NonHugeBlobsCount());
+    PartCounters->Simple.L0BytesCount.Set(
+        State->GetL0BlocksCount() * State->GetBlockSize());
+    PartCounters->Simple.L1BytesCount.Set(
+        State->GetL1BlocksCount() * State->GetBlockSize());
+
     PartCounters->Simple.MixedBytesCount.Set(
         State->GetMixedBlocksCount() * State->GetBlockSize());
 

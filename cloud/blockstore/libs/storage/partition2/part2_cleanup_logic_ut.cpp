@@ -29,7 +29,8 @@ namespace {
 NProto::TPartitionMeta DefaultConfig(size_t channelCount, size_t blockCount)
 {
     NProto::TPartitionMeta meta;
-
+    meta.SetL0RangeSize(MaxBlocksCount);
+    meta.SetL1RangeSize(2 * MaxBlocksCount);
     auto& config = *meta.MutableConfig();
     config.SetBlockSize(DefaultBlockSize);
     config.SetBlocksCount(blockCount);
@@ -83,7 +84,8 @@ TPartitionState MakeState(size_t blockCount = 2048)
         100,           // maxBlobsPerUnit
         10,            // maxBlobsPerRange
         1,             // compactionRangeCountPerRun
-        std::move(threadSafeState));
+        std::move(threadSafeState),
+        4 * DefaultBlockSize);
 }
 
 NProto::TBlobMeta2 MakeMixedBlobMeta(
@@ -141,6 +143,8 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
             db.WriteCleanupQueue(setup.MixedBlobId, deletionCommitId);
 
             setup.MergedBlobId = executor.MakeBlobId(4);
+            setup.MergedBlobMeta.MutableMergedBlocks()->SetCommitId(
+                setup.MergedBlobId.CommitId());
             db.WriteMergedBlocks(
                 setup.MergedBlobId,
                 TBlockRange32::MakeClosedInterval(10, 13),
@@ -155,8 +159,10 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
 
     state.IncrementMixedBlocksCount(3);
     state.IncrementMixedBlobsCount(1);
+    state.IncrementBlobCountBySize(setup.MixedBlobId);
     state.IncrementMergedBlocksCount(4);
     state.IncrementMergedBlobsCount(1);
+    state.IncrementBlobCountBySize(setup.MergedBlobId);
 
     return setup;
 }
@@ -617,6 +623,8 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetHugeBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetNonHugeBlobsCount());
 
         executor.ReadTx(
             [&](TPartitionDatabase db)
@@ -681,6 +689,8 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetHugeBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetNonHugeBlobsCount());
 
         executor.ReadTx(
             [&](TPartitionDatabase db)
@@ -726,6 +736,8 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetHugeBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetNonHugeBlobsCount());
 
         // No blob metas were read from the database
         UNIT_ASSERT_VALUES_EQUAL(0, args.ReadBlobMetasCount);
@@ -779,6 +791,8 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         UNIT_ASSERT_VALUES_EQUAL(2, args.CleanupQueue.size());
         UNIT_ASSERT_VALUES_EQUAL(2, args.BlobsMeta.size());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetHugeBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetNonHugeBlobsCount());
         UNIT_ASSERT_VALUES_EQUAL(0, state.GetMixedBlocksCount());
 
         // No blob metas were read from the database

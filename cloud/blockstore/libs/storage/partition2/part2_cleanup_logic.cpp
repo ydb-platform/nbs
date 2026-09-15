@@ -314,6 +314,8 @@ void ExecuteCleanupTransaction(
 
     size_t mixedBlobsCount = 0;
     size_t mergedBlobsCount = 0;
+    size_t hugeBlobsCount = 0;
+    size_t nonHugeBlobsCount = 0;
 
     Y_ABORT_UNLESS(args.CleanupQueue.size() == args.BlobsMeta.size());
     for (size_t i = 0; i < args.CleanupQueue.size(); ++i) {
@@ -389,6 +391,17 @@ void ExecuteCleanupTransaction(
                 l0Blocks.GetBlocks(l0Blocks.BlocksSize() - 1));
 
             db.DeleteL0Blob(item.BlobId, blockRange);
+
+            state.DecrementL0BlobsCount(1);
+            if (!IsDeletionMarker(item.BlobId)) {
+                state.DecrementL0BlocksCount(
+                    item.BlobId.BlobSize() / state.GetBlockSize());
+                if (state.IsHugeBlob(item.BlobId)) {
+                    state.DecrementL0HugeBlobsCount(1);
+                } else {
+                    state.DecrementL0NonHugeBlobsCount(1);
+                }
+            }
         } else if (blobMeta.HasL1Blocks()) {
             const auto& l1Blocks = blobMeta.GetL1Blocks();
             const auto blockRange = TBlockRange32::MakeClosedInterval(
@@ -396,6 +409,17 @@ void ExecuteCleanupTransaction(
                 l1Blocks.GetBlocks(l1Blocks.BlocksSize() - 1));
 
             db.DeleteL1Blob(item.BlobId, blockRange);
+
+            state.DecrementL1BlobsCount(1);
+            if (!IsDeletionMarker(item.BlobId)) {
+                state.DecrementL1BlocksCount(
+                    item.BlobId.BlobSize() / state.GetBlockSize());
+                if (state.IsHugeBlob(item.BlobId)) {
+                    state.DecrementL1HugeBlobsCount(1);
+                } else {
+                    state.DecrementL1NonHugeBlobsCount(1);
+                }
+            }
         }
 
         LOG_DEBUG(
@@ -412,12 +436,19 @@ void ExecuteCleanupTransaction(
 
         if (!IsDeletionMarker(item.BlobId)) {
             db.WriteGarbageBlob(item.BlobId);
+            if (state.IsHugeBlob(item.BlobId)) {
+                ++hugeBlobsCount;
+            } else {
+                ++nonHugeBlobsCount;
+            }
         }
     }
 
     // Updating counters
     state.DecrementMixedBlobsCount(mixedBlobsCount);
     state.DecrementMergedBlobsCount(mergedBlobsCount);
+    state.DecrementHugeBlobsCount(hugeBlobsCount);
+    state.DecrementNonHugeBlobsCount(nonHugeBlobsCount);
 
     db.WriteMeta(state.GetMeta());
 }

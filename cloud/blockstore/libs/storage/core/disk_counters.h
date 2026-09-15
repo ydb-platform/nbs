@@ -133,6 +133,36 @@ struct TSimpleDiskCounters
         ECounterExpirationPolicy::Permanent};
 
     // BlobStorage based
+    TCounter HugeBlobsCount{EPublishingPolicy::Repl,
+                            TSimpleCounter::ECounterType::Generic,
+                            ECounterExpirationPolicy::Permanent};
+    TCounter NonHugeBlobsCount{EPublishingPolicy::Repl,
+                               TSimpleCounter::ECounterType::Generic,
+                               ECounterExpirationPolicy::Permanent};
+    TCounter L0BlobsCount{EPublishingPolicy::Repl,
+                          TSimpleCounter::ECounterType::Generic,
+                          ECounterExpirationPolicy::Permanent};
+    TCounter L1BlobsCount{EPublishingPolicy::Repl,
+                          TSimpleCounter::ECounterType::Generic,
+                          ECounterExpirationPolicy::Permanent};
+    TCounter L0BytesCount{EPublishingPolicy::Repl,
+                          TSimpleCounter::ECounterType::Generic,
+                          ECounterExpirationPolicy::Permanent};
+    TCounter L1BytesCount{EPublishingPolicy::Repl,
+                          TSimpleCounter::ECounterType::Generic,
+                          ECounterExpirationPolicy::Permanent};
+    TCounter L0HugeBlobsCount{EPublishingPolicy::Repl,
+                              TSimpleCounter::ECounterType::Generic,
+                              ECounterExpirationPolicy::Permanent};
+    TCounter L0NonHugeBlobsCount{EPublishingPolicy::Repl,
+                                 TSimpleCounter::ECounterType::Generic,
+                                 ECounterExpirationPolicy::Permanent};
+    TCounter L1HugeBlobsCount{EPublishingPolicy::Repl,
+                              TSimpleCounter::ECounterType::Generic,
+                              ECounterExpirationPolicy::Permanent};
+    TCounter L1NonHugeBlobsCount{EPublishingPolicy::Repl,
+                                 TSimpleCounter::ECounterType::Generic,
+                                 ECounterExpirationPolicy::Permanent};
     TCounter MixedBytesCount{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
@@ -261,9 +291,19 @@ struct TSimpleDiskCounters
         ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TSimpleDiskCounters::HugeBlobsCount>(),
+        MakeMeta<&TSimpleDiskCounters::NonHugeBlobsCount>(),
         MakeMeta<&TSimpleDiskCounters::BytesCount>(),
         MakeMeta<&TSimpleDiskCounters::IORequestsInFlight>(),
 
+        MakeMeta<&TSimpleDiskCounters::L0BlobsCount>(),
+        MakeMeta<&TSimpleDiskCounters::L1BlobsCount>(),
+        MakeMeta<&TSimpleDiskCounters::L0BytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::L1BytesCount>(),
+        MakeMeta<&TSimpleDiskCounters::L0HugeBlobsCount>(),
+        MakeMeta<&TSimpleDiskCounters::L0NonHugeBlobsCount>(),
+        MakeMeta<&TSimpleDiskCounters::L1HugeBlobsCount>(),
+        MakeMeta<&TSimpleDiskCounters::L1NonHugeBlobsCount>(),
         MakeMeta<&TSimpleDiskCounters::MixedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::MergedBytesCount>(),
         MakeMeta<&TSimpleDiskCounters::FreshBytesCount>(),
@@ -285,7 +325,8 @@ struct TSimpleDiskCounters
         MakeMeta<&TSimpleDiskCounters::CompactionIgnoringZeroedScore>(),
         MakeMeta<&TSimpleDiskCounters::ChannelHistorySize>(),
         MakeMeta<&TSimpleDiskCounters::CompactionRangeCountPerRun>(),
-        MakeMeta<&TSimpleDiskCounters::GarbageCompactionExecTimePerSecondLimit>(),
+        MakeMeta<
+            &TSimpleDiskCounters::GarbageCompactionExecTimePerSecondLimit>(),
         MakeMeta<&TSimpleDiskCounters::UnconfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ConfirmedBlobCount>(),
         MakeMeta<&TSimpleDiskCounters::ReadBlobDeadlineCount>(),
@@ -309,6 +350,12 @@ struct TCumulativeDiskCounters
     using TMeta = TMemberMeta<TCounter TCumulativeDiskCounters::*>;
 
     // BlobStorage based
+    TCounter HugeBlobsWritten{EPublishingPolicy::Repl,
+                              TCumulativeCounter::ECounterType::Generic,
+                              ECounterExpirationPolicy::Permanent};
+    TCounter NonHugeBlobsWritten{EPublishingPolicy::Repl,
+                                 TCumulativeCounter::ECounterType::Generic,
+                                 ECounterExpirationPolicy::Permanent};
     TCounter BytesWritten{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
@@ -417,6 +464,8 @@ struct TCumulativeDiskCounters
         ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TCumulativeDiskCounters::HugeBlobsWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::NonHugeBlobsWritten>(),
         MakeMeta<&TCumulativeDiskCounters::BytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::BytesRead>(),
         MakeMeta<&TCumulativeDiskCounters::SysBytesWritten>(),
@@ -433,7 +482,8 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionByIgnoringZeroedPerRange>(),
+        MakeMeta<
+            &TCumulativeDiskCounters::CompactionByIgnoringZeroedPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByIgnoringZeroedPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionTxTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionReadBlobsTime>(),

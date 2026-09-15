@@ -433,6 +433,7 @@ private:
 
         // update counters
         State.IncrementMixedBlobsCount(1);
+        State.IncrementBlobCountBySize(blob.BlobId);
         if (!IsDeletionMarker(blob.BlobId)) {
             State.IncrementMixedBlocksCount(blob.Blocks.size());
         }
@@ -504,6 +505,7 @@ private:
 
         // update counters
         State.IncrementMergedBlobsCount(1);
+        State.IncrementBlobCountBySize(blob.BlobId);
         if (!IsDeletionMarker(blob.BlobId)) {
             State.IncrementMergedBlocksCount(blob.BlockRange.Size() - skipped);
         }
@@ -610,6 +612,7 @@ private:
 
         // update counters
         State.IncrementMixedBlobsCount(1);
+        State.IncrementBlobCountBySize(blob.BlobId);
         if (!IsDeletionMarker(blob.BlobId)) {
             State.IncrementMixedBlocksCount(blob.Blocks.size());
         }
@@ -679,6 +682,30 @@ private:
         if constexpr (TLevel == 0) {
             for (size_t i = 0; i < blob.BlockIndices.size(); ++i) {
                 State.DeleteFreshBlock(blob.BlockIndices[i], blob.CommitIds[i]);
+            }
+        }
+
+        // Update counters alongside the other blob index types.
+        State.IncrementBlobCountBySize(blob.BlobId);
+        if constexpr (TLevel == 0) {
+            State.IncrementL0BlobsCount(1);
+            if (!IsDeletionMarker(blob.BlobId)) {
+                State.IncrementL0BlocksCount(blob.BlockIndices.size());
+                if (State.IsHugeBlob(blob.BlobId)) {
+                    State.IncrementL0HugeBlobsCount(1);
+                } else {
+                    State.IncrementL0NonHugeBlobsCount(1);
+                }
+            }
+        } else {
+            State.IncrementL1BlobsCount(1);
+            if (!IsDeletionMarker(blob.BlobId)) {
+                State.IncrementL1BlocksCount(blob.BlockIndices.size());
+                if (State.IsHugeBlob(blob.BlobId)) {
+                    State.IncrementL1HugeBlobsCount(1);
+                } else {
+                    State.IncrementL1NonHugeBlobsCount(1);
+                }
             }
         }
     }

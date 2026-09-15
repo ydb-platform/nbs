@@ -3,9 +3,10 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
@@ -440,13 +441,22 @@ void TIOCompanion::HandleWriteBlobCompleted(
                 msg->BlobId.BlobSize()));
     }
 
-    PartCounters->Access([&](auto& counters) {
-        counters->RequestCounters.WriteBlob.AddRequest(
-            msg->RequestTime.MicroSeconds(),
-            msg->BlobId.BlobSize(),
-            1,
-            ChannelsState.GetChannelDataKind(channel));
-    });
+    PartCounters->Access(
+        [&](auto& counters)
+        {
+            if (SUCCEEDED(msg->GetStatus())) {
+                const auto threshold = GetWriteBlobThreshold(
+                    *Config, PartitionConfig.GetStorageMediaKind());
+                auto& counter = msg->BlobId.BlobSize() >= threshold
+                                    ? counters->Cumulative.HugeBlobsWritten
+                                    : counters->Cumulative.NonHugeBlobsWritten;
+                counter.Increment(1);
+            }
+
+            counters->RequestCounters.WriteBlob.AddRequest(
+                msg->RequestTime.MicroSeconds(), msg->BlobId.BlobSize(), 1,
+                ChannelsState.GetChannelDataKind(channel));
+        });
 
     ChannelsState.CompleteIORequest(channel);
 

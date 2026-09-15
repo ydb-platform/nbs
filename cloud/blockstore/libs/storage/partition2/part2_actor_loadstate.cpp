@@ -271,7 +271,8 @@ void TPartitionActor::CompleteLoadState(
         maxBlobsPerUnit,
         maxBlobsPerRange,
         Config->GetCompactionRangeCountPerRun(),
-        SharedState);
+        SharedState,
+        GetWriteBlobThreshold(*Config, mediaKind));
 
     CreateFreshBlocksCompanionClient();
 

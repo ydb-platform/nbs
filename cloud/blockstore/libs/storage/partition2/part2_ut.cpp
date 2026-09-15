@@ -7437,6 +7437,101 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(1, statusResponse->Record.GetTotal());
     }
 
+    Y_UNIT_TEST(ShouldCountHugeAndNonHugeBlobs)
+    {
+        for (const auto mediaKind: {NCloud::NProto::STORAGE_MEDIA_HDD,
+                                    NCloud::NProto::STORAGE_MEDIA_SSD})
+        {
+            auto config = DefaultConfig(4_MB);
+            config.SetWriteBlobThreshold(3 * DefaultBlockSize);
+            config.SetWriteBlobThresholdSSD(2 * DefaultBlockSize);
+            config.SetFreshChannelWriteRequestsEnabled(true);
+            config.SetSSDMaxBlobsPerRange(Max<ui32>());
+            config.SetHDDMaxBlobsPerRange(Max<ui32>());
+            config.SetCompactionGarbageThreshold(Max<ui32>());
+            config.SetCompactionRangeGarbageThreshold(Max<ui32>());
+            config.SetCleanupThreshold(Max<ui32>());
+
+            TTestPartitionInfo partitionInfo;
+            partitionInfo.MediaKind = mediaKind;
+            auto runtime =
+                PrepareTestActorRuntime(config, 1024, {}, partitionInfo);
+            TPartitionClient partition(*runtime);
+            partition.WaitReady();
+
+            ui64 hugeBlobs = 0;
+            ui64 nonHugeBlobs = 0;
+            ui64 hugeBlobsWritten = 0;
+            ui64 nonHugeBlobsWritten = 0;
+            runtime->SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                        TEvStatsService::EvVolumePartCounters)
+                    {
+                        const auto& counters =
+                            *event
+                                 ->Get<TEvStatsService::TEvVolumePartCounters>()
+                                 ->DiskCounters;
+                        hugeBlobs = counters.Simple.HugeBlobsCount.Value;
+                        nonHugeBlobs = counters.Simple.NonHugeBlobsCount.Value;
+                        hugeBlobsWritten +=
+                            counters.Cumulative.HugeBlobsWritten.Value;
+                        nonHugeBlobsWritten +=
+                            counters.Cumulative.NonHugeBlobsWritten.Value;
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+
+            auto checkCounts = [&](ui64 expectedHuge, ui64 expectedNonHuge)
+            {
+                partition.SendToPipe(
+                    std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+                TDispatchOptions options;
+                options.FinalEvents.emplace_back(
+                    TEvStatsService::EvVolumePartCounters);
+                runtime->DispatchEvents(options);
+                UNIT_ASSERT_VALUES_EQUAL(expectedHuge, hugeBlobs);
+                UNIT_ASSERT_VALUES_EQUAL(expectedNonHuge, nonHugeBlobs);
+            };
+
+            const ui32 thresholdBlocks =
+                mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ? 2 : 3;
+
+            // Both the fresh-channel write and its flushed L0 blob are below
+            // the threshold. Only the L0 blob is part of the stored index.
+            partition.WriteBlocks(
+                TBlockRange32::WithLength(0, thresholdBlocks - 1));
+            partition.Flush();
+            checkCounts(0, 1);
+            UNIT_ASSERT_VALUES_EQUAL(0, hugeBlobsWritten);
+            UNIT_ASSERT_VALUES_EQUAL(2, nonHugeBlobsWritten);
+
+            // Batch small writes into flush blobs at and above the threshold.
+            // The fresh-channel blobs are non-huge; the flushed blobs are huge.
+            for (ui32 i = 0; i < thresholdBlocks; ++i) {
+                partition.WriteBlocks(10 + i);
+            }
+            partition.Flush();
+            checkCounts(1, 1);
+            UNIT_ASSERT_VALUES_EQUAL(1, hugeBlobsWritten);
+            UNIT_ASSERT_VALUES_EQUAL(2 + thresholdBlocks, nonHugeBlobsWritten);
+
+            for (ui32 i = 0; i <= thresholdBlocks; ++i) {
+                partition.WriteBlocks(20 + i);
+            }
+            partition.Flush();
+            checkCounts(2, 1);
+            UNIT_ASSERT_VALUES_EQUAL(2, hugeBlobsWritten);
+            UNIT_ASSERT_VALUES_EQUAL(3 + 2 * thresholdBlocks,
+                                     nonHugeBlobsWritten);
+
+            partition.RebootTablet();
+            partition.WaitReady();
+            checkCounts(2, 1);
+        }
+    }
+
     Y_UNIT_TEST(ShouldUseWriteBlobThreshold)
     {
         auto config = DefaultConfig();

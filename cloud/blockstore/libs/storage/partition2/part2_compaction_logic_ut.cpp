@@ -84,7 +84,8 @@ TPartitionState MakeState(size_t blockCount = 2048)
         100,           // maxBlobsPerUnit
         10,            // maxBlobsPerRange
         1,             // compactionRangeCountPerRun
-        std::move(threadSafeState));
+        std::move(threadSafeState),
+        1_MB);
 }
 
 std::shared_ptr<TStorageConfig> MakeStorageConfig(ui64 diskPrefixLength = 0)

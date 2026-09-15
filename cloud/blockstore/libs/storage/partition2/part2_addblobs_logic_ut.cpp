@@ -1,9 +1,12 @@
 #include "part2_addblobs_logic.h"
 
+#include "part2_cleanup_logic.h"
+
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
+#include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 
 #include <cloud/storage/core/libs/features/features_config.h>
@@ -78,7 +81,8 @@ TPartitionState MakeState(size_t blockCount = 64)
         100,           // maxBlobsPerUnit
         10,            // maxBlobsPerRange
         1,             // compactionRangeCountPerRun
-        std::move(threadSafeState));
+        std::move(threadSafeState),
+        2 * DefaultBlockSize);
 }
 
 TTxPartition::TAddBlobs MakeArgs(
@@ -182,6 +186,115 @@ TMaybe<TBlockMask> ReadBlockMask(TTestExecutor& executor,
 
 Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
 {
+    Y_UNIT_TEST(ShouldCountAndCleanupLevelIndexBlobsBySize)
+    {
+        for (const bool l0: {true, false}) {
+            auto state = MakeState();
+            TTestExecutor executor;
+            TTestEnv env;
+            executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+            const ui64 commitId = MakeCommitId(0, 10);
+            const ui64 deletionCommitId = MakeCommitId(0, 50);
+            TVector<TAddLevelIndexBlob> blobs;
+            TVector<TOwningFreshBlock> freshBlocks;
+            ui32 blockIndex = 0;
+            // Below, equal to, above the threshold, and a deletion marker.
+            for (const ui32 blocks: {1, 2, 3, 0}) {
+                TVector<ui32> indices;
+                TVector<ui64> commits;
+                for (ui32 i = 0; i < Max(1u, blocks); ++i) {
+                    indices.push_back(blockIndex);
+                    commits.push_back(commitId);
+                    freshBlocks.push_back({{blockIndex++, commitId, false},
+                                           blocks ? "data" : "",
+                                           {}});
+                }
+                blobs.emplace_back(TPartialBlobId(0, 10, 3,
+                                                  blocks * DefaultBlockSize,
+                                                  blobs.size(), 0),
+                                   std::move(indices), std::move(commits),
+                                   TVector<ui32>{});
+            }
+            if (l0) {
+                state.InitFreshBlocks(freshBlocks);
+                state.IncrementUnflushedFreshBlocksFromChannelCount(
+                    freshBlocks.size());
+            }
+
+            TTxPartition::TAddBlobs args(
+                MakeIntrusive<TRequestInfo>(), commitId,
+                {},
+                {},
+                {}, l0 ? blobs : TVector<TAddLevelIndexBlob>{},
+                l0 ? TVector<TAddLevelIndexBlob>{} : blobs, ADD_FLUSH_RESULT,
+                {},
+                {},
+                {},
+                {});
+            RunExecute(executor, state, args, deletionCommitId);
+
+            auto checkCounts =
+                [&](ui64 total, ui64 blocks, ui64 huge, ui64 nonHuge)
+            {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    total,
+                    l0 ? state.GetL0BlobsCount() : state.GetL1BlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    blocks,
+                    l0 ? state.GetL0BlocksCount() : state.GetL1BlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    huge,
+                    l0 ? state.GetL0HugeBlobsCount()
+                       : state.GetL1HugeBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    nonHuge,
+                    l0 ? state.GetL0NonHugeBlobsCount()
+                       : state.GetL1NonHugeBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(huge, state.GetHugeBlobsCount());
+                UNIT_ASSERT_VALUES_EQUAL(nonHuge, state.GetNonHugeBlobsCount());
+                executor.ReadTx(
+                    [&](TPartitionDatabase db)
+                    {
+                        TMaybe<NProto::TPartitionMeta> meta;
+                        UNIT_ASSERT(db.ReadMeta(meta));
+                        UNIT_ASSERT(meta.Defined());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            state.GetStats().SerializeAsString(),
+                            meta->GetStats().SerializeAsString());
+                    });
+            };
+            checkCounts(4, 6, 2, 1);
+
+            TVector<TCleanupQueueItem> queue;
+            for (const auto& blob: blobs) {
+                TCleanupQueueItem item{blob.BlobId, deletionCommitId, {}};
+                queue.push_back(item);
+                UNIT_ASSERT(state.GetCleanupQueue().Add(item));
+            }
+            TTxPartition::TCleanup cleanupArgs(MakeIntrusive<TRequestInfo>(),
+                                               deletionCommitId, false, false,
+                                               queue);
+            executor.ReadTx(
+                [&](TPartitionDatabase db)
+                {
+                    UNIT_ASSERT(PrepareCleanupTransaction(
+                        TTestExecutor::TabletId, "test-disk", db, cleanupArgs));
+                });
+            executor.WriteTx(
+                [&](TPartitionDatabase db)
+                {
+                    ExecuteCleanupTransaction(
+                        env.GetRuntime().GetActorSystem(0),
+                        TLogTitle(GetCycleCount(),
+                                  TLogTitle::TPartition{TTestExecutor::TabletId,
+                                                        "test-disk", 0, 1, 0}),
+                        TTestExecutor::TabletId, db, cleanupArgs, state);
+                });
+            checkCounts(0, 0, 0, 0);
+        }
+    }
+
     Y_UNIT_TEST(ShouldAddMixedAndMergedWriteResults)
     {
         auto state = MakeState();
@@ -568,6 +681,17 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
             {},   // mergedBlobCompactionInfos
             EPromoteCompactionSource::L0);
         RunExecute(executor, state, promoteArgs, MakeCommitId(0, 50));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetL0BlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetL0BlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetL0HugeBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetL0NonHugeBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetL1BlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetL1BlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetL1HugeBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetL1NonHugeBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetHugeBlobsCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetNonHugeBlobsCount());
 
         UNIT_ASSERT(compactionMapL0.GetCompactions().empty());
         const auto l0Stat = compactionMapL0.GetCompactionMap().Get(0);

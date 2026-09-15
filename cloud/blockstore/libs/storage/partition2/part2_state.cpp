@@ -89,7 +89,8 @@ TPartitionState::TPartitionState(
     ui32 maxBlobsPerUnit,
     ui32 maxBlobsPerRange,
     ui32 compactionRangeCountPerRun,
-    TPartitionThreadSafeStatePtr threadSafeState)
+    TPartitionThreadSafeStatePtr threadSafeState,
+    ui32 writeBlobThreshold)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -107,6 +108,7 @@ TPartitionState::TPartitionState(
     , CompactionPolicy(compactionPolicy)
     , BPConfig(bpConfig)
     , FreeSpaceConfig(freeSpaceConfig)
+    , WriteBlobThreshold(writeBlobThreshold)
     , ThreadSafeState(std::move(threadSafeState))
     , Config(*Meta.MutableConfig())
     , MixedIndexCache(mixedIndexCacheSize, &MixedIndexCacheAllocator)
@@ -420,6 +422,22 @@ bool TPartitionState::FindBlocksInL1Index(
 BLOCKSTORE_PARTITION2_PROTO_COUNTERS(BLOCKSTORE_PARTITION2_IMPLEMENT_COUNTER)
 
 #undef BLOCKSTORE_PARTITION2_IMPLEMENT_COUNTER
+
+bool TPartitionState::IsHugeBlob(const TPartialBlobId& blobId) const
+{
+    return blobId.BlobSize() >= WriteBlobThreshold;
+}
+
+void TPartitionState::IncrementBlobCountBySize(const TPartialBlobId& blobId)
+{
+    if (!IsDeletionMarker(blobId)) {
+        if (IsHugeBlob(blobId)) {
+            IncrementHugeBlobsCount(1);
+        } else {
+            IncrementNonHugeBlobsCount(1);
+        }
+    }
+}
 
 void TPartitionState::AddFreshBlob(ui64 commitId, ui64 blobSize)
 {

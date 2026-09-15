@@ -94,7 +94,6 @@ private:
     TCommitQueue CommitQueue;
     TCommitQueueWithCallback FreshWritesCommitQueue;
 
-    TCommitQueueWithCallback FreshWritesCommitQueue;
     TCheckpointsInFlight CheckpointsInFlight;
 
     std::atomic<ui64> FreshBlocksInFlight = 0;

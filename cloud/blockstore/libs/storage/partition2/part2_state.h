@@ -60,13 +60,24 @@ using ::NCloud::NBlockStore::NStorage::TPartitionThreadSafeState;
 // FreshBlocksFromChannel to support fresh channel
 // write requests, since there is no Tx on WriteFreshBlock to channel.
 
-#define BLOCKSTORE_PARTITION2_PROTO_COUNTERS(xxx)                               \
+#define BLOCKSTORE_PARTITION2_PROTO_COUNTERS(xxx)                              \
     xxx(MixedBlocksCount)                                                      \
     xxx(MergedBlocksCount)                                                     \
     xxx(MixedBlobsCount)                                                       \
     xxx(MergedBlobsCount)                                                      \
+    xxx(HugeBlobsCount)                                                        \
+    xxx(NonHugeBlobsCount)                                                     \
+    xxx(L0BlobsCount)                                                          \
+    xxx(L1BlobsCount)                                                          \
+    xxx(L0BlocksCount)                                                         \
+    xxx(L1BlocksCount)                                                         \
+    xxx(L0HugeBlobsCount)                                                      \
+    xxx(L0NonHugeBlobsCount)                                                   \
+    xxx(L1HugeBlobsCount)                                                      \
+    xxx(L1NonHugeBlobsCount)                                                   \
     xxx(UsedBlocksCount)                                                       \
-    xxx(LogicalUsedBlocksCount)                                                \
+    xxx(LogicalUsedBlocksCount)
+
 // BLOCKSTORE_PARTITION2_PROTO_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -296,6 +307,7 @@ private:
     const ICompactionPolicyPtr CompactionPolicy;
     const TBackpressureFeaturesConfig BPConfig;
     const TFreeSpaceConfig FreeSpaceConfig;
+    const ui32 WriteBlobThreshold;
 
     TPartitionThreadSafeStatePtr ThreadSafeState;
 
@@ -318,7 +330,8 @@ public:
         ui32 maxBlobsPerUnit,
         ui32 maxBLobsPerRange,
         ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState);
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui32 writeBlobThreshold);
 
 private:
     bool LoadStateFinished = false;
@@ -1270,6 +1283,9 @@ public:
     BLOCKSTORE_PARTITION2_PROTO_COUNTERS(BLOCKSTORE_PARTITION2_DECLARE_COUNTER)
 
 #undef BLOCKSTORE_PARTITION2_DECLARE_COUNTER
+
+    bool IsHugeBlob(const TPartialBlobId& blobId) const;
+    void IncrementBlobCountBySize(const TPartialBlobId& blobId);
 
     template <typename T>
     void UpdateStats(T&& update)

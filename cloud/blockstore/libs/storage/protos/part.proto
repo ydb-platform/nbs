@@ -131,6 +131,22 @@ message TPartitionStats
     // Triggers counters for compaction by garbage ignoring zeroed blocks.
     uint64 CompactionByIgnoringZeroedPerRange = 24;
     uint64 CompactionByIgnoringZeroedPerDisk = 25;
+
+    // Indexed data blobs, excluding deletion markers (partition2).
+    uint64 HugeBlobsCount = 26;
+    uint64 NonHugeBlobsCount = 27;
+
+    // Level index blob totals include deletion markers, like Mixed/Merged.
+    uint64 L0BlobsCount = 28;
+    uint64 L1BlobsCount = 29;
+    uint64 L0BlocksCount = 30;
+    uint64 L1BlocksCount = 31;
+
+    // Level index data blobs, excluding deletion markers.
+    uint64 L0HugeBlobsCount = 32;
+    uint64 L0NonHugeBlobsCount = 33;
+    uint64 L1HugeBlobsCount = 34;
+    uint64 L1NonHugeBlobsCount = 35;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
