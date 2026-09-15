@@ -147,7 +147,7 @@ STFUNC(TReadPathDescriptionBackupActor<TResponse>::StateWork)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TSSProxyFallbackActor::TSSProxyFallbackActor(TStorageConfigPtr config)
+TSSProxyFallbackActor::TSSProxyFallbackActor(TStorageConfigConstPtr config)
     : Config(std::move(config))
 {}
 

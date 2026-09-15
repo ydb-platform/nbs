@@ -365,8 +365,8 @@ ProcessConfigsAfterInitialization(
 ////////////////////////////////////////////////////////////////////////////////
 
 TDiskAgentState::TDiskAgentState(
-        TStorageConfigPtr storageConfig,
-        TDiskAgentConfigPtr agentConfig,
+        TStorageConfigConstPtr storageConfig,
+        TDiskAgentConfigConstPtr agentConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,

@@ -7,9 +7,11 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/config
     cloud/blockstore/libs/cells/impl
     cloud/blockstore/libs/client
     cloud/blockstore/libs/common
+    cloud/blockstore/libs/config
     cloud/blockstore/libs/daemon/common
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/discovery

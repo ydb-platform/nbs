@@ -32,14 +32,14 @@ class TSSProxyActor final
     };
 
 private:
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     std::unique_ptr<NKikimr::NTabletPipe::IClientCache> ClientCache;
     NActors::TActorId PathDescriptionBackup;
 
     THashMap<ui64, TSchemeShardState> SchemeShardStates;
 
 public:
-    explicit TSSProxyActor(TStorageConfigPtr config);
+    explicit TSSProxyActor(TStorageConfigConstPtr config);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

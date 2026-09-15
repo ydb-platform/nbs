@@ -47,14 +47,14 @@ class TDescribeSchemeActor final
 private:
     const TRequestInfoPtr RequestInfo;
 
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const TString Path;
     TActorId PathDescriptionBackup;
 
 public:
     TDescribeSchemeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TString path,
         TActorId pathDescriptionBackup);
 
@@ -89,7 +89,7 @@ private:
 
 TDescribeSchemeActor::TDescribeSchemeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TString path,
         TActorId pathDescriptionBackup)
     : RequestInfo(std::move(requestInfo))

@@ -25,7 +25,7 @@ private:
     const TActorId Sender;
     const ui64 Cookie;
 
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const TString DiskId;
     const TMountToken PublicToken;
     const ui64 TokenVersion;
@@ -34,7 +34,7 @@ public:
     TAssignVolumeActor(
         const TActorId& sender,
         ui64 cookie,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TString diskId,
         TMountToken publicToken,
         ui64 tokenVersion);
@@ -61,7 +61,7 @@ private:
 TAssignVolumeActor::TAssignVolumeActor(
         const TActorId& sender,
         ui64 cookie,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TString diskId,
         TMountToken publicToken,
         ui64 tokenVersion)

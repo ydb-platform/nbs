@@ -32,7 +32,7 @@ private:
     const TActorId Sender;
     const ui64 Cookie;
 
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
 
     const NProto::TResizeVolumeRequestFlags Flags;
     const NProto::TVolumePerformanceProfile PerformanceProfile;
@@ -55,19 +55,19 @@ public:
     TAlterVolumeActor(
         const TActorId& sender,
         ui64 cookie,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         const NProto::TResizeVolumeRequest& request);
 
     TAlterVolumeActor(
         const TActorId& sender,
         ui64 cookie,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         const NProto::TAlterVolumeRequest& request);
 
     TAlterVolumeActor(
         const TActorId& sender,
         ui64 cookie,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         const NPrivateProto::TSetupChannelsRequest& request);
 
     void Bootstrap(const TActorContext& ctx);
@@ -167,7 +167,7 @@ private:
 TAlterVolumeActor::TAlterVolumeActor(
         const TActorId& sender,
         ui64 cookie,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         const NProto::TResizeVolumeRequest& request)
     : Sender(sender)
     , Cookie(cookie)
@@ -183,7 +183,7 @@ TAlterVolumeActor::TAlterVolumeActor(
 TAlterVolumeActor::TAlterVolumeActor(
         const TActorId& sender,
         ui64 cookie,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         const NProto::TAlterVolumeRequest& request)
     : Sender(sender)
     , Cookie(cookie)
@@ -203,7 +203,7 @@ TAlterVolumeActor::TAlterVolumeActor(
 TAlterVolumeActor::TAlterVolumeActor(
         const TActorId& sender,
         ui64 cookie,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         const NPrivateProto::TSetupChannelsRequest& request)
     : Sender(sender)
     , Cookie(cookie)
@@ -678,7 +678,7 @@ void TServiceActor::HandleResizeVolume(
 void RegisterAlterVolumeActor(
     const TActorId& sender,
     ui64 cookie,
-    TStorageConfigPtr config,
+    TStorageConfigConstPtr config,
     const NPrivateProto::TSetupChannelsRequest& request,
     const NActors::TActorContext& ctx)
 {

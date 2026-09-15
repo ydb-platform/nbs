@@ -35,7 +35,7 @@ class TFreshBlocksWriterActor final
     friend TIOCompanionClient;
 
 private:
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
     const TVolumeLabelsConstPtr VolumeLabels;
     const EStorageAccessMode StorageAccessMode;
@@ -43,7 +43,7 @@ private:
     const NActors::TActorId PartitionActorId;
     const NBlockCodecs::ICodec* BlobCodec;
     const NActors::TActorId VolumeActorId;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IBlockDigestGeneratorPtr BlockDigestGenerator;
 
     IProfileLogPtr ProfileLog;
@@ -75,7 +75,7 @@ private:
 
 public:
     TFreshBlocksWriterActor(
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         NProto::TPartitionConfig partitionConfig,
         EStorageAccessMode storageAccessMode,
         ui64 partitionTabletId,
@@ -83,7 +83,7 @@ public:
         ui32 siblingCount,
         NActors::TActorId partitionActorId,
         NActors::TActorId volumeActorId,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         IProfileLogPtr profileLog);
 

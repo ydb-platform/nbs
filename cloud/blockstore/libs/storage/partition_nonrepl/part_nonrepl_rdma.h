@@ -15,8 +15,8 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::IActorPtr CreateNonreplicatedPartitionRdma(
-    TStorageConfigPtr config,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TStorageConfigConstPtr config,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     TNonreplicatedPartitionConfigPtr partConfig,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     NActors::TActorId volumeActorId,

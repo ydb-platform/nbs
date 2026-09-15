@@ -40,8 +40,8 @@ private:
     };
 
 private:
-    const TStorageConfigPtr StorageConfig;
-    const TDiskAgentConfigPtr AgentConfig;
+    const TStorageConfigConstPtr StorageConfig;
+    const TDiskAgentConfigConstPtr AgentConfig;
     const NSpdk::ISpdkEnvPtr Spdk;
     const ICachingAllocatorPtr Allocator;
     const IStorageProviderPtr StorageProvider;
@@ -71,8 +71,8 @@ private:
 
 public:
     TDiskAgentState(
-        TStorageConfigPtr storageConfig,
-        TDiskAgentConfigPtr agentConfig,
+        TStorageConfigConstPtr storageConfig,
+        TDiskAgentConfigConstPtr agentConfig,
         NSpdk::ISpdkEnvPtr spdk,
         ICachingAllocatorPtr allocator,
         IStorageProviderPtr storageProvider,

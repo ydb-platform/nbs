@@ -60,11 +60,20 @@ struct TConfigInitializerCommon
     virtual bool GetUseNonreplicatedRdmaActor() const = 0;
     virtual TDuration GetInactiveClientsTimeout() const = 0;
 
+    // Return the YAML mode captured by InitServerConfig, or its default before
+    // initialization.
+    bool GetDynamicYamlConfigurationStaticallyEnabled() const;
+
 protected:
     std::optional<NJson::TJsonValue> ReadJsonFile(const TString& filename);
 
     void SetupDiscoveryPorts(NProto::TDiscoveryServiceConfig& discoveryConfig) const;
     void SetupServerPorts(NProto::TServerConfig& config) const;
+
+private:
+    // YAML mode from the local ServerConfig, captured by InitServerConfig.
+    // Holds the default before initialization; CMS does not change this value.
+    bool DynamicYamlConfigurationStaticallyEnabled;
 };
 
 }   // namespace NCloud::NBlockStore::NServer

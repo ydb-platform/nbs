@@ -22,7 +22,7 @@ class TModifyVolumeActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const EOpType OpType;
     const TString DiskId;
 
@@ -36,7 +36,7 @@ private:
 public:
     TModifyVolumeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         EOpType opType,
         TString diskId,
         TString newMountToken,
@@ -59,7 +59,7 @@ private:
 
 TModifyVolumeActor::TModifyVolumeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         EOpType opType,
         TString diskId,
         TString newMountToken,
