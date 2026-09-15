@@ -211,6 +211,15 @@ message TCreateNodeRequest
     // The QuotaId this new node should inherit, resolved by whichever tablet
     // owns the real parent and carried along for the cross-shard operation.
     uint32 QuotaId = 20;
+
+    // POSIX ACLs inherited from the parent. These fields are resolved by the
+    // tablet that owns the parent directory and carried to the shard that
+    // creates the actual node.
+    bytes ParentDefaultAcl = 21;
+
+    // POSIX ACL that is an intersection of the parent's directory ACL and
+    // the requested mode.
+    bytes ChildAccessAcl = 22;
 }
 
 message TCreateNodeResponse

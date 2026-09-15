@@ -1,6 +1,7 @@
 #include "tablet_actor.h"
 
 #include "helpers.h"
+#include "model/xattr_acl_helpers.h"
 
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
@@ -89,6 +90,23 @@ void InitAttrs(NProto::TNode& attrs, const NProto::TCreateNodeRequest& request)
     }
 
     attrs.SetQuotaId(request.GetQuotaId());
+}
+
+void SetRequestMode(NProto::TCreateNodeRequest& request, ui32 mode)
+{
+    if (request.HasDirectory()) {
+        request.MutableDirectory()->SetMode(mode);
+    } else if (request.HasFile()) {
+        request.MutableFile()->SetMode(mode);
+    } else if (request.HasSocket()) {
+        request.MutableSocket()->SetMode(mode);
+    } else if (request.HasFifo()) {
+        request.MutableFifo()->SetMode(mode);
+    } else if (request.HasCharDevice()) {
+        request.MutableCharDevice()->SetMode(mode);
+    } else if (request.HasBlockDevice()) {
+        request.MutableBlockDevice()->SetMode(mode);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -644,6 +662,55 @@ bool TIndexTabletActor::PrepareTx_CreateNode(
         }
     }
 
+    // ACL inheritance is resolved only by the tablet that owns the real
+    // parent. The resulting xattrs stay in Request so they are persisted in
+    // the op log and forwarded to the shard that creates the actual node.
+    if (!behaveAsShard) {
+        args.Request.ClearParentDefaultAcl();
+        args.Request.ClearChildAccessAcl();
+    }
+
+    if (!behaveAsShard &&
+        Config->GetGuestPosixAclEnabled() &&
+        !args.Request.HasSymLink() &&
+        args.TargetNodeId == InvalidNodeId)
+    {
+        TMaybe<INodeIndexTabletDatabase::TNodeAttr> parentDefaultAcl;
+        if (!ReadNodeAttr(
+                *db,
+                args.ParentNodeId,
+                args.CommitId,
+                PosixAclDefaultXAttr,
+                parentDefaultAcl))
+        {
+            return false;   // not ready
+        }
+        if (parentDefaultAcl) {
+            args.Request.SetParentDefaultAcl(parentDefaultAcl->Value);
+        }
+
+        if (args.Request.GetParentDefaultAcl()) {
+            args.Request.SetChildAccessAcl(
+                args.Request.GetParentDefaultAcl());
+
+            ui32 mode = args.Attrs.GetMode();
+            args.Error = GetChildXattrAcl(
+                *args.Request.MutableChildAccessAcl(),
+                mode);
+            if (HasError(args.Error)) {
+                return true;
+            }
+
+            args.Attrs.SetMode(mode);
+            SetRequestMode(args.Request, mode);
+        } else {
+            const ui32 mode =
+                args.Attrs.GetMode() & ~args.Request.GetUmask();
+            args.Attrs.SetMode(mode);
+            SetRequestMode(args.Request, mode);
+        }
+    }
+
     if (!behaveAsShard) {
         // args.ParentNode is only a real parent when behaveAsShard is false.
         // The restriction is not enforced if the request comes from the
@@ -775,6 +842,24 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
                 args.CommitId,
                 InvalidCommitId
             };
+
+            if (args.Request.GetParentDefaultAcl()) {
+                CreateNodeAttr(
+                    *db,
+                    args.ChildNodeId,
+                    args.CommitId,
+                    PosixAclAccessXAttr,
+                    args.Request.GetChildAccessAcl());
+
+                if (args.Attrs.GetType() == NProto::E_DIRECTORY_NODE) {
+                    CreateNodeAttr(
+                        *db,
+                        args.ChildNodeId,
+                        args.CommitId,
+                        PosixAclDefaultXAttr,
+                        args.Request.GetParentDefaultAcl());
+                }
+            }
         } else {
             // When the NodeRef references a node in a shard we need to lock it
             // to prevent the node from being unlinked and to avoid races with

@@ -107,9 +107,7 @@ void FillFeatures(
 
     features->SetTabletDirectRdmaEnabled(config.GetTabletDirectRdmaEnabled());
 
-    // TODO(#5670) posix acl is not yet fully supported in tablet based
-    // filestore
-    features->SetGuestPosixAclEnabled(false);
+    features->SetGuestPosixAclEnabled(config.GetGuestPosixAclEnabled());
 
     features->SetZeroCopyReadEnabled(config.GetZeroCopyReadEnabled());
 
