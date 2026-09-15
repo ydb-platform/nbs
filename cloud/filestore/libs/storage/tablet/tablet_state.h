@@ -346,6 +346,10 @@ public:
 
     void SetCompressNodeRef(IIndexTabletDatabase& db, bool compressNodeRef);
 
+    void SetShardCreationState(
+        IIndexTabletDatabase& db,
+        const NProtoPrivate::TFileSystemShardCreationState& state);
+
     //
     // FileSystem
     //
