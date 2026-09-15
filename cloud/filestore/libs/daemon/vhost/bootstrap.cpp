@@ -612,13 +612,20 @@ void TBootstrapVhost::InitEndpoints()
                 Configs->VhostServiceConfig->GetFileMapMemoryLimit()});
 
     // Shared by all the filesystem loops
+    // The per-session sizes of the components are what their state files
+    // are created with and what a new file is assumed to add to the total
+    const auto& vhostConfig = *Configs->VhostServiceConfig;
     auto persistentState = NFuse::CreatePersistentStateManager({
-        .HandleOpsQueueBasePath =
-            Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
-        .WriteBackCacheBasePath =
-            Configs->VhostServiceConfig->GetWriteBackCachePath(),
+        .HandleOpsQueueBasePath = vhostConfig.GetHandleOpsQueuePath(),
+        .HandleOpsQueueStateFileSize = vhostConfig.GetHandleOpsQueueSize(),
+        .HandleOpsQueueTotalSizeLimit =
+            vhostConfig.GetHandleOpsQueueTotalSizeLimit(),
+        .WriteBackCacheBasePath = vhostConfig.GetWriteBackCachePath(),
+        .WriteBackCacheStateFileSize = vhostConfig.GetWriteBackCacheCapacity(),
+        .WriteBackCacheTotalSizeLimit =
+            vhostConfig.GetWriteBackCacheTotalSizeLimit(),
         .DirectoryHandlesStorageBasePath =
-            Configs->VhostServiceConfig->GetDirectoryHandlesStoragePath(),
+            vhostConfig.GetDirectoryHandlesStoragePath(),
     });
 
     EndpointListener = NVhost::CreateEndpointListener(
