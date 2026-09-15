@@ -159,6 +159,45 @@ NProto::TError ValidateFileShardList(
     return {};
 }
 
+NProto::TError ValidateAndPrepareFastShardConfig(
+    const NProto::TFileSystem& config,
+    const NProtoPrivate::TFastShardConfig& oldConfig,
+    NProtoPrivate::TFastShardConfig& newConfig)
+{
+    using TFastShardConfig = NProtoPrivate::TFastShardConfig;
+
+    if (oldConfig.Config_case() != TFastShardConfig::CONFIG_NOT_SET &&
+        oldConfig.Config_case() != newConfig.Config_case())
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "fast shard config types mismatch: old "
+                << static_cast<int>(oldConfig.Config_case()) << ", new "
+                << static_cast<int>(newConfig.Config_case()));
+    }
+
+    const ui32 oldPageSize = oldConfig.HasPersistentConfig()
+        ? oldConfig.GetPersistentConfig().GetPageSize()
+        : config.GetBlockSize();
+
+    if (newConfig.HasPersistentConfig()) {
+        auto& newPersistentConfig = *newConfig.MutablePersistentConfig();
+        if (newPersistentConfig.GetPageSize() == 0) {
+            newPersistentConfig.SetPageSize(oldPageSize);
+        } else if (newPersistentConfig.GetPageSize() != oldPageSize) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "fast shard config page size mismatch: old "
+                    << oldPageSize << ", new "
+                    << newPersistentConfig.GetPageSize());
+        }
+    }
+
+    return {};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -476,6 +515,14 @@ void TIndexTabletActor::HandleConfigureAsShard(
     const auto& newFileShardIds = msg->Record.GetFileShardFileSystemIds();
     if (!HasError(error) && !msg->Record.GetForce()) {
         error = ValidateFileShardList(newShardIds, newFileShardIds);
+    }
+
+    if (!HasError(error) && msg->Record.GetIsFastShard()) {
+        const auto& config = GetFileSystem();
+        error = ValidateAndPrepareFastShardConfig(
+            config,
+            config.GetFastShardConfig(),
+            *msg->Record.MutableFastShardConfig());
     }
 
     if (error.GetCode() != S_OK) {

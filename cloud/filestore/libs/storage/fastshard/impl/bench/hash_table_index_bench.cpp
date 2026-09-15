@@ -55,6 +55,7 @@ IFileSystemShardPtr MakeHashTableIndexShard()
     NProtoPrivate::TPersistentFastShardConfig config;
     config.SetNodesPerGroup(NodesPerGroup);
     config.SetExpectedGroupCapacity(GroupCapacity);
+    config.SetPageSize(4_KB);
 
     return CreateHashTableIndexFileSystemShard(
         "bench-fs",

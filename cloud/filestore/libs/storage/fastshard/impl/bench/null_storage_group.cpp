@@ -14,10 +14,12 @@ class TNullStorageGroup final: public IStorageGroup
 {
 private:
     const IDelayPolicyPtr DelayPolicy;
+    const ui32 PageSize;
 
 public:
-    explicit TNullStorageGroup(IDelayPolicyPtr delayPolicy)
+    TNullStorageGroup(IDelayPolicyPtr delayPolicy, ui32 pageSize)
         : DelayPolicy(std::move(delayPolicy))
+        , PageSize(pageSize)
     {}
 
     NCloud::NProto::TError Init() override
@@ -62,7 +64,7 @@ public:
             auto& pg = pageGroups->emplace_back();
             pg.FirstPageNo = ref.FirstPageNo;
             for (ui64 i = 0; i < ref.PageCount; ++i) {
-                pg.Content.emplace_back().Fill(0, ref.PageSize);
+                pg.Content.emplace_back().Fill(0, PageSize);
             }
         }
 
@@ -95,9 +97,11 @@ public:
         const NProtoPrivate::TPersistentFastShardConfig& config,
         ui64 generation) override
     {
-        Y_UNUSED(config, generation);
+        Y_UNUSED(generation);
 
-        return std::make_shared<TNullStorageGroup>(DelayPolicy);
+        return std::make_shared<TNullStorageGroup>(
+            DelayPolicy,
+            config.GetPageSize());
     }
 };
 

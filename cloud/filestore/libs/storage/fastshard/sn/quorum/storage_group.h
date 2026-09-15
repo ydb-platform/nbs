@@ -19,7 +19,6 @@ struct TPageGroupRef
 {
     ui64 FirstPageNo = 0;
     ui64 PageCount = 0;
-    ui64 PageSize = 0;
 };
 
 struct TPageGroup
@@ -92,6 +91,8 @@ struct TStorageGroupConfig
 
     // TODO(#6956): drop once every device supports the journal.
     bool JournalRestoreEnabled = false;
+
+    ui32 PageSize = DefaultBlockSize;
 };
 
 /**

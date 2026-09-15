@@ -824,6 +824,8 @@ message TPersistentFastShardConfig
     uint64 RetryTotalTimeoutMs = 4;
     uint64 RetryBackoffIncrementMs = 5;
 
+    uint32 PageSize = 6;
+
     // TODO(#6956): drop once every device supports the journal.
     bool JournalRestoreEnabled = 20;
 }
