@@ -71,10 +71,16 @@ private:
     TContLockFreeQueue<TServerResponsePtr> ResponseQueue;
 
     size_t InFlightBytes = 0;
+
+    // Requests read from this connection that may still reach or be executing
+    // in the backend. Includes requests waiting in Limiter::Acquire.
     std::atomic<size_t> ActiveRequests = 0;
+
+    // Set after the receive loop exits, so ActiveRequests can no longer grow.
+    // Drain completes when this is set and ActiveRequests reaches zero.
     std::atomic<bool> ReceiveFinished = false;
+
     std::atomic_flag ShuttingDown = false;
-    std::atomic_flag DrainCompleted = false;
     TPromise<void> DrainResult = NewPromise<void>();
 
 public:
@@ -174,6 +180,8 @@ public:
             InFlightBytes += requestBytes;
         }
 
+        // Limiter::Acquire may yield, allowing the connection to start
+        // shutting down while this request is waiting for capacity.
         if (IsShuttingDown()) {
             ReleaseRequest(requestBytes);
             CompleteRequest();
@@ -316,10 +324,9 @@ private:
     void TryCompleteDrain()
     {
         if (ReceiveFinished.load(std::memory_order_acquire) &&
-            ActiveRequests.load(std::memory_order_acquire) == 0 &&
-            !DrainCompleted.test_and_set(std::memory_order_acq_rel))
+            ActiveRequests.load(std::memory_order_acquire) == 0)
         {
-            DrainResult.SetValue();
+            DrainResult.TrySetValue();
         }
     }
 };
@@ -421,10 +428,12 @@ public:
             return MakeFuture(std::move(error));
         }
 
-        return Connection->Drain().Apply([] (const auto& future) {
-            future.GetValue();
-            return NProto::TError();
-        });
+        return Connection->Drain().Apply(
+            [](const TFuture<void>& future)
+            {
+                future.GetValue();
+                return NProto::TError();
+            });
     }
 
     size_t CollectRequests(const TIncompleteRequestsCollector& collector)
@@ -598,26 +607,25 @@ public:
 
     TFuture<NProto::TError> DrainEndpoint(const TString& address)
     {
-        return Executor->Execute([this, address] {
-            TEndpointPtr endpoint;
-            with_lock (Lock) {
-                auto it = Endpoints.find(address);
-                if (it != Endpoints.end()) {
-                    endpoint = it->second;
-                }
+        TEndpointPtr endpoint;
+        with_lock (Lock) {
+            auto it = Endpoints.find(address);
+            if (it != Endpoints.end()) {
+                endpoint = it->second;
             }
+        }
 
-            if (!endpoint) {
-                NProto::TError error;
-                error.SetCode(S_ALREADY);
-                error.SetMessage(TStringBuilder()
-                    << "endpoint " << address.Quote()
-                    << " has already been stopped");
-                return MakeFuture(std::move(error));
-            }
+        if (!endpoint) {
+            NProto::TError error;
+            error.SetCode(S_ALREADY);
+            error.SetMessage(
+                TStringBuilder() << "endpoint " << address.Quote()
+                                 << " has already been stopped");
+            return MakeFuture(std::move(error));
+        }
 
-            return endpoint->Drain();
-        });
+        return Executor->Execute([endpoint = std::move(endpoint)]
+                                 { return endpoint->Drain(); });
     }
 
     void AddEndpoint(TString address, TEndpointPtr endpoint)
@@ -791,7 +799,7 @@ public:
         }
 
         auto address = PrintHostAndPort(listenAddress);
-        TExecutorThread* executorThread;
+        TExecutorThread* executorThread = nullptr;
 
         with_lock (Lock) {
             auto it = EndpointMap.find(address);
@@ -822,8 +830,8 @@ public:
             return MakeFuture(error);
         }
 
-        auto address = PrintHostAndPort(listenAddress);
-        TExecutorThread* executorThread;
+        TString address = PrintHostAndPort(listenAddress);
+        TExecutorThread* executorThread = nullptr;
 
         with_lock (Lock) {
             auto it = EndpointMap.find(address);
