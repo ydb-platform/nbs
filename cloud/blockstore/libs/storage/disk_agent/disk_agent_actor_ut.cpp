@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
+#include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 
 #include <contrib/ydb/library/actors/core/mon.h>
 
@@ -23,6 +24,7 @@
 #include <library/cpp/testing/gmock_in_unittest/gmock.h>
 
 #include <util/folder/tempdir.h>
+#include <util/generic/scope.h>
 
 #include <filesystem>
 
@@ -4835,8 +4837,16 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         }
     }
 
+    // Check that a startup configuration error prevents device registration and
+    // its event count is published after monitoring is initialized.
     Y_UNIT_TEST(ShouldDetectConfigMismatch)
     {
+        // Enable early accumulation and isolate global reporting state.
+        ResetCriticalEventsCounter();
+        Y_DEFER { ResetCriticalEventsCounter(); };
+        InitProcessCriticalEventsReporting();
+
+        // Configure a device outside the discovery pool size limits.
         TTestBasicRuntime runtime;
 
         TTempDir tempDir;
@@ -4866,15 +4876,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
             local.SetMaxSize(2000_KB);
         }
 
-        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
-        InitCriticalEventsCounter(counters);
-
-        auto mismatch = counters->GetCounter(
-            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
-            true);
-
-        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
-
+        // Initialize the agent before monitoring can receive the error.
         auto env = TTestEnvBuilder(runtime)
             .With(config
                 | WithBackend(NProto::DISK_AGENT_BACKEND_AIO))
@@ -4884,7 +4886,26 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.WaitReady();
 
         UNIT_ASSERT_VALUES_EQUAL(0, env.DiskRegistryState->Devices.size());
+
+        // Attach monitoring and publish the retained startup error.
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto mismatch = counters->FindCounter(
+            GetCriticalEventForDiskAgentConfigMismatch());
+        UNIT_ASSERT(mismatch);
+        UNIT_ASSERT(!mismatch->ForDerivative());
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+        auto handler = CreateCriticalEventsStatsHandler();
+        handler->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(1, mismatch->Val());
+
+        // Process actor events and verify zero counts in subsequent intervals.
+        for (ui32 interval = 0; interval < 3; ++interval) {
+            runtime.AdvanceCurrentTime(UpdateCountersInterval);
+            runtime.DispatchEvents(TDispatchOptions(), 1s);
+            handler->UpdateStats(true);
+            UNIT_ASSERT_VALUES_EQUAL_C(0, mismatch->Val(), interval);
+        }
     }
 
     Y_UNIT_TEST_F(ShouldIgnoreRemovedDevice, TFixture)
@@ -4911,8 +4932,15 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         ShouldIgnoreRemovedDeviceImpl(PartLabels[*it]);
     }
 
+    // Check that discovery and cached-config errors share one publication while
+    // cached devices remain available.
     Y_UNIT_TEST_F(ShouldReportLostDevices, TFixture)
     {
+        // Enable interval reporting and isolate global counter state.
+        ResetCriticalEventsCounter();
+        Y_DEFER { ResetCriticalEventsCounter(); };
+        InitProcessCriticalEventsReporting();
+
         // build the config cache
         {
             NProto::TDiskAgentConfig config;
@@ -4935,10 +4963,10 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
         InitCriticalEventsCounter(counters);
 
-        auto mismatch = counters->GetCounter(
-            "DiskAgentCriticalEvents/DiskAgentConfigMismatch",
-            true);
-
+        auto mismatch = counters->FindCounter(
+            GetCriticalEventForDiskAgentConfigMismatch());
+        UNIT_ASSERT(mismatch);
+        UNIT_ASSERT(!mismatch->ForDerivative());
         UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
 
         auto env =
@@ -4947,12 +4975,18 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         TDiskAgentClient diskAgent(*Runtime);
         diskAgent.WaitReady();
 
-        // "unable to find the appropriate pool for NVMENBS02" + "Current config
-        // doesn't match the cached one"
+        // Publish the discovery error and cached-config mismatch together.
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
+        auto handler = CreateCriticalEventsStatsHandler();
+        handler->UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(2, mismatch->Val());
         UNIT_ASSERT_VALUES_EQUAL(
             PartLabels.size(),
             env.DiskRegistryState->Devices.size());
+
+        // Publish zero for the next interval with no new errors.
+        handler->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(0, mismatch->Val());
 
         // check the config cache
         {
