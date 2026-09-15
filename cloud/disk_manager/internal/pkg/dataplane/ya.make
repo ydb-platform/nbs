@@ -1,6 +1,8 @@
 GO_LIBRARY()
 
 SRCS(
+    backup_chunks_task.go
+    backup_snapshot_task.go
     collect_snapshot_metrics_task.go
     collect_snapshots_task.go
     consts.go
@@ -21,12 +23,14 @@ SRCS(
 
 GO_TEST_SRCS(
     collect_snapshots_task_test.go
+    create_snapshot_from_disk_task_test.go
     replicate_disk_task_test.go
 )
 
 END()
 
 RECURSE(
+    backup
     common
     config
     filesystem
