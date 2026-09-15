@@ -30,6 +30,10 @@ inputs:
     required: false
     description: "Require the GitHub runner to still be offline before deleting its VM"
     default: "false"
+  vm_fail_on_github_error:
+    required: false
+    description: "Keep the VM when its GitHub runner cannot be removed"
+    default: "false"
 
 runs:
   using: composite
@@ -51,11 +55,15 @@ runs:
         export PYTHONPATH=$PYTHONPATH:$GITHUB_WORKSPACE/.github
         LABELS_ARG=()
         REQUIRE_OFFLINE_ARG=()
+        FAIL_ON_GITHUB_ERROR_ARG=()
         if [ -n "${VM_LABELS}" ]; then
             LABELS_ARG=(--labels "${VM_LABELS}")
         fi
         if [ "${VM_REQUIRE_OFFLINE}" = "true" ]; then
             REQUIRE_OFFLINE_ARG=(--require-offline)
+        fi
+        if [ "${VM_FAIL_ON_GITHUB_ERROR}" = "true" ]; then
+            FAIL_ON_GITHUB_ERROR_ARG=(--fail-on-github-error)
         fi
         python3 -m scripts.nebius_manage_vm remove \
             --github-repo-owner "${REPO_OWNER}" \
@@ -64,6 +72,7 @@ runs:
             --id "${VM_ID}" \
             "${LABELS_ARG[@]}" \
             "${REQUIRE_OFFLINE_ARG[@]}" \
+            "${FAIL_ON_GITHUB_ERROR_ARG[@]}" \
             --apply
       env:
         GITHUB_TOKEN: ${{ inputs.token }}
@@ -73,4 +82,5 @@ runs:
         VM_ID: ${{ inputs.vm_id }}
         VM_LABELS: ${{ inputs.vm_labels }}
         VM_REQUIRE_OFFLINE: ${{ inputs.vm_require_offline }}
+        VM_FAIL_ON_GITHUB_ERROR: ${{ inputs.vm_fail_on_github_error }}
         PARENT_ID: ${{ inputs.vm_parent_id }}

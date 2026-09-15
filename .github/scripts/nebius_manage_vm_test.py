@@ -575,7 +575,26 @@ def test_remove_runner_from_github_retries_github_remove_errors(monkeypatch):
     remove_runner_attempts = []
     sleeps = []
 
+    class FakeRequester:
+        def requestJsonAndCheck(self, method, url):
+            assert method == "DELETE"
+            assert (
+                url
+                == "https://api.github.com/repos/owner/repo/actions/runners/runner-id"
+            )
+            remove_runner_attempts.append(1)
+            if len(remove_runner_attempts) == 1:
+                raise h.GithubException(
+                    409,
+                    {"message": "Runner is busy", "status": "409"},
+                    {},
+                )
+            return {}, None
+
     class FakeRepo:
+        url = "https://api.github.com/repos/owner/repo"
+        _requester = FakeRequester()
+
         def get_self_hosted_runners(self):
             list_runner_attempts.append(1)
             return [SimpleNamespace(name="vm-id", id="runner-id")]
@@ -588,17 +607,6 @@ def test_remove_runner_from_github_retries_github_remove_errors(monkeypatch):
                 status="offline",
                 busy=False,
             )
-
-        def remove_self_hosted_runner(self, runner_id):
-            assert runner_id == "runner-id"
-            remove_runner_attempts.append(1)
-            if len(remove_runner_attempts) == 1:
-                raise h.GithubException(
-                    401,
-                    {"message": "Bad credentials", "status": "401"},
-                    {},
-                )
-            return True
 
     class FakeGithub:
         def get_repo(self, repo_name):
@@ -615,6 +623,75 @@ def test_remove_runner_from_github_retries_github_remove_errors(monkeypatch):
     assert len(list_runner_attempts) == 1
     assert len(remove_runner_attempts) == 2
     assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC]
+
+
+def test_remove_self_hosted_runner_preserves_github_error(monkeypatch):
+    attempts = []
+    sleeps = []
+
+    class FakeRequester:
+        def requestJsonAndCheck(self, method, url):
+            assert method == "DELETE"
+            assert url.endswith("/actions/runners/runner-id")
+            attempts.append(1)
+            raise h.GithubException(
+                409,
+                {"message": "Runner is busy", "status": "409"},
+                {},
+            )
+
+    class FakeRepo:
+        url = "https://api.github.com/repos/owner/repo"
+        _requester = FakeRequester()
+
+    class FakeGithub:
+        def get_repo(self, repo_name):
+            assert repo_name == "owner/repo"
+            return FakeRepo()
+
+    monkeypatch.setattr(m.time, "sleep", sleeps.append)
+
+    with pytest.raises(h.GithubException) as error:
+        m.remove_self_hosted_runner(FakeGithub(), "owner/repo", "runner-id")
+
+    assert error.value.status == 409
+    assert error.value.data["message"] == "Runner is busy"
+    assert len(attempts) == m.GITHUB_API_RETRY_ATTEMPTS
+    assert sleeps == [m.GITHUB_API_RETRY_INTERVAL_SEC] * (
+        m.GITHUB_API_RETRY_ATTEMPTS - 1
+    )
+
+
+def test_remove_runner_from_github_logs_github_error(monkeypatch, caplog):
+    runner = SimpleNamespace(
+        name="vm-id",
+        id="runner-id",
+        status="online",
+        busy=False,
+    )
+    error = h.GithubException(
+        409,
+        {"message": "Runner is busy", "status": "409"},
+        {},
+    )
+
+    monkeypatch.setenv("GITHUB_REPOSITORY", "owner/repo")
+    monkeypatch.setattr(m, "find_runner_by_name", Mock(return_value=runner.id))
+    monkeypatch.setattr(m, "get_self_hosted_runner", Mock(return_value=runner))
+    monkeypatch.setattr(m, "remove_self_hosted_runner", Mock(side_effect=error))
+
+    assert (
+        m.remove_runner_from_github(
+            object(),
+            "owner",
+            "repo",
+            "vm-id",
+            True,
+        )
+        == "failed"
+    )
+    assert "409" in caplog.text
+    assert "Runner is busy" in caplog.text
 
 
 def test_remove_runner_from_github_skips_recovered_runner(monkeypatch):
@@ -1161,6 +1238,52 @@ def test_remove_vm_resolves_disk_id_before_removing_resources(monkeypatch):
             "computedisk-disk-id",
         ),
     ]
+
+
+@pytest.mark.parametrize(
+    ("fail_on_github_error", "remove_resources"),
+    [(False, True), (True, False)],
+)
+def test_remove_vm_honors_github_error_policy(
+    monkeypatch,
+    fail_on_github_error,
+    remove_resources,
+):
+    events = []
+    sdk = object()
+
+    class FakeInstanceService:
+        async def get(self, request):
+            events.append(("get-instance", request.id))
+            return SimpleNamespace(metadata=SimpleNamespace(name="runner-name"))
+
+    async def fake_find_disk(search_sdk, args, instance_name):
+        return SimpleNamespace(metadata=SimpleNamespace(id="computedisk-disk-id"))
+
+    async def fake_remove_resources(cleanup_sdk, instance_id, disk_id):
+        events.append(("remove-resources", instance_id, disk_id))
+
+    monkeypatch.setattr(m, "github_client_from_env", lambda: object())
+    monkeypatch.setattr(m, "remove_runner_from_github", lambda *args: "failed")
+    monkeypatch.setattr(
+        m, "InstanceServiceClient", lambda service_sdk: FakeInstanceService()
+    )
+    monkeypatch.setattr(m, "find_disk_by_instance_name", fake_find_disk)
+    monkeypatch.setattr(m, "remove_vm_and_disk_by_ids", fake_remove_resources)
+
+    args = argparse.Namespace(
+        id="computeinstance-instance-id",
+        parent_id="parent-id",
+        github_repo_owner="owner",
+        github_repo="repo",
+        apply=True,
+        require_offline=False,
+        fail_on_github_error=fail_on_github_error,
+    )
+
+    asyncio.run(m.remove_vm(sdk, args))
+
+    assert any(event[0] == "remove-resources" for event in events) is remove_resources
 
 
 def test_main_remove_with_empty_id_does_not_require_github_token(monkeypatch):

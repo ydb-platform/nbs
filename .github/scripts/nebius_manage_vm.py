@@ -647,7 +647,13 @@ def get_self_hosted_runner(github: Github, repo: str, runner_id: str):
     retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
 def remove_self_hosted_runner(github: Github, repo: str, runner_id: str) -> bool:
-    return github.get_repo(repo).remove_self_hosted_runner(runner_id)
+    repository = github.get_repo(repo)
+    # PyGithub's helper discards the status and body for every non-204 response.
+    repository._requester.requestJsonAndCheck(
+        "DELETE",
+        f"{repository.url}/actions/runners/{runner_id}",
+    )
+    return True
 
 
 def remove_runner_from_github(
@@ -689,12 +695,24 @@ def remove_runner_from_github(
         return "busy"
 
     if apply:
-        result = remove_self_hosted_runner(github, repo, runner_id)
+        try:
+            result = remove_self_hosted_runner(github, repo, runner_id)
+        except PYGITHUB_RETRY_EXCEPTIONS as error:
+            logger.error(
+                "Failed to remove GitHub runner with name %s and id %s: %s",
+                vm_id,
+                runner_id,
+                error,
+            )
+            return "failed"
 
         if not result:
-            # removed throwing exception here, because removing VM is more important
-            # added additional logging to see what went wrong
-            logger.info("Failed to remove runner with name %s", vm_id)
+            logger.error(
+                "GitHub did not remove runner with name %s and id %s; "
+                "aborting VM removal",
+                vm_id,
+                runner_id,
+            )
             return "failed"
 
         logger.info("Removed runner with name %s and id %s", vm_id, runner_id)
@@ -993,7 +1011,15 @@ async def remove_vm(sdk: SDK, args: argparse.Namespace):
         logger.info("Runner with name %s is no longer offline, skipping", args.id)
         return
     elif result == "failed":
-        logger.error("Failed to remove runner with name %s, we can ignore it", args.id)
+        if args.fail_on_github_error:
+            logger.error(
+                "Failed to remove runner with name %s, keeping the VM", args.id
+            )
+            return
+        logger.warning(
+            "Failed to remove runner with name %s, ignoring the GitHub error",
+            args.id,
+        )
     elif result == "removed" or result == "would_remove":
         logger.info("Runner with name %s removed from github", args.id)
 
@@ -1170,6 +1196,11 @@ async def main() -> None:
         "--require-offline",
         action="store_true",
         help="Delete the VM only if its GitHub runner is still offline",
+    )
+    remove.add_argument(
+        "--fail-on-github-error",
+        action="store_true",
+        help="Keep the VM when its GitHub runner cannot be removed",
     )
 
     remove_by_ids = subparsers.add_parser(
