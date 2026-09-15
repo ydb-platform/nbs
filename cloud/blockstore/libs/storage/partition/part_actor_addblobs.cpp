@@ -49,6 +49,23 @@ bool HasDuplicates(const TVector<ui32>& items)
     return false;
 }
 
+void AddCompactionStats(
+    TRangeStat& stat,
+    ui32 blockCount,
+    ui32 blobCount,
+    ui32 mixedBlockCount)
+{
+    TCompactionMap::UpdateCompactionCounter(
+        stat.BlockCount + blockCount,
+        &stat.BlockCount);
+    TCompactionMap::UpdateCompactionCounter(
+        stat.BlobCount + blobCount,
+        &stat.BlobCount);
+    TCompactionMap::UpdateCompactionCounter(
+        stat.MixedBlockCount + mixedBlockCount,
+        &stat.MixedBlockCount);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TAddBlobsExecutor
@@ -71,9 +88,6 @@ private:
         ui32 BlocksSkippedByCompaction = 0;
         ui32 MixedBlockCountSkippedByCompaction = 0;
     };
-
-    TDenseHash<ui32, TVector<TCompactionCounter*>> InflightCompactionCounters{
-        std::numeric_limits<ui32>::max()};
 
     TDenseHash<ui32, TRangeInfo> CompactionCounters{
         std::numeric_limits<ui32>::max()};
@@ -502,71 +516,17 @@ private:
         }
     }
 
-    auto& AccessRangeStat(ui32 blockIndex)
-    {
-        const auto& cm = State.GetCompactionMap();
-        auto& rangeInfo = CompactionCounters[blockIndex];
-
-        if (!rangeInfo.Stat.BlobCount &&
-            (Args.Mode != ADD_COMPACTION_RESULT ||
-             State.AccessCompactionStatsTracker()))
-        {
-            rangeInfo.Stat = cm.Get(blockIndex);
-        }
-
-        return rangeInfo.Stat;
-    };
-
     void IncrementCompactionCounters(
         ui32 blockIndex,
         ui32 blockCount,
         ui32 blobCount,
         ui32 mixedBlockCount)
     {
-        auto it = InflightCompactionCounters.find(blockIndex);
-        auto* compactionStatsTracker = State.AccessCompactionStatsTracker();
-        if (compactionStatsTracker && compactionStatsTracker->HasCompaction() &&
-            it == InflightCompactionCounters.end())
-        {
-            const ui32 rangeIdx =
-                State.GetCompactionMap().GetRangeIndex(blockIndex);
-            auto counters =
-                compactionStatsTracker->AccessCompactionCounters(rangeIdx);
-            if (counters) {
-                it = InflightCompactionCounters
-                         .insert({blockIndex, std::move(counters)})
-                         .first;
-            }
-        }
-
-        auto addStats = [](TRangeStat& stat,
-                           ui32 blockCount,
-                           ui32 blobCount,
-                           ui32 mixedBlockCount)
-        {
-            TCompactionMap::UpdateCompactionCounter(
-                stat.BlockCount + blockCount,
-                &stat.BlockCount);
-            TCompactionMap::UpdateCompactionCounter(
-                stat.BlobCount + blobCount,
-                &stat.BlobCount);
-            TCompactionMap::UpdateCompactionCounter(
-                stat.MixedBlockCount + mixedBlockCount,
-                &stat.MixedBlockCount);
-        };
-
-        if (it != InflightCompactionCounters.end()) {
-            for (auto& counter: it->second) {
-                addStats(
-                    counter->Stat,
-                    blockCount,
-                    blobCount,
-                    mixedBlockCount);
-            }
-        }
-
-        auto& rangeStat = AccessRangeStat(blockIndex);
-        addStats(rangeStat, blockCount, blobCount, mixedBlockCount);
+        AddCompactionStats(
+            CompactionCounters[blockIndex].Stat,
+            blockCount,
+            blobCount,
+            mixedBlockCount);
     }
 
     void UpdateCompactionCounters(const TAddMergedBlob& blob)
@@ -656,6 +616,25 @@ private:
     void RegularUpdateCompactionMap(TPartitionDatabase& db)
     {
         for (const auto& kv: CompactionCounters) {
+            auto rangeStat = kv.second.Stat;
+
+            if (Args.Mode == ADD_COMPACTION_RESULT) {
+                STORAGE_VERIFY(
+                    !State.AccessCompactionStatsTracker(),
+                    TWellKnownEntityTypes::TABLET,
+                    TabletId)
+            }
+
+            if (Args.Mode != ADD_COMPACTION_RESULT) {
+                const auto prevRangeStat =
+                    State.GetCompactionMap().Get(kv.first);
+                AddCompactionStats(
+                    rangeStat,
+                    prevRangeStat.BlockCount,
+                    prevRangeStat.BlobCount,
+                    prevRangeStat.MixedBlockCount);
+            }
+
             const auto usedBlockCount = State.GetUsedBlocks().Count(
                 kv.first,
                 Min(static_cast<ui64>(
@@ -687,16 +666,16 @@ private:
 
             db.WriteCompactionMap(
                 kv.first,
-                kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                kv.second.Stat.BlockCount +
+                rangeStat.BlobCount + kv.second.BlobsSkippedByCompaction,
+                rangeStat.BlockCount +
                     kv.second.BlocksSkippedByCompaction);
             State.GetCompactionMap().Update(
                 kv.first,
-                kv.second.Stat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                kv.second.Stat.BlockCount + kv.second.BlocksSkippedByCompaction,
+                rangeStat.BlobCount + kv.second.BlobsSkippedByCompaction,
+                rangeStat.BlockCount + kv.second.BlocksSkippedByCompaction,
                 usedBlockCount,
                 newlyZeroedBlocks,
-                kv.second.Stat.MixedBlockCount +
+                rangeStat.MixedBlockCount +
                     kv.second.MixedBlockCountSkippedByCompaction,
                 Args.Mode == ADD_COMPACTION_RESULT);
         }
@@ -706,6 +685,22 @@ private:
     {
         auto* compactionStatsTracker =
             State.AccessCompactionStatsTracker();
+        if (compactionStatsTracker && compactionStatsTracker->HasCompaction()) {
+            const auto& cm = State.GetCompactionMap();
+            for (const auto& kv: CompactionCounters) {
+                const auto counters =
+                    compactionStatsTracker->AccessCompactionCounters(
+                        cm.GetRangeIndex(kv.first));
+                for (auto* counter: counters) {
+                    AddCompactionStats(
+                        counter->Stat,
+                        kv.second.Stat.BlockCount,
+                        kv.second.Stat.BlobCount,
+                        kv.second.Stat.MixedBlockCount);
+                }
+            }
+        }
+
         if (Args.Mode != ADD_COMPACTION_RESULT || !compactionStatsTracker ||
             !compactionStatsTracker->HasCompaction())
         {
