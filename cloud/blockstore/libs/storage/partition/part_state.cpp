@@ -9,8 +9,6 @@
 #include <util/generic/utility.h>
 #include <util/generic/ymath.h>
 
-#include <cmath>
-
 namespace NCloud::NBlockStore::NStorage::NPartition {
 
 using namespace NActors;
@@ -41,6 +39,27 @@ double BPFeature(const TBackpressureFeatureConfig& c, double x)
 {
     auto nx = Normalize(x, c.InputThreshold, c.InputLimit);
     return (1 - nx) + nx * c.MaxValue;
+}
+
+ui64 CalculatePerDiskThresholdInBlocksFromAllocationUnitThreshold(
+    ui64 blocksCount,
+    ui32 blockSize,
+    ui64 perUnitThreshold,
+    ui64 allocationUnit)
+{
+    perUnitThreshold = Min(perUnitThreshold, allocationUnit);
+    if (!perUnitThreshold) {
+        return 0;
+    }
+
+    const ui64 allocationUnitBlocks = allocationUnit / blockSize;
+    const ui64 whole = blocksCount / allocationUnitBlocks;
+    const ui64 remainder = blocksCount % allocationUnitBlocks;
+    const ui64 perUnitThresholdBlocks =
+        CeilDiv<ui64>(perUnitThreshold, blockSize);
+
+    return whole * perUnitThresholdBlocks +
+           CeilDiv(remainder * perUnitThreshold, allocationUnit);
 }
 
 void InitializeMixedMergedBlobsAndBlocksCounts(
@@ -98,30 +117,29 @@ void InitializeMixedMergedBlobsAndBlocksCounts(
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionState::TPartitionState(
-        NProto::TPartitionMeta meta,
-        ICompactionPolicyPtr compactionPolicy,
-        ui32 compactionScoreHistorySize,
-        ui32 cleanupScoreHistorySize,
-        const TBackpressureFeaturesConfig& bpConfig,
-        const TFreeSpaceConfig& freeSpaceConfig,
-        ui32 maxIORequestsInFlight,
-        ui32 reassignChannelsPercentageThreshold,
-        ui32 reassignFreshChannelsPercentageThreshold,
-        ui32 reassignMixedChannelsPercentageThreshold,
-        bool reassignSystemChannelsImmediately,
-        ui32 channelCount,
-        ui32 mixedIndexCacheSize,
-        ui64 allocationUnit,
-        ui32 maxBlobsPerUnit,
-        ui64 maxMixedBytesPerUnit,
-        ui32 maxBlobsPerRange,
-        ui32 compactionRangeCountPerRun,
-        TPartitionThreadSafeStatePtr threadSafeState,
-        ui64 tabletId,
-        const std::optional<TMixedBlocksFilterConfig>
-            mixedBlocksFilterConfig,
-        bool checkpointAwareCleanupEnabled,
-        bool useBlobChannelDataKindForCounters)
+    NProto::TPartitionMeta meta,
+    ICompactionPolicyPtr compactionPolicy,
+    ui32 compactionScoreHistorySize,
+    ui32 cleanupScoreHistorySize,
+    const TBackpressureFeaturesConfig& bpConfig,
+    const TFreeSpaceConfig& freeSpaceConfig,
+    ui32 maxIORequestsInFlight,
+    ui32 reassignChannelsPercentageThreshold,
+    ui32 reassignFreshChannelsPercentageThreshold,
+    ui32 reassignMixedChannelsPercentageThreshold,
+    bool reassignSystemChannelsImmediately,
+    ui32 channelCount,
+    ui32 mixedIndexCacheSize,
+    ui64 allocationUnit,
+    ui32 maxBlobsPerUnit,
+    ui64 maxMixedBytesPerUnit,
+    ui32 maxBlobsPerRange,
+    ui32 compactionRangeCountPerRun,
+    TPartitionThreadSafeStatePtr threadSafeState,
+    ui64 tabletId,
+    const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
+    bool checkpointAwareCleanupEnabled,
+    bool useBlobChannelDataKindForCounters)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -151,9 +169,12 @@ TPartitionState::TPartitionState(
           Max(Config.GetBlocksCount() * Config.GetBlockSize() / allocationUnit,
               1ul) *
           maxBlobsPerUnit)
-    , MaxMixedBlocksPerDisk(std::ceil(
-          static_cast<double>(Config.GetBlocksCount()) * maxMixedBytesPerUnit /
-          allocationUnit))
+    , MaxMixedBlocksPerDisk(
+          CalculatePerDiskThresholdInBlocksFromAllocationUnitThreshold(
+              Config.GetBlocksCount(),
+              Config.GetBlockSize(),
+              maxMixedBytesPerUnit,
+              allocationUnit))
     , MaxBlobsPerRange(maxBlobsPerRange)
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupQueue(GetBlockSize())
