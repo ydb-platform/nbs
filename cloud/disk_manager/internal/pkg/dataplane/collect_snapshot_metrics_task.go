@@ -20,6 +20,7 @@ type collectSnapshotMetricsTask struct {
 	storage                   storage.Storage
 	storageQuotaReporter      snapshot.SnapshotStorageQuotaReporter
 	metricsCollectionInterval time.Duration
+	backupEnabled             bool
 }
 
 func (c collectSnapshotMetricsTask) Save() ([]byte, error) {
@@ -69,6 +70,13 @@ func (c collectSnapshotMetricsTask) Run(
 			return err
 		}
 		c.registry.Gauge("snapshots/totalStorageSize").Set(float64(totalSnapshotStorageSize))
+
+		if c.backupEnabled {
+			err = c.collectBackupMetrics(ctx)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }
@@ -94,6 +102,19 @@ func (c collectSnapshotMetricsTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Backup lag: chunks waiting to be copied to the slave.
+func (c collectSnapshotMetricsTask) collectBackupMetrics(
+	ctx context.Context,
+) error {
+
+	queueLength, err := c.storage.GetBackupQueueLength(ctx)
+	if err != nil {
+		return err
+	}
+	c.registry.Gauge("backup/queueLength").Set(float64(queueLength))
+	return nil
+}
+
 func (c collectSnapshotMetricsTask) clearMetrics() {
 	// We want to delete metrics from registry when the task is stopped.
 	// Otherwise the service can still report metrics,
@@ -102,4 +123,7 @@ func (c collectSnapshotMetricsTask) clearMetrics() {
 	// We'd like to delete it from registry completely, but there's no such option.
 	c.storageQuotaReporter.Clear()
 	c.registry.Gauge("snapshots/deletingCount").Set(0)
+	if c.backupEnabled {
+		c.registry.Gauge("backup/queueLength").Set(0)
+	}
 }
