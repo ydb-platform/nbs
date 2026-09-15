@@ -345,12 +345,12 @@ def test_config_comparison(
     assert crit['value'] == (1 if cmp == 'mismatch' else 0)
 
     if cmp == 'mismatch':
-        # Wait for duplicate event.
+        # Verify that the startup mismatch is reported only once.
         time.sleep(30)
         crit = disk_agent.counters.find(
             {'sensor': 'DiskAgentCriticalEvents/DiskAgentConfigMismatch'})
         assert crit is not None
-        assert crit['value'] == 2
+        assert crit['value'] == 1
 
     disk_agent.kill()
 
