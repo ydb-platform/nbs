@@ -538,9 +538,9 @@ TFuture<void> TFileSystem::ProcessHandleOpsQueueEntry(
 void TFileSystem::ProcessHandleOpsQueue()
 {
     THandleOpsQueue::TFrontResult frontResult;
+    const ui32 batchSize =
+        Max<ui32>(1, Config->GetAsyncHandleOperationBatchSize());
     with_lock (HandleOpsQueueLock) {
-        const ui32 batchSize =
-            Max<ui32>(1, Config->GetAsyncHandleOperationBatchSize());
         frontResult = HandleOpsQueue->Front(batchSize);
     }
 
@@ -559,8 +559,13 @@ void TFileSystem::ProcessHandleOpsQueue()
         // in DelayedReleaseQueue - this is normally drained as a side effect
         // of completing a HandleOpsQueue batch, which does not happen while
         // HandleOpsQueue stays empty. Retry it here too, so it is not stuck
-        // until unrelated queue activity happens to pick it up.
-        while (ProcessDelayedRelease()) {
+        // until unrelated queue activity happens to pick it up. Capped at
+        // batchSize, same as a regular batch, so a large backlog cannot make
+        // a single tick process large number of entries.
+        for (ui32 i = 0; i < batchSize; ++i) {
+            if (!ProcessDelayedRelease()) {
+                break;
+            }
         }
         ScheduleProcessHandleOpsQueue(
             Config->GetAsyncHandleOperationIdlePeriod());
