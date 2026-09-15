@@ -370,7 +370,7 @@ func (s *cellSelector) getRecentAggregatedClusterCapacities(
 	zoneID string,
 ) ([]storage.ClusterCapacity, error) {
 
-	diskKinds := util.GetAllDiskKinds()
+	diskKinds := util.GetBlockstoreDiskKinds()
 
 	aggregated := make(map[string]*storage.ClusterCapacity)
 

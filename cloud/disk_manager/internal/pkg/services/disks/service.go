@@ -44,6 +44,8 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
 	case disk_manager.DiskKind_DISK_KIND_HDD_LOCAL:
 		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
+	case disk_manager.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP:
+		return types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP, nil
 	default:
 		return 0, common.NewInvalidArgumentError(
 			"unknown disk kind %v",
@@ -150,27 +152,28 @@ func getBlocksCountForSize(size uint64, blockSize uint32) (uint64, error) {
 ////////////////////////////////////////////////////////////////////////////////
 
 type service struct {
-	taskScheduler   tasks.Scheduler
-	taskStorage     tasks_storage.Storage
-	config          *disks_config.DisksConfig
-	nbsFactory      nbs.Factory
-	poolService     pools.Service
-	resourceStorage resources.Storage
-	cellSelector    cells.CellSelector
+	taskScheduler                      tasks.Scheduler
+	taskStorage                        tasks_storage.Storage
+	config                             *disks_config.DisksConfig
+	nbsFactory                         nbs.Factory
+	ssdDirectMirror3Of5GroupNbsFactory nbs.Factory
+	poolService                        pools.Service
+	resourceStorage                    resources.Storage
+	cellSelector                       cells.CellSelector
 }
 
-func (s *service) getZoneIDForExistingDisk(
+func (s *service) getExistingDiskMeta(
 	ctx context.Context,
 	diskID *disk_manager.DiskId,
-) (string, error) {
+) (*resources.DiskMeta, error) {
 
 	diskMeta, err := s.resourceStorage.GetDiskMeta(ctx, diskID.DiskId)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	if diskMeta == nil {
-		return "", common.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"no such disk: %v",
 			diskID,
 		)
@@ -178,14 +181,49 @@ func (s *service) getZoneIDForExistingDisk(
 
 	if diskMeta.ZoneID != diskID.ZoneId &&
 		!s.cellSelector.ZoneContainsCell(diskID.ZoneId, diskMeta.ZoneID) {
-		return "", common.NewInvalidArgumentError(
+		return nil, common.NewInvalidArgumentError(
 			"provided zone ID %v does not match with an actual zone ID %v",
 			diskID.ZoneId,
 			diskMeta.ZoneID,
 		)
 	}
 
+	return diskMeta, nil
+}
+
+func (s *service) getZoneIDForExistingDisk(
+	ctx context.Context,
+	diskID *disk_manager.DiskId,
+) (string, error) {
+
+	diskMeta, err := s.getExistingDiskMeta(ctx, diskID)
+	if err != nil {
+		return "", err
+	}
+
 	return diskMeta.ZoneID, nil
+}
+
+func (s *service) getNbsClientForExistingDisk(
+	ctx context.Context,
+	diskID *disk_manager.DiskId,
+) (nbs.Client, error) {
+
+	diskMeta, err := s.getExistingDiskMeta(ctx, diskID)
+	if err != nil {
+		return nil, err
+	}
+
+	nbsFactory, err := nbsFactoryForDiskKindString(
+		s.nbsFactory,
+		s.ssdDirectMirror3Of5GroupNbsFactory,
+		diskMeta.Kind,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 }
 
 func (s *service) prepareCreateDiskParams(
@@ -271,6 +309,12 @@ func (s *service) prepareCreateDiskParams(
 				req.FolderId,
 			)
 		}
+	}
+
+	if common.IsSsdDirectMirror3Of5GroupDiskKind(kind) && len(req.StoragePoolName) == 0 {
+		return nil, common.NewInvalidArgumentError(
+			"storage_pool_name is required for ssd-direct-mirror3of5-group disks",
+		)
 	}
 
 	return &protos.CreateDiskParams{
@@ -423,6 +467,14 @@ func (s *service) CreateDisk(
 	params, err := s.prepareCreateDiskParams(ctx, req)
 	if err != nil {
 		return "", err
+	}
+
+	if common.IsSsdDirectMirror3Of5GroupDiskKind(params.Kind) {
+		if _, ok := req.Src.(*disk_manager.CreateDiskRequest_SrcEmpty); !ok {
+			return "", common.NewInvalidArgumentError(
+				"ssd-direct-mirror3of5-group disks can only be created empty",
+			)
+		}
 	}
 
 	switch src := req.Src.(type) {
@@ -735,12 +787,7 @@ func (s *service) StatDisk(
 		)
 	}
 
-	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
-	if err != nil {
-		return nil, err
-	}
-
-	client, err := s.nbsFactory.GetClient(ctx, zoneID)
+	client, err := s.getNbsClientForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
 	}
@@ -879,12 +926,7 @@ func (s *service) DescribeDisk(
 		)
 	}
 
-	zoneID, err := s.getZoneIDForExistingDisk(ctx, req.DiskId)
-	if err != nil {
-		return nil, err
-	}
-
-	client, err := s.nbsFactory.GetClient(ctx, zoneID)
+	client, err := s.getNbsClientForExistingDisk(ctx, req.DiskId)
 	if err != nil {
 		return nil, err
 	}
@@ -951,18 +993,20 @@ func NewService(
 	taskStorage tasks_storage.Storage,
 	config *disks_config.DisksConfig,
 	nbsFactory nbs.Factory,
+	ssdDirectMirror3Of5GroupNbsFactory nbs.Factory,
 	poolService pools.Service,
 	resourceStorage resources.Storage,
 	cellSelector cells.CellSelector,
 ) Service {
 
 	return &service{
-		taskScheduler:   taskScheduler,
-		taskStorage:     taskStorage,
-		config:          config,
-		nbsFactory:      nbsFactory,
-		poolService:     poolService,
-		resourceStorage: resourceStorage,
-		cellSelector:    cellSelector,
+		taskScheduler:                      taskScheduler,
+		taskStorage:                        taskStorage,
+		config:                             config,
+		nbsFactory:                         nbsFactory,
+		ssdDirectMirror3Of5GroupNbsFactory: ssdDirectMirror3Of5GroupNbsFactory,
+		poolService:                        poolService,
+		resourceStorage:                    resourceStorage,
+		cellSelector:                       cellSelector,
 	}
 }

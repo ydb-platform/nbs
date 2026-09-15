@@ -137,6 +137,7 @@ func registerControlplaneTasks(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
+	ssdDirectMirror3Of5GroupNbsFactory nbs.Factory,
 	nfsFactory nfs.Factory,
 	poolStorage pools_storage.Storage,
 	poolService pools.Service,
@@ -178,6 +179,7 @@ func registerControlplaneTasks(
 		taskScheduler,
 		poolService,
 		nbsFactory,
+		ssdDirectMirror3Of5GroupNbsFactory,
 		cellSelector,
 	)
 	if err != nil {
@@ -297,6 +299,7 @@ func initControlplane(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	nbsFactory nbs.Factory,
+	ssdDirectMirror3Of5GroupNbsFactory nbs.Factory,
 	nfsClientMetricsRegistry metrics.Registry,
 	nfsTlsProvider nfs.TlsConfigProvider,
 ) (serve func() error, err error) {
@@ -396,6 +399,7 @@ func initControlplane(
 		taskRegistry,
 		taskScheduler,
 		nbsFactory,
+		ssdDirectMirror3Of5GroupNbsFactory,
 		nfsFactory,
 		poolStorage,
 		poolService,
@@ -424,6 +428,7 @@ func initControlplane(
 			taskStorage,
 			config.GetDisksConfig(),
 			nbsFactory,
+			ssdDirectMirror3Of5GroupNbsFactory,
 			poolService,
 			resourceStorage,
 			cellSelector,

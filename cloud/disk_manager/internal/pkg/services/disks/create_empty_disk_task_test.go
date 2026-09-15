@@ -668,3 +668,107 @@ func TestCreateEmptyLocalDiskTask(t *testing.T) {
 		cellSelector,
 	)
 }
+
+func TestCreateEmptyDiskTaskSsdDirectMirror3Of5Group(t *testing.T) {
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	ssdDirectMirror3Of5GroupNbsFactory := nbs_mocks.NewFactoryMock()
+	nbsClient := nbs_mocks.NewClientMock()
+	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
+
+	params := &protos.CreateDiskParams{
+		BlocksCount: 123,
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		BlockSize:       456,
+		Kind:            types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
+		CloudId:         "cloud",
+		FolderId:        "folder",
+		StoragePoolName: "ddp1",
+	}
+	task := &createEmptyDiskTask{
+		storage:                            storage,
+		nbsFactory:                         nbsFactory,
+		ssdDirectMirror3Of5GroupNbsFactory: ssdDirectMirror3Of5GroupNbsFactory,
+		params:                             params,
+		state:                              &protos.CreateEmptyDiskTaskState{},
+		cellSelector:                       cellSelector,
+	}
+
+	storage.On("CreateDisk", ctx, mock.Anything).Return(&resources.DiskMeta{
+		ID: "disk",
+	}, nil)
+	storage.On("DiskCreated", ctx, mock.Anything).Return(nil)
+
+	ssdDirectMirror3Of5GroupNbsFactory.On("GetClient", ctx, "zone").Return(
+		nbsClient,
+		nil,
+	)
+
+	nbsClient.On("Create", ctx, nbs.CreateDiskParams{
+		ID:              "disk",
+		BlocksCount:     123,
+		BlockSize:       456,
+		Kind:            types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
+		CloudID:         "cloud",
+		FolderID:        "folder",
+		StoragePoolName: "ddp1",
+	}).Return(nil)
+
+	execCtx.On("SaveState", ctx).Return(nil)
+
+	err := task.Run(ctx, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		ssdDirectMirror3Of5GroupNbsFactory,
+		nbsClient,
+		execCtx,
+		cellSelector,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "zone", task.state.SelectedCellId)
+}
+
+func TestCreateEmptyDiskTaskSsdDirectMirror3Of5GroupWithoutNbsConfig(
+	t *testing.T,
+) {
+
+	ctx := context.Background()
+	storage := storage_mocks.NewStorageMock()
+	nbsFactory := nbs_mocks.NewFactoryMock()
+	execCtx := newExecutionContextMock()
+	cellSelector := cells_mocks.NewCellSelectorMock()
+
+	task := &createEmptyDiskTask{
+		storage:    storage,
+		nbsFactory: nbsFactory,
+		params: &protos.CreateDiskParams{
+			BlocksCount: 123,
+			Disk: &types.Disk{
+				ZoneId: "zone",
+				DiskId: "disk",
+			},
+			BlockSize:       456,
+			Kind:            types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
+			StoragePoolName: "ddp1",
+		},
+		state:        &protos.CreateEmptyDiskTaskState{},
+		cellSelector: cellSelector,
+	}
+
+	err := task.Run(ctx, execCtx)
+	mock.AssertExpectationsForObjects(
+		t,
+		storage,
+		nbsFactory,
+		cellSelector,
+	)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "is not set")
+}

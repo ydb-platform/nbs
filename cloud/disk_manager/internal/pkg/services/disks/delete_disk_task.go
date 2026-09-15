@@ -24,13 +24,14 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteDiskTask struct {
-	performanceConfig *performance_config.PerformanceConfig
-	storage           resources.Storage
-	scheduler         tasks.Scheduler
-	poolService       pools.Service
-	nbsFactory        nbs.Factory
-	request           *protos.DeleteDiskRequest
-	state             *protos.DeleteDiskTaskState
+	performanceConfig                  *performance_config.PerformanceConfig
+	storage                            resources.Storage
+	scheduler                          tasks.Scheduler
+	poolService                        pools.Service
+	nbsFactory                         nbs.Factory
+	ssdDirectMirror3Of5GroupNbsFactory nbs.Factory
+	request                            *protos.DeleteDiskRequest
+	state                              *protos.DeleteDiskTaskState
 }
 
 func (t *deleteDiskTask) Save() ([]byte, error) {
@@ -111,7 +112,19 @@ func (t *deleteDiskTask) deleteDisk(
 		return err
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, zoneID)
+	nbsFactory := t.nbsFactory
+	if diskMeta != nil {
+		nbsFactory, err = nbsFactoryForDiskKindString(
+			t.nbsFactory,
+			t.ssdDirectMirror3Of5GroupNbsFactory,
+			diskMeta.Kind,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	client, err := nbsFactory.GetClient(ctx, zoneID)
 	if err != nil {
 		return err
 	}
@@ -213,7 +226,16 @@ func (t *deleteDiskTask) setEstimate(
 		return nil
 	}
 
-	client, err := t.nbsFactory.GetClient(ctx, diskMeta.ZoneID)
+	nbsFactory, err := nbsFactoryForDiskKindString(
+		t.nbsFactory,
+		t.ssdDirectMirror3Of5GroupNbsFactory,
+		diskMeta.Kind,
+	)
+	if err != nil {
+		return err
+	}
+
+	client, err := nbsFactory.GetClient(ctx, diskMeta.ZoneID)
 	if err != nil {
 		return err
 	}
