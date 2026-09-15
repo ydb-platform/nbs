@@ -23,7 +23,8 @@ matched by `RequestId`. Six methods:
 On the shard side the same six methods form the `IStorageNode` interface
 (`sn/iface/storage_node.h`); `sn/client` speaks the TCP protocol from silk
 fibers, `sn/server` and `sn/impl` provide an in-process implementation for
-tests.
+tests. `sn/fastshard_client` is a command line tool with one subcommand per
+method, for poking a storage node by hand.
 
 ## Responsibilities
 
