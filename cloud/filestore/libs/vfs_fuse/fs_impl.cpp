@@ -554,6 +554,14 @@ void TFileSystem::ProcessHandleOpsQueue()
 
     auto& entries = frontResult.Entries;
     if (entries.empty()) {
+        // HandleOpsQueue has nothing of its own to process right now, but a
+        // release postponed earlier (due to overflow) may still be waiting
+        // in DelayedReleaseQueue - this is normally drained as a side effect
+        // of completing a HandleOpsQueue batch, which does not happen while
+        // HandleOpsQueue stays empty. Retry it here too, so it is not stuck
+        // until unrelated queue activity happens to pick it up.
+        while (ProcessDelayedRelease()) {
+        }
         ScheduleProcessHandleOpsQueue(
             Config->GetAsyncHandleOperationIdlePeriod());
         return;
