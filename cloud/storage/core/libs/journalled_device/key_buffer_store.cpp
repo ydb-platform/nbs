@@ -250,6 +250,12 @@ std::optional<TSuperblock> ParseSuperblockPage(TStringBuf page, ui32 pageSize)
     return header;
 }
 
+bool IsEmptyPage(TStringBuf page, ui32 pageSize)
+{
+    return page.size() == pageSize && !page[0] &&
+           !memcmp(page.data(), page.data() + 1, page.size() - 1);
+}
+
 // Merges the consecutive page numbers into ranges.
 TVector<TPageRange> ToPageRanges(const TVector<ui64>& pageNos)
 {
@@ -329,6 +335,8 @@ private:
 
     bool EraseInFlight = false;
     ui64 NextSuperblockSlot = 0;
+
+    std::atomic_bool ReadOnly = false;
 
 public:
     TDeviceKeyBufferStore(
@@ -439,6 +447,10 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::Write(
     ui64 key,
     TBuffer buffer)
 {
+    if (ReadOnly.load()) {
+        return MakeFuture(MakeError(E_INVALID_STATE, "read only mode"));
+    }
+
     ui64 seq = 0;
 
     with_lock (Lock) {
@@ -493,6 +505,10 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::Write(
 
 TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::EraseBelow(ui64 key)
 {
+    if (ReadOnly.load()) {
+        return MakeFuture(MakeError(E_INVALID_STATE, "read only mode"));
+    }
+
     TSuperblock superblock;
     ui64 slot = 0;
 
@@ -519,7 +535,6 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::EraseBelow(ui64 key)
 
         superblock = {.Seq = NextSeq++, .ErasedBelowKey = key};
         slot = NextSuperblockSlot;
-        NextSuperblockSlot = (NextSuperblockSlot + 1) % SuperblockSlotCount;
     }
 
     TVector<TBuffer> pages;
@@ -546,7 +561,7 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
     ui64 maxSeq = 0;
 
     std::optional<TSuperblock> superblock;
-    ui64 superblockSlot = 0;
+    ui64 superblockSlot = SuperblockSlotCount;
 
     for (ui64 slot = 0; slot < SuperblockSlotCount; ++slot) {
         auto parsed = ParseSuperblockPage(pages[slot], PageSize);
@@ -559,6 +574,21 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
             superblock = *parsed;
             superblockSlot = slot;
         }
+    }
+
+    if (!superblock) {
+        // no bound has been persisted yet - an empty slot tells this apart
+        // from a store that has lost its superblocks, a dirty one holds a
+        // torn superblock and takes the next write
+        for (ui64 slot = 0; slot < SuperblockSlotCount; ++slot) {
+            if (IsEmptyPage(pages[slot], PageSize)) {
+                superblockSlot = slot;
+            }
+        }
+    }
+
+    if (superblockSlot == SuperblockSlotCount) {
+        return MakeError(E_INVALID_STATE, "all superblock slots are dirty");
     }
 
     // the pages of a single (key, seq) entry
@@ -656,9 +686,9 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
 
         if (superblock) {
             ErasedBelowKey = superblock->ErasedBelowKey;
-            NextSuperblockSlot = (superblockSlot + 1) % SuperblockSlotCount;
         }
         RequestedErasedBelowKey = ErasedBelowKey;
+        NextSuperblockSlot = (superblockSlot + 1) % SuperblockSlotCount;
     }
 
     return std::move(buffers);
@@ -674,6 +704,7 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
     if (HasError(error)) {
         auto freeError = Pages->Free(locations);
         if (HasError(freeError)) {
+            ReadOnly.store(true);
             STORAGE_ERROR(
                 "failed to free the pages of the failed write of key "
                 << key << ": " << FormatError(freeError));
@@ -706,6 +737,7 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
     if (!stalePages.empty()) {
         auto freeError = Pages->Free(stalePages);
         if (HasError(freeError)) {
+            ReadOnly.store(true);
             STORAGE_ERROR(
                 "failed to free the stale pages of key " << key << ": "
                 << FormatError(freeError));
@@ -731,6 +763,7 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
         }
 
         ErasedBelowKey = key;
+        NextSuperblockSlot = (NextSuperblockSlot + 1) % SuperblockSlotCount;
 
         auto end = Entries.lower_bound(key);
         for (auto it = Entries.begin(); it != end; ++it) {
@@ -746,6 +779,7 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
     if (!pagesToFree.empty()) {
         auto freeError = Pages->Free(pagesToFree);
         if (HasError(freeError)) {
+            ReadOnly.store(true);
             STORAGE_ERROR(
                 "failed to free the pages erased below key " << key << ": "
                 << FormatError(freeError));

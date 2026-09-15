@@ -649,13 +649,41 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
             WriteToDevice(device, pageNo, TString(TestPageSize, 'g'));
         }
 
+        // the store needs an empty superblock slot to tell that no bound
+        // has been persisted
+        WriteToDevice(device, 1, TString(TestPageSize, '\0'));
+
         auto store = CreateTestStore(device);
         auto buffers = Restore(store);
         UNIT_ASSERT(buffers.empty());
 
         Write(store, 1, "one");
+        Write(store, 2, "two");
         buffers = Reopen(device);
-        UNIT_ASSERT_VALUES_EQUAL("1=one", Describe(buffers));
+        UNIT_ASSERT_VALUES_EQUAL("1=one|2=two", Describe(buffers));
+
+        // the superblock goes to the dirty slot, the empty one stays empty
+        auto code = EraseBelow(store, 2);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, code);
+        UNIT_ASSERT(ReadFromDevice(device, 0) != TString(TestPageSize, 'g'));
+        UNIT_ASSERT(IsZeroDevicePage(device, 1));
+
+        buffers = Reopen(device);
+        UNIT_ASSERT_VALUES_EQUAL("2=two", Describe(buffers));
+    }
+
+    Y_UNIT_TEST(ShouldRefuseToRestoreWithBothSuperblockSlotsDirty)
+    {
+        auto device = CreateInMemoryDevice();
+        WriteToDevice(device, 0, TString(TestPageSize, 'g'));
+        WriteToDevice(device, 1, TString(TestPageSize, 'g'));
+
+        auto store = CreateTestStore(device);
+        auto response = store->Restore().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_INVALID_STATE,
+            response.GetError().GetCode(),
+            FormatError(response.GetError()));
     }
 
     Y_UNIT_TEST(ShouldRestoreALargeRangeInSeveralReads)
