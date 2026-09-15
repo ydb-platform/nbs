@@ -247,10 +247,12 @@ void TCollectGarbageActor::NotifyCompleted(
 void TCollectGarbageActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
-        ReportCollectGarbageError(
-            VolumeLabels,
-            TStringBuilder()
-                << "Garbage collection error: " << FormatError(error));
+        if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
+            ReportCollectGarbageError(
+                VolumeLabels,
+                TStringBuilder()
+                    << "Garbage collection error: " << FormatError(error));
+        }
 
         Error = std::move(error);
     }
@@ -498,10 +500,13 @@ void TCollectGarbageHardActor::NotifyCompleted(
 void TCollectGarbageHardActor::HandleError(NProto::TError error)
 {
     if (FAILED(error.GetCode())) {
-        ReportCollectGarbageError(
-            VolumeLabels,
-            TStringBuilder()
-                << "Hard garbage collection error: " << FormatError(error));
+        if (GetErrorKind(error) != EErrorKind::ErrorRetriable) {
+            ReportCollectGarbageError(
+                VolumeLabels,
+                TStringBuilder()
+                    << "Hard garbage collection error: " << FormatError(error));
+        }
+
         Error = std::move(error);
     }
 }
