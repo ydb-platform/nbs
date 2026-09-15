@@ -295,6 +295,13 @@ void TFileSystem::Create(
 
     const ui64 version = GlobalCacheVersion.load(std::memory_order_acquire);
 
+    // TFileSystem::Create is called only when the file doesn't exist.
+    // The guarantee is tied to the Linux FUSE/virtio-fs path, a low-level FUSE
+    // create callback is invoked only for an atomic create-and-open operation.
+    //
+    // Therefore, we do not need to execute CreateHandle through WriteBackCache
+    // the same way as in TFileSystem::Open
+    //
     Session->CreateHandle(callContext, std::move(request))
         .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
             auto self = ptr.lock();
@@ -307,6 +314,20 @@ void TFileSystem::Create(
             self->FSyncQueue->Dequeue(reqId, error, TNodeId {parent});
 
             if (CheckResponse(self, *callContext, req, response)) {
+                if (self->WriteBackCache) {
+                    const ui64 nodeId = response.GetNodeAttr().GetId();
+                    const auto maxWrittenOffset =
+                        self->WriteBackCache.GetMaxWrittenOffset(nodeId);
+
+                    if (maxWrittenOffset != 0) {
+                        ReportWriteBackCacheImpossibleState(Sprintf(
+                            "WriteBackCache::GetMaxWrittenOffset(%lu) returned "
+                            "%lu after TFileSystem::Create",
+                            nodeId,
+                            maxWrittenOffset));
+                    }
+                }
+
                 self->ReplyCreateWithCache(
                     *callContext,
                     error,
@@ -354,47 +375,56 @@ void TFileSystem::Open(
     }
     auto requestForQueue = request;
 
-    Session->CreateHandle(callContext, std::move(request))
-        .Subscribe([=, ptr = weak_from_this()] (const auto& future) {
+    auto callback = [=, ptr = weak_from_this()](const auto& future)
+    {
+        const auto& response = future.GetValue();
+        auto self = ptr.lock();
+        if (self &&
+            self->CheckNodeError(*callContext, req, response.GetError()))
+        {
             const auto& response = future.GetValue();
-            auto self = ptr.lock();
-            if (self && self->CheckNodeError(*callContext, req, response.GetError())) {
-                const auto& response = future.GetValue();
 
-                if (response.GetHandleCreatedAsync()) {
-                    if (!asyncCreateHandle) {
-                        ReportUnexpectedAsyncCreateHandleResponse(
-                            TStringBuilder()
-                                << "CreateHandle returned an unpersisted handle "
-                                << "without client-side async create support: "
-                                << "filesystem "
-                                << self->Config->GetFileSystemId()
-                                << " #" << ino << " @" << response.GetHandle());
+            if (response.GetHandleCreatedAsync()) {
+                if (!asyncCreateHandle) {
+                    ReportUnexpectedAsyncCreateHandleResponse(
+                        TStringBuilder()
+                        << "CreateHandle returned an unpersisted handle "
+                        << "without client-side async create support: "
+                        << "filesystem " << self->Config->GetFileSystemId()
+                        << " #" << ino << " @" << response.GetHandle());
 
-                        auto fi = MakeFuseFileInfo(response, *self->Config);
-                        self->ConfirmCreateHandleAndReplyOpen(
-                            callContext,
-                            req,
-                            *requestForQueue,
-                            ino,
-                            response.GetHandle(),
-                            fi);
-                        return;
-                    }
-
-                    self->ProcessAsyncCreateHandleResponse(
+                    auto fi = MakeFuseFileInfo(response, *self->Config);
+                    self->ConfirmCreateHandleAndReplyOpen(
                         callContext,
                         req,
-                        ino,
                         *requestForQueue,
-                        response);
+                        ino,
+                        response.GetHandle(),
+                        fi);
                     return;
                 }
 
-                auto fi = MakeFuseFileInfo(response, *self->Config);
-                self->ReplyOpen(*callContext, response.GetError(), req, &fi);
+                self->ProcessAsyncCreateHandleResponse(
+                    callContext,
+                    req,
+                    ino,
+                    *requestForQueue,
+                    response);
+                return;
             }
-        });
+
+            auto fi = MakeFuseFileInfo(response, *self->Config);
+            self->ReplyOpen(*callContext, response.GetError(), req, &fi);
+        }
+    };
+
+    if (WriteBackCache) {
+        WriteBackCache.CreateHandle(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+    } else {
+        Session->CreateHandle(callContext, std::move(request))
+            .Subscribe(std::move(callback));
+    }
 }
 
 // CreateHandle has completed, but the async response indicates that the
