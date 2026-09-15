@@ -211,14 +211,43 @@ func (s *diskSource) Read(
 		checkpointID = ""
 	}
 
-	return s.session.Read(
-		ctx,
-		startIndex,
-		uint32(s.blocksInChunk),
-		checkpointID,
-		chunk.Data,
-		&chunk.Zero,
-	)
+	if len(chunk.Data) <= dataplane_common.DefaultChunkSize {
+		return s.session.Read(
+			ctx,
+			startIndex,
+			uint32(s.blocksInChunk),
+			checkpointID,
+			chunk.Data,
+			&chunk.Zero,
+		)
+	}
+
+	chunk.Zero = true
+	for offset := 0; offset < len(chunk.Data); offset += dataplane_common.DefaultChunkSize {
+		end := min(uint64(offset+dataplane_common.DefaultChunkSize), uint64(len(chunk.Data)))
+		data := chunk.Data[offset:end]
+		zero := false
+		err := s.session.Read(
+			ctx,
+			startIndex+uint64(offset)/uint64(s.blockSize),
+			uint32(len(data))/s.blockSize,
+			checkpointID,
+			data,
+			&zero,
+		)
+		if err != nil {
+			return err
+		}
+
+		if zero {
+			// A zero subrange can share a chunk with data. Session.Read leaves
+			// its buffer untouched for zero ranges, so clear any reused bytes.
+			clear(data)
+		} else {
+			chunk.Zero = false
+		}
+	}
+	return nil
 }
 
 func (s *diskSource) Milestone() dataplane_common.Milestone {
@@ -305,16 +334,9 @@ func NewDiskSource(
 
 	maxChangedBlockCountPerIteration :=
 		maxChangedByteCountPerIteration / uint64(blockSize)
-
-	if maxChangedBlockCountPerIteration%blocksInChunk != 0 {
-		session.Close(ctx)
-
-		return nil, task_errors.NewNonRetriableErrorf(
-			"maxChangedBlockCountPerIteration should be multiple of blocksInChunk, maxChangedBlockCountPerIteration=%v, blocksInChunk=%v",
-			maxChangedBlockCountPerIteration,
-			blocksInChunk,
-		)
-	}
+	// Keep chunk boundaries intact without exceeding the changed-block limit.
+	maxChangedBlockCountPerIteration -=
+		maxChangedBlockCountPerIteration % blocksInChunk
 
 	chunkCount := uint32(blockCount / blocksInChunk)
 

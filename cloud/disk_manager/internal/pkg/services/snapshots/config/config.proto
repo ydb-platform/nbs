@@ -20,4 +20,14 @@ message SnapshotsConfig {
     // https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2757498035
     // TODO: remove it later.
     optional bool RetryBrokenDRBasedDiskCheckpoint = 8;
+
+    // Chunk size in bytes for new snapshots stored in S3. Nonzero sizes must
+    // be at least 4 MiB and multiples of 4 MiB; zero selects the 4 MiB default.
+    // YDB-backed snapshots always use 4 MiB chunks.
+    // Incremental snapshots inherit their base's size. Must be a
+    // multiple of eight disk blocks and divide the disk size.
+    optional uint32 ChunkSize = 9 [default = 4194304];
+
+    // Folders allowed to override ChunkSize in snapshot creation requests.
+    repeated string ChunkSizeOverrideAllowedForFolder = 10;
 }

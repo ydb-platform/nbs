@@ -123,6 +123,7 @@ func (t *createImageFromDiskTask) run(
 			DstSnapshotId:       t.request.DstImageId,
 			UseS3:               t.request.UseS3,
 			StorageClass:        t.request.StorageClass,
+			ChunkSize:           t.request.ChunkSize,
 		},
 	)
 	if err != nil {

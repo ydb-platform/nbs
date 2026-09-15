@@ -55,6 +55,7 @@ func (t *transferFromSnapshotToDiskTask) Run(
 	}
 
 	t.state.ChunkCount = srcMeta.ChunkCount
+	chunkSize := srcMeta.GetChunkSize()
 
 	source := snapshot.NewSnapshotSource(t.request.SrcSnapshotId, t.storage)
 	defer source.Close(ctx)
@@ -83,7 +84,7 @@ func (t *transferFromSnapshotToDiskTask) Run(
 		ReaderCount:         t.config.GetReaderCount(),
 		WriterCount:         t.config.GetWriterCount(),
 		ChunksInflightLimit: t.config.GetChunksInflightLimit(),
-		ChunkSize:           chunkSize,
+		ChunkSize:           int(chunkSize),
 	}
 
 	transferredChunkCount, err := transferer.Transfer(

@@ -3,6 +3,7 @@ package chunks
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 
@@ -298,6 +299,29 @@ func TestWriteIdempotency(t *testing.T) {
 				_, _, err := writeTestChunk(t, ctx, storage)
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func TestWriteLargeChunksS3(t *testing.T) {
+	for _, sizeMiB := range []int{8, 12, 16, 32} {
+		t.Run(fmt.Sprintf("%dMiB", sizeMiB), func(t *testing.T) {
+			ctx, db, s3, config := setupEnvironment(t)
+			storage := newStorage(db, s3, config, true)
+			data := make([]byte, sizeMiB*1024*1024)
+			_, err := rand.New(rand.NewSource(42)).Read(data)
+			require.NoError(t, err)
+
+			chunk := common.Chunk{
+				ID:          "chunk",
+				Data:        data,
+				Compression: "lz4",
+			}
+			require.NoError(t, storage.WriteChunk(ctx, "snapshot", chunk))
+
+			restored := common.Chunk{ID: chunk.ID, Data: make([]byte, len(data))}
+			require.NoError(t, storage.ReadChunk(ctx, &restored))
+			require.Equal(t, data, restored.Data)
 		})
 	}
 }

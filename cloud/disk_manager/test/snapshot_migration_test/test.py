@@ -48,6 +48,7 @@ class _MigrationTestSetup:
         use_s3_as_dst: bool,
         migrating_snapshots_inflight_limit: int,
         with_nemesis: bool = False,
+        chunk_size: int = 4 * 1024 * 1024,
     ):
         self.use_s3_as_src = use_s3_as_src
         self.use_s3_as_dst = use_s3_as_dst
@@ -135,6 +136,7 @@ class _MigrationTestSetup:
             **self.common_parameters,  # type: ignore
             is_dataplane=False,
             s3_port=self.src_s3.port if self.src_s3 is not None else None,
+            snapshot_chunk_size=chunk_size,
         )
         self.initial_dpl_disk_manager = DiskManagerLauncher(
             **self.common_parameters,  # type: ignore
@@ -181,7 +183,7 @@ class _MigrationTestSetup:
             ],
         ).decode()
 
-    def wait_admin_task(self, *args, timeout_sec=360):
+    def wait_admin_task(self, *args, timeout_sec=360, expected_status="finished"):
         stdout = self.admin(*args)
         task_id = stdout.replace("Task: ", "").replace("\n", "").replace("Operation: ", "")
         started_at = time.monotonic()
@@ -189,9 +191,10 @@ class _MigrationTestSetup:
             if time.monotonic() - started_at > timeout_sec:
                 raise TimeoutError(f"Timed out waiting for task '{task_id}'")
             output = self.admin("tasks", "get", "--id", task_id)
-            status = json.loads(output)["status"]
-            if status == "finished":
-                break
+            task = json.loads(output)
+            if task["status"] in ("finished", "cancelled"):
+                assert task["status"] == expected_status, task
+                return task
 
             time.sleep(1)
 
@@ -394,7 +397,7 @@ class _MigrationTestSetup:
             return []
 
         columns = [col["name"] for col in result["result"][0]["columns"]]
-        rows = result["result"][0]["rows"]
+        rows = result["result"][0]["rows"] or []
 
         return [dict(zip(columns, row)) for row in rows]
 
@@ -452,6 +455,134 @@ def test_disk_manager_single_snapshot_migration(
         setup.create_disk_from_snapshot(snapshot_id=snapshot_id, disk_id=new_disk, size=disk_size)
         new_checksum = setup.checksum_disk(new_disk)
         assert new_checksum == checksum
+
+
+@pytest.mark.parametrize(
+    ["chunk_size", "use_s3_as_src", "use_s3_as_dst"],
+    [
+        (4 * 1024 * 1024, False, False),
+        (4 * 1024 * 1024, False, True),
+        (4 * 1024 * 1024, True, False),
+        (8 * 1024 * 1024, True, True),
+        (32 * 1024 * 1024, True, True),
+    ],
+)
+def test_disk_manager_variable_chunk_snapshot_migration(
+    chunk_size,
+    use_s3_as_src,
+    use_s3_as_dst,
+):
+    with _MigrationTestSetup(
+        use_s3_as_src=use_s3_as_src,
+        use_s3_as_dst=use_s3_as_dst,
+        migrating_snapshots_inflight_limit=1,
+        chunk_size=chunk_size,
+    ) as setup:
+        disk_size = 2 * chunk_size
+        disk = setup.create_new_disk("source", disk_size)
+        checksum = setup.fill_disk(disk.id, 0, disk.blocks_count)
+        setup.create_snapshot(src_disk_id=disk.id, snapshot_id="snapshot")
+
+        source_entries = setup.get_snapshot_database_entries(setup.ydb.mon_port)
+        source_meta = next(row for row in source_entries if row["id"] == "snapshot")
+        assert int(source_meta["chunk_size"]) == chunk_size
+        assert int(source_meta["chunk_count"]) == 2
+
+        setup.migrate_snapshot("snapshot")
+        destination_entries = setup.get_snapshot_database_entries(setup.secondary_ydb.mon_port)
+        destination_meta = next(row for row in destination_entries if row["id"] == "snapshot")
+        assert int(destination_meta["chunk_size"]) == chunk_size
+        assert int(destination_meta["chunk_count"]) == 2
+        assert int(destination_meta["size"]) == disk_size
+
+        setup.switch_dataplane_to_new_db()
+        setup.create_disk_from_snapshot("snapshot", "restored", disk_size)
+        assert setup.checksum_disk("restored") == checksum
+
+
+@pytest.mark.parametrize("chunk_size", [8 * 1024 * 1024, 12 * 1024 * 1024, 32 * 1024 * 1024])
+def test_disk_manager_rejects_migration_of_non_default_s3_chunk_to_ydb(chunk_size):
+    with _MigrationTestSetup(
+        use_s3_as_src=True,
+        use_s3_as_dst=False,
+        migrating_snapshots_inflight_limit=1,
+        chunk_size=chunk_size,
+    ) as setup:
+        disk = setup.create_new_disk("source", chunk_size)
+        checksum = setup.fill_disk(disk.id, 0, disk.blocks_count)
+        setup.create_snapshot(src_disk_id=disk.id, snapshot_id="snapshot")
+
+        source_entries = setup.get_snapshot_database_entries(setup.ydb.mon_port)
+        source_meta = next(row for row in source_entries if row["id"] == "snapshot")
+        assert int(source_meta["chunk_size"]) == chunk_size
+        assert int(source_meta["chunk_count"]) == 1
+
+        task = setup.wait_admin_task(
+            "snapshots",
+            "schedule_migrate_snapshot_task",
+            "--id", "snapshot",
+            expected_status="cancelled",
+        )
+        assert task["task_type"] == "dataplane.MigrateSnapshotTask"
+        assert (
+            f"non-default snapshot chunk size {chunk_size} requires S3; "
+            f"YDB snapshots use {4 * 1024 * 1024} bytes"
+        ) in task["error_message"], task
+        assert task["retriable_error_count"] == 0, task
+        assert setup.select_from_ydb(
+            setup.secondary_ydb.mon_port,
+            'SELECT * FROM `snapshot/chunk_map` WHERE snapshot_id = "snapshot"',
+        ) == []
+
+        # A failed migration must leave the source snapshot readable.
+        setup.create_disk_from_snapshot("snapshot", "restored", chunk_size)
+        assert setup.checksum_disk("restored") == checksum
+
+
+def test_disk_manager_rejects_migration_with_conflicting_destination_chunk_size():
+    chunk_size = 4 * 1024 * 1024
+    destination_chunk_size = 8 * 1024 * 1024
+    with _MigrationTestSetup(
+        use_s3_as_src=False,
+        use_s3_as_dst=False,
+        migrating_snapshots_inflight_limit=1,
+        chunk_size=chunk_size,
+    ) as setup:
+        disk = setup.create_new_disk("source", chunk_size)
+        setup.fill_disk(disk.id, 0, disk.blocks_count)
+        setup.create_snapshot(src_disk_id=disk.id, snapshot_id="snapshot")
+
+        source_entries = setup.get_snapshot_database_entries(setup.ydb.mon_port)
+        source_meta = next(row for row in source_entries if row["id"] == "snapshot")
+        assert int(source_meta["chunk_size"]) == chunk_size
+        assert int(source_meta["chunk_count"]) == 1
+
+        # An earlier migration attempt has already fixed the destination layout.
+        setup.select_from_ydb(
+            setup.secondary_ydb.mon_port,
+            'UPSERT INTO `snapshot/snapshots` (id, status, chunk_size) '
+            f'VALUES ("snapshot", CAST(0 AS Int64), CAST({destination_chunk_size} AS Uint32))',
+        )
+        destination_entries = setup.get_snapshot_database_entries(setup.secondary_ydb.mon_port)
+        destination_meta = next(row for row in destination_entries if row["id"] == "snapshot")
+        assert int(destination_meta["chunk_size"]) == destination_chunk_size
+
+        task = setup.wait_admin_task(
+            "snapshots",
+            "schedule_migrate_snapshot_task",
+            "--id", "snapshot",
+            expected_status="cancelled",
+        )
+        assert task["task_type"] == "dataplane.MigrateSnapshotTask"
+        assert (
+            f"destination snapshot snapshot has chunk size {destination_chunk_size}, "
+            f"but source snapshot has chunk size {chunk_size}"
+        ) in task["error_message"], task
+        assert task["retriable_error_count"] == 0, task
+        assert setup.select_from_ydb(
+            setup.secondary_ydb.mon_port,
+            'SELECT * FROM `snapshot/chunk_map` WHERE snapshot_id = "snapshot"',
+        ) == []
 
 
 @pytest.mark.parametrize(

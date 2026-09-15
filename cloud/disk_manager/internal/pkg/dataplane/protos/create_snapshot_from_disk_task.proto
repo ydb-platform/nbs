@@ -19,6 +19,9 @@ message CreateSnapshotFromDiskRequest {
     bool UseS3 = 7;
     bool UseProxyOverlayDisk = 8;
     string StorageClass = 9;
+    // Incremental snapshots inherit the base snapshot's chunk size.
+    // Must be a multiple of 4 MiB. Zero defaults to 4 MiB for full snapshots.
+    uint32 ChunkSize = 10;
 }
 
 message CreateSnapshotFromDiskResponse {

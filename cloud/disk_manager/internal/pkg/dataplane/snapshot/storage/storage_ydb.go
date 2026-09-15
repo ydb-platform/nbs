@@ -27,6 +27,7 @@ type storageYDB struct {
 func (s *storageYDB) CreateSnapshot(
 	ctx context.Context,
 	snapshotMeta SnapshotMeta,
+	useBaseSnapshotChunkSize bool,
 ) (*SnapshotMeta, error) {
 
 	var created *SnapshotMeta
@@ -39,6 +40,7 @@ func (s *storageYDB) CreateSnapshot(
 				ctx,
 				session,
 				snapshotMeta,
+				useBaseSnapshotChunkSize,
 			)
 			return err
 		},

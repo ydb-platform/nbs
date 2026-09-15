@@ -182,10 +182,7 @@ func (c *lz4Compressor) compress(data []byte) ([]byte, error) {
 
 func (c *lz4Compressor) decompress(data []byte, result []byte) error {
 	reader := lz4.NewReader(bytes.NewReader(data))
-	_, err := reader.Read(result)
-	if err == io.EOF {
-		return nil
-	}
+	_, err := io.ReadFull(reader, result)
 	return err
 }
 

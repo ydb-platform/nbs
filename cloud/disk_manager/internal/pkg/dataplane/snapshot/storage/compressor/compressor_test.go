@@ -45,7 +45,7 @@ func initializeCompletelyDifferent(testCase TestCase) []byte {
 ////////////////////////////////////////////////////////////////////////////////
 
 func TestCompression(t *testing.T) {
-	sizes := []int{1, 1337, 4096, 65535, 4096 * 1024}
+	sizes := []int{1, 1337, 4096, 65535, 4096 * 1024, 8 * 1024 * 1024}
 	codecs := []string{"gzip", "lz4", "zstd", "zstd_cgo", "lz4_block", ""}
 	testCases := make([]TestCase, 0, len(sizes)*len(codecs)*3)
 

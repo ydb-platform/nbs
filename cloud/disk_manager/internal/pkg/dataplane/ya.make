@@ -3,7 +3,6 @@ GO_LIBRARY()
 SRCS(
     collect_snapshot_metrics_task.go
     collect_snapshots_task.go
-    consts.go
     create_dr_based_disk_checkpoint_task.go
     create_snapshot_from_disk_task.go
     create_snapshot_from_snapshot_task.go

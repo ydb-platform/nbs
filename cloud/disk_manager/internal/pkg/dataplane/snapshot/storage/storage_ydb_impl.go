@@ -108,6 +108,7 @@ func (s *storageYDB) createSnapshot(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotMeta SnapshotMeta,
+	useBaseSnapshotChunkSize bool,
 ) (created *SnapshotMeta, err error) {
 
 	defer s.metrics.StatOperation("createSnapshot")(&err)
@@ -162,6 +163,7 @@ func (s *storageYDB) createSnapshot(
 		id:           snapshotMeta.ID,
 		createTaskID: snapshotMeta.CreateTaskID,
 		creatingAt:   time.Now(),
+		chunkSize:    snapshotMeta.GetChunkSize(),
 		status:       snapshotStatusCreating,
 	}
 	if snapshotMeta.Disk != nil {
@@ -179,6 +181,33 @@ func (s *storageYDB) createSnapshot(
 		}
 		state.baseSnapshotID = baseSnapshotID
 		state.baseCheckpointID = baseCheckpointID
+
+		if useBaseSnapshotChunkSize && baseSnapshotID != "" {
+			res, err := tx.Execute(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				declare $id as Utf8;
+
+				select *
+				from snapshots
+				where id = $id
+			`, s.tablesPath),
+				persistence.ValueParam("$id", persistence.UTF8Value(baseSnapshotID)),
+			)
+			if err != nil {
+				return nil, err
+			}
+			defer res.Close()
+
+			bases, err := scanSnapshotStates(ctx, res)
+			if err != nil {
+				return nil, err
+			}
+			if len(bases) != 0 && bases[0].status == snapshotStatusReady {
+				// Persist the inherited layout atomically with base selection.
+				state.chunkSize = bases[0].toSnapshotMeta().GetChunkSize()
+			}
+		}
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
