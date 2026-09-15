@@ -9,6 +9,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/guid.h>
 #include <util/generic/iterator_range.h>
 #include <util/generic/size_literals.h>
 
@@ -91,6 +92,33 @@ TDevicePoolConfigs CreateDevicePoolConfigs(
 
 Y_UNIT_TEST_SUITE(TDeviceListTest)
 {
+    Y_UNIT_TEST(ShouldKeepEraseIdempotencyKeyWhileDeviceIsDirty)
+    {
+        TDeviceList deviceList(
+            {"uuid"},
+            {},
+            {},
+            false,
+            false);
+
+        const auto key = deviceList.GetEraseIdempotencyKey("uuid");
+        UNIT_ASSERT(!key.empty());
+        UNIT_ASSERT(GetGuid(key));
+
+        deviceList.MarkDeviceAsDirty("uuid");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            key,
+            deviceList.GetEraseIdempotencyKey("uuid"));
+
+        UNIT_ASSERT(deviceList.MarkDeviceAsClean("uuid"));
+        deviceList.MarkDeviceAsDirty("uuid");
+
+        const auto newKey = deviceList.GetEraseIdempotencyKey("uuid");
+        UNIT_ASSERT(GetGuid(newKey));
+        UNIT_ASSERT_VALUES_UNEQUAL(key, newKey);
+    }
+
     Y_UNIT_TEST(ShouldAllocateSingleDevice)
     {
         const auto poolConfigs = CreateDevicePoolConfigs({});
