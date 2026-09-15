@@ -12,7 +12,7 @@ import (
 
 const snapshotMetaVersion = 1
 
-// Content of meta.json in the slave. Everything that is needed to restore the
+// Content of meta.json. Everything that is needed to restore the
 // snapshot rows of control plane and data plane, nothing from the working
 // state of the installation (task ids, locks, queues).
 type SnapshotMeta struct {

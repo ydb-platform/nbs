@@ -7,7 +7,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	filesystem_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
@@ -87,13 +86,18 @@ func initDataplane(
 		}
 	}
 
-	backupSlave, err := backup.NewSlave(
-		dataplaneConfig.GetBackupConfig(),
-		mon.NewRegistry("backup_s3_client"),
-		creds,
-	)
-	if err != nil {
-		return err
+	var backupS3 *persistence.S3Client
+	backupConfig := dataplaneConfig.GetSnapshotStorageBackupConfig()
+	if backupConfig != nil {
+		backupS3, err = persistence.NewS3ClientFromConfig(
+			backupConfig.GetS3Config(),
+			mon.NewRegistry("backup_s3_client"),
+			nil, // availabilityMonitoring
+			creds,
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	return dataplane.RegisterForExecution(
@@ -110,7 +114,7 @@ func initDataplane(
 		migrationDstStorage,
 		useS3InSnapshotMigration,
 		s3,
-		backupSlave,
+		backupS3,
 	)
 }
 

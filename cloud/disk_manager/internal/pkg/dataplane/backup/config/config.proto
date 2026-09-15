@@ -8,8 +8,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Slave: external S3 bucket that keeps a copy of snapshots.
-message BackupConfig {
+message SnapshotStorageBackupConfig {
     required persistence.S3Config S3Config = 1;
     required string S3Bucket = 2;
     optional string S3KeyPrefix = 3;

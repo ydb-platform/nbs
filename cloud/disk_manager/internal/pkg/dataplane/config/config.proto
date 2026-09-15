@@ -5,7 +5,6 @@ package dataplane;
 import "cloud/disk_manager/internal/pkg/dataplane/backup/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/filesystem/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/snapshot/config/config.proto";
-import "cloud/tasks/persistence/config/config.proto";
 
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config";
 
@@ -42,6 +41,5 @@ message DataplaneConfig {
 
     optional filesystem_dataplane.FilesystemDataplaneConfig FilesystemConfig = 20;
 
-    // Snapshot backup to slave S3. Not set - backup tasks are not registered.
-    optional backup.BackupConfig BackupConfig = 21;
+    optional backup.SnapshotStorageBackupConfig SnapshotStorageBackupConfig = 21;
 }

@@ -40,7 +40,7 @@ type ChunkMapEntry struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Chunk that should be copied to the slave.
+// Chunk that should be copied to the backup bucket.
 type BackupQueueEntry struct {
 	SnapshotID string
 	ChunkID    string

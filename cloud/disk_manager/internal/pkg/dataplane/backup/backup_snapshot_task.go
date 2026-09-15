@@ -6,22 +6,25 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// One task per snapshot: writes meta.json to the slave, puts the snapshot's
-// own chunks into backup_queue and, once the queue is drained by
+// One task per snapshot: writes meta.json to the backup bucket, puts the
+// snapshot's own chunks into backup_queue and, once the queue is drained by
 // dataplane.BackupChunks, writes map.bin. The map is the last object, so its
 // presence means the copy is complete.
 type backupSnapshotTask struct {
 	storage          storage.Storage
-	slave            *Slave
+	s3               *persistence.S3Client
+	bucket           string
+	keyPrefix        string
 	chunkSize        uint32
 	chunkCompression string
 	enqueueBatchSize int
@@ -151,7 +154,12 @@ func (t *backupSnapshotTask) writeMeta(
 		return errors.NewNonRetriableError(err)
 	}
 
-	return t.slave.PutMeta(ctx, diskID, meta.ID, data)
+	return t.s3.PutObject(
+		ctx,
+		t.bucket,
+		metaKey(t.keyPrefix, diskID, meta.ID),
+		persistence.S3Object{Data: data},
+	)
 }
 
 // Puts the snapshot's own chunks into backup_queue. Chunks inherited from the
@@ -273,7 +281,12 @@ func (t *backupSnapshotTask) writeMap(
 		return errors.NewNonRetriableError(err)
 	}
 
-	return t.slave.PutMap(ctx, diskID, meta.ID, data)
+	return t.s3.PutObject(
+		ctx,
+		t.bucket,
+		chunkMapKey(t.keyPrefix, diskID, meta.ID),
+		persistence.S3Object{Data: data},
+	)
 }
 
 func (t *backupSnapshotTask) saveProgress(

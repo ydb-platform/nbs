@@ -34,17 +34,18 @@ func Register(taskRegistry *tasks.Registry) error {
 	)
 }
 
-// Chunks are copied from the s3 chunk storage of snapshotConfig to the slave.
+// Chunks are copied from the s3 chunk storage of snapshotConfig to the bucket
+// of config.
 func RegisterForExecution(
 	ctx context.Context,
-	config *backup_config.BackupConfig,
+	config *backup_config.SnapshotStorageBackupConfig,
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	storage storage.Storage,
 	snapshotConfig *snapshot_config.SnapshotConfig,
 	s3 *persistence.S3Client,
 	chunkSize uint32,
-	slave *Slave,
+	backupS3 *persistence.S3Client,
 	metricsRegistry metrics.Registry,
 ) error {
 
@@ -66,7 +67,9 @@ func RegisterForExecution(
 		func() tasks.Task {
 			return &backupSnapshotTask{
 				storage:          storage,
-				slave:            slave,
+				s3:               backupS3,
+				bucket:           config.GetS3Bucket(),
+				keyPrefix:        config.GetS3KeyPrefix(),
 				chunkSize:        chunkSize,
 				chunkCompression: snapshotConfig.GetChunkCompression(),
 				enqueueBatchSize: int(config.GetEnqueueBatchSize()),
@@ -85,7 +88,9 @@ func RegisterForExecution(
 				srcS3:        s3,
 				srcBucket:    snapshotConfig.GetS3Bucket(),
 				srcKeyPrefix: snapshotConfig.GetChunkBlobsS3KeyPrefix(),
-				slave:        slave,
+				dstS3:        backupS3,
+				dstBucket:    config.GetS3Bucket(),
+				dstKeyPrefix: config.GetS3KeyPrefix(),
 				batchSize:    int(config.GetBackupChunksBatchSize()),
 				workerCount:  int(config.GetBackupChunksWorkerCount()),
 				registry:     metricsRegistry,

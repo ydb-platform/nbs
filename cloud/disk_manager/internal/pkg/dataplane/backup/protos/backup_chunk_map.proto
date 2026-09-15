@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package dataplane_backup;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+// One entry per chunk index, empty chunk id is a zero chunk.
+message BackupChunkMap {
+    repeated string ChunkIds = 1;
+}

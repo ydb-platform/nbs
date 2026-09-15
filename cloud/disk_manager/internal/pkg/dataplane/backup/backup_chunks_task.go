@@ -6,7 +6,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -19,13 +19,15 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 // Regular task: takes batches from backup_queue and copies chunk objects from
-// our S3 to the slave as is, with their metadata.
+// the snapshot storage to the backup bucket as is, with their metadata.
 type backupChunksTask struct {
 	storage      storage.Storage
 	srcS3        *persistence.S3Client
 	srcBucket    string
 	srcKeyPrefix string
-	slave        *Slave
+	dstS3        *persistence.S3Client
+	dstBucket    string
+	dstKeyPrefix string
 	batchSize    int
 	workerCount  int
 	registry     metrics.Registry
@@ -129,9 +131,10 @@ func (t *backupChunksTask) copyChunk(
 		return err
 	}
 
-	err = t.slave.PutChunk(
+	err = t.dstS3.PutObject(
 		ctx,
-		entry.ChunkID,
+		t.dstBucket,
+		chunkKey(t.dstKeyPrefix, entry.ChunkID),
 		persistence.S3Object{
 			Data:     object.Data,
 			Metadata: object.Metadata,

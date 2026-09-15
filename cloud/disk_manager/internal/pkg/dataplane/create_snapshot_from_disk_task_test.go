@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	backup_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
@@ -31,7 +32,7 @@ func TestCreateSnapshotFromDiskTaskSchedulesBackup(t *testing.T) {
 		mock.Anything,
 		"dataplane.BackupSnapshot",
 		"",
-		mock.MatchedBy(func(request *protos.BackupSnapshotRequest) bool {
+		mock.MatchedBy(func(request *backup_protos.BackupSnapshotRequest) bool {
 			return request.SnapshotId == "snap1" &&
 				request.FolderId == "folder"
 		}),

@@ -5,6 +5,7 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	backup_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
@@ -435,7 +436,7 @@ func (t *createSnapshotFromDiskTask) scheduleBackup(
 		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()+"_backup"),
 		"dataplane.BackupSnapshot",
 		"",
-		&protos.BackupSnapshotRequest{
+		&backup_protos.BackupSnapshotRequest{
 			SnapshotId: t.request.DstSnapshotId,
 			FolderId:   t.request.FolderId,
 		},

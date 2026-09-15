@@ -31,11 +31,11 @@ func RegisterForExecution(
 	migrationDstStorage storage.Storage,
 	useS3InMigration bool,
 	s3 *persistence.S3Client,
-	backupSlave *backup.Slave,
+	backupS3 *persistence.S3Client,
 ) error {
 
-	// Snapshots are backed up only when the slave is configured.
-	backupEnabled := backupSlave != nil
+	// Snapshots are backed up only when the backup bucket is configured.
+	backupEnabled := backupS3 != nil
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
@@ -286,14 +286,14 @@ func RegisterForExecution(
 
 	return backup.RegisterForExecution(
 		ctx,
-		config.GetBackupConfig(),
+		config.GetSnapshotStorageBackupConfig(),
 		taskRegistry,
 		taskScheduler,
 		storage,
 		config.GetSnapshotConfig(),
 		s3,
 		chunkSize,
-		backupSlave,
+		backupS3,
 		metricsRegistry,
 	)
 }

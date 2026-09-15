@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/protos"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -25,7 +25,7 @@ func TestBackupChunksTask(t *testing.T) {
 	srcS3, err := test.NewS3Client()
 	require.NoError(t, err)
 
-	slave := newTestSlave(t, ctx)
+	backup := newTestBackup(t, ctx)
 
 	chunkID, err := storage.WriteChunk(
 		ctx,
@@ -49,7 +49,9 @@ func TestBackupChunksTask(t *testing.T) {
 		srcS3:        srcS3,
 		srcBucket:    "test",
 		srcKeyPrefix: t.Name(),
-		slave:        slave,
+		dstS3:        backup.s3,
+		dstBucket:    backup.bucket,
+		dstKeyPrefix: backup.keyPrefix,
 		batchSize:    10,
 		workerCount:  2,
 		registry:     metrics.NewEmptyRegistry(),
@@ -64,7 +66,7 @@ func TestBackupChunksTask(t *testing.T) {
 	src, err := srcS3.GetObject(ctx, "test", fmt.Sprintf("%v/%v", t.Name(), chunkID))
 	require.NoError(t, err)
 
-	dst, err := getSlaveObject(ctx, slave, "chunks/"+chunkID)
+	dst, err := backup.getObject(ctx, "chunks/"+chunkID)
 	require.NoError(t, err)
 	require.Equal(t, src.Data, dst.Data)
 	require.NotNil(t, dst.Metadata["Checksum"])
