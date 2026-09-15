@@ -81,6 +81,7 @@ TPartitionState MakeState(
         0,             // mixedIndexCacheSize
         10000,         // allocationUnit
         100,           // maxBlobsPerUnit
+        0,             // maxMixedBytesPerUnit
         10,            // maxBlobsPerRange
         1,             // compactionRangeCountPerRun
         std::move(threadSafeState),
