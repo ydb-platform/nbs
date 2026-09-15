@@ -266,6 +266,7 @@ void TBootstrap::InitHTTPServer()
 
 void TBootstrap::Init()
 {
+    InitAppCriticalEventsReporting();
     TLogSettings logSettings;
     logSettings.BackendFileName = Configs->GetLogConfig().GetBackendFileName();
 

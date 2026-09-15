@@ -2,10 +2,20 @@
 
 #include "critical_events_init.h"
 
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/stats_handler.h>
 
+#include <library/cpp/logger/log.h>
+#include <library/cpp/logger/stream.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <util/generic/scope.h>
+#include <util/generic/vector.h>
+#include <util/stream/str.h>
+
+#include <atomic>
+#include <thread>
 
 namespace NCloud::NBlockStore {
 
@@ -58,6 +68,247 @@ TString GetAppSensorName()
 
 Y_UNIT_TEST_SUITE(TCriticalEventsTest)
 {
+    // Check that reporting preserves the published window until the next tick.
+    void DoShouldPublishAppEventsPerInterval(
+        const TString& sensorName,
+        TString (*report)(const TString&))
+    {
+        ResetCriticalEventsCounter();
+        Y_DEFER { ResetCriticalEventsCounter(); };
+        InitAppCriticalEventsReporting();
+        auto counters = MakeIntrusive<TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto handler = CreateCriticalEventsStatsHandler();
+        auto counter = counters->FindCounter(sensorName);
+        UNIT_ASSERT_C(counter, sensorName);
+        UNIT_ASSERT(!counter->ForDerivative());
+
+        // Keep the current interval private until publication finishes it.
+        report("first event");
+        report("second event");
+        handler->UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->Val());
+
+        // Publish the completed interval and keep it unchanged by new events.
+        handler->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(2, counter->Val());
+        report("next interval");
+        UNIT_ASSERT_VALUES_EQUAL(2, counter->Val());
+
+        // Publish only new events, then clear the following empty interval.
+        handler->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
+        handler->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->Val());
+    }
+
+    // Check interval publication through both BlockStore and storage wrappers.
+    Y_UNIT_TEST(ShouldPublishAppCriticalEventsPerInterval)
+    {
+        DoShouldPublishAppEventsPerInterval(
+            GetCriticalEventForRdmaError(),
+            ReportRdmaError);
+        DoShouldPublishAppEventsPerInterval(
+            GetCriticalEventForGetConfigsFromCmsYamlParseError(),
+            ReportGetConfigsFromCmsYamlParseError);
+    }
+
+#ifdef NDEBUG
+    // Check impossible-event publication without changing debug abort behavior.
+    Y_UNIT_TEST(ShouldPublishAppImpossibleEventsPerInterval)
+    {
+        DoShouldPublishAppEventsPerInterval(
+            GetCriticalEventForBug(),
+            ReportBug);
+        DoShouldPublishAppEventsPerInterval(
+            GetImpossibleEventForUnexpectedEvent(),
+            ReportUnexpectedEvent);
+    }
+#endif
+
+    // Check that early events survive unavailable monitoring and repeated init.
+    void DoShouldKeepEarlyAppEvents(
+        const TString& sensorName,
+        TString (*report)(const TString&))
+    {
+        ResetCriticalEventsCounter();
+        TStringStream log;
+        SetCriticalEventsLog(TLog(MakeHolder<TStreamLogBackend>(&log)));
+        Y_DEFER {
+            SetCriticalEventsLog(TLog());
+            ResetCriticalEventsCounter();
+        };
+        InitAppCriticalEventsReporting();
+        auto handler = CreateCriticalEventsStatsHandler();
+
+        // Log immediately and retain the event across ticks without a root.
+        const auto message = report("startup event");
+        UNIT_ASSERT_STRING_CONTAINS(log.Str(), message);
+        const TString logged = log.Str();
+        handler->UpdateStats(true);
+        handler->UpdateStats(true);
+
+        // Attach monitoring without replacing pending events with zero.
+        auto counters = MakeIntrusive<TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        InitCriticalEventsCounter(counters);
+        handler->UpdateStats(true);
+        auto counter = counters->FindCounter(sensorName);
+        UNIT_ASSERT(counter);
+        UNIT_ASSERT(!counter->ForDerivative());
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
+        UNIT_ASSERT_VALUES_EQUAL(logged, log.Str());
+
+        // Preserve the published window on init and count the event only once.
+        InitCriticalEventsCounter(counters);
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
+        handler->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->Val());
+    }
+
+    // Check startup buffering for the shared CMS event and a BlockStore event.
+    Y_UNIT_TEST(ShouldKeepEarlyAppCriticalEvents)
+    {
+        DoShouldKeepEarlyAppEvents(
+            GetCriticalEventForGetConfigsFromCmsYamlParseError(),
+            ReportGetConfigsFromCmsYamlParseError);
+        DoShouldKeepEarlyAppEvents(GetCriticalEventForRdmaError(), ReportRdmaError);
+    }
+
+#ifdef NDEBUG
+    // Check startup buffering for impossible events from both event lists.
+    Y_UNIT_TEST(ShouldKeepEarlyAppImpossibleEvents)
+    {
+        DoShouldKeepEarlyAppEvents(GetCriticalEventForBug(), ReportBug);
+        DoShouldKeepEarlyAppEvents(
+            GetImpossibleEventForUnexpectedEvent(),
+            ReportUnexpectedEvent);
+    }
+#endif
+
+    // Check that storage callers without BlockStore opt-in keep RATE counters.
+    Y_UNIT_TEST(ShouldPreserveDefaultStorageReporting)
+    {
+        ResetCriticalEventsCounter();
+        auto counters = MakeIntrusive<TDynamicCounters>();
+        NCloud::InitCriticalEventsCounter(counters);
+
+        // Exercise the same shared entry points used outside BlockStore.
+        for (const auto& sensor: {
+                 GetCriticalEventForGetConfigsFromCmsYamlParseError(),
+                 GetImpossibleEventForUnexpectedEvent()})
+        {
+            ReportCriticalEventWithoutLogging(sensor);
+            auto counter = counters->FindCounter(sensor);
+            UNIT_ASSERT(counter->ForDerivative());
+            UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
+            CreateCriticalEventsStatsHandler()->UpdateStats(true);
+            UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
+        }
+    }
+
+    // Check that the App override leaves DiskAgentCriticalEvents cumulative.
+    Y_UNIT_TEST(ShouldPreserveDiskAgentRateCounters)
+    {
+        ResetCriticalEventsCounter();
+        Y_DEFER { ResetCriticalEventsCounter(); };
+        InitAppCriticalEventsReporting();
+        auto counters = MakeIntrusive<TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        ReportDiskAgentConfigMismatch("agent event");
+        auto counter = counters->FindCounter(
+            GetCriticalEventForDiskAgentConfigMismatch());
+        UNIT_ASSERT(counter->ForDerivative());
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
+        CreateCriticalEventsStatsHandler()->UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->Val());
+    }
+
+    // Check one publisher handles App and Volume counters in every volume mode.
+    Y_UNIT_TEST(ShouldPublishAppAndVolumeEventsTogether)
+    {
+        for (const auto mode: {
+                 NProto::APP_ONLY,
+                 NProto::ALL,
+                 NProto::VOLUME_ONLY})
+        {
+            ResetCriticalEventsCounter();
+            Y_DEFER { ResetCriticalEventsCounter(); };
+            InitAppCriticalEventsReporting();
+            InitVolumeCriticalEventsReportingMode(mode);
+            auto app = MakeIntrusive<TDynamicCounters>();
+            auto volume = MakeIntrusive<TDynamicCounters>();
+            InitCriticalEventsCounter(app);
+            InitVolumeCriticalEventsCounter(volume);
+
+            // Report shared App and disk events before their common tick.
+            ReportGetConfigsFromCmsYamlParseError("config event");
+            const TVolumeLabels labels{"disk", "cloud", "folder"};
+            ReportBlockDigestMismatchInBlob(labels, "disk event");
+            CreateCriticalEventsStatsHandler()->UpdateStats(true);
+
+            // Keep App reporting independent of the volume compatibility mode.
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                app->FindCounter(
+                       GetCriticalEventForGetConfigsFromCmsYamlParseError())
+                    ->Val());
+            auto compatibility = app->FindCounter(GetAppSensorName());
+            UNIT_ASSERT_VALUES_EQUAL(mode != NProto::VOLUME_ONLY, !!compatibility);
+            if (compatibility) {
+                UNIT_ASSERT(!compatibility->ForDerivative());
+                UNIT_ASSERT_VALUES_EQUAL(1, compatibility->Val());
+            }
+            auto group = FindVolumeGroup(volume, labels);
+            UNIT_ASSERT_VALUES_EQUAL(mode != NProto::APP_ONLY, !!group);
+            if (group) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    group->FindCounter(GetVolumeSensorName())->Val());
+            }
+        }
+    }
+
+    // Check that concurrent reporters lose no events across publication ticks.
+    Y_UNIT_TEST(ShouldCountConcurrentAppEventsExactlyOnce)
+    {
+        ResetCriticalEventsCounter();
+        Y_DEFER { ResetCriticalEventsCounter(); };
+        InitAppCriticalEventsReporting();
+        auto counters = MakeIntrusive<TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+        auto handler = CreateCriticalEventsStatsHandler();
+        const auto sensor = GetCriticalEventForGetConfigsFromCmsYamlParseError();
+        auto counter = counters->FindCounter(sensor);
+
+        // Race multiple producers with the single periodic publisher.
+        std::atomic<ui32> remaining{4};
+        TVector<std::thread> workers;
+        for (ui32 i = 0; i != 4; ++i) {
+            workers.emplace_back([&] {
+                for (ui32 j = 0; j != 1000; ++j) {
+                    ReportCriticalEventWithoutLogging(sensor);
+                }
+                --remaining;
+            });
+        }
+        ui64 published = 0;
+        while (remaining.load()) {
+            handler->UpdateStats(true);
+            published += counter->Val();
+            std::this_thread::yield();
+        }
+
+        // Include the final partial interval after all producers have stopped.
+        for (auto& worker: workers) {
+            worker.join();
+        }
+        handler->UpdateStats(true);
+        published += counter->Val();
+        UNIT_ASSERT_VALUES_EQUAL(4000, published);
+    }
+
     void DoShouldEagerlyInitCriticalEventsCounters(
         NProto::EVolumeCriticalEventsReportingMode reportingMode)
     {
@@ -183,7 +434,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
         bool shouldReportApp,
         bool shouldReportVolume)
     {
-        ResetVolumeCriticalEventsCounter();
+        ResetCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
         auto criticalEventsGroup =
@@ -252,7 +503,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     // while the per-host AppCriticalEvents/* counter is bumped synchronously
     Y_UNIT_TEST(ShouldEmitPerDiskCountersForVolumeCriticalEvents)
     {
-        ResetVolumeCriticalEventsCounter();
+        ResetCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
         auto criticalEventsGroup =
@@ -311,7 +562,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     // The publish only runs when updateIntervalFinished is true
     Y_UNIT_TEST(ShouldPublishOnlyOnIntervalFinished)
     {
-        ResetVolumeCriticalEventsCounter();
+        ResetCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
         auto volumeCriticalEventsGroup = root->GetSubgroup(
@@ -351,7 +602,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     // The publish materializes only affected metrics
     Y_UNIT_TEST(ShouldNotCreateUnaffectedEventsMetricsOnPublish)
     {
-        ResetVolumeCriticalEventsCounter();
+        ResetCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
         auto volumeCriticalEventsGroup = root->GetSubgroup(
@@ -392,7 +643,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     // GAUGE semantics: with no new events the next flush resets to 0
     Y_UNIT_TEST(ShouldResetToZeroAfterFlushWithNoNewEvents)
     {
-        ResetVolumeCriticalEventsCounter();
+        ResetCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
         auto volumeCriticalEventsGroup = root->GetSubgroup(
@@ -431,7 +682,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     // Per-host counters contain summary
     Y_UNIT_TEST(ShouldKeepDistinctCountersPerDisk)
     {
-        ResetVolumeCriticalEventsCounter();
+        ResetCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
         auto criticalEventsGroup =
@@ -484,7 +735,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     // Unpublished and be published once the root becomes available
     Y_UNIT_TEST(ShouldAccumulateEventsBeforeCountersRootInitialized)
     {
-        ResetVolumeCriticalEventsCounter();
+        ResetCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
         auto criticalEventsGroup =
@@ -543,7 +794,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     // critical event.
     Y_UNIT_TEST(ShouldGracefullyReportNullVolumeLabels)
     {
-        ResetVolumeCriticalEventsCounter();
+        ResetCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
         auto criticalEventsGroup =
@@ -589,7 +840,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     // event.
     Y_UNIT_TEST(ShouldGracefullyReportEmptyDiskId)
     {
-        ResetVolumeCriticalEventsCounter();
+        ResetCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
         auto criticalEventsGroup =
@@ -635,7 +886,7 @@ Y_UNIT_TEST_SUITE(TVolumeCriticalEventsTest)
     // All Report...() overloads works
     Y_UNIT_TEST(ShouldProperlyImplementAllReportOverloads)
     {
-        ResetVolumeCriticalEventsCounter();
+        ResetCriticalEventsCounter();
 
         auto root = MakeIntrusive<TDynamicCounters>();
         auto criticalEventsGroup =
