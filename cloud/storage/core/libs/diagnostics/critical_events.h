@@ -30,7 +30,16 @@ namespace NCloud {
 ////////////////////////////////////////////////////////////////////////////////
 
 void SetCriticalEventsLog(TLog log);
-void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
+void InitCriticalEventsCounter(
+    NMonitoring::TDynamicCountersPtr counters,
+    bool derivative = true);
+
+// Optional counter override; return true when the event has been counted.
+using TCriticalEventReporter = bool (*)(const TString& sensorName);
+
+// Install a counter override, or pass nullptr to restore cumulative reporting.
+// Logging and debug checks remain in the common reporting path.
+void SetCriticalEventReporter(TCriticalEventReporter reporter);
 
 TString GetCriticalEventFullName(const TString& name);
 TString GetImpossibleEventFullName(const TString& name);

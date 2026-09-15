@@ -15,6 +15,10 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Enable interval counters for AppCriticalEvents and AppImpossibleEvents.
+// Call before startup work so events are retained before monitoring is ready.
+void InitAppCriticalEventsReporting();
+
 void InitVolumeCriticalEventsReportingMode(
     NProto::EVolumeCriticalEventsReportingMode reportingMode);
 
@@ -23,7 +27,7 @@ void InitVolumeCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
 
 NCloud::IStatsHandlerPtr CreateCriticalEventsStatsHandler();
 
-// For unit test purposes
-void ResetVolumeCriticalEventsCounter();
+// Clear pending events and roots and restore default reporting for tests.
+void ResetCriticalEventsCounter();
 
 }   // namespace NCloud::NBlockStore

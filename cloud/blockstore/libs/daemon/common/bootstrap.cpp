@@ -227,6 +227,7 @@ void TBootstrapBase::ParseOptions(int argc, char** argv)
 
 void TBootstrapBase::Init()
 {
+    InitAppCriticalEventsReporting();
     BootstrapLogging = CreateLoggingService("console", TLogSettings{});
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
     SetCriticalEventsLog(Log);
