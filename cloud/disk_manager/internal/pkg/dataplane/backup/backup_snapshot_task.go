@@ -1,4 +1,4 @@
-package dataplane
+package backup
 
 import (
 	"context"
@@ -6,15 +6,11 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/layout"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -24,11 +20,13 @@ import (
 // dataplane.BackupChunks, writes map.bin. The map is the last object, so its
 // presence means the copy is complete.
 type backupSnapshotTask struct {
-	config  *config.DataplaneConfig
-	storage storage.Storage
-	slave   *backup.Slave
-	request *protos.BackupSnapshotRequest
-	state   *protos.BackupSnapshotTaskState
+	storage          storage.Storage
+	slave            *Slave
+	chunkSize        uint32
+	chunkCompression string
+	enqueueBatchSize int
+	request          *protos.BackupSnapshotRequest
+	state            *protos.BackupSnapshotTaskState
 }
 
 func (t *backupSnapshotTask) Save() ([]byte, error) {
@@ -130,17 +128,19 @@ func (t *backupSnapshotTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Written before the chunks: meta without map means the copy is in progress
+// or was interrupted.
 func (t *backupSnapshotTask) writeMeta(
 	ctx context.Context,
 	diskID string,
 	meta storage.SnapshotMeta,
 ) error {
 
-	snapshotMeta, err := backup.NewSnapshotMeta(
+	snapshotMeta, err := NewSnapshotMeta(
 		meta,
 		t.request.FolderId,
-		chunkSize,
-		t.config.GetSnapshotConfig().GetChunkCompression(),
+		t.chunkSize,
+		t.chunkCompression,
 	)
 	if err != nil {
 		return err
@@ -151,12 +151,7 @@ func (t *backupSnapshotTask) writeMeta(
 		return errors.NewNonRetriableError(err)
 	}
 
-	return t.slave.S3.PutObject(
-		ctx,
-		t.slave.Bucket,
-		t.slave.Key(layout.MetaObject(diskID, meta.ID)),
-		persistence.S3Object{Data: data},
-	)
+	return t.slave.PutMeta(ctx, diskID, meta.ID, data)
 }
 
 // Puts the snapshot's own chunks into backup_queue. Chunks inherited from the
@@ -167,7 +162,6 @@ func (t *backupSnapshotTask) enqueueChunks(
 ) error {
 
 	snapshotID := t.request.SnapshotId
-	batchSize := int(t.config.GetBackupConfig().GetEnqueueBatchSize())
 
 	if t.state.MilestoneChunkIndex >= t.state.ChunkCount {
 		return nil
@@ -218,7 +212,7 @@ func (t *backupSnapshotTask) enqueueChunks(
 			ChunkID:    entry.ChunkID,
 		})
 
-		if len(batch) >= batchSize {
+		if len(batch) >= t.enqueueBatchSize {
 			err := flush()
 			if err != nil {
 				return err
@@ -248,8 +242,7 @@ func (t *backupSnapshotTask) writeMap(
 ) error {
 
 	chunkMap := &protos.BackupChunkMap{
-		ChunkCount: meta.ChunkCount,
-		ChunkIds:   make([]string, meta.ChunkCount),
+		ChunkIds: make([]string, meta.ChunkCount),
 	}
 
 	// Stops the chunk map reader if we return early.
@@ -280,12 +273,7 @@ func (t *backupSnapshotTask) writeMap(
 		return errors.NewNonRetriableError(err)
 	}
 
-	return t.slave.S3.PutObject(
-		ctx,
-		t.slave.Bucket,
-		t.slave.Key(layout.MapObject(diskID, meta.ID)),
-		persistence.S3Object{Data: data},
-	)
+	return t.slave.PutMap(ctx, diskID, meta.ID, data)
 }
 
 func (t *backupSnapshotTask) saveProgress(

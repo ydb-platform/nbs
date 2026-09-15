@@ -2,6 +2,7 @@ syntax = "proto2";
 
 package dataplane;
 
+import "cloud/disk_manager/internal/pkg/dataplane/backup/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/filesystem/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/snapshot/config/config.proto";
 import "cloud/tasks/persistence/config/config.proto";
@@ -9,17 +10,6 @@ import "cloud/tasks/persistence/config/config.proto";
 option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config";
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// Slave: external S3 bucket that keeps a copy of snapshots.
-message BackupConfig {
-    required persistence.S3Config S3Config = 1;
-    required string S3Bucket = 2;
-    optional string S3KeyPrefix = 3;
-    optional uint32 EnqueueBatchSize = 4 [default = 1000];
-    optional uint32 BackupChunksBatchSize = 5 [default = 100];
-    optional uint32 BackupChunksWorkerCount = 6 [default = 10];
-    optional string BackupChunksTaskScheduleInterval = 7 [default = "10s"];
-}
 
 message DataplaneConfig {
     required snapshot.SnapshotConfig SnapshotConfig = 1;
@@ -53,5 +43,5 @@ message DataplaneConfig {
     optional filesystem_dataplane.FilesystemDataplaneConfig FilesystemConfig = 20;
 
     // Snapshot backup to slave S3. Not set - backup tasks are not registered.
-    optional BackupConfig BackupConfig = 21;
+    optional backup.BackupConfig BackupConfig = 21;
 }

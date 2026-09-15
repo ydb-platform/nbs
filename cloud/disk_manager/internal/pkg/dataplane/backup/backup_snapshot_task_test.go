@@ -1,29 +1,104 @@
-package dataplane
+package backup
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/require"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/mocks"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
+	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const backupTestBucket = "backup"
+const (
+	testChunkSize    = 4096
+	backupTestBucket = "backup"
+)
 
-func newBackupTestSlave(t *testing.T, ctx context.Context) *backup.Slave {
+func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
+	endpoint := fmt.Sprintf(
+		"localhost:%v",
+		os.Getenv("DISK_MANAGER_RECIPE_YDB_PORT"),
+	)
+	database := "/Root"
+	connectionTimeout := "10s"
+
+	return persistence.NewYDBClient(
+		ctx,
+		&persistence_config.PersistenceConfig{
+			Endpoint:          &endpoint,
+			Database:          &database,
+			ConnectionTimeout: &connectionTimeout,
+		},
+		metrics.NewEmptyRegistry(),
+	)
+}
+
+// Keeps chunks in bucket "test" under prefix t.Name().
+func newStorage(
+	t *testing.T,
+	ctx context.Context,
+) (snapshot_storage.Storage, func()) {
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+
+	closeFunc := func() {
+		_ = db.Close(ctx)
+	}
+
+	storageFolder := fmt.Sprintf("backup_tasks_tests/%v", t.Name())
+	deleteWorkerCount := uint32(10)
+	shallowCopyWorkerCount := uint32(11)
+	shallowCopyInflightLimit := uint32(22)
+	shardCount := uint64(2)
+	s3Bucket := "test"
+	chunkBlobsS3KeyPrefix := t.Name()
+
+	config := &snapshot_config.SnapshotConfig{
+		StorageFolder:             &storageFolder,
+		DeleteWorkerCount:         &deleteWorkerCount,
+		ShallowCopyWorkerCount:    &shallowCopyWorkerCount,
+		ShallowCopyInflightLimit:  &shallowCopyInflightLimit,
+		ChunkBlobsTableShardCount: &shardCount,
+		ChunkMapTableShardCount:   &shardCount,
+		S3Bucket:                  &s3Bucket,
+		ChunkBlobsS3KeyPrefix:     &chunkBlobsS3KeyPrefix,
+	}
+
+	s3, err := test.NewS3Client()
+	require.NoError(t, err)
+
+	err = schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
+	require.NoError(t, err)
+
+	storage, err := snapshot_storage.NewStorage(
+		config,
+		metrics.NewEmptyRegistry(),
+		db,
+		s3,
+	)
+	require.NoError(t, err)
+
+	return storage, closeFunc
+}
+
+func newTestSlave(t *testing.T, ctx context.Context) *Slave {
 	s3, err := test.NewS3Client()
 	require.NoError(t, err)
 
@@ -40,30 +115,21 @@ func newBackupTestSlave(t *testing.T, ctx context.Context) *backup.Slave {
 		}
 	}
 
-	return &backup.Slave{
-		S3:        s3,
-		Bucket:    backupTestBucket,
-		KeyPrefix: t.Name(),
-	}
-}
-
-func newBackupTestConfig() *config.DataplaneConfig {
-	return &config.DataplaneConfig{
-		SnapshotConfig: &snapshot_config.SnapshotConfig{},
-		BackupConfig:   &config.BackupConfig{},
-	}
+	return newSlave(s3, backupTestBucket, t.Name())
 }
 
 func newBackupSnapshotTask(
 	storage snapshot_storage.Storage,
-	slave *backup.Slave,
+	slave *Slave,
 	snapshotID string,
 ) *backupSnapshotTask {
 
 	return &backupSnapshotTask{
-		config:  newBackupTestConfig(),
-		storage: storage,
-		slave:   slave,
+		storage:          storage,
+		slave:            slave,
+		chunkSize:        testChunkSize,
+		chunkCompression: "lz4",
+		enqueueBatchSize: 1000,
 		request: &protos.BackupSnapshotRequest{
 			SnapshotId: snapshotID,
 			FolderId:   "folder",
@@ -72,14 +138,23 @@ func newBackupSnapshotTask(
 	}
 }
 
+func getSlaveObject(
+	ctx context.Context,
+	slave *Slave,
+	object string,
+) (persistence.S3Object, error) {
+
+	return slave.s3.GetObject(ctx, slave.bucket, slave.key(object))
+}
+
 func readBackupChunkMap(
 	t *testing.T,
 	ctx context.Context,
-	slave *backup.Slave,
+	slave *Slave,
 	object string,
 ) *protos.BackupChunkMap {
 
-	obj, err := slave.S3.GetObject(ctx, slave.Bucket, slave.Key(object))
+	obj, err := getSlaveObject(ctx, slave, object)
 	require.NoError(t, err)
 
 	chunkMap := &protos.BackupChunkMap{}
@@ -97,7 +172,7 @@ func TestBackupSnapshotTask(t *testing.T) {
 	storage, closeFunc := newStorage(t, ctx)
 	defer closeFunc()
 
-	slave := newBackupTestSlave(t, ctx)
+	slave := newTestSlave(t, ctx)
 
 	disk := &types.Disk{ZoneId: "zone", DiskId: "disk1"}
 	_, err := storage.CreateSnapshot(
@@ -136,14 +211,10 @@ func TestBackupSnapshotTask(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	obj, err := slave.S3.GetObject(
-		ctx,
-		slave.Bucket,
-		slave.Key("snapshots/disk1/snap1/meta.json"),
-	)
+	obj, err := getSlaveObject(ctx, slave, "snapshots/disk1/snap1/meta.json")
 	require.NoError(t, err)
 
-	var meta backup.SnapshotMeta
+	var meta SnapshotMeta
 	err = json.Unmarshal(obj.Data, &meta)
 	require.NoError(t, err)
 	require.Equal(t, "snap1", meta.ID)
@@ -151,13 +222,10 @@ func TestBackupSnapshotTask(t *testing.T) {
 	require.Equal(t, "disk1", meta.DiskID)
 	require.Equal(t, "zone", meta.ZoneID)
 	require.EqualValues(t, 2, meta.ChunkCount)
-	require.EqualValues(t, chunkSize, meta.ChunkSize)
+	require.EqualValues(t, testChunkSize, meta.ChunkSize)
+	require.Equal(t, "lz4", meta.Compression)
 
-	_, err = slave.S3.GetObject(
-		ctx,
-		slave.Bucket,
-		slave.Key("snapshots/disk1/snap1/map.bin"),
-	)
+	_, err = getSlaveObject(ctx, slave, "snapshots/disk1/snap1/map.bin")
 	require.Error(t, err)
 
 	queue, err := storage.GetBackupQueue(ctx, 10)
@@ -184,7 +252,6 @@ func TestBackupSnapshotTask(t *testing.T) {
 	require.EqualValues(t, 1, task.state.Progress)
 
 	chunkMap := readBackupChunkMap(t, ctx, slave, "snapshots/disk1/snap1/map.bin")
-	require.EqualValues(t, 2, chunkMap.ChunkCount)
 	require.Equal(t, []string{chunk0, ""}, chunkMap.ChunkIds)
 }
 
@@ -194,7 +261,7 @@ func TestBackupSnapshotTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	storage, closeFunc := newStorage(t, ctx)
 	defer closeFunc()
 
-	slave := newBackupTestSlave(t, ctx)
+	slave := newTestSlave(t, ctx)
 
 	_, err := storage.CreateSnapshot(ctx, snapshot_storage.SnapshotMeta{ID: "snap1"})
 	require.NoError(t, err)
@@ -260,6 +327,5 @@ func TestBackupSnapshotTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 
 	// The map covers the whole snapshot, inherited chunks included.
 	chunkMap := readBackupChunkMap(t, ctx, slave, "snapshots/-/snap2/map.bin")
-	require.EqualValues(t, 2, chunkMap.ChunkCount)
 	require.Equal(t, []string{chunk0, chunk1}, chunkMap.ChunkIds)
 }

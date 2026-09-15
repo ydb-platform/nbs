@@ -1,4 +1,4 @@
-package dataplane
+package backup
 
 import (
 	"context"
@@ -6,8 +6,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/layout"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -27,7 +25,7 @@ type backupChunksTask struct {
 	srcS3        *persistence.S3Client
 	srcBucket    string
 	srcKeyPrefix string
-	slave        *backup.Slave
+	slave        *Slave
 	batchSize    int
 	workerCount  int
 	registry     metrics.Registry
@@ -131,10 +129,9 @@ func (t *backupChunksTask) copyChunk(
 		return err
 	}
 
-	err = t.slave.S3.PutObject(
+	err = t.slave.PutChunk(
 		ctx,
-		t.slave.Bucket,
-		t.slave.Key(layout.ChunkObject(entry.ChunkID)),
+		entry.ChunkID,
 		persistence.S3Object{
 			Data:     object.Data,
 			Metadata: object.Metadata,
