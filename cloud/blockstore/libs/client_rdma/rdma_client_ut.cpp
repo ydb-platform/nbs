@@ -258,7 +258,8 @@ struct TTestEnv
             Client,
             TraceSerializer,
             TaskQueue,
-            Config);
+            Config,
+            nullptr);
         UNIT_ASSERT_C(
             !HasError(result.GetError()),
             result.GetError().GetMessage());
