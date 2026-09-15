@@ -149,7 +149,6 @@ func newBackupSnapshotTask(
 		enqueueBatchSize: 1000,
 		request: &protos.BackupSnapshotRequest{
 			SnapshotId: snapshotID,
-			FolderId:   "folder",
 		},
 		state: &protos.BackupSnapshotTaskState{},
 	}
@@ -226,7 +225,6 @@ func TestBackupSnapshotTask(t *testing.T) {
 	err = json.Unmarshal(obj.Data, &meta)
 	require.NoError(t, err)
 	require.Equal(t, "snap1", meta.ID)
-	require.Equal(t, "folder", meta.FolderID)
 	require.Equal(t, "disk1", meta.DiskID)
 	require.Equal(t, "zone", meta.ZoneID)
 	require.EqualValues(t, 2, meta.ChunkCount)

@@ -1,7 +1,6 @@
 package backup
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -21,9 +20,6 @@ func TestBackupChunksTask(t *testing.T) {
 
 	storage, closeFunc := newStorage(t, ctx)
 	defer closeFunc()
-
-	srcS3, err := test.NewS3Client()
-	require.NoError(t, err)
 
 	backup := newTestBackup(t, ctx)
 
@@ -46,9 +42,6 @@ func TestBackupChunksTask(t *testing.T) {
 
 	task := &backupChunksTask{
 		storage:      storage,
-		srcS3:        srcS3,
-		srcBucket:    "test",
-		srcKeyPrefix: t.Name(),
 		dstS3:        backup.s3,
 		dstBucket:    backup.bucket,
 		dstKeyPrefix: backup.keyPrefix,
@@ -63,7 +56,7 @@ func TestBackupChunksTask(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	src, err := srcS3.GetObject(ctx, "test", fmt.Sprintf("%v/%v", t.Name(), chunkID))
+	src, err := storage.ReadChunkBlob(ctx, chunkID)
 	require.NoError(t, err)
 
 	dst, err := backup.getObject(ctx, "chunks/"+chunkID)

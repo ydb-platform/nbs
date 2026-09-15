@@ -438,7 +438,6 @@ func (t *createSnapshotFromDiskTask) scheduleBackup(
 		"",
 		&backup_protos.BackupSnapshotRequest{
 			SnapshotId: t.request.DstSnapshotId,
-			FolderId:   t.request.FolderId,
 		},
 	)
 	return err

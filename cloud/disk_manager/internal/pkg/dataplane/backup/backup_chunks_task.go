@@ -2,7 +2,6 @@ package backup
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -19,12 +18,9 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 // Regular task: takes batches from backup_queue and copies chunk objects from
-// the snapshot storage to the backup bucket as is, with their metadata.
+// the s3 chunk storage to the backup bucket as is, with their metadata.
 type backupChunksTask struct {
 	storage      storage.Storage
-	srcS3        *persistence.S3Client
-	srcBucket    string
-	srcKeyPrefix string
 	dstS3        *persistence.S3Client
 	dstBucket    string
 	dstKeyPrefix string
@@ -107,13 +103,9 @@ func (t *backupChunksTask) copyChunk(
 	entry storage.BackupQueueEntry,
 ) error {
 
-	object, err := t.srcS3.GetObject(
-		ctx,
-		t.srcBucket,
-		fmt.Sprintf("%v/%v", t.srcKeyPrefix, entry.ChunkID),
-	)
+	object, err := t.storage.ReadChunkBlob(ctx, entry.ChunkID)
 	if err != nil {
-		// GetObject reports a missing key with a silent non retriable error.
+		// A missing s3 key is reported with a silent non retriable error.
 		if errors.Is(err, errors.NewEmptyNonRetriableError()) &&
 			errors.IsSilent(err) {
 

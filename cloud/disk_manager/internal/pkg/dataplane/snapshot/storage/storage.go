@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -155,6 +156,9 @@ type Storage interface {
 	) (snapshotID string, checkpointID string, err error)
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
+
+	// Chunk object of the s3 chunk storage as is, for copying to the backup.
+	ReadChunkBlob(ctx context.Context, chunkID string) (persistence.S3Object, error)
 
 	EnqueueBackupChunks(ctx context.Context, entries []BackupQueueEntry) error
 

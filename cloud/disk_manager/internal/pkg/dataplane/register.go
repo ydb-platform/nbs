@@ -12,6 +12,7 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
@@ -36,6 +37,11 @@ func RegisterForExecution(
 
 	// Snapshots are backed up only when the backup bucket is configured.
 	backupEnabled := backupS3 != nil
+	if backupEnabled && s3 == nil {
+		return errors.NewNonRetriableErrorf(
+			"snapshot backup requires s3 chunk storage",
+		)
+	}
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
 		return &createSnapshotFromDiskTask{
@@ -290,8 +296,7 @@ func RegisterForExecution(
 		taskRegistry,
 		taskScheduler,
 		storage,
-		config.GetSnapshotConfig(),
-		s3,
+		config.GetSnapshotConfig().GetChunkCompression(),
 		chunkSize,
 		backupS3,
 		metricsRegistry,

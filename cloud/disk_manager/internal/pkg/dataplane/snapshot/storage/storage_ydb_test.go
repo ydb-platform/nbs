@@ -1773,3 +1773,19 @@ func TestBackupQueue(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 0, length)
 }
+
+func TestReadChunkBlob(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunk := makeChunk(0, "abc")
+	chunkID, err := f.storage.WriteChunk(f.ctx, "", "snapshot", chunk, true /* useS3 */)
+	require.NoError(t, err)
+
+	object, err := f.storage.ReadChunkBlob(f.ctx, chunkID)
+	require.NoError(t, err)
+	require.Equal(t, getS3Object(f, chunkID), object)
+
+	_, err = f.storage.ReadChunkBlob(f.ctx, "missing")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+}

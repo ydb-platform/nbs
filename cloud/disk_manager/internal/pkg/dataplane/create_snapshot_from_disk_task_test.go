@@ -22,7 +22,6 @@ func TestCreateSnapshotFromDiskTaskSchedulesBackup(t *testing.T) {
 		backupEnabled: true,
 		request: &protos.CreateSnapshotFromDiskRequest{
 			DstSnapshotId: "snap1",
-			FolderId:      "folder",
 		},
 	}
 
@@ -33,8 +32,7 @@ func TestCreateSnapshotFromDiskTaskSchedulesBackup(t *testing.T) {
 		"dataplane.BackupSnapshot",
 		"",
 		mock.MatchedBy(func(request *backup_protos.BackupSnapshotRequest) bool {
-			return request.SnapshotId == "snap1" &&
-				request.FolderId == "folder"
+			return request.SnapshotId == "snap1"
 		}),
 	).Return("backup-task", nil)
 

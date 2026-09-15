@@ -32,7 +32,6 @@ func TestSnapshotMetaJSON(t *testing.T) {
 				Key:  &types.EncryptionDesc_KeyHash{KeyHash: []byte("hash")},
 			},
 		},
-		"folder-1",
 		4096,
 		"lz4",
 	)
@@ -46,7 +45,6 @@ func TestSnapshotMetaJSON(t *testing.T) {
 	require.EqualValues(t, 1, fields["version"])
 	require.Equal(t, "snapshot", fields["kind"])
 	require.Equal(t, "snap-1", fields["id"])
-	require.Equal(t, "folder-1", fields["folder_id"])
 	require.Equal(t, "zone-a", fields["zone_id"])
 	require.Equal(t, "disk-1", fields["disk_id"])
 	require.Equal(t, "snap-0", fields["base_snapshot_id"])
@@ -63,7 +61,7 @@ func TestSnapshotMetaJSON(t *testing.T) {
 }
 
 func TestSnapshotMetaWithoutDisk(t *testing.T) {
-	meta, err := NewSnapshotMeta(storage.SnapshotMeta{ID: "snap-1"}, "", 4096, "")
+	meta, err := NewSnapshotMeta(storage.SnapshotMeta{ID: "snap-1"}, 4096, "")
 	require.NoError(t, err)
 	require.Empty(t, meta.DiskID)
 	require.Empty(t, meta.ZoneID)

@@ -4,10 +4,27 @@ import (
 	"context"
 	"fmt"
 
+	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func (s *storageYDB) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+) (object persistence.S3Object, err error) {
+
+	defer s.metrics.StatOperation("ReadChunkBlob")(&err)
+
+	if s.chunkStorageS3 == nil {
+		return persistence.S3Object{}, task_errors.NewNonRetriableErrorf(
+			"s3 chunk storage is not configured",
+		)
+	}
+
+	return s.chunkStorageS3.ReadChunkBlob(ctx, chunkID)
+}
 
 func (s *storageYDB) EnqueueBackupChunks(
 	ctx context.Context,

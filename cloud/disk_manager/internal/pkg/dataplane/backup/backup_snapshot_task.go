@@ -139,12 +139,7 @@ func (t *backupSnapshotTask) writeMeta(
 	meta storage.SnapshotMeta,
 ) error {
 
-	snapshotMeta, err := NewSnapshotMeta(
-		meta,
-		t.request.FolderId,
-		t.chunkSize,
-		t.chunkCompression,
-	)
+	snapshotMeta, err := NewSnapshotMeta(meta, t.chunkSize, t.chunkCompression)
 	if err != nil {
 		return err
 	}
