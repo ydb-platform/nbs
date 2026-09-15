@@ -21,6 +21,7 @@
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/scope.h>
 #include <util/generic/string.h>
 #include <util/stream/file.h>
 #include <util/string/builder.h>
@@ -542,6 +543,97 @@ struct TFixture: public TFixtureBase
                         Config->GetUpdateCountersInterval() * 2);
                 })
             .Wait();
+    }
+
+    void TestReconcileSerialNumber(
+        bool knownDevice,
+        const TString& sysFsSerialNumber)
+    {
+        auto expectedDevice = Devices[0];
+        const auto& pciAddr = expectedDevice.GetPCIAddress();
+
+        NProto::TNVMeDevice providedDevice;
+        providedDevice.SetSerialNumber(expectedDevice.GetSerialNumber());
+        providedDevice.SetPCIAddress(pciAddr);
+        providedDevice.SetDeviceState(NProto::NVME_DEVICE_STATE_ONLINE);
+
+        auto nextDeviceList = NewPromise<TVector<NProto::TNVMeDevice>>();
+        TAutoEvent deviceListProcessed;
+
+        Y_DEFER
+        {
+            Service->Stop();
+        };
+
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&, attempt = 0]() mutable
+            {
+                ++attempt;
+                if (attempt == 1) {
+                    return MakeFuture(
+                        knownDevice ? TVector{providedDevice}
+                                    : TVector<NProto::TNVMeDevice>{});
+                }
+
+                auto& sysFsDevice = SysFs->AddrToDevice[pciAddr];
+                sysFsDevice.SetSerialNumber(sysFsSerialNumber);
+                if (sysFsSerialNumber.empty()) {
+                    // Match sysfs for a device bound to vfio-pci.
+                    SysFs->AddrToDriver[pciAddr] = "vfio-pci";
+                    sysFsDevice.ClearModel();
+                    sysFsDevice.ClearFirmwareRev();
+                }
+
+                if (attempt > 2) {
+                    deviceListProcessed.Signal();
+                }
+
+                return nextDeviceList.GetFuture();
+            });
+
+        {
+            const auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(knownDevice ? 1 : 0, devices.size());
+            if (knownDevice) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedDevice.DebugString(),
+                    devices[0].DebugString());
+            }
+        }
+
+        nextDeviceList.SetValue(TVector{providedDevice});
+        UNIT_ASSERT(deviceListProcessed.WaitT(DefaultTimeout));
+
+        const auto [devices, error] = ListNVMeDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        if (!sysFsSerialNumber.empty() && !knownDevice) {
+            // A different physical device must not enter the registry.
+            UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+            return;
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedDevice.GetSerialNumber(),
+            devices[0].GetSerialNumber());
+
+        if (!sysFsSerialNumber.empty()) {
+            // Keep the known device's identity and mark it offline.
+            expectedDevice.SetDeviceState(NProto::NVME_DEVICE_STATE_OFFLINE);
+        } else if (!knownDevice) {
+            // No cached NVMe metadata exists for a newly discovered VFIO device.
+            expectedDevice.ClearModel();
+            expectedDevice.ClearFirmwareRev();
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedDevice.DebugString(),
+            devices[0].DebugString());
     }
 };
 
@@ -2132,6 +2224,149 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
                     caseInfo << ", device #" << j);
             }
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldRetryLoadingDeviceAfterSysFsError, TFixture)
+    {
+        const auto& expectedDevice = Devices[0];
+        const auto& pciAddr = expectedDevice.GetPCIAddress();
+
+        NProto::TNVMeDevice providedDevice;
+        providedDevice.SetSerialNumber(expectedDevice.GetSerialNumber());
+        providedDevice.SetPCIAddress(pciAddr);
+        providedDevice.SetDeviceState(NProto::NVME_DEVICE_STATE_ONLINE);
+
+        auto nextDeviceList = NewPromise<TVector<NProto::TNVMeDevice>>();
+        TAutoEvent deviceListProcessed;
+
+        // Stop polling before the callback's captured variables are destroyed,
+        // including when an assertion fails.
+        Y_DEFER
+        {
+            Service->Stop();
+        };
+
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&, attempt = 0]() mutable
+            {
+                ++attempt;
+                if (attempt == 1) {
+                    // The provider reports the device before sysfs is ready.
+                    SysFs->AddrToDevice.erase(pciAddr);
+                    return MakeFuture(
+                        TVector<NProto::TNVMeDevice>{providedDevice});
+                }
+
+                SysFs->AddrToDevice[pciAddr] = expectedDevice;
+                if (attempt > 2) {
+                    // The previous response has already been reconciled.
+                    deviceListProcessed.Signal();
+                }
+
+                return nextDeviceList.GetFuture();
+            });
+
+        {
+            const auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(0, devices.size());
+        }
+
+        // Allow the next provider response only after checking the failed load.
+        nextDeviceList.SetValue(TVector{providedDevice});
+        UNIT_ASSERT(deviceListProcessed.WaitT(DefaultTimeout));
+
+        const auto [devices, error] = ListNVMeDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedDevice.DebugString(),
+            devices[0].DebugString());
+    }
+
+    Y_UNIT_TEST_F(ShouldKeepDeviceOfflineWhileSysFsIsUnavailable, TFixture)
+    {
+        NProto::TNVMeDevice providedDevice;
+        providedDevice.SetSerialNumber(Devices[0].GetSerialNumber());
+        providedDevice.SetPCIAddress(Devices[0].GetPCIAddress());
+        providedDevice.SetDeviceState(NProto::NVME_DEVICE_STATE_ONLINE);
+
+        auto nextDeviceList = NewPromise<TVector<NProto::TNVMeDevice>>();
+        TAutoEvent deviceListProcessed;
+
+        Y_DEFER
+        {
+            Service->Stop();
+        };
+
+        DeviceProvider->ListNVMeDevicesImpl.SetValue(
+            [&, attempt = 0]() mutable
+            {
+                ++attempt;
+                if (attempt == 1) {
+                    return MakeFuture(
+                        TVector<NProto::TNVMeDevice>{providedDevice});
+                }
+
+                // Fail only after the device has been successfully discovered.
+                SysFs->AddrToDevice.erase(providedDevice.GetPCIAddress());
+
+                if (attempt > 3) {
+                    // At least two ONLINE reports were reconciled with sysfs
+                    // still unavailable.
+                    deviceListProcessed.Signal();
+                }
+
+                return nextDeviceList.GetFuture();
+            });
+
+        {
+            const auto [devices, error] = ListNVMeDevices();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                Devices[0].DebugString(),
+                devices[0].DebugString());
+        }
+
+        nextDeviceList.SetValue(TVector<NProto::TNVMeDevice>{providedDevice});
+        UNIT_ASSERT(deviceListProcessed.WaitT(DefaultTimeout));
+
+        auto expectedDevice = Devices[0];
+        expectedDevice.SetDeviceState(NProto::NVME_DEVICE_STATE_OFFLINE);
+
+        const auto [devices, error] = ListNVMeDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(1, devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedDevice.DebugString(),
+            devices[0].DebugString());
+    }
+
+    Y_UNIT_TEST_F(ShouldPreserveSerialNumberForKnownVfioDevice, TFixture)
+    {
+        TestReconcileSerialNumber(true, {});
+    }
+
+    Y_UNIT_TEST_F(ShouldUseProviderSerialNumberForNewVfioDevice, TFixture)
+    {
+        TestReconcileSerialNumber(false, {});
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectSerialNumberMismatchForKnownDevice, TFixture)
+    {
+        TestReconcileSerialNumber(true, "UNEXPECTED_SERIAL");
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectSerialNumberMismatchForNewDevice, TFixture)
+    {
+        TestReconcileSerialNumber(false, "UNEXPECTED_SERIAL");
     }
 
     Y_UNIT_TEST_F(ShouldGetDevicesFromInfra, TFixtureInfra)
