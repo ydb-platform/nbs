@@ -176,6 +176,7 @@ jobs:
           nebius_config_yaml: ${{ secrets.POOLED_LIGHT_NEBIUS_CONFIG_YAML }}
           vm_parent_id: ${{ env.parent_id }}
           vm_id: ${{ matrix.vms_to_remove }}
+          vm_fail_on_github_error: 'true'
   remove_broken:
     needs: calculate_missing_vms
     name: Broken ${{ inputs.flavor }} VMs
@@ -210,6 +211,7 @@ jobs:
           vm_parent_id: ${{ env.parent_id }}
           vm_id: ${{ matrix.broken_vms_to_remove }}
           vm_require_offline: 'true'
+          vm_fail_on_github_error: 'true'
   create_vms:
     needs: calculate_missing_vms
     name: Create ${{ inputs.flavor }} VMs
