@@ -39,20 +39,20 @@
         {
             "name": "PageIndex",
             "offsetBytes": 32178176,
-            "sizeBytes": 757760,
+            "sizeBytes": 712704,
             "slotSize": 24,
-            "slotCount": 31450
+            "slotCount": 29580
         },
         {
             "name": "PageAllocatorBitmap",
-            "offsetBytes": 32935936,
+            "offsetBytes": 32890880,
             "sizeBytes": 4096,
             "slotSize": 0,
             "slotCount": 29492
         },
         {
             "name": "DataPages",
-            "offsetBytes": 32964608,
+            "offsetBytes": 32899072,
             "sizeBytes": 966393856,
             "slotSize": 32768,
             "slotCount": 29492
@@ -60,8 +60,18 @@
     ],
     "storageGroups": [
         {
-            "type": "E_SG_MIRROR",
+            "type": "E_SG_QUORUM_MIRROR",
             "devices": [
+                {
+                    "host": "localhost",
+                    "port": true,
+                    "deviceId": true
+                },
+                {
+                    "host": "localhost",
+                    "port": true,
+                    "deviceId": true
+                },
                 {
                     "host": "localhost",
                     "port": true,
