@@ -131,6 +131,19 @@ bool SleepCont(TDuration dt)
     return true;
 }
 
+auto CheckDevice(const NProto::TNVMeDevice& fetchedDevice) -> NProto::TError
+{
+    if (fetchedDevice.GetPCIAddress().empty()) {
+        return MakeError(E_ARGUMENT, "empty PCI address");
+    }
+
+    if (fetchedDevice.GetSerialNumber().empty()) {
+        return MakeError(E_ARGUMENT, "empty serial number");
+    }
+
+    return {};
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TAcquireOperationResult: TFuture<TAcquireResult>
@@ -249,10 +262,18 @@ private:
     void InitDevices();
     auto InitDevicesImpl() -> NProto::TError;
     auto FetchDevices() const -> TResultOrError<TVector<NProto::TNVMeDevice>>;
-    auto PrepareDevice(
+
+    struct TLoadDeviceResult
+    {
+        NProto::TNVMeDevice Device;
+        bool BoundToNVMeDriver = false;
+    };
+
+    auto LoadDevice(
         const TSerialNumber& serialNumber,
-        const TString& pciAddr) const -> TResultOrError<NProto::TNVMeDevice>;
-    auto RefreshDevice(const TSerialNumber& serialNumber)
+        const TString& pciAddr) const -> TResultOrError<TLoadDeviceResult>;
+
+    auto ReloadDevice(const TSerialNumber& serialNumber)
         -> TResultOrError<NProto::TNVMeDevice>;
     auto UpdateDevices() -> NProto::TError;
     void ReconcileDevices(TVector<NProto::TNVMeDevice> fetchedDevices);
@@ -629,30 +650,67 @@ void TLocalNVMeService::ReconcileDevices(
 
     // Add newly discovered devices and refresh the state of known ones.
     for (const auto& fetchedDevice: fetchedDevices) {
-        auto [it, inserted] =
-            Devices.try_emplace(fetchedDevice.GetSerialNumber(), fetchedDevice);
+        const auto& serialNumber = fetchedDevice.GetSerialNumber();
+        const auto& newAddr = fetchedDevice.GetPCIAddress();
 
-        auto& device = it->second;
+        auto* oldDevice = Devices.FindPtr(serialNumber);
+        auto [loaded, loadError] = LoadDevice(serialNumber, newAddr);
+        auto& newDevice = loaded.Device;
 
-        if (inserted) {
-            STORAGE_INFO(
-                "Discovered NVMe device "
-                << device.GetSerialNumber().Quote() << ", state: "
-                << NProto::ENVMeDeviceState_Name(device.GetDeviceState()));
-        } else {
-            const auto oldState = device.GetDeviceState();
-            const auto newState = fetchedDevice.GetDeviceState();
-
-            if (oldState != newState) {
-                STORAGE_INFO(
-                    "NVMe device "
-                    << device.GetSerialNumber().Quote() << " changed state: "
-                    << NProto::ENVMeDeviceState_Name(oldState) << " -> "
-                    << NProto::ENVMeDeviceState_Name(newState));
+        if (HasError(loadError)) {
+            STORAGE_WARN(
+                "Failed to load NVMe device "
+                << serialNumber.Quote() << " at PCI address " << newAddr << ": "
+                << FormatError(loadError));
+            if (!oldDevice) {
+                continue;
             }
 
-            device.SetDeviceState(newState);
+            // Preserve known metadata on failure, but use the provider's
+            // address.
+            newDevice = *oldDevice;
+            newDevice.SetDeviceState(NProto::NVME_DEVICE_STATE_OFFLINE);
+            newDevice.SetPCIAddress(newAddr);
+        } else {
+            newDevice.SetDeviceState(fetchedDevice.GetDeviceState());
+
+            if (oldDevice && !loaded.BoundToNVMeDriver) {
+                // Preserve cached NVMe metadata that is unavailable in sysfs.
+                newDevice.SetModel(oldDevice->GetModel());
+                newDevice.SetFirmwareRev(oldDevice->GetFirmwareRev());
+            }
         }
+
+        if (!oldDevice) {
+            STORAGE_INFO(
+                "Discovered NVMe device "
+                << serialNumber.Quote() << " at PCI address " << newAddr
+                << ", state: "
+                << NProto::ENVMeDeviceState_Name(newDevice.GetDeviceState()));
+
+            Devices.emplace(serialNumber, std::move(newDevice));
+            continue;
+        }
+
+        const auto& oldAddr = oldDevice->GetPCIAddress();
+        if (oldAddr != newAddr) {
+            STORAGE_INFO(
+                "NVMe device " << serialNumber.Quote()
+                               << " changed PCI address: " << oldAddr.Quote()
+                               << " -> " << newAddr.Quote());
+        }
+
+        const auto oldState = oldDevice->GetDeviceState();
+        const auto newState = newDevice.GetDeviceState();
+        if (oldState != newState) {
+            STORAGE_INFO(
+                "NVMe device "
+                << serialNumber.Quote()
+                << " changed state: " << NProto::ENVMeDeviceState_Name(oldState)
+                << " -> " << NProto::ENVMeDeviceState_Name(newState));
+        }
+
+        *oldDevice = std::move(newDevice);
     }
 
     // Keep missing devices in the registry, but mark them as offline.
@@ -689,7 +747,7 @@ auto TLocalNVMeService::UpdateDevices() -> NProto::TError
     return {};
 }
 
-auto TLocalNVMeService::RefreshDevice(const TSerialNumber& serialNumber)
+auto TLocalNVMeService::ReloadDevice(const TSerialNumber& serialNumber)
     -> TResultOrError<NProto::TNVMeDevice>
 {
     auto* device = Devices.FindPtr(serialNumber);
@@ -700,30 +758,31 @@ auto TLocalNVMeService::RefreshDevice(const TSerialNumber& serialNumber)
                 << "Device " << serialNumber.Quote() << " not found");
     }
 
-    auto [newDevice, error] =
-        PrepareDevice(serialNumber, device->GetPCIAddress());
-
+    auto [r, error] = LoadDevice(serialNumber, device->GetPCIAddress());
     if (HasError(error)) {
         return error;
     }
 
-    *device = newDevice;
+    if (!r.BoundToNVMeDriver) {
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "Failed to reload NVMe device " << serialNumber.Quote()
+                << " at PCI address " << device->GetPCIAddress()
+                << ": device is not bound to the nvme driver");
+    }
 
-    return newDevice;
+    r.Device.SetDeviceState(device->GetDeviceState());
+
+    *device = r.Device;
+
+    return r.Device;
 }
 
-auto TLocalNVMeService::PrepareDevice(
+auto TLocalNVMeService::LoadDevice(
     const TSerialNumber& serialNumber,
-    const TString& pciAddr) const -> TResultOrError<NProto::TNVMeDevice>
+    const TString& pciAddr) const -> TResultOrError<TLoadDeviceResult>
 {
-    if (pciAddr.empty()) {
-        return MakeError(E_ARGUMENT, "empty PCI address");
-    }
-
-    if (serialNumber.empty()) {
-        return MakeError(E_ARGUMENT, "empty serial number");
-    }
-
     const auto normalizedPCIAddr = NormalizePCIAddr(pciAddr);
 
     auto [device, error] = SafeExecute<TResultOrError<NProto::TNVMeDevice>>(
@@ -737,6 +796,12 @@ auto TLocalNVMeService::PrepareDevice(
                              << error.GetMessage());
     }
 
+    const bool boundToNvmeDriver = !device.GetSerialNumber().empty();
+
+    if (device.GetSerialNumber().empty()) {
+        device.SetSerialNumber(serialNumber);
+    }
+
     if (device.GetSerialNumber() != serialNumber) {
         return MakeError(
             E_INVALID_STATE,
@@ -746,7 +811,7 @@ auto TLocalNVMeService::PrepareDevice(
                 << ", got " << device.GetSerialNumber());
     }
 
-    return device;
+    return TLoadDeviceResult{device, boundToNvmeDriver};
 }
 
 auto TLocalNVMeService::FetchDevices() const
@@ -771,18 +836,16 @@ auto TLocalNVMeService::FetchDevices() const
     TVector<NProto::TNVMeDevice> result;
     result.reserve(devices.size());
 
-    for (const auto& src: devices) {
-        auto [device, error] =
-            PrepareDevice(src.GetSerialNumber(), src.GetPCIAddress());
-
+    for (auto& device: devices) {
+        auto error = CheckDevice(device);
         if (HasError(error)) {
             STORAGE_WARN(
                 "Ignoring NVMe device reported by the provider"
-                << ": " << src << ": " << FormatError(error));
+                << ": " << device << ": " << FormatError(error));
             continue;
         }
 
-        device.SetDeviceState(src.GetDeviceState());
+        device.SetPCIAddress(NormalizePCIAddr(device.GetPCIAddress()));
 
         result.push_back(std::move(device));
     }
@@ -1039,13 +1102,9 @@ auto TLocalNVMeService::AcquireDevice(
 auto TLocalNVMeService::AcquireDeviceImpl(const TSerialNumber& serialNumber)
     -> TResultOrError<NProto::TNVMeDevice>
 {
-    std::optional device = GetDevice(serialNumber);
-
-    if (!device) {
-        return MakeError(
-            E_NOT_FOUND,
-            TStringBuilder()
-                << "Device " << serialNumber.Quote() << " not found");
+    auto [device, error] = ReloadDevice(serialNumber);
+    if (HasError(error)) {
+        return error;
     }
 
     auto [_, ok] = AcquiredDevices.insert(serialNumber);
@@ -1058,31 +1117,32 @@ auto TLocalNVMeService::AcquireDeviceImpl(const TSerialNumber& serialNumber)
 
     UpdateStateCache();
 
-    if (auto error = EnsureLockdown(*device); HasError(error)) {
+    if (auto error = EnsureLockdown(device); HasError(error)) {
         STORAGE_ERROR(
             "Failed to ensure lockdown on NVMe device "
             << serialNumber.Quote() << ": " << FormatError(error))
         return error;
     }
 
-    if (auto error = BindDeviceToDriver(*device, "vfio-pci"); HasError(error)) {
+    if (auto error = BindDeviceToDriver(device, "vfio-pci"); HasError(error)) {
         return error;
     }
 
     if (!IsVfioDevSupported) {
-        return std::move(device).value();
+        return device;
     }
 
-    auto [vfioDev, error] = GetVfioDevName(device->GetPCIAddress());
-    if (HasError(error)) {
+    if (auto [vfioDev, error] = GetVfioDevName(device.GetPCIAddress());
+        HasError(error))
+    {
         STORAGE_ERROR(
-            "Failed to get vfio device for " << *device << ": "
+            "Failed to get vfio device for " << device << ": "
                                              << FormatError(error));
     } else {
-        device->SetVfioDevName(std::move(vfioDev));
+        device.SetVfioDevName(std::move(vfioDev));
     }
 
-    return std::move(device).value();
+    return device;
 }
 
 auto TLocalNVMeService::GetVfioDevName(const TString& pciAddress) const
@@ -1349,7 +1409,7 @@ auto TLocalNVMeService::ReleaseDeviceImpl(const TSerialNumber& serialNumber)
     }
 
     {
-        auto [newDevice, error] = RefreshDevice(serialNumber);
+        auto [newDevice, error] = ReloadDevice(serialNumber);
         if (HasError(error)) {
             return error;
         }
