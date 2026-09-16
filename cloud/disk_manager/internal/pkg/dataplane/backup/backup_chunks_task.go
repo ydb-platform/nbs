@@ -17,8 +17,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Regular task: takes batches from backup_queue and copies chunk objects from
-// the s3 chunk storage to the backup bucket as is, with their metadata.
 type backupChunksTask struct {
 	storage      storage.Storage
 	dstS3        *persistence.S3Client
@@ -51,7 +49,6 @@ func (t *backupChunksTask) Run(
 		}
 
 		if len(entries) == 0 {
-			// Nothing to copy.
 			return errors.NewInterruptExecutionError()
 		}
 
@@ -105,11 +102,9 @@ func (t *backupChunksTask) copyChunk(
 
 	object, err := t.storage.ReadChunkBlob(ctx, entry.ChunkID)
 	if err != nil {
-		// A missing s3 key is reported with a silent non retriable error.
 		if errors.Is(err, errors.NewEmptyNonRetriableError()) &&
 			errors.IsSilent(err) {
 
-			// The snapshot has been deleted before its chunk was copied.
 			logging.Warn(
 				ctx,
 				"chunk %v of snapshot %v is gone, skipping backup: %v",
@@ -126,7 +121,7 @@ func (t *backupChunksTask) copyChunk(
 	err = t.dstS3.PutObject(
 		ctx,
 		t.dstBucket,
-		chunkKey(t.dstKeyPrefix, entry.ChunkID),
+		ChunkKey(t.dstKeyPrefix, entry.ChunkID),
 		persistence.S3Object{
 			Data:     object.Data,
 			Metadata: object.Metadata,

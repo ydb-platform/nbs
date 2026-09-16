@@ -145,6 +145,7 @@ func registerControlplaneTasks(
 	cellStorage cells_storage.Storage,
 	cellSelector cells.CellSelector,
 	filestoreCellsSelector cells.CellSelector,
+	backupS3 *persistence.S3Client,
 ) error {
 
 	logging.Info(ctx, "Registering pool tasks")
@@ -205,11 +206,13 @@ func registerControlplaneTasks(
 	err = snapshots.RegisterForExecution(
 		ctx,
 		config.GetSnapshotsConfig(),
+		config.GetSnapshotStorageBackupConfig(),
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,
 		nbsFactory,
 		cellSelector,
+		backupS3,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)
@@ -299,6 +302,7 @@ func initControlplane(
 	nbsFactory nbs.Factory,
 	nfsClientMetricsRegistry metrics.Registry,
 	nfsTlsProvider nfs.TlsConfigProvider,
+	backupS3 *persistence.S3Client,
 ) (serve func() error, err error) {
 
 	logging.Info(ctx, "Initializing pool storage")
@@ -404,6 +408,7 @@ func initControlplane(
 		cellStorage,
 		cellSelector,
 		filestoreCellsSelector,
+		backupS3,
 	)
 	if err != nil {
 		return nil, err

@@ -5,7 +5,6 @@ import (
 
 	"github.com/golang/protobuf/proto"
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
-	backup_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
@@ -16,7 +15,6 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/tasks/headers"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -27,8 +25,6 @@ type createSnapshotFromDiskTask struct {
 	performanceConfig *performance_config.PerformanceConfig
 	nbsFactory        nbs_client.Factory
 	storage           storage.Storage
-	scheduler         tasks.Scheduler
-	backupEnabled     bool
 	request           *protos.CreateSnapshotFromDiskRequest
 	state             *protos.CreateSnapshotFromDiskTaskState
 }
@@ -54,11 +50,6 @@ func (t *createSnapshotFromDiskTask) Run(
 ) error {
 
 	err := t.run(ctx, execCtx)
-	if err != nil {
-		return err
-	}
-
-	err = t.scheduleBackup(ctx, execCtx)
 	if err != nil {
 		return err
 	}
@@ -422,28 +413,6 @@ func (t *createSnapshotFromDiskTask) run(
 		diskParams.EncryptionDesc,
 	)
 }
-
-func (t *createSnapshotFromDiskTask) scheduleBackup(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-) error {
-
-	if !t.backupEnabled {
-		return nil
-	}
-
-	_, err := t.scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()+"_backup"),
-		"dataplane.BackupSnapshot",
-		"",
-		&backup_protos.BackupSnapshotRequest{
-			SnapshotId: t.request.DstSnapshotId,
-		},
-	)
-	return err
-}
-
-////////////////////////////////////////////////////////////////////////////////
 
 func (t *createSnapshotFromDiskTask) setEstimate(
 	ctx context.Context,

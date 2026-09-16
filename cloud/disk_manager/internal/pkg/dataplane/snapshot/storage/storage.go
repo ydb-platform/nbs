@@ -28,7 +28,6 @@ type SnapshotMeta struct {
 	ChunkCount  uint32
 	Encryption  *types.EncryptionDesc
 	Ready       bool
-	CreatedAt   time.Time
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -41,7 +40,6 @@ type ChunkMapEntry struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Chunk that should be copied to the backup bucket.
 type BackupQueueEntry struct {
 	SnapshotID string
 	ChunkID    string
@@ -157,7 +155,6 @@ type Storage interface {
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
 
-	// Chunk object of the s3 chunk storage as is, for copying to the backup.
 	ReadChunkBlob(ctx context.Context, chunkID string) (persistence.S3Object, error)
 
 	EnqueueBackupChunks(ctx context.Context, entries []BackupQueueEntry) error

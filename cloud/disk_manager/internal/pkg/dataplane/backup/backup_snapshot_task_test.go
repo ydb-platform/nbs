@@ -2,7 +2,6 @@ package backup
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"testing"
@@ -25,10 +24,7 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const (
-	testChunkSize    = 4096
-	backupTestBucket = "backup"
-)
+const backupTestBucket = "backup"
 
 func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	endpoint := fmt.Sprintf(
@@ -49,7 +45,6 @@ func newYDB(ctx context.Context) (*persistence.YDBClient, error) {
 	)
 }
 
-// Keeps chunks in bucket "test" under prefix t.Name().
 func newStorage(
 	t *testing.T,
 	ctx context.Context,
@@ -98,7 +93,6 @@ func newStorage(
 	return storage, closeFunc
 }
 
-// Backup bucket of the test: "backup" with prefix t.Name().
 type testBackup struct {
 	s3        *persistence.S3Client
 	bucket    string
@@ -115,7 +109,6 @@ func newTestBackup(t *testing.T, ctx context.Context) testBackup {
 	if !exists {
 		err = s3.CreateBucket(ctx, backupTestBucket)
 		if err != nil {
-			// Another test has just created it.
 			exists, existsErr := s3.BucketExists(ctx, backupTestBucket)
 			require.NoError(t, existsErr)
 			require.True(t, exists, "failed to create bucket: %v", err)
@@ -144,8 +137,6 @@ func newBackupSnapshotTask(
 		s3:               backup.s3,
 		bucket:           backup.bucket,
 		keyPrefix:        backup.keyPrefix,
-		chunkSize:        testChunkSize,
-		chunkCompression: "lz4",
 		enqueueBatchSize: 1000,
 		request: &protos.BackupSnapshotRequest{
 			SnapshotId: snapshotID,
@@ -214,22 +205,8 @@ func TestBackupSnapshotTask(t *testing.T) {
 
 	task := newBackupSnapshotTask(storage, backup, "snap1")
 
-	// The chunk is still in the queue: meta is written, the task yields.
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-
-	obj, err := backup.getObject(ctx, "snapshots/disk1/snap1/meta.json")
-	require.NoError(t, err)
-
-	var meta SnapshotMeta
-	err = json.Unmarshal(obj.Data, &meta)
-	require.NoError(t, err)
-	require.Equal(t, "snap1", meta.ID)
-	require.Equal(t, "disk1", meta.DiskID)
-	require.Equal(t, "zone", meta.ZoneID)
-	require.EqualValues(t, 2, meta.ChunkCount)
-	require.EqualValues(t, testChunkSize, meta.ChunkSize)
-	require.Equal(t, "lz4", meta.Compression)
 
 	_, err = backup.getObject(ctx, "snapshots/disk1/snap1/map.bin")
 	require.Error(t, err)
@@ -244,12 +221,10 @@ func TestBackupSnapshotTask(t *testing.T) {
 		queue,
 	)
 
-	// Still waiting: nothing is enqueued twice.
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 	require.EqualValues(t, 1, task.state.EnqueuedChunkCount)
 
-	// Chunks are copied: the map is written.
 	err = storage.ClearBackupQueue(ctx, queue)
 	require.NoError(t, err)
 
@@ -284,7 +259,6 @@ func TestBackupSnapshotTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	err = storage.SnapshotCreated(ctx, "snap1", 4096, 4096, 1, nil)
 	require.NoError(t, err)
 
-	// snap2 inherits chunk 0 from snap1 and writes chunk 1 itself.
 	_, err = storage.CreateSnapshot(ctx, snapshot_storage.SnapshotMeta{ID: "snap2"})
 	require.NoError(t, err)
 
@@ -331,7 +305,6 @@ func TestBackupSnapshotTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 
-	// The map covers the whole snapshot, inherited chunks included.
 	chunkMap := readBackupChunkMap(t, ctx, backup, "snapshots/-/snap2/map.bin")
 	require.Equal(t, []string{chunk0, chunk1}, chunkMap.ChunkIds)
 }

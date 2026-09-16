@@ -38,8 +38,6 @@ func RegisterForExecution(
 	taskRegistry *tasks.Registry,
 	taskScheduler tasks.Scheduler,
 	storage storage.Storage,
-	chunkCompression string,
-	chunkSize uint32,
 	backupS3 *persistence.S3Client,
 	metricsRegistry metrics.Registry,
 ) error {
@@ -59,8 +57,6 @@ func RegisterForExecution(
 				s3:               backupS3,
 				bucket:           config.GetS3Bucket(),
 				keyPrefix:        config.GetS3KeyPrefix(),
-				chunkSize:        chunkSize,
-				chunkCompression: chunkCompression,
 				enqueueBatchSize: int(config.GetEnqueueBatchSize()),
 			}
 		},

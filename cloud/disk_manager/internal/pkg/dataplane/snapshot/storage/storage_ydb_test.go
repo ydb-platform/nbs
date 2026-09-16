@@ -1735,7 +1735,6 @@ func TestBackupQueue(t *testing.T) {
 	err := f.storage.EnqueueBackupChunks(f.ctx, entries)
 	require.NoError(t, err)
 
-	// Check idempotency.
 	err = f.storage.EnqueueBackupChunks(f.ctx, entries[:1])
 	require.NoError(t, err)
 

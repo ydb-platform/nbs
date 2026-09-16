@@ -102,7 +102,6 @@ func (c collectSnapshotMetricsTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Backup lag: chunks waiting to be copied.
 func (c collectSnapshotMetricsTask) collectBackupMetrics(
 	ctx context.Context,
 ) error {

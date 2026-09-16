@@ -89,8 +89,7 @@ func (s *snapshotState) toSnapshotMeta() *SnapshotMeta {
 				KeyHash: s.encryptionKeyHash,
 			},
 		},
-		Ready:     s.status == snapshotStatusReady,
-		CreatedAt: s.createdAt,
+		Ready: s.status == snapshotStatusReady,
 	}
 }
 

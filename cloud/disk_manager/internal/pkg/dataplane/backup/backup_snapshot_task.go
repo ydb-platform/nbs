@@ -16,17 +16,11 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// One task per snapshot: writes meta.json to the backup bucket, puts the
-// snapshot's own chunks into backup_queue and, once the queue is drained by
-// dataplane.BackupChunks, writes map.bin. The map is the last object, so its
-// presence means the copy is complete.
 type backupSnapshotTask struct {
 	storage          storage.Storage
 	s3               *persistence.S3Client
 	bucket           string
 	keyPrefix        string
-	chunkSize        uint32
-	chunkCompression string
 	enqueueBatchSize int
 	request          *protos.BackupSnapshotRequest
 	state            *protos.BackupSnapshotTaskState
@@ -64,20 +58,7 @@ func (t *backupSnapshotTask) Run(
 		diskID = meta.Disk.DiskId
 	}
 
-	if !t.state.MetaWritten {
-		err = t.writeMeta(ctx, diskID, meta)
-		if err != nil {
-			return err
-		}
-
-		t.state.MetaWritten = true
-		t.state.ChunkCount = meta.ChunkCount
-
-		err = t.saveProgress(ctx, execCtx)
-		if err != nil {
-			return err
-		}
-	}
+	t.state.ChunkCount = meta.ChunkCount
 
 	err = t.enqueueChunks(ctx, execCtx)
 	if err != nil {
@@ -90,7 +71,6 @@ func (t *backupSnapshotTask) Run(
 	}
 
 	if has {
-		// Chunks are still being copied, come back later.
 		logging.Debug(
 			ctx,
 			"backup of snapshot %v is waiting for its chunks to be copied",
@@ -131,34 +111,6 @@ func (t *backupSnapshotTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Written before the chunks: meta without map means the copy is in progress
-// or was interrupted.
-func (t *backupSnapshotTask) writeMeta(
-	ctx context.Context,
-	diskID string,
-	meta storage.SnapshotMeta,
-) error {
-
-	snapshotMeta, err := NewSnapshotMeta(meta, t.chunkSize, t.chunkCompression)
-	if err != nil {
-		return err
-	}
-
-	data, err := snapshotMeta.Marshal()
-	if err != nil {
-		return errors.NewNonRetriableError(err)
-	}
-
-	return t.s3.PutObject(
-		ctx,
-		t.bucket,
-		metaKey(t.keyPrefix, diskID, meta.ID),
-		persistence.S3Object{Data: data},
-	)
-}
-
-// Puts the snapshot's own chunks into backup_queue. Chunks inherited from the
-// base snapshot are already there or in the queue on behalf of the base.
 func (t *backupSnapshotTask) enqueueChunks(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
@@ -170,7 +122,6 @@ func (t *backupSnapshotTask) enqueueChunks(
 		return nil
 	}
 
-	// Stops the chunk map reader if we return early.
 	readCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -237,7 +188,6 @@ func (t *backupSnapshotTask) enqueueChunks(
 	return t.saveProgress(ctx, execCtx)
 }
 
-// Full map: one entry per chunk index, empty id is a zero chunk.
 func (t *backupSnapshotTask) writeMap(
 	ctx context.Context,
 	diskID string,
@@ -248,7 +198,6 @@ func (t *backupSnapshotTask) writeMap(
 		ChunkIds: make([]string, meta.ChunkCount),
 	}
 
-	// Stops the chunk map reader if we return early.
 	readCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -279,7 +228,7 @@ func (t *backupSnapshotTask) writeMap(
 	return t.s3.PutObject(
 		ctx,
 		t.bucket,
-		chunkMapKey(t.keyPrefix, diskID, meta.ID),
+		ChunkMapKey(t.keyPrefix, diskID, meta.ID),
 		persistence.S3Object{Data: data},
 	)
 }
@@ -300,7 +249,6 @@ func (t *backupSnapshotTask) saveProgress(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// chunk_id = <task_id>.<snapshot_id>.<chunk_index>, see makeChunkID.
 func isOwnChunk(chunkID string, snapshotID string) bool {
 	parts := strings.Split(chunkID, ".")
 	return len(parts) == 3 && parts[1] == snapshotID

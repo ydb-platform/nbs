@@ -34,7 +34,6 @@ func TestBackupChunksTask(t *testing.T) {
 
 	entries := []snapshot_storage.BackupQueueEntry{
 		{SnapshotID: "snap1", ChunkID: chunkID},
-		// Chunk of a snapshot that has already been deleted.
 		{SnapshotID: "snap1", ChunkID: "task.snap1.1"},
 	}
 	err = storage.EnqueueBackupChunks(ctx, entries)

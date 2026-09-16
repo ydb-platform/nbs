@@ -6,6 +6,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	backup_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -32,10 +33,10 @@ func RegisterForExecution(
 	migrationDstStorage storage.Storage,
 	useS3InMigration bool,
 	s3 *persistence.S3Client,
+	backupConfig *backup_config.SnapshotStorageBackupConfig,
 	backupS3 *persistence.S3Client,
 ) error {
 
-	// Snapshots are backed up only when the backup bucket is configured.
 	backupEnabled := backupS3 != nil
 	if backupEnabled && s3 == nil {
 		return errors.NewNonRetriableErrorf(
@@ -49,8 +50,6 @@ func RegisterForExecution(
 			performanceConfig: performanceConfig,
 			nbsFactory:        nbsFactory,
 			storage:           storage,
-			scheduler:         taskScheduler,
-			backupEnabled:     backupEnabled,
 		}
 	})
 	if err != nil {
@@ -292,12 +291,10 @@ func RegisterForExecution(
 
 	return backup.RegisterForExecution(
 		ctx,
-		config.GetSnapshotStorageBackupConfig(),
+		backupConfig,
 		taskRegistry,
 		taskScheduler,
 		storage,
-		config.GetSnapshotConfig().GetChunkCompression(),
-		chunkSize,
 		backupS3,
 		metricsRegistry,
 	)
