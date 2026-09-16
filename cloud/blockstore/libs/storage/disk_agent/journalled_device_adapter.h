@@ -16,6 +16,8 @@ namespace NCloud::NBlockStore::NStorage {
 NJournalled::IDevicePtr CreateDeviceAdapter(
     ITimerPtr timer,
     TString deviceUUID,
+    TString clientId,
+    ui32 blockSize,
     TDeviceClientPtr deviceClient);
 
 }   // namespace NCloud::NBlockStore::NStorage

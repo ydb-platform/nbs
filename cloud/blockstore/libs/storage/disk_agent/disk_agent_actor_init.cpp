@@ -178,12 +178,14 @@ void TDiskAgentActor::HandleInitAgentCompleted(
 
         auto timer = CreateWallClockTimer();
 
-        for (const auto& deviceId: State->GetDeviceIds()) {
+        for (const auto& config: State->GetDevices()) {
             devices.emplace(
-                deviceId,
+                config.GetDeviceUUID(),
                 NJournalled::CreateJournalledDevice(CreateDeviceAdapter(
                     timer,
-                    deviceId,
+                    config.GetDeviceUUID(),
+                    TString{JournalledDeviceClientId},
+                    config.GetBlockSize(),
                     State->GetDeviceClient())));
         }
 

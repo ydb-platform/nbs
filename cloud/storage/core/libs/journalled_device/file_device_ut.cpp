@@ -1,6 +1,7 @@
 #include "file_device.h"
 
 #include "device.h"
+#include "device_helpers.h"
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/error.h>
@@ -37,37 +38,34 @@ TString ZeroedPage(ui32 pageSize = DefaultPageSize)
     return TString(pageSize, '\0');
 }
 
-NCloud::NProto::TWriteLogRecordRequest MakeWriteRequest(
+TVector<TPageRange> MakeRanges(
     const TVector<std::pair<ui64 /*firstPageNo*/, TVector<TString>>>& groups)
 {
-    NCloud::NProto::TWriteLogRecordRequest request;
+    TVector<TPageRange> ranges;
 
     for (const auto& [firstPageNo, content]: groups) {
-        auto& group = *request.AddPageGroups();
-        group.SetFirstPageNo(firstPageNo);
+        auto& range = ranges.emplace_back();
+        range.FirstPageNo = firstPageNo;
 
         for (const auto& page: content) {
-            group.AddContent(page);
+            range.Pages.emplace_back(page.data(), page.size());
         }
     }
 
-    return request;
+    return ranges;
 }
 
-NCloud::NProto::TReadPagesRequest MakeReadRequest(
-    const TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>& refs,
-    ui32 pageSize = DefaultPageSize)
+TVector<TPageRangeRef> MakeRangeRefs(
+    const TVector<std::pair<ui64 /*firstPageNo*/, ui64 /*pageCount*/>>& refs)
 {
-    NCloud::NProto::TReadPagesRequest request;
+    TVector<TPageRangeRef> rangeRefs;
 
     for (const auto& [firstPageNo, pageCount]: refs) {
-        auto& ref = *request.AddPageGroupRefs();
-        ref.SetFirstPageNo(firstPageNo);
-        ref.SetPageCount(pageCount);
-        ref.SetPageSize(pageSize);
+        rangeRefs.push_back(
+            {.FirstPageNo = firstPageNo, .PageCount = pageCount});
     }
 
-    return request;
+    return rangeRefs;
 }
 
 // "a" for a page filled with 'a', "0" for a zeroed one, "?" for anything else
@@ -141,9 +139,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     NCloud::NProto::TError Write(
         const TVector<std::pair<ui64, TVector<TString>>>& groups)
     {
-        return Device->WritePages(MakeWriteRequest(groups))
-            .GetValueSync()
-            .GetError();
+        return Device->WritePages(MakeRanges(groups)).GetValueSync();
     }
 
     void WritePages(const TVector<std::pair<ui64, TVector<TString>>>& groups)
@@ -156,12 +152,18 @@ struct TFixture: public NUnitTest::TBaseFixture
             FormatError(error));
     }
 
+    // the pages read are grouped after the refs they have been read for
     NCloud::NProto::TReadPagesResponse Read(
-        const TVector<std::pair<ui64, ui64>>& refs,
-        ui32 pageSize = DefaultPageSize)
+        const TVector<std::pair<ui64, ui64>>& refs)
     {
-        return Device->ReadPages(MakeReadRequest(refs, pageSize))
-            .GetValueSync();
+        const auto rangeRefs = MakeRangeRefs(refs);
+
+        const auto result = Device->ReadPages(rangeRefs).GetValueSync();
+        if (HasError(result)) {
+            return TErrorResponse(result.GetError());
+        }
+
+        return MakeReadPagesResponse(rangeRefs, result.GetResult());
     }
 
     NCloud::NProto::TReadPagesResponse ReadPagesResponse(
@@ -396,20 +398,6 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             ZeroedPage(),
             response.GetPageGroups(0).GetContent(0));
-    }
-
-    Y_UNIT_TEST_F(ShouldRejectAPageSizeMismatchOnRead, TFixture)
-    {
-        WritePages({{10, {Page('a')}}});
-
-        for (ui32 size: {DefaultPageSize - 1, DefaultPageSize + 1, 0u}) {
-            const auto response = Read({{10, 1}}, size);
-
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_ARGUMENT,
-                response.GetError().GetCode(),
-                FormatError(response.GetError()));
-        }
     }
 
     Y_UNIT_TEST_F(ShouldRejectPagesBeyondTheDevice, TFixture)

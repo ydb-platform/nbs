@@ -30,6 +30,13 @@ namespace {
 constexpr ui32 DefaultBlockSize = 4_KB;
 constexpr ui64 DefaultBlockCount = 1_MB / DefaultBlockSize;
 
+TBuffer MakeBlock(size_t size, char c)
+{
+    TBuffer block;
+    block.Fill(c, size);
+    return block;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TFixture: public NUnitTest::TBaseFixture
@@ -70,7 +77,17 @@ struct TFixture: public NUnitTest::TBaseFixture
         // behaviour of an unacquired device
         Timer->AdvanceTime(Now - TInstant::Zero());
 
-        Device = CreateDeviceAdapter(Timer, DeviceUUID, DeviceClient);
+        Device = CreateAdapter(ClientId);
+    }
+
+    NJournalled::IDevicePtr CreateAdapter(TString clientId)
+    {
+        return CreateDeviceAdapter(
+            Timer,
+            DeviceUUID,
+            std::move(clientId),
+            DefaultBlockSize,
+            DeviceClient);
     }
 
     void AcquireDevice()
@@ -117,16 +134,14 @@ struct TFixture: public NUnitTest::TBaseFixture
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
     }
 
-    NProto::TError WritePages(NCloud::NProto::TWriteLogRecordRequest request)
+    NProto::TError WritePages(TVector<NJournalled::TPageRange> ranges)
     {
-        return Device->WritePages(std::move(request))
-            .GetValueSync()
-            .GetError();
+        return Device->WritePages(std::move(ranges)).GetValueSync();
     }
 
-    auto ReadPages(NCloud::NProto::TReadPagesRequest request)
+    auto ReadPages(TVector<NJournalled::TPageRangeRef> rangeRefs)
     {
-        return Device->ReadPages(std::move(request)).GetValueSync();
+        return Device->ReadPages(std::move(rangeRefs)).GetValueSync();
     }
 };
 
@@ -139,102 +154,54 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
     Y_UNIT_TEST_F(ShouldValidateWritePagesRequest, TFixture)
     {
         using TPrepareFunc =
-            std::function<void(NCloud::NProto::TWriteLogRecordRequest&)>;
+            std::function<void(TVector<NJournalled::TPageRange>&)>;
 
         const std::tuple<TPrepareFunc, NProto::TError> testCases[]{
-            {[&](auto&) {}, MakeError(E_ARGUMENT, "empty device UUID")},
-            {[&](auto& proto) { proto.SetDeviceUUID(DeviceUUID); },
-             MakeError(E_ARGUMENT, "nothing to write")},
-            {[&](auto& proto)
-             {
-                 proto.SetDeviceUUID(DeviceUUID);
-                 proto.MutablePageGroups()->Add();
-             },
+            {[&](auto&) {}, MakeError(E_ARGUMENT, "nothing to write")},
+            {[&](auto& ranges) { ranges.emplace_back(); },
              MakeError(E_ARGUMENT, "empty page group")},
-            {[&](auto& proto)
+            {[&](auto& ranges)
              {
-                 proto.SetDeviceUUID(DeviceUUID);
-                 auto& groups = *proto.MutablePageGroups();
+                 auto& range = ranges.emplace_back();
+                 range.FirstPageNo = 0x10;
+                 range.Pages.emplace_back();   // an empty block
+             },
+             MakeError(
+                 E_ARGUMENT,
+                 "invalid page data: block must not be empty")},
+            {[&](auto& ranges)
+             {
+                 {
+                     auto& range = ranges.emplace_back();
+                     range.FirstPageNo = 0x10;
+                     range.Pages.push_back(MakeBlock(4_KB, 'A'));
+                 }
 
                  {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.MutableContent()->Add();   // an empty block
+                     auto& range = ranges.emplace_back();
+                     range.FirstPageNo = 0x20;
+                     range.Pages.push_back(MakeBlock(4_KB, 'A'));
+                     range.Pages.emplace_back();   // an empty block
+                     range.Pages.push_back(MakeBlock(4_KB, 'A'));
                  }
              },
              MakeError(
                  E_ARGUMENT,
                  "invalid page data: block must not be empty")},
-            {[&](auto& proto)
+            {[&](auto& ranges)
              {
-                 proto.SetDeviceUUID(DeviceUUID);
-                 auto& groups = *proto.MutablePageGroups();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.MutableContent()->Add()->resize(4_KB, 'A');
-                 }
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x20);
-                     group.MutableContent()->Add()->resize(4_KB, 'A');
-                     group.MutableContent()->Add();   // an empty block
-                     group.MutableContent()->Add()->resize(4_KB, 'A');
-                 }
-             },
-             MakeError(
-                 E_ARGUMENT,
-                 "invalid page data: block must not be empty")},
-            {[&](auto& proto)
-             {
-                 proto.SetDeviceUUID(DeviceUUID);
-                 auto& groups = *proto.MutablePageGroups();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.MutableContent()->Add()->resize(4_KB, 'A');
-                     group.MutableContent()->Add()->resize(8_KB, 'B');
-                 }
+                 auto& range = ranges.emplace_back();
+                 range.FirstPageNo = 0x10;
+                 range.Pages.push_back(MakeBlock(4_KB, 'A'));
+                 range.Pages.push_back(MakeBlock(8_KB, 'B'));
              },
              MakeError(E_ARGUMENT, "invalid page data: block size mismatch")},
-            {[&](auto& proto)
+            {[&](auto& ranges)
              {
-                 // the client id is checked after the device is found
-                 proto.SetDeviceUUID(DeviceUUID);
-                 auto& groups = *proto.MutablePageGroups();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.MutableContent()->Add()->resize(
-                         DefaultBlockSize,
-                         'A');
-                     group.MutableContent()->Add()->resize(
-                         DefaultBlockSize,
-                         'B');
-                 }
-             },
-             MakeError(E_ARGUMENT, "empty client id")},
-            {[&](auto& proto)
-             {
-                 proto.MutableHeaders()->SetClientId(ClientId);
-                 proto.SetDeviceUUID(DeviceUUID);
-
-                 auto& groups = *proto.MutablePageGroups();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.MutableContent()->Add()->resize(
-                         DefaultBlockSize,
-                         'A');
-                     group.MutableContent()->Add()->resize(
-                         DefaultBlockSize,
-                         'B');
-                 }
+                 auto& range = ranges.emplace_back();
+                 range.FirstPageNo = 0x10;
+                 range.Pages.push_back(MakeBlock(DefaultBlockSize, 'A'));
+                 range.Pages.push_back(MakeBlock(DefaultBlockSize, 'B'));
              },
              MakeError(E_BS_INVALID_SESSION, "not acquired by client")},
         };
@@ -242,10 +209,10 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         for (size_t i = 0; i != std::size(testCases); ++i) {
             const auto& [prepare, expectedError] = testCases[i];
 
-            NCloud::NProto::TWriteLogRecordRequest request;
-            prepare(request);
+            TVector<NJournalled::TPageRange> ranges;
+            prepare(ranges);
 
-            const auto error = WritePages(std::move(request));
+            const auto error = WritePages(std::move(ranges));
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 expectedError.GetCode(),
@@ -264,102 +231,26 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
     Y_UNIT_TEST_F(ShouldValidateReadPagesRequest, TFixture)
     {
         using TPrepareFunc =
-            std::function<void(NCloud::NProto::TReadPagesRequest&)>;
+            std::function<void(TVector<NJournalled::TPageRangeRef>&)>;
 
         const std::tuple<TPrepareFunc, NProto::TError> testCases[]{
-            {[&](auto&) {}, MakeError(E_ARGUMENT, "empty device UUID")},
-            {[&](auto& proto) { proto.SetDeviceUUID(DeviceUUID); },
-             MakeError(E_ARGUMENT, "nothing to read")},
-            {[&](auto& proto)
+            {[&](auto&) {}, MakeError(E_ARGUMENT, "nothing to read")},
+            {[&](auto& rangeRefs) { rangeRefs.emplace_back(); },
+             MakeError(
+                 E_ARGUMENT,
+                 "page group ref must contain at least one page")},
+            {[&](auto& rangeRefs)
              {
-                 proto.SetDeviceUUID(DeviceUUID);
-                 proto.MutablePageGroupRefs()->Add();
+                 rangeRefs.push_back({.FirstPageNo = 0x10, .PageCount = 1});
+                 rangeRefs.push_back({.FirstPageNo = 0x20, .PageCount = 0});
              },
              MakeError(
                  E_ARGUMENT,
                  "page group ref must contain at least one page")},
-            {[&](auto& proto)
+            {[&](auto& rangeRefs)
              {
-                 proto.SetDeviceUUID(DeviceUUID);
-                 auto& groups = *proto.MutablePageGroupRefs();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.SetPageSize(DefaultBlockSize);
-                     group.SetPageCount(1);
-                 }
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x20);
-                     group.SetPageSize(DefaultBlockSize);
-                     group.SetPageCount(0);
-                 }
-             },
-             MakeError(
-                 E_ARGUMENT,
-                 "page group ref must contain at least one page")},
-            {[&](auto& proto)
-             {
-                 proto.SetDeviceUUID(DeviceUUID);
-                 auto& groups = *proto.MutablePageGroupRefs();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.SetPageSize(DefaultBlockSize);
-                     group.SetPageCount(1);
-                 }
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x20);
-                     group.SetPageSize(0);
-                     group.SetPageCount(1);
-                 }
-             },
-             MakeError(E_ARGUMENT, "page size must be greater than zero")},
-            {[&](auto& proto)
-             {
-                 proto.SetDeviceUUID(DeviceUUID);
-                 auto& groups = *proto.MutablePageGroupRefs();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.SetPageSize(DefaultBlockSize);
-                     group.SetPageCount(1);
-                 }
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x20);
-                     group.SetPageSize(DefaultBlockSize);
-                     group.SetPageCount(1);
-                 }
-             },
-             MakeError(E_ARGUMENT, "empty client id")},
-            {[&](auto& proto)
-             {
-                 proto.MutableHeaders()->SetClientId(ClientId);
-                 proto.SetDeviceUUID(DeviceUUID);
-
-                 auto& groups = *proto.MutablePageGroupRefs();
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x10);
-                     group.SetPageSize(DefaultBlockSize);
-                     group.SetPageCount(1);
-                 }
-
-                 {
-                     auto& group = *groups.Add();
-                     group.SetFirstPageNo(0x20);
-                     group.SetPageSize(DefaultBlockSize);
-                     group.SetPageCount(1);
-                 }
+                 rangeRefs.push_back({.FirstPageNo = 0x10, .PageCount = 1});
+                 rangeRefs.push_back({.FirstPageNo = 0x20, .PageCount = 1});
              },
              MakeError(E_BS_INVALID_SESSION, "not acquired by client")},
         };
@@ -367,10 +258,10 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         for (size_t i = 0; i != std::size(testCases); ++i) {
             const auto& [prepare, expectedError] = testCases[i];
 
-            NCloud::NProto::TReadPagesRequest request;
-            prepare(request);
+            TVector<NJournalled::TPageRangeRef> rangeRefs;
+            prepare(rangeRefs);
 
-            const auto error = ReadPages(std::move(request)).GetError();
+            const auto error = ReadPages(std::move(rangeRefs)).GetError();
 
             UNIT_ASSERT_VALUES_EQUAL_C(
                 expectedError.GetCode(),
@@ -386,38 +277,63 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         }
     }
 
+    Y_UNIT_TEST_F(ShouldRejectAnEmptyClientId, TFixture)
+    {
+        AcquireDevice();
+
+        Device = CreateAdapter({});
+
+        {
+            TVector<NJournalled::TPageRange> ranges(1);
+            ranges[0].FirstPageNo = 0x10;
+            ranges[0].Pages.push_back(MakeBlock(DefaultBlockSize, 'A'));
+
+            const auto error = WritePages(std::move(ranges));
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "empty client id");
+        }
+
+        {
+            const auto error =
+                ReadPages({{.FirstPageNo = 0x10, .PageCount = 1}}).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "empty client id");
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldWritePages, TFixture)
     {
-        const auto makeRequest = [&]
+        const auto makeRanges = []
         {
-            NCloud::NProto::TWriteLogRecordRequest request;
-            request.MutableHeaders()->SetClientId(ClientId);
-            request.SetDeviceUUID(DeviceUUID);
-            request.SetLogSequenceNumber(1);
-
-            auto& groups = *request.MutablePageGroups();
+            TVector<NJournalled::TPageRange> ranges;
 
             {
-                auto& group = *groups.Add();
-                group.SetFirstPageNo(0x10);
-                group.MutableContent()->Add()->resize(DefaultBlockSize, 'A');
-                group.MutableContent()->Add()->resize(DefaultBlockSize, 'B');
+                auto& range = ranges.emplace_back();
+                range.FirstPageNo = 0x10;
+                range.Pages.push_back(MakeBlock(DefaultBlockSize, 'A'));
+                range.Pages.push_back(MakeBlock(DefaultBlockSize, 'B'));
             }
 
             {
-                auto& group = *groups.Add();
-                group.SetFirstPageNo(0x20);
-                group.MutableContent()->Add()->resize(DefaultBlockSize, 'X');
-                group.MutableContent()->Add()->resize(DefaultBlockSize, 'Y');
+                auto& range = ranges.emplace_back();
+                range.FirstPageNo = 0x20;
+                range.Pages.push_back(MakeBlock(DefaultBlockSize, 'X'));
+                range.Pages.push_back(MakeBlock(DefaultBlockSize, 'Y'));
             }
 
-            return request;
+            return ranges;
         };
 
         // the device has not been acquired yet
 
         {
-            const auto error = WritePages(makeRequest());
+            const auto error = WritePages(makeRanges());
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
                 error.GetCode(),
@@ -427,7 +343,7 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         AcquireDevice();
 
         {
-            const auto error = WritePages(makeRequest());
+            const auto error = WritePages(makeRanges());
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
@@ -443,61 +359,49 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         AcquireDevice();
 
         for (ui32 i = 0; i != requestCount; ++i) {
-            NCloud::NProto::TReadPagesRequest request;
-            request.MutableHeaders()->SetClientId(ClientId);
-            request.SetDeviceUUID(DeviceUUID);
+            const ui64 rangeCount = 1 + RandomNumber<ui64>(8);
 
-            const ui64 groupCount = 1 + RandomNumber<ui64>(8);
+            TVector<NJournalled::TPageRangeRef> rangeRefs;
+            for (ui64 j = 0; j != rangeCount; ++j) {
+                const ui64 firstPageNo = RandomNumber<ui64>(DefaultBlockCount);
 
-            auto& groupRefs = *request.MutablePageGroupRefs();
-            for (ui64 j = 0; j != groupCount; ++j) {
-                auto& group = *groupRefs.Add();
-
-                group.SetFirstPageNo(RandomNumber<ui64>(DefaultBlockCount));
-                group.SetPageSize(DefaultBlockSize);
-                group.SetPageCount(
-                    1 + RandomNumber<ui64>(
-                            DefaultBlockCount - group.GetFirstPageNo()));
+                rangeRefs.push_back(
+                    {.FirstPageNo = firstPageNo,
+                     .PageCount = 1 + RandomNumber<ui64>(
+                                          DefaultBlockCount - firstPageNo)});
             }
 
-            const auto response = ReadPages(request);
+            const auto result = ReadPages(rangeRefs);
 
-            const auto& error = response.GetError();
+            const auto& error = result.GetError();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
 
-            UNIT_ASSERT_VALUES_EQUAL(groupCount, response.PageGroupsSize());
+            // the pages of all the refs follow each other
 
-            const auto& groups = response.GetPageGroups();
+            const auto& pages = result.GetResult();
+            size_t pageIndex = 0;
 
-            for (size_t j = 0; j != groupCount; ++j) {
-                const auto& groupRef = groupRefs[j];
-                const auto& group = groups[j];
+            for (const auto& rangeRef: rangeRefs) {
+                for (ui64 k = 0; k != rangeRef.PageCount; ++k) {
+                    UNIT_ASSERT_LT(pageIndex, pages.size());
 
-                UNIT_ASSERT_VALUES_EQUAL(
-                    groupRef.GetFirstPageNo(),
-                    group.GetFirstPageNo());
+                    const ui64 blockIndex = rangeRef.FirstPageNo + k;
+                    const auto& page = pages[pageIndex++];
 
-                UNIT_ASSERT_VALUES_EQUAL(
-                    groupRef.GetPageCount(),
-                    group.ContentSize());
+                    TStringBuf block(page.Data(), page.Size());
 
-                for (ui64 k = 0; k != group.ContentSize(); ++k) {
-                    const ui64 blockIndex = group.GetFirstPageNo() + k;
-
-                    TStringBuf block = group.GetContent(k);
-
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        groupRef.GetPageSize(),
-                        block.size());
+                    UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, block.size());
 
                     UNIT_ASSERT_VALUES_EQUAL(
                         block.size(),
                         std::ranges::count(block, BlockData(blockIndex)));
                 }
             }
+
+            UNIT_ASSERT_VALUES_EQUAL(pageIndex, pages.size());
         }
     }
 }

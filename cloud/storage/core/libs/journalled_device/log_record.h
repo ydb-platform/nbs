@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "device.h"
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/device.pb.h>
 
@@ -17,18 +19,10 @@ constexpr ui32 CurrentFormatVersion = 1;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TPageRange
-{
-    ui64 FirstPageNo = 0;
-    ui64 PageCount = 0;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TPageMapping
 {
     ui64 PageNo = 0;
-    TPageRange Location;
+    TPageRangeRef Location;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

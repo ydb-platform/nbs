@@ -60,7 +60,7 @@ ui64 TLogPageIndex::GetLastIndexedLsn() const
 }
 
 auto TLogPageIndex::Lookup(
-    const TVector<TPageRange>& ranges,
+    const TVector<TPageRangeRef>& ranges,
     ui64 afterLsn) const -> TLookupResult
 {
     TLookupResult result;
@@ -100,7 +100,7 @@ auto TLogPageIndex::Lookup(
                 result.Mappings.push_back(
                     TPageMapping{
                         .PageNo = clipFrom,
-                        .Location = TPageRange{
+                        .Location = TPageRangeRef{
                             .FirstPageNo =
                                 location.FirstPageNo + (clipFrom - entryFrom),
                             .PageCount = clipTo - clipFrom}});
@@ -121,7 +121,7 @@ TLogPageIndex::TEntries::iterator TLogPageIndex::ClearRange(ui64 from, ui64 to)
     while (it != Entries.end() && it->first < to) {
         const ui64 entryFrom = it->first;
         const ui64 lsn = it->second.Lsn;
-        const TPageRange location = it->second.Location;
+        const TPageRangeRef location = it->second.Location;
         const ui64 entryTo = entryFrom + location.PageCount;
 
         if (entryTo <= from) {
@@ -137,7 +137,7 @@ TLogPageIndex::TEntries::iterator TLogPageIndex::ClearRange(ui64 from, ui64 to)
                 entryFrom,
                 TEntry{
                     .Lsn = lsn,
-                    .Location = TPageRange{
+                    .Location = TPageRangeRef{
                         .FirstPageNo = location.FirstPageNo,
                         .PageCount = from - entryFrom}});
         }
@@ -148,7 +148,7 @@ TLogPageIndex::TEntries::iterator TLogPageIndex::ClearRange(ui64 from, ui64 to)
                 to,
                 TEntry{
                     .Lsn = lsn,
-                    .Location = TPageRange{
+                    .Location = TPageRangeRef{
                         .FirstPageNo = location.FirstPageNo + (to - entryFrom),
                         .PageCount = entryTo - to}});
         }
