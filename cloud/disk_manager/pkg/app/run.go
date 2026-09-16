@@ -221,6 +221,20 @@ func run(
 	var s3 *persistence.S3Client
 	var s3Bucket string
 
+	var slaveS3 *persistence.S3Client
+	backupConfig := config.GetSnapshotStorageBackupConfig()
+	if backupConfig != nil {
+		slaveS3, err = persistence.NewS3ClientFromConfig(
+			backupConfig.GetS3Config(),
+			mon.NewRegistry("slave_s3_client"),
+			nil, // availabilityMonitoring
+			creds,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	dataplaneConfig := config.GetDataplaneConfig()
 	if dataplaneConfig == nil {
 		logging.Info(ctx, "Registering dataplane tasks")
@@ -339,6 +353,7 @@ func run(
 			s3,
 			migrationDstDB,
 			migrationDstS3,
+			slaveS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize dataplane: %v", err)
@@ -410,6 +425,7 @@ func run(
 			nbsFactory,
 			nfsClientMetricsRegistry,
 			nfsTlsProvider,
+			slaveS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize GRPC services: %v", err)

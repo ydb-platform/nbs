@@ -1,0 +1,33 @@
+package backup
+
+import (
+	"fmt"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+func SnapshotMetaKey(
+	keyPrefix string,
+	diskID string,
+	snapshotID string,
+) string {
+
+	return key(
+		keyPrefix,
+		fmt.Sprintf("snapshots/%v/%v/meta.json", diskID, snapshotID),
+	)
+}
+
+func ImageMetaKey(keyPrefix string, imageID string) string {
+	return key(keyPrefix, fmt.Sprintf("images/%v/meta.json", imageID))
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func key(keyPrefix string, object string) string {
+	if len(keyPrefix) == 0 {
+		return object
+	}
+
+	return fmt.Sprintf("%v/%v", keyPrefix, object)
+}
