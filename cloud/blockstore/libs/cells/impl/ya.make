@@ -10,6 +10,8 @@ SRCS(
     endpoint_bootstrap_impl.cpp
     endpoint_bootstrap.cpp
     endpoint_router.cpp
+    forward_service.cpp
+    inbound_activity.cpp
     host_pool.cpp
     remote_storage.cpp
     transport_switcher.cpp
