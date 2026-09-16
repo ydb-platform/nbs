@@ -2100,13 +2100,7 @@ void TPartitionActor::HandleCompaction(
     }
 
     if (auto* filter = State->AccessMixedBlocksFilter()) {
-        filter->CompactionStarted(rangeIndices, commitId);
-    }
-
-    if (auto* compactionStatsTracker = State->AccessCompactionStatsTracker()) {
-        compactionStatsTracker->CompactionStarted(
-            commitId,
-            std::move(rangeIndices));
+        filter->CompactionStarted(std::move(rangeIndices), commitId);
     }
 
     auto tx = CreateTx<TCompaction>(
@@ -2161,7 +2155,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     if (auto* compactionStatsTracker = State->AccessCompactionStatsTracker()) {
         if (HasError(msg->GetError())) {
-            compactionStatsTracker->CompactionFailed(commitId);
+            compactionStatsTracker->AbortCompaction();
         }
     }
 
@@ -2250,7 +2244,15 @@ bool TPartitionActor::PrepareCompaction(
     TPartitionDatabase db(tx.DB);
 
     if (auto* compactionStatsTracker = State->AccessCompactionStatsTracker()) {
-        compactionStatsTracker->ClearCountersForCompaction(args.CommitId);
+        TVector<ui32> rangeIndices;
+        for (auto& range: args.RangeCompactions) {
+            rangeIndices.push_back(range.RangeIdx);
+        }
+
+        compactionStatsTracker->StartCompaction(
+            args.CommitId,
+            std::move(rangeIndices));
+        compactionStatsTracker->ResetCompaction();
     }
 
     const bool incrementalCompactionEnabled =

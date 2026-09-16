@@ -596,7 +596,7 @@ private:
             }
 
             if (!IsDeletionMarker(blob.BlobId)) {
-                blockCountForCurrentRange++;
+                ++blockCountForCurrentRange;
             }
         }
 
@@ -683,15 +683,13 @@ private:
 
     void UpdateCompactionMap(TPartitionDatabase& db)
     {
-        auto* compactionStatsTracker =
-            State.AccessCompactionStatsTracker();
+        auto* compactionStatsTracker = State.AccessCompactionStatsTracker();
         if (compactionStatsTracker && compactionStatsTracker->HasCompaction()) {
             const auto& cm = State.GetCompactionMap();
             for (const auto& kv: CompactionCounters) {
-                const auto counters =
-                    compactionStatsTracker->AccessCompactionCounters(
-                        cm.GetRangeIndex(kv.first));
-                for (auto* counter: counters) {
+                auto* counter = compactionStatsTracker->AccessCompactionCounter(
+                    cm.GetRangeIndex(kv.first));
+                if (counter) {
                     AddCompactionStats(
                         counter->Stat,
                         kv.second.Stat.BlockCount,
@@ -714,13 +712,13 @@ private:
 
         // We should account for blocks and blobs skipped by compaction.
         for (const auto& kv: CompactionCounters) {
-            ui64 compactionRangeIdx = kv.first / cm.GetRangeSize();
             auto* counter = compactionStatsTracker->AccessCompactionCounter(
-                Args.CommitId,
-                compactionRangeIdx);
+                cm.GetRangeIndex(kv.first));
+
+            STORAGE_VERIFY(counter, TWellKnownEntityTypes::TABLET, TabletId);
 
             AddCompactionStats(
-                &counter->Stat,
+                counter->Stat,
                 kv.second.BlocksSkippedByCompaction,
                 kv.second.BlobsSkippedByCompaction,
                 kv.second.MixedBlockCountSkippedByCompaction);
@@ -735,8 +733,7 @@ private:
                     newlyZeroedBlocksToDecrement,
                 0L)));
 
-        auto rangeIndicesToPersist =
-            compactionStatsTracker->FinishRangeCompaction(Args.CommitId);
+        auto rangeIndicesToPersist = compactionStatsTracker->FinishCompaction();
 
         for (const auto& rangeIndex: rangeIndicesToPersist) {
             const ui32 blockIndex = rangeIndex * cm.GetRangeSize();

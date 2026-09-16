@@ -340,7 +340,7 @@ public:
         const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
         bool checkpointAwareCleanupEnabled,
         bool useBlobChannelDataKindForCounters,
-        bool compactionStatsTrackerEnabled = false);
+        bool compactionStatsTrackerEnabled);
 
 private:
     bool LoadStateFinished = false;

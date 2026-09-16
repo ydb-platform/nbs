@@ -18,56 +18,37 @@ TCompactionStatsTracker::TCompactionStatsTracker(
 {}
 
 TCompactionCounter* TCompactionStatsTracker::AccessCompactionCounter(
-    ui64 commitId,
     ui32 rangeIdx)
 {
-    auto* compaction = CommitIdToCompaction.FindPtr(commitId);
-
-    STORAGE_VERIFY_C(
-        compaction,
-        TWellKnownEntityTypes::TABLET,
-        TabletId,
-        TStringBuilder() << "Compaction with commit id " << commitId
-                         << " not found");
-
-    auto* counter = FindCounterForRange(*compaction, rangeIdx);
-    STORAGE_VERIFY_C(
-        counter,
-        TWellKnownEntityTypes::TABLET,
-        TabletId,
-        TStringBuilder() << "Counter for range index " << rangeIdx
-                         << " not found in compaction with commit id "
-                         << commitId);
-    return counter;
-}
-
-TVector<TCompactionCounter*> TCompactionStatsTracker::AccessCompactionCounters(
-    ui32 rangeIdx)
-{
-    TVector<TCompactionCounter*> counters;
-    for (auto& [commitId, compaction]: CommitIdToCompaction) {
-        Y_UNUSED(commitId);
-
-        auto* counter = FindCounterForRange(compaction, rangeIdx);
-        if (counter) {
-            counters.push_back(counter);
-        }
+    if (!HasCompaction()) {
+        return nullptr;
     }
-    return counters;
+
+    return FindCounterForRange(*CurrentCompaction, rangeIdx);
 }
 
 bool TCompactionStatsTracker::HasCompaction() const
 {
-    return !CommitIdToCompaction.empty();
+    return CurrentCompaction.has_value();
 }
 
-void TCompactionStatsTracker::CompactionStarted(
+void TCompactionStatsTracker::StartCompaction(
     ui64 commitId,
     TVector<ui32> rangeIndices)
 {
-    if (!IsSorted(rangeIndices.begin(), rangeIndices.end())) {
-        Sort(rangeIndices);
+    Sort(rangeIndices);
+
+    if (CurrentCompaction && CurrentCompaction->CommitId == commitId) {
+        STORAGE_VERIFY(
+            CurrentCompaction->RangeIndices == rangeIndices,
+            TWellKnownEntityTypes::TABLET,
+            TabletId);
+        return;
     }
+
+    // Only one compaction can be active at a time
+    STORAGE_VERIFY(!CurrentCompaction, TWellKnownEntityTypes::TABLET, TabletId);
+
     TVector<TCompactionCounter> countersForRangeIndices;
     countersForRangeIndices.reserve(rangeIndices.size());
     for (const ui32 rangeIdx: rangeIndices) {
@@ -76,34 +57,26 @@ void TCompactionStatsTracker::CompactionStarted(
             TRangeStat{});
     }
 
-    TCompaction compaction{
+    CurrentCompaction = TCompaction{
+        .CommitId = commitId,
         .RangeIndices = std::move(rangeIndices),
         .CountersForRangeIndices = std::move(countersForRangeIndices),
     };
-
-    auto [it, inserted] =
-        CommitIdToCompaction.insert({commitId, std::move(compaction)});
-    STORAGE_VERIFY_C(
-        inserted,
-        TWellKnownEntityTypes::TABLET,
-        TabletId,
-        TStringBuilder() << "Compaction with commit id " << commitId
-                         << " already exists");
 }
 
-void TCompactionStatsTracker::ClearCountersForCompaction(ui64 commitId)
+void TCompactionStatsTracker::ResetCompaction()
 {
-    auto& compaction = AccessCompaction(commitId);
-    for (auto& counter: compaction.CountersForRangeIndices) {
+    VerifyCompactionIsActive();
+    for (auto& counter: CurrentCompaction->CountersForRangeIndices) {
         counter.Stat = TRangeStat();
     }
 }
 
-TVector<ui32> TCompactionStatsTracker::FinishRangeCompaction(ui64 commitId)
+TVector<ui32> TCompactionStatsTracker::FinishCompaction()
 {
-    auto& compaction = AccessCompaction(commitId);
+    VerifyCompactionIsActive();
 
-    for (auto& counter: compaction.CountersForRangeIndices) {
+    for (auto& counter: CurrentCompaction->CountersForRangeIndices) {
         ui32 usedBlockCount = UsedBlocks.Count(
             counter.BlockIndex,
             Min(static_cast<ui64>(
@@ -120,22 +93,22 @@ TVector<ui32> TCompactionStatsTracker::FinishRangeCompaction(ui64 commitId)
             true);   // compacted
     }
 
-    TVector<ui32> rangeIndices = std::move(compaction.RangeIndices);
+    TVector<ui32> rangeIndices = std::move(CurrentCompaction->RangeIndices);
 
-    CommitIdToCompaction.erase(commitId);
+    CurrentCompaction.reset();
 
     return rangeIndices;
 }
 
-void TCompactionStatsTracker::CompactionFailed(ui64 commitId)
+void TCompactionStatsTracker::AbortCompaction()
 {
-    size_t erased = CommitIdToCompaction.erase(commitId);
-    STORAGE_VERIFY_C(
-        erased == 1,
-        TWellKnownEntityTypes::TABLET,
-        TabletId,
-        TStringBuilder() << "Compaction with commit id " << commitId
-                         << " not found");
+    VerifyCompactionIsActive();
+    CurrentCompaction.reset();
+}
+
+void TCompactionStatsTracker::VerifyCompactionIsActive() const
+{
+    STORAGE_VERIFY(HasCompaction(), TWellKnownEntityTypes::TABLET, TabletId);
 }
 
 TCompactionCounter* TCompactionStatsTracker::FindCounterForRange(
@@ -149,18 +122,6 @@ TCompactionCounter* TCompactionStatsTracker::FindCounterForRange(
     auto indexInCountersArray =
         std::distance(compaction.RangeIndices.begin(), it);
     return &compaction.CountersForRangeIndices[indexInCountersArray];
-}
-
-auto TCompactionStatsTracker::AccessCompaction(ui64 commitId) -> TCompaction&
-{
-    auto it = CommitIdToCompaction.find(commitId);
-    STORAGE_VERIFY_C(
-        it != CommitIdToCompaction.end(),
-        TWellKnownEntityTypes::TABLET,
-        TabletId,
-        TStringBuilder() << "Compaction with commit id " << commitId
-                         << " not found");
-    return it->second;
 }
 
 };   // namespace NCloud::NBlockStore::NStorage::NPartition

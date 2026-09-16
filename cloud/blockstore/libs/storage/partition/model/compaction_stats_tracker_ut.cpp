@@ -15,7 +15,7 @@ struct TFixture
 {
     TCompactionMap CompactionMap{RangeSize, BuildDefaultCompactionPolicy(5, 0)};
     TCompressedBitmap UsedBlocks{4 * RangeSize};
-    TCompactionStatsTracker Counters{TabletId, CompactionMap, UsedBlocks};
+    TCompactionStatsTracker Tracker{TabletId, CompactionMap, UsedBlocks};
 };
 
 }   // namespace
@@ -24,72 +24,86 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TCompactionStatsTrackerTest)
 {
+    Y_UNIT_TEST(ShouldTrackActiveCompaction)
+    {
+        TFixture fixture;
+
+        UNIT_ASSERT(!fixture.Tracker.HasCompaction());
+        UNIT_ASSERT(!fixture.Tracker.AccessCompactionCounter(0));
+
+        fixture.Tracker.StartCompaction(100, {1});
+
+        UNIT_ASSERT(fixture.Tracker.HasCompaction());
+        UNIT_ASSERT(fixture.Tracker.AccessCompactionCounter(1));
+
+        fixture.Tracker.AbortCompaction();
+
+        UNIT_ASSERT(!fixture.Tracker.HasCompaction());
+        UNIT_ASSERT(!fixture.Tracker.AccessCompactionCounter(1));
+    }
+
     Y_UNIT_TEST(ShouldReturnCountersOnlyForRequestedRanges)
     {
         TFixture fixture;
 
-        fixture.Counters.CompactionStarted(100, {3, 1});
+        fixture.Tracker.StartCompaction(100, {3, 1});
 
-        UNIT_ASSERT(fixture.Counters.AccessCompactionCounters(0).empty());
-        UNIT_ASSERT(fixture.Counters.AccessCompactionCounters(2).empty());
-        UNIT_ASSERT(fixture.Counters.AccessCompactionCounters(4).empty());
+        UNIT_ASSERT(!fixture.Tracker.AccessCompactionCounter(0));
+        UNIT_ASSERT(!fixture.Tracker.AccessCompactionCounter(2));
+        UNIT_ASSERT(!fixture.Tracker.AccessCompactionCounter(4));
 
-        const auto firstRange = fixture.Counters.AccessCompactionCounters(1);
-        UNIT_ASSERT_VALUES_EQUAL(1, firstRange.size());
-        UNIT_ASSERT_VALUES_EQUAL(RangeSize, firstRange[0]->BlockIndex);
+        const auto* firstRange = fixture.Tracker.AccessCompactionCounter(1);
+        UNIT_ASSERT(firstRange);
+        UNIT_ASSERT_VALUES_EQUAL(RangeSize, firstRange->BlockIndex);
 
-        const auto thirdRange = fixture.Counters.AccessCompactionCounters(3);
-        UNIT_ASSERT_VALUES_EQUAL(1, thirdRange.size());
-        UNIT_ASSERT_VALUES_EQUAL(3 * RangeSize, thirdRange[0]->BlockIndex);
+        const auto* thirdRange = fixture.Tracker.AccessCompactionCounter(3);
+        UNIT_ASSERT(thirdRange);
+        UNIT_ASSERT_VALUES_EQUAL(3 * RangeSize, thirdRange->BlockIndex);
     }
 
-    Y_UNIT_TEST(ShouldReturnCountersForAllOverlappingCompactions)
+    Y_UNIT_TEST(ShouldStartSameCompactionOnlyOnce)
     {
         TFixture fixture;
 
-        fixture.Counters.CompactionStarted(100, {1, 2});
-        fixture.Counters.CompactionStarted(200, {2, 3});
+        fixture.Tracker.StartCompaction(100, {3, 1});
+
+        auto* counter = fixture.Tracker.AccessCompactionCounter(1);
+        UNIT_ASSERT(counter);
+        counter->Stat.BlobCount = 10;
+
+        fixture.Tracker.StartCompaction(100, {1, 3});
 
         UNIT_ASSERT_VALUES_EQUAL(
-            1, fixture.Counters.AccessCompactionCounters(1).size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            2, fixture.Counters.AccessCompactionCounters(2).size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1, fixture.Counters.AccessCompactionCounters(3).size());
+            counter,
+            fixture.Tracker.AccessCompactionCounter(1));
+        UNIT_ASSERT_VALUES_EQUAL(10, counter->Stat.BlobCount);
     }
 
-    Y_UNIT_TEST(ShouldClearCountersForSpecifiedCompaction)
+    Y_UNIT_TEST(ShouldResetCountersForActiveCompaction)
     {
         TFixture fixture;
 
-        fixture.Counters.CompactionStarted(100, {1, 2});
-        fixture.Counters.CompactionStarted(200, {2, 3});
+        fixture.Tracker.StartCompaction(100, {1, 2});
 
-        auto firstRange = fixture.Counters.AccessCompactionCounters(1);
-        auto overlappingRange = fixture.Counters.AccessCompactionCounters(2);
-        auto thirdRange = fixture.Counters.AccessCompactionCounters(3);
+        auto* firstRange = fixture.Tracker.AccessCompactionCounter(1);
+        auto* secondRange = fixture.Tracker.AccessCompactionCounter(2);
+        UNIT_ASSERT(firstRange);
+        UNIT_ASSERT(secondRange);
 
-        firstRange[0]->Stat.BlobCount = 10;
-        overlappingRange[0]->Stat.BlobCount = 20;
-        overlappingRange[1]->Stat.BlobCount = 21;
-        thirdRange[0]->Stat.BlobCount = 30;
+        firstRange->Stat.BlobCount = 10;
+        firstRange->Stat.BlockCount = 20;
+        firstRange->Stat.NewlyZeroedBlocks = 30;
+        firstRange->Stat.MixedBlockCount = 40;
+        secondRange->Stat.BlobCount = 50;
 
-        fixture.Counters.ClearCountersForCompaction(100);
+        fixture.Tracker.ResetCompaction();
 
-        UNIT_ASSERT_VALUES_EQUAL(0, firstRange[0]->Stat.BlobCount);
-        UNIT_ASSERT_VALUES_EQUAL(30, thirdRange[0]->Stat.BlobCount);
-
-        ui32 clearedCounterCount = 0;
-        ui32 preservedCounterCount = 0;
-        for (const auto* counter: overlappingRange) {
-            if (counter->Stat.BlobCount == 0) {
-                ++clearedCounterCount;
-            } else {
-                ++preservedCounterCount;
-            }
-        }
-        UNIT_ASSERT_VALUES_EQUAL(1, clearedCounterCount);
-        UNIT_ASSERT_VALUES_EQUAL(1, preservedCounterCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, firstRange->Stat.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, firstRange->Stat.BlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, firstRange->Stat.NewlyZeroedBlocks);
+        UNIT_ASSERT_VALUES_EQUAL(0, firstRange->Stat.MixedBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, secondRange->Stat.BlobCount);
+        UNIT_ASSERT(fixture.Tracker.HasCompaction());
     }
 
     Y_UNIT_TEST(ShouldUpdateCompactionMapWhenCompactionFinishes)
@@ -99,56 +113,68 @@ Y_UNIT_TEST_SUITE(TCompactionStatsTrackerTest)
         fixture.UsedBlocks.Set(1, 4);
         fixture.UsedBlocks.Set(2 * RangeSize, 2 * RangeSize + 2);
 
-        fixture.Counters.CompactionStarted(100, {2, 0});
+        fixture.Tracker.StartCompaction(100, {2, 0});
 
-        auto firstRange = fixture.Counters.AccessCompactionCounters(0);
-        firstRange[0]->Stat.BlobCount = 1;
-        firstRange[0]->Stat.BlockCount = 5;
-        firstRange[0]->Stat.NewlyZeroedBlocks = 1;
+        auto* firstRange = fixture.Tracker.AccessCompactionCounter(0);
+        UNIT_ASSERT(firstRange);
+        firstRange->Stat.BlobCount = 1;
+        firstRange->Stat.BlockCount = 5;
+        firstRange->Stat.NewlyZeroedBlocks = 1;
+        firstRange->Stat.MixedBlockCount = 3;
 
-        auto thirdRange = fixture.Counters.AccessCompactionCounters(2);
-        thirdRange[0]->Stat.BlobCount = 2;
-        thirdRange[0]->Stat.BlockCount = 7;
+        auto* thirdRange = fixture.Tracker.AccessCompactionCounter(2);
+        UNIT_ASSERT(thirdRange);
+        thirdRange->Stat.BlobCount = 2;
+        thirdRange->Stat.BlockCount = 7;
+        thirdRange->Stat.MixedBlockCount = 4;
 
-        const auto finishedRanges = fixture.Counters.FinishRangeCompaction(100);
+        const auto finishedRanges = fixture.Tracker.FinishCompaction();
 
         UNIT_ASSERT_VALUES_EQUAL(TVector<ui32>({0, 2}), finishedRanges);
-        UNIT_ASSERT(fixture.Counters.AccessCompactionCounters(0).empty());
-        UNIT_ASSERT(fixture.Counters.AccessCompactionCounters(2).empty());
+        UNIT_ASSERT(!fixture.Tracker.HasCompaction());
+        UNIT_ASSERT(!fixture.Tracker.AccessCompactionCounter(0));
+        UNIT_ASSERT(!fixture.Tracker.AccessCompactionCounter(2));
 
         const auto firstRangeStat = fixture.CompactionMap.Get(0);
         UNIT_ASSERT_VALUES_EQUAL(1, firstRangeStat.BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(5, firstRangeStat.BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(3, firstRangeStat.UsedBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(1, firstRangeStat.NewlyZeroedBlocks);
+        UNIT_ASSERT_VALUES_EQUAL(3, firstRangeStat.MixedBlockCount);
         UNIT_ASSERT(firstRangeStat.Compacted);
 
         const auto thirdRangeStat = fixture.CompactionMap.Get(2 * RangeSize);
         UNIT_ASSERT_VALUES_EQUAL(2, thirdRangeStat.BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(7, thirdRangeStat.BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(2, thirdRangeStat.UsedBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(4, thirdRangeStat.MixedBlockCount);
         UNIT_ASSERT(thirdRangeStat.Compacted);
     }
 
-    Y_UNIT_TEST(ShouldDiscardCountersWhenCompactionFails)
+    Y_UNIT_TEST(ShouldDiscardCountersWhenCompactionIsAborted)
     {
         TFixture fixture;
 
-        fixture.CompactionMap.Update(RangeSize, 4, 6, 5, 0, 0, false);
+        fixture.CompactionMap.Update(RangeSize, 4, 6, 5, 2, 3, false);
 
-        fixture.Counters.CompactionStarted(100, {1});
-        auto counters = fixture.Counters.AccessCompactionCounters(1);
-        counters[0]->Stat.BlobCount = 1;
-        counters[0]->Stat.BlockCount = 2;
+        fixture.Tracker.StartCompaction(100, {1});
 
-        fixture.Counters.CompactionFailed(100);
+        auto* counter = fixture.Tracker.AccessCompactionCounter(1);
+        UNIT_ASSERT(counter);
+        counter->Stat.BlobCount = 1;
+        counter->Stat.BlockCount = 2;
 
-        UNIT_ASSERT(fixture.Counters.AccessCompactionCounters(1).empty());
+        fixture.Tracker.AbortCompaction();
+
+        UNIT_ASSERT(!fixture.Tracker.HasCompaction());
+        UNIT_ASSERT(!fixture.Tracker.AccessCompactionCounter(1));
 
         const auto rangeStat = fixture.CompactionMap.Get(RangeSize);
         UNIT_ASSERT_VALUES_EQUAL(4, rangeStat.BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(6, rangeStat.BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(5, rangeStat.UsedBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(2, rangeStat.NewlyZeroedBlocks);
+        UNIT_ASSERT_VALUES_EQUAL(3, rangeStat.MixedBlockCount);
         UNIT_ASSERT(!rangeStat.Compacted);
     }
 }
