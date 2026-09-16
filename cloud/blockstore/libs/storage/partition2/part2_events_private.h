@@ -141,16 +141,19 @@ struct TAddLevelIndexBlob
     const TVector<ui32> BlockIndices;
     const TVector<ui64> CommitIds;
     const TVector<ui32> Checksums;
+    const bool IgnoreBlob;
 
     TAddLevelIndexBlob(
         const TPartialBlobId& blobId,
         TVector<ui32> blockIndices,
         TVector<ui64> commitIds,
-        TVector<ui32> checksums)
+        TVector<ui32> checksums,
+        bool ignoreBlob)
         : BlobId(blobId)
         , BlockIndices(std::move(blockIndices))
         , CommitIds(std::move(commitIds))
         , Checksums(std::move(checksums))
+        , IgnoreBlob(ignoreBlob)
     {}
 };
 

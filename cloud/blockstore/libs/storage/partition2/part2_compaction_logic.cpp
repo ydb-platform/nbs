@@ -201,7 +201,7 @@ public:
 
     bool Visit(
         const TPartialBlobId& blobId,
-        NProto::TBlobMeta2 blobMeta) override
+        const NProto::TBlobMeta2& blobMeta) override
     {
         auto& ab = Args.AffectedBlobs[blobId];
 

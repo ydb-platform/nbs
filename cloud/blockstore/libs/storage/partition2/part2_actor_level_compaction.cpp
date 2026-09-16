@@ -257,7 +257,8 @@ void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
                 BlobIds[i],
                 std::move(blockIndices),
                 std::move(commitIds),
-                TVector<ui32>());   // checksums
+                TVector<ui32>(),   // checksums
+                false);            // ignoreBlob
         }
     } else {
         mergedBlobs.reserve(BlobIds.size());

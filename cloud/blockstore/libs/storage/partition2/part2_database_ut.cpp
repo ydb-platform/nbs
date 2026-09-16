@@ -72,7 +72,7 @@ struct TTestBlockVisitor final
 
     bool Visit(
         const TPartialBlobId& blobId,
-        NProto::TBlobMeta2 blobMeta) override
+        const NProto::TBlobMeta2& blobMeta) override
     {
         BlobToRange[blobId] = TBlockRange32::MakeClosedInterval(
             blobMeta.GetMergedBlocks().GetStart(),
@@ -338,6 +338,91 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
                 UNIT_ASSERT_VALUES_EQUAL(
                     expectedInCommitRange,
                     boundedL1Visitor.Result);
+            });
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreOlderWritesOnlyForMarkedBlocksInSameLevel)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+
+        executor.WriteTx(
+            [](TPartitionDatabase db)
+            {
+                const auto write = [&](bool l0,
+                                       ui32 blockIndex,
+                                       ui64 blobCommitId,
+                                       ui64 blockCommitId,
+                                       ui64 uniqueId,
+                                       bool ignoreBlob)
+                {
+                    const TPartialBlobId blobId(blobCommitId, uniqueId);
+                    const auto range = TBlockRange32::MakeOneBlock(blockIndex);
+                    NProto::TBlobMeta2 meta;
+                    auto* blocks =
+                        l0 ? meta.MutableL0Blocks() : meta.MutableL1Blocks();
+                    blocks->AddBlocks(blockIndex);
+                    if (blockCommitId) {
+                        blocks->AddCommitIds(blockCommitId);
+                    }
+                    meta.SetIgnoreBlob(ignoreBlob);
+
+                    if (l0) {
+                        db.WriteL0Blob(blobId, range, meta);
+                    } else {
+                        db.WriteL1Blob(blobId, range, meta);
+                    }
+                };
+
+                write(true, 7, 5, 0, 1, false);
+                write(true, 7, 10, 0, 2, false);
+                write(true, 7, 12, 0, 10, false);
+                write(true, 7, 15, 0, 3, false);
+                write(true, 8, 5, 0, 4, false);
+                write(true, 7, 20, 10, 5, true);
+                write(true, 7, 25, 12, 11, true);
+                write(true, 8, 12, 0, 6, true);
+                write(false, 7, 5, 0, 7, false);
+                write(false, 8, 5, 0, 8, false);
+                write(false, 7, 20, 12, 9, true);
+            });
+
+        executor.ReadTx(
+            [](NKikimr::NTable::TDatabase& database)
+            {
+                TPartitionDatabase db(database, 10, 20);
+                const auto range = TBlockRange32::MakeClosedInterval(7, 8);
+                const auto find = [&](bool l0, ui64 maxCommitId)
+                {
+                    TTestLevelIndexVisitor visitor;
+                    const bool ready = l0 ? db.FindBlocksInL0Index(
+                                                visitor,
+                                                range,
+                                                0,
+                                                maxCommitId)
+                                          : db.FindBlocksInL1Index(
+                                                visitor,
+                                                range,
+                                                0,
+                                                maxCommitId);
+                    UNIT_ASSERT(ready);
+                    return TString(visitor.Result);
+                };
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#7:5:5:1:0 #8:5:5:4:0",
+                    find(true, 9));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#7:10:10:2:0 #8:5:5:4:0",
+                    find(true, 10));
+                UNIT_ASSERT_VALUES_EQUAL("#7:12:12:10:0", find(true, 12));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#7:12:12:10:0 #7:15:15:3:0",
+                    find(true, 15));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#7:5:5:7:0 #8:5:5:8:0",
+                    find(false, 9));
+                UNIT_ASSERT_VALUES_EQUAL("#8:5:5:8:0", find(false, 15));
             });
     }
 

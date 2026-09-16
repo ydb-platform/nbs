@@ -51,9 +51,9 @@ bool TPromoteCompactionVisitor::Visit(
 
 bool TPromoteCompactionVisitor::Visit(
     const TPartialBlobId& blobId,
-    NProto::TBlobMeta2 blobMeta)
+    const NProto::TBlobMeta2& blobMeta)
 {
-    AffectedBlobs[blobId] = std::move(blobMeta);
+    AffectedBlobs[blobId] = blobMeta;
     return true;
 }
 

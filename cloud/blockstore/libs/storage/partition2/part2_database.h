@@ -216,6 +216,8 @@ public:
     // L0Index
     //
 
+    // IgnoreBlob metadata suppresses older writes for its listed block IDs
+    // when reading this level index.
     void WriteL0Blob(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
@@ -242,6 +244,8 @@ public:
     // L1Index
     //
 
+    // IgnoreBlob metadata suppresses older writes for its listed block IDs
+    // when reading this level index.
     void WriteL1Blob(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,

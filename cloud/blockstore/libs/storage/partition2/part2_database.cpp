@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
 
 #include <util/generic/algorithm.h>
+#include <util/generic/hash.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
@@ -91,7 +92,7 @@ struct TNoOpBlobsVisitor final: public IBlobsVisitor2
 {
     bool Visit(
         const TPartialBlobId& blobId,
-        NProto::TBlobMeta2 blobMeta) override
+        const NProto::TBlobMeta2& blobMeta) override
     {
         Y_UNUSED(blobId, blobMeta);
         return true;
@@ -1209,6 +1210,25 @@ void TPartitionDatabaseImpl<TCounters>::DeleteL0Blob(
         .Delete();
 }
 
+template <typename TTable>
+const NProto::TBlobMeta2::TMixedBlocks& GetLevelBlocks(
+    const NProto::TBlobMeta2& blobMeta)
+{
+    if constexpr (std::is_same_v<TTable, TPartitionSchema::L0Index>) {
+        Y_ABORT_UNLESS(blobMeta.HasL0Blocks());
+        return blobMeta.GetL0Blocks();
+    } else {
+        Y_ABORT_UNLESS(blobMeta.HasL1Blocks());
+        return blobMeta.GetL1Blocks();
+    }
+}
+
+struct TLevelIndexBlobInfo
+{
+    TPartialBlobId BlobId;
+    NProto::TBlobMeta2 BlobMeta;
+};
+
 template <typename TTable, typename TCounters>
 static bool FindBlocksInLevelIndex(
     TPartitionDatabaseImpl<TCounters>& db,
@@ -1219,14 +1239,28 @@ static bool FindBlocksInLevelIndex(
     ui64 maxCommitId,
     ui64 rangeSize)
 {
+    const auto rangeEnd = AlignToRangeEnd(blockRange.End, rangeSize);
+
+    // Buffer matching rows because an ignore marker can appear after the
+    // writes it suppresses in key order.
+    THashMap<ui32, ui64> ignoreCommitIds;
+    TVector<TLevelIndexBlobInfo> readBlobs;
     auto it = db.template Table<TTable>()
                   .GreaterOrEqual(blockRange.Start)
-                  .LessOrEqual(AlignToRangeEnd(blockRange.End, rangeSize))
+                  .LessOrEqual(rangeEnd)
                   .Select();
 
     if (!it.IsReady()) {
         return false;   // not ready
     }
+
+    auto getRelevantRange = [](TBlockRange32 range, const auto& blockIndices)
+    {
+        const auto begin =
+            LowerBound(blockIndices.begin(), blockIndices.end(), range.Start);
+        const auto end = UpperBound(begin, blockIndices.end(), range.End);
+        return std::make_pair(begin, end);
+    };
 
     while (it.IsValid()) {
         const auto blobRange = TBlockRange32::MakeClosedInterval(
@@ -1234,65 +1268,82 @@ static bool FindBlocksInLevelIndex(
             it.template GetValue<typename TTable::RangeEnd>());
 
         if (blobRange.Overlaps(blockRange)) {
-            auto blobMeta =
-                it.template GetValue<typename TTable::BlobMeta>();
-
-            const auto& blocks = [&]()
-            {
-                if constexpr (std::is_same_v<TTable, TPartitionSchema::L0Index>)
-                {
-                    Y_ABORT_UNLESS(blobMeta.HasL0Blocks());
-                    return blobMeta.GetL0Blocks();
-                } else {
-                    Y_ABORT_UNLESS(blobMeta.HasL1Blocks());
-                    return blobMeta.GetL1Blocks();
-                }
-            }();
-
-            Y_ABORT_UNLESS(
-                blocks.CommitIdsSize() == 0 ||
-                blocks.CommitIdsSize() == blocks.BlocksSize());
-
             const auto blobId = MakePartialBlobId(
                 it.template GetValue<typename TTable::BlobCommitId>(),
                 it.template GetValue<typename TTable::BlobId>());
+            TLevelIndexBlobInfo blobInfo{
+                blobId,
+                it.template GetValue<typename TTable::BlobMeta>()};
 
-            const auto& blockIndices = blocks.GetBlocks();
-            const auto begin = LowerBound(
-                blockIndices.begin(),
-                blockIndices.end(),
-                blockRange.Start);
-            const auto end = UpperBound(
-                begin,
-                blockIndices.end(),
-                blockRange.End);
+            if (blobInfo.BlobMeta.GetIgnoreBlob()) {
+                const auto& blocks = GetLevelBlocks<TTable>(blobInfo.BlobMeta);
 
-            size_t i = begin - blockIndices.begin();
-            for (auto it = begin; it != end; ++it, ++i) {
-                const ui32 blockIndex = *it;
-                const ui64 commitId = blocks.CommitIdsSize()
-                                          ? blocks.GetCommitIds(i)
-                                          : blobId.CommitId();
+                Y_ABORT_UNLESS(
+                    blocks.CommitIdsSize() == 0 ||
+                    blocks.CommitIdsSize() == blocks.BlocksSize());
 
-                if (minCommitId <= commitId &&
-                    commitId <= maxCommitId &&
-                    !visitor.Visit(
-                        blockIndex,
-                        commitId,
-                        blobId,
-                        static_cast<ui16>(i)))
-                {
-                    return true;   // interrupted
+                const auto& blockIndices = blocks.GetBlocks();
+                const auto [begin, end] =
+                    getRelevantRange(blockRange, blockIndices);
+
+                size_t i = begin - blockIndices.begin();
+                for (auto it = begin; it != end; ++it, ++i) {
+                    const ui32 blockIndex = *it;
+                    const ui64 commitId = blocks.CommitIdsSize()
+                                              ? blocks.GetCommitIds(i)
+                                              : blobId.CommitId();
+                    if (commitId <= maxCommitId) {
+                        auto& cutoff = ignoreCommitIds[blockIndex];
+                        cutoff = Max(cutoff, commitId);
+                    }
                 }
             }
 
-            if (!blobsVisitor.Visit(blobId, std::move(blobMeta))) {
-                return true;   // interrupted
-            }
+            readBlobs.push_back(std::move(blobInfo));
         }
 
         if (!it.Next()) {
             return false;   // not ready
+        }
+    }
+
+    for (auto& blobInfo: readBlobs) {
+        if (!blobsVisitor.Visit(blobInfo.BlobId, blobInfo.BlobMeta)) {
+            return true;   // interrupted
+        }
+
+        if (blobInfo.BlobMeta.GetIgnoreBlob()) {
+            continue;
+        }
+
+        const auto& blocks = GetLevelBlocks<TTable>(blobInfo.BlobMeta);
+
+        Y_ABORT_UNLESS(
+            blocks.CommitIdsSize() == 0 ||
+            blocks.CommitIdsSize() == blocks.BlocksSize());
+
+        const auto& blockIndices = blocks.GetBlocks();
+        auto [begin, end] = getRelevantRange(blockRange, blockIndices);
+
+        size_t i = begin - blockIndices.begin();
+        for (auto it = begin; it != end; ++it, ++i) {
+            const ui32 blockIndex = *it;
+            const ui64 commitId = blocks.CommitIdsSize()
+                                      ? blocks.GetCommitIds(i)
+                                      : blobInfo.BlobId.CommitId();
+            const auto cutoff = ignoreCommitIds.find(blockIndex);
+
+            if (minCommitId <= commitId && commitId <= maxCommitId &&
+                (cutoff == ignoreCommitIds.end() ||
+                 cutoff->second <= commitId) &&
+                !visitor.Visit(
+                    blockIndex,
+                    commitId,
+                    blobInfo.BlobId,
+                    static_cast<ui16>(i)))
+            {
+                return true;   // interrupted
+            }
         }
     }
 

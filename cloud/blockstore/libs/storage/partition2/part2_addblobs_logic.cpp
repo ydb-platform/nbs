@@ -635,6 +635,8 @@ private:
             levelBlocks = blobMeta.MutableL1Blocks();
         }
 
+        blobMeta.SetIgnoreBlob(blob.IgnoreBlob);
+
         STORAGE_VERIFY(
             blob.BlockIndices.size() == blob.CommitIds.size() ||
                 blob.BlockIndices.size() == 0,

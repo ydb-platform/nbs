@@ -241,7 +241,8 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
             req.BlobId,
             std::move(blockIndices),
             std::move(commitIds),
-            std::move(req.Checksums));
+            std::move(req.Checksums),
+            false);   // ignoreBlob
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(

@@ -174,7 +174,9 @@ struct TMergedBlobVisitor final
     TPartialBlobId BlobId;
     bool Found = false;
 
-    bool Visit(const TPartialBlobId& blobId, NProto::TBlobMeta2 blobMeta) override
+    bool Visit(
+        const TPartialBlobId& blobId,
+        const NProto::TBlobMeta2& blobMeta) override
     {
         Y_UNUSED(blobMeta);
 

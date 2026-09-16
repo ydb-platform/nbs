@@ -256,6 +256,10 @@ message TBlobMeta2
     // verification doesn't work for actual zero checksums.
     reserved 3;
     repeated uint32 BlockChecksums = 4;
+
+    // A level-index blob with this flag suppresses older writes for its
+    // listed blocks in the same level.
+    bool IgnoreBlob = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

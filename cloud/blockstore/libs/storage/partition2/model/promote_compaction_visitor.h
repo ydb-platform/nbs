@@ -80,7 +80,7 @@ public:
 
     bool Visit(
         const TPartialBlobId& blobId,
-        NProto::TBlobMeta2 blobMeta) override;
+        const NProto::TBlobMeta2& blobMeta) override;
 
     struct TScanResult
     {
