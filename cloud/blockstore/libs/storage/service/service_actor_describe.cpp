@@ -25,7 +25,7 @@ class TDescribeVolumeActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const TString DiskId;
     const bool ExactDiskIdMatch = false;
     const bool IsCellRequest = false;
@@ -35,7 +35,7 @@ private:
 public:
     TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TString diskId,
         bool exactDiskIdMatch,
         bool isCellRequest);
@@ -66,7 +66,7 @@ private:
 
 TDescribeVolumeActor::TDescribeVolumeActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TString diskId,
         bool exactDiskIdMatch,
         bool isCellRequest)

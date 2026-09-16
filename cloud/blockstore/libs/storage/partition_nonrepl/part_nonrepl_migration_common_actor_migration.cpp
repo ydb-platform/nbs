@@ -385,13 +385,13 @@ TString TNonreplicatedPartitionMigrationCommonActor::GetNonZeroBlocks(
     return NonZeroRangesMap.GetChangedBlocks(range);
 }
 
-const TStorageConfigPtr&
+const TStorageConfigConstPtr&
 TNonreplicatedPartitionMigrationCommonActor::GetConfig() const
 {
     return Config;
 }
 
-const TDiagnosticsConfigPtr&
+const TDiagnosticsConfigConstPtr&
 TNonreplicatedPartitionMigrationCommonActor::GetDiagnosticsConfig() const
 {
     return DiagnosticsConfig;

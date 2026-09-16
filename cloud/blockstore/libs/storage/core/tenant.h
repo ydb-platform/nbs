@@ -10,6 +10,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 GetHiveTabletId(const TStorageConfigPtr& config, const NActors::TActorContext& ctx);
+ui64 GetHiveTabletId(const TStorageConfigConstPtr& config, const NActors::TActorContext& ctx);
 
 }   // namespace NCloud::NBlockStore::NStorage

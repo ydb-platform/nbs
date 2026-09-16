@@ -13,8 +13,8 @@ using namespace NKikimr;
 IActorPtr CreateVolumeTablet(
     const TActorId& owner,
     TTabletStorageInfoPtr storage,
-    TStorageConfigPtr config,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TStorageConfigConstPtr config,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,

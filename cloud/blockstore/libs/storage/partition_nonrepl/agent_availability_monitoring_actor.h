@@ -20,7 +20,7 @@ class TAgentAvailabilityMonitoringActor final
     : public NActors::TActorBootstrapped<TAgentAvailabilityMonitoringActor>
 {
 private:
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const TNonreplicatedPartitionConfigPtr PartConfig;
     const google::protobuf::RepeatedPtrField<NProto::TDeviceMigration>
         Migrations;
@@ -33,7 +33,7 @@ private:
 
 public:
     TAgentAvailabilityMonitoringActor(
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TNonreplicatedPartitionConfigPtr partConfig,
         google::protobuf::RepeatedPtrField<NProto::TDeviceMigration> migrations,
         NActors::TActorId nonreplPartitionActorId,

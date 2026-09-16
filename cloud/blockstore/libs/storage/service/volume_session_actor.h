@@ -51,8 +51,8 @@ private:
 
 private:
     const TVolumeInfoPtr VolumeInfo;
-    const TStorageConfigPtr Config;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TStorageConfigConstPtr Config;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const ITraceSerializerPtr TraceSerializer;
@@ -93,8 +93,8 @@ private:
 public:
     TVolumeSessionActor(
         TVolumeInfoPtr volumeInfo,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TStorageConfigConstPtr config,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         ITraceSerializerPtr traceSerializer,

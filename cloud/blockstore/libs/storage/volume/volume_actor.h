@@ -205,11 +205,11 @@ public:
 private:
     const ui64 StartTime = GetCycleCount();
     const TInstant VolumeStartTime = TInstant::Now();
-    TStorageConfigPtr GlobalStorageConfig;
-    TStorageConfigPtr Config;
+    TStorageConfigConstPtr GlobalStorageConfig;
+    TStorageConfigConstPtr Config;
     bool HasStorageConfigPatch = false;
     bool HasPerformanceProfileModifications = false;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const ITraceSerializerPtr TraceSerializer;
@@ -476,8 +476,8 @@ public:
     TVolumeActor(
         const NActors::TActorId& owner,
         NKikimr::TTabletStorageInfoPtr storage,
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TStorageConfigConstPtr config,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         ITraceSerializerPtr traceSerializer,

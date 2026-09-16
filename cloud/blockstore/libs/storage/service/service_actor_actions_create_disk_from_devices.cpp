@@ -59,7 +59,7 @@ class TCreateDiskFromDevicesActor final
 {
 private:
     const TRequestInfoPtr RequestInfo;
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     const TString Input;
 
     NProto::TCreateVolumeFromDevicesRequest Request;
@@ -67,7 +67,7 @@ private:
 public:
     TCreateDiskFromDevicesActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TString input);
 
     void Bootstrap(const TActorContext& ctx);
@@ -91,7 +91,7 @@ private:
 
 TCreateDiskFromDevicesActor::TCreateDiskFromDevicesActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config,
+        TStorageConfigConstPtr config,
         TString input)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))

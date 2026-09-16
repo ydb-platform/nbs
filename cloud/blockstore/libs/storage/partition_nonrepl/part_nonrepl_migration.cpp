@@ -9,8 +9,8 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 IActorPtr CreateNonreplicatedPartitionMigration(
-    TStorageConfigPtr config,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TStorageConfigConstPtr config,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorPtr digestGenerator,
     ui64 initialMigrationIndex,

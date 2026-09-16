@@ -40,8 +40,8 @@ class TServiceActor final
     : public NActors::TActorBootstrapped<TServiceActor>
 {
 private:
-    const TStorageConfigPtr Config;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TStorageConfigConstPtr Config;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IBlockDigestGeneratorFactoryPtr BlockDigestGeneratorFactory;
     const NDiscovery::IDiscoveryServicePtr DiscoveryService;
@@ -69,8 +69,8 @@ private:
 
 public:
     TServiceActor(
-        TStorageConfigPtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        TStorageConfigConstPtr config,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IProfileLogPtr profileLog,
         IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
         NDiscovery::IDiscoveryServicePtr discoveryService,
@@ -493,8 +493,8 @@ NActors::IActorPtr CreateWriteBlocksRemoteActor(
 
 NActors::IActorPtr CreateVolumeSessionActor(
     TVolumeInfoPtr volumeInfo,
-    TStorageConfigPtr config,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TStorageConfigConstPtr config,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     IProfileLogPtr profileLog,
     IBlockDigestGeneratorFactoryPtr blockDigestGeneratorFactory,
     ITraceSerializerPtr traceSerializer,
@@ -509,7 +509,7 @@ NActors::IActorPtr CreateVolumeSessionActor(
 void RegisterAlterVolumeActor(
     const NActors::TActorId& sender,
     ui64 cookie,
-    TStorageConfigPtr config,
+    TStorageConfigConstPtr config,
     const NPrivateProto::TSetupChannelsRequest& request,
     const NActors::TActorContext& ctx);
 

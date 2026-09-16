@@ -31,7 +31,7 @@ class TNotificationSystem
     };
 
 private:
-    const TStorageConfigPtr StorageConfig;
+    const TStorageConfigConstPtr StorageConfig;
 
     THashSet<TDiskId> SupportsNotifications;
 
@@ -52,7 +52,7 @@ private:
 
 public:
     TNotificationSystem(
-        TStorageConfigPtr storageConfig,
+        TStorageConfigConstPtr storageConfig,
         TVector<TString> errorNotifications,
         TVector<NProto::TUserNotification> userNotifications,
         TVector<TDiskId> disksToReallocate,

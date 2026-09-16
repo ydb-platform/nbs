@@ -35,6 +35,8 @@ using namespace NCloud::NBlockStore::NDiscovery;
 
 TConfigInitializerCommon::TConfigInitializerCommon(TOptionsCommonPtr options)
     : Options(std::move(options))
+    , DynamicYamlConfigurationStaticallyEnabled(
+          TServerAppConfig{}.GetDynamicYamlConfigurationEnabled())
 {}
 
 TConfigInitializerCommon::~TConfigInitializerCommon()
@@ -148,6 +150,8 @@ void TConfigInitializerCommon::InitServerConfig()
     SetupServerPorts(serverConfig);
 
     ServerConfig = std::make_shared<TServerAppConfig>(appConfig);
+    DynamicYamlConfigurationStaticallyEnabled =
+        ServerConfig->GetDynamicYamlConfigurationEnabled();
     SetGrpcThreadsLimit(ServerConfig->GetGrpcThreadsLimit());
 }
 
@@ -228,6 +232,11 @@ void TConfigInitializerCommon::InitSpdkEnvConfig()
 {
     NProto::TSpdkEnvConfig config;
     SpdkEnvConfig = std::make_shared<NSpdk::TSpdkEnvConfig>(config);
+}
+
+bool TConfigInitializerCommon::GetDynamicYamlConfigurationStaticallyEnabled() const
+{
+    return DynamicYamlConfigurationStaticallyEnabled;
 }
 
 void TConfigInitializerCommon::SetupDiscoveryPorts(

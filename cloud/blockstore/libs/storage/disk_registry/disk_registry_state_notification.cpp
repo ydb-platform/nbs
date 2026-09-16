@@ -29,7 +29,7 @@ NProto::TUserNotification MakeBlankNotification(
 ////////////////////////////////////////////////////////////////////////////////
 
 TNotificationSystem::TNotificationSystem(
-        TStorageConfigPtr storageConfig,
+        TStorageConfigConstPtr storageConfig,
         TVector<TString> errorNotifications,
         TVector<NProto::TUserNotification> userNotifications,
         TVector<TDiskId> disksToReallocate,

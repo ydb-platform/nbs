@@ -46,7 +46,7 @@ public:
     using TPerfGuaranteesMap = THashMap<TString, ui32>;
 
 private:
-    TStorageConfigPtr StorageConfig;
+    TStorageConfigConstPtr StorageConfig;
 
     ui64 CpuLack = 0;
 
@@ -66,7 +66,7 @@ private:
     TDuration PullDelayResetTimespan;
 
 public:
-    TVolumeBalancerState(TStorageConfigPtr storageConfig);
+    TVolumeBalancerState(TStorageConfigConstPtr storageConfig);
 
     TString GetVolumeToPush() const;
     TString GetVolumeToPull() const;

@@ -76,13 +76,13 @@ private:
     const TRequestInfoPtr RequestInfo;
     TVector<NPrivateProto::TClusterCapacityInfo> Capacities;
 
-    const TStorageConfigPtr Config;
+    const TStorageConfigConstPtr Config;
     TActorId BSControllerPipeClient;
 
 public:
     explicit TGetClusterCapacityActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config);
+        TStorageConfigConstPtr config);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -132,7 +132,7 @@ private:
 
 TGetClusterCapacityActor::TGetClusterCapacityActor(
         TRequestInfoPtr requestInfo,
-        TStorageConfigPtr config)
+        TStorageConfigConstPtr config)
     : RequestInfo(std::move(requestInfo))
     , Config(config)
 {

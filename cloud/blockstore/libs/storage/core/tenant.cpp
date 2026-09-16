@@ -10,7 +10,7 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ui64 GetHiveTabletId(const TStorageConfigPtr& config, const NActors::TActorContext& ctx)
+ui64 GetHiveTabletId(const TStorageConfigConstPtr& config, const NActors::TActorContext& ctx)
 {
     if (config->GetTenantHiveTabletId()) {
         return config->GetTenantHiveTabletId();
