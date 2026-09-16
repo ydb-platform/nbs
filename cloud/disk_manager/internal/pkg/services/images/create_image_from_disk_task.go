@@ -24,14 +24,15 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createImageFromDiskTask struct {
-	config       *config.ImagesConfig
-	scheduler    tasks.Scheduler
-	storage      resources.Storage
-	nbsFactory   nbs.Factory
-	poolService  pools.Service
-	request      *protos.CreateImageFromDiskRequest
-	state        *protos.CreateImageFromDiskTaskState
-	cellSelector cells.CellSelector
+	config        *config.ImagesConfig
+	scheduler     tasks.Scheduler
+	storage       resources.Storage
+	nbsFactory    nbs.Factory
+	poolService   pools.Service
+	request       *protos.CreateImageFromDiskRequest
+	state         *protos.CreateImageFromDiskTaskState
+	cellSelector  cells.CellSelector
+	backupEnabled bool
 }
 
 func (t *createImageFromDiskTask) Save() ([]byte, error) {
@@ -162,6 +163,13 @@ func (t *createImageFromDiskTask) run(
 	)
 	if err != nil {
 		return "", err
+	}
+
+	if t.backupEnabled {
+		err = scheduleBackup(ctx, execCtx, t.scheduler, t.request.DstImageId)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return checkpointID, nil

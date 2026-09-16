@@ -22,12 +22,13 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createSnapshotFromDiskTask struct {
-	scheduler    tasks.Scheduler
-	storage      resources.Storage
-	nbsFactory   nbs.Factory
-	request      *protos.CreateSnapshotFromDiskRequest
-	state        *protos.CreateSnapshotFromDiskTaskState
-	cellSelector cells.CellSelector
+	scheduler     tasks.Scheduler
+	storage       resources.Storage
+	nbsFactory    nbs.Factory
+	request       *protos.CreateSnapshotFromDiskRequest
+	state         *protos.CreateSnapshotFromDiskTaskState
+	cellSelector  cells.CellSelector
+	backupEnabled bool
 }
 
 func (t *createSnapshotFromDiskTask) Save() ([]byte, error) {
@@ -149,6 +150,20 @@ func (t *createSnapshotFromDiskTask) run(
 	)
 	if err != nil {
 		return "", err
+	}
+
+	if t.backupEnabled {
+		_, err = t.scheduler.ScheduleTask(
+			headers.SetIncomingIdempotencyKey(ctx, selfTaskID+"_backup"),
+			"snapshots.BackupSnapshot",
+			"",
+			&protos.BackupSnapshotRequest{
+				SnapshotId: t.request.DstSnapshotId,
+			},
+		)
+		if err != nil {
+			return "", err
+		}
 	}
 
 	return checkpointID, nil

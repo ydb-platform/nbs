@@ -7,6 +7,7 @@ import (
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
 	pools_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -165,4 +166,22 @@ func configureImagePools(
 	}
 
 	return nil
+}
+
+func scheduleBackup(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	scheduler tasks.Scheduler,
+	imageID string,
+) error {
+
+	_, err := scheduler.ScheduleTask(
+		headers.SetIncomingIdempotencyKey(ctx, execCtx.GetTaskID()+"_backup"),
+		"images.BackupImage",
+		"",
+		&protos.BackupImageRequest{
+			ImageId: imageID,
+		},
+	)
+	return err
 }

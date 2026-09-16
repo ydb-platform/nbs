@@ -20,12 +20,13 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createImageFromImageTask struct {
-	config      *config.ImagesConfig
-	scheduler   tasks.Scheduler
-	storage     resources.Storage
-	poolService pools.Service
-	request     *protos.CreateImageFromImageRequest
-	state       *protos.CreateImageFromImageTaskState
+	config        *config.ImagesConfig
+	scheduler     tasks.Scheduler
+	storage       resources.Storage
+	poolService   pools.Service
+	backupEnabled bool
+	request       *protos.CreateImageFromImageRequest
+	state         *protos.CreateImageFromImageTaskState
 }
 
 func (t *createImageFromImageTask) Save() ([]byte, error) {
@@ -115,6 +116,13 @@ func (t *createImageFromImageTask) Run(
 	)
 	if err != nil {
 		return err
+	}
+
+	if t.backupEnabled {
+		err = scheduleBackup(ctx, execCtx, t.scheduler, t.request.DstImageId)
+		if err != nil {
+			return err
+		}
 	}
 
 	return configureImagePools(

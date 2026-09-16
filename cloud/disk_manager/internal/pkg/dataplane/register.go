@@ -5,12 +5,14 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	backup_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -28,6 +30,8 @@ func RegisterForExecution(
 	urlMetricsRegistry metrics.Registry,
 	migrationDstStorage storage.Storage,
 	useS3InMigration bool,
+	backupConfig *backup_config.SnapshotStorageBackupConfig,
+	slaveS3 *persistence.S3Client,
 ) error {
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
@@ -257,7 +261,7 @@ func RegisterForExecution(
 		return err
 	}
 
-	return taskRegistry.RegisterForExecution(
+	err = taskRegistry.RegisterForExecution(
 		"dataplane.CreateDRBasedDiskCheckpoint",
 		func() tasks.Task {
 			return &createDRBasedDiskCheckpointTask{
@@ -266,6 +270,49 @@ func RegisterForExecution(
 			}
 		},
 	)
+	if err != nil {
+		return err
+	}
+
+	if slaveS3 != nil {
+		err = taskRegistry.RegisterForExecution(
+			"dataplane.BackupSnapshot",
+			func() tasks.Task {
+				return &backupSnapshotTask{}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		backupChunksTaskScheduleInterval, err := time.ParseDuration(
+			backupConfig.GetBackupChunksTaskScheduleInterval(),
+		)
+		if err != nil {
+			return err
+		}
+
+		err = taskRegistry.RegisterForExecution(
+			"dataplane.BackupChunks",
+			func() tasks.Task {
+				return &backupChunksTask{}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"dataplane.BackupChunks",
+			tasks.TaskSchedule{
+				ScheduleInterval: backupChunksTaskScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
+	}
+
+	return nil
 }
 
 func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
@@ -294,4 +341,6 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.DeleteSnapshotData":          func() tasks.Task { return &deleteSnapshotDataTask{} },
 	"dataplane.DeleteDiskFromIncremental":   func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
 	"dataplane.CreateDRBasedDiskCheckpoint": func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
+	"dataplane.BackupSnapshot":              func() tasks.Task { return &backupSnapshotTask{} },
+	"dataplane.BackupChunks":                func() tasks.Task { return &backupChunksTask{} },
 }
