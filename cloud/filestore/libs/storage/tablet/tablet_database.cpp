@@ -1264,8 +1264,8 @@ void TIndexTabletDatabase::WriteFreshBlocks(
     {
         t.Key(nodeId, blockIndex, ReverseCommitId(commitId))
             .Update(
-                NIceDb::TUpdate<TTable::BlockData>(
-                    TString(blockBuffer->GetBlock(blockIndex - byteRange.FirstAlignedBlock()))));
+                NIceDb::TUpdate<TTable::BlockData>(blockBuffer->GetBlock(
+                    blockIndex - byteRange.FirstAlignedBlock())));
     }
 }
 
