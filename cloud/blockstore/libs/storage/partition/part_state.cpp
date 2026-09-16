@@ -132,6 +132,7 @@ TPartitionState::TPartitionState(
         ui32 mixedIndexCacheSize,
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
+        ui64 maxMixedBytesPerUnit,
         ui32 maxBlobsPerRange,
         ui32 compactionRangeCountPerRun,
         TPartitionThreadSafeStatePtr threadSafeState,
