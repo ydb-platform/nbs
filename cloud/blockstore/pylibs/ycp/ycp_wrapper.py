@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, List, Mapping, Optional
+from typing import Any, List, Mapping
 
 from cloud.blockstore.pylibs.clusters.test_config import FolderDesc
 
@@ -65,7 +65,7 @@ class YcpWrapper:
                         local_disk_size: int = None,
                         description: str = None,
                         underlay_vm: bool = False,
-                        template_params: Optional[Mapping[str, Any]] = None) -> Ycp.Instance:
+                        template_params: Mapping[str, Any] = None) -> Ycp.Instance:
         self._logger.info('Creating instance')
 
         create_instance_cfg = Ycp.CreateInstanceConfig(
@@ -124,7 +124,7 @@ class YcpWrapper:
                     snapshot_name: str = None,
                     auto_delete: bool = True,
                     description: str = None,
-                    template_params: Optional[Mapping[str, Any]] = None) -> Ycp.Disk:
+                    template_params: Mapping[str, Any] = None) -> Ycp.Disk:
         self._logger.info('Creating disk')
         create_disk_config = Ycp.CreateDiskConfig(
             block_size=bs,
