@@ -6,6 +6,8 @@
 
 #include <util/string/builder.h>
 
+#include <atomic>
+
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,6 +18,7 @@ namespace {
 
 NMonitoring::TDynamicCountersPtr CriticalEvents;
 TLog Log;
+std::atomic<TCriticalEventReporter> CriticalEventReporter{nullptr};
 
 }  // namespace
 
@@ -26,19 +29,28 @@ void SetCriticalEventsLog(TLog log)
     Log = std::move(log);
 }
 
-void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
+void InitCriticalEventsCounter(
+    NMonitoring::TDynamicCountersPtr counters,
+    bool derivative)
 {
     CriticalEvents = std::move(counters);
+    const auto initCounter = [&](const TString& name)
+    {
+        auto counter = CriticalEvents->GetCounter(name, derivative);
+        if (derivative) {
+            *counter = 0;
+        }
+    };
 
 #define STORAGE_INIT_CRITICAL_EVENT_COUNTER(name)                              \
-    *CriticalEvents->GetCounter(GetCriticalEventFor##name(), true) = 0;        \
+    initCounter(GetCriticalEventFor##name());                                 \
 // STORAGE_INIT_CRITICAL_EVENT_COUNTER
 
     STORAGE_CRITICAL_EVENTS(STORAGE_INIT_CRITICAL_EVENT_COUNTER)
 #undef STORAGE_INIT_CRITICAL_EVENT_COUNTER
 
 #define STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER(name)                            \
-    *CriticalEvents->GetCounter(GetImpossibleEventFor##name(), true) = 0;      \
+    initCounter(GetImpossibleEventFor##name());                               \
 // STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER
 
     STORAGE_IMPOSSIBLE_EVENTS(STORAGE_INIT_IMPOSSIBLE_EVENT_COUNTER)
@@ -73,8 +85,20 @@ TString ReportCriticalEvent(
     return LogCriticalEvent(sensorName, message);
 }
 
+// Replace the counter override without changing logging or default counters.
+void SetCriticalEventReporter(TCriticalEventReporter reporter)
+{
+    CriticalEventReporter.store(reporter);
+}
+
 void ReportCriticalEventWithoutLogging(const TString& sensorName)
 {
+    if (const auto reporter = CriticalEventReporter.load();
+        reporter && reporter(sensorName))
+    {
+        return;
+    }
+
     if (CriticalEvents) {
         auto counter = CriticalEvents->GetCounter(sensorName, true);
         counter->Inc();
