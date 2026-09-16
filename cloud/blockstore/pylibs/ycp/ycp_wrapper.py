@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, List, Mapping
+from typing import Any, List, Mapping, Optional
 
 from cloud.blockstore.pylibs.clusters.test_config import FolderDesc
 
