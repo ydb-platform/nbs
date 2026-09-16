@@ -11,11 +11,15 @@ func ChunkKey(keyPrefix string, chunkID string) string {
 }
 
 func MetaKey(keyPrefix string, diskID string, snapshotID string) string {
-	return key(keyPrefix, snapshotDir(diskID, snapshotID)+"/meta.json")
+	if len(diskID) == 0 {
+		diskID = "-"
+	}
+
+	return key(keyPrefix, fmt.Sprintf("snapshots/%v/%v/meta.json", diskID, snapshotID))
 }
 
-func ChunkMapKey(keyPrefix string, diskID string, snapshotID string) string {
-	return key(keyPrefix, snapshotDir(diskID, snapshotID)+"/map.bin")
+func ChunkMapKey(keyPrefix string, snapshotID string) string {
+	return key(keyPrefix, fmt.Sprintf("chunk_maps/%v", snapshotID))
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,12 +30,4 @@ func key(keyPrefix string, object string) string {
 	}
 
 	return fmt.Sprintf("%v/%v", keyPrefix, object)
-}
-
-func snapshotDir(diskID string, snapshotID string) string {
-	if len(diskID) == 0 {
-		diskID = "-"
-	}
-
-	return fmt.Sprintf("snapshots/%v/%v", diskID, snapshotID)
 }

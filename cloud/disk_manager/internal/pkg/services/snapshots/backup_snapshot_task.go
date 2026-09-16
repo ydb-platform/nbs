@@ -77,7 +77,6 @@ func (t *backupSnapshotTask) Run(
 		"",
 		&backup_protos.BackupSnapshotRequest{
 			SnapshotId: snapshotID,
-			DiskId:     diskID,
 		},
 	)
 	if err != nil {

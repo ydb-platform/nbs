@@ -222,7 +222,7 @@ func (t *backupSnapshotTask) writeMap(
 	return t.s3.PutObject(
 		ctx,
 		t.bucket,
-		ChunkMapKey(t.keyPrefix, t.request.DiskId, meta.ID),
+		ChunkMapKey(t.keyPrefix, meta.ID),
 		persistence.S3Object{Data: data},
 	)
 }

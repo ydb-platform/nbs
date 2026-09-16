@@ -130,7 +130,6 @@ func newBackupSnapshotTask(
 	storage snapshot_storage.Storage,
 	backup testBackup,
 	snapshotID string,
-	diskID string,
 ) *backupSnapshotTask {
 
 	return &backupSnapshotTask{
@@ -141,7 +140,6 @@ func newBackupSnapshotTask(
 		enqueueBatchSize: 1000,
 		request: &protos.BackupSnapshotRequest{
 			SnapshotId: snapshotID,
-			DiskId:     diskID,
 		},
 		state: &protos.BackupSnapshotTaskState{},
 	}
@@ -205,12 +203,12 @@ func TestBackupSnapshotTask(t *testing.T) {
 	execCtx := mocks.NewExecutionContextMock()
 	execCtx.On("SaveState", ctx).Return(nil)
 
-	task := newBackupSnapshotTask(storage, backup, "snap1", "disk1")
+	task := newBackupSnapshotTask(storage, backup, "snap1")
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	_, err = backup.getObject(ctx, "snapshots/disk1/snap1/map.bin")
+	_, err = backup.getObject(ctx, "chunk_maps/snap1")
 	require.Error(t, err)
 
 	queue, err := storage.GetBackupQueue(ctx, 10)
@@ -234,7 +232,7 @@ func TestBackupSnapshotTask(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 1, task.state.Progress)
 
-	chunkMap := readBackupChunkMap(t, ctx, backup, "snapshots/disk1/snap1/map.bin")
+	chunkMap := readBackupChunkMap(t, ctx, backup, "chunk_maps/snap1")
 	require.Equal(t, []string{chunk0, ""}, chunkMap.ChunkIds)
 }
 
@@ -286,7 +284,7 @@ func TestBackupSnapshotTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	execCtx := mocks.NewExecutionContextMock()
 	execCtx.On("SaveState", ctx).Return(nil)
 
-	task := newBackupSnapshotTask(storage, backup, "snap2", "")
+	task := newBackupSnapshotTask(storage, backup, "snap2")
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
@@ -307,6 +305,6 @@ func TestBackupSnapshotTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 
-	chunkMap := readBackupChunkMap(t, ctx, backup, "snapshots/-/snap2/map.bin")
+	chunkMap := readBackupChunkMap(t, ctx, backup, "chunk_maps/snap2")
 	require.Equal(t, []string{chunk0, chunk1}, chunkMap.ChunkIds)
 }

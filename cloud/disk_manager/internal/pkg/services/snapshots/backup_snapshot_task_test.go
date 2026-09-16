@@ -65,7 +65,7 @@ func TestBackupSnapshotTask(t *testing.T) {
 		"dataplane.BackupSnapshot",
 		"",
 		mock.MatchedBy(func(request *backup_protos.BackupSnapshotRequest) bool {
-			return request.SnapshotId == "snap1" && request.DiskId == "disk1"
+			return request.SnapshotId == "snap1"
 		}),
 	).Return("dataplane1", nil)
 	scheduler.On("WaitTask", mock.Anything, execCtx, "dataplane1").Return(&empty.Empty{}, nil)
