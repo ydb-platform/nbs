@@ -80,7 +80,8 @@ NProto::TWriteLogRecordRequest MakeReplayRequest(
 
 NProto::TReadPagesRequest MakeReadPagesRequest(
     NProto::TDeviceRequestHeaders headers,
-    const TVector<TPageGroupRef>& pageGroupRefs);
+    const TVector<TPageGroupRef>& pageGroupRefs,
+    ui32 pageSize);
 
 void ExtractPageGroups(
     const NProto::TReadPagesResponse& response,

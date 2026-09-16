@@ -51,7 +51,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             "main_fs_s1",
             true /* directoryCreationInShardsEnabled */,
             TVector<TString>() /* shardIds */,
-            NProtoPrivate::TFastShardConfig(),
+            MemConfig(),
             true /* isFastShard */);
         tablet.ReconnectPipe();
 
@@ -101,7 +101,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             "main_fs_s1",
             true /* directoryCreationInShardsEnabled */,
             TVector<TString>() /* shardIds */,
-            NProtoPrivate::TFastShardConfig(),
+            MemConfig(),
             true /* isFastShard */);
 
         DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
@@ -135,7 +135,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             "main_fs_s1",
             true /* directoryCreationInShardsEnabled */,
             TVector<TString>() /* shardIds */,
-            NProtoPrivate::TFastShardConfig(),
+            MemConfig(),
             true /* isFastShard */);
 
         tablet.ReconnectPipe();
@@ -478,7 +478,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             "main_fs_s1",
             true /* directoryCreationInShardsEnabled */,
             TVector<TString>() /* shardIds */,
-            NProtoPrivate::TFastShardConfig(),
+            MemConfig(),
             true /* isFastShard */);
 
         tablet.ReconnectPipe();
@@ -543,7 +543,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
             "main_fs_s1",
             true /* directoryCreationInShardsEnabled */,
             TVector<TString>() /* shardIds */,
-            NProtoPrivate::TFastShardConfig(),
+            MemConfig(),
             true /* isFastShard */);
 
         tablet.ReconnectPipe();
@@ -658,6 +658,343 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
                 response->GetStatus(),
                 response->GetErrorReason());
         }
+    }
+
+    TABLET_TEST(ShouldDeriveFastShardPageSizeFromBlockSize)
+    {
+        auto shards = std::make_shared<TTestFastShards>();
+        testEnvConfig.FastShardFactory = shards;
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            PersistentConfig(),
+            true /* isFastShard */);
+
+        // The tablet restarts to become a fast shard and hands the stored
+        // config to the shard it creates.
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
+        UNIT_ASSERT_VALUES_EQUAL(
+            tabletConfig.BlockSize,
+            shards->Created[0]->Config.GetPersistentConfig().GetPageSize());
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldKeepExplicitFastShardPageSize)
+    {
+        auto shards = std::make_shared<TTestFastShards>();
+        testEnvConfig.FastShardFactory = shards;
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+
+        // Not a multiple of 4K: the devices could not serve such pages.
+        tablet.SendConfigureAsShardRequest(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            PersistentConfig(6_KB),
+            true /* isFastShard */);
+        auto response = tablet.RecvConfigureAsShardResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            PersistentConfig(8_KB),
+            true /* isFastShard */);
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
+        UNIT_ASSERT_VALUES_EQUAL(
+            8_KB,
+            shards->Created[0]->Config.GetPersistentConfig().GetPageSize());
+        shards->Created[0]->InitResult.SetValue({});
+        tablet.ReconnectPipe();
+
+        tablet.SendConfigureAsShardRequest(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            PersistentConfig(4_KB),
+            true /* isFastShard */);
+        response = tablet.RecvConfigureAsShardResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT_C(
+            response->GetErrorReason().Contains("page size mismatch"),
+            response->GetErrorReason());
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            PersistentConfig(),
+            true /* isFastShard */);
+        tablet.RebootTablet();
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
+        UNIT_ASSERT_VALUES_EQUAL(
+            8_KB,
+            shards->Created[1]->Config.GetPersistentConfig().GetPageSize());
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldKeepFastShardConfigOnRerunAndResize)
+    {
+        auto shards = std::make_shared<TTestFastShards>();
+        testEnvConfig.FastShardFactory = shards;
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            PersistentConfig(8_KB),
+            true /* isFastShard */);
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
+        shards->Created[0]->InitResult.SetValue({});
+        tablet.ReconnectPipe();
+
+        // A re-run of the configuration script: no page size in it.
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            PersistentConfig(),
+            true /* isFastShard */);
+
+        // What alterfs sends after adding main_fs_s2.
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>{"main_fs_s1", "main_fs_s2"});
+
+        auto resized = tabletConfig;
+        resized.BlockCount *= 2;
+        tablet.UpdateConfig(resized);
+
+        tablet.RebootTablet();
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
+        UNIT_ASSERT_VALUES_EQUAL(
+            8_KB,
+            shards->Created[1]->Config.GetPersistentConfig().GetPageSize());
+    }
+
+    // A stored persistent config points at devices holding the shard's data:
+    // no explicit request may replace it or demote the shard.
+    TABLET_TEST_4K_ONLY(ShouldNotDemoteFastShard)
+    {
+        auto shards = std::make_shared<TTestFastShards>();
+        testEnvConfig.FastShardFactory = shards;
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            PersistentConfig(8_KB),
+            true /* isFastShard */);
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
+        shards->Created[0]->InitResult.SetValue({});
+        tablet.ReconnectPipe();
+
+        using TCase = std::pair<NProtoPrivate::TFastShardConfig, bool>;
+        const TVector<TCase> cases = {
+            {MemConfig(), true},          // persistent -> mem
+            {MemConfig(), false},         // fast -> regular, mem
+            {PersistentConfig(), false},  // fast -> regular, same config
+        };
+        for (const auto& [config, isFastShard]: cases) {
+            tablet.SendConfigureAsShardRequest(
+                1 /* shardNo */,
+                "main_fs",
+                "main_fs_s1",
+                true /* directoryCreationInShardsEnabled */,
+                TVector<TString>() /* shardIds */,
+                config,
+                isFastShard);
+            auto response = tablet.RecvConfigureAsShardResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        tablet.RebootTablet();
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
+        UNIT_ASSERT_VALUES_EQUAL(
+            8_KB,
+            shards->Created[1]->Config.GetPersistentConfig().GetPageSize());
+    }
+
+    TABLET_TEST_4K_ONLY(ShouldKeepFastShardConfigKind)
+    {
+        auto shards = std::make_shared<TTestFastShards>();
+        testEnvConfig.FastShardFactory = shards;
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+
+        // A fast shard needs a config.
+        tablet.SendConfigureAsShardRequest(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            NProtoPrivate::TFastShardConfig(),
+            true /* isFastShard */);
+        auto response = tablet.RecvConfigureAsShardResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            MemConfig(),
+            true /* isFastShard */);
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
+        shards->Created[0]->InitResult.SetValue({});
+        tablet.ReconnectPipe();
+
+        // mem -> persistent
+        tablet.SendConfigureAsShardRequest(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            PersistentConfig(),
+            true /* isFastShard */);
+        response = tablet.RecvConfigureAsShardResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        // mem -> mem
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            MemConfig(),
+            true /* isFastShard */);
+        tablet.RebootTablet();
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
+        UNIT_ASSERT(shards->Created[1]->Config.HasMemConfig());
+    }
+
+    // A forced request is stored as sent, whatever the stored config says:
+    // it can demote a fast shard or give it a new persistent config.
+    TABLET_TEST_4K_ONLY(ShouldStoreForcedFastShardConfigAsIs)
+    {
+        auto shards = std::make_shared<TTestFastShards>();
+        testEnvConfig.FastShardFactory = shards;
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.ConfigureAsShard(
+            1 /* shardNo */,
+            "main_fs",
+            "main_fs_s1",
+            true /* directoryCreationInShardsEnabled */,
+            TVector<TString>() /* shardIds */,
+            PersistentConfig(8_KB),
+            true /* isFastShard */);
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
+        shards->Created[0]->InitResult.SetValue({});
+        tablet.ReconnectPipe();
+
+        auto forced = [&](NProtoPrivate::TFastShardConfig config, bool isFast) {
+            auto request = tablet.CreateConfigureAsShardRequest(
+                1 /* shardNo */,
+                "main_fs",
+                "main_fs_s1",
+                true /* directoryCreationInShardsEnabled */,
+                TVector<TString>() /* shardIds */,
+                std::move(config),
+                isFast);
+            request->Record.SetForce(true);
+            tablet.SendRequest(std::move(request));
+            return tablet.RecvConfigureAsShardResponse();
+        };
+
+        // Demotion goes through; the tablet restarts as a regular shard.
+        auto response = forced(MemConfig(), false);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        UNIT_ASSERT_VALUES_EQUAL(1U, shards->Created.size());
+
+        // And back, with another page size.
+        response = forced(PersistentConfig(4_KB), true);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            shards->Created[1]->Config.GetPersistentConfig().GetPageSize());
     }
 }
 

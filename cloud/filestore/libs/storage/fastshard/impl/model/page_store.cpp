@@ -9,6 +9,7 @@
 #include <util/string/builder.h>
 
 #include <mutex>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 namespace {
@@ -212,16 +213,9 @@ NProto::TError TPageStore::ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const
         return MakeError(E_NOT_FOUND);
     }
 
-    NProto::TReadPagesRequest request;
-    auto* pg = request.AddPageGroupRefs();
-    pg->SetFirstPageNo(pageNo);
-    pg->SetPageCount(1);
-    pg->SetPageSize(PageSize);
-
     TVector<TPageGroupRef> pageGroupRefs = {{
         .FirstPageNo = pageNo,
         .PageCount = 1,
-        .PageSize = PageSize,
     }};
 
     TVector<TPageGroup> pageGroups;

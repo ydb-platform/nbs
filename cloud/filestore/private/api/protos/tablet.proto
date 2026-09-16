@@ -823,6 +823,8 @@ message TPersistentFastShardConfig
     // 5min total timeout, 500ms backoff increment.
     uint64 RetryTotalTimeoutMs = 4;
     uint64 RetryBackoffIncrementMs = 5;
+
+    uint32 PageSize = 6;
 }
 
 message TMemFastShardConfig

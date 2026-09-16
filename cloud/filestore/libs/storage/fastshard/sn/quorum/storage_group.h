@@ -19,7 +19,6 @@ struct TPageGroupRef
 {
     ui64 FirstPageNo = 0;
     ui64 PageCount = 0;
-    ui64 PageSize = 0;
 };
 
 struct TPageGroup
@@ -89,6 +88,8 @@ struct TStorageGroupConfig
 
     // How often the low watermark is pushed to the devices; zero never.
     TDuration LowWatermarkPeriod = TDuration::Seconds(1);
+
+    ui32 PageSize = DefaultBlockSize;
 };
 
 /**
