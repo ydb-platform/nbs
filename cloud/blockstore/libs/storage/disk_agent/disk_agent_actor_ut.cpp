@@ -3966,21 +3966,21 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         TDiskAgentClient diskAgent(runtime);
         diskAgent.WaitReady();
 
-        diskAgent.SendSecureEraseDeviceRequest("foo", {}, 2);
+        diskAgent.SendSecureEraseDeviceRequest("foo", TString{}, 2);
         auto response = diskAgent.RecvSecureEraseDeviceResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
 
-        diskAgent.SendSecureEraseDeviceRequest("bar", {}, 1);
+        diskAgent.SendSecureEraseDeviceRequest("bar", TString{}, 1);
         response = diskAgent.RecvSecureEraseDeviceResponse();
         UNIT_ASSERT_VALUES_EQUAL(
             E_REJECTED,
             response->Record.GetError().GetCode());
 
-        diskAgent.SendSecureEraseDeviceRequest("bar", {}, 0);
+        diskAgent.SendSecureEraseDeviceRequest("bar", TString{}, 0);
         response = diskAgent.RecvSecureEraseDeviceResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
 
-        diskAgent.SendSecureEraseDeviceRequest("bar", {}, 1);
+        diskAgent.SendSecureEraseDeviceRequest("bar", TString{}, 1);
         response = diskAgent.RecvSecureEraseDeviceResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response->Record.GetError().GetCode());
     }
