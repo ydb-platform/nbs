@@ -179,6 +179,24 @@ void DoTestOutOfSpace(ui64 maxBits)
     ASSERT_EQ(1000ULL, bit);
 }
 
+// The page size need not be a power of two: 12K pages hold 98304 bits each.
+TEST(PersistentBitmapTest, PageCountWithNonPowerOfTwoPageSize)
+{
+    const TVector<std::pair<ui64, ui64>> cases = {
+        {0, 0},
+        {98304, 1},   // exactly one page of bits
+        {100000, 2},
+    };
+    for (const auto& [maxBits, pageCount]: cases) {
+        TPersistentBitmap bitmap(
+            10 /* firstPageNo */,
+            maxBits,
+            12_KB,
+            CreateMemPageStore(12_KB));
+        EXPECT_EQ(pageCount, bitmap.GetPageCount()) << maxBits;
+    }
+}
+
 TEST(PersistentBitmapTest, OutOfSpace1Page)
 {
     DoTestOutOfSpace(30000);
