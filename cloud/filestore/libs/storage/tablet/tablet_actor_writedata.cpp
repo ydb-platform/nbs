@@ -49,12 +49,12 @@ void TIndexTabletActor::HandleWriteData(
     }
 
     NProto::TProfileLogRequestInfo profileLogRequest;
-    InitTabletProfileLogRequestInfo(
-        profileLogRequest,
-        EFileStoreRequest::WriteData,
-        msg->Record,
-        ctx.Now(),
-        BehaveAsShard(msg->Record.GetHeaders()));
+    // InitTabletProfileLogRequestInfo(
+    //     profileLogRequest,
+    //     EFileStoreRequest::WriteData,
+    //     msg->Record,
+    //     ctx.Now(),
+    //     BehaveAsShard(msg->Record.GetHeaders()));
 
     TString& buffer = *msg->Record.MutableBuffer();
     const TByteRange range(
@@ -63,32 +63,32 @@ void TIndexTabletActor::HandleWriteData(
         GetBlockSize()
     );
 
-    if (Config->GetBlockChecksumsInProfileLogEnabled()) {
-        CalculateChecksums(
-            buffer,
-            GetBlockSize(),
-            false /* ignoreBufferOverflow */,
-            GetFileSystemId(),
-            profileLogRequest);
-    }
+    // if (Config->GetBlockChecksumsInProfileLogEnabled()) {
+    //     CalculateChecksums(
+    //         buffer,
+    //         GetBlockSize(),
+    //         false /* ignoreBufferOverflow */,
+    //         GetFileSystemId(),
+    //         profileLogRequest);
+    // }
 
     auto replyError = [&] (const NProto::TError& error)
     {
-        FILESTORE_TRACK(
-            ResponseSent_Tablet,
-            msg->CallContext,
-            "WriteData");
+        // FILESTORE_TRACK(
+        //     ResponseSent_Tablet,
+        //     msg->CallContext,
+        //     "WriteData");
 
         auto response =
             std::make_unique<TEvService::TEvWriteDataResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
 
-        FinalizeProfileLogRequestInfo(
-            std::move(profileLogRequest),
-            ctx.Now(),
-            GetFileSystemId(),
-            error,
-            ProfileLog);
+        // FinalizeProfileLogRequestInfo(
+        //     std::move(profileLogRequest),
+        //     ctx.Now(),
+        //     GetFileSystemId(),
+        //     error,
+        //     ProfileLog);
     };
 
     const ui64 nodeId = msg->Record.GetNodeId();
@@ -163,23 +163,23 @@ void TIndexTabletActor::HandleWriteData(
     };
 
     if (!AcceptRequest<TEvService::TWriteDataMethod>(ev, ctx, validator)) {
-        FinalizeProfileLogRequestInfo(
-            std::move(profileLogRequest),
-            ctx.Now(),
-            GetFileSystemId(),
-            MakeError(E_REJECTED, "not accepted"),
-            ProfileLog);
+        // FinalizeProfileLogRequestInfo(
+        //     std::move(profileLogRequest),
+        //     ctx.Now(),
+        //     GetFileSystemId(),
+        //     MakeError(E_REJECTED, "not accepted"),
+        //     ProfileLog);
         return;
     }
 
     // either rejected or put into queue
     if (ThrottleIfNeeded<TEvService::TWriteDataMethod>(ev, ctx)) {
-        FinalizeProfileLogRequestInfo(
-            std::move(profileLogRequest),
-            ctx.Now(),
-            GetFileSystemId(),
-            MakeError(E_REJECTED, "throttled"),
-            ProfileLog);
+        // FinalizeProfileLogRequestInfo(
+        //     std::move(profileLogRequest),
+        //     ctx.Now(),
+        //     GetFileSystemId(),
+        //     MakeError(E_REJECTED, "throttled"),
+        //     ProfileLog);
         return;
     }
 
@@ -279,9 +279,9 @@ bool TIndexTabletActor::PrepareTx_WriteData(
         args.NodeId,
         args.ByteRange.Describe().c_str());
 
-    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
+    args.Db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
-    if (!ReadNode(*db, args.NodeId, args.CommitId, args.Node)) {
+    if (!ReadNode(*args.Db, args.NodeId, args.CommitId, args.Node)) {
         return false;
     }
 
@@ -299,7 +299,7 @@ bool TIndexTabletActor::PrepareTx_WriteData(
     // ranges.
     //
 
-    UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
+    // UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
 
     if (!HasSpaceLeft(
             args.Node->Attrs.GetSize(),
@@ -321,12 +321,11 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     FILESTORE_VALIDATE_TX_ERROR(WriteData, args);
 
     Y_UNUSED(ctx);
+    Y_UNUSED(tx);
 
     if (args.ShouldWriteBlob()) {
         return;
     }
-
-    auto db = CreateIndexTabletDatabaseProxy(tx.DB, args.NodeUpdates);
 
     args.CommitId = GenerateCommitId();
     if (args.CommitId == InvalidCommitId) {
@@ -335,7 +334,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     }
 
     MarkFreshBlocksDeleted(
-        *db,
+        *args.Db,
         args.NodeId,
         args.CommitId,
         args.ByteRange.FirstAlignedBlock(),
@@ -347,28 +346,23 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         BlockGroupSize,
         [&] (ui32 blockOffset, ui32 blocksCount) {
             MarkMixedBlocksDeleted(
-                *db,
+                *args.Db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.FirstAlignedBlock() + blockOffset,
                 blocksCount);
         });
 
-    for (ui64 b = args.ByteRange.FirstAlignedBlock();
-            b < args.ByteRange.FirstAlignedBlock() + args.ByteRange.AlignedBlockCount();
-            ++b)
-    {
-        WriteFreshBlock(
-            *db,
-            args.NodeId,
-            args.CommitId,
-            b,
-            args.Buffer->GetBlock(b - args.ByteRange.FirstAlignedBlock()));
-    }
+    WriteFreshBlocks(
+        *args.Db,
+        args.NodeId,
+        args.CommitId,
+        args.ByteRange,
+        args.Buffer.get());
 
     if (args.ByteRange.UnalignedHeadLength()) {
         WriteFreshBytes(
-            *db,
+            *args.Db,
             args.NodeId,
             args.CommitId,
             args.ByteRange.Offset,
@@ -380,26 +374,26 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         if (args.Node->Attrs.GetSize() <= args.ByteRange.End()) {
             // it's safe to write at the end of file fresh block w 0s at the end
             MarkFreshBlocksDeleted(
-                *db,
+                *args.Db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.LastBlock(),
                 1);
             MarkMixedBlocksDeleted(
-                *db,
+                *args.Db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.LastBlock(),
                 1);
             WriteFreshBlock(
-                *db,
+                *args.Db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.LastBlock(),
                 args.Buffer->GetUnalignedTail());
         } else {
             WriteFreshBytes(
-                *db,
+                *args.Db,
                 args.NodeId,
                 args.CommitId,
                 args.ByteRange.UnalignedTailOffset(),
@@ -413,7 +407,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
     }
 
     UpdateNode(
-        *db,
+        *args.Db,
         args.NodeId,
         args.Node->MinCommitId,
         args.CommitId,
@@ -441,12 +435,12 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-        FinalizeProfileLogRequestInfo(
-            std::move(args.ProfileLogRequest),
-            ctx.Now(),
-            GetFileSystemId(),
-            args.Error,
-            ProfileLog);
+        // FinalizeProfileLogRequestInfo(
+        //     std::move(args.ProfileLogRequest),
+        //     ctx.Now(),
+        //     GetFileSystemId(),
+        //     args.Error,
+        //     ProfileLog);
     };
 
     if (FAILED(args.Error.GetCode())) {
