@@ -1,4 +1,4 @@
-package snapshots
+package images
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -15,58 +15,51 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type backupSnapshotTask struct {
+type backupImageTask struct {
 	scheduler tasks.Scheduler
 	storage   resources.Storage
 	s3        *persistence.S3Client
 	bucket    string
 	keyPrefix string
-	request   *protos.BackupSnapshotRequest
-	state     *protos.BackupSnapshotTaskState
+	request   *protos.BackupImageRequest
+	state     *protos.BackupImageTaskState
 }
 
-func (t *backupSnapshotTask) Save() ([]byte, error) {
+func (t *backupImageTask) Save() ([]byte, error) {
 	return proto.Marshal(t.state)
 }
 
-func (t *backupSnapshotTask) Load(request, state []byte) error {
-	t.request = &protos.BackupSnapshotRequest{}
+func (t *backupImageTask) Load(request, state []byte) error {
+	t.request = &protos.BackupImageRequest{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
 		return err
 	}
 
-	t.state = &protos.BackupSnapshotTaskState{}
+	t.state = &protos.BackupImageTaskState{}
 	return proto.Unmarshal(state, t.state)
 }
 
-func (t *backupSnapshotTask) Run(
+func (t *backupImageTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	snapshotID := t.request.SnapshotId
+	imageID := t.request.ImageId
 
-	meta, err := t.storage.GetSnapshotMeta(ctx, snapshotID)
+	meta, err := t.storage.GetImageMeta(ctx, imageID)
 	if err != nil {
 		return err
 	}
 
 	if meta == nil {
 		return errors.NewNonRetriableErrorf(
-			"snapshot %v is not found",
-			snapshotID,
+			"image %v is not found",
+			imageID,
 		)
 	}
 
-	if meta.Disk == nil {
-		return errors.NewNonRetriableErrorf(
-			"snapshot %v has no disk",
-			snapshotID,
-		)
-	}
-
-	snapshotMeta, err := backup.NewSnapshotMeta(*meta)
+	imageMeta, err := backup.NewImageMeta(*meta)
 	if err != nil {
 		return err
 	}
@@ -75,14 +68,14 @@ func (t *backupSnapshotTask) Run(
 		ctx,
 		t.s3,
 		t.bucket,
-		backup.SnapshotMetaKey(t.keyPrefix, meta.Disk.DiskId, snapshotID),
-		snapshotMeta,
+		backup.ImageMetaKey(t.keyPrefix, imageID),
+		imageMeta,
 	)
 	if err != nil {
 		return err
 	}
 
-	taskID, err := backup.ScheduleBackupSnapshot(ctx, execCtx, t.scheduler, snapshotID)
+	taskID, err := backup.ScheduleBackupSnapshot(ctx, execCtx, t.scheduler, imageID)
 	if err != nil {
 		return err
 	}
@@ -98,7 +91,7 @@ func (t *backupSnapshotTask) Run(
 	return err
 }
 
-func (t *backupSnapshotTask) Cancel(
+func (t *backupImageTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -106,13 +99,13 @@ func (t *backupSnapshotTask) Cancel(
 	return nil
 }
 
-func (t *backupSnapshotTask) GetMetadata(
+func (t *backupImageTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
 }
 
-func (t *backupSnapshotTask) GetResponse() proto.Message {
+func (t *backupImageTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }

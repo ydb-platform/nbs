@@ -19,5 +19,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     mocks
-    tests
+    tasks_tests
 )

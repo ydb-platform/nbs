@@ -32,7 +32,7 @@ func TestSnapshotMetaJSON(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	data, err := meta.Marshal()
+	data, err := json.Marshal(meta)
 	require.NoError(t, err)
 
 	var fields map[string]interface{}
@@ -61,4 +61,45 @@ func TestSnapshotMetaWithoutDisk(t *testing.T) {
 	require.Empty(t, meta.ZoneID)
 	require.EqualValues(t, types.EncryptionMode_NO_ENCRYPTION, meta.EncryptionMode)
 	require.Nil(t, meta.EncryptionKeyHash)
+}
+
+func TestImageMetaJSON(t *testing.T) {
+	creatingAt := time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC)
+
+	meta, err := NewImageMeta(resources.ImageMeta{
+		ID:            "image-1",
+		FolderID:      "folder-1",
+		SrcDiskID:     "disk-1",
+		CheckpointID:  "cp-1",
+		SrcImageID:    "image-0",
+		SrcSnapshotID: "snap-1",
+		CreateTaskID:  "task-42",
+		CreatingAt:    creatingAt,
+		CreatedBy:     "user-1",
+		Size:          8192,
+		StorageSize:   4096,
+	})
+	require.NoError(t, err)
+
+	data, err := json.Marshal(meta)
+	require.NoError(t, err)
+
+	var fields map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &fields))
+	require.Equal(t, "image-1", fields["id"])
+	require.Equal(t, "folder-1", fields["folder_id"])
+	require.Equal(t, "disk-1", fields["src_disk_id"])
+	require.Equal(t, "cp-1", fields["checkpoint_id"])
+	require.Equal(t, "image-0", fields["src_image_id"])
+	require.Equal(t, "snap-1", fields["src_snapshot_id"])
+	require.Equal(t, "task-42", fields["create_task_id"])
+	require.Equal(t, "2026-08-31T10:00:00Z", fields["creating_at"])
+	require.Equal(t, "user-1", fields["created_by"])
+	require.EqualValues(t, 8192, fields["size"])
+	require.EqualValues(t, 4096, fields["storage_size"])
+	require.EqualValues(t, types.EncryptionMode_NO_ENCRYPTION, fields["encryption_mode"])
+
+	var parsed ImageMeta
+	require.NoError(t, json.Unmarshal(data, &parsed))
+	require.Equal(t, meta, parsed)
 }

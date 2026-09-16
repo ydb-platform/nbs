@@ -1,4 +1,4 @@
-package snapshots
+package images
 
 import (
 	"encoding/json"
@@ -13,16 +13,15 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	tasks_mocks "github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const backupTestBucket = "snapshots-backup"
+const backupTestBucket = "images-backup"
 
-func TestBackupSnapshotTask(t *testing.T) {
+func TestBackupImageTask(t *testing.T) {
 	ctx := test.NewContext()
 
 	s3, err := test.NewS3Client()
@@ -36,27 +35,21 @@ func TestBackupSnapshotTask(t *testing.T) {
 	}
 
 	creatingAt := time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC)
-	snapshot := &resources.SnapshotMeta{
-		ID:           "snap1",
-		FolderID:     "folder",
-		Disk:         &types.Disk{ZoneId: "zone", DiskId: "disk1"},
-		CheckpointID: "cp1",
-		CreateTaskID: "task1",
-		CreatingAt:   creatingAt,
-		CreatedBy:    "user",
-		Size:         8192,
-		StorageSize:  4096,
-		Encryption: &types.EncryptionDesc{
-			Mode: types.EncryptionMode_ENCRYPTION_AES_XTS,
-			Key:  &types.EncryptionDesc_KeyHash{KeyHash: []byte("hash")},
-		},
+	image := &resources.ImageMeta{
+		ID:            "image1",
+		FolderID:      "folder",
+		SrcSnapshotID: "snap1",
+		CreateTaskID:  "task1",
+		CreatingAt:    creatingAt,
+		Size:          8192,
+		StorageSize:   4096,
 	}
 
 	storage := resources_mocks.NewStorageMock()
 	scheduler := tasks_mocks.NewSchedulerMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 
-	storage.On("GetSnapshotMeta", mock.Anything, "snap1").Return(snapshot, nil)
+	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
 	scheduler.On(
@@ -65,19 +58,19 @@ func TestBackupSnapshotTask(t *testing.T) {
 		"dataplane.BackupSnapshot",
 		"",
 		mock.MatchedBy(func(request *backup_protos.BackupSnapshotRequest) bool {
-			return request.SnapshotId == "snap1"
+			return request.SnapshotId == "image1"
 		}),
 	).Return("dataplane1", nil)
 	scheduler.On("WaitTask", mock.Anything, execCtx, "dataplane1").Return(&empty.Empty{}, nil)
 
-	task := &backupSnapshotTask{
+	task := &backupImageTask{
 		scheduler: scheduler,
 		storage:   storage,
 		s3:        s3,
 		bucket:    backupTestBucket,
 		keyPrefix: t.Name(),
-		request:   &protos.BackupSnapshotRequest{SnapshotId: "snap1"},
-		state:     &protos.BackupSnapshotTaskState{},
+		request:   &protos.BackupImageRequest{ImageId: "image1"},
+		state:     &protos.BackupImageTaskState{},
 	}
 
 	err = task.Run(ctx, execCtx)
@@ -88,27 +81,22 @@ func TestBackupSnapshotTask(t *testing.T) {
 	object, err := s3.GetObject(
 		ctx,
 		backupTestBucket,
-		backup.SnapshotMetaKey(t.Name(), "disk1", "snap1"),
+		backup.ImageMetaKey(t.Name(), "image1"),
 	)
 	require.NoError(t, err)
 
-	var meta backup.SnapshotMeta
+	var meta backup.ImageMeta
 	require.NoError(t, json.Unmarshal(object.Data, &meta))
 	require.Equal(
 		t,
-		backup.SnapshotMeta{
-			ID:                "snap1",
-			FolderID:          "folder",
-			ZoneID:            "zone",
-			DiskID:            "disk1",
-			CheckpointID:      "cp1",
-			CreateTaskID:      "task1",
-			CreatingAt:        creatingAt,
-			CreatedBy:         "user",
-			Size:              8192,
-			StorageSize:       4096,
-			EncryptionMode:    uint32(types.EncryptionMode_ENCRYPTION_AES_XTS),
-			EncryptionKeyHash: []byte("hash"),
+		backup.ImageMeta{
+			ID:            "image1",
+			FolderID:      "folder",
+			SrcSnapshotID: "snap1",
+			CreateTaskID:  "task1",
+			CreatingAt:    creatingAt,
+			Size:          8192,
+			StorageSize:   4096,
 		},
 		meta,
 	)

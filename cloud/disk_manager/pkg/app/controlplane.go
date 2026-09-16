@@ -190,12 +190,14 @@ func registerControlplaneTasks(
 	err = images.RegisterForExecution(
 		ctx,
 		config.GetImagesConfig(),
+		config.GetSnapshotStorageBackupConfig(),
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,
 		nbsFactory,
 		poolService,
 		cellSelector,
+		backupS3,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register image tasks: %v", err)
