@@ -414,6 +414,8 @@ func (t *createSnapshotFromDiskTask) run(
 	)
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
 func (t *createSnapshotFromDiskTask) setEstimate(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,

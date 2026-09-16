@@ -8,6 +8,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 message BackupSnapshotRequest {
     string SnapshotId = 1;
+    string DiskId = 2;
 }
 
 message BackupSnapshotTaskState {

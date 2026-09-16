@@ -53,11 +53,6 @@ func (t *backupSnapshotTask) Run(
 		return err
 	}
 
-	var diskID string
-	if meta.Disk != nil {
-		diskID = meta.Disk.DiskId
-	}
-
 	t.state.ChunkCount = meta.ChunkCount
 
 	err = t.enqueueChunks(ctx, execCtx)
@@ -79,7 +74,7 @@ func (t *backupSnapshotTask) Run(
 		return errors.NewInterruptExecutionError()
 	}
 
-	err = t.writeMap(ctx, diskID, meta)
+	err = t.writeMap(ctx, meta)
 	if err != nil {
 		return err
 	}
@@ -190,7 +185,6 @@ func (t *backupSnapshotTask) enqueueChunks(
 
 func (t *backupSnapshotTask) writeMap(
 	ctx context.Context,
-	diskID string,
 	meta storage.SnapshotMeta,
 ) error {
 
@@ -228,7 +222,7 @@ func (t *backupSnapshotTask) writeMap(
 	return t.s3.PutObject(
 		ctx,
 		t.bucket,
-		ChunkMapKey(t.keyPrefix, diskID, meta.ID),
+		ChunkMapKey(t.keyPrefix, t.request.DiskId, meta.ID),
 		persistence.S3Object{Data: data},
 	)
 }

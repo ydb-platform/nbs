@@ -61,7 +61,12 @@ func (t *backupSnapshotTask) Run(
 		)
 	}
 
-	err = t.writeMeta(ctx, meta)
+	var diskID string
+	if meta.Disk != nil {
+		diskID = meta.Disk.DiskId
+	}
+
+	err = t.writeMeta(ctx, diskID, meta)
 	if err != nil {
 		return err
 	}
@@ -72,6 +77,7 @@ func (t *backupSnapshotTask) Run(
 		"",
 		&backup_protos.BackupSnapshotRequest{
 			SnapshotId: snapshotID,
+			DiskId:     diskID,
 		},
 	)
 	if err != nil {
@@ -112,6 +118,7 @@ func (t *backupSnapshotTask) GetResponse() proto.Message {
 
 func (t *backupSnapshotTask) writeMeta(
 	ctx context.Context,
+	diskID string,
 	meta *resources.SnapshotMeta,
 ) error {
 
@@ -123,11 +130,6 @@ func (t *backupSnapshotTask) writeMeta(
 	data, err := snapshotMeta.Marshal()
 	if err != nil {
 		return errors.NewNonRetriableError(err)
-	}
-
-	var diskID string
-	if meta.Disk != nil {
-		diskID = meta.Disk.DiskId
 	}
 
 	return t.s3.PutObject(

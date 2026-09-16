@@ -130,6 +130,7 @@ func newBackupSnapshotTask(
 	storage snapshot_storage.Storage,
 	backup testBackup,
 	snapshotID string,
+	diskID string,
 ) *backupSnapshotTask {
 
 	return &backupSnapshotTask{
@@ -140,6 +141,7 @@ func newBackupSnapshotTask(
 		enqueueBatchSize: 1000,
 		request: &protos.BackupSnapshotRequest{
 			SnapshotId: snapshotID,
+			DiskId:     diskID,
 		},
 		state: &protos.BackupSnapshotTaskState{},
 	}
@@ -203,7 +205,7 @@ func TestBackupSnapshotTask(t *testing.T) {
 	execCtx := mocks.NewExecutionContextMock()
 	execCtx.On("SaveState", ctx).Return(nil)
 
-	task := newBackupSnapshotTask(storage, backup, "snap1")
+	task := newBackupSnapshotTask(storage, backup, "snap1", "disk1")
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
@@ -284,7 +286,7 @@ func TestBackupSnapshotTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	execCtx := mocks.NewExecutionContextMock()
 	execCtx.On("SaveState", ctx).Return(nil)
 
-	task := newBackupSnapshotTask(storage, backup, "snap2")
+	task := newBackupSnapshotTask(storage, backup, "snap2", "")
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
