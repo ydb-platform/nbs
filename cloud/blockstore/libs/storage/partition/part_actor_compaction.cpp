@@ -2094,12 +2094,11 @@ void TPartitionActor::HandleCompaction(
             PartitionConfig.GetFolderId(),
             PartitionConfig.GetDiskId());
 
-    TVector<ui32> rangeIndices;
-    for (auto& range: ranges) {
-        rangeIndices.push_back(range.first);
-    }
-
     if (auto* filter = State->AccessMixedBlocksFilter()) {
+        TVector<ui32> rangeIndices;
+        for (auto& range: ranges) {
+            rangeIndices.push_back(range.first);
+        }
         filter->CompactionStarted(std::move(rangeIndices), commitId);
     }
 
