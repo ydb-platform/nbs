@@ -619,6 +619,8 @@ private:
             auto rangeStat = kv.second.Stat;
 
             if (Args.Mode == ADD_COMPACTION_RESULT) {
+                // If compaction stats tracker is enabled, compaction map
+                // counters should be updated by tracker.
                 STORAGE_VERIFY(
                     !State.AccessCompactionStatsTracker(),
                     TWellKnownEntityTypes::TABLET,
@@ -683,9 +685,10 @@ private:
 
     void UpdateCompactionMap(TPartitionDatabase& db)
     {
+        const auto& cm = State.GetCompactionMap();
+
         auto* compactionStatsTracker = State.AccessCompactionStatsTracker();
         if (compactionStatsTracker && compactionStatsTracker->HasCompaction()) {
-            const auto& cm = State.GetCompactionMap();
             for (const auto& kv: CompactionCounters) {
                 auto* counter = compactionStatsTracker->AccessCompactionCounter(
                     cm.GetRangeIndex(kv.first));
@@ -699,14 +702,10 @@ private:
             }
         }
 
-        if (Args.Mode != ADD_COMPACTION_RESULT || !compactionStatsTracker ||
-            !compactionStatsTracker->HasCompaction())
-        {
+        if (Args.Mode != ADD_COMPACTION_RESULT || !compactionStatsTracker) {
             RegularUpdateCompactionMap(db);
             return;
         }
-
-        const auto& cm = State.GetCompactionMap();
 
         i64 newlyZeroedBlocksToDecrement = 0;
 
