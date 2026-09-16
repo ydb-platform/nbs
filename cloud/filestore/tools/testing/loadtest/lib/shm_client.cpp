@@ -79,6 +79,11 @@ public:
         , AllowOverlappingSharedMemoryPages(allowOverlappingSharedMemoryPages)
     {
         Log = logging->CreateLog("NFS_SHM_CLIENT");
+        Y_ABORT_UNLESS(
+            !PageSize || SlotSize % PageSize == 0,
+            "slot size %lu is not a multiple of page size %u",
+            SlotSize,
+            PageSize);
     }
 
     void Start() override
@@ -116,9 +121,7 @@ public:
         memcpy(static_cast<char*>(LocalAddr) + shmOffset, buffer.data(), len);
         request.ClearBuffer();
 
-        auto* iovec = request.AddIovecs();
-        iovec->SetBase(shmOffset);
-        iovec->SetLength(len);
+        AddPagedIovecs(*request.MutableIovecs(), shmOffset, len);
         request.SetRegionId(RegionId);
 
         return shmOffset;
@@ -136,9 +139,7 @@ public:
             SlotSize);
         outOffset = AllocateShmOffset();
 
-        auto* iovec = request.AddIovecs();
-        iovec->SetBase(outOffset);
-        iovec->SetLength(len);
+        AddPagedIovecs(*request.MutableIovecs(), outOffset, len);
         request.SetRegionId(RegionId);
 
         return static_cast<char*>(LocalAddr) + outOffset;
@@ -152,6 +153,30 @@ public:
     }
 
 private:
+    // The server locks pages one at a time and requires every iovec in a
+    // request to span exactly one page (only the last iovec may be shorter),
+    // so a buffer spanning multiple pages has to be split accordingly.
+    void AddPagedIovecs(
+        google::protobuf::RepeatedPtrField<NProto::TIovec>& iovecs,
+        ui64 offset,
+        ui64 length)
+    {
+        if (!PageSize) {
+            auto* iovec = iovecs.Add();
+            iovec->SetBase(offset);
+            iovec->SetLength(length);
+            return;
+        }
+
+        for (ui64 pos = 0; pos < length; ) {
+            const ui64 chunkLen = Min<ui64>(PageSize, length - pos);
+            auto* iovec = iovecs.Add();
+            iovec->SetBase(offset + pos);
+            iovec->SetLength(chunkLen);
+            pos += chunkLen;
+        }
+    }
+
     void SetupSharedMemory()
     {
         TFsPath fullPath = TFsPath(BaseDir) / TFsPath(FilePath);
