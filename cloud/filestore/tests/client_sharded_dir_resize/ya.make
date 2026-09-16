@@ -1,6 +1,6 @@
 PY3TEST()
 
-INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 
 SPLIT_FACTOR(1)
 
@@ -25,5 +25,9 @@ SET(
 )
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
+
+DEFAULT(FILESTORE_TABLETS_RESTART_INTERVAL 5)
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/tablets-restarter.inc)
 
 END()

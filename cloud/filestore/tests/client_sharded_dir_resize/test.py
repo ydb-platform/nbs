@@ -1,3 +1,4 @@
+from concurrent import futures
 import json
 import logging
 import os
@@ -6,6 +7,7 @@ from time import sleep
 import yatest.common as common
 
 from cloud.filestore.tests.python.lib.client import FilestoreCliClient
+from cloud.filestore.tests.python.lib.common import wait_for
 from cloud.filestore.tests.python.lib.test_helpers import (
     get_restart_interval,
     get_storage_config,
@@ -59,6 +61,81 @@ def verify_filesystem_topology(
         topology.get("DirectoryCreationInShardsEnabled", False)
         == directory_sharding_enabled
     )
+
+
+def get_shard_creation_state_version(
+    client: FilestoreCliClient,
+    filesystem_id: str,
+):
+    result = client.execute_action(
+        "unsafechangetabletstate",
+        {
+            "FileSystemId": filesystem_id,
+            "ShardCreationState": {},
+        },
+    )
+    state = json.loads(result).get("ShardCreationState", {})
+    return state.get("Version", 0)
+
+
+def wait_for_shard_creation_state_update(
+    client: FilestoreCliClient,
+    filesystem_id: str,
+    initial_version: int,
+    resize_future,
+):
+    def has_partial_progress():
+        if resize_future.done():
+            return False
+        try:
+            return (
+                get_shard_creation_state_version(client, filesystem_id)
+                > initial_version
+            )
+        except Exception:
+            return False
+
+    assert wait_for(
+        has_partial_progress,
+        timeout_seconds=60,
+        step_seconds=0.1,
+        multiply=1,
+        max_step_seconds=0.5,
+    )
+
+
+def resize_with_early_retry_and_restart(
+    client: FilestoreCliClient,
+    async_client: FilestoreCliClient,
+    filesystem_id: str,
+    blocks_count: int,
+):
+    initial_version = get_shard_creation_state_version(client, filesystem_id)
+
+    with futures.ThreadPoolExecutor(max_workers=2) as executor:
+        resize_future = executor.submit(
+            async_client.resize,
+            filesystem_id,
+            blocks_count,
+        )
+        wait_for_shard_creation_state_update(
+            client,
+            filesystem_id,
+            initial_version,
+            resize_future,
+        )
+
+        retry_future = executor.submit(
+            async_client.resize,
+            filesystem_id,
+            blocks_count,
+        )
+        client.execute_action("restarttablet", {"FileSystemId": filesystem_id})
+
+        resize_future.result()
+        retry_future.result()
+
+    client.resize(filesystem_id, blocks_count)
 
 
 def test_should_correctly_maintain_sharding_types():
@@ -122,3 +199,56 @@ def test_should_correctly_maintain_sharding_types():
 
     client.resize("fs3", 4 * int(SHARD_SIZE / BLOCK_SIZE))
     verify_filesystem_topology(client, "fs3", 4, True)
+
+
+def test_should_resize_with_early_retries_and_tablet_restarts():
+    port = os.getenv("NFS_SERVER_PORT")
+    binary_path = common.binary_path(
+        "cloud/filestore/apps/client/filestore-client"
+    )
+    client = FilestoreCliClient(binary_path, port, cwd=common.output_path())
+    async_client = FilestoreCliClient(
+        binary_path,
+        port,
+        cwd=common.output_path(),
+        check_exit_code=False,
+    )
+
+    client.create(
+        "fs_resize",
+        "test_cloud",
+        "test_folder",
+        BLOCK_SIZE,
+        int(SHARD_SIZE / BLOCK_SIZE) - 1,
+    )
+
+    topology = json.loads(
+        client.execute_action(
+            "getfilesystemtopology",
+            {"FileSystemId": "fs_resize"},
+        )
+    )
+    directory_sharding_enabled = topology.get(
+        "DirectoryCreationInShardsEnabled",
+        False,
+    )
+
+    verify_filesystem_topology(
+        client,
+        "fs_resize",
+        0,
+        directory_sharding_enabled,
+    )
+    for shard_count in range(8, 88, 8):
+        resize_with_early_retry_and_restart(
+            client,
+            async_client,
+            "fs_resize",
+            shard_count * int(SHARD_SIZE / BLOCK_SIZE),
+        )
+        verify_filesystem_topology(
+            client,
+            "fs_resize",
+            shard_count,
+            directory_sharding_enabled,
+        )
