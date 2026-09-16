@@ -1323,8 +1323,7 @@ void TIndexTabletActor::HandleForcedOperationStatus(
         response->Record.MutableError()->CopyFrom(state->Error);
     } else if (IsForcedRangeOperationPending(request.GetOperationId())) {
         response->Record.SetStatus(TStatus::E_PENDING);
-    }
-    else {
+    } else {
         response->Record.SetStatus(TStatus::E_UNKNOWN);
         response->Record.MutableError()->CopyFrom(MakeError(
             E_NOT_FOUND,
