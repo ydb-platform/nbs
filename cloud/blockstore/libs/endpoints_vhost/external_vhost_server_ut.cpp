@@ -41,11 +41,6 @@ struct TStopEndpoint
     TString SocketPath;
 };
 
-struct TDrainEndpoint
-{
-    TString SocketPath;
-};
-
 struct TRefreshEndpoint
 {
     TString SocketPath;
@@ -73,7 +68,6 @@ using TEntry = std::variant<
     TStartEndpoint,
     TAlterEndpoint,
     TStopEndpoint,
-    TDrainEndpoint,
     TRefreshEndpoint,
     TCreateExternalEndpoint,
     TPrepareStartExternalEndpoint,
@@ -121,14 +115,6 @@ struct TTestEndpointListener
         const TString& socketPath) override
     {
         History.push_back(TStopEndpoint {socketPath});
-
-        return MakeFuture<NProto::TError>();
-    }
-
-    TFuture<NProto::TError> DrainEndpoint(
-        const TString& socketPath) override
-    {
-        History.push_back(TDrainEndpoint{socketPath});
 
         return MakeFuture<NProto::TError>();
     }

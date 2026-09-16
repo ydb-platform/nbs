@@ -27,9 +27,6 @@ struct IServer
 
     virtual NThreading::TFuture<NProto::TError> StopEndpoint(
         TNetworkAddress listenAddress) = 0;
-
-    virtual NThreading::TFuture<NProto::TError> DrainEndpoint(
-        TNetworkAddress listenAddress) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

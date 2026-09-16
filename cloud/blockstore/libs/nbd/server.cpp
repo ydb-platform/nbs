@@ -117,10 +117,8 @@ public:
         ShutDown();
     }
 
-    TFuture<void> Drain()
+    TFuture<void> GetDrainResult() const
     {
-        ShutDown();
-        TryCompleteDrain();
         return DrainResult.GetFuture();
     }
 
@@ -335,6 +333,14 @@ using TConnectionPtr = TIntrusivePtr<TConnection>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TEndpointStopResult
+{
+    NProto::TError Error;
+    TFuture<void> DrainResult;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TEndpoint final
     : public TContListener::ICallBack
 {
@@ -348,6 +354,9 @@ private:
     const TNetworkAddress ListenAddress;
     const ui32 SocketAccessMode;
 
+    // Completion tail for all connections accepted by this endpoint, including
+    // the tail inherited from a previous instance of the same endpoint.
+    TFuture<void> DrainResult;
     std::unique_ptr<TContListener> Listener;
     TConnectionPtr Connection;
 
@@ -358,7 +367,8 @@ public:
             ILimiterPtr limiter,
             IServerHandlerFactoryPtr handlerFactory,
             const TNetworkAddress& listenAddress,
-            const ui32 socketAccessMode)
+            const ui32 socketAccessMode,
+            TFuture<void> drainResult)
         : AppCtx(appCtx)
         , Log(appCtx.Log)
         , Executor(executor)
@@ -366,6 +376,7 @@ public:
         , HandlerFactory(std::move(handlerFactory))
         , ListenAddress(listenAddress)
         , SocketAccessMode(socketAccessMode)
+        , DrainResult(std::move(drainResult))
     {}
 
     ~TEndpoint()
@@ -396,9 +407,9 @@ public:
         });
     }
 
-    NProto::TError Stop(bool deleteSocket)
+    TEndpointStopResult Stop(bool deleteSocket)
     {
-        return SafeExecute<NProto::TError>([&] {
+        auto error = SafeExecute<NProto::TError>([&] {
             if (Connection) {
                 Connection->Stop();
             };
@@ -413,27 +424,11 @@ public:
 
             return NProto::TError();
         });
-    }
 
-    TFuture<NProto::TError> Drain()
-    {
-        auto error = SafeExecute<NProto::TError>([&] {
-            if (Listener) {
-                Listener->Stop();
-            }
-            return NProto::TError();
-        });
-
-        if (HasError(error) || !Connection) {
-            return MakeFuture(std::move(error));
-        }
-
-        return Connection->Drain().Apply(
-            [](const TFuture<void>& future)
-            {
-                future.GetValue();
-                return NProto::TError();
-            });
+        return {
+            .Error = std::move(error),
+            .DrainResult = DrainResult,
+        };
     }
 
     size_t CollectRequests(const TIncompleteRequestsCollector& collector)
@@ -457,9 +452,9 @@ private:
             SetNoDelay(socket, true);
         }
 
-        TFuture<void> ready = MakeFuture();
+        auto ready = DrainResult;
         if (Connection) {
-            ready = Connection->Drain();
+            Connection->Stop();
         }
 
         Connection = MakeIntrusive<TConnection>(
@@ -468,7 +463,11 @@ private:
             Limiter,
             HandlerFactory->CreateHandler(),
             std::move(socket),
-            std::move(ready));
+            ready);
+
+        // Keep the whole chain even if this connection closes before it starts
+        // processing requests.
+        DrainResult = WaitAll(ready, Connection->GetDrainResult());
 
         Connection->Start();
     }
@@ -580,7 +579,8 @@ public:
 
     TEndpointPtr CreateEndpoint(
         TNetworkAddress listenAddress,
-        IServerHandlerFactoryPtr handlerFactory)
+        IServerHandlerFactoryPtr handlerFactory,
+        TFuture<void> drainResult)
     {
         return std::make_shared<TEndpoint>(
             AppCtx,
@@ -588,7 +588,8 @@ public:
             Limiter,
             std::move(handlerFactory),
             std::move(listenAddress),
-            SocketAccessMode);
+            SocketAccessMode,
+            std::move(drainResult));
     }
 
     TFuture<NProto::TError> StartEndpoint(TEndpointPtr endpoint)
@@ -598,34 +599,11 @@ public:
         });
     }
 
-    TFuture<NProto::TError> StopEndpoint(TEndpointPtr endpoint)
+    TFuture<TEndpointStopResult> StopEndpoint(TEndpointPtr endpoint)
     {
         return Executor->Execute([endpoint = std::move(endpoint)] {
             return endpoint->Stop(true);
         });
-    }
-
-    TFuture<NProto::TError> DrainEndpoint(const TString& address)
-    {
-        TEndpointPtr endpoint;
-        with_lock (Lock) {
-            auto it = Endpoints.find(address);
-            if (it != Endpoints.end()) {
-                endpoint = it->second;
-            }
-        }
-
-        if (!endpoint) {
-            NProto::TError error;
-            error.SetCode(S_ALREADY);
-            error.SetMessage(
-                TStringBuilder() << "endpoint " << address.Quote()
-                                 << " has already been stopped");
-            return MakeFuture(std::move(error));
-        }
-
-        return Executor->Execute([endpoint = std::move(endpoint)]
-                                 { return endpoint->Drain(); });
     }
 
     void AddEndpoint(TString address, TEndpointPtr endpoint)
@@ -683,10 +661,28 @@ class TServer final
     , public std::enable_shared_from_this<TServer>
 {
 private:
+    // A completion barrier retained after an endpoint is stopped and consumed
+    // when an endpoint with the same listen address is started again.
+    struct TPendingDrain
+    {
+        // Identifies this map entry so its completion callback cannot erase a
+        // newer barrier stored for the same address.
+        ui64 Id = 0;
+
+        // Becomes ready when all requests accepted by previous connections
+        // have finished and is passed to the next endpoint instance.
+        TFuture<void> Future;
+    };
+
     TVector<TExecutorThreadPtr> ExecutorThreads;
 
     TAdaptiveLock Lock;
     TMap<TString, TExecutorThread*> EndpointMap;
+
+    // Preserves the connection completion tail across StopEndpoint/StartEndpoint
+    // for the same listen address.
+    TMap<TString, TPendingDrain> PendingDrains;
+    ui64 LastPendingDrainId = 0;
 
 public:
     TServer(
@@ -727,6 +723,7 @@ public:
         with_lock (Lock) {
             ExecutorThreads.clear();
             EndpointMap.clear();
+            PendingDrains.clear();
         }
     }
 
@@ -743,6 +740,7 @@ public:
 
         auto address = PrintHostAndPort(listenAddress);
 
+        TFuture<void> drainResult = MakeFuture();
         with_lock (Lock) {
             auto it = EndpointMap.find(address);
             if (it != EndpointMap.end()) {
@@ -753,6 +751,12 @@ public:
                     << " has already been started");
                 return MakeFuture(error);
             }
+
+            auto drainIt = PendingDrains.find(address);
+            if (drainIt != PendingDrains.end()) {
+                drainResult = drainIt->second.Future;
+                PendingDrains.erase(drainIt);
+            }
         }
 
         auto* executorThread = PickExecutor();
@@ -760,7 +764,8 @@ public:
 
         auto endpoint = executorThread->CreateEndpoint(
             listenAddress,
-            std::move(handlerFactory));
+            std::move(handlerFactory),
+            drainResult);
 
         auto future = executorThread->StartEndpoint(endpoint);
 
@@ -768,11 +773,14 @@ public:
 
         return future.Apply([=, weak_ptr = std::move(weak_ptr)] (const auto& f) mutable {
             const auto& error = f.GetValue();
+            auto ptr = weak_ptr.lock();
             if (HasError(error)) {
+                if (ptr) {
+                    ptr->StorePendingDrain(address, std::move(drainResult));
+                }
                 return error;
             }
 
-            auto ptr = weak_ptr.lock();
             if (!ptr) {
                 NProto::TError error;
                 error.SetCode(E_REJECTED);
@@ -799,7 +807,7 @@ public:
         }
 
         auto address = PrintHostAndPort(listenAddress);
-        TExecutorThread* executorThread = nullptr;
+        TExecutorThread* executorThread;
 
         with_lock (Lock) {
             auto it = EndpointMap.find(address);
@@ -817,37 +825,18 @@ public:
         }
 
         auto endpoint = executorThread->RemoveEndpoint(address);
-        return executorThread->StopEndpoint(std::move(endpoint));
-    }
+        auto future = executorThread->StopEndpoint(std::move(endpoint));
 
-    TFuture<NProto::TError> DrainEndpoint(
-        TNetworkAddress listenAddress) override
-    {
-        if (AtomicGet(ShouldStop) == 1) {
-            NProto::TError error;
-            error.SetCode(E_REJECTED);
-            error.SetMessage("NBD server is stopped");
-            return MakeFuture(error);
-        }
-
-        TString address = PrintHostAndPort(listenAddress);
-        TExecutorThread* executorThread = nullptr;
-
-        with_lock (Lock) {
-            auto it = EndpointMap.find(address);
-            if (it == EndpointMap.end()) {
-                NProto::TError error;
-                error.SetCode(S_ALREADY);
-                error.SetMessage(TStringBuilder()
-                    << "endpoint " << address.Quote()
-                    << " has already been stopped");
-                return MakeFuture(error);
-            }
-
-            executorThread = it->second;
-        }
-
-        return executorThread->DrainEndpoint(address);
+        return future.Apply(
+            [weakPtr = weak_from_this(),
+             address](const TFuture<TEndpointStopResult>& future)
+            {
+                const auto& [error, drainResult] = future.GetValue();
+                if (auto ptr = weakPtr.lock()) {
+                    ptr->StorePendingDrain(address, drainResult);
+                }
+                return error;
+            });
     }
 
     size_t CollectRequests(
@@ -867,6 +856,44 @@ public:
     }
 
 private:
+    void RemovePendingDrain(const TString& address, ui64 id)
+    {
+        with_lock (Lock) {
+            auto it = PendingDrains.find(address);
+            if (it != PendingDrains.end() && it->second.Id == id) {
+                PendingDrains.erase(it);
+            }
+        }
+    }
+
+    void StorePendingDrain(TString address, TFuture<void> future)
+    {
+        ui64 id = 0;
+        with_lock (Lock) {
+            auto it = PendingDrains.find(address);
+            if (it != PendingDrains.end()) {
+                future = WaitAll(it->second.Future, future);
+            }
+
+            id = ++LastPendingDrainId;
+            PendingDrains.insert_or_assign(
+                address,
+                TPendingDrain{
+                    .Id = id,
+                    .Future = future,
+                });
+        }
+
+        future.Subscribe(
+            [weakPtr = weak_from_this(), address = std::move(address), id](
+                const auto&)
+            {
+                if (auto ptr = weakPtr.lock()) {
+                    ptr->RemovePendingDrain(address, id);
+                }
+            });
+    }
+
     void InitExecutors(const TServerConfig& config)
     {
         for (size_t i = 1; i <= config.ThreadsCount; ++i) {
