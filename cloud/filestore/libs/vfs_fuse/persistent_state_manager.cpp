@@ -33,8 +33,8 @@ constexpr TStringBuf DirectoryHandleStorageFileName = "directory_handles_storage
 struct TComponentConfig
 {
     const TString BasePath;
-    // State file name. Points to a static string.
-    const TStringBuf FileName;
+    // State file name.
+    const TString FileName;
     // The size a new state file is created with. 0 means empty, in which
     // case the file is sized by the component itself.
     const ui64 StateFileSize;
@@ -43,11 +43,11 @@ struct TComponentConfig
 
     TComponentConfig(
             TString basePath,
-            TStringBuf fileName,
+            TString fileName,
             ui64 stateFileSize,
             ui64 totalSizeLimit)
         : BasePath(std::move(basePath))
-        , FileName(fileName)
+        , FileName(std::move(fileName))
         , StateFileSize(stateFileSize)
         , TotalSizeLimit(totalSizeLimit)
     {}
@@ -322,17 +322,17 @@ TPersistentStateManager::TPersistentStateManager(
         TPersistentStateManagerConfig config)
     : HandleOpsQueue(
           std::move(config.HandleOpsQueueBasePath),
-          HandleOpsQueueFileName,
+          TString(HandleOpsQueueFileName),
           config.HandleOpsQueueStateFileSize,
           config.HandleOpsQueueTotalSizeLimit)
     , WriteBackCache(
           std::move(config.WriteBackCacheBasePath),
-          WriteBackCacheFileName,
+          TString(WriteBackCacheFileName),
           config.WriteBackCacheStateFileSize,
           config.WriteBackCacheTotalSizeLimit)
     , DirectoryHandleStorage(
           std::move(config.DirectoryHandlesStorageBasePath),
-          DirectoryHandleStorageFileName,
+          TString(DirectoryHandleStorageFileName),
           0,   // stateFileSize: sized by the component itself
           0)   // totalSizeLimit: not limited
 {}
@@ -401,7 +401,7 @@ NProto::TError TPersistentStateManager::ListStateFilesLocked(
     const TComponentConfig& component)
 {
     const TFsPath basePath(component.BasePath);
-    const TString fileName(component.FileName);
+    const TString& fileName = component.FileName;
 
     const auto makeError = [&](const yexception& e)
     {
@@ -599,7 +599,7 @@ TResultOrError<bool> TPersistentStateManager::HasState(
     }
 
     const auto dir = GetSessionDir(component, fileSystemId, sessionId);
-    const TString fileName(component.FileName);
+    const TString& fileName = component.FileName;
 
     TGuard guard(Mutex);
 

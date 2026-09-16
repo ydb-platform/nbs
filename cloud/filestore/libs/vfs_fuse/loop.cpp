@@ -992,18 +992,22 @@ private:
                     }
 
                     HandleOpsQueueStateFileGuard = result.ExtractResult();
-                    if (HandleOpsQueueStateFileGuard) {
-                        handleOpsQueue = CreateHandleOpsQueue(
-                            HandleOpsQueueStateFileGuard.GetFilePath(),
-                            Config->GetHandleOpsQueueSize());
-                    } else {
-                        // The total size limit of the state files is reached
+                    if (!HandleOpsQueueStateFileGuard) {
+                        // An empty guard without an error has exactly one
+                        // meaning: no state file has been created because
+                        // the total size limit of the component is reached,
+                        // see IPersistentStateManager::
+                        // AcquireHandleOpsQueueStateFile()
                         STORAGE_WARN(
                             "[f:%s][c:%s] HandleOpsQueue is not created: "
                             "the total size limit of its state files is "
                             "reached",
                             Config->GetFileSystemId().Quote().c_str(),
                             Config->GetClientId().Quote().c_str());
+                    } else {
+                        handleOpsQueue = CreateHandleOpsQueue(
+                            HandleOpsQueueStateFileGuard.GetFilePath(),
+                            Config->GetHandleOpsQueueSize());
                     }
                 }
             } else if (ShouldCreateHandleOpsQueue(*FileSystemConfig)) {
@@ -1047,7 +1051,11 @@ private:
 
                     WriteBackCacheStateFileGuard = result.ExtractResult();
                     if (!WriteBackCacheStateFileGuard) {
-                        // The total size limit of the state files is reached
+                        // An empty guard without an error has exactly one
+                        // meaning: no state file has been created because
+                        // the total size limit of the component is reached,
+                        // see IPersistentStateManager::
+                        // AcquireWriteBackCacheStateFile()
                         STORAGE_WARN(
                             "[f:%s][c:%s] WriteBackCache is not created: "
                             "the total size limit of its state files is "

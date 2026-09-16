@@ -73,8 +73,9 @@ struct IPersistentStateManager
         const TString& sessionId) = 0;
     // If the corresponding state file exists, acquires the advisory lock and
     // returns the file, otherwise creates the file first, unless the total
-    // size limit of the component is reached: then an empty guard is
-    // returned without an error, meaning the component is not to be used.
+    // size limit of the component is reached. That is the only case in which
+    // an empty guard is returned without an error: it means the component is
+    // not to be used, since there is no state file for it.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireHandleOpsQueueStateFile(
         const TString& fileSystemId,
@@ -87,8 +88,9 @@ struct IPersistentStateManager
         const TString& sessionId) = 0;
     // If the corresponding state file exists, acquires the advisory lock and
     // returns the file, otherwise creates the file first, unless the total
-    // size limit of the component is reached: then an empty guard is
-    // returned without an error, meaning the component is not to be used.
+    // size limit of the component is reached. That is the only case in which
+    // an empty guard is returned without an error: it means the component is
+    // not to be used, since there is no state file for it.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
