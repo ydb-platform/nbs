@@ -14,6 +14,7 @@
 #include <util/string/builder.h>
 #include <util/system/error.h>
 #include <util/system/file.h>
+#include <util/system/sanitizers.h>
 
 #include <cstring>
 
@@ -282,6 +283,8 @@ private:
                     bytes);
 
                 if (!HasError(result)) {
+                    NSan::Unpoison(buffer.Begin(), buffer.Size());
+
                     const char* src = buffer.Begin();
                     for (auto& page: pages) {
                         std::memcpy(page.data(), src, pageSize);
