@@ -38,6 +38,10 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
     TString TabletHostToReport;
     ui32 RequestCount = 0;
 
+    // the cell id header of the last request served, so a test can check
+    // what the connection stamped on it
+    TString LastRequestCellId;
+
     // when set, a mount is answered only once the test says so
     bool DeferMount = false;
     TPromise<NProto::TMountVolumeResponse> MountPromise =
@@ -64,6 +68,7 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
         Y_UNUSED(request);
 
         ++RequestCount;
+        LastRequestCellId = request->GetHeaders().GetCellId();
 
         typename TMethod::TResponse response;
         if constexpr (std::is_same_v<TMethod, TBlockStoreMountVolumeMethod>) {
@@ -1495,6 +1500,28 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
             .OnHostUnavailable("host-z", epoch - 1);
 
         UNIT_ASSERT_VALUES_EQUAL("host-z", connection->GetHost());
+    }
+    Y_UNIT_TEST(ShouldStampCellIdOnMountAndUnmount)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC);
+
+        auto connection = env.Connect("host-a");
+        auto service = connection->GetService();
+
+        service->MountVolume(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TMountVolumeRequest>());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "cell-1",
+            env.GrpcClient->Service->LastRequestCellId);
+
+        env.GrpcClient->Service->LastRequestCellId.clear();
+        service->UnmountVolume(
+            MakeIntrusive<TCallContext>(),
+            std::make_shared<NProto::TUnmountVolumeRequest>());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "cell-1",
+            env.GrpcClient->Service->LastRequestCellId);
     }
 }
 

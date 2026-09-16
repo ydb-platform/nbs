@@ -95,11 +95,16 @@ class TControlService final
 private:
     const IBlockStorePtr Impl;
     const TCellConnectionPtr Connection;
+    const TString CellId;
 
 public:
-    TControlService(IBlockStorePtr impl, TCellConnectionPtr connection)
+    TControlService(
+            IBlockStorePtr impl,
+            TCellConnectionPtr connection,
+            TString cellId)
         : Impl(std::move(impl))
         , Connection(std::move(connection))
+        , CellId(std::move(cellId))
     {}
 
     void Start() override
@@ -118,6 +123,17 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
+        if constexpr (
+            std::is_same_v<TMethod, TBlockStoreMountVolumeMethod> ||
+            std::is_same_v<TMethod, TBlockStoreUnmountVolumeMethod>)
+        {
+            // marks the request as an inter-cell forward, so the receiving
+            // host's forward service can let it past authorization - see the
+            // inter-cell-forward design. Describe carries its own cell id
+            // through the describe path already
+            request->MutableHeaders()->SetCellId(CellId);
+        }
+
         return TMethod::Execute(
             Impl.get(),
             std::move(callContext),
@@ -260,7 +276,8 @@ public:
     {
         return std::make_shared<TControlService>(
             ControlRouter,
-            shared_from_this());
+            shared_from_this(),
+            Pool->GetCellId());
     }
 
     IStoragePtr GetStorage() override
