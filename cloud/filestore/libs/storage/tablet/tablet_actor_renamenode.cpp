@@ -417,8 +417,21 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
             return true;
         }
 
-        // EXCHANGE allows to rename any nodes
+        // EXCHANGE allows to rename any nodes, except across a quota domain
+        // boundary - it moves two nodes into each other's domains at once,
+        // which would need both re-attributed; unsupported, same as a plain
+        // cross-domain rename.
         if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
+            if (args.ParentNode->Attrs.GetQuotaId()
+                    != args.NewParentNode->Attrs.GetQuotaId())
+            {
+                Metrics->RenameNotSupportedErrorCount.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                args.Error = ErrorRenameNotSupported(
+                    args.ParentNodeId,
+                    args.NewParentNodeId);
+            }
             return true;
         }
 
@@ -504,6 +517,50 @@ bool TIndexTabletActor::PrepareTx_RenameNode(
     } else if (HasFlag(args.Flags, NProto::TRenameNodeRequest::F_EXCHANGE)) {
         args.Error = ErrorInvalidTarget(args.NewParentNodeId, args.NewName);
         return true;
+    }
+
+    // A rename that crosses a quota domain boundary is rejected outright,
+    // like a cross-device rename: the moved node's usage is neither
+    // transferred between domains nor recoloured. The one exception is a
+    // node that is itself a quota root (see ClassifyCrossQuotaRename).
+    // F_EXCHANGE is already handled above. Evaluated last, once NewChildRef
+    // is fully resolved.
+    {
+        const ui32 oldParentQuotaId = args.ParentNode->Attrs.GetQuotaId();
+        const ui32 newParentQuotaId = args.NewParentNode->Attrs.GetQuotaId();
+
+        if (oldParentQuotaId != newParentQuotaId) {
+            // From here on a null NewChildRef is legitimate: a cross-domain
+            // rename to a fresh name still runs a second pass, only to learn
+            // the moved node's QuotaId.
+            args.SecondPassForQuotaCheck = true;
+
+            ui32 childQuotaId = 0;
+            if (args.ChildNode) {
+                childQuotaId = args.ChildNode->Attrs.GetQuotaId();
+            } else if (args.IsSecondPass) {
+                childQuotaId = args.SourceNodeAttr.GetQuotaId();
+            } else {
+                // The moved node's data lives on another shard - fetch its
+                // QuotaId there before deciding.
+                args.SecondPassRequired = true;
+                return true;
+            }
+
+            if (ClassifyCrossQuotaRename(
+                    oldParentQuotaId,
+                    newParentQuotaId,
+                    childQuotaId) == ECrossQuotaRenameVerdict::Rejected)
+            {
+                Metrics->RenameNotSupportedErrorCount.fetch_add(
+                    1,
+                    std::memory_order_relaxed);
+                args.Error = ErrorRenameNotSupported(
+                    args.ParentNodeId,
+                    args.NewParentNodeId);
+                return true;
+            }
+        }
     }
 
     return true;
@@ -680,13 +737,18 @@ void TIndexTabletActor::CompleteTx_RenameNode(
 {
     bool refsValidated = false;
     if (args.SecondPassRequired || args.IsSecondPass) {
-        if (!args.NewChildRef) {
-            auto message = ReportChildRefIsNull(TStringBuilder()
-                << "RenameNode_Dst: " << args.Request.ShortDebugString());
-            args.Error = MakeError(E_INVALID_STATE, std::move(message));
-        } else if (!args.ChildRef) {
+        if (!args.ChildRef) {
             auto message = ReportChildRefIsNull(TStringBuilder()
                 << "RenameNode_Src: " << args.Request.ShortDebugString());
+            args.Error = MakeError(E_INVALID_STATE, std::move(message));
+        } else if (!args.NewChildRef && !args.SecondPassForQuotaCheck) {
+            // Outside the cross-quota-domain path a second pass is only ever
+            // requested when there is a node at the destination path, so a
+            // null NewChildRef here is an upstream invariant break. On the
+            // cross-quota-domain path it is expected (the second pass is
+            // there only to fetch the moved node's QuotaId).
+            auto message = ReportChildRefIsNull(TStringBuilder()
+                << "RenameNode_Dst: " << args.Request.ShortDebugString());
             args.Error = MakeError(E_INVALID_STATE, std::move(message));
         } else {
             refsValidated = true;
@@ -694,6 +756,13 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     }
 
     if (refsValidated && args.SecondPassRequired) {
+        TString newParentShardId;
+        TString newParentShardNodeName;
+        if (args.NewChildRef) {
+            newParentShardId = args.NewChildRef->ShardId;
+            newParentShardNodeName = args.NewChildRef->ShardNodeName;
+        }
+
         RegisterGetNodeInfoAndPrepareUnlinkActor(
             ctx,
             args.RequestInfo,
@@ -703,10 +772,11 @@ void TIndexTabletActor::CompleteTx_RenameNode(
                 args.Request,
                 args.ChildRef->ShardId,
                 args.ChildRef->ShardNodeName,
-                args.NewChildRef->ShardId),
+                newParentShardId,
+                args.ParentNode->Attrs.GetQuotaId()),
             std::move(args.ProfileLogRequest),
-            std::move(args.NewChildRef->ShardId),
-            std::move(args.NewChildRef->ShardNodeName),
+            std::move(newParentShardId),
+            std::move(newParentShardNodeName),
             true /* isLocalRename */);
         return;
     }
@@ -714,6 +784,7 @@ void TIndexTabletActor::CompleteTx_RenameNode(
     if (HasError(args.Error)
             && refsValidated
             && args.IsSecondPass
+            && args.NewChildRef
             && args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE)
     {
         if (args.AbortUnlinkOpLogEntryId) {
@@ -726,7 +797,8 @@ void TIndexTabletActor::CompleteTx_RenameNode(
                     args.Request,
                     args.ChildRef->ShardId,
                     args.ChildRef->ShardNodeName,
-                    args.NewChildRef->ShardId),
+                    args.NewChildRef->ShardId,
+                    args.ParentNode->Attrs.GetQuotaId()),
                 std::move(args.ProfileLogRequest),
                 args.Error,
                 args.NewChildRef->ShardId,
