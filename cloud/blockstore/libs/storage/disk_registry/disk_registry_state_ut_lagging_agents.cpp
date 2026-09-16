@@ -352,23 +352,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             });
 
         {
-            auto migrations = state.BuildMigrationList();
-            UNIT_ASSERT_VALUES_EQUAL(2, migrations.size());
-            UNIT_ASSERT_VALUES_EQUAL("uuid-1", migrations[0].SourceDeviceId);
+            const auto migrations = state.BuildMigrationList();
+            UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-1/0", migrations[0].DiskId);
-            UNIT_ASSERT_VALUES_EQUAL("uuid-2", migrations[1].SourceDeviceId);
-            UNIT_ASSERT_VALUES_EQUAL("disk-1/0", migrations[1].DiskId);
+            ASSERT_VECTORS_EQUAL(
+                (TVector<TString>{"uuid-1", "uuid-2"}),
+                migrations[0].SourceDeviceIds);
         }
         // Actual start of the migration.
         executor.WriteTx(
             [&](TDiskRegistryDatabase db) mutable
             {
-                UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/0", "uuid-1")
-                        .GetError());
-                UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/0", "uuid-2")
-                        .GetError());
+                state.StartDeviceMigrations(
+                    Now(),
+                    db,
+                    state.BuildMigrationList(),
+                    [](const auto&, const auto&, const auto& result)
+                    {
+                        UNIT_ASSERT_SUCCESS(result.GetError());
+                    });
             });
 
         // Check disk config.
@@ -437,7 +439,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
         // Check disk config.
         {
             UNIT_ASSERT(state.GetDisksToReallocate().contains("disk-1"));
-            UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
+            UNIT_ASSERT(state.BuildMigrationList().empty());
 
             TDiskInfo diskInfo;
             auto error = state.GetDiskInfo("disk-1", diskInfo);
@@ -518,12 +520,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             });
 
         {
-            auto migrations = state.BuildMigrationList();
-            UNIT_ASSERT_VALUES_EQUAL(2, migrations.size());
-            UNIT_ASSERT_VALUES_EQUAL("uuid-1", migrations[0].SourceDeviceId);
+            const auto migrations = state.BuildMigrationList();
+            UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-1/0", migrations[0].DiskId);
-            UNIT_ASSERT_VALUES_EQUAL("uuid-2", migrations[1].SourceDeviceId);
-            UNIT_ASSERT_VALUES_EQUAL("disk-1/0", migrations[1].DiskId);
+            ASSERT_VECTORS_EQUAL(
+                (TVector<TString>{"uuid-1", "uuid-2"}),
+                migrations[0].SourceDeviceIds);
         }
 
         // Check disk config.
@@ -578,7 +580,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
         // Check disk config.
         {
             UNIT_ASSERT(state.GetDisksToReallocate().contains("disk-1"));
-            UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
+            UNIT_ASSERT(state.BuildMigrationList().empty());
 
             TDiskInfo diskInfo;
             auto error = state.GetDiskInfo("disk-1", diskInfo);
@@ -640,23 +642,25 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             });
 
         {
-            auto migrations = state.BuildMigrationList();
-            UNIT_ASSERT_VALUES_EQUAL(2, migrations.size());
-            UNIT_ASSERT_VALUES_EQUAL("uuid-7", migrations[0].SourceDeviceId);
+            const auto migrations = state.BuildMigrationList();
+            UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-1/2", migrations[0].DiskId);
-            UNIT_ASSERT_VALUES_EQUAL("uuid-8", migrations[1].SourceDeviceId);
-            UNIT_ASSERT_VALUES_EQUAL("disk-1/2", migrations[1].DiskId);
+            ASSERT_VECTORS_EQUAL(
+                (TVector<TString>{"uuid-7", "uuid-8"}),
+                migrations[0].SourceDeviceIds);
         }
         // Actual start of the migration.
         executor.WriteTx(
             [&](TDiskRegistryDatabase db) mutable
             {
-                UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/2", "uuid-7")
-                        .GetError());
-                UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/2", "uuid-8")
-                        .GetError());
+                state.StartDeviceMigrations(
+                    Now(),
+                    db,
+                    state.BuildMigrationList(),
+                    [](const auto&, const auto&, const auto& result)
+                    {
+                        UNIT_ASSERT_SUCCESS(result.GetError());
+                    });
             });
 
         // Check disk config.
@@ -725,10 +729,12 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
         // Check disk config.
         {
             UNIT_ASSERT(state.GetDisksToReallocate().contains("disk-1"));
-            auto migrationList = state.BuildMigrationList();
-            UNIT_ASSERT_VALUES_EQUAL(2, migrationList.size());
-            UNIT_ASSERT_VALUES_EQUAL("uuid-7", migrationList[0].SourceDeviceId);
-            UNIT_ASSERT_VALUES_EQUAL("uuid-8", migrationList[1].SourceDeviceId);
+            const auto migrationList = state.BuildMigrationList();
+            UNIT_ASSERT_VALUES_EQUAL(1, migrationList.size());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1/2", migrationList[0].DiskId);
+            ASSERT_VECTORS_EQUAL(
+                (TVector<TString>{"uuid-7", "uuid-8"}),
+                migrationList[0].SourceDeviceIds);
 
             TDiskInfo diskInfo;
             auto error = state.GetDiskInfo("disk-1", diskInfo);
@@ -772,19 +778,24 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db) mutable
             {
-                auto result =
-                    state.StartDeviceMigration(Now(), db, "disk-1/2", "uuid-7");
-                UNIT_ASSERT_SUCCESS(result.GetError());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    "uuid-13",
-                    result.GetResult().GetDeviceUUID());
-
-                result =
-                    state.StartDeviceMigration(Now(), db, "disk-1/2", "uuid-8");
-                UNIT_ASSERT_SUCCESS(result.GetError());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    "uuid-14",
-                    result.GetResult().GetDeviceUUID());
+                TVector<TString> sources;
+                TVector<TString> targets;
+                state.StartDeviceMigrations(
+                    Now(),
+                    db,
+                    state.BuildMigrationList(),
+                    [&](const auto&, const auto& sourceId, const auto& result)
+                    {
+                        UNIT_ASSERT_SUCCESS(result.GetError());
+                        sources.push_back(sourceId);
+                        targets.push_back(result.GetResult().GetDeviceUUID());
+                    });
+                ASSERT_VECTORS_EQUAL(
+                    (TVector<TString>{"uuid-7", "uuid-8"}),
+                    sources);
+                ASSERT_VECTORS_EQUAL(
+                    (TVector<TString>{"uuid-13", "uuid-14"}),
+                    targets);
             });
     }
 
@@ -816,14 +827,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
         const auto migrations = state.BuildMigrationList();
         UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
         UNIT_ASSERT_VALUES_EQUAL(replicaId, migrations[0].DiskId);
-        UNIT_ASSERT_VALUES_EQUAL(sourceId, migrations[0].SourceDeviceId);
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>{sourceId},
+            migrations[0].SourceDeviceIds);
 
         TString targetId;
         executor.WriteTx(
             [&](TDiskRegistryDatabase db) mutable
             {
                 auto result =
-                    state.StartDeviceMigration(Now(), db, replicaId, sourceId);
+                    StartDeviceMigration(state, Now(), db, replicaId, sourceId);
                 UNIT_ASSERT_SUCCESS(result.GetError());
                 targetId = result.GetResult().GetDeviceUUID();
             });
@@ -878,7 +891,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
                 UNIT_ASSERT_SUCCESS(error);
             });
 
-        UNIT_ASSERT_VALUES_EQUAL(0, state.BuildMigrationList().size());
+        UNIT_ASSERT(state.BuildMigrationList().empty());
 
         TDiskInfo diskInfo;
         UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
@@ -1033,24 +1046,30 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             });
 
         {
-            auto migrations = state.BuildMigrationList();
+            const auto migrations = state.BuildMigrationList();
             UNIT_ASSERT_VALUES_EQUAL(2, migrations.size());
-            UNIT_ASSERT_VALUES_EQUAL("uuid-1", migrations[0].SourceDeviceId);
             UNIT_ASSERT_VALUES_EQUAL("disk-1/0", migrations[0].DiskId);
-            UNIT_ASSERT_VALUES_EQUAL("uuid-13", migrations[1].SourceDeviceId);
+            ASSERT_VECTORS_EQUAL(
+                TVector<TString>{"uuid-1"},
+                migrations[0].SourceDeviceIds);
             UNIT_ASSERT_VALUES_EQUAL("disk-1/1", migrations[1].DiskId);
+            ASSERT_VECTORS_EQUAL(
+                TVector<TString>{"uuid-13"},
+                migrations[1].SourceDeviceIds);
         }
 
         // Actual start of the migration.
         executor.WriteTx(
             [&](TDiskRegistryDatabase db) mutable
             {
-                UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/0", "uuid-1")
-                        .GetError());
-                UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/1", "uuid-13")
-                        .GetError());
+                state.StartDeviceMigrations(
+                    Now(),
+                    db,
+                    state.BuildMigrationList(),
+                    [](const auto&, const auto&, const auto& result)
+                    {
+                        UNIT_ASSERT_SUCCESS(result.GetError());
+                    });
             });
 
         // Check disk config.
@@ -1127,8 +1146,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
         // Check disk config.
         {
             UNIT_ASSERT(state.GetDisksToReallocate().contains("disk-1"));
-            auto migrationList = state.BuildMigrationList();
-            UNIT_ASSERT_VALUES_EQUAL(0, migrationList.size());
+            UNIT_ASSERT(state.BuildMigrationList().empty());
 
             TDiskInfo diskInfo;
             auto error = state.GetDiskInfo("disk-1", diskInfo);

@@ -352,6 +352,17 @@ void DumpSize(IOutputStream& out, const C& c)
     DumpSize(out, std::size(c));
 }
 
+void DumpSize(
+    IOutputStream& out,
+    const TVector<TDiskRegistryState::TDiskMigrations>& migrations)
+{
+    size_t migrationCount = 0;
+    for (const auto& migration: migrations) {
+        migrationCount += migration.SourceDeviceIds.size();
+    }
+    DumpSize(out, migrationCount);
+}
+
 void DumpActionLink(
     IOutputStream& out,
     const ui64 tabletId,
@@ -1279,14 +1290,22 @@ void TDiskRegistryActor::RenderMigrationList(IOutputStream& out) const
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "Disk"; }
-                    TABLEH() { out << "Source Device"; }
+                    TABLEH() { out << "Count"; }
+                    TABLEH() { out << "Source Devices"; }
                 }
             }
 
-            for (const auto& [diskId, uuid]: migrations) {
+            for (const auto& [diskId, deviceIds]: migrations) {
                 TABLER() {
                     TABLED() { DumpDiskLink(out, TabletID(), diskId); }
-                    TABLED() { DumpDeviceLink(out, TabletID(), uuid); }
+                    TABLED() { out << deviceIds.size(); }
+                    TABLED() {
+                        UL() {
+                            for (const auto& uuid: deviceIds) {
+                                LI() { DumpDeviceLink(out, TabletID(), uuid); }
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -725,13 +725,24 @@ public:
 
     NProto::TDiskRegistryStateBackup BackupState() const;
 
-    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    struct TDiskMigrations
+    {
+        TDiskId DiskId;
+        TVector<TDeviceId> SourceDeviceIds;
+    };
+
+    using TStartDeviceMigrationHandler = std::function<void(
+        const TDiskId& sourceDiskId,
+        const TDeviceId& sourceDeviceId,
+        const TResultOrError<NProto::TDeviceConfig>& result)>;
+
+    void StartDeviceMigrations(
         TInstant now,
         TDiskRegistryDatabase& db,
-        const TDiskId& sourceDiskId,
-        const TDeviceId& sourceDeviceId);
+        const TVector<TDiskMigrations>& migrations,
+        const TStartDeviceMigrationHandler& handler);
 
-    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    TResultOrError<NProto::TDeviceConfig> StartForceMigration(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
@@ -746,14 +757,14 @@ public:
         const TDiskId& diskId,
         const TVector<NProto::TDeviceMigrationIds>& migrations,
         TInstant timestamp,
-        TFinishDeviceMigrationHandler handler);
+        const TFinishDeviceMigrationHandler& handler);
 
     TDiskId FindReplicaByMigration(
         const TDiskId& masterDiskId,
         const TDeviceId& sourceDeviceId,
         const TDeviceId& targetDeviceId) const;
 
-    TVector<TDeviceMigration> BuildMigrationList() const;
+    TVector<TDiskMigrations> BuildMigrationList() const;
 
     bool IsMigrationListEmpty() const
     {
@@ -1106,6 +1117,15 @@ private:
         const TDiskState& disk,
         TStringBuf callerName);
 
+    NProto::TPlacementGroupConfig* UpdatePlacementGroupInMemory(
+        const TDiskId& diskId,
+        const TDiskState& disk,
+        TStringBuf callerName);
+
+    void PersistPlacementGroup(
+        TDiskRegistryDatabase& db,
+        NProto::TPlacementGroupConfig& config);
+
     void UpdateDiskPlacementInfo(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
@@ -1338,12 +1358,19 @@ private:
         const TDiskId& sourceDiskId,
         const TString& sourceDeviceId);
 
-    NProto::TDeviceConfig StartDeviceMigrationImpl(
+    // Starts one automatic migration; the batch caller persists disks and groups.
+    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& sourceDiskId,
+        const TDeviceId& sourceDeviceId);
+
+    void StartDeviceMigrationOnTarget(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
         const TDeviceId& sourceDeviceId,
-        NProto::TDeviceConfig targetDevice);
+        NProto::TDeviceConfig& targetDevice);
 
     void ChangeAgentState(
         NProto::TAgentConfig& agent,

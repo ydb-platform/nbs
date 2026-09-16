@@ -395,33 +395,38 @@ void TDiskRegistryActor::ExecuteStartMigration(
 {
     TDiskRegistryDatabase db(tx.DB);
 
-    for (const auto& [diskId, deviceId]: State->BuildMigrationList()) {
-        const auto result = State->StartDeviceMigration(ctx.Now(), db, diskId, deviceId);
+    State->StartDeviceMigrations(
+        ctx.Now(),
+        db,
+        State->BuildMigrationList(),
+        [&](const TDiskId& diskId,
+            const TDeviceId& deviceId,
+            const TResultOrError<NProto::TDeviceConfig>& result)
+        {
+            if (HasError(result)) {
+                LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
+                    "[%lu] Start migration failed. DiskId=%s DeviceId=%s Error=%s",
+                    TabletID(),
+                    diskId.Quote().c_str(),
+                    deviceId.Quote().c_str(),
+                    FormatError(result.GetError()).Quote().c_str()
+                );
+            } else {
+                ++args.StartedDeviceMigrationsCount;
 
-        if (HasError(result)) {
-            LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Start migration failed. DiskId=%s DeviceId=%s Error=%s",
-                TabletID(),
-                diskId.Quote().c_str(),
-                deviceId.Quote().c_str(),
-                FormatError(result.GetError()).Quote().c_str()
-            );
-        } else {
-            ++args.StartedDeviceMigrationsCount;
-
-            const auto& target = result.GetResult();
-            LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
-                "[%lu] Start migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %lu(%lu) }",
-                TabletID(),
-                diskId.Quote().c_str(),
-                deviceId.Quote().c_str(),
-                target.GetDeviceUUID().Quote().c_str(),
-                target.GetBlockSize(),
-                target.GetBlocksCount(),
-                target.GetUnadjustedBlockCount()
-            );
-        }
-    }
+                const auto& target = result.GetResult();
+                LOG_INFO(ctx, TBlockStoreComponents::DISK_REGISTRY,
+                    "[%lu] Start migration success. DiskId=%s DeviceId=%s TargetId={ %s %u %lu(%lu) }",
+                    TabletID(),
+                    diskId.Quote().c_str(),
+                    deviceId.Quote().c_str(),
+                    target.GetDeviceUUID().Quote().c_str(),
+                    target.GetBlockSize(),
+                    target.GetBlocksCount(),
+                    target.GetUnadjustedBlockCount()
+                );
+            }
+        });
 }
 
 void TDiskRegistryActor::CompleteStartMigration(
@@ -519,7 +524,7 @@ void TDiskRegistryActor::ExecuteStartForceMigration(
 
     TDiskRegistryDatabase db(tx.DB);
 
-    const auto result = State->StartDeviceMigration(
+    const auto result = State->StartForceMigration(
         ctx.Now(),
         db,
         args.SourceDiskId,

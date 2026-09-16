@@ -1098,24 +1098,27 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                auto migrations = state.BuildMigrationList();
-                UNIT_ASSERT_VALUES_EQUAL(3, migrations.size());
-                for (const auto& migration: migrations) {
+                const auto migrations = state.BuildMigrationList();
+                UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+                const auto& migration = migrations[0];
+                UNIT_ASSERT_VALUES_EQUAL("nrd0", migration.DiskId);
+                UNIT_ASSERT_VALUES_EQUAL(3, migration.SourceDeviceIds.size());
+                for (const auto& sourceDeviceId: migration.SourceDeviceIds) {
                     UNIT_ASSERT_VALUES_UNEQUAL(
                         agents[0].GetDevices()[0].GetDeviceUUID(),
-                        migration.SourceDeviceId);
-                    UNIT_ASSERT_VALUES_EQUAL("nrd0", migration.DiskId);
-                    auto [device, error] = state.StartDeviceMigration(
+                        sourceDeviceId);
+                    auto [device, error] = StartDeviceMigration(
+                        state,
                         Now(),
                         db,
                         migration.DiskId,
-                        migration.SourceDeviceId);
+                        sourceDeviceId);
                     UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
                     error = FinishDeviceMigration(
                         state,
                         db,
                         migration.DiskId,
-                        migration.SourceDeviceId,
+                        sourceDeviceId,
                         device.GetDeviceUUID());
                     UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
                 }

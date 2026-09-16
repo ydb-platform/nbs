@@ -384,7 +384,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateRankingTest)
         Executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                auto [d, error] = State->StartDeviceMigration(
+                auto [d, error] = StartDeviceMigration(
+                    *State,
                     Now(),
                     db,
                     "vol2",
@@ -422,18 +423,22 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateRankingTest)
                 UNIT_ASSERT_VALUES_EQUAL("vol1", affectedDisks[0]);
 
                 const auto migrations = State->BuildMigrationList();
-                UNIT_ASSERT_VALUES_EQUAL(2, migrations.size());
-                for (const auto& m: migrations) {
-                    auto [d, error] = State->StartDeviceMigration(
-                        Now(),
-                        db,
-                        m.DiskId,
-                        m.SourceDeviceId);
-                    UNIT_ASSERT_SUCCESS(error);
-                    UNIT_ASSERT_VALUES_UNEQUAL("rack1", d.GetRack());
-                    UNIT_ASSERT_VALUES_UNEQUAL(agent1, d.GetAgentId());
-                    UNIT_ASSERT_VALUES_UNEQUAL(agent2, d.GetAgentId());
-                }
+                UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+                const auto& migration = migrations[0];
+                UNIT_ASSERT_VALUES_EQUAL("vol1", migration.DiskId);
+                UNIT_ASSERT_VALUES_EQUAL(2, migration.SourceDeviceIds.size());
+                State->StartDeviceMigrations(
+                    Now(),
+                    db,
+                    migrations,
+                    [&](const auto&, const auto&, const auto& result)
+                    {
+                        UNIT_ASSERT_SUCCESS(result.GetError());
+                        const auto& target = result.GetResult();
+                        UNIT_ASSERT_VALUES_UNEQUAL("rack1", target.GetRack());
+                        UNIT_ASSERT_VALUES_UNEQUAL(agent1, target.GetAgentId());
+                        UNIT_ASSERT_VALUES_UNEQUAL(agent2, target.GetAgentId());
+                    });
             });
     }
 }

@@ -1,8 +1,33 @@
 #include "test_state.h"
 
+#include <util/generic/maybe.h>
+
 namespace NCloud::NBlockStore::NStorage::NDiskRegistryStateTest {
 
 using NProto::TDeviceConfig;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    TDiskRegistryState& state,
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    const TString& sourceId)
+{
+    TMaybe<TResultOrError<NProto::TDeviceConfig>> result;
+    state.StartDeviceMigrations(
+        now,
+        db,
+        {{diskId, {sourceId}}},
+        [&](const auto&, const auto&, const auto& migrationResult)
+        {
+            Y_ABORT_UNLESS(!result);
+            result = migrationResult;
+        });
+    Y_ABORT_UNLESS(result);
+    return std::move(*result);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
