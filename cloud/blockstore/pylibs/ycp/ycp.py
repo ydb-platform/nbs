@@ -1,11 +1,11 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from dateutil import parser as dateparser
 import jinja2
 import json
 import subprocess
 import sys
 import tempfile
-from typing import List
+from typing import Any, Dict, List
 import uuid
 
 from library.python import resource
@@ -157,6 +157,7 @@ class Ycp:
         local_disk_size: int
         description: str
         underlay_vm: bool
+        template_params: Dict[str, Any] = field(default_factory=dict)
 
     @dataclass
     class CreateDiskConfig:
@@ -174,6 +175,7 @@ class Ycp:
         snapshot_name: str
         description: str
         kek_id: str
+        template_params: Dict[str, Any] = field(default_factory=dict)
 
     @dataclass
     class CreateFsConfig:
@@ -404,6 +406,7 @@ class Ycp:
                 local_disk_size=config.local_disk_size,
                 description=config.description,
                 underlay_vm=config.underlay_vm,
+                template_params=config.template_params,
             )
 
             cmd = self._ycp.compute.instance.create(request='-')
@@ -468,7 +471,8 @@ class Ycp:
                 kek_id=config.kek_id,
                 zone_id=config.zone_id,
                 folder_id=config.folder_id,
-                description=config.description)
+                description=config.description,
+                template_params=config.template_params)
 
             cmd = self._ycp.compute.disk.create(request='-')
             response = self._execute(cmd, stderr, request)
