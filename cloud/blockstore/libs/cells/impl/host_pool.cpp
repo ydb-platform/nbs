@@ -224,6 +224,12 @@ ui64 TCellHostPool::GetChannelEpoch(const TString& fqdn) const
     }
 }
 
+TString TCellHostPool::GetCellId() const
+{
+    // Config is immutable, so no lock is needed here.
+    return Config->GetCellId();
+}
+
 bool TCellHostPool::WatchHost(const TString& fqdn, ICellHostWatcherPtr watcher)
 {
     if (!watcher) {

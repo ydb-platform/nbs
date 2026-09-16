@@ -144,6 +144,8 @@ public:
     // already gone. For tests: nothing in production asks.
     [[nodiscard]] size_t GetWatcherCount(const TString& fqdn) const;
 
+    [[nodiscard]] TString GetCellId() const;
+
     ICellHostEndpointBootstrap::TGrpcEndpointBootstrapFuture
         AcquireControlChannel(const TString& fqdn);
     void ReleaseControlChannel(const TString& fqdn);
