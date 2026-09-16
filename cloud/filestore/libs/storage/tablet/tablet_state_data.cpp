@@ -755,6 +755,33 @@ void TIndexTabletState::WriteFreshBlock(
     InvalidateReadAheadCache(nodeId);
 }
 
+void TIndexTabletState::WriteFreshBlocks(
+    IIndexTabletDatabase& db,
+    ui64 nodeId,
+    ui64 commitId,
+    const TByteRange& byteRange,
+    IBlockBuffer* blockBuffer)
+{
+    for (ui64 blockIndex = byteRange.FirstAlignedBlock();
+         blockIndex <
+         byteRange.FirstAlignedBlock() + byteRange.AlignedBlockCount();
+         ++blockIndex)
+    {
+        bool added = Impl->FreshBlocks.AddBlock(
+            nodeId,
+            blockIndex,
+            blockBuffer->GetBlock(blockIndex - byteRange.FirstAlignedBlock()),
+            GetBlockSize(),
+            commitId);
+        TABLET_VERIFY(added);
+    }
+
+    db.WriteFreshBlocks(nodeId, commitId, byteRange, blockBuffer);
+
+    IncrementFreshBlocksCount(db, byteRange.AlignedBlockCount());
+    InvalidateReadAheadCache(nodeId);
+}
+
 void TIndexTabletState::MarkFreshBlocksDeleted(
     IIndexTabletDatabase& db,
     ui64 nodeId,

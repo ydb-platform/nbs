@@ -586,6 +586,15 @@ void TIndexTabletDatabaseWithFailureInjection::WriteFreshBlock(
     Real->WriteFreshBlock(nodeId, commitId, blockIndex, blockData);
 }
 
+void TIndexTabletDatabaseWithFailureInjection::WriteFreshBlocks(
+    ui64 nodeId,
+    ui64 commitId,
+    const TByteRange& byteRange,
+    IBlockBuffer* blockBuffer)
+{
+    Real->WriteFreshBlocks(nodeId, commitId, byteRange, blockBuffer);
+}
+
 void TIndexTabletDatabaseWithFailureInjection::MarkFreshBlockDeleted(
     ui64 nodeId,
     ui64 minCommitId,

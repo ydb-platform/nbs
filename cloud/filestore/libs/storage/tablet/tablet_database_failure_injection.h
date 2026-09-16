@@ -289,6 +289,11 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 commitId,
         ui32 blockIndex,
         TStringBuf blockData) override;
+    void WriteFreshBlocks(
+        ui64 nodeId,
+        ui64 commitId,
+        const TByteRange& blockIndex,
+        IBlockBuffer* blockBuffer) override;
     void MarkFreshBlockDeleted(
         ui64 nodeId,
         ui64 minCommitId,

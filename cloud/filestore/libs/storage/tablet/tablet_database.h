@@ -337,6 +337,12 @@ public:
         ui32 blockIndex,
         TStringBuf blockData) override;
 
+    virtual void WriteFreshBlocks(
+        ui64 nodeId,
+        ui64 commitId,
+        const TByteRange& blockIndex,
+        IBlockBuffer* blockBuffer) override;
+
     void MarkFreshBlockDeleted(
         ui64 nodeId,
         ui64 minCommitId,

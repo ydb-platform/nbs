@@ -1248,6 +1248,27 @@ void TIndexTabletDatabase::WriteFreshBlock(
         .Update(NIceDb::TUpdate<TTable::BlockData>(TString(blockData)));
 }
 
+void TIndexTabletDatabase::WriteFreshBlocks(
+    ui64 nodeId,
+    ui64 commitId,
+    const TByteRange& byteRange,
+    IBlockBuffer* blockBuffer)
+{
+    using TTable = TIndexTabletSchema::FreshBlocks;
+
+    auto t = Table<TTable>();
+    for (ui64 blockIndex = byteRange.FirstAlignedBlock();
+         blockIndex <
+         byteRange.FirstAlignedBlock() + byteRange.AlignedBlockCount();
+         ++blockIndex)
+    {
+        t.Key(nodeId, blockIndex, ReverseCommitId(commitId))
+            .Update(
+                NIceDb::TUpdate<TTable::BlockData>(
+                    TString(blockBuffer->GetBlock(blockIndex - byteRange.FirstAlignedBlock()))));
+    }
+}
+
 void TIndexTabletDatabase::MarkFreshBlockDeleted(
     ui64 nodeId,
     ui64 minCommitId,
