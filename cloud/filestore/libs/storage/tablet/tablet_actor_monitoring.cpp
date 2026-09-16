@@ -1551,7 +1551,7 @@ void TIndexTabletActor::HandleHttpInfo_ForceOperation(
         }
     }
 
-    EnqueueForcedRangeOperation(mode, std::move(ranges));
+    EnqueueForcedRangeOperation(mode, std::move(ranges), {});
     EnqueueForcedRangeOperationIfNeeded(ctx);
 
     SendHttpResponse(

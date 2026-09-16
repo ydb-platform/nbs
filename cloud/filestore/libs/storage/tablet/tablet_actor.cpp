@@ -1297,7 +1297,7 @@ void TIndexTabletActor::HandleForcedOperation(
 
     auto response = std::make_unique<TResponse>();
     response->Record.SetRangeCount(ranges.size());
-    auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges));
+    auto operationId = EnqueueForcedRangeOperation(mode, std::move(ranges), {});
     response->Record.SetOperationId(std::move(operationId));
     EnqueueForcedRangeOperationIfNeeded(ctx);
 

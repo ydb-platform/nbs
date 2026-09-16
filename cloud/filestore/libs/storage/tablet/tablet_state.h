@@ -1565,10 +1565,12 @@ private:
     TVector<TForcedRangeOperationState> CompletedForcedRangeOperations;
 
 public:
+    // Allocates a new operationId if provided operationId was empty
+    // \return operationId of the operation
     TString EnqueueForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges,
-        TString operationId = {});
+        TString operationId);
     TMaybe<TPendingForcedRangeOperation> DequeueForcedRangeOperation();
 
     void StartForcedRangeOperation(
