@@ -11,17 +11,19 @@ ui64 TNameTable::Init(
     ui64 firstPageNo,
     IPageStorePtr pageStore)
 {
+    const ui64 pageSize = pageStore->GetPageSize();
+    const ui64 slotsPerPage = pageSize / NameSlotSize;
     const ui64 pageCount =
-        Min(RoundUp(nodesPerGroup, SlotsPerPage),
-            (NameTableSize / PageSize) * SlotsPerPage) /
-        SlotsPerPage;
+        Min(RoundUp(nodesPerGroup, slotsPerPage),
+            (NameTableSize / pageSize) * slotsPerPage) /
+        slotsPerPage;
     // Tombstone key needs to be different from an empty slot key
     memset(Tombstone.Name, 1, NameCapacity - 1);
     Tombstone.NodeId = Max<ui64>();
     Slots = std::make_unique<THt>(
         firstPageNo,
         pageCount,
-        PageSize,
+        pageSize,
         NameSlotSize,
         Tombstone,
         std::move(pageStore),

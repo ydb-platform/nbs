@@ -16,16 +16,18 @@ ui64 THandleTable::Init(
     ui64 firstPageNo,
     IPageStorePtr pageStore)
 {
+    const ui64 pageSize = pageStore->GetPageSize();
     ui64 totalPageCount = 0;
     {
-        const ui64 pageCount = RoundUp(handlesPerGroup, HandleSlotsPerPage)
-            / HandleSlotsPerPage;
+        const ui64 slotsPerPage = pageSize / HandleSlotSize;
+        const ui64 pageCount =
+            RoundUp(handlesPerGroup, slotsPerPage) / slotsPerPage;
         THandleSlot tombstone{};
         tombstone.Handle = Max<ui64>();
         Handles = std::make_unique<THandles>(
             firstPageNo,
             pageCount,
-            PageSize,
+            pageSize,
             HandleSlotSize,
             tombstone,
             pageStore,
@@ -41,14 +43,15 @@ ui64 THandleTable::Init(
     }
 
     {
-        const ui64 pageCount = RoundUp(nodesPerGroup, NodeHandlesSlotsPerPage)
-            / NodeHandlesSlotsPerPage;
+        const ui64 slotsPerPage = pageSize / NodeHandlesSlotSize;
+        const ui64 pageCount =
+            RoundUp(nodesPerGroup, slotsPerPage) / slotsPerPage;
         TNodeHandlesSlot tombstone{};
         tombstone.NodeId = Max<ui64>();
         NodeId2HandleCount = std::make_unique<TNodeId2HandleCount>(
             firstPageNo,
             pageCount,
-            PageSize,
+            pageSize,
             NodeHandlesSlotSize,
             tombstone,
             std::move(pageStore),
