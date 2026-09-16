@@ -110,11 +110,6 @@ public:
                 continue;
             }
 
-            if (status == TStatus::E_FAILED) {
-                STORAGE_THROW_SERVICE_ERROR(
-                    MakeError(E_FAIL, "forced compaction failed"));
-            }
-
             // Older tablets do not populate Status.
             const bool completedWithoutStatus =
                 status == TStatus::E_UNKNOWN &&
