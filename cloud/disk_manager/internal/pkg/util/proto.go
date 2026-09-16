@@ -50,5 +50,6 @@ func GetAllDiskKinds() []types.DiskKind {
 		types.DiskKind_DISK_KIND_SSD_MIRROR3,
 		types.DiskKind_DISK_KIND_HDD_NONREPLICATED,
 		types.DiskKind_DISK_KIND_HDD_LOCAL,
+		types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
@@ -48,6 +49,9 @@ func TestAreOverlayDisksSupportedForDiskKind(t *testing.T) {
 	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
 		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_LOCAL},
 	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP},
+	))
 
 	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
 		&protos.CreateDiskParams{
@@ -88,6 +92,9 @@ func TestAreOverlayDisksSupportedForDiskKind(t *testing.T) {
 	))
 	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
 		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_HDD_LOCAL},
+	))
+	require.False(t, diskService.areOverlayDisksSupportedForDiskKind(
+		&protos.CreateDiskParams{Kind: types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP},
 	))
 }
 
@@ -431,4 +438,47 @@ func TestMigrateDiskDestinationPGNotFound(t *testing.T) {
 	})
 	require.Error(t, err)
 	require.ErrorContains(t, err, "destination placement group pg-missing not found")
+}
+
+func TestCreateDiskSsdDirectMirror3Of5GroupRequiresStoragePool(t *testing.T) {
+	ctx := context.Background()
+	diskService := &service{
+		config: &disks_config.DisksConfig{},
+	}
+
+	_, err := diskService.CreateDisk(ctx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: 4096,
+		Kind: disk_manager.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "storage_pool_name is required")
+}
+
+func TestCreateDiskSsdDirectMirror3Of5GroupRejectsImageSource(t *testing.T) {
+	ctx := context.Background()
+	diskService := &service{
+		config: &disks_config.DisksConfig{},
+	}
+
+	_, err := diskService.CreateDisk(ctx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcImageId{
+			SrcImageId: "image",
+		},
+		Size:            4096,
+		Kind:            disk_manager.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
+		StoragePoolName: "ddp1",
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "can only be created empty")
 }

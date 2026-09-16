@@ -10,11 +10,13 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -217,7 +219,13 @@ func (s *cellSelector) SelectCellForFilesystem(
 }
 
 func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
-	return slices.Contains(s.getCells(zoneID), cellID)
+	cells, ok := s.config.GetCells()[zoneID]
+	if !ok {
+		return false
+	}
+
+	return slices.Contains(cells.GetCells(), cellID) ||
+		slices.Contains(maps.Values(cells.GetDiskKindCellOverride()), cellID)
 }
 
 func (s *cellSelector) ResolveCells(zoneID string) ([]string, error) {
@@ -239,6 +247,21 @@ func (s *cellSelector) getCells(zoneID string) []string {
 	return cells.Cells
 }
 
+func (s *cellSelector) getDiskKindCell(
+	zoneID string,
+	kind types.DiskKind,
+) (string, bool) {
+
+	cells, ok := s.config.GetCells()[zoneID]
+	if !ok {
+		return "", false
+	}
+
+	kindStr := common.DiskKindToString(kind)
+	cellID, ok := cells.GetDiskKindCellOverride()[kindStr]
+	return cellID, ok
+}
+
 func (s *cellSelector) isFolderAllowed(folderID string) bool {
 	if slices.Contains(s.config.GetFolderDenyList(), folderID) {
 		return false
@@ -248,9 +271,9 @@ func (s *cellSelector) isFolderAllowed(folderID string) bool {
 		slices.Contains(s.config.GetFolderAllowList(), folderID)
 }
 
-func (s *cellSelector) isCell(zoneID string) bool {
-	for _, cells := range s.config.Cells {
-		if slices.Contains(cells.Cells, zoneID) {
+func (s *cellSelector) isCell(cellID string) bool {
+	for zoneID := range s.config.Cells {
+		if s.ZoneContainsCell(zoneID, cellID) {
 			return true
 		}
 	}
@@ -304,6 +327,10 @@ func (s *cellSelector) selectCellForDisk(
 
 	if s.config == nil {
 		return zoneID, nil
+	}
+
+	if cellID, ok := s.getDiskKindCell(zoneID, kind); ok {
+		return cellID, nil
 	}
 
 	if !s.isFolderAllowed(folderID) {
