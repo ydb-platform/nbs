@@ -1252,7 +1252,7 @@ void TIndexTabletDatabase::WriteFreshBlocks(
     ui64 nodeId,
     ui64 commitId,
     const TByteRange& byteRange,
-    IBlockBuffer* blockBuffer)
+    IBlockBufferPtr blockBuffer)
 {
     using TTable = TIndexTabletSchema::FreshBlocks;
 

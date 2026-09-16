@@ -1194,7 +1194,7 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TByteRange& byteRange,
-        IBlockBuffer* blockBuffer);
+        IBlockBufferPtr blockBuffer);
 
     void MarkFreshBlocksDeleted(
         IIndexTabletDatabase& db,

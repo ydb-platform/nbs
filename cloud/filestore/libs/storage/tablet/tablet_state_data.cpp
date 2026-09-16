@@ -760,7 +760,7 @@ void TIndexTabletState::WriteFreshBlocks(
     ui64 nodeId,
     ui64 commitId,
     const TByteRange& byteRange,
-    IBlockBuffer* blockBuffer)
+    IBlockBufferPtr blockBuffer)
 {
     for (ui64 blockIndex = byteRange.FirstAlignedBlock();
          blockIndex <
@@ -771,6 +771,7 @@ void TIndexTabletState::WriteFreshBlocks(
             nodeId,
             blockIndex,
             blockBuffer->GetBlock(blockIndex - byteRange.FirstAlignedBlock()),
+            blockBuffer,
             GetBlockSize(),
             commitId);
         TABLET_VERIFY(added);

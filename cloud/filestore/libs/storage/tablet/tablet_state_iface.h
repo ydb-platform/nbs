@@ -471,7 +471,7 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TByteRange& byteRange,
-        IBlockBuffer* blockBuffer) = 0;
+        IBlockBufferPtr blockBuffer) = 0;
     virtual void MarkFreshBlockDeleted(
         ui64 nodeId,
         ui64 minCommitId,

@@ -590,7 +590,7 @@ void TIndexTabletDatabaseWithFailureInjection::WriteFreshBlocks(
     ui64 nodeId,
     ui64 commitId,
     const TByteRange& byteRange,
-    IBlockBuffer* blockBuffer)
+    IBlockBufferPtr blockBuffer)
 {
     Real->WriteFreshBlocks(nodeId, commitId, byteRange, blockBuffer);
 }

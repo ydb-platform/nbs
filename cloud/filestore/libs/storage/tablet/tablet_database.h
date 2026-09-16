@@ -341,7 +341,7 @@ public:
         ui64 nodeId,
         ui64 commitId,
         const TByteRange& blockIndex,
-        IBlockBuffer* blockBuffer) override;
+        IBlockBufferPtr blockBuffer) override;
 
     void MarkFreshBlockDeleted(
         ui64 nodeId,

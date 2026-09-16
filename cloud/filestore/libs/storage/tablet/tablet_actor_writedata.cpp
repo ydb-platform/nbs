@@ -360,7 +360,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         args.NodeId,
         args.CommitId,
         args.ByteRange,
-        args.Buffer.get());
+        args.Buffer);
 
     if (args.ByteRange.UnalignedHeadLength()) {
         WriteFreshBytes(

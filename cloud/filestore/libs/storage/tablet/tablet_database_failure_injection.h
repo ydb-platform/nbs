@@ -293,7 +293,7 @@ FILESTORE_FILESYSTEM_STATS(FILESTORE_DECLARE_STATS)
         ui64 nodeId,
         ui64 commitId,
         const TByteRange& blockIndex,
-        IBlockBuffer* blockBuffer) override;
+        IBlockBufferPtr blockBuffer) override;
     void MarkFreshBlockDeleted(
         ui64 nodeId,
         ui64 minCommitId,
