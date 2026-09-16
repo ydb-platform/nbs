@@ -1003,7 +1003,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
     {
         const TString unixSocketPath = CreateGuidAsString() + ".sock";
 
-        TManualEvent requestStarted;
+        std::atomic<bool> requestStarted = false;
+        TManualEvent requestDispatched;
         TManualEvent completionPaused;
         TManualEvent resumeCompletion;
         auto storagePromise = NewPromise<void>();
@@ -1015,12 +1016,18 @@ Y_UNIT_TEST_SUITE(TServerTest)
         {
             Y_UNUSED(ctx);
             Y_UNUSED(request);
-            requestStarted.Signal();
+            requestStarted.store(true);
             return storagePromise.GetFuture().Apply(
                 [](const auto&) { return NProto::TReadBlocksLocalResponse(); });
         };
 
         auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
+        queueFactory->DequeueRequestHandler = [&]
+        {
+            if (requestStarted.exchange(false)) {
+                requestDispatched.Signal();
+            }
+        };
         queueFactory->RequestCompletionHandler = [&]
         {
             completionPaused.Signal();
@@ -1070,7 +1077,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
             storagePromise.TrySetValue();
         };
 
-        UNIT_ASSERT(requestStarted.WaitT(TDuration::Seconds(5)));
+        // Wait until ProcessRequest() returns and the endpoint has subscribed
+        // to the response. Otherwise Apply() can observe a ready future and
+        // run the blocking completion handler inline on the executor thread.
+        UNIT_ASSERT(requestDispatched.WaitT(TDuration::Seconds(5)));
 
         auto completionThread =
             SystemThreadFactory()->Run([&] { storagePromise.SetValue(); });
