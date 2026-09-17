@@ -378,7 +378,7 @@ bool TPartitionActor::PrepareMetadataRebuildBlockCount(
         args.StartBlobId,
         args.FinalBlobId,
         args.BlobCountToRead);
-    auto ready =
+    bool ready =
         progress != TPartitionDatabase::EBlobIndexScanProgress::NotReady;
     if (ready) {
         visitor.UpdateTx();
@@ -411,19 +411,19 @@ void TPartitionActor::ExecuteMetadataRebuildBlockCount(
     if (args.LastReadBlobId == args.FinalBlobId) {
         TPartitionDatabase db(tx.DB);
 
-        auto mixedIndexBlocks = State->GetMixedIndexBlocksCount() -
+        ui64 mixedIndexBlocks = State->GetMixedIndexBlocksCount() -
                      args.RebuildState.InitialMixedIndexBlocks +
                      args.RebuildState.MixedIndexBlocks;
 
-        auto mergedIndexBlocks = State->GetMergedIndexBlocksCount() -
+        ui64 mergedIndexBlocks = State->GetMergedIndexBlocksCount() -
                       args.RebuildState.InitialMergedIndexBlocks +
                       args.RebuildState.MergedIndexBlocks;
 
-        auto mixedChannelBlocks = State->GetMixedBlocksCount() -
+        ui64 mixedChannelBlocks = State->GetMixedBlocksCount() -
                             args.RebuildState.InitialMixedChannelBlocks +
                             args.RebuildState.MixedChannelBlocks;
 
-        auto mergedChannelBlocks = State->GetMergedBlocksCount() -
+        ui64 mergedChannelBlocks = State->GetMergedBlocksCount() -
                              args.RebuildState.InitialMergedChannelBlocks +
                              args.RebuildState.MergedChannelBlocks;
 

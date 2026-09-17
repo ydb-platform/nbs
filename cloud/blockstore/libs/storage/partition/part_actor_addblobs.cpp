@@ -133,7 +133,7 @@ public:
 
             if (Args.Mode == ADD_COMPACTION_RESULT) {
                 const auto& cm = State.GetCompactionMap();
-                const auto blockIndex = cm.GetRangeStart(BlockIndex(blob, 0));
+                const ui32 blockIndex = cm.GetRangeStart(BlockIndex(blob, 0));
                 auto& rangeInfo = CompactionCounters[blockIndex];
                 rangeInfo.BlobsSkippedByCompaction +=
                     Args.MixedBlobCompactionInfos[i].BlobsSkippedByCompaction;
@@ -164,7 +164,7 @@ public:
 
             if (Args.Mode == ADD_COMPACTION_RESULT) {
                 const auto& cm = State.GetCompactionMap();
-                const auto blockIndex = cm.GetRangeStart(blob.BlockRange.Start);
+                const ui32 blockIndex = cm.GetRangeStart(blob.BlockRange.Start);
                 Y_DEBUG_ABORT_UNLESS(
                     blockIndex == cm.GetRangeStart(blob.BlockRange.End));
                 auto& rangeInfo = CompactionCounters[blockIndex];
@@ -360,7 +360,7 @@ private:
             ToString(MakeBlobId(TabletId, blob.BlobId)).c_str(),
             DescribeRange(blob.BlockRange).c_str());
 
-        const auto skipped = blob.SkipMask.Count();
+        const size_t skipped = blob.SkipMask.Count();
         Y_ABORT_UNLESS(skipped < blob.BlockRange.Size());
 
         // write blob meta
@@ -545,14 +545,14 @@ private:
             cm.GetRangeStart(blob.BlockRange.End));
 
         for (const ui64 blockIndex: xrange(range, cm.GetRangeSize())) {
-            const auto firstBlock =
+            const ui64 firstBlock =
                 Max<ui64>(blockIndex, blob.BlockRange.Start);
-            const auto lastBlock = Min<ui64>(
+            const ui64 lastBlock = Min<ui64>(
                 blockIndex + cm.GetRangeSize() - 1,
                 blob.BlockRange.End);
             ui32 skipped = 0;
             for (ui64 b = firstBlock; b <= lastBlock; ++b) {
-                auto pos = b - blob.BlockRange.Start;
+                ui64 pos = b - blob.BlockRange.Start;
                 if (blob.SkipMask.Get(pos)) {
                     ++skipped;
                 }
@@ -644,7 +644,7 @@ private:
                     prevRangeStat.MixedBlockCount);
             }
 
-            const auto usedBlockCount = State.GetUsedBlocks().Count(
+            const ui64 usedBlockCount = State.GetUsedBlocks().Count(
                 kv.first,
                 Min(static_cast<ui64>(kv.first) +
                         static_cast<ui64>(
@@ -751,7 +751,7 @@ private:
 
         auto rangeIndicesToPersist = compactionStatsTracker->FinishCompaction();
 
-        for (const auto& rangeIndex: rangeIndicesToPersist) {
+        for (const ui32& rangeIndex: rangeIndicesToPersist) {
             const ui32 blockIndex = rangeIndex * cm.GetRangeSize();
             const auto& rangeStat = cm.Get(blockIndex);
             db.WriteCompactionMap(
@@ -1024,7 +1024,7 @@ void TPartitionActor::CompleteAddBlobs(
     EnqueueCompactionIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    ui64 time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.AddBlobs.AddRequest(time);
 }
 
@@ -1045,13 +1045,13 @@ THashSet<ui32> TPartitionActor::GetRangeIndices(
     }
 
     for (const auto& blob: mixedBlobs) {
-        for (const auto& block: blob.Blocks) {
+        for (const ui32& block: blob.Blocks) {
             rangeIndices.emplace(compactionMap.GetRangeIndex(block));
         }
     }
 
     for (const auto& blob: mergedBlobs) {
-        const auto rangeStart =
+        const ui32 rangeStart =
             compactionMap.GetRangeStart(blob.BlockRange.Start);
         rangeIndices.emplace(compactionMap.GetRangeIndex(rangeStart));
     }

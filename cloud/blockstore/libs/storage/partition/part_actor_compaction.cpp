@@ -364,7 +364,7 @@ NProto::TError TCompactionActor::VerifyBlockChecksums()
     for (const auto& batch: BatchRequests) {
         auto& rc = *batch.RangeCompactionInfo;
 
-        const auto n = Min(batch.Requests.size(), batch.BlockChecksums.size());
+        const size_t n = Min(batch.Requests.size(), batch.BlockChecksums.size());
         for (ui32 i = 0; i < n; ++i) {
             const auto* r = batch.Requests[i];
             if (!rc.BlockChecksums[r->IndexInBlobContent]) {
@@ -451,7 +451,7 @@ void TCompactionActor::InitBlockDigests()
             Y_ABORT_UNLESS(sgList.size() == rc.BlockRange.Size() - rc.DataBlobSkipMask.Count());
 
             ui32 skipped = 0;
-            for (const auto blockIndex: xrange(rc.BlockRange)) {
+            for (const ui32 blockIndex: xrange(rc.BlockRange)) {
                 if (rc.DataBlobSkipMask.Get(blockIndex - rc.BlockRange.Start)) {
                     ++skipped;
                     continue;
@@ -474,7 +474,7 @@ void TCompactionActor::InitBlockDigests()
         }
 
         if (rc.ZeroBlobId) {
-            for (const auto blockIndex: xrange(rc.BlockRange)) {
+            for (const ui32 blockIndex: xrange(rc.BlockRange)) {
                 if (rc.ZeroBlobSkipMask.Get(blockIndex - rc.BlockRange.Start)) {
                     continue;
                 }
@@ -794,7 +794,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                  mixedBlocksSkipped});
         } else if (channelDataKind == EChannelDataKind::Mixed) {
             TVector<ui32> blockIndices(Reserve(range.Size()));
-            for (auto blockIndex = range.Start; blockIndex <= range.End;
+            for (ui32 blockIndex = range.Start; blockIndex <= range.End;
                  ++blockIndex)
             {
                 if (!skipMask.Get(blockIndex - range.Start)) {
@@ -969,8 +969,8 @@ void TCompactionActor::NotifyCompleted(
     }
 
     {
-        auto execCycles = RequestInfo->GetExecCycles();
-        auto totalCycles = RequestInfo->GetTotalCycles();
+        ui64 execCycles = RequestInfo->GetExecCycles();
+        ui64 totalCycles = RequestInfo->GetTotalCycles();
         TDuration execTime = CyclesToDurationSafe(execCycles - ReadExecCycles);
         TDuration waitTime;
         if (totalCycles > execCycles + ReadWaitCycles) {
@@ -980,7 +980,7 @@ void TCompactionActor::NotifyCompleted(
         ui64 blocksCount = 0;
         ui64 realBlocksCount = 0;
         for (auto& rc: RangeCompactionInfos) {
-            const auto curBlocksCount = rc.DataBlobId.BlobSize() / BlockSize;
+            const ui32 curBlocksCount = rc.DataBlobId.BlobSize() / BlockSize;
             blocksCount += curBlocksCount;
             realBlocksCount += rc.OriginalBlobId ? rc.DiffCount : curBlocksCount;
         }
@@ -1405,7 +1405,7 @@ private:
     [[nodiscard]] std::optional<TTriggerInfo>
     TriggerRangeCompactionIfNeeded() const
     {
-        const auto blobCount = State.GetTotalBlobsCount();
+        const ui64 blobCount = State.GetTotalBlobsCount();
         const bool diskBlobCountOverThreshold =
             State.GetMaxBlobsPerDisk() &&
             blobCount >
@@ -1495,7 +1495,7 @@ private:
                                         ? TopByGarbageIgnoringZeroed
                                         : TopGarbageRangeStat;
 
-            const auto isZeroedRange =
+            const bool isZeroedRange =
                 rangeStat.BlockCount && !rangeStat.UsedBlockCount;
 
             if (rangeStat.Compacted ||
@@ -1724,9 +1724,9 @@ void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
     ui64 diskThreshold,
     const TActorContext& ctx)
 {
-    const auto countPerRunIncreasingThreshold =
+    const ui32 countPerRunIncreasingThreshold =
         Config->GetCompactionCountPerRunIncreasingThreshold();
-    const auto countPerRunDecreasingThreshold =
+    const ui32 countPerRunDecreasingThreshold =
         Config->GetCompactionCountPerRunDecreasingThreshold();
 
     ui32 thresholdPercentage = 0;
@@ -1742,7 +1742,7 @@ void TPartitionActor::ChangeRangeCountPerRunIfNeeded(
                 GetExcessPercentage(diskRealCount, diskThreshold));
     }
 
-    const auto compactionRangeCountPerRun =
+    const ui32 compactionRangeCountPerRun =
         State->GetCompactionRangeCountPerRun();
 
     if (thresholdPercentage > countPerRunIncreasingThreshold &&
@@ -2003,8 +2003,8 @@ void TPartitionActor::HandleCompaction(
     const auto& cm = State->GetCompactionMap();
 
     if (!msg->RangeBlockIndices.empty()) {
-        for (const auto blockIndex: msg->RangeBlockIndices) {
-            const auto startIndex = cm.GetRangeStart(blockIndex);
+        for (const ui32 blockIndex: msg->RangeBlockIndices) {
+            const ui32 startIndex = cm.GetRangeStart(blockIndex);
             auto range = cm.Get(startIndex);
             if (range.BlobCount > 0) {
                 tops.emplace_back(startIndex, std::move(range));
@@ -2364,7 +2364,7 @@ void TPartitionActor::CompleteCompaction(
 
     const bool forceToMerged = args.CompactionOptions.test(
         ToBit(ECompactionOption::ForceMixedBlocksCountCompaction));
-    const auto mergedBlobThreshold =
+    const ui32 mergedBlobThreshold =
         forceToMerged || PartitionConfig.GetStorageMediaKind() ==
                              NCloud::NProto::STORAGE_MEDIA_SSD
             ? 0

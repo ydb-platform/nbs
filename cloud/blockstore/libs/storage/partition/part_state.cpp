@@ -37,7 +37,7 @@ T SafeDecrement(T counter, size_t value)
 
 double BPFeature(const TBackpressureFeatureConfig& c, double x)
 {
-    auto nx = Normalize(x, c.InputThreshold, c.InputLimit);
+    double nx = Normalize(x, c.InputThreshold, c.InputLimit);
     return (1 - nx) + nx * c.MaxValue;
 }
 
@@ -223,7 +223,7 @@ TBackpressureReport TPartitionState::CalculateCurrentBackpressure() const
     const auto& compactionFeature = BPConfig.CompactionScoreFeatureConfig;
     const auto& cleanupFeature = BPConfig.CleanupQueueBytesFeatureConfig;
 
-    const auto freshByteCount =
+    const ui64 freshByteCount =
         Max<ui64>(
             GetUntrimmedFreshBlobByteCount(),
             GetUnflushedFreshBlobByteCount()) +
@@ -423,7 +423,7 @@ void TPartitionState::DeleteUnconfirmedBlobs(
             db.DeleteUnconfirmedBlob(blobId);
         }
 
-        const auto blobCount = blobs.size();
+        const size_t blobCount = blobs.size();
         UnconfirmedBlobs.erase(it);
         Y_DEBUG_ABORT_UNLESS(UnconfirmedBlobCount >= blobCount);
         UnconfirmedBlobCount -= blobCount;
@@ -440,7 +440,7 @@ void TPartitionState::ConfirmedBlobsAdded(
     }
 
     auto& blobs = it->second;
-    const auto blobCount = blobs.size();
+    const size_t blobCount = blobs.size();
 
     for (const auto& blob: blobs) {
         auto blobId = MakePartialBlobId(commitId, blob.UniqueId);
@@ -463,7 +463,7 @@ void TPartitionState::BlobsConfirmed(
     Y_DEBUG_ABORT_UNLESS(it != UnconfirmedBlobs.end());
 
     auto& dstBlobs = it->second;
-    const auto blobCount = dstBlobs.size();
+    const size_t blobCount = dstBlobs.size();
     Y_DEBUG_ABORT_UNLESS(blobs.empty() || blobCount == blobs.size());
     for (ui32 i = 0; i < Min(blobCount, blobs.size()); ++i) {
         const auto blockRange = dstBlobs[i].BlockRange;
@@ -749,7 +749,7 @@ void TPartitionState::SetUsedBlocks(
     const TBlockRange32& range,
     ui32 skipCount)
 {
-    auto blockCount = GetUsedBlocks().Set(range.Start, range.End + 1) - skipCount;
+    ui64 blockCount = GetUsedBlocks().Set(range.Start, range.End + 1) - skipCount;
     ui32 logicalBlockCount = 0;
 
     if (GetBaseDiskId()) {

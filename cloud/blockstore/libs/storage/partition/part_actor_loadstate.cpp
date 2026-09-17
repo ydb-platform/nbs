@@ -232,13 +232,13 @@ void TPartitionActor::CompleteLoadState(
     }();
 
     const auto mediaKind = partitionConfig.GetStorageMediaKind();
-    auto maxBlobsPerUnit = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
+    ui32 maxBlobsPerUnit = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
         Config->GetSSDMaxBlobsPerUnit() :
         Config->GetHDDMaxBlobsPerUnit();
-    auto maxMixedBytesPerUnit = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
+    ui64 maxMixedBytesPerUnit = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
                                     ? Config->GetSSDMaxMixedBytesPerUnit()
                                     : Config->GetHDDMaxMixedBytesPerUnit();
-    auto maxBlobsPerRange = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
+    ui32 maxBlobsPerRange = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
         Config->GetSSDMaxBlobsPerRange() :
         Config->GetHDDMaxBlobsPerRange();
 
@@ -372,7 +372,7 @@ void TPartitionActor::CompleteLoadState(
 
 void TPartitionActor::FinalizeLoadState(const TActorContext& ctx)
 {
-    auto totalBlocksCount =
+    ui64 totalBlocksCount =
         State->GetMixedBlocksCount() + State->GetMergedBlocksCount();
     UpdateStorageStat(totalBlocksCount * State->GetBlockSize());
 
@@ -640,7 +640,7 @@ bool TPartitionActor::PrepareLoadMixedBlocksFilterChunk(
 
     TPartitionDatabase db(tx.DB);
     TMixedBlocksFilterLoadVisitor visitor(args.Blocks);
-    const auto rangeSize = State->GetCompactionMap().GetRangeSize();
+    const ui32 rangeSize = State->GetCompactionMap().GetRangeSize();
     return db.FindMixedBlocks(
         visitor,
         TBlockRange32::WithLength(
