@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Mapping, Optional
 
 from cloud.blockstore.pylibs.clusters.test_config import FolderDesc
 
@@ -64,7 +64,8 @@ class YcpWrapper:
                         auto_delete: bool = True,
                         local_disk_size: int = None,
                         description: str = None,
-                        underlay_vm: bool = False) -> Ycp.Instance:
+                        underlay_vm: bool = False,
+                        template_params: Mapping[str, Any] = None) -> Ycp.Instance:
         self._logger.info('Creating instance')
 
         create_instance_cfg = Ycp.CreateInstanceConfig(
@@ -86,6 +87,7 @@ class YcpWrapper:
             local_disk_size=local_disk_size,
             description=description,
             underlay_vm=underlay_vm,
+            template_params=dict(template_params or {}),
         )
         self._logger.debug(f'create_instance_config: {create_instance_cfg}')
         try:
@@ -121,7 +123,8 @@ class YcpWrapper:
                     image_folder_id: str = None,
                     snapshot_name: str = None,
                     auto_delete: bool = True,
-                    description: str = None) -> Ycp.Disk:
+                    description: str = None,
+                    template_params: Mapping[str, Any] = None) -> Ycp.Disk:
         self._logger.info('Creating disk')
         create_disk_config = Ycp.CreateDiskConfig(
             block_size=bs,
@@ -138,6 +141,7 @@ class YcpWrapper:
             image_folder_id=image_folder_id or self._folder_desc.image_folder_id or self._folder_desc.folder_id,
             snapshot_name=snapshot_name,
             description=description,
+            template_params=dict(template_params or {}),
         )
         self._logger.debug(f'create_disk_config: {create_disk_config}')
         try:
