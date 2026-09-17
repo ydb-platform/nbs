@@ -4,6 +4,8 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/fiber_bridge/fiber_shard.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/component.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/format_page.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/handle_table.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/helpers.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/name_table.h>
@@ -41,6 +43,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 // page index layout
+
+constexpr ui32 PageIndexLayoutMinVersion = 1;
+constexpr ui32 PageIndexLayoutVersion = 1;
 
 constexpr ui64 PageClusterPageCount = 8;
 constexpr ui64 NodePageClusterSlotSize = 24;
@@ -87,9 +92,11 @@ ui64 CalcPageClusterCount(
     return RoundUp(dataPageCount, PageClusterPageCount) / PageClusterPageCount;
 }
 
-class TPageIndex
+class TPageIndex: public IComponent
 {
 private:
+    TFormatPage FormatPage;
+
     using THt = TPersistentHashTable<TNodePageClusterKey, TNodePageClusterSlot>;
     std::unique_ptr<THt> Slots;
 
@@ -100,31 +107,45 @@ public:
         IPageStorePtr pageStore)
     {
         const ui64 pageSize = pageStore->GetPageSize();
-        const ui64 slotsPerPage = pageSize / NodePageClusterSlotSize;
-        const ui64 pageClusterCount = CalcPageClusterCount(config, pageSize);
-        const ui64 slotCount = pageClusterCount
-            + pageClusterCount / PageIndexSpareSlotShare;
-        const ui64 indexPageCount =
-            RoundUp(slotCount, slotsPerPage) / slotsPerPage;
-        TNodePageClusterSlot tombstone{};
-        tombstone.Key.NodeId = Max<ui64>();
-        Slots = std::make_unique<THt>(
-            firstPageNo,
-            indexPageCount,
-            pageSize,
-            NodePageClusterSlotSize,
-            tombstone,
-            std::move(pageStore),
-            [](const TNodePageClusterSlot& s) -> TNodePageClusterKey
-            { return s.Key; },
-            [](const TNodePageClusterKey& k) -> ui64
-            {
-                return CityHash64(
-                    reinterpret_cast<const char*>(&k),
-                    sizeof(TNodePageClusterKey));
-            });
+        ui64 totalPageCount = 0;
+        {
+            const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
 
-        return indexPageCount;
+            totalPageCount += pageCount;
+            firstPageNo += pageCount;
+        }
+
+        {
+            const ui64 slotsPerPage = pageSize / NodePageClusterSlotSize;
+            const ui64 pageClusterCount =
+                CalcPageClusterCount(config, pageSize);
+            const ui64 slotCount = pageClusterCount
+                + pageClusterCount / PageIndexSpareSlotShare;
+            const ui64 indexPageCount =
+                RoundUp(slotCount, slotsPerPage) / slotsPerPage;
+            TNodePageClusterSlot tombstone{};
+            tombstone.Key.NodeId = Max<ui64>();
+            Slots = std::make_unique<THt>(
+                firstPageNo,
+                indexPageCount,
+                pageSize,
+                NodePageClusterSlotSize,
+                tombstone,
+                std::move(pageStore),
+                [](const TNodePageClusterSlot& s) -> TNodePageClusterKey
+                { return s.Key; },
+                [](const TNodePageClusterKey& k) -> ui64
+                {
+                    return CityHash64(
+                        reinterpret_cast<const char*>(&k),
+                        sizeof(TNodePageClusterKey));
+                });
+
+            totalPageCount += indexPageCount;
+            firstPageNo += indexPageCount;
+        }
+
+        return totalPageCount;
     }
 
     [[nodiscard]] ui64 GetSlotCount() const
@@ -179,6 +200,19 @@ public:
         }
         stats->UsedPageCount = Max(stats->UsedPageCount, usedPages);
         return {};
+    }
+
+    [[nodiscard]] TString Describe() const override
+    {
+        return "PageIndex";
+    }
+
+    NProto::TError CheckFormat(TWriteContext& writeContext) override
+    {
+        return FormatPage.RegisterStart(
+            PageIndexLayoutMinVersion,
+            PageIndexLayoutVersion,
+            writeContext);
     }
 };
 
@@ -246,14 +280,16 @@ struct TLoggingContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPageAllocator
+class TPageAllocator: public IComponent
 {
 private:
+    TFormatPage FormatPage;
+
     std::unique_ptr<TPersistentBitmap> Bitmap;
     ui64 PageClusterSize = 0;
     ui64 FirstStoragePageClusterId = 0;
     ui64 BitCount = 0;
-    ui64 BitmapSize = 0;
+    ui64 MetadataSize = 0;
 
 public:
     ui64 Init(
@@ -261,23 +297,44 @@ public:
         ui64 firstPageNo,
         IPageStorePtr pageStore)
     {
-        const ui64 pageSize = pageStore->GetPageSize();
-        PageClusterSize = PageClusterPageCount * pageSize;
-        const ui64 pageClusterCount = CalcPageClusterCount(config, pageSize);
-        BitCount = pageClusterCount;
-        Bitmap = std::make_unique<TPersistentBitmap>(
-            firstPageNo,
-            BitCount,
-            pageSize,
-            std::move(pageStore));
-        BitmapSize = Bitmap->GetPageCount() * pageSize;
-        firstPageNo += Bitmap->GetPageCount();
-        FirstStoragePageClusterId = RoundUp(firstPageNo, PageClusterPageCount)
-            / PageClusterPageCount;
+        MetadataSize = 0;
 
-        return Bitmap->GetPageCount()
-            + (FirstStoragePageClusterId * PageClusterPageCount - firstPageNo)
-            + pageClusterCount * PageClusterPageCount;
+        const ui64 pageSize = pageStore->GetPageSize();
+        ui64 totalPageCount = 0;
+        {
+            const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
+
+            totalPageCount += pageCount;
+            firstPageNo += pageCount;
+            MetadataSize += pageCount * pageSize;
+        }
+
+        {
+            PageClusterSize = PageClusterPageCount * pageSize;
+            const ui64 pageClusterCount =
+                CalcPageClusterCount(config, pageSize);
+            BitCount = pageClusterCount;
+            Bitmap = std::make_unique<TPersistentBitmap>(
+                firstPageNo,
+                BitCount,
+                pageSize,
+                std::move(pageStore));
+            MetadataSize += Bitmap->GetPageCount() * pageSize;
+            firstPageNo += Bitmap->GetPageCount();
+            FirstStoragePageClusterId =
+                RoundUp(firstPageNo, PageClusterPageCount)
+                / PageClusterPageCount;
+
+            const ui64 pageCount = Bitmap->GetPageCount()
+                + (FirstStoragePageClusterId * PageClusterPageCount
+                        - firstPageNo)
+                + pageClusterCount * PageClusterPageCount;
+
+            totalPageCount += pageCount;
+            firstPageNo += pageCount;
+        }
+
+        return totalPageCount;
     }
 
     [[nodiscard]] ui64 GetBitCount() const
@@ -285,9 +342,9 @@ public:
         return BitCount;
     }
 
-    [[nodiscard]] ui64 GetBitmapSize() const
+    [[nodiscard]] ui64 GetMetadataSize() const
     {
-        return BitmapSize;
+        return MetadataSize;
     }
 
     [[nodiscard]] ui64 GetDataOffset() const
@@ -411,6 +468,24 @@ public:
         }
         stats->UsedPageCount = Max(stats->UsedPageCount, usedPages);
         return {};
+    }
+
+    [[nodiscard]] TString Describe() const override
+    {
+        return "PageAllocator";
+    }
+
+    NProto::TError CheckFormat(TWriteContext& writeContext) override
+    {
+        //
+        // PageAllocator format heavily depends on PageIndex format so it
+        // reports the same MinVersion and Version.
+        //
+
+        return FormatPage.RegisterStart(
+            PageIndexLayoutMinVersion,
+            PageIndexLayoutVersion,
+            writeContext);
     }
 };
 
@@ -586,6 +661,7 @@ private:
     const ui64 PageClusterSize;
 
     IStorageGroupPtr Storage;
+    std::atomic<bool> Initialized = false;
     std::atomic<bool> Ready = false;
     IPageStorePtr PageStore;
     TNodeTable Nodes;
@@ -593,6 +669,8 @@ private:
     THandleTable Handles;
     TPageIndex PageIndex;
     TPageAllocator PageAllocator;
+
+    TVector<IComponent*> Components;
 
     // Written exactly once - upon the first InitDataStructures call.
     // The layout dump reads it lock-free from non-fiber threads, so it
@@ -629,6 +707,14 @@ public:
 
         Storage = StorageGroupFactory->MakeStorageGroup(Config, Generation);
         PageStore = CreatePageStore(Storage, PageSize);
+
+        Components = {
+            &Nodes,
+            &Names,
+            &Handles,
+            &PageIndex,
+            &PageAllocator,
+        };
 
         InitDataStructures();
     }
@@ -718,7 +804,7 @@ private:
             {
                 .Name = "PageAllocatorBitmap",
                 .OffsetBytes = pageAllocatorOffset,
-                .SizeBytes = PageAllocator.GetBitmapSize(),
+                .SizeBytes = PageAllocator.GetMetadataSize(),
                 .SlotSize = 0,
                 .SlotCount = PageAllocator.GetBitCount(),
             },
@@ -2134,13 +2220,39 @@ private:
         return response;
     }
 
-    NProto::TError CheckReady() const
+    NProto::TError CheckInitialized() const
     {
-        if (Ready) {
+        if (Initialized) {
             return {};
         }
 
         return MakeError(E_REJECTED, "shard is not initialized yet");
+    }
+
+    template <typename TResponse>
+    bool CheckInitialized(TResponse& response) const
+    {
+        auto error = CheckInitialized();
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            return false;
+        }
+
+        return true;
+    }
+
+    NProto::TError CheckReady() const
+    {
+        auto error = CheckInitialized();
+        if (HasError(error)) {
+            return error;
+        }
+
+        if (Ready) {
+            return {};
+        }
+
+        return MakeError(E_INVALID_STATE, "detected incompatible format");
     }
 
     template <typename TResponse>
@@ -2168,6 +2280,12 @@ public:
         }
 
         PageStore->InitLastLsn(lastLsn);
+        Initialized = true;
+
+        error = CheckFormat();
+        if (HasError(error)) {
+            return error;
+        }
 
         Ready = true;
         return {};
@@ -2179,9 +2297,51 @@ public:
         Storage->TearDown();
     }
 
+    NProto::TError CheckFormat()
+    {
+        auto lc = MakeLoggingContext();
+
+        TWriteContext writeContext;
+        TWriteContextGuard wcg(writeContext, *PageStore);
+        wcg.Init();
+
+        for (auto* component: Components) {
+            auto error = component->CheckFormat(writeContext);
+            if (HasError(error)) {
+                SILK_ERROR(
+                    "[%s] CheckFormat::{%s} error=%s",
+                    lc.Describe().c_str(),
+                    component->Describe().c_str(),
+                    FormatError(error).c_str());
+
+                return error;
+            }
+        }
+
+        auto pages = CollectPages(writeContext);
+        auto error = Storage->WriteLogRecord(
+            std::move(writeContext.Headers),
+            std::move(writeContext.PageGroups),
+            writeContext.Lsn);
+        if (HasError(error)) {
+            SILK_ERROR(
+                "[%s] CheckFormat::WriteLogRecord error=%s",
+                lc.Describe().c_str(),
+                FormatError(error).c_str());
+
+            PageStore->RollbackPages(pages);
+            return error;
+        }
+
+        SILK_INFO("[%s] CheckFormat complete", lc.Describe().c_str());
+
+        PageStore->CommitPages(pages);
+        return {};
+    }
+
     NProto::TError Format()
     {
-        auto error = CheckReady();
+        auto error = CheckInitialized();
         if (HasError(error)) {
             return error;
         }
@@ -2272,6 +2432,16 @@ public:
         //
 
         InitDataStructures();
+
+        error = CheckFormat();
+        if (HasError(error)) {
+            SILK_ERROR(
+                "[F=%s] CheckFormat failed: %s",
+                FileSystemId.c_str(),
+                FormatError(error).c_str());
+        }
+
+        Ready = true;
 
         SILK_INFO("[F=%s] Format complete", FileSystemId.c_str());
         return {};

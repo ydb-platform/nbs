@@ -19,6 +19,13 @@ ui64 THandleTable::Init(
     const ui64 pageSize = pageStore->GetPageSize();
     ui64 totalPageCount = 0;
     {
+        const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
+
+        totalPageCount += pageCount;
+        firstPageNo += pageCount;
+    }
+
+    {
         const ui64 slotsPerPage = pageSize / HandleSlotSize;
         const ui64 pageCount =
             RoundUp(handlesPerGroup, slotsPerPage) / slotsPerPage;
@@ -258,6 +265,14 @@ NProto::TError THandleTable::GetNodeHandleCount(
     stats->TotalHandleCount = slotStats.SlotCount;
     stats->UsedHandleCount = slotStats.ValueCount;
     return {};
+}
+
+NProto::TError THandleTable::CheckFormat(TWriteContext& writeContext)
+{
+    return FormatPage.RegisterStart(
+        HandleTableLayoutMinVersion,
+        HandleTableLayoutVersion,
+        writeContext);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

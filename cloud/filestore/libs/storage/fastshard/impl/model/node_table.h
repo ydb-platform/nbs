@@ -1,5 +1,7 @@
 #pragma once
 
+#include "component.h"
+#include "format_page.h"
 #include "page_store.h"
 #include "persistent_hash_table.h"
 
@@ -10,6 +12,9 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 // inode table layout
+
+constexpr ui32 NodeTableLayoutMinVersion = 1;
+constexpr ui32 NodeTableLayoutVersion = 1;
 
 constexpr ui64 NodeSlotSize = 96;   // bigger than the current slot struct - in
                                     // order not to drop all data if we decide
@@ -42,9 +47,11 @@ TNodeTableSlot Convert(const NProto::TNodeAttr& attr);
 // This data structure is a PoC, it's not really efficient, can be easily
 // optimized.
 
-class TNodeTable
+class TNodeTable: public IComponent
 {
 private:
+    TFormatPage FormatPage;
+
     using THt = TPersistentHashTable<ui64, TNodeTableSlot>;
     std::unique_ptr<THt> Slots;
     ui64 PageSize = 0;
@@ -97,6 +104,13 @@ public:
 
     [[nodiscard]] NProto::TError CollectStats(
         TFileSystemShardStats* stats) const;
+
+    [[nodiscard]] TString Describe() const override
+    {
+        return "NodeTable";
+    }
+
+    NProto::TError CheckFormat(TWriteContext& writeContext) override;
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

@@ -12,27 +12,40 @@ ui64 TNameTable::Init(
     IPageStorePtr pageStore)
 {
     const ui64 pageSize = pageStore->GetPageSize();
-    const ui64 slotsPerPage = pageSize / NameSlotSize;
-    const ui64 pageCount =
-        Min(RoundUp(nodesPerGroup, slotsPerPage),
-            (NameTableSize / pageSize) * slotsPerPage) /
-        slotsPerPage;
-    // Tombstone key needs to be different from an empty slot key
-    memset(Tombstone.Name, 1, NameCapacity - 1);
-    Tombstone.NodeId = Max<ui64>();
-    Slots = std::make_unique<THt>(
-        firstPageNo,
-        pageCount,
-        pageSize,
-        NameSlotSize,
-        Tombstone,
-        std::move(pageStore),
-        [](const TNameTableSlot& s) -> TStringBuf
-        { return {s.Name, strlen(s.Name)}; },
-        [](const TStringBuf& name) -> ui64
-        { return CityHash64(name.data(), name.size()); });
+    ui64 totalPageCount = 0;
+    {
+        const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
 
-    return pageCount;
+        totalPageCount += pageCount;
+        firstPageNo += pageCount;
+    }
+
+    {
+        const ui64 slotsPerPage = pageSize / NameSlotSize;
+        const ui64 pageCount =
+            Min(RoundUp(nodesPerGroup, slotsPerPage),
+                (NameTableSize / pageSize) * slotsPerPage) /
+            slotsPerPage;
+        // Tombstone key needs to be different from an empty slot key
+        memset(Tombstone.Name, 1, NameCapacity - 1);
+        Tombstone.NodeId = Max<ui64>();
+        Slots = std::make_unique<THt>(
+            firstPageNo,
+            pageCount,
+            pageSize,
+            NameSlotSize,
+            Tombstone,
+            std::move(pageStore),
+            [](const TNameTableSlot& s) -> TStringBuf
+            { return {s.Name, strlen(s.Name)}; },
+            [](const TStringBuf& name) -> ui64
+            { return CityHash64(name.data(), name.size()); });
+
+        totalPageCount += pageCount;
+        firstPageNo += pageCount;
+    }
+
+    return totalPageCount;
 }
 
 NProto::TError TNameTable::Put(
@@ -85,6 +98,14 @@ NProto::TError TNameTable::Get(const TString& name, ui64* nodeId) const
     stats->TotalNameCount = slotStats.SlotCount;
     stats->UsedNameCount = slotStats.ValueCount;
     return {};
+}
+
+NProto::TError TNameTable::CheckFormat(TWriteContext& writeContext)
+{
+    return FormatPage.RegisterStart(
+        NameTableLayoutMinVersion,
+        NameTableLayoutVersion,
+        writeContext);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

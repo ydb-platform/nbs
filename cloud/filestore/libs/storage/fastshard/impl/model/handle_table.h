@@ -1,5 +1,7 @@
 #pragma once
 
+#include "component.h"
+#include "format_page.h"
 #include "page_store.h"
 #include "persistent_hash_table.h"
 
@@ -10,6 +12,9 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 // handle table layout
+
+constexpr ui32 HandleTableLayoutMinVersion = 1;
+constexpr ui32 HandleTableLayoutVersion = 1;
 
 constexpr ui64 HandleSlotSize = 16;
 
@@ -33,9 +38,11 @@ static_assert(sizeof(TNodeHandlesSlot) <= NodeHandlesSlotSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THandleTable
+class THandleTable: public IComponent
 {
 private:
+    TFormatPage FormatPage;
+
     using THandles = TPersistentHashTable<ui64, THandleSlot>;
     std::unique_ptr<THandles> Handles;
     using TNodeId2HandleCount = TPersistentHashTable<ui64, TNodeHandlesSlot>;
@@ -68,6 +75,13 @@ public:
 
     [[nodiscard]] NProto::TError CollectStats(
         TFileSystemShardStats* stats) const;
+
+    [[nodiscard]] TString Describe() const override
+    {
+        return "HandleTable";
+    }
+
+    NProto::TError CheckFormat(TWriteContext& writeContext) override;
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

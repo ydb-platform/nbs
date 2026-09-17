@@ -51,27 +51,40 @@ ui64 TNodeTable::Init(
     IPageStorePtr pageStore)
 {
     PageSize = pageStore->GetPageSize();
-    const ui64 slotsPerPage = PageSize / NodeSlotSize;
-    const ui64 pageCount =
-        Min(RoundUp(nodesPerGroup, slotsPerPage),
-            (NodeTableSize / PageSize) * slotsPerPage) /
-        slotsPerPage;
-    const TNodeTableSlot tombstone{.Id = Max<ui64>()};
-    Slots = std::make_unique<THt>(
-        firstPageNo,
-        pageCount,
-        PageSize,
-        NodeSlotSize,
-        tombstone,
-        std::move(pageStore),
-        [](const TNodeTableSlot& s) -> ui64 { return s.Id; },
-        [](const ui64& nodeId) -> ui64 {
-            return CityHash64(
-                reinterpret_cast<const char*>(&nodeId),
-                sizeof(nodeId));
-        });
+    ui64 totalPageCount = 0;
+    {
+        const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
 
-    return pageCount;
+        totalPageCount += pageCount;
+        firstPageNo += pageCount;
+    }
+
+    {
+        const ui64 slotsPerPage = PageSize / NodeSlotSize;
+        const ui64 pageCount =
+            Min(RoundUp(nodesPerGroup, slotsPerPage),
+                (NodeTableSize / PageSize) * slotsPerPage) /
+            slotsPerPage;
+        const TNodeTableSlot tombstone{.Id = Max<ui64>()};
+        Slots = std::make_unique<THt>(
+            firstPageNo,
+            pageCount,
+            PageSize,
+            NodeSlotSize,
+            tombstone,
+            std::move(pageStore),
+            [](const TNodeTableSlot& s) -> ui64 { return s.Id; },
+            [](const ui64& nodeId) -> ui64 {
+                return CityHash64(
+                    reinterpret_cast<const char*>(&nodeId),
+                    sizeof(nodeId));
+            });
+
+        totalPageCount += pageCount;
+        firstPageNo += pageCount;
+    }
+
+    return totalPageCount;
 }
 
 NProto::TError TNodeTable::AllocateNodeId(ui64* nodeId) const
@@ -239,6 +252,14 @@ NProto::TError TNodeTable::GetNode(ui64 nodeId, NProto::TNodeAttr* attr) const
     stats->TotalNodeCount = slotStats.SlotCount;
     stats->UsedNodeCount = slotStats.ValueCount;
     return {};
+}
+
+NProto::TError TNodeTable::CheckFormat(TWriteContext& writeContext)
+{
+    return FormatPage.RegisterStart(
+        NodeTableLayoutMinVersion,
+        NodeTableLayoutVersion,
+        writeContext);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

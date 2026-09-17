@@ -54,7 +54,18 @@ struct TNullStorageGroup: IStorageGroup
         const TVector<TPageGroupRef>& pageGroupRefs,
         TVector<TPageGroup>* pageGroups) override
     {
-        Y_UNUSED(headers, pageGroupRefs, pageGroups);
+        Y_UNUSED(headers);
+
+        for (const auto& pgr: pageGroupRefs) {
+            auto& pg = pageGroups->emplace_back();
+            pg.FirstPageNo = pgr.FirstPageNo;
+            for (ui64 i = 0; i < pgr.PageCount; ++i) {
+                TBuffer page;
+                page.Resize(4_KB);
+                memset(page.Data(), 0, 4_KB);
+                pg.Content.push_back(std::move(page));
+            }
+        }
 
         return {};
     }
@@ -142,46 +153,46 @@ TEST(HashTableIndexShardLayoutTest, DumpsLayout)
         const auto& c = components[0];
         EXPECT_EQ("NodeTable", c["name"].GetString());
         EXPECT_EQ(0ULL, c["offsetBytes"].GetUInteger());
-        EXPECT_EQ(8_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(12_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(84ULL, c["slotCount"].GetUInteger());
     }
 
     {
         const auto& c = components[1];
         EXPECT_EQ("NameTable", c["name"].GetString());
-        EXPECT_EQ(8_KB, c["offsetBytes"].GetUInteger());
-        EXPECT_EQ(4_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(12_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(8_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(85ULL, c["slotCount"].GetUInteger());
     }
 
     {
         const auto& c = components[2];
         EXPECT_EQ("HandleTable", c["name"].GetString());
-        EXPECT_EQ(12_KB, c["offsetBytes"].GetUInteger());
-        EXPECT_EQ(16_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(20_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(20_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(1024ULL, c["slotCount"].GetUInteger());
     }
 
     {
         const auto& c = components[3];
         EXPECT_EQ("PageIndex", c["name"].GetString());
-        EXPECT_EQ(28_KB, c["offsetBytes"].GetUInteger());
-        EXPECT_EQ(52_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(40_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(56_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(2210ULL, c["slotCount"].GetUInteger());
     }
 
     {
         const auto& c = components[4];
         EXPECT_EQ("PageAllocatorBitmap", c["name"].GetString());
-        EXPECT_EQ(80_KB, c["offsetBytes"].GetUInteger());
-        EXPECT_EQ(4_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(96_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(8_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(2048ULL, c["slotCount"].GetUInteger());
     }
 
     {
         const auto& c = components[5];
         EXPECT_EQ("DataPages", c["name"].GetString());
-        EXPECT_EQ(96_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(128_KB, c["offsetBytes"].GetUInteger());
         EXPECT_EQ(64_MB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(2048ULL, c["slotCount"].GetUInteger());
     }
