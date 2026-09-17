@@ -76,6 +76,7 @@ public:
     TRangeStat Get(ui32 blockIndex) const;
     TCompactionCounter GetTop() const;
     TVector<TCompactionCounter> GetTopsFromGroups(size_t groupCount) const;
+    TCompactionCounter GetTopByBlobCount() const;
     TCompactionCounter GetTopByGarbageBlockCount() const;
     TCompactionCounter GetTopByGarbageIgnoringZeroed() const;
     TCompactionCounter GetTopByMixedBlockCount() const;
@@ -87,6 +88,11 @@ public:
     [[nodiscard]] TVector<TCompactionCounter> GetTopByGarbageIgnoringZeroed(size_t count) const;
     // Ranges with insufficient used or mixed blocks are excluded.
     [[nodiscard]] TVector<TCompactionCounter> GetTopByMixedBlockCount(size_t count) const;
+
+    // Returns at most one non-compacted range per group, in descending blob
+    // count order. Ranges with fewer than two blobs are excluded.
+    [[nodiscard]] TVector<TCompactionCounter> GetTopByBlobCount(
+        size_t count) const;
 
     TVector<ui32> GetNonEmptyRanges() const;
     ui32 GetNonEmptyRangeCount() const;

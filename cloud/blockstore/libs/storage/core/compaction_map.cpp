@@ -35,6 +35,16 @@ struct TCompactionMap::TImpl
         }
     };
 
+    struct TCompareByBlobCount
+    {
+        template <typename T1, typename T2>
+        static bool Compare(const T1& l, const T2& r)
+        {
+            return static_cast<const TGroupNode&>(l).MaxBlobCount >
+                   static_cast<const TGroupNode&>(r).MaxBlobCount;
+        }
+    };
+
     struct TCompareByGarbageBlockCount
     {
         template <typename T1, typename T2>
@@ -86,6 +96,11 @@ struct TCompactionMap::TImpl
         : public TRbTreeItem<TGroupByScoreNode, TCompareByScore>
     {};
 
+    struct TGroupByBlobCountNode
+        : public TRbTreeItem<TGroupByBlobCountNode, TCompareByBlobCount>
+    {
+    };
+
     struct TGroupByGarbageBlockCountNode
         : public TRbTreeItem<
           TGroupByGarbageBlockCountNode,
@@ -111,12 +126,15 @@ struct TCompactionMap::TImpl
         : public TIntrusiveListItem<TGroupNode>
         , public TGroupByBlockIndexNode
         , public TGroupByScoreNode
+        , public TGroupByBlobCountNode
         , public TGroupByGarbageBlockCountNode
         , public TGroupByGarbageIgnoringZeroedNode
         , public TGroupByMixedBlockCountNode
     {
         ui32 BlockIndex = 0;
         float Score = 0;
+        ui16 MaxBlobCount = 0;
+        ui32 RangeWithMaxBlobCount = 0;
         ui16 GarbageBlockCount = 0;
         ui16 GarbageIgnoringZeroed = 0;
 
@@ -132,6 +150,8 @@ struct TCompactionMap::TImpl
     using TGroupList = TIntrusiveListWithAutoDelete<TGroupNode, TDelete>;
     using TGroupByBlockIndexTree = TRbTree<TGroupByBlockIndexNode, TCompareByBlockIndex>;
     using TGroupByScoreTree = TRbTree<TGroupByScoreNode, TCompareByScore>;
+    using TGroupByBlobCountTree =
+        TRbTree<TGroupByBlobCountNode, TCompareByBlobCount>;
     using TGroupByGarbageBlockCountTree =
         TRbTree<TGroupByGarbageBlockCountNode, TCompareByGarbageBlockCount>;
     using TGroupByGarbageIgnoringZeroedTree =
@@ -149,6 +169,7 @@ struct TCompactionMap::TImpl
     TGroupList Groups;
     TGroupByBlockIndexTree GroupByBlockIndex;
     TGroupByScoreTree GroupByScore;
+    TGroupByBlobCountTree GroupByBlobCount;
     TGroupByGarbageBlockCountTree GroupByGarbageBlockCount;
     TGroupByGarbageIgnoringZeroedTree GroupByGarbageIgnoringZeroed;
 
@@ -251,6 +272,19 @@ struct TCompactionMap::TImpl
             if (stat.Score > group->Score) {
                 group->Score = stat.Score;
                 group->Range = i;
+            }
+        }
+    }
+
+    void RecalculateGroupMaxBlobCount(TGroupNode* group)
+    {
+        group->MaxBlobCount = 0;
+        group->RangeWithMaxBlobCount = 0;
+        for (ui32 i = 0; i < group->Stats.size(); ++i) {
+            const auto& stat = group->Stats[i];
+            if (!stat.Compacted && stat.BlobCount > group->MaxBlobCount) {
+                group->MaxBlobCount = stat.BlobCount;
+                group->RangeWithMaxBlobCount = i;
             }
         }
     }
@@ -393,6 +427,18 @@ struct TCompactionMap::TImpl
                 // Garbage block count in the top range has decreased, need to
                 // recalculate the maximal garbage block count.
                 RecalculateGroupGarbageBlockCount(group);
+            }
+
+            const auto newBlobCount =
+                compacted ? 0 : group->Stats[index].BlobCount;
+            const auto prevBlobCount = prev.Compacted ? 0 : prev.BlobCount;
+            if (prevBlobCount <= newBlobCount) {
+                if (group->MaxBlobCount < newBlobCount) {
+                    group->MaxBlobCount = newBlobCount;
+                    group->RangeWithMaxBlobCount = index;
+                }
+            } else if (index == group->RangeWithMaxBlobCount) {
+                RecalculateGroupMaxBlobCount(group);
             }
 
             const auto newGarbageIgnoringZeroed =
@@ -581,6 +627,7 @@ void TCompactionMap::Update(
          ++group)
     {
         Impl->GroupByScore.Insert(*group);
+        Impl->GroupByBlobCount.Insert(*group);
         Impl->GroupByGarbageBlockCount.Insert(*group);
         Impl->GroupByGarbageIgnoringZeroed.Insert(*group);
         Impl->GroupByMixedBlockCount.Insert(*group);
@@ -606,6 +653,7 @@ void TCompactionMap::Update(
         compacted);
 
     Impl->GroupByScore.Insert(group);
+    Impl->GroupByBlobCount.Insert(group);
     Impl->GroupByGarbageBlockCount.Insert(group);
     Impl->GroupByGarbageIgnoringZeroed.Insert(group);
     Impl->GroupByMixedBlockCount.Insert(group);
@@ -634,6 +682,7 @@ void TCompactionMap::Clear()
 {
     Impl->GroupByBlockIndex.Clear();
     Impl->GroupByScore.Clear();
+    Impl->GroupByBlobCount.Clear();
     Impl->GroupByGarbageBlockCount.Clear();
     Impl->GroupByGarbageIgnoringZeroed.Clear();
     Impl->GroupByMixedBlockCount.Clear();
@@ -667,6 +716,40 @@ TCompactionCounter TCompactionMap::GetTop() const
 TVector<TCompactionCounter> TCompactionMap::GetTopsFromGroups(size_t groupCount) const
 {
     return Impl->GetTopsFromGroups(groupCount);
+}
+
+TCompactionCounter TCompactionMap::GetTopByBlobCount() const
+{
+    if (!Impl->GroupByBlobCount.Empty()) {
+        const auto& group = static_cast<const TImpl::TGroupNode&>(
+            *Impl->GroupByBlobCount.Begin());
+        if (group.MaxBlobCount) {
+            return {
+                group.BlockIndex +
+                    group.RangeWithMaxBlobCount * Impl->RangeSize,
+                group.Stats[group.RangeWithMaxBlobCount]};
+        }
+    }
+    return {0, {}};
+}
+
+TVector<TCompactionCounter> TCompactionMap::GetTopByBlobCount(
+    size_t count) const
+{
+    TVector<TCompactionCounter> tops(Reserve(count));
+    for (auto it = Impl->GroupByBlobCount.Begin();
+         it != Impl->GroupByBlobCount.End() && tops.size() < count;
+         ++it)
+    {
+        const auto& group = static_cast<const TImpl::TGroupNode&>(*it);
+        if (group.MaxBlobCount < 2) {
+            break;
+        }
+        tops.push_back(
+            {group.BlockIndex + group.RangeWithMaxBlobCount * Impl->RangeSize,
+             group.Stats[group.RangeWithMaxBlobCount]});
+    }
+    return tops;
 }
 
 TCompactionCounter TCompactionMap::GetTopByGarbageBlockCount() const

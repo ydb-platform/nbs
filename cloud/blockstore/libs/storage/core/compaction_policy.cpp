@@ -311,23 +311,10 @@ ICompactionPolicyPtr BuildCompactionPolicy(
 
     const bool mixedBlocksCountCompactionEnabled =
         IsMixedBlocksCountCompactionEnabled(storageConfig, partitionConfig);
-
-    NProto::ECompactionType ct = NProto::ECompactionType::CT_DEFAULT;
-    switch (partitionConfig.GetStorageMediaKind()) {
-        case NCloud::NProto::STORAGE_MEDIA_SSD: {
-            if (!storageConfig.GetSSDMaxBlobsPerUnit()) {
-                ct = storageConfig.GetSSDCompactionType();
-            }
-            break;
-        }
-
-        default: {
-            if (!storageConfig.GetHDDMaxBlobsPerUnit()) {
-                ct = storageConfig.GetHDDCompactionType();
-            }
-            break;
-        }
-    }
+    const NProto::ECompactionType ct =
+        partitionConfig.GetStorageMediaKind() == NProto::STORAGE_MEDIA_SSD
+            ? storageConfig.GetSSDCompactionType()
+            : storageConfig.GetHDDCompactionType();
 
     switch (ct) {
         case NProto::ECompactionType::CT_DEFAULT: {
@@ -347,7 +334,8 @@ ICompactionPolicyPtr BuildCompactionPolicy(
                 mixedBlocksCountCompactionEnabled);
         }
 
-        default: Y_ABORT_UNLESS(0);
+        default:
+            Y_ABORT_UNLESS(0);
     }
 }
 
