@@ -254,12 +254,12 @@ TVector<TGroupRange> BuildGroupRequestsForChannel(
     auto next = std::next(cur);
 
     for (;;) {
-        const auto fromCommit =
+        const ui64 fromCommit =
             std::max(
                 trimFreshLogToCommitId,
                 MakeCommitId(cur->FromGeneration, 0));
 
-        const auto toCommit = MakeCommitId(
+        const ui64 toCommit = MakeCommitId(
             next == end ? Max<ui32>() : next->FromGeneration - 1,
             Max<ui32>());
 

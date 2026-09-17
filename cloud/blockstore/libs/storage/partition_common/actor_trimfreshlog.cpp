@@ -56,7 +56,7 @@ void TTrimFreshLogActor::Bootstrap(const TActorContext& ctx)
 
 void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
 {
-    const auto tabletId = TabletInfo->TabletID;
+    const ui64 tabletId = TabletInfo->TabletID;
 
     auto barriers = BuildGCBarriers(
         *TabletInfo,
@@ -64,7 +64,7 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
         TVector<TPartialBlobId>(),  // knownBlobIds
         TrimFreshLogToCommitId);
 
-    for (auto channelId: FreshChannels) {
+    for (ui32 channelId: FreshChannels) {
         for (const auto& [bsProxyId, barrier]: barriers.GetRequests(channelId)) {
             auto [barrierGen, barrierStep] = ParseCommitId(barrier.CollectCommitId);
 
