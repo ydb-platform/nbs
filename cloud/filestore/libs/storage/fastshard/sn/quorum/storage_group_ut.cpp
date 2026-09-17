@@ -189,7 +189,7 @@ struct TQuorumFixture: TStorageFixture
         , TickTimer(std::move(tickTimer))
     {
         if (init) {
-            auto error = Group->Init();
+            auto error = Group->Init().GetError();
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
         }
     }
@@ -330,7 +330,7 @@ TEST(NaiveGroupTest, MirrorsAcquireReleaseRequests)
             TStorageFixture fx;
 
             {
-                auto error = fx.Group->Init();
+                auto error = fx.Group->Init().GetError();
                 EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
             }
 
@@ -364,6 +364,43 @@ TEST(NaiveGroupTest, MirrorsAcquireReleaseRequests)
                     sn->ReleaseCalls[0].GetDeviceUUIDs(0));
             }
 
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
+TEST(NaiveGroupTest, InitReportsTheHighestAckedLsn)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TStorageFixture fx;
+            const ui64 acked[] = {3, 7, 5};
+            for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
+                fx.StorageNodes[i]
+                    ->ReadJournalTailResp.SetLastAckedLogSequenceNumber(
+                        acked[i]);
+            }
+
+            auto result = fx.Group->Init();
+            auto error = result.GetError();
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(7U, result.GetResult());
+
+            for (const auto& sn: fx.StorageNodes) {
+                EXPECT_EQ(1U, sn->ReadJournalTailCalls.size());
+                EXPECT_EQ(1U, sn->ReadJournalTailCalls[0].GetMaxRecordCount());
+            }
+
+            // The next record chains to what the devices hold.
+            error = WriteSomething(*fx.Group, 8);
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            for (const auto& sn: fx.StorageNodes) {
+                EXPECT_EQ(7U, sn->WriteCalls[0].GetPrevLogSequenceNumber());
+            }
+
+            fx.Group->TearDown();
             return 0;
         },
         0);
@@ -801,7 +838,7 @@ TEST(QuorumGroupTest, InitAcquiresEveryDeviceWithTheGeneration)
         {
             TQuorumFixture fx(false /* init */);
 
-            auto error = fx.Group->Init();
+            auto error = fx.Group->Init().GetError();
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
             for (ui32 i = 0; i < TStorageFixture::NodeCount; ++i) {
@@ -844,7 +881,7 @@ TEST(QuorumGroupTest, InitFailsIfAnyDeviceRefusesAcquire)
             *fx.StorageNodes[2]->AcquireResp.MutableError() =
                 MakeError(E_ARGUMENT, "scripted error");
 
-            auto error = fx.Group->Init();
+            auto error = fx.Group->Init().GetError();
             EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
 
             fx.Group->TearDown();
@@ -865,7 +902,7 @@ TEST(QuorumGroupTest, InitFailsIfAnyDeviceCannotReportItsLsn)
             *fx.StorageNodes[2]->ReadJournalTailResp.MutableError() =
                 MakeError(E_ARGUMENT, "scripted error");
 
-            auto error = fx.Group->Init();
+            auto error = fx.Group->Init().GetError();
             EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
 
             fx.Group->TearDown();
@@ -887,8 +924,10 @@ TEST(QuorumGroupTest, InitSeedsFromDevicesAndCatchesUpTheLaggingOne)
             fx.StorageNodes[1]->ReadJournalTailResp = JournalTail({10});
             fx.StorageNodes[2]->ReadJournalTailResp = JournalTail({7});
 
-            auto error = fx.Group->Init();
+            auto result = fx.Group->Init();
+            auto error = result.GetError();
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+            EXPECT_EQ(10U, result.GetResult());
 
             EXPECT_EQ((TVector<ui64>{8, 9, 10}), WrittenLsns(fx, 2));
             const auto& replays = fx.StorageNodes[2]->WriteCalls;
@@ -929,7 +968,7 @@ TEST(QuorumGroupTest, InitWithEveryDeviceAtTheSameLsnServesAtOnce)
                 sn->ReadJournalTailResp = JournalTail({9, 10});
             }
 
-            auto error = fx.Group->Init();
+            auto error = fx.Group->Init().GetError();
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
             EXPECT_EQ(0U, TotalWriteCalls(fx));
@@ -955,7 +994,7 @@ TEST(QuorumGroupTest, InitFailsIfTheTailStopsShortOfTheReportedLsn)
             fx.StorageNodes[1]->ReadJournalTailResp = JournalTail({10});
             fx.StorageNodes[2]->ReadJournalTailResp = JournalTail({7});
 
-            auto error = fx.Group->Init();
+            auto error = fx.Group->Init().GetError();
             EXPECT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
             EXPECT_EQ(0U, TotalWriteCalls(fx));
 
@@ -977,7 +1016,7 @@ TEST(QuorumGroupTest, InitFailsIfAReplayIsRefused)
             fx.StorageNodes[2]->ReadJournalTailResp = JournalTail({7});
             fx.StorageNodes[2]->WriteResp = WriteErrorResponse(E_ARGUMENT);
 
-            auto error = fx.Group->Init();
+            auto error = fx.Group->Init().GetError();
             EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
             EXPECT_TRUE(error.GetMessage().Contains("dev-c")) << error.GetMessage();
 
@@ -1002,7 +1041,7 @@ TEST(QuorumGroupTest, InitReplaysEverythingOntoAnEmptyDevice)
             fx.StorageNodes[0]->ReadJournalTailResp = JournalTail({1, 2, 3});
             fx.StorageNodes[1]->ReadJournalTailResp = JournalTail({3});
 
-            auto error = fx.Group->Init();
+            auto error = fx.Group->Init().GetError();
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
             EXPECT_EQ((TVector<ui64>{1, 2, 3}), WrittenLsns(fx, 2));
@@ -1047,7 +1086,7 @@ TEST(QuorumGroupTest, InitTakesThePositionFromTheAckedLsnField)
                 sn->ReadJournalTailResp.SetLastAckedLogSequenceNumber(10);
             }
 
-            auto error = fx.Group->Init();
+            auto error = fx.Group->Init().GetError();
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
             // everyone at 10: no tail read, no replay
@@ -1076,7 +1115,7 @@ TEST(QuorumGroupTest, InitJoinsEveryReplayEvenIfOneIsRefused)
             fx.StorageNodes[2]->ReadJournalTailResp = JournalTail({7});
             fx.StorageNodes[2]->WriteResp = WriteErrorResponse(E_ARGUMENT);
 
-            auto error = fx.Group->Init();
+            auto error = fx.Group->Init().GetError();
             EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
             EXPECT_TRUE(error.GetMessage().Contains("dev-c")) << error.GetMessage();
 
@@ -1150,7 +1189,7 @@ TEST(QuorumGroupTest, LowWatermarkStartsFromTheRestoredPosition)
                 sn->ReadJournalTailResp = JournalTail({10});
             }
 
-            auto error = fx.Group->Init();
+            auto error = fx.Group->Init().GetError();
             EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
 
             TickUntilPushed(fx, *timer);

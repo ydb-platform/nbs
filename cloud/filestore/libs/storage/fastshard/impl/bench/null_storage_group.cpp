@@ -22,10 +22,10 @@ public:
         , PageSize(pageSize)
     {}
 
-    NCloud::NProto::TError Init() override
+    TResultOrError<ui64> Init() override
     {
         Wait();
-        return {};
+        return {0};
     }
 
     void TearDown() override

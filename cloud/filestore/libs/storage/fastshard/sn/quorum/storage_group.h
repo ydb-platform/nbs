@@ -40,7 +40,8 @@ struct IStorageGroup
 {
     virtual ~IStorageGroup() = default;
 
-    virtual NProto::TError Init() = 0;
+    // Returns highest lsn the group has discovered.
+    virtual TResultOrError<ui64> Init() = 0;
 
     virtual void TearDown() = 0;
 

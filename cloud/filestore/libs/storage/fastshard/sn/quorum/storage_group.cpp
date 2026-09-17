@@ -49,6 +49,27 @@ int WriteLogRecordFiberMain(TWriteLogRecordParams* params) noexcept
     return 0;
 }
 
+struct TReadJournalTailParams
+{
+    TStorageDevice Device;
+    NProto::TReadJournalTailRequest* Request;
+    NProto::TReadJournalTailResponse* Response;
+    const TStorageGroupRetryPolicy* RetryPolicy;
+    ITimer* Timer;
+};
+
+int ReadJournalTailFiberMain(TReadJournalTailParams* params) noexcept
+{
+    NProto::TReadJournalTailRequest request = *params->Request;
+    request.SetDeviceUUID(params->Device.DeviceUUID);
+    *params->Response = CallWithRetries(
+        *params->RetryPolicy,
+        *params->Timer,
+        [&] { return params->Device.Node->ReadJournalTail(request); });
+
+    return 0;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TStorageGroupImpl final: public IStorageGroup
@@ -72,17 +93,43 @@ public:
     {}
 
 public:
-    // The naive group does no recovery: Init is just the acquire.
-    NProto::TError Init() override
+    // The naive group does no recovery: Init is the acquire plus a look at
+    // where every device's journal ends.
+    TResultOrError<ui64> Init() override
     {
-        NProto::TAcquireDevicesRequest request;
-        request.SetGeneration(Config.AcquireGeneration);
-        return MirrorRequest<NProto::TAcquireDevicesResponse>(
+        NProto::TAcquireDevicesRequest acquire;
+        acquire.SetGeneration(Config.AcquireGeneration);
+        auto error = MirrorRequest<NProto::TAcquireDevicesResponse>(
             Config,
             Devices,
             *Timer,
             AcquireDevicesFiberMain,
-            std::move(request));
+            std::move(acquire));
+        if (HasError(error)) {
+            return error;
+        }
+
+        NProto::TReadJournalTailRequest tail;
+        tail.SetMaxRecordCount(1);
+        TVector<NProto::TReadJournalTailResponse> responses;
+        error = MirrorRequest<NProto::TReadJournalTailResponse>(
+            Config,
+            Devices,
+            *Timer,
+            ReadJournalTailFiberMain,
+            std::move(tail),
+            &responses);
+        if (HasError(error)) {
+            return error;
+        }
+
+        ui64 lastLsn = 0;
+        for (const auto& response: responses) {
+            lastLsn = Max(lastLsn, response.GetLastAckedLogSequenceNumber());
+        }
+
+        LastLsn = lastLsn;
+        return lastLsn;
     }
 
     void TearDown() override
