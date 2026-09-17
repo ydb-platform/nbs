@@ -2030,9 +2030,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const ui32 blocks = 1024 * 1024;
-        service.SendCreateFileStoreRequest("fs", blocks, 2_KB);
+
+        service.SendCreateFileStoreRequest("fs", blocks, 0_KB);
 
         auto response = service.RecvCreateFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        service.SendCreateFileStoreRequest("fs", blocks, 2_KB);
+
+        response = service.RecvCreateFileStoreResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_ARGUMENT,
             response->GetStatus(),
@@ -2047,6 +2056,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             response->GetErrorReason());
 
         service.SendCreateFileStoreRequest("fs", blocks, 132_KB);
+
+        response = service.RecvCreateFileStoreResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        service.SendCreateFileStoreRequest("fs", blocks, 12_KB);
 
         response = service.RecvCreateFileStoreResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
