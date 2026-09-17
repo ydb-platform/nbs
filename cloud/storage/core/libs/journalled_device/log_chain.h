@@ -8,7 +8,8 @@
 
 #include <util/generic/hash.h>
 #include <util/generic/vector.h>
-#include <util/system/spinlock.h>
+
+#include <mutex>
 
 namespace NCloud::NJournalled {
 
@@ -26,7 +27,7 @@ private:
         TLogRecordPtr Record;
     };
 
-    mutable TAdaptiveLock Lock;
+    mutable std::mutex Lock;
     ui64 LastErasedLsn = 0;
     ui64 LastChainedLsn = 0;
     THashMap<ui64 /*prevLsn*/, TEntry> Records;

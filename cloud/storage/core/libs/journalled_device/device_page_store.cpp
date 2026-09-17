@@ -8,9 +8,9 @@
 #include <util/generic/utility.h>
 #include <util/generic/ylimits.h>
 #include <util/string/builder.h>
-#include <util/system/spinlock.h>
 #include <util/system/yassert.h>
 
+#include <mutex>
 #include <optional>
 #include <variant>
 
@@ -46,7 +46,7 @@ private:
     const ui32 PageSize;
     const EDevicePageStoreMode Mode;
 
-    TAdaptiveLock Lock;
+    std::mutex Lock;
 
     TPageRanges FreeRanges;
 
@@ -68,45 +68,45 @@ public:
 
     TVector<TPageRangeRef> Allocate(ui64 pageCount) override
     {
-        with_lock (Lock) {
-            return AllocateImpl(pageCount);
-        }
+        std::lock_guard lock(Lock);
+
+        return AllocateImpl(pageCount);
     }
 
     NCloud::NProto::TError AllocateAt(
         const TVector<TPageRangeRef>& pageRanges) override
     {
-        with_lock (Lock) {
-            auto error = ValidatePages(pageRanges, EPageState::Free);
-            if (HasError(error)) {
-                return error;
-            }
+        std::lock_guard lock(Lock);
 
-            for (const auto& pageRange: pageRanges) {
-                AllocateAtImpl(pageRange);
-            }
-
-            return MakeError(S_OK);
+        auto error = ValidatePages(pageRanges, EPageState::Free);
+        if (HasError(error)) {
+            return error;
         }
+
+        for (const auto& pageRange: pageRanges) {
+            AllocateAtImpl(pageRange);
+        }
+
+        return MakeError(S_OK);
     }
 
     NCloud::NProto::TError Free(
         const TVector<TPageRangeRef>& pageRanges) override
     {
-        with_lock (Lock) {
-            if (Mode == EDevicePageStoreMode::Checked) {
-                auto error = ValidatePages(pageRanges, EPageState::Allocated);
-                if (HasError(error)) {
-                    return error;
-                }
-            }
+        std::lock_guard lock(Lock);
 
-            for (const auto& pageRange: pageRanges) {
-                FreeImpl(pageRange);
+        if (Mode == EDevicePageStoreMode::Checked) {
+            auto error = ValidatePages(pageRanges, EPageState::Allocated);
+            if (HasError(error)) {
+                return error;
             }
-
-            return MakeError(S_OK);
         }
+
+        for (const auto& pageRange: pageRanges) {
+            FreeImpl(pageRange);
+        }
+
+        return MakeError(S_OK);
     }
 
     auto Write(
@@ -141,7 +141,9 @@ public:
         }
 
         if (Mode == EDevicePageStoreMode::Checked) {
-            with_lock (Lock) {
+            {
+                std::lock_guard lock(Lock);
+
                 auto error = ValidatePages(pageRanges, EPageState::Allocated);
                 if (HasError(error)) {
                     return MakeFuture(error);
@@ -171,7 +173,9 @@ public:
         ui64 pageCount = 0;
 
         if (Mode == EDevicePageStoreMode::Checked) {
-            with_lock (Lock) {
+            {
+                std::lock_guard lock(Lock);
+
                 auto error = ValidatePages(pageRanges, EPageState::Allocated);
                 if (HasError(error)) {
                     return MakeFuture<TResult>(error);

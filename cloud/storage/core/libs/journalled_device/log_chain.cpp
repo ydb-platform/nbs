@@ -9,10 +9,10 @@ namespace NCloud::NJournalled {
 
 void TLogRecordChain::InitLastErasedLsn(ui64 lsn)
 {
-    with_lock (Lock) {
-        LastErasedLsn = lsn;
-        LastChainedLsn = lsn;
-    }
+    std::lock_guard lock(Lock);
+
+    LastErasedLsn = lsn;
+    LastChainedLsn = lsn;
 }
 
 TResultOrError<TLogRecordPtr> TLogRecordChain::Insert(TLogRecordPtr record)
@@ -21,7 +21,9 @@ TResultOrError<TLogRecordPtr> TLogRecordChain::Insert(TLogRecordPtr record)
         return MakeError(E_ARGUMENT);
     }
 
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         if (record->Lsn <= LastErasedLsn) {
             return MakeError(E_INVALID_STATE);
         }
@@ -49,7 +51,9 @@ TResultOrError<TLogRecordPtr> TLogRecordChain::Insert(TLogRecordPtr record)
 
 bool TLogRecordChain::MarkAsReady(ui64 prevLsn)
 {
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         auto it = Records.find(prevLsn);
         if (it == Records.end()) {
             return false;
@@ -71,7 +75,9 @@ bool TLogRecordChain::MarkAsReady(ui64 prevLsn)
 
 bool TLogRecordChain::Remove(ui64 prevLsn)
 {
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         auto it = Records.find(prevLsn);
         if (it == Records.end()) {
             return false;
@@ -91,7 +97,9 @@ TResultOrError<TVector<TLogRecordPtr>> TLogRecordChain::EraseUpTo(ui64 lsn)
 {
     TVector<TLogRecordPtr> records;
 
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         if (lsn > LastChainedLsn) {
             return MakeError(
                 E_INVALID_STATE,
@@ -127,16 +135,16 @@ TResultOrError<TVector<TLogRecordPtr>> TLogRecordChain::EraseUpTo(ui64 lsn)
 
 TLogRecordPtr TLogRecordChain::GetOldest() const
 {
-    with_lock (Lock) {
-        return GetNextImpl(LastErasedLsn);
-    }
+    std::lock_guard lock(Lock);
+
+    return GetNextImpl(LastErasedLsn);
 }
 
 TLogRecordPtr TLogRecordChain::GetNext(ui64 lsn) const
 {
-    with_lock (Lock) {
-        return GetNextImpl(lsn);
-    }
+    std::lock_guard lock(Lock);
+
+    return GetNextImpl(lsn);
 }
 
 TLogRecordPtr TLogRecordChain::GetNextImpl(ui64 lsn) const
@@ -154,7 +162,9 @@ TVector<TLogRecordPtr> TLogRecordChain::GetReadyRun(
 {
     TVector<TLogRecordPtr> records;
 
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         auto recordCount = maxRecordCount > 0
                                ? Min<size_t>(maxRecordCount, Records.size())
                                : Records.size();
