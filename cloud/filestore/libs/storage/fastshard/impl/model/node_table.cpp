@@ -157,7 +157,7 @@ NProto::TError TNodeTable::UpdateNode(
     }
     if (HasFlag(flags, NProto::TSetNodeAttrRequest::F_SET_ATTR_SIZE)) {
         if (slot.Size > update.GetSize()) {
-            for (ui64 offset = AlignUp<ui64>(update.GetSize(), PageSize);
+            for (ui64 offset = RoundUp(update.GetSize(), PageSize);
                     offset < slot.Size; offset += PageSize)
             {
                 const ui64 pageNo = offset / PageSize;

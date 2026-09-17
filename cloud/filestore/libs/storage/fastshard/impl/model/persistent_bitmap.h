@@ -1,5 +1,6 @@
 #pragma once
 
+#include "helpers.h"
 #include "page_store.h"
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -53,7 +54,7 @@ public:
     [[nodiscard]] ui64 GetPageCount() const
     {
         const ui64 bitsPerPage = CalcBitsPerPage(PageSize);
-        return AlignUp(MaxBits, bitsPerPage) / bitsPerPage;
+        return RoundUp(MaxBits, bitsPerPage) / bitsPerPage;
     }
 
 private:
