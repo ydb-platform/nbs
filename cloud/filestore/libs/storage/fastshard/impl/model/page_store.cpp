@@ -37,7 +37,6 @@ private:
     mutable TPageCache PageCache;
     mutable silk::FiberMutex Mutex;
 
-    // TODO(#5895): properly initialize this
     ui64 Lsn = 0;
 
 public:
@@ -53,6 +52,7 @@ public:
     }
 
     ui64 AllocateLsn() override;
+    void InitLastLsn(ui64 lsn) override;
     void CommitPages(const TVector<ui64>& pages) override;
     void RollbackPages(const TVector<ui64>& pages) override;
     NProto::TError WritePage(
@@ -71,6 +71,17 @@ ui64 TPageStore::AllocateLsn()
 {
     std::lock_guard g(Mutex);
     return ++Lsn;
+}
+
+void TPageStore::InitLastLsn(ui64 lsn)
+{
+    std::lock_guard g(Mutex);
+    Y_ABORT_UNLESS(
+        !Lsn,
+        "lsn counter is already initialized: %lu, new value: %lu",
+        Lsn,
+        lsn);
+    Lsn = lsn;
 }
 
 void TPageStore::CommitPages(const TVector<ui64>& pages)

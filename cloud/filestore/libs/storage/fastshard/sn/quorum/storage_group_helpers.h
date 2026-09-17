@@ -118,7 +118,7 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept;
 /**
  * Sends @p request to every device and waits for all of them - an n/n fan-out
  * with no early return. Returns the first error observed, or an empty error if
- * every device acked.
+ * every device acked. The per-device responses go to @p responses if given.
  *
  * Everything the spawned fibers touch lives on this frame, which is safe
  * precisely because the call joins all of them before returning. A fan-out that
@@ -130,13 +130,18 @@ NProto::TError MirrorRequest(
     const TVector<TStorageDevice>& devices,
     ITimer& timer,
     int (*fiberMain)(TParams*) noexcept,
-    TRequest request)
+    TRequest request,
+    TVector<TResponse>* responses = nullptr)
 {
     FillHeaders(config, request.MutableHeaders());
 
     const ui32 count = devices.size();
     TVector<silk::FiberFuture> futures(count);
-    TVector<TResponse> responses(count);
+    TVector<TResponse> ownResponses;
+    if (!responses) {
+        responses = &ownResponses;
+    }
+    responses->assign(count, {});
 
     for (ui32 i = 0; i < count; ++i) {
         const int r = silk::FiberScheduler::run(
@@ -144,7 +149,7 @@ NProto::TError MirrorRequest(
             TParams{
                 .Device = devices[i],
                 .Request = &request,
-                .Response = &responses[i],
+                .Response = &(*responses)[i],
                 .RetryPolicy = &config.RetryPolicy,
                 .Timer = &timer},
             &futures[i]);
@@ -162,7 +167,7 @@ NProto::TError MirrorRequest(
             continue;
         }
 
-        auto& response = responses[i];
+        auto& response = (*responses)[i];
         if (HasError(response.GetError())) {
             SILK_ERROR(
                 "node error: %s",

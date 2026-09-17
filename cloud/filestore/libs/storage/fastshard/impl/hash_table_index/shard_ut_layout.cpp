@@ -31,9 +31,9 @@ constexpr size_t NodesPerGroup = 64;
 
 struct TNullStorageGroup: IStorageGroup
 {
-    NCloud::NProto::TError Init() override
+    TResultOrError<ui64> Init() override
     {
-        return {};
+        return {0};
     }
 
     void TearDown() override

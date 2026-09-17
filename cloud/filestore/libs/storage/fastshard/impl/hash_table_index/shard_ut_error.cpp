@@ -61,10 +61,12 @@ struct TTestStorageGroup: IStorageGroup
     TVector<TBuffer> Pages = TVector<TBuffer>(PageCount);
     TTempError ReadError;
     TTempError WriteError;
+    ui64 LastLsn = 0;
+    TVector<ui64> WriteLsns;
 
-    NCloud::NProto::TError Init() override
+    TResultOrError<ui64> Init() override
     {
-        return {};
+        return LastLsn;
     }
 
     void TearDown() override
@@ -75,13 +77,14 @@ struct TTestStorageGroup: IStorageGroup
         TVector<TPageGroup> pageGroups,
         ui64 lsn) override
     {
-        Y_UNUSED(headers, lsn);
+        Y_UNUSED(headers);
 
         auto e = WriteError.Get();
         if (HasError(e)) {
             return e;
         }
 
+        WriteLsns.push_back(lsn);
         for (auto& pg: pageGroups) {
             for (ui64 i = 0; i < pg.Content.size(); ++i) {
                 Pages[pg.FirstPageNo + i] = std::move(pg.Content[i]);
@@ -288,4 +291,34 @@ TEST(HashTableIndexShardErrorTest, CreatesHandles)
         EXPECT_EQ(S_OK, response.GetError().GetCode())
             << FormatError(response.GetError());
     }
+}
+
+TEST(HashTableIndexShardErrorTest, NumbersRecordsAboveTheStorageGroupLsn)
+{
+    TStorageFixture fx;
+    fx.Factory->Group->LastLsn = 41;
+
+    auto shard = CreateHashTableIndexFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Factory,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
+
+    TCreateHandleRequest request;
+    request.SetNodeId(RootNodeId);
+    request.SetName("file1");
+    request.SetMode(0644);
+    request.SetFlags(ProtoFlag(TCreateHandleRequest::E_CREATE));
+    auto response = shard->CreateHandle(request).GetValueSync();
+    ASSERT_EQ(S_OK, response.GetError().GetCode())
+        << FormatError(response.GetError());
+
+    const auto& lsns = fx.Factory->Group->WriteLsns;
+    ASSERT_FALSE(lsns.empty());
+    EXPECT_EQ(42U, lsns.front());
 }

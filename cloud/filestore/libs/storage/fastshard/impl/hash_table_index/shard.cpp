@@ -2150,7 +2150,7 @@ private:
 public:
     NProto::TError Init()
     {
-        auto error = Storage->Init();
+        auto [lastLsn, error] = Storage->Init();
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -2158,6 +2158,8 @@ public:
                 FormatError(error).c_str());
             return error;
         }
+
+        PageStore->InitLastLsn(lastLsn);
 
         Ready = true;
         return {};

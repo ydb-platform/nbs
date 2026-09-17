@@ -16,8 +16,10 @@ class IPageStore
 public:
     virtual ~IPageStore() = default;
 
-    virtual ui64 GetPageSize() const = 0;
+    virtual void InitLastLsn(ui64 lsn) = 0;
     virtual ui64 AllocateLsn() = 0;
+
+    virtual ui64 GetPageSize() const = 0;
     virtual void CommitPages(const TVector<ui64>& pages) = 0;
     virtual void RollbackPages(const TVector<ui64>& pages) = 0;
     [[nodiscard]] virtual NProto::TError WritePage(

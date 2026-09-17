@@ -14,7 +14,7 @@ namespace {
 class TStorageGroupStub: public IStorageGroup
 {
 public:
-    NProto::TError Init() override
+    TResultOrError<ui64> Init() override
     {
         return MakeError(E_NOT_IMPLEMENTED);
     }

@@ -612,7 +612,7 @@ public:
         State->WatermarkLoopStopped.set(0);
     }
 
-    NProto::TError Init() override
+    TResultOrError<ui64> Init() override
     {
         NProto::TAcquireDevicesRequest acquire;
         acquire.SetGeneration(State->Config.AcquireGeneration);
@@ -642,7 +642,7 @@ public:
         }
 
         State->Initialized = true;
-        return {};
+        return State->QuorumLsn.get();
     }
 
     void TearDown() override
