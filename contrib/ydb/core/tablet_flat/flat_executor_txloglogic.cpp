@@ -16,7 +16,6 @@ namespace NTabletFlatExecutor {
 
 LWTRACE_USING(TABLET_FLAT_PROVIDER)
 
-const static ui64 MaxSizeToEmbedInLog = 2048;
 const static ui64 MaxBytesToBatch = 2 * 1024 * 1024;
 const static ui64 MaxItemsToBatch = 64;
 
@@ -207,7 +206,7 @@ TLogicRedo::TCommitRWTransactionResult TLogicRedo::CommitRWTransaction(
                 tx->TxSpan.Link(Batch->Commit->TraceId, {});
             }
         }
-        
+
         Batch->Commit->PushTx(seat.Get());
 
         CompletionQueue.push_back({ seat, Batch->Commit->Step });
@@ -223,27 +222,19 @@ TLogicRedo::TCommitRWTransactionResult TLogicRedo::CommitRWTransaction(
 
 void TLogicRedo::MakeLogEntry(TLogCommit &commit, TString redo, TArrayRef<const ui32> affects, bool embed)
 {
+    Y_UNUSED(embed);
     if (redo) {
         NSan::CheckMemIsInitialized(redo.data(), redo.size());
 
         Cookies->Switch(commit.Step, true /* require step switch */);
 
-        auto coded = NPageCollection::TSlicer::Lz4()->Encode(redo);
+        auto coded = std::move(redo);
 
         Counters->Cumulative()[TMonCo::LOG_REDO_WRITTEN].Increment(coded.size());
+        auto largeGlobId = Slicer.Do(commit.Refs, std::move(coded), false);
+        largeGlobId.MaterializeTo(commit.GcDelta.Created);
 
-        if (embed && coded.size() <= MaxSizeToEmbedInLog) {
-            // Note: Encode reserves MaxCompressedLength bytes
-            NUtil::ShrinkToFit(coded);
-
-            commit.Embedded = std::move(coded);
-            Queue->Push({ Cookies->Gen, commit.Step }, affects, commit.Embedded);
-        } else {
-            auto largeGlobId = Slicer.Do(commit.Refs, std::move(coded), false);
-            largeGlobId.MaterializeTo(commit.GcDelta.Created);
-
-            Queue->Push({ Cookies->Gen, commit.Step }, affects, largeGlobId);
-        }
+        Queue->Push({ Cookies->Gen, commit.Step }, affects, largeGlobId);
     }
 }
 
