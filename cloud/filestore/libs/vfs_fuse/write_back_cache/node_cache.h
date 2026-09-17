@@ -67,6 +67,11 @@ public:
 
     std::unique_ptr<TPendingWriteDataRequest> DequeuePendingRequest();
 
+    // Returns nullptr if the pending queue is empty or the back element is
+    // allocated
+    std::unique_ptr<TPendingWriteDataRequest>
+    PopBackUnallocatedPendingRequest();
+
     // Flush batches are built when adding requests to unflushed queue
     // Note: flushBatchLimits are passed to the function to avoid storing them
     // in TNodeCache

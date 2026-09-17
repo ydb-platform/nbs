@@ -21,6 +21,7 @@
 #include <util/generic/function_ref.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
+#include <util/system/guard.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -82,6 +83,16 @@ private:
     // Requests that are hanging due to WriteBackCache failed state
     // It will be used in the future to prevent hanging on session destroy.
     THangingRequests HangingRequests;
+
+    // An allocated pending request can be safely removed while it is being
+    // serialized. We put these request to a separate queue and postpone sending
+    // the response until serialization is completed.
+    struct TFailedPendingRequest
+    {
+        std::unique_ptr<TPendingWriteDataRequest> Request;
+        NProto::TError Error;
+    };
+    TDeque<TFailedPendingRequest> FailedPendingRequests;
 
     // Either the persistent storage is corrupted or an internal problem in
     // the logic has happened. This is fatal and should result in suspending all
@@ -213,9 +224,6 @@ private:
         std::unique_ptr<TPendingWriteDataRequest> request);
 
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
-        std::unique_ptr<TCachedWriteDataRequest> request);
-
-    NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TCachedWriteDataRequest> request,
         bool handleReleased);
 
@@ -227,7 +235,9 @@ private:
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
     void CheckAndAcquireBarriers(TNodeState& nodeState);
-    void ProcessPendingRequests();
+    void ProcessPendingRequests(TGuard<TQueuedOperations>& guard);
+    void ProcessReadyCachedRequest(
+        std::unique_ptr<TCachedWriteDataRequest> request);
 
     void EnqueueUnflushedRequest(
         ui64 nodeId,
@@ -252,16 +262,16 @@ private:
         TNodeState& nodeState,
         const NCloud::NProto::TError& error);
 
-    void FailPendingRequest(
+    void FailUnallocatedPendingRequest(
         TNodeState& nodeState,
-        TPendingWriteDataRequest* request,
+        std::unique_ptr<TPendingWriteDataRequest> request,
         const NCloud::NProto::TError& error);
 
-    void FailNodePendingRequests(
+    void FailNodeUnallocatedPendingRequests(
         TNodeState& nodeState,
         const NCloud::NProto::TError& error);
 
-    void FailAllPendingRequests(const NCloud::NProto::TError& error);
+    void FailAllUnallocatedPendingRequests(const NCloud::NProto::TError& error);
 
     void SetFailedFlag();
 };
