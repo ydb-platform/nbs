@@ -1722,4 +1722,7 @@ message TStorageServiceConfig
     // mixed-block-count compaction trigger.
     optional uint64 SSDMaxMixedBytesPerUnit = 535;
     optional uint64 HDDMaxMixedBytesPerUnit = 536;
+
+    // Track concurrent writes when updating compaction range statistics.
+    optional bool CompactionStatsTrackerEnabled = 537;
 }

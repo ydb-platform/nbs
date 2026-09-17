@@ -87,7 +87,8 @@ TPartitionState MakeState(size_t blockCount = 2048, bool mixedBlocksFilterEnable
             ? std::make_optional(TMixedBlocksFilterConfig{})
             : std::nullopt,
         false,   // checkpointAwareCleanupEnabled
-        false    // useBlobChannelDataKindForCounters
+        false,    // useBlobChannelDataKindForCounters
+        false    // compactionStatsTrackerEnabled
     );
 }
 

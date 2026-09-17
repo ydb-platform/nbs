@@ -117,29 +117,31 @@ void InitializeMixedMergedBlobsAndBlocksCounts(
 ////////////////////////////////////////////////////////////////////////////////
 
 TPartitionState::TPartitionState(
-    NProto::TPartitionMeta meta,
-    ICompactionPolicyPtr compactionPolicy,
-    ui32 compactionScoreHistorySize,
-    ui32 cleanupScoreHistorySize,
-    const TBackpressureFeaturesConfig& bpConfig,
-    const TFreeSpaceConfig& freeSpaceConfig,
-    ui32 maxIORequestsInFlight,
-    ui32 reassignChannelsPercentageThreshold,
-    ui32 reassignFreshChannelsPercentageThreshold,
-    ui32 reassignMixedChannelsPercentageThreshold,
-    bool reassignSystemChannelsImmediately,
-    ui32 channelCount,
-    ui32 mixedIndexCacheSize,
-    ui64 allocationUnit,
-    ui32 maxBlobsPerUnit,
-    ui64 maxMixedBytesPerUnit,
-    ui32 maxBlobsPerRange,
-    ui32 compactionRangeCountPerRun,
-    TPartitionThreadSafeStatePtr threadSafeState,
-    ui64 tabletId,
-    const std::optional<TMixedBlocksFilterConfig> mixedBlocksFilterConfig,
-    bool checkpointAwareCleanupEnabled,
-    bool useBlobChannelDataKindForCounters)
+        NProto::TPartitionMeta meta,
+        ICompactionPolicyPtr compactionPolicy,
+        ui32 compactionScoreHistorySize,
+        ui32 cleanupScoreHistorySize,
+        const TBackpressureFeaturesConfig& bpConfig,
+        const TFreeSpaceConfig& freeSpaceConfig,
+        ui32 maxIORequestsInFlight,
+        ui32 reassignChannelsPercentageThreshold,
+        ui32 reassignFreshChannelsPercentageThreshold,
+        ui32 reassignMixedChannelsPercentageThreshold,
+        bool reassignSystemChannelsImmediately,
+        ui32 channelCount,
+        ui32 mixedIndexCacheSize,
+        ui64 allocationUnit,
+        ui32 maxBlobsPerUnit,
+        ui64 maxMixedBytesPerUnit,
+        ui32 maxBlobsPerRange,
+        ui32 compactionRangeCountPerRun,
+        TPartitionThreadSafeStatePtr threadSafeState,
+        ui64 tabletId,
+        const std::optional<TMixedBlocksFilterConfig>
+            mixedBlocksFilterConfig,
+        bool checkpointAwareCleanupEnabled,
+        bool useBlobChannelDataKindForCounters,
+        bool compactionStatsTrackerEnabled)
     : TPartitionChannelsState(
           meta.GetConfig(),
           freeSpaceConfig,
@@ -181,6 +183,10 @@ TPartitionState::TPartitionState(
     , CleanupScoreHistory(cleanupScoreHistorySize)
     , CheckpointAwareCleanupEnabled(checkpointAwareCleanupEnabled)
 {
+    if (compactionStatsTrackerEnabled) {
+        CompactionStatsTracker.emplace(tabletId, CompactionMap, UsedBlocks);
+    }
+
     if (mixedBlocksFilterConfig) {
         MixedBlocksFilter.emplace(
             tabletId,

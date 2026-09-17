@@ -745,6 +745,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MixedBlocksCountCompactionRangeCountPerRun, ui32,       1             )\
     xxx(SSDMaxMixedBytesPerUnit,                    ui64,       0             )\
     xxx(HDDMaxMixedBytesPerUnit,                    ui64,       0             )\
+    xxx(CompactionStatsTrackerEnabled,              bool,       false         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on
@@ -789,6 +790,7 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(DynamicGarbageCompactionThrottling)                                    \
     xxx(MixedBlocksFilter)                                                     \
     xxx(CheckpointAwareCleanup)                                                \
+    xxx(CompactionStatsTracker)                                                \
 
 // BLOCKSTORE_BINARY_FEATURES
 

@@ -86,9 +86,10 @@ TPartitionState MakeState(
         1,             // compactionRangeCountPerRun
         std::move(threadSafeState),
         TTestExecutor::TabletId,
-        std::nullopt,  // mixedBlocksFilterConfig
-        false,         // checkpointAwareCleanupEnabled
-        useBlobChannelDataKindForCounters
+        std::nullopt,   // mixedBlocksFilterConfig
+        false,          // checkpointAwareCleanupEnabled
+        useBlobChannelDataKindForCounters,
+        false   // compactionStatsTrackerEnabled
     );
 }
 

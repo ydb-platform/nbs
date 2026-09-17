@@ -540,6 +540,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsCompactionStatsTrackerFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -987,6 +992,8 @@ public:
     [[nodiscard]] ui64 GetSSDMaxMixedBytesPerUnit() const;
 
     [[nodiscard]] ui64 GetHDDMaxMixedBytesPerUnit() const;
+
+    [[nodiscard]] bool GetCompactionStatsTrackerEnabled() const;
 };
 
 ui64 GetAllocationUnit(

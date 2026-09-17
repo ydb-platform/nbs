@@ -2110,6 +2110,8 @@ void TPartitionActor::HandleCompaction(
         std::move(ranges),
         ctx.Now());
 
+    // Wait for all previous commits to complete before starting the new
+    // compaction.
     SharedState->WaitCommitForCompaction(ctx, std::move(tx), commitId);
 }
 
@@ -2147,6 +2149,12 @@ void TPartitionActor::HandleCompactionCompleted(
             filter->CompactionFailed();
         } else {
             filter->CompactionFinished();
+        }
+    }
+
+    if (auto* compactionStatsTracker = State->AccessCompactionStatsTracker()) {
+        if (HasError(msg->GetError())) {
+            compactionStatsTracker->AbortCompaction();
         }
     }
 
@@ -2233,6 +2241,18 @@ bool TPartitionActor::PrepareCompaction(
 {
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
+
+    if (auto* compactionStatsTracker = State->AccessCompactionStatsTracker()) {
+        TVector<ui32> rangeIndices;
+        for (auto& range: args.RangeCompactions) {
+            rangeIndices.push_back(range.RangeIdx);
+        }
+
+        compactionStatsTracker->StartCompaction(
+            args.CommitId,
+            std::move(rangeIndices));
+        compactionStatsTracker->ResetCompaction();
+    }
 
     const bool incrementalCompactionEnabled =
         Config->GetIncrementalCompactionEnabled() ||

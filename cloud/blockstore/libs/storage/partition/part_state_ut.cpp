@@ -1,8 +1,8 @@
 #include "part_state.h"
 
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/partition/part_schema.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
@@ -49,14 +49,14 @@ TBackpressureFeaturesConfig DefaultBPConfig()
 {
     return {
         {
-            30,     // compaction score limit
-            10,     // compaction score threshold
-            10,     // compaction score feature max value
+            30,   // compaction score limit
+            10,   // compaction score threshold
+            10,   // compaction score feature max value
         },
         {
-            1600_KB,// fresh byte count limit
-            400_KB, // fresh byte count threshold
-            10,     // fresh byte count feature max value
+            1600_KB,   // fresh byte count limit
+            400_KB,    // fresh byte count threshold
+            10,        // fresh byte count feature max value
         },
         {
             8_MB,   // cleanup queue size limit
@@ -76,8 +76,7 @@ TFreeSpaceConfig DefaultFreeSpaceConfig()
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNoBackpressurePolicy
-    : ICompactionPolicy
+struct TNoBackpressurePolicy: ICompactionPolicy
 {
     TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
@@ -95,17 +94,27 @@ struct TNoBackpressurePolicy
     }
 };
 
-// TODO: use this function in other tests.
+struct TPartitionStateOptions
+{
+    bool CheckpointAwareCleanupEnabled = false;
+    bool UseBlobChannelDataKindForCounters = false;
+    bool CompactionStatsTrackerEnabled = false;
+    ICompactionPolicyPtr CompactionPolicy = BuildDefaultCompactionPolicy(5, 0);
+    ui32 MixedIndexCacheSize = 0;
+    ui64 AllocationUnit = 10000;
+    ui32 MaxBlobsPerUnit = 100;
+    ui64 MaxMixedBytesPerUnit = 0;
+};
+
 TPartitionState MakeState(
     NProto::TPartitionMeta meta,
-    bool checkpointAwareCleanupEnabled = false,
-    bool useBlobChannelDataKindForCounters = false)
+    TPartitionStateOptions options = {})
 {
     const auto channelCount = meta.GetConfig().ExplicitChannelProfilesSize();
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
     return TPartitionState(
         std::move(meta),
-        BuildDefaultCompactionPolicy(5, 0),
+        std::move(options.CompactionPolicy),
         0,   // compactionScoreHistorySize
         0,   // cleanupScoreHistorySize
         DefaultBPConfig(),
@@ -116,26 +125,25 @@ TPartitionState MakeState(
         100,     // reassignMixedChannelsPercentageThreshold
         false,   // reassignSystemChannelsImmediately
         channelCount,
-        0,       // mixedIndexCacheSize
-        10000,   // allocationUnit
-        100,     // maxBlobsPerUnit
-        0,       // maxMixedBytesPerUnit
-        10,      // maxBlobsPerRange,
-        1,       // compactionRangeCountPerRun
+        options.MixedIndexCacheSize,
+        options.AllocationUnit,
+        options.MaxBlobsPerUnit,
+        options.MaxMixedBytesPerUnit,
+        10,   // maxBlobsPerRange,
+        1,    // compactionRangeCountPerRun
         std::move(threadSafeState),
         0,              // tabletId
         std::nullopt,   // mixedBlocksFilterConfig
-        checkpointAwareCleanupEnabled,
-        useBlobChannelDataKindForCounters);
+        options.CheckpointAwareCleanupEnabled,
+        options.UseBlobChannelDataKindForCounters,
+        options.CompactionStatsTrackerEnabled);
 }
 
 TPartitionState MakeState(
     size_t blockCount = DefaultBlockCount,
-    bool checkpointAwareCleanupEnabled = false)
+    TPartitionStateOptions options = {})
 {
-    return MakeState(
-        DefaultConfig(1, blockCount),
-        checkpointAwareCleanupEnabled);
+    return MakeState(DefaultConfig(1, blockCount), std::move(options));
 }
 
 struct TBlobAndBlockCounts
@@ -153,21 +161,37 @@ void AssertBlobAndBlockCounts(
     const TString& context = {})
 {
     UNIT_ASSERT_VALUES_EQUAL_C(
-        channel.MixedBlobs, stats.GetMixedBlobsCount(), context);
+        channel.MixedBlobs,
+        stats.GetMixedBlobsCount(),
+        context);
     UNIT_ASSERT_VALUES_EQUAL_C(
-        channel.MergedBlobs, stats.GetMergedBlobsCount(), context);
+        channel.MergedBlobs,
+        stats.GetMergedBlobsCount(),
+        context);
     UNIT_ASSERT_VALUES_EQUAL_C(
-        channel.MixedBlocks, stats.GetMixedBlocksCount(), context);
+        channel.MixedBlocks,
+        stats.GetMixedBlocksCount(),
+        context);
     UNIT_ASSERT_VALUES_EQUAL_C(
-        channel.MergedBlocks, stats.GetMergedBlocksCount(), context);
+        channel.MergedBlocks,
+        stats.GetMergedBlocksCount(),
+        context);
     UNIT_ASSERT_VALUES_EQUAL_C(
-        index.MixedBlobs, stats.GetMixedIndexBlobsCount(), context);
+        index.MixedBlobs,
+        stats.GetMixedIndexBlobsCount(),
+        context);
     UNIT_ASSERT_VALUES_EQUAL_C(
-        index.MergedBlobs, stats.GetMergedIndexBlobsCount(), context);
+        index.MergedBlobs,
+        stats.GetMergedIndexBlobsCount(),
+        context);
     UNIT_ASSERT_VALUES_EQUAL_C(
-        index.MixedBlocks, stats.GetMixedIndexBlocksCount(), context);
+        index.MixedBlocks,
+        stats.GetMixedIndexBlocksCount(),
+        context);
     UNIT_ASSERT_VALUES_EQUAL_C(
-        index.MergedBlocks, stats.GetMergedIndexBlocksCount(), context);
+        index.MergedBlocks,
+        stats.GetMergedIndexBlocksCount(),
+        context);
 }
 
 }   // namespace
@@ -176,6 +200,17 @@ void AssertBlobAndBlockCounts(
 
 Y_UNIT_TEST_SUITE(TPartitionStateTest)
 {
+    Y_UNIT_TEST(ShouldOnlyCreateCompactionStatsTrackerWhenEnabled)
+    {
+        auto disabledState = MakeState();
+        UNIT_ASSERT(!disabledState.AccessCompactionStatsTracker());
+
+        auto enabledState = MakeState(
+            DefaultBlockCount,
+            {.CompactionStatsTrackerEnabled = true});
+        UNIT_ASSERT(enabledState.AccessCompactionStatsTracker());
+    }
+
     Y_UNIT_TEST(ShouldInitializeMixedMergedBlobsAndBlocksCounts)
     {
         struct TTestCase
@@ -321,19 +356,21 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                     stats.SetMixedIndexBlocksCount(test.Index.MixedBlocks);
                     stats.SetMergedIndexBlocksCount(test.Index.MergedBlocks);
 
-                    const auto& expectedChannel = !useChannelCounters
-                        ? test.ExpectedChannelWhenDisabled
-                        : (hasMixedChannel ? test.ExpectedChannelWithMixed
-                                           : test.ExpectedChannelWithoutMixed);
+                    const auto& expectedChannel =
+                        !useChannelCounters
+                            ? test.ExpectedChannelWhenDisabled
+                            : (hasMixedChannel
+                                   ? test.ExpectedChannelWithMixed
+                                   : test.ExpectedChannelWithoutMixed);
 
-                    const auto context = TStringBuilder()
-                        << test.Name
-                        << ", hasMixedChannel=" << hasMixedChannel
+                    const auto context =
+                        TStringBuilder()
+                        << test.Name << ", hasMixedChannel=" << hasMixedChannel
                         << ", useChannelCounters=" << useChannelCounters;
                     auto state = MakeState(
                         meta,
-                        false,   // checkpointAwareCleanupEnabled
-                        useChannelCounters);
+                        {.UseBlobChannelDataKindForCounters =
+                             useChannelCounters});
                     AssertBlobAndBlockCounts(
                         state.GetStats(),
                         expectedChannel,
@@ -360,8 +397,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         for (bool useChannelCounters: {true, true, false, false, true, true}) {
             auto state = MakeState(
                 std::move(meta),
-                false,   // checkpointAwareCleanupEnabled
-                useChannelCounters);
+                {.UseBlobChannelDataKindForCounters = useChannelCounters});
             AssertBlobAndBlockCounts(
                 state.GetStats(),
                 useChannelCounters ? TBlobAndBlockCounts{0, 5, 0, 80}
@@ -403,9 +439,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         for (bool useChannelCounters: {false, true}) {
             auto state = MakeState(
-                DefaultConfig(1, DefaultBlockCount),
-                false,   // checkpointAwareCleanupEnabled
-                useChannelCounters);
+                DefaultBlockCount,
+                {.UseBlobChannelDataKindForCounters = useChannelCounters});
             auto& stats = state.AccessStats();
             stats.SetMixedIndexBlocksCount(7);
             stats.SetMergedIndexBlocksCount(11);
@@ -424,9 +459,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         for (bool useChannelCounters: {false, true}) {
             auto state = MakeState(
-                DefaultConfig(1, DefaultBlockCount),
-                false,   // checkpointAwareCleanupEnabled
-                useChannelCounters);
+                DefaultBlockCount,
+                {.UseBlobChannelDataKindForCounters = useChannelCounters});
             auto& stats = state.AccessStats();
             stats.SetMixedBlobsCount(1);
             stats.SetMergedBlobsCount(7);
@@ -448,33 +482,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
     Y_UNIT_TEST(CalculateCurrentBackpressure)
     {
-        auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>();
-        TPartitionState state(
-            DefaultConfig(1, 1000),
-            BuildDefaultCompactionPolicy(5, 0),
-            0,   // compactionScoreHistorySize
-            0,   // cleanupScoreHistorySize
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            Max(),   // maxIORequestsInFlight
-            0,       // reassignChannelsPercentageThreshold
-            100,     // reassignFreshChannelsPercentageThreshold
-            100,     // reassignMixedChannelsPercentageThreshold
-            false,   // reassignSystemChannelsImmediately
-            5,       // channelCount
-            0,       // mixedIndexCacheSize
-            10000,   // allocationUnit
-            100,     // maxBlobsPerUnit
-            0,       // maxMixedBytesPerUnit
-            10,      // maxBlobsPerRange,
-            1,       // compactionRangeCountPerRun
-            threadSafeState,
-            0,              // tabletId
-            std::nullopt,   // mixedBlocksFilterConfig
-            false,          // checkpointAwareCleanupEnabled
-            false           // useBlobChannelDataKindForCounters
-        );
+        auto state = MakeState(1000);
 
         const auto initialBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.FreshIndexScore);
@@ -487,8 +495,14 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111, {}});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
-        UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.FreshIndexScore, 1e-5);
-        UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CompactionScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            1,
+            marginalBackpressure.FreshIndexScore,
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            1,
+            marginalBackpressure.CompactionScore,
+            1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CleanupScore, 1e-5);
 
         // Backpressure caused by increased FreshBlobByteCount
@@ -523,33 +537,9 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
     Y_UNIT_TEST(CompactionBackpressureShouldBeZeroIfNotRequiredByPolicy)
     {
-        auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>();
-        TPartitionState state(
-            DefaultConfig(1, 1000),
-            std::make_shared<TNoBackpressurePolicy>(),
-            0,   // compactionScoreHistorySize
-            0,   // cleanupScoreHistorySize
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            Max(),   // maxIORequestsInFlight
-            0,       // reassignChannelsPercentageThreshold
-            100,     // reassignFreshChannelsPercentageThreshold
-            100,     // reassignMixedChannelsPercentageThreshold
-            false,   // reassignSystemChannelsImmediately
-            5,       // channelCount
-            0,       // mixedIndexCacheSize
-            10000,   // allocationUnit
-            100,     // maxBlobsPerUnit
-            0,       // maxMixedBytesPerUnit
-            10,      // maxBlobsPerRange,
-            1,       // compactionRangeCountPerRun
-            threadSafeState,
-            0,              // tabletId
-            std::nullopt,   // mixedBlocksFilterConfig
-            false,          // checkpointAwareCleanupEnabled
-            false           // useBlobChannelDataKindForCounters
-        );
+        auto state = MakeState(
+            1000,
+            {.CompactionPolicy = std::make_shared<TNoBackpressurePolicy>()});
 
         state.GetCompactionMap().Update(0, 30, 30, 30, 0, 0, false);
 
@@ -564,44 +554,17 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         config.MutableConfig()->SetBaseDiskId("baseDiskID");
         config.MutableConfig()->SetBaseDiskCheckpointId("baseDiskCheckpointId");
 
-        auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>();
-        TPartitionState state(
-            config,
-            BuildDefaultCompactionPolicy(5, 0),
-            0,   // compactionScoreHistorySize
-            0,   // cleanupScoreHistorySize
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            Max(),   // maxIORequestsInFlight
-            0,       // reassignChannelsPercentageThreshold
-            100,     // reassignFreshChannelsPercentageThreshold
-            100,     // reassignMixedChannelsPercentageThreshold
-            false,   // reassignSystemChannelsImmediately
-            5,       // channelCount
-            0,       // mixedIndexCacheSize
-            10000,   // allocationUnit
-            100,     // maxBlobsPerUnit
-            0,       // maxMixedBytesPerUnit
-            10,      // maxBlobsPerRange,
-            1,       // compactionRangeCountPerRun
-            threadSafeState,
-            0,             // tabletId
-            std::nullopt,  // mixedBlocksFilterConfig
-            false,          // checkpointAwareCleanupEnabled
-            false           // useBlobChannelDataKindForCounters
-        );
+        auto state = MakeState(std::move(config));
 
         state.GetLogicalUsedBlocks().Set(0, 9);
         state.IncrementLogicalUsedBlocksCount(10);
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
 
         executor.WriteTx(
-            [&](TPartitionDatabase db) {
+            [&](TPartitionDatabase db)
+            {
                 state.SetUsedBlocks(
                     db,
                     TBlockRange32::MakeClosedInterval(100, 110),
@@ -611,7 +574,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_EQUAL(21, state.GetLogicalUsedBlocksCount());
 
         executor.WriteTx(
-            [&](TPartitionDatabase db) {
+            [&](TPartitionDatabase db)
+            {
                 state.SetUsedBlocks(
                     db,
                     TBlockRange32::MakeClosedInterval(105, 130),
@@ -621,7 +585,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_EQUAL(41, state.GetLogicalUsedBlocksCount());
 
         executor.WriteTx(
-            [&](TPartitionDatabase db) {
+            [&](TPartitionDatabase db)
+            {
                 state.UnsetUsedBlocks(
                     db,
                     TBlockRange32::MakeClosedInterval(106, 115));
@@ -630,7 +595,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
 
         executor.WriteTx(
-            [&](TPartitionDatabase db) {
+            [&](TPartitionDatabase db)
+            {
                 state.UnsetUsedBlocks(
                     db,
                     TBlockRange32::MakeClosedInterval(109, 110));
@@ -638,50 +604,21 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT_EQUAL(21, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.SetUsedBlocks(db, {101, 102, 103, 106, 108});
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.SetUsedBlocks(db, {101, 102, 103, 106, 108}); });
         UNIT_ASSERT_EQUAL(23, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(33, state.GetLogicalUsedBlocksCount());
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.UnsetUsedBlocks(db, {108, 120, 250});
-        });
+        executor.WriteTx([&](TPartitionDatabase db)
+                         { state.UnsetUsedBlocks(db, {108, 120, 250}); });
         UNIT_ASSERT_EQUAL(21, state.GetUsedBlocksCount());
         UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
     }
 
     Y_UNIT_TEST(ShouldCorrectlyCalculateCheckpointBytes)
     {
-        auto config = DefaultConfig(1, 10_GB / DefaultBlockSize);
-
-        auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>();
-        TPartitionState state(
-            config,
-            BuildDefaultCompactionPolicy(5, 0),
-            0,   // compactionScoreHistorySize
-            0,   // cleanupScoreHistorySize
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            Max(),   // maxIORequestsInFlight
-            0,       // reassignChannelsPercentageThreshold
-            100,     // reassignFreshChannelsPercentageThreshold
-            100,     // reassignMixedChannelsPercentageThreshold
-            false,   // reassignSystemChannelsImmediately
-            1,       // channelCount
-            0,       // mixedIndexCacheSize
-            10000,   // allocationUnit
-            100,     // maxBlobsPerUnit
-            0,       // maxMixedBytesPerUnit
-            10,      // maxBlobsPerRange,
-            1,       // compactionRangeCountPerRun
-            threadSafeState,
-            0,              // tabletId
-            std::nullopt,   // mixedBlocksFilterConfig
-            false,          // checkpointAwareCleanupEnabled
-            false           // useBlobChannelDataKindForCounters
-        );
+        auto state = MakeState(10_GB / DefaultBlockSize);
 
         state.IncrementMergedBlocksCount(5_GB / DefaultBlockSize);
         TCheckpoint checkpoint;
@@ -704,64 +641,37 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     {
         auto config = DefaultConfig(1, 10_GB / DefaultBlockSize);
 
-        auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>();
-        TPartitionState state(
-            config,
-            BuildDefaultCompactionPolicy(5, 0),
-            0,   // compactionScoreHistorySize
-            0,   // cleanupScoreHistorySize
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            Max(),   // maxIORequestsInFlight
-            0,       // reassignChannelsPercentageThreshold
-            100,     // reassignFreshChannelsPercentageThreshold
-            100,     // reassignMixedChannelsPercentageThreshold
-            false,   // reassignSystemChannelsImmediately
-            5,       // channelCount
-            1,       // mixedIndexCacheSize
-            10000,   // allocationUnit
-            100,     // maxBlobsPerUnit
-            0,       // maxMixedBytesPerUnit
-            10,      // maxBlobsPerRange,
-            1,       // compactionRangeCountPerRun
-            threadSafeState,
-            0,              // tabletId
-            std::nullopt,   // mixedBlocksFilterConfig
-            false,          // checkpointAwareCleanupEnabled
-            false           // useBlobChannelDataKindForCounters
-        );
+        auto state = MakeState(std::move(config), {.MixedIndexCacheSize = 1});
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
 
         constexpr ui32 rangeIdx = 0;
         TVector<TMixedBlock> blocks = {
-            { {1, 1}, 1, 1, 1, 1},
-            { {2, 2}, 2, 2, 2, 2},
-            { {3, 3}, 3, 3, 3, 3},
-            { {4, 4}, 4, 4, 4, 4},
-            { {5, 5}, 5, 5, 5, 5}
-        };
+            {{1, 1}, 1, 1, 1, 1},
+            {{2, 2}, 2, 2, 2, 2},
+            {{3, 3}, 3, 3, 3, 3},
+            {{4, 4}, 4, 4, 4, 4},
+            {{5, 5}, 5, 5, 5, 5}};
 
-        auto mixedBlocksCompatator = [](const auto& lhs, const auto& rhs) {
+        auto mixedBlocksCompatator = [](const auto& lhs, const auto& rhs)
+        {
             return lhs.BlockIndex < rhs.BlockIndex;
         };
 
         // range is warm now: mixed blocks are not cached
         state.RaiseRangeTemperature(rangeIdx);
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.WriteMixedBlock(db, blocks[0]);
-            state.WriteMixedBlock(db, blocks[1]);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.WriteMixedBlock(db, blocks[0]);
+                state.WriteMixedBlock(db, blocks[1]);
+            });
 
         TVector<TMixedBlock> actual;
 
-        struct TVisitor final
-            : public IMixedBlocksIndexVisitor
+        struct TVisitor final: public IMixedBlocksIndexVisitor
         {
             TVector<TMixedBlock>& Blocks;
 
@@ -788,57 +698,64 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         } visitor{actual};
 
         // should read mixed blocks from db and place them into cache
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.FindMixedBlocksForCompaction(db, visitor, rangeIdx);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.FindMixedBlocksForCompaction(db, visitor, rangeIdx); });
 
         Sort(actual, mixedBlocksCompatator);
         ASSERT_VECTORS_EQUAL(
             TVector<TMixedBlock>({blocks[0], blocks[1]}),
-            actual
-        );
+            actual);
 
         // range is hot now
         state.RaiseRangeTemperature(rangeIdx);
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.DeleteMixedBlock(db, blocks[1].BlockIndex, blocks[1].CommitId);
-            state.WriteMixedBlock(db, blocks[2]);
-            state.WriteMixedBlock(db, blocks[3]);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.DeleteMixedBlock(
+                    db,
+                    blocks[1].BlockIndex,
+                    blocks[1].CommitId);
+                state.WriteMixedBlock(db, blocks[2]);
+                state.WriteMixedBlock(db, blocks[3]);
+            });
 
         actual.clear();
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.FindMixedBlocksForCompaction(db, visitor, rangeIdx);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.FindMixedBlocksForCompaction(db, visitor, rangeIdx); });
 
         Sort(actual, mixedBlocksCompatator);
         ASSERT_VECTORS_EQUAL(
             TVector<TMixedBlock>({blocks[0], blocks[2], blocks[3]}),
-            actual
-        );
+            actual);
 
         // kick range from cache
         state.RaiseRangeTemperature(rangeIdx + 1);
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.DeleteMixedBlock(db, blocks[2].BlockIndex, blocks[2].CommitId);
-            state.WriteMixedBlock(db, blocks[4]);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.DeleteMixedBlock(
+                    db,
+                    blocks[2].BlockIndex,
+                    blocks[2].CommitId);
+                state.WriteMixedBlock(db, blocks[4]);
+            });
 
         actual.clear();
 
         // should read from db
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.FindMixedBlocksForCompaction(db, visitor, rangeIdx);
-        });
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.FindMixedBlocksForCompaction(db, visitor, rangeIdx); });
 
         Sort(actual, mixedBlocksCompatator);
         ASSERT_VECTORS_EQUAL(
             TVector<TMixedBlock>({blocks[0], blocks[3], blocks[4]}),
-            actual
-        );
+            actual);
     }
 
     void CheckMaxBlobsPerDisk(
@@ -853,33 +770,14 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         auto config = DefaultConfig(1, diskSize / blockSize);
         config.MutableConfig()->SetBlockSize(blockSize);
 
-        auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>();
-        TPartitionState state(
-            config,
-            BuildDefaultCompactionPolicy(5, 0),
-            0,   // compactionScoreHistorySize
-            0,   // cleanupScoreHistorySize
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            Max(),             // maxIORequestsInFlight
-            0,                 // reassignChannelsPercentageThreshold
-            100,               // reassignFreshChannelsPercentageThreshold
-            100,               // reassignMixedChannelsPercentageThreshold
-            false,             // reassignSystemChannelsImmediately
-            5,                 // channelCount
-            1,                 // mixedIndexCacheSize
-            allocationUnit,    // allocationUnit
-            maxBlobsPerUnit,   // maxBlobsPerUnit
-            maxMixedBytesPerUnit,   // maxMixedBytesPerUnit
-            10,                // maxBlobsPerRange,
-            1,                 // compactionRangeCountPerRun
-            threadSafeState,
-            0,              // tabletId
-            std::nullopt,   // mixedBlocksFilterConfig
-            false,          // checkpointAwareCleanupEnabled
-            false           // useBlobChannelDataKindForCounters
-        );
+        auto state = MakeState(
+            std::move(config),
+            {
+                .MixedIndexCacheSize = 1,
+                .AllocationUnit = allocationUnit,
+                .MaxBlobsPerUnit = maxBlobsPerUnit,
+                .MaxMixedBytesPerUnit = maxMixedBytesPerUnit,
+            });
         UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
         UNIT_ASSERT_VALUES_EQUAL(
             maxMixedBlocksPerDisk,
@@ -916,36 +814,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
 
     Y_UNIT_TEST(ShouldTrackCleanupQueueBlockCount)
     {
-        auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>();
-        TPartitionState state(
-            DefaultConfig(1, 1000),
-            BuildDefaultCompactionPolicy(5, 0),
-            0,   // compactionScoreHistorySize
-            0,   // cleanupScoreHistorySize
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            Max(),   // maxIORequestsInFlight
-            0,       // reassignChannelsPercentageThreshold
-            100,     // reassignFreshChannelsPercentageThreshold
-            100,     // reassignMixedChannelsPercentageThreshold
-            false,   // reassignSystemChannelsImmediately
-            5,       // channelCount
-            0,       // mixedIndexCacheSize
-            10000,   // allocationUnit
-            100,     // maxBlobsPerUnit
-            0,       // maxMixedBytesPerUnit
-            10,      // maxBlobsPerRange,
-            1,       // compactionRangeCountPerRun
-            threadSafeState,
-            0,              // tabletId
-            std::nullopt,   // mixedBlocksFilterConfig
-            false,          // checkpointAwareCleanupEnabled
-            false           // useBlobChannelDataKindForCounters
-        );
+        auto state = MakeState(1000);
 
-        TCleanupQueueItem b1 {{1, 1, 4, 4_MB, 0, 0}, 111, {}};
-        TCleanupQueueItem b2 {{1, 2, 4, 4096, 0, 0}, 112, {}};
+        TCleanupQueueItem b1{{1, 1, 4, 4_MB, 0, 0}, 111, {}};
+        TCleanupQueueItem b2{{1, 2, 4, 4096, 0, 0}, 112, {}};
 
         state.GetCleanupQueue().Add(b2);
         state.GetCleanupQueue().Add(b1);
@@ -955,45 +827,15 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             state.GetCleanupQueue().GetQueueBlocks());
 
         state.GetCleanupQueue().Remove(b1);
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            state.GetCleanupQueue().GetQueueBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetCleanupQueue().GetQueueBlocks());
 
         state.GetCleanupQueue().Remove(b2);
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            state.GetCleanupQueue().GetQueueBlocks());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetQueueBlocks());
     }
 
     Y_UNIT_TEST(ShouldCalculateNewlyZeroedBlocks)
     {
-        auto threadSafeState =
-            std::make_shared<TPartitionThreadSafeState>();
-        TPartitionState state(
-            DefaultConfig(1, DefaultBlockCount),
-            BuildDefaultCompactionPolicy(5, 0),
-            0,   // compactionScoreHistorySize
-            0,   // cleanupScoreHistorySize
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            Max(),   // maxIORequestsInFlight
-            0,       // reassignChannelsPercentageThreshold
-            100,     // reassignFreshChannelsPercentageThreshold
-            100,     // reassignMixedChannelsPercentageThreshold
-            false,   // reassignSystemChannelsImmediately
-            5,       // channelCount
-            0,       // mixedIndexCacheSize
-            10000,   // allocationUnit
-            100,     // maxBlobsPerUnit
-            0,       // maxMixedBytesPerUnit
-            10,      // maxBlobsPerRange,
-            1,       // compactionRangeCountPerRun
-            threadSafeState,
-            0,              // tabletId
-            std::nullopt,   // mixedBlocksFilterConfig
-            false,          // checkpointAwareCleanupEnabled
-            false           // useBlobChannelDataKindForCounters
-        );
+        auto state = MakeState();
 
         const ui32 blockIndex = 0;
 
@@ -1069,8 +911,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             }
         };
 
-        auto disabled = MakeState(DefaultBlockCount, false);
-        auto enabled = MakeState(DefaultBlockCount, true);
+        auto disabled = MakeState();
+        auto enabled = MakeState(
+            DefaultBlockCount,
+            {.CheckpointAwareCleanupEnabled = true});
         generateCommitIds(disabled);
         generateCommitIds(enabled);
 
@@ -1117,13 +961,14 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 {{1, 3, 4, 4_KB, 0, 0}, MakeCommitId(0, 30), {}});
         };
 
-        auto enabled = MakeState(DefaultBlockCount, true);
+        auto enabled = MakeState(
+            DefaultBlockCount,
+            {.CheckpointAwareCleanupEnabled = true});
         auto disabled = MakeState();
 
         const ui64 cleanupCommitId = MakeCommitId(0, 100);
-        UNIT_ASSERT(!enabled.HasBlobCountToCleanupReachedThreshold(
-            cleanupCommitId,
-            1));
+        UNIT_ASSERT(
+            !enabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 1));
         UNIT_ASSERT(!disabled.HasBlobCountToCleanupReachedThreshold(
             cleanupCommitId,
             1));
@@ -1134,12 +979,10 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         UNIT_ASSERT(!enabled.HasBlobCountToCleanupReachedThreshold(
             MakeCommitId(0, 15),
             2));
-        UNIT_ASSERT(enabled.HasBlobCountToCleanupReachedThreshold(
-            cleanupCommitId,
-            3));
-        UNIT_ASSERT(disabled.HasBlobCountToCleanupReachedThreshold(
-            cleanupCommitId,
-            3));
+        UNIT_ASSERT(
+            enabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 3));
+        UNIT_ASSERT(
+            disabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 3));
 
         // Default milestone bounds are (0, 0), so the update is applied.
         const TPartialBlobId milestoneBlobId(1, 2, 4, 4_KB, 0, 0);
@@ -1155,23 +998,22 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
             0);
 
         // Checkpoint-aware cleanup respects the milestone.
-        UNIT_ASSERT(!enabled.HasBlobCountToCleanupReachedThreshold(
-            cleanupCommitId,
-            2));
-        UNIT_ASSERT(enabled.HasBlobCountToCleanupReachedThreshold(
-            cleanupCommitId,
-            1));
+        UNIT_ASSERT(
+            !enabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 2));
+        UNIT_ASSERT(
+            enabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 1));
 
         // Non-checkpoint-aware cleanup ignores the milestone and still sees
         // all blobs.
-        UNIT_ASSERT(disabled.HasBlobCountToCleanupReachedThreshold(
-            cleanupCommitId,
-            3));
+        UNIT_ASSERT(
+            disabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 3));
     }
 
     Y_UNIT_TEST(ShouldUpdateCleanupMilestoneIfNeeded)
     {
-        auto state = MakeState(DefaultBlockCount, true);
+        auto state = MakeState(
+            DefaultBlockCount,
+            {.CheckpointAwareCleanupEnabled = true});
         auto disabled = MakeState();
 
         const ui64 minCheckpointCommitId = MakeCommitId(0, 10);
@@ -1285,12 +1127,18 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         // Flag is disabled: milestone bounds stay at the default.
         UNIT_ASSERT_VALUES_EQUAL(
             0u,
-            disabled.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+            disabled.GetMeta()
+                .GetCleanupMilestone()
+                .GetMinCheckpointCommitId());
         UNIT_ASSERT_VALUES_EQUAL(
             0u,
-            disabled.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+            disabled.GetMeta()
+                .GetCleanupMilestone()
+                .GetMaxCheckpointCommitId());
 
-        auto state = MakeState(DefaultBlockCount, true);
+        auto state = MakeState(
+            DefaultBlockCount,
+            {.CheckpointAwareCleanupEnabled = true});
 
         const ui64 checkpointCommitId = MakeCommitId(0, 10);
         state.AccessCheckpoints().Add(
@@ -1373,6 +1221,6 @@ inline void Out<NCloud::NBlockStore::NStorage::NPartition::TMixedBlock>(
     IOutputStream& out,
     const NCloud::NBlockStore::NStorage::NPartition::TMixedBlock& b)
 {
-    out << "[" << b.BlockIndex << ", " << b.CommitId << ", "
-        << b.BlobId << ", " << b.BlobOffset << "]";
+    out << "[" << b.BlockIndex << ", " << b.CommitId << ", " << b.BlobId << ", "
+        << b.BlobOffset << "]";
 }
