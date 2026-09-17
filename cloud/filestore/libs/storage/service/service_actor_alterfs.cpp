@@ -849,8 +849,13 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             FileStoreConfig.ShardConfigs.size());
 
         if (PersistentShardCreationStateSupported) {
-            ShardCreationState.SetupCreatedShardBitmap(
-                FileStoreConfig.ShardConfigs.size());
+            auto error = ShardCreationState.SetupCreatedShardBitmap(
+                ExistingShardIds.size(),
+                FileStoreConfig.ShardConfigs);
+            if (HasError(error)) {
+                ReplyAndDie(ctx, error);
+                return;
+            }
         }
 
         ShardsToCreate =

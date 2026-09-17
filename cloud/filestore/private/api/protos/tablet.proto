@@ -1111,6 +1111,16 @@ message TFileSystemShardCreationState
     optional uint32 Version = 1;
 
     TCompressedBitmapData CreatedShardBitmap = 2;
+
+    // CreatedShardBitmap bits are relative to this shard index.
+    uint32 BaseShardCount = 3;
+
+    // Exclusive upper bound for the target shard range.
+    uint32 TargetShardCount = 4;
+
+    // Hash of target shard create configs in
+    // [BaseShardCount, TargetShardCount).
+    uint64 TargetShardConfigHash = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

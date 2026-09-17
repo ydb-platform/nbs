@@ -493,8 +493,13 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
     if (!InitialShardCreationStateRead) {
         ShardCreationState.SetShardCreationState(shardCreationState);
         InitialShardCreationStateRead = true;
-        ShardCreationState.SetupCreatedShardBitmap(
-            FileStoreConfig.ShardConfigs.size());
+        auto error = ShardCreationState.SetupCreatedShardBitmap(
+            0,
+            FileStoreConfig.ShardConfigs);
+        if (HasError(error)) {
+            ReplyAndDie(ctx, error);
+            return;
+        }
         CreateShards(ctx);
         return;
     }

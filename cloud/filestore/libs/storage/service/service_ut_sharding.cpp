@@ -142,6 +142,10 @@ bool IsShardCreatedInShardCreationState(
     const NProtoPrivate::TFileSystemShardCreationState& state,
     const ui32 shardIndex)
 {
+    if (shardIndex >= state.GetTargetShardCount()) {
+        return false;
+    }
+
     const auto& proto = state.GetCreatedShardBitmap();
     const ui64 bitCount = Max<ui64>(
         proto.GetBitCount(),
