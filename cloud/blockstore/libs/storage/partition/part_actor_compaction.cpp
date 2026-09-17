@@ -1289,6 +1289,7 @@ class TCompactionTriggerer
 {
 private:
     const TStorageConfigConstPtr Config;
+    const bool MixedBlocksCountCompactionEnabled;
     TPartitionState& State;
 
     TRangeStat TopRangeStat;
@@ -1344,9 +1345,11 @@ public:
 public:
     TCompactionTriggerer(
         const TStorageConfigConstPtr config,
+        const bool mixedBlocksCountCompactionEnabled,
         TPartitionState& state,
         TInstant now)
         : Config(config)
+        , MixedBlocksCountCompactionEnabled(mixedBlocksCountCompactionEnabled)
         , State(state)
     {
         const auto& cm = State.GetCompactionMap();
@@ -1565,10 +1568,7 @@ private:
     {
         const auto mediaKind = State.GetConfig().GetStorageMediaKind();
         const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
-        const bool enabled =
-            isSSD ? Config->GetMixedBlocksCountCompactionEnabledSSD()
-                  : Config->GetMixedBlocksCountCompactionEnabledHDD();
-        if (!enabled) {
+        if (!MixedBlocksCountCompactionEnabled) {
             return std::nullopt;
         }
 
@@ -1849,7 +1849,11 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
     }
 
     auto now = ctx.Now();
-    TCompactionTriggerer triggerer(Config, *State, now);
+    TCompactionTriggerer triggerer(
+        Config,
+        IsMixedBlocksCountCompactionEnabled(),
+        *State,
+        now);
 
     auto info = triggerer.TriggerCompactionIfNeeded();
     if (!info) {

@@ -13929,6 +13929,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetIncrementalCompactionEnabled(true);
         config.SetMaxSkippedBlobsDuringCompactionHDD(1);
         config.SetTargetCompactionBytesPerOp(1);
+        config.SetMixedBlocksCountCompactionEnabledHDD(true);
 
         auto runtime = PrepareTestActorRuntime(
             config,
@@ -13967,6 +13968,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(85, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
         }
+
+        // 55 blocks from the skipped blob and 30 blocks from the compacted
+        // blobs must all remain in the range's mixed-block counter.
+        auto counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(85, counters->Counters.MixedBlockCount);
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(85, counters->Counters.MixedBlockCount);
 
         for (ui32 i = 12; i < 45; ++i) {
             UNIT_ASSERT_VALUES_EQUAL(
