@@ -225,7 +225,7 @@ func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
 	}
 
 	return slices.Contains(cells.GetCells(), cellID) ||
-		slices.Contains(maps.Values(cells.GetDiskKindCellOverride()), cellID)
+		slices.Contains(maps.Values(cells.GetDiskKindDedicatedCell()), cellID)
 }
 
 func (s *cellSelector) ResolveCells(zoneID string) ([]string, error) {
@@ -247,7 +247,7 @@ func (s *cellSelector) getCells(zoneID string) []string {
 	return cells.Cells
 }
 
-func (s *cellSelector) getDiskKindCell(
+func (s *cellSelector) getDiskKindDedicatedCell(
 	zoneID string,
 	kind types.DiskKind,
 ) (string, bool) {
@@ -258,8 +258,20 @@ func (s *cellSelector) getDiskKindCell(
 	}
 
 	kindStr := common.DiskKindToString(kind)
-	cellID, ok := cells.GetDiskKindCellOverride()[kindStr]
+	cellID, ok := cells.GetDiskKindDedicatedCell()[kindStr]
 	return cellID, ok
+}
+
+func (s *cellSelector) getDedicatedCellDiskKind(cellID string) (string, bool) {
+	for _, cells := range s.config.GetCells() {
+		for kind, dedicatedCellID := range cells.GetDiskKindDedicatedCell() {
+			if dedicatedCellID == cellID {
+				return kind, true
+			}
+		}
+	}
+
+	return "", false
 }
 
 func (s *cellSelector) isFolderAllowed(folderID string) bool {
@@ -329,8 +341,18 @@ func (s *cellSelector) selectCellForDisk(
 		return zoneID, nil
 	}
 
-	if cellID, ok := s.getDiskKindCell(zoneID, kind); ok {
+	cellID, ok := s.getDiskKindDedicatedCell(zoneID, kind)
+	if ok && !requireExactCellIDMatch {
 		return cellID, nil
+	}
+
+	dedicatedKind, ok := s.getDedicatedCellDiskKind(zoneID)
+	if ok && dedicatedKind != common.DiskKindToString(kind) {
+		return "", errors.NewNonCancellableErrorf(
+			"cell %q is dedicated to %v disks",
+			zoneID,
+			dedicatedKind,
+		)
 	}
 
 	if !s.isFolderAllowed(folderID) {
@@ -441,6 +463,15 @@ func (s *cellSelector) selectCellForPlacementGroup(
 
 	if s.config == nil {
 		return zoneID, nil
+	}
+
+	dedicatedKind, ok := s.getDedicatedCellDiskKind(zoneID)
+	if ok {
+		return "", errors.NewNonCancellableErrorf(
+			"cell %q is dedicated to %v disks",
+			zoneID,
+			dedicatedKind,
+		)
 	}
 
 	cells, err := s.ResolveCells(zoneID)

@@ -227,6 +227,19 @@ func validateSsdDirectMirror3Of5GroupDiskCreation(
 		)
 	}
 
+	if len(req.PlacementGroupId) != 0 {
+		return common.NewInvalidArgumentError(
+			"ssd-direct-mirror3of5-group disks don't support placement groups",
+		)
+	}
+
+	if req.EncryptionDesc != nil &&
+		req.EncryptionDesc.Mode != disk_manager.EncryptionMode_NO_ENCRYPTION {
+		return common.NewInvalidArgumentError(
+			"ssd-direct-mirror3of5-group disks don't support encryption",
+		)
+	}
+
 	return nil
 }
 

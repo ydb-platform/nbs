@@ -482,3 +482,51 @@ func TestCreateDiskSsdDirectMirror3Of5GroupRejectsImageSource(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorContains(t, err, "can only be created empty")
 }
+
+func TestCreateDiskSsdDirectMirror3Of5GroupRejectsPlacementGroup(t *testing.T) {
+	ctx := context.Background()
+	diskService := &service{
+		config: &disks_config.DisksConfig{},
+	}
+
+	_, err := diskService.CreateDisk(ctx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size:             4096,
+		Kind:             disk_manager.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
+		StoragePoolName:  "ddp1",
+		PlacementGroupId: "pg",
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "don't support placement groups")
+}
+
+func TestCreateDiskSsdDirectMirror3Of5GroupRejectsEncryption(t *testing.T) {
+	ctx := context.Background()
+	diskService := &service{
+		config: &disks_config.DisksConfig{},
+	}
+
+	_, err := diskService.CreateDisk(ctx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size:            4096,
+		Kind:            disk_manager.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
+		StoragePoolName: "ddp1",
+		EncryptionDesc: &disk_manager.EncryptionDesc{
+			Mode: disk_manager.EncryptionMode_ENCRYPTION_WITH_ROOT_KMS_PROVIDED_KEY,
+		},
+		DiskId: &disk_manager.DiskId{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+	})
+	require.Error(t, err)
+	require.ErrorContains(t, err, "don't support encryption")
+}

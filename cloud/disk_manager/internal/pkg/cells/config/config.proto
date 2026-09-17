@@ -16,7 +16,7 @@ enum CellSelectionPolicy {
 message ZoneCells {
     repeated string Cells = 1;
 
-    map<string, string> DiskKindCellOverride = 2;
+    map<string, string> DiskKindDedicatedCell = 2;
 }
 
 message CellsConfig {

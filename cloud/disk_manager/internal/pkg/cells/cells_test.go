@@ -241,7 +241,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 	require.Empty(t, selectedCell)
 }
 
-func TestCellSelectorSelectsDiskKindCellOverride(t *testing.T) {
+func TestCellSelectorSelectsDiskKindDedicatedCell(t *testing.T) {
 	ctx := newContext()
 
 	const directCellID = "zone-a-direct"
@@ -251,7 +251,7 @@ func TestCellSelectorSelectsDiskKindCellOverride(t *testing.T) {
 		Cells: map[string]*cells_config.ZoneCells{
 			shardedZoneID: {
 				Cells: []string{cellID1, cellID2},
-				DiskKindCellOverride: map[string]string{
+				DiskKindDedicatedCell: map[string]string{
 					"ssd-direct-mirror3of5-group": directCellID,
 				},
 			},
@@ -284,11 +284,30 @@ func TestCellSelectorSelectsDiskKindCellOverride(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, directCellID, selectedCell)
 
-	// Dedicated cell is used regardless of folder lists and exact match.
 	selectedCell, err = selector.selectCellForDisk(
 		ctx,
 		shardedZoneID,
 		"denied-folder",
+		types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
+		false, // requireExactCellIDMatch
+	)
+	require.NoError(t, err)
+	require.Equal(t, directCellID, selectedCell)
+
+	selectedCell, err = selector.selectCellForDisk(
+		ctx,
+		shardedZoneID,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
+		true, // requireExactCellIDMatch
+	)
+	require.NoError(t, err)
+	require.Equal(t, shardedZoneID, selectedCell)
+
+	selectedCell, err = selector.selectCellForDisk(
+		ctx,
+		directCellID,
+		"folder",
 		types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP,
 		true, // requireExactCellIDMatch
 	)
@@ -304,6 +323,27 @@ func TestCellSelectorSelectsDiskKindCellOverride(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, directCellID, selectedCell)
+
+	_, err = selector.selectCellForDisk(
+		ctx,
+		directCellID,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+		false, // requireExactCellIDMatch
+	)
+	require.ErrorContains(t, err, "is dedicated to ssd-direct-mirror3of5-group disks")
+
+	_, err = selector.selectCellForDisk(
+		ctx,
+		directCellID,
+		"folder",
+		types.DiskKind_DISK_KIND_SSD,
+		true, // requireExactCellIDMatch
+	)
+	require.ErrorContains(t, err, "is dedicated to ssd-direct-mirror3of5-group disks")
+
+	_, err = selector.selectCellForPlacementGroup(ctx, directCellID)
+	require.ErrorContains(t, err, "is dedicated to ssd-direct-mirror3of5-group disks")
 
 	require.True(t, selector.ZoneContainsCell(shardedZoneID, directCellID))
 	require.False(t, selector.ZoneContainsCell(otherZoneID, directCellID))
