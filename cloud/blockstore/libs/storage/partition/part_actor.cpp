@@ -1108,16 +1108,6 @@ bool TPartitionActor::IsCheckpointAwareCleanupEnabled() const
                PartitionConfig.GetDiskId());
 }
 
-bool TPartitionActor::IsMixedBlocksCountCompactionEnabled() const
-{
-    const auto mediaKind = State->GetConfig().GetStorageMediaKind();
-    const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
-    const bool enabled =
-        isSSD ? Config->GetMixedBlocksCountCompactionEnabledSSD()
-              : Config->GetMixedBlocksCountCompactionEnabledHDD();
-    return enabled;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TPartitionActor::StateBoot)
@@ -1636,6 +1626,29 @@ void TPartitionActor::HandleReassignChannelsIfNeeded(
 {
     Y_UNUSED(ev);
     ReassignChannelsIfNeeded(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsMixedBlocksCountCompactionEnabled(
+    const TStorageConfigConstPtr config,
+    const NProto::TPartitionConfig partitionConfig)
+{
+    const auto mediaKind = partitionConfig.GetStorageMediaKind();
+    const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+    const bool enabled =
+        isSSD ? config->GetMixedBlocksCountCompactionEnabledSSD()
+              : config->GetMixedBlocksCountCompactionEnabledHDD();
+    const bool enabledByFeature =
+        isSSD ? config->IsMixedBlocksCountCompactionSSDFeatureEnabled(
+                    partitionConfig.GetCloudId(),
+                    partitionConfig.GetFolderId(),
+                    partitionConfig.GetDiskId())
+              : config->IsMixedBlocksCountCompactionHDDFeatureEnabled(
+                    partitionConfig.GetCloudId(),
+                    partitionConfig.GetFolderId(),
+                    partitionConfig.GetDiskId());
+    return enabled || enabledByFeature;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -326,7 +326,7 @@ void TPartitionActor::CompleteLoadState(
     } else {
         // If mixed blocks count compaction is disabled, we need to reset
         // potentially stale mixed block counts.
-        if (!IsMixedBlocksCountCompactionEnabled()) {
+        if (!IsMixedBlocksCountCompactionEnabled(Config, PartitionConfig)) {
             for (auto& counter: args.CompactionMap) {
                 counter.Stat.MixedBlockCount = 0;
             }
@@ -522,7 +522,7 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
 {
     // If mixed blocks count compaction is disabled, we need to reset
     // potentially stale mixed block counts.
-    if (!IsMixedBlocksCountCompactionEnabled()) {
+    if (!IsMixedBlocksCountCompactionEnabled(Config, PartitionConfig)) {
         for (auto& counter: args.Counters) {
             counter.Stat.MixedBlockCount = 0;
         }

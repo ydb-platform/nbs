@@ -1007,7 +1007,7 @@ void TPartitionActor::ExecuteAddBlobs(
         State->GetMaxBlocksInBlob(),
         Config
             ->GetWaitForFreshWritesBeforeFlushEnabled(),   // useFlushCommitIdAsTrimFreshLogToCommitId
-        IsMixedBlocksCountCompactionEnabled(),
+        IsMixedBlocksCountCompactionEnabled(Config, PartitionConfig),
         LogTitle.GetChild(GetCycleCount()));
     executor.Execute(ctx, db);
 }

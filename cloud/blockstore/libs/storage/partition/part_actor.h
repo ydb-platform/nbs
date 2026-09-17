@@ -500,7 +500,6 @@ private:
     [[nodiscard]] bool IsDynamicGarbageCompactionThrottlingEnabled() const;
     [[nodiscard]] bool IsMixedBlocksFilterEnabled() const;
     [[nodiscard]] bool IsCheckpointAwareCleanupEnabled() const;
-    [[nodiscard]] bool IsMixedBlocksCountCompactionEnabled() const;
 
     void ProcessStorageStatusFlags(
         const NActors::TActorContext& ctx,
@@ -864,5 +863,9 @@ NProto::TError VerifyBlockChecksum(
     const ui16 blobOffset,
     const ui32 expectedChecksum,
     const TVolumeLabelsConstPtr& volumeLabels);
+
+[[nodiscard]] bool IsMixedBlocksCountCompactionEnabled(
+    const TStorageConfigConstPtr config,
+    const NProto::TPartitionConfig partitionConfig);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition
