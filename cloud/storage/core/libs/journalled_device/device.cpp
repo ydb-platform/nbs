@@ -1,7 +1,8 @@
 #include "device.h"
 
 #include <util/generic/hash.h>
-#include <util/system/spinlock.h>
+
+#include <mutex>
 
 namespace NCloud::NJournalled {
 
@@ -16,7 +17,7 @@ class TInMemoryDevice final: public IDevice
 private:
     const ui32 PageSize;
 
-    TAdaptiveLock Lock;
+    std::mutex Lock;
     THashMap<ui64 /*pageNo*/, TBuffer> Pages;
 
 public:
@@ -29,7 +30,9 @@ public:
     {
         TVector<TBuffer> pages;
 
-        with_lock (Lock) {
+        {
+            std::lock_guard lock(Lock);
+
             for (const auto& ref: rangeRefs) {
                 for (ui64 i = 0; i < ref.PageCount; ++i) {
                     auto it = Pages.find(ref.FirstPageNo + i);
@@ -50,7 +53,9 @@ public:
     TFuture<NCloud::NProto::TError> WritePages(
         TVector<TPageRange> ranges) override
     {
-        with_lock (Lock) {
+        {
+            std::lock_guard lock(Lock);
+
             for (auto& range: ranges) {
                 ui64 pageNo = range.FirstPageNo;
                 for (auto& page: range.Pages) {

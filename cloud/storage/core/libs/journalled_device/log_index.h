@@ -6,8 +6,8 @@
 
 #include <util/generic/map.h>
 #include <util/generic/vector.h>
-#include <util/system/spinlock.h>
 
+#include <mutex>
 #include <utility>
 
 namespace NCloud::NJournalled {
@@ -25,7 +25,7 @@ private:
 
     using TEntries = TMap<ui64 /*pageNo*/, TEntry>;
 
-    mutable TAdaptiveLock Lock;
+    mutable std::mutex Lock;
     ui64 LastIndexedLsn = 0;
     TEntries Entries;
 

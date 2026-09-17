@@ -247,12 +247,19 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         // The contract readers rely on: while a barrier is held,
         // GetBarrierLsn() never moves past it, so records with a greater lsn
         // stay alive.
+        //
+        // As in the device, the lsn advances rarely (once per log record
+        // written) while barriers are acquired on every read. The writer is
+        // paced by the readers' progress, so it can neither hog the lock nor
+        // outlive them.
         constexpr ui64 ReaderCount = 4;
         constexpr ui64 IterationCount = 2000;
+        constexpr ui64 AdvanceCount = 100;
+        constexpr ui64 TotalIterations = ReaderCount * IterationCount;
 
         TLsnBarrier barrier;
 
-        std::atomic<bool> stop = false;
+        std::atomic<ui64> iterationsDone = 0;
         std::atomic<ui64> contractViolations = 0;
         std::atomic<ui64> orderViolations = 0;
 
@@ -277,6 +284,8 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
                         if (barrierLsn > GetCurrentLsn(barrier)) {
                             ++orderViolations;
                         }
+
+                        ++iterationsDone;
                     }
                 });
         }
@@ -284,26 +293,29 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         std::thread writer(
             [&]
             {
-                ui64 lsn = 0;
-                while (!stop.load(std::memory_order_relaxed)) {
-                    barrier.Advance(++lsn);
+                for (ui64 lsn = 1; lsn <= AdvanceCount; ++lsn) {
+                    // wait for the readers to get through the next slice of
+                    // their work before moving the lsn on
+                    const ui64 due = lsn * TotalIterations / AdvanceCount;
+                    while (iterationsDone.load() < due) {
+                        std::this_thread::yield();
+                    }
+
+                    barrier.Advance(lsn);
                 }
             });
 
         for (auto& reader: readers) {
             reader.join();
         }
-
-        stop.store(true, std::memory_order_relaxed);
         writer.join();
 
         UNIT_ASSERT_VALUES_EQUAL(0, contractViolations.load());
         UNIT_ASSERT_VALUES_EQUAL(0, orderViolations.load());
 
         // every barrier was released, so nothing is held any more
-        UNIT_ASSERT_VALUES_EQUAL(
-            GetCurrentLsn(barrier),
-            barrier.GetBarrierLsn());
+        UNIT_ASSERT_VALUES_EQUAL(AdvanceCount, GetCurrentLsn(barrier));
+        UNIT_ASSERT_VALUES_EQUAL(AdvanceCount, barrier.GetBarrierLsn());
     }
 }
 

@@ -10,14 +10,16 @@ namespace NCloud::NJournalled {
 
 void TLogPageIndex::InitLastIndexedLsn(ui64 lastIndexedLsn)
 {
-    with_lock (Lock) {
-        LastIndexedLsn = lastIndexedLsn;
-    }
+    std::lock_guard lock(Lock);
+
+    LastIndexedLsn = lastIndexedLsn;
 }
 
 bool TLogPageIndex::TryApplyNext(const TLogRecord& record)
 {
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         if (record.PrevLsn != LastIndexedLsn) {
             return false;
         }
@@ -41,22 +43,22 @@ bool TLogPageIndex::TryApplyNext(const TLogRecord& record)
 
 void TLogPageIndex::EraseUpTo(ui64 lsn)
 {
-    with_lock (Lock) {
-        for (auto it = Entries.begin(); it != Entries.end();) {
-            if (it->second.Lsn <= lsn) {
-                it = Entries.erase(it);
-            } else {
-                ++it;
-            }
+    std::lock_guard lock(Lock);
+
+    for (auto it = Entries.begin(); it != Entries.end();) {
+        if (it->second.Lsn <= lsn) {
+            it = Entries.erase(it);
+        } else {
+            ++it;
         }
     }
 }
 
 ui64 TLogPageIndex::GetLastIndexedLsn() const
 {
-    with_lock (Lock) {
-        return LastIndexedLsn;
-    }
+    std::lock_guard lock(Lock);
+
+    return LastIndexedLsn;
 }
 
 auto TLogPageIndex::Lookup(
@@ -65,7 +67,9 @@ auto TLogPageIndex::Lookup(
 {
     TLookupResult result;
 
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         result.LastIndexedLsn = LastIndexedLsn;
 
         if (afterLsn >= LastIndexedLsn) {

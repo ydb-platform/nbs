@@ -1,7 +1,8 @@
 #pragma once
 
 #include <util/generic/map.h>
-#include <util/system/spinlock.h>
+
+#include <mutex>
 
 namespace NCloud::NJournalled {
 
@@ -11,7 +12,7 @@ namespace NCloud::NJournalled {
 class TLsnBarrier
 {
 private:
-    mutable TAdaptiveLock Lock;
+    mutable std::mutex Lock;
     ui64 CurrentLsn = 0;
     TMap<ui64, ui64> BarrierCountByLsn;
 

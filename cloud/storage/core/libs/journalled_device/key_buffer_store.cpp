@@ -15,11 +15,11 @@
 #include <util/generic/utility.h>
 #include <util/generic/ymath.h>
 #include <util/string/builder.h>
-#include <util/system/spinlock.h>
 #include <util/system/yassert.h>
 
 #include <cstddef>
 #include <cstring>
+#include <mutex>
 #include <optional>
 #include <type_traits>
 #include <utility>
@@ -35,7 +35,7 @@ namespace {
 class TInMemoryKeyBufferStore final: public IKeyBufferStore
 {
 private:
-    TAdaptiveLock Lock;
+    std::mutex Lock;
     TMap<ui64, TBuffer> Buffers;
     ui64 ErasedBelowKey = 0;
 
@@ -44,7 +44,9 @@ public:
     {
         TVector<TKeyBuffer> buffers;
 
-        with_lock (Lock) {
+        {
+            std::lock_guard lock(Lock);
+
             buffers.reserve(Buffers.size());
             for (const auto& [key, buffer]: Buffers) {
                 buffers.push_back({.Key = key, .Buffer = buffer});
@@ -56,7 +58,9 @@ public:
 
     TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override
     {
-        with_lock (Lock) {
+        {
+            std::lock_guard lock(Lock);
+
             if (key < ErasedBelowKey) {
                 return MakeFuture(MakeError(
                     E_ARGUMENT,
@@ -70,17 +74,17 @@ public:
 
     TFuture<NCloud::NProto::TError> EraseBelow(ui64 key) override
     {
-        with_lock (Lock) {
-            ErasedBelowKey = Max(ErasedBelowKey, key);
+        std::lock_guard lock(Lock);
 
-            auto end = Buffers.lower_bound(key);
-            if (end == Buffers.begin()) {
-                return MakeFuture(MakeError(S_FALSE));
-            }
+        ErasedBelowKey = Max(ErasedBelowKey, key);
 
-            Buffers.erase(Buffers.begin(), end);
-            return MakeFuture(MakeError(S_OK));
+        auto end = Buffers.lower_bound(key);
+        if (end == Buffers.begin()) {
+            return MakeFuture(MakeError(S_FALSE));
         }
+
+        Buffers.erase(Buffers.begin(), end);
+        return MakeFuture(MakeError(S_OK));
     }
 };
 
@@ -318,7 +322,7 @@ private:
 
     TLog Log;
 
-    TAdaptiveLock Lock;
+    std::mutex Lock;
 
     bool RestoreStarted = false;
     bool Restored = false;
@@ -385,7 +389,9 @@ TDeviceKeyBufferStore::TDeviceKeyBufferStore(
 
 TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
 {
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         if (RestoreStarted) {
             return MakeFuture<TRestoreResult>(MakeError(
                 E_INVALID_STATE,
@@ -447,7 +453,9 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::Write(
 
     ui64 seq = 0;
 
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         if (!Restored) {
             return MakeFuture(
                 MakeError(E_INVALID_STATE, "the store is not restored"));
@@ -506,7 +514,9 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::EraseBelow(ui64 key)
     TSuperblock superblock;
     ui64 slot = 0;
 
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         if (!Restored) {
             return MakeFuture(
                 MakeError(E_INVALID_STATE, "the store is not restored"));
@@ -673,7 +683,9 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
         buffers.push_back({.Key = key, .Buffer = std::move(buffer)});
     }
 
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         Restored = true;
         NextSeq = maxSeq + 1;
         Entries = std::move(entries);
@@ -708,7 +720,9 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
 
     TVector<TPageRangeRef> stalePages;
 
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         if (key < RequestedErasedBelowKey) {
             // erased while being written - a restore would drop it
             stalePages = locations;
@@ -749,7 +763,9 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
     TVector<TPageRangeRef> pagesToFree;
     bool erasedAny = false;
 
-    with_lock (Lock) {
+    {
+        std::lock_guard lock(Lock);
+
         EraseInFlight = false;
 
         if (HasError(error)) {
