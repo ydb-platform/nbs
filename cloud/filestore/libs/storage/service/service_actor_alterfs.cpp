@@ -1,10 +1,11 @@
 #include "service_actor.h"
 
+#include "shard_creation_state_companion.h"
+
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
-#include <cloud/filestore/libs/storage/core/compressed_bitmap.h>
 #include <cloud/filestore/libs/storage/core/model.h>
 #include <cloud/filestore/libs/storage/model/channel_data_kind.h>
 #include <cloud/filestore/libs/storage/service/helpers.h>
@@ -96,13 +97,10 @@ private:
     ui64 SevenBytesHandlesCount = 0;
 
     // Persistent state of created shards.
-    NProtoPrivate::TFileSystemShardCreationState ShardCreationState;
-    ui32 ShardCreationStateVersion = 0;
     bool InitialShardCreationStateRead = false;
     // The bitmap can be initialized only after topology provides shard count.
     bool PersistentShardCreationStateSupported = false;
-    ui64 ShardBitmapBitCount = 0;
-    std::unique_ptr<NCloud::TCompressedBitmap> CreatedShardBitmap;
+    TShardCreationStateCompanion ShardCreationState;
 
     // These flags are set by HandleGetFileSystemTopologyResponse.
     bool DirectoryCreationInShardsEnabled = false;
@@ -153,13 +151,6 @@ private:
     void FillMultiShardFileStoreConfig(const TActorContext& ctx);
 
     void ReadShardCreationState(const TActorContext& ctx);
-    void SetupCreatedShardBitmap();
-    void MergeCreatedShardBitmap(
-        const NProtoPrivate::TCompressedBitmapData& bitmap);
-    bool HasUnpersistedCreatedShards() const;
-    void UpdateShardCreationState(const TActorContext& ctx);
-    void UpdateShardCreatedState(
-        const TActorContext& ctx, const ui32 shardIndex);
 
     void HandleDescribeFileStoreForAlterResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
@@ -239,10 +230,6 @@ private:
         return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
     }
 
-    bool IsShardCreated(const ui32 shardIndex) const
-    {
-        return CreatedShardBitmap && CreatedShardBitmap->Test(shardIndex);
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -260,6 +247,10 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , ForceDirectoryCreationInShards(false)
     , EnableStrictFileSystemSizeEnforcement(false)
     , ExplicitShardCount(0)
+    , ShardCreationState(
+          FileSystemId,
+          FileSystemId,
+          "FS topology not yet read, shard creation state unavailable")
 {
     TargetConfig.SetCloudId(request.GetCloudId());
     TargetConfig.SetFolderId(request.GetFolderId());
@@ -284,6 +275,10 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , EnableStrictFileSystemSizeEnforcement(
           request.GetEnableStrictFileSystemSizeEnforcement())
     , ExplicitShardCount(request.GetShardCount())
+    , ShardCreationState(
+          FileSystemId,
+          FileSystemId,
+          "FS topology not yet read, shard creation state unavailable")
 {
     TargetConfig.SetBlocksCount(request.GetBlocksCount());
     TargetConfig.SetVersion(request.GetConfigVersion());
@@ -426,30 +421,6 @@ void TAlterFileStoreActor::ReadShardCreationState(const TActorContext& ctx)
     NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
 
-void TAlterFileStoreActor::UpdateShardCreationState(const TActorContext& ctx)
-{
-    if (!CreatedShardBitmap) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] FS topology not yet read, shard creation state unavailable",
-            FileSystemId.c_str());
-        return;
-    }
-
-    auto request =
-        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
-    request->Record.SetFileSystemId(FileSystemId);
-    auto* shardCreationState = request->Record.MutableShardCreationState();
-    shardCreationState->SetVersion(ShardCreationStateVersion);
-    SaveCompressedBitmap(
-        *CreatedShardBitmap,
-        ShardBitmapBitCount,
-        *shardCreationState->MutableCreatedShardBitmap());
-
-    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
-}
-
 void TAlterFileStoreActor::HandleShardCreationStateResponse(
     const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
     const TActorContext& ctx)
@@ -493,15 +464,14 @@ void TAlterFileStoreActor::HandleShardCreationStateResponse(
 
     const auto& shardCreationState = msg->Record.GetShardCreationState();
     if (!InitialShardCreationStateRead) {
-        ShardCreationState = shardCreationState;
-        ShardCreationStateVersion = shardCreationState.GetVersion();
+        ShardCreationState.SetShardCreationState(shardCreationState);
         InitialShardCreationStateRead = true;
         PersistentShardCreationStateSupported = true;
         GetStorageStats(ctx);
         return;
     }
 
-    if (!CreatedShardBitmap) {
+    if (!ShardCreationState.HasCreatedShardBitmap()) {
         LOG_WARN(
             ctx,
             TFileStoreComponents::SERVICE,
@@ -510,78 +480,24 @@ void TAlterFileStoreActor::HandleShardCreationStateResponse(
         return;
     }
 
-    if (shardCreationState.GetVersion() < ShardCreationStateVersion) {
+    if (shardCreationState.GetVersion() <
+        ShardCreationState.GetShardCreationStateVersion())
+    {
         return;
     }
 
-    MergeCreatedShardBitmap(shardCreationState.GetCreatedShardBitmap());
-    ShardCreationState = shardCreationState;
-    ShardCreationStateVersion = shardCreationState.GetVersion();
+    ShardCreationState.MergeCreatedShardBitmap(
+        shardCreationState.GetCreatedShardBitmap());
+    ShardCreationState.SetShardCreationState(shardCreationState);
 
-    if (HasUnpersistedCreatedShards()) {
-        UpdateShardCreationState(ctx);
+    if (ShardCreationState.HasUnpersistedCreatedShards()) {
+        ShardCreationState.UpdateShardCreationState(ctx);
         return;
     }
 
     if (ShardsToCreate == 0 && EndShardToConfigure == 0) {
         ConfigureShards(ctx);
     }
-}
-
-void TAlterFileStoreActor::SetupCreatedShardBitmap()
-{
-    ShardBitmapBitCount = FileStoreConfig.ShardConfigs.size();
-    CreatedShardBitmap =
-        std::make_unique<NCloud::TCompressedBitmap>(LoadCompressedBitmap(
-            ShardCreationState.GetCreatedShardBitmap(),
-            ShardBitmapBitCount));
-}
-
-void TAlterFileStoreActor::MergeCreatedShardBitmap(
-    const NProtoPrivate::TCompressedBitmapData& bitmap)
-{
-    Y_DEBUG_ABORT_UNLESS(CreatedShardBitmap);
-
-    for (const auto& chunk: bitmap.GetChunks()) {
-        CreatedShardBitmap->Merge(
-            {.ChunkIdx = chunk.GetChunkIdx(), .Data = chunk.GetData()});
-    }
-}
-
-bool TAlterFileStoreActor::HasUnpersistedCreatedShards() const
-{
-    Y_DEBUG_ABORT_UNLESS(CreatedShardBitmap);
-
-    const auto persisted = LoadCompressedBitmap(
-        ShardCreationState.GetCreatedShardBitmap(),
-        ShardBitmapBitCount);
-
-    for (ui64 shardIndex = 0; shardIndex < ShardBitmapBitCount; ++shardIndex) {
-        if (CreatedShardBitmap->Test(shardIndex) && !persisted.Test(shardIndex))
-        {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-void TAlterFileStoreActor::UpdateShardCreatedState(
-    const TActorContext& ctx,
-    const ui32 shardIndex)
-{
-    Y_DEBUG_ABORT_UNLESS(CreatedShardBitmap);
-    if (!CreatedShardBitmap) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] FS topology not yet read, shard creation state unavailable",
-            FileSystemId.c_str());
-        return;
-    }
-
-    CreatedShardBitmap->Set(shardIndex, shardIndex + 1);
-    UpdateShardCreationState(ctx);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -933,7 +849,8 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             FileStoreConfig.ShardConfigs.size());
 
         if (PersistentShardCreationStateSupported) {
-            SetupCreatedShardBitmap();
+            ShardCreationState.SetupCreatedShardBitmap(
+                FileStoreConfig.ShardConfigs.size());
         }
 
         ShardsToCreate =
@@ -987,7 +904,7 @@ void TAlterFileStoreActor::ContinueCreateShards(
         // persistent storage for shard creation state and do not limit
         // in-flight shard requests.
         if (limit != 0) {
-            if (IsShardCreated(NextShardToCreate)) {
+            if (ShardCreationState.IsShardCreated(NextShardToCreate)) {
                 ++NextShardToCreate;
                 Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
                 --ShardsToCreate;
@@ -1054,8 +971,8 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
     --ShardsToCreate;
 
     if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
-        if (CreatedShardBitmap) {
-            UpdateShardCreatedState(ctx, ev->Cookie);
+        if (ShardCreationState.HasCreatedShardBitmap()) {
+            ShardCreationState.UpdateShardCreatedState(ctx, ev->Cookie);
         }
 
         if (ShardsToCreate > 0 &&
@@ -1065,7 +982,7 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
             ContinueCreateShards(ctx, 1);
         }
 
-        if (CreatedShardBitmap) {
+        if (ShardCreationState.HasCreatedShardBitmap()) {
             // ConfigureShards must wait for the created-shard bitmap to become
             // durable. HandleShardCreationStateResponse is the persistence
             // barrier and will call ConfigureShards when all local bits are
