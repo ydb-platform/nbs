@@ -438,11 +438,12 @@ IFileIOServicePtr CreateRoundRobinFileIOService(
 
 IFileIOServicePtr CreateConcurrentFileIOService(
     const TString& submissionThreadName,
-    IFileIOServicePtr fileIO)
+    IFileIOServicePtr fileIO,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
 {
     return std::make_shared<TConcurrentFileIOService>(
         std::move(fileIO),
-        CreateThreadPool(submissionThreadName, 1));
+        CreateThreadPool(submissionThreadName, 1, std::move(counters)));
 }
 
 }   // namespace NCloud

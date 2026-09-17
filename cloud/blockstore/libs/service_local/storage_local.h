@@ -8,6 +8,8 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
 namespace NCloud::NBlockStore::NServer {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -27,6 +29,7 @@ struct TLocalStorageProviderParams
 IStorageProviderPtr CreateLocalStorageProvider(
     IFileIOServiceProviderPtr fileIOProvider,
     NNvme::INvmeManagerPtr nvmeManager,
-    TLocalStorageProviderParams params);
+    TLocalStorageProviderParams params,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters);
 
 }   // namespace NCloud::NBlockStore::NServer

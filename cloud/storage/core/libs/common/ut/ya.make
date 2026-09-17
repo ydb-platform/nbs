@@ -28,6 +28,7 @@ SRCS(
     file_io_service_ut.cpp
     guarded_sglist_ut.cpp
     history_ut.cpp
+    latency_counter_ut.cpp
     lru_cache_ut.cpp
     media_ut.cpp
     ring_buffer_ut.cpp

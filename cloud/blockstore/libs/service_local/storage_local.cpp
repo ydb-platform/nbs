@@ -910,11 +910,13 @@ public:
 IStorageProviderPtr CreateLocalStorageProvider(
     IFileIOServiceProviderPtr fileIOProvider,
     INvmeManagerPtr nvmeManager,
-    TLocalStorageProviderParams params)
+    TLocalStorageProviderParams params,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
 {
     ITaskQueuePtr submitQueue =
         params.UseSubmissionThread
-            ? CreateThreadPool(params.SubmissionThreadName, 1)
+            ? CreateThreadPool(
+                  params.SubmissionThreadName, 1, std::move(counters))
             : CreateTaskQueueStub();
     submitQueue->Start();
 

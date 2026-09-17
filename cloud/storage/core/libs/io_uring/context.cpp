@@ -19,6 +19,14 @@ const TDuration DefaultTimeout = TDuration::Minutes(1);
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TIntrusivePtr<NMonitoring::TDynamicCounters> GetThreadCounters(
+    const TContext::TParams& params,
+    const TString& threadName)
+{
+    Y_DEBUG_ABORT_UNLESS(params.Counters);
+    return params.Counters->GetSubgroup("thread", threadName);
+}
+
 NProto::TError MakeSystemError(int code, TStringBuf message)
 {
     return MakeError(
@@ -56,9 +64,11 @@ int Retry(Ts... args)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NProto::TError Submit(io_uring* ring)
+NProto::TError Submit(io_uring* ring, const TLatencyCounter& latency)
 {
+    const auto started = latency.Start();
     const int ret = Retry<io_uring_submit>(ring);
+    latency.Record(started);
     if (ret < 0) {
         return MakeSystemError(-ret, "unable to submit async IO operation");
     }
@@ -143,7 +153,23 @@ NProto::TError InitRing(io_uring* ring, ui32 entries, io_uring* wqOwner, ui32 fl
 ////////////////////////////////////////////////////////////////////////////////
 
 TContext::TContext(TParams params)
-    : SubmissionThread(CreateThreadPool(params.SubmissionThreadName, 1))
+    : SubmitLatency(
+          GetThreadCounters(params, params.SubmissionThreadName),
+          "Submit",
+          TLatencyCounter::EConcurrency::SingleWriter,
+          TLatencyCounter::EPublishing::Periodic)
+    , WaitLatency(
+          GetThreadCounters(params, params.CompletionThreadName),
+          "Wait",
+          TLatencyCounter::EConcurrency::SingleWriter,
+          TLatencyCounter::EPublishing::Periodic)
+    , CompleteLatency(
+          GetThreadCounters(params, params.CompletionThreadName),
+          "Complete",
+          TLatencyCounter::EConcurrency::SingleWriter,
+          TLatencyCounter::EPublishing::Periodic)
+    , SubmissionThread(CreateThreadPool(
+          params.SubmissionThreadName, 1, std::move(params.Counters)))
     , CompletionThread(
           std::bind_front(
               &TContext::CompletionThreadProc,
@@ -225,6 +251,9 @@ void TContext::Stop()
 
     CompletionThread.Join();
     SubmissionThread->Stop();
+    SubmitLatency.Publish();
+    WaitLatency.Publish();
+    CompleteLatency.Publish();
 }
 
 void TContext::AsyncIO(
@@ -272,7 +301,7 @@ void TContext::SubmitMsg(TFileIOCompletion* completion, int res)
     NSan::Release(completion);
 
     // TODO(sharpeye): more resilent error handling for io_uring_submit
-    const auto error = Submit(&Ring);
+    const auto error = Submit(&Ring, SubmitLatency);
     Y_ABORT_IF(
         HasError(error),
         "can't submit IO: %s",
@@ -303,7 +332,7 @@ void TContext::SubmitIO(
     NSan::Release(completion);
 
     // TODO(sharpeye): more resilent error handling for io_uring_submit
-    const auto error = Submit(&Ring);
+    const auto error = Submit(&Ring, SubmitLatency);
     Y_ABORT_IF(
         HasError(error),
         "can't submit IO: %s",
@@ -325,7 +354,7 @@ void TContext::SubmitNOP(TFileIOCompletion* completion, ui32 flags)
     NSan::Release(completion);
 
     // TODO(sharpeye): more resilent error handling for io_uring_submit
-    const auto error = Submit(&Ring);
+    const auto error = Submit(&Ring, SubmitLatency);
     Y_ABORT_IF(
         HasError(error),
         "can't submit NOP: %s",
@@ -340,7 +369,7 @@ void TContext::SubmitStopSignal()
             io_uring_prep_nop(sqe);
             io_uring_sqe_set_data(sqe, nullptr);
 
-            const auto error = Submit(&Ring);
+            const auto error = Submit(&Ring, SubmitLatency);
             Y_ABORT_IF(
                 HasError(error),
                 "can't submit a stop signal: %s",
@@ -362,6 +391,7 @@ void TContext::ProcessCompletion(io_uring_cqe* cqe)
         return;
     }
 
+    TLatencyScope scope(CompleteLatency);
     auto* completion = static_cast<TFileIOCompletion*>(data);
     NSan::Acquire(completion);
 
@@ -382,7 +412,9 @@ void TContext::CompletionThreadProc(const TString& threadName)
 
     for (;;) {
         io_uring_cqe* cqe = nullptr;
+        const auto started = WaitLatency.Start();
         const int ret = io_uring_wait_cqe(&Ring, &cqe);
+        WaitLatency.Record(started);
         if (ret < 0) {
             Y_ABORT_UNLESS(
                 IsRetriable(-ret),

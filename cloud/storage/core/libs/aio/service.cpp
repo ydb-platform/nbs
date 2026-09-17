@@ -2,6 +2,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/latency_counter.h>
 #include <cloud/storage/core/libs/common/thread.h>
 #include <cloud/storage/core/libs/common/write_sync_flags.h>
 
@@ -47,9 +48,24 @@ class TAsyncIOContext
 {
 private:
     io_context* Context = nullptr;
+    TLatencyCounter SubmitLatency;
+    TLatencyCounter WaitLatency;
 
 public:
-    explicit TAsyncIOContext(int nr)
+    TAsyncIOContext(
+        int nr,
+        TIntrusivePtr<NMonitoring::TDynamicCounters> counters,
+        const TString& completionThreadName)
+        : SubmitLatency(
+              counters,
+              "Submit",
+              TLatencyCounter::EConcurrency::MultipleWriters,
+              TLatencyCounter::EPublishing::Periodic)
+        , WaitLatency(
+              counters->GetSubgroup("thread", completionThreadName),
+              "Wait",
+              TLatencyCounter::EConcurrency::SingleWriter,
+              TLatencyCounter::EPublishing::Periodic)
     {
         int code = 0;
         int iterations = 0;
@@ -89,7 +105,9 @@ public:
 
     NProto::TError Submit(iocb* io)
     {
+        const auto started = SubmitLatency.Start();
         const int ret = io_submit(Context, 1, &io);
+        SubmitLatency.Record(started);
         if (ret < 0) {
             if (ret == -EAGAIN) {
                 // retry EAGAIN
@@ -102,9 +120,17 @@ public:
         return NProto::TError{};
     }
 
+    void PublishStats()
+    {
+        SubmitLatency.Publish();
+        WaitLatency.Publish();
+    }
+
     TArrayRef<io_event> GetEvents(TArrayRef<io_event> events, timespec& timeout)
     {
+        const auto started = WaitLatency.Start();
         int ret = io_getevents(Context, 1, events.size(), events.data(), &timeout);
+        WaitLatency.Record(started);
 
         if (ret == -EINTR) {
             return {};
@@ -126,12 +152,18 @@ class TAIOService final
 private:
     TAsyncIOContext IOContext;
 
+    TLatencyCounter CompleteLatency;
     TThread PollerThread;
     std::atomic_flag ShouldStop = false;
 
 public:
     explicit TAIOService(TAioServiceParams params)
-        : IOContext(params.MaxEvents)
+        : IOContext(params.MaxEvents, params.Counters, params.CompletionThreadName)
+        , CompleteLatency(
+              params.Counters->GetSubgroup("thread", params.CompletionThreadName),
+              "Complete",
+              TLatencyCounter::EConcurrency::SingleWriter,
+              TLatencyCounter::EPublishing::Periodic)
         , PollerThread(
               std::bind_front(
                   &TAIOService::Run,
@@ -165,6 +197,8 @@ public:
             [&](const auto&, ui32) { ShouldStop.test_and_set(); });
 
         PollerThread.Join();
+        IOContext.PublishStats();
+        CompleteLatency.Publish();
     }
 
     // IFileIOService
@@ -313,6 +347,7 @@ private:
 #endif
                 const i64 ret = static_cast<i64>(ev.res); // it is really signed
 
+                TLatencyScope scope(CompleteLatency);
                 Complete(
                     static_cast<TFileIOCompletion*>(ev.data),
                     MakeIOError(ret),
@@ -334,7 +369,9 @@ private:
 public:
     explicit TAIOServiceFactory(TAioServiceParams params)
         : Params(std::move(params))
-    {}
+    {
+        Y_DEBUG_ABORT_UNLESS(Params.Counters);
+    }
 
     IFileIOServicePtr CreateFileIOService() final
     {
@@ -343,6 +380,8 @@ public:
         params.CompletionThreadName = TStringBuilder()
                                       << params.CompletionThreadName << index;
 
+        params.Counters = Params.Counters->GetSubgroup(
+            "io_service", params.CompletionThreadName);
         return std::make_shared<TAIOService>(std::move(params));
     }
 };

@@ -25,10 +25,14 @@ namespace {
 struct TConcurrentAioServiceFactory final: IFileIOServiceFactory
 {
     const IFileIOServiceFactoryPtr Factory;
+    const TIntrusivePtr<NMonitoring::TDynamicCounters> Counters;
     std::atomic<ui32> Index = 0;
 
-    explicit TConcurrentAioServiceFactory(IFileIOServiceFactoryPtr factory)
+    TConcurrentAioServiceFactory(
+        IFileIOServiceFactoryPtr factory,
+        TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
         : Factory(std::move(factory))
+        , Counters(std::move(counters))
     {}
 
     IFileIOServicePtr CreateFileIOService() final
@@ -37,30 +41,34 @@ struct TConcurrentAioServiceFactory final: IFileIOServiceFactory
 
         return CreateConcurrentFileIOService(
             TStringBuilder() << "AIO.SQ" << index,
-            Factory->CreateFileIOService());
+            Factory->CreateFileIOService(), Counters);
     }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServiceFactoryPtr CreateAIOServiceFactory(const TDiskAgentConfig& config)
+IFileIOServiceFactoryPtr CreateAIOServiceFactory(
+    const TDiskAgentConfig& config,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
 {
     auto factory = NCloud::CreateAIOServiceFactory(
-        {.MaxEvents = config.GetMaxAIOContextEvents()});
+        {.MaxEvents = config.GetMaxAIOContextEvents(), .Counters = counters});
 
     if (config.GetUseOneSubmissionThreadPerAIOServiceEnabled()) {
-        factory =
-            std::make_shared<TConcurrentAioServiceFactory>(std::move(factory));
+        factory = std::make_shared<TConcurrentAioServiceFactory>(
+            std::move(factory), std::move(counters));
     }
 
     return factory;
 }
 
 IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
-    const TDiskAgentConfig& config)
+    const TDiskAgentConfig& config,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
 {
     TIoUringServiceParams params{
-        .SubmissionQueueEntries = config.GetMaxAIOContextEvents()};
+        .SubmissionQueueEntries = config.GetMaxAIOContextEvents(),
+        .Counters = std::move(counters)};
 
     if (config.GetBackend() == NProto::DISK_AGENT_BACKEND_IO_URING_NULL) {
         return NCloud::CreateIoUringServiceNullFactory(std::move(params));
@@ -70,26 +78,29 @@ IFileIOServiceFactoryPtr CreateIoUringServiceFactory(
 }
 
 IFileIOServiceFactoryPtr CreateFileIOServiceFactory(
-    const TDiskAgentConfig& config)
+    const TDiskAgentConfig& config,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
 {
     switch (config.GetBackend()) {
         case NProto::DISK_AGENT_BACKEND_SPDK:
         case NProto::DISK_AGENT_BACKEND_NULL:
             break;
         case NProto::DISK_AGENT_BACKEND_AIO:
-            return CreateAIOServiceFactory(config);
+            return CreateAIOServiceFactory(config, std::move(counters));
         case NProto::DISK_AGENT_BACKEND_IO_URING:
         case NProto::DISK_AGENT_BACKEND_IO_URING_NULL:
-            return CreateIoUringServiceFactory(config);
+            return CreateIoUringServiceFactory(config, std::move(counters));
     }
 
     return nullptr;
 }
 
 NServer::IFileIOServiceProviderPtr CreateFileIOServiceProvider(
-    const TDiskAgentConfig& config)
+    const TDiskAgentConfig& config,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
 {
-    IFileIOServiceFactoryPtr factory = CreateFileIOServiceFactory(config);
+    IFileIOServiceFactoryPtr factory =
+        CreateFileIOServiceFactory(config, std::move(counters));
     if (!factory) {
         return nullptr;
     }
@@ -107,7 +118,8 @@ NServer::IFileIOServiceProviderPtr CreateFileIOServiceProvider(
 IStorageProviderPtr CreateStorageProvider(
     const TDiskAgentConfig& config,
     NServer::IFileIOServiceProviderPtr provider,
-    NNvme::INvmeManagerPtr nvmeManager)
+    NNvme::INvmeManagerPtr nvmeManager,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
 {
     IStorageProviderPtr result;
 
@@ -127,7 +139,7 @@ IStorageProviderPtr CreateStorageProvider(
                     .DataIntegrityValidationPolicy =
                         config
                             .GetDataIntegrityValidationPolicyForDrBasedDisks(),
-                });
+                }, std::move(counters));
             break;
         }
         case NProto::DISK_AGENT_BACKEND_NULL: {
@@ -148,7 +160,7 @@ IStorageProviderPtr CreateStorageProvider(
                     .DataIntegrityValidationPolicy =
                         config
                             .GetDataIntegrityValidationPolicyForDrBasedDisks(),
-                });
+                }, std::move(counters));
             break;
         }
     }
@@ -188,7 +200,8 @@ NNvme::INvmeManagerPtr CreateNvmeManager(
 
 TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
     ILoggingServicePtr logging,
-    const TDiskAgentConfig& config)
+    const TDiskAgentConfig& config,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
 {
     Y_ABORT_UNLESS(logging);
 
@@ -197,12 +210,13 @@ TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
     }
 
     auto nvmeManager = CreateNvmeManager(std::move(logging), config);
-    auto provider = CreateFileIOServiceProvider(config);
+    auto provider = CreateFileIOServiceProvider(config, counters);
 
     return {
         .NvmeManager = nvmeManager,
         .FileIOServiceProvider = provider,
-        .StorageProvider = CreateStorageProvider(config, provider, nvmeManager),
+        .StorageProvider = CreateStorageProvider(
+            config, provider, nvmeManager, std::move(counters)),
     };
 }
 

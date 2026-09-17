@@ -1,12 +1,13 @@
 #include "service.h"
 
+#include "context.h"
+
 #include <cloud/storage/core/libs/common/file_io_service.h>
 
 #include <library/cpp/testing/common/env.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
 
-#include <fcntl.h>
 #include <util/folder/dirut.h>
 #include <util/folder/tempdir.h>
 #include <util/generic/array_ref.h>
@@ -16,6 +17,8 @@
 #include <util/stream/file.h>
 #include <util/string/strip.h>
 #include <util/system/file.h>
+
+#include <fcntl.h>
 
 #include <atomic>
 #include <chrono>
@@ -75,6 +78,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             .ForceAsyncIO = true,
             .PropagateAffinityToKernelWorkers = true,
             .SQKernelPollingEnabled = false,
+            .Counters = MakeIntrusive<NMonitoring::TDynamicCounters>(),
         });
 
         SelectIoWqThreadAffinity();
@@ -168,7 +172,8 @@ struct TFixtureNull: public NUnitTest::TBaseFixture
 
         auto factory = CreateIoUringServiceNullFactory(
             {.SubmissionQueueEntries = SubmissionQueueSize,
-             .MaxKernelWorkersCount = 1});
+             .MaxKernelWorkersCount = 1,
+             .Counters = MakeIntrusive<NMonitoring::TDynamicCounters>()});
 
         IoUring = factory->CreateFileIOService();
         IoUring->Start();
@@ -188,6 +193,50 @@ struct TFixtureNull: public NUnitTest::TBaseFixture
 
 Y_UNIT_TEST_SUITE(TIoUringTest)
 {
+    Y_UNIT_TEST(ShouldMeasureSubmissionAndCompletion)
+    {
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        NIoUring::TContext context({.Counters = counters});
+        context.Start();
+        auto promise = NewPromise<void>();
+
+        struct TCompletion: TFileIOCompletion
+        {
+            TPromise<void> Promise;
+
+            explicit TCompletion(TPromise<void> promise)
+                : Promise(std::move(promise))
+            {
+                Func = [](TFileIOCompletion* base,
+                          const NProto::TError& error, ui32)
+                {
+                    UNIT_ASSERT(!HasError(error));
+                    static_cast<TCompletion*>(base)->Promise.SetValue();
+                };
+            }
+        } callback(promise);
+
+        context.AsyncNOP(&callback);
+        promise.GetFuture().GetValue(TDuration::Seconds(5));
+        context.Stop();
+
+        auto sq = counters->GetSubgroup("thread", "IO.SQ");
+        auto cq = counters->GetSubgroup("thread", "IO.CQ");
+        // The stop signal is submitted, but has no completion callback.
+        UNIT_ASSERT_VALUES_EQUAL(sq->GetCounter("SubmitCount")->Val(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(sq->GetCounter("PendingTasks")->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(sq->GetCounter("QueueCount")->Val(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(sq->GetCounter("ExecutionCount")->Val(), 3);
+        UNIT_ASSERT_VALUES_EQUAL(cq->GetCounter("CompleteCount")->Val(), 1);
+        UNIT_ASSERT(cq->GetCounter("WaitCount")->Val() >= 2);
+        auto snapshot = sq->FindHistogram("SubmitLatencyUs")->Snapshot();
+        ui64 samples = 0;
+        for (ui32 i = 0; i < snapshot->Count(); ++i) {
+            samples += snapshot->Value(i);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(samples, 2);
+    }
+
     Y_UNIT_TEST_F(ShouldReadWrite, TFixture)
     {
         const ui64 requestStartIndex = 20;

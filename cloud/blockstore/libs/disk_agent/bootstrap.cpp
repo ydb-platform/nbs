@@ -393,7 +393,12 @@ bool TBootstrap::InitBackend()
     Y_ABORT_IF(LocalStorageProvider);
     Y_ABORT_UNLESS(Logging);
 
-    auto r = CreateDiskAgentBackendComponents(Logging, config);
+    auto r = CreateDiskAgentBackendComponents(
+        Logging,
+        config,
+        Monitoring->GetCounters()
+             ->GetSubgroup("counters", "blockstore")
+             ->GetSubgroup("component", "io_service"));
     NvmeManager = std::move(r.NvmeManager);
     FileIOServiceProvider = std::move(r.FileIOServiceProvider);
     LocalStorageProvider = std::move(r.StorageProvider);

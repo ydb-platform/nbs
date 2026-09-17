@@ -388,7 +388,9 @@ TTestEnv TTestEnvBuilder::Build()
 
     if (!Spdk) {
         if (!FileIOService) {
-            FileIOService = CreateAIOService();
+            FileIOService = CreateAIOService({
+                .Counters = MakeIntrusive<NMonitoring::TDynamicCounters>(),
+            });
             FileIOService->Start();
         }
 
@@ -755,7 +757,8 @@ IStorageProviderPtr CreateTestStorageProvider(
         NServer::CreateLocalStorageProvider(
             NServer::CreateSingleFileIOServiceProvider(std::move(fileIO)),
             std::move(nvmeManager),
-            {.DirectIO = false, .UseSubmissionThread = false}));
+            {.DirectIO = false, .UseSubmissionThread = false},
+            MakeIntrusive<NMonitoring::TDynamicCounters>()));
 }
 
 NProto::TDiskAgentConfig CreateDefaultAgentConfig()

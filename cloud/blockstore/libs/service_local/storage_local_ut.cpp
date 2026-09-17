@@ -106,7 +106,9 @@ TFsPath TryGetRamDrivePath()
 
 auto CreateAndStartAIOServiceProvider()
 {
-    auto provider = CreateSingleFileIOServiceProvider(CreateAIOService());
+    auto provider = CreateSingleFileIOServiceProvider(CreateAIOService({
+        .Counters = MakeIntrusive<NMonitoring::TDynamicCounters>(),
+    }));
     provider->Start();
 
     return provider;
@@ -135,7 +137,7 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            std::move(params));
+            std::move(params), MakeIntrusive<NMonitoring::TDynamicCounters>());
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -249,7 +251,7 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            std::move(params));
+            std::move(params), MakeIntrusive<NMonitoring::TDynamicCounters>());
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -351,7 +353,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            {.DirectIO = false, .UseSubmissionThread = false});
+            {.DirectIO = false, .UseSubmissionThread = false},
+            MakeIntrusive<NMonitoring::TDynamicCounters>());
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -482,7 +485,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            {.DirectIO = true, .UseSubmissionThread = false});
+            {.DirectIO = true, .UseSubmissionThread = false},
+            MakeIntrusive<NMonitoring::TDynamicCounters>());
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -544,7 +548,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(false /* not ssd */),
-            {.DirectIO = true, .UseSubmissionThread = false});
+            {.DirectIO = true, .UseSubmissionThread = false},
+            MakeIntrusive<NMonitoring::TDynamicCounters>());
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -604,7 +609,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            {.DirectIO = false, .UseSubmissionThread = false});
+            {.DirectIO = false, .UseSubmissionThread = false},
+            MakeIntrusive<NMonitoring::TDynamicCounters>());
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);
@@ -666,7 +672,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(true, deallocateHistory),
-            {.DirectIO = true, .UseSubmissionThread = false});
+            {.DirectIO = true, .UseSubmissionThread = false},
+            MakeIntrusive<NMonitoring::TDynamicCounters>());
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);

@@ -22,6 +22,7 @@ struct TCreateDiskAgentBackendComponentsResult
 
 TCreateDiskAgentBackendComponentsResult CreateDiskAgentBackendComponents(
     ILoggingServicePtr logging,
-    const TDiskAgentConfig& config);
+    const TDiskAgentConfig& config,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters);
 
 }   // namespace NCloud::NBlockStore::NStorage

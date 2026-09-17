@@ -868,8 +868,11 @@ void TBootstrapBase::InitLocalService()
         ? *Configs->ServerConfig->GetLocalServiceConfig()
         : NProto::TLocalServiceConfig();
 
-    FileIOServiceProvider =
-        CreateSingleFileIOServiceProvider(CreateAIOService());
+    FileIOServiceProvider = CreateSingleFileIOServiceProvider(CreateAIOService({
+        .Counters = Monitoring->GetCounters()
+                        ->GetSubgroup("counters", "blockstore")
+                        ->GetSubgroup("component", "io_service"),
+    }));
 
     NvmeManager = CreateNvmeManager(
         Logging,
@@ -889,7 +892,10 @@ void TBootstrapBase::InitLocalService()
                     Configs->DiskAgentConfig->GetValidatedBlocksRatio(),
                 .DataIntegrityValidationPolicy =
                     Configs->DiskAgentConfig
-                        ->GetDataIntegrityValidationPolicyForDrBasedDisks()}));
+                        ->GetDataIntegrityValidationPolicyForDrBasedDisks()},
+            Monitoring->GetCounters()
+                 ->GetSubgroup("counters", "blockstore")
+                 ->GetSubgroup("component", "io_service")));
 }
 
 void TBootstrapBase::InitNullService()

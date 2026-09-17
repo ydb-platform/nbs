@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/storage/core/libs/common/latency_counter.h>
 #include <cloud/storage/core/libs/common/public.h>
 
 #include <library/cpp/threading/future/future.h>
@@ -17,6 +18,9 @@ class TContext final
 {
 private:
     io_uring Ring = {};
+    TLatencyCounter SubmitLatency;
+    TLatencyCounter WaitLatency;
+    TLatencyCounter CompleteLatency;
 
     ITaskQueuePtr SubmissionThread;
     TThread CompletionThread;
@@ -41,6 +45,7 @@ public:
 
         bool PropagateAffinityToKernelWorkers = false;
         ui32 Flags = 0;
+        TIntrusivePtr<NMonitoring::TDynamicCounters> Counters;
     };
 
     explicit TContext(TParams params);
