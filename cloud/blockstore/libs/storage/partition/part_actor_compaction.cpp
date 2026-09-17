@@ -765,6 +765,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         const TVector<std::optional<ui32>>& blockChecksums,
         ui32 blobsSkipped,
         ui32 blocksSkipped,
+        bool hasBlocksWithCommitIdGreaterThanCompactionCommitId,
         ui32 mixedBlocksSkipped,
         EChannelDataKind channelDataKind)
     {
@@ -787,7 +788,10 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 skipMask,
                 std::move(ensuredBlockChecksums));
             mergedBlobCompactionInfos.push_back(
-                {blobsSkipped, blocksSkipped, mixedBlocksSkipped});
+                {blobsSkipped,
+                 blocksSkipped,
+                 hasBlocksWithCommitIdGreaterThanCompactionCommitId,
+                 mixedBlocksSkipped});
         } else if (channelDataKind == EChannelDataKind::Mixed) {
             TVector<ui32> blockIndices(Reserve(range.Size()));
             for (auto blockIndex = range.Start; blockIndex <= range.End;
@@ -803,7 +807,10 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 std::move(ensuredBlockChecksums),
                 0);   // unknown blob alignment
             mixedBlobCompactionInfos.push_back(
-                {blobsSkipped, blocksSkipped, mixedBlocksSkipped});
+                {blobsSkipped,
+                 blocksSkipped,
+                 hasBlocksWithCommitIdGreaterThanCompactionCommitId,
+                 mixedBlocksSkipped});
         } else {
             LOG_ERROR(
                 ctx,
@@ -823,6 +830,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlockChecksums,
                 rc.BlobsSkippedByCompaction,
                 rc.BlocksSkippedByCompaction,
+                rc.HasBlocksWithCommitIdGreaterThanCompactionCommitId,
                 rc.MixedBlockCountSkippedByCompaction,
                 rc.ChannelDataKind);
         }
@@ -830,11 +838,14 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
         if (rc.ZeroBlobId) {
             ui32 blobsSkipped = 0;
             ui32 blocksSkipped = 0;
+            bool hasBlocksWithCommitIdGreaterThanCompactionCommitId = false;
             ui32 mixedBlocksSkipped = 0;
 
             if (!rc.DataBlobId) {
                 blobsSkipped = rc.BlobsSkippedByCompaction;
                 blocksSkipped = rc.BlocksSkippedByCompaction;
+                hasBlocksWithCommitIdGreaterThanCompactionCommitId =
+                    rc.HasBlocksWithCommitIdGreaterThanCompactionCommitId;
                 mixedBlocksSkipped = rc.MixedBlockCountSkippedByCompaction;
             }
 
@@ -845,6 +856,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlockChecksums,
                 blobsSkipped,
                 blocksSkipped,
+                hasBlocksWithCommitIdGreaterThanCompactionCommitId,
                 mixedBlocksSkipped,
                 rc.ChannelDataKind);
         }

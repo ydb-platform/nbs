@@ -86,6 +86,7 @@ private:
         TRangeStat Stat;
         ui32 BlobsSkippedByCompaction = 0;
         ui32 BlocksSkippedByCompaction = 0;
+        bool HasBlocksWithCommitIdGreaterThanCompactionCommitId = false;
         ui32 MixedBlockCountSkippedByCompaction = 0;
     };
 
@@ -138,6 +139,9 @@ public:
                     Args.MixedBlobCompactionInfos[i].BlobsSkippedByCompaction;
                 rangeInfo.BlocksSkippedByCompaction +=
                     Args.MixedBlobCompactionInfos[i].BlocksSkippedByCompaction;
+                rangeInfo.HasBlocksWithCommitIdGreaterThanCompactionCommitId |=
+                    Args.MixedBlobCompactionInfos[i]
+                        .HasBlocksWithCommitIdGreaterThanCompactionCommitId;
                 rangeInfo.MixedBlockCountSkippedByCompaction +=
                     Args.MixedBlobCompactionInfos[i]
                         .MixedBlockCountSkippedByCompaction;
@@ -168,6 +172,9 @@ public:
                     Args.MergedBlobCompactionInfos[i].BlobsSkippedByCompaction;
                 rangeInfo.BlocksSkippedByCompaction +=
                     Args.MergedBlobCompactionInfos[i].BlocksSkippedByCompaction;
+                rangeInfo.HasBlocksWithCommitIdGreaterThanCompactionCommitId |=
+                    Args.MergedBlobCompactionInfos[i]
+                        .HasBlocksWithCommitIdGreaterThanCompactionCommitId;
                 rangeInfo.MixedBlockCountSkippedByCompaction +=
                     Args.MergedBlobCompactionInfos[i]
                         .MixedBlockCountSkippedByCompaction;
@@ -639,8 +646,9 @@ private:
 
             const auto usedBlockCount = State.GetUsedBlocks().Count(
                 kv.first,
-                Min(static_cast<ui64>(
-                        kv.first + State.GetCompactionMap().GetRangeSize()),
+                Min(static_cast<ui64>(kv.first) +
+                        static_cast<ui64>(
+                            State.GetCompactionMap().GetRangeSize()),
                     State.GetUsedBlocks().Capacity()));
 
             ui32 newlyZeroedBlocks = 0;
@@ -689,6 +697,12 @@ private:
 
         auto* compactionStatsTracker = State.AccessCompactionStatsTracker();
         if (compactionStatsTracker && compactionStatsTracker->HasCompaction()) {
+            // If no concurrent blobs were recorded for the range, mark the
+            // range as compacted.
+            if (Args.Mode == ADD_COMPACTION_RESULT) {
+                compactionStatsTracker->MarkAllEmptyRangesAsCompacted();
+            }
+
             for (const auto& kv: CompactionCounters) {
                 auto* counter = compactionStatsTracker->AccessCompactionCounter(
                     cm.GetRangeIndex(kv.first));
@@ -721,6 +735,9 @@ private:
                 kv.second.BlocksSkippedByCompaction,
                 kv.second.BlobsSkippedByCompaction,
                 kv.second.MixedBlockCountSkippedByCompaction);
+
+            counter->Stat.Compacted &=
+                !kv.second.HasBlocksWithCommitIdGreaterThanCompactionCommitId;
 
             auto rangeStat = cm.Get(kv.first);
             newlyZeroedBlocksToDecrement += rangeStat.NewlyZeroedBlocks;

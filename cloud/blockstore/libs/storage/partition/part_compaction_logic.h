@@ -52,6 +52,7 @@ struct TRangeCompactionInfo
     const TBlockMask ZeroBlobSkipMask;
     ui32 BlobsSkippedByCompaction;
     ui32 BlocksSkippedByCompaction;
+    bool HasBlocksWithCommitIdGreaterThanCompactionCommitId;
     ui32 MixedBlockCountSkippedByCompaction;
     TVector<std::optional<ui32>> BlockChecksums;
     const EChannelDataKind ChannelDataKind;
@@ -74,6 +75,7 @@ struct TRangeCompactionInfo
             TBlockMask zeroBlobSkipMask,
             ui32 blobsSkippedByCompaction,
             ui32 blocksSkippedByCompaction,
+            bool hasBlocksWithCommitIdGreaterThanCompactionCommitId,
             ui32 mixedBlockCountSkippedByCompaction,
             TVector<std::optional<ui32>> blockChecksums,
             EChannelDataKind channelDataKind,
@@ -130,6 +132,7 @@ void AccountSkippedBlobsAndBlocks(
     const TAffectedBlobs& skippedBlobs,
     ui32& blobsSkipped,
     ui32& blocksSkipped,
+    bool& hasBlocksWithCommitIdGreaterThanCompactionCommitId,
     ui32& mixedBlocksSkipped);
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -385,6 +385,7 @@ struct TTxPartition
         TAffectedBlocks AffectedBlocks;
         ui32 BlobsSkipped = 0;
         ui32 BlocksSkipped = 0;
+        bool HasBlocksWithCommitIdGreaterThanCompactionCommitId = false;
         ui32 MixedBlocksSkipped = 0;
         bool ChecksumsEnabled = false;
 
@@ -401,6 +402,7 @@ struct TTxPartition
             AffectedBlocks.clear();
             BlobsSkipped = 0;
             BlocksSkipped = 0;
+            HasBlocksWithCommitIdGreaterThanCompactionCommitId = false;
             MixedBlocksSkipped = 0;
             ChecksumsEnabled = false;
         }

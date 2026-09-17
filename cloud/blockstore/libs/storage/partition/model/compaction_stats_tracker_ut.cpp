@@ -94,6 +94,7 @@ Y_UNIT_TEST_SUITE(TCompactionStatsTrackerTest)
         firstRange->Stat.BlockCount = 20;
         firstRange->Stat.NewlyZeroedBlocks = 30;
         firstRange->Stat.MixedBlockCount = 40;
+        firstRange->Stat.Compacted = true;
         secondRange->Stat.BlobCount = 50;
 
         fixture.Tracker.ResetCompaction();
@@ -102,8 +103,31 @@ Y_UNIT_TEST_SUITE(TCompactionStatsTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(0, firstRange->Stat.BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(0, firstRange->Stat.NewlyZeroedBlocks);
         UNIT_ASSERT_VALUES_EQUAL(0, firstRange->Stat.MixedBlockCount);
+        UNIT_ASSERT(!firstRange->Stat.Compacted);
         UNIT_ASSERT_VALUES_EQUAL(0, secondRange->Stat.BlobCount);
         UNIT_ASSERT(fixture.Tracker.HasCompaction());
+    }
+
+    Y_UNIT_TEST(ShouldMarkOnlyEmptyRangesAsCompacted)
+    {
+        TFixture fixture;
+
+        fixture.Tracker.StartCompaction(100, {0, 1, 2});
+
+        auto* firstRange = fixture.Tracker.AccessCompactionCounter(0);
+        auto* secondRange = fixture.Tracker.AccessCompactionCounter(1);
+        auto* thirdRange = fixture.Tracker.AccessCompactionCounter(2);
+        UNIT_ASSERT(firstRange);
+        UNIT_ASSERT(secondRange);
+        UNIT_ASSERT(thirdRange);
+
+        secondRange->Stat.BlobCount = 1;
+
+        fixture.Tracker.MarkAllEmptyRangesAsCompacted();
+
+        UNIT_ASSERT(firstRange->Stat.Compacted);
+        UNIT_ASSERT(!secondRange->Stat.Compacted);
+        UNIT_ASSERT(thirdRange->Stat.Compacted);
     }
 
     Y_UNIT_TEST(ShouldUpdateCompactionMapWhenCompactionFinishes)
@@ -124,9 +148,13 @@ Y_UNIT_TEST_SUITE(TCompactionStatsTrackerTest)
 
         auto* thirdRange = fixture.Tracker.AccessCompactionCounter(2);
         UNIT_ASSERT(thirdRange);
-        thirdRange->Stat.BlobCount = 2;
         thirdRange->Stat.BlockCount = 7;
         thirdRange->Stat.MixedBlockCount = 4;
+
+        fixture.Tracker.MarkAllEmptyRangesAsCompacted();
+
+        // Compaction result stats are added after empty ranges are marked.
+        thirdRange->Stat.BlobCount = 2;
 
         const auto finishedRanges = fixture.Tracker.FinishCompaction();
 
@@ -141,7 +169,7 @@ Y_UNIT_TEST_SUITE(TCompactionStatsTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(3, firstRangeStat.UsedBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(1, firstRangeStat.NewlyZeroedBlocks);
         UNIT_ASSERT_VALUES_EQUAL(3, firstRangeStat.MixedBlockCount);
-        UNIT_ASSERT(firstRangeStat.Compacted);
+        UNIT_ASSERT(!firstRangeStat.Compacted);
 
         const auto thirdRangeStat = fixture.CompactionMap.Get(2 * RangeSize);
         UNIT_ASSERT_VALUES_EQUAL(2, thirdRangeStat.BlobCount);

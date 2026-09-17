@@ -42,6 +42,7 @@ public:
     void ResetCompaction();
     TVector<ui32> FinishCompaction();
     void AbortCompaction();
+    void MarkAllEmptyRangesAsCompacted();
 
 private:
     void VerifyCompactionIsActive() const;
