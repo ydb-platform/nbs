@@ -2,20 +2,31 @@
 
 #include "public.h"
 
+#include <util/datetime/base.h>
+
 class TLog;
 
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TGrpcInitializer is needed to call grpc_shutdown_blocking instead of grpc_shutdown
-// see NBS-1032#5ea296701af0482eab4d6815
+// TGrpcInitializer is needed to call grpc_shutdown_blocking instead of
+// grpc_shutdown see NBS-1032#5ea296701af0482eab4d6815
 class TGrpcInitializer
 {
 public:
     TGrpcInitializer();
     ~TGrpcInitializer();
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Waits for global gRPC shutdown without releasing any initialization
+// references. Call after destroying all gRPC objects and TGrpcInitializer
+// instances, with no concurrent initialization. Returns false if gRPC remains
+// initialized at timeout. The timeout bounds polling, but cannot interrupt a
+// gRPC internal mutex wait.
+[[nodiscard]] bool WaitForGrpcShutdown(TDuration timeout);
 
 ////////////////////////////////////////////////////////////////////////////////
 
