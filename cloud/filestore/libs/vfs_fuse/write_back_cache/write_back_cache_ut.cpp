@@ -16,17 +16,21 @@
 #include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer_accessor.h>
 
 #include <library/cpp/testing/unittest/registar.h>
+#include <library/cpp/threading/future/async.h>
 
 #include <fcntl.h>
 
 #include <util/generic/hash.h>
 #include <util/generic/string.h>
+#include <util/generic/yexception.h>
 #include <util/random/random.h>
 #include <util/stream/output.h>
 #include <util/system/mutex.h>
 #include <util/system/spinlock.h>
 #include <util/system/tempfile.h>
+#include <util/thread/pool.h>
 
+#include <exception>
 #include <latch>
 #include <memory>
 #include <thread>
@@ -834,6 +838,144 @@ public:
     {
         std::unique_lock lock(Mutex);
         Set.RemoveInterval(offset, offset + length);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TMultiThreadedBootstrap
+{
+private:
+    struct TNodeData
+    {
+        TAdaptiveLock Lock;
+        TString Data;
+    };
+
+    TThreadPool SubmitThreadPool;
+    TThreadPool ExecutorThreadPool;
+    TBootstrap Bootstrap;
+
+    TAdaptiveLock GlobalLock;
+    THashMap<ui64, std::shared_ptr<TNodeData>> Nodes;
+
+public:
+    explicit TMultiThreadedBootstrap(
+        const TBootstrapArgs& args,
+        size_t submitThreadCount = 4, size_t executorThreadCount = 4)
+        : Bootstrap(args)
+    {
+        SubmitThreadPool.Start(submitThreadCount);
+        ExecutorThreadPool.Start(executorThreadCount);
+
+        Bootstrap.Session->WriteDataHandler = [this](const auto&, auto request)
+        {
+            return WriteDataHandler(std::move(request));
+        };
+
+        Bootstrap.Session->ReadDataHandler = [this](const auto&, auto request)
+        {
+            return ReadDataHandler(std::move(request));
+        };
+    }
+
+    NThreading::TFuture<NProto::TWriteDataResponse> WriteData(
+        std::shared_ptr<NProto::TWriteDataRequest> request)
+    {
+        return NThreading::Async(
+            [this, request = std::move(request)]() mutable
+            {
+                return Bootstrap.Cache.WriteData(
+                    Bootstrap.CallContext, std::move(request));
+            }, SubmitThreadPool);
+    }
+
+    NThreading::TFuture<NProto::TReadDataResponse> ReadData(
+        std::shared_ptr<NProto::TReadDataRequest> request)
+    {
+        return NThreading::Async(
+            [this, request = std::move(request)]() mutable {
+                return Bootstrap.Cache.ReadData(
+                    Bootstrap.CallContext, std::move(request));
+            }, SubmitThreadPool);
+    }
+
+    NThreading::TFuture<NProto::TError> Flush(ui64 nodeId)
+    {
+        return NThreading::Async(
+            [this, nodeId]() mutable {
+                return Bootstrap.Cache.FlushNodeData(nodeId);
+            }, SubmitThreadPool);
+    }
+
+    ~TMultiThreadedBootstrap()
+    {
+        SubmitThreadPool.Stop();
+        ExecutorThreadPool.Stop();
+    }
+
+private:
+    TFuture<NProto::TWriteDataResponse> WriteDataHandler(
+        std::shared_ptr<NProto::TWriteDataRequest> request)
+    {
+        auto* nodeData = GetNodeData(request->GetNodeId());
+
+        return NThreading::Async(
+            [this, nodeData, request = std::move(request)]() mutable
+            {
+                Bootstrap.MoveIovecsToBuffer(*request);
+
+                auto guard = Guard(nodeData->Lock);
+                Write(
+                    nodeData->Data, request->GetOffset(), request->GetBuffer());
+
+                return NProto::TWriteDataResponse();
+            }, ExecutorThreadPool);
+    }
+
+    TFuture<NProto::TReadDataResponse> ReadDataHandler(
+        std::shared_ptr<NProto::TReadDataRequest> request)
+    {
+        auto* nodeData = GetNodeData(request->GetNodeId());
+
+        return NThreading::Async(
+            [nodeData, request = std::move(request)]
+            {
+                auto guard = Guard(nodeData->Lock);
+
+                auto data = TStringBuf(nodeData->Data);
+                data = data.Skip(Min(request->GetOffset(), data.size()));
+                data = data.Trunc(Min(request->GetLength(), data.size()));
+
+                NProto::TReadDataResponse response;
+                if (request->GetIovecs().empty()) {
+                    response.SetBuffer(TString(data));
+                } else {
+                    response.SetLength(data.size());
+                    for (const auto& iovec: request->GetIovecs()) {
+                        if (data.empty()) {
+                            break;
+                        }
+
+                        auto out = ToMemoryOutput(iovec);
+                        const auto length = Min(data.size(), out.Avail());
+                        out.Write(data.Head(length));
+                        data.Skip(length);
+                    }
+                }
+
+                return response;
+            }, ExecutorThreadPool);
+    }
+
+    TNodeData* GetNodeData(ui64 nodeId)
+    {
+        auto guard = Guard(GlobalLock);
+        auto& ptr = Nodes[nodeId];
+        if (!ptr) {
+            ptr = std::make_unique<TNodeData>();
+        }
+        return ptr.get();
     }
 };
 
@@ -2947,6 +3089,135 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(HasError(future.GetValueSync()));
         UNIT_ASSERT_VALUES_EQUAL(103, b.Cache.GetMaxWrittenOffset(1));
         UNIT_ASSERT_VALUES_EQUAL(1, b.SessionWriteDataHandlerCalled.load());
+    }
+
+    Y_UNIT_TEST(MultiThreadedReadWriteTest)
+    {
+        constexpr size_t ThreadCount = 16;
+        constexpr ui64 MaxRequestSize = 8_KB;
+        constexpr ui64 FileSize = 256_KB;
+        constexpr TDuration TestDuration = TDuration::Seconds(5);
+
+        TMultiThreadedBootstrap b({.MaxWriteRequestsCount = 2});
+
+        std::latch start{ThreadCount + 1};
+        std::atomic<bool> stopRequested = false;
+        TInstant deadline;
+
+        TVector<std::exception_ptr> errors(ThreadCount);
+        TVector<std::thread> threads;
+        threads.reserve(ThreadCount);
+
+        for (size_t i = 0; i < ThreadCount; i++) {
+            threads.emplace_back(
+                [&, i]
+                {
+                    const ui64 nodeId = i + 1;
+                    const ui64 handle = nodeId + NodeToHandleOffset;
+                    TString expectedData;
+
+                    const auto readAndValidate = [&](ui64 offset, ui64 length)
+                    {
+                        auto request =
+                            std::make_shared<NProto::TReadDataRequest>();
+                        request->SetNodeId(nodeId);
+                        request->SetHandle(handle);
+                        request->SetOffset(offset);
+                        request->SetLength(length);
+
+                        const auto response =
+                            b.ReadData(std::move(request)).GetValueSync();
+                        if (HasError(response)) {
+                            ythrow yexception()
+                                << "ReadData failed for @" << nodeId << ": "
+                                << FormatError(response.GetError());
+                        }
+
+                        auto expected = TStringBuf(expectedData);
+                        expected = expected.Skip(Min(offset, expected.size()));
+                        expected = expected.Trunc(Min(length, expected.size()));
+
+                        const auto actual = response.GetBuffer().substr(
+                            response.GetBufferOffset());
+                        if (expected != actual) {
+                            ythrow yexception()
+                                << "Data mismatch while reading @" << nodeId
+                                << " at offset " << offset << " and length "
+                                << length
+                                << ". Expected: " << TString(expected).Quote()
+                                << ", actual: " << actual.Quote();
+                        }
+                    };
+
+                    start.arrive_and_wait();
+
+                    try {
+                        while (!stopRequested && TInstant::Now() < deadline) {
+                            const ui64 offset = RandomNumber(FileSize);
+                            const ui64 length =
+                                RandomNumber(
+                                    Min(MaxRequestSize, FileSize - offset)) +
+                                1;
+
+                            if (RandomNumber(2u) == 0) {
+                                auto buffer = NUnitTest::RandomString(
+                                    length, RandomNumber<ui32>());
+
+                                auto request = std::make_shared<
+                                    NProto::TWriteDataRequest>();
+                                request->SetNodeId(nodeId);
+                                request->SetHandle(handle);
+                                request->SetOffset(offset);
+                                request->SetBuffer(buffer);
+
+                                const auto response =
+                                    b.WriteData(std::move(request))
+                                        .GetValueSync();
+                                if (HasError(response)) {
+                                    ythrow yexception()
+                                        << "WriteData failed for @" << nodeId
+                                        << ": "
+                                        << FormatError(response.GetError());
+                                }
+
+                                Write(expectedData, offset, buffer);
+                            } else {
+                                readAndValidate(offset, length);
+                            }
+                        }
+
+                        const auto error = b.Flush(nodeId).GetValueSync();
+                        if (HasError(error)) {
+                            ythrow yexception()
+                                << "Flush failed for @" << nodeId << ": "
+                                << FormatError(error);
+                        }
+
+                        for (ui64 offset = 0; offset < FileSize;
+                             offset += MaxRequestSize)
+                        {
+                            readAndValidate(
+                                offset, Min(MaxRequestSize, FileSize - offset));
+                        }
+                    } catch (...) {
+                        errors[i] = std::current_exception();
+                        stopRequested = true;
+                    }
+                });
+        }
+
+        deadline = TInstant::Now() + TestDuration;
+        start.arrive_and_wait();
+
+        for (auto& thread: threads) {
+            thread.join();
+        }
+
+        for (const auto& error: errors) {
+            if (error) {
+                std::rethrow_exception(error);
+            }
+        }
     }
 }
 
