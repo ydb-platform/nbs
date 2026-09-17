@@ -2,6 +2,7 @@
 
 #include "disk_agent_actor.h"
 
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
@@ -240,7 +241,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
     Y_UNIT_TEST_F(ShouldRouteRequestsToDevices, TFixture)
     {
-        const TString clientId = "client-id";
+        const TString clientId{JournalledDeviceClientId};
         const TString uuid = FileDevices[0].GetDeviceId();
         const TString unknownUuid = "unknown";
 

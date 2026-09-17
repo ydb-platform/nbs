@@ -66,7 +66,7 @@ public:
         }
     }
 
-    TVector<TPageRange> Allocate(ui64 pageCount) override
+    TVector<TPageRangeRef> Allocate(ui64 pageCount) override
     {
         with_lock (Lock) {
             return AllocateImpl(pageCount);
@@ -74,7 +74,7 @@ public:
     }
 
     NCloud::NProto::TError AllocateAt(
-        const TVector<TPageRange>& pageRanges) override
+        const TVector<TPageRangeRef>& pageRanges) override
     {
         with_lock (Lock) {
             auto error = ValidatePages(pageRanges, EPageState::Free);
@@ -90,7 +90,8 @@ public:
         }
     }
 
-    NCloud::NProto::TError Free(const TVector<TPageRange>& pageRanges) override
+    NCloud::NProto::TError Free(
+        const TVector<TPageRangeRef>& pageRanges) override
     {
         with_lock (Lock) {
             if (Mode == EDevicePageStoreMode::Checked) {
@@ -109,7 +110,7 @@ public:
     }
 
     auto Write(
-        const TVector<TPageRange>& pageRanges,
+        const TVector<TPageRangeRef>& pageRanges,
         const TVector<TBuffer>& pages)
         -> TFuture<NCloud::NProto::TError> override
     {
@@ -148,31 +149,25 @@ public:
             }
         }
 
-        NCloud::NProto::TWriteLogRecordRequest deviceRequest;
+        TVector<TPageRange> deviceRanges;
+        deviceRanges.reserve(pageRanges.size());
 
-        ui64 pageIndex = 0;
+        auto page = pages.begin();
         for (const auto& pageRange: pageRanges) {
-            auto& deviceGroup = *deviceRequest.AddPageGroups();
-            deviceGroup.SetFirstPageNo(pageRange.FirstPageNo);
-
-            for (ui64 i = 0; i < pageRange.PageCount; ++i) {
-                const auto& page = pages[pageIndex++];
-                deviceGroup.AddContent()->assign(page.Data(), page.Size());
-            }
+            auto& deviceRange = deviceRanges.emplace_back();
+            deviceRange.FirstPageNo = pageRange.FirstPageNo;
+            deviceRange.Pages.assign(page, page + pageRange.PageCount);
+            page += pageRange.PageCount;
         }
 
-        return Device->WritePages(std::move(deviceRequest))
-            .Apply(
-                [](const auto& future) -> NCloud::NProto::TError
-                { return future.GetValue().GetError(); });
+        return Device->WritePages(std::move(deviceRanges));
     }
 
-    auto Read(const TVector<TPageRange>& pageRanges)
+    auto Read(const TVector<TPageRangeRef>& pageRanges)
         -> TFuture<TResultOrError<TVector<TBuffer>>> override
     {
         using TResult = TResultOrError<TVector<TBuffer>>;
 
-        NCloud::NProto::TReadPagesRequest deviceRequest;
         ui64 pageCount = 0;
 
         if (Mode == EDevicePageStoreMode::Checked) {
@@ -186,34 +181,22 @@ public:
 
         for (const auto& pageRange: pageRanges) {
             pageCount += pageRange.PageCount;
-
-            auto& deviceRef = *deviceRequest.AddPageGroupRefs();
-            deviceRef.SetFirstPageNo(pageRange.FirstPageNo);
-            deviceRef.SetPageCount(pageRange.PageCount);
-            deviceRef.SetPageSize(PageSize);
         }
 
         if (!pageCount) {
             return MakeFuture<TResult>(TVector<TBuffer>());
         }
 
-        return Device->ReadPages(std::move(deviceRequest))
+        return Device->ReadPages(pageRanges)
             .Apply(
                 [pageCount](const auto& future) -> TResult
                 {
-                    auto response = UnsafeExtractValue(future);
-                    if (HasError(response)) {
-                        return response.GetError();
+                    auto result = UnsafeExtractValue(future);
+                    if (HasError(result)) {
+                        return result.GetError();
                     }
 
-                    TVector<TBuffer> pages;
-                    pages.reserve(pageCount);
-
-                    for (const auto& group: response.GetPageGroups()) {
-                        for (const auto& content: group.GetContent()) {
-                            pages.emplace_back(content.data(), content.size());
-                        }
-                    }
+                    auto pages = result.ExtractResult();
 
                     if (pages.size() != pageCount) {
                         return MakeError(
@@ -228,13 +211,13 @@ public:
     }
 
 private:
-    TVector<TPageRange> AllocateImpl(ui64 pageCount)
+    TVector<TPageRangeRef> AllocateImpl(ui64 pageCount)
     {
         if (!pageCount || pageCount > FreeRanges.GetIntervalSum()) {
             return {};
         }
 
-        TVector<TPageRange> ranges;
+        TVector<TPageRangeRef> ranges;
         ui64 left = pageCount;
 
         while (left) {
@@ -256,7 +239,7 @@ private:
         return ranges;
     }
 
-    void FreeImpl(const TPageRange& pageRange)
+    void FreeImpl(const TPageRangeRef& pageRange)
     {
         if (!pageRange.PageCount) {
             return;
@@ -278,7 +261,7 @@ private:
         FreeRanges.Add(begin, end, {});
     }
 
-    void AllocateAtImpl(const TPageRange& pageRange)
+    void AllocateAtImpl(const TPageRangeRef& pageRange)
     {
         if (!pageRange.PageCount) {
             return;
@@ -306,7 +289,7 @@ private:
             });
     }
 
-    std::optional<ui64> FindAllocatedPage(const TPageRange& pageRange) const
+    std::optional<ui64> FindAllocatedPage(const TPageRangeRef& pageRange) const
     {
         const ui64 endPageNo = pageRange.FirstPageNo + pageRange.PageCount;
 
@@ -329,7 +312,7 @@ private:
         return std::nullopt;
     }
 
-    std::optional<ui64> FindFreePage(const TPageRange& pageRange) const
+    std::optional<ui64> FindFreePage(const TPageRangeRef& pageRange) const
     {
         std::optional<ui64> pageNo;
         FreeRanges.VisitOverlapping(
@@ -345,7 +328,7 @@ private:
         return pageNo;
     }
 
-    static bool HasIntersections(const TVector<TPageRange>& ranges)
+    static bool HasIntersections(const TVector<TPageRangeRef>& ranges)
     {
         TPageRanges seen;
 
@@ -371,7 +354,7 @@ private:
     }
 
     NCloud::NProto::TError ValidatePages(
-        const TVector<TPageRange>& ranges,
+        const TVector<TPageRangeRef>& ranges,
         EPageState expected) const
     {
         if (HasIntersections(ranges)) {

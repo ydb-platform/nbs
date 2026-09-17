@@ -124,34 +124,27 @@ TKeyBuffers Reopen(
 
 TString ReadFromDevice(const IDevicePtr& device, ui64 pageNo)
 {
-    NCloud::NProto::TReadPagesRequest request;
-    auto& ref = *request.AddPageGroupRefs();
-    ref.SetFirstPageNo(pageNo);
-    ref.SetPageCount(1);
-    ref.SetPageSize(TestPageSize);
-
-    auto response = device->ReadPages(std::move(request)).GetValueSync();
+    const auto result =
+        device->ReadPages({{.FirstPageNo = pageNo, .PageCount = 1}})
+            .GetValueSync();
     UNIT_ASSERT_VALUES_EQUAL_C(
         S_OK,
-        response.GetError().GetCode(),
-        FormatError(response.GetError()));
-    UNIT_ASSERT_VALUES_EQUAL(1, response.GetPageGroups(0).ContentSize());
+        result.GetError().GetCode(),
+        FormatError(result.GetError()));
+    UNIT_ASSERT_VALUES_EQUAL(1, result.GetResult().size());
 
-    return response.GetPageGroups(0).GetContent(0);
+    const auto& page = result.GetResult()[0];
+    return TString(page.Data(), page.Size());
 }
 
 void WriteToDevice(const IDevicePtr& device, ui64 pageNo, TString content)
 {
-    NCloud::NProto::TWriteLogRecordRequest request;
-    auto& group = *request.AddPageGroups();
-    group.SetFirstPageNo(pageNo);
-    *group.AddContent() = std::move(content);
+    TPageRange range{.FirstPageNo = pageNo};
+    range.Pages.emplace_back(content.data(), content.size());
 
-    auto response = device->WritePages(std::move(request)).GetValueSync();
-    UNIT_ASSERT_VALUES_EQUAL_C(
-        S_OK,
-        response.GetError().GetCode(),
-        FormatError(response.GetError()));
+    const auto error =
+        device->WritePages({std::move(range)}).GetValueSync();
+    UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 }
 
 // flips a byte of the page - by default the first payload byte of an entry
@@ -178,36 +171,34 @@ bool IsZeroDevicePage(const IDevicePtr& device, ui64 pageNo)
 class TStuckDevice final: public IDevice
 {
 private:
-    const IDevicePtr Device = CreateInMemoryDevice();
+    const IDevicePtr Device = CreateInMemoryDevice(TestPageSize);
 
     TVector<std::function<void()>> Pending;
 
 public:
     bool Broken = false;
 
-    NThreading::TFuture<NCloud::NProto::TReadPagesResponse> ReadPages(
-        NCloud::NProto::TReadPagesRequest request) override
+    NThreading::TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
+        TVector<TPageRangeRef> rangeRefs) override
     {
-        return Device->ReadPages(std::move(request));
+        return Device->ReadPages(std::move(rangeRefs));
     }
 
-    NThreading::TFuture<NCloud::NProto::TWriteLogRecordResponse> WritePages(
-        NCloud::NProto::TWriteLogRecordRequest request) override
+    NThreading::TFuture<NCloud::NProto::TError> WritePages(
+        TVector<TPageRange> ranges) override
     {
         if (Broken) {
-            return NThreading::MakeFuture<
-                NCloud::NProto::TWriteLogRecordResponse>(
-                TErrorResponse(E_IO, "device is broken"));
+            return NThreading::MakeFuture(
+                MakeError(E_IO, "device is broken"));
         }
 
-        auto promise =
-            NThreading::NewPromise<NCloud::NProto::TWriteLogRecordResponse>();
+        auto promise = NThreading::NewPromise<NCloud::NProto::TError>();
 
         Pending.push_back(
-            [device = Device, request = std::move(request), promise]() mutable
+            [device = Device, ranges = std::move(ranges), promise]() mutable
             {
                 promise.SetValue(
-                    device->WritePages(std::move(request)).GetValueSync());
+                    device->WritePages(std::move(ranges)).GetValueSync());
             });
 
         return promise.GetFuture();
@@ -390,7 +381,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 {
     Y_UNIT_TEST(ShouldStartEmptyOnAFreshDevice)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
         auto store = CreateTestStore(device);
 
         auto buffers = Restore(store);
@@ -401,7 +392,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldRequireRestoreBeforeUse)
     {
-        auto store = CreateTestStore(CreateInMemoryDevice());
+        auto store = CreateTestStore(CreateInMemoryDevice(TestPageSize));
 
         auto error = store->Write(1, MakeBuffer("x")).GetValueSync();
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, error.GetCode());
@@ -411,7 +402,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldKeepTheBuffersAcrossRestores)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
 
         {
             auto store = OpenTestStore(device);
@@ -426,7 +417,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldSplitABufferAcrossPages)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
 
         // 40 bytes take 3 pages of 16 bytes payload, the last one partially
         const TString data = "0123456789abcdefghijklmnopqrstuvwxyzABCD";
@@ -446,7 +437,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldNotTouchThePagesBeyondTheDevice)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
 
         auto store = OpenTestStore(device);
         Write(store, 1, "0123456789abcdefghijklmnopqrstuvwxyzABCD");
@@ -460,7 +451,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldRejectABufferThatDoesNotFit)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
         auto store = OpenTestStore(device);
 
         // 6 entry pages of 16 bytes payload each
@@ -479,7 +470,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldReuseThePagesOfErasedBuffers)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
         auto store = OpenTestStore(device);
 
         for (ui64 key = 1; key <= 6; ++key) {
@@ -505,7 +496,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldPersistTheErasedBound)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
 
         {
             auto store = OpenTestStore(device);
@@ -549,7 +540,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldKeepTheNewestCopyOfARewrittenKey)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
 
         {
             auto store = OpenTestStore(device);
@@ -572,7 +563,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldFreeThePagesOfTheOverwrittenCopy)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
         auto store = OpenTestStore(device);
 
         for (int i = 0; i < 20; ++i) {
@@ -586,7 +577,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldDropATornBuffer)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
 
         {
             auto store = OpenTestStore(device);
@@ -604,7 +595,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldKeepTheOldCopyWhenTheRewriteIsTorn)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
 
         {
             auto store = OpenTestStore(device);
@@ -621,7 +612,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldSurviveATornSuperblock)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
 
         {
             auto store = OpenTestStore(device);
@@ -643,7 +634,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldIgnoreGarbageOnTheDevice)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
 
         for (ui64 pageNo = 0; pageNo < TestPageCount; ++pageNo) {
             WriteToDevice(device, pageNo, TString(TestPageSize, 'g'));
@@ -674,7 +665,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldRefuseToRestoreWithBothSuperblockSlotsDirty)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
         WriteToDevice(device, 0, TString(TestPageSize, 'g'));
         WriteToDevice(device, 1, TString(TestPageSize, 'g'));
 
@@ -688,7 +679,7 @@ Y_UNIT_TEST_SUITE(TDeviceKeyBufferStoreTest)
 
     Y_UNIT_TEST(ShouldRestoreALargeRangeInSeveralReads)
     {
-        auto device = CreateInMemoryDevice();
+        auto device = CreateInMemoryDevice(TestPageSize);
         constexpr ui64 pageCount = 3000;
 
         {

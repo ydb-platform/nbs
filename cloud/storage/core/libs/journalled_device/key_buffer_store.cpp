@@ -9,7 +9,6 @@
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/digest/multi.h>
-
 #include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
@@ -198,8 +197,7 @@ std::optional<TEntryPage> ParseEntryPage(TStringBuf page, ui32 pageSize)
 
     const ui64 chunkCapacity = pageSize - EntryHeaderSize;
     if (header.ChunkIndex >= header.ChunkCount ||
-        header.ChunkCount !=
-            ChunkCountFor(header.PayloadSize, chunkCapacity))
+        header.ChunkCount != ChunkCountFor(header.PayloadSize, chunkCapacity))
     {
         return std::nullopt;
     }
@@ -257,9 +255,9 @@ bool IsEmptyPage(TStringBuf page, ui32 pageSize)
 }
 
 // Merges the consecutive page numbers into ranges.
-TVector<TPageRange> ToPageRanges(const TVector<ui64>& pageNos)
+TVector<TPageRangeRef> ToPageRanges(const TVector<ui64>& pageNos)
 {
-    TVector<TPageRange> ranges;
+    TVector<TPageRangeRef> ranges;
 
     for (ui64 pageNo: pageNos) {
         if (!ranges.empty() &&
@@ -309,7 +307,7 @@ private:
     struct TEntry
     {
         ui64 Seq = 0;
-        TVector<TPageRange> Locations;
+        TVector<TPageRangeRef> Locations;
     };
 
     const IDevicePtr Device;
@@ -357,7 +355,7 @@ private:
     NCloud::NProto::TError OnEntryWritten(
         ui64 key,
         ui64 seq,
-        const TVector<TPageRange>& locations,
+        const TVector<TPageRangeRef>& locations,
         const TFuture<NCloud::NProto::TError>& future);
 
     NCloud::NProto::TError OnSuperblockWritten(
@@ -398,17 +396,15 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
 
     // the scan goes straight to the device - the page store knows
     // nothing about the pages before the restore
-    TVector<TFuture<NCloud::NProto::TReadPagesResponse>> futures;
+    TVector<TFuture<TResultOrError<TVector<TBuffer>>>> futures;
 
     for (ui64 offset = 0; offset < PageCount; offset += MaxPagesPerReadRequest)
     {
-        NCloud::NProto::TReadPagesRequest request;
-        auto& ref = *request.AddPageGroupRefs();
-        ref.SetFirstPageNo(offset);
-        ref.SetPageCount(Min(MaxPagesPerReadRequest, PageCount - offset));
-        ref.SetPageSize(PageSize);
+        TPageRangeRef ref{
+            .FirstPageNo = offset,
+            .PageCount = Min(MaxPagesPerReadRequest, PageCount - offset)};
 
-        futures.push_back(Device->ReadPages(std::move(request)));
+        futures.push_back(Device->ReadPages({ref}));
     }
 
     return WaitAll(futures).Apply(
@@ -419,15 +415,13 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
             pages.reserve(self->PageCount);
 
             for (auto& future: futures) {
-                auto response = UnsafeExtractValue(future);
-                if (HasError(response)) {
-                    return TRestoreResult(response.GetError());
+                auto result = UnsafeExtractValue(future);
+                if (HasError(result)) {
+                    return TRestoreResult(result.GetError());
                 }
 
-                for (auto& group: *response.MutablePageGroups()) {
-                    for (auto& content: *group.MutableContent()) {
-                        pages.push_back(std::move(content));
-                    }
+                for (const auto& page: result.GetResult()) {
+                    pages.emplace_back(page.Data(), page.Size());
                 }
             }
 
@@ -697,7 +691,7 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
 NCloud::NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
     ui64 key,
     ui64 seq,
-    const TVector<TPageRange>& locations,
+    const TVector<TPageRangeRef>& locations,
     const TFuture<NCloud::NProto::TError>& future)
 {
     auto error = future.GetValue();
@@ -712,7 +706,7 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
         return error;
     }
 
-    TVector<TPageRange> stalePages;
+    TVector<TPageRangeRef> stalePages;
 
     with_lock (Lock) {
         if (key < RequestedErasedBelowKey) {
@@ -739,8 +733,8 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnEntryWritten(
         if (HasError(freeError)) {
             ReadOnly.store(true);
             STORAGE_ERROR(
-                "failed to free the stale pages of key " << key << ": "
-                << FormatError(freeError));
+                "failed to free the stale pages of key "
+                << key << ": " << FormatError(freeError));
         }
     }
 
@@ -752,7 +746,7 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
     const TFuture<NCloud::NProto::TError>& future)
 {
     auto error = future.GetValue();
-    TVector<TPageRange> pagesToFree;
+    TVector<TPageRangeRef> pagesToFree;
     bool erasedAny = false;
 
     with_lock (Lock) {
@@ -781,8 +775,8 @@ NCloud::NProto::TError TDeviceKeyBufferStore::OnSuperblockWritten(
         if (HasError(freeError)) {
             ReadOnly.store(true);
             STORAGE_ERROR(
-                "failed to free the pages erased below key " << key << ": "
-                << FormatError(freeError));
+                "failed to free the pages erased below key "
+                << key << ": " << FormatError(freeError));
         }
     }
 

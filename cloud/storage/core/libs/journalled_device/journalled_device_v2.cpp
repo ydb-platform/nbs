@@ -1,6 +1,7 @@
 #include "journalled_device_v2.h"
 
 #include "device.h"
+#include "device_helpers.h"
 #include "journal.h"
 #include "journalled_device.h"
 #include "lsn_barrier.h"
@@ -147,7 +148,6 @@ private:
     const IJournalPtr Journal;
     const IDevicePtr DataStore;
     const TString DeviceUUID;
-    const TString BackgroundClientId;
 
     TLog Log;
 
@@ -163,14 +163,12 @@ public:
         TExecutorPtr executor,
         IJournalPtr journal,
         IDevicePtr dataStore,
-        TString deviceUUID,
-        TString backgroundClientId)
+        TString deviceUUID)
         : Logging(std::move(logging))
         , Executor(std::move(executor))
         , Journal(std::move(journal))
         , DataStore(std::move(dataStore))
         , DeviceUUID(std::move(deviceUUID))
-        , BackgroundClientId(std::move(backgroundClientId))
         , Log(Logging->CreateLog("JOURNALLED_DEVICE"))
     {}
 
@@ -328,8 +326,16 @@ private:
         NCloud::NProto::TReadPagesResponse deviceResp;
 
         if (missing.PageGroupRefsSize()) {
-            auto deviceFuture = DataStore->ReadPages(std::move(missing));
-            deviceResp = Executor->ExtractResponse(std::move(deviceFuture));
+            const auto rangeRefs = MakePageRangeRefs(missing);
+
+            auto deviceFuture = DataStore->ReadPages(rangeRefs);
+
+            auto result = Executor->ExtractResponse(std::move(deviceFuture));
+            if (HasError(result)) {
+                return TErrorResponse(result.GetError());
+            }
+
+            deviceResp = MakeReadPagesResponse(rangeRefs, result.GetResult());
             if (HasError(deviceResp)) {
                 return deviceResp;
             }
@@ -356,19 +362,6 @@ private:
 
         IndexedLsnBarrier.Advance(lsn);
         return response;
-    }
-
-    NCloud::NProto::TWriteLogRecordRequest MakeFlushRequest(
-        NCloud::NProto::TJournalRecord& record) const
-    {
-        NCloud::NProto::TWriteLogRecordRequest request;
-        request.MutableHeaders()->SetClientId(BackgroundClientId);
-        request.SetDeviceUUID(DeviceUUID);
-        request.SetLogSequenceNumber(record.GetLogSequenceNumber());
-        request.SetPrevLogSequenceNumber(record.GetPrevLogSequenceNumber());
-        request.MutablePageGroups()->Swap(record.MutablePageGroups());
-
-        return request;
     }
 
     void ScheduleFlushCycle()
@@ -408,15 +401,14 @@ private:
             }
 
             if (record.PageGroupsSize()) {
-                auto request = MakeFlushRequest(record);
+                auto writeFuture =
+                    DataStore->WritePages(MakePageRanges(record));
 
-                auto writeFuture = DataStore->WritePages(std::move(request));
-                auto writeResponse = Executor->WaitFor(writeFuture);
-                if (HasError(writeResponse)) {
+                auto writeError = Executor->WaitFor(writeFuture);
+                if (HasError(writeError)) {
                     STORAGE_ERROR(
                         "unable to flush the record with lsn "
-                        << lsn << ": "
-                        << FormatError(writeResponse.GetError()));
+                        << lsn << ": " << FormatError(writeError));
                     break;
                 }
             }
@@ -453,16 +445,14 @@ IJournalledDevicePtr CreateJournalledDeviceV2(
     TExecutorPtr executor,
     IJournalPtr journal,
     IDevicePtr dataStore,
-    TString deviceUUID,
-    TString backgroundClientId)
+    TString deviceUUID)
 {
     return std::make_shared<TJournalledDeviceV2>(
         std::move(logging),
         std::move(executor),
         std::move(journal),
         std::move(dataStore),
-        std::move(deviceUUID),
-        std::move(backgroundClientId));
+        std::move(deviceUUID));
 }
 
 }   // namespace NCloud::NJournalled

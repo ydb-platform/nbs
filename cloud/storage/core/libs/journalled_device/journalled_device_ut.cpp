@@ -18,24 +18,23 @@ struct TTestDevice final: public IDevice
 {
     ui32 WritePagesCount = 0;
 
-    [[nodiscard]] auto ReadPages(
-        NCloud::NProto::TReadPagesRequest request)
-        -> TFuture<NCloud::NProto::TReadPagesResponse> final
+    [[nodiscard]] auto ReadPages(TVector<TPageRangeRef> rangeRefs)
+        -> TFuture<TResultOrError<TVector<TBuffer>>> final
     {
-        Y_UNUSED(request);
+        Y_UNUSED(rangeRefs);
 
-        return MakeFuture<NCloud::NProto::TReadPagesResponse>();
+        return MakeFuture<TResultOrError<TVector<TBuffer>>>(
+            TVector<TBuffer>());
     }
 
-    [[nodiscard]] auto WritePages(
-        NCloud::NProto::TWriteLogRecordRequest request)
-        -> TFuture<NCloud::NProto::TWriteLogRecordResponse> final
+    [[nodiscard]] auto WritePages(TVector<TPageRange> ranges)
+        -> TFuture<NCloud::NProto::TError> final
     {
-        Y_UNUSED(request);
+        Y_UNUSED(ranges);
 
         ++WritePagesCount;
 
-        return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>();
+        return MakeFuture<NCloud::NProto::TError>();
     }
 };
 

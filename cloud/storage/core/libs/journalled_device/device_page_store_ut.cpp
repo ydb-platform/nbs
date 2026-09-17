@@ -37,9 +37,9 @@ TString Join(const TVector<TBuffer>& pages)
     return sb;
 }
 
-TVector<TPageRange> MakeRanges(const TVector<std::pair<ui64, ui64>>& ranges)
+TVector<TPageRangeRef> MakeRanges(const TVector<std::pair<ui64, ui64>>& ranges)
 {
-    TVector<TPageRange> pageRanges;
+    TVector<TPageRangeRef> pageRanges;
     for (const auto& [firstPageNo, pageCount]: ranges) {
         pageRanges.push_back(
             {.FirstPageNo = firstPageNo, .PageCount = pageCount});
@@ -48,7 +48,7 @@ TVector<TPageRange> MakeRanges(const TVector<std::pair<ui64, ui64>>& ranges)
 }
 
 // "<firstPageNo>x<pageCount>" per returned range
-TString Describe(const TVector<TPageRange>& ranges)
+TString Describe(const TVector<TPageRangeRef>& ranges)
 {
     TStringBuilder sb;
     for (const auto& pageRange: ranges) {
@@ -64,27 +64,26 @@ TString Describe(const TVector<TPageRange>& ranges)
 
 struct TBrokenDevice final: public IDevice
 {
-    NThreading::TFuture<NCloud::NProto::TReadPagesResponse> ReadPages(
-        NCloud::NProto::TReadPagesRequest request) override
+    NThreading::TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
+        TVector<TPageRangeRef> rangeRefs) override
     {
-        Y_UNUSED(request);
+        Y_UNUSED(rangeRefs);
 
-        return NThreading::MakeFuture<NCloud::NProto::TReadPagesResponse>(
-            TErrorResponse(E_IO, "device is broken"));
+        return NThreading::MakeFuture<TResultOrError<TVector<TBuffer>>>(
+            MakeError(E_IO, "device is broken"));
     }
 
-    NThreading::TFuture<NCloud::NProto::TWriteLogRecordResponse> WritePages(
-        NCloud::NProto::TWriteLogRecordRequest request) override
+    NThreading::TFuture<NCloud::NProto::TError> WritePages(
+        TVector<TPageRange> ranges) override
     {
-        Y_UNUSED(request);
+        Y_UNUSED(ranges);
 
-        return NThreading::MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
-            TErrorResponse(E_IO, "device is broken"));
+        return NThreading::MakeFuture(MakeError(E_IO, "device is broken"));
     }
 };
 
 // allocates the pages of a record and writes them
-TVector<TPageRange> WriteRecord(
+TVector<TPageRangeRef> WriteRecord(
     const IDevicePageStorePtr& store,
     const TVector<TString>& pages)
 {
@@ -101,28 +100,15 @@ TVector<TPageRange> WriteRecord(
 TString
 ReadFromDevice(const IDevicePtr& device, ui64 firstPageNo, ui64 pageCount)
 {
-    NCloud::NProto::TReadPagesRequest request;
-    auto& ref = *request.AddPageGroupRefs();
-    ref.SetFirstPageNo(firstPageNo);
-    ref.SetPageCount(pageCount);
-
-    const auto response = device->ReadPages(std::move(request)).GetValueSync();
+    const auto result = device
+        ->ReadPages({{.FirstPageNo = firstPageNo, .PageCount = pageCount}})
+        .GetValueSync();
     UNIT_ASSERT_VALUES_EQUAL_C(
         S_OK,
-        response.GetError().GetCode(),
-        FormatError(response.GetError()));
+        result.GetError().GetCode(),
+        FormatError(result.GetError()));
 
-    TStringBuilder sb;
-    for (const auto& group: response.GetPageGroups()) {
-        for (const auto& content: group.GetContent()) {
-            if (sb) {
-                sb << "|";
-            }
-            sb << content;
-        }
-    }
-
-    return sb;
+    return Join(result.GetResult());
 }
 
 }   // namespace
@@ -133,8 +119,10 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 {
     Y_UNIT_TEST(ShouldAllocateFreePages)
     {
-        auto store =
-            CreateDevicePageStore(CreateInMemoryDevice(), 4, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(DefaultPageSize),
+            4,
+            DefaultPageSize);
 
         UNIT_ASSERT_VALUES_EQUAL("0x2", Describe(store->Allocate(2)));
 
@@ -148,8 +136,10 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
     Y_UNIT_TEST(ShouldNotAllocateMorePagesThanThereAre)
     {
-        auto store =
-            CreateDevicePageStore(CreateInMemoryDevice(), 4, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(DefaultPageSize),
+            4,
+            DefaultPageSize);
 
         UNIT_ASSERT(store->Allocate(5).empty());
 
@@ -159,8 +149,10 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
     Y_UNIT_TEST(ShouldAllocateFragmentedFreeSpace)
     {
-        auto store =
-            CreateDevicePageStore(CreateInMemoryDevice(), 8, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(DefaultPageSize),
+            8,
+            DefaultPageSize);
 
         UNIT_ASSERT_VALUES_EQUAL("0x8", Describe(store->Allocate(8)));
 
@@ -176,7 +168,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldReadBackWhatWasWritten)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -191,7 +183,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldRejectPagesOfAWrongSize)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -227,8 +219,10 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
     Y_UNIT_TEST(ShouldWriteIntoFragmentedRefs)
     {
-        auto store =
-            CreateDevicePageStore(CreateInMemoryDevice(), 8, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(DefaultPageSize),
+            8,
+            DefaultPageSize);
 
         UNIT_ASSERT_VALUES_EQUAL("0x8", Describe(store->Allocate(8)));
         UNIT_ASSERT_VALUES_EQUAL(
@@ -252,7 +246,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldRejectAWriteWithAWrongNumberOfPages)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -274,7 +268,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldRejectAWriteIntoPagesThatAreNotAllocated)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -293,7 +287,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldRejectRefsForPagesThatAreNotThere)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -317,8 +311,10 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
     Y_UNIT_TEST(ShouldAcceptRefsThatOnlyTouchTheFreeSpace)
     {
-        auto store =
-            CreateDevicePageStore(CreateInMemoryDevice(), 8, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(DefaultPageSize),
+            8,
+            DefaultPageSize);
 
         UNIT_ASSERT_VALUES_EQUAL("0x8", Describe(store->Allocate(8)));
 
@@ -365,7 +361,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldFreePages)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -387,7 +383,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldNotFreeAnythingWhenARefIsRejected)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -406,8 +402,10 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
     Y_UNIT_TEST(ShouldReuseFreedPages)
     {
-        auto store =
-            CreateDevicePageStore(CreateInMemoryDevice(), 4, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(DefaultPageSize),
+            4,
+            DefaultPageSize);
 
         auto ranges = WriteRecord(store, {"aaaa", "bbbb"});
         UNIT_ASSERT_VALUES_EQUAL("0x2", Describe(ranges));
@@ -420,8 +418,10 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
     Y_UNIT_TEST(ShouldMergeTheFreedPagesWithTheirNeighbours)
     {
-        auto store =
-            CreateDevicePageStore(CreateInMemoryDevice(), 6, DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            CreateInMemoryDevice(DefaultPageSize),
+            6,
+            DefaultPageSize);
 
         UNIT_ASSERT_VALUES_EQUAL("0x6", Describe(store->Allocate(6)));
 
@@ -448,7 +448,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldAllocateTheGivenPages)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -462,7 +462,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldNotAllocateThePagesThatAreBusyAlready)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -488,7 +488,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldKeepTheContentOfTheRejectedPages)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -507,13 +507,13 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldAcceptAnEmptyRequest)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
         UNIT_ASSERT(store->Allocate(0).empty());
 
-        TVector<TPageRange> none;
+        TVector<TPageRangeRef> none;
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             store->Write(none, {}).GetValue().GetCode());
@@ -524,9 +524,11 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
     Y_UNIT_TEST(ShouldKeepThePagesOnTheDevice)
     {
-        auto device = CreateInMemoryDevice();
-        auto store =
-            CreateDevicePageStore(device, DefaultPageCount, DefaultPageSize);
+        auto device = CreateInMemoryDevice(DefaultPageSize);
+        auto store = CreateDevicePageStore(
+            device,
+            DefaultPageCount,
+            DefaultPageSize);
 
         auto ranges = WriteRecord(store, {"aaaa", "bbbb", "cccc"});
         UNIT_ASSERT_VALUES_EQUAL("0x3", Describe(ranges));
@@ -540,7 +542,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldNotValidateTheRefsInTheTrustedMode)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize,
             EDevicePageStoreMode::Trusted);
@@ -561,7 +563,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
 
         // the same store in the checked mode rejects all three
         auto checked = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize);
 
@@ -581,7 +583,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldValidateAllocateAtInTheTrustedMode)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             DefaultPageCount,
             DefaultPageSize,
             EDevicePageStoreMode::Trusted);
@@ -609,7 +611,7 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldTrackTheAllocationInTheTrustedMode)
     {
         auto store = CreateDevicePageStore(
-            CreateInMemoryDevice(),
+            CreateInMemoryDevice(DefaultPageSize),
             4,
             DefaultPageSize,
             EDevicePageStoreMode::Trusted);

@@ -18,7 +18,6 @@ IJournalledDevicePtr CreateJournalledDeviceV2(
     TExecutorPtr executor,
     IJournalPtr journal,
     IDevicePtr dataStore,
-    TString deviceUUID,
-    TString backgroundClientId);
+    TString deviceUUID);
 
 }   // namespace NCloud::NJournalled

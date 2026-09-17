@@ -14,49 +14,52 @@ namespace {
 class TInMemoryDevice final: public IDevice
 {
 private:
+    const ui32 PageSize;
+
     TAdaptiveLock Lock;
-    THashMap<ui64 /*pageNo*/, TString> Pages;
+    THashMap<ui64 /*pageNo*/, TBuffer> Pages;
 
 public:
-    TFuture<NCloud::NProto::TReadPagesResponse> ReadPages(
-        NCloud::NProto::TReadPagesRequest request) override
+    explicit TInMemoryDevice(ui32 pageSize)
+        : PageSize(pageSize)
+    {}
+
+    TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
+        TVector<TPageRangeRef> rangeRefs) override
     {
-        NCloud::NProto::TReadPagesResponse response;
+        TVector<TBuffer> pages;
 
         with_lock (Lock) {
-            for (const auto& ref: request.GetPageGroupRefs()) {
-                auto& group = *response.AddPageGroups();
-                group.SetFirstPageNo(ref.GetFirstPageNo());
-
-                for (ui64 i = 0; i < ref.GetPageCount(); ++i) {
-                    auto it = Pages.find(ref.GetFirstPageNo() + i);
+            for (const auto& ref: rangeRefs) {
+                for (ui64 i = 0; i < ref.PageCount; ++i) {
+                    auto it = Pages.find(ref.FirstPageNo + i);
                     if (it != Pages.end()) {
-                        *group.AddContent() = it->second;
+                        pages.push_back(it->second);
                         continue;
                     }
 
                     // a page that has never been written reads as a zeroed one
-                    *group.AddContent() = TString(ref.GetPageSize(), '\0');
+                    pages.emplace_back().Fill('\0', PageSize);
                 }
             }
         }
 
-        return MakeFuture(std::move(response));
+        return MakeFuture<TResultOrError<TVector<TBuffer>>>(std::move(pages));
     }
 
-    TFuture<NCloud::NProto::TWriteLogRecordResponse> WritePages(
-        NCloud::NProto::TWriteLogRecordRequest request) override
+    TFuture<NCloud::NProto::TError> WritePages(
+        TVector<TPageRange> ranges) override
     {
         with_lock (Lock) {
-            for (auto& group: *request.MutablePageGroups()) {
-                ui64 pageNo = group.GetFirstPageNo();
-                for (auto& content: *group.MutableContent()) {
-                    Pages[pageNo++] = std::move(content);
+            for (auto& range: ranges) {
+                ui64 pageNo = range.FirstPageNo;
+                for (auto& page: range.Pages) {
+                    Pages[pageNo++] = std::move(page);
                 }
             }
         }
 
-        return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>();
+        return MakeFuture<NCloud::NProto::TError>();
     }
 };
 
@@ -64,9 +67,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IDevicePtr CreateInMemoryDevice()
+IDevicePtr CreateInMemoryDevice(ui32 pageSize)
 {
-    return std::make_shared<TInMemoryDevice>();
+    return std::make_shared<TInMemoryDevice>(pageSize);
 }
 
 }   // namespace NCloud::NJournalled

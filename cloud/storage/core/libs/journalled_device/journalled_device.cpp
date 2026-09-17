@@ -1,6 +1,7 @@
 #include "journalled_device.h"
 
 #include "device.h"
+#include "device_helpers.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -43,7 +44,21 @@ public:
         NCloud::NProto::TReadPagesRequest request)
         -> TFuture<NCloud::NProto::TReadPagesResponse> final
     {
-        return DataStore->ReadPages(std::move(request));
+        auto rangeRefs = MakePageRangeRefs(request);
+
+        auto future = DataStore->ReadPages(rangeRefs);
+
+        return future.Apply(
+            [rangeRefs = std::move(rangeRefs)](const auto& future)
+                -> NCloud::NProto::TReadPagesResponse
+            {
+                const auto& result = future.GetValue();
+                if (HasError(result)) {
+                    return TErrorResponse(result.GetError());
+                }
+
+                return MakeReadPagesResponse(rangeRefs, result.GetResult());
+            });
     }
 
     [[nodiscard]] auto WriteLogRecord(
@@ -72,17 +87,20 @@ public:
         //             << "Wrong lsn: " << prevLsn << ", expected " << lastLsn));
         // }
 
-        return DataStore->WritePages(std::move(request)).Apply(
+        auto future = DataStore->WritePages(MakePageRanges(request));
+
+        return future.Apply(
             [self = shared_from_this(), lsn](const auto& future) mutable
                 -> NCloud::NProto::TWriteLogRecordResponse
             {
                 if (future.HasException()) {
-                    return TErrorResponse(ResultOrError(future).GetError());
+                    return TErrorResponse(
+                        ResultOrError(future.IgnoreResult()).GetError());
                 }
 
-                const auto& response = future.GetValue();
-                if (HasError(response)) {
-                    return response;
+                const auto& error = future.GetValue();
+                if (HasError(error)) {
+                    return TErrorResponse(error);
                 }
 
                 self->LastLsn.store(lsn, std::memory_order_relaxed);

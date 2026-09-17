@@ -20,7 +20,7 @@ private:
     struct TEntry
     {
         ui64 Lsn = 0;
-        TPageRange Location;
+        TPageRangeRef Location;
     };
 
     using TEntries = TMap<ui64 /*pageNo*/, TEntry>;
@@ -53,7 +53,7 @@ public:
     // Returns the mappings for |ranges| written after |afterLsn|, clipped to
     // the requested ranges, and the LastIndexedLsn they were read at.
     TLookupResult Lookup(
-        const TVector<TPageRange>& ranges,
+        const TVector<TPageRangeRef>& ranges,
         ui64 afterLsn) const;
 
 private:

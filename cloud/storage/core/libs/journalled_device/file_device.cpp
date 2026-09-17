@@ -96,103 +96,89 @@ public:
 
     // IDevice
 
-    TFuture<NCloud::NProto::TReadPagesResponse> ReadPages(
-        NCloud::NProto::TReadPagesRequest request) override
+    TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
+        TVector<TPageRangeRef> rangeRefs) override
     {
-        for (const auto& ref: request.GetPageGroupRefs()) {
-            auto error = ValidatePageGroupRef(
-                ref.GetFirstPageNo(),
-                ref.GetPageCount(),
-                ref.GetPageSize());
+        using TResult = TResultOrError<TVector<TBuffer>>;
 
+        ui64 pageCount = 0;
+        for (const auto& ref: rangeRefs) {
+            auto error = ValidatePageRange(ref.FirstPageNo, ref.PageCount);
             if (HasError(error)) {
-                return MakeFuture<NCloud::NProto::TReadPagesResponse>(
-                    TErrorResponse(std::move(error)));
+                return MakeFuture<TResult>(std::move(error));
             }
+
+            pageCount += ref.PageCount;
         }
 
-        // the response owns the pages the data is copied into, so it must
-        // outlive the requests
-        auto response =
-            std::make_shared<NCloud::NProto::TReadPagesResponse>();
-
-        auto& groups = *response->MutablePageGroups();
-        groups.Reserve(request.PageGroupRefsSize());
+        // the pages the data is copied into must outlive the requests
+        auto pages = std::make_shared<TVector<TBuffer>>(pageCount);
 
         TVector<TFuture<NCloud::NProto::TError>> futures;
-        futures.reserve(request.PageGroupRefsSize());
+        futures.reserve(rangeRefs.size());
 
-        for (const auto& ref: request.GetPageGroupRefs()) {
-            auto& group = *groups.Add();
-            group.SetFirstPageNo(ref.GetFirstPageNo());
-
-            if (ref.GetPageCount() == 0) {
+        ui64 pageIndex = 0;
+        for (const auto& ref: rangeRefs) {
+            if (ref.PageCount == 0) {
                 continue;
             }
 
-            TVector<TArrayRef<char>> pages;
-            pages.reserve(ref.GetPageCount());
+            TVector<TArrayRef<char>> dst;
+            dst.reserve(ref.PageCount);
 
-            for (ui64 i = 0; i != ref.GetPageCount(); ++i) {
-                TString& page = *group.AddContent();
-                page.ReserveAndResize(PageSize);
-                pages.emplace_back(page.Detach(), PageSize);
+            for (ui64 i = 0; i != ref.PageCount; ++i) {
+                TBuffer& page = (*pages)[pageIndex++];
+                page.Resize(PageSize);
+                dst.emplace_back(page.Data(), PageSize);
             }
 
-            futures.push_back(Read(ref.GetFirstPageNo(), std::move(pages)));
+            futures.push_back(Read(ref.FirstPageNo, std::move(dst)));
         }
 
         return WaitAll(futures).Apply(
-            [futures = std::move(futures), response = std::move(response)]
-            (const TFuture<void>&) mutable
-                -> NCloud::NProto::TReadPagesResponse
+            [futures = std::move(futures), pages = std::move(pages)]
+            (const TFuture<void>&) mutable -> TResult
             {
                 for (const auto& future: futures) {
                     const auto& error = future.GetValue();
                     if (HasError(error)) {
-                        return TErrorResponse(error);
+                        return error;
                     }
                 }
 
-                return std::move(*response);
+                return std::move(*pages);
             });
     }
 
-    TFuture<NCloud::NProto::TWriteLogRecordResponse> WritePages(
-        NCloud::NProto::TWriteLogRecordRequest request) override
+    TFuture<NCloud::NProto::TError> WritePages(
+        TVector<TPageRange> ranges) override
     {
-        for (const auto& group: request.GetPageGroups()) {
-            auto error = ValidatePageGroup(
-                group.GetFirstPageNo(),
-                group.GetContent());
-
+        for (const auto& range: ranges) {
+            auto error = ValidatePages(range.FirstPageNo, range.Pages);
             if (HasError(error)) {
-                return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
-                    TErrorResponse(std::move(error)));
+                return MakeFuture(std::move(error));
             }
         }
 
         TVector<TFuture<NCloud::NProto::TError>> futures;
-        futures.reserve(request.PageGroupsSize());
+        futures.reserve(ranges.size());
 
-        for (const auto& group: request.GetPageGroups()) {
-            if (group.ContentSize() == 0) {
+        for (const auto& range: ranges) {
+            if (range.Pages.empty()) {
                 continue;
             }
 
-            futures.push_back(
-                Write(group.GetFirstPageNo(), group.GetContent()));
+            futures.push_back(Write(range.FirstPageNo, range.Pages));
         }
 
         return WaitAll(futures).Apply(
             [futures = std::move(futures)]
-            (const TFuture<void>&)
-                -> NCloud::NProto::TWriteLogRecordResponse
+            (const TFuture<void>&) -> NCloud::NProto::TError
             {
                 for (const auto& future: futures) {
                     const auto& error = future.GetValue();
                     if (HasError(error)) {
-                        return TErrorResponse(error);
+                        return error;
                     }
                 }
 
@@ -201,33 +187,19 @@ public:
     }
 
 private:
-    NCloud::NProto::TError ValidatePageGroupRef(
+    NCloud::NProto::TError ValidatePages(
         ui64 firstPageNo,
-        ui64 pageCount,
-        ui32 pageSize) const
+        const TVector<TBuffer>& pages) const
     {
-        if (pageSize != PageSize) {
-            return MakeError(E_ARGUMENT, TStringBuilder()
-                << "page size mismatch: expected " << PageSize
-                << ", got " << pageSize);
-        }
-
-        return ValidatePageRange(firstPageNo, pageCount);
-    }
-
-    NCloud::NProto::TError ValidatePageGroup(
-        ui64 firstPageNo,
-        const google::protobuf::RepeatedPtrField<TString>& content) const
-    {
-        for (const TString& page: content) {
-            if (page.size() != PageSize) {
+        for (const TBuffer& page: pages) {
+            if (page.Size() != PageSize) {
                 return MakeError(E_ARGUMENT, TStringBuilder()
                     << "page size mismatch: expected " << PageSize
-                    << ", got " << page.size());
+                    << ", got " << page.Size());
             }
         }
 
-        return ValidatePageRange(firstPageNo, content.size());
+        return ValidatePageRange(firstPageNo, pages.size());
     }
 
     NCloud::NProto::TError ValidatePageRange(
@@ -302,15 +274,15 @@ private:
     // the request does not have to outlive the write
     TFuture<NCloud::NProto::TError> Write(
         ui64 firstPageNo,
-        const google::protobuf::RepeatedPtrField<TString>& pages)
+        const TVector<TBuffer>& pages)
     {
         TAlignedBuffer buffer(
             static_cast<ui32>(pages.size() * PageSize),
             DirectIOAlignment);
 
         char* dst = buffer.Begin();
-        for (const TString& page: pages) {
-            std::memcpy(dst, page.data(), PageSize);
+        for (const TBuffer& page: pages) {
+            std::memcpy(dst, page.Data(), PageSize);
             dst += PageSize;
         }
 

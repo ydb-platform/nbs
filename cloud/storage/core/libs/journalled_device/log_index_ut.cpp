@@ -22,7 +22,7 @@ MakePageRecord(ui64 prevLsn, ui64 lsn, TVector<TPageMapping> pageMappings)
 
 // a run of pages - in the page store when it is the location a mapping points
 // at, in the device address space when it is what a reader asks for
-TPageRange Range(ui64 firstPageNo, ui64 pageCount)
+TPageRangeRef Range(ui64 firstPageNo, ui64 pageCount)
 {
     return {.FirstPageNo = firstPageNo, .PageCount = pageCount};
 }
@@ -477,7 +477,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexModelTest)
                     mappings.push_back(
                         TPageMapping{
                             .PageNo = start,
-                            .Location = TPageRange{
+                            .Location = TPageRangeRef{
                                 .FirstPageNo = storeNext,
                                 .PageCount = len}});
                     storeNext += len;
@@ -504,7 +504,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexModelTest)
                     const ui64 afterLsn = rng.Next(lsn + 20);
 
                     const auto got = Expand(map.Lookup(
-                                                   {TPageRange{
+                                                   {TPageRangeRef{
                                                        .FirstPageNo = from,
                                                        .PageCount = len}},
                                                    afterLsn)

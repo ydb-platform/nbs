@@ -2,6 +2,7 @@ LIBRARY()
 
 SRCS(
     device.cpp
+    device_helpers.cpp
     device_page_store.cpp
     file_device.cpp
     journal.cpp
