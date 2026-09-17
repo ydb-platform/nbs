@@ -123,12 +123,12 @@ void TWriteDataActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    // FinalizeProfileLogRequestInfo(
-    //     std::move(ProfileLogRequest),
-    //     ctx.Now(),
-    //     FileSystemId,
-    //     error,
-    //     ProfileLog);
+    FinalizeProfileLogRequestInfo(
+        std::move(ProfileLogRequest),
+        ctx.Now(),
+        FileSystemId,
+        error,
+        ProfileLog);
 
     {
         // notify tablet

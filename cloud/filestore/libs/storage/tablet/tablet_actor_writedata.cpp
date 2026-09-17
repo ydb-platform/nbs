@@ -44,12 +44,12 @@ void TIndexTabletActor::HandleWriteData(
     }
 
     NProto::TProfileLogRequestInfo profileLogRequest;
-    // InitTabletProfileLogRequestInfo(
-    //     profileLogRequest,
-    //     EFileStoreRequest::WriteData,
-    //     msg->Record,
-    //     ctx.Now(),
-    //     BehaveAsShard(msg->Record.GetHeaders()));
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::WriteData,
+        msg->Record,
+        ctx.Now(),
+        BehaveAsShard(msg->Record.GetHeaders()));
 
     TString& buffer = *msg->Record.MutableBuffer();
     const TByteRange range(
@@ -60,21 +60,21 @@ void TIndexTabletActor::HandleWriteData(
 
     auto replyError = [&] (const NProto::TError& error)
     {
-        // FILESTORE_TRACK(
-        //     ResponseSent_Tablet,
-        //     msg->CallContext,
-        //     "WriteData");
+        FILESTORE_TRACK(
+            ResponseSent_Tablet,
+            msg->CallContext,
+            "WriteData");
 
         auto response =
             std::make_unique<TEvService::TEvWriteDataResponse>(error);
         NCloud::Reply(ctx, *ev, std::move(response));
 
-        // FinalizeProfileLogRequestInfo(
-        //     std::move(profileLogRequest),
-        //     ctx.Now(),
-        //     GetFileSystemId(),
-        //     error,
-        //     ProfileLog);
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            error,
+            ProfileLog);
     };
 
     const ui64 nodeId = msg->Record.GetNodeId();
@@ -149,23 +149,23 @@ void TIndexTabletActor::HandleWriteData(
     };
 
     if (!AcceptRequest<TEvService::TWriteDataMethod>(ev, ctx, validator)) {
-        // FinalizeProfileLogRequestInfo(
-        //     std::move(profileLogRequest),
-        //     ctx.Now(),
-        //     GetFileSystemId(),
-        //     MakeError(E_REJECTED, "not accepted"),
-        //     ProfileLog);
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "not accepted"),
+            ProfileLog);
         return;
     }
 
     // either rejected or put into queue
     if (ThrottleIfNeeded<TEvService::TWriteDataMethod>(ev, ctx)) {
-        // FinalizeProfileLogRequestInfo(
-        //     std::move(profileLogRequest),
-        //     ctx.Now(),
-        //     GetFileSystemId(),
-        //     MakeError(E_REJECTED, "throttled"),
-        //     ProfileLog);
+        FinalizeProfileLogRequestInfo(
+            std::move(profileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            MakeError(E_REJECTED, "throttled"),
+            ProfileLog);
         return;
     }
 
@@ -175,15 +175,15 @@ void TIndexTabletActor::HandleWriteData(
         payload = rope.operator TRcBuf();
     }
 
-    // if (Config->GetBlockChecksumsInProfileLogEnabled()) {
-    //     CalculateChecksums(
-    //         externalPayload ? TStringBuf(payload.data(), payload.size())
-    //                         : buffer,
-    //         GetBlockSize(),
-    //         false /* ignoreBufferOverflow */,
-    //         GetFileSystemId(),
-    //         profileLogRequest);
-    // }
+    if (Config->GetBlockChecksumsInProfileLogEnabled()) {
+        CalculateChecksums(
+            externalPayload ? TStringBuf(payload.data(), payload.size())
+                            : buffer,
+            GetBlockSize(),
+            false /* ignoreBufferOverflow */,
+            GetFileSystemId(),
+            profileLogRequest);
+    }
 
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
@@ -301,7 +301,7 @@ bool TIndexTabletActor::PrepareTx_WriteData(
     // ranges.
     //
 
-    // UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
+    UpdateRangeNodeIds(args.ProfileLogRequest, args.Node->NodeId);
 
     if (!HasSpaceLeft(
             args.Node->Attrs.GetSize(),
@@ -437,12 +437,12 @@ void TIndexTabletActor::CompleteTx_WriteData(
 
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
-        // FinalizeProfileLogRequestInfo(
-        //     std::move(args.ProfileLogRequest),
-        //     ctx.Now(),
-        //     GetFileSystemId(),
-        //     args.Error,
-        //     ProfileLog);
+        FinalizeProfileLogRequestInfo(
+            std::move(args.ProfileLogRequest),
+            ctx.Now(),
+            GetFileSystemId(),
+            args.Error,
+            ProfileLog);
     };
 
     if (FAILED(args.Error.GetCode())) {
