@@ -32,10 +32,8 @@ constexpr TStringBuf DefaultClientId = "test-client";
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NCloud::NProto::TDevicePageGroup MakeGroup(
-    ui64 firstPageNo,
-    ui64 pageCount,
-    TStringBuf prefix)
+NCloud::NProto::TDevicePageGroup
+MakeGroup(ui64 firstPageNo, ui64 pageCount, TStringBuf prefix)
 {
     NCloud::NProto::TDevicePageGroup group;
     group.SetFirstPageNo(firstPageNo);
@@ -107,10 +105,8 @@ NCloud::NProto::TReadPagesResponse MakeReadResponse(
     return response;
 }
 
-NCloud::NProto::TJournalRecord MakeRecord(
-    ui64 lsn,
-    ui64 firstPageNo,
-    ui64 pageCount)
+NCloud::NProto::TJournalRecord
+MakeRecord(ui64 lsn, ui64 firstPageNo, ui64 pageCount)
 {
     NCloud::NProto::TJournalRecord record;
     record.SetLogSequenceNumber(lsn);
@@ -141,8 +137,8 @@ TString DescribeRefs(const TVector<TPageRangeRef>& rangeRefs)
     TVector<TString> refs;
 
     for (const auto& ref: rangeRefs) {
-        refs.push_back(TStringBuilder()
-            << ref.FirstPageNo << "+" << ref.PageCount);
+        refs.push_back(
+            TStringBuilder() << ref.FirstPageNo << "+" << ref.PageCount);
     }
 
     return JoinSeq(", ", refs);
@@ -159,7 +155,8 @@ TString DescribeRanges(const TVector<TPageRange>& ranges)
             pages.emplace_back(page.Data(), page.Size());
         }
 
-        groups.push_back(TStringBuilder()
+        groups.push_back(
+            TStringBuilder()
             << range.FirstPageNo << ":[" << JoinSeq(",", pages) << "]");
     }
 
@@ -173,9 +170,9 @@ TString DescribeGroups(const T& source)
     TVector<TString> groups;
 
     for (const auto& group: source.GetPageGroups()) {
-        groups.push_back(TStringBuilder()
-            << group.GetFirstPageNo()
-            << ":[" << JoinSeq(",", group.GetContent()) << "]");
+        groups.push_back(
+            TStringBuilder() << group.GetFirstPageNo() << ":["
+                             << JoinSeq(",", group.GetContent()) << "]");
     }
 
     return JoinSeq(" ", groups);
@@ -190,7 +187,8 @@ struct TTestJournal final: public IJournal
 
     TResultOrError<ui64> RestoreResponse = 0;
 
-    TReadHandler ReadHandler = [] (const auto& request) {
+    TReadHandler ReadHandler = [](const auto& request)
+    {
         Y_UNUSED(request);
         return NCloud::NProto::TReadPagesResponse();
     };
@@ -340,6 +338,12 @@ struct TTestJournal final: public IJournal
 
 struct TTestDevice final: public IDevice
 {
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
     using TReadHandler = std::function<TResultOrError<TVector<TBuffer>>(
         const TVector<TPageRangeRef>&)>;
     using TWriteHandler =
@@ -347,7 +351,8 @@ struct TTestDevice final: public IDevice
 
     TReadHandler ReadHandler = ServePagesFromDevice;
 
-    TWriteHandler WriteHandler = [] (const auto& ranges) {
+    TWriteHandler WriteHandler = [](const auto& ranges)
+    {
         Y_UNUSED(ranges);
         return NCloud::NProto::TError();
     };
@@ -464,7 +469,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 {
     Y_UNIT_TEST_F(ShouldReadAllPagesFromTheJournal, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return MakeReadResponse({MakeGroup(10, 4, "J")}, 42);
         };
@@ -487,7 +493,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldReadAllPagesFromTheDataStore, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return MakeReadResponse({}, 7);
         };
@@ -503,9 +510,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
         const auto deviceRequests = DataStore->GetReadRequests();
         UNIT_ASSERT_VALUES_EQUAL(1, deviceRequests.size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10+4",
-            DescribeRefs(deviceRequests[0]));
+        UNIT_ASSERT_VALUES_EQUAL("10+4", DescribeRefs(deviceRequests[0]));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[D10,D11,D12,D13]",
@@ -520,7 +525,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
     {
         // the journal covers the middle of the requested range
 
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return MakeReadResponse({MakeGroup(12, 3, "J")}, 100);
         };
@@ -534,9 +540,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
         const auto deviceRequests = DataStore->GetReadRequests();
         UNIT_ASSERT_VALUES_EQUAL(1, deviceRequests.size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10+2, 15+5",
-            DescribeRefs(deviceRequests[0]));
+        UNIT_ASSERT_VALUES_EQUAL("10+2, 15+5", DescribeRefs(deviceRequests[0]));
 
         // the response is shaped after the request, not after the sources
 
@@ -551,7 +555,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         // the first journal group covers the tail of the first ref and goes
         // beyond it, the second one covers the head of the second ref
 
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return MakeReadResponse(
                 {MakeGroup(2, 4, "J"), MakeGroup(100, 2, "J")});
@@ -566,9 +571,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
         const auto deviceRequests = DataStore->GetReadRequests();
         UNIT_ASSERT_VALUES_EQUAL(1, deviceRequests.size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "0+2, 102+2",
-            DescribeRefs(deviceRequests[0]));
+        UNIT_ASSERT_VALUES_EQUAL("0+2, 102+2", DescribeRefs(deviceRequests[0]));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "0:[D0,D1,J2,J3] 100:[J100,J101,D102,D103]",
@@ -579,7 +582,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
     {
         // a page group without content covers nothing
 
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return MakeReadResponse(
                 {MakeGroup(10, 0, "J"), MakeGroup(20, 2, "J")});
@@ -594,9 +598,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
         const auto deviceRequests = DataStore->GetReadRequests();
         UNIT_ASSERT_VALUES_EQUAL(1, deviceRequests.size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "10+4",
-            DescribeRefs(deviceRequests[0]));
+        UNIT_ASSERT_VALUES_EQUAL("10+4", DescribeRefs(deviceRequests[0]));
 
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[D10,D11,D12,D13] 20:[J20,J21]",
@@ -605,7 +607,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldSkipEmptyPageGroupRefs, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return NCloud::NProto::TReadPagesResponse();
         };
@@ -619,9 +622,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
         const auto deviceRequests = DataStore->GetReadRequests();
         UNIT_ASSERT_VALUES_EQUAL(1, deviceRequests.size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            "20+2",
-            DescribeRefs(deviceRequests[0]));
+        UNIT_ASSERT_VALUES_EQUAL("20+2", DescribeRefs(deviceRequests[0]));
 
         UNIT_ASSERT_VALUES_EQUAL("20:[D20,D21]", DescribeGroups(response));
     }
@@ -630,7 +631,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
     {
         // the journal holds a wider page group than the requested one
 
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return MakeReadResponse({MakeGroup(8, 8, "J")}, 42);
         };
@@ -653,14 +655,16 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldFailIfTheDataStoreReturnsMorePagesThanAsked, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return MakeReadResponse({MakeGroup(12, 2, "J")});
         };
 
         // the data store returns the pages the journal covers as well
 
-        DataStore->ReadHandler = [] (const auto& rangeRefs) {
+        DataStore->ReadHandler = [](const auto& rangeRefs)
+        {
             Y_UNUSED(rangeRefs);
             return ServePagesFromDevice({{.FirstPageNo = 10, .PageCount = 4}});
         };
@@ -678,14 +682,16 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldFailIfTheDataStoreMissesAPage, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return MakeReadResponse({MakeGroup(10, 1, "J")});
         };
 
         // the data store does not return the missing page
 
-        DataStore->ReadHandler = [] (const auto& rangeRefs) {
+        DataStore->ReadHandler = [](const auto& rangeRefs)
+        {
             Y_UNUSED(rangeRefs);
             return TVector<TBuffer>();
         };
@@ -703,7 +709,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldHandleJournalReadError, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return NCloud::NProto::TReadPagesResponse(
                 TErrorResponse(E_IO, "journal is broken"));
@@ -723,13 +730,14 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldHandleDataStoreReadError, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return NCloud::NProto::TReadPagesResponse();
         };
 
-        DataStore->ReadHandler = [] (const auto& rangeRefs)
-            -> TResultOrError<TVector<TBuffer>>
+        DataStore->ReadHandler =
+            [](const auto& rangeRefs) -> TResultOrError<TVector<TBuffer>>
         {
             Y_UNUSED(rangeRefs);
             return MakeError(E_IO, "device is broken");
@@ -815,7 +823,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldServeARequestForThisDevice, TFixture)
     {
-        Journal->ReadHandler = [] (const auto& request) {
+        Journal->ReadHandler = [](const auto& request)
+        {
             Y_UNUSED(request);
             return MakeReadResponse({MakeGroup(10, 1, "J")}, 1);
         };
@@ -881,8 +890,8 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
     {
         std::atomic<ui32> writeCount = 0;
 
-        DataStore->WriteHandler = [&] (const auto& ranges)
-            -> NCloud::NProto::TError
+        DataStore->WriteHandler =
+            [&](const auto& ranges) -> NCloud::NProto::TError
         {
             Y_UNUSED(ranges);
 

@@ -64,6 +64,12 @@ TString Describe(const TVector<TPageRangeRef>& ranges)
 
 struct TBrokenDevice final: public IDevice
 {
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
     NThreading::TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
         TVector<TPageRangeRef> rangeRefs) override
     {
@@ -100,9 +106,10 @@ TVector<TPageRangeRef> WriteRecord(
 TString
 ReadFromDevice(const IDevicePtr& device, ui64 firstPageNo, ui64 pageCount)
 {
-    const auto result = device
-        ->ReadPages({{.FirstPageNo = firstPageNo, .PageCount = pageCount}})
-        .GetValueSync();
+    const auto result =
+        device
+            ->ReadPages({{.FirstPageNo = firstPageNo, .PageCount = pageCount}})
+            .GetValueSync();
     UNIT_ASSERT_VALUES_EQUAL_C(
         S_OK,
         result.GetError().GetCode(),
@@ -525,10 +532,8 @@ Y_UNIT_TEST_SUITE(TDevicePageStoreTest)
     Y_UNIT_TEST(ShouldKeepThePagesOnTheDevice)
     {
         auto device = CreateInMemoryDevice(DefaultPageSize);
-        auto store = CreateDevicePageStore(
-            device,
-            DefaultPageCount,
-            DefaultPageSize);
+        auto store =
+            CreateDevicePageStore(device, DefaultPageCount, DefaultPageSize);
 
         auto ranges = WriteRecord(store, {"aaaa", "bbbb", "cccc"});
         UNIT_ASSERT_VALUES_EQUAL("0x3", Describe(ranges));

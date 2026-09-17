@@ -44,10 +44,11 @@ NCloud::NProto::TError CheckTransfer(
     }
 
     if (bytesTransferred != expectedBytes) {
-        return MakeError(E_IO, TStringBuilder()
-            << "short " << operation << " at page " << firstPageNo
-            << ": expected " << expectedBytes << " bytes, got "
-            << bytesTransferred);
+        return MakeError(
+            E_IO,
+            TStringBuilder() << "short " << operation << " at page "
+                             << firstPageNo << ": expected " << expectedBytes
+                             << " bytes, got " << bytesTransferred);
     }
 
     return {};
@@ -66,10 +67,10 @@ private:
 
 public:
     TFileDevice(
-            IFileIOServicePtr fileIO,
-            const TString& filePath,
-            ui64 pageCount,
-            ui32 pageSize)
+        IFileIOServicePtr fileIO,
+        const TString& filePath,
+        ui64 pageCount,
+        ui32 pageSize)
         : FileIO(std::move(fileIO))
         , PageCount(pageCount)
         , PageSize(pageSize)
@@ -77,22 +78,30 @@ public:
     {
         Y_ENSURE(
             PageSize > 0 && PageSize % DirectIOAlignment == 0,
-            "page size must be a non-zero multiple of " << DirectIOAlignment
-                << ", got " << PageSize);
+            "page size must be a non-zero multiple of "
+                << DirectIOAlignment << ", got " << PageSize);
 
         Y_ENSURE(
             File.IsOpen(),
             "unable to open " << filePath.Quote() << ": "
-                << LastSystemErrorText());
+                              << LastSystemErrorText());
 
         const i64 length = static_cast<i64>(PageCount * PageSize);
         if (File.GetLength() < length) {
             Y_ENSURE(
                 File.Resize(length),
                 "unable to resize " << filePath.Quote() << " to " << length
-                    << " bytes: " << LastSystemErrorText());
+                                    << " bytes: " << LastSystemErrorText());
         }
     }
+
+    // IStartable
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
 
     // IDevice
 
@@ -136,8 +145,8 @@ public:
         }
 
         return WaitAll(futures).Apply(
-            [futures = std::move(futures), pages = std::move(pages)]
-            (const TFuture<void>&) mutable -> TResult
+            [futures = std::move(futures),
+             pages = std::move(pages)](const TFuture<void>&) mutable -> TResult
             {
                 for (const auto& future: futures) {
                     const auto& error = future.GetValue();
@@ -172,8 +181,8 @@ public:
         }
 
         return WaitAll(futures).Apply(
-            [futures = std::move(futures)]
-            (const TFuture<void>&) -> NCloud::NProto::TError
+            [futures = std::move(futures)](
+                const TFuture<void>&) -> NCloud::NProto::TError
             {
                 for (const auto& future: futures) {
                     const auto& error = future.GetValue();
@@ -193,9 +202,10 @@ private:
     {
         for (const TBuffer& page: pages) {
             if (page.Size() != PageSize) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "page size mismatch: expected " << PageSize
-                    << ", got " << page.Size());
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder() << "page size mismatch: expected "
+                                     << PageSize << ", got " << page.Size());
             }
         }
 
@@ -207,10 +217,12 @@ private:
         ui64 pageCount) const
     {
         if (firstPageNo > PageCount || pageCount > PageCount - firstPageNo) {
-            return MakeError(E_ARGUMENT, TStringBuilder()
-                << "page range [" << firstPageNo << ", "
-                << firstPageNo + pageCount << ") is beyond the device of "
-                << PageCount << " pages");
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "page range [" << firstPageNo << ", "
+                    << firstPageNo + pageCount << ") is beyond the device of "
+                    << PageCount << " pages");
         }
 
         return {};
@@ -244,8 +256,9 @@ private:
              firstPageNo,
              pageSize = PageSize,
              pages = std::move(pages),
-             buffer = std::move(buffer)]
-            (const NCloud::NProto::TError& error, ui32 bytes) mutable
+             buffer = std::move(buffer)](
+                const NCloud::NProto::TError& error,
+                ui32 bytes) mutable
             {
                 auto result = CheckTransfer(
                     "read",
@@ -295,8 +308,9 @@ private:
             File,
             GetOffset(firstPageNo),
             data,
-            [promise, firstPageNo, buffer = std::move(buffer)]
-            (const NCloud::NProto::TError& error, ui32 bytes) mutable
+            [promise, firstPageNo, buffer = std::move(buffer)](
+                const NCloud::NProto::TError& error,
+                ui32 bytes) mutable
             {
                 promise.SetValue(CheckTransfer(
                     "write",

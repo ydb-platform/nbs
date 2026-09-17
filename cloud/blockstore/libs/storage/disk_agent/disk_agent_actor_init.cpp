@@ -67,7 +67,8 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
             NProto::TError error;
 
             try {
-                TDiskAgentState::TInitializeResult r = UnsafeExtractValue(future);
+                TDiskAgentState::TInitializeResult r =
+                    UnsafeExtractValue(future);
 
                 auto response = std::make_unique<TCompletionEvent>(
                     std::move(r.Configs),
@@ -114,17 +115,23 @@ void TDiskAgentActor::HandleInitAgentCompleted(
     }
 
     if (const auto& error = msg->GetError(); HasError(error)) {
-        LOG_ERROR_S(ctx, TBlockStoreComponents::DISK_AGENT,
-            "DiskAgent initialization failed. Error: " << FormatError(error).data());
+        LOG_ERROR_S(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
+            "DiskAgent initialization failed. Error: "
+                << FormatError(error).data());
     } else {
         TStringStream out;
         for (const auto& config: msg->Configs) {
-            out << config.GetDeviceName()
-                << "(" << FormatByteSize(config.GetBlocksCount() * config.GetBlockSize())
+            out << config.GetDeviceName() << "("
+                << FormatByteSize(
+                       config.GetBlocksCount() * config.GetBlockSize())
                 << "); ";
         }
 
-        LOG_INFO_S(ctx, TBlockStoreComponents::DISK_AGENT,
+        LOG_INFO_S(
+            ctx,
+            TBlockStoreComponents::DISK_AGENT,
             "Initialization completed. Devices found: " << out.Str());
     }
 
@@ -173,20 +180,37 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         }
     }
 
-    if (State) {
+    if (State &&
+        !AgentConfig->GetJournalledDeviceTcpServerListenAddress().empty())
+    {
         THashMap<TString, NJournalled::IJournalledDevicePtr> devices;
 
         auto timer = CreateWallClockTimer();
 
         for (const auto& config: State->GetDevices()) {
-            devices.emplace(
-                config.GetDeviceUUID(),
+            const auto& uuid = config.GetDeviceUUID();
+
+            auto device =
                 NJournalled::CreateJournalledDevice(CreateDeviceAdapter(
                     timer,
-                    config.GetDeviceUUID(),
+                    uuid,
                     TString{JournalledDeviceClientId},
                     config.GetBlockSize(),
-                    State->GetDeviceClient())));
+                    State->GetDeviceClient()));
+
+            try {
+                device->Start();
+            } catch (...) {
+                LOG_ERROR_S(
+                    ctx,
+                    TBlockStoreComponents::DISK_AGENT,
+                    "Can't start journalled device "
+                        << uuid.Quote() << ": " << CurrentExceptionMessage());
+                continue;
+            }
+
+            JournalledDevices.push_back(device);
+            devices.emplace(uuid, std::move(device));
         }
 
         StartJournalledDeviceTcpServer(ctx, std::move(devices));

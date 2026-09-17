@@ -174,6 +174,8 @@ public:
 
     void Start() override
     {
+        DataStore->Start();
+
         auto future = Executor->Execute(
             [weakSelf = weak_from_this()]()
             {
@@ -196,6 +198,8 @@ public:
         if (FlushCycleStopped.Initialized()) {
             FlushCycleStopped.GetFuture().Wait();
         }
+
+        DataStore->Stop();
     }
 
     TFuture<NCloud::NProto::TReadPagesResponse> ReadPages(

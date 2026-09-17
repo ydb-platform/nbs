@@ -20,6 +20,8 @@ namespace {
 
 constexpr NProto::EVolumeAccessMode DefaultAccessMode =
     NProto::VOLUME_ACCESS_READ_WRITE;
+constexpr ui64 DefaultMountSeqNumber = 0;
+constexpr ui64 DefaultVolumeGeneration = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -82,9 +84,11 @@ TResultOrError<ui32> ValidateWritePagesRequest(
             }
 
             if (blockSize != block.Size()) {
-                return MakeError(E_ARGUMENT, TStringBuilder()
-                    << "invalid page data: block size mismatch: expected "
-                    << blockSize << ", got " << block.Size());
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "invalid page data: block size mismatch: expected "
+                        << blockSize << ", got " << block.Size());
             }
         }
     }
@@ -112,8 +116,7 @@ NProto::TError ValidateReadPagesRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TDeviceAdapter final
-    : public NJournalled::IDevice
+class TDeviceAdapter final: public NJournalled::IDevice
 {
 private:
     const ITimerPtr Timer;
@@ -124,11 +127,11 @@ private:
 
 public:
     TDeviceAdapter(
-            ITimerPtr timer,
-            TString deviceUUID,
-            TString clientId,
-            ui32 blockSize,
-            TDeviceClientPtr deviceClient)
+        ITimerPtr timer,
+        TString deviceUUID,
+        TString clientId,
+        ui32 blockSize,
+        TDeviceClientPtr deviceClient)
         : Timer(std::move(timer))
         , DeviceUUID(std::move(deviceUUID))
         , ClientId(std::move(clientId))
@@ -136,10 +139,38 @@ public:
         , DeviceClient(std::move(deviceClient))
     {}
 
-    // NJournalled::IDevice
+    // IStartable
 
-    [[nodiscard]] auto ReadPages(
-        TVector<NJournalled::TPageRangeRef> rangeRefs)
+    void Start() override
+    {
+        auto [updated, error] = DeviceClient->AcquireDevices(
+            {DeviceUUID},
+            ClientId,
+            Timer->Now(),
+            DefaultAccessMode,
+            DefaultMountSeqNumber,
+            ClientId,   // diskId
+            DefaultVolumeGeneration);
+
+        Y_UNUSED(updated);
+
+        CheckError(error);
+    }
+
+    void Stop() override
+    {
+        // there is nothing we can do about the error here, the session will
+        // expire on its own after ReleaseInactiveSessionsTimeout
+        Y_UNUSED(DeviceClient->ReleaseDevices(
+            {DeviceUUID},
+            ClientId,
+            ClientId,   // diskId
+            DefaultVolumeGeneration));
+    }
+
+    // IDevice
+
+    [[nodiscard]] auto ReadPages(TVector<NJournalled::TPageRangeRef> rangeRefs)
         -> TFuture<TResultOrError<TVector<TBuffer>>> final
     {
         using TResult = TResultOrError<TVector<TBuffer>>;
@@ -148,10 +179,8 @@ public:
             return MakeFuture<TResult>(std::move(error));
         }
 
-        auto [storageAdapter, error] = DeviceClient->AccessDevice(
-            DeviceUUID,
-            ClientId,
-            DefaultAccessMode);
+        auto [storageAdapter, error] =
+            DeviceClient->AccessDevice(DeviceUUID, ClientId, DefaultAccessMode);
 
         if (HasError(error)) {
             return MakeFuture<TResult>(std::move(error));
@@ -173,8 +202,8 @@ public:
 
         auto all = WaitAll(futures);
 
-        return all.Apply([futures](const TFuture<void>& future) mutable
-            -> TResult
+        return all.Apply(
+            [futures](const TFuture<void>& future) mutable -> TResult
             {
                 if (future.HasException()) {
                     return ResultOrError(future).GetError();
@@ -209,10 +238,8 @@ public:
             requestBlockSize = bs;
         }
 
-        auto [storageAdapter, error] = DeviceClient->AccessDevice(
-            DeviceUUID,
-            ClientId,
-            DefaultAccessMode);
+        auto [storageAdapter, error] =
+            DeviceClient->AccessDevice(DeviceUUID, ClientId, DefaultAccessMode);
 
         if (HasError(error)) {
             return MakeFuture(std::move(error));
@@ -234,8 +261,8 @@ public:
 
         auto all = WaitAll(futures);
 
-        return all.Apply([futures](const TFuture<void>& future) mutable
-            -> NProto::TError
+        return all.Apply(
+            [futures](const TFuture<void>& future) mutable -> NProto::TError
             {
                 if (future.HasException()) {
                     return ResultOrError(future).GetError();
