@@ -35,6 +35,7 @@ struct TCellManager: public ICellManager
     const TBootstrap Bootstrap;
 
     THashMap<TString, TCellHostPoolPtr> Pools;
+    std::shared_ptr<TCellInboundActivity> InboundActivity;
 
     TCellManager(TCellsConfigPtr config, TBootstrap bootstrap);
 
@@ -54,7 +55,10 @@ struct TCellManager: public ICellManager
         IBlockStorePtr service,
         const NProto::TClientConfig& clientConfig) override;
 
-    void OutputHtml(IOutputStream& out, const IMonHttpRequest& request);
+    [[nodiscard]] std::shared_ptr<TCellInboundActivity>
+        GetInboundActivity() override;
+
+    void OutputHtml(IOutputStream& out);
 
 private:
     [[nodiscard]] TCellHostEndpointsByCellId GetCellsEndpoints(

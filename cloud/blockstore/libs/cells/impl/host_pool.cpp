@@ -230,6 +230,29 @@ TString TCellHostPool::GetCellId() const
     return Config->GetCellId();
 }
 
+TVector<TCellHostPool::THostStatus> TCellHostPool::GetHostStatuses() const
+{
+    TVector<THostStatus> result;
+
+    with_lock (Lock) {
+        result.reserve(Channels.size());
+        for (const auto& [fqdn, channel]: Channels) {
+            // RefCount, not the watcher count: a connection holds a reference
+            // to its channel always, while it watches the host only when host
+            // migration is on. So watchers would read zero for real
+            // connections whenever migration is disabled
+            result.push_back(THostStatus{
+                .Fqdn = fqdn,
+                .Alive = channel.Alive,
+                .Warm = channel.Endpoint.Initialized(),
+                .Connections = channel.RefCount,
+            });
+        }
+    }
+
+    return result;
+}
+
 bool TCellHostPool::WatchHost(const TString& fqdn, ICellHostWatcherPtr watcher)
 {
     if (!watcher) {

@@ -19,8 +19,13 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
+#include <library/cpp/monlib/service/mon_service_http_request.h>
+#include <library/cpp/monlib/service/pages/index_mon_page.h>
+#include <library/cpp/monlib/service/pages/mon_page.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
+
+#include <util/stream/str.h>
 
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
@@ -122,6 +127,43 @@ ICertificateProviderPtr CreateServerCertificateProvider(
         config->GetRootCertsFile(),
         std::move(certPathList));
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TFakeMonRequest: NMonitoring::IMonHttpRequest
+{
+    TStringStream Out;
+    TCgiParameters Params;
+    THttpHeaders Headers;
+
+    IOutputStream& Output() override
+    {
+        return Out;
+    }
+
+    HTTP_METHOD GetMethod() const override
+    {
+        return HTTP_METHOD_GET;
+    }
+    TStringBuf GetPath() const override { return {}; }
+    TStringBuf GetPathInfo() const override { return {}; }
+    TStringBuf GetUri() const override { return {}; }
+    const TCgiParameters& GetParams() const override { return Params; }
+    const TCgiParameters& GetPostParams() const override { return Params; }
+    TStringBuf GetPostContent() const override { return {}; }
+    const THttpHeaders& GetHeaders() const override { return Headers; }
+    TStringBuf GetHeader(TStringBuf) const override { return {}; }
+    TStringBuf GetCookie(TStringBuf) const override { return {}; }
+    TString GetRemoteAddr() const override { return {}; }
+    TString GetServiceTitle() const override { return {}; }
+    NMonitoring::IMonPage* GetPage() const override { return nullptr; }
+    NMonitoring::IMonHttpRequest* MakeChild(
+        NMonitoring::IMonPage*,
+        const TString&) const override
+    {
+        return nullptr;
+    }
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -399,6 +441,46 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         clientConfig.SetSecurePort(securePort);
 
         CheckDescribe(cellManager, std::move(clientConfig), S_OK);
+    }
+
+    Y_UNIT_TEST(ShouldDumpConfigOnMonPage)
+    {
+        TTestContext testContext;
+
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell("xyz", 9001, 0, 1, 1, {"host-alpha"})
+            .Build();
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        auto cellManager = CreateCellManager(
+            config,
+            testContext.Timer,
+            testContext.Scheduler,
+            testContext.Logging,
+            testContext.Monitoring,
+            testContext.TraceSerializer,
+            testContext.ServerStats,
+            CreateClientCertificateProvider(config),
+            nullptr);
+
+        auto blockstore = testContext.Monitoring->GetMonPage("blockstore");
+        UNIT_ASSERT(blockstore);
+        auto* cells = static_cast<NMonitoring::TIndexMonPage&>(*blockstore)
+                          .FindPage("Cells");
+        UNIT_ASSERT(cells);
+
+        TFakeMonRequest request;
+        cells->Output(request);
+        const auto html = request.Out.Str();
+
+        // one page, three sections: config, outbound host status, and the
+        // inbound table (empty until the forward service records into it)
+        UNIT_ASSERT_STRING_CONTAINS(html, "xyz");
+        UNIT_ASSERT_STRING_CONTAINS(html, "host-alpha");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Outbound host status");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Connections");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html, "Inbound inter-cell connections");
     }
 
     Y_UNIT_TEST(ShouldRejectConnectionToUnconfiguredCell)
