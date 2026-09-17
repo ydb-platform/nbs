@@ -198,28 +198,28 @@ def configure_shards(args, groups):
     for i, shard_id in enumerate(shard_ids):
         shard_no = i + 1
         is_fast = shard_id in file_shard_ids
-        if is_fast:
-            # The pair index is the shard position counted from the tail,
-            # so reconfiguring with a different file-shard-count never
-            # reassigns devices of the shards that stay file shards.
-            fast_config = {"PersistentConfig": {
-                "StorageGroups": groups[args.shard_count - shard_no],
-                "NodesPerGroup": args.nodes_per_group,
-                "ExpectedGroupCapacity": args.group_capacity,
-            }}
-        else:
-            fast_config = {"MemConfig": {}}
-
-        filestore_execute_action(args, "configureasshard", {
+        request = {
             "FileSystemId": shard_id,
             "ShardNo": shard_no,
             "MainFileSystemId": args.fs,
             "ShardFileSystemIds": shard_ids,
             "FileShardFileSystemIds": file_shard_ids,
             "IsFastShard": is_fast,
-            "FastShardConfig": fast_config,
             "DirectoryCreationInShardsEnabled": True,
-        })
+        }
+        if is_fast:
+            # The pair index is the shard position counted from the tail,
+            # so reconfiguring with a different file-shard-count never
+            # reassigns devices of the shards that stay file shards.
+            # A shard that is already fast keeps its config; the tablet
+            # refuses to demote it.
+            request["FastShardConfig"] = {"PersistentConfig": {
+                "StorageGroups": groups[args.shard_count - shard_no],
+                "NodesPerGroup": args.nodes_per_group,
+                "ExpectedGroupCapacity": args.group_capacity,
+            }}
+
+        filestore_execute_action(args, "configureasshard", request)
         print("configured shard %s (fastshard: %s)" % (shard_id, is_fast))
 
     filestore_execute_action(args, "configureshards", {

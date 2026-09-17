@@ -109,6 +109,7 @@ struct TStorageFixture
 
         Config.SetNodesPerGroup(NodesPerGroup);
         Config.SetExpectedGroupCapacity(FileSize / 2);
+        Config.SetPageSize(PageSize);
     }
 };
 

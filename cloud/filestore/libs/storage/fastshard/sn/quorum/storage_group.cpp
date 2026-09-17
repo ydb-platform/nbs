@@ -132,7 +132,10 @@ public:
         pageGroups->clear();
 
         FillHeaders(Config, &headers);
-        auto request = MakeReadPagesRequest(std::move(headers), pageGroupRefs);
+        auto request = MakeReadPagesRequest(
+            std::move(headers),
+            pageGroupRefs,
+            Config.PageSize);
         auto response = CallWithRetries(
             Config.RetryPolicy,
             *Timer,

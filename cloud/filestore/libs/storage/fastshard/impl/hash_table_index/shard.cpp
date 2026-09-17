@@ -609,10 +609,12 @@ public:
         , Generation(generation)
         , StorageGroupFactory(std::move(storageGroupFactory))
         , Config(std::move(config))
-        // TODO(#6957): take the page size from the config.
-        , PageSize(DefaultBlockSize)
+        , PageSize(Config.GetPageSize())
         , PageClusterSize(PageClusterPageCount * PageSize)
     {
+        // TODO(#5895): handle a bad config gracefully instead of aborting.
+        Y_ABORT_UNLESS(PageSize, "page size is not set");
+
         //
         // Using only one storage group for now.
         //

@@ -21,6 +21,7 @@ struct TTestFastShard: NFastShard::IFileSystemShard
         NThreading::NewPromise<NCloud::NProto::TError>();
     bool TornDown = false;
     ui64 Generation = 0;
+    NProtoPrivate::TFastShardConfig Config;
 
 #define FAST_SHARD_NOT_IMPLEMENTED(name, ns, ...)                              \
     NThreading::TFuture<ns::T##name##Response> name(                           \
@@ -63,6 +64,20 @@ private:
         return NThreading::MakeFuture(std::move(response));
     }
 };
+
+inline NProtoPrivate::TFastShardConfig MemConfig()
+{
+    NProtoPrivate::TFastShardConfig config;
+    config.MutableMemConfig();
+    return config;
+}
+
+inline NProtoPrivate::TFastShardConfig PersistentConfig(ui32 pageSize = 0)
+{
+    NProtoPrivate::TFastShardConfig config;
+    config.MutablePersistentConfig()->SetPageSize(pageSize);
+    return config;
+}
 
 // Every shard the tablet asked for, in order: each boot asks for a new one.
 // Goes into TTestEnvConfig::FastShardFactory.

@@ -1080,6 +1080,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             NProtoPrivate::TConfigureAsShardRequest request;
             request.SetFileSystemId(fsConfig.Shard1Id);
             request.SetIsFastShard(true);
+            request.MutableFastShardConfig()->MutableMemConfig();
             request.SetShardNo(1);
 
             TString buf;

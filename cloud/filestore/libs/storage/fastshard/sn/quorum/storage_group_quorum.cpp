@@ -728,7 +728,8 @@ public:
         FillHeaders(State->Config, &headers);
         const auto request = MakeReadPagesRequest(
             std::move(headers),
-            pageGroupRefs);
+            pageGroupRefs,
+            State->Config.PageSize);
 
         const ui64 required = State->QuorumLsn.get();
         const ui32 count = State->Proxies.size();

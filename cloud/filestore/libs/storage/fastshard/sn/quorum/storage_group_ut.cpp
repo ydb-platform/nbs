@@ -313,7 +313,6 @@ NProto::TError ReadSomething(
     TVector<TPageGroupRef> pageGroupRefs = {{
         .FirstPageNo = 111,
         .PageCount = 1,
-        .PageSize = 4_KB,
     }};
 
     return group.ReadPages(defaultHeaders, pageGroupRefs, pageGroups);
@@ -434,7 +433,6 @@ TEST(NaiveGroupTest, RoundRobinsRead)
                     TVector<TPageGroupRef> pageGroupRefs = {{
                         .FirstPageNo = 111,
                         .PageCount = 100,
-                        .PageSize = 4_KB,
                     }};
 
                     TVector<TPageGroup> pageGroups;

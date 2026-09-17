@@ -4,6 +4,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
+#include <cloud/filestore/libs/storage/testlib/test_fast_shard.h>
 
 #include <contrib/ydb/library/actors/core/mon.h>
 #include <library/cpp/json/json_reader.h>
@@ -61,7 +62,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
             "main_fs_s1",
             false /* directoryCreationInShardsEnabled */,
             TVector<TString>() /* shardIds */,
-            NProtoPrivate::TFastShardConfig(),
+            MemConfig(),
             true /* isFastShard */);
 
         tablet.ReconnectPipe();
@@ -114,7 +115,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
             "main_fs_s1",
             false /* directoryCreationInShardsEnabled */,
             TVector<TString>() /* shardIds */,
-            NProtoPrivate::TFastShardConfig(),
+            MemConfig(),
             true /* isFastShard */);
 
         tablet.ReconnectPipe();
@@ -177,7 +178,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Monitoring)
             "main_fs_s1",
             false /* directoryCreationInShardsEnabled */,
             TVector<TString>() /* shardIds */,
-            NProtoPrivate::TFastShardConfig(),
+            MemConfig(),
             true /* isFastShard */);
 
         tablet.ReconnectPipe();

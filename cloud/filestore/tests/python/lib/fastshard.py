@@ -27,19 +27,19 @@ def configure_fastshard(shard_count, file_shard_count, fast_shard_config):
 
     for i, shard_id in enumerate(shard_ids):
         shard_no = i + 1
-        client.execute_action(
-            "configureasshard",
-            {
-                "FileSystemId": shard_id,
-                "ShardNo": shard_no,
-                "MainFileSystemId": filesystem,
-                "ShardFileSystemIds": shard_ids,
-                "FileShardFileSystemIds": file_shard_ids,
-                "IsFastShard": shard_id in file_shard_ids,
-                "FastShardConfig": fast_shard_config,
-                "DirectoryCreationInShardsEnabled": True,
-            },
-        )
+        request = {
+            "FileSystemId": shard_id,
+            "ShardNo": shard_no,
+            "MainFileSystemId": filesystem,
+            "ShardFileSystemIds": shard_ids,
+            "FileShardFileSystemIds": file_shard_ids,
+            "IsFastShard": shard_id in file_shard_ids,
+            "DirectoryCreationInShardsEnabled": True,
+        }
+        if shard_id in file_shard_ids:
+            request["FastShardConfig"] = fast_shard_config
+
+        client.execute_action("configureasshard", request)
 
     client.execute_action(
         "configureshards",

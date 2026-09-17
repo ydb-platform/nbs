@@ -159,6 +159,83 @@ NProto::TError ValidateFileShardList(
     return {};
 }
 
+// Kind and page size are fixed once set. SS operations do not handle fast shard
+// configs so far, just preserve what is set. If page size is not explicitly set
+// it defaults to the block size.
+NProto::TError ValidateAndPrepareFastShardConfig(
+    const NProto::TFileSystem& config,
+    NProtoPrivate::TConfigureAsShardRequest& request)
+{
+    using TFSC = NProtoPrivate::TFastShardConfig;
+
+    const TFSC& oldConfig = config.GetFastShardConfig();
+
+    TFSC& newConfig = *request.MutableFastShardConfig();
+    const bool hasNewConfig = newConfig.Config_case() != TFSC::CONFIG_NOT_SET;
+
+    // No new config, just keep the existing one.
+    if (!request.GetIsFastShard() && !hasNewConfig) {
+        request.SetIsFastShard(config.GetIsFastShard());
+        newConfig = oldConfig;
+        return {};
+    }
+
+    if (config.GetIsFastShard() && !request.GetIsFastShard()) {
+        return MakeError(E_ARGUMENT, "a fast shard cannot be demoted");
+    }
+
+    if (!hasNewConfig) {
+        return MakeError(E_ARGUMENT, "missing fast shard config");
+    }
+
+    if (oldConfig.Config_case() != TFSC::CONFIG_NOT_SET &&
+        oldConfig.Config_case() != newConfig.Config_case())
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "fast shard config types mismatch: old "
+                << static_cast<int>(oldConfig.Config_case()) << ", new "
+                << static_cast<int>(newConfig.Config_case()));
+    }
+
+    // A stored persistent config fixes the page size. A first one may set it
+    // explicitly or takes the block size otherwise.
+    if (newConfig.HasPersistentConfig()) {
+        auto& persistentConfig = *newConfig.MutablePersistentConfig();
+
+        const ui32 newPageSize = persistentConfig.GetPageSize();
+        if (newPageSize % DefaultBlockSize) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "fast shard page size " << newPageSize
+                    << " is not a multiple of " << DefaultBlockSize);
+        }
+
+        if (!oldConfig.HasPersistentConfig()) {
+            if (!newPageSize) {
+                persistentConfig.SetPageSize(config.GetBlockSize());
+            }
+        } else if (!newPageSize) {
+            // preserve the existing page size.
+            persistentConfig.SetPageSize(
+                oldConfig.GetPersistentConfig().GetPageSize());
+        } else if (
+            newPageSize != oldConfig.GetPersistentConfig().GetPageSize())
+        {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "fast shard config page size mismatch: old "
+                    << oldConfig.GetPersistentConfig().GetPageSize()
+                    << ", new " << newPageSize);
+        }
+    }
+
+    return {};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -476,6 +553,10 @@ void TIndexTabletActor::HandleConfigureAsShard(
     const auto& newFileShardIds = msg->Record.GetFileShardFileSystemIds();
     if (!HasError(error) && !msg->Record.GetForce()) {
         error = ValidateFileShardList(newShardIds, newFileShardIds);
+    }
+
+    if (!HasError(error) && !msg->Record.GetForce()) {
+        error = ValidateAndPrepareFastShardConfig(GetFileSystem(), msg->Record);
     }
 
     if (error.GetCode() != S_OK) {
