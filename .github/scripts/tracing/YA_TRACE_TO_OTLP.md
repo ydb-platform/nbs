@@ -532,9 +532,11 @@ The converter imports ya's `statistics.critical_path`; it does not recompute the
 critical path.
 
 - Build entries prefer UID matches, then compatible timing/tool matches.
-- Test entries are matched to a test worker and then to a chunk. Because ya's
-  evidence is chunk-granular, the chunk and its tests are marked with
-  `granularity=test-chunk` and `inferred=true`.
+- Test entries are resolved to test workers, respecting explicit UIDs and test
+  identities. Marking reuses the worker-to-chunk association from
+  `YaTestOperations`; an unmatched worker never marks an unrelated chunk.
+  Because ya's evidence is chunk-granular, the associated chunk and its tests
+  are marked with `granularity=test-chunk` and `inferred=true`.
 
 Finally, the ten longest complete and launched tests receive
 `ya.test.duration.rank=1..10`, ranked by `test.duration.reported_seconds`

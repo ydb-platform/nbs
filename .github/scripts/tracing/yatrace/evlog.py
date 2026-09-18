@@ -79,7 +79,9 @@ def project_evlog(
     operations = parent.under(
         dispatch_span if dispatch_span is not None else parent.parent_span_id
     )
-    metadata.update(YaTestOperations(nodes, evlog.failures).project(operations))
+    metadata.update(
+        YaTestOperations(nodes, evlog.failures, evlog.critical_path).project(operations)
+    )
     metadata.update(
         YaBuildOperations(
             build_nodes,

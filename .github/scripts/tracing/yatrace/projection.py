@@ -106,7 +106,6 @@ def build_ya_trace(
     update_span_attributes(root_span, {"ya.chunk.count": chunk_count})
     if evlog is not None:
         dispatch_span_id, metadata = project_evlog(evlog, root_context, root)
-        metadata.update(evlog.critical_path.mark_test_spans(trace))
         update_span_attributes(root_span, metadata)
         if dispatch_span_id:
             for scope_name in ("ya.chunk", "ya.suite"):
