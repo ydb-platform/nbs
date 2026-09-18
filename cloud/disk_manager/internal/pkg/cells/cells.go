@@ -225,7 +225,7 @@ func (s *cellSelector) ZoneContainsCell(zoneID string, cellID string) bool {
 	}
 
 	return slices.Contains(cells.GetCells(), cellID) ||
-		slices.Contains(maps.Values(cells.GetDiskKindDedicatedCell()), cellID)
+		slices.Contains(maps.Values(cells.GetDiskKindToDedicatedCell()), cellID)
 }
 
 func (s *cellSelector) ResolveCells(zoneID string) ([]string, error) {
@@ -247,7 +247,7 @@ func (s *cellSelector) getCells(zoneID string) []string {
 	return cells.Cells
 }
 
-func (s *cellSelector) getDiskKindDedicatedCell(
+func (s *cellSelector) getDiskKindToDedicatedCell(
 	zoneID string,
 	kind types.DiskKind,
 ) (string, bool) {
@@ -258,13 +258,13 @@ func (s *cellSelector) getDiskKindDedicatedCell(
 	}
 
 	kindStr := common.DiskKindToString(kind)
-	cellID, ok := cells.GetDiskKindDedicatedCell()[kindStr]
+	cellID, ok := cells.GetDiskKindToDedicatedCell()[kindStr]
 	return cellID, ok
 }
 
 func (s *cellSelector) getDedicatedCellDiskKind(cellID string) (string, bool) {
 	for _, cells := range s.config.GetCells() {
-		for kind, dedicatedCellID := range cells.GetDiskKindDedicatedCell() {
+		for kind, dedicatedCellID := range cells.GetDiskKindToDedicatedCell() {
 			if dedicatedCellID == cellID {
 				return kind, true
 			}
@@ -341,7 +341,7 @@ func (s *cellSelector) selectCellForDisk(
 		return zoneID, nil
 	}
 
-	cellID, ok := s.getDiskKindDedicatedCell(zoneID, kind)
+	cellID, ok := s.getDiskKindToDedicatedCell(zoneID, kind)
 	if ok && !requireExactCellIDMatch {
 		return cellID, nil
 	}

@@ -16,7 +16,10 @@ enum CellSelectionPolicy {
 message ZoneCells {
     repeated string Cells = 1;
 
-    map<string, string> DiskKindDedicatedCell = 2;
+    // Defines the cell for disks of a particular kind. Disks of this kind can
+    // only be created in this cell. Disks of other kinds can't be created in
+    // this cell.
+    map<string, string> DiskKindToDedicatedCell = 2;
 }
 
 message CellsConfig {

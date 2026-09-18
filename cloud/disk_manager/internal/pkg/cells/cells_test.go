@@ -241,7 +241,7 @@ func TestCellSelectorSelectsCorrectCell(t *testing.T) {
 	require.Empty(t, selectedCell)
 }
 
-func TestCellSelectorSelectsDiskKindDedicatedCell(t *testing.T) {
+func TestCellSelectorSelectsDedicatedCell(t *testing.T) {
 	ctx := newContext()
 
 	const directCellID = "zone-a-direct"
@@ -251,7 +251,7 @@ func TestCellSelectorSelectsDiskKindDedicatedCell(t *testing.T) {
 		Cells: map[string]*cells_config.ZoneCells{
 			shardedZoneID: {
 				Cells: []string{cellID1, cellID2},
-				DiskKindDedicatedCell: map[string]string{
+				DiskKindToDedicatedCell: map[string]string{
 					"ssd-direct-mirror3of5-group": directCellID,
 				},
 			},
