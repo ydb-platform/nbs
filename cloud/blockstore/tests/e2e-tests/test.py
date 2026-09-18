@@ -25,10 +25,47 @@ BLOCKSTORE_CLIENT_PATH = common.binary_path(
     "cloud/blockstore/apps/client/blockstore-client")
 
 
+PRECONFIGURED_NBD_DEV_COUNT=4
+
+
+@pytest.fixture(scope="session", autouse=True)
+def load_nbd_module():
+    def run(command):
+        logging.info("Running NBD module command: %s", command)
+        try:
+            result = subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            logging.exception(
+                "NBD module command failed: %s; stdout: %s; stderr: %s",
+                command,
+                e.stdout,
+                e.stderr,
+            )
+            raise
+        except OSError:
+            logging.exception("Failed to start NBD module command: %s", command)
+            raise
+        logging.info(
+            "NBD module command succeeded: %s; stdout: %s; stderr: %s",
+            command,
+            result.stdout,
+            result.stderr,
+        )
+
+    run(["modprobe", "nbd", f"nbds_max={PRECONFIGURED_NBD_DEV_COUNT}"])
+    yield
+    run(["rmmod", "nbd"])
+
+
 def init(
         nbd_netlink=True,
         nbd_request_timeout=10,
-        nbds_max=4,
         max_zero_blocks_sub_request_size=None,
 ):
     server_config_patch = TServerConfig()
@@ -57,7 +94,7 @@ def init(
     if max_zero_blocks_sub_request_size:
         server.ServerConfig.MaxZeroBlocksSubRequestSize = max_zero_blocks_sub_request_size
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-    subprocess.check_call(["modprobe", "nbd", f"nbds_max={nbds_max}"], timeout=20)
+
     log_config = TLogConfig()
     log_config.Entry.add(Component=b"BLOCKSTORE_NBD", Level=7)
     env = LocalLoadTest(
@@ -100,11 +137,8 @@ def init(
 
 
 def cleanup_after_test(env: LocalLoadTest):
-    try:
-        subprocess.check_call(["rmmod", "nbd"], timeout=20)
-    finally:
-        if env is not None:
-            env.tear_down()
+    if env is not None:
+        env.tear_down()
 
 
 def log_called_process_error(exc):
@@ -123,11 +157,9 @@ def test_free_device_allocation(nbd_netlink):
     block_size = 4096
     blocks_count = 1024
     socket = "/tmp/sock"
-    nbds_max = 4
+    nbds_max = PRECONFIGURED_NBD_DEV_COUNT
 
-    env, run = init(
-        nbd_netlink=nbd_netlink,
-        nbds_max=nbds_max)
+    env, run = init(nbd_netlink=nbd_netlink)
 
     def createvolume(i):
         return run(
