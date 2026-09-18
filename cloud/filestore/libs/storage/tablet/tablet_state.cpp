@@ -347,6 +347,14 @@ void TIndexTabletState::SetCompressNodeRef(
     db.WriteFileSystem(FileSystem);
 }
 
+void TIndexTabletState::SetShardCreationState(
+    IIndexTabletDatabase& db,
+    const NProtoPrivate::TFileSystemShardCreationState& state)
+{
+    *FileSystem.MutableShardCreationState() = state;
+    db.WriteFileSystem(FileSystem);
+}
+
 const NProto::TFileStorePerformanceProfile& TIndexTabletState::GetPerformanceProfile() const
 {
     if (FileSystem.HasPerformanceProfile() &&

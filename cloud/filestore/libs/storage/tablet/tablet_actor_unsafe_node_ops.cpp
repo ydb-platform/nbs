@@ -2,6 +2,10 @@
 
 #include "helpers.h"
 
+#include <cloud/filestore/libs/storage/core/compressed_bitmap.h>
+
+#include <util/string/builder.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -902,8 +906,6 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
     TTransactionContext& tx,
     TTxIndexTablet::TUnsafeChangeTabletState& args)
 {
-    Y_UNUSED(ctx);
-
     auto db = CreateIndexTabletDatabase(tx.DB);
 
     if (args.Request.HasCompressNodeRef()) {
@@ -912,6 +914,35 @@ void TIndexTabletActor::ExecuteTx_UnsafeChangeTabletState(
 
     if (args.Request.HasFrozen()) {
         SetFrozen(*db, args.Request.GetFrozen());
+    }
+
+    if (args.Request.HasShardCreationState()) {
+        const auto& requested = args.Request.GetShardCreationState();
+
+        if (requested.HasVersion() &&
+            requested.GetVersion() ==
+                GetFileSystem().GetShardCreationState().GetVersion())
+        {
+            if (auto error = ValidateShardCreationState(
+                    requested,
+                    Config->GetMaxShardCount());
+                HasError(error))
+            {
+                LOG_WARN(
+                    ctx,
+                    TFileStoreComponents::TABLET,
+                    "%s Invalid shard creation state: %s",
+                    LogTag.c_str(),
+                    FormatError(error).c_str());
+
+                *args.Response.MutableError() = std::move(error);
+                return;
+            }
+
+            auto newState = requested;
+            newState.SetVersion(requested.GetVersion() + 1);
+            SetShardCreationState(*db, newState);
+        }
     }
 }
 
@@ -923,6 +954,14 @@ void TIndexTabletActor::CompleteTx_UnsafeChangeTabletState(
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateResponse>();
+    if (HasError(args.Response)) {
+        *response->Record.MutableError() = args.Response.GetError();
+    }
+
+    if (args.Request.HasShardCreationState()) {
+        *response->Record.MutableShardCreationState() =
+            GetFileSystem().GetShardCreationState();
+    }
 
     LOG_INFO(
         ctx,
