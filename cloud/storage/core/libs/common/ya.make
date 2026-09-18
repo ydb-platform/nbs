@@ -24,6 +24,7 @@ SRCS(
     helpers.cpp
     history.cpp
     hostname.cpp
+    latency_counter.cpp
     lru_cache.cpp
     media.cpp
     numeric.cpp
@@ -58,6 +59,7 @@ PEERDIR(
     library/cpp/digest/crc32c
     library/cpp/json/writer
     library/cpp/logger
+    library/cpp/monlib/dynamic_counters
     library/cpp/lwtrace
     library/cpp/protobuf/util
     library/cpp/retry

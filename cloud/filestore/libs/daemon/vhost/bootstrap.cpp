@@ -322,7 +322,9 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
+IFileIOServicePtr CreateFileIOService(
+    const TLocalFileStoreConfig& config,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
 {
     return std::visit(
         TOverloaded{
@@ -335,7 +337,7 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
                 for (ui32 i = 0; i != config.GetNumThreads(); ++i) {
                     fileIOs.push_back(CreateConcurrentFileIOService(
                         TStringBuilder() << "IO" << (i + 1),
-                        CreateFileIOServiceStub()));
+                        CreateFileIOServiceStub(), counters));
                 }
 
                 return CreateRoundRobinFileIOService(std::move(fileIOs));
@@ -346,6 +348,7 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
                     config.GetNumThreads(),
                     {
                         .MaxEvents = aio.GetEntries(),
+                        .Counters = std::move(counters),
                     });
             },
             [&](const TIoUringConfig& ring)
@@ -358,6 +361,7 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
                     .PropagateAffinityToKernelWorkers =
                         ring.GetPropagateAffinityToKernelWorkers(),
                     .SQKernelPollingEnabled = ring.GetSQKernelPollingEnabled(),
+                    .Counters = std::move(counters),
                 });
 
                 if (config.GetNumThreads() <= 1) {
@@ -368,8 +372,7 @@ IFileIOServicePtr CreateFileIOService(const TLocalFileStoreConfig& config)
                     config.GetNumThreads(),
                     *factory);
             },
-        },
-        config.GetFileIOConfig());
+        }, config.GetFileIOConfig());
 }
 
 }   // namespace
@@ -549,7 +552,9 @@ void TBootstrapVhost::InitEndpoints()
             *localServiceConfig);
         serviceConfig->SetFeaturesConfig(Configs->FeaturesConfig);
         ThreadPool = CreateThreadPool("svc", serviceConfig->GetNumThreads());
-        FileIOService = CreateFileIOService(*serviceConfig);
+        FileIOService = CreateFileIOService(
+            *serviceConfig,
+            FilestoreCounters->GetSubgroup("component", "io_service"));
         LocalService = CreateLocalFileStore(
             std::move(serviceConfig),
             Timer,

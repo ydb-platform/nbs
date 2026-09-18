@@ -1,6 +1,7 @@
 #include "thread_pool.h"
 
 #include "concurrent_queue.h"
+#include "latency_counter.h"
 #include "task_queue.h"
 #include "thread.h"
 #include "thread_park.h"
@@ -12,6 +13,8 @@
 #include <util/generic/vector.h>
 #include <util/string/builder.h>
 #include <util/system/thread.h>
+
+#include <optional>
 
 namespace NCloud {
 
@@ -33,6 +36,8 @@ class TThreadPool final
         Y_CACHE_ALIGNED TAtomic State = RUNNING;
         TThreadPark ThreadPark;
 
+        std::optional<TLatencyCounter> ExecutionLatency;
+        std::optional<TLatencyCounter> IdleLatency;
         TString Name;
         std::unique_ptr<ISimpleThread> Thread;
     };
@@ -64,6 +69,8 @@ private:
     const ui32 MaxSpinning;
     const ui64 SpinCycles;
     const TString MemoryTagScope;
+    std::optional<TLatencyCounter> QueueLatency;
+    NMonitoring::TDynamicCounters::TCounterPtr PendingTasks;
 
     TVector<TWorker> Workers;
     TConcurrentQueue<ITask> Queue;
@@ -74,9 +81,7 @@ private:
 
 public:
     TThreadPool(
-            const TString& threadName,
-            size_t numWorkers,
-            TString memoryTagScope)
+        const TString& threadName, size_t numWorkers, TString memoryTagScope)
         : NumWorkers(numWorkers)
         , MaxSpinning(Max<ui32>(1, numWorkers / 4))
         , SpinCycles(DurationToCyclesSafe(SPIN_TIMEOUT))
@@ -91,9 +96,46 @@ public:
         }
     }
 
+    TThreadPool(
+        const TString& threadName,
+        size_t numWorkers,
+        TString memoryTagScope,
+        TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
+        : TThreadPool(threadName, numWorkers, std::move(memoryTagScope))
+    {
+        auto group = counters->GetSubgroup("thread", threadName);
+        QueueLatency.emplace(
+            group,
+            "Queue",
+            numWorkers == 1 ? TLatencyCounter::EConcurrency::SingleWriter
+                            : TLatencyCounter::EConcurrency::MultipleWriters,
+            TLatencyCounter::EPublishing::Periodic);
+        PendingTasks = group->GetCounter("PendingTasks");
+        for (auto& worker: Workers) {
+            auto workerGroup =
+                numWorkers == 1 ? group
+                                : counters->GetSubgroup("thread", worker.Name);
+            worker.ExecutionLatency.emplace(
+                workerGroup,
+                "Execution",
+                TLatencyCounter::EConcurrency::SingleWriter,
+                TLatencyCounter::EPublishing::Periodic);
+            worker.IdleLatency.emplace(
+                std::move(workerGroup),
+                "Idle",
+                TLatencyCounter::EConcurrency::SingleWriter,
+                TLatencyCounter::EPublishing::Periodic);
+        }
+    }
+
     ~TThreadPool() override
     {
         Stop();
+        while (auto task = Queue.Dequeue()) {
+            if (PendingTasks) {
+                PendingTasks->Dec();
+            }
+        }
     }
 
     void Start() override
@@ -113,6 +155,13 @@ public:
 
         for (auto& worker: Workers) {
             worker.Thread.reset();
+            if (PendingTasks) {
+                worker.ExecutionLatency->Publish();
+                worker.IdleLatency->Publish();
+            }
+        }
+        if (PendingTasks) {
+            QueueLatency->Publish();
         }
     }
 
@@ -120,6 +169,10 @@ public:
     {
         Y_DEBUG_ABORT_UNLESS(AtomicGet(ShouldStop) == 0);
 
+        if (PendingTasks) {
+            task->EnqueuedCycles = QueueLatency->Start();
+            PendingTasks->Inc();
+        }
         Queue.Enqueue(std::move(task));
 
         if (AllocateWorker()) {
@@ -135,7 +188,15 @@ private:
 
         while (AtomicGet(ShouldStop) == 0) {
             if (auto task = Queue.Dequeue()) {
-                task->Execute();
+                if (PendingTasks) {
+                    const ui64 started = worker.ExecutionLatency->Start();
+                    PendingTasks->Dec();
+                    QueueLatency->RecordCycles(started - task->EnqueuedCycles);
+                    task->Execute();
+                    worker.ExecutionLatency->Record(started);
+                } else {
+                    task->Execute();
+                }
                 continue;
             }
 
@@ -163,6 +224,10 @@ private:
         AtomicSet(worker.State, TWorker::SPINNING);
 
         if (AtomicIncrementWithLimit(&SpinningWorkers, MaxSpinning)) {
+            std::optional<TLatencyScope> scope;
+            if (worker.IdleLatency) {
+                scope.emplace(*worker.IdleLatency);
+            }
             Y_DEFER {
                 AtomicDecrement(SpinningWorkers);
             };
@@ -190,6 +255,10 @@ private:
 
         if (AtomicCas(&worker.State, TWorker::SLEEPING, TWorker::SPINNING)) {
             for (;;) {
+                std::optional<TLatencyScope> scope;
+                if (worker.IdleLatency) {
+                    scope.emplace(*worker.IdleLatency);
+                }
                 worker.ThreadPark.WaitT(SLEEP_TIMEOUT);
 
                 if (AtomicGet(worker.State) == TWorker::RUNNING) {
@@ -354,12 +423,17 @@ private:
 ITaskQueuePtr CreateThreadPool(
     const TString& threadName,
     size_t numThreads,
-    TString memoryTagScope)
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters)
 {
     return std::make_shared<TThreadPool>(
-        threadName,
-        numThreads,
-        std::move(memoryTagScope));
+        threadName, numThreads, "STORAGE_" + threadName, std::move(counters));
+}
+
+ITaskQueuePtr CreateThreadPool(
+    const TString& threadName, size_t numThreads, TString memoryTagScope)
+{
+    return std::make_shared<TThreadPool>(
+        threadName, numThreads, std::move(memoryTagScope));
 }
 
 ITaskQueuePtr CreateThreadPool(

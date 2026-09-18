@@ -12,6 +12,11 @@ namespace NCloud {
 
 struct ITask
 {
+    // Set by an instrumented thread pool before publishing the task to its
+    // queue. Keeping the timestamp here avoids a second allocation per queued
+    // IO.
+    ui64 EnqueuedCycles = 0;
+
     virtual ~ITask() = default;
 
     virtual void Execute() noexcept = 0;

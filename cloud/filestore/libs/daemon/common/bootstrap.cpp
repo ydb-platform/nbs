@@ -188,9 +188,11 @@ void TBootstrapCommon::Init()
         InitActorSystem();
     }
 
-    FileIOService = CreateAIOService();
-
     InitDiagnostics();
+
+    FileIOService = CreateAIOService({
+        .Counters = FilestoreCounters->GetSubgroup("component", "io_service"),
+    });
     InitComponents();
 
     STORAGE_INFO("Init completed");

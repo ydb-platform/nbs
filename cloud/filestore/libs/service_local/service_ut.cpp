@@ -306,7 +306,9 @@ struct TTestBootstrap
     ITimerPtr Timer = CreateWallClockTimer();
     ISchedulerPtr Scheduler = CreateScheduler();
     ITaskQueuePtr TaskQueue = CreateTaskQueueStub();
-    IFileIOServicePtr AIOService = CreateAIOService();
+    IFileIOServicePtr AIOService = CreateAIOService({
+        .Counters = MakeIntrusive<NMonitoring::TDynamicCounters>(),
+    });
 
     TTempDirectoryPtr Cwd;
     TLocalFileStoreConfigPtr Config;

@@ -5,6 +5,7 @@
 #include "error.h"
 #include "startable.h"
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/threading/future/future.h>
 
 #include <util/generic/noncopyable.h>
@@ -200,6 +201,7 @@ IFileIOServicePtr CreateRoundRobinFileIOService(
 
 IFileIOServicePtr CreateConcurrentFileIOService(
     const TString& submissionThreadName,
-    IFileIOServicePtr fileIO);
+    IFileIOServicePtr fileIO,
+    TIntrusivePtr<NMonitoring::TDynamicCounters> counters);
 
 }   // namespace NCloud

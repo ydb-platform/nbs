@@ -747,6 +747,7 @@ ITestFileIOServicePtr CreateUringFileService()
         .ShareKernelWorkers = true,
         .ForceAsyncIO = true,
         .SQKernelPollingEnabled = true,
+        .Counters = MakeIntrusive<NMonitoring::TDynamicCounters>(),
     });
 
     return std::make_shared<TIoUringTestFileService>(

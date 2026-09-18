@@ -206,7 +206,8 @@ Y_UNIT_TEST_SUITE(TFileIOServiceTest)
             .Times(totalRequestCount)
             .WillRepeatedly(onRequest);
 
-        auto service = CreateConcurrentFileIOService("SQ", fileIO);
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        auto service = CreateConcurrentFileIOService("SQ", fileIO, counters);
         service->Start();
 
         TVector<std::thread> clients;

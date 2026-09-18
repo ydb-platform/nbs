@@ -47,7 +47,9 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         fileData.Resize(blockSize * totalBlockCount);
 
         auto fileIOServiceProvider =
-            CreateSingleFileIOServiceProvider(CreateAIOService());
+            CreateSingleFileIOServiceProvider(CreateAIOService({
+                .Counters = MakeIntrusive<NMonitoring::TDynamicCounters>(),
+            }));
 
         fileIOServiceProvider->Start();
         Y_DEFER { fileIOServiceProvider->Stop(); };
@@ -55,7 +57,8 @@ Y_UNIT_TEST_SUITE(TLocalStorageTest)
         auto provider = CreateLocalStorageProvider(
             fileIOServiceProvider,
             CreateNvmeManagerStub(),
-            {.DirectIO = true, .UseSubmissionThread = false});
+            {.DirectIO = true, .UseSubmissionThread = false},
+            MakeIntrusive<NMonitoring::TDynamicCounters>());
 
         NProto::TVolume volume;
         volume.SetDiskId(filePath);

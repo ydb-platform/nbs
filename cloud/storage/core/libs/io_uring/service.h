@@ -2,6 +2,8 @@
 
 #include <cloud/storage/core/libs/common/public.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -20,6 +22,8 @@ struct TIoUringServiceParams
     bool ForceAsyncIO = false;
     bool PropagateAffinityToKernelWorkers = false;
     bool SQKernelPollingEnabled = false;
+
+    TIntrusivePtr<NMonitoring::TDynamicCounters> Counters;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

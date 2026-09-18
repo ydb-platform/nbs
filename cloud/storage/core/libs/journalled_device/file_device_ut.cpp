@@ -107,7 +107,9 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
-        FileIO = CreateAIOService();
+        FileIO = CreateAIOService({
+            .Counters = MakeIntrusive<NMonitoring::TDynamicCounters>(),
+        });
         FileIO->Start();
 
         Device = CreateDevice();

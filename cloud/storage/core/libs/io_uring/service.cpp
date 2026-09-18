@@ -187,7 +187,9 @@ private:
 public:
     explicit TIoUringServiceFactory(TIoUringServiceParams params)
         : Params(std::move(params))
-    {}
+    {
+        Y_DEBUG_ABORT_UNLESS(Params.Counters);
+    }
 
     IFileIOServicePtr CreateFileIOService() final
     {
@@ -204,6 +206,7 @@ public:
             .PropagateAffinityToKernelWorkers =
                 Params.PropagateAffinityToKernelWorkers,
             .Flags = Params.SQKernelPollingEnabled ? IORING_SETUP_SQPOLL : 0,
+            .Counters = Params.Counters,
         };
 
         const ui32 sqeFlags = Params.ForceAsyncIO ? IOSQE_ASYNC : 0;
