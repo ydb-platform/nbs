@@ -751,7 +751,7 @@ private:
 
         auto rangeIndicesToPersist = compactionStatsTracker->FinishCompaction();
 
-        for (const ui32& rangeIndex: rangeIndicesToPersist) {
+        for (ui32 rangeIndex: rangeIndicesToPersist) {
             const ui32 blockIndex = rangeIndex * cm.GetRangeSize();
             const auto& rangeStat = cm.Get(blockIndex);
             db.WriteCompactionMap(

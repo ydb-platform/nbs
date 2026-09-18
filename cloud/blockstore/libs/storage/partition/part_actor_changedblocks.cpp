@@ -30,7 +30,7 @@ IEventBasePtr CreateGetChangedBlocksResponse(const TVector<ui8>& changedBlocks)
 {
     auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
 
-    for (const ui8& b: changedBlocks) {
+    for (ui8 b: changedBlocks) {
         response->Record.MutableMask()->push_back(b);
     }
 
