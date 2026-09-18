@@ -173,6 +173,7 @@ struct TTestContext
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
+    TDiagnosticsConfigPtr DiagnosticsConfig;
     IProfileLogPtr ProfileLog;
     IRequestStatsPtr RequestStats;
     IVolumeStatsPtr VolumeStats;
@@ -185,6 +186,7 @@ struct TTestContext
         , Scheduler(CreateSchedulerStub())
         , Logging(CreateLoggingService("console"))
         , Monitoring(CreateMonitoringServiceStub())
+        , DiagnosticsConfig(std::make_shared<TDiagnosticsConfig>())
         , ProfileLog(CreateProfileLogStub())
         , RequestStats(CreateRequestStatsStub())
         , VolumeStats(CreateVolumeStatsStub())
@@ -362,9 +364,11 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.Scheduler,
             testContext.Logging,
             testContext.Monitoring,
+            testContext.DiagnosticsConfig,
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
+            CreateLocalService(),
             nullptr);
 
         server->Start();
@@ -424,9 +428,11 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.Scheduler,
             testContext.Logging,
             testContext.Monitoring,
+            testContext.DiagnosticsConfig,
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
+            CreateLocalService(),
             nullptr);
 
         server->Start();
@@ -458,9 +464,11 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.Scheduler,
             testContext.Logging,
             testContext.Monitoring,
+            testContext.DiagnosticsConfig,
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
+            CreateLocalService(),
             nullptr);
 
         auto blockstore = testContext.Monitoring->GetMonPage("blockstore");
@@ -481,6 +489,110 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT_STRING_CONTAINS(html, "Connections");
         UNIT_ASSERT_STRING_CONTAINS(
             html, "Inbound inter-cell connections");
+    }
+
+    Y_UNIT_TEST(ShouldRenderDiskSearchForm)
+    {
+        TTestContext testContext;
+
+        auto cfg = TCellConfigBuilder("abc", true).Build();
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        auto cellManager = CreateCellManager(
+            config,
+            testContext.Timer,
+            testContext.Scheduler,
+            testContext.Logging,
+            testContext.Monitoring,
+            testContext.DiagnosticsConfig,
+            testContext.TraceSerializer,
+            testContext.ServerStats,
+            CreateClientCertificateProvider(config),
+            CreateLocalService(),
+            nullptr);
+
+        auto blockstore = testContext.Monitoring->GetMonPage("blockstore");
+        UNIT_ASSERT(blockstore);
+        auto* cells = static_cast<NMonitoring::TIndexMonPage&>(*blockstore)
+                          .FindPage("Cells");
+        UNIT_ASSERT(cells);
+
+        TFakeMonRequest request;
+        cells->Output(request);
+        UNIT_ASSERT_STRING_CONTAINS(request.Out.Str(), "action");
+        UNIT_ASSERT_STRING_CONTAINS(request.Out.Str(), "Volume");
+    }
+
+    Y_UNIT_TEST(ShouldRenderDiskSearchAcrossCells)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&] (auto request) {
+                Y_UNUSED(request);
+                return MakeFuture<NProto::TDescribeVolumeResponse>();
+            };
+
+        TTestContext testContext;
+
+        auto server = TTestServerBuilder(testContext)
+            .SetPort(port)
+            .SetCellId("xyz")
+            .BuildServer(service);
+
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell("xyz", port, 0, 1, 1, {"localhost"})
+            .Build();
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        auto cellManager = CreateCellManager(
+            config,
+            testContext.Timer,
+            testContext.Scheduler,
+            testContext.Logging,
+            testContext.Monitoring,
+            testContext.DiagnosticsConfig,
+            testContext.TraceSerializer,
+            testContext.ServerStats,
+            CreateClientCertificateProvider(config),
+            CreateLocalService(),
+            nullptr);
+
+        server->Start();
+        cellManager->Start();
+        Y_DEFER {
+            cellManager->Stop();
+            server->Stop();
+        };
+
+        // warm up the cell connection so the monitoring describe reaches it
+        NProto::TClientConfig clientConfig;
+        clientConfig.SetPort(port);
+        CheckDescribe(cellManager, clientConfig, S_OK);
+
+        auto blockstore = testContext.Monitoring->GetMonPage("blockstore");
+        UNIT_ASSERT(blockstore);
+        auto* cells = static_cast<NMonitoring::TIndexMonPage&>(*blockstore)
+                          .FindPage("Cells");
+        UNIT_ASSERT(cells);
+
+        TFakeMonRequest request;
+        request.Params.InsertUnescaped("action", "search");
+        request.Params.InsertUnescaped("Volume", "disk-x");
+        cells->Output(request);
+        const auto html = request.Out.Str();
+
+        // the disk resolves in cell xyz on localhost, rendered as a link to
+        // that host's mon port
+        UNIT_ASSERT_STRING_CONTAINS(html, "disk-x");
+        UNIT_ASSERT_STRING_CONTAINS(html, "xyz");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            TStringBuilder() << "http://localhost:"
+                             << testContext.DiagnosticsConfig->GetNbsMonPort()
+                             << "/blockstore/service?Volume=disk-x");
     }
 
     Y_UNIT_TEST(ShouldRejectConnectionToUnconfiguredCell)
@@ -505,9 +617,11 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.Scheduler,
             testContext.Logging,
             testContext.Monitoring,
+            testContext.DiagnosticsConfig,
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
+            CreateLocalService(),
             nullptr);
 
         // A cell id we never configured can only come from broken internal
