@@ -3,6 +3,7 @@
 #include "client.h"
 #include "client_handler.h"
 #include "error_handler.h"
+#include "protocol.h"
 #include "server_handler.h"
 
 #include <cloud/blockstore/libs/client/config.h>
@@ -28,6 +29,7 @@
 
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/network/sock.h>
 
 namespace NCloud::NBlockStore::NBD {
 
@@ -40,6 +42,49 @@ namespace {
 
 constexpr bool StructuredReply = true;
 constexpr bool UseNbsErrors = true;
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestErrorHandler final
+    : IErrorHandler
+{
+    TManualEvent ErrorReported;
+
+    void ProcessException(std::exception_ptr) override
+    {
+        ErrorReported.Signal();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+void ConnectInvalidClient(ui16 port)
+{
+    TInet6StreamSocket socket;
+    TSockAddrInet6 address("::1", port);
+
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        0,
+        socket.Connect(&address),
+        "failed to connect invalid client");
+
+    TStreamSocketInput input(&socket);
+    TRequestReader reader(input);
+
+    TServerHello hello;
+    UNIT_ASSERT(reader.ReadServerHello(hello));
+
+    TStreamSocketOutput output(&socket);
+    TRequestWriter writer(output);
+    writer.WriteClientHello(0);
+
+    SetSocketTimeout(socket, 3);
+    char c;
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        0,
+        socket.Recv(&c, sizeof(c)),
+        "invalid client connection was not closed");
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -259,7 +304,8 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
     IStoragePtr storage,
     const TStorageOptions& options = DefaultStorageOptions,
     TServerConfig serverConfig = Default<TServerConfig>(),
-    IBlockStorePtr grpcClientEndpoint = nullptr)
+    IBlockStorePtr grpcClientEndpoint = nullptr,
+    IErrorHandlerPtr errorHandler = nullptr)
 {
     const ui32 clientThreadsCount = 1;
 
@@ -270,12 +316,16 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
 
     auto server = CreateServer(logging, serverConfig);
 
+    if (!errorHandler) {
+        errorHandler = CreateErrorHandlerStub();
+    }
+
     auto handlerFactory = CreateServerHandlerFactory(
         CreateDefaultDeviceHandlerFactory(),
         logging,
         std::move(storage),
         CreateServerStatsStub(),
-        CreateErrorHandlerStub(),
+        std::move(errorHandler),
         options);
 
     auto client = CreateClient(
@@ -1102,6 +1152,68 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT(!HasError(future1.GetValue(TDuration::Seconds(3))));
         UNIT_ASSERT(!HasError(future2.GetValue(TDuration::Seconds(3))));
         UNIT_ASSERT(!HasError(future3.GetValue(TDuration::Seconds(3))));
+
+        bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldNotDropActiveConnectionOnInvalidConnection)
+    {
+        const ui32 startIndex = 13;
+        const ui32 blocksCount = 1;
+
+        TManualEvent requestReceived;
+        auto trigger = NewPromise<NProto::TZeroBlocksResponse>();
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ZeroBlocksHandler = [&] (
+            TCallContextPtr callContext,
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(callContext);
+
+            UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
+
+            requestReceived.Signal();
+            return trigger.GetFuture();
+        };
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto errorHandler = std::make_shared<TTestErrorHandler>();
+        auto bootstrap = CreateBootstrap(
+            connectAddress,
+            storage,
+            DefaultStorageOptions,
+            Default<TServerConfig>(),
+            nullptr,
+            errorHandler);
+
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->SetStartIndex(startIndex);
+        request->SetBlocksCount(blocksCount);
+
+        auto future = bootstrap->GetClientEndpoint()->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+
+        requestReceived.Wait();
+        UNIT_ASSERT(!future.HasValue());
+
+        ConnectInvalidClient(port);
+        UNIT_ASSERT_C(
+            !errorHandler->ErrorReported.WaitT(TDuration::Zero()),
+            "invalid client error was reported to the endpoint");
+
+        trigger.SetValue({});
+
+        auto response = future.GetValue(TDuration::Seconds(3));
+        UNIT_ASSERT_C(!HasError(response), response);
 
         bootstrap->Stop();
     }
