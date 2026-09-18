@@ -7,7 +7,7 @@ page-oriented protocol with a write-ahead journal.
 ## Interface
 
 The protocol is defined in `cloud/storage/core/protos/device.proto` and
-served over TCP by `cloud/storage/core/libs/journalled_device_tcp_server`.
+served over TCP by `cloud/storage/core/libs/journalled/server`.
 Each message is a `TDeviceProtocolRequest` / `TDeviceProtocolResponse` pair
 matched by `RequestId`. Six methods:
 
