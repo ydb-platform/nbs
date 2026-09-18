@@ -4,6 +4,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/grpc/init.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/threading/future/future.h>
@@ -37,6 +38,10 @@ struct TFixture: NUnitTest::TBaseTestCase
     void TearDown(NUnitTest::TTestContext& /* context */) final
     {
         Logging->Stop();
+
+        const auto tearDownTimeout = 5s;
+
+        UNIT_ASSERT(NCloud::WaitForGrpcShutdown(tearDownTimeout));
     }
 };
 
