@@ -241,7 +241,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
     Y_UNIT_TEST_F(ShouldRouteRequestsToDevices, TFixture)
     {
-        const TString clientId{JournalledDeviceClientId};
+        TString clientId = "client-id";
         const TString uuid = FileDevices[0].GetDeviceId();
         const TString unknownUuid = "unknown";
 
@@ -377,6 +377,29 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
             UNIT_ASSERT_STRING_CONTAINS(
                 error.GetMessage(),
                 "empty device UUID");
+        }
+
+        // a request without a client id is rejected as well
+
+        clientId = {};
+
+        for (const auto& error: {writeLogRecord(uuid), readPages(uuid)}) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "empty client id");
+        }
+
+        // and so is a client that has not acquired the device
+
+        clientId = "other-client-id";
+
+        for (const auto& error: {writeLogRecord(uuid), readPages(uuid)}) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                error.GetCode(),
+                FormatError(error));
         }
     }
 }

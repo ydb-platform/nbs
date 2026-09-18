@@ -41,7 +41,6 @@ TBuffer MakeBlock(size_t size, char c)
 
 struct TFixture: public NUnitTest::TBaseFixture
 {
-    const TString ClientId = "client-id";
     const TString DeviceUUID = "uuid-1";
     const TInstant Now = TInstant::Seconds(1);
 
@@ -73,38 +72,15 @@ struct TFixture: public NUnitTest::TBaseFixture
             false   // kickOutOldClientsEnabled
         );
 
-        // the device is not acquired here: some of the tests observe the
-        // behaviour of an unacquired device
+        // the adapter does not check the client session, it is up to the
+        // caller, so the device is not acquired here
         Timer->AdvanceTime(Now - TInstant::Zero());
 
-        Device = CreateAdapter(ClientId);
-    }
-
-    NJournalled::IDevicePtr CreateAdapter(TString clientId)
-    {
-        return CreateDeviceAdapter(
+        Device = CreateDeviceAdapter(
             Timer,
             DeviceUUID,
-            std::move(clientId),
             DefaultBlockSize,
             DeviceClient);
-    }
-
-    void AcquireDevice()
-    {
-        const auto result = DeviceClient->AcquireDevices(
-            {DeviceUUID},
-            ClientId,
-            Now,
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            0,    // mountSeqNumber
-            {},   // diskId
-            0     // volumeGeneration
-        );
-
-        UNIT_ASSERT_C(
-            !HasError(result.GetError()),
-            FormatError(result.GetError()));
     }
 
     static char BlockData(ui64 blockIndex)
@@ -196,14 +172,6 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
                  range.Pages.push_back(MakeBlock(8_KB, 'B'));
              },
              MakeError(E_ARGUMENT, "invalid page data: block size mismatch")},
-            {[&](auto& ranges)
-             {
-                 auto& range = ranges.emplace_back();
-                 range.FirstPageNo = 0x10;
-                 range.Pages.push_back(MakeBlock(DefaultBlockSize, 'A'));
-                 range.Pages.push_back(MakeBlock(DefaultBlockSize, 'B'));
-             },
-             MakeError(E_BS_INVALID_SESSION, "not acquired by client")},
         };
 
         for (size_t i = 0; i != std::size(testCases); ++i) {
@@ -247,12 +215,6 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
              MakeError(
                  E_ARGUMENT,
                  "page group ref must contain at least one page")},
-            {[&](auto& rangeRefs)
-             {
-                 rangeRefs.push_back({.FirstPageNo = 0x10, .PageCount = 1});
-                 rangeRefs.push_back({.FirstPageNo = 0x20, .PageCount = 1});
-             },
-             MakeError(E_BS_INVALID_SESSION, "not acquired by client")},
         };
 
         for (size_t i = 0; i != std::size(testCases); ++i) {
@@ -274,36 +236,6 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
                 expectedError.GetMessage(),
                 "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
                     << FormatError(error));
-        }
-    }
-
-    Y_UNIT_TEST_F(ShouldRejectAnEmptyClientId, TFixture)
-    {
-        AcquireDevice();
-
-        Device = CreateAdapter({});
-
-        {
-            TVector<NJournalled::TPageRange> ranges(1);
-            ranges[0].FirstPageNo = 0x10;
-            ranges[0].Pages.push_back(MakeBlock(DefaultBlockSize, 'A'));
-
-            const auto error = WritePages(std::move(ranges));
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_ARGUMENT,
-                error.GetCode(),
-                FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "empty client id");
-        }
-
-        {
-            const auto error =
-                ReadPages({{.FirstPageNo = 0x10, .PageCount = 1}}).GetError();
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_ARGUMENT,
-                error.GetCode(),
-                FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "empty client id");
         }
     }
 
@@ -330,18 +262,6 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
             return ranges;
         };
 
-        // the device has not been acquired yet
-
-        {
-            const auto error = WritePages(makeRanges());
-            UNIT_ASSERT_VALUES_EQUAL_C(
-                E_BS_INVALID_SESSION,
-                error.GetCode(),
-                FormatError(error));
-        }
-
-        AcquireDevice();
-
         {
             const auto error = WritePages(makeRanges());
             UNIT_ASSERT_VALUES_EQUAL_C(
@@ -356,7 +276,6 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         constexpr ui32 requestCount = 100;
 
         FillDevice();
-        AcquireDevice();
 
         for (ui32 i = 0; i != requestCount; ++i) {
             const ui64 rangeCount = 1 + RandomNumber<ui64>(8);
