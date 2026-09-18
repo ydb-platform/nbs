@@ -6,6 +6,7 @@ from typing import Any, Mapping, Sequence
 
 from ..otlp import Interval, Ns, Span, span_status_code, update_span_attributes
 from ..projector import SpanProjector
+from .critical_path import YaCriticalPath
 from .node import YaNode
 from .span_chunk import TestChunk
 from .worker_spans import WorkerSpanProjector
@@ -73,6 +74,7 @@ def _match_chunks(
 class YaTestOperations:
     nodes: Sequence[YaNode]
     failures: Mapping[str, int | None]
+    critical_path: YaCriticalPath
 
     def _node(
         self,
@@ -92,10 +94,15 @@ class YaTestOperations:
         WorkerSpanProjector(node, parent.under(span)).test_worker_phases()
 
     def project(self, parent: SpanProjector) -> dict[str, Any]:
+        critical_counts = {
+            "ya.test.critical_path.entry.count": len(self.critical_path.test_entries),
+            "ya.test.critical_path.chunk.count": 0,
+            "ya.test.critical_path.span.count": 0,
+        }
         chunks = [TestChunk.from_span(span) for span in parent.trace.spans("ya.chunk")]
         graph_nodes = [node for node in self.nodes if node.is_test]
         if not chunks and not graph_nodes:
-            return {}
+            return critical_counts
         test_nodes = [node for node in graph_nodes if node.kind == "test_execute"]
         intervals = [
             *[node.interval for node in graph_nodes],
@@ -110,6 +117,7 @@ class YaTestOperations:
         )
         context = parent.under(operation_id)
         matches, available = _match_chunks(test_nodes, chunks)
+        critical = self.critical_path.match_tests(test_nodes)
         tests_by_parent: dict[bytes, list[Span]] = defaultdict(list)
         for span in parent.trace.spans("ya.test"):
             tests_by_parent[span.parent_span_id].append(span)
@@ -120,6 +128,13 @@ class YaTestOperations:
             worker = WorkerSpanProjector(node, context)
             worker_attributes = worker.test_attributes()
             update_span_attributes(chunk_span, worker_attributes)
+            if (entry := critical.get(node_index)) is not None:
+                attributes = entry.span_attributes(test=True)
+                update_span_attributes(chunk_span, attributes)
+                critical_counts["ya.test.critical_path.chunk.count"] += 1
+                for test_span in tests_by_parent.get(chunk_span.span_id, ()):
+                    update_span_attributes(test_span, attributes)
+                    critical_counts["ya.test.critical_path.span.count"] += 1
             if test_size := worker_attributes.get("test.size"):
                 for test_span in tests_by_parent.get(chunk_span.span_id, ()):
                     update_span_attributes(test_span, {"test.size": test_size})
@@ -185,4 +200,5 @@ class YaTestOperations:
             "ya.test.worker.execute.count": len(test_nodes),
             "ya.test.worker.unmatched.count": len(unmatched),
             "ya.test.chunk.count": len(chunks),
+            **critical_counts,
         }
