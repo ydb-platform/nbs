@@ -23,11 +23,27 @@ ui64 CalculateShardCreationTargetHash(
 
 class TShardCreationStateCompanion
 {
+public:
+    enum class EMode
+    {
+        Create,
+        Alter,
+    };
+
 private:
+    enum class EPersistentShardCreationStateStatus
+    {
+        Unknown,
+        Unsupported,
+        Supported,
+    };
+
     const TString FileSystemId;
     const TString LogTag;
-    const TString StateUnavailableMessage;
+    const EMode Mode;
 
+    EPersistentShardCreationStateStatus PersistentShardCreationStateStatus =
+        EPersistentShardCreationStateStatus::Unknown;
     NProtoPrivate::TFileSystemShardCreationState ShardCreationState;
     ui32 ShardCreationStateVersion = 0;
     ui64 ShardBitmapBitCount = 0;
@@ -37,7 +53,11 @@ public:
     TShardCreationStateCompanion(
         TString fileSystemId,
         TString logTag,
-        TString stateUnavailableMessage);
+        EMode mode);
+
+    bool IsPersistentStateRead() const;
+    bool IsPersistentStateSupported() const;
+    void MarkPersistentStateUnsupported();
 
     bool HasCreatedShardBitmap() const;
     bool IsShardCreated(ui32 shardIndex) const;
@@ -62,11 +82,9 @@ public:
     void UpdateShardCreatedState(
         const NActors::TActorContext& ctx,
         ui32 shardIndex);
+    void LogStateUnavailable(const NActors::TActorContext& ctx) const;
 
 private:
-    void LogShardCreationStateUnavailable(
-        const NActors::TActorContext& ctx) const;
-
     bool HasUncommittedCreatedShards(ui32 committedShardCount) const;
 
     NProto::TError ValidateOrResetShardCreationState(

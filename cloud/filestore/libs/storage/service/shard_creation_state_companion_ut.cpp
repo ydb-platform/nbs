@@ -121,7 +121,7 @@ private:
     TShardCreationStateCompanion Companion{
         TString{FileSystemId},
         TString{FileSystemId},
-        "shard creation state unavailable"};
+        TShardCreationStateCompanion::EMode::Create};
 
 public:
     explicit TActorWithCompanion(
@@ -170,6 +170,26 @@ struct TActorSystem
 
 Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
 {
+    Y_UNIT_TEST(ShouldTrackPersistentShardCreationStateSupport)
+    {
+        TShardCreationStateCompanion companion(
+            TString{FileSystemId},
+            TString{FileSystemId},
+            TShardCreationStateCompanion::EMode::Create);
+
+        UNIT_ASSERT(!companion.IsPersistentStateRead());
+        UNIT_ASSERT(!companion.IsPersistentStateSupported());
+
+        companion.MarkPersistentStateUnsupported();
+        UNIT_ASSERT(companion.IsPersistentStateRead());
+        UNIT_ASSERT(!companion.IsPersistentStateSupported());
+
+        companion.SetShardCreationState(MakeState(42, {1}));
+        UNIT_ASSERT(companion.IsPersistentStateRead());
+        UNIT_ASSERT(companion.IsPersistentStateSupported());
+        UNIT_ASSERT_VALUES_EQUAL(42, companion.GetShardCreationStateVersion());
+    }
+
     Y_UNIT_TEST(ShouldIgnoreVolatileShardConfigFieldsInTargetHash)
     {
         const auto shardConfigs = MakeShardConfigs();
@@ -197,7 +217,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         TShardCreationStateCompanion companion(
             TString{FileSystemId},
             TString{FileSystemId},
-            "shard creation state unavailable");
+            TShardCreationStateCompanion::EMode::Create);
 
         const auto shardConfigs = MakeShardConfigs();
 
@@ -224,7 +244,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         TShardCreationStateCompanion companion(
             TString{FileSystemId},
             TString{FileSystemId},
-            "shard creation state unavailable");
+            TShardCreationStateCompanion::EMode::Create);
 
         const auto shardConfigs = MakeShardConfigs();
 
@@ -294,7 +314,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         TShardCreationStateCompanion companion(
             TString{FileSystemId},
             TString{FileSystemId},
-            "shard creation state unavailable");
+            TShardCreationStateCompanion::EMode::Create);
 
         const auto originalShardConfigs = MakeShardConfigs();
         auto conflictingShardConfigs = originalShardConfigs;
@@ -319,7 +339,7 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         TShardCreationStateCompanion companion(
             TString{FileSystemId},
             TString{FileSystemId},
-            "shard creation state unavailable");
+            TShardCreationStateCompanion::EMode::Create);
 
         const auto originalShardConfigs = MakeShardConfigs();
         const auto nextShardConfigs = MakeShardConfigs(8);

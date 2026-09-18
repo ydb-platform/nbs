@@ -96,10 +96,6 @@ private:
     ui32 MaxShardCount = 0;
     ui64 SevenBytesHandlesCount = 0;
 
-    // Persistent state of created shards.
-    bool InitialShardCreationStateRead = false;
-    // The bitmap can be initialized only after topology provides shard count.
-    bool PersistentShardCreationStateSupported = false;
     TShardCreationStateCompanion ShardCreationState;
 
     // These flags are set by HandleGetFileSystemTopologyResponse.
@@ -250,7 +246,7 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , ShardCreationState(
           FileSystemId,
           FileSystemId,
-          "FS topology not yet read, shard creation state unavailable")
+          TShardCreationStateCompanion::EMode::Alter)
 {
     TargetConfig.SetCloudId(request.GetCloudId());
     TargetConfig.SetFolderId(request.GetFolderId());
@@ -278,7 +274,7 @@ TAlterFileStoreActor::TAlterFileStoreActor(
     , ShardCreationState(
           FileSystemId,
           FileSystemId,
-          "FS topology not yet read, shard creation state unavailable")
+          TShardCreationStateCompanion::EMode::Alter)
 {
     TargetConfig.SetBlocksCount(request.GetBlocksCount());
     TargetConfig.SetVersion(request.GetConfigVersion());
@@ -427,17 +423,16 @@ void TAlterFileStoreActor::HandleShardCreationStateResponse(
 {
     auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] UnsafeChangeTabletState failed: %s",
-            FileSystemId.c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
+        const auto* action =
+            ShardCreationState.IsPersistentStateRead() ? "update" : "read";
+        const auto message =
+            Sprintf("failed to %s shard creation state", action);
+        ReplyAndDie(ctx, MakeError(E_REJECTED, message));
         return;
     }
 
     if (!msg->Record.HasShardCreationState()) {
-        if (!InitialShardCreationStateRead) {
+        if (!ShardCreationState.IsPersistentStateRead()) {
             // Rolling upgrade compatibility: the filesystem's old IndexTablet
             // accepts UnsafeChangeTabletState but does not return
             // ShardCreationState yet. Fallback to preexisting non-persistent
@@ -449,8 +444,14 @@ void TAlterFileStoreActor::HandleShardCreationStateResponse(
                 "state, continuing without persistent shard creation state",
                 FileSystemId.c_str());
 
-            InitialShardCreationStateRead = true;
+            ShardCreationState.MarkPersistentStateUnsupported();
             GetStorageStats(ctx);
+        } else if (ShardCreationState.IsPersistentStateSupported()) {
+            ReplyAndDie(
+                ctx,
+                MakeError(
+                    E_REJECTED,
+                    "shard creation state response is missing"));
         } else {
             LOG_WARN(
                 ctx,
@@ -463,26 +464,22 @@ void TAlterFileStoreActor::HandleShardCreationStateResponse(
     }
 
     const auto& shardCreationState = msg->Record.GetShardCreationState();
-    if (!InitialShardCreationStateRead) {
+    if (!ShardCreationState.IsPersistentStateRead()) {
         ShardCreationState.SetShardCreationState(shardCreationState);
-        InitialShardCreationStateRead = true;
-        PersistentShardCreationStateSupported = true;
         GetStorageStats(ctx);
         return;
     }
 
     if (!ShardCreationState.HasCreatedShardBitmap()) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] FS topology not yet read, shard creation state unavailable",
-            FileSystemId.c_str());
+        ShardCreationState.LogStateUnavailable(ctx);
         return;
     }
 
     if (shardCreationState.GetVersion() <
         ShardCreationState.GetShardCreationStateVersion())
     {
+        // Older update replies can arrive after a newer response has already
+        // advanced the local shard creation state.
         return;
     }
 
@@ -848,7 +845,7 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             FileSystemId.c_str(),
             FileStoreConfig.ShardConfigs.size());
 
-        if (PersistentShardCreationStateSupported) {
+        if (ShardCreationState.IsPersistentStateSupported()) {
             auto error = ShardCreationState.SetupCreatedShardBitmap(
                 ExistingShardIds.size(),
                 FileStoreConfig.ShardConfigs);

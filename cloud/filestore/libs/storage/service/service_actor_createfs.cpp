@@ -84,7 +84,6 @@ private:
     ui32 ShardsToConfigure = 0;
     bool ShardConfigurationStarted = false;
 
-    bool InitialShardCreationStateRead = false;
     TShardCreationStateCompanion ShardCreationState;
 
 public:
@@ -150,8 +149,7 @@ TCreateFileStoreActor::TCreateFileStoreActor(
     , ShardCreationState(
           Request.GetFileSystemId(),
           LogTag,
-          "Shard bitmap not initialized, "
-          "shard creation state unavailable")
+          TShardCreationStateCompanion::EMode::Create)
 {}
 
 void TCreateFileStoreActor::Bootstrap(const TActorContext& ctx)
@@ -454,17 +452,16 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
 {
     auto* msg = ev->Get();
     if (HasError(msg->GetError())) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] UnsafeChangeTabletState failed: %s",
-            LogTag.c_str(),
-            FormatError(msg->GetError()).Quote().c_str());
+        const auto* action =
+            ShardCreationState.IsPersistentStateRead() ? "update" : "read";
+        const auto message =
+            Sprintf("failed to %s shard creation state", action);
+        ReplyAndDie(ctx, MakeError(E_REJECTED, message));
         return;
     }
 
     if (!msg->Record.HasShardCreationState()) {
-        if (!InitialShardCreationStateRead) {
+        if (!ShardCreationState.IsPersistentStateRead()) {
             // Rolling upgrade compatibility: the filesystem's old IndexTablet
             // accepts UnsafeChangeTabletState but does not return
             // ShardCreationState yet. Fallback to preexisting non-persistent
@@ -476,8 +473,14 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
                 "state, continuing without persistent shard creation state",
                 LogTag.c_str());
 
-            InitialShardCreationStateRead = true;
+            ShardCreationState.MarkPersistentStateUnsupported();
             CreateShards(ctx);
+        } else if (ShardCreationState.IsPersistentStateSupported()) {
+            ReplyAndDie(
+                ctx,
+                MakeError(
+                    E_REJECTED,
+                    "shard creation state response is missing"));
         } else {
             LOG_WARN(
                 ctx,
@@ -490,9 +493,8 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
     }
 
     const auto& shardCreationState = msg->Record.GetShardCreationState();
-    if (!InitialShardCreationStateRead) {
+    if (!ShardCreationState.IsPersistentStateRead()) {
         ShardCreationState.SetShardCreationState(shardCreationState);
-        InitialShardCreationStateRead = true;
         auto error = ShardCreationState.SetupCreatedShardBitmap(
             0,
             FileStoreConfig.ShardConfigs);
@@ -505,18 +507,15 @@ void TCreateFileStoreActor::HandleShardCreationStateResponse(
     }
 
     if (!ShardCreationState.HasCreatedShardBitmap()) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Shard bitmap not initialized, "
-            "shard creation state unavailable",
-            LogTag.c_str());
+        ShardCreationState.LogStateUnavailable(ctx);
         return;
     }
 
     if (shardCreationState.GetVersion() <
         ShardCreationState.GetShardCreationStateVersion())
     {
+        // Older update replies can arrive after a newer response has already
+        // advanced the local shard creation state.
         return;
     }
 

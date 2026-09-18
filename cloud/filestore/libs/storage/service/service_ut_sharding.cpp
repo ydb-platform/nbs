@@ -5530,6 +5530,104 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(6, topology.ShardFileSystemIdsSize());
     }
 
+    SERVICE_TEST(ShouldRejectResizeOnShardCreationStateUpdateError)
+    {
+        config.SetAutomaticShardCreationEnabled(true);
+        config.SetShardAllocationUnit(1_GB);
+        config.SetAutomaticallyCreatedShardSize(2_GB);
+        config.SetMaxShardManagementRequestsInFlight(1);
+        TTestEnv env({}, config);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        const TString fsId = "test";
+        const ui64 initBlockCount = 2_GB / 4_KB;
+        const ui64 newBlockCount = 6_GB / 4_KB;
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore(fsId, initBlockCount);
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
+        auto topology = GetFileSystemTopology(service, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(2, topology.ShardFileSystemIdsSize());
+
+        const ui32 lastCreatedShardIndex = 5;
+        const auto shardCreationStateUpdateError =
+            MakeError(E_REJECTED, "failed to update shard creation state");
+
+        bool shardCreationStateUpdateErrorInjected = false;
+        auto prevFilter = env.GetRuntime().SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() !=
+                    TEvIndexTablet::EvUnsafeChangeTabletStateResponse)
+                {
+                    return false;
+                }
+
+                using TResponse =
+                    TEvIndexTablet::TEvUnsafeChangeTabletStateResponse;
+
+                auto* msg = ev->Get<TResponse>();
+                if (shardCreationStateUpdateErrorInjected ||
+                    HasError(msg->GetError()) ||
+                    !msg->Record.HasShardCreationState() ||
+                    !IsShardCreatedInShardCreationState(
+                        msg->Record.GetShardCreationState(),
+                        lastCreatedShardIndex))
+                {
+                    return false;
+                }
+
+                msg->Record.MutableError()->CopyFrom(
+                    shardCreationStateUpdateError);
+                shardCreationStateUpdateErrorInjected = true;
+                return false;
+            });
+
+        service.SendResizeFileStoreRequest(fsId, newBlockCount);
+        {
+            auto response = service.RecvResizeFileStoreResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                FormatError(shardCreationStateUpdateError),
+                FormatError(response->GetError()));
+        }
+
+        env.GetRuntime().SetEventFilter(prevFilter);
+        UNIT_ASSERT(shardCreationStateUpdateErrorInjected);
+
+        {
+            TShardRequestCounter counters(env.GetRuntime(), fsId);
+
+            service.ResizeFileStore(fsId, newBlockCount);
+
+            UNIT_ASSERT_VALUES_EQUAL(0, counters.CreateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(6, counters.ConfigureRequests);
+            UNIT_ASSERT_VALUES_EQUAL(6, counters.ConfigureResponses);
+            UNIT_ASSERT_VALUES_EQUAL(1, counters.ConfigureMaxInFlight);
+        }
+
+        // waiting for IndexTablet start after the restart triggered by
+        // configureshards
+        WaitForTabletStart(service);
+
+        const TVector<TString> expected = {
+            fsId,
+            fsId + "_s1",
+            fsId + "_s2",
+            fsId + "_s3",
+            fsId + "_s4",
+            fsId + "_s5",
+            fsId + "_s6"};
+        DoTestShardedFileSystemConfigured(fsId, service, expected);
+
+        topology = GetFileSystemTopology(service, fsId);
+        UNIT_ASSERT_VALUES_EQUAL(6, topology.ShardFileSystemIdsSize());
+    }
+
     SERVICE_TEST(ShouldContinueThrottledResizeWithoutPersistentShardCreationState)
     {
         config.SetAutomaticShardCreationEnabled(true);

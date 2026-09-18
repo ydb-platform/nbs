@@ -79,11 +79,29 @@ ui64 CalculateShardCreationTargetHash(
 TShardCreationStateCompanion::TShardCreationStateCompanion(
         TString fileSystemId,
         TString logTag,
-        TString stateUnavailableMessage)
+        EMode mode)
     : FileSystemId(std::move(fileSystemId))
     , LogTag(std::move(logTag))
-    , StateUnavailableMessage(std::move(stateUnavailableMessage))
+    , Mode(mode)
 {}
+
+bool TShardCreationStateCompanion::IsPersistentStateRead() const
+{
+    return PersistentShardCreationStateStatus !=
+           EPersistentShardCreationStateStatus::Unknown;
+}
+
+bool TShardCreationStateCompanion::IsPersistentStateSupported() const
+{
+    return PersistentShardCreationStateStatus ==
+           EPersistentShardCreationStateStatus::Supported;
+}
+
+void TShardCreationStateCompanion::MarkPersistentStateUnsupported()
+{
+    PersistentShardCreationStateStatus =
+        EPersistentShardCreationStateStatus::Unsupported;
+}
 
 bool TShardCreationStateCompanion::HasCreatedShardBitmap() const
 {
@@ -124,6 +142,8 @@ ui64 TShardCreationStateCompanion::GetTargetShardConfigHash() const
 void TShardCreationStateCompanion::SetShardCreationState(
     const NProtoPrivate::TFileSystemShardCreationState& state)
 {
+    PersistentShardCreationStateStatus =
+        EPersistentShardCreationStateStatus::Supported;
     ShardCreationState = state;
     ShardCreationStateVersion = state.GetVersion();
 }
@@ -206,7 +226,7 @@ void TShardCreationStateCompanion::UpdateShardCreationState(
     const TActorContext& ctx) const
 {
     if (!CreatedShardBitmap) {
-        LogShardCreationStateUnavailable(ctx);
+        LogStateUnavailable(ctx);
         return;
     }
 
@@ -235,7 +255,7 @@ void TShardCreationStateCompanion::UpdateShardCreatedState(
 {
     Y_DEBUG_ABORT_UNLESS(CreatedShardBitmap);
     if (!CreatedShardBitmap) {
-        LogShardCreationStateUnavailable(ctx);
+        LogStateUnavailable(ctx);
         return;
     }
 
@@ -258,15 +278,27 @@ void TShardCreationStateCompanion::UpdateShardCreatedState(
     UpdateShardCreationState(ctx);
 }
 
-void TShardCreationStateCompanion::LogShardCreationStateUnavailable(
+void TShardCreationStateCompanion::LogStateUnavailable(
     const TActorContext& ctx) const
 {
+    const char* message = "shard creation state unavailable";
+    switch (Mode) {
+        case EMode::Create:
+            message = "Shard bitmap not initialized, "
+                      "shard creation state unavailable";
+            break;
+        case EMode::Alter:
+            message = "FS topology not yet read, "
+                      "shard creation state unavailable";
+            break;
+    }
+
     LOG_WARN(
         ctx,
         TFileStoreComponents::SERVICE,
         "[%s] %s",
         LogTag.c_str(),
-        StateUnavailableMessage.c_str());
+        message);
 }
 
 bool TShardCreationStateCompanion::HasUncommittedCreatedShards(
