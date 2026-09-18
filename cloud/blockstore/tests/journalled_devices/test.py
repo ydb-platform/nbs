@@ -389,7 +389,7 @@ def test_journalled_devices(nbs, tcp_port):
 
     device_uuid = response.Devices[0].DeviceUUID
     page_size = DEVICE_BLOCK_SIZE
-    client_id = "client-id"
+    client_id = "journalled-device"
 
     with DeviceTcpClient(tcp_port) as tcp:
 
