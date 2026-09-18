@@ -193,9 +193,7 @@ private:
     NProto::TError UpdateControlPlaneRequestNumber(
         TControlPlaneRequestNumber controlPlaneRequestNumber);
 
-    void StartJournalledDeviceTcpServer(
-        const NActors::TActorContext& ctx,
-        THashMap<TString, NJournalled::IJournalledDevicePtr> devices);
+    void StartJournalledDeviceTcpServer(const NActors::TActorContext& ctx);
 
 private:
     STFUNC(StateInit);

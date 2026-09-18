@@ -26,6 +26,5 @@ constexpr TStringBuf CheckRangeClientId = "check-range";
 constexpr TStringBuf CopyVolumeClientId = "copy-volume-client";
 constexpr TStringBuf DMCopyVolumeClientId = "dm-copy-volume-client";
 constexpr TStringBuf AnyReaderClientId = "any-reader";
-constexpr TStringBuf JournalledDeviceClientId = "journalled-device";
 
 }   // namespace NCloud::NBlockStore::NStorage
