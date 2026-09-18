@@ -444,6 +444,10 @@ struct TEvIndexTabletPrivate
 
     struct TFlushBytesRequest
     {
+        // If set, FlushBytesResponse is only sent after the trim operation
+        // is completed. By default, FlushBytesResponse is sent before trim
+        // is started.
+        bool WaitForTrim = false;
     };
 
     struct TFlushBytesResponse
@@ -452,24 +456,27 @@ struct TEvIndexTabletPrivate
 
     struct TFlushBytesCompleted: TDataOperationCompleted
     {
-        const TCallContextPtr CallContext;
+        const TRequestInfoPtr RequestInfo;
         const TSet<ui32> MixedBlocksRanges;
         const ui64 CommitId;
         const ui64 ChunkId;
+        const bool WaitForTrim;
 
         TFlushBytesCompleted(
                 ui32 requestCount,
                 ui32 requestBytes,
                 TDuration d,
-                TCallContextPtr callContext,
+                TRequestInfoPtr requestInfo,
                 TSet<ui32> mixedBlocksRanges,
                 ui64 commitId,
-                ui64 chunkId)
+                ui64 chunkId,
+                bool waitForTrim)
             : TDataOperationCompleted(requestCount, requestBytes, d)
-            , CallContext(std::move(callContext))
+            , RequestInfo(std::move(requestInfo))
             , MixedBlocksRanges(std::move(mixedBlocksRanges))
             , CommitId(commitId)
             , ChunkId(chunkId)
+            , WaitForTrim(waitForTrim)
         {
         }
     };

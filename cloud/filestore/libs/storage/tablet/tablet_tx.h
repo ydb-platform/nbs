@@ -2608,6 +2608,8 @@ struct TTxIndexTablet
         const ui64 ReadCommitId;
         const ui64 ChunkId;
         const TVector<TBytes> Bytes;
+        // Do not send EvFlushBytesResponse if a Trim transaction is started
+        const bool WaitForTrim;
 
         ui64 CommitId = InvalidCommitId;
 
@@ -2618,12 +2620,14 @@ struct TTxIndexTablet
                 TRequestInfoPtr requestInfo,
                 ui64 readCommitId,
                 ui64 chunkId,
-                TVector<TBytes> bytes)
+                TVector<TBytes> bytes,
+                bool waitForTrim)
             : TProfileAware(EFileStoreSystemRequest::FlushBytes)
             , RequestInfo(std::move(requestInfo))
             , ReadCommitId(readCommitId)
             , ChunkId(chunkId)
             , Bytes(std::move(bytes))
+            , WaitForTrim(waitForTrim)
         {}
 
         void Clear() override
@@ -2644,13 +2648,18 @@ struct TTxIndexTablet
     {
         const TRequestInfoPtr RequestInfo;
         const ui64 ChunkId;
+        const bool RespondAfterTrim;
         ui64 TrimmedBytes = 0;
         bool TrimmedAll = false;
 
-        TTrimBytes(TRequestInfoPtr requestInfo, ui64 chunkId)
+        TTrimBytes(
+            TRequestInfoPtr requestInfo,
+            ui64 chunkId,
+            bool respondAfterTrim)
             : TProfileAware(EFileStoreSystemRequest::TrimBytes)
             , RequestInfo(std::move(requestInfo))
             , ChunkId(chunkId)
+            , RespondAfterTrim(respondAfterTrim)
         {}
 
         void Clear() override
