@@ -38,39 +38,10 @@ ui64 PageCountOf(const NCloud::NProto::TDevicePageGroup& group)
     return group.ContentSize();
 }
 
-template <typename TRanges>
-NCloud::NProto::TError ValidateNoIntersections(const TRanges& ranges)
+bool IsInsideDevice(ui64 firstPageNo, ui64 pageCount, ui64 devicePageCount)
 {
-    for (int i = 0; i < ranges.size(); ++i) {
-        const ui64 pageCount = PageCountOf(ranges[i]);
-        if (!pageCount) {
-            continue;
-        }
-
-        const ui64 begin = ranges[i].GetFirstPageNo();
-        const ui64 end = begin + pageCount;
-
-        for (int j = 0; j < i; ++j) {
-            const ui64 otherPageCount = PageCountOf(ranges[j]);
-            if (!otherPageCount) {
-                continue;
-            }
-
-            const ui64 otherBegin = ranges[j].GetFirstPageNo();
-            const ui64 otherEnd = otherBegin + otherPageCount;
-
-            if (begin < otherEnd && otherBegin < end) {
-                return MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder()
-                        << "page ranges " << otherBegin << "x" << otherPageCount
-                        << " and " << begin << "x" << pageCount
-                        << " of a single request intersect");
-            }
-        }
-    }
-
-    return {};
+    return firstPageNo < devicePageCount &&
+           pageCount <= devicePageCount - firstPageNo;
 }
 
 TVector<TPageRange> GetLocations(const TVector<TPageMapping>& mappings)
@@ -195,6 +166,7 @@ private:
     const TExecutorPtr Executor;
     const IKeyBufferStorePtr MetaStore;
     const IDevicePageStorePtr DataStore;
+    const ui64 DevicePageCount;
 
     TLog Log;
 
@@ -210,7 +182,8 @@ public:
         ILoggingServicePtr logging,
         TExecutorPtr executor,
         IKeyBufferStorePtr metaStore,
-        IDevicePageStorePtr dataStore);
+        IDevicePageStorePtr dataStore,
+        ui64 devicePageCount);
 
     // Restoring
 
@@ -258,6 +231,9 @@ private:
         const TVector<TPageMapping>& mappings,
         google::protobuf::RepeatedPtrField<NCloud::NProto::TDevicePageGroup>*
             pageGroups) const;
+
+    template <typename TRanges>
+    NCloud::NProto::TError ValidatePageRanges(const TRanges& ranges) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -266,11 +242,13 @@ TJournal::TJournal(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
-    IDevicePageStorePtr dataStore)
+    IDevicePageStorePtr dataStore,
+    ui64 devicePageCount)
     : Logging(std::move(logging))
     , Executor(std::move(executor))
     , MetaStore(std::move(metaStore))
     , DataStore(std::move(dataStore))
+    , DevicePageCount(devicePageCount)
     , Log(Logging->CreateLog("JOURNAL"))
 {}
 
@@ -326,6 +304,18 @@ TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
                                  << " has prevLsn " << record->PrevLsn);
         }
 
+        for (const auto& [pageNo, location]: record->PageMappings) {
+            if (!IsInsideDevice(pageNo, location.PageCount, DevicePageCount)) {
+                return MakeError(
+                    E_INVALID_STATE,
+                    TStringBuilder()
+                        << "log record with key " << key << " maps page range "
+                        << pageNo << "x" << location.PageCount
+                        << " which is outside the device of "
+                        << DevicePageCount << " pages");
+            }
+        }
+
         if (!initialized) {
             initialized = true;
             auto lsn = Min(record->PrevLsn, LastAckedLsn.load());
@@ -377,7 +367,7 @@ TFuture<NCloud::NProto::TWriteLogRecordResponse> TJournal::Write(
 {
     using TResponse = NCloud::NProto::TWriteLogRecordResponse;
 
-    if (auto error = ValidateNoIntersections(request.GetPageGroups());
+    if (auto error = ValidatePageRanges(request.GetPageGroups());
         HasError(error))
     {
         return MakeFuture<TResponse>(TErrorResponse(std::move(error)));
@@ -486,7 +476,7 @@ TFuture<NCloud::NProto::TReadPagesResponse> TJournal::Read(
 {
     using TResponse = NCloud::NProto::TReadPagesResponse;
 
-    if (auto error = ValidateNoIntersections(request.GetPageGroupRefs());
+    if (auto error = ValidatePageRanges(request.GetPageGroupRefs());
         HasError(error))
     {
         return MakeFuture<TResponse>(TErrorResponse(std::move(error)));
@@ -703,6 +693,50 @@ NCloud::NProto::TError TJournal::FillPageGroups(
     return MakeError(S_OK);
 }
 
+template <typename TRanges>
+NCloud::NProto::TError TJournal::ValidatePageRanges(const TRanges& ranges) const
+{
+    for (int i = 0; i < ranges.size(); ++i) {
+        const ui64 pageCount = PageCountOf(ranges[i]);
+        if (!pageCount) {
+            continue;
+        }
+
+        const ui64 begin = ranges[i].GetFirstPageNo();
+        if (!IsInsideDevice(begin, pageCount, DevicePageCount)) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "page range " << begin << "x" << pageCount
+                    << " is outside the device of " << DevicePageCount
+                    << " pages");
+        }
+
+        const ui64 end = begin + pageCount;
+
+        for (int j = 0; j < i; ++j) {
+            const ui64 otherPageCount = PageCountOf(ranges[j]);
+            if (!otherPageCount) {
+                continue;
+            }
+
+            const ui64 otherBegin = ranges[j].GetFirstPageNo();
+            const ui64 otherEnd = otherBegin + otherPageCount;
+
+            if (begin < otherEnd && otherBegin < end) {
+                return MakeError(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "page ranges " << otherBegin << "x" << otherPageCount
+                        << " and " << begin << "x" << pageCount
+                        << " of a single request intersect");
+            }
+        }
+    }
+
+    return {};
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -711,13 +745,15 @@ IJournalPtr CreateJournal(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
-    IDevicePageStorePtr dataStore)
+    IDevicePageStorePtr dataStore,
+    ui64 devicePageCount)
 {
     return std::make_shared<TJournal>(
         std::move(logging),
         std::move(executor),
         std::move(metaStore),
-        std::move(dataStore));
+        std::move(dataStore),
+        devicePageCount);
 }
 
 }   // namespace NCloud::NJournalled

@@ -60,6 +60,7 @@ IJournalPtr CreateJournal(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
-    IDevicePageStorePtr dataStore);
+    IDevicePageStorePtr dataStore,
+    ui64 devicePageCount);
 
 }   // namespace NCloud::NJournalled
