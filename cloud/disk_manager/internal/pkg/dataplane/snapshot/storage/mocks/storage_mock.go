@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -256,6 +257,59 @@ func (s *StorageMock) ListSnapshots(
 
 func NewStorageMock() *StorageMock {
 	return &StorageMock{}
+}
+
+func (s *StorageMock) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+) (persistence.S3Object, error) {
+
+	args := s.Called(ctx, chunkID)
+	return args.Get(0).(persistence.S3Object), args.Error(1)
+}
+
+func (s *StorageMock) EnqueueBackupChunks(
+	ctx context.Context,
+	entries []storage.BackupQueueEntry,
+) error {
+
+	args := s.Called(ctx, entries)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetBackupQueue(
+	ctx context.Context,
+	limit int,
+) ([]storage.BackupQueueEntry, error) {
+
+	args := s.Called(ctx, limit)
+	return args.Get(0).([]storage.BackupQueueEntry), args.Error(1)
+}
+
+func (s *StorageMock) HasBackupQueueEntries(
+	ctx context.Context,
+	snapshotID string,
+) (bool, error) {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Bool(0), args.Error(1)
+}
+
+func (s *StorageMock) ClearBackupQueue(
+	ctx context.Context,
+	entries []storage.BackupQueueEntry,
+) error {
+
+	args := s.Called(ctx, entries)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetBackupQueueLength(
+	ctx context.Context,
+) (uint64, error) {
+
+	args := s.Called(ctx)
+	return args.Get(0).(uint64), args.Error(1)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

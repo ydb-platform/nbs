@@ -20,6 +20,7 @@ type collectSnapshotMetricsTask struct {
 	storage                   storage.Storage
 	storageQuotaReporter      snapshot.SnapshotStorageQuotaReporter
 	metricsCollectionInterval time.Duration
+	backupEnabled             bool
 }
 
 func (c collectSnapshotMetricsTask) Save() ([]byte, error) {
@@ -69,6 +70,14 @@ func (c collectSnapshotMetricsTask) Run(
 			return err
 		}
 		c.registry.Gauge("snapshots/totalStorageSize").Set(float64(totalSnapshotStorageSize))
+
+		if c.backupEnabled {
+			backupQueueLength, err := c.storage.GetBackupQueueLength(ctx)
+			if err != nil {
+				return err
+			}
+			c.registry.Gauge("backup/queueLength").Set(float64(backupQueueLength))
+		}
 	}
 	return nil
 }
@@ -102,4 +111,7 @@ func (c collectSnapshotMetricsTask) clearMetrics() {
 	// We'd like to delete it from registry completely, but there's no such option.
 	c.storageQuotaReporter.Clear()
 	c.registry.Gauge("snapshots/deletingCount").Set(0)
+	if c.backupEnabled {
+		c.registry.Gauge("backup/queueLength").Set(0)
+	}
 }
