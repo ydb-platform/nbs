@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field, replace
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from ..otlp import Interval, Ns
 
@@ -36,7 +36,7 @@ BUILD_WRAPPER_KINDS = {
 }
 
 
-def _test_identity(outputs: tuple[str, ...]) -> tuple[str, str] | None:
+def parse_test_identity(outputs: Sequence[str]) -> tuple[str, str] | None:
     for output in outputs:
         suite, marker, relative = output.partition("/test-results/")
         folder = relative.split("/", 1)[0]
@@ -125,7 +125,7 @@ class YaNode:
         name = str(value.get("name", "unknown"))
         tag = str(value.get("tag", ""))
         outputs = tuple(dict.fromkeys(BUILD_ROOT_RE.findall(name)))[:16]
-        test_identity = _test_identity(outputs)
+        test_identity = parse_test_identity(outputs)
         kind, tool = _kind_and_tool(name, tag, test_identity)
         raw_uid = str(value.get("uid") or "")
         uid_match = NODE_UID_RE.match(name) or OUTPUTLESS_NODE_UID_RE.match(name)

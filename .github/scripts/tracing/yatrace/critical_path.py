@@ -5,16 +5,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from ..otlp import (
-    Interval,
-    Ns,
-    Span,
-    Trace,
-    update_span_attributes,
-)
+from ..otlp import Interval, Ns
 from .metrics import finite_number
-from .node import TEST_NODE_MARKERS, YaNode
-from .span_chunk import TestChunk
+from .node import BUILD_ROOT_RE, TEST_NODE_MARKERS, YaNode, parse_test_identity
 
 CRITICAL_TASK_SUFFIX_RE = re.compile(r"(?:(?:-CACHED|-DYN_UID_CACHE))+$")
 
@@ -64,6 +57,11 @@ class YaCriticalPathEntry:
     @property
     def reported_seconds(self) -> float | None:
         return self.elapsed_ms / 1_000 if self.elapsed_ms is not None else None
+
+    @property
+    def test_identity(self) -> tuple[str, str] | None:
+        outputs = BUILD_ROOT_RE.findall(self.text)
+        return parse_test_identity(outputs or self.text.split())
 
     def span_attributes(self, *, test: bool) -> dict[str, Any]:
         scope = "test" if test else "build"
@@ -176,108 +174,52 @@ class YaCriticalPath:
             available.remove(record_index)
         return matches
 
-    def match_test_node(
-        self,
-        entry: YaCriticalPathEntry,
-        test_nodes: Sequence[YaNode],
-        test_nodes_by_uid: Mapping[str, Sequence[YaNode]],
-    ) -> YaNode | None:
-        interval = entry.interval
-        if entry.uid:
-            matching_uid = test_nodes_by_uid.get(entry.uid, ())
-            if matching_uid:
-                if interval is not None:
-                    return max(
-                        matching_uid,
-                        key=lambda record: (
-                            interval.overlap(record.interval).value,
-                            -interval.boundary_distance(record.interval).value,
-                        ),
-                    )
-                return max(
-                    matching_uid,
-                    key=lambda record: len(record.interval),
-                )
-        if interval is None:
-            return None
-        overlapping = [
-            record
-            for record in test_nodes
-            if interval.overlap(record.interval).value > 0
-        ]
-        if not overlapping:
-            return None
-        return max(
-            overlapping,
-            key=lambda record: (
-                bool(record.test_identity and record.test_identity[0] in entry.text),
-                interval.overlap(record.interval).value,
-            ),
-        )
-
-    def mark_test_spans(self, trace: Trace) -> dict[str, int]:
-        chunks: list[TestChunk] = []
-        chunks_by_identity: dict[tuple[str, str], list[TestChunk]] = defaultdict(list)
-        chunks_by_suite: dict[str, list[TestChunk]] = defaultdict(list)
-        for span in trace.spans("ya.chunk"):
-            chunk = TestChunk.from_span(span)
-            chunks.append(chunk)
-            if chunk.suite:
-                chunks_by_suite[chunk.suite].append(chunk)
-                if chunk.identity is not None:
-                    chunks_by_identity[chunk.identity].append(chunk)
-        test_nodes = [node for node in self.nodes if node.kind == "test_execute"]
-        test_nodes_by_uid: dict[str, list[YaNode]] = defaultdict(list)
-        for node in test_nodes:
+    def match_tests(
+        self, test_nodes: Sequence[YaNode]
+    ) -> dict[int, YaCriticalPathEntry]:
+        """Resolve critical entries to worker indexes without guessing their chunks."""
+        nodes_by_uid: dict[str, list[int]] = defaultdict(list)
+        for index, node in enumerate(test_nodes):
             if node.uid:
-                test_nodes_by_uid[node.uid].append(node)
-        tests_by_parent: dict[bytes, list[Span]] = defaultdict(list)
-        for span in trace.spans("ya.test"):
-            tests_by_parent[span.parent_span_id].append(span)
+                nodes_by_uid[node.uid].append(index)
 
-        marked_chunks: set[bytes] = set()
-        marked_tests: set[bytes] = set()
-        critical_entries = self.test_entries
-        for entry in critical_entries:
-            node = self.match_test_node(
-                entry,
-                test_nodes,
-                test_nodes_by_uid,
+        matches: dict[int, YaCriticalPathEntry] = {}
+        for entry in self.test_entries:
+            candidates = (
+                nodes_by_uid.get(entry.uid, [])
+                if entry.uid
+                else list(range(len(test_nodes)))
             )
-            interval = node.interval if node is not None else entry.interval
+            if (identity := entry.test_identity) is not None:
+                candidates = [
+                    index
+                    for index in candidates
+                    if test_nodes[index].test_identity == identity
+                ]
+            interval = entry.interval
             if interval is None:
-                continue
-
-            identity = node.test_identity if node is not None else None
-            candidate_pool = chunks
-            if identity is not None:
-                candidate_pool = (
-                    chunks_by_identity.get(identity)
-                    or chunks_by_suite.get(identity[0])
-                    or chunks
+                if not entry.uid:
+                    continue
+                index = max(
+                    candidates,
+                    key=lambda index: len(test_nodes[index].interval),
+                    default=None,
                 )
-            candidates = [
-                chunk for chunk in candidate_pool if chunk.overlap(interval).value > 0
-            ]
-            if not candidates:
-                continue
-
-            chunk = max(
-                candidates,
-                key=lambda candidate: (
-                    bool(candidate.suite) and candidate.suite in entry.text,
-                    candidate.overlap(interval).value,
-                ),
-            )
-            attributes = entry.span_attributes(test=True)
-            update_span_attributes(chunk.span, attributes)
-            marked_chunks.add(chunk.span.span_id)
-            for test_span in tests_by_parent.get(chunk.span.span_id, []):
-                update_span_attributes(test_span, attributes)
-                marked_tests.add(test_span.span_id)
-
-        return {
-            "ya.test.critical_path.entry.count": len(critical_entries),
-            "ya.test.critical_path.chunk.count": len(marked_chunks),
-            "ya.test.critical_path.span.count": len(marked_tests),
-        }
+            else:
+                if not entry.uid:
+                    candidates = [
+                        index
+                        for index in candidates
+                        if interval.overlap(test_nodes[index].interval) > Ns(0)
+                    ]
+                index = max(
+                    candidates,
+                    key=lambda index: (
+                        interval.overlap(test_nodes[index].interval),
+                        -interval.boundary_distance(test_nodes[index].interval).value,
+                    ),
+                    default=None,
+                )
+            if index is not None:
+                matches[index] = entry
+        return matches
