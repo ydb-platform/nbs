@@ -1,6 +1,6 @@
 GO_TEST_FOR(cloud/disk_manager/internal/pkg/services/snapshots)
 
-SET_APPEND(RECIPE_ARGS --nbs-only)
+SET_APPEND(RECIPE_ARGS --ydb-only)
 INCLUDE(${ARCADIA_ROOT}/cloud/disk_manager/test/recipe/recipe.inc)
 
 GO_TEST_SRCS(

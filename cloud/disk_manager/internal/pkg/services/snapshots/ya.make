@@ -7,7 +7,12 @@ SRCS(
     delete_snapshot_task.go
     interface.go
     register.go
+    schedule_backup_snapshot_tasks.go
     service.go
+)
+
+GO_TEST_SRCS(
+    schedule_backup_snapshot_tasks_test.go
 )
 
 END()

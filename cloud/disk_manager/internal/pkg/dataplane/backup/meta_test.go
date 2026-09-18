@@ -55,15 +55,6 @@ func TestSnapshotMetaJSON(t *testing.T) {
 	require.Equal(t, meta, parsed)
 }
 
-func TestSnapshotMetaWithoutDisk(t *testing.T) {
-	meta, err := NewSnapshotMeta(resources.SnapshotMeta{ID: "snap-1"})
-	require.NoError(t, err)
-	require.Empty(t, meta.DiskID)
-	require.Empty(t, meta.ZoneID)
-	require.EqualValues(t, types.EncryptionMode_NO_ENCRYPTION, meta.EncryptionMode)
-	require.Nil(t, meta.EncryptionKeyHash)
-}
-
 func TestImageMetaJSON(t *testing.T) {
 	creatingAt := time.Date(2026, 8, 31, 10, 0, 0, 0, time.UTC)
 

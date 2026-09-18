@@ -429,3 +429,93 @@ func TestSnapshotsGetSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	checkSnapshot()
 }
+
+func TestSnapshotsBackup(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	snapshot := SnapshotMeta{
+		ID:       "snapshot",
+		FolderID: "folder",
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		CreateRequest: &wrappers.UInt64Value{
+			Value: 1,
+		},
+		CreateTaskID: "create",
+		CreatingAt:   time.Now(),
+		CreatedBy:    "user",
+	}
+
+	_, err = storage.CreateSnapshot(ctx, snapshot)
+	require.NoError(t, err)
+
+	ids, err := storage.ListSnapshotsToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "checkpoint", time.Now(), 0, 0)
+	require.NoError(t, err)
+
+	ids, err = storage.ListSnapshotsToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{snapshot.ID}, ids)
+
+	err = storage.SnapshotBackupScheduled(ctx, snapshot.ID)
+	require.NoError(t, err)
+
+	ids, err = storage.ListSnapshotsToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+
+	// Check idempotency.
+	err = storage.SnapshotBackupScheduled(ctx, snapshot.ID)
+	require.NoError(t, err)
+}
+
+func TestSnapshotsDeletionStopsBackup(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	snapshot := SnapshotMeta{
+		ID:       "snapshot",
+		FolderID: "folder",
+		Disk: &types.Disk{
+			ZoneId: "zone",
+			DiskId: "disk",
+		},
+		CreateRequest: &wrappers.UInt64Value{
+			Value: 1,
+		},
+		CreateTaskID: "create",
+		CreatingAt:   time.Now(),
+		CreatedBy:    "user",
+	}
+
+	_, err = storage.CreateSnapshot(ctx, snapshot)
+	require.NoError(t, err)
+
+	err = storage.SnapshotCreated(ctx, snapshot.ID, "checkpoint", time.Now(), 0, 0)
+	require.NoError(t, err)
+
+	_, err = storage.DeleteSnapshot(ctx, snapshot.ID, "delete", time.Now())
+	require.NoError(t, err)
+
+	ids, err := storage.ListSnapshotsToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+}

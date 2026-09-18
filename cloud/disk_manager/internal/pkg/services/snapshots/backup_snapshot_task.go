@@ -14,19 +14,16 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type backupSnapshotTask struct {
-	scheduler tasks.Scheduler
-	storage   resources.Storage
-	s3        *persistence.S3Client
-	bucket    string
-	keyPrefix string
-	request   *protos.BackupSnapshotRequest
-	state     *protos.BackupSnapshotTaskState
+	scheduler  tasks.Scheduler
+	storage    resources.Storage
+	followerS3 *backup.FollowerS3
+	request    *protos.BackupSnapshotRequest
+	state      *protos.BackupSnapshotTaskState
 }
 
 func (t *backupSnapshotTask) Save() ([]byte, error) {
@@ -56,11 +53,8 @@ func (t *backupSnapshotTask) Run(
 		return err
 	}
 
-	if meta == nil {
-		return errors.NewNonRetriableErrorf(
-			"snapshot %v is not found",
-			snapshotID,
-		)
+	if meta == nil || !meta.Ready {
+		return t.storage.SnapshotBackupScheduled(ctx, snapshotID)
 	}
 
 	if meta.Disk == nil {
@@ -80,28 +74,26 @@ func (t *backupSnapshotTask) Run(
 		return errors.NewNonRetriableError(err)
 	}
 
-	err = t.s3.PutObject(
+	err = t.followerS3.PutObject(
 		ctx,
-		t.bucket,
-		backup.SnapshotMetaKey(t.keyPrefix, meta.Disk.DiskId, snapshotID),
-		persistence.S3Object{Data: data},
+		backup.SnapshotMetaKey(meta.Disk.DiskId, snapshotID),
+		data,
 	)
 	if err != nil {
 		return err
 	}
 
 	idempotencyKey := fmt.Sprintf(
-		"%v_%v_%v_backup",
+		"%v_%v_backup",
 		execCtx.GetTaskID(),
 		snapshotID,
-		meta.Disk.DiskId,
 	)
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
-		"dataplane.BackupSnapshot",
+		"dataplane.ScheduleBackupChunksTasks",
 		"",
-		&dataplane_protos.BackupSnapshotRequest{
+		&dataplane_protos.ScheduleBackupChunksTasksRequest{
 			SnapshotId: snapshotID,
 		},
 	)
@@ -117,7 +109,11 @@ func (t *backupSnapshotTask) Run(
 	}
 
 	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return t.storage.SnapshotBackupScheduled(ctx, snapshotID)
 }
 
 func (t *backupSnapshotTask) Cancel(
@@ -125,7 +121,10 @@ func (t *backupSnapshotTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return nil
+	return errors.NewRetriableErrorWithIgnoreRetryLimitf(
+		"backup of snapshot %v should not be cancelled",
+		t.request.SnapshotId,
+	)
 }
 
 func (t *backupSnapshotTask) GetMetadata(

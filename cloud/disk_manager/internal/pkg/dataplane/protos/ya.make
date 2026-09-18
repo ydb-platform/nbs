@@ -4,7 +4,6 @@ ONLY_TAGS(GO_PROTO)
 
 SRCS(
     backup_chunks_task.proto
-    backup_snapshot_task.proto
     collect_snapshots_task.proto
     create_dr_based_disk_checkpoint_task.proto
     create_snapshot_from_disk_task.proto
@@ -16,6 +15,7 @@ SRCS(
     migrate_snapshot_task.proto
     migrate_snapshot_database_task.proto
     replicate_disk_task.proto
+    schedule_backup_chunks_tasks.proto
     transfer_from_disk_to_disk_task.proto
     transfer_from_snapshot_to_disk_task.proto
 )

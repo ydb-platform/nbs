@@ -11,27 +11,27 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type backupSnapshotTask struct {
-	request *protos.BackupSnapshotRequest
-	state   *protos.BackupSnapshotTaskState
+type scheduleBackupChunksTasks struct {
+	request *protos.ScheduleBackupChunksTasksRequest
+	state   *protos.ScheduleBackupChunksTasksState
 }
 
-func (t *backupSnapshotTask) Save() ([]byte, error) {
+func (t *scheduleBackupChunksTasks) Save() ([]byte, error) {
 	return proto.Marshal(t.state)
 }
 
-func (t *backupSnapshotTask) Load(request, state []byte) error {
-	t.request = &protos.BackupSnapshotRequest{}
+func (t *scheduleBackupChunksTasks) Load(request, state []byte) error {
+	t.request = &protos.ScheduleBackupChunksTasksRequest{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
 		return err
 	}
 
-	t.state = &protos.BackupSnapshotTaskState{}
+	t.state = &protos.ScheduleBackupChunksTasksState{}
 	return proto.Unmarshal(state, t.state)
 }
 
-func (t *backupSnapshotTask) Run(
+func (t *scheduleBackupChunksTasks) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -39,7 +39,7 @@ func (t *backupSnapshotTask) Run(
 	return nil
 }
 
-func (t *backupSnapshotTask) Cancel(
+func (t *scheduleBackupChunksTasks) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -47,13 +47,13 @@ func (t *backupSnapshotTask) Cancel(
 	return nil
 }
 
-func (t *backupSnapshotTask) GetMetadata(
+func (t *scheduleBackupChunksTasks) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
 }
 
-func (t *backupSnapshotTask) GetResponse() proto.Message {
+func (t *scheduleBackupChunksTasks) GetResponse() proto.Message {
 	return &empty.Empty{}
 }

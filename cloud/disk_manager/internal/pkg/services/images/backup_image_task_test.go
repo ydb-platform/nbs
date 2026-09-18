@@ -43,6 +43,7 @@ func TestBackupImageTask(t *testing.T) {
 		CreatingAt:    creatingAt,
 		Size:          8192,
 		StorageSize:   4096,
+		Ready:         true,
 	}
 
 	storage := resources_mocks.NewStorageMock()
@@ -50,14 +51,15 @@ func TestBackupImageTask(t *testing.T) {
 	execCtx := tasks_mocks.NewExecutionContextMock()
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
+	storage.On("ImageBackupScheduled", mock.Anything, "image1").Return(nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
 	scheduler.On(
 		"ScheduleTask",
 		mock.Anything,
-		"dataplane.BackupSnapshot",
+		"dataplane.ScheduleBackupChunksTasks",
 		"",
-		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotRequest) bool {
+		mock.MatchedBy(func(request *dataplane_protos.ScheduleBackupChunksTasksRequest) bool {
 			return request.SnapshotId == "image1"
 		}),
 	).Return("dataplane1", nil)
@@ -68,14 +70,14 @@ func TestBackupImageTask(t *testing.T) {
 		"dataplane1",
 	).Return(&empty.Empty{}, nil)
 
+	followerS3 := backup.NewFollowerS3(s3, backupTestBucket, t.Name())
+
 	task := &backupImageTask{
-		scheduler: scheduler,
-		storage:   storage,
-		s3:        s3,
-		bucket:    backupTestBucket,
-		keyPrefix: t.Name(),
-		request:   &protos.BackupImageRequest{ImageId: "image1"},
-		state:     &protos.BackupImageTaskState{},
+		scheduler:  scheduler,
+		storage:    storage,
+		followerS3: followerS3,
+		request:    &protos.BackupImageRequest{ImageId: "image1"},
+		state:      &protos.BackupImageTaskState{},
 	}
 
 	err = task.Run(ctx, execCtx)
@@ -86,7 +88,7 @@ func TestBackupImageTask(t *testing.T) {
 	object, err := s3.GetObject(
 		ctx,
 		backupTestBucket,
-		backup.ImageMetaKey(t.Name(), "image1"),
+		followerS3.Key(backup.ImageMetaKey("image1")),
 	)
 	require.NoError(t, err)
 

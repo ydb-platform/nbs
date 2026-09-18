@@ -14,19 +14,16 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type backupImageTask struct {
-	scheduler tasks.Scheduler
-	storage   resources.Storage
-	s3        *persistence.S3Client
-	bucket    string
-	keyPrefix string
-	request   *protos.BackupImageRequest
-	state     *protos.BackupImageTaskState
+	scheduler  tasks.Scheduler
+	storage    resources.Storage
+	followerS3 *backup.FollowerS3
+	request    *protos.BackupImageRequest
+	state      *protos.BackupImageTaskState
 }
 
 func (t *backupImageTask) Save() ([]byte, error) {
@@ -56,11 +53,8 @@ func (t *backupImageTask) Run(
 		return err
 	}
 
-	if meta == nil {
-		return errors.NewNonRetriableErrorf(
-			"image %v is not found",
-			imageID,
-		)
+	if meta == nil || !meta.Ready {
+		return t.storage.ImageBackupScheduled(ctx, imageID)
 	}
 
 	imageMeta, err := backup.NewImageMeta(*meta)
@@ -73,11 +67,10 @@ func (t *backupImageTask) Run(
 		return errors.NewNonRetriableError(err)
 	}
 
-	err = t.s3.PutObject(
+	err = t.followerS3.PutObject(
 		ctx,
-		t.bucket,
-		backup.ImageMetaKey(t.keyPrefix, imageID),
-		persistence.S3Object{Data: data},
+		backup.ImageMetaKey(imageID),
+		data,
 	)
 	if err != nil {
 		return err
@@ -87,9 +80,9 @@ func (t *backupImageTask) Run(
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
-		"dataplane.BackupSnapshot",
+		"dataplane.ScheduleBackupChunksTasks",
 		"",
-		&dataplane_protos.BackupSnapshotRequest{
+		&dataplane_protos.ScheduleBackupChunksTasksRequest{
 			SnapshotId: imageID,
 		},
 	)
@@ -105,7 +98,11 @@ func (t *backupImageTask) Run(
 	}
 
 	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	return t.storage.ImageBackupScheduled(ctx, imageID)
 }
 
 func (t *backupImageTask) Cancel(
@@ -113,7 +110,10 @@ func (t *backupImageTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return nil
+	return errors.NewRetriableErrorWithIgnoreRetryLimitf(
+		"backup of image %v should not be cancelled",
+		t.request.ImageId,
+	)
 }
 
 func (t *backupImageTask) GetMetadata(

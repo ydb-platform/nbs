@@ -22,13 +22,12 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type createImageFromURLTask struct {
-	config        *config.ImagesConfig
-	scheduler     tasks.Scheduler
-	storage       resources.Storage
-	poolService   pools.Service
-	backupEnabled bool
-	request       *protos.CreateImageFromURLRequest
-	state         *protos.CreateImageFromURLTaskState
+	config      *config.ImagesConfig
+	scheduler   tasks.Scheduler
+	storage     resources.Storage
+	poolService pools.Service
+	request     *protos.CreateImageFromURLRequest
+	state       *protos.CreateImageFromURLTaskState
 }
 
 func (t *createImageFromURLTask) Save() ([]byte, error) {
@@ -120,13 +119,6 @@ func (t *createImageFromURLTask) Run(
 	)
 	if err != nil {
 		return err
-	}
-
-	if t.backupEnabled {
-		err = scheduleBackup(ctx, execCtx, t.scheduler, t.request.DstImageId)
-		if err != nil {
-			return err
-		}
 	}
 
 	accounting.OnImageCreated(t.request.FolderId, imageFormat)
