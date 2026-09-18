@@ -1693,7 +1693,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
                     "disk-1",
                     expectedMigrationIds,
                     Now(),
-                    [&](auto& ids, auto error) {
+                    [&](const auto& ids, const auto& error) {
                         migrationIds.push_back(ids);
                         UNIT_ASSERT_SUCCESS(error);
                     }));

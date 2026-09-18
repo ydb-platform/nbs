@@ -739,7 +739,7 @@ public:
         const TDeviceId& targetDeviceId);
 
     using TFinishDeviceMigrationHandler = std::function<
-        void(const NProto::TDeviceMigrationIds& ids, NProto::TError error)>;
+        void(const NProto::TDeviceMigrationIds& ids, const NProto::TError& error)>;
 
     NProto::TError FinishDeviceMigrations(
         TDiskRegistryDatabase& db,

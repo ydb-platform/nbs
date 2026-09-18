@@ -294,13 +294,15 @@ void TDiskRegistryActor::CompleteFinishMigration(
     const TActorContext& ctx,
     TTxDiskRegistry::TFinishMigration& args)
 {
-    LOG_INFO(
+    LOG_LOG(
         ctx,
+        HasError(args.Error) ? NLog::PRI_ERROR : NLog::PRI_INFO,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s FinishMigration complete. DiskId=%s Migrations=%zu",
+        "%s FinishMigration complete. DiskId=%s Migrations=%zu Error=%s",
         LogTitle.GetWithTime().c_str(),
         args.DiskId.c_str(),
-        args.Migrations.size());
+        args.Migrations.size(),
+        FormatError(args.Error).c_str());
 
     ReallocateDisks(ctx);
     NotifyUsers(ctx);

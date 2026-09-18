@@ -6887,7 +6887,7 @@ NProto::TError TDiskRegistryState::FinishDeviceMigrations(
             result = error;
         }
 
-        handler(migration, std::move(error));
+        handler(migration, error);
     }
 
     if (!finishedDevices.empty()) {
