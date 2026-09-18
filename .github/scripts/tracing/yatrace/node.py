@@ -46,15 +46,27 @@ def _test_identity(outputs: tuple[str, ...]) -> tuple[str, str] | None:
 
 
 def _chunk_index(outputs: tuple[str, ...]) -> int | None:
+    """Extract a chunk index from output paths beneath a test work directory.
+
+    Ya uses test-results/<test-name>/[platform/][retry/][split-file/]chunkN/.
+    Some layouts also include testing_out_stuff before the retry/split folders.
+    Skip the test-name folder and output basename; search remaining directories
+    from the right because a split-file folder can itself be named chunkN.
+
+    >>> _chunk_index(("suite/test-results/unittest/chunk3/ytest.report.trace",))
+    3
+    >>> _chunk_index(("suite/test-results/unittest/run1/chunk0/meta.json",))
+    0
+    >>> _chunk_index(("suite/test-results/chunk3/ytest.report.trace",)) is None
+    True
+    """
     for output in outputs:
         _, marker, relative = output.partition("/test-results/")
-        parts = relative.split("/")
-        if (
-            marker
-            and len(parts) > 1
-            and (match := re.fullmatch(r"chunk(\d+)", parts[1]))
-        ):
-            return int(match.group(1))
+        if not marker:
+            continue
+        for folder in reversed(relative.split("/")[1:-1]):
+            if match := re.fullmatch(r"chunk(\d+)", folder):
+                return int(match.group(1))
     return None
 
 
