@@ -167,6 +167,7 @@ private:
     const TVector<TFlushBytesBlob> DstBlobs;
     /* const */ TSet<ui32> MixedBlocksRanges;
     ui32 OperationSize = 0;
+    const bool WaitForTrim;
 
     THashMap<TPartialBlobId, IBlockBufferPtr, TPartialBlobIdHash> Buffers;
     using TBlobOffsetMap =
@@ -190,7 +191,8 @@ public:
         TVector<TMixedBlobMeta> srcBlobsToRead,
         TVector<TVector<ui32>> srcBlobOffsets,
         TVector<TFlushBytesBlob> dstBlobs,
-        TSet<ui32> mixedBlocksRanges);
+        TSet<ui32> mixedBlocksRanges,
+        bool waitForTrim);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -237,7 +239,8 @@ TFlushBytesActor::TFlushBytesActor(
         TVector<TMixedBlobMeta> srcBlobsToRead,
         TVector<TVector<ui32>> srcBlobOffsets,
         TVector<TFlushBytesBlob> dstBlobs,
-        TSet<ui32> mixedBlocksRanges)
+        TSet<ui32> mixedBlocksRanges,
+    bool waitForTrim)
     : LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
     , Tablet(tablet)
@@ -252,6 +255,7 @@ TFlushBytesActor::TFlushBytesActor(
     , SrcBlobOffsets(std::move(srcBlobOffsets))
     , DstBlobs(std::move(dstBlobs))
     , MixedBlocksRanges(std::move(mixedBlocksRanges))
+    , WaitForTrim(waitForTrim)
 {
     for (const auto& b: DstBlobs) {
         for (const auto& block: b.Blocks) {
@@ -487,10 +491,11 @@ void TFlushBytesActor::ReplyAndDie(
             1,
             OperationSize,
             ctx.Now() - RequestInfo->StartedTs,
-            RequestInfo->CallContext,
+            RequestInfo,
             std::move(MixedBlocksRanges),
             CommitId,
-            ChunkId);
+            ChunkId,
+            WaitForTrim);
 
         NCloud::Send(ctx, Tablet, std::move(response));
     }
@@ -499,13 +504,6 @@ void TFlushBytesActor::ReplyAndDie(
         ResponseSent_TabletWorker,
         RequestInfo->CallContext,
         "FlushBytes");
-
-    if (RequestInfo->Sender != Tablet) {
-        // reply to caller
-        auto response =
-            std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesResponse>(error);
-        NCloud::Reply(ctx, *RequestInfo, std::move(response));
-    }
 
     Die(ctx);
 }
@@ -634,12 +632,15 @@ void TIndexTabletActor::HandleFlushBytes(
             "%s FlushBytes: only deletion markers found, trimming",
             LogTag.c_str());
 
-        reply(ctx, *ev, {});
+        if (!msg->WaitForTrim) {
+            reply(ctx, *ev, {});
+        }
 
         ExecuteTx<TTrimBytes>(
             ctx,
             std::move(requestInfo),
-            cleanupInfo.ChunkId);
+            cleanupInfo.ChunkId,
+            msg->WaitForTrim);
 
         return;
     }
@@ -649,8 +650,8 @@ void TIndexTabletActor::HandleFlushBytes(
         std::move(requestInfo),
         cleanupInfo.ClosingCommitId,
         cleanupInfo.ChunkId,
-        std::move(bytes)
-    );
+        std::move(bytes),
+        msg->WaitForTrim);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -713,8 +714,6 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
             ResponseSent_Tablet,
             args.RequestInfo->CallContext,
             "FlushBytes");
-
-        ReleaseMixedBlocks(args.MixedBlocksRanges);
 
         if (args.RequestInfo->Sender != ctx.SelfID) {
             // reply to caller
@@ -818,9 +817,13 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         ExecuteTx<TTrimBytes>(
             ctx,
             args.RequestInfo,
-            args.ChunkId);
+            args.ChunkId,
+            args.WaitForTrim);
 
-        replyError(ctx, args, {});
+        ReleaseMixedBlocks(args.MixedBlocksRanges);
+        if (!args.WaitForTrim) {
+            replyError(ctx, args, {});
+        }
 
         return;
     }
@@ -870,6 +873,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         if (!ok) {
             ReassignDataChannelsIfNeeded(ctx);
 
+            ReleaseMixedBlocks(args.MixedBlocksRanges);
             replyError(
                 ctx,
                 args,
@@ -904,7 +908,8 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         std::move(srcBlobsToRead),
         std::move(srcBlobOffsets),
         std::move(dstBlobs),
-        std::move(args.MixedBlocksRanges));
+        std::move(args.MixedBlocksRanges),
+        args.WaitForTrim);
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);
@@ -918,6 +923,17 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
 {
     const auto* msg = ev->Get();
 
+    auto reply = [&]()
+    {
+        if (msg->RequestInfo->Sender != ctx.SelfID) {
+            // reply to caller
+            auto response =
+                std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesResponse>(
+                    msg->GetError());
+            NCloud::Reply(ctx, *msg->RequestInfo, std::move(response));
+        }
+    };
+
     ReleaseMixedBlocks(msg->MixedBlocksRanges);
     TABLET_VERIFY(TryReleaseCollectBarrier(msg->CommitId));
     WorkerActors.erase(ev->Sender);
@@ -929,6 +945,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
             "%s FlushBytes failed (%s)",
             LogTag.c_str(),
             FormatError(error).c_str());
+        reply();
 
         CompleteBlobIndexOp();
         FlushState.Complete();
@@ -936,25 +953,35 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
         return;
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s FlushBytes completed (%s)",
         LogTag.c_str(),
         FormatError(msg->GetError()).c_str());
 
+    if (!msg->WaitForTrim) {
+        reply();
+    }
+
     Metrics->FlushBytes.Update(1, msg->Size, msg->Time);
 
     auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+        msg->RequestInfo->Sender,
+        msg->RequestInfo->Cookie,
+        msg->RequestInfo->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
         BackgroundRequestReceived_Tablet,
-        msg->CallContext,
+        msg->RequestInfo->CallContext,
         "TrimBytes");
 
-    ExecuteTx<TTrimBytes>(ctx, std::move(requestInfo), msg->ChunkId);
+    ExecuteTx<TTrimBytes>(
+        ctx,
+        std::move(requestInfo),
+        msg->ChunkId,
+        msg->WaitForTrim);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1022,15 +1049,25 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
         ExecuteTx<TTrimBytes>(
             ctx,
             args.RequestInfo,
-            args.ChunkId);
+            args.ChunkId,
+            args.RespondAfterTrim);
         return;
     }
 
-    LOG_DEBUG(ctx, TFileStoreComponents::TABLET,
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::TABLET,
         "%s TrimBytes completed (%lu, %lu)",
         LogTag.c_str(),
         args.ChunkId,
         args.TrimmedBytes);
+
+    if (args.RespondAfterTrim && args.RequestInfo->Sender != ctx.SelfID) {
+        // finally reply to the caller
+        auto response =
+            std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesResponse>();
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    }
 
     CompleteBlobIndexOp();
     FlushState.Complete();

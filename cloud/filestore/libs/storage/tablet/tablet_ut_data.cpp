@@ -327,6 +327,252 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         // TODO test with intersecting fresh byte ranges
     }
 
+    TABLET_TEST(ShouldDelayFlushBytesResponseUntilAllTrimBatchesCompleted)
+    {
+        const auto block = tabletConfig.BlockSize;
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1_GB);
+        // One item per transaction forces trim continuations before the reply.
+        storageConfig.SetTrimBytesItemCount(1);
+
+        TTestEnv env(testEnvConfig, storageConfig);
+        auto& runtime = env.GetRuntime();
+        const auto nodeIdx = env.AddDynamicNode();
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.InitSession("client", "session");
+        const auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const auto handle = CreateHandle(tablet, id);
+
+        // Three live byte overlays require the worker to write new blobs.
+        constexpr ui32 blockCount = 3;
+        for (ui32 i = 0; i < blockCount; ++i) {
+            tablet.WriteData(handle, i * block, block, '0');
+            tablet.WriteData(handle, i * block + 100, 10, 'a');
+        }
+
+        TAutoPtr<IEventHandle> completion;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvIndexTabletPrivate::EvFlushBytesCompleted)
+                {
+                    completion = event.Release();
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto request = tablet.CreateFlushBytesRequest();
+        request->WaitForTrim = true;
+        tablet.SendRequest(std::move(request));
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return completion != nullptr;
+            }});
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            completion->Get<TEvIndexTabletPrivate::TEvFlushBytesCompleted>()
+                ->GetStatus());
+
+        // Blob writing has finished, but the tablet has not started trim yet.
+        {
+            const auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(
+                blockCount * 10,
+                stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                blockCount,
+                stats.GetFreshBytesItemCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletedFreshBytesCount());
+        }
+        tablet.AssertFlushBytesNoResponse();
+
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+        runtime.Send(completion.Release(), nodeIdx);
+        tablet.AssertFlushBytesResponse(S_OK);
+        {
+            const auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletedFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesItemCount());
+        }
+    }
+
+    TABLET_TEST(ShouldDelayFlushBytesResponseForDeletionMarkers)
+    {
+        const auto block = tabletConfig.BlockSize;
+        NProto::TStorageConfig storageConfig;
+        // One item per transaction forces trim continuations before the reply.
+        storageConfig.SetTrimBytesItemCount(1);
+
+        TTestEnv env(testEnvConfig, storageConfig);
+        auto& runtime = env.GetRuntime();
+        const auto nodeIdx = env.AddDynamicNode();
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.InitSession("client", "session");
+        const auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        // Shrink a sparse file one block at a time: three deletion markers,
+        // no byte data. FlushBytes enters trim without starting a worker.
+        constexpr ui32 blockCount = 3;
+        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(blockCount * block));
+        for (ui32 blocks = blockCount; blocks > 0; --blocks) {
+            tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize((blocks - 1) * block));
+        }
+        {
+            const auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesItemCount());
+            UNIT_ASSERT_VALUES_EQUAL(
+                blockCount * block, stats.GetDeletedFreshBytesCount());
+        }
+
+        auto request = tablet.CreateFlushBytesRequest();
+        request->WaitForTrim = true;
+        tablet.SendRequest(std::move(request));
+        tablet.AssertFlushBytesResponse(S_OK);
+        {
+            const auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletedFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesItemCount());
+        }
+    }
+
+    TABLET_TEST(ShouldDelayFlushBytesResponseForOverwrittenBytes)
+    {
+        const auto block = tabletConfig.BlockSize;
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(1_GB);
+        // One item per transaction forces trim continuations before the reply.
+        storageConfig.SetTrimBytesItemCount(1);
+
+        TTestEnv env(testEnvConfig, storageConfig);
+        auto& runtime = env.GetRuntime();
+        const auto nodeIdx = env.AddDynamicNode();
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.InitSession("client", "session");
+        const auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const auto handle = CreateHandle(tablet, id);
+
+        // Full-block overwrites make the byte entries obsolete. FlushBytes
+        // trims these entries without writing new blobs.
+        constexpr ui32 blockCount = 3;
+        for (ui32 i = 0; i < blockCount; ++i) {
+            tablet.WriteData(handle, i * block, block, '0');
+            tablet.WriteData(handle, i * block + 100, 10, 'a');
+            tablet.WriteData(handle, i * block, block, '1');
+        }
+        {
+            const auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(blockCount * 10, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(blockCount, stats.GetFreshBytesItemCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletedFreshBytesCount());
+        }
+
+        auto request = tablet.CreateFlushBytesRequest();
+        request->WaitForTrim = true;
+        tablet.SendRequest(std::move(request));
+        tablet.AssertFlushBytesResponse(S_OK);
+        {
+            const auto response = tablet.GetStorageStats();
+            const auto& stats = response->Record.GetStats();
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetDeletedFreshBytesCount());
+            UNIT_ASSERT_VALUES_EQUAL(0, stats.GetFreshBytesItemCount());
+        }
+    }
+
+    TABLET_TEST(ShouldReplyToFlushBytesWithWaitForTrimWhenNothingToFlush)
+    {
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        TTestEnv env(testEnvConfig, {}, nullptr, profileLog);
+        auto& runtime = env.GetRuntime();
+        const auto nodeIdx = env.AddDynamicNode();
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto request = tablet.CreateFlushBytesRequest();
+        request->WaitForTrim = true;
+        tablet.SendRequest(std::move(request));
+        tablet.AssertFlushBytesResponse(S_FALSE);
+
+        UNIT_ASSERT(!profileLog->GetRecords(EFileStoreSystemRequest::TrimBytes));
+    }
+
+    TABLET_TEST(ShouldReplyToFlushBytesWithWaitForTrimOnWorkerFailure)
+    {
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        TTestEnv env(testEnvConfig, {}, nullptr, profileLog);
+        auto& runtime = env.GetRuntime();
+        const auto nodeIdx = env.AddDynamicNode();
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const auto handle = CreateHandle(tablet, id);
+        tablet.WriteData(handle, 0, tabletConfig.BlockSize, '0');
+        tablet.WriteData(handle, 100, 10, 'a');
+        const auto before = tablet.GetStorageStats()->Record.GetStats();
+
+        ui32 failedWrites = 0;
+        runtime.SetEventFilter([&](auto& runtime, auto& event) {
+            if (event->GetTypeRewrite() ==
+                TEvIndexTabletPrivate::EvWriteBlobRequest)
+            {
+                // Fail the worker's write without starting blob I/O or causing
+                // a tablet restart.
+                ++failedWrites;
+                runtime.Send(
+                    new IEventHandle(
+                        event->Sender,
+                        event->Recipient,
+                        new TEvIndexTabletPrivate::TEvWriteBlobResponse(
+                            MakeError(E_REJECTED, "injected write failure")),
+                        0,
+                        event->Cookie),
+                    nodeIdx);
+                return true;
+            }
+            return false;
+        });
+
+        auto request = tablet.CreateFlushBytesRequest();
+        request->WaitForTrim = true;
+        tablet.SendRequest(std::move(request));
+        const auto response = tablet.AssertFlushBytesResponse(E_REJECTED);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "injected write failure", response->GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(1, failedWrites);
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+
+        UNIT_ASSERT(!profileLog->GetRecords(EFileStoreSystemRequest::TrimBytes));
+        const auto after = tablet.GetStorageStats()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(
+            before.GetFreshBytesCount(), after.GetFreshBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            before.GetDeletedFreshBytesCount(),
+            after.GetDeletedFreshBytesCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            before.GetFreshBytesItemCount(), after.GetFreshBytesItemCount());
+    }
+
     TABLET_TEST(ShouldFlushFreshBytesByLargeOffset)
     {
         TTestEnv env(testEnvConfig);
@@ -3522,7 +3768,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         );
 
-        tablet.FlushBytes();
+        tablet.SendFlushBytesRequest();
+        env.GetRuntime().DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]() {
+                return completion != nullptr;
+            }});
 
         tablet.WriteData(handle, block, block, '0'); // 2 fresh blocks
 
@@ -3548,7 +3798,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             }
         );
 
-        env.GetRuntime().Send(completion.Release(), 1 /* node index */);
+        env.GetRuntime().Send(completion.Release(), nodeIdx);
+        tablet.AssertFlushBytesResponse(S_OK);
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
         UNIT_ASSERT(flushObserved);
 
