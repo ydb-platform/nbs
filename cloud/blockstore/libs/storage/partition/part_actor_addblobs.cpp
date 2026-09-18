@@ -1045,7 +1045,7 @@ THashSet<ui32> TPartitionActor::GetRangeIndices(
     }
 
     for (const auto& blob: mixedBlobs) {
-        for (const ui32& block: blob.Blocks) {
+        for (ui32 block: blob.Blocks) {
             rangeIndices.emplace(compactionMap.GetRangeIndex(block));
         }
     }
