@@ -36,6 +36,7 @@ namespace {
 
 constexpr ui32 DefaultPageSize = 4;
 constexpr ui64 DefaultPageCount = 64;
+constexpr ui64 DevicePageCount = 1024;
 
 // the key the journal keeps its metadata under
 constexpr ui64 MetadataKey = Max<ui64>();
@@ -372,7 +373,12 @@ struct TFixture: public NUnitTest::TBaseFixture
     void RecreateJournal()
     {
         DataStore = CreateDevicePageStore(Device, PageCount, DefaultPageSize);
-        Journal = CreateJournal(Logging, Executor, MetaStore, DataStore);
+        Journal = CreateJournal(
+            Logging,
+            Executor,
+            MetaStore,
+            DataStore,
+            DevicePageCount);
     }
 
     // Runs |func| on the executor thread - the journal waits on the futures
@@ -702,6 +708,64 @@ Y_UNIT_TEST_SUITE(TJournalTest)
              {.PageNo = 20, .Location = Range(1, 2)}});
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreARecordStartingPastTheDevice, TFixture)
+    {
+        PutRecord(
+            0,
+            1,
+            0,
+            {{.PageNo = DevicePageCount, .Location = Range(0, 1)}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreARecordRunningPastTheDevice, TFixture)
+    {
+        PutRecord(0, 1, 0, {{.PageNo = 10, .Location = Range(0, 1)}});
+        PutRecord(
+            1,
+            2,
+            1,
+            {{.PageNo = DevicePageCount - 1, .Location = Range(1, 2)}});
+
+        auto result = Restore();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            result.GetError().GetMessage(),
+            "log record with key 1 maps page range 1023x2 which is outside "
+            "the device of 1024 pages");
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreAnOverflowingRecord, TFixture)
+    {
+        // a record left behind by a writer that did not bound page numbers;
+        // indexing it would wrap around and abort
+        const ui64 lastPageNo = Max<ui64>();
+        PutRecord(
+            0,
+            1,
+            0,
+            {{.PageNo = lastPageNo, .Location = Range(0, 1)},
+             {.PageNo = lastPageNo, .Location = Range(1, 1)}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreARecordEndingAtTheLastDevicePage, TFixture)
+    {
+        PutRecord(
+            0,
+            1,
+            0,
+            {{.PageNo = DevicePageCount - 2, .Location = Range(0, 2)}});
+
+        UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
     }
 
     Y_UNIT_TEST_F(ShouldFailToRestoreALogEndingBelowTheLastAckedLsn, TFixture)
@@ -1042,6 +1106,78 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             ReadPages({{50, 1}}).GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectARecordOutsideTheDevice, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        const ui64 last = DevicePageCount - 1;
+
+        // starts past the end
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{last + 1, 1}}));
+
+        // starts inside, runs past the end
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{last, 2}}));
+
+        // a good group does not excuse a bad one
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{10, 1}, {last, 2}}));
+
+        // the end of these wraps around ui64, which used to hide them from
+        // the intersection check and abort the page index
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{Max<ui64>(), 1}, {Max<ui64>(), 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{Max<ui64>() - 1, 3}}));
+
+        // the rejected records have taken nothing: no chain entry, no pages
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(0)));
+        UNIT_ASSERT_VALUES_EQUAL("", StoredKeys());
+    }
+
+    Y_UNIT_TEST_F(ShouldWriteAndReadBackTheLastDevicePages, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        const ui64 last = DevicePageCount - 1;
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{last - 1, 2}}));
+
+        // an empty range is not a range, wherever it points
+        auto response = ReadPages({{last + 1, 0}, {last - 1, 2}});
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("1022:[A022,A023]", DescribeGroups(response));
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectAReadOutsideTheDevice, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
+
+        const ui64 last = DevicePageCount - 1;
+
+        auto code = [&](const TGroups& refs)
+        {
+            return ReadPages(refs).GetError().GetCode();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, code({{last + 1, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, code({{10, 1}, {last, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, code({{Max<ui64>(), 1}}));
+
+        auto response = ReadPages({{last, 2}});
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            response.GetError().GetMessage(),
+            "page range 1023x2 is outside the device of 1024 pages");
     }
 
     Y_UNIT_TEST_F(ShouldRejectAReadWithIntersectingPageGroupRefs, TFixture)

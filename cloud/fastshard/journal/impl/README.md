@@ -70,7 +70,8 @@ Building it:
 auto metaStore =
     CreateDeviceKeyBufferStore(logging, logMetaDevice, pageCount, pageSize);
 auto pageStore = CreateDevicePageStore(logDataDevice, pageCount, pageSize);
-auto journal = CreateJournal(logging, executor, metaStore, pageStore);
+auto journal = CreateJournal(
+    logging, executor, metaStore, pageStore, dataDevicePageCount);
 auto device = CreateJournalledDeviceV2(
     logging, executor, journal, dataDevice, deviceUUID, backgroundClientId);
 
@@ -197,7 +198,8 @@ covering no pages are ignored by the check.
 
 ### Write
 
-1. The page groups must not intersect (`E_ARGUMENT`).
+1. The page groups must sit inside the data device and must not intersect
+   (`E_ARGUMENT`).
 2. `Lsn` must not be the reserved metadata key (`Max<ui64>`); a record at or
    below `LastIndexedLsn` is answered `S_ALREADY`.
 3. The record is inserted into the chain. A record whose `PrevLsn` is not below
@@ -274,7 +276,8 @@ Started by `Start` and rescheduled every `IdleFlushDelay` (100 ms):
 1. every key/buffer pair is read back from the metadata store and sorted by key
    (`PrevLsn`);
 2. the entry under the metadata key, if any, gives `LastAckedLsn`;
-3. the records are deserialized in chain order; the first one initializes the
+3. the records are deserialized in chain order; one that maps pages outside
+   the data device is an `E_INVALID_STATE`; the first one initializes the
    chain, index and flushed barrier to `min(PrevLsn, LastAckedLsn)`;
 4. each record's pages are re-claimed in a freshly built page store with
    `AllocateAt`, so the allocation state is derived from the records - pages
@@ -299,7 +302,7 @@ barriers each guard themselves with a spinlock.
 | --- | --- |
 | `S_ALREADY` | the record is already indexed, or the watermark is not new |
 | `E_REJECTED` | the log data or metadata store is out of pages, an erase or a watermark advance is already in progress, a key erased while it was being written |
-| `E_ARGUMENT` | a request addressed to another device UUID, intersecting page ranges in one request, a `PrevLsn` not below the `Lsn`, the lsn reserved for the metadata, a watermark above the indexed lsn, a key below the erased bound |
+| `E_ARGUMENT` | a request addressed to another device UUID, page ranges outside the data device or intersecting in one request, a `PrevLsn` not below the `Lsn`, the lsn reserved for the metadata, a watermark above the indexed lsn, a key below the erased bound |
 | `E_INVALID_STATE` | a record that cannot join the chain, a store used before restore or switched to read-only after a failed free, corrupt metadata, a page missing from both read responses |
 
 ## Tests
