@@ -72,7 +72,7 @@ auto CallWithRetries(
 NProto::TWriteLogRecordRequest MakeWriteLogRecordRequest(
     NProto::TDeviceRequestHeaders headers,
     const TVector<TPageGroup>& pageGroups,
-    ui64 lsn);
+    TLsnLink link);
 
 NProto::TWriteLogRecordRequest MakeReplayRequest(
     NProto::TDeviceRequestHeaders headers,

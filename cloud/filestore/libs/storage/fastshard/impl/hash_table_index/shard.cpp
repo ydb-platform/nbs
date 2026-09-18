@@ -946,6 +946,10 @@ public:
                         FormatError(error).c_str());
                 }
             }
+
+            if (!HasError(error)) {
+                wcg.Link();
+            }
         }
 
         auto pages = CollectPages(writeContext);
@@ -953,7 +957,7 @@ public:
             error = Storage->WriteLogRecord(
                 std::move(writeContext.Headers),
                 std::move(writeContext.PageGroups),
-                writeContext.Lsn);
+                writeContext.GetLink());
         }
 
         if (HasError(error)) {
@@ -1065,6 +1069,10 @@ public:
                 request.GetGid(),
                 writeContext,
                 &attr);
+
+            if (!HasError(error)) {
+                wcg.Link();
+            }
         }
 
         if (HasError(error)) {
@@ -1081,7 +1089,7 @@ public:
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1286,13 +1294,15 @@ public:
                 *response.MutableError() = std::move(error);
                 return response;
             }
+
+            wcg.Link();
         }
 
         auto pages = CollectPages(writeContext);
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1435,13 +1445,14 @@ public:
             return response;
         }
 
+        wcg.Link();
         l.unlock();
 
         auto pages = CollectPages(writeContext);
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1521,6 +1532,10 @@ public:
                     }
                 }
             }
+
+            if (!HasError(response.GetError())) {
+                wcg.Link();
+            }
         }
 
         if (HasError(response.GetError())) {
@@ -1536,7 +1551,7 @@ public:
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1835,6 +1850,7 @@ public:
             return response;
         }
 
+        wcg.Link();
         l.unlock();
 
         //
@@ -1845,7 +1861,7 @@ public:
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -2241,11 +2257,13 @@ public:
                 }
             }
 
+            wcg.Link();
+
             auto pages = CollectPages(writeContext);
             error = Storage->WriteLogRecord(
                 std::move(writeContext.Headers),
                 std::move(writeContext.PageGroups),
-                writeContext.Lsn);
+                writeContext.GetLink());
             if (HasError(error)) {
                 SILK_ERROR(
                     "[F=%s] Format::WriteLogRecord error=%s",

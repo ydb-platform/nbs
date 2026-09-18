@@ -667,23 +667,27 @@ public:
     NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
         TVector<TPageGroup> pageGroups,
-        ui64 lsn) override
+        TLsnLink link) override
     {
         if (auto error = CheckReady(); HasError(error)) {
             return error;
         }
 
-        if (!lsn) {
-            return MakeError(E_ARGUMENT, "lsn must be positive");
+        if (link.Lsn <= link.PrevLsn) {
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder() << "lsn " << link.Lsn
+                                 << " must be above the previous one "
+                                 << link.PrevLsn);
         }
 
         FillHeaders(State->Config, &headers);
         auto op = std::make_shared<TWriteState>();
-        op->Lsn = lsn;
+        op->Lsn = link.Lsn;
         op->Request = MakeWriteLogRecordRequest(
             std::move(headers),
             pageGroups,
-            lsn);
+            link);
 
         SILK_DEBUG("sg write: %s", DebugMessage(op->Request).c_str());
         for (const auto& proxy: State->Proxies) {
@@ -710,7 +714,7 @@ public:
 
         // Publish before acking the caller. Quorum is monotonic, so we
         // do not care about actual ordering here.
-        State->QuorumLsn.advance(lsn);
+        State->QuorumLsn.advance(link.Lsn);
 
         return {};
     }

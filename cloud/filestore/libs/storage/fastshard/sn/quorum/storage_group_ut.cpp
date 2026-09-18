@@ -303,7 +303,10 @@ NProto::TError WriteSomething(IStorageGroup& group, ui64 lsn = 1234)
     TVector<TPageGroup> pageGroups;
     pageGroups.push_back(std::move(pageGroup));
 
-    return group.WriteLogRecord(defaultHeaders, std::move(pageGroups), lsn);
+    return group.WriteLogRecord(
+        defaultHeaders,
+        std::move(pageGroups),
+        {.Lsn = lsn, .PrevLsn = lsn - 1});
 }
 
 NProto::TError ReadSomething(
@@ -424,7 +427,7 @@ TEST(NaiveGroupTest, MirrorsWrites)
                 auto error = fx.Group->WriteLogRecord(
                     defaultHeaders,
                     std::move(pageGroups),
-                    1234);
+                    {.Lsn = 1234, .PrevLsn = 1233});
                 EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
             }
 
@@ -768,7 +771,7 @@ int ConcurrentWriteFiberMain(TConcurrentWriteParams* params) noexcept
     auto error = params->Fixture->Group->WriteLogRecord(
         defaultHeaders,
         std::move(pageGroups),
-        params->Lsn);
+        {.Lsn = params->Lsn, .PrevLsn = params->Lsn - 1});
     return HasError(error) ? 1 : 0;
 }
 
@@ -1487,6 +1490,38 @@ TEST(QuorumGroupTest, WriteWaitsForItsOwnQuorum)
     EXPECT_EQ(0, r);
 }
 
+TEST(QuorumGroupTest, ForwardsALinkThatSkipsAnLsn)
+{
+    const int r = FiberScheduler::run(
+        +[](int*) noexcept -> int
+        {
+            TQuorumFixture fx;
+
+            // The shard allocated 1235 and wrote nothing with it, so 1236
+            // chains from 1234. The group forwards the link as it is.
+            TPageGroup pageGroup{.FirstPageNo = 111};
+            pageGroup.Content.emplace_back("page1", 5U /* len */);
+            TVector<TPageGroup> pageGroups;
+            pageGroups.push_back(std::move(pageGroup));
+
+            auto error = fx.Group->WriteLogRecord(
+                defaultHeaders,
+                std::move(pageGroups),
+                {.Lsn = 1236, .PrevLsn = 1234});
+            EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+            WaitFor([&] { return TotalWriteCalls(fx) == 3; });
+            for (const auto& sn: fx.StorageNodes) {
+                EXPECT_EQ(1236U, sn->WriteCalls[0].GetLogSequenceNumber());
+                EXPECT_EQ(1234U, sn->WriteCalls[0].GetPrevLogSequenceNumber());
+            }
+
+            return 0;
+        },
+        0);
+    EXPECT_EQ(0, r);
+}
+
 TEST(QuorumGroupTest, RejectsLsnZero)
 {
     const int r = FiberScheduler::run(
@@ -1498,7 +1533,7 @@ TEST(QuorumGroupTest, RejectsLsnZero)
             auto error = fx.Group->WriteLogRecord(
                 defaultHeaders,
                 std::move(pageGroups),
-                0 /* lsn */);
+                {.Lsn = 0, .PrevLsn = 0});
             EXPECT_EQ(E_ARGUMENT, error.GetCode()) << error.GetMessage();
             EXPECT_EQ(0U, TotalWriteCalls(fx));
 
@@ -1610,7 +1645,7 @@ TEST(QuorumGroupTest, DeliversPayloadToEachDevice)
                 auto error = fx.Group->WriteLogRecord(
                     defaultHeaders,
                     std::move(pageGroups),
-                    1234);
+                    {.Lsn = 1234, .PrevLsn = 1233});
                 EXPECT_EQ(S_OK, error.GetCode()) << error.GetMessage();
             }
             WaitFor([&] { return TotalWriteCalls(fx) == 3; });
@@ -1620,7 +1655,7 @@ TEST(QuorumGroupTest, DeliversPayloadToEachDevice)
                 const auto& w = fx.StorageNodes[i]->WriteCalls[0];
                 EXPECT_EQ(fx.DeviceUUIDs[i], w.GetDeviceUUID());
                 EXPECT_EQ(1234U, w.GetLogSequenceNumber());
-                EXPECT_EQ(0U, w.GetPrevLogSequenceNumber());
+                EXPECT_EQ(1233U, w.GetPrevLogSequenceNumber());
                 EXPECT_EQ("test-client", w.GetHeaders().GetClientId());
                 EXPECT_EQ(1U, w.PageGroupsSize());
                 if (w.PageGroupsSize() != 1) {
