@@ -14,6 +14,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/rdma/impl/client.h>
@@ -22,6 +23,8 @@
 #include <library/cpp/monlib/service/pages/html_mon_page.h>
 #include <library/cpp/monlib/service/pages/index_mon_page.h>
 #include <library/cpp/monlib/service/pages/templates.h>
+
+#include <library/cpp/html/pcdata/pcdata.h>
 
 #include <util/generic/hash_set.h>
 #include <util/random/random.h>
@@ -39,14 +42,14 @@ private:
     TCellManager& Manager;
 
 public:
-    TCellsMonPage(TCellManager& manager, const TString& componentName)
-        : THtmlMonPage(componentName, componentName, true)
+    TCellsMonPage(TCellManager& manager, const TString& name)
+        : THtmlMonPage(name, name, true)
         , Manager(manager)
     {}
 
     void OutputContent(IMonHttpRequest& request) override
     {
-        Manager.OutputHtml(request.Output(), request);
+        Manager.OutputHtml(request.Output());
     }
 };
 
@@ -62,12 +65,19 @@ TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
             std::make_shared<TCellHostPool>(cell.second, Bootstrap));
     }
 
+    InboundActivity = std::make_shared<TCellInboundActivity>();
+
     if (Bootstrap.Monitoring) {
         auto rootPage =
             Bootstrap.Monitoring->RegisterIndexPage("blockstore", "BlockStore");
         static_cast<TIndexMonPage&>(*rootPage).Register(
             new TCellsMonPage(*this, "Cells"));
     }
+}
+
+std::shared_ptr<TCellInboundActivity> TCellManager::GetInboundActivity()
+{
+    return InboundActivity;
 }
 
 void TCellManager::Start()
@@ -178,12 +188,116 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
         Bootstrap);
 }
 
-void TCellManager::OutputHtml(
-    IOutputStream& out,
-    const IMonHttpRequest& request)
+void TCellManager::OutputHtml(IOutputStream& out)
 {
-    Y_UNUSED(out);
-    Y_UNUSED(request);
+    HTML(out) {
+        TAG(TH3) { out << "Cells config"; }
+    }
+    Config->DumpHtml(out);
+
+    for (const auto& [cellId, cellConfig]: Config->GetCells()) {
+        HTML(out) {
+            TAG(TH4) { out << "Cell " << cellId; }
+        }
+        cellConfig->DumpHtml(out);
+
+        HTML(out) {
+            TABLE_CLASS("table table-condensed") {
+                TABLEHEAD() {
+                    TABLER() {
+                        TABLEH() { out << "Host"; }
+                        TABLEH() { out << "GrpcPort"; }
+                        TABLEH() { out << "SecureGrpcPort"; }
+                        TABLEH() { out << "RdmaPort"; }
+                    }
+                }
+                TABLEBODY() {
+                    for (const auto& [fqdn, host]: cellConfig->GetHosts()) {
+                        Y_UNUSED(fqdn);
+                        TABLER() {
+                            TABLED() {
+                                out << EncodeHtmlPcdata(host.GetFqdn());
+                            }
+                            TABLED() { out << host.GetGrpcPort(); }
+                            TABLED() { out << host.GetSecureGrpcPort(); }
+                            TABLED() { out << host.GetRdmaPort(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    HTML(out) {
+        TAG(TH3) { out << "Outbound host status"; }
+    }
+    for (const auto& [cellId, pool]: Pools) {
+        HTML(out) {
+            TAG(TH4) { out << "Cell " << cellId; }
+            TABLE_CLASS("table table-condensed") {
+                TABLEHEAD() {
+                    TABLER() {
+                        TABLEH() { out << "Host"; }
+                        TABLEH() { out << "Alive"; }
+                        TABLEH() { out << "Warm"; }
+                        TABLEH() { out << "Connections"; }
+                    }
+                }
+                TABLEBODY() {
+                    for (const auto& status: pool->GetHostStatuses()) {
+                        TABLER() {
+                            TABLED() {
+                                out << EncodeHtmlPcdata(status.Fqdn);
+                            }
+                            TABLED() { out << (status.Alive ? "yes" : "no"); }
+                            TABLED() { out << (status.Warm ? "yes" : "no"); }
+                            TABLED() { out << status.Connections; }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    HTML(out) {
+        TAG(TH3) { out << "Inbound inter-cell connections"; }
+        TABLE_SORTABLE_CLASS("table table-condensed") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "CellId"; }
+                    TABLEH() { out << "Peer"; }
+                    TABLEH() { out << "DiskId"; }
+                    TABLEH() { out << "ClientId"; }
+                    TABLEH() { out << "Mounts"; }
+                    TABLEH() { out << "Unmounts"; }
+                    TABLEH() { out << "Describes"; }
+                }
+            }
+            TABLEBODY() {
+                const auto rows =
+                    InboundActivity->Snapshot(Bootstrap.Timer->Now());
+                for (const auto& row: rows) {
+                    TABLER() {
+                        TABLED() {
+                            out << EncodeHtmlPcdata(row.CellId);
+                        }
+                        TABLED() {
+                            out << EncodeHtmlPcdata(row.Peer);
+                        }
+                        TABLED() {
+                            out << EncodeHtmlPcdata(row.DiskId);
+                        }
+                        TABLED() {
+                            out << EncodeHtmlPcdata(row.ClientId);
+                        }
+                        TABLED() { out << row.Mounts; }
+                        TABLED() { out << row.Unmounts; }
+                        TABLED() { out << row.Describes; }
+                    }
+                }
+            }
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

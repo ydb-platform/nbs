@@ -133,6 +133,20 @@ public:
     // about an older incarnation can be told from one about this one.
     [[nodiscard]] ui64 GetChannelEpoch(const TString& fqdn) const;
 
+    // A point-in-time view of the cell's hosts for monitoring: which are
+    // alive, which have a warm channel, and how many connections hold each
+    // host's channel (the reference count, which a connection keeps for the
+    // whole life of its binding regardless of host migration).
+    struct THostStatus
+    {
+        TString Fqdn;
+        bool Alive = false;
+        bool Warm = false;
+        size_t Connections = 0;
+    };
+
+    [[nodiscard]] TVector<THostStatus> GetHostStatuses() const;
+
     // Returns whether the host is known dead at subscription time, so
     // the caller does not miss a death that landed before it subscribed.
     [[nodiscard]] bool WatchHost(

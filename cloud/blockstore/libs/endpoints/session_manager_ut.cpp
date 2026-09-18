@@ -121,6 +121,11 @@ struct TTestCellManager: public ICellManager
         return service->DescribeVolume(std::move(callContext), std::move(req));
     }
 
+    std::shared_ptr<NCells::TCellInboundActivity> GetInboundActivity() override
+    {
+        return nullptr;
+    }
+
     void Start() override
     {}
 

@@ -45,6 +45,12 @@ struct TCellManagerStub: public ICellManager
         return service->DescribeVolume(std::move(callContext), std::move(req));
     }
 
+    [[nodiscard]] std::shared_ptr<TCellInboundActivity>
+        GetInboundActivity() override
+    {
+        return nullptr;
+    }
+
     void Start() override
     {}
 

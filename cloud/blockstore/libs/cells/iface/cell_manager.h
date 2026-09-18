@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "connection.h"
+#include "inbound_activity.h"
 #include "host_endpoint.h"
 
 #include <cloud/blockstore/libs/client/public.h>
@@ -39,6 +40,12 @@ struct ICellManager: public IStartable
         const NProto::THeaders& headers,
         IBlockStorePtr service,
         const NProto::TClientConfig& clientConfig) = 0;
+
+    // The table the receiving-side forward service records inter-cell
+    // requests into, so the cells mon page can show them next to the
+    // outbound view. Owned here; the forward service is handed it to write.
+    [[nodiscard]] virtual std::shared_ptr<TCellInboundActivity>
+        GetInboundActivity() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
