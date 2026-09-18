@@ -217,7 +217,7 @@ public:
         TABLET_VERIFY(Args.ActualRange().IsAligned());
     }
 
-    void Accept(const TBlock& block, TStringBuf blockData) override
+    void Accept(const TBlock& block, std::pair<TStringBuf, IBlockBufferPtr> blockData) override
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
@@ -226,7 +226,7 @@ public:
 
         auto& prev = Args.Blocks[blockOffset];
         if (Update(prev, block, {}, 0)) {
-            Args.Buffer->SetBlock(blockOffset, blockData);
+            Args.Buffer->SetBlock(blockOffset, blockData.first);
         }
     }
 
