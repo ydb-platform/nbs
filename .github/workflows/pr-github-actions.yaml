@@ -67,6 +67,10 @@ jobs:
     if: >-
       ${{
         (
+          github.event_name == 'workflow_dispatch' ||
+          github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
+        ) &&
+        (
           github.event.action != 'labeled' ||
           contains(
             fromJSON(vars.LABELS_ALLOWED_TO_TRIGGER_PR_CHECKS || '[]'),
