@@ -1,4 +1,4 @@
 # Keep the async queue observable while the guest closes files and vhost/tablets
 # restart. Process one operation per interval regardless of the default batch size.
-AsyncHandleOperationBatchSize: 1
+AsyncHandleOperationBatchSize: 2
 AsyncHandleOperationDrainPeriod: 50
