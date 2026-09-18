@@ -8,6 +8,7 @@ SRCS(
     describe_volume_ut.cpp
     detachable_target_ut.cpp
     endpoint_router_ut.cpp
+    forward_service_ut.cpp
     host_pool_ut.cpp
     inbound_activity_ut.cpp
     transport_switcher_ut.cpp
