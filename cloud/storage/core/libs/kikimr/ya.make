@@ -26,6 +26,7 @@ PEERDIR(
 
     library/cpp/getopt/small
     library/cpp/lwtrace
+    library/cpp/protobuf/json
 
     contrib/ydb/library/actors/core
     contrib/ydb/library/actors/util

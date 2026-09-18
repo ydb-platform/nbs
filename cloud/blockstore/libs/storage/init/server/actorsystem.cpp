@@ -1,6 +1,7 @@
 #include "actorsystem.h"
 
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
+#include <cloud/blockstore/libs/configs_manager/configs_manager.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
@@ -139,10 +140,29 @@ public:
         const auto storageConfig = config->GetStorageConfig();
 
         storageConfig->Register(*appData->Icb);
+        auto blockstoreConfigHolder = InitializeBlockstoreConfigProvider(
+            Args.StartupBlockstoreConfig);
 
-        // TODO: the result shall be used by further dynamic YAML configuration
-        // implementation
-        (void)InitializeBlockstoreConfigProvider(Args.StartupBlockstoreConfig);
+        const NServer::TServerAppConfig staticServerConfig(
+            Args.StaticBlockstoreConfigProto.GetServer());
+        if (staticServerConfig.GetDynamicYamlConfigurationEnabled()) {
+            setup->LocalServices.emplace_back(
+                MakeConfigsManagerServiceId(),
+                TActorSetupCmd(
+                    CreateConfigsManager({
+                        .BlockstoreConfigHolder =
+                            std::move(blockstoreConfigHolder),
+                        .StaticConfig = Args.StaticBlockstoreConfigProto,
+                        .InitialDynamicConfig =
+                            Args.InitialDynamicBlockstoreConfig,
+                        .InitialDynamicConfigPresent =
+                            Args.InitialDynamicBlockstoreConfigPresent,
+                        .StorageConfigControls =
+                            storageConfig->GetStorageConfigControls(),
+                    }),
+                    TMailboxType::Revolving,
+                    appData->UserPoolId));
+        }
 
         //
         // SSProxy
@@ -611,6 +631,14 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
                 startupStorageConfig->GetSchemeShardDir(),
                 startupStorageConfig->GetNodeType(),
                 &runConfig.ConfigsDispatcherInitInfo);
+            if (staticServerConfig.GetDynamicYamlConfigurationEnabled()) {
+                constexpr ui32 kind =
+                    NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem;
+                AllowConfigItem(kind, &runConfig.ConfigsDispatcherInitInfo);
+                runConfig.ConfigsDispatcherInitInfo.OpaqueConfigParsers.emplace(
+                    kind,
+                    CreateBlockstoreOpaqueConfigParser());
+            }
             runConfig.ConfigsDispatcherInitInfo.InitialConfig = runConfig.AppConfig;
         }
     };
