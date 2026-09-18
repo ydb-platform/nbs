@@ -182,14 +182,18 @@ struct TBlobCompactionInfo
 {
     const ui32 BlobsSkippedByCompaction = 0;
     const ui32 BlocksSkippedByCompaction = 0;
+    const bool HasBlocksWithCommitIdGreaterThanCompactionCommitId = false;
     const ui32 MixedBlockCountSkippedByCompaction = 0;
 
     TBlobCompactionInfo(
             ui32 blobsSkippedByCompaction,
             ui32 blocksSkippedByCompaction,
+            bool hasBlocksWithCommitIdGreaterThanCompactionCommitId,
             ui32 mixedBlockCountSkippedByCompaction)
         : BlobsSkippedByCompaction(blobsSkippedByCompaction)
         , BlocksSkippedByCompaction(blocksSkippedByCompaction)
+        , HasBlocksWithCommitIdGreaterThanCompactionCommitId(
+              hasBlocksWithCommitIdGreaterThanCompactionCommitId)
         , MixedBlockCountSkippedByCompaction(mixedBlockCountSkippedByCompaction)
     {}
 };

@@ -17396,6 +17396,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // flush blob newer than compaction + 1024
         // blocks from compaction merged blob
         UNIT_ASSERT_VALUES_EQUAL(512 + 1 + 1024, counters->Counters.BlockCount);
+        UNIT_ASSERT(!counters->Counters.Compacted);
     }
 
     Y_UNIT_TEST(ShouldAccountForConcurrentWritesInCompactionMapCounters)
@@ -17457,6 +17458,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(2, counters->Counters.BlobCount);
         UNIT_ASSERT_VALUES_EQUAL(4, counters->Counters.BlockCount);
         UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.UsedBlockCount);
+        UNIT_ASSERT(!counters->Counters.Compacted);
     }
 }
 

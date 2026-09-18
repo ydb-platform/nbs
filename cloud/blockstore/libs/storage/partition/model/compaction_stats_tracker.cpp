@@ -77,10 +77,10 @@ TVector<ui32> TCompactionStatsTracker::FinishCompaction()
     VerifyCompactionIsActive();
 
     for (auto& counter: CurrentCompaction->CountersForRangeIndices) {
-        ui32 usedBlockCount = UsedBlocks.Count(
+        const auto usedBlockCount = UsedBlocks.Count(
             counter.BlockIndex,
-            Min(static_cast<ui64>(
-                    counter.BlockIndex + CompactionMap.GetRangeSize()),
+            Min(static_cast<ui64>(counter.BlockIndex) +
+                    static_cast<ui64>(CompactionMap.GetRangeSize()),
                 UsedBlocks.Capacity()));
 
         CompactionMap.Update(
@@ -90,7 +90,7 @@ TVector<ui32> TCompactionStatsTracker::FinishCompaction()
             usedBlockCount,
             counter.Stat.NewlyZeroedBlocks,
             counter.Stat.MixedBlockCount,
-            true);   // compacted
+            counter.Stat.Compacted);
     }
 
     TVector<ui32> rangeIndices = std::move(CurrentCompaction->RangeIndices);
@@ -104,6 +104,14 @@ void TCompactionStatsTracker::AbortCompaction()
 {
     VerifyCompactionIsActive();
     CurrentCompaction.reset();
+}
+
+void TCompactionStatsTracker::MarkAllEmptyRangesAsCompacted()
+{
+    VerifyCompactionIsActive();
+    for (auto& counter: CurrentCompaction->CountersForRangeIndices) {
+        counter.Stat.Compacted = counter.Stat.BlobCount == 0;
+    }
 }
 
 void TCompactionStatsTracker::VerifyCompactionIsActive() const

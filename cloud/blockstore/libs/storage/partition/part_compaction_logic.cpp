@@ -44,6 +44,7 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     TBlockMask zeroBlobSkipMask,
     ui32 blobsSkippedByCompaction,
     ui32 blocksSkippedByCompaction,
+    bool hasBlocksWithCommitIdGreaterThanCompactionCommitId,
     ui32 mixedBlockCountSkippedByCompaction,
     TVector<std::optional<ui32>> blockChecksums,
     EChannelDataKind channelDataKind,
@@ -60,6 +61,8 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     , ZeroBlobSkipMask(zeroBlobSkipMask)
     , BlobsSkippedByCompaction(blobsSkippedByCompaction)
     , BlocksSkippedByCompaction(blocksSkippedByCompaction)
+    , HasBlocksWithCommitIdGreaterThanCompactionCommitId(
+          hasBlocksWithCommitIdGreaterThanCompactionCommitId)
     , MixedBlockCountSkippedByCompaction(mixedBlockCountSkippedByCompaction)
     , BlockChecksums(std::move(blockChecksums))
     , ChannelDataKind(channelDataKind)
@@ -770,6 +773,7 @@ void AccountSkippedBlobsAndBlocks(
     const TAffectedBlobs& skippedBlobs,
     ui32& blobsSkipped,
     ui32& blocksSkipped,
+    bool& hasBlocksWithCommitIdGreaterThanCompactionCommitId,
     ui32& mixedBlocksSkipped)
 {
     // Fully skipped blobs retain all their blocks in the compaction range,
@@ -779,6 +783,9 @@ void AccountSkippedBlobsAndBlocks(
         if (IsDeletionMarker(blobId)) {
             continue;
         }
+
+        hasBlocksWithCommitIdGreaterThanCompactionCommitId |=
+            ab.MaxCommitIdInCompactionRange > commitId;
 
         switch (*ab.IndexKind) {
             case EChannelDataKind::Mixed:
@@ -826,6 +833,7 @@ void AccountSkippedBlobsAndBlocks(
             {
                 ++blocksSkipped;
                 ++mixedBlocksSkipped;
+                hasBlocksWithCommitIdGreaterThanCompactionCommitId = true;
             }
         }
 
@@ -896,6 +904,7 @@ void PrepareRangeCompaction(
         skippedBlobs,
         args.BlobsSkipped,
         args.BlocksSkipped,
+        args.HasBlocksWithCommitIdGreaterThanCompactionCommitId,
         args.MixedBlocksSkipped);
 }
 
@@ -965,6 +974,7 @@ void CompleteRangeCompaction(
         buildBlobContentResult.ZeroBlobSkipMask,
         args.BlobsSkipped,
         args.BlocksSkipped,
+        args.HasBlocksWithCommitIdGreaterThanCompactionCommitId,
         args.MixedBlocksSkipped,
         std::move(buildBlobContentResult.BlockChecksums),
         resultBlobIds.ChannelDataKind,

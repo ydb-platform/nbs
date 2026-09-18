@@ -1010,6 +1010,9 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             result.RangeCompactionInfos[0].BlocksSkippedByCompaction);
+        UNIT_ASSERT(
+            result.RangeCompactionInfos[0]
+                .HasBlocksWithCommitIdGreaterThanCompactionCommitId);
     }
 
     Y_UNIT_TEST(PrepareAccountsAllBlocksInIncrementallySkippedBlobs)
@@ -1167,6 +1170,7 @@ Y_UNIT_TEST_SUITE(TAccountSkippedBlobsAndBlocksTest)
         TAffectedBlobs blobsSkippedByCommitId;
         auto& skippedMixedBlob =
             blobsSkippedByCommitId[skippedMixedBlobId];
+        skippedMixedBlob.MaxCommitIdInCompactionRange = CommitId + 2;
         skippedMixedBlob.IndexKind = EChannelDataKind::Mixed;
         skippedMixedBlob.MixedBlobsSpecificInfo.ConstructInPlace();
         skippedMixedBlob.MixedBlobsSpecificInfo->AllVisitedBlocks = {
@@ -1177,12 +1181,14 @@ Y_UNIT_TEST_SUITE(TAccountSkippedBlobsAndBlocksTest)
 
         auto& skippedMergedBlob =
             blobsSkippedByCommitId[skippedMergedBlobId];
+        skippedMergedBlob.MaxCommitIdInCompactionRange = CommitId + 1;
         skippedMergedBlob.IndexKind = EChannelDataKind::Merged;
         skippedMergedBlob.MergedBlobsSpecificInfo.ConstructInPlace();
         skippedMergedBlob.MergedBlobsSpecificInfo->BlocksInRange = 4;
 
         ui32 blobsSkipped = 0;
         ui32 blocksSkipped = 0;
+        bool hasBlocksWithCommitIdGreaterThanCompactionCommitId = false;
         ui32 mixedBlocksSkipped = 0;
 
         AccountSkippedBlobsAndBlocks(
@@ -1192,11 +1198,13 @@ Y_UNIT_TEST_SUITE(TAccountSkippedBlobsAndBlocksTest)
             blobsSkippedByCommitId,
             blobsSkipped,
             blocksSkipped,
+            hasBlocksWithCommitIdGreaterThanCompactionCommitId,
             mixedBlocksSkipped);
 
         UNIT_ASSERT_VALUES_EQUAL(3, blobsSkipped);
         UNIT_ASSERT_VALUES_EQUAL(9, blocksSkipped);
         UNIT_ASSERT_VALUES_EQUAL(5, mixedBlocksSkipped);
+        UNIT_ASSERT(hasBlocksWithCommitIdGreaterThanCompactionCommitId);
     }
 }
 
