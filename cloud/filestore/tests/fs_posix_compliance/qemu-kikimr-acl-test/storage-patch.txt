@@ -1,0 +1,4 @@
+ExtendedAttributesDisabled: false
+GuestHandleKillPrivV2Enabled: true
+GuestPosixAclEnabled: true
+DirectoryCreationInShardsEnabled: true

@@ -22,6 +22,7 @@ SRCS(
     fresh_blocks.cpp
     fresh_bytes.cpp
     garbage_queue.cpp
+    xattr_acl_helpers.cpp
     group_by.cpp
     internal_request_id.cpp
     large_blocks.cpp

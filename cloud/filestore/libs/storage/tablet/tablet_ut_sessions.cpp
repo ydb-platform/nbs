@@ -1493,7 +1493,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetDirectoryHandlesPersistentHandleMaxSize(4_GB);
         features.SetZeroCopyWriteEnabled(true);
         features.SetGuestHandleKillPrivV2Enabled(true);
-        features.SetGuestPosixAclEnabled(false);
+        features.SetGuestPosixAclEnabled(true);
         features.SetZeroCopyReadEnabled(true);
         features.SetBlockChecksumsInProfileLogEnabled(true);
         features.SetReadBlobDisabled(true);
