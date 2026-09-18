@@ -44,6 +44,9 @@ namespace {
 
 constexpr ui64 PageClusterPageCount = 8;
 constexpr ui64 NodePageClusterSlotSize = 24;
+
+// Spare slots so the index is not full when the data area is.
+constexpr ui64 PageIndexSpareSlotShare = 16;
 constexpr ui64 MaxSpacePerStorageGroup = 100_GB;
 constexpr ui64 MaxNodePageClusterTableSlotCount =
     MaxSpacePerStorageGroup / (PageClusterPageCount * DefaultBlockSize);
@@ -99,8 +102,10 @@ public:
         const ui64 pageSize = pageStore->GetPageSize();
         const ui64 slotsPerPage = pageSize / NodePageClusterSlotSize;
         const ui64 pageClusterCount = CalcPageClusterCount(config, pageSize);
+        const ui64 slotCount = pageClusterCount
+            + pageClusterCount / PageIndexSpareSlotShare;
         const ui64 indexPageCount =
-            RoundUp(pageClusterCount, slotsPerPage) / slotsPerPage;
+            RoundUp(slotCount, slotsPerPage) / slotsPerPage;
         TNodePageClusterSlot tombstone{};
         tombstone.Key.NodeId = Max<ui64>();
         Slots = std::make_unique<THt>(
@@ -609,11 +614,14 @@ public:
         , Generation(generation)
         , StorageGroupFactory(std::move(storageGroupFactory))
         , Config(std::move(config))
-        , PageSize(Config.GetPageSize())
+        , PageSize(Config.GetPageSize() ? Config.GetPageSize() : DefaultBlockSize)
         , PageClusterSize(PageClusterPageCount * PageSize)
     {
-        // TODO(#5895): handle a bad config gracefully instead of aborting.
-        Y_ABORT_UNLESS(PageSize, "page size is not set");
+        // TODO(#5895): Remove fallback after proper shards configuration.
+        if (!Config.GetPageSize()) {
+            SILK_WARN("[%s] page size configuration is missing",
+                FileSystemId.c_str());
+        }
 
         //
         // Using only one storage group for now.
