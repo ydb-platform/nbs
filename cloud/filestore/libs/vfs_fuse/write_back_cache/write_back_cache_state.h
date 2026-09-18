@@ -84,16 +84,6 @@ private:
     // It will be used in the future to prevent hanging on session destroy.
     THangingRequests HangingRequests;
 
-    // An allocated pending request can be safely removed while it is being
-    // serialized. We put these request to a separate queue and postpone sending
-    // the response until serialization is completed.
-    struct TFailedPendingRequest
-    {
-        std::unique_ptr<TPendingWriteDataRequest> Request;
-        NProto::TError Error;
-    };
-    TDeque<TFailedPendingRequest> FailedPendingRequests;
-
     // Either the persistent storage is corrupted or an internal problem in
     // the logic has happened. This is fatal and should result in suspending all
     // operations until manual resolution takes place.
@@ -192,7 +182,9 @@ public:
 
     // Inform that the flush has failed - the error should be propagated to
     // Flush, FlushAll and ReleaseHandle requests.
-    // In the case of E_FS_NOSPC, pending requests will also be failed.
+    // Unallocated pending requests will also be failed with the same error.
+    // In the case of E_FS_NOSPC, unallocated pending requests will be failed
+    // for all nodes.
     EFlushRetryStatus FlushFailed(
         ui64 nodeId,
         const NCloud::NProto::TError& error);
