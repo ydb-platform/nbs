@@ -25,6 +25,16 @@ public:
         : PageSize(pageSize)
     {}
 
+    // IStartable
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    // IDevice
+
     TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
         TVector<TPageRangeRef> rangeRefs) override
     {

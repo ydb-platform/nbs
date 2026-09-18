@@ -1,7 +1,7 @@
 PY3TEST()
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/large.inc)
-SPLIT_FACTOR(1)
+SPLIT_FACTOR(2)
 
 TEST_SRCS(
     test.py
@@ -40,12 +40,8 @@ SET(FILESTORE_BLOCKS_COUNT 524288)
 SET(VIRTIOFS_SERVER_COUNT 1)
 SET(QEMU_INVOKE_TEST NO)
 
-# Using 1 device to make the test stable. The current implementation of
-# mirroring is a prototype and doesn't guarantee atomicity and consistency so
-# with 3 devices we might run into some inconsistencies between different data
-# structures from time to time when one data structure page is read from one
-# device and the other - from another device.
-SET(FASTSHARD_DA_DEVICE_COUNT 1)
+# tests can use up to 3 devices
+SET(FASTSHARD_DA_DEVICE_COUNT 3)
 # 1GiB should be more than enough.
 SET(FASTSHARD_DA_DEVICE_SIZE 1073741824)
 

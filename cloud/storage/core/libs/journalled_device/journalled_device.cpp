@@ -35,10 +35,14 @@ public:
     // IJournalledDevice
 
     void Start() override
-    {}
+    {
+        DataStore->Start();
+    }
 
     void Stop() override
-    {}
+    {
+        DataStore->Stop();
+    }
 
     [[nodiscard]] auto ReadPages(
         NCloud::NProto::TReadPagesRequest request)

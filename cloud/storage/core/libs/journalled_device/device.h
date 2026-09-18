@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/startable.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -27,7 +28,7 @@ struct TPageRange
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IDevice
+struct IDevice: public IStartable
 {
     virtual ~IDevice() = default;
 

@@ -187,7 +187,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
             const auto& error = response.GetAcquireDevices().GetError();
 
-            UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, error.GetCode());
+            // devices are acquired by the disk agent itself on start, the
+            // request is accepted as a no-op even for unknown devices
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
         }
 
         {
@@ -354,9 +356,8 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
         // an unknown device is rejected before the request is validated
 
-        for (const auto& error: {
-                 writeLogRecord(unknownUuid),
-                 readPages(unknownUuid)})
+        for (const auto& error:
+             {writeLogRecord(unknownUuid), readPages(unknownUuid)})
         {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_NOT_FOUND,

@@ -34,9 +34,8 @@ using TKeyBuffers = TVector<TKeyBuffer>;
 
 TString Get(const TKeyBuffers& buffers, ui64 key)
 {
-    auto it = FindIf(buffers, [key](const auto& entry) {
-        return entry.Key == key;
-    });
+    auto it =
+        FindIf(buffers, [key](const auto& entry) { return entry.Key == key; });
     UNIT_ASSERT_C(it != buffers.end(), "key " << key << " is missing");
     return AsString(it->Buffer);
 }
@@ -83,7 +82,8 @@ ui32 EraseBelow(const IKeyBufferStorePtr& store, ui64 key)
 
 ILoggingServicePtr TestLogging()
 {
-    static const ILoggingServicePtr logging = [] {
+    static const ILoggingServicePtr logging = []
+    {
         auto logging = CreateLoggingService(
             "console",
             {.FiltrationLevel = TLOG_RESOURCES});
@@ -115,9 +115,7 @@ IKeyBufferStorePtr OpenTestStore(
 }
 
 // what a fresh store instance restores from the device
-TKeyBuffers Reopen(
-    const IDevicePtr& device,
-    ui64 pageCount = TestPageCount)
+TKeyBuffers Reopen(const IDevicePtr& device, ui64 pageCount = TestPageCount)
 {
     return Restore(CreateTestStore(device, pageCount));
 }
@@ -142,8 +140,7 @@ void WriteToDevice(const IDevicePtr& device, ui64 pageNo, TString content)
     TPageRange range{.FirstPageNo = pageNo};
     range.Pages.emplace_back(content.data(), content.size());
 
-    const auto error =
-        device->WritePages({std::move(range)}).GetValueSync();
+    const auto error = device->WritePages({std::move(range)}).GetValueSync();
     UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 }
 
@@ -178,6 +175,12 @@ private:
 public:
     bool Broken = false;
 
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
     NThreading::TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
         TVector<TPageRangeRef> rangeRefs) override
     {
@@ -188,8 +191,7 @@ public:
         TVector<TPageRange> ranges) override
     {
         if (Broken) {
-            return NThreading::MakeFuture(
-                MakeError(E_IO, "device is broken"));
+            return NThreading::MakeFuture(MakeError(E_IO, "device is broken"));
         }
 
         auto promise = NThreading::NewPromise<NCloud::NProto::TError>();

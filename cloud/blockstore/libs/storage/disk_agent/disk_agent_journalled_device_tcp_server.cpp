@@ -21,38 +21,15 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr NProto::EVolumeAccessMode DefaultAccessMode =
-    NProto::VOLUME_ACCESS_READ_WRITE;
-constexpr ui64 DefaultMountSeqNumber = 0;
-constexpr ui64 DefaultVolumeGeneration = 0;
-
-////////////////////////////////////////////////////////////////////////////////
-
-void CopyHeaders(
-    NProto::THeaders& dst,
-    const NCloud::NProto::TDeviceRequestHeaders& src)
-{
-    dst.SetClientId(src.GetClientId());
-    dst.SetRequestTimeout(src.GetRequestTimeout());
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TJournalledDeviceHandler final: public IServerBackend
 {
 private:
-    TActorSystem* ActorSystem = nullptr;
-    const TActorId DiskAgentActorId;
     const THashMap<TString, NJournalled::IJournalledDevicePtr> Devices;
 
 public:
-    TJournalledDeviceHandler(
-        TActorSystem* actorSystem,
-        const TActorId& diskAgentActorId,
+    explicit TJournalledDeviceHandler(
         THashMap<TString, NJournalled::IJournalledDevicePtr> devices)
-        : ActorSystem(actorSystem)
-        , DiskAgentActorId(diskAgentActorId)
-        , Devices(std::move(devices))
+        : Devices(std::move(devices))
     {}
 
     // IServerBackend
@@ -67,62 +44,21 @@ public:
         NCloud::NProto::TAcquireDevicesRequest request)
         -> TFuture<NCloud::NProto::TAcquireDevicesResponse> final
     {
-        auto ev = std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
+        Y_UNUSED(request);
 
-        CopyHeaders(*ev->Record.MutableHeaders(), request.GetHeaders());
-        ev->Record.MutableDeviceUUIDs()->Assign(
-            request.GetDeviceUUIDs().begin(),
-            request.GetDeviceUUIDs().end());
-        ev->Record.SetAccessMode(DefaultAccessMode);
-        ev->Record.SetMountSeqNumber(DefaultMountSeqNumber);
-        ev->Record.SetDiskId(request.GetHeaders().GetClientId());
-        ev->Record.SetVolumeGeneration(DefaultVolumeGeneration);
-
-        auto future = ActorSystem->Ask<TEvDiskAgent::TEvAcquireDevicesResponse>(
-            DiskAgentActorId,
-            THolder(ev.release()));
-
-        return future.Apply(
-            [](const auto& future)
-            {
-                NCloud::NProto::TAcquireDevicesResponse response;
-                const auto& ev = future.GetValue();
-                response.MutableError()->CopyFrom(ev->Record.GetError());
-
-                return response;
-            });
+        return MakeFuture<NCloud::NProto::TAcquireDevicesResponse>();
     }
 
     [[nodiscard]] auto ReleaseDevices(
         NCloud::NProto::TReleaseDevicesRequest request)
         -> TFuture<NCloud::NProto::TReleaseDevicesResponse> final
     {
-        auto promise = NewPromise<NCloud::NProto::TReleaseDevicesResponse>();
+        Y_UNUSED(request);
 
-        auto ev = std::make_unique<TEvDiskAgent::TEvReleaseDevicesRequest>();
-
-        CopyHeaders(*ev->Record.MutableHeaders(), request.GetHeaders());
-        ev->Record.MutableDeviceUUIDs()->Assign(
-            request.GetDeviceUUIDs().begin(),
-            request.GetDeviceUUIDs().end());
-
-        auto future = ActorSystem->Ask<TEvDiskAgent::TEvReleaseDevicesResponse>(
-            DiskAgentActorId,
-            THolder(ev.release()));
-
-        return future.Apply(
-            [](const auto& future)
-            {
-                NCloud::NProto::TReleaseDevicesResponse response;
-                const auto& ev = future.GetValue();
-                response.MutableError()->CopyFrom(ev->Record.GetError());
-
-                return response;
-            });
+        return MakeFuture<NCloud::NProto::TReleaseDevicesResponse>();
     }
 
-    [[nodiscard]] auto ReadPages(
-        NCloud::NProto::TReadPagesRequest request)
+    [[nodiscard]] auto ReadPages(NCloud::NProto::TReadPagesRequest request)
         -> TFuture<NCloud::NProto::TReadPagesResponse> final
     {
         auto [device, error] = GetDevice(request.GetDeviceUUID());
@@ -183,8 +119,10 @@ private:
 
         auto* device = Devices.FindPtr(deviceUUID);
         if (!device) {
-            return MakeError(E_NOT_FOUND, TStringBuilder()
-                << "Device " << deviceUUID.Quote() << " not found");
+            return MakeError(
+                E_NOT_FOUND,
+                TStringBuilder()
+                    << "Device " << deviceUUID.Quote() << " not found");
         }
 
         return *device;
@@ -234,10 +172,7 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
             listenAddress,
             Logging,
             Executor,
-            std::make_shared<TJournalledDeviceHandler>(
-                TActivationContext::ActorSystem(),
-                ctx.SelfID,
-                std::move(devices)));
+            std::make_shared<TJournalledDeviceHandler>(std::move(devices)));
 
         JournalledDeviceTcpServer->Start();
 

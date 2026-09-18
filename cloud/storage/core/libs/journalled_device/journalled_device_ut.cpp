@@ -18,13 +18,18 @@ struct TTestDevice final: public IDevice
 {
     ui32 WritePagesCount = 0;
 
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
     [[nodiscard]] auto ReadPages(TVector<TPageRangeRef> rangeRefs)
         -> TFuture<TResultOrError<TVector<TBuffer>>> final
     {
         Y_UNUSED(rangeRefs);
 
-        return MakeFuture<TResultOrError<TVector<TBuffer>>>(
-            TVector<TBuffer>());
+        return MakeFuture<TResultOrError<TVector<TBuffer>>>(TVector<TBuffer>());
     }
 
     [[nodiscard]] auto WritePages(TVector<TPageRange> ranges)
@@ -83,9 +88,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceTest)
                 E_ARGUMENT,
                 error.GetCode(),
                 FormatError(error));
-            UNIT_ASSERT_STRING_CONTAINS(
-                error.GetMessage(),
-                "invalid lsn: 0");
+            UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "invalid lsn: 0");
         }
 
         // the lsn is equal to the prev one
