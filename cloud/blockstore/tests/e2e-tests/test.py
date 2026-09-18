@@ -71,13 +71,19 @@ def nbd_netlink():
 
 
 @pytest.fixture
-def nbd_request_timeout():
-    return 10
+def nbs_config(request):
+    marker = request.node.get_closest_marker("nbs_config")
+    return marker.kwargs if marker is not None else {}
 
 
 @pytest.fixture
-def max_zero_blocks_sub_request_size():
-    return None
+def nbd_request_timeout(nbs_config):
+    return nbs_config.get("nbd_request_timeout", 10)
+
+
+@pytest.fixture
+def max_zero_blocks_sub_request_size(nbs_config):
+    return nbs_config.get("max_zero_blocks_sub_request_size")
 
 
 @pytest.fixture
@@ -198,7 +204,7 @@ def log_called_process_error(exc):
     )
 
 
-@pytest.mark.parametrize('nbd_netlink', [True, False])
+@pytest.mark.parametrize("nbd_netlink", [True, False], ids=["netlink", "ioctl"])
 def test_free_device_allocation(nbs_cli, nbd_netlink):
     disk = "disk"
     block_size = 4096
@@ -298,7 +304,7 @@ def force_nbd_reconnect(
     assert proc.returncode == 0
 
 
-@pytest.mark.parametrize("nbd_request_timeout", [2])
+@pytest.mark.nbs_config(nbd_request_timeout=2)
 def test_nbd_reconnect(env, nbs_cli, nbd_request_timeout):
     disk_id = "disk0"
     block_size = 4096
@@ -368,9 +374,11 @@ def test_nbd_reconnect(env, nbs_cli, nbd_request_timeout):
         )
 
 
-@pytest.mark.parametrize('nbd_netlink', [True, False])
-@pytest.mark.parametrize("nbd_request_timeout", [2])
-@pytest.mark.parametrize("max_zero_blocks_sub_request_size", [512 * 1024 * 1024])
+@pytest.mark.parametrize("nbd_netlink", [True, False], ids=["netlink", "ioctl"])
+@pytest.mark.nbs_config(
+    nbd_request_timeout=2,
+    max_zero_blocks_sub_request_size=512 * 1024 * 1024,
+)
 def test_resize_device(env, nbs_cli, nbd_netlink, nbd_request_timeout):
     volume_name = "example-disk"
     block_size = 4096
@@ -589,7 +597,7 @@ def test_do_not_restore_endpoint_with_missing_volume(env_factory, endpoints_dir)
             )
 
 
-def test_restore_endpoint_when_socket_directory_does_not_exist(env, run):
+def test_restore_endpoint_when_socket_directory_does_not_exist(env, nbs_cli):
     # Scenario:
     # 1. run nbs
     # 2. create volume and start endpoint
@@ -656,7 +664,7 @@ def test_restore_endpoint_when_socket_directory_does_not_exist(env, run):
         )
 
 
-@pytest.mark.parametrize("max_zero_blocks_sub_request_size", [512 * 1024 * 1024])
+@pytest.mark.nbs_config(max_zero_blocks_sub_request_size=512 * 1024 * 1024)
 def test_discard_device(nbs_cli):
     volume_name = "example-disk"
     block_size = 4096
