@@ -225,6 +225,7 @@ func RegisterForExecution(
 				storage:                   storage,
 				storageQuotaReporter:      snapshotStorageQuotaReporter,
 				metricsCollectionInterval: snapshotMetricsCollectionInterval,
+				backupEnabled:             slaveS3 != nil,
 			}
 		},
 	)
@@ -278,7 +279,13 @@ func RegisterForExecution(
 		err = taskRegistry.RegisterForExecution(
 			"dataplane.BackupSnapshot",
 			func() tasks.Task {
-				return &backupSnapshotTask{}
+				return &backupSnapshotTask{
+					storage:          storage,
+					s3:               slaveS3,
+					bucket:           backupConfig.GetS3Bucket(),
+					keyPrefix:        backupConfig.GetS3KeyPrefix(),
+					enqueueBatchSize: int(backupConfig.GetEnqueueBatchSize()),
+				}
 			},
 		)
 		if err != nil {
@@ -295,7 +302,15 @@ func RegisterForExecution(
 		err = taskRegistry.RegisterForExecution(
 			"dataplane.BackupChunks",
 			func() tasks.Task {
-				return &backupChunksTask{}
+				return &backupChunksTask{
+					storage:     storage,
+					s3:          slaveS3,
+					bucket:      backupConfig.GetS3Bucket(),
+					keyPrefix:   backupConfig.GetS3KeyPrefix(),
+					batchSize:   int(backupConfig.GetBackupChunksBatchSize()),
+					workerCount: int(backupConfig.GetBackupChunksWorkerCount()),
+					registry:    metricsRegistry,
+				}
 			},
 		)
 		if err != nil {

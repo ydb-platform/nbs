@@ -13,4 +13,9 @@ message SnapshotStorageBackupConfig {
     required string S3Bucket = 2;
     optional string S3KeyPrefix = 3;
     optional string BackupChunksTaskScheduleInterval = 4 [default = "10s"];
+    // Number of chunks put into backup_queue in one transaction.
+    optional uint32 EnqueueBatchSize = 5 [default = 1000];
+    // Number of chunks copied by one dataplane.BackupChunks iteration.
+    optional uint32 BackupChunksBatchSize = 6 [default = 100];
+    optional uint32 BackupChunksWorkerCount = 7 [default = 10];
 }

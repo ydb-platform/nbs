@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Chunk map of a backed up snapshot: chunk id for every chunk index, empty id
+// for a zero chunk. Written last, when all chunks are already copied.
+message BackupChunkMap {
+    repeated string ChunkIds = 1;
+}

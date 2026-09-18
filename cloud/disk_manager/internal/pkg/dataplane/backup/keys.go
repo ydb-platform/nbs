@@ -22,6 +22,14 @@ func ImageMetaKey(keyPrefix string, imageID string) string {
 	return key(keyPrefix, fmt.Sprintf("images/%v/meta.json", imageID))
 }
 
+func ChunkKey(keyPrefix string, chunkID string) string {
+	return key(keyPrefix, fmt.Sprintf("chunks/%v", chunkID))
+}
+
+func ChunkMapKey(keyPrefix string, snapshotID string) string {
+	return key(keyPrefix, fmt.Sprintf("chunk_maps/%v", snapshotID))
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func key(keyPrefix string, object string) string {

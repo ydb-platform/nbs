@@ -10,4 +10,13 @@ message BackupSnapshotRequest {
     string SnapshotId = 1;
 }
 
-message BackupSnapshotTaskState {}
+message BackupSnapshotTaskState {
+    uint32 MilestoneChunkIndex = 1;
+    uint32 ChunkCount = 2;
+    uint32 EnqueuedChunkCount = 3;
+    double Progress = 4;
+}
+
+message BackupSnapshotMetadata {
+    double Progress = 1;
+}
