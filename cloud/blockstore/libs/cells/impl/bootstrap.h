@@ -22,9 +22,11 @@ struct TBootstrap
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
+    TDiagnosticsConfigPtr DiagnosticsConfig;
     ITraceSerializerPtr TraceSerializer;
 
     NCloud::ICertificateProviderPtr CertProvider;
+    IBlockStorePtr LocalService;
     NClient::IMultiHostClientPtr GrpcClient;
     NCloud::NStorage::NRdma::IClientPtr RdmaClient;
 

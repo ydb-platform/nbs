@@ -1036,9 +1036,11 @@ void TBootstrapYdb::SetupCellManager()
             Scheduler,
             Logging,
             Monitoring,
+            Configs->DiagnosticsConfig,
             GetTraceSerializer(),
             ServerStats,
             std::move(cellCertProvider),
+            Service,
             RdmaClient);
     } else {
         CellManager = NCells::CreateCellManagerStub();

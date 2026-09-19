@@ -15,6 +15,8 @@
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/threading/future/wait/wait.h>
+
 #include <util/datetime/base.h>
 #include <util/system/hostname.h>
 
@@ -53,6 +55,34 @@ struct TCellInfo
         Hosts.reserve(clientCount);
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+// A describe carrying a CellId reaches one cell; an empty CellId means the
+// local service. The inter-cell request never inherits the caller's Internal.
+std::shared_ptr<NProto::TDescribeVolumeRequest> PrepareCellDescribeRequest(
+    const NProto::TDescribeVolumeRequest& request,
+    const TString& cellId)
+{
+    auto req = std::make_shared<NProto::TDescribeVolumeRequest>(request);
+    auto& headers = *req->MutableHeaders();
+    if (cellId) {
+        headers.ClearInternal();
+        headers.SetCellId(cellId);
+    } else {
+        headers.SetCellId(LocalDescribeLabel);
+    }
+    return req;
+}
+
+// During a cross-cell migration the destination copy also answers a describe;
+// it carries the source disk id tag and is not the volume a client should use.
+bool IsMigrationDestinationResponse(
+    const NProto::TDescribeVolumeResponse& response)
+{
+    return !HasError(response) &&
+           response.GetVolume().GetTags().contains(SourceDiskIdTagName);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -260,16 +290,7 @@ TDescribeResponseHandler::TDescribeResponseHandler(
 void TDescribeResponseHandler::Start()
 {
     auto callContext = MakeIntrusive<TCallContext>();
-
-    auto req = std::make_shared<NProto::TDescribeVolumeRequest>();
-    req->CopyFrom(Request);
-    auto& headers = *req->MutableHeaders();
-    if (Cell.CellId) {
-        headers.ClearInternal();
-        headers.SetCellId(Cell.CellId);
-    } else {
-        headers.SetCellId(LocalDescribeLabel);
-    }
+    auto req = PrepareCellDescribeRequest(Request, Cell.CellId);
 
     auto weak = weak_from_this();
     Future = HostInfo.Client->DescribeVolume(callContext, std::move(req));
@@ -293,38 +314,31 @@ void TDescribeResponseHandler::HandleResponse(const auto& future)
         return;
     }
     auto response = future.GetValue();
-    if (!HasError(response)) {
-        const auto& volume = response.GetVolume();
-        // DescribeVolume requests are sent to all cells at the start endpoint.
-        // If there is a relocation in progress, we may receive multiple responses
-        // for the same volume from both the source and destination disks.
-        // We should ignore responses from the destination disk, since the user
-        // should only interact with the source disk.
-        // The source disk ID tag is set on the destination disk during migration,
-        // so we should ignore response for disk with this tag.
-        if (volume.GetTags().contains(SourceDiskIdTagName)) {
-            STORAGE_DEBUG(
-                TStringBuilder() << "DescribeVolume: got response for disk "
-                                 << Request.GetDiskId().Quote() << " with source disk id "
-                                 << volume.GetTags().at(SourceDiskIdTagName).Quote()
-                                 << " from "
-                                 << HostInfo.Fqdn
-                                 << " but it will be ignored since volume has source disk id "
-                                 "tag");
+    if (IsMigrationDestinationResponse(response)) {
+        STORAGE_DEBUG(
+            TStringBuilder() << "DescribeVolume: got response for disk "
+                             << Request.GetDiskId().Quote()
+                             << " with source disk id "
+                             << response.GetVolume()
+                                    .GetTags()
+                                    .at(SourceDiskIdTagName)
+                                    .Quote()
+                             << " from " << HostInfo.Fqdn
+                             << " but it will be ignored since volume has "
+                                "source disk id tag");
 
-            const auto* msg =
-                "DescribeVolume response ignored since volume has source disk "
-                "id tag";
-            *response.MutableError() = MakeError(E_NOT_FOUND, msg);
-        } else {
-            STORAGE_DEBUG(
-                TStringBuilder() << "DescribeVolume: got success for disk "
-                                 << Request.GetDiskId().Quote() << " from "
-                                 << HostInfo.Fqdn);
-            response.SetCellId(Cell.CellId);
-            owner->Reply(std::move(response));
-            return;
-        }
+        const auto* msg =
+            "DescribeVolume response ignored since volume has source disk "
+            "id tag";
+        *response.MutableError() = MakeError(E_NOT_FOUND, msg);
+    } else if (!HasError(response)) {
+        STORAGE_DEBUG(
+            TStringBuilder() << "DescribeVolume: got success for disk "
+                             << Request.GetDiskId().Quote() << " from "
+                             << HostInfo.Fqdn);
+        response.SetCellId(Cell.CellId);
+        owner->Reply(std::move(response));
+        return;
     }
 
     STORAGE_DEBUG(
@@ -390,6 +404,130 @@ TDescribeVolumeFuture DescribeVolume(
         std::move(request),
         hasUnavailableCells);
     return describeHandler->Start(config.GetDescribeVolumeTimeout());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsMoreAuthoritative(ECellDescribeStatus candidate, ECellDescribeStatus current)
+{
+    // ECellDescribeStatus is declared from the most to the least authoritative
+    return candidate < current;
+}
+
+ECellDescribeStatus ClassifyResponse(
+    const NProto::TDescribeVolumeResponse& response)
+{
+    if (IsMigrationDestinationResponse(response)) {
+        return ECellDescribeStatus::NotFound;
+    }
+    if (!HasError(response)) {
+        return ECellDescribeStatus::Found;
+    }
+
+    const auto code = response.GetError().GetCode();
+    if (code == E_NOT_FOUND ||
+        code == MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist))
+    {
+        return ECellDescribeStatus::NotFound;
+    }
+    return ECellDescribeStatus::Failed;
+}
+
+}   // namespace
+
+TVector<TCellDescribeResult> DescribeVolumeForMonitoring(
+    NProto::TDescribeVolumeRequest request,
+    const TVector<TString>& cellIds,
+    const TCellHostEndpointsByCellId& endpoints,
+    IBlockStorePtr localService,
+    TDuration timeout)
+{
+    struct TPending
+    {
+        ui32 ResultIndex;
+        TString Fqdn;
+        TFuture<NProto::TDescribeVolumeResponse> Future;
+    };
+
+    // give the fired RPCs the same deadline as our wait, so they do not
+    // outlive the mon response and pile up during a degradation; every copy
+    // made by PrepareCellDescribeRequest inherits it
+    request.MutableHeaders()->SetRequestTimeout(timeout.MilliSeconds());
+
+    TVector<TCellDescribeResult> results;
+    TVector<TPending> pending;
+    TVector<TFuture<void>> inflight;
+
+    auto fire = [&] (ui32 resultIndex,
+                     const TString& cellId,
+                     const TString& fqdn,
+                     const IBlockStorePtr& client)
+    {
+        auto future = client->DescribeVolume(
+            MakeIntrusive<TCallContext>(),
+            PrepareCellDescribeRequest(request, cellId));
+        inflight.push_back(future.IgnoreResult());
+        pending.push_back({resultIndex, fqdn, std::move(future)});
+    };
+
+    // every cell starts Unavailable; the first real answer from any of its
+    // hosts is always more authoritative and takes over
+    for (const auto& cellId: cellIds) {
+        ui32 index = results.size();
+        auto& result = results.emplace_back();
+        result.CellId = cellId;
+        result.Status = ECellDescribeStatus::Unavailable;
+
+        auto it = endpoints.find(cellId);
+        if (it == endpoints.end()) {
+            continue;
+        }
+        for (const auto& client: it->second) {
+            fire(index, cellId, client.GetFqdn(), client.GetService());
+        }
+    }
+
+    if (localService) {
+        ui32 index = results.size();
+        auto& result = results.emplace_back();
+        // CellId left empty to mark the local row
+        result.Status = ECellDescribeStatus::Unavailable;
+        fire(index, {}, FQDNHostName(), localService);
+    }
+
+    WaitAll(inflight).Wait(timeout);
+
+    for (auto& p: pending) {
+        auto& result = results[p.ResultIndex];
+
+        ECellDescribeStatus status;
+        TString fqdn;
+        NProto::TError error;
+        if (!p.Future.HasValue()) {
+            status = ECellDescribeStatus::Failed;
+            error = MakeError(E_TIMEOUT, "describe timed out");
+        } else {
+            auto response = p.Future.GetValue();
+            status = ClassifyResponse(response);
+            if (status == ECellDescribeStatus::Found) {
+                fqdn = p.Fqdn;
+            } else {
+                error = response.GetError();
+            }
+        }
+
+        if (IsMoreAuthoritative(status, result.Status)) {
+            result.Status = status;
+            result.Fqdn = std::move(fqdn);
+            result.Error = std::move(error);
+        }
+    }
+
+    return results;
 }
 
 }   // namespace NCloud::NBlockStore::NCells

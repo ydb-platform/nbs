@@ -19,9 +19,11 @@ ICellManagerPtr CreateCellManager(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
     ICertificateProviderPtr certificateProvider,
+    IBlockStorePtr localService,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient);
 
 }   // namespace NCloud::NBlockStore::NCells

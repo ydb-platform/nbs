@@ -58,7 +58,8 @@ struct TCellManager: public ICellManager
     [[nodiscard]] std::shared_ptr<TCellInboundActivity>
         GetInboundActivity() override;
 
-    void OutputHtml(IOutputStream& out);
+    void OutputHtml(IMonHttpRequest& request);
+    void OutputSearchResult(IOutputStream& out, const TString& diskId);
 
 private:
     [[nodiscard]] TCellHostEndpointsByCellId GetCellsEndpoints(

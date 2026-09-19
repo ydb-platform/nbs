@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 
@@ -27,6 +28,7 @@
 #include <library/cpp/html/pcdata/pcdata.h>
 
 #include <util/generic/hash_set.h>
+#include <util/generic/utility.h>
 #include <util/random/random.h>
 #include <util/system/hostname.h>
 
@@ -49,7 +51,7 @@ public:
 
     void OutputContent(IMonHttpRequest& request) override
     {
-        Manager.OutputHtml(request.Output());
+        Manager.OutputHtml(request);
     }
 };
 
@@ -188,8 +190,23 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
         Bootstrap);
 }
 
-void TCellManager::OutputHtml(IOutputStream& out)
+void TCellManager::OutputHtml(IMonHttpRequest& request)
 {
+    auto& out = request.Output();
+
+    HTML(out) {
+        TAG(TH3) { out << "Find a disk"; }
+        out << "<form method='GET'>"
+            << "<input type='text' name='Volume'/>"
+            << "<input type='hidden' name='action' value='search'/>"
+            << "<input class='btn btn-primary' type='submit'"
+            << " value='Search'/>"
+            << "</form>";
+    }
+    if (request.GetParams().Get("action") == "search") {
+        OutputSearchResult(out, request.GetParams().Get("Volume"));
+    }
+
     HTML(out) {
         TAG(TH3) { out << "Cells config"; }
     }
@@ -300,6 +317,96 @@ void TCellManager::OutputHtml(IOutputStream& out)
     }
 }
 
+void TCellManager::OutputSearchResult(
+    IOutputStream& out,
+    const TString& diskId)
+{
+    if (!diskId) {
+        return;
+    }
+
+    NProto::TClientAppConfig clientAppConfig;
+    auto& clientConfig = *clientAppConfig.MutableClientConfig();
+    clientConfig = Config->GetGrpcClientConfig().GetClientConfig();
+    clientConfig.SetClientId(FQDNHostName());
+    auto appConfig =
+        std::make_shared<NClient::TClientAppConfig>(clientAppConfig);
+
+    NProto::TDescribeVolumeRequest request;
+    request.SetDiskId(diskId);
+    request.MutableHeaders()->SetClientId(FQDNHostName());
+
+    TVector<TString> cellIds;
+    cellIds.reserve(Config->GetCells().size());
+    for (const auto& [cellId, cellConfig]: Config->GetCells()) {
+        Y_UNUSED(cellConfig);
+        cellIds.push_back(cellId);
+    }
+
+    // a monitoring describe blocks the mon thread, so cap the wait well below
+    // the request-path timeout
+    auto results = DescribeVolumeForMonitoring(
+        std::move(request),
+        cellIds,
+        GetCellsEndpoints(appConfig),
+        Bootstrap.LocalService,
+        Min(Config->GetDescribeVolumeTimeout(), TDuration::Seconds(10)));
+
+    const auto monPort = Bootstrap.DiagnosticsConfig->GetNbsMonPort();
+
+    HTML(out) {
+        TAG(TH4) { out << "Search result for " << EncodeHtmlPcdata(diskId); }
+        TABLE_CLASS("table table-condensed") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Cell"; }
+                    TABLEH() { out << "Disk found on"; }
+                }
+            }
+            TABLEBODY() {
+                for (const auto& result: results) {
+                    TABLER() {
+                        TABLED() {
+                            out << (result.CellId
+                                        ? EncodeHtmlPcdata(*result.CellId)
+                                        : TString("local"));
+                        }
+                        TABLED() {
+                            switch (result.Status) {
+                                case ECellDescribeStatus::Found:
+                                    out << "<a href='";
+                                    // the local disk is served from this same
+                                    // node, so its mon link stays host-relative
+                                    if (result.CellId) {
+                                        out << "http://"
+                                            << EncodeHtmlPcdata(result.Fqdn)
+                                            << ":" << monPort;
+                                    }
+                                    out << "/blockstore/service?Volume="
+                                        << EncodeHtmlPcdata(diskId) << "'>"
+                                        << EncodeHtmlPcdata(result.Fqdn)
+                                        << "</a>";
+                                    break;
+                                case ECellDescribeStatus::NotFound:
+                                    out << "not found";
+                                    break;
+                                case ECellDescribeStatus::Unavailable:
+                                    out << "unavailable (not connected)";
+                                    break;
+                                case ECellDescribeStatus::Failed:
+                                    out << "lookup failed: "
+                                        << EncodeHtmlPcdata(
+                                               FormatError(result.Error));
+                                    break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 ICellManagerPtr CreateCellManager(
@@ -308,9 +415,11 @@ ICellManagerPtr CreateCellManager(
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
+    TDiagnosticsConfigPtr diagnosticsConfig,
     ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
     ICertificateProviderPtr certificateProvider,
+    IBlockStorePtr localService,
     NCloud::NStorage::NRdma::IClientPtr rdmaClient)
 {
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
@@ -341,8 +450,10 @@ ICellManagerPtr CreateCellManager(
         .Scheduler = std::move(scheduler),
         .Logging = std::move(logging),
         .Monitoring = std::move(monitoring),
+        .DiagnosticsConfig = std::move(diagnosticsConfig),
         .TraceSerializer = std::move(traceSerializer),
         .CertProvider = std::move(certificateProvider),
+        .LocalService = std::move(localService),
         .GrpcClient = std::move(result.ExtractResult()),
         .RdmaClient = std::move(rdmaClient),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
