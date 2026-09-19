@@ -185,7 +185,7 @@ void DumpCheckpoints(
             TABLEBODY() {
                 for (const auto& mapping: checkpointId2CommitId) {
                     const auto& checkpointId = mapping.first;
-                    const auto& commitId = mapping.second;
+                    const ui64& commitId = mapping.second;
 
                     const auto* checkpoint = FindIfPtr(
                         checkpoints,
@@ -201,7 +201,7 @@ void DumpCheckpoints(
                         TABLED() {
                             ui64 byteSize = 0;
                             if (checkpoint) {
-                                auto blocksCount = freshBlocksCount;
+                                ui32 blocksCount = freshBlocksCount;
                                 blocksCount += checkpoint->Stats.GetMixedBlocksCount();
                                 blocksCount += checkpoint->Stats.GetMergedBlocksCount();
                                 byteSize = static_cast<ui64>(blocksCount) * blockSize;
@@ -258,7 +258,7 @@ void DumpCleanupQueue(
                 TVector<ui64> commitIds;
                 cleanupQueue.GetCommitIds(commitIds);
 
-                for (const auto commitId: commitIds) {
+                for (const ui64 commitId: commitIds) {
                     TABLER() {
                         TABLED() { DumpCommitId(out, commitId); }
                     }
@@ -634,7 +634,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                         DumpMetadataRebuildInfo(out, progress.Processed, progress.Total);
                     } else {
                         out << "<div class='collapse form-group' id='metadata-rebuild'>";
-                        for (const auto rangesPerBatch : {1, 10, 100}) {
+                        for (const i32 rangesPerBatch : {1, 10, 100}) {
                             BuildRebuildMetadataButton(out, TabletID(), rangesPerBatch);
                         }
                         out << "</div>";
@@ -653,7 +653,7 @@ void TPartitionActor::HandleHttpInfo_Default(
                             progress.TotalBlobs);
                     } else {
                         out << "<div class='collapse form-group' id='scan-disk'>";
-                        for (const auto blobsPerBatch : {1, 10, 100}) {
+                        for (const i32 blobsPerBatch : {1, 10, 100}) {
                             BuildScanDiskButton(out, TabletID(), blobsPerBatch);
                         }
                         out << "</div>";

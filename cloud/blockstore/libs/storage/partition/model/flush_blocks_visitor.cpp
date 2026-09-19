@@ -106,7 +106,7 @@ bool TFlushBlocksVisitor::Visit(const TFreshBlock& block)
                 std::move(Checksums));
         }
     } else {
-        const auto blobRangeSize =
+        const ui32 blobRangeSize =
             GetBlobRangeSize(ZeroBlocks, block.Meta.BlockIndex);
         if (blobRangeSize > MaxBlobRangeSize / BlockSize) {
             FlushZeroBlob(std::move(ZeroBlocks));
@@ -127,7 +127,7 @@ bool TFlushBlocksVisitor::Visit(const TFreshBlock& block)
 
 void TFlushBlocksVisitor::Finish()
 {
-    const auto dataSize = Blocks.size() * BlockSize;
+    const size_t dataSize = Blocks.size() * BlockSize;
     if (Blocks && (!Blobs || dataSize >= FlushBlobSizeThreshold)) {
         FlushBlob(
             std::move(BlobContent),

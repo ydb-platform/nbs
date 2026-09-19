@@ -41,7 +41,7 @@ ui64 TPartitionThreadSafeState::StartFreshWrite(ui64 blockCount)
 {
     TGuard guard(StateLock);
 
-    auto commitId = GenerateCommitIdImpl();
+    ui64 commitId = GenerateCommitIdImpl();
 
     TrimFreshLogBarriers.AcquireBarrierN(commitId, blockCount);
     CommitQueue.AcquireBarrier(commitId);
@@ -133,7 +133,7 @@ void TPartitionThreadSafeState::WaitCommitForCheckpoint(
     with_lock (StateLock) {
         ui64 minCommitId = CommitQueue.GetMinCommitId();
 
-        auto added =
+        bool added =
             CheckpointsInFlight.AddTx(checkpointId, std::move(tx), commitId);
         STORAGE_VERIFY(added, TWellKnownEntityTypes::TABLET, TabletId);
 

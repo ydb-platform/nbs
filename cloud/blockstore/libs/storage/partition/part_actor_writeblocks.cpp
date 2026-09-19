@@ -194,7 +194,7 @@ void TPartitionActor::HandleWriteBlocksRequest(
 
     TBlockRange64 writeRange;
 
-    auto ok = InitReadWriteBlockRange(
+    bool ok = InitReadWriteBlockRange(
         msg->Record.GetStartIndex(),
         blocksCount,
         &writeRange);
@@ -279,7 +279,7 @@ void TPartitionActor::WriteBlocks(
         }
     };
 
-    const auto requestSize = writeRange.Size() * State->GetBlockSize();
+    const ui32 requestSize = writeRange.Size() * State->GetBlockSize();
     bool isFreshRequest = IsFreshRequest(
         *Config,
         PartitionConfig.GetStorageMediaKind(),
@@ -370,8 +370,8 @@ void TPartitionActor::HandleWriteBlocksCompletedImpl(
 
     UpdateCPUUsageStat(ctx.Now(), opCompleted.ExecCycles);
 
-    auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
-    const auto requestCount =
+    ui64 time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
+    const ui64 requestCount =
         opCompleted.Stats.GetUserWriteCounters().GetRequestsCount();
     PartCounters->RequestCounters.WriteBlocks.AddRequest(
         time,

@@ -992,7 +992,7 @@ static EIndexProcResult FindBlocksInBlobIndex(
         }
 
         for (ui32 i = 0; i < intersection.Size(); ++i) {
-            const auto res = visit(
+            const bool res = visit(
                 intersection.Start + i,
                 helper.Marks[i].CommitId,
                 blobId,
@@ -1128,8 +1128,8 @@ TPartitionDatabaseImpl<TCounters>::FindBlocksInBlobsIndex(
     auto result = EBlobIndexScanProgress::Completed;
 
     while (it.IsValid()) {
-        auto commitId = it.template GetValue<TTable::CommitId>();
-        auto uniqId = it.template GetValue<TTable::BlobId>();
+        ui64 commitId = it.template GetValue<TTable::CommitId>();
+        ui64 uniqId = it.template GetValue<TTable::BlobId>();
 
         auto blobMeta = it.template GetValue<TTable::BlobMeta>();
 
@@ -1222,7 +1222,7 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCompactionMap(
     }
 
     while (it.IsValid()) {
-        const auto blockIndex = it.template GetValue<TTable::BlockIndex>();
+        const ui32 blockIndex = it.template GetValue<TTable::BlockIndex>();
         if (blockIndex > rangeBlockIndices.End) {
             break;
         }
@@ -1392,7 +1392,7 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCheckpoints(
 
     while (it.IsValid()) {
         auto checkpointId = it.template GetValue<TTable::CheckpointId>();
-        auto commitId = it.template GetValue<TTable::CommitId>();
+        ui64 commitId = it.template GetValue<TTable::CommitId>();
         bool isDataDeleted = it.template GetValue<TTable::DataDeleted>();
 
         checkpointId2CommitId.emplace(checkpointId, commitId);
@@ -1556,8 +1556,8 @@ bool TPartitionDatabaseImpl<TCounters>::ReadUnconfirmedBlobs(
     }
 
     while (it.IsValid()) {
-        auto commitId = it.template GetValue<TTable::CommitId>();
-        auto uniqueId = it.template GetValue<TTable::BlobId>();
+        ui64 commitId = it.template GetValue<TTable::CommitId>();
+        ui64 uniqueId = it.template GetValue<TTable::BlobId>();
         auto blockRange = TBlockRange32::MakeClosedInterval(
             it.template GetValue<TTable::RangeStart>(),
             it.template GetValue<TTable::RangeEnd>());

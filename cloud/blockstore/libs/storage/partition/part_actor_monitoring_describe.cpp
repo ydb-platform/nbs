@@ -199,7 +199,7 @@ void TPartitionActor::CompleteDescribeRange(
 
     HTML(out) {
         const auto& cm = State->GetCompactionMap();
-        const auto groupStart =
+        const ui32 groupStart =
             cm.GetGroupStart(args.BlockRange.Start, State->GetBlockSize());
 
         TABLE_CLASS("table table-condensed") {

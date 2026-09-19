@@ -110,10 +110,10 @@ NProto::TError ParseFreshBlobContent(
     offset += protoSize;
 
     for (ui32 i = 0; i < meta.StartIndicesSize(); ++i) {
-        auto start = meta.GetStartIndices(i);
-        auto end = meta.GetEndIndices(i);
+        ui32 start = meta.GetStartIndices(i);
+        ui32 end = meta.GetEndIndices(i);
 
-        for (auto blockIndex:
+        for (ui32 blockIndex:
              xrange(TBlockRange32::MakeClosedInterval(start, end)))
         {
             auto block = TBlock(blockIndex, commitId, IsStoredInDb);

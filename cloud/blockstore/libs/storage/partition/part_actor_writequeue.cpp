@@ -25,7 +25,7 @@ void TPartitionActor::HandleProcessWriteQueue(
 {
     Y_UNUSED(ev);
 
-    const auto totalWeight = State->AccessWriteBuffer().GetWeight();
+    const size_t totalWeight = State->AccessWriteBuffer().GetWeight();
     if (!totalWeight) {
         return;
     }
@@ -35,9 +35,9 @@ void TPartitionActor::HandleProcessWriteQueue(
 
     // building mixed blob requests
     const auto mediaKind = PartitionConfig.GetStorageMediaKind();
-    const auto writeMixedBlobThreshold =
+    const ui32 writeMixedBlobThreshold =
         GetWriteMixedBlobThreshold(*Config, mediaKind);
-    auto writeBlobThreshold = GetWriteBlobThreshold(*Config, mediaKind);
+    ui32 writeBlobThreshold = GetWriteBlobThreshold(*Config, mediaKind);
     if (writeMixedBlobThreshold && writeMixedBlobThreshold < writeBlobThreshold)
     {
         writeBlobThreshold = writeMixedBlobThreshold;
