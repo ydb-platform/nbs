@@ -18,35 +18,35 @@
         {
             "name": "NodeTable",
             "offsetBytes": 0,
-            "sizeBytes": 9752576,
+            "sizeBytes": 9756672,
             "slotSize": 96,
             "slotCount": 100002
         },
         {
             "name": "NameTable",
-            "offsetBytes": 9752576,
-            "sizeBytes": 4820992,
+            "offsetBytes": 9756672,
+            "sizeBytes": 4825088,
             "slotSize": 48,
             "slotCount": 100045
         },
         {
             "name": "HandleTable",
-            "offsetBytes": 14573568,
-            "sizeBytes": 17604608,
+            "offsetBytes": 14581760,
+            "sizeBytes": 17608704,
             "slotSize": 16,
             "slotCount": 1100288
         },
         {
             "name": "PageIndex",
-            "offsetBytes": 32178176,
-            "sizeBytes": 757760,
+            "offsetBytes": 32190464,
+            "sizeBytes": 761856,
             "slotSize": 24,
             "slotCount": 31450
         },
         {
             "name": "PageAllocatorBitmap",
-            "offsetBytes": 32935936,
-            "sizeBytes": 4096,
+            "offsetBytes": 32952320,
+            "sizeBytes": 8192,
             "slotSize": 0,
             "slotCount": 29492
         },
