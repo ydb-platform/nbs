@@ -884,7 +884,7 @@ void DumpPartitionStats(
     IOutputStream& out,
     const NProto::TPartitionConfig& config,
     const NProto::TPartitionStats& stats,
-    ui32 freshBlocksCount)
+    ui64 freshBlocksCount)
 {
     auto blockSize = config.GetBlockSize();
 

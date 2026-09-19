@@ -145,7 +145,7 @@ void DumpPartitionStats(
     IOutputStream& out,
     const NProto::TPartitionConfig& config,
     const NProto::TPartitionStats& stats,
-    ui32 freshBlocksCount);
+    ui64 freshBlocksCount);
 
 void DumpPartitionCounters(
     IOutputStream& out,
