@@ -411,6 +411,43 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
             readResponse.GetValue().GetError().GetCode());
     }
 
+    Y_UNIT_TEST(ShouldNotStripIovecsWhenRefusingToDispatch)
+    {
+        auto logging = CreateLoggingService("console", { TLOG_DEBUG });
+        auto client = std::make_shared<TTestAsyncClient>();
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
+
+        char buffer[16] = {};
+        auto request = ReadReq(1, 0, sizeof(buffer));
+        auto* iovec = request->AddIovecs();
+        iovec->SetBase(reinterpret_cast<ui64>(buffer));
+        iovec->SetLength(sizeof(buffer));
+
+        //
+        // No backend info yet - the side channel refuses to dispatch and
+        // the caller forwards the request to the main channel. The refusal
+        // must leave the request intact - in particular the iovecs.
+        //
+
+        auto readResponse = NewPromise<NProto::TReadDataResponse>();
+        const bool success = sideChannel->ExecuteRequest(
+            CC(),
+            request,
+            readResponse);
+        UNIT_ASSERT(!success);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, request->IovecsSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            reinterpret_cast<ui64>(buffer),
+            request->GetIovecs(0).GetBase());
+        UNIT_ASSERT_VALUES_EQUAL(
+            sizeof(buffer),
+            request->GetIovecs(0).GetLength());
+    }
+
     Y_UNIT_TEST(ShouldProcessRequestsBeforeConnectionCompletes)
     {
         auto logging = CreateLoggingService("console", { TLOG_DEBUG });
