@@ -137,10 +137,12 @@ def job_name_matches(expected_name: str, actual_name: str) -> bool:
     return False
 
 
-def find_current_job_url(current_job_name: str, runner_name: str) -> str:
+def find_current_job_url(
+    github: Github, current_job_name: str, runner_name: str
+) -> str:
     try:
-        jobs = get_jobs_raw(
-            os.environ["GITHUB_TOKEN"],
+        jobs = get_jobs(
+            github,
             os.environ["GITHUB_REPOSITORY"],
             int(os.environ["GITHUB_RUN_ID"]),
         )
@@ -466,10 +468,14 @@ def extract_github_runner_release(payload: dict) -> GithubRunnerRelease:
     return GithubRunnerRelease(version=version, sha256_by_arch=sha256_by_arch)
 
 
-def github_client(github_token: str | None = None) -> Github:
+def github_client(
+    github_token: str | None = None,
+    *,
+    base_url: str = "https://api.github.com",
+) -> Github:
     if github_token:
-        return Github(auth=GithubAuth.Token(github_token))
-    return Github()
+        return Github(auth=GithubAuth.Token(github_token), base_url=base_url)
+    return Github(base_url=base_url)
 
 
 def github_client_from_env() -> Github:
@@ -826,6 +832,16 @@ def parse_actions_job_url(job_url: str) -> tuple[int, int] | None:
     interval_sec=GITHUB_API_RETRY_INTERVAL_SEC,
     retry_exceptions=PYGITHUB_RETRY_EXCEPTIONS,
 )
-def get_jobs_raw(token, repo_full_name, run_id) -> list[WorkflowJob]:
-    repo = github_client(token).get_repo(repo_full_name)
-    return list(repo.get_workflow_run(run_id).jobs())
+def get_jobs(
+    github: Github,
+    repo_full_name: str,
+    run_id: int,
+    *,
+    run_attempt: int | None = None,
+) -> list[WorkflowJob]:
+    repo = github.get_repo(repo_full_name)
+    run = repo.get_workflow_run(run_id)
+    jobs = list(run.jobs(_filter="all" if run_attempt is not None else "latest"))
+    if run_attempt is not None:
+        jobs = [job for job in jobs if job.run_attempt == run_attempt]
+    return jobs
