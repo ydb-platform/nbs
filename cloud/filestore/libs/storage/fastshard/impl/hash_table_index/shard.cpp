@@ -92,11 +92,11 @@ ui64 CalcPageClusterCount(
     return RoundUp(dataPageCount, PageClusterPageCount) / PageClusterPageCount;
 }
 
-class TPageIndex: public IComponent
+using TPageIndexBase =
+    TComponentBase<PageIndexLayoutMinVersion, PageIndexLayoutVersion>;
+class TPageIndex: public TPageIndexBase
 {
 private:
-    TFormatPage FormatPage;
-
     using THt = TPersistentHashTable<TNodePageClusterKey, TNodePageClusterSlot>;
     std::unique_ptr<THt> Slots;
 
@@ -106,6 +106,8 @@ public:
         ui64 firstPageNo,
         IPageStorePtr pageStore)
     {
+        TDescriptionBuilder debuilder("PageIndex");
+
         const ui64 pageSize = pageStore->GetPageSize();
         ui64 totalPageCount = 0;
         {
@@ -116,6 +118,8 @@ public:
         }
 
         {
+            debuilder.RegisterOffset("Slots", firstPageNo);
+
             const ui64 slotsPerPage = pageSize / NodePageClusterSlotSize;
             const ui64 pageClusterCount =
                 CalcPageClusterCount(config, pageSize);
@@ -144,6 +148,8 @@ public:
             totalPageCount += indexPageCount;
             firstPageNo += indexPageCount;
         }
+
+        Description = debuilder.Build();
 
         return totalPageCount;
     }
@@ -200,19 +206,6 @@ public:
         }
         stats->UsedPageCount = Max(stats->UsedPageCount, usedPages);
         return {};
-    }
-
-    [[nodiscard]] TString Describe() const override
-    {
-        return "PageIndex";
-    }
-
-    NProto::TError CheckFormat(TWriteContext& writeContext) override
-    {
-        return FormatPage.RegisterStart(
-            PageIndexLayoutMinVersion,
-            PageIndexLayoutVersion,
-            writeContext);
     }
 };
 
@@ -280,11 +273,16 @@ struct TLoggingContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPageAllocator: public IComponent
+//
+// PageAllocator format heavily depends on PageIndex format so it reports the
+// same MinVersion and Version.
+//
+
+using TPageAllocatorBase =
+    TComponentBase<PageIndexLayoutMinVersion, PageIndexLayoutVersion>;
+class TPageAllocator: public TPageAllocatorBase
 {
 private:
-    TFormatPage FormatPage;
-
     std::unique_ptr<TPersistentBitmap> Bitmap;
     ui64 PageClusterSize = 0;
     ui64 FirstStoragePageClusterId = 0;
@@ -299,6 +297,8 @@ public:
     {
         MetadataSize = 0;
 
+        TDescriptionBuilder debuilder("PageAllocator");
+
         const ui64 pageSize = pageStore->GetPageSize();
         ui64 totalPageCount = 0;
         {
@@ -310,6 +310,8 @@ public:
         }
 
         {
+            debuilder.RegisterOffset("Bitmap", firstPageNo);
+
             PageClusterSize = PageClusterPageCount * pageSize;
             const ui64 pageClusterCount =
                 CalcPageClusterCount(config, pageSize);
@@ -333,6 +335,9 @@ public:
             totalPageCount += pageCount;
             firstPageNo += pageCount;
         }
+
+        debuilder.RegisterOffset("Data", GetDataOffset());
+        Description = debuilder.Build();
 
         return totalPageCount;
     }
@@ -469,24 +474,6 @@ public:
         stats->UsedPageCount = Max(stats->UsedPageCount, usedPages);
         return {};
     }
-
-    [[nodiscard]] TString Describe() const override
-    {
-        return "PageAllocator";
-    }
-
-    NProto::TError CheckFormat(TWriteContext& writeContext) override
-    {
-        //
-        // PageAllocator format heavily depends on PageIndex format so it
-        // reports the same MinVersion and Version.
-        //
-
-        return FormatPage.RegisterStart(
-            PageIndexLayoutMinVersion,
-            PageIndexLayoutVersion,
-            writeContext);
-    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -540,6 +527,8 @@ struct TComponentLayout
     // when not applicable (the allocator bitmap counts bits).
     ui64 SlotSize = 0;
     ui64 SlotCount = 0;
+
+    IComponent* Component = nullptr;
 };
 
 void DumpLayoutComponentsJson(
@@ -564,6 +553,10 @@ void DumpLayoutComponentsJson(
         writer.WriteULongLong(c.SlotSize);
         writer.WriteKey("slotCount");
         writer.WriteULongLong(c.SlotCount);
+        if (c.Component) {
+            writer.WriteKey("description");
+            writer.WriteString(c.Component->Describe());
+        }
         writer.EndObject();
     }
     writer.EndList();
@@ -609,6 +602,10 @@ void DumpLayoutComponentsHtml(
             {"SIZE_BYTES", ToString(c.SizeBytes)},
             {"SLOT_SIZE", ToString(c.SlotSize)},
             {"SLOT_COUNT", ToString(c.SlotCount)},
+            {
+                "DESCRIPTION",
+                c.Component ? ToString(c.Component->Describe()) : "none"
+            },
         });
     }
 
@@ -670,15 +667,10 @@ private:
     TPageIndex PageIndex;
     TPageAllocator PageAllocator;
 
-    TVector<IComponent*> Components;
-
-    // Written exactly once - upon the first InitDataStructures call.
-    // The layout dump reads it lock-free from non-fiber threads, so it
-    // must never be reassigned; Format-triggered re-inits recompute the
-    // same values and skip the write.
-    TVector<TComponentLayout> Layout;
-
     mutable silk::FiberMutex Mutex;
+
+    TVector<TComponentLayout> Layout;
+    mutable silk::FiberMutex LayoutMutex;
 
 public:
     TFiberShardImpl(
@@ -707,14 +699,6 @@ public:
 
         Storage = StorageGroupFactory->MakeStorageGroup(Config, Generation);
         PageStore = CreatePageStore(Storage, PageSize);
-
-        Components = {
-            &Nodes,
-            &Names,
-            &Handles,
-            &PageIndex,
-            &PageAllocator,
-        };
 
         InitDataStructures();
     }
@@ -772,13 +756,16 @@ private:
         SILK_INFO("page index table slots=%lu", PageIndex.GetSlotCount());
         SILK_INFO("page allocator bits=%lu", PageAllocator.GetBitCount());
 
-        TVector<TComponentLayout> layout = {
+        std::lock_guard g(LayoutMutex);
+
+        Layout = {
             {
                 .Name = "NodeTable",
                 .OffsetBytes = nodeTableOffset,
                 .SizeBytes = nodeTablePageCount * PageSize,
                 .SlotSize = NodeSlotSize,
                 .SlotCount = Nodes.GetSlotCount(),
+                .Component = &Nodes,
             },
             {
                 .Name = "NameTable",
@@ -786,6 +773,7 @@ private:
                 .SizeBytes = nameTablePageCount * PageSize,
                 .SlotSize = NameSlotSize,
                 .SlotCount = Names.GetSlotCount(),
+                .Component = &Names,
             },
             {
                 .Name = "HandleTable",
@@ -793,6 +781,7 @@ private:
                 .SizeBytes = handleTablePageCount * PageSize,
                 .SlotSize = HandleSlotSize,
                 .SlotCount = Handles.GetSlotCount(),
+                .Component = &Handles,
             },
             {
                 .Name = "PageIndex",
@@ -800,6 +789,7 @@ private:
                 .SizeBytes = pageIndexPageCount * PageSize,
                 .SlotSize = NodePageClusterSlotSize,
                 .SlotCount = PageIndex.GetSlotCount(),
+                .Component = &PageIndex,
             },
             {
                 .Name = "PageAllocatorBitmap",
@@ -807,6 +797,7 @@ private:
                 .SizeBytes = PageAllocator.GetMetadataSize(),
                 .SlotSize = 0,
                 .SlotCount = PageAllocator.GetBitCount(),
+                .Component = &PageAllocator,
             },
             {
                 .Name = "DataPages",
@@ -814,12 +805,9 @@ private:
                 .SizeBytes = PageAllocator.GetDataSize(),
                 .SlotSize = PageClusterSize,
                 .SlotCount = PageAllocator.GetBitCount(),
+                .Component = nullptr,
             },
         };
-
-        if (Layout.empty()) {
-            Layout = std::move(layout);
-        }
     }
 
     TLoggingContext MakeLoggingContext() const
@@ -832,11 +820,13 @@ private:
 public:
     void DumpLayoutHtml(IOutputStream& out) const
     {
+        std::lock_guard g(LayoutMutex);
         DumpLayoutComponentsHtml(out, Layout, Config);
     }
 
     void DumpLayoutJson(IOutputStream& out) const
     {
+        std::lock_guard g(LayoutMutex);
         DumpLayoutComponentsJson(out, Layout, Config);
     }
 
@@ -2305,16 +2295,24 @@ public:
         TWriteContextGuard wcg(writeContext, *PageStore);
         wcg.Init();
 
-        for (auto* component: Components) {
-            auto error = component->CheckFormat(writeContext);
-            if (HasError(error)) {
-                SILK_ERROR(
-                    "[%s] CheckFormat::{%s} error=%s",
-                    lc.Describe().c_str(),
-                    component->Describe().c_str(),
-                    FormatError(error).c_str());
+        {
+            std::lock_guard g(LayoutMutex);
 
-                return error;
+            for (auto& c: Layout) {
+                if (!c.Component) {
+                    continue;
+                }
+
+                auto error = c.Component->CheckFormat(writeContext);
+                if (HasError(error)) {
+                    SILK_ERROR(
+                        "[%s] CheckFormat::{%s} error=%s",
+                        lc.Describe().c_str(),
+                        c.Component->Describe().c_str(),
+                        FormatError(error).c_str());
+
+                    return error;
+                }
             }
         }
 

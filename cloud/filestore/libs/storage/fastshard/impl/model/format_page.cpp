@@ -16,6 +16,7 @@ ui64 TFormatPage::Init(ui64 pageNo, IPageStorePtr pageStore)
 NProto::TError TFormatPage::RegisterStart(
     ui32 minVersion,
     ui32 version,
+    TStringBuf description,
     TWriteContext& writeContext)
 {
     TBuffer page;
@@ -61,6 +62,14 @@ NProto::TError TFormatPage::RegisterStart(
     page.Clear();
     page.Resize(PageStore->GetPageSize());
 
+    const ui64 actualDescriptionLen =
+        Min(DescriptionCapacity - 1, description.Size());
+    description.Trunc(actualDescriptionLen);
+    memcpy(Slot.Description, description.Data(), actualDescriptionLen);
+    memset(
+        Slot.Description + actualDescriptionLen,
+        0,
+        DescriptionCapacity - actualDescriptionLen);
     memcpy(page.Data(), reinterpret_cast<char*>(&Slot), sizeof(Slot));
 
     return PageStore->WritePage(
@@ -68,6 +77,15 @@ NProto::TError TFormatPage::RegisterStart(
         Slot.PageNo,
         page,
         writeContext.PageGroups);
+}
+
+[[nodiscard]] TString TFormatPage::Describe() const
+{
+    return TStringBuilder() << "G=" << Slot.Generation
+        << " P=" << Slot.PageNo
+        << " MV=" << Slot.MinVersion
+        << " V=" << Slot.Version
+        << " D={" << Slot.Description << "}";
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

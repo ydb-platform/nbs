@@ -16,6 +16,8 @@ ui64 THandleTable::Init(
     ui64 firstPageNo,
     IPageStorePtr pageStore)
 {
+    TDescriptionBuilder debuilder("HandleTable");
+
     const ui64 pageSize = pageStore->GetPageSize();
     ui64 totalPageCount = 0;
     {
@@ -26,6 +28,8 @@ ui64 THandleTable::Init(
     }
 
     {
+        debuilder.RegisterOffset("Handles", firstPageNo);
+
         const ui64 slotsPerPage = pageSize / HandleSlotSize;
         const ui64 pageCount =
             RoundUp(handlesPerGroup, slotsPerPage) / slotsPerPage;
@@ -50,6 +54,8 @@ ui64 THandleTable::Init(
     }
 
     {
+        debuilder.RegisterOffset("NodeId2HandleCount", firstPageNo);
+
         const ui64 slotsPerPage = pageSize / NodeHandlesSlotSize;
         const ui64 pageCount =
             RoundUp(nodesPerGroup, slotsPerPage) / slotsPerPage;
@@ -72,6 +78,8 @@ ui64 THandleTable::Init(
         totalPageCount += pageCount;
         firstPageNo += pageCount;
     }
+
+    Description = debuilder.Build();
 
     return totalPageCount;
 }
@@ -265,14 +273,6 @@ NProto::TError THandleTable::GetNodeHandleCount(
     stats->TotalHandleCount = slotStats.SlotCount;
     stats->UsedHandleCount = slotStats.ValueCount;
     return {};
-}
-
-NProto::TError THandleTable::CheckFormat(TWriteContext& writeContext)
-{
-    return FormatPage.RegisterStart(
-        HandleTableLayoutMinVersion,
-        HandleTableLayoutVersion,
-        writeContext);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

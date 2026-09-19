@@ -38,11 +38,11 @@ static_assert(sizeof(TNodeHandlesSlot) <= NodeHandlesSlotSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THandleTable: public IComponent
+using THandleTableBase =
+    TComponentBase<HandleTableLayoutMinVersion, HandleTableLayoutVersion>;
+class THandleTable: public THandleTableBase
 {
 private:
-    TFormatPage FormatPage;
-
     using THandles = TPersistentHashTable<ui64, THandleSlot>;
     std::unique_ptr<THandles> Handles;
     using TNodeId2HandleCount = TPersistentHashTable<ui64, TNodeHandlesSlot>;
@@ -75,13 +75,6 @@ public:
 
     [[nodiscard]] NProto::TError CollectStats(
         TFileSystemShardStats* stats) const;
-
-    [[nodiscard]] TString Describe() const override
-    {
-        return "HandleTable";
-    }
-
-    NProto::TError CheckFormat(TWriteContext& writeContext) override;
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

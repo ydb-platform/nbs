@@ -44,14 +44,12 @@ NProto::TNodeAttr Convert(const TNodeTableSlot& slot);
 TNodeTableSlot Convert(const NProto::TNodeAttr& attr);
 
 ////////////////////////////////////////////////////////////////////////////////
-// This data structure is a PoC, it's not really efficient, can be easily
-// optimized.
 
-class TNodeTable: public IComponent
+using TNodeTableBase =
+    TComponentBase<NodeTableLayoutMinVersion, NodeTableLayoutVersion>;
+class TNodeTable: public TNodeTableBase
 {
 private:
-    TFormatPage FormatPage;
-
     using THt = TPersistentHashTable<ui64, TNodeTableSlot>;
     std::unique_ptr<THt> Slots;
     ui64 PageSize = 0;
@@ -104,13 +102,6 @@ public:
 
     [[nodiscard]] NProto::TError CollectStats(
         TFileSystemShardStats* stats) const;
-
-    [[nodiscard]] TString Describe() const override
-    {
-        return "NodeTable";
-    }
-
-    NProto::TError CheckFormat(TWriteContext& writeContext) override;
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

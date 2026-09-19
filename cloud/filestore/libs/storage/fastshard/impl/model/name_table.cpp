@@ -11,6 +11,8 @@ ui64 TNameTable::Init(
     ui64 firstPageNo,
     IPageStorePtr pageStore)
 {
+    TDescriptionBuilder debuilder("NameTable");
+
     const ui64 pageSize = pageStore->GetPageSize();
     ui64 totalPageCount = 0;
     {
@@ -21,6 +23,8 @@ ui64 TNameTable::Init(
     }
 
     {
+        debuilder.RegisterOffset("Slots", firstPageNo);
+
         const ui64 slotsPerPage = pageSize / NameSlotSize;
         const ui64 pageCount =
             Min(RoundUp(nodesPerGroup, slotsPerPage),
@@ -44,6 +48,8 @@ ui64 TNameTable::Init(
         totalPageCount += pageCount;
         firstPageNo += pageCount;
     }
+
+    Description = debuilder.Build();
 
     return totalPageCount;
 }
@@ -98,14 +104,6 @@ NProto::TError TNameTable::Get(const TString& name, ui64* nodeId) const
     stats->TotalNameCount = slotStats.SlotCount;
     stats->UsedNameCount = slotStats.ValueCount;
     return {};
-}
-
-NProto::TError TNameTable::CheckFormat(TWriteContext& writeContext)
-{
-    return FormatPage.RegisterStart(
-        NameTableLayoutMinVersion,
-        NameTableLayoutVersion,
-        writeContext);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

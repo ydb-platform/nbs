@@ -9,12 +9,15 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 ////////////////////////////////////////////////////////////////////////////////
 // format page layout
 
+constexpr ui64 DescriptionCapacity = 100;
+
 struct TFormatPageSlot
 {
     ui64 Generation = 0;
     ui64 PageNo = 0;
     ui32 MinVersion = 0;
     ui32 Version = 0;
+    char Description[DescriptionCapacity]{};
 };
 
 static_assert(sizeof(TFormatPageSlot) <= DefaultBlockSize);
@@ -33,7 +36,10 @@ public:
     NProto::TError RegisterStart(
         ui32 minVersion,
         ui32 version,
+        TStringBuf description,
         TWriteContext& writeContext);
+
+    [[nodiscard]] TString Describe() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard

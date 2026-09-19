@@ -30,11 +30,11 @@ static_assert(sizeof(TNameTableSlot) <= NameSlotSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNameTable: public IComponent
+using TNameTableBase =
+    TComponentBase<NameTableLayoutMinVersion, NameTableLayoutVersion>;
+class TNameTable: public TNameTableBase
 {
 private:
-    TFormatPage FormatPage;
-
     using THt = TPersistentHashTable<TStringBuf, TNameTableSlot>;
     TNameTableSlot Tombstone{};
     std::unique_ptr<THt> Slots;
@@ -56,13 +56,6 @@ public:
 
     [[nodiscard]] NProto::TError CollectStats(
         TFileSystemShardStats* stats) const;
-
-    [[nodiscard]] TString Describe() const override
-    {
-        return "NameTable";
-    }
-
-    NProto::TError CheckFormat(TWriteContext& writeContext) override;
 };
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
