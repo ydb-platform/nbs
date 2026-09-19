@@ -52,7 +52,7 @@ enum class ECheckRange
 
 struct TRequestDetails
 {
-    void* Context = nullptr;
+    NCloud::NStorage::NRdma::IServerRequest* Context = nullptr;
     TStringBuf Out;
     TStringBuf DataBuffer; // if non empty, zero copy is possible
     TString DeviceUUID;
@@ -182,7 +182,7 @@ public:
     }
 
     void HandleRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) override
@@ -257,7 +257,7 @@ public:
 
 private:
     NProto::TError DoHandleRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         TStringBuf in,
         TStringBuf out) const
@@ -535,7 +535,7 @@ private:
     }
 
     NProto::TError HandleReadBlocksRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TReadDeviceBlocksRequest& request,
         bool isZeroCopyDataSupported,
@@ -654,7 +654,7 @@ private:
     }
 
     NProto::TError HandleWriteBlocksRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TWriteDeviceBlocksRequest& request,
         bool isZeroCopyDataSupported,
@@ -799,7 +799,7 @@ private:
     }
 
     NProto::TError HandleMultiAgentWriteBlocksRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TWriteDeviceBlocksRequest& request,
         TStringBuf requestData,
@@ -925,7 +925,7 @@ private:
     }
 
     NProto::TError HandleZeroBlocksRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TZeroDeviceBlocksRequest& request,
         TStringBuf requestData,
@@ -1045,7 +1045,7 @@ private:
     }
 
     NProto::TError HandleChecksumBlocksRequest(
-        void* context,
+        NCloud::NStorage::NRdma::IServerRequest* context,
         TCallContextPtr callContext,
         NProto::TChecksumDeviceBlocksRequest& request,
         TStringBuf requestData,
