@@ -44,6 +44,8 @@ func prepareDiskKind(kind disk_manager.DiskKind) (types.DiskKind, error) {
 		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
 	case disk_manager.DiskKind_DISK_KIND_HDD_LOCAL:
 		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
+	case disk_manager.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP:
+		return types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP, nil
 	default:
 		return 0, common.NewInvalidArgumentError(
 			"unknown disk kind %v",
@@ -188,6 +190,59 @@ func (s *service) getZoneIDForExistingDisk(
 	return diskMeta.ZoneID, nil
 }
 
+func (s *service) validateDiskRegistryBasedDiskCreation(
+	req *disk_manager.CreateDiskRequest,
+) error {
+
+	if !s.config.GetDisableDiskRegistryBasedDisks() {
+		return nil
+	}
+
+	allowList := s.config.GetDiskRegistryBasedDisksFolderIdAllowList()
+	if slices.Contains(allowList, req.FolderId) {
+		return nil
+	}
+
+	return common.NewInvalidArgumentError(
+		"can't create a DiskRegistry based disk with id %q, because "+
+			"it is not allowed for the %q folder",
+		req.DiskId.DiskId,
+		req.FolderId,
+	)
+}
+
+func validateSsdDirectMirror3Of5GroupDiskCreation(
+	req *disk_manager.CreateDiskRequest,
+) error {
+
+	if len(req.StoragePoolName) == 0 {
+		return common.NewInvalidArgumentError(
+			"storage_pool_name is required for ssd-direct-mirror3of5-group disks",
+		)
+	}
+
+	if _, ok := req.Src.(*disk_manager.CreateDiskRequest_SrcEmpty); !ok {
+		return common.NewInvalidArgumentError(
+			"ssd-direct-mirror3of5-group disks can only be created empty",
+		)
+	}
+
+	if len(req.PlacementGroupId) != 0 {
+		return common.NewInvalidArgumentError(
+			"ssd-direct-mirror3of5-group disks don't support placement groups",
+		)
+	}
+
+	if req.EncryptionDesc != nil &&
+		req.EncryptionDesc.Mode != disk_manager.EncryptionMode_NO_ENCRYPTION {
+		return common.NewInvalidArgumentError(
+			"ssd-direct-mirror3of5-group disks don't support encryption",
+		)
+	}
+
+	return nil
+}
+
 func (s *service) prepareCreateDiskParams(
 	ctx context.Context,
 	req *disk_manager.CreateDiskRequest,
@@ -254,23 +309,14 @@ func (s *service) prepareCreateDiskParams(
 
 	tabletVersion := uint32(req.TabletVersion)
 
-	if nbs.IsDiskRegistryBasedDisk(kind) && s.config.GetDisableDiskRegistryBasedDisks() {
-		allowed := false
-		for _, folderID := range s.config.GetDiskRegistryBasedDisksFolderIdAllowList() {
-			if folderID == req.FolderId {
-				allowed = true
-				break
-			}
-		}
-
-		if !allowed {
-			return nil, common.NewInvalidArgumentError(
-				"can't create a DiskRegistry based disk with id %q, because "+
-					"it is not allowed for the %q folder",
-				req.DiskId.DiskId,
-				req.FolderId,
-			)
-		}
+	switch {
+	case nbs.IsDiskRegistryBasedDisk(kind):
+		err = s.validateDiskRegistryBasedDiskCreation(req)
+	case common.IsSsdDirectMirror3Of5GroupDiskKind(kind):
+		err = validateSsdDirectMirror3Of5GroupDiskCreation(req)
+	}
+	if err != nil {
+		return nil, err
 	}
 
 	return &protos.CreateDiskParams{
