@@ -510,12 +510,14 @@ private:
 
     NClient::IMetricClientPtr RestoringClient;
     TSet<TString> RestoringEndpoints;
+    TAtomic RestoringErrors = 0;
 
     enum {
         WaitingForRestoring = 0,
         ReadingStorage = 1,
         StartingEndpoints = 2,
         Completed = 3,
+        Failed = 4,
     };
 
     TAtomic RestoringStage = WaitingForRestoring;
@@ -628,13 +630,18 @@ public:
 
     TFuture<void> RestoreEndpoints() override
     {
+        AtomicSet(RestoringErrors, 0);
         AtomicSet(RestoringStage, ReadingStorage);
         return Executor->Execute([weakSelf = weak_from_this()] () mutable {
             if (auto self = weakSelf.lock()) {
                 auto future = self->DoRestoreEndpoints();
                 AtomicSet(self->RestoringStage, self->StartingEndpoints);
                 self->Executor->WaitFor(future);
-                AtomicSet(self->RestoringStage, self->Completed);
+                AtomicSet(
+                    self->RestoringStage,
+                    AtomicGet(self->RestoringErrors)
+                        ? self->Failed
+                        : self->Completed);
             }
         });
     }
@@ -660,8 +667,27 @@ private:
             case ReadingStorage: return true;
             case StartingEndpoints: return RestoringEndpoints.contains(socket);
             case Completed: return false;
+            case Failed: return false;
         }
         return false;
+    }
+
+    NProto::EEndpointRestoringState GetEndpointRestoringState()
+    {
+        switch (AtomicGet(RestoringStage)) {
+            case WaitingForRestoring:
+                return NProto::ENDPOINT_RESTORING_STATE_WAITING_FOR_RESTORING;
+            case ReadingStorage:
+                return NProto::ENDPOINT_RESTORING_STATE_READING_STORAGE;
+            case StartingEndpoints:
+                return NProto::ENDPOINT_RESTORING_STATE_STARTING_ENDPOINTS;
+            case Completed:
+                return NProto::ENDPOINT_RESTORING_STATE_COMPLETED;
+            case Failed:
+                return NProto::ENDPOINT_RESTORING_STATE_FAILED;
+        }
+
+        return NProto::ENDPOINT_RESTORING_STATE_FAILED;
     }
 
     NProto::TStartEndpointResponse StartEndpointImpl(
@@ -1243,6 +1269,7 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
     Y_UNUSED(ctx);
     Y_UNUSED(request);
 
+
     NProto::TListEndpointsResponse response;
     auto& responseEndpoints = *response.MutableEndpoints();
     responseEndpoints.Reserve(Endpoints.size());
@@ -1251,8 +1278,12 @@ NProto::TListEndpointsResponse TEndpointManager::DoListEndpoints(
         responseEndpoints.Add()->CopyFrom(*endpoint->Request);
     }
 
+    const auto restoringStage = AtomicGet(RestoringStage);
     response.SetEndpointsWereRestored(
-        AtomicGet(RestoringStage) == Completed);
+        restoringStage == Completed || restoringStage == Failed);
+    response.SetEndpointRestoringState(GetEndpointRestoringState());
+    response.SetEndpointRestoringErrorCount(AtomicGet(RestoringErrors));
+
     return response;
 }
 
@@ -1826,10 +1857,14 @@ TFuture<NProto::TError> TEndpointManager::SwitchEndpointIfNeeded(
 TFuture<void> TEndpointManager::DoRestoreEndpoints()
 {
     auto [endpointIds, error] = EndpointStorage->GetEndpointIds();
-    if (HasError(error) && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT)) {
-        ReportEndpointRestoringError(
-            TStringBuilder()
-            << "Failed to get endpoints from storage: " << FormatError(error));
+    if (HasError(error)) {
+        AtomicIncrement(RestoringErrors);
+        if (!HasProtoFlag(error.GetFlags(), NProto::EF_SILENT)) {
+            ReportEndpointRestoringError(
+                TStringBuilder()
+                << "Failed to get endpoints from storage: "
+                << FormatError(error));
+        }
         return MakeFuture();
     }
 
@@ -1844,15 +1879,22 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
         if (HasError(error)
                 && !HasProtoFlag(error.GetFlags(), NProto::EF_SILENT))
         {
+            AtomicIncrement(RestoringErrors);
             // NBS-3678
             STORAGE_WARN("Failed to restore endpoint. ID: " << endpointId
                 << ", error: " << FormatError(error));
             continue;
         }
 
+        if (HasError(error)) {
+            AtomicIncrement(RestoringErrors);
+            continue;
+        }
+
         auto request = DeserializeEndpoint<NProto::TStartEndpointRequest>(str);
 
         if (!request) {
+            AtomicIncrement(RestoringErrors);
             ReportEndpointRestoringError(
                 TStringBuilder() << "Failed to deserialize request, error: "
                                  << FormatError(error),
@@ -1867,6 +1909,7 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
                 auto error = NbdDeviceManager.AcquireDevice(nbdDevice);
 
                 if (HasError(error)) {
+                    AtomicIncrement(RestoringErrors);
                     ReportEndpointRestoringError(
                         TStringBuilder()
                             << "Failed to acquire nbd device, error: "
@@ -1897,25 +1940,31 @@ TFuture<void> TEndpointManager::DoRestoreEndpoints()
             std::move(request));
 
         auto weakPtr = weak_from_this();
-        future.Subscribe([weakPtr, socketPath, endpointId] (const auto& f) {
-            const auto& response = f.GetValue();
-            if (HasError(response)) {
-                ReportEndpointRestoringError(
-                    TStringBuilder() << "Endpoint restoring error occurred for "
-                                        "endpoint, error: "
-                                     << FormatError(response.GetError()),
-                    {{"endpointId", endpointId}, {"socketPath", socketPath}});
-            }
+        auto handledFuture = future.Apply(
+            [weakPtr, socketPath, endpointId] (const auto& f) {
+                const auto& response = f.GetValue();
+                if (HasError(response)) {
+                    ReportEndpointRestoringError(
+                        TStringBuilder()
+                            << "Endpoint restoring error occurred for "
+                               "endpoint, error: "
+                            << FormatError(response.GetError()),
+                        {{"endpointId", endpointId},
+                         {"socketPath", socketPath}});
+                }
 
-            if (auto ptr = weakPtr.lock()) {
-                ptr->HandleRestoredEndpoint(
-                    socketPath,
-                    endpointId,
-                    response.GetError());
-            }
-        });
+                if (auto ptr = weakPtr.lock()) {
+                    if (HasError(response)) {
+                        AtomicIncrement(ptr->RestoringErrors);
+                    }
+                    ptr->HandleRestoredEndpoint(
+                        socketPath,
+                        endpointId,
+                        response.GetError());
+                }
+            });
 
-        futures.push_back(future.IgnoreResult());
+        futures.push_back(std::move(handledFuture));
     }
 
     return WaitAll(futures);
