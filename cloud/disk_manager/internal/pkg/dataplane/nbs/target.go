@@ -31,17 +31,40 @@ func (t *diskTarget) Write(
 	logging.Debug(ctx, "writing chunk %v", chunk.Index)
 
 	startIndex := uint64(chunk.Index) * t.blocksInChunk
+	blockSize := uint64(t.session.BlockSize())
 
-	var err error
 	if chunk.Zero {
 		// blockCount should be multiple of blocksInChunk.
-		err = t.session.Zero(ctx, startIndex, uint32(t.blocksInChunk))
-	} else {
-		// TODO: normalize chunk data.
-		err = t.session.Write(ctx, startIndex, chunk.Data)
+		maxBlocksPerRequest := uint64(common.DefaultChunkSize) / blockSize
+		for offset := uint64(0); offset < t.blocksInChunk; offset += maxBlocksPerRequest {
+			err := t.session.Zero(
+				ctx,
+				startIndex+offset,
+				uint32(min(maxBlocksPerRequest, t.blocksInChunk-offset)),
+			)
+			if err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 
-	return err
+	if len(chunk.Data) <= common.DefaultChunkSize {
+		return t.session.Write(ctx, startIndex, chunk.Data)
+	}
+
+	for offset := 0; offset < len(chunk.Data); offset += common.DefaultChunkSize {
+		end := min(uint64(offset+common.DefaultChunkSize), uint64(len(chunk.Data)))
+		err := t.session.Write(
+			ctx,
+			startIndex+uint64(offset)/blockSize,
+			chunk.Data[offset:end],
+		)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (t *diskTarget) Close(ctx context.Context) {

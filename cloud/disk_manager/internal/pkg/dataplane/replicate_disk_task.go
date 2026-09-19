@@ -285,7 +285,7 @@ func (t *replicateDiskTask) replicate(
 		currentCheckpointID,
 		nextCheckpointID,
 		diskParams.EncryptionDesc,
-		chunkSize,
+		common.DefaultChunkSize,
 		false, // duplicateChunkIndices
 		t.request.IgnoreBaseDisk,
 		true, // dontReadFromCheckpoint
@@ -312,7 +312,7 @@ func (t *replicateDiskTask) replicate(
 		t.nbsFactory,
 		t.request.DstDisk,
 		diskParams.EncryptionDesc,
-		chunkSize,
+		common.DefaultChunkSize,
 		false, // ignoreZeroChunks
 		t.request.FillGeneration,
 		t.state.FillSeqNumber,
@@ -326,7 +326,7 @@ func (t *replicateDiskTask) replicate(
 		ReaderCount:         t.config.GetReaderCount(),
 		WriterCount:         t.config.GetWriterCount(),
 		ChunksInflightLimit: t.config.GetChunksInflightLimit(),
-		ChunkSize:           chunkSize,
+		ChunkSize:           common.DefaultChunkSize,
 	}
 
 	_, err = transferer.Transfer(

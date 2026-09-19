@@ -1,10 +1,12 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -297,6 +299,158 @@ func TestReadWrite(t *testing.T) {
 	sourceChunkCount, err := source.ChunkCount(ctx)
 	require.NoError(t, err)
 	require.Equal(t, chunkCount, sourceChunkCount)
+}
+
+func TestReadWriteLargeChunks(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		chunkSize  uint32
+		chunkCount uint32
+	}{
+		{name: "8MiB", chunkSize: 8 * 1024 * 1024, chunkCount: 4},
+		{name: "12MiB", chunkSize: 12 * 1024 * 1024, chunkCount: 3},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			largeChunkSize := testCase.chunkSize
+			largeChunkCount := testCase.chunkCount
+			ctx := newContext()
+			factory := newFactory(t, ctx)
+			client, err := factory.GetClient(ctx, "zone")
+			require.NoError(t, err)
+			diskID := strings.ReplaceAll(t.Name(), "/", "-")
+			disk := &types.Disk{ZoneId: "zone", DiskId: diskID}
+			require.NoError(t, client.Create(ctx, nbs_client.CreateDiskParams{
+				ID:          diskID,
+				BlocksCount: uint64(largeChunkSize/blockSize) * uint64(largeChunkCount),
+				BlockSize:   blockSize,
+				Kind:        types.DiskKind_DISK_KIND_SSD,
+			}))
+
+			target, err := nbs.NewDiskTarget(ctx, factory, disk, nil, largeChunkSize, false, 0, 0)
+			require.NoError(t, err)
+			expected := make([][]byte, largeChunkCount)
+			func() {
+				defer target.Close(ctx)
+				for index := uint32(0); index < largeChunkCount; index++ {
+					data := make([]byte, largeChunkSize)
+					for i := range data {
+						data[i] = byte(1 + 2*index + uint32(i)/(largeChunkSize/2))
+					}
+					expected[index] = data
+					require.NoError(t, target.Write(ctx, dataplane_common.Chunk{
+						Index: index,
+						Data:  data,
+					}))
+				}
+
+				// Overwrite an entire large chunk through the zero RPC path.
+				require.NoError(t, target.Write(ctx, dataplane_common.Chunk{Index: largeChunkCount - 1, Zero: true}))
+				clear(expected[largeChunkCount-1])
+			}()
+
+			// Leave zero/data and data/zero halves to verify that an empty subread
+			// does not mark a mixed chunk as zero or leave stale bytes in its buffer.
+			halfTarget, err := nbs.NewDiskTarget(ctx, factory, disk, nil, largeChunkSize/2, false, 0, 0)
+			require.NoError(t, err)
+			func() {
+				defer halfTarget.Close(ctx)
+				require.NoError(t, halfTarget.Write(ctx, dataplane_common.Chunk{Index: 2 * (largeChunkCount - 3), Zero: true}))
+				require.NoError(t, halfTarget.Write(ctx, dataplane_common.Chunk{Index: 2*(largeChunkCount-2) + 1, Zero: true}))
+			}()
+			clear(expected[largeChunkCount-3][:largeChunkSize/2])
+			clear(expected[largeChunkCount-2][largeChunkSize/2:])
+
+			require.NoError(t, client.CreateCheckpoint(ctx, nbs_client.CheckpointParams{
+				DiskID: diskID, CheckpointID: "checkpoint",
+			}))
+			source, err := nbs.NewDiskSource(
+				ctx, client, diskID, "", "", "checkpoint", nil, largeChunkSize,
+				false, false, false,
+			)
+			require.NoError(t, err)
+			defer source.Close(ctx)
+
+			for index := uint32(0); index < largeChunkCount; index++ {
+				chunk := dataplane_common.Chunk{
+					Index: index,
+					Data:  bytes.Repeat([]byte{0xff}, int(largeChunkSize)),
+				}
+				require.NoError(t, source.Read(ctx, &chunk))
+				require.Equal(t, index == largeChunkCount-1, chunk.Zero)
+				require.Equal(t, expected[index], chunk.Data)
+			}
+
+			actualChunkCount, err := source.ChunkCount(ctx)
+			require.NoError(t, err)
+			require.Equal(t, largeChunkCount, actualChunkCount)
+		})
+	}
+}
+
+func TestChunkIndicesAcrossRoundedScanWindow(t *testing.T) {
+	const largeChunkSize = uint32(12 * 1024 * 1024)
+	const largeBlocksInChunk = uint64(largeChunkSize / blockSize)
+	const windowChunkCount = uint32((uint64(4) * 1024 * 1024 * 1024) / uint64(largeChunkSize))
+	const windowBlockCount = uint64(windowChunkCount) * largeBlocksInChunk
+	const blockCount = uint64(windowChunkCount+2) * largeBlocksInChunk
+
+	ctx := newContext()
+	factory := newFactory(t, ctx)
+	client, err := factory.GetClient(ctx, "zone")
+	require.NoError(t, err)
+	diskID := t.Name()
+	require.NoError(t, client.Create(ctx, nbs_client.CreateDiskParams{
+		ID:          diskID,
+		BlocksCount: blockCount,
+		BlockSize:   blockSize,
+		Kind:        types.DiskKind_DISK_KIND_SSD,
+	}))
+	defer func() { require.NoError(t, client.Delete(ctx, diskID)) }()
+
+	// Keep the disk sparse while exercising both sides of the rounded window.
+	session, err := client.MountRW(ctx, diskID, 0, 0, nil)
+	require.NoError(t, err)
+	func() {
+		defer session.Close(ctx)
+		for _, blockIndex := range []uint64{windowBlockCount - 1, windowBlockCount, blockCount - 1} {
+			err = session.Write(ctx, blockIndex, bytes.Repeat([]byte{1}, int(blockSize)))
+			require.NoError(t, err)
+		}
+	}()
+	require.NoError(t, client.CreateCheckpoint(ctx, nbs_client.CheckpointParams{
+		DiskID: diskID, CheckpointID: "checkpoint",
+	}))
+
+	for _, milestone := range []uint32{0, windowChunkCount} {
+		t.Run(fmt.Sprint(milestone), func(t *testing.T) {
+			source, err := nbs.NewDiskSource(
+				ctx, client, diskID, "", "", "checkpoint", nil, largeChunkSize,
+				false, false, false,
+			)
+			require.NoError(t, err)
+			defer source.Close(ctx)
+			processed := make(chan uint32, 3)
+			indices, _, errs := source.ChunkIndices(
+				ctx,
+				dataplane_common.Milestone{ChunkIndex: milestone},
+				processed,
+				common.ChannelWithCancellation{},
+			)
+			var actual []uint32
+			for index := range indices {
+				actual = append(actual, index)
+				processed <- index
+			}
+			for err := range errs {
+				require.NoError(t, err)
+			}
+			expected := []uint32{windowChunkCount - 1, windowChunkCount, windowChunkCount + 1}
+			if milestone == windowChunkCount {
+				expected = expected[1:]
+			}
+			require.Equal(t, expected, actual)
+		})
+	}
 }
 
 func TestDontReadFromCheckpoint(t *testing.T) {

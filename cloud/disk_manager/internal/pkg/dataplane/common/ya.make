@@ -2,6 +2,7 @@ GO_LIBRARY()
 
 SRCS(
     chunk.go
+    consts.go
     transfer.go
     util.go
 )

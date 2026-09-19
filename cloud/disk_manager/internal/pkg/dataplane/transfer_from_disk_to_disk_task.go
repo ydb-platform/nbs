@@ -64,7 +64,7 @@ func (t *transferFromDiskToDiskTask) Run(
 		t.request.SrcDiskBaseCheckpointId,
 		t.request.SrcDiskCheckpointId,
 		diskParams.EncryptionDesc,
-		chunkSize,
+		common.DefaultChunkSize,
 		false, // duplicateChunkIndices
 		false, // ignoreBaseDisk
 		false, // dontReadFromCheckpoint
@@ -93,7 +93,7 @@ func (t *transferFromDiskToDiskTask) Run(
 		t.nbsFactory,
 		t.request.DstDisk,
 		diskParams.EncryptionDesc,
-		chunkSize,
+		common.DefaultChunkSize,
 		ignoreZeroChunks,
 		t.request.FillGeneration,
 		t.request.FillSeqNumber,
@@ -107,7 +107,7 @@ func (t *transferFromDiskToDiskTask) Run(
 		ReaderCount:         t.config.GetReaderCount(),
 		WriterCount:         t.config.GetWriterCount(),
 		ChunksInflightLimit: t.config.GetChunksInflightLimit(),
-		ChunkSize:           chunkSize,
+		ChunkSize:           common.DefaultChunkSize,
 	}
 
 	transferredChunkCount, err := transferer.Transfer(

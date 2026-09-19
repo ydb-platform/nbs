@@ -1,6 +1,7 @@
 package nbs
 
 import (
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
@@ -21,6 +22,13 @@ func validate(blockCount uint64, chunkSize uint32, blockSize uint32) error {
 
 	if blockSize == 0 {
 		return errors.NewNonRetriableErrorf("blockSize should not be zero")
+	}
+	if blockSize > common.DefaultChunkSize || common.DefaultChunkSize%blockSize != 0 {
+		return errors.NewNonRetriableErrorf(
+			"blockSize should divide maximum request size %v, blockSize=%v",
+			common.DefaultChunkSize,
+			blockSize,
+		)
 	}
 
 	if chunkSize%blockSize != 0 {
