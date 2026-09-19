@@ -247,7 +247,7 @@ func (s *cellSelector) getCells(zoneID string) []string {
 	return cells.Cells
 }
 
-func (s *cellSelector) getDiskKindToDedicatedCell(
+func (s *cellSelector) getDedicatedCellForDiskKind(
 	zoneID string,
 	kind types.DiskKind,
 ) (string, bool) {
@@ -262,7 +262,7 @@ func (s *cellSelector) getDiskKindToDedicatedCell(
 	return cellID, ok
 }
 
-func (s *cellSelector) getDedicatedCellDiskKind(cellID string) (string, bool) {
+func (s *cellSelector) getDedicatedDiskKindForCell(cellID string) (string, bool) {
 	for _, cells := range s.config.GetCells() {
 		for kind, dedicatedCellID := range cells.GetDiskKindToDedicatedCell() {
 			if dedicatedCellID == cellID {
@@ -341,12 +341,12 @@ func (s *cellSelector) selectCellForDisk(
 		return zoneID, nil
 	}
 
-	cellID, ok := s.getDiskKindToDedicatedCell(zoneID, kind)
+	cellID, ok := s.getDedicatedCellForDiskKind(zoneID, kind)
 	if ok && !requireExactCellIDMatch {
 		return cellID, nil
 	}
 
-	dedicatedKind, ok := s.getDedicatedCellDiskKind(zoneID)
+	dedicatedKind, ok := s.getDedicatedDiskKindForCell(zoneID)
 	if ok && dedicatedKind != common.DiskKindToString(kind) {
 		return "", errors.NewNonCancellableErrorf(
 			"cell %q is dedicated to %v disks",
@@ -465,7 +465,7 @@ func (s *cellSelector) selectCellForPlacementGroup(
 		return zoneID, nil
 	}
 
-	dedicatedKind, ok := s.getDedicatedCellDiskKind(zoneID)
+	dedicatedKind, ok := s.getDedicatedDiskKindForCell(zoneID)
 	if ok {
 		return "", errors.NewNonCancellableErrorf(
 			"cell %q is dedicated to %v disks",
