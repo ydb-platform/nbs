@@ -3,6 +3,7 @@ syntax = "proto3";
 package api;
 
 import "cloud/disk_manager/api/disk.proto";
+import "cloud/disk_manager/api/filesystem_service.proto";
 import "cloud/disk_manager/api/operation.proto";
 import "google/protobuf/empty.proto";
 import "google/protobuf/timestamp.proto";
@@ -44,6 +45,12 @@ service PrivateService {
     // Lists all existing filesystem ids in specified |folder_id|.
     // Lists all existing filesystem ids if |folder_id| is not set.
     rpc ListFilesystems(ListFilesystemsRequest) returns (ListFilesystemsResponse);
+
+    rpc GetFilesystemSnapshot(GetFilesystemSnapshotRequest) returns (GetFilesystemSnapshotResponse);
+
+    // Lists all existing filesystem snapshot ids in specified |folder_id|.
+    // Lists all existing filesystem snapshot ids if |folder_id| is not set.
+    rpc ListFilesystemSnapshots(ListFilesystemSnapshotsRequest) returns (ListFilesystemSnapshotsResponse);
 
     // Lists all existing placement group ids in specified |folder_id|.
     // Lists all existing placement group ids if |folder_id| is not set.
@@ -137,6 +144,36 @@ message ListFilesystemsRequest {
 
 message ListFilesystemsResponse {
     repeated string filesystem_ids = 1;
+}
+
+message GetFilesystemSnapshotRequest {
+    string filesystem_snapshot_id = 1;
+}
+
+message FilesystemSnapshot {
+    string id = 1;
+    string folder_id = 2;
+    cloud.disk_manager.FilesystemId filesystem = 3;
+    string create_task_id = 4;
+    google.protobuf.Timestamp creating_at = 5;
+    string delete_task_id = 6;
+    uint64 size = 7;
+    uint64 storage_size = 8;
+    bool ready = 9;
+}
+
+message GetFilesystemSnapshotResponse {
+    // Unset when the filesystem snapshot does not exist.
+    FilesystemSnapshot snapshot = 1;
+}
+
+message ListFilesystemSnapshotsRequest {
+    string folder_id = 1;
+    google.protobuf.Timestamp creating_before = 2;
+}
+
+message ListFilesystemSnapshotsResponse {
+    repeated string filesystem_snapshot_ids = 1;
 }
 
 message ListPlacementGroupsRequest {
