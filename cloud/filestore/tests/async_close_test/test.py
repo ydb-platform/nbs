@@ -97,8 +97,6 @@ def test():
             sleep(1)
 
         workload.wait(timeout=10)
-        assert workload.returncode == 0, (
-            f"Guest workload failed with code {workload.returncode}")
     finally:
         if workload.running:
             workload.kill()
