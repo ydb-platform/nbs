@@ -37,7 +37,7 @@ DA_PID_FILE = "blockstore_disk_agent_recipe.disk_agent_pid"
 DEVICE_BLOCK_SIZE = 4096
 DEVICE_HEADER = 4096
 DEVICE_PADDING = 4096
-STORAGE_POOL_NAME = "fastshard"
+STORAGE_POOL_NAME = "journalled"
 
 
 def _shutdown(pid_file):
