@@ -9,6 +9,8 @@
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
+#include <cloud/storage/core/protos/media.pb.h>
+
 #include <util/generic/string.h>
 #include <util/generic/typetraits.h>
 
@@ -160,6 +162,27 @@ ui32 GetWriteBlobThreshold(
 ui32 GetWriteMixedBlobThreshold(
     const TStorageConfig& config,
     const NCloud::NProto::EStorageMediaKind mediaKind);
+
+struct TFreshCapacityLimits
+{
+    ui64 FlushThreshold = 0;
+    ui64 FreshByteCountLimitForBackpressure = 0;
+    ui64 FreshByteCountThresholdForBackpressure = 0;
+    ui64 FreshBlobCountFlushThreshold = 0;
+    ui64 FreshBlobByteCountFlushThreshold = 0;
+    ui64 FreshByteCountHardLimit = 0;
+
+    // The selected media-specific BytesPerFreshCapacityUnit and the resulting
+    // unit count. Both are zero when scaling is off, in which case the limits
+    // above are the configured media-specific values verbatim.
+    ui64 BytesPerFreshCapacityUnit = 0;
+    ui64 Units = 0;
+};
+
+[[nodiscard]] TFreshCapacityLimits GetEffectiveFreshCapacityLimits(
+    const TStorageConfig& config,
+    const NProto::TPartitionConfig& partitionConfig);
+
 
 bool IsFreshRequest(
     const TStorageConfig& config,

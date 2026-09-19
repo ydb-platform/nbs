@@ -21,6 +21,7 @@
 #include <cloud/blockstore/libs/storage/core/partition_statistics_counters.h>
 #include <cloud/blockstore/libs/storage/core/pending_request.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
 #include <cloud/blockstore/libs/storage/core/tablet.h>
@@ -167,6 +168,8 @@ private:
 
     bool FirstGarbageCollectionCompleted = false;
     bool IsGarbageCompactionThrottlingMisconfigured = false;
+
+    TFreshCapacityLimits FreshCapacityLimits;
 
     TTransactionTimeTracker TransactionTimeTracker;
     TBSGroupOperationTimeTracker BSGroupOperationTimeTracker;
