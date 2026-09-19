@@ -9,6 +9,7 @@ SRCS(
     overlapping_requests_guard_service_ut.cpp
     request_ut.cpp
     service_filtered_ut.cpp
+    split_request_service_reentrant_ut.cpp
     split_request_service_ut.cpp
     storage_ut.cpp
 )
