@@ -25,6 +25,7 @@ namespace NCloud::NBlockStore::NVHostServer {
 struct TAioRequest;
 struct TAioSubRequest;
 struct TAioCompoundRequest;
+class TLatencyTracker;
 
 // The unique_ptr<> deleter that performs release via std std::free(). It used
 // for memory blocks allocated via std::calloc().
@@ -63,6 +64,7 @@ struct TAioRequest
 {
     vhd_io* Io;
     TCpuCycles SubmitTs;
+    TCpuCycles LatencyStartTs;
     bool BufferAllocated = false;
     bool Unaligned = false;
     ui32 BufferCount = 0;
@@ -112,6 +114,7 @@ struct TAioCompoundRequest
     std::atomic<ui32> Errors;
     vhd_io* Io;
     TCpuCycles SubmitTs;
+    TCpuCycles LatencyStartTs;
     size_t BufferSize;
     std::unique_ptr<char, TFreeDeleter> Buffer;
 
@@ -142,6 +145,16 @@ void PrepareIO(
     TVector<iocb*>& batch,
     TCpuCycles now,
     TSimpleStats& queueStats);
+
+void PrepareIO(
+    TLog& log,
+    IEncryptor* encryptor,
+    const TVector<TAioDevice>& devices,
+    vhd_io* io,
+    TVector<iocb*>& batch,
+    TCpuCycles now,
+    TSimpleStats& queueStats,
+    const TLatencyTracker* latencyTracker);
 
 // Copies the data, and if an encryptor is specified, encrypt it. Returns true
 // if successful.

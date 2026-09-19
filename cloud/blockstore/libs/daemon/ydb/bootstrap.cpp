@@ -645,7 +645,8 @@ void TBootstrapYdb::InitKikimrService()
         Configs->DiagnosticsConfig,
         Configs->StorageConfig->GetInactiveClientsTimeout(),
         EVolumeStatsType::EServerStats,
-        Timer);
+        Timer,
+        Log);
 
     ClientPercentiles = CreateClientPercentileCalculator(logging);
 

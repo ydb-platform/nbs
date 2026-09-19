@@ -837,6 +837,56 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             FormatError(result.GetError()));
     }
 
+    Y_UNIT_TEST(ShouldMarkOnlyParallelSplitRequestsForLatency)
+    {
+        TTestEnvironment env;
+        env.MountVolume();
+        TTestBlockStore& testBlockStore = *env.Storage;
+
+        const TString splitData = "aabbccddeeffgghhjjkk";
+        auto splitContext = MakeIntrusive<TCallContext>();
+        auto splitRequest = std::make_shared<NProto::TWriteBlocksRequest>();
+        env.SetupRequest(
+            splitRequest,
+            TBlockRange64::WithLength(1, 10),
+            splitData);
+
+        auto splitFuture = env.SplitRequestService->WriteBlocks(
+            splitContext,
+            std::move(splitRequest));
+        UNIT_ASSERT(splitContext->GetHasParallelSubRequests());
+
+        auto* firstPart = testBlockStore.WriteBlocksPromises.FindPtr(
+            TBlockRange64::WithLength(1, 5));
+        auto* secondPart = testBlockStore.WriteBlocksPromises.FindPtr(
+            TBlockRange64::WithLength(6, 5));
+        UNIT_ASSERT(firstPart);
+        UNIT_ASSERT(secondPart);
+        firstPart->Promise.SetValue(NProto::TWriteBlocksResponse());
+        secondPart->Promise.SetValue(NProto::TWriteBlocksResponse());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            splitFuture.GetValueSync().GetError().GetCode());
+
+        auto directContext = MakeIntrusive<TCallContext>();
+        auto directRequest = std::make_shared<NProto::TWriteBlocksRequest>();
+        const auto directRange = TBlockRange64::WithLength(0, 3);
+        env.SetupRequest(directRequest, directRange, "aabbcc");
+
+        auto directFuture = env.SplitRequestService->WriteBlocks(
+            directContext,
+            std::move(directRequest));
+        UNIT_ASSERT(!directContext->GetHasParallelSubRequests());
+
+        auto* directPart =
+            testBlockStore.WriteBlocksPromises.FindPtr(directRange);
+        UNIT_ASSERT(directPart);
+        directPart->Promise.SetValue(NProto::TWriteBlocksResponse());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            directFuture.GetValueSync().GetError().GetCode());
+    }
+
     Y_UNIT_TEST(ShouldForwardRequestIfSplittingIsNotRequired)
     {
         TTestEnvironment env;
