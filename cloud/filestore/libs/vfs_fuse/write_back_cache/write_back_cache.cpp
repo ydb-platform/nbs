@@ -186,6 +186,7 @@ public:
         }
 
         State.SetDrainingMode();
+
         return State.AddFlushAllRequest();
     }
 
@@ -201,6 +202,7 @@ public:
         }
 
         if (!DrainCompleted.exchange(true)) {
+            PersistentStorage->SetTargetDataCapacity(0);
             STORAGE_INFO(LogTag << " Complete WriteBackCache draining");
         }
 

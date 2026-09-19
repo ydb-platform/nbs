@@ -145,7 +145,7 @@ NProto::TError MakeInvalidPointerError()
 class TFileRingBuffer::TImpl
 {
 private:
-    const TFileRingBufferArgs Args;
+    TFileRingBufferArgs Args;
     TFileMapFileRingBufferAccessor Accessor;
     std::atomic<bool> Corrupted = false;
 
@@ -287,6 +287,11 @@ private:
         return !IsCorrupted() && Header()->Version != Args.Version;
     }
 
+    bool IsDataCapacityResizeNeeded() const
+    {
+        return !IsCorrupted() && Header()->DataCapacity != Args.DataCapacity;
+    }
+
     void TryMigrate()
     {
         if (!IsMigrationNeeded()) {
@@ -299,6 +304,39 @@ private:
             Header()->Version = Args.Version;
             Validate();
         }
+    }
+
+    void TryResizeDataCapacity()
+    {
+        if (!IsDataCapacityResizeNeeded()) {
+            return;
+        }
+
+        // Resizing the file results in its remap and changing memory addresses
+        // for existing entries that can be referenced by an external code.
+        // Therefore, the buffer can be safely done only when it is empty.
+        if (!Empty()) {
+            return;
+        }
+
+        SetReadAndWritePosToZeroForEmptyBuffer();
+
+        if (Header()->DataOffset > Max<ui64>() - Args.DataCapacity) {
+            // Integer overflow protection
+            Args.DataCapacity =  Max<ui64>() - Header()->DataOffset;
+        }
+
+        const ui64 newFileSize = Header()->DataOffset + Args.DataCapacity;
+
+        Header()->DataCapacity = Min(Header()->DataCapacity, Args.DataCapacity);
+
+        if (!ResizeAndRemap(newFileSize) || !Validate()) {
+            return;
+        }
+
+        Header()->DataCapacity = Args.DataCapacity;
+
+        Validate();
     }
 
     bool ResizeMetadata(ui64 desiredMetadataCapacity)
@@ -396,6 +434,10 @@ private:
 
         if (IsMigrationNeeded()) {
             TryMigrate();
+        }
+
+        if (IsDataCapacityResizeNeeded()) {
+            TryResizeDataCapacity();
         }
     }
 
@@ -541,9 +583,10 @@ public:
                 "Zero size allocations are not allowed"));
         }
 
-        if (IsMigrationNeeded()) {
+        if (IsMigrationNeeded() || IsDataCapacityResizeNeeded()) {
             // Return "storage is full" error.
-            // Migration will happen when the buffer is emptied.
+            // Migration and data capacity resize will happen when the buffer is
+            // emptied.
             return TAllocResult(nullptr);
         }
 
@@ -979,7 +1022,7 @@ public:
             return 0;
         }
 
-        if (IsMigrationNeeded()) {
+        if (IsMigrationNeeded() || IsDataCapacityResizeNeeded()) {
             return 0;
         }
 
@@ -1004,7 +1047,7 @@ public:
             return 0;
         }
 
-        return Capabilities().MaxAllocationByteCount;
+        return Data()->GetMaxAllocationByteCount(Args.DataCapacity);
     }
 
     TGetMetadataResult GetMetadata()
@@ -1039,6 +1082,15 @@ public:
         Header()->MetadataChecksum = Crc32c(buf.data(), buf.size());
         buf.copy(data.data(), buf.size());
         return TSetMetadataResult(true);
+    }
+
+    void SetTargetDataCapacity(ui64 dataCapacity)
+    {
+        Args.DataCapacity = dataCapacity;
+
+        if (IsDataCapacityResizeNeeded()) {
+            TryResizeDataCapacity();
+        }
     }
 };
 
@@ -1180,9 +1232,15 @@ TFileRingBuffer::TGetMetadataResult TFileRingBuffer::GetMetadata() const
     return Impl->GetMetadata();
 }
 
-TFileRingBuffer::TSetMetadataResult TFileRingBuffer::SetMetadata(TStringBuf data)
+TFileRingBuffer::TSetMetadataResult TFileRingBuffer::SetMetadata(
+    TStringBuf data)
 {
     return Impl->SetMetadata(data);
+}
+
+void TFileRingBuffer::SetTargetDataCapacity(ui64 dataCapacity)
+{
+    return Impl->SetTargetDataCapacity(dataCapacity);
 }
 
 }   // namespace NCloud
