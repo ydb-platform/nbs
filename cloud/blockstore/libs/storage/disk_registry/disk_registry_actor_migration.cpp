@@ -178,7 +178,7 @@ void TDiskRegistryActor::HandleFinishMigration(
         ev->Get()->CallContext);
 
     auto diskId = record.GetDiskId();
-    auto migrations = record.GetMigrations();
+    auto& migrations = *record.MutableMigrations();
 
     if (State->IsMasterDisk(record.GetDiskId())) {
         TString replicaId;
@@ -230,7 +230,9 @@ void TDiskRegistryActor::HandleFinishMigration(
         ctx,
         std::move(requestInfo),
         std::move(diskId),
-        std::move(migrations),
+        TVector<NProto::TDeviceMigrationIds>(
+            std::make_move_iterator(migrations.begin()),
+            std::make_move_iterator(migrations.end())),
         ctx.Now()
     );
 }
@@ -255,29 +257,27 @@ void TDiskRegistryActor::ExecuteFinishMigration(
     TTxDiskRegistry::TFinishMigration& args)
 {
     TDiskRegistryDatabase db(tx.DB);
-    for (auto& x: args.Migrations) {
-        bool updated = false;
-        auto error = State->FinishDeviceMigration(
-            db,
-            args.DiskId,
-            x.GetSourceDeviceId(),
-            x.GetTargetDeviceId(),
-            args.Timestamp,
-            &updated);
-        Y_UNUSED(updated);
+    args.Error = State->FinishDeviceMigrations(
+        db,
+        args.DiskId,
+        args.Migrations,
+        args.Timestamp,
+        [&](const NProto::TDeviceMigrationIds& ids, const NProto::TError& error)
+        {
+            if (HasError(error)) {
+                LOG_ERROR(
+                    ctx,
+                    TBlockStoreComponents::DISK_REGISTRY,
+                    "%s FinishDeviceMigration error: %s. DiskId=%s Source=%s "
+                    "Target=%s",
+                    LogTitle.GetWithTime().c_str(),
+                    FormatError(error).c_str(),
+                    args.DiskId.c_str(),
+                    ids.GetSourceDeviceId().c_str(),
+                    ids.GetTargetDeviceId().c_str());
+                return;
+            }
 
-        if (HasError(error)) {
-            LOG_ERROR(
-                ctx,
-                TBlockStoreComponents::DISK_REGISTRY,
-                "%s FinishDeviceMigration error: %s. DiskId=%s Source=%s "
-                "Target=%s",
-                LogTitle.GetWithTime().c_str(),
-                FormatError(error).c_str(),
-                args.DiskId.c_str(),
-                x.GetSourceDeviceId().c_str(),
-                x.GetTargetDeviceId().c_str());
-        } else {
             LOG_INFO(
                 ctx,
                 TBlockStoreComponents::DISK_REGISTRY,
@@ -285,27 +285,24 @@ void TDiskRegistryActor::ExecuteFinishMigration(
                 "Target=%s",
                 LogTitle.GetWithTime().c_str(),
                 args.DiskId.c_str(),
-                x.GetSourceDeviceId().c_str(),
-                x.GetTargetDeviceId().c_str());
-        }
-
-        if (!HasError(args.Error)) {
-            args.Error = error;
-        }
-    }
+                ids.GetSourceDeviceId().c_str(),
+                ids.GetTargetDeviceId().c_str());
+        });
 }
 
 void TDiskRegistryActor::CompleteFinishMigration(
     const TActorContext& ctx,
     TTxDiskRegistry::TFinishMigration& args)
 {
-    LOG_INFO(
+    LOG_LOG(
         ctx,
+        HasError(args.Error) ? NLog::PRI_ERROR : NLog::PRI_INFO,
         TBlockStoreComponents::DISK_REGISTRY,
-        "%s FinishMigration complete. DiskId=%s Migrations=%d",
+        "%s FinishMigration complete. DiskId=%s Migrations=%zu Error=%s",
         LogTitle.GetWithTime().c_str(),
         args.DiskId.c_str(),
-        args.Migrations.size());
+        args.Migrations.size(),
+        FormatError(args.Error).c_str());
 
     ReallocateDisks(ctx);
     NotifyUsers(ctx);
