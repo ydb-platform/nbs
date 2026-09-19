@@ -151,6 +151,7 @@ func newResourceStorage(
 		config.GetPlacementGroupConfig().GetStorageFolder(),
 		db,
 		endedMigrationExpirationTimeout,
+		false, // backupEnabled
 	)
 
 	return resourcesStorage, db, err

@@ -527,6 +527,22 @@ func (s *storageYDB) snapshotCreated(
 		return err
 	}
 
+	if s.backupEnabled {
+		_, err = tx.Execute(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $snapshot_id as Utf8;
+
+			upsert into backup_queue (snapshot_id)
+			values ($snapshot_id)
+		`, s.snapshotsPath),
+			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	return tx.Commit(ctx)
 }
 
@@ -620,6 +636,22 @@ func (s *storageYDB) deleteSnapshot(
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.backupEnabled {
+		_, err = tx.Execute(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $snapshot_id as Utf8;
+
+			delete from backup_queue
+			where snapshot_id = $snapshot_id
+		`, s.snapshotsPath),
+			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	err = tx.Commit(ctx)
@@ -809,6 +841,66 @@ func (s *storageYDB) listSnapshots(
 	)
 }
 
+func (s *storageYDB) listSnapshotsToBackup(
+	ctx context.Context,
+	session *persistence.Session,
+	limit int,
+) ([]string, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $limit as Uint64;
+
+		select snapshot_id
+		from backup_queue
+		limit $limit
+	`, s.snapshotsPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	var ids []string
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var id string
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault("snapshot_id", &id),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			ids = append(ids, id)
+		}
+	}
+
+	return ids, nil
+}
+
+func (s *storageYDB) snapshotBackupScheduled(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+) error {
+
+	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+
+		delete from backup_queue
+		where snapshot_id = $snapshot_id
+	`, s.snapshotsPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+	)
+	return err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *storageYDB) CreateSnapshot(
@@ -939,6 +1031,37 @@ func (s *storageYDB) ListSnapshots(
 	return ids, err
 }
 
+func (s *storageYDB) ListSnapshotsToBackup(
+	ctx context.Context,
+	limit int,
+) ([]string, error) {
+
+	var ids []string
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			ids, err = s.listSnapshotsToBackup(ctx, session, limit)
+			return err
+		},
+	)
+	return ids, err
+}
+
+func (s *storageYDB) SnapshotBackupScheduled(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.snapshotBackupScheduled(ctx, session, snapshotID)
+		},
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func createSnapshotsYDBTables(
@@ -996,6 +1119,21 @@ func createSnapshotsYDBTables(
 	}
 	logging.Info(ctx, "Created deleted table")
 
+	err = db.CreateOrAlterTable(
+		ctx,
+		folder,
+		"backup_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithPrimaryKeyColumn("snapshot_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_queue table")
+
 	logging.Info(ctx, "Created tables for snapshots")
 
 	return nil
@@ -1026,6 +1164,12 @@ func dropSnapshotsYDBTables(
 		return err
 	}
 	logging.Info(ctx, "Dropped deleted table")
+
+	err = db.DropTable(ctx, folder, "backup_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_queue table")
 
 	logging.Info(ctx, "Dropped tables for snapshots")
 
