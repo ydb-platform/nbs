@@ -1,3 +1,4 @@
+import contextlib
 import json
 import logging
 import os
@@ -22,6 +23,7 @@ SSH_PORT = 22
 
 QEMU_NET = "10.0.2.0/24"
 QEMU_HOST = "10.0.2.2"
+MIGRATION_POLL_INTERVAL_SECONDS = 1
 
 
 def daemon_log_files(prefix, id, cwd):
@@ -55,7 +57,7 @@ def prepare_root_image(src_image, dest_path, backup):
         return src_image
 
 
-def create_qmp_socket():
+def create_socket_path():
     filepath = '/tmp/{}'.format(uuid.uuid4())
     return filepath
 
@@ -96,10 +98,14 @@ class Qemu:
                  is_arm=None,
                  chardev_reconnect=None,
                  virtiofs_migration=None,
-                 qemu_bios=None):
+                 qemu_bios=None,
+                 has_incoming_socket=False):
 
         self.ssh_port = 0
         self.qmp = None
+        self.qmp_socket = None
+        self.has_incoming_socket = has_incoming_socket
+        self.incoming_socket = None
         self.mount_paths = None
         self.seqno = 0
         self.qemu_bin = None
@@ -190,6 +196,28 @@ class Qemu:
         if self.qmp is not None:
             self.qmp.close()
 
+    def shutdown(self):
+        """Release QMP, process and socket resources; safe to call repeatedly."""
+        try:
+            self.stop()
+            self.qmp = None
+        finally:
+            try:
+                if self.qemu_bin:
+                    self.qemu_bin.stop()
+                    self.qemu_bin = None
+            finally:
+                try:
+                    if self.qmp_socket:
+                        with contextlib.suppress(FileNotFoundError):
+                            os.unlink(self.qmp_socket)
+                        self.qmp_socket = None
+                finally:
+                    if self.incoming_socket:
+                        with contextlib.suppress(FileNotFoundError):
+                            os.unlink(self.incoming_socket)
+                        self.incoming_socket = None
+
     def set_ssh_port(self, port=0):
         self.ssh_port = port
 
@@ -199,19 +227,43 @@ class Qemu:
     def set_mount_paths(self, mount_paths):
         self.mount_paths = mount_paths
 
-    def _save_to_file(self):
-        self.qmp.command("migrate", uri="exec:cat > state_file_{}.bin".format(self.seqno))
+    def get_incoming_uri(self):
+        if self.incoming_socket:
+            return "unix:{}".format(self.incoming_socket)
+        return None
+
+    def migrate_to_uri(self, uri, timeout_seconds=None):
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise QemuException(
+                "migration timeout must be positive: {}".format(
+                    timeout_seconds))
+
+        deadline = None
+        if timeout_seconds is not None:
+            deadline = time.time() + timeout_seconds
+
+        self.qmp.command("migrate", uri=uri)
 
         status = self.qmp.command("query-migrate")
         logger.info("migrate_status {}".format(json.dumps(status)))
-        while status['status'] in ('active', 'setup', 'device'):
-            time.sleep(1)
+        while status["status"] in ("active", "setup", "device"):
+            now = time.time()
+            if deadline is not None and now >= deadline:
+                raise QemuException(
+                    "migration timed out after {}s: {}".format(
+                        timeout_seconds,
+                        json.dumps(status, sort_keys=True)))
+
+            time.sleep(MIGRATION_POLL_INTERVAL_SECONDS)
             status = self.qmp.command("query-migrate")
             logger.info("migrate_status {}".format(json.dumps(status)))
 
         if status['status'] != "completed":
             raise QemuException(status['status'])
+        return status
 
+    def _save_to_file(self):
+        self.migrate_to_uri(uri="exec:cat > state_file_{}.bin".format(self.seqno))
         self.qmp.close()
         self.qemu_bin.kill()
 
@@ -248,7 +300,7 @@ class Qemu:
         qemu_serial_log = yatest.common.output_path(
             os.path.basename(self.rootfs) + "_{}_serial.out".format(self.inst_index))
 
-        self.qmp_socket = create_qmp_socket()
+        self.qmp_socket = create_socket_path()
 
         cmd = [
             self.qemu_kvm,
@@ -268,6 +320,10 @@ class Qemu:
             "-L", self.qemu_firmware,
             "-qmp", "unix:{},server,nowait".format(self.qmp_socket),
         ]
+
+        if self.has_incoming_socket:
+            self.incoming_socket = create_socket_path()
+            cmd += ["-incoming", self.get_incoming_uri()]
 
         if self.qemu_bios:
             cmd += ["-bios", self.qemu_bios]
