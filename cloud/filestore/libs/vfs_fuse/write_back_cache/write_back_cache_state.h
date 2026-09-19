@@ -21,6 +21,7 @@
 #include <util/generic/function_ref.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/intrlist.h>
+#include <util/system/guard.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -181,7 +182,9 @@ public:
 
     // Inform that the flush has failed - the error should be propagated to
     // Flush, FlushAll and ReleaseHandle requests.
-    // In the case of E_FS_NOSPC, pending requests will also be failed.
+    // Unallocated pending requests will also be failed with the same error.
+    // In the case of E_FS_NOSPC, unallocated pending requests will be failed
+    // for all nodes.
     EFlushRetryStatus FlushFailed(
         ui64 nodeId,
         const NCloud::NProto::TError& error);
@@ -213,9 +216,6 @@ private:
         std::unique_ptr<TPendingWriteDataRequest> request);
 
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
-        std::unique_ptr<TCachedWriteDataRequest> request);
-
-    NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TCachedWriteDataRequest> request,
         bool handleReleased);
 
@@ -227,7 +227,9 @@ private:
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
     void CheckAndAcquireBarriers(TNodeState& nodeState);
-    void ProcessPendingRequests();
+    void ProcessPendingRequests(TGuard<TQueuedOperations>& guard);
+    void ProcessReadyCachedRequest(
+        std::unique_ptr<TCachedWriteDataRequest> request);
 
     void EnqueueUnflushedRequest(
         ui64 nodeId,
@@ -252,16 +254,16 @@ private:
         TNodeState& nodeState,
         const NCloud::NProto::TError& error);
 
-    void FailPendingRequest(
+    void FailUnallocatedPendingRequest(
         TNodeState& nodeState,
-        TPendingWriteDataRequest* request,
+        std::unique_ptr<TPendingWriteDataRequest> request,
         const NCloud::NProto::TError& error);
 
-    void FailNodePendingRequests(
+    void FailNodeUnallocatedPendingRequests(
         TNodeState& nodeState,
         const NCloud::NProto::TError& error);
 
-    void FailAllPendingRequests(const NCloud::NProto::TError& error);
+    void FailAllUnallocatedPendingRequests(const NCloud::NProto::TError& error);
 
     void SetFailedFlag();
 };

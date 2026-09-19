@@ -33,6 +33,7 @@ struct TWriteDataRequestManagerMetrics
     };
 
     TExtendedQueueMetrics PendingQueue;
+    TExtendedQueueMetrics AllocatedQueue;
     TExtendedQueueMetrics UnflushedQueue;
     TQueueMetrics FlushedQueue;
     TNodesWithBackpressureMetrics NodesWithBackpressure;
@@ -51,6 +52,9 @@ struct IWriteDataRequestManagerStats
     virtual void AddedPendingRequest() = 0;
     virtual void RemovedPendingRequest(TDuration duration) = 0;
 
+    virtual void AddedAllocatedRequest() = 0;
+    virtual void RemovedAllocatedRequest(TDuration duration) = 0;
+
     virtual void AddedUnflushedRequest() = 0;
     virtual void RemovedUnflushedRequest(TDuration duration) = 0;
 
@@ -64,6 +68,7 @@ struct IWriteDataRequestManagerStats
 
     virtual void UpdateStats(
         TDuration maxPendingRequestDuration,
+        TDuration maxAllocatedRequestDuration,
         TDuration maxUnflushedRequestDuration) = 0;
 };
 

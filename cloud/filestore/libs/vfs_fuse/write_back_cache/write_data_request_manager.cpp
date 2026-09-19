@@ -1,8 +1,7 @@
 #include "write_data_request_manager.h"
 
-#include <cloud/filestore/libs/service/request.h>
-
 #include <util/stream/mem.h>
+#include <util/string/builder.h>
 #include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -34,54 +33,6 @@ struct TLoadedWriteDataRequest
     ECachedWriteDataRequestTag Tag = ECachedWriteDataRequestTag::Unflushed;
     std::unique_ptr<TCachedWriteDataRequest> Request;
 };
-
-////////////////////////////////////////////////////////////////////////////////
-
-TStringBuf SerializeWriteDataRequest(
-    const NProto::TWriteDataRequest& request,
-    TMemoryOutput& memoryOutput)
-{
-    TSerializedWriteDataRequestHeader header{
-        .NodeId = request.GetNodeId(),
-        .Handle = request.GetHandle(),
-        .Offset = request.GetOffset()};
-
-    memoryOutput.Write(&header, sizeof(header));
-
-    auto data = TStringBuf(memoryOutput.Buf(), memoryOutput.Avail());
-
-    if (request.GetIovecs().empty()) {
-        memoryOutput.Write(
-            TStringBuf(request.GetBuffer()).Skip(request.GetBufferOffset()));
-    } else {
-        for (const auto& iovec: request.GetIovecs()) {
-            memoryOutput.Write(TStringBuf(
-                reinterpret_cast<const char*>(iovec.GetBase()),
-                iovec.GetLength()));
-        }
-    }
-
-    return data;
-}
-
-std::unique_ptr<TCachedWriteDataRequest> DeserializeWriteDataRequest(
-    ui64 sequenceId,
-    TInstant time,
-    TStringBuf allocation)
-{
-    if (allocation.size() <= sizeof(TSerializedWriteDataRequestHeader)) {
-        return nullptr;
-    }
-
-    auto data = TStringBuf(
-        allocation.SubStr(sizeof(TSerializedWriteDataRequestHeader)));
-
-    return std::make_unique<TCachedWriteDataRequest>(
-        sequenceId,
-        time,
-        allocation.data(),
-        data);
-}
 
 }   // namespace
 
@@ -146,7 +97,7 @@ NProto::TError TWriteDataRequestManager::Init(
                 return;
             }
 
-            auto request = DeserializeWriteDataRequest(
+            auto request = TCachedWriteDataRequest::Deserialize(
                 SequenceIdGenerator->GenerateId(),
                 Timer->Now(),
                 allocation);
@@ -202,38 +153,42 @@ NProto::TError TWriteDataRequestManager::Init(
         }
     }
 
-    PendingRequests.Clear();
-
     return {};
 }
 
 bool TWriteDataRequestManager::HasPendingRequests() const
 {
-    return !PendingRequests.Empty();
+    return HasUnallocatedPendingRequests() || HasAllocatedPendingRequests();
 }
 
 bool TWriteDataRequestManager::HasPendingOrUnflushedRequests() const
 {
-    return !UnflushedRequests.Empty() || !PendingRequests.Empty();
+    return HasPendingRequests() || HasUnflushedRequests();
 }
 
 ui64 TWriteDataRequestManager::GetMinPendingOrUnflushedSequenceId() const
 {
-    if (!UnflushedRequests.Empty()) {
+    if (HasUnflushedRequests()) {
         return UnflushedRequests.Front()->GetSequenceId();
     }
-    if (!PendingRequests.Empty()) {
-        return PendingRequests.Front()->GetSequenceId();
+    if (HasAllocatedPendingRequests()) {
+        return AllocatedPendingRequests.Front()->GetSequenceId();
+    }
+    if (HasUnallocatedPendingRequests()) {
+        return UnallocatedPendingRequests.Front()->GetSequenceId();
     }
     return Max<ui64>();
 }
 
 ui64 TWriteDataRequestManager::GetMaxPendingOrUnflushedSequenceId() const
 {
-    if (!PendingRequests.Empty()) {
-        return PendingRequests.Back()->GetSequenceId();
+    if (HasUnallocatedPendingRequests()) {
+        return UnallocatedPendingRequests.Back()->GetSequenceId();
     }
-    if (!UnflushedRequests.Empty()) {
+    if (HasAllocatedPendingRequests()) {
+        return AllocatedPendingRequests.Back()->GetSequenceId();
+    }
+    if (HasUnflushedRequests()) {
         return UnflushedRequests.Back()->GetSequenceId();
     }
     return 0;
@@ -241,79 +196,112 @@ ui64 TWriteDataRequestManager::GetMaxPendingOrUnflushedSequenceId() const
 
 ui64 TWriteDataRequestManager::GetMaxUnflushedSequenceId() const
 {
-    return UnflushedRequests.Empty()
-               ? 0
-               : UnflushedRequests.Back()->GetSequenceId();
+    return HasUnflushedRequests() ? UnflushedRequests.Back()->GetSequenceId()
+                                  : 0;
 }
 
-auto TWriteDataRequestManager::AddRequest(
-    std::shared_ptr<NProto::TWriteDataRequest> request) -> TAddRequestResult
+bool TWriteDataRequestManager::GetStorageIsFull() const
+{
+    return StorageIsFull;
+}
+
+std::unique_ptr<TPendingWriteDataRequest> TWriteDataRequestManager::AddRequest(
+    std::shared_ptr<NProto::TWriteDataRequest> request)
 {
     const ui64 sequenceId = SequenceIdGenerator->GenerateId();
     const auto now = Timer->Now();
-
-    if (PendingRequests.Empty()) {
-        auto res =
-            TryStoreRequestInPersistentStorage(sequenceId, now, *request);
-
-        if (res.Failed) {
-            return {.Failed = true};
-        }
-
-        if (res.CachedRequest) {
-            UnflushedRequestsPushBack(res.CachedRequest.get());
-            return {.CachedRequest = std::move(res.CachedRequest)};
-        }
-    }
 
     auto pendingRequest = std::make_unique<TPendingWriteDataRequest>(
         sequenceId,
         now,
         std::move(request));
 
-    PendingRequestsPushBack(pendingRequest.get());
-    return {.PendingRequest = std::move(pendingRequest)};
-}
-
-auto TWriteDataRequestManager::TryProcessPendingRequest()
-    -> TProcessPendingRequestResult
-{
-    if (PendingRequests.Empty()) {
-        return {};
+    if (HasUnallocatedPendingRequests()) {
+        UnallocatedPendingRequestsPushBack(pendingRequest.get());
+        return pendingRequest;
     }
 
-    auto* pendingRequest = PendingRequests.Front();
-
-    auto res = TryStoreRequestInPersistentStorage(
-        pendingRequest->GetSequenceId(),
-        Timer->Now(),
-        pendingRequest->GetRequest());
-
-    if (!res.CachedRequest) {
-        return {.Failed = res.Failed};
-    }
-
-    PendingRequestsPopFront();
-    UnflushedRequestsPushBack(res.CachedRequest.get());
-
-    return {.CachedRequest = std::move(res.CachedRequest)};
-}
-
-TPendingWriteDataRequest* TWriteDataRequestManager::TryPopFrontPendingRequest()
-{
-    if (PendingRequests.Empty()) {
+    if (!TryAllocRequestInPersistentStorage(pendingRequest.get())) {
+        // PersistentStorage failures
         return nullptr;
     }
 
-    auto* pendingRequest = PendingRequests.Front();
-    PendingRequestsPopFront();
+    if (pendingRequest->HasAllocation()) {
+        AllocatedPendingRequestsPushBack(pendingRequest.get());
+        SerializationNeededRequests.PushBack(pendingRequest.get());
+    } else {
+        UnallocatedPendingRequestsPushBack(pendingRequest.get());
+    }
+
     return pendingRequest;
 }
 
-void TWriteDataRequestManager::Remove(
+TPendingWriteDataRequest*
+TWriteDataRequestManager::GetNextPendingRequestToSerialize()
+{
+    if (SerializationNeededRequests.Empty()) {
+        return nullptr;
+    }
+
+    return SerializationNeededRequests.PopFront();
+}
+
+TWriteDataRequestManager::TGetNextReadyCachedRequestResult
+TWriteDataRequestManager::GetNextReadyCachedRequest()
+{
+    if (AllocatedPendingRequests.Empty()) {
+        return {};
+    }
+
+    auto* pendingRequest = AllocatedPendingRequests.Front();
+    if (!pendingRequest->Serialized) {
+        return {};
+    }
+
+    if (NodesWithBackpressure.contains(
+            pendingRequest->GetRequest().GetNodeId()))
+    {
+        // Known limitation: requests are committed in a single global FIFO
+        // order. Although backpressure is tracked per node, requests are not
+        // reordered. A front request for a backpressured node may therefore
+        // block later requests for unrelated nodes. Per-node commit queues or
+        // fair scheduling should be added separately.
+        return {};
+    }
+
+    auto commitResult = PersistentStorage->Commit(
+        pendingRequest->AllocationPtr,
+        pendingRequest->Checksum);
+
+    if (HasError(commitResult)) {
+        return {.Failed = true};
+    }
+
+    auto cachedRequest = TCachedWriteDataRequest::Deserialize(
+        pendingRequest->GetSequenceId(),
+        Timer->Now(),
+        {pendingRequest->AllocationPtr, pendingRequest->AllocationByteCount});
+
+    Y_ABORT_UNLESS(cachedRequest != nullptr);
+
+    AllocatedPendingRequestsRemove(pendingRequest);
+    UnflushedRequestsPushBack(cachedRequest.get());
+
+    return {.Request = std::move(cachedRequest)};
+}
+
+const TPendingWriteDataRequest*
+TWriteDataRequestManager::GetBackUnallocatedPendingRequest() const
+{
+    return HasUnallocatedPendingRequests() ? UnallocatedPendingRequests.Back()
+                                           : nullptr;
+}
+
+void TWriteDataRequestManager::RemoveUnallocated(
     std::unique_ptr<TPendingWriteDataRequest> request)
 {
-    PendingRequestsRemove(request.get());
+    Y_ABORT_UNLESS(!request->HasAllocation());
+    UnallocatedPendingRequestsRemove(request.get());
 }
 
 bool TWriteDataRequestManager::SetFlushed(TCachedWriteDataRequest* request)
@@ -346,9 +334,13 @@ bool TWriteDataRequestManager::Evict(
     std::unique_ptr<TCachedWriteDataRequest> request)
 {
     FlushedRequestsRemove(request.get());
-    auto freeResult = PersistentStorage->Free(request->GetAllocationPtr());
 
-    return !HasError(freeResult);
+    auto freeResult = PersistentStorage->Free(request->GetAllocationPtr());
+    if (HasError(freeResult)) {
+        return false;
+    }
+
+    return AllocPendingRequestsInPersistentStorage();
 }
 
 bool TWriteDataRequestManager::SetBackpressureStatusForNode(ui64 nodeId)
@@ -375,16 +367,23 @@ void TWriteDataRequestManager::UpdateStats() const
 {
     auto now = Timer->Now();
 
-    auto maxPendingRequestDuration = PendingRequests.Empty()
-                                         ? TDuration::Zero()
-                                         : now - PendingRequests.Front()->Time;
+    auto maxPendingRequestDuration =
+        HasUnallocatedPendingRequests()
+            ? now - UnallocatedPendingRequests.Front()->Time
+            : TDuration::Zero();
+
+    auto maxAllocatedRequestDuration =
+        HasAllocatedPendingRequests()
+            ? now - AllocatedPendingRequests.Front()->Time
+            : TDuration::Zero();
 
     auto maxUnflushedRequestDuration =
-        UnflushedRequests.Empty() ? TDuration::Zero()
-                                  : now - UnflushedRequests.Front()->Time;
+        HasUnflushedRequests() ? now - UnflushedRequests.Front()->Time
+                               : TDuration::Zero();
 
     Stats->UpdateStats(
         maxPendingRequestDuration,
+        maxAllocatedRequestDuration,
         maxUnflushedRequestDuration);
 
     PersistentStorage->UpdateStats();
@@ -392,81 +391,88 @@ void TWriteDataRequestManager::UpdateStats() const
 
 // Private methods
 
-auto TWriteDataRequestManager::TryStoreRequestInPersistentStorage(
-    ui64 sequenceId,
-    TInstant time,
-    const NProto::TWriteDataRequest& request) -> TProcessPendingRequestResult
+bool TWriteDataRequestManager::TryAllocRequestInPersistentStorage(
+    TPendingWriteDataRequest* pendingRequest)
 {
-    if (NodesWithBackpressure.contains(request.GetNodeId())) {
-        // Known limitation: pending requests are global FIFO.
-        // Although backpressure is tracked per node, the pending queue is not
-        // reordered. A front request for a backpressured node may therefore
-        // block requests for unrelated nodes. This is intentional for the
-        // current implementation; per-node pending queues/fair scheduling
-        // should be added separately.
-        return {};
-    }
-
-    const ui64 byteCount = NCloud::NFileStore::CalculateByteCount(request) -
-                           request.GetBufferOffset();
-
-    const ui64 allocationSize =
-        sizeof(TSerializedWriteDataRequestHeader) + byteCount;
-
-    auto allocationResult = PersistentStorage->Alloc(allocationSize);
+    auto allocationResult =
+        PersistentStorage->Alloc(pendingRequest->AllocationByteCount);
 
     if (HasError(allocationResult)) {
-        return {.Failed = true};
+        return false;
     }
 
-    char* allocationPtr = allocationResult.GetResult();
-    if (allocationPtr == nullptr) {
-        return {};
+    pendingRequest->AllocationPtr = allocationResult.GetResult();
+    StorageIsFull = !pendingRequest->HasAllocation();
+
+    return true;
+}
+
+bool TWriteDataRequestManager::AllocPendingRequestsInPersistentStorage()
+{
+    while (HasUnallocatedPendingRequests()) {
+        auto* pendingRequest = UnallocatedPendingRequests.Front();
+        if (!TryAllocRequestInPersistentStorage(pendingRequest)) {
+            return false;
+        }
+        if (!pendingRequest->HasAllocation()) {
+            break;
+        }
+        UnallocatedPendingRequestsRemove(pendingRequest);
+        AllocatedPendingRequestsPushBack(pendingRequest);
+        SerializationNeededRequests.PushBack(pendingRequest);
+        pendingRequest->Time = Timer->Now();
     }
+    return true;
+}
 
-    TMemoryOutput memoryOutput(allocationPtr, allocationSize);
+bool TWriteDataRequestManager::HasUnallocatedPendingRequests() const
+{
+    return !UnallocatedPendingRequests.Empty();
+}
 
-    auto data = SerializeWriteDataRequest(request, memoryOutput);
+bool TWriteDataRequestManager::HasAllocatedPendingRequests() const
+{
+    return !AllocatedPendingRequests.Empty();
+}
 
-    Y_ABORT_UNLESS(
-        memoryOutput.Exhausted(),
-        "Buffer is expected to be written completely");
-
-    auto commitResult = PersistentStorage->Commit(allocationPtr);
-    if (HasError(commitResult)) {
-        return {.Failed = true};
-    }
-
-    auto res = std::make_unique<TCachedWriteDataRequest>(
-        sequenceId,
-        time,
-        allocationPtr,
-        data);
-
-    return {.CachedRequest = std::move(res)};
+bool TWriteDataRequestManager::HasUnflushedRequests() const
+{
+    return !UnflushedRequests.Empty();
 }
 
 // Access methods that triggers stats update
 
-void TWriteDataRequestManager::PendingRequestsPushBack(
+void TWriteDataRequestManager::UnallocatedPendingRequestsPushBack(
     TPendingWriteDataRequest* request)
 {
-    PendingRequests.PushBack(request);
+    UnallocatedPendingRequests.PushBack(request);
     Stats->AddedPendingRequest();
 }
 
-void TWriteDataRequestManager::PendingRequestsRemove(
+void TWriteDataRequestManager::UnallocatedPendingRequestsRemove(
     TPendingWriteDataRequest* request)
 {
-    PendingRequests.Remove(request);
+    UnallocatedPendingRequests.Remove(request);
     Stats->RemovedPendingRequest(Timer->Now() - request->Time);
 }
 
-void TWriteDataRequestManager::PendingRequestsPopFront()
+void TWriteDataRequestManager::UnallocatedPendingRequestsPopFront()
 {
-    auto* request = PendingRequests.Front();
-    PendingRequests.PopFront();
-    Stats->RemovedPendingRequest(Timer->Now() - request->Time);
+    UnallocatedPendingRequestsRemove(UnallocatedPendingRequests.Front());
+}
+
+void TWriteDataRequestManager::AllocatedPendingRequestsPushBack(
+    TPendingWriteDataRequest* request)
+{
+    AllocatedPendingRequests.PushBack(request);
+    Stats->AddedAllocatedRequest();
+}
+
+void TWriteDataRequestManager::AllocatedPendingRequestsRemove(
+    TPendingWriteDataRequest* request)
+{
+    AllocatedPendingRequests.Remove(request);
+    Stats->RemovedAllocatedRequest(Timer->Now() - request->Time);
 }
 
 void TWriteDataRequestManager::UnflushedRequestsPushBack(

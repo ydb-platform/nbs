@@ -36,6 +36,23 @@ std::unique_ptr<TPendingWriteDataRequest> TNodeCache::DequeuePendingRequest()
     return res;
 }
 
+std::unique_ptr<TPendingWriteDataRequest>
+TNodeCache::PopBackUnallocatedPendingRequest()
+{
+    if (PendingRequests.empty()) {
+        return nullptr;
+    }
+
+    if (PendingRequests.back()->HasAllocation()) {
+        return nullptr;
+    }
+
+    auto res = std::move(PendingRequests.back());
+    PendingRequests.pop_back();
+
+    return res;
+}
+
 void TNodeCache::EnqueueUnflushedRequest(
     const TFlushBatchLimits& flushBatchLimits,
     std::unique_ptr<TCachedWriteDataRequest> request)

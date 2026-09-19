@@ -150,6 +150,14 @@ public:
                         .ProcessedTime = CreateMetric(414),
                         .MaxTime = CreateMetric(415),
                     },
+                .AllocatedQueue =
+                    {
+                        .Count = CreateMetric(451),
+                        .MaxCount = CreateMetric(452),
+                        .ProcessedCount = CreateMetric(453),
+                        .ProcessedTime = CreateMetric(454),
+                        .MaxTime = CreateMetric(455),
+                    },
                 .UnflushedQueue =
                     {
                         .Count = CreateMetric(421),
@@ -311,6 +319,11 @@ component=client_fs:
                             sensor=AcquireBarrierRequests_InProgressCount: 271
                             sensor=AcquireBarrierRequests_InProgressMaxCount: 272
                             sensor=AcquireBarrierRequests_MaxTime: 275
+                            sensor=AllocatedQueue_Count: 451
+                            sensor=AllocatedQueue_MaxCount: 452
+                            sensor=AllocatedQueue_MaxTime: 455
+                            sensor=AllocatedQueue_ProcessedCount: 453
+                            sensor=AllocatedQueue_ProcessedTime: 454
                             sensor=Barriers_ActiveCount: 231
                             sensor=Barriers_ActiveMaxCount: 232
                             sensor=Barriers_MaxTime: 235
@@ -394,6 +407,11 @@ component=client_fs:
                             sensor=AcquireBarrierRequests_InProgressCount: 2710
                             sensor=AcquireBarrierRequests_InProgressMaxCount: 2720
                             sensor=AcquireBarrierRequests_MaxTime: 2750
+                            sensor=AllocatedQueue_Count: 4510
+                            sensor=AllocatedQueue_MaxCount: 4520
+                            sensor=AllocatedQueue_MaxTime: 4550
+                            sensor=AllocatedQueue_ProcessedCount: 4530
+                            sensor=AllocatedQueue_ProcessedTime: 4540
                             sensor=Barriers_ActiveCount: 2310
                             sensor=Barriers_ActiveMaxCount: 2320
                             sensor=Barriers_MaxTime: 2350
@@ -502,6 +520,11 @@ component=client_fs:
                             sensor=AcquireBarrierRequests_InProgressCount: 2710
                             sensor=AcquireBarrierRequests_InProgressMaxCount: 2720
                             sensor=AcquireBarrierRequests_MaxTime: 2750
+                            sensor=AllocatedQueue_Count: 4510
+                            sensor=AllocatedQueue_MaxCount: 4520
+                            sensor=AllocatedQueue_MaxTime: 4550
+                            sensor=AllocatedQueue_ProcessedCount: 4530
+                            sensor=AllocatedQueue_ProcessedTime: 4540
                             sensor=Barriers_ActiveCount: 2310
                             sensor=Barriers_ActiveMaxCount: 2320
                             sensor=Barriers_MaxTime: 2350
