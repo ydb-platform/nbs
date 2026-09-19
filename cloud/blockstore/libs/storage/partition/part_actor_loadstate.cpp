@@ -324,6 +324,13 @@ void TPartitionActor::CompleteLoadState(
     if (CompactionMapLoadState) {
         LoadNextCompactionMapChunk(ctx);
     } else {
+        // If mixed blocks count compaction is disabled, we need to reset
+        // potentially stale mixed block counts.
+        if (!IsMixedBlocksCountCompactionEnabled(Config, PartitionConfig)) {
+            for (auto& counter: args.CompactionMap) {
+                counter.Stat.MixedBlockCount = 0;
+            }
+        }
         State->GetCompactionMap().Update(
             args.CompactionMap,
             &State->GetUsedBlocks());
@@ -513,6 +520,13 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
     const TActorContext& ctx,
     TTxPartition::TLoadCompactionMapChunk& args)
 {
+    // If mixed blocks count compaction is disabled, we need to reset
+    // potentially stale mixed block counts.
+    if (!IsMixedBlocksCountCompactionEnabled(Config, PartitionConfig)) {
+        for (auto& counter: args.Counters) {
+            counter.Stat.MixedBlockCount = 0;
+        }
+    }
     State->GetCompactionMap().Update(args.Counters, &State->GetUsedBlocks());
 
     if (args.Counters.empty()) {

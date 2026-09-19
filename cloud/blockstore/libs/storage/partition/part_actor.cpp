@@ -1628,4 +1628,27 @@ void TPartitionActor::HandleReassignChannelsIfNeeded(
     ReassignChannelsIfNeeded(ctx);
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsMixedBlocksCountCompactionEnabled(
+    const TStorageConfigConstPtr config,
+    const NProto::TPartitionConfig partitionConfig)
+{
+    const auto mediaKind = partitionConfig.GetStorageMediaKind();
+    const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
+    const bool enabled =
+        isSSD ? config->GetMixedBlocksCountCompactionEnabledSSD()
+              : config->GetMixedBlocksCountCompactionEnabledHDD();
+    const bool enabledByFeature =
+        isSSD ? config->IsMixedBlocksCountCompactionSSDFeatureEnabled(
+                    partitionConfig.GetCloudId(),
+                    partitionConfig.GetFolderId(),
+                    partitionConfig.GetDiskId())
+              : config->IsMixedBlocksCountCompactionHDDFeatureEnabled(
+                    partitionConfig.GetCloudId(),
+                    partitionConfig.GetFolderId(),
+                    partitionConfig.GetDiskId());
+    return enabled || enabledByFeature;
+}
+
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

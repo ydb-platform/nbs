@@ -1565,10 +1565,7 @@ private:
     {
         const auto mediaKind = State.GetConfig().GetStorageMediaKind();
         const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
-        const bool enabled =
-            isSSD ? Config->GetMixedBlocksCountCompactionEnabledSSD()
-                  : Config->GetMixedBlocksCountCompactionEnabledHDD();
-        if (!enabled) {
+        if (!IsMixedBlocksCountCompactionEnabled(Config, State.GetConfig())) {
             return std::nullopt;
         }
 
