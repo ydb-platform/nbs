@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -648,32 +649,137 @@ func (s *storageYDB) getPoolOrDefault(
 	return scanPool(res)
 }
 
+// Base disk that is being created from another base disk (see srcDiskID)
+// holds its source base disk from deletion until creation is finished (see
+// inflightDependents). Increments the counter of source base disk for every
+// base disk in |transitions| that becomes inflight and decrements it for every
+// base disk that stops being inflight (created, failed or deleted before
+// creation). Source base disks that are not present in |transitions| are read
+// from the database and appended to |transitions|.
+//
+// NOTE: should be called after invariants are applied to |transitions|,
+// because invariants may change inflight status (e.g. make unscheduled base
+// disk doomed).
+func (s *storageYDB) applyInflightDependents(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	transitions []baseDiskTransition,
+) ([]baseDiskTransition, error) {
+
+	deltas := make(map[string]int64)
+
+	for _, t := range transitions {
+		oldHolds := t.oldState != nil && t.oldState.holdsSrcDisk()
+		holds := t.state.holdsSrcDisk()
+
+		switch {
+		case !oldHolds && holds:
+			deltas[t.state.srcDiskID]++
+		case oldHolds && !holds:
+			deltas[t.state.srcDiskID]--
+		}
+	}
+
+	// Sort for determinism.
+	srcDiskIDs := make([]string, 0, len(deltas))
+	for srcDiskID := range deltas {
+		srcDiskIDs = append(srcDiskIDs, srcDiskID)
+	}
+	sort.Strings(srcDiskIDs)
+
+	for _, srcDiskID := range srcDiskIDs {
+		delta := deltas[srcDiskID]
+
+		// Source base disk may be present in |transitions| (e.g. retiring
+		// base disk is used as a source for its replacement).
+		var srcDisk *baseDisk
+		for _, t := range transitions {
+			if t.state.id == srcDiskID {
+				srcDisk = t.state
+				break
+			}
+		}
+
+		if srcDisk == nil {
+			found, err := s.findBaseDisk(ctx, tx, srcDiskID)
+			if err != nil {
+				return nil, err
+			}
+
+			if found == nil {
+				// Source disk is not managed by pools (or it's already
+				// cleared), nothing to hold.
+				logging.Info(
+					ctx,
+					"source base disk %v is not found, skipping inflight dependents delta %v",
+					srcDiskID,
+					delta,
+				)
+				continue
+			}
+
+			oldState := *found
+			transitions = append(transitions, baseDiskTransition{
+				oldState: &oldState,
+				state:    found,
+			})
+			srcDisk = found
+		}
+
+		if delta < 0 && uint64(-delta) > srcDisk.inflightDependents {
+			// Should not happen, except for base disks that were already being
+			// created when 'inflight_dependents' column was introduced.
+			logging.Warn(
+				ctx,
+				"inflight dependents underflow for source base disk %+v, delta %v",
+				srcDisk,
+				delta,
+			)
+			srcDisk.inflightDependents = 0
+		} else {
+			srcDisk.inflightDependents = uint64(
+				int64(srcDisk.inflightDependents) + delta,
+			)
+		}
+
+		logging.Info(
+			ctx,
+			"applied inflight dependents delta %v to source base disk %+v",
+			delta,
+			srcDisk,
+		)
+	}
+
+	return transitions, nil
+}
+
+// Applies invariants to |transitions| and computes resulting pool transitions.
+// May append transitions of source base disks (see applyInflightDependents),
+// so the returned transitions should be used by the caller.
 func (s *storageYDB) applyBaseDiskInvariants(
 	ctx context.Context,
 	tx *persistence.Transaction,
-	baseDiskTransitions []baseDiskTransition,
-) ([]poolTransition, error) {
+	transitions []baseDiskTransition,
+) ([]baseDiskTransition, []poolTransition, error) {
 
 	poolTransitions := make(map[string]poolTransition)
 
-	for _, baseDiskTransition := range baseDiskTransitions {
-		baseDisk := baseDiskTransition.state
-
-		imageID := baseDisk.imageID
-		zoneID := baseDisk.zoneID
-		key := imageID + zoneID
+	// NOTE: idempotent.
+	applyInvariants := func(baseDisk *baseDisk) error {
+		key := baseDisk.imageID + baseDisk.zoneID
 
 		t, ok := poolTransitions[key]
 		if !ok {
-			p, err := s.getPoolOrDefault(ctx, tx, imageID, zoneID)
+			p, err := s.getPoolOrDefault(ctx, tx, baseDisk.imageID, baseDisk.zoneID)
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			t = poolTransition{
 				oldState: p,
 				state:    p,
 			}
+			poolTransitions[key] = t
 		}
 
 		if t.state.status == poolStatusDeleted {
@@ -682,17 +788,41 @@ func (s *storageYDB) applyBaseDiskInvariants(
 		}
 
 		baseDisk.applyInvariants()
+		return nil
+	}
 
+	for _, t := range transitions {
+		err := applyInvariants(t.state)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	transitions, err := s.applyInflightDependents(ctx, tx, transitions)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Releasing the last hold makes source base disk deletable, so invariants
+	// should be applied once again.
+	for _, t := range transitions {
+		err := applyInvariants(t.state)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	for _, transition := range transitions {
 		logging.Info(
 			ctx,
 			"applying base disk transition from %+v to %+v",
-			baseDiskTransition.oldState,
-			baseDiskTransition.state,
+			transition.oldState,
+			transition.state,
 		)
 
-		action, err := computePoolAction(baseDiskTransition)
+		action, err := computePoolAction(transition)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		logging.Info(
@@ -701,8 +831,9 @@ func (s *storageYDB) applyBaseDiskInvariants(
 			action,
 		)
 
+		key := transition.state.imageID + transition.state.zoneID
+		t := poolTransitions[key]
 		action.apply(&t.state)
-
 		poolTransitions[key] = t
 	}
 
@@ -711,7 +842,7 @@ func (s *storageYDB) applyBaseDiskInvariants(
 		res = append(res, t)
 	}
 
-	return res, nil
+	return transitions, res, nil
 }
 
 func (s *storageYDB) updatePoolsTable(
@@ -766,7 +897,11 @@ func (s *storageYDB) updateBaseDisks(
 	}
 	transitions = filtered
 
-	poolTransitions, err := s.applyBaseDiskInvariants(ctx, tx, transitions)
+	transitions, poolTransitions, err := s.applyBaseDiskInvariants(
+		ctx,
+		tx,
+		transitions,
+	)
 	if err != nil {
 		return err
 	}

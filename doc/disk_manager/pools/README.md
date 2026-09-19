@@ -144,6 +144,8 @@ deletion.
 | `from_pool` | `Bool` | Whether this base disk contributes capacity to a live pool. |
 | `retiring` | `Bool` | Whether overlay slots are being moved away from this base disk. |
 | `deleted_at` | `Timestamp` | Timestamp set when physical deletion is recorded. |
+| `idle_since` | `Timestamp` | Timestamp since which this base disk has no active units. Zero while it has at least one. |
+| `inflight_dependents` | `Uint64` | Number of base disks in `scheduling` or `creating` status whose `src_disk_id` is this base disk. While non-zero, this base disk is not moved to `deleting` by invariants, because the data transfer into those dependents reads from it. |
 | `status` | `Int64` | `scheduling`, `creating`, `ready`, `deleting`, `deleted`, or `creation_failed`. |
 
 Primary key: `id`.
@@ -170,6 +172,20 @@ contribute capacity to the pool.
 `creation_failed` is one doomed state. It can still temporarily have active
 units if an overlay acquired a slot while the base disk was `creating`. When
 those active units are released, invariants move it to `deleting`.
+
+A base disk that is the `src_disk_id` of a replacement base disk holds that
+source until the replacement leaves `scheduling`/`creating` (it becomes
+`ready`, `creation_failed`, or is deleted before creation). The hold is the
+`inflight_dependents` counter on the source. Every base disk transition that
+makes a disk with `src_disk_id` inflight increments the source's counter, and
+every transition that takes it out of the inflight state decrements it
+([storage_ydb_impl.go](../../../cloud/disk_manager/internal/pkg/services/pools/storage/storage_ydb_impl.go),
+`applyInflightDependents`). The source is added to the same set of base disk
+transitions, so invariants run on it and it is written together with the
+rest, and a source with a non-zero counter stays alive even with
+`from_pool=false` and no active units. Without it, releasing the last overlay
+of a retiring base disk while its replacement was still transferring from it
+deleted the source and failed the replacement.
 
 ### `slots`
 
@@ -821,7 +837,9 @@ Retirement flow for one old base disk:
 7. Each rebase task calls NBS `Rebase`.
 8. Storage finalizes the move by releasing the source reservation and making
    the target reservation primary.
-9. When the old base disk has no active units, invariants make it deletable.
+9. When the old base disk has no active units and no replacement base disk
+   is still being created from it (`inflight_dependents=0`), invariants make
+   it deletable.
 
 ```mermaid
 sequenceDiagram

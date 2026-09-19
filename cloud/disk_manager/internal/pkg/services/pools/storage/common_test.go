@@ -384,3 +384,50 @@ func TestCommonApplyInvariantsIdlePoolDisk(t *testing.T) {
 	disk.applyInvariants()
 	require.Equal(t, baseDiskStatusDeleting, disk.status)
 }
+
+func TestCommonApplyInvariantsShouldNotDeleteSourceOfInflightBaseDisks(
+	t *testing.T,
+) {
+
+	disk := &baseDisk{
+		activeUnits:        0,
+		fromPool:           false,
+		retiring:           true,
+		inflightDependents: 1,
+		status:             baseDiskStatusReady,
+	}
+
+	// Disk is a source for base disk that is still being created, so it should
+	// stay alive even without active units and out of pool.
+	disk.applyInvariants()
+	require.Equal(t, baseDiskStatusReady, disk.status)
+
+	disk.inflightDependents = 0
+	disk.applyInvariants()
+	require.Equal(t, baseDiskStatusDeleting, disk.status)
+}
+
+func TestCommonHoldsSrcDisk(t *testing.T) {
+	disk := &baseDisk{
+		srcDiskID: "src",
+		status:    baseDiskStatusScheduling,
+	}
+	require.True(t, disk.holdsSrcDisk())
+
+	disk.status = baseDiskStatusCreating
+	require.True(t, disk.holdsSrcDisk())
+
+	disk.status = baseDiskStatusReady
+	require.False(t, disk.holdsSrcDisk())
+
+	disk.status = baseDiskStatusCreationFailed
+	require.False(t, disk.holdsSrcDisk())
+
+	disk.status = baseDiskStatusDeleting
+	require.False(t, disk.holdsSrcDisk())
+
+	// Base disks created from image storage do not hold anything.
+	disk.srcDiskID = ""
+	disk.status = baseDiskStatusCreating
+	require.False(t, disk.holdsSrcDisk())
+}

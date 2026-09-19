@@ -143,6 +143,7 @@ func (s *storageYDB) checkBaseDiskConsistency(
 	ctx context.Context,
 	baseDisk baseDisk,
 	slots []slot,
+	inflightDependents map[string]uint64,
 ) error {
 
 	slotsBaseDiskCount := uint64(0)
@@ -171,6 +172,14 @@ func (s *storageYDB) checkBaseDiskConsistency(
 		return errors.NewNonRetriableErrorf(
 			"base_disk %+v is in inconsistent state",
 			baseDisk,
+		)
+	}
+
+	if baseDisk.inflightDependents != inflightDependents[baseDisk.id] {
+		return errors.NewNonRetriableErrorf(
+			"base_disk %+v has inconsistent inflight dependents count, expected %v",
+			baseDisk,
+			inflightDependents[baseDisk.id],
 		)
 	}
 
@@ -203,8 +212,21 @@ func (s *storageYDB) checkBaseDisksConsistency(
 		return err
 	}
 
+	// Number of base disks being created from each source base disk.
+	inflightDependents := make(map[string]uint64)
 	for _, baseDisk := range baseDisks {
-		err = s.checkBaseDiskConsistency(ctx, baseDisk, slots)
+		if baseDisk.holdsSrcDisk() {
+			inflightDependents[baseDisk.srcDiskID]++
+		}
+	}
+
+	for _, baseDisk := range baseDisks {
+		err = s.checkBaseDiskConsistency(
+			ctx,
+			baseDisk,
+			slots,
+			inflightDependents,
+		)
 		if err != nil {
 			return err
 		}
