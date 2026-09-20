@@ -654,8 +654,7 @@ func (s *storageYDB) getPoolOrDefault(
 // inflightDependents). Increments the counter of source base disk for every
 // base disk in |transitions| that becomes inflight and decrements it for every
 // base disk that stops being inflight (created, failed or deleted before
-// creation). Source base disks that are not present in |transitions| are read
-// from the database and appended to |transitions|.
+// creation).
 //
 // NOTE: should be called after invariants are applied to |transitions|,
 // because invariants may change inflight status (e.g. make unscheduled base
@@ -670,12 +669,25 @@ func (s *storageYDB) applyInflightDependents(
 
 	for _, t := range transitions {
 		oldHolds := t.oldState != nil && t.oldState.holdsSrcDisk()
-		holds := t.state.holdsSrcDisk()
+		newHolds := t.state.holdsSrcDisk()
 
 		switch {
-		case !oldHolds && holds:
+		case !oldHolds && newHolds:
 			deltas[t.state.srcDiskID]++
-		case oldHolds && !holds:
+		case oldHolds && !newHolds:
+			if t.oldState.srcDiskID != t.state.srcDiskID {
+				err := tx.Commit(ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				return nil, errors.NewNonRetriableErrorf(
+					"internal inconsistency: base disk cannot change srcDiskID, oldState %v, state %v",
+					t.oldState,
+					t.state,
+				)
+			}
+
 			deltas[t.state.srcDiskID]--
 		}
 	}
@@ -759,18 +771,27 @@ func (s *storageYDB) applyInflightDependents(
 func (s *storageYDB) applyBaseDiskInvariants(
 	ctx context.Context,
 	tx *persistence.Transaction,
-	transitions []baseDiskTransition,
+	baseDiskTransitions []baseDiskTransition,
 ) ([]baseDiskTransition, []poolTransition, error) {
 
 	poolTransitions := make(map[string]poolTransition)
 
+	poolKey := func(baseDisk *baseDisk) string {
+		return baseDisk.imageID + baseDisk.zoneID
+	}
+
 	// NOTE: idempotent.
 	applyInvariants := func(baseDisk *baseDisk) error {
-		key := baseDisk.imageID + baseDisk.zoneID
+		key := poolKey(baseDisk)
 
 		t, ok := poolTransitions[key]
 		if !ok {
-			p, err := s.getPoolOrDefault(ctx, tx, baseDisk.imageID, baseDisk.zoneID)
+			p, err := s.getPoolOrDefault(
+				ctx,
+				tx,
+				baseDisk.imageID,
+				baseDisk.zoneID,
+			)
 			if err != nil {
 				return err
 			}
@@ -791,36 +812,41 @@ func (s *storageYDB) applyBaseDiskInvariants(
 		return nil
 	}
 
-	for _, t := range transitions {
+	for _, t := range baseDiskTransitions {
 		err := applyInvariants(t.state)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 
-	transitions, err := s.applyInflightDependents(ctx, tx, transitions)
+	baseDiskTransitions, err := s.applyInflightDependents(
+		ctx,
+		tx,
+		baseDiskTransitions,
+	)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// Releasing the last hold makes source base disk deletable, so invariants
-	// should be applied once again.
-	for _, t := range transitions {
+	// Some in-flight dependents might have held the source base disk from
+	// deletion, and we need to re-apply the invariants in case a dependent
+	// no longer holds the base disk and it should be deleted.
+	for _, t := range baseDiskTransitions {
 		err := applyInvariants(t.state)
 		if err != nil {
 			return nil, nil, err
 		}
 	}
 
-	for _, transition := range transitions {
+	for _, baseDiskTransition := range baseDiskTransitions {
 		logging.Info(
 			ctx,
 			"applying base disk transition from %+v to %+v",
-			transition.oldState,
-			transition.state,
+			baseDiskTransition.oldState,
+			baseDiskTransition.state,
 		)
 
-		action, err := computePoolAction(transition)
+		action, err := computePoolAction(baseDiskTransition)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -831,18 +857,19 @@ func (s *storageYDB) applyBaseDiskInvariants(
 			action,
 		)
 
-		key := transition.state.imageID + transition.state.zoneID
+		key := poolKey(baseDiskTransition.state)
 		t := poolTransitions[key]
+
 		action.apply(&t.state)
 		poolTransitions[key] = t
 	}
 
-	var res []poolTransition
+	var poolTransitionSlice []poolTransition
 	for _, t := range poolTransitions {
-		res = append(res, t)
+		poolTransitionSlice = append(poolTransitionSlice, t)
 	}
 
-	return transitions, res, nil
+	return baseDiskTransitions, poolTransitionSlice, nil
 }
 
 func (s *storageYDB) updatePoolsTable(

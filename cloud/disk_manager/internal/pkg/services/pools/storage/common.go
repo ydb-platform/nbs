@@ -114,12 +114,14 @@ type baseDisk struct {
 	fromPool       bool
 	retiring       bool
 	deletedAt      time.Time
-	idleSince      time.Time // zero if disk has at least one active unit
+	// Zero if disk has at least one active unit.
+	idleSince time.Time
+
 	// Number of base disks that are currently being created (i.e. are in
 	// 'scheduling' or 'creating' status) using this disk as a source
-	// (see srcDiskID). Disk must not be deleted while this counter is
-	// non-zero, otherwise data transfer from it would fail and dependent base
-	// disks would fail to be created.
+	// (see srcDiskID).
+	// This counter protects a base disk from deletion while there is at least
+	// one dependent base disk.
 	inflightDependents uint64
 	status             baseDiskStatus
 }

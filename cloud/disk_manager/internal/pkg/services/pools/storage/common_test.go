@@ -426,8 +426,27 @@ func TestCommonHoldsSrcDisk(t *testing.T) {
 	disk.status = baseDiskStatusDeleting
 	require.False(t, disk.holdsSrcDisk())
 
-	// Base disks created from image storage do not hold anything.
+	disk.status = baseDiskStatusDeleted
+	require.False(t, disk.holdsSrcDisk())
+
+	// Base disks without src base disk do not hold anything.
 	disk.srcDiskID = ""
+
+	disk.status = baseDiskStatusScheduling
+	require.False(t, disk.holdsSrcDisk())
+
 	disk.status = baseDiskStatusCreating
+	require.False(t, disk.holdsSrcDisk())
+
+	disk.status = baseDiskStatusReady
+	require.False(t, disk.holdsSrcDisk())
+
+	disk.status = baseDiskStatusCreationFailed
+	require.False(t, disk.holdsSrcDisk())
+
+	disk.status = baseDiskStatusDeleting
+	require.False(t, disk.holdsSrcDisk())
+
+	disk.status = baseDiskStatusDeleted
 	require.False(t, disk.holdsSrcDisk())
 }
