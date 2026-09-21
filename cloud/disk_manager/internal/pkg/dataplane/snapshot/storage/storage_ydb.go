@@ -139,6 +139,7 @@ func (s *storageYDB) ReadChunkMap(
 	ctx context.Context,
 	snapshotID string,
 	milestoneChunkIndex uint32,
+	includeShallowCopied bool,
 ) (<-chan ChunkMapEntry, <-chan error) {
 
 	var entries <-chan ChunkMapEntry
@@ -152,7 +153,8 @@ func (s *storageYDB) ReadChunkMap(
 				session,
 				snapshotID,
 				milestoneChunkIndex,
-				nil,
+				nil, // inflightQueue
+				includeShallowCopied,
 			)
 			return nil
 		},

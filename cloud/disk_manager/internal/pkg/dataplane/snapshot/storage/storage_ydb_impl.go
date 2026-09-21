@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,20 @@ func makeChunkID(
 ) string {
 
 	return fmt.Sprintf("%v.%v.%v", uniqueID, snapshotID, chunk.Index)
+}
+
+func getSnapshotIDFromChunkID(chunkID string) string {
+	_, after, ok := strings.Cut(chunkID, ".")
+	if !ok {
+		return ""
+	}
+
+	index := strings.LastIndex(after, ".")
+	if index < 0 {
+		return ""
+	}
+
+	return after[:index]
 }
 
 func makeShardID(s string) uint64 {
@@ -583,7 +598,14 @@ func (s *storageYDB) deleteSnapshotData(
 	snapshotID string,
 ) error {
 
-	entries, errors := s.readChunkMap(ctx, session, snapshotID, 0, nil)
+	entries, errors := s.readChunkMap(
+		ctx,
+		session,
+		snapshotID,
+		0,    // milestoneChunkIndex
+		nil,  // inflightQueue
+		true, // includeShallowCopied
+	)
 
 	err := s.processChunkMapEntries(
 		ctx,
@@ -760,6 +782,7 @@ func (s *storageYDB) shallowCopySnapshot(
 		srcSnapshotID,
 		milestoneChunkIndex,
 		inflightQueue,
+		true, // includeShallowCopied
 	)
 
 	err := s.processChunkMapEntries(
@@ -914,6 +937,7 @@ func (s *storageYDB) readChunkMap(
 	snapshotID string,
 	milestoneChunkIndex uint32,
 	inflightQueue *common.InflightQueue,
+	includeShallowCopied bool,
 ) (<-chan ChunkMapEntry, <-chan error) {
 
 	entries := make(chan ChunkMapEntry)
@@ -970,6 +994,12 @@ func (s *storageYDB) readChunkMap(
 					return
 				}
 
+				if !includeShallowCopied &&
+					getSnapshotIDFromChunkID(entry.ChunkID) != snapshotID {
+
+					continue
+				}
+
 				if inflightQueue != nil {
 					_, err := inflightQueue.Add(ctx, entry.ChunkIndex)
 					if err != nil {
@@ -1009,6 +1039,22 @@ func (s *storageYDB) ReadChunk(
 
 	chunkStorage := s.getChunkStorage(chunk.StoredInS3)
 	return chunkStorage.ReadChunk(ctx, chunk)
+}
+
+func (s *storageYDB) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+) (object persistence.S3Object, err error) {
+
+	defer s.metrics.StatOperation("ReadChunkBlob")(&err)
+
+	if s.chunkStorageS3 == nil {
+		return persistence.S3Object{}, task_errors.NewNonRetriableErrorf(
+			"s3 chunk storage is not configured",
+		)
+	}
+
+	return s.chunkStorageS3.ReadChunkBlob(ctx, chunkID)
 }
 
 func (s *storageYDB) CheckSnapshotReady(
