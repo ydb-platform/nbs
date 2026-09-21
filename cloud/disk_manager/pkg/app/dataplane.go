@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	filesystem_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
@@ -37,6 +38,7 @@ func initDataplane(
 	s3 *persistence.S3Client,
 	migrationDstDB *persistence.YDBClient,
 	migrationDstS3 *persistence.S3Client,
+	followerS3 *backup.FollowerS3,
 ) error {
 
 	dataplaneConfig := config.GetDataplaneConfig()
@@ -99,6 +101,7 @@ func initDataplane(
 		urlMetricsRegistry,
 		migrationDstStorage,
 		useS3InSnapshotMigration,
+		followerS3,
 	)
 }
 

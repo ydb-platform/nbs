@@ -7,6 +7,7 @@ import "cloud/disk_manager/internal/pkg/auth/config/config.proto";
 import "cloud/disk_manager/internal/pkg/cells/config/config.proto";
 import "cloud/disk_manager/internal/pkg/clients/nbs/config/config.proto";
 import "cloud/disk_manager/internal/pkg/clients/nfs/config/config.proto";
+import "cloud/disk_manager/internal/pkg/dataplane/backup/config/config.proto";
 import "cloud/disk_manager/internal/pkg/dataplane/config/config.proto";
 import "cloud/tasks/logging/config/config.proto";
 import "cloud/disk_manager/internal/pkg/monitoring/config/config.proto";
@@ -75,4 +76,5 @@ message ServerConfig {
     optional cells.CellsConfig CellsConfig = 19;
     optional filesystem_snapshot.FilesystemSnapshotsConfig FilesystemSnapshotsConfig = 20;
     optional cells.CellsConfig FilestoreCellsConfig = 21;
+    optional backup.SnapshotStorageBackupConfig SnapshotStorageBackupConfig = 22;
 }
