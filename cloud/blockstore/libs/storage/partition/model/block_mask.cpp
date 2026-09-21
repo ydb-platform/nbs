@@ -50,10 +50,10 @@ TStringBuf BlockMaskAsString(const TBlockMask& mask)
 
 bool IsBlockMaskFull(const TBlockMask& mask, ui32 blockCount)
 {
-    const auto blocksInChunk = 8 * sizeof(mask.GetChunks()[0]);
+    const size_t blocksInChunk = 8 * sizeof(mask.GetChunks()[0]);
 
     for (size_t i = 0; i < mask.GetChunkCount(); ++i) {
-        const auto chunk = mask.GetChunks()[i];
+        const TBlockMask::TChunk chunk = mask.GetChunks()[i];
         if (blockCount < blocksInChunk) {
             const TBitMap<blocksInChunk> actual(chunk);
             const TBitMap<blocksInChunk> expectedMask(

@@ -24,7 +24,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 
 #include <cloud/storage/core/libs/coroutine/public.h>
-#include <cloud/storage/core/libs/journalled_device/journalled_device.h>
+#include <cloud/storage/core/libs/journalled/iface/public.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -195,7 +195,7 @@ private:
 
     void StartJournalledDeviceTcpServer(
         const NActors::TActorContext& ctx,
-        THashMap<TString, NJournalled::IJournalledDevicePtr> devices);
+        const TVector<TString>& journalledDeviceIds);
 
 private:
     STFUNC(StateInit);

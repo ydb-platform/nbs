@@ -90,7 +90,7 @@ void TPartitionActor::CompleteDeleteUnconfirmedBlobs(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     RemoveTransaction(*args.RequestInfo);
 
-    auto time =
+    ui64 time =
         CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.DeleteUnconfirmedBlobs.AddRequest(time);
 

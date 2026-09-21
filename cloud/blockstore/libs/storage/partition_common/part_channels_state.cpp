@@ -80,7 +80,7 @@ EChannelDataKind TPartitionChannelsState::GetChannelDataKind(ui32 channel) const
         return EChannelDataKind::Merged;
     }
 
-    auto kind = Config.GetExplicitChannelProfiles(channel).GetDataKind();
+    ui32 kind = Config.GetExplicitChannelProfiles(channel).GetDataKind();
     return static_cast<EChannelDataKind>(kind);
 }
 
@@ -131,8 +131,8 @@ bool TPartitionChannelsState::UpdateChannelFreeSpaceShare(
 {
     if (share) {
         auto& channelState = GetChannel(channel);
-        const auto prevShare = channelState.ApproximateFreeSpaceShare;
-        const auto threshold = FreeSpaceConfig.ChannelFreeSpaceThreshold;
+        const double prevShare = channelState.ApproximateFreeSpaceShare;
+        const double threshold = FreeSpaceConfig.ChannelFreeSpaceThreshold;
         channelState.ApproximateFreeSpaceShare = share;
         if (share < threshold && (!prevShare || prevShare >= threshold)) {
             ++AlmostFullChannelCount;
@@ -261,7 +261,7 @@ TVector<ui32> TPartitionChannelsState::GetChannelsToReassign() const
         }
     }
 
-    const auto threshold = ReassignChannelsPercentageThreshold * ChannelCount;
+    const ui32 threshold = ReassignChannelsPercentageThreshold * ChannelCount;
     if (!IsWriteAllowed(permissions) || channels.size() * 100 >= threshold) {
         return channels;
     }
@@ -270,7 +270,7 @@ TVector<ui32> TPartitionChannelsState::GetChannelsToReassign() const
     if (ReassignMixedChannelsPercentageThreshold < 100 &&
         !mixedChannels.empty())
     {
-        const auto threshold =
+        const size_t threshold =
             ReassignMixedChannelsPercentageThreshold * MixedChannels.size();
         if (mixedChannels.size() * 100 >= threshold) {
             channels.insert(
@@ -290,7 +290,7 @@ TVector<ui32> TPartitionChannelsState::GetChannelsToReassign() const
     if (ReassignFreshChannelsPercentageThreshold < 100 &&
         !freshChannels.empty())
     {
-        const auto threshold =
+        const size_t threshold =
             ReassignFreshChannelsPercentageThreshold * FreshChannels.size();
         if (freshChannels.size() * 100 >= threshold) {
             channels.insert(
@@ -402,7 +402,7 @@ ui32 TPartitionChannelsState::PickNextChannel(
                            : kind == EChannelDataKind::Mixed ? MixedChannels
                                                              : MergedChannels;
 
-    auto& selector = kind == EChannelDataKind::Fresh   ? FreshChannelSelector
+    ui32& selector = kind == EChannelDataKind::Fresh   ? FreshChannelSelector
                      : kind == EChannelDataKind::Mixed ? MixedChannelSelector
                                                        : MergedChannelSelector;
 
@@ -411,14 +411,14 @@ ui32 TPartitionChannelsState::PickNextChannel(
     ui32 bestChannel = Max<ui32>();
     double bestSpaceShare = 0;
     for (ui32 i = 0; i < channels.size(); ++i) {
-        const auto channel = channels[selector % channels.size()];
+        const ui32 channel = channels[selector % channels.size()];
 
         if (CheckPermissions(channel, permissions)) {
             if (CheckChannelFreeSpaceShare(channel)) {
                 return channel;
             }
 
-            const auto spaceShare =
+            const double spaceShare =
                 GetChannel(channel).ApproximateFreeSpaceShare;
             if (spaceShare > bestSpaceShare) {
                 bestSpaceShare = spaceShare;
@@ -523,7 +523,7 @@ bool TPartitionChannelsState::UpdateChannelFreeSpaceScore(
         requiredPermissions);
     scoreSum += channelState.FreeSpaceScore;
 
-    const auto diskSpaceScore = CalculateDiskSpaceScore(
+    const double diskSpaceScore = CalculateDiskSpaceScore(
         SystemChannelSpaceScoreSum,
         DataChannelSpaceScoreSum,
         DataChannelCount,

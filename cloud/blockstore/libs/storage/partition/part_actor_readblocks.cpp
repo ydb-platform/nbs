@@ -47,7 +47,7 @@ void FillReadStats(
     ui32 prevCompactionRange = Max<ui32>();
 
     for (const auto& r: requests) {
-        const auto compactionRange =
+        const ui32 compactionRange =
             TCompactionMap::GetRangeStart(r.BlockIndex, compactionRangeSize);
         if (compactionRange != prevCompactionRange) {
             if (blockCount) {
@@ -131,7 +131,7 @@ IEventBasePtr CreateReadBlocksResponse(
         if (auto guard = guardedSgList.Acquire()) {
             const auto& sglist = guard.Get();
 
-            for (const auto blockIndex: xrange(readRange)) {
+            for (const ui32 blockIndex: xrange(readRange)) {
                 const auto digest = blockDigestGenerator.ComputeDigest(
                     blockIndex,
                     sglist[blockIndex - readRange.Start]
@@ -146,7 +146,7 @@ IEventBasePtr CreateReadBlocksResponse(
     } else {
         auto response = std::make_unique<TEvService::TEvReadBlocksResponse>();
         handler.GetResponse(response->Record);
-        for (const auto blockIndex: xrange(readRange)) {
+        for (const ui32 blockIndex: xrange(readRange)) {
             const auto& blockContent = response->Record.GetBlocks().GetBuffers(blockIndex - readRange.Start);
             TBlockDataRef blockData = TBlockDataRef::CreateZeroBlock(blockSize);
             if (!blockContent.empty()) {
@@ -570,7 +570,7 @@ bool TReadBlocksActor::VerifyChecksums(
     const TVector<ui32>& actualChecksums,
     const TBatchRequest& batch)
 {
-    const auto n = Min(batch.Requests.size(), actualChecksums.size());
+    const size_t n = Min(batch.Requests.size(), actualChecksums.size());
     for (ui32 i = 0; i < n; ++i) {
         auto error = VerifyBlockChecksum(
             actualChecksums[i],
@@ -797,7 +797,7 @@ public:
         TBlockMark blockMark = TZeroMark();
 
         if (!IsDeletionMarker(blobId)) {
-            const auto group = TabletInfo.GroupFor(
+            const ui32 group = TabletInfo.GroupFor(
                 blobId.Channel(), blobId.Generation());
             const auto logoBlobId = MakeBlobId(TabletInfo.TabletID, blobId);
             blockMark = TBlobMark(logoBlobId, group, blobOffset);
@@ -858,14 +858,14 @@ TMaybe<TBlockRange64> ComputeDescribeBlocksRange(
 
     const auto lastEmptyReverseIter =
         FindIf(marks.rbegin(), marks.rend(), empty);
-    const auto lastEmptyIndexFromEnd = lastEmptyReverseIter - marks.rbegin();
-    const auto lastEmptyIndexFromBegin =
+    const ptrdiff_t lastEmptyIndexFromEnd = lastEmptyReverseIter - marks.rbegin();
+    const size_t lastEmptyIndexFromBegin =
         marks.size() - 1 - lastEmptyIndexFromEnd;
 
-    const auto startBlockIndex = readRange.Start;
-    const auto firstEmptyIndexFromBegin = firstEmptyIter - marks.begin();
-    const auto firstEmptyBlockIndex = startBlockIndex + firstEmptyIndexFromBegin;
-    const auto lastEmptyBlockIndex = startBlockIndex + lastEmptyIndexFromBegin;
+    const ui32 startBlockIndex = readRange.Start;
+    const ptrdiff_t firstEmptyIndexFromBegin = firstEmptyIter - marks.begin();
+    const i64 firstEmptyBlockIndex = startBlockIndex + firstEmptyIndexFromBegin;
+    const size_t lastEmptyBlockIndex = startBlockIndex + lastEmptyIndexFromBegin;
 
     return TBlockRange64::MakeClosedInterval(
         firstEmptyBlockIndex,
@@ -931,7 +931,7 @@ void TPartitionActor::HandleReadBlocksRequest(
 
     TBlockRange64 readRange;
 
-    auto ok = InitReadWriteBlockRange(
+    bool ok = InitReadWriteBlockRange(
         msg->Record.GetStartIndex(),
         msg->Record.GetBlocksCount(),
         &readRange
@@ -955,7 +955,7 @@ void TPartitionActor::HandleReadBlocksRequest(
         return;
     }
 
-    auto commitId = GetCommitId(msg->Record);
+    ui64 commitId = GetCommitId(msg->Record);
 
     if (!commitId) {
         auto result = VerifyReadBlocksCheckpoint(
@@ -1345,7 +1345,7 @@ void TPartitionActor::FinalizeReadBlocks(
 
     const auto& stats = operation.Stats;
     const auto& counters = stats.GetUserReadCounters();
-    const auto blocksCount = counters.GetBlocksCount();
+    const ui64 blocksCount = counters.GetBlocksCount();
 
     UpdateStats(stats);
 
@@ -1355,7 +1355,7 @@ void TPartitionActor::FinalizeReadBlocks(
 
     State->GetCleanupQueue().ReleaseBarrier(commitId);
 
-    auto time = CyclesToDurationSafe(operation.TotalCycles).MicroSeconds();
+    ui64 time = CyclesToDurationSafe(operation.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ReadBlocks.AddRequest(time, requestBytes);
 
     if (operation.AffectedBlockInfos) {

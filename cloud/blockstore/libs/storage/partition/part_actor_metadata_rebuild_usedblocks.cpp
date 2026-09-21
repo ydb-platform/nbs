@@ -316,7 +316,7 @@ bool TPartitionActor::PrepareMetadataRebuildUsedBlocks(
 
     TMetadataRebuildBlockVisitor visitor(args);
     State->FindFreshBlocks(visitor, args.BlockRange, Max<ui64>());
-    auto ready = db.FindMixedBlocks(
+    bool ready = db.FindMixedBlocks(
         visitor,
         args.BlockRange,
         true    // precharge
@@ -345,7 +345,7 @@ void TPartitionActor::ExecuteMetadataRebuildUsedBlocks(
     {
         for (ui32 i = 0; i < args.BlockInfos.size(); ++i) {
             const auto& blockInfo = args.BlockInfos[i];
-            const auto blockIndex = args.BlockRange.Start + i;
+            const ui32 blockIndex = args.BlockRange.Start + i;
             if (blockInfo.Filled) {
                 usedBlocks.Set(blockIndex, blockIndex + 1);
             } else {

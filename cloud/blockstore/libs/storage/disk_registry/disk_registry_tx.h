@@ -761,8 +761,7 @@ struct TTxDiskRegistry
 
     struct TFinishMigration
     {
-        using TMigrations = google::protobuf::RepeatedPtrField<
-            NProto::TDeviceMigrationIds>;
+        using TMigrations = TVector<NProto::TDeviceMigrationIds>;
 
         const TRequestInfoPtr RequestInfo;
 

@@ -6,6 +6,27 @@ using NProto::TDeviceConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProto::TError FinishDeviceMigration(
+    TDiskRegistryState& state,
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    const TString& sourceId,
+    const TString& targetId)
+{
+    NProto::TDeviceMigrationIds ids;
+    ids.SetSourceDeviceId(sourceId);
+    ids.SetTargetDeviceId(targetId);
+
+    return state.FinishDeviceMigrations(
+        db,
+        diskId,
+        {ids},
+        Now(),
+        [](const auto&, const auto&) {});
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TDeviceConfig Device(
     TString name,
     TString uuid,

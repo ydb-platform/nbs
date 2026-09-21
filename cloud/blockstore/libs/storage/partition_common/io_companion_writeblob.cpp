@@ -343,7 +343,7 @@ void TIOCompanion::HandleWriteBlob(
     const TActorContext& ctx)
 {
     auto msg = ev->Release();
-    const auto compRate = Config->GetBlobCompressionRate();
+    const ui32 compRate = Config->GetBlobCompressionRate();
     if (BlobCodec && compRate && msg->BlobId.GetHash() % compRate == 0) {
         TString blobContent;
 

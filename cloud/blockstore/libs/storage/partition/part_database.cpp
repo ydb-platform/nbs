@@ -61,6 +61,25 @@ ui16 ProcessCompactionCounter(ui32 value)
     return value > Max<ui16>() ? Max<ui16>() : value;
 }
 
+TRangeStat MakeCompactionMapRangeStat(
+    ui32 blobCount,
+    ui32 blockCount,
+    const NProto::TCompactionMapAdditionalData& additionalData)
+{
+    TRangeStat stat{
+        ProcessCompactionCounter(blobCount),
+        ProcessCompactionCounter(blockCount),
+        0,
+        0,
+        0,
+        0,
+        false,
+        0};
+    stat.MixedBlockCount =
+        ProcessCompactionCounter(additionalData.GetMixedBlockCount());
+    return stat;
+}
+
 ui32 UnifyBlobOffsetAndCompactionRangeCount(
     ui16 blobOffset,
     ui8 compactionRangeCount)
@@ -992,7 +1011,7 @@ static EIndexProcResult FindBlocksInBlobIndex(
         }
 
         for (ui32 i = 0; i < intersection.Size(); ++i) {
-            const auto res = visit(
+            const bool res = visit(
                 intersection.Start + i,
                 helper.Marks[i].CommitId,
                 blobId,
@@ -1128,8 +1147,8 @@ TPartitionDatabaseImpl<TCounters>::FindBlocksInBlobsIndex(
     auto result = EBlobIndexScanProgress::Completed;
 
     while (it.IsValid()) {
-        auto commitId = it.template GetValue<TTable::CommitId>();
-        auto uniqId = it.template GetValue<TTable::BlobId>();
+        ui64 commitId = it.template GetValue<TTable::CommitId>();
+        ui64 uniqId = it.template GetValue<TTable::BlobId>();
 
         auto blobMeta = it.template GetValue<TTable::BlobMeta>();
 
@@ -1155,14 +1174,19 @@ template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteCompactionMap(
     ui32 blockIndex,
     ui32 blobCount,
-    ui32 blockCount)
+    ui32 blockCount,
+    ui32 mixedBlockCount)
 {
     using TTable = TPartitionSchema::CompactionMap;
+
+    NProto::TCompactionMapAdditionalData additionalData;
+    additionalData.SetMixedBlockCount(mixedBlockCount);
 
     Table<TTable>()
         .Key(blockIndex)
         .Update(NIceDb::TUpdate<TTable::BlobCount>(blobCount))
-        .Update(NIceDb::TUpdate<TTable::BlockCount>(blockCount));
+        .Update(NIceDb::TUpdate<TTable::BlockCount>(blockCount))
+        .Update(NIceDb::TUpdate<TTable::AdditionalData>(additionalData));
 }
 
 template <typename TCounters>
@@ -1188,17 +1212,10 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCompactionMap(
     while (it.IsValid()) {
         compactionMap.emplace_back(
             it.template GetValue<TTable::BlockIndex>(),
-            TRangeStat{
-                ProcessCompactionCounter(
-                    it.template GetValue<TTable::BlobCount>()),
-                ProcessCompactionCounter(
-                    it.template GetValue<TTable::BlockCount>()),
-                0,
-                0,
-                0,
-                0,
-                false,
-                0});
+            MakeCompactionMapRangeStat(
+                it.template GetValue<TTable::BlobCount>(),
+                it.template GetValue<TTable::BlockCount>(),
+                it.template GetValueOrDefault<TTable::AdditionalData>()));
 
         if (!it.Next()) {
             return false;   // not ready
@@ -1222,23 +1239,16 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCompactionMap(
     }
 
     while (it.IsValid()) {
-        const auto blockIndex = it.template GetValue<TTable::BlockIndex>();
+        const ui32 blockIndex = it.template GetValue<TTable::BlockIndex>();
         if (blockIndex > rangeBlockIndices.End) {
             break;
         }
         compactionMap.emplace_back(
             blockIndex,
-            TRangeStat{
-                ProcessCompactionCounter(
-                    it.template GetValue<TTable::BlobCount>()),
-                ProcessCompactionCounter(
-                    it.template GetValue<TTable::BlockCount>()),
-                0,
-                0,
-                0,
-                0,
-                false,
-                0});
+            MakeCompactionMapRangeStat(
+                it.template GetValue<TTable::BlobCount>(),
+                it.template GetValue<TTable::BlockCount>(),
+                it.template GetValueOrDefault<TTable::AdditionalData>()));
 
         if (!it.Next()) {
             return false;   // not ready
@@ -1392,7 +1402,7 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCheckpoints(
 
     while (it.IsValid()) {
         auto checkpointId = it.template GetValue<TTable::CheckpointId>();
-        auto commitId = it.template GetValue<TTable::CommitId>();
+        ui64 commitId = it.template GetValue<TTable::CommitId>();
         bool isDataDeleted = it.template GetValue<TTable::DataDeleted>();
 
         checkpointId2CommitId.emplace(checkpointId, commitId);
@@ -1556,8 +1566,8 @@ bool TPartitionDatabaseImpl<TCounters>::ReadUnconfirmedBlobs(
     }
 
     while (it.IsValid()) {
-        auto commitId = it.template GetValue<TTable::CommitId>();
-        auto uniqueId = it.template GetValue<TTable::BlobId>();
+        ui64 commitId = it.template GetValue<TTable::CommitId>();
+        ui64 uniqueId = it.template GetValue<TTable::BlobId>();
         auto blockRange = TBlockRange32::MakeClosedInterval(
             it.template GetValue<TTable::RangeStart>(),
             it.template GetValue<TTable::RangeEnd>());

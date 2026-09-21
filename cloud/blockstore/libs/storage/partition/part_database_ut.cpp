@@ -1,4 +1,5 @@
 #include "part_database.h"
+#include "part_schema.h"
 
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
@@ -967,13 +968,20 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
         executor.WriteTx(
             [&](TPartitionDatabase db)
             {
-                NProto::TBlobMeta meta;
+                using TTable = TPartitionSchema::CompactionMap;
 
-                for (size_t i = 0; i < RangeCount; ++i) {
+                // Simulate a row written before AdditionalData was added.
+                db.Table<TTable>()
+                    .Key(0)
+                    .Update(NKikimr::NIceDb::TUpdate<TTable::BlobCount>(1))
+                    .Update(NKikimr::NIceDb::TUpdate<TTable::BlockCount>(1));
+
+                for (size_t i = 1; i < RangeCount; ++i) {
                     db.WriteCompactionMap(
                         i * RangeSize,
                         i % 100 + 1,
-                        i % 1023 + 1);
+                        i % 1023 + 1,
+                        i % 511 + 1);
                 }
             });
 
@@ -996,6 +1004,9 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 i % 1023 + 1,
                 compactionMap1[i].Stat.BlockCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                i ? i % 511 + 1 : 0,
+                compactionMap1[i].Stat.MixedBlockCount);
         }
 
         // loading compaction map lazily
@@ -1028,6 +1039,9 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 compactionMap1[i].Stat.BlobCount,
                 compactionMap2[i].Stat.BlobCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                compactionMap1[i].Stat.MixedBlockCount,
+                compactionMap2[i].Stat.MixedBlockCount);
         }
     }
 

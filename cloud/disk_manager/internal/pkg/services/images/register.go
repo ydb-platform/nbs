@@ -6,6 +6,7 @@ import (
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/cells"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	images_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -23,6 +24,7 @@ func RegisterForExecution(
 	nbsFactory nbs.Factory,
 	poolService pools.Service,
 	cellSelector cells.CellSelector,
+	followerS3 *backup.FollowerS3,
 ) error {
 
 	deletedImageExpirationTimeout, err := time.ParseDuration(
@@ -34,6 +36,13 @@ func RegisterForExecution(
 
 	clearDeletedImagesTaskScheduleInterval, err := time.ParseDuration(
 		config.GetClearDeletedImagesTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	scheduleBackupImageTasksScheduleInterval, err := time.ParseDuration(
+		config.GetScheduleBackupImageTasksScheduleInterval(),
 	)
 	if err != nil {
 		return err
@@ -87,6 +96,39 @@ func RegisterForExecution(
 	})
 	if err != nil {
 		return err
+	}
+
+	if followerS3 != nil {
+		err = taskRegistry.RegisterForExecution("images.BackupImage", func() tasks.Task {
+			return &backupImageTask{
+				scheduler:  taskScheduler,
+				storage:    storage,
+				followerS3: followerS3,
+			}
+		})
+		if err != nil {
+			return err
+		}
+
+		err = taskRegistry.RegisterForExecution("images.ScheduleBackupImageTasks", func() tasks.Task {
+			return &scheduleBackupImageTasks{
+				scheduler: taskScheduler,
+				storage:   storage,
+				limit:     int(config.GetScheduleBackupImageTasksLimit()),
+			}
+		})
+		if err != nil {
+			return err
+		}
+
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"images.ScheduleBackupImageTasks",
+			tasks.TaskSchedule{
+				ScheduleInterval: scheduleBackupImageTasksScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
 	}
 
 	err = taskRegistry.RegisterForExecution("images.DeleteImage", func() tasks.Task {

@@ -178,7 +178,7 @@ TGuardedSgList TWriteMergedBlocksActor::BuildBlobContentAndComputeChecksums(
         for (size_t index = 0; index < sgList.size(); ++index) {
             const auto& block = sgList[index];
 
-            auto blockIndex = request.WriteRange.Start + index;
+            size_t blockIndex = request.WriteRange.Start + index;
             const auto digest = BlockDigestGenerator->ComputeDigest(
                 blockIndex,
                 block);
@@ -492,7 +492,7 @@ void TPartitionActor::WriteMergedBlocks(
     const TActorContext& ctx,
     TRequestInBuffer<TWriteBufferRequestData> requestInBuffer)
 {
-    const auto commitId = State->GenerateCommitId();
+    const ui64 commitId = State->GenerateCommitId();
 
     if (commitId == InvalidCommitId) {
         requestInBuffer.Data.RequestInfo->CancelRequest(ctx);
@@ -504,7 +504,7 @@ void TPartitionActor::WriteMergedBlocks(
     State->GetGarbageQueue().AcquireBarrier(commitId);
 
     const auto writeRange = requestInBuffer.Data.Range;
-    const auto maxBlocksInBlob = State->GetMaxBlocksInBlob();
+    const ui32 maxBlocksInBlob = State->GetMaxBlocksInBlob();
 
     LOG_TRACE(
         ctx,

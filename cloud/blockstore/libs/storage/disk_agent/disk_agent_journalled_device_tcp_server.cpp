@@ -1,7 +1,11 @@
 #include "disk_agent_actor.h"
 
+#include <cloud/blockstore/libs/storage/disk_agent/journalled_device_adapter.h>
+
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
-#include <cloud/storage/core/libs/journalled_device_tcp_server/server.h>
+#include <cloud/storage/core/libs/journalled/impl/journalled_device_v1.h>
+#include <cloud/storage/core/libs/journalled/server/server.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -9,6 +13,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -43,15 +48,18 @@ class TJournalledDeviceHandler final: public IServerBackend
 private:
     TActorSystem* ActorSystem = nullptr;
     const TActorId DiskAgentActorId;
+    const TDeviceClientPtr DeviceClient;
     const THashMap<TString, NJournalled::IJournalledDevicePtr> Devices;
 
 public:
     TJournalledDeviceHandler(
         TActorSystem* actorSystem,
         const TActorId& diskAgentActorId,
+        TDeviceClientPtr deviceClient,
         THashMap<TString, NJournalled::IJournalledDevicePtr> devices)
         : ActorSystem(actorSystem)
         , DiskAgentActorId(diskAgentActorId)
+        , DeviceClient(std::move(deviceClient))
         , Devices(std::move(devices))
     {}
 
@@ -125,7 +133,11 @@ public:
         NCloud::NProto::TReadPagesRequest request)
         -> TFuture<NCloud::NProto::TReadPagesResponse> final
     {
-        auto [device, error] = GetDevice(request.GetDeviceUUID());
+        auto [device, error] = GetDevice(
+            request.GetDeviceUUID(),
+            request.GetHeaders().GetClientId(),
+            NProto::VOLUME_ACCESS_READ_ONLY);
+
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TReadPagesResponse>(
                 TErrorResponse(error));
@@ -138,7 +150,11 @@ public:
         NCloud::NProto::TWriteLogRecordRequest request)
         -> TFuture<NCloud::NProto::TWriteLogRecordResponse> final
     {
-        auto [device, error] = GetDevice(request.GetDeviceUUID());
+        auto [device, error] = GetDevice(
+            request.GetDeviceUUID(),
+            request.GetHeaders().GetClientId(),
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TWriteLogRecordResponse>(
                 TErrorResponse(error));
@@ -151,7 +167,11 @@ public:
         NCloud::NProto::TReadJournalTailRequest request)
         -> TFuture<NCloud::NProto::TReadJournalTailResponse> final
     {
-        auto [device, error] = GetDevice(request.GetDeviceUUID());
+        auto [device, error] = GetDevice(
+            request.GetDeviceUUID(),
+            request.GetHeaders().GetClientId(),
+            NProto::VOLUME_ACCESS_READ_ONLY);
+
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TReadJournalTailResponse>(
                 TErrorResponse(error));
@@ -164,7 +184,11 @@ public:
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
         -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> final
     {
-        auto [device, error] = GetDevice(request.GetDeviceUUID());
+        auto [device, error] = GetDevice(
+            request.GetDeviceUUID(),
+            request.GetHeaders().GetClientId(),
+            NProto::VOLUME_ACCESS_READ_WRITE);
+
         if (HasError(error)) {
             return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
                 TErrorResponse(error));
@@ -175,16 +199,29 @@ public:
 
 private:
     TResultOrError<NJournalled::IJournalledDevicePtr> GetDevice(
-        const TString& deviceUUID) const
+        const TString& deviceUUID,
+        const TString& clientId,
+        NProto::EVolumeAccessMode accessMode) const
     {
         if (deviceUUID.empty()) {
             return MakeError(E_ARGUMENT, "empty device UUID");
+        }
+
+        if (clientId.empty()) {
+            return MakeError(E_ARGUMENT, "empty client id");
         }
 
         auto* device = Devices.FindPtr(deviceUUID);
         if (!device) {
             return MakeError(E_NOT_FOUND, TStringBuilder()
                 << "Device " << deviceUUID.Quote() << " not found");
+        }
+
+        auto [storageAdapter, error] =
+            DeviceClient->AccessDevice(deviceUUID, clientId, accessMode);
+
+        if (HasError(error)) {
+            return error;
         }
 
         return *device;
@@ -210,22 +247,49 @@ TNetworkAddress CreateNetworkAddress(TStringBuf s)
 
 void TDiskAgentActor::StartJournalledDeviceTcpServer(
     const NActors::TActorContext& ctx,
-    THashMap<TString, NJournalled::IJournalledDevicePtr> devices)
+    const TVector<TString>& journalledDeviceIds)
 {
-    if (AgentConfig->GetJournalledDeviceTcpServerListenAddress().empty()) {
+    if (!State || journalledDeviceIds.empty()) {
+        return;
+    }
+
+    auto address = AgentConfig->GetJournalledDeviceTcpServerListenAddress();
+    if (address.empty()) {
+        return;
+    }
+
+    const THashSet<TString> journalledIds(
+        journalledDeviceIds.begin(),
+        journalledDeviceIds.end());
+
+    THashMap<TString, NJournalled::IJournalledDevicePtr> devices;
+    auto timer = CreateWallClockTimer();
+
+    for (const auto& config: State->GetDevices()) {
+        if (!journalledIds.contains(config.GetDeviceUUID())) {
+            continue;
+        }
+
+        devices.emplace(
+            config.GetDeviceUUID(),
+            NJournalled::CreateJournalledDevice(CreateDeviceAdapter(
+                timer,
+                config.GetDeviceUUID(),
+                config.GetBlockSize(),
+                State->GetDeviceClient())));
+    }
+
+    if (devices.empty()) {
         return;
     }
 
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "Starting journaled device TCP server on "
-            << AgentConfig->GetJournalledDeviceTcpServerListenAddress().Quote()
-            << "...");
+        "Starting journaled device TCP server on " << address.Quote() << "...");
 
     try {
-        const TNetworkAddress listenAddress = CreateNetworkAddress(
-            AgentConfig->GetJournalledDeviceTcpServerListenAddress());
+        const TNetworkAddress listenAddress = CreateNetworkAddress(address);
 
         Executor = TExecutor::Create("JD");
         Executor->Start();
@@ -237,6 +301,7 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
             std::make_shared<TJournalledDeviceHandler>(
                 TActivationContext::ActorSystem(),
                 ctx.SelfID,
+                State->GetDeviceClient(),
                 std::move(devices)));
 
         JournalledDeviceTcpServer->Start();
@@ -244,9 +309,7 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
-            "Journalled device TCP server started on "
-                << AgentConfig->GetJournalledDeviceTcpServerListenAddress()
-                       .Quote());
+            "Journalled device TCP server started on " << address.Quote());
 
     } catch (...) {
         LOG_ERROR_S(

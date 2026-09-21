@@ -47,8 +47,9 @@ PEERDIR(
     cloud/blockstore/libs/storage/model
 
     cloud/storage/core/libs/common
-    cloud/storage/core/libs/journalled_device
-    cloud/storage/core/libs/journalled_device_tcp_server
+    cloud/storage/core/libs/journalled/iface
+    cloud/storage/core/libs/journalled/impl
+    cloud/storage/core/libs/journalled/server
     cloud/storage/core/libs/rdma/iface
 
     library/cpp/containers/stack_vector

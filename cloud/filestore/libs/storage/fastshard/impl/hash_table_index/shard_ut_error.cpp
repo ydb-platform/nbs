@@ -62,7 +62,7 @@ struct TTestStorageGroup: IStorageGroup
     TTempError ReadError;
     TTempError WriteError;
     ui64 LastLsn = 0;
-    TVector<ui64> WriteLsns;
+    TVector<TLsnLink> WriteLinks;
 
     TResultOrError<ui64> Init() override
     {
@@ -75,7 +75,7 @@ struct TTestStorageGroup: IStorageGroup
     NCloud::NProto::TError WriteLogRecord(
         NCloud::NProto::TDeviceRequestHeaders headers,
         TVector<TPageGroup> pageGroups,
-        ui64 lsn) override
+        TLsnLink link) override
     {
         Y_UNUSED(headers);
 
@@ -84,7 +84,7 @@ struct TTestStorageGroup: IStorageGroup
             return e;
         }
 
-        WriteLsns.push_back(lsn);
+        WriteLinks.push_back(link);
         for (auto& pg: pageGroups) {
             for (ui64 i = 0; i < pg.Content.size(); ++i) {
                 Pages[pg.FirstPageNo + i] = std::move(pg.Content[i]);
@@ -318,7 +318,52 @@ TEST(HashTableIndexShardErrorTest, NumbersRecordsAboveTheStorageGroupLsn)
     ASSERT_EQ(S_OK, response.GetError().GetCode())
         << FormatError(response.GetError());
 
-    const auto& lsns = fx.Factory->Group->WriteLsns;
-    ASSERT_FALSE(lsns.empty());
-    EXPECT_EQ(42U, lsns.front());
+    const auto& links = fx.Factory->Group->WriteLinks;
+    ASSERT_FALSE(links.empty());
+    EXPECT_EQ(42U, links.front().Lsn);
+    EXPECT_EQ(41U, links.front().PrevLsn);
+}
+
+TEST(HashTableIndexShardErrorTest, LinksPastTheLsnOfAnOperationThatWroteNothing)
+{
+    TStorageFixture fx;
+
+    auto shard = CreateHashTableIndexFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Factory,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
+
+    auto create = [&](const TString& name)
+    {
+        TCreateHandleRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(name);
+        request.SetMode(0644);
+        request.SetFlags(
+            ProtoFlag(TCreateHandleRequest::E_CREATE)
+            | ProtoFlag(TCreateHandleRequest::E_EXCLUSIVE));
+        return shard->CreateHandle(request).GetValueSync().GetError();
+    };
+
+    auto error = create("file1");
+    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+
+    // The same name again: the op takes an lsn and writes nothing with it.
+    error = create("file1");
+    ASSERT_TRUE(HasError(error));
+
+    error = create("file2");
+    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+
+    const auto& links = fx.Factory->Group->WriteLinks;
+    ASSERT_EQ(2U, links.size());
+    // The chain is unbroken, and the lsn nobody wrote is not in it.
+    EXPECT_EQ(links[0].Lsn, links[1].PrevLsn);
+    EXPECT_GT(links[1].Lsn, links[0].Lsn + 1);
 }
