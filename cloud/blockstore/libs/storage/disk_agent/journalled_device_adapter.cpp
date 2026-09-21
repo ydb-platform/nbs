@@ -5,7 +5,7 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
-#include <cloud/storage/core/libs/journalled_device/device.h>
+#include <cloud/storage/core/libs/journalled/iface/device.h>
 
 #include <util/generic/hash_set.h>
 #include <util/string/builder.h>
