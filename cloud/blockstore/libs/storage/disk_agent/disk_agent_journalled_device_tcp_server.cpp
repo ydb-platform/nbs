@@ -13,6 +13,7 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/generic/hash.h>
+#include <util/generic/hash_set.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -25,7 +26,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr TStringBuf JournalledPoolName = "journalled";
 constexpr NProto::EVolumeAccessMode DefaultAccessMode =
     NProto::VOLUME_ACCESS_READ_WRITE;
 constexpr ui64 DefaultMountSeqNumber = 0;
@@ -246,9 +246,10 @@ TNetworkAddress CreateNetworkAddress(TStringBuf s)
 ////////////////////////////////////////////////////////////////////////////////
 
 void TDiskAgentActor::StartJournalledDeviceTcpServer(
-    const NActors::TActorContext& ctx)
+    const NActors::TActorContext& ctx,
+    const TVector<TString>& journalledDeviceIds)
 {
-    if (!State) {
+    if (!State || journalledDeviceIds.empty()) {
         return;
     }
 
@@ -257,11 +258,15 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
         return;
     }
 
+    const THashSet<TString> journalledIds(
+        journalledDeviceIds.begin(),
+        journalledDeviceIds.end());
+
     THashMap<TString, NJournalled::IJournalledDevicePtr> devices;
     auto timer = CreateWallClockTimer();
 
     for (const auto& config: State->GetDevices()) {
-        if (config.GetPoolName() != JournalledPoolName) {
+        if (!journalledIds.contains(config.GetDeviceUUID())) {
             continue;
         }
 
