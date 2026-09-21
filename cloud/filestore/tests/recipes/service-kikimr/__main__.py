@@ -43,7 +43,7 @@ def start(argv):
     parser.add_argument("--verbose", action="store_true", default=False)
     parser.add_argument("--in-memory-pdisks", action="store_true", default=False)
     parser.add_argument("--restart-interval", action="store", default=None)
-    parser.add_argument("--storage-config-patch", action="store", default=None)
+    parser.add_argument("--storage-config-patch", nargs="+", default=[])
     parser.add_argument("--diag-config-patch", action="store", default=None)
     parser.add_argument("--server-config-patch", action="store", default=None)
     parser.add_argument("--bs-cache-file-path", action="store", default=None)
@@ -92,11 +92,9 @@ def start(argv):
     server_config.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
     storage_config = TStorageConfig()
     diag_config = TDiagnosticsConfig()
-    if args.storage_config_patch:
-        with open(common.source_path(args.storage_config_patch)) as p:
-            storage_config = text_format.Parse(
-                p.read(),
-                TStorageConfig())
+    for patch in args.storage_config_patch:
+        with open(common.source_path(patch)) as p:
+            text_format.Merge(p.read(), storage_config)
     if args.diag_config_patch:
         with open(common.source_path(args.diag_config_patch)) as p:
             diag_config = text_format.Parse(
