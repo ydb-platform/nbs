@@ -16,7 +16,10 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
 {
     Y_UNIT_TEST(TestDefaultPolicy)
     {
-        auto policy = BuildDefaultCompactionPolicy(1, 0);
+        auto policy = BuildDefaultCompactionPolicy(
+            1,
+            /*usedBlocksThresholdForMixedBlocksCompaction=*/0,
+            /*mixedBlocksCountCompactionEnabled=*/false);
         UNIT_ASSERT_DOUBLES_EQUAL(-1, policy->CalculateScore({}).Score, 1e-4);
         UNIT_ASSERT(policy->CalculateScore({}).Score > -1);
         UNIT_ASSERT_DOUBLES_EQUAL(

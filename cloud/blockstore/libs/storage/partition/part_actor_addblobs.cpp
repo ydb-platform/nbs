@@ -674,20 +674,24 @@ private:
                     TabletId);
             }
 
-            db.WriteCompactionMap(
-                kv.first,
-                rangeStat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                rangeStat.BlockCount +
-                    kv.second.BlocksSkippedByCompaction);
             State.GetCompactionMap().Update(
                 kv.first,
-                rangeStat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                rangeStat.BlockCount + kv.second.BlocksSkippedByCompaction,
+                rangeStat.BlobCount,
+                rangeStat.BlockCount,
                 usedBlockCount,
                 newlyZeroedBlocks,
-                rangeStat.MixedBlockCount +
-                    kv.second.MixedBlockCountSkippedByCompaction,
+                rangeStat.MixedBlockCount,
                 Args.Mode == ADD_COMPACTION_RESULT);
+
+            // Persist what the map has stored, so that map-level policies
+            // (e.g. disabled mixed block count tracking) apply to the
+            // persisted values as well.
+            const auto storedStat = State.GetCompactionMap().Get(kv.first);
+            db.WriteCompactionMap(
+                kv.first,
+                storedStat.BlobCount,
+                storedStat.BlockCount,
+                storedStat.MixedBlockCount);
         }
     }
 
@@ -696,24 +700,39 @@ private:
         const auto& cm = State.GetCompactionMap();
 
         auto* compactionStatsTracker = State.AccessCompactionStatsTracker();
-        if (compactionStatsTracker && compactionStatsTracker->HasCompaction()) {
+        if (compactionStatsTracker && compactionStatsTracker->HasCompaction() &&
+            Args.Mode == ADD_COMPACTION_RESULT)
+        {
             // If no concurrent blobs were recorded for the range, mark the
             // range as compacted.
-            if (Args.Mode == ADD_COMPACTION_RESULT) {
-                compactionStatsTracker->MarkAllEmptyRangesAsCompacted();
+            compactionStatsTracker->MarkAllEmptyRangesAsCompacted();
+        }
+
+        for (auto& kv: CompactionCounters) {
+            // Add compaction stats if we have some skipped
+            // blocks/blobs/mixed blocks.
+            AddCompactionStats(
+                kv.second.Stat,
+                kv.second.BlocksSkippedByCompaction,
+                kv.second.BlobsSkippedByCompaction,
+                kv.second.MixedBlockCountSkippedByCompaction);
+
+            if (!compactionStatsTracker) {
+                continue;
             }
 
-            for (const auto& kv: CompactionCounters) {
-                auto* counter = compactionStatsTracker->AccessCompactionCounter(
-                    cm.GetRangeIndex(kv.first));
-                if (counter) {
-                    AddCompactionStats(
-                        counter->Stat,
-                        kv.second.Stat.BlockCount,
-                        kv.second.Stat.BlobCount,
-                        kv.second.Stat.MixedBlockCount);
-                }
+            auto* counter = compactionStatsTracker->AccessCompactionCounter(
+                cm.GetRangeIndex(kv.first));
+
+            if (!counter) {
+                continue;
             }
+
+            AddCompactionStats(
+                counter->Stat,
+                kv.second.Stat.BlockCount,
+                kv.second.Stat.BlobCount,
+                kv.second.Stat.MixedBlockCount);
         }
 
         if (Args.Mode != ADD_COMPACTION_RESULT || !compactionStatsTracker) {
@@ -723,18 +742,10 @@ private:
 
         i64 newlyZeroedBlocksToDecrement = 0;
 
-        // We should account for blocks and blobs skipped by compaction.
         for (const auto& kv: CompactionCounters) {
             auto* counter = compactionStatsTracker->AccessCompactionCounter(
                 cm.GetRangeIndex(kv.first));
-
             STORAGE_VERIFY(counter, TWellKnownEntityTypes::TABLET, TabletId);
-
-            AddCompactionStats(
-                counter->Stat,
-                kv.second.BlocksSkippedByCompaction,
-                kv.second.BlobsSkippedByCompaction,
-                kv.second.MixedBlockCountSkippedByCompaction);
 
             counter->Stat.Compacted &=
                 !kv.second.HasBlocksWithCommitIdGreaterThanCompactionCommitId;
@@ -757,7 +768,8 @@ private:
             db.WriteCompactionMap(
                 blockIndex,
                 rangeStat.BlobCount,
-                rangeStat.BlockCount);
+                rangeStat.BlockCount,
+                rangeStat.MixedBlockCount);
         }
     }
 

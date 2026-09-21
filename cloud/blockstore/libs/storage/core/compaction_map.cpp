@@ -143,6 +143,8 @@ struct TCompactionMap::TImpl
     const ICompactionPolicyPtr Policy;
     const ui64 UsedBlocksThresholdForMixedBlocksCompaction =
         Policy->GetUsedBlocksThresholdForMixedBlocksCompaction();
+    const bool MixedBlocksCountCompactionEnabled =
+        Policy->IsMixedBlocksCountCompactionEnabled();
 
     TGroupList Groups;
     TGroupByBlockIndexTree GroupByBlockIndex;
@@ -321,6 +323,12 @@ struct TCompactionMap::TImpl
         ui32 mixedBlockCount,
         bool compacted)
     {
+        // When mixed blocks count compaction is disabled by the policy, force
+        // the counter to zero so stale values can never survive in the map.
+        if (!MixedBlocksCountCompactionEnabled) {
+            mixedBlockCount = 0;
+        }
+
         auto* group = AddGroup(blockIndex);
 
         const size_t index = (blockIndex - group->BlockIndex) / RangeSize;
@@ -892,6 +900,11 @@ TBlockRange32 TCompactionMap::GetBlockRange(ui32 rangeIdx) const
 ui32 TCompactionMap::GetRangeSize() const
 {
     return Impl->RangeSize;
+}
+
+bool TCompactionMap::IsMixedBlocksCountCompactionEnabled() const
+{
+    return Impl->MixedBlocksCountCompactionEnabled;
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

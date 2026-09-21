@@ -99,7 +99,8 @@ struct TPartitionStateOptions
     bool CheckpointAwareCleanupEnabled = false;
     bool UseBlobChannelDataKindForCounters = false;
     bool CompactionStatsTrackerEnabled = false;
-    ICompactionPolicyPtr CompactionPolicy = BuildDefaultCompactionPolicy(5, 0);
+    ICompactionPolicyPtr CompactionPolicy =
+        BuildDefaultCompactionPolicy(5, 0, false);
     ui32 MixedIndexCacheSize = 0;
     ui64 AllocationUnit = 10000;
     ui32 MaxBlobsPerUnit = 100;

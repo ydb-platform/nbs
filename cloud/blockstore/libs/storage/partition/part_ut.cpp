@@ -1206,6 +1206,30 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         partition.StatPartition();
     }
 
+    Y_UNIT_TEST(ShouldRestoreMixedBlockCountInCompactionMapOnReboot)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetMixedBlocksCountCompactionEnabledHDD(true);
+        auto runtime = PrepareTestActorRuntime(std::move(config));
+
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        partition.WriteBlocks(1, 1);
+        partition.WriteBlocks(2, 2);
+        partition.WriteBlocks(3, 3);
+        partition.Flush();
+
+        auto counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.MixedBlockCount);
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(3, counters->Counters.MixedBlockCount);
+    }
+
     Y_UNIT_TEST(ShouldStoreBlocks)
     {
         auto runtime = PrepareTestActorRuntime();
@@ -3172,12 +3196,12 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
 
     Y_UNIT_TEST(ShouldEnableMixedBlocksCountCompactionByMediaKind)
     {
-        const auto isCompactionTriggered = [](
-            NCloud::NProto::EStorageMediaKind mediaKind,
-            bool enabledHDD,
-            bool enabledSSD,
-            ui32 thresholdHDD,
-            ui32 thresholdSSD)
+        const auto isCompactionTriggered =
+            [](NCloud::NProto::EStorageMediaKind mediaKind,
+               bool enabledHDD,
+               bool enabledSSD,
+               ui32 thresholdHDD,
+               ui32 thresholdSSD)
         {
             auto config = DefaultConfig(1_MB);
             config.SetMixedBlocksCountCompactionEnabledHDD(enabledHDD);
@@ -13905,6 +13929,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetIncrementalCompactionEnabled(true);
         config.SetMaxSkippedBlobsDuringCompactionHDD(1);
         config.SetTargetCompactionBytesPerOp(1);
+        config.SetMixedBlocksCountCompactionEnabledHDD(true);
 
         auto runtime = PrepareTestActorRuntime(
             config,
@@ -13943,6 +13968,17 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             UNIT_ASSERT_VALUES_EQUAL(85, stats.GetMixedBlocksCount());
             UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMergedBlocksCount());
         }
+
+        // 55 blocks from the skipped blob and 30 blocks from the compacted
+        // blobs must all remain in the range's mixed-block counter.
+        auto counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(85, counters->Counters.MixedBlockCount);
+
+        partition.RebootTablet();
+        partition.WaitReady();
+
+        counters = partition.GetCompactionCounters(0);
+        UNIT_ASSERT_VALUES_EQUAL(85, counters->Counters.MixedBlockCount);
 
         for (ui32 i = 12; i < 45; ++i) {
             UNIT_ASSERT_VALUES_EQUAL(
