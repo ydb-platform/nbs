@@ -6126,7 +6126,7 @@ NProto::TError TDiskRegistryState::TryToRemoveDevice(
                              << " in the DR config.");
     }
 
-    EraseIf(*agentIt->MutableDevices(), 
+    EraseIf(*agentIt->MutableDevices(),
         [&path](const auto& device) { return device.GetDeviceName() == path; });
 
     TVector<TString> affectedDisks;
@@ -6683,7 +6683,7 @@ auto TDiskRegistryState::PurgeDevice(
     }
 
     CleanupDeviceConfig(db, *agent, path);
-    
+
     return {};
 }
 
