@@ -1063,21 +1063,14 @@ void TIndexTabletActor::HandleSessionDisconnected(
 {
     const auto& msg = *ev->Get();
 
-    // If msg.ServerId is a session's own control pipe, session is found
-    // here and gets orphaned below. If it is not (e.g. IndexTabletProxy's own
-    // pipe, used for AddData/GenerateBlobIds), session is null.
-    auto* session = FindSessionByPipeServer(msg.ServerId);
-
     LOG_INFO(
         ctx,
         TFileStoreComponents::TABLET,
-        "%s Server disconnected, sender: %s, client: %s, server: %s, "
-        "matchedSession: %s",
+        "%s Server disconnected, sender: %s, client: %s, server: %s",
         LogTag.c_str(),
         ev->Sender.ToString().c_str(),
         msg.ClientId.ToString().c_str(),
-        msg.ServerId.ToString().c_str(),
-        session ? session->GetSessionId().c_str() : "<none>");
+        msg.ServerId.ToString().c_str());
 
     // msg.ServerId is the tablet-pipe server actor that received requests
     // from this client connection. Unconfirmed data keeps this actor id from
