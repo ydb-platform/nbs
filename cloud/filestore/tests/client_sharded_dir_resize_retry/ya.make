@@ -1,0 +1,32 @@
+PY3TEST()
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
+
+SPLIT_FACTOR(1)
+
+TEST_SRCS(
+    test.py
+)
+
+DEPENDS(
+    cloud/filestore/apps/client
+)
+
+PEERDIR(
+    cloud/filestore/tests/python/lib
+)
+
+SET(NFS_RESTART_INTERVAL 20)
+
+SET(
+    NFS_STORAGE_CONFIG_PATCH
+    cloud/filestore/tests/client_sharded_dir_resize_retry/nfs-storage.txt
+)
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
+
+DEFAULT(FILESTORE_TABLETS_RESTART_INTERVAL 5)
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/tablets-restarter.inc)
+
+END()
