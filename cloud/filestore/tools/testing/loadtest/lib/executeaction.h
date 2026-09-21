@@ -35,6 +35,8 @@ public:
 private:
     void ForcedOperation(
         NProtoPrivate::TForcedOperationRequest::EForcedOperationType type);
+    TString RunForcedOperation(
+        NProtoPrivate::TForcedOperationRequest::EForcedOperationType type);
 
     template <typename TRequest, typename TResponse>
     void ExecuteAction(
