@@ -111,7 +111,7 @@ struct TBootstrap
         while (auto* pendingRequest =
                    RequestManager.GetNextPendingRequestToSerialize())
         {
-            pendingRequest->SerializeToAllocation();
+            UNIT_ASSERT(pendingRequest->SerializeToAllocation());
             pendingRequest->SetSerialized();
             ProcessCachedRequests();
         }
@@ -534,7 +534,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
         UNIT_ASSERT(
             b.RequestManager.GetNextPendingRequestToSerialize() == nullptr);
 
-        requestToSerialize2->SerializeToAllocation();
+        UNIT_ASSERT(requestToSerialize2->SerializeToAllocation());
         requestToSerialize2->SetSerialized();
 
         // A newer request must not be committed before the older request has
@@ -547,7 +547,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
         b.RequestManager.UpdateStats();
         b.CheckAllocatedQueueMetrics(2, 2, 3000, 0, 0);
 
-        requestToSerialize1->SerializeToAllocation();
+        UNIT_ASSERT(requestToSerialize1->SerializeToAllocation());
         requestToSerialize1->SetSerialized();
         b.ProcessCachedRequests();
 

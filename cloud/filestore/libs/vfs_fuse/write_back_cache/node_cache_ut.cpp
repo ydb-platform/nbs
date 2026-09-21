@@ -176,7 +176,7 @@ struct TBootstrap
         auto* pendingRequest =
             RequestManager.GetNextPendingRequestToSerialize();
         UNIT_ASSERT_VALUES_EQUAL(res.get(), pendingRequest);
-        pendingRequest->SerializeToAllocation();
+        UNIT_ASSERT(pendingRequest->SerializeToAllocation());
         pendingRequest->SetSerialized();
 
         auto nextRequest = RequestManager.GetNextReadyCachedRequest();

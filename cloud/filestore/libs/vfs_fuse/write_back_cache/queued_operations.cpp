@@ -125,6 +125,11 @@ void TQueuedOperations::Release()
     }
 }
 
+void TQueuedOperations::ReleaseWithoutProcessingQueuedOperations()
+{
+    Lock.Release();
+}
+
 void TQueuedOperations::ScheduleFlushNode(ui64 nodeId)
 {
     Events.push_back(TScheduleFlushEvent{Processor, nodeId});

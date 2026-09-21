@@ -909,16 +909,22 @@ void TWriteBackCacheState::ProcessPendingRequests(
             break;
         }
 
-        {
-            // Request serialization is a computationally expensive operation
-            // and it may become a bottleneck if the requests are sumbitted from
-            // multiple thread but processed inside a lock section.
-            // We temporary release and reacquire the lock.
-            auto unguard = Unguard(guard);
-            pendingRequest->SerializeToAllocation();
-        }
+        // Request serialization is a computationally expensive operation
+        // and it may become a bottleneck if the requests are sumbitted from
+        // multiple thread but processed inside a lock section.
+        // We temporary release and reacquire the lock.
+        guard.GetMutex()->ReleaseWithoutProcessingQueuedOperations();
 
-        pendingRequest->SetSerialized();
+        bool serializationSucceeded = pendingRequest->SerializeToAllocation();
+
+        guard.GetMutex()->Acquire();
+
+        if (serializationSucceeded) {
+            pendingRequest->SetSerialized();
+        } else {
+            SetFailedFlag();
+            return;
+        }
     }
 
     if (RequestManager.GetStorageIsFull()) {
