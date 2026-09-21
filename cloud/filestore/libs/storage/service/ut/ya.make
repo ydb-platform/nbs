@@ -11,6 +11,7 @@ ENDIF()
 SRCS(
     helpers_ut.cpp
     protobuf_utils_ut.cpp
+    shard_creation_state_companion_ut.cpp
     service_ut.cpp
     service_ut_control_namespace.cpp
     service_ut_helpers.cpp

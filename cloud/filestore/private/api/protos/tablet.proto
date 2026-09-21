@@ -1113,6 +1113,32 @@ message TCompressedBitmapData
     repeated TCompressedBitmapChunk Chunks = 2;
 }
 
+message TFileSystemShardCreationState
+{
+    // Protecting from races. When unset in Request, we do not modify during
+    // the Request the TFileSystem.ShardCreationState and just return current
+    // state.
+    optional uint32 Version = 1;
+
+    // Uses absolute shard indexes. A set bit means the corresponding shard
+    // filestore was physically created and is assumed to still exist.
+    // This state is intentionally retained after a successful resize: clearing
+    // it would be an extra concurrent write that could erase recovery bits from
+    // another in-flight resize. Once the main topology catches up, those bits
+    // are treated as committed history.
+    TCompressedBitmapData CreatedShardBitmap = 2;
+
+    // First shard index covered by the current creation range.
+    uint32 BaseShardCount = 3;
+
+    // Exclusive upper bound for the target shard range.
+    uint32 TargetShardCount = 4;
+
+    // Hash of target shard create configs in
+    // [BaseShardCount, TargetShardCount).
+    uint64 TargetShardConfigHash = 5;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // UnsafeChangeTabletState request/response.
 
