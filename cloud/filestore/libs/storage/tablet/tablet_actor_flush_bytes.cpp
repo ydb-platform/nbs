@@ -701,10 +701,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
     const TActorContext& ctx,
     TTxIndexTablet::TFlushBytes& args)
 {
-    auto replyError = [&] (
-        const TActorContext& ctx,
-        TTxIndexTablet::TFlushBytes& args,
-        const NProto::TError& error)
+    auto cleanup = [&](const NProto::TError& error)
     {
         // log request
         FinalizeProfileLogRequestInfo(
@@ -714,6 +711,14 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
             error,
             ProfileLog);
 
+        ReleaseMixedBlocks(args.MixedBlocksRanges);
+    };
+
+    auto replyError = [&] (
+        const TActorContext& ctx,
+        TTxIndexTablet::TFlushBytes& args,
+        const NProto::TError& error)
+    {
         FILESTORE_TRACK(
             ResponseSent_Tablet,
             args.RequestInfo->CallContext,
@@ -825,7 +830,8 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
             args.ChunkId,
             args.WaitForTrim);
 
-        ReleaseMixedBlocks(args.MixedBlocksRanges);
+        cleanup({});
+
         if (!args.WaitForTrim) {
             replyError(ctx, args, {});
         }
@@ -878,11 +884,13 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
         if (!ok) {
             ReassignDataChannelsIfNeeded(ctx);
 
-            ReleaseMixedBlocks(args.MixedBlocksRanges);
+            const auto error =
+                MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId");
+            cleanup(error);
             replyError(
                 ctx,
                 args,
-                MakeError(E_FS_OUT_OF_SPACE, "failed to generate blobId"));
+                error);
 
             CompleteBlobIndexOp();
             FlushState.Complete();
