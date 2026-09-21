@@ -25,6 +25,7 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
         EvEstablishingSessionTimeout,
         Ev5min,
         EvCheckDeadlines,
+        EvCheckDSProxyIdle,
     };
 
     struct TEvUpdateResponsiveness : TEventLocal<TEvUpdateResponsiveness, EvUpdateResponsiveness> {};
@@ -33,6 +34,13 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
     struct TEvStopBatchingGetRequests : TEventLocal<TEvStopBatchingGetRequests, EvStopBatchingGetRequests> {};
     struct TEvConfigureQueryTimeout : TEventLocal<TEvConfigureQueryTimeout, EvConfigureQueryTimeout> {};
     struct TEvEstablishingSessionTimeout : TEventLocal<TEvEstablishingSessionTimeout, EvEstablishingSessionTimeout> {};
+    struct TEvCheckDSProxyIdle : TEventLocal<TEvCheckDSProxyIdle, EvCheckDSProxyIdle> {
+        ui64 Generation;
+
+        explicit TEvCheckDSProxyIdle(ui64 generation)
+            : Generation(generation)
+        {}
+    };
 
     template <typename TEventPtr>
     struct TBatchedQueue {
@@ -71,6 +79,11 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
     bool UseActorSystemTimeInBSQueue;
     bool IsLimitedKeyless = false;
     bool IsFullMonitoring = false; // current state of monitoring
+    const bool EnableInactivityStop;
+    bool SeenEligibleRequest = false;
+    bool Pinned = false;
+    TMonotonic LastRequestTimestamp;
+    ui64 IdleTimerGeneration = 0;
     ui32 MinHugeBlobInBytes = 0;
 
     TActorId MonActor;
@@ -117,6 +130,30 @@ class TBlobStorageGroupProxy : public TActorBootstrapped<TBlobStorageGroupProxy>
 
     bool HasInvalidGroupId() const { return GroupId.GetRawId() == Max<ui32>(); }
     void ProcessInitQueue();
+
+    void AccountExternalRequest(const IEventHandle& ev);
+    void ScheduleIdleCheck(ui64 generation, TDuration delay);
+    void EvaluateIdle(ui64 generation);
+    void Handle(TEvCheckDSProxyIdle::TPtr ev);
+    void StopDueToInactivity();
+
+    template<typename TEvent>
+    void HandleEnqueueWithActivity(TAutoPtr<TEventHandle<TEvent>> ev) {
+        AccountExternalRequest(*ev);
+        HandleEnqueue(std::move(ev));
+    }
+
+    template<typename TEvent>
+    void HandleErrorWithActivity(TAutoPtr<TEventHandle<TEvent>> ev) {
+        AccountExternalRequest(*ev);
+        HandleError(std::move(ev));
+    }
+
+    template<typename TEvent>
+    void HandleNormalWithActivity(TAutoPtr<TEventHandle<TEvent>> ev) {
+        AccountExternalRequest(*ev);
+        HandleNormal(ev);
+    }
 
     TBlobStorageProxyControlWrappers Controls;
 
@@ -370,6 +407,7 @@ public:
         fFunc(Ev5min, Handle5min);
         cFunc(EvCheckDeadlines, CheckDeadlines);
         hFunc(TEvGetQueuesInfo, Handle);
+        hFunc(TEvCheckDSProxyIdle, Handle);
     )
 
 #define HANDLE_EVENTS(HANDLER) \
@@ -388,7 +426,7 @@ public:
 
     STFUNC(StateUnconfigured) {
         switch (ev->GetTypeRewrite()) {
-            HANDLE_EVENTS(HandleEnqueue);
+            HANDLE_EVENTS(HandleEnqueueWithActivity);
             hFunc(TEvConfigureQueryTimeout, WakeupUnconfigured);
             default: return StateCommon(ev);
         }
@@ -396,14 +434,14 @@ public:
 
     STFUNC(StateUnconfiguredTimeout) {
         switch (ev->GetTypeRewrite()) {
-            HANDLE_EVENTS(HandleError);
+            HANDLE_EVENTS(HandleErrorWithActivity);
             default: return StateUnconfigured(ev);
         }
     }
 
     STFUNC(StateEstablishingSessions) {
         switch (ev->GetTypeRewrite()) {
-            HANDLE_EVENTS(HandleEnqueue);
+            HANDLE_EVENTS(HandleEnqueueWithActivity);
             hFunc(TEvEstablishingSessionTimeout, WakeupEstablishingSessions);
             default: return StateCommon(ev);
         }
@@ -411,21 +449,21 @@ public:
 
     STFUNC(StateEstablishingSessionsTimeout) {
         switch (ev->GetTypeRewrite()) {
-            HANDLE_EVENTS(HandleError);
+            HANDLE_EVENTS(HandleErrorWithActivity);
             default: return StateEstablishingSessions(ev);
         }
     }
 
     STFUNC(StateWork) {
         switch (ev->GetTypeRewrite()) {
-            HANDLE_EVENTS(HandleNormal);
+            HANDLE_EVENTS(HandleNormalWithActivity);
             default: return StateCommon(ev);
         }
     }
 
     STFUNC(StateEjected) {
         switch (ev->GetTypeRewrite()) {
-            HANDLE_EVENTS(HandleError);
+            HANDLE_EVENTS(HandleErrorWithActivity);
             default: return StateCommon(ev);
         }
     }

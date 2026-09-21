@@ -5,6 +5,7 @@
 #include <contrib/ydb/core/base/statestorage.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/group_sessions.h>
+#include <contrib/ydb/core/blobstorage/dsproxy/dsproxy.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/dsproxy_nodemon.h>
 #include <contrib/ydb/core/blobstorage/dsproxy/mock/dsproxy_mock.h>
 #include <contrib/ydb/core/blobstorage/incrhuge/incrhuge.h>
@@ -266,6 +267,7 @@ namespace NKikimr::NStorage {
         TControlWrapper MaxNumOfSlowDisksSSD;
 
         TControlWrapper LongRequestThresholdMs;
+        TControlWrapper StopTimeoutMinutes;
         TControlWrapper ReportingControllerBucketSize;
         TControlWrapper ReportingControllerLeakDurationMs;
         TControlWrapper ReportingControllerLeakRate;
@@ -317,7 +319,8 @@ namespace NKikimr::NStorage {
         TActorId StartEjectedProxy(ui32 groupId);
         void StartInvalidGroupProxy();
         void StopInvalidGroupProxy();
-        void StartLocalProxy(ui32 groupId);
+        void StartLocalProxy(ui32 groupId, bool enableInactivityStop = true);
+        void Handle(TEvDSProxyGoingAway::TPtr ev);
         void StartVirtualGroupAgent(ui32 groupId);
         void StartStaticProxies();
         void StartRequestReportingThrottler();
@@ -550,6 +553,7 @@ namespace NKikimr::NStorage {
             TActorId ProxyId; // actor id of running DS proxy or agent
             bool MustSubscribe = false; // keep RegisterNode subscription for this group even when proxy is not running
             bool AgentProxy = false; // was the group started as an BlobDepot agent proxy?
+            bool StoppableProxy = false;
             bool GetGroupRequestPending = false; // if true, then we are waiting for GetGroup response for this group
             bool ProposeRequestPending = false; // if true, then we have sent ProposeKey request and waiting for the group
             TActorId GroupResolver; // resolver actor id

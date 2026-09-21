@@ -101,7 +101,9 @@ void TConfirmBlobsActor::Bootstrap(const TActorContext& ctx)
             ctx,
             Requests[i].Proxy,
             request.release(),
-            i   // cookie
+            i,  // cookie
+            {},
+            true
         );
     }
 }

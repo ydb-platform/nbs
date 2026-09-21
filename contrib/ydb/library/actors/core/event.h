@@ -133,7 +133,7 @@ namespace NActors {
             FlagGenerateUnsureUndelivered = 1 << 4,
             FlagExtendedFormat = 1 << 5,
             FlagDebugTrackReceive = 1 << 6,
-            // unused = 1 << 7,
+            FlagApplicationSpecific = 1 << 7,
             FlagDisablePayloadChecksums = 1 << 8, // When set, IC will not calculate or check XDC/RDMA checksums
         };
         using TEventFlags = ui32;

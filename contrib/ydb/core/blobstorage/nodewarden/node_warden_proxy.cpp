@@ -18,13 +18,25 @@ TActorId TNodeWarden::StartEjectedProxy(ui32 groupId) {
     .prefix##HDD = prefix##HDD,                 \
     .prefix##SSD = prefix##SSD
 
-void TNodeWarden::StartLocalProxy(ui32 groupId) {
+void TNodeWarden::StartLocalProxy(ui32 groupId, bool enableInactivityStop) {
     STLOG(PRI_DEBUG, BS_NODE, NW12, "StartLocalProxy", (GroupId, groupId));
 
     std::unique_ptr<IActor> proxy;
+    bool ordinaryProxyCreated = false;
     TActorSystem *as = TActivationContext::ActorSystem();
 
     TGroupRecord& group = Groups[groupId];
+    group.AgentProxy = false;
+    group.StoppableProxy = false;
+
+    bool allowInactivityStop = enableInactivityStop;
+    if (Cfg->BlobStorageConfig.GetServiceSet().HasFailureInjectionConfig()) {
+        const auto& config = Cfg->BlobStorageConfig.GetServiceSet().GetFailureInjectionConfig();
+        const TGroupId id = TGroupId::FromValue(groupId);
+        if (config.GetFailureProbability() > 0 && (IsDynamicGroup(id) || config.GetIncludeStaticGroups())) {
+            allowInactivityStop = false;
+        }
+    }
 
     auto getCounters = [&](const TIntrusivePtr<TBlobStorageGroupInfo>& info) {
         return DsProxyPerPoolCounters->GetPoolCounters(info->GetStoragePoolName(), info->GetDeviceType());
@@ -68,12 +80,15 @@ void TNodeWarden::StartLocalProxy(ui32 groupId) {
             }
         } else {
             // create proxy with configuration
+            ordinaryProxyCreated = true;
             proxy.reset(CreateBlobStorageGroupProxyConfigured(TIntrusivePtr<TBlobStorageGroupInfo>(info),
                 group.NodeLayoutInfo, false, DsProxyNodeMon, getCounters(info), TBlobStorageProxyParameters{
                         .UseActorSystemTimeInBSQueue = Cfg->UseActorSystemTimeInBSQueue,
+                        .EnableInactivityStop = allowInactivityStop,
                         .Controls = TBlobStorageProxyControlWrappers{
                             .EnablePutBatching = EnablePutBatching,
                             .EnableVPatch = EnableVPatch,
+                            .StopTimeoutMinutes = StopTimeoutMinutes,
                             ADD_CONTROLS_FOR_DEVICE_TYPES(SlowDiskThreshold),
                             ADD_CONTROLS_FOR_DEVICE_TYPES(PredictedDelayMultiplier),
                             ADD_CONTROLS_FOR_DEVICE_TYPES(MaxNumOfSlowDisks),
@@ -84,11 +99,14 @@ void TNodeWarden::StartLocalProxy(ui32 groupId) {
         }
     } else {
         // create proxy without configuration
+        ordinaryProxyCreated = true;
         proxy.reset(CreateBlobStorageGroupProxyUnconfigured(groupId, DsProxyNodeMon, TBlobStorageProxyParameters{
             .UseActorSystemTimeInBSQueue = Cfg->UseActorSystemTimeInBSQueue,
+            .EnableInactivityStop = allowInactivityStop,
             .Controls = TBlobStorageProxyControlWrappers{
                 .EnablePutBatching = EnablePutBatching,
                 .EnableVPatch = EnableVPatch,
+                .StopTimeoutMinutes = StopTimeoutMinutes,
                 ADD_CONTROLS_FOR_DEVICE_TYPES(SlowDiskThreshold),
                 ADD_CONTROLS_FOR_DEVICE_TYPES(PredictedDelayMultiplier),
                 ADD_CONTROLS_FOR_DEVICE_TYPES(MaxNumOfSlowDisks),
@@ -97,6 +115,7 @@ void TNodeWarden::StartLocalProxy(ui32 groupId) {
     }
 
     auto id = as->Register(proxy.release(), TMailboxType::ReadAsFilled, AppData()->SystemPoolId);
+    const TActorId ordinaryProxyId = id;
 
     // determine if we want to inject BS errors
     if (Cfg->BlobStorageConfig.GetServiceSet().HasFailureInjectionConfig()) {
@@ -112,6 +131,7 @@ void TNodeWarden::StartLocalProxy(ui32 groupId) {
     }
 
     group.ProxyId = id;
+    group.StoppableProxy = allowInactivityStop && ordinaryProxyCreated && !group.AgentProxy && id == ordinaryProxyId;
     as->RegisterLocalService(MakeBlobStorageProxyID(groupId), group.ProxyId);
 }
 
@@ -130,8 +150,23 @@ void TNodeWarden::StartVirtualGroupAgent(ui32 groupId) {
 void TNodeWarden::StartStaticProxies() {
     Y_ABORT_UNLESS(Cfg->BlobStorageConfig.HasServiceSet());
     for (const auto& group : Cfg->BlobStorageConfig.GetServiceSet().GetGroups()) {
-        StartLocalProxy(group.GetGroupID());
+        StartLocalProxy(group.GetGroupID(), false);
     }
+}
+
+void TNodeWarden::Handle(TEvDSProxyGoingAway::TPtr ev) {
+    const auto it = Groups.find(ev->Get()->GroupId);
+    if (it == Groups.end()) {
+        return;
+    }
+
+    TGroupRecord& group = it->second;
+    if (!group.StoppableProxy || group.AgentProxy || group.ProxyId != ev->Get()->ProxyId) {
+        return;
+    }
+
+    group.ProxyId = {};
+    group.StoppableProxy = false;
 }
 
 void TNodeWarden::HandleForwarded(TAutoPtr<::NActors::IEventHandle> &ev) {

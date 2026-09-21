@@ -1718,6 +1718,11 @@ message TImmediateControlsConfig {
             DefaultValue: 2 }];
 
         optional TRequestReportingSettings RequestReportingSettings = 12;
+        optional uint64 StopTimeoutMinutes = 13 [(ControlOptions) = {
+            Description: "Stop an eligible DSProxy after this many minutes without requests; 0 disables idle shutdown",
+            MinValue: 0,
+            MaxValue: 525600,
+            DefaultValue: 0 }];
     }
 
     message TPDiskControls {

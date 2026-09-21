@@ -211,7 +211,8 @@ void TCollectGarbageActor::CollectGarbage(const TActorContext& ctx)
                 kv.first,
                 request.release(),
                 RequestInfo->Cookie,
-                std::move(traceId));
+                std::move(traceId),
+                true);
 
             ++RequestsInFlight;
         }
@@ -478,7 +479,10 @@ void TCollectGarbageHardActor::CollectGarbage(const TActorContext& ctx)
             SendToBSProxy(
                 ctx,
                 kv.first,
-                request.release());
+                request.release(),
+                0,
+                {},
+                true);
 
             ++RequestsInFlight;
         }

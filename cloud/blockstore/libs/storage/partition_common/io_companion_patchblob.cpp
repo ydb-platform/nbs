@@ -157,7 +157,8 @@ void TPatchBlobActor::SendPatchRequest(const TActorContext& ctx)
         Request->Proxy,
         request.release(),
         RequestInfo->Cookie,
-        std::move(traceId));
+        std::move(traceId),
+        true);
 }
 
 void TPatchBlobActor::NotifyCompleted(

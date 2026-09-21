@@ -515,6 +515,7 @@ IActor* CreateBlobStorageGroupEjectedProxy(ui32 groupId, TIntrusivePtr<TDsProxyN
 struct TBlobStorageProxyControlWrappers {
     TMemorizableControlWrapper EnablePutBatching;
     TMemorizableControlWrapper EnableVPatch;
+    TMemorizableControlWrapper StopTimeoutMinutes = TControlWrapper(0, 0, 525'600);
 
     TMemorizableControlWrapper LongRequestThresholdMs = LongRequestThresholdDefaultControl;
 
@@ -534,8 +535,21 @@ struct TBlobStorageProxyControlWrappers {
 
 struct TBlobStorageProxyParameters {
     bool UseActorSystemTimeInBSQueue = false;
+    bool EnableInactivityStop = false;
 
     TBlobStorageProxyControlWrappers Controls;
+};
+
+struct TEvDSProxyGoingAway
+    : TEventLocal<TEvDSProxyGoingAway, EventSpaceBegin(TKikimrEvents::ES_PRIVATE) + 1>
+{
+    ui32 GroupId;
+    TActorId ProxyId;
+
+    TEvDSProxyGoingAway(ui32 groupId, TActorId proxyId)
+        : GroupId(groupId)
+        , ProxyId(proxyId)
+    {}
 };
 
 IActor* CreateBlobStorageGroupProxyConfigured(TIntrusivePtr<TBlobStorageGroupInfo>&& info, TNodeLayoutInfoPtr nodeLayoutInfo,

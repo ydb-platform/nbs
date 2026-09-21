@@ -5,6 +5,57 @@
 
 namespace NKikimr {
 
+    void TBlobStorageGroupProxy::AccountExternalRequest(const IEventHandle& ev) {
+        LastRequestTimestamp = TActivationContext::Monotonic();
+        const ui64 generation = ++IdleTimerGeneration;
+
+        if (NBlobStorage::IsDSProxyStopAllowed(ev)) {
+            SeenEligibleRequest = true;
+        } else {
+            Pinned = true;
+        }
+
+        if (EnableInactivityStop && SeenEligibleRequest && !Pinned) {
+            const i64 timeoutMinutes = Controls.StopTimeoutMinutes.Update(TActivationContext::Now());
+            if (timeoutMinutes > 0) {
+                ScheduleIdleCheck(generation, TDuration::Minutes(timeoutMinutes));
+            }
+        }
+    }
+
+    void TBlobStorageGroupProxy::ScheduleIdleCheck(ui64 generation, TDuration delay) {
+        Schedule(delay, new TEvCheckDSProxyIdle(generation));
+    }
+
+    void TBlobStorageGroupProxy::EvaluateIdle(ui64 generation) {
+        if (!EnableInactivityStop || generation != IdleTimerGeneration || !SeenEligibleRequest || Pinned) {
+            return;
+        }
+
+        const i64 timeoutMinutes = Controls.StopTimeoutMinutes.Update(TActivationContext::Now());
+        if (timeoutMinutes <= 0) {
+            return;
+        }
+
+        const TMonotonic deadline = LastRequestTimestamp + TDuration::Minutes(timeoutMinutes);
+        const TMonotonic now = TActivationContext::Monotonic();
+        if (now < deadline) {
+            ScheduleIdleCheck(generation, deadline - now);
+        } else if (ActiveRequests.empty()) {
+            StopDueToInactivity();
+        }
+    }
+
+    void TBlobStorageGroupProxy::Handle(TEvCheckDSProxyIdle::TPtr ev) {
+        EvaluateIdle(ev->Get()->Generation);
+    }
+
+    void TBlobStorageGroupProxy::StopDueToInactivity() {
+        Send(MakeBlobStorageNodeWardenID(SelfId().NodeId()),
+            new TEvDSProxyGoingAway(GroupId.GetRawId(), SelfId()));
+        PassAway();
+    }
+
     void TBlobStorageGroupProxy::PushRequest(IActor *actor, TInstant deadline) {
         const TActorId actorId = Register(actor);
         if (deadline != TInstant::Max()) {
@@ -533,9 +584,19 @@ namespace NKikimr {
             DeadlineMap.erase(it->second);
         }
         ActiveRequests.erase(it);
+        if (ActiveRequests.empty()) {
+            EvaluateIdle(IdleTimerGeneration);
+        }
     }
 
     void TBlobStorageGroupProxy::Handle(TEvBlobStorage::TEvBunchOfEvents::TPtr ev) {
+        bool eligible = true;
+        for (const auto& item : ev->Get()->Bunch) {
+            eligible &= NBlobStorage::IsDSProxyStopAllowed(*item);
+        }
+        if (!eligible) {
+            Pinned = true;
+        }
         ev->Get()->Process(this);
     }
 

@@ -80,6 +80,7 @@ TNodeWarden::TNodeWarden(const TIntrusivePtr<TNodeWardenConfig> &cfg)
     , MaxNumOfSlowDisksHDD(DefaultMaxNumOfSlowDisks, 1, 2)
     , MaxNumOfSlowDisksSSD(DefaultMaxNumOfSlowDisks, 1, 2)
     , LongRequestThresholdMs(50'000, 1, 1'000'000)
+    , StopTimeoutMinutes(0, 0, 525'600)
     , ReportingControllerBucketSize(1, 1, 100'000)
     , ReportingControllerLeakDurationMs(60'000, 1, 3'600'000)
     , ReportingControllerLeakRate(1, 1, 100'000)
@@ -113,6 +114,7 @@ STATEFN(TNodeWarden::StateOnline) {
         fFunc(TEvBlobStorage::TEvBunchOfEvents::EventType, HandleForwarded);
         fFunc(TEvBlobStorage::TEvCheckIntegrity::EventType, HandleForwarded);
         fFunc(TEvRequestProxySessionsState::EventType, HandleForwarded);
+        hFunc(TEvDSProxyGoingAway, Handle);
 
         cFunc(TEvPrivate::EvGroupPendingQueueTick, HandleGroupPendingQueueTick);
 
@@ -449,6 +451,7 @@ void TNodeWarden::Bootstrap() {
         icb->RegisterSharedControl(MaxNumOfSlowDisksSSD, "DSProxyControls.MaxNumOfSlowDisksSSD");
 
         icb->RegisterSharedControl(LongRequestThresholdMs, "DSProxyControls.LongRequestThresholdMs");
+        icb->RegisterSharedControl(StopTimeoutMinutes, "DSProxyControls.StopTimeoutMinutes");
         icb->RegisterSharedControl(ReportingControllerBucketSize, "DSProxyControls.RequestReportingSettings.BucketSize");
         icb->RegisterSharedControl(ReportingControllerLeakDurationMs, "DSProxyControls.RequestReportingSettings.LeakDurationMs");
         icb->RegisterSharedControl(ReportingControllerLeakRate, "DSProxyControls.RequestReportingSettings.LeakRate");

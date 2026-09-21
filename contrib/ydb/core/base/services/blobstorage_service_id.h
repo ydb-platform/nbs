@@ -5,7 +5,7 @@
 #include <contrib/ydb/core/base/blobstorage_common.h>
 namespace NKikimr {
 
-inline TActorId MakeBlobStorageProxyID(ui32 blobStorageGroup) {
+inline TActorId     (ui32 blobStorageGroup) {
     char x[12] = {'b', 's', 'p', 'r', 'o', 'x', 'y' };
     x[7] = (char)blobStorageGroup;
     x[8] = (char)(blobStorageGroup >> 8);

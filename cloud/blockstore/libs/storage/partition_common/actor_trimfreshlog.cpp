@@ -92,7 +92,10 @@ void TTrimFreshLogActor::TrimFreshLog(const TActorContext& ctx)
             SendToBSProxy(
                 ctx,
                 bsProxyId,
-                request.release());
+                request.release(),
+                0,
+                {},
+                true);
 
             ++RequestsInFlight;
         }

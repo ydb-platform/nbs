@@ -104,7 +104,8 @@ void TReadBlobActor::SendGetRequest(const TActorContext& ctx)
         Request->Proxy,
         request.release(),
         RequestInfo->Cookie,
-        std::move(traceId));
+        std::move(traceId),
+        true);
 }
 
 void TReadBlobActor::NotifyCompleted(

@@ -15,6 +15,7 @@ namespace NKikimr {
         , IsEjected(false)
         , ForceWaitAllDrives(forceWaitAllDrives)
         , UseActorSystemTimeInBSQueue(params.UseActorSystemTimeInBSQueue)
+        , EnableInactivityStop(params.EnableInactivityStop)
         , NodeLayoutInfo(std::move(nodeLayoutInfo))
         , Controls(std::move(params.Controls))
     {}
@@ -26,6 +27,7 @@ namespace NKikimr {
         , IsEjected(isEjected)
         , ForceWaitAllDrives(false)
         , UseActorSystemTimeInBSQueue(params.UseActorSystemTimeInBSQueue)
+        , EnableInactivityStop(params.EnableInactivityStop)
         , Controls(std::move(params.Controls))
     {}
 

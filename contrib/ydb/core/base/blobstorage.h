@@ -432,49 +432,65 @@ inline ui32 GroupIDFromBlobStorageProxyID(TActorId actorId) {
     return blobStorageGroup;
 }
 
+namespace NBlobStorage {
+
+constexpr IEventHandle::TEventFlags FlagAllowDSProxyStop = IEventHandle::FlagApplicationSpecific;
+
+inline bool IsDSProxyStopAllowed(const IEventHandle& ev) {
+    return ev.Flags & FlagAllowDSProxyStop;
+}
+
+} // NBlobStorage
+
 inline IEventHandle *CreateEventForBSProxy(TActorId sender, TActorId recipient, IEventBase *ev, ui64 cookie,
-        NWilson::TTraceId traceId = {}) {
+        NWilson::TTraceId traceId = {}, bool allowDSProxyStop = false) {
     std::unique_ptr<IEventBase> ptr(ev);
-    const ui32 flags = NActors::IEventHandle::FlagTrackDelivery | NActors::IEventHandle::FlagForwardOnNondelivery;
+    const ui32 flags = NActors::IEventHandle::FlagTrackDelivery | NActors::IEventHandle::FlagForwardOnNondelivery
+        | (allowDSProxyStop ? NBlobStorage::FlagAllowDSProxyStop : 0);
     const TActorId nw = MakeBlobStorageNodeWardenID(sender.NodeId());
     auto *res = new IEventHandle(recipient, sender, ptr.get(), flags, cookie, &nw, std::move(traceId));
     ptr.release();
     return res;
 }
 
-inline IEventHandle *CreateEventForBSProxy(TActorId sender, ui32 groupId, IEventBase *ev, ui64 cookie, NWilson::TTraceId traceId = {}) {
-    return CreateEventForBSProxy(sender, MakeBlobStorageProxyID(groupId), ev, cookie, std::move(traceId));
+inline IEventHandle *CreateEventForBSProxy(TActorId sender, ui32 groupId, IEventBase *ev, ui64 cookie,
+        NWilson::TTraceId traceId = {}, bool allowDSProxyStop = false) {
+    return CreateEventForBSProxy(sender, MakeBlobStorageProxyID(groupId), ev, cookie, std::move(traceId), allowDSProxyStop);
 }
 
-inline IEventHandle *CreateEventForBSProxy(TActorId sender, TGroupId groupId, IEventBase *ev, ui64 cookie, NWilson::TTraceId traceId = {}) {
-    return CreateEventForBSProxy(sender, MakeBlobStorageProxyID(groupId), ev, cookie, std::move(traceId));
+inline IEventHandle *CreateEventForBSProxy(TActorId sender, TGroupId groupId, IEventBase *ev, ui64 cookie,
+        NWilson::TTraceId traceId = {}, bool allowDSProxyStop = false) {
+    return CreateEventForBSProxy(sender, MakeBlobStorageProxyID(groupId), ev, cookie, std::move(traceId), allowDSProxyStop);
 }
 
-inline bool SendToBSProxy(TActorId sender, TActorId recipient, IEventBase *ev, ui64 cookie = 0, NWilson::TTraceId traceId = {}) {
-    return TActivationContext::Send(CreateEventForBSProxy(sender, recipient, ev, cookie, std::move(traceId)));
+inline bool SendToBSProxy(TActorId sender, TActorId recipient, IEventBase *ev, ui64 cookie = 0,
+        NWilson::TTraceId traceId = {}, bool allowDSProxyStop = false) {
+    return TActivationContext::Send(CreateEventForBSProxy(sender, recipient, ev, cookie, std::move(traceId), allowDSProxyStop));
 }
 
 inline bool SendToBSProxy(const TActorContext &ctx, TActorId recipient, IEventBase *ev, ui64 cookie = 0,
-        NWilson::TTraceId traceId = {}) {
-    return ctx.Send(CreateEventForBSProxy(ctx.SelfID, recipient, ev, cookie, std::move(traceId)));
+        NWilson::TTraceId traceId = {}, bool allowDSProxyStop = false) {
+    return ctx.Send(CreateEventForBSProxy(ctx.SelfID, recipient, ev, cookie, std::move(traceId), allowDSProxyStop));
 }
 
-inline bool SendToBSProxy(TActorId sender, ui32 groupId, IEventBase *ev, ui64 cookie = 0, NWilson::TTraceId traceId = {}) {
-    return TActivationContext::Send(CreateEventForBSProxy(sender, groupId, ev, cookie, std::move(traceId)));
+inline bool SendToBSProxy(TActorId sender, ui32 groupId, IEventBase *ev, ui64 cookie = 0,
+        NWilson::TTraceId traceId = {}, bool allowDSProxyStop = false) {
+    return TActivationContext::Send(CreateEventForBSProxy(sender, groupId, ev, cookie, std::move(traceId), allowDSProxyStop));
 }
 
 inline bool SendToBSProxy(const TActorContext &ctx, ui32 groupId, IEventBase *ev, ui64 cookie = 0,
-        NWilson::TTraceId traceId = {}) {
-    return ctx.Send(CreateEventForBSProxy(ctx.SelfID, groupId, ev, cookie, std::move(traceId)));
+        NWilson::TTraceId traceId = {}, bool allowDSProxyStop = false) {
+    return ctx.Send(CreateEventForBSProxy(ctx.SelfID, groupId, ev, cookie, std::move(traceId), allowDSProxyStop));
 }
 
-inline bool SendToBSProxy(TActorId sender, TGroupId groupId, IEventBase *ev, ui64 cookie = 0, NWilson::TTraceId traceId = {}) {
-    return TActivationContext::Send(CreateEventForBSProxy(sender, groupId, ev, cookie, std::move(traceId)));
+inline bool SendToBSProxy(TActorId sender, TGroupId groupId, IEventBase *ev, ui64 cookie = 0,
+        NWilson::TTraceId traceId = {}, bool allowDSProxyStop = false) {
+    return TActivationContext::Send(CreateEventForBSProxy(sender, groupId, ev, cookie, std::move(traceId), allowDSProxyStop));
 }
 
 inline bool SendToBSProxy(const TActorContext &ctx, TGroupId groupId, IEventBase *ev, ui64 cookie = 0,
-        NWilson::TTraceId traceId = {}) {
-    return ctx.Send(CreateEventForBSProxy(ctx.SelfID, groupId, ev, cookie, std::move(traceId)));
+        NWilson::TTraceId traceId = {}, bool allowDSProxyStop = false) {
+    return ctx.Send(CreateEventForBSProxy(ctx.SelfID, groupId, ev, cookie, std::move(traceId), allowDSProxyStop));
 }
 
 struct TEvBlobStorage {
