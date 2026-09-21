@@ -150,6 +150,7 @@ class EternalTestHelper:
         self.args = self.parser.get_args()
         self.ycp = None
 
+        # Resolve local configuration without constructing cloud clients or generating credentials.
         if self.args.command == 'list-test-cases':
             self.all_test_configs = get_test_config(self.args)
             return
@@ -609,6 +610,7 @@ class EternalTestHelper:
                     self.args.generate_ycp_config,
                     self.args.ycp_requests_template_path)
 
+                # Definitions may have no VM in this zone; skip only confirmed absence.
                 try:
                     instance = self.find_instance()
                 except InstanceNotFoundError as error:
@@ -616,7 +618,7 @@ class EternalTestHelper:
                     continue
 
                 self.logger.info(f'Found instance id=<{instance.id}> for test case <{test_case}>')
-
+                # Skip failed SSH operations without repeating a partially completed restart.
                 try:
                     if self.args.force_rerun or not self.check_load_on_instance(instance):
                         self.logger.info(f'Rerunning load for test case <{test_case}> on cluster <{self.args.cluster}>')
@@ -627,6 +629,7 @@ class EternalTestHelper:
                     self.logger.error(f'Skipping test case <{test_case}> on instance id=<{instance.id}>: SSH error: {error}')
                     failed_tests.append(test_case)
 
+            # Report partial failure only after all remaining tests have been processed.
             if failed_tests:
                 raise Error(f'SSH errors for test cases: {", ".join(failed_tests)}')
         else:
@@ -777,24 +780,22 @@ class EternalTestHelper:
                 return False
         return True
 
+    # Print configured test names or metadata without querying deployed cloud resources.
     def handle_list_test_cases(self):
         cases = []
         for test_case, config in sorted(self.all_test_configs):
             if self.args.disk_only and not config.is_disk_config():
                 continue
-
             cases.append({
                 'test_case': test_case,
-                "folder_id": config.ycp_config.folder.folder_id,
+                'folder_id': config.ycp_config.folder.folder_id,
                 'loads': [
-                    {
-                        'device_name': load.device_name,
-                        'service_name': load.service_name,
-                    }
+                    {'device_name': load.device_name, 'service_name': load.service_name}
                     for _, load in config.all_tests()
                 ],
             })
 
+        # Keep stdout machine-readable; the regular command logger writes to stderr.
         if self.args.format == 'json':
             print(json.dumps(cases, indent=2))
         else:

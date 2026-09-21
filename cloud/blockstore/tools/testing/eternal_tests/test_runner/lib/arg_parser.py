@@ -70,6 +70,7 @@ class ParseHelper:
         args = parser.parse_args(self.remaining_args)
         self.args = argparse.Namespace(**vars(self.args), **vars(args))
 
+    # Parse output options for listing configured eternal-load test cases.
     def parse_list_options(self):
         parser = argparse.ArgumentParser()
 
