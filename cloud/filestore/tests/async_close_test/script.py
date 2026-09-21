@@ -12,6 +12,7 @@ def open_and_close_files(num_files):
             fds.append(fd)
     except OSError as e:
         print(f"Error opening file: {e}")
+        raise
     finally:
         for fd in fds:
             try:
@@ -19,6 +20,7 @@ def open_and_close_files(num_files):
                 print(f"Closed fd: {fd}")
             except OSError as e:
                 print(f"Error closing fd {fd}: {e}")
+                raise
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:

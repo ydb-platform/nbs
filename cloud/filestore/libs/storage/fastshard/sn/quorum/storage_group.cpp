@@ -79,7 +79,6 @@ private:
     TVector<TStorageDevice> Devices;
     ITimerPtr Timer;
     std::atomic<ui32> Selector{0};
-    std::atomic<ui64> LastLsn{0};
     bool TornDown = false;
 
 public:
@@ -128,7 +127,6 @@ public:
             lastLsn = Max(lastLsn, response.GetLastAckedLogSequenceNumber());
         }
 
-        LastLsn = lastLsn;
         return lastLsn;
     }
 
@@ -153,14 +151,13 @@ public:
     NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
         TVector<TPageGroup> pageGroups,
-        ui64 lsn) override
+        TLsnLink link) override
     {
         FillHeaders(Config, &headers);
         auto request = MakeWriteLogRecordRequest(
             std::move(headers),
             pageGroups,
-            lsn);
-        request.SetPrevLogSequenceNumber(LastLsn.exchange(lsn));
+            link);
         SILK_DEBUG("sg write: %s", DebugMessage(request).c_str());
 
         return MirrorRequest<NProto::TWriteLogRecordResponse>(

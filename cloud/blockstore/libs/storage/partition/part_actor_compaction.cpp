@@ -1563,14 +1563,12 @@ private:
     [[nodiscard]] std::optional<TTriggerInfo>
     TriggerMixedBlocksCountCompactionIfNeeded() const
     {
-        const auto mediaKind = State.GetConfig().GetStorageMediaKind();
-        const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
-        const bool enabled =
-            isSSD ? Config->GetMixedBlocksCountCompactionEnabledSSD()
-                  : Config->GetMixedBlocksCountCompactionEnabledHDD();
-        if (!enabled) {
+        if (!State.GetCompactionMap().IsMixedBlocksCountCompactionEnabled()) {
             return std::nullopt;
         }
+
+        const auto mediaKind = State.GetConfig().GetStorageMediaKind();
+        const bool isSSD = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD;
 
         ui64 threshold =
             isSSD ? Config->GetMixedBytesCountCompactionThresholdSSD()

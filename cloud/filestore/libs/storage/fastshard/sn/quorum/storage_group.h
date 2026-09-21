@@ -27,6 +27,12 @@ struct TPageGroup
     TVector<TBuffer> Content;
 };
 
+struct TLsnLink
+{
+    ui64 Lsn = 0;
+    ui64 PrevLsn = 0;
+};
+
 /**
  * Storage group iface. Storage groups are supposed to provide some extra
  * non-functional features on top of multiple storage devices - like redundancy
@@ -48,7 +54,7 @@ struct IStorageGroup
     virtual NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
         TVector<TPageGroup> pageGroups,
-        ui64 lsn) = 0;
+        TLsnLink link) = 0;
     virtual NProto::TError ReadPages(
         NProto::TDeviceRequestHeaders headers,
         const TVector<TPageGroupRef>& pageGroupRefs,

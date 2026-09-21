@@ -96,6 +96,7 @@ public:
     ui32 GetRangeIndex(TBlockRange32 blockRange) const;
     TBlockRange32 GetBlockRange(ui32 rangeIdx) const;
     ui32 GetRangeSize() const;
+    [[nodiscard]] bool IsMixedBlocksCountCompactionEnabled() const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -28,6 +29,7 @@ func RegisterForExecution(
 	urlMetricsRegistry metrics.Registry,
 	migrationDstStorage storage.Storage,
 	useS3InMigration bool,
+	followerS3 *backup.FollowerS3,
 ) error {
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
@@ -182,6 +184,13 @@ func RegisterForExecution(
 		return err
 	}
 
+	backupChunksTaskScheduleInterval, err := time.ParseDuration(
+		config.GetBackupChunksTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution(
 		"dataplane.CollectSnapshots",
 		func() tasks.Task {
@@ -257,7 +266,7 @@ func RegisterForExecution(
 		return err
 	}
 
-	return taskRegistry.RegisterForExecution(
+	err = taskRegistry.RegisterForExecution(
 		"dataplane.CreateDRBasedDiskCheckpoint",
 		func() tasks.Task {
 			return &createDRBasedDiskCheckpointTask{
@@ -266,6 +275,42 @@ func RegisterForExecution(
 			}
 		},
 	)
+	if err != nil {
+		return err
+	}
+
+	if followerS3 != nil {
+		err = taskRegistry.RegisterForExecution(
+			"dataplane.ScheduleBackupChunksTasks",
+			func() tasks.Task {
+				return &scheduleBackupChunksTasks{}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		err = taskRegistry.RegisterForExecution(
+			"dataplane.BackupChunks",
+			func() tasks.Task {
+				return &backupChunksTask{}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"dataplane.BackupChunks",
+			tasks.TaskSchedule{
+				ScheduleInterval: backupChunksTaskScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
+	}
+
+	return nil
 }
 
 func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
@@ -294,4 +339,6 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.DeleteSnapshotData":          func() tasks.Task { return &deleteSnapshotDataTask{} },
 	"dataplane.DeleteDiskFromIncremental":   func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
 	"dataplane.CreateDRBasedDiskCheckpoint": func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
+	"dataplane.ScheduleBackupChunksTasks":   func() tasks.Task { return &scheduleBackupChunksTasks{} },
+	"dataplane.BackupChunks":                func() tasks.Task { return &backupChunksTask{} },
 }

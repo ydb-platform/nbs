@@ -20,4 +20,6 @@ message SnapshotsConfig {
     // https://github.com/ydb-platform/nbs/issues/1950#issuecomment-2757498035
     // TODO: remove it later.
     optional bool RetryBrokenDRBasedDiskCheckpoint = 8;
+    optional string ScheduleBackupSnapshotTasksScheduleInterval = 9 [default = "1m"];
+    optional uint32 ScheduleBackupSnapshotTasksLimit = 10 [default = 1000];
 }

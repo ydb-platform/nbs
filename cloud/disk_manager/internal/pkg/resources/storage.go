@@ -181,6 +181,12 @@ type Storage interface {
 		creatingBefore time.Time,
 	) ([]string, error)
 
+	ListImagesToBackup(ctx context.Context, limit int) ([]string, error)
+
+	ImageBackupScheduled(ctx context.Context, imageID string) error
+
+	ImageBackupCancelled(ctx context.Context, imageID string) error
+
 	// Returns snapshot if action has been accepted by storage and nil otherwise.
 	CreateSnapshot(ctx context.Context, snapshot SnapshotMeta) (SnapshotMeta, error)
 
@@ -214,6 +220,12 @@ type Storage interface {
 		folderID string,
 		creatingBefore time.Time,
 	) ([]string, error)
+
+	ListSnapshotsToBackup(ctx context.Context, limit int) ([]string, error)
+
+	SnapshotBackupScheduled(ctx context.Context, snapshotID string) error
+
+	SnapshotBackupCancelled(ctx context.Context, snapshotID string) error
 
 	// Returns filesystem if action has been accepted by storage and nil otherwise.
 	CreateFilesystem(ctx context.Context, filesystem FilesystemMeta) (*FilesystemMeta, error)
