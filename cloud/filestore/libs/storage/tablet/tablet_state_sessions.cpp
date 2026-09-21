@@ -327,12 +327,12 @@ void TIndexTabletState::OrphanSession(
     const TActorId& pipeServer,
     TInstant deadline)
 {
-    auto it = Impl->SessionByPipeServer.find(pipeServer);
-    if (it == Impl->SessionByPipeServer.end()) {
+    // The session is found only if pipeServer is the pipe it was created or
+    // recovered through. Such pipes are tracked only on the main tablet.
+    auto* session = FindSessionByPipeServer(pipeServer);
+    if (!session) {
         return; // not a session pipe
     }
-
-    auto* session = it->second;
 
     LOG_INFO(*TlsActivationContext, TFileStoreComponents::TABLET,
         "%s remove subsession c: %s, s: %s, pipeServer: %s",
@@ -340,7 +340,7 @@ void TIndexTabletState::OrphanSession(
         session->GetClientId().c_str(),
         session->GetSessionId().c_str(),
         pipeServer.ToString().c_str());
-    Impl->SessionByPipeServer.erase(it);
+    Impl->SessionByPipeServer.erase(pipeServer);
 
     if (session->DeleteSubSessionByPipeServer(pipeServer).SessionCanBeDestroyed) {
         LOG_INFO(
