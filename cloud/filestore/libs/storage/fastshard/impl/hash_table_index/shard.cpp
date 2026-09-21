@@ -2274,7 +2274,9 @@ public:
 
         error = CheckFormat();
         if (HasError(error)) {
-            return error;
+            // TODO(#6958): return original error as soon as the client (tablet)
+            // is ready
+            return MakeError(S_FALSE);
         }
 
         Ready = true;
@@ -2310,7 +2312,6 @@ public:
                         lc.Describe().c_str(),
                         c.Component->Describe().c_str(),
                         FormatError(error).c_str());
-
                     return error;
                 }
             }
@@ -2437,6 +2438,7 @@ public:
                 "[F=%s] CheckFormat failed: %s",
                 FileSystemId.c_str(),
                 FormatError(error).c_str());
+            return error;
         }
 
         Ready = true;
