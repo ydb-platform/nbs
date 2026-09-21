@@ -184,57 +184,19 @@ struct TClientRequestHandlerBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestsInFlight
+struct TDiskRequestsInFlightDiag
 {
-public:
-    using TRequestHandler = TClientRequestHandlerBase;
+    static constexpr TStringBuf EntityType = TWellKnownEntityTypes::DISK;
 
-private:
-    THashSet<TRequestHandler*> Requests;
-    TAdaptiveLock RequestsLock;
-    bool ShouldStop = false;
-
-public:
-    bool Register(TRequestHandler* handler)
+    static const TString& GetEntityId(const TClientRequestHandlerBase& handler)
     {
-        with_lock (RequestsLock) {
-            if (ShouldStop) {
-                return false;
-            }
-
-            auto res = Requests.emplace(handler);
-            STORAGE_VERIFY(
-                res.second,
-                TWellKnownEntityTypes::DISK,
-                handler->DiskId);
-        }
-
-        return true;
-    }
-
-    void Unregister(TRequestHandler* handler)
-    {
-        with_lock (RequestsLock) {
-            auto it = Requests.find(handler);
-            STORAGE_VERIFY(
-                it != Requests.end(),
-                TWellKnownEntityTypes::DISK,
-                handler->DiskId);
-
-            Requests.erase(it);
-        }
-    }
-
-    void Shutdown()
-    {
-        with_lock (RequestsLock) {
-            ShouldStop = true;
-            for (auto* handler: Requests) {
-                handler->Cancel();
-            }
-        }
+        return handler.DiskId;
     }
 };
+
+using TRequestsInFlight = NStorage::NGrpc::TRequestsInFlight<
+    TClientRequestHandlerBase,
+    TDiskRequestsInFlightDiag>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

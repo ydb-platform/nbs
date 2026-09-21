@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/storage/core/libs/common/verify.h>
+
 #include <util/generic/hash_set.h>
 #include <util/system/spinlock.h>
 
@@ -24,7 +26,20 @@ public:
 
 using TRequestHandlerPtr = std::unique_ptr<TRequestHandlerBase>;
 
-template<typename TRequestHandler >
+template <const TStringBuf& EntityTypeName>
+struct TNoIdRequestsInFlightDiag
+{
+    static constexpr TStringBuf EntityType = EntityTypeName;
+
+    template <typename TRequestHandler>
+    static TStringBuf GetEntityId(const TRequestHandler& handler)
+    {
+        Y_UNUSED(handler);
+        return {};
+    }
+};
+
+template <typename TRequestHandler, typename TDiag>
 class TRequestsInFlight final
 {
 protected:
@@ -49,7 +64,10 @@ public:
             }
 
             auto res = Requests.emplace(handler);
-            Y_ABORT_UNLESS(res.second);
+            STORAGE_VERIFY(
+                res.second,
+                TDiag::EntityType,
+                TDiag::GetEntityId(*handler));
         }
 
         return true;
@@ -59,7 +77,10 @@ public:
     {
         with_lock(RequestsLock) {
             auto it = Requests.find(handler);
-            Y_ABORT_UNLESS(it != Requests.end());
+            STORAGE_VERIFY(
+                it != Requests.end(),
+                TDiag::EntityType,
+                TDiag::GetEntityId(*handler));
             Requests.erase(it);
         }
     }
