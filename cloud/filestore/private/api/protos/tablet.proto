@@ -1152,12 +1152,18 @@ message TUnsafeChangeTabletStateRequest
 
     // Compress ShardId and ShardNodeName when we write them to NodeRefs table.
     optional bool CompressNodeRef = 3;
+
+    // Update shard creation state during large operations.
+    TFileSystemShardCreationState ShardCreationState = 4;
 }
 
 message TUnsafeChangeTabletStateResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
+
+    // Returns current shard creation state.
+    TFileSystemShardCreationState ShardCreationState = 2;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
