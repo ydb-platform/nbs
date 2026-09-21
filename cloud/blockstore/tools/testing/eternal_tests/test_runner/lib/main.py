@@ -1,6 +1,7 @@
 from string import Template
 import errno
 import gzip
+import json
 import os
 import time
 from typing import Callable
@@ -9,7 +10,7 @@ from cloud.blockstore.pylibs import common
 from cloud.blockstore.pylibs.ycp import Ycp, YcpWrapper, make_ycp_engine
 
 from .arg_parser import ParseHelper
-from .errors import Error
+from .errors import Error, InstanceNotFoundError
 from .test_configs import ITestConfig, \
     LoadConfig, DiskCreateConfig, get_test_config
 
@@ -149,6 +150,10 @@ class EternalTestHelper:
         self.args = self.parser.get_args()
         self.ycp = None
 
+        if self.args.command == 'list-test-cases':
+            self.all_test_configs = get_test_config(self.args)
+            return
+
         self.ycp_config_generator = self.module_factories.make_config_generator(self.args.dry_run)
         self.helpers = self.module_factories.make_helpers(self.args.dry_run)
 
@@ -179,7 +184,7 @@ class EternalTestHelper:
             if instance.name == name:
                 return instance
 
-        raise RuntimeError("instance {} not found out of {}".format(name, len(instances)))
+        raise InstanceNotFoundError("instance {} not found out of {}".format(name, len(instances)))
 
     def find_instances(self) -> [Ycp.Instance]:
         instances = self.ycp.list_instances()
@@ -590,6 +595,7 @@ class EternalTestHelper:
 
     def handle_rerun_load(self):
         if self.args.test_case == 'all':
+            failed_tests = []
             for test_case, config in self.all_test_configs:
                 self.args.test_case = test_case
                 self.test_config = config
@@ -603,14 +609,26 @@ class EternalTestHelper:
                     self.args.generate_ycp_config,
                     self.args.ycp_requests_template_path)
 
-                instance = self.find_instance()
+                try:
+                    instance = self.find_instance()
+                except InstanceNotFoundError as error:
+                    self.logger.info(f'Skipping test case <{test_case}>: {error}')
+                    continue
 
                 self.logger.info(f'Found instance id=<{instance.id}> for test case <{test_case}>')
-                if self.args.force_rerun or not self.check_load_on_instance(instance):
-                    self.logger.info(f'Rerunning load for test case <{test_case}> on cluster <{self.args.cluster}>')
-                    self.rerun_load_on_instance(instance, self.args.force_rerun)
-                else:
-                    self.logger.info('Eternal-load is already running')
+
+                try:
+                    if self.args.force_rerun or not self.check_load_on_instance(instance):
+                        self.logger.info(f'Rerunning load for test case <{test_case}> on cluster <{self.args.cluster}>')
+                        self.rerun_load_on_instance(instance, self.args.force_rerun)
+                    else:
+                        self.logger.info('Eternal-load is already running')
+                except common.SshException as error:
+                    self.logger.error(f'Skipping test case <{test_case}> on instance id=<{instance.id}>: SSH error: {error}')
+                    failed_tests.append(test_case)
+
+            if failed_tests:
+                raise Error(f'SSH errors for test cases: {", ".join(failed_tests)}')
         else:
             self.rerun_load_on_instance(self.find_instance(), need_kill=True)
 
@@ -759,6 +777,30 @@ class EternalTestHelper:
                 return False
         return True
 
+    def handle_list_test_cases(self):
+        cases = []
+        for test_case, config in sorted(self.all_test_configs):
+            if self.args.disk_only and not config.is_disk_config():
+                continue
+
+            cases.append({
+                'test_case': test_case,
+                "folder_id": config.ycp_config.folder.folder_id,
+                'loads': [
+                    {
+                        'device_name': load.device_name,
+                        'service_name': load.service_name,
+                    }
+                    for _, load in config.all_tests()
+                ],
+            })
+
+        if self.args.format == 'json':
+            print(json.dumps(cases, indent=2))
+        else:
+            for case in cases:
+                print(case['test_case'])
+
     COMMANDS_WITHOUT_ALL_TEST_CASE = {
         'setup-test': Command(handle_new_test_run, ParseHelper.parse_run_test_options),
         'stop-load': Command(handle_stop_load, lambda *args: None),
@@ -775,6 +817,7 @@ class EternalTestHelper:
     }
 
     COMMANDS_WITH_ALL_TEST_CASE = {
+        'list-test-cases': Command(handle_list_test_cases, ParseHelper.parse_list_options),
         'rerun-load': Command(handle_rerun_load, ParseHelper.parse_load_options),
         'rerun-db-load': Command(handle_rerun_db_load, lambda *args: None),
     }

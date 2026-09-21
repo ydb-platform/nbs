@@ -70,6 +70,25 @@ class ParseHelper:
         args = parser.parse_args(self.remaining_args)
         self.args = argparse.Namespace(**vars(self.args), **vars(args))
 
+    def parse_list_options(self):
+        parser = argparse.ArgumentParser()
+
+        parser.add_argument(
+            '--format',
+            choices=['names', 'json'],
+            default='names',
+            help='print test names or structured test metadata'
+        )
+
+        parser.add_argument(
+            '--disk-only',
+            action='store_true',
+            help='exclude filesystem tests from the list'
+        )
+
+        args = parser.parse_args(self.remaining_args)
+        self.args = argparse.Namespace(**vars(self.args), **vars(args))
+
     def parse_command(self):
         parser = argparse.ArgumentParser()
         parser.add_argument('command', choices=self.commands)
@@ -85,7 +104,6 @@ class ParseHelper:
         parser.add_argument(
             '--test-case',
             type=str,
-            required=True,
             help='specify the test case or <all>, if you want to manage all test-cases')
 
         parser.add_argument(
@@ -99,6 +117,16 @@ class ParseHelper:
         )
 
         self.args, self.remaining_args = parser.parse_known_args(self.remaining_args)
+
+        if self.args.command in ('list-test-cases', 'status'):
+            if self.args.test_case not in (None, 'all'):
+                parser.error(f'{self.args.command} lists all configured tests; omit --test-case')
+            self.args.test_case = 'all'
+        elif self.args.test_case is None:
+            parser.error('the following arguments are required: --test-case')
+        elif not self.args.zone_id:
+            parser.error(
+                f'--zone-id is required for {self.args.command}; specify one zone, e.g. ru-central1-b')
 
     def get_args(self):
         return self.args
