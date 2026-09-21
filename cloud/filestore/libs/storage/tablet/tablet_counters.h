@@ -248,6 +248,7 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     std::atomic<i64> TabletId{0};
     std::atomic<i64> TabletGeneration{0};
     std::atomic<i64> HasOverrides{0};
+    std::atomic<i64> ShardsCount{0};
 
     // Blob compression stats
     std::atomic<i64> UncompressedBytesWritten{0};
