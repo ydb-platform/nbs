@@ -558,6 +558,8 @@ TEST_TIMEOUT_COMPONENTS_BY_KEY = {
     "storage": frozenset({"storage"}),
     "fastshard": frozenset({"fastshard"}),
     "tasks_storage": frozenset({"tasks", "storage"}),
+    "tasks_storage_fastshard": frozenset({"tasks", "storage", "fastshard"}),
+    "storage_fastshard": frozenset({"storage", "fastshard"}),
 }
 TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT = {
     "large": {
@@ -568,6 +570,8 @@ TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT = {
         "storage": 60,
         "fastshard": 60,
         "tasks_storage": 60,
+        "tasks_storage_fastshard": 60,
+        "storage_fastshard": 60,
         TEST_TIMEOUT_COMPONENT_DEFAULT: 300,
     },
     "medium": {
@@ -578,6 +582,8 @@ TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT = {
         "storage": 60,
         "fastshard": 60,
         "tasks_storage": 60,
+        "tasks_storage_fastshard": 60,
+        "storage_fastshard": 60,
         TEST_TIMEOUT_COMPONENT_DEFAULT: 120,
     },
     "small": {
