@@ -13,8 +13,6 @@
 #include <util/digest/city.h>
 #include <util/string/builder.h>
 
-#include <algorithm>
-
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -350,16 +348,18 @@ void TShardCreationStateCompanion::StartShardCreation(
     const TVector<NKikimrFileStore::TConfig>& shardConfigs,
     const ui32 limit)
 {
-    const ui32 endShardIndex = (limit == 0)
-                                   ? TargetShardCount
-                                   : std::min<ui32>(
-                                         NextShardToCreate + limit,
-                                         TargetShardCount);
-    for (ui32 shardIndex = NextShardToCreate; shardIndex < endShardIndex;
-         ++shardIndex)
+    ui32 requestsSent = 0;
+    while (ShardsToCreate && NextShardToCreate < TargetShardCount &&
+           (limit == 0 || requestsSent < limit))
     {
-        CreateShard(ctx, shardConfigs, shardIndex);
-        NextShardToCreate = shardIndex + 1;
+        if (IsShardCreated(NextShardToCreate)) {
+            Y_DEBUG_ABORT_UNLESS(ShardsToCreate);
+            --ShardsToCreate;
+        } else {
+            CreateShard(ctx, shardConfigs, NextShardToCreate);
+            ++requestsSent;
+        }
+        ++NextShardToCreate;
     }
 }
 
@@ -372,10 +372,7 @@ void TShardCreationStateCompanion::OnShardCreated(
     --ShardsToCreate;
 
     if (ShardsToCreate && limit) {
-        if (NextShardToCreate < TargetShardCount) {
-            CreateShard(ctx, shardConfigs, NextShardToCreate);
-            ++NextShardToCreate;
-        }
+        StartShardCreation(ctx, shardConfigs, 1);
     }
 }
 

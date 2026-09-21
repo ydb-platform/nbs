@@ -76,6 +76,7 @@ private:
     ui32 NextShardToConfigure = 0;
     ui32 ShardsToConfigure = 0;
     ui32 EndShardToConfigure = 0;
+    bool ShardConfigurationStarted = false;
 
     enum class EShardConfigPhase {
         NewShards,
@@ -180,6 +181,10 @@ private:
         const TEvSSProxy::TEvAlterFileStoreResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleShardCreationStateResponse(
+        const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
@@ -213,6 +218,7 @@ private:
 
         return FileStoreConfig.ShardConfigs[cookie].GetFileSystemId();
     }
+
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -389,7 +395,48 @@ void TAlterFileStoreActor::HandleDescribeFileStoreResponse(
 
     MainFileStoreOriginalConfig = currentConfig;
 
-    GetStorageStats(ctx);
+    if (StorageConfig->GetMaxShardManagementRequestsInFlight()) {
+        ShardCreationState.ReadShardCreationState(ctx);
+    } else {
+        GetStorageStats(ctx);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TAlterFileStoreActor::HandleShardCreationStateResponse(
+    const TEvIndexTablet::TEvUnsafeChangeTabletStateResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto result = ShardCreationState.HandleResponse(ev->Get()->Record, ctx);
+    if (HasError(result)) {
+        ReplyAndDie(ctx, result.GetError());
+        return;
+    }
+
+    switch (result.GetResult()) {
+        case TShardCreationStateCompanion::EResponseAction::StartWithoutPersistentState:
+        case TShardCreationStateCompanion::EResponseAction::InitialStateLoaded:
+            GetStorageStats(ctx);
+            return;
+        case TShardCreationStateCompanion::EResponseAction::IgnoreStaleResponse:
+            // A newer state is already saved. Discarding this stale response
+            // does not stall the operation.
+            return;
+        case TShardCreationStateCompanion::EResponseAction::PersistLocalProgress:
+            // The returned bitmap lacks local progress. The update response
+            // will resume the operation after the merged bits are persisted.
+            ShardCreationState.UpdateShardCreationState(ctx);
+            return;
+        case TShardCreationStateCompanion::EResponseAction::Continue:
+            if (!ShardCreationState.HasShardsToCreate() &&
+                !ShardConfigurationStarted)
+            {
+                ConfigureShards(ctx);
+            }
+            return;
+    }
+    Y_ABORT("Unexpected shard creation state response action");
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -740,6 +787,16 @@ void TAlterFileStoreActor::HandleGetFileSystemTopologyResponse(
             "[%s] Will resize filesystem to have %u shards",
             FileSystemId.c_str(),
             FileStoreConfig.ShardConfigs.size());
+        if (ShardCreationState.IsPersistentStateSupported()) {
+            auto error = ShardCreationState.SetupCreatedShardBitmap(
+                ExistingShardIds.size(),
+                FileStoreConfig.ShardConfigs);
+            if (HasError(error)) {
+                ReplyAndDie(ctx, error);
+                return;
+            }
+        }
+
         ShardCreationState.InitializeShardCreation(
             ExistingShardIds.size(),
             FileStoreConfig.ShardConfigs.size());
@@ -804,10 +861,22 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
         FileSystemId.c_str(),
         GetFileSystemIdForLogByCookie(ev->Cookie).Quote().c_str());
 
+    if (StorageConfig->GetMaxShardManagementRequestsInFlight() &&
+        ShardCreationState.HasCreatedShardBitmap())
+    {
+        ShardCreationState.OnShardCreated(ctx, ev->Cookie);
+    }
+
     ShardCreationState.OnShardCreated(
         ctx,
         FileStoreConfig.ShardConfigs,
         StorageConfig->GetMaxShardManagementRequestsInFlight());
+
+    if (ShardCreationState.HasCreatedShardBitmap()) {
+        // ConfigureShards waits for the created-shard bitmap to become durable.
+        // HandleShardCreationStateResponse is the persistence barrier.
+        return;
+    }
 
     if (!ShardCreationState.HasShardsToCreate()) {
         ConfigureShards(ctx);
@@ -818,6 +887,8 @@ void TAlterFileStoreActor::HandleCreateFileStoreResponse(
 
 void TAlterFileStoreActor::ConfigureShards(const TActorContext& ctx)
 {
+    ShardConfigurationStarted = true;
+
     if (ShardsToConfigure == 0) {
         ConfigureMainFileStore(ctx);
         return;
@@ -1169,6 +1240,9 @@ STFUNC(TAlterFileStoreActor::ResizeStateWork)
         HFunc(
             TEvIndexTablet::TEvConfigureShardsResponse,
             HandleConfigureMainFileStoreResponse);
+        HFunc(
+            TEvIndexTablet::TEvUnsafeChangeTabletStateResponse,
+            HandleShardCreationStateResponse);
 
         default:
             HandleUnexpectedEvent(
