@@ -54,7 +54,7 @@ func (t *backupImageTask) Run(
 	}
 
 	if meta == nil || !meta.Ready {
-		return t.storage.ImageBackupScheduled(ctx, imageID)
+		return t.storage.ImageBackupCancelled(ctx, imageID)
 	}
 
 	imageMeta, err := backup.NewImageMeta(*meta)
@@ -110,10 +110,9 @@ func (t *backupImageTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return errors.NewRetriableErrorWithIgnoreRetryLimitf(
-		"backup of image %v should not be cancelled",
-		t.request.ImageId,
-	)
+	// TODO(https://github.com/ydb-platform/nbs/issues/7237):
+	// roll back the objects already written to the follower bucket.
+	return t.storage.ImageBackupCancelled(ctx, t.request.ImageId)
 }
 
 func (t *backupImageTask) GetMetadata(

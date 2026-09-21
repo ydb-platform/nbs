@@ -479,6 +479,9 @@ func TestSnapshotsBackup(t *testing.T) {
 	// Check idempotency.
 	err = storage.SnapshotBackupScheduled(ctx, snapshot.ID)
 	require.NoError(t, err)
+
+	err = storage.SnapshotBackupCancelled(ctx, snapshot.ID)
+	require.NoError(t, err)
 }
 
 func TestSnapshotsDeletionStopsBackup(t *testing.T) {

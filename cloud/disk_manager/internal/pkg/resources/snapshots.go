@@ -882,7 +882,7 @@ func (s *storageYDB) listSnapshotsToBackup(
 	return ids, nil
 }
 
-func (s *storageYDB) snapshotBackupScheduled(
+func (s *storageYDB) removeSnapshotFromBackupQueue(
 	ctx context.Context,
 	session *persistence.Session,
 	snapshotID string,
@@ -1057,7 +1057,20 @@ func (s *storageYDB) SnapshotBackupScheduled(
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.snapshotBackupScheduled(ctx, session, snapshotID)
+			return s.removeSnapshotFromBackupQueue(ctx, session, snapshotID)
+		},
+	)
+}
+
+func (s *storageYDB) SnapshotBackupCancelled(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.removeSnapshotFromBackupQueue(ctx, session, snapshotID)
 		},
 	)
 }

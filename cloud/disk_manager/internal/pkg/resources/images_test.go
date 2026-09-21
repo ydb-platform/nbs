@@ -464,6 +464,9 @@ func TestImagesBackup(t *testing.T) {
 	ids, err = storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, ids)
+
+	err = storage.ImageBackupCancelled(ctx, image.ID)
+	require.NoError(t, err)
 }
 
 func TestImagesDeletionStopsBackup(t *testing.T) {

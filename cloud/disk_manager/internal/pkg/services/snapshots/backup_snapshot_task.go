@@ -54,7 +54,7 @@ func (t *backupSnapshotTask) Run(
 	}
 
 	if meta == nil || !meta.Ready {
-		return t.storage.SnapshotBackupScheduled(ctx, snapshotID)
+		return t.storage.SnapshotBackupCancelled(ctx, snapshotID)
 	}
 
 	if meta.Disk == nil {
@@ -121,10 +121,9 @@ func (t *backupSnapshotTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	return errors.NewRetriableErrorWithIgnoreRetryLimitf(
-		"backup of snapshot %v should not be cancelled",
-		t.request.SnapshotId,
-	)
+	// TODO(https://github.com/ydb-platform/nbs/issues/7237):
+	// roll back the objects already written to the follower bucket.
+	return t.storage.SnapshotBackupCancelled(ctx, t.request.SnapshotId)
 }
 
 func (t *backupSnapshotTask) GetMetadata(

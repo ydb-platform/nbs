@@ -182,6 +182,15 @@ func (s *StorageMock) ImageBackupScheduled(
 	return args.Error(0)
 }
 
+func (s *StorageMock) ImageBackupCancelled(
+	ctx context.Context,
+	imageID string,
+) error {
+
+	args := s.Called(ctx, imageID)
+	return args.Error(0)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *StorageMock) CreateSnapshot(
@@ -293,6 +302,15 @@ func (s *StorageMock) ListSnapshotsToBackup(
 }
 
 func (s *StorageMock) SnapshotBackupScheduled(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) SnapshotBackupCancelled(
 	ctx context.Context,
 	snapshotID string,
 ) error {

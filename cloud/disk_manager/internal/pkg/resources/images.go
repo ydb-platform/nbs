@@ -913,7 +913,7 @@ func (s *storageYDB) listImagesToBackup(
 	return ids, nil
 }
 
-func (s *storageYDB) imageBackupScheduled(
+func (s *storageYDB) removeImageFromBackupQueue(
 	ctx context.Context,
 	session *persistence.Session,
 	imageID string,
@@ -1088,7 +1088,20 @@ func (s *storageYDB) ImageBackupScheduled(
 	return s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			return s.imageBackupScheduled(ctx, session, imageID)
+			return s.removeImageFromBackupQueue(ctx, session, imageID)
+		},
+	)
+}
+
+func (s *storageYDB) ImageBackupCancelled(
+	ctx context.Context,
+	imageID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.removeImageFromBackupQueue(ctx, session, imageID)
 		},
 	)
 }
