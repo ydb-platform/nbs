@@ -106,6 +106,9 @@ message THeaders
     // When set it does not allow the execution of request on a disk that is a
     // copy with a mangled name with an additional suffix.
     bool ExactDiskIdMatch = 16;
+
+    // True for the blob-storage to use AsyncRead class for ReadBlocks requests.
+    bool AsyncRead = 17;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

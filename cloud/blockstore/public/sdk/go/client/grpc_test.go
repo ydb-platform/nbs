@@ -78,3 +78,32 @@ func TestPingWithSecureChannelAndCustomCertificate(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+func TestAsyncReadHeaders(t *testing.T) {
+	client := &grpcClient{}
+	ctx := WithAsyncRead(context.Background())
+
+	read := &protos.TReadBlocksRequest{Headers: &protos.THeaders{}}
+	client.setupHeaders(ctx, read)
+	if !read.Headers.GetAsyncRead() || read.Headers.GetIsBackgroundRequest() {
+		t.Fatal("snapshot reads must use AsyncRead without background semantics")
+	}
+
+	ordinary := &protos.TReadBlocksRequest{Headers: &protos.THeaders{}}
+	client.setupHeaders(context.Background(), ordinary)
+	if ordinary.Headers.GetAsyncRead() {
+		t.Fatal("ordinary reads must retain FastRead")
+	}
+
+	write := &protos.TWriteBlocksRequest{Headers: &protos.THeaders{}}
+	client.setupHeaders(ctx, write)
+	if write.Headers.GetAsyncRead() || write.Headers.GetIsBackgroundRequest() {
+		t.Fatal("the snapshot read context must not affect writes")
+	}
+
+	explicit := &protos.TReadBlocksRequest{Headers: &protos.THeaders{AsyncRead: true}}
+	client.setupHeaders(context.Background(), explicit)
+	if !explicit.Headers.GetAsyncRead() {
+		t.Fatal("an explicitly supplied AsyncRead header must be preserved")
+	}
+}
