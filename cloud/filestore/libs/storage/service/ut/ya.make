@@ -2,6 +2,12 @@ UNITTEST_FOR(cloud/filestore/libs/storage/service)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
 
+FORK_SUBTESTS(MODULO)
+
+IF (SANITIZER_TYPE OR WITH_VALGRIND)
+    SPLIT_FACTOR(14)
+ENDIF()
+
 SRCS(
     helpers_ut.cpp
     protobuf_utils_ut.cpp
@@ -9,6 +15,7 @@ SRCS(
     service_ut_control_namespace.cpp
     service_ut_helpers.cpp
     service_ut_parentless.cpp
+    service_ut_sharding.cpp
     service_ut_quotas.cpp
     service_ut_writedata_unconfirmed.cpp
     service_actor_actions_ut.cpp
