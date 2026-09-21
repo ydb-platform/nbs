@@ -20,6 +20,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
+#include <util/stream/file.h>
 #include <util/system/fstat.h>
 
 namespace NCloud::NStorage {
@@ -38,6 +39,90 @@ static constexpr ui64 FakeSchemeRoot = 0x00000000008401F0;
 static constexpr ui64 FakeTablet2 = 0x0000000000840102;
 static constexpr ui64 FakeTablet3 = 0x0000000000840103;
 static constexpr ui64 FakeMissingTablet = 0x0000000000840104;
+
+////////////////////////////////////////////////////////////////////////////////
+
+TTabletStorageInfoPtr CreateStorageInfoWithHistory(
+    ui64 tabletId,
+    TTabletTypes::EType tabletType,
+    ui32 generation)
+{
+    TTabletStorageInfoPtr storageInfo =
+        CreateTestTabletInfo(tabletId, tabletType);
+    for (auto& channel: storageInfo->Channels) {
+        channel.History.emplace_back(
+            generation,
+            channel.History.back().GroupID);
+    }
+    return storageInfo;
+}
+
+void AssertStorageInfo(
+    const TTabletStorageInfoPtr& expected,
+    const NKikimrTabletBase::TTabletStorageInfo& actual)
+{
+    NKikimrTabletBase::TTabletStorageInfo expectedProto;
+    TabletStorageInfoToProto(*expected, &expectedProto);
+    UNIT_ASSERT_VALUES_EQUAL(expectedProto.DebugString(), actual.DebugString());
+}
+
+void AssertStorageInfo(
+    const TTabletStorageInfoPtr& expected,
+    const TTabletStorageInfoPtr& actual)
+{
+    UNIT_ASSERT(actual);
+    NKikimrTabletBase::TTabletStorageInfo actualProto;
+    TabletStorageInfoToProto(*actual, &actualProto);
+    AssertStorageInfo(expected, actualProto);
+}
+
+NHiveProxy::NProto::TTabletBootInfoBackup CreateTabletBootInfoBackup(
+    const TTabletStorageInfoPtr& storageInfo,
+    ui32 generation)
+{
+    NHiveProxy::NProto::TTabletBootInfoBackup backup;
+    auto& entry = (*backup.MutableData())[storageInfo->TabletID];
+    TabletStorageInfoToProto(*storageInfo, entry.MutableStorageInfo());
+    entry.SetSuggestedGeneration(generation);
+    return backup;
+}
+
+NHiveProxy::NProto::TTabletBootInfoBackup ReadTabletBootInfoBackup(
+    const TString& path,
+    bool binaryFormat = false)
+{
+    NHiveProxy::NProto::TTabletBootInfoBackup backup;
+    if (binaryFormat) {
+        UNIT_ASSERT(backup.ParseFromString(TFileInput(path).ReadAll()));
+    } else {
+        MergeFromTextFormat(path, backup);
+    }
+    return backup;
+}
+
+void AssertBackupEntry(
+    const NHiveProxy::NProto::TTabletBootInfoBackup& backup,
+    const TTabletStorageInfoPtr& expectedStorageInfo,
+    ui32 expectedGeneration)
+{
+    const auto it = backup.GetData().find(expectedStorageInfo->TabletID);
+    UNIT_ASSERT(it != backup.GetData().end());
+    AssertStorageInfo(expectedStorageInfo, it->second.GetStorageInfo());
+    UNIT_ASSERT_VALUES_EQUAL(expectedGeneration, it->second.GetSuggestedGeneration());
+}
+
+void AssertNoHiveBootRequests(TTestActorRuntime& runtime)
+{
+    runtime.SetObserverFunc(
+        [](TAutoPtr<IEventHandle>& event)
+        {
+            const auto type = event->GetTypeRewrite();
+            UNIT_ASSERT(type != TEvHive::EvGetTabletStorageInfo);
+            UNIT_ASSERT(type != TEvHive::EvInitiateTabletExternalBoot);
+            UNIT_ASSERT(type != TEvHive::EvLockTabletExecution);
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -452,11 +537,12 @@ struct TTestEnv
     THiveMockState::TPtr TenantHiveState = MakeIntrusive<THiveMockState>();
 
     TTestEnv(
-            TTestActorRuntime& runtime,
-            TString tabletBootInfoBackupFilePath = "",
-            bool fallbackMode = false,
-            bool debug = false,
-            bool useTenantHive = false)
+        TTestActorRuntime& runtime,
+        TString tabletBootInfoBackupFilePath = "",
+        bool fallbackMode = false,
+        bool debug = false,
+        bool useTenantHive = false,
+        bool useBinaryFormat = false)
         : Runtime(runtime)
         , Debug(debug)
     {
@@ -468,11 +554,23 @@ struct TTestEnv
         SetupChannelProfiles(app);
         SetupTabletServices(Runtime, &app, true);
 
-        BootHiveMock(Runtime, FakeHiveTablet, HiveState, EExternalBootOptions::PROCESS);
-        BootHiveMock(Runtime, TenantHiveTablet, TenantHiveState, EExternalBootOptions::PROCESS);
+        BootHiveMock(
+            Runtime,
+            FakeHiveTablet,
+            HiveState,
+            EExternalBootOptions::PROCESS);
+        BootHiveMock(
+            Runtime,
+            TenantHiveTablet,
+            TenantHiveState,
+            EExternalBootOptions::PROCESS);
 
         ui64 tenantHive = useTenantHive ? TenantHiveTablet : 0;
-        SetupHiveProxy(tabletBootInfoBackupFilePath, fallbackMode, tenantHive);
+        SetupHiveProxy(
+            tabletBootInfoBackupFilePath,
+            fallbackMode,
+            tenantHive,
+            useBinaryFormat);
     }
 
     TTestEnv(
@@ -526,7 +624,8 @@ struct TTestEnv
     void SetupHiveProxy(
         TString tabletBootInfoBackupFilePath,
         bool fallbackMode,
-        ui64 tenantHive)
+        ui64 tenantHive,
+        bool useBinaryFormat = false)
     {
         THiveProxyConfig config{
             .PipeClientRetryCount = 4,
@@ -534,6 +633,7 @@ struct TTestEnv
             .HiveLockExpireTimeout = TDuration::Seconds(30),
             .LogComponent = 0,
             .TabletBootInfoBackupFilePath = tabletBootInfoBackupFilePath,
+            .UseBinaryFormatForTabletBootInfoBackup = useBinaryFormat,
             .FallbackMode = fallbackMode,
             .TenantHiveTabletId = tenantHive,
             .GoldenTabletBootInfoBackupFilePath = {},
@@ -748,6 +848,19 @@ struct TTestEnv
         const auto* msg = ev->Get();
         UNIT_ASSERT_VALUES_EQUAL(errorCode, msg->GetStatus());
         return *msg;
+    }
+
+    void SendUpdateTabletBootInfoBackup(
+        const TActorId& sender,
+        TTabletStorageInfoPtr storageInfo,
+        ui32 generation)
+    {
+        Runtime.Send(new IEventHandle(
+            MakeHiveProxyServiceId(),
+            sender,
+            new TEvHiveProxy::TEvUpdateTabletBootInfoBackup(
+                std::move(storageInfo),
+                generation)));
     }
 
     TEvHiveProxy::TListTabletBootInfoBackupsResponse
@@ -1241,6 +1354,380 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         TFileStat backupStat2(backupFilePath);
         UNIT_ASSERT_VALUES_EQUAL(backupStat.MTime, backupStat2.MTime);
         UNIT_ASSERT_VALUES_EQUAL(backupStat.MTimeNSec, backupStat2.MTimeNSec);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreReportedTabletBootInfoWithoutStorageInfo)
+    {
+        const TString backupFilePath =
+            "ReportedTabletBootInfoWithoutStorageInfo.txt";
+        TFsPath(backupFilePath).DeleteIfExists();
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath);
+        const auto sender = runtime.AllocateEdgeActor();
+        AssertNoHiveBootRequests(runtime);
+
+        env.SendUpdateTabletBootInfoBackup(sender, {}, 11);
+        env.SendBackupTabletBootInfos(sender, S_FALSE);
+        UNIT_ASSERT(!TFsPath(backupFilePath).Exists());
+        UNIT_ASSERT(
+            env.SendGetTabletBootInfos(sender, S_OK).TabletBootInfos.empty());
+
+        const auto storageInfo = CreateStorageInfoWithHistory(
+            FakeTablet2,
+            TTabletTypes::BlockStoreVolume,
+            10);
+        env.SendUpdateTabletBootInfoBackup(sender, storageInfo, 10);
+        env.SendBackupTabletBootInfos(sender, S_OK);
+        const auto savedFile = TFileInput(backupFilePath).ReadAll();
+
+        env.SendUpdateTabletBootInfoBackup(sender, {}, 11);
+        env.SendBackupTabletBootInfos(sender, S_FALSE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            savedFile,
+            TFileInput(backupFilePath).ReadAll());
+        const auto result = env.SendGetTabletBootInfos(sender, S_OK);
+        UNIT_ASSERT_VALUES_EQUAL(1, result.TabletBootInfos.size());
+        AssertStorageInfo(
+            storageInfo,
+            result.TabletBootInfos[0].StorageInfoProto);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            result.TabletBootInfos[0].SuggestedGeneration);
+
+        // A malformed report must not prevent later valid updates.
+        env.SendUpdateTabletBootInfoBackup(sender, storageInfo, 12);
+        env.SendBackupTabletBootInfos(sender, S_OK);
+        AssertBackupEntry(
+            ReadTabletBootInfoBackup(backupFilePath),
+            storageInfo,
+            12);
+    }
+
+    Y_UNIT_TEST(ShouldBackupReportedTabletBootInfoInBothFormats)
+    {
+        const auto volume = CreateStorageInfoWithHistory(
+            FakeTablet2,
+            TTabletTypes::BlockStoreVolume,
+            10);
+        const auto diskRegistry = CreateStorageInfoWithHistory(
+            FakeTablet3,
+            TTabletTypes::BlockStoreDiskRegistry,
+            20);
+
+        for (const bool binaryFormat: {false, true}) {
+            const TString backupFilePath = TStringBuilder()
+                                           << "ReportedTabletBootInfo."
+                                           << (binaryFormat ? "bin" : "txt");
+            TFsPath(backupFilePath).DeleteIfExists();
+
+            {
+                TTestBasicRuntime runtime;
+                TTestEnv env(
+                    runtime,
+                    backupFilePath,
+                    false,   // fallbackMode
+                    false,   // debug
+                    false,   // useTenantHive
+                    binaryFormat);
+                const auto sender = runtime.AllocateEdgeActor();
+                AssertNoHiveBootRequests(runtime);
+
+                env.SendUpdateTabletBootInfoBackup(sender, volume, 10);
+                env.SendUpdateTabletBootInfoBackup(sender, diskRegistry, 20);
+                env.SendBackupTabletBootInfos(sender, S_OK);
+
+                const auto backup =
+                    ReadTabletBootInfoBackup(backupFilePath, binaryFormat);
+                UNIT_ASSERT_VALUES_EQUAL(backup.GetData().size(), 2);
+                AssertBackupEntry(backup, volume, 10);
+                AssertBackupEntry(backup, diskRegistry, 20);
+            }
+
+            const auto savedFile = TFileInput(backupFilePath).ReadAll();
+            {
+                TTestBasicRuntime runtime;
+                TTestEnv env(runtime, backupFilePath, true);
+                const auto sender = runtime.AllocateEdgeActor();
+                AssertNoHiveBootRequests(runtime);
+
+                auto result =
+                    env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+                AssertStorageInfo(volume, result.StorageInfo);
+                UNIT_ASSERT_VALUES_EQUAL(result.SuggestedGeneration, 10);
+                UNIT_ASSERT(
+                    result.BootMode ==
+                    TEvHiveProxy::TBootExternalResponse::EBootMode::MASTER);
+
+                const auto replacement = CreateStorageInfoWithHistory(
+                    FakeTablet2,
+                    TTabletTypes::BlockStoreVolume,
+                    100);
+                env.SendUpdateTabletBootInfoBackup(sender, replacement, 100);
+                env.SendUpdateTabletBootInfoBackup(sender, diskRegistry, 100);
+                env.SendUpdateTabletBootInfoBackup(
+                    sender,
+                    CreateStorageInfoWithHistory(
+                        FakeMissingTablet,
+                        TTabletTypes::BlockStoreVolume,
+                        100),
+                    100);
+
+                // Reports must neither replace fallback metadata nor reset
+                // the generation advanced by the previous boot request.
+                auto next =
+                    env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+                AssertStorageInfo(volume, next.StorageInfo);
+                UNIT_ASSERT_VALUES_EQUAL(next.SuggestedGeneration, 11);
+
+                auto dr =
+                    env.SendBootExternalRequest(sender, FakeTablet3, S_OK);
+                AssertStorageInfo(diskRegistry, dr.StorageInfo);
+                UNIT_ASSERT_VALUES_EQUAL(dr.SuggestedGeneration, 20);
+
+                auto nextDr =
+                    env.SendBootExternalRequest(sender, FakeTablet3, S_OK);
+                AssertStorageInfo(diskRegistry, nextDr.StorageInfo);
+                UNIT_ASSERT_VALUES_EQUAL(nextDr.SuggestedGeneration, 21);
+
+                env.SendBootExternalRequest(
+                    sender,
+                    FakeMissingTablet,
+                    E_REJECTED);
+                env.SendBackupTabletBootInfos(sender, E_PRECONDITION_FAILED);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TFileInput(backupFilePath).ReadAll(),
+                    savedFile);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUpdateReportedTabletBootInfo)
+    {
+        const TString backupFilePath = "UpdatedReportedTabletBootInfo.txt";
+        TFsPath(backupFilePath).DeleteIfExists();
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath);
+        const auto sender = runtime.AllocateEdgeActor();
+        AssertNoHiveBootRequests(runtime);
+
+        const auto original = CreateStorageInfoWithHistory(
+            FakeTablet2,
+            TTabletTypes::BlockStoreVolume,
+            10);
+        env.SendUpdateTabletBootInfoBackup(sender, original, 10);
+        env.SendUpdateTabletBootInfoBackup(sender, original, 10);
+        env.SendBackupTabletBootInfos(sender, S_OK);
+
+        auto backup = ReadTabletBootInfoBackup(backupFilePath);
+        UNIT_ASSERT_VALUES_EQUAL(1, backup.GetData().size());
+        AssertBackupEntry(backup, original, 10);
+
+        const auto updated = CreateStorageInfoWithHistory(
+            FakeTablet2,
+            TTabletTypes::BlockStoreVolume,
+            11);
+        env.SendUpdateTabletBootInfoBackup(sender, updated, 11);
+        env.SendBackupTabletBootInfos(sender, S_OK);
+
+        backup = ReadTabletBootInfoBackup(backupFilePath);
+        UNIT_ASSERT_VALUES_EQUAL(1, backup.GetData().size());
+        AssertBackupEntry(backup, updated, 11);
+    }
+
+    Y_UNIT_TEST(ShouldKeepNewestTabletBootInfoAcrossBootPaths)
+    {
+        for (const bool firstExternal: {false, true}) {
+            for (const bool secondExternal: {false, true}) {
+                const TString backupFilePath =
+                    TStringBuilder() << "NewestTabletBootInfo." << firstExternal
+                                     << "." << secondExternal << ".txt";
+                TFsPath(backupFilePath).DeleteIfExists();
+
+                TTestBasicRuntime runtime;
+                TTestEnv env(runtime, backupFilePath);
+                const auto sender = runtime.AllocateEdgeActor();
+
+                const auto sendUpdate = [&](const TTabletStorageInfoPtr& info,
+                                            ui32 generation,
+                                            bool external)
+                {
+                    if (external) {
+                        env.HiveState->StorageInfos[info->TabletID] = info;
+                        env.HiveState->KnownGenerations[info->TabletID] =
+                            generation - 1;
+                        auto result = env.SendBootExternalRequest(
+                            sender,
+                            info->TabletID,
+                            S_OK);
+                        // Backup filtering must not change the boot response.
+                        AssertStorageInfo(info, result.StorageInfo);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            result.SuggestedGeneration,
+                            generation);
+                    } else {
+                        env.SendUpdateTabletBootInfoBackup(
+                            sender,
+                            info,
+                            generation);
+                    }
+                };
+
+                const auto older = CreateStorageInfoWithHistory(
+                    FakeTablet2,
+                    TTabletTypes::BlockStoreVolume,
+                    11);
+                const auto newer = CreateStorageInfoWithHistory(
+                    FakeTablet2,
+                    TTabletTypes::BlockStoreVolume,
+                    12);
+
+                // Both boot paths may produce the old and the new update.
+                sendUpdate(older, 11, firstExternal);
+                sendUpdate(newer, 12, secondExternal);
+                sendUpdate(older, 11, firstExternal);
+                env.SendBackupTabletBootInfos(sender, S_OK);
+                AssertBackupEntry(
+                    ReadTabletBootInfoBackup(backupFilePath),
+                    newer,
+                    12);
+                const auto savedFile = TFileInput(backupFilePath).ReadAll();
+
+                // A delayed update must change neither memory nor the file,
+                // and must not mark the backup dirty.
+                sendUpdate(older, 11, firstExternal);
+                env.SendBackupTabletBootInfos(sender, S_FALSE);
+                const auto current = env.SendGetTabletBootInfos(sender, S_OK);
+                UNIT_ASSERT_VALUES_EQUAL(current.TabletBootInfos.size(), 1);
+                AssertStorageInfo(
+                    newer,
+                    current.TabletBootInfos[0].StorageInfoProto);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    current.TabletBootInfos[0].SuggestedGeneration,
+                    12);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TFileInput(backupFilePath).ReadAll(),
+                    savedFile);
+
+                // Preserve the existing replacement rule for equal generations.
+                const auto sameGeneration = CreateStorageInfoWithHistory(
+                    FakeTablet2,
+                    TTabletTypes::BlockStoreVolume,
+                    12);
+                for (auto& channel: sameGeneration->Channels) {
+                    ++channel.History.back().GroupID;
+                }
+                sendUpdate(sameGeneration, 12, firstExternal);
+                env.SendBackupTabletBootInfos(sender, S_OK);
+                AssertBackupEntry(
+                    ReadTabletBootInfoBackup(backupFilePath),
+                    sameGeneration,
+                    12);
+
+                // A later valid update still works after a stale one.
+                const auto latest = CreateStorageInfoWithHistory(
+                    FakeTablet2,
+                    TTabletTypes::BlockStoreVolume,
+                    13);
+                sendUpdate(latest, 13, secondExternal);
+                env.SendBackupTabletBootInfos(sender, S_OK);
+                AssertBackupEntry(
+                    ReadTabletBootInfoBackup(backupFilePath),
+                    latest,
+                    13);
+
+                // Generation ordering is per tablet, not per backup file.
+                const auto anotherTablet = CreateStorageInfoWithHistory(
+                    FakeTablet3,
+                    TTabletTypes::BlockStoreDiskRegistry,
+                    1);
+                sendUpdate(anotherTablet, 1, firstExternal);
+                env.SendBackupTabletBootInfos(sender, S_OK);
+                const auto backup = ReadTabletBootInfoBackup(backupFilePath);
+                UNIT_ASSERT_VALUES_EQUAL(backup.GetData().size(), 2);
+                AssertBackupEntry(backup, latest, 13);
+                AssertBackupEntry(backup, anotherTablet, 1);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreReportedTabletBootInfoWithoutBackup)
+    {
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        const auto sender = runtime.AllocateEdgeActor();
+        AssertNoHiveBootRequests(runtime);
+
+        env.SendUpdateTabletBootInfoBackup(
+            sender,
+            CreateStorageInfoWithHistory(
+                FakeTablet2,
+                TTabletTypes::BlockStoreVolume,
+                10),
+            10);
+        env.SendBackupTabletBootInfos(sender, S_FALSE);
+        auto result = env.SendGetTabletBootInfos(sender, E_PRECONDITION_FAILED);
+        UNIT_ASSERT(result.TabletBootInfos.empty());
+    }
+
+    Y_UNIT_TEST(ShouldCombineReportedTabletBootInfoWithExternalBoot)
+    {
+        const TString backupFilePath = "ReportedAndExternalTabletBootInfo.txt";
+        TFsPath(backupFilePath).DeleteIfExists();
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime, backupFilePath);
+        const auto sender = runtime.AllocateEdgeActor();
+
+        const auto volume = CreateStorageInfoWithHistory(
+            FakeTablet2,
+            TTabletTypes::BlockStoreVolume,
+            10);
+        const auto partition = CreateStorageInfoWithHistory(
+            FakeTablet3,
+            TTabletTypes::BlockStorePartition,
+            1);
+        env.HiveState->StorageInfos[FakeTablet3] = partition;
+        env.SendUpdateTabletBootInfoBackup(sender, volume, 10);
+        auto partitionBoot =
+            env.SendBootExternalRequest(sender, FakeTablet3, S_OK);
+        AssertStorageInfo(partition, partitionBoot.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(partitionBoot.SuggestedGeneration, 1);
+        env.SendBackupTabletBootInfos(sender, S_OK);
+
+        auto backup = ReadTabletBootInfoBackup(backupFilePath);
+        UNIT_ASSERT_VALUES_EQUAL(backup.GetData().size(), 2);
+        AssertBackupEntry(backup, volume, 10);
+        AssertBackupEntry(backup, partition, 1);
+
+        // The same Volume can move from Hive Local to external boot and back.
+        const auto externalVolume = CreateStorageInfoWithHistory(
+            FakeTablet2,
+            TTabletTypes::BlockStoreVolume,
+            11);
+        env.HiveState->StorageInfos[FakeTablet2] = externalVolume;
+        env.HiveState->KnownGenerations[FakeTablet2] = 10;
+        auto volumeBoot =
+            env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        AssertStorageInfo(externalVolume, volumeBoot.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(volumeBoot.SuggestedGeneration, 11);
+        env.SendBackupTabletBootInfos(sender, S_OK);
+        AssertBackupEntry(
+            ReadTabletBootInfoBackup(backupFilePath),
+            externalVolume,
+            11);
+
+        const auto localVolume = CreateStorageInfoWithHistory(
+            FakeTablet2,
+            TTabletTypes::BlockStoreVolume,
+            12);
+        env.SendUpdateTabletBootInfoBackup(sender, localVolume, 12);
+        env.SendBackupTabletBootInfos(sender, S_OK);
+        backup = ReadTabletBootInfoBackup(backupFilePath);
+        UNIT_ASSERT_VALUES_EQUAL(backup.GetData().size(), 2);
+        AssertBackupEntry(backup, localVolume, 12);
+        AssertBackupEntry(backup, partition, 1);
     }
 
     Y_UNIT_TEST(InitialBackup)
@@ -1806,6 +2293,60 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         UNIT_ASSERT_GT(counter->Val(), oldVal);
     }
 
+    Y_UNIT_TEST(ShouldLoadTextBackupAfterPartialBinaryParse)
+    {
+        const auto storageInfo = CreateStorageInfoWithHistory(
+            FakeTablet2,
+            TTabletTypes::BlockStoreVolume,
+            10);
+        const auto backup = CreateTabletBootInfoBackup(storageInfo, 10);
+
+        // Valid text whitespace also looks like a binary map entry:
+        // tag 0x0a, length 0x20, then 32 bytes of unknown varint fields.
+        // Binary parsing leaves an incomplete entry with the default key 0.
+        const TString contents = TStringBuilder()
+                                 << "\n"
+                                 << TString(33, ' ') << backup.DebugString();
+        NHiveProxy::NProto::TTabletBootInfoBackup partiallyParsed;
+        UNIT_ASSERT(!partiallyParsed.MergeFromString(contents));
+        UNIT_ASSERT_VALUES_EQUAL(partiallyParsed.GetData().size(), 1);
+        UNIT_ASSERT(
+            partiallyParsed.GetData().find(0) !=
+            partiallyParsed.GetData().end());
+
+        for (const bool fallbackMode: {false, true}) {
+            const TString backupFilePath = TStringBuilder()
+                                           << "PartialBinaryParse."
+                                           << fallbackMode << ".txt";
+            {
+                TFileOutput output(backupFilePath);
+                output << contents;
+            }
+
+            TTestBasicRuntime runtime;
+            TTestEnv env(runtime, backupFilePath, fallbackMode);
+            const auto sender = runtime.AllocateEdgeActor();
+            AssertNoHiveBootRequests(runtime);
+
+            const auto listed = env.SendListTabletBootInfoBackups(sender, S_OK);
+            const auto fetched = env.SendGetTabletBootInfos(sender, S_OK);
+            for (const auto& infos:
+                 {listed.TabletBootInfos, fetched.TabletBootInfos})
+            {
+                UNIT_ASSERT_VALUES_EQUAL(infos.size(), 1);
+                AssertStorageInfo(storageInfo, infos[0].StorageInfoProto);
+                UNIT_ASSERT_VALUES_EQUAL(infos[0].SuggestedGeneration, 10);
+            }
+
+            if (fallbackMode) {
+                const auto result =
+                    env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+                AssertStorageInfo(storageInfo, result.StorageInfo);
+                UNIT_ASSERT_VALUES_EQUAL(result.SuggestedGeneration, 10);
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldLoadTabletBootInfoAtStartup)
     {
         TString backupFilePath =
@@ -1990,6 +2531,52 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         UNIT_ASSERT(result.TabletBootInfos.empty());
     }
 
+    Y_UNIT_TEST(RuntimeFallbackShouldUseReportedTabletBootInfo)
+    {
+        const TString backupFilePath = "RuntimeFallbackReportedBootInfo.txt";
+        TFsPath(backupFilePath).DeleteIfExists();
+        bool fallbackMode = false;
+
+        TTestBasicRuntime runtime;
+        TTestEnv env(runtime);
+        env.SetupHiveProxyWithRuntimeFallback(
+            backupFilePath,
+            [&] { return fallbackMode; });
+        const auto sender = runtime.AllocateEdgeActor();
+        AssertNoHiveBootRequests(runtime);
+
+        const auto original = CreateStorageInfoWithHistory(
+            FakeTablet2,
+            TTabletTypes::BlockStoreVolume,
+            10);
+        env.SendUpdateTabletBootInfoBackup(sender, original, 10);
+        env.SendBackupTabletBootInfos(sender, S_OK);
+        const auto savedFile = TFileInput(backupFilePath).ReadAll();
+
+        fallbackMode = true;
+        runtime.AdvanceCurrentTime(TDuration::Seconds(120));
+        runtime.DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+
+        auto first = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        AssertStorageInfo(original, first.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(first.SuggestedGeneration, 10);
+
+        env.SendUpdateTabletBootInfoBackup(
+            sender,
+            CreateStorageInfoWithHistory(
+                FakeTablet2,
+                TTabletTypes::BlockStoreVolume,
+                100),
+            100);
+        auto second = env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
+        AssertStorageInfo(original, second.StorageInfo);
+        UNIT_ASSERT_VALUES_EQUAL(second.SuggestedGeneration, 11);
+        env.SendBackupTabletBootInfos(sender, E_PRECONDITION_FAILED);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TFileInput(backupFilePath).ReadAll(),
+            savedFile);
+    }
+
     Y_UNIT_TEST(RuntimeFallbackShouldSwitchFromNormalToFallback)
     {
         TString backupFilePath =
@@ -2074,12 +2661,8 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         TTabletStorageInfoPtr goldenStorageInfo = CreateTestTabletInfo(
             FakeTablet3,
             TTabletTypes::BlockStorePartition);
-        NHiveProxy::NProto::TTabletBootInfoBackup goldenBackup;
-        auto& goldenBootInfo = (*goldenBackup.MutableData())[FakeTablet3];
-        TabletStorageInfoToProto(
-            *goldenStorageInfo,
-            goldenBootInfo.MutableStorageInfo());
-        goldenBootInfo.SetSuggestedGeneration(17);
+        const auto goldenBackup =
+            CreateTabletBootInfoBackup(goldenStorageInfo, 17);
         {
             TFileOutput output(goldenBackupFilePath);
             SerializeToTextFormat(goldenBackup, output);
@@ -2099,7 +2682,7 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
 
     Y_UNIT_TEST(RuntimeFallbackShouldUseRegularBackupWhenGoldenIsUnavailable)
     {
-        auto runTest = [](const TString& suffix, bool createCorruptedGolden)
+        auto runTest = [](const TString& suffix, const TString& corruptedGolden)
         {
             const TString backupFilePath = TStringBuilder()
                                            << "RuntimeFallbackRegular" << suffix
@@ -2127,9 +2710,9 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
             env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
             env.SendBackupTabletBootInfos(sender, S_OK);
 
-            if (createCorruptedGolden) {
+            if (!corruptedGolden.empty()) {
                 TFileOutput output(goldenBackupFilePath);
-                output << "not a valid protobuf";
+                output << corruptedGolden;
             }
 
             fallbackMode = true;
@@ -2140,10 +2723,26 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
                 env.SendBootExternalRequest(sender, FakeTablet2, S_OK);
             UNIT_ASSERT(result.StorageInfo);
             UNIT_ASSERT_VALUES_EQUAL(FakeTablet2, result.StorageInfo->TabletID);
+            env.SendBootExternalRequest(sender, FakeTablet3, E_REJECTED);
         };
 
-        runTest("Missing", false);
-        runTest("Corrupted", true);
+        runTest("Missing", {});
+        runTest("Corrupted", "not a valid protobuf");
+
+        const auto storageInfo = CreateStorageInfoWithHistory(
+            FakeTablet3,
+            TTabletTypes::BlockStoreVolume,
+            17);
+        const auto backup = CreateTabletBootInfoBackup(storageInfo, 17);
+        for (const bool binaryFormat: {false, true}) {
+            TString contents(
+                binaryFormat ? backup.SerializeAsString()
+                             : backup.DebugString());
+            // Leave a complete tablet entry before a truncated varint or an
+            // unexpected closing brace. No part of this file may be used.
+            contents += binaryFormat ? '\xff' : '}';
+            runTest(binaryFormat ? "PartialBinary" : "PartialText", contents);
+        }
     }
 
     Y_UNIT_TEST(RuntimeFallbackShouldNotifyLockLostWhenSwitching)

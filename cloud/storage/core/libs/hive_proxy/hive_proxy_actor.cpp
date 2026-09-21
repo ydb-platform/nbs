@@ -606,6 +606,9 @@ void THiveProxyActor::HandleMetricsResponse(
 STFUNC(THiveProxyActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvHiveProxy::TEvUpdateTabletBootInfoBackup,
+            HandleUpdateTabletBootInfoBackup);
         HFunc(TEvTabletPipe::TEvClientConnected, HandleConnect);
         HFunc(TEvTabletPipe::TEvClientDestroyed, HandleDisconnect);
         HFunc(TEvHive::TEvLockTabletExecutionResult,
@@ -647,6 +650,8 @@ STFUNC(THiveProxyActor::StateFallback)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvHiveProxyPrivate::TEvRequestFinished, HandleRequestFinished);
 
+        // Boot reports must not update the backup used in fallback mode.
+        IgnoreFunc(TEvHiveProxy::TEvUpdateTabletBootInfoBackup);
         IgnoreFunc(TEvLocal::TEvTabletMetrics);
         IgnoreFunc(TEvLocal::TEvTabletMetricsAck);
         IgnoreFunc(TEvLocal::TEvReconnect);
@@ -667,6 +672,33 @@ STFUNC(THiveProxyActor::StateFallback)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+void THiveProxyActor::HandleUpdateTabletBootInfoBackup(
+    const TEvHiveProxy::TEvUpdateTabletBootInfoBackup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (!TabletBootInfoBackup) {
+        return;
+    }
+
+    const auto* msg = ev->Get();
+    if (!msg->StorageInfo) {
+        LOG_ERROR_S(
+            ctx,
+            LogComponent,
+            "Ignoring tablet boot info without StorageInfo from "
+                << ev->Sender);
+        return;
+    }
+
+    NCloud::Send(
+        ctx,
+        TabletBootInfoBackup,
+        std::make_unique<
+            TEvHiveProxyPrivate::TEvUpdateTabletBootInfoBackupRequest>(
+            msg->StorageInfo,
+            msg->Generation));
+}
 
 void THiveProxyActor::HandleBackupTabletBootInfos(
     const TEvHiveProxy::TEvBackupTabletBootInfosRequest::TPtr& ev,
