@@ -66,6 +66,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(ReplaceBrokenDevicesAfterRestart,   __VA_ARGS__)                       \
     xxx(UpdatePathAttachState,              __VA_ARGS__)                       \
     xxx(UpdateVolumeHealth,                 __VA_ARGS__)                       \
+    xxx(PurgeDeviceCms,                     __VA_ARGS__)                       \
 // BLOCKSTORE_DISK_REGISTRY_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -650,6 +651,46 @@ struct TTxDiskRegistry
             , Host(std::move(host))
             , Path(std::move(path))
             , State(state)
+            , CustomMessage(std::move(customMessage))
+            , ShouldResumeDevice(shouldResumeDevice)
+            , DryRun(dryRun)
+        {}
+
+        void Clear()
+        {
+            AffectedDisks.clear();
+            Error.Clear();
+        }
+    };
+
+    //
+    // TPurgeDeviceCms
+    //
+
+    struct TPurgeDeviceCms
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString Host;
+        const TString Path;
+        const TString CustomMessage;
+        const bool ShouldResumeDevice;
+        const bool DryRun;
+
+        NProto::TError Error;
+        TVector<TString> AffectedDisks;
+        TInstant TxTs;
+        TDuration Timeout;
+
+        TPurgeDeviceCms(
+                TRequestInfoPtr requestInfo,
+                TString host,
+                TString path,
+                TString customMessage,
+                bool shouldResumeDevice,
+                bool dryRun)
+            : RequestInfo(std::move(requestInfo))
+            , Host(std::move(host))
+            , Path(std::move(path))
             , CustomMessage(std::move(customMessage))
             , ShouldResumeDevice(shouldResumeDevice)
             , DryRun(dryRun)

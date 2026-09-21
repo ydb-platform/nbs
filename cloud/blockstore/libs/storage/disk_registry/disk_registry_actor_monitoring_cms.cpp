@@ -66,6 +66,10 @@ private:
             ev,
         const TActorContext& ctx);
 
+    void HandlePurgeDeviceCmsResponse(
+        const TEvDiskRegistryPrivate::TEvPurgeDeviceCmsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
@@ -148,6 +152,19 @@ void TSendCmsRequestActor::Bootstrap(const TActorContext& ctx)
                 AgentID,
                 DevicePath,
                 NProto::DEVICE_STATE_WARNING,
+                /*customMessage=*/"monpage",
+                /*shouldResumeDevice=*/false,
+                DryRun);
+
+            NCloud::Send(ctx, Owner, std::move(request));
+            break;
+        }
+
+        case NProto::TAction::PURGE_DEVICE: {
+            auto request = std::make_unique<
+                TEvDiskRegistryPrivate::TEvPurgeDeviceCmsRequest>(
+                AgentID,
+                DevicePath,
                 /*customMessage=*/"monpage",
                 /*shouldResumeDevice=*/false,
                 DryRun);
@@ -270,6 +287,19 @@ void TSendCmsRequestActor::HandleUpdateCmsHostDeviceStateResponse(
         response->DependentDiskIds);
 }
 
+void TSendCmsRequestActor::HandlePurgeDeviceCmsResponse(
+    const TEvDiskRegistryPrivate::TEvPurgeDeviceCmsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* response = ev->Get();
+
+    ReplyAndDie(
+        ctx,
+        response->GetError(),
+        response->Timeout,
+        response->DependentDiskIds);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TSendCmsRequestActor::StateWork)
@@ -288,6 +318,10 @@ STFUNC(TSendCmsRequestActor::StateWork)
         HFunc(
             TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse,
             HandleUpdateCmsHostDeviceStateResponse);
+
+        HFunc(
+            TEvDiskRegistryPrivate::TEvPurgeDeviceCmsResponse,
+            HandlePurgeDeviceCmsResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -423,6 +457,7 @@ void TDiskRegistryActor::HandleHttpInfo_SendCmsDeviceRequest(
     switch (actionType) {
         case NProto::TAction::ADD_DEVICE:
         case NProto::TAction::REMOVE_DEVICE:
+        case NProto::TAction::PURGE_DEVICE:
             break;
 
         default:
