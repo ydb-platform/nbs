@@ -632,7 +632,10 @@ void TIndexTabletActor::HandleFlushBytes(
             "%s FlushBytes: only deletion markers found, trimming",
             LogTag.c_str());
 
-        if (!msg->WaitForTrim) {
+        if (msg->WaitForTrim) {
+            AddInFlightRequest<TEvIndexTabletPrivate::TFlushBytesMethod>(
+                *requestInfo);
+        } else {
             reply(ctx, *ev, {});
         }
 
@@ -645,6 +648,7 @@ void TIndexTabletActor::HandleFlushBytes(
         return;
     }
 
+    AddInFlightRequest<TEvIndexTabletPrivate::TFlushBytesMethod>(*requestInfo);
     ExecuteTx<TFlushBytes>(
         ctx,
         std::move(requestInfo),
@@ -715,6 +719,7 @@ void TIndexTabletActor::CompleteTx_FlushBytes(
             args.RequestInfo->CallContext,
             "FlushBytes");
 
+        RemoveInFlightRequest(*args.RequestInfo);
         if (args.RequestInfo->Sender != ctx.SelfID) {
             // reply to caller
             auto response =
@@ -925,6 +930,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
 
     auto reply = [&]()
     {
+        RemoveInFlightRequest(*msg->RequestInfo);
         if (msg->RequestInfo->Sender != ctx.SelfID) {
             // reply to caller
             auto response =
@@ -966,11 +972,8 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
 
     Metrics->FlushBytes.Update(1, msg->Size, msg->Time);
 
-    auto requestInfo = CreateRequestInfo(
-        msg->RequestInfo->Sender,
-        msg->RequestInfo->Cookie,
-        msg->RequestInfo->CallContext);
-    requestInfo->StartedTs = ctx.Now();
+    // Using old RequestInfo to manage in-flight requests correctly
+    msg->RequestInfo->StartedTs = ctx.Now();
 
     FILESTORE_TRACK(
         BackgroundRequestReceived_Tablet,
@@ -979,7 +982,7 @@ void TIndexTabletActor::HandleFlushBytesCompleted(
 
     ExecuteTx<TTrimBytes>(
         ctx,
-        std::move(requestInfo),
+        msg->RequestInfo,
         msg->ChunkId,
         msg->WaitForTrim);
 }
@@ -1062,11 +1065,13 @@ void TIndexTabletActor::CompleteTx_TrimBytes(
         args.ChunkId,
         args.TrimmedBytes);
 
-    if (args.RespondAfterTrim && args.RequestInfo->Sender != ctx.SelfID) {
-        // finally reply to the caller
-        auto response =
-            std::make_unique<TEvIndexTabletPrivate::TEvFlushBytesResponse>();
-        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    if (args.RespondAfterTrim) {
+        RemoveInFlightRequest(*args.RequestInfo);
+        if (args.RequestInfo->Sender != ctx.SelfID) {
+            auto response = std::make_unique<
+                TEvIndexTabletPrivate::TEvFlushBytesResponse>();
+            NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+        }
     }
 
     CompleteBlobIndexOp();

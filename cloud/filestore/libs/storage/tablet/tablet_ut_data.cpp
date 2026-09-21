@@ -573,6 +573,74 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             before.GetFreshBytesItemCount(), after.GetFreshBytesItemCount());
     }
 
+    void DoTestFlushBytesRequestCancellationOnTabletReboot(
+        const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
+        bool waitForTrim)
+    {
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+        const auto nodeIdx = env.AddDynamicNode();
+        const auto tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        tablet.InitSession("client", "session");
+
+        const auto id =
+            CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        const auto handle = CreateHandle(tablet, id);
+        tablet.WriteData(handle, 0, tabletConfig.BlockSize, '0');
+        tablet.WriteData(handle, 100, 10, 'a');
+
+        bool writeSeen = false;
+        runtime.SetEventFilter([&](auto&, auto& event) {
+            if (event->GetTypeRewrite() ==
+                TEvIndexTabletPrivate::EvWriteBlobRequest)
+            {
+                // Keep the FlushBytes worker in flight until tablet shutdown
+                // poisons it. No blob I/O is needed to reproduce cancellation.
+                writeSeen = true;
+                return true;
+            }
+            return false;
+        });
+
+        auto request = tablet.CreateFlushBytesRequest();
+        if (waitForTrim) {
+            request->WaitForTrim = true;
+        }
+        tablet.SendRequest(std::move(request));
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return writeSeen;
+            }});
+        tablet.AssertFlushBytesNoResponse();
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        tablet.RebootTablet();
+
+        // Use a bounded wait so a lost response fails instead of hanging.
+        const auto response = tablet.AssertFlushBytesQuickResponse(E_REJECTED);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "tablet is shutting down", response->GetError().GetMessage());
+    }
+
+    TABLET_TEST(ShouldCancelFlushBytesRequestsIfTabletIsRebooted)
+    {
+        DoTestFlushBytesRequestCancellationOnTabletReboot(
+            tabletConfig,
+            testEnvConfig,
+            false);
+    }
+
+    TABLET_TEST(ShouldCancelFlushBytesRequestsIfTabletIsRebootedWithWaitForTrim)
+    {
+        DoTestFlushBytesRequestCancellationOnTabletReboot(
+            tabletConfig,
+            testEnvConfig,
+            true);
+    }
+
     TABLET_TEST(ShouldFlushFreshBytesByLargeOffset)
     {
         TTestEnv env(testEnvConfig);
