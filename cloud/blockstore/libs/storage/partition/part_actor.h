@@ -864,8 +864,4 @@ NProto::TError VerifyBlockChecksum(
     const ui32 expectedChecksum,
     const TVolumeLabelsConstPtr& volumeLabels);
 
-[[nodiscard]] bool IsMixedBlocksCountCompactionEnabled(
-    const TStorageConfigConstPtr config,
-    const NProto::TPartitionConfig partitionConfig);
-
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

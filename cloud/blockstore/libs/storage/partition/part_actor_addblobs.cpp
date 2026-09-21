@@ -79,7 +79,6 @@ private:
     const ui64 DeletionCommitId;
     const ui32 MaxBlocksInBlob;
     const bool UseFlushCommitIdAsTrimFreshLogToCommitId;
-    const bool MixedBlocksCountCompactionEnabled;
     TChildLogTitle LogTitle;
 
     struct TRangeInfo
@@ -104,7 +103,6 @@ public:
             ui64 deletionCommitId,
             ui32 maxBlocksInBlob,
             bool useFlushCommitIdAsTrimFreshLogToCommitId,
-            bool mixedBlocksCountCompactionEnabled,
             TChildLogTitle logTitle)
         : State(state)
         , Args(args)
@@ -114,7 +112,6 @@ public:
         , MaxBlocksInBlob(maxBlocksInBlob)
         , UseFlushCommitIdAsTrimFreshLogToCommitId(
               useFlushCommitIdAsTrimFreshLogToCommitId)
-        , MixedBlocksCountCompactionEnabled(mixedBlocksCountCompactionEnabled)
         , LogTitle(std::move(logTitle))
     {}
 
@@ -677,11 +674,6 @@ private:
                     TabletId);
             }
 
-            db.WriteCompactionMap(
-                kv.first,
-                rangeStat.BlobCount,
-                rangeStat.BlockCount,
-                rangeStat.MixedBlockCount);
             State.GetCompactionMap().Update(
                 kv.first,
                 rangeStat.BlobCount,
@@ -690,6 +682,16 @@ private:
                 newlyZeroedBlocks,
                 rangeStat.MixedBlockCount,
                 Args.Mode == ADD_COMPACTION_RESULT);
+
+            // Persist what the map has stored, so that map-level policies
+            // (e.g. disabled mixed block count tracking) apply to the
+            // persisted values as well.
+            const auto storedStat = State.GetCompactionMap().Get(kv.first);
+            db.WriteCompactionMap(
+                kv.first,
+                storedStat.BlobCount,
+                storedStat.BlockCount,
+                storedStat.MixedBlockCount);
         }
     }
 
@@ -714,12 +716,6 @@ private:
                 kv.second.BlocksSkippedByCompaction,
                 kv.second.BlobsSkippedByCompaction,
                 kv.second.MixedBlockCountSkippedByCompaction);
-
-            // Don't persist or account mixed blocks count if feature is
-            // disabled.
-            if (!MixedBlocksCountCompactionEnabled) {
-                kv.second.Stat.MixedBlockCount = 0;
-            }
 
             if (!compactionStatsTracker) {
                 continue;
@@ -1013,7 +1009,6 @@ void TPartitionActor::ExecuteAddBlobs(
         State->GetMaxBlocksInBlob(),
         Config
             ->GetWaitForFreshWritesBeforeFlushEnabled(),   // useFlushCommitIdAsTrimFreshLogToCommitId
-        IsMixedBlocksCountCompactionEnabled(Config, PartitionConfig),
         LogTitle.GetChild(GetCycleCount()));
     executor.Execute(ctx, db);
 }

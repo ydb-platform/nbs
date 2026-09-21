@@ -67,7 +67,7 @@ TPartitionState MakeState(
     auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
     return TPartitionState(
         DefaultConfig(1, blockCount),
-        BuildDefaultCompactionPolicy(5, 0),
+        BuildDefaultCompactionPolicy(5, 0, false),
         0,   // compactionScoreHistorySize
         0,   // cleanupScoreHistorySize
         DefaultBPConfig(),
