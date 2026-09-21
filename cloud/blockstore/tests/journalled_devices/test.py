@@ -112,6 +112,7 @@ def start_disk_agent(ydb, nbs, agent_id, tcp_port, tmp_path):
                 "PathRegExp": f"{data_path}/NVMEJD([0-9]+)",
                 "PoolConfigs": [{
                     "PoolName": STORAGE_POOL_NAME,
+                    "Journalled": True,
                     "Layout": {
                         "DeviceSize": DEVICE_SIZE,
                         "DevicePadding": DEVICE_PADDING,

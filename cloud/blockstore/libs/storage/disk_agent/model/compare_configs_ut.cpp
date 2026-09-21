@@ -217,6 +217,14 @@ Y_UNIT_TEST_SUITE(TCompareConfigsTest)
 
         {
             auto file1 = File1;
+            file1.SetJournalled(true);
+
+            const auto error = compare(file1);
+            UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
+        }
+
+        {
+            auto file1 = File1;
             file1.SetFileSize(42);
 
             const auto error = CompareConfigs(
