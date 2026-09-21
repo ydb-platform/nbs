@@ -8,15 +8,16 @@
 #include <cloud/filestore/libs/client/config.h>
 #include <cloud/filestore/libs/client/durable.h>
 #include <cloud/filestore/libs/service/filestore.h>
-#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
+
+#include <cloud/fastshard/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <library/cpp/lwtrace/mon/mon_lwtrace.h>
 
@@ -170,14 +171,14 @@ void TBootstrap::Start()
     }
 
     if (Options->UseFastShardRuntime) {
-        NStorage::NFastShard::Init();
+        NCloud::NFastShard::Init();
     }
 }
 
 void TBootstrap::Stop()
 {
     if (Options->UseFastShardRuntime) {
-        NStorage::NFastShard::Destroy();
+        NCloud::NFastShard::Destroy();
     }
 
     if (ClientFactory) {

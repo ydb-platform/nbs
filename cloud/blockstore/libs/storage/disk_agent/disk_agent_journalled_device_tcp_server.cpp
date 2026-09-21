@@ -2,10 +2,11 @@
 
 #include <cloud/blockstore/libs/storage/disk_agent/journalled_device_adapter.h>
 
+#include <cloud/fastshard/journal/impl/journalled_device_v1.h>
+#include <cloud/fastshard/journal/server/server.h>
+
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
-#include <cloud/storage/core/libs/journalled/impl/journalled_device_v1.h>
-#include <cloud/storage/core/libs/journalled/server/server.h>
 
 #include <contrib/ydb/library/actors/core/actor.h>
 #include <contrib/ydb/library/actors/core/events.h>
