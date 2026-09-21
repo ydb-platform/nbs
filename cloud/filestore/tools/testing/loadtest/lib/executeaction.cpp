@@ -56,26 +56,21 @@ void TExecuteActionController::ForcedOperation(
     const auto& typeName =
         NProtoPrivate::TForcedOperationRequest::EForcedOperationType_Name(type);
 
-    NProtoPrivate::TForcedOperationRequest request;
-    request.SetFileSystemId(FilesystemId);
-    request.SetOpType(type);
-    NProtoPrivate::TForcedOperationResponse response;
-    ExecuteAction("forcedoperation", request, &response);
-    if (HasError(response)) {
-        throw yexception() << "failed to start forced operation " << typeName
-                           << ": " << response.GetError();
-    }
+    auto operationId = RunForcedOperation(type);
 
     while (true) {
         NProtoPrivate::TForcedOperationStatusRequest statusRequest;
         statusRequest.SetFileSystemId(FilesystemId);
-        statusRequest.SetOperationId(response.GetOperationId());
+        statusRequest.SetOperationId(operationId);
         NProtoPrivate::TForcedOperationStatusResponse statusResponse;
         ExecuteAction("forcedoperationstatus", statusRequest, &statusResponse);
 
         if (statusResponse.GetError().GetCode() == E_NOT_FOUND) {
-            throw yexception()
-                << typeName << ": operation not found (tablet rebooted?)";
+            STORAGE_INFO(
+                TStringBuilder()
+                << typeName << ": operation status not found, restarting");
+            operationId = RunForcedOperation(type);
+            continue;
         }
 
         if (HasError(statusResponse)) {
@@ -106,6 +101,29 @@ void TExecuteActionController::ForcedOperation(
         }
 
         Sleep(TDuration::Seconds(1));
+    }
+}
+
+TString TExecuteActionController::RunForcedOperation(
+    NProtoPrivate::TForcedOperationRequest::EForcedOperationType type)
+{
+    while (true) {
+        NProtoPrivate::TForcedOperationRequest request;
+        request.SetFileSystemId(FilesystemId);
+        request.SetOpType(type);
+        NProtoPrivate::TForcedOperationResponse response;
+        ExecuteAction("forcedoperation", request, &response);
+        if (HasError(response)) {
+            if (response.GetError().GetCode() == E_TRY_AGAIN) {
+                Sleep(TDuration::Seconds(1));
+                continue;
+            }
+            const auto& typeName = NProtoPrivate::TForcedOperationRequest::
+                EForcedOperationType_Name(type);
+            throw yexception() << "failed to start forced operation "
+                               << typeName << ": " << response.GetError();
+        }
+        return response.GetOperationId();
     }
 }
 
