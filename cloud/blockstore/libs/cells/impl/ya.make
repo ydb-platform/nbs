@@ -12,6 +12,7 @@ SRCS(
     endpoint_router.cpp
     forward_service.cpp
     host_pool.cpp
+    mon.cpp
     remote_storage.cpp
     transport_switcher.cpp
 )
@@ -24,9 +25,16 @@ PEERDIR(
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/service
 
+    cloud/storage/core/libs/actors
     cloud/storage/core/libs/grpc
     cloud/storage/core/libs/rdma/impl
 
+    contrib/ydb/core/base
+    contrib/ydb/core/mon
+    contrib/ydb/library/actors/core
+
+    library/cpp/html/pcdata
+    library/cpp/monlib/service/pages
     library/cpp/threading/hot_swap
 )
 

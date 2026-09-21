@@ -40,6 +40,7 @@ namespace NCloud::NBlockStore {
     xxx(STATS_SERVICE)                                                         \
     xxx(FRESH_BLOCKS_WRITER)                                                   \
     xxx(SERVICE_EXT)                                                           \
+    xxx(CELLS)                                                                 \
 // BLOCKSTORE_ACTORS
 
 #define BLOCKSTORE_COMPONENTS(xxx)                                             \
@@ -60,7 +61,6 @@ namespace NCloud::NBlockStore {
     xxx(LOCAL_NVME)                                                            \
     BLOCKSTORE_ACTORS(xxx)                                                     \
     xxx(USER_STATS)                                                            \
-    xxx(CELLS)                                                                 \
     xxx(TLS_CERTIFICATE_PROVIDER)                                              \
 // BLOCKSTORE_COMPONENTS
 

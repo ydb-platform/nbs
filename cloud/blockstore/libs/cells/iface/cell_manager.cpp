@@ -51,6 +51,23 @@ struct TCellManagerStub: public ICellManager
         return nullptr;
     }
 
+    [[nodiscard]] TCellsSnapshot GetSnapshot() override
+    {
+        return {};
+    }
+
+    [[nodiscard]] NThreading::TFuture<TVector<TCellDescribeResult>>
+        SearchVolume(
+            TString diskId,
+            IBlockStorePtr localService,
+            TDuration timeout) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(localService);
+        Y_UNUSED(timeout);
+        return NThreading::MakeFuture(TVector<TCellDescribeResult>());
+    }
+
     void Start() override
     {}
 

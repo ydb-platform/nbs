@@ -71,6 +71,20 @@ void TBootstrapLocal::SetupCellManager()
     CellManager = NCells::CreateCellManagerStub();
 }
 
+void TBootstrapLocal::SetupCellMonitoringActor()
+{
+    // no actor system here
+}
+
+IBlockStorePtr TBootstrapLocal::WrapServiceForInterCellForward(
+    IBlockStorePtr authorized,
+    IBlockStorePtr trusted)
+{
+    // cells are disabled in the local daemon
+    Y_UNUSED(trusted);
+    return authorized;
+}
+
 TProgramShouldContinue& TBootstrapLocal::GetShouldContinue()
 {
     return ShouldContinue;

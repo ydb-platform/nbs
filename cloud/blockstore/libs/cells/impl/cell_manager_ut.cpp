@@ -1,6 +1,9 @@
 #include "cell_manager.h"
+#include "describe_volume.h"
+#include "mon.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/cells/iface/inbound_activity.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -19,9 +22,6 @@
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
-#include <library/cpp/monlib/service/mon_service_http_request.h>
-#include <library/cpp/monlib/service/pages/index_mon_page.h>
-#include <library/cpp/monlib/service/pages/mon_page.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 
@@ -130,49 +130,13 @@ ICertificateProviderPtr CreateServerCertificateProvider(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TFakeMonRequest: NMonitoring::IMonHttpRequest
-{
-    TStringStream Out;
-    TCgiParameters Params;
-    THttpHeaders Headers;
-
-    IOutputStream& Output() override
-    {
-        return Out;
-    }
-
-    HTTP_METHOD GetMethod() const override
-    {
-        return HTTP_METHOD_GET;
-    }
-    TStringBuf GetPath() const override { return {}; }
-    TStringBuf GetPathInfo() const override { return {}; }
-    TStringBuf GetUri() const override { return {}; }
-    const TCgiParameters& GetParams() const override { return Params; }
-    const TCgiParameters& GetPostParams() const override { return Params; }
-    TStringBuf GetPostContent() const override { return {}; }
-    const THttpHeaders& GetHeaders() const override { return Headers; }
-    TStringBuf GetHeader(TStringBuf) const override { return {}; }
-    TStringBuf GetCookie(TStringBuf) const override { return {}; }
-    TString GetRemoteAddr() const override { return {}; }
-    TString GetServiceTitle() const override { return {}; }
-    NMonitoring::IMonPage* GetPage() const override { return nullptr; }
-    NMonitoring::IMonHttpRequest* MakeChild(
-        NMonitoring::IMonPage*,
-        const TString&) const override
-    {
-        return nullptr;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TTestContext
 {
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
+    TDiagnosticsConfigPtr DiagnosticsConfig;
     IProfileLogPtr ProfileLog;
     IRequestStatsPtr RequestStats;
     IVolumeStatsPtr VolumeStats;
@@ -185,6 +149,7 @@ struct TTestContext
         , Scheduler(CreateSchedulerStub())
         , Logging(CreateLoggingService("console"))
         , Monitoring(CreateMonitoringServiceStub())
+        , DiagnosticsConfig(std::make_shared<TDiagnosticsConfig>())
         , ProfileLog(CreateProfileLogStub())
         , RequestStats(CreateRequestStatsStub())
         , VolumeStats(CreateVolumeStatsStub())
@@ -443,7 +408,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         CheckDescribe(cellManager, std::move(clientConfig), S_OK);
     }
 
-    Y_UNIT_TEST(ShouldDumpConfigOnMonPage)
+    Y_UNIT_TEST(ShouldRenderCellsPage)
     {
         TTestContext testContext;
 
@@ -451,36 +416,89 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             .AddCell("xyz", 9001, 0, 1, 1, {"host-alpha"})
             .Build();
         auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+        Y_UNUSED(testContext);
 
-        auto cellManager = CreateCellManager(
-            config,
-            testContext.Timer,
-            testContext.Scheduler,
-            testContext.Logging,
-            testContext.Monitoring,
-            testContext.TraceSerializer,
-            testContext.ServerStats,
-            CreateClientCertificateProvider(config),
-            nullptr);
+        TCellsSnapshot snapshot;
+        snapshot.HostStatuses["xyz"].push_back(
+            {.Fqdn = "host-alpha", .Alive = true, .Warm = false,
+             .Connections = 0});
 
-        auto blockstore = testContext.Monitoring->GetMonPage("blockstore");
-        UNIT_ASSERT(blockstore);
-        auto* cells = static_cast<NMonitoring::TIndexMonPage&>(*blockstore)
-                          .FindPage("Cells");
-        UNIT_ASSERT(cells);
+        TStringStream out;
+        RenderCellsPage(out, *config, snapshot);
+        const auto html = out.Str();
 
-        TFakeMonRequest request;
-        cells->Output(request);
-        const auto html = request.Out.Str();
-
-        // one page, three sections: config, outbound host status, and the
-        // inbound table (empty until the forward service records into it)
+        // one page: search form, config, outbound and inbound sections
+        UNIT_ASSERT_STRING_CONTAINS(html, "action");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Volume");
         UNIT_ASSERT_STRING_CONTAINS(html, "xyz");
         UNIT_ASSERT_STRING_CONTAINS(html, "host-alpha");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Cells config");
         UNIT_ASSERT_STRING_CONTAINS(html, "Outbound host status");
-        UNIT_ASSERT_STRING_CONTAINS(html, "Connections");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Inbound inter-cell connections");
+    }
+
+    Y_UNIT_TEST(ShouldRenderSearchResultLinks)
+    {
+        TVector<TCellDescribeResult> results;
+        results.push_back({
+            .CellId = "xyz",
+            .Status = ECellDescribeStatus::Found,
+            .Fqdn = "host-a"});
+        results.push_back({   // the local row: CellId left empty
+            .Status = ECellDescribeStatus::Found,
+            .Fqdn = "localhost"});
+        results.push_back({
+            .CellId = "abc",
+            .Status = ECellDescribeStatus::NotFound});
+        results.push_back({
+            .CellId = "def",
+            .Status = ECellDescribeStatus::Unavailable});
+        results.push_back({
+            .CellId = "ghi",
+            .Status = ECellDescribeStatus::MigrationDestination,
+            .Fqdn = "host-m"});
+
+        TStringStream out;
+        RenderCellsSearchResult(
+            out, results, TDiagnosticsConfig(), "disk-x");
+        const auto html = out.Str();
+
+        UNIT_ASSERT_STRING_CONTAINS(html, "disk-x");
+        // a remote hit links to the responding host's mon port, with the
+        // action that triggers the search on the target service page
         UNIT_ASSERT_STRING_CONTAINS(
-            html, "Inbound inter-cell connections");
+            html,
+            "http://host-a:8766/blockstore/service?action=search"
+            "&amp;Volume=disk-x");
+        // the local hit links relative to /blockstore/Cells so the Viewer node
+        // prefix survives; no leading slash, no http://host:port
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<a href='service?action=search&amp;Volume=disk-x'>"
+            "localhost</a>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "not found");
+        UNIT_ASSERT_STRING_CONTAINS(html, "unavailable");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html, "migration destination copy on host-m");
+    }
+
+    Y_UNIT_TEST(ShouldEncodeSpecialCharsInSearchLink)
+    {
+        TVector<TCellDescribeResult> results;
+        results.push_back({   // the local row: CellId left empty
+            .Status = ECellDescribeStatus::Found,
+            .Fqdn = "localhost"});
+
+        TStringStream out;
+        RenderCellsSearchResult(
+            out, results, TDiagnosticsConfig(), "disk#a&b");
+        const auto html = out.Str();
+
+        // the id is url-encoded before html-escaping, so '#'/'&' cannot
+        // truncate or split the Volume query parameter
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "service?action=search&amp;Volume=disk%23a%26b");
     }
 
     Y_UNIT_TEST(ShouldRejectConnectionToUnconfiguredCell)

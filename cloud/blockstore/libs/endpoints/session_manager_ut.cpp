@@ -126,6 +126,22 @@ struct TTestCellManager: public ICellManager
         return nullptr;
     }
 
+    NCells::TCellsSnapshot GetSnapshot() override
+    {
+        return {};
+    }
+
+    NThreading::TFuture<TVector<NCells::TCellDescribeResult>> SearchVolume(
+        TString diskId,
+        IBlockStorePtr localService,
+        TDuration timeout) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(localService);
+        Y_UNUSED(timeout);
+        return NThreading::MakeFuture(TVector<NCells::TCellDescribeResult>());
+    }
+
     void Start() override
     {}
 

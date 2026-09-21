@@ -107,6 +107,7 @@ private:
     IBlockstoreConfigPtr StartupBlockstoreConfig;
 
     IActorSystemPtr ActorSystem;
+    IBlockStorePtr CellsMonLocalService;
     IAsyncLoggerPtr AsyncLogger;
     IStatsAggregatorPtr StatsAggregator;
     IClientPercentileCalculatorPtr ClientPercentiles;
@@ -163,6 +164,10 @@ protected:
     void WarmupBSGroupConnections() override;
 
     void SetupCellManager() override;
+    void SetupCellMonitoringActor() override;
+    IBlockStorePtr WrapServiceForInterCellForward(
+        IBlockStorePtr authorized,
+        IBlockStorePtr trusted) override;
 
 private:
     void InitConfigs();

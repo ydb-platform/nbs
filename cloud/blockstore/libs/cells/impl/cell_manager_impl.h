@@ -16,17 +16,11 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
-#include <library/cpp/monlib/service/pages/html_mon_page.h>
-#include <library/cpp/monlib/service/pages/index_mon_page.h>
-#include <library/cpp/monlib/service/pages/templates.h>
-
 #include <util/generic/hash_set.h>
 #include <util/random/random.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NCells {
-
-using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -58,7 +52,13 @@ struct TCellManager: public ICellManager
     [[nodiscard]] std::shared_ptr<TCellInboundActivity>
         GetInboundActivity() override;
 
-    void OutputHtml(IOutputStream& out);
+    [[nodiscard]] TCellsSnapshot GetSnapshot() override;
+
+    [[nodiscard]] NThreading::TFuture<TVector<TCellDescribeResult>>
+        SearchVolume(
+            TString diskId,
+            IBlockStorePtr localService,
+            TDuration timeout) override;
 
 private:
     [[nodiscard]] TCellHostEndpointsByCellId GetCellsEndpoints(

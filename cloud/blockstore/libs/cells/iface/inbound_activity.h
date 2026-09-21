@@ -14,18 +14,20 @@ namespace NCloud::NBlockStore::NCells {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Last-seen table of inter-cell control requests that skipped authorization,
-// keyed by who they came from. Deliberately not a strict open/close counter:
-// an Unmount is not guaranteed (a client can crash, a connection can move),
-// so a paired counter would leak. A row is dropped once it has not been seen
-// for the TTL - pruned both on a snapshot and, amortized, on record, so the
-// table stays bounded even if the mon page is never opened.
+// keyed by who they came from - the sending host (peer), disk and client. The
+// request only carries the target cell id, not the source cell, so the source
+// cell cannot be shown; the peer host identifies where a request came from.
+// Deliberately not a strict open/close counter: an Unmount is not guaranteed
+// (a client can crash, a connection can move), so a paired counter would leak.
+// A row is dropped once it has not been seen for the TTL - pruned both on a
+// snapshot and, amortized, on record, so the table stays bounded even if the
+// mon page is never opened.
 class TCellInboundActivity
 {
 public:
     // who a request came from; the identity a row is keyed by
     struct TKey
     {
-        TString CellId;
         TString Peer;
         TString DiskId;
         TString ClientId;
@@ -37,13 +39,12 @@ public:
     {
         size_t operator()(const TKey& key) const
         {
-            return MultiHash(key.CellId, key.Peer, key.DiskId, key.ClientId);
+            return MultiHash(key.Peer, key.DiskId, key.ClientId);
         }
     };
 
     struct TRow
     {
-        TString CellId;
         TString Peer;
         TString DiskId;
         TString ClientId;
@@ -57,7 +58,6 @@ public:
     static constexpr TDuration Ttl = TDuration::Minutes(5);
 
     void Record(
-        const TString& cellId,
         const TString& peer,
         const TString& diskId,
         const TString& clientId,

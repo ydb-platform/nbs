@@ -102,7 +102,6 @@ public:
 
             if (Activity) {
                 Activity->Record(
-                    cellId,
                     peer,
                     diskId,
                     headers.GetClientId(),
