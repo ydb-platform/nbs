@@ -182,7 +182,8 @@ public:
 private:
     void SendMountRequest(
         TCallContextPtr callContext,
-        std::shared_ptr<NProto::TMountVolumeRequest> request);
+        std::shared_ptr<NProto::TMountVolumeRequest> request,
+        TPromise<NProto::TMountVolumeResponse> response);
     std::shared_ptr<NProto::TMountVolumeRequest> PrepareMountRequest(
         const NProto::THeaders& headers,
         EMountKind mountKind = EMountKind::INITIAL) const;
@@ -280,7 +281,7 @@ TFuture<NProto::TMountVolumeResponse> TSession::MountVolume(
     const NProto::THeaders& headers)
 {
     std::shared_ptr<NProto::TMountVolumeRequest> request;
-    TFuture<NProto::TMountVolumeResponse> response;
+    TPromise<NProto::TMountVolumeResponse> response;
 
     with_lock (SessionInfo.MountLock) {
         if (SessionInfo.MountState == EMountState::MountInProgress) {
@@ -332,7 +333,7 @@ TFuture<NProto::TMountVolumeResponse> TSession::MountVolume(
         response = SessionInfo.MountResponse;
     }
 
-    SendMountRequest(std::move(callContext), std::move(request));
+    SendMountRequest(std::move(callContext), std::move(request), response);
     return response;
 }
 
@@ -341,7 +342,7 @@ TFuture<NProto::TMountVolumeResponse> TSession::MountVolume(
     const NProto::THeaders& headers)
 {
     std::shared_ptr<NProto::TMountVolumeRequest> request;
-    TFuture<NProto::TMountVolumeResponse> response;
+    TPromise<NProto::TMountVolumeResponse> response;
 
     with_lock (SessionInfo.MountLock) {
         if (SessionInfo.MountState == EMountState::MountInProgress) {
@@ -380,7 +381,7 @@ TFuture<NProto::TMountVolumeResponse> TSession::MountVolume(
         response = SessionInfo.MountResponse;
     }
 
-    SendMountRequest(std::move(callContext), std::move(request));
+    SendMountRequest(std::move(callContext), std::move(request), response);
     return response;
 }
 
@@ -389,7 +390,7 @@ TFuture<NProto::TUnmountVolumeResponse> TSession::UnmountVolume(
     const NProto::THeaders& headers)
 {
     std::shared_ptr<NProto::TUnmountVolumeRequest> request;
-    TFuture<NProto::TUnmountVolumeResponse> response;
+    TPromise<NProto::TUnmountVolumeResponse> response;
 
     with_lock (SessionInfo.MountLock) {
         if (SessionInfo.MountState == EMountState::Uninitialized) {
@@ -446,14 +447,17 @@ TFuture<NProto::TUnmountVolumeResponse> TSession::UnmountVolume(
 
     auto weak_ptr = weak_from_this();
     Client->UnmountVolume(std::move(callContext), std::move(request))
-        .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
+        .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) mutable {
             if (auto p = weak_ptr.lock()) {
                 p->ProcessUnmountResponse(requestId, future.GetValue());
+                return;
             }
+            response.SetValue(TErrorResponse(
+                E_REJECTED,
+                "Session is destroyed"));
         });
 
-    // The response is set in ProcessUnmountResponse() only after the future,
-    // returned by Client->UnmountVolume(), is set
+    // Complete only after Client->UnmountVolume(), even if the session is gone.
     return response;
 }
 
@@ -517,7 +521,8 @@ void TSession::ReportIOError()
 
 void TSession::SendMountRequest(
     TCallContextPtr callContext,
-    std::shared_ptr<NProto::TMountVolumeRequest> request)
+    std::shared_ptr<NProto::TMountVolumeRequest> request,
+    TPromise<NProto::TMountVolumeResponse> response)
 {
     auto requestId = GetRequestId(*request);
     if (!callContext->RequestId) {
@@ -540,10 +545,14 @@ void TSession::SendMountRequest(
 
     auto weak_ptr = weak_from_this();
     Client->MountVolume(std::move(callContext), std::move(request))
-        .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
+        .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) mutable {
             if (auto p = weak_ptr.lock()) {
                 p->ProcessMountResponse(requestId, future.GetValue());
+                return;
             }
+            response.SetValue(TErrorResponse(
+                E_REJECTED,
+                "Session is destroyed"));
         });
 }
 
@@ -716,7 +725,7 @@ void TSession::ForceVolumeRemount(const TString& sessionId)
 TFuture<NProto::TMountVolumeResponse> TSession::EnsureVolumeMounted()
 {
     std::shared_ptr<NProto::TMountVolumeRequest> request;
-    TFuture<NProto::TMountVolumeResponse> response;
+    TPromise<NProto::TMountVolumeResponse> response;
 
     with_lock (SessionInfo.MountLock) {
         if (Config->GetEnableNonBlockingRemount() &&
@@ -756,10 +765,14 @@ TFuture<NProto::TMountVolumeResponse> TSession::EnsureVolumeMounted()
 
         auto weak_ptr = weak_from_this();
         Client->MountVolume(std::move(callContext), std::move(request))
-            .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
+            .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) mutable {
                 if (auto p = weak_ptr.lock()) {
                     p->ProcessMountResponse(requestId, future.GetValue());
+                    return;
                 }
+                response.SetValue(TErrorResponse(
+                    E_REJECTED,
+                    "Session is destroyed"));
             });
     }
 
@@ -796,6 +809,7 @@ void TSession::ScheduleVolumeRemount(
 void TSession::RemountVolume(ui64 epoch)
 {
     std::shared_ptr<NProto::TMountVolumeRequest> request;
+    TPromise<NProto::TMountVolumeResponse> response;
 
     with_lock (SessionInfo.MountLock) {
         if (epoch == SessionInfo.RemountTimerEpoch &&
@@ -810,6 +824,7 @@ void TSession::RemountVolume(ui64 epoch)
             }
             SessionInfo.MountState = EMountState::MountInProgress;
             SessionInfo.MountResponse = NewPromise<NProto::TMountVolumeResponse>();
+            response = SessionInfo.MountResponse;
 
             request = PrepareMountRequest(SessionInfo.MountHeaders, EMountKind::REMOUNT);
 
@@ -844,10 +859,14 @@ void TSession::RemountVolume(ui64 epoch)
 
         auto weak_ptr = weak_from_this();
         Client->MountVolume(std::move(callContext), std::move(request))
-            .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) {
+            .Subscribe([=, weak_ptr = std::move(weak_ptr)] (const auto& future) mutable {
                 if (auto p = weak_ptr.lock()) {
                     p->ProcessMountResponse(requestId, future.GetValue());
+                    return;
                 }
+                response.SetValue(TErrorResponse(
+                    E_REJECTED,
+                    "Session is destroyed"));
             });
     }
 }
@@ -878,7 +897,11 @@ void TSession::HandleRequest(
                             std::move(request),
                             future,
                             response);
+                        return;
                     }
+                    response.SetValue(TErrorResponse(
+                        E_REJECTED,
+                        "Session is destroyed"));
                 });
         }
         return;
@@ -917,7 +940,11 @@ void TSession::HandleRequestAfterMount(
                             sessionId,
                             future,
                             response);
+                        return;
                     }
+                    response.SetValue(TErrorResponse(
+                        E_REJECTED,
+                        "Session is destroyed"));
                 });
             return;
         }
