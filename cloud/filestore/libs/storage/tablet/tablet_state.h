@@ -353,6 +353,10 @@ public:
 
     void SetCompressNodeRef(IIndexTabletDatabase& db, bool compressNodeRef);
 
+    void SetShardCreationState(
+        IIndexTabletDatabase& db,
+        const NProtoPrivate::TFileSystemShardCreationState& state);
+
 private:
     //
     // FileSystemEvents - appended to the transaction's sink, only if

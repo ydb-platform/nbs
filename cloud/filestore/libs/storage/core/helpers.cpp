@@ -3,6 +3,7 @@
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/fs.pb.h>
 
+#include <cloud/storage/core/libs/common/compressed_bitmap_serialization.h>
 #include <cloud/storage/core/libs/common/error.h>
 
 #include <contrib/ydb/core/protos/filestore_config.pb.h>
@@ -286,6 +287,68 @@ bool TListNodesInternalResponseBuilder::AddNodeRef(
 ui32 TListNodesInternalResponseBuilder::GetIndex() const
 {
     return Impl->GetIndex();
+}
+
+TString DescribeShardCreationState(
+    const NProtoPrivate::TFileSystemShardCreationState& state)
+{
+    const auto& bitmap = state.GetCreatedShardBitmap();
+
+    TStringBuilder out;
+    out << "{Version: ";
+    if (state.HasVersion()) {
+        out << state.GetVersion();
+    } else {
+        out << "<unset>";
+    }
+    out << ", TopologyShardCount: " << state.GetTopologyShardCount()
+        << ", TargetShardCount: " << state.GetTargetShardCount()
+        << ", TargetShardConfigHash: " << state.GetTargetShardConfigHash()
+        << ", CreatedShardBitmap: {BitCount: " << bitmap.GetBitCount()
+        << ", Chunks: " << bitmap.ChunksSize()
+        << ", ChunkDataSize: " << GetCompressedBitmapChunkDataSize(bitmap) << "}}";
+
+    return out;
+}
+
+TString DescribeChangeTabletStateRequest(
+    const NProtoPrivate::TUnsafeChangeTabletStateRequest& request)
+{
+    if (!request.HasShardCreationState()) {
+        return request.DebugString();
+    }
+
+    TStringBuilder out;
+    out << "{FileSystemId: " << request.GetFileSystemId();
+    if (request.HasFrozen()) {
+        out << ", Frozen: " << (request.GetFrozen() ? "true" : "false");
+    }
+    if (request.HasCompressNodeRef()) {
+        out << ", CompressNodeRef: "
+            << (request.GetCompressNodeRef() ? "true" : "false");
+    }
+    out << ", ShardCreationState: "
+        << DescribeShardCreationState(request.GetShardCreationState()) << "}";
+
+    return out;
+}
+
+TString DescribeChangeTabletStateResponse(
+    const NProtoPrivate::TUnsafeChangeTabletStateResponse& response)
+{
+    if (!response.HasShardCreationState()) {
+        return response.ShortUtf8DebugString();
+    }
+
+    TStringBuilder out;
+    out << "{";
+    if (HasError(response.GetError())) {
+        out << "Error: " << FormatError(response.GetError()) << ", ";
+    }
+    out << "ShardCreationState: "
+        << DescribeShardCreationState(response.GetShardCreationState()) << "}";
+
+    return out;
 }
 
 }   // namespace NCloud::NFileStore::NStorage

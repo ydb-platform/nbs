@@ -112,6 +112,8 @@ NProto::TError ValidateCompressedBitmapData(
 
     const auto chunkCount = GetCompressedBitmapChunkCount(bitmap.GetBitCount());
 
+    // Bound decoding work: a small bitmap must not carry arbitrarily many
+    // repeated chunk entries.
     if (static_cast<ui64>(bitmap.ChunksSize()) > chunkCount) {
         return MakeError(
             E_ARGUMENT,
@@ -125,7 +127,8 @@ NProto::TError ValidateCompressedBitmapData(
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
-                    << "Compressed bitmap chunk index is out of range: "
+                    << "Compressed bitmap chunk[" << chunkIndex
+                    << "] index is out of range: "
                     << chunk.GetChunkIdx() << " >= " << chunkCount);
         }
 
@@ -133,7 +136,8 @@ NProto::TError ValidateCompressedBitmapData(
             return MakeError(
                 E_ARGUMENT,
                 TStringBuilder()
-                    << "Compressed bitmap chunk data is empty: " << chunkIndex);
+                    << "Compressed bitmap chunk[" << chunkIndex
+                    << "] data is empty");
         }
 
         ++chunkIndex;
