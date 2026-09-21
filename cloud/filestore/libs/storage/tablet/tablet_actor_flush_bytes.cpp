@@ -240,7 +240,7 @@ TFlushBytesActor::TFlushBytesActor(
         TVector<TVector<ui32>> srcBlobOffsets,
         TVector<TFlushBytesBlob> dstBlobs,
         TSet<ui32> mixedBlocksRanges,
-    bool waitForTrim)
+        bool waitForTrim)
     : LogTag(std::move(logTag))
     , FileSystemId(std::move(fileSystemId))
     , Tablet(tablet)
