@@ -18,13 +18,17 @@ struct IJournal
 {
     virtual ~IJournal() = default;
 
+    //
     // Restoring
+    //
 
     // Restores the journal state and returns lsn of the last indexed record
     [[nodiscard]] virtual auto Restore()
         -> NThreading::TFuture<TResultOrError<ui64>> = 0;
 
+    //
     // Device API
+    //
 
     [[nodiscard]] virtual auto Write(
         NCloud::NProto::TWriteLogRecordRequest request)
@@ -38,12 +42,14 @@ struct IJournal
         NCloud::NProto::TReadJournalTailRequest request) const
         -> NThreading::TFuture<NCloud::NProto::TReadJournalTailResponse> = 0;
 
-    [[nodiscard]] virtual auto AdvanceLastAckedLsn(
+    [[nodiscard]] virtual auto AdvanceLsnLowWatermark(
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
         -> NThreading::TFuture<
             NCloud::NProto::TAdvanceLsnLowWatermarkResponse> = 0;
 
+    //
     // Background cleanup
+    //
 
     [[nodiscard]] virtual auto GetRecordToFlush(ui64 maxAllowedLsn) const
         -> NThreading::TFuture<

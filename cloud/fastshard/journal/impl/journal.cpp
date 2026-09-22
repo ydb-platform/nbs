@@ -117,40 +117,31 @@ public:
         IDevicePageStorePtr dataStore,
         ui64 devicePageCount);
 
-    // Restoring
-
     // Restores the journal state and returns lsn of the last indexed record
-    [[nodiscard]] NThreading::TFuture<TResultOrError<ui64>> Restore() override;
-
-    // Device API
+    [[nodiscard]] TFuture<TResultOrError<ui64>> Restore() override;
 
     [[nodiscard]] auto Write(NCloud::NProto::TWriteLogRecordRequest request)
-        -> NThreading::TFuture<
+        -> TFuture<
             NCloud::NProto::TWriteLogRecordResponse> override;
 
     [[nodiscard]] auto Read(NCloud::NProto::TReadPagesRequest request) const
-        -> NThreading::TFuture<NCloud::NProto::TReadPagesResponse> override;
+        -> TFuture<NCloud::NProto::TReadPagesResponse> override;
 
     [[nodiscard]] auto ReadTail(
         NCloud::NProto::TReadJournalTailRequest request) const
-        -> NThreading::TFuture<
-            NCloud::NProto::TReadJournalTailResponse> override;
+        -> TFuture<NCloud::NProto::TReadJournalTailResponse> override;
 
-    [[nodiscard]] auto AdvanceLastAckedLsn(
+    [[nodiscard]] auto AdvanceLsnLowWatermark(
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> NThreading::TFuture<
-            NCloud::NProto::TAdvanceLsnLowWatermarkResponse> override;
+        -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> override;
 
-    // Background cleanup
-
-    [[nodiscard]] auto GetRecordToFlush(ui64 maxAllowedLsn) const
-        -> NThreading::TFuture<
-            TResultOrError<NCloud::NProto::TJournalRecord>> override;
+        [[nodiscard]] auto GetRecordToFlush(ui64 maxAllowedLsn) const
+        -> TFuture<TResultOrError<NCloud::NProto::TJournalRecord>> override;
 
     void MarkRecordAsFlushed(ui64 lsn) override;
 
     [[nodiscard]] auto CleanupFlushedRecords()
-        -> NThreading::TFuture<NCloud::NProto::TError> override;
+        -> TFuture<NCloud::NProto::TError> override;
 
 private:
     NCloud::NProto::TError ValidateWriteRequest(
@@ -233,13 +224,13 @@ TFuture<NCloud::NProto::TReadJournalTailResponse> TJournal::ReadTail(
 }
 
 TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>
-TJournal::AdvanceLastAckedLsn(
+TJournal::AdvanceLsnLowWatermark(
     NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
 {
     Y_UNUSED(request);
 
     return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
-        TErrorResponse(E_NOT_IMPLEMENTED, "AdvanceLastAckedLsn"));
+        TErrorResponse(E_NOT_IMPLEMENTED, "AdvanceLsnLowWatermark"));
 }
 
 TFuture<TResultOrError<NCloud::NProto::TJournalRecord>>
