@@ -11,7 +11,6 @@ SRCS(
     authorization_mode.proto
     certificate.proto
     config_dispatcher_settings.proto
-    device.proto
     diagnostics.proto
     drain.proto
     endpoints.proto

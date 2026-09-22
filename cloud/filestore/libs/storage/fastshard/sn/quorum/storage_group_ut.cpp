@@ -3,13 +3,13 @@
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_quorum.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/fastshard/protos/device.pb.h>
 #include <cloud/fastshard/sn/iface/storage_node.h>
 #include <cloud/fastshard/testlib/fake_storage_node.h>
 #include <cloud/fastshard/testlib/silk_env.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
-#include <cloud/storage/core/protos/device.pb.h>
 
 #include <silk/fibers/event.h>
 #include <silk/fibers/fiber.h>

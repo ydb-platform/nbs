@@ -1,8 +1,7 @@
 #pragma once
 
 #include <cloud/fastshard/journal/iface/device.h>
-
-#include <cloud/storage/core/protos/device.pb.h>
+#include <cloud/fastshard/protos/device.pb.h>
 
 #include <util/generic/buffer.h>
 #include <util/generic/vector.h>

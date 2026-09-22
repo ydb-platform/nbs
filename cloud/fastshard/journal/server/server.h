@@ -3,12 +3,12 @@
 #include "public.h"
 
 #include <cloud/fastshard/journal/iface/journalled_device.h>
+#include <cloud/fastshard/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/coroutine/public.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
-#include <cloud/storage/core/protos/device.pb.h>
 
 #include <library/cpp/threading/future/future.h>
 
