@@ -5,6 +5,8 @@
 #include <cloud/fastshard/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/coroutine/public.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -56,7 +58,10 @@ struct IJournal
 ////////////////////////////////////////////////////////////////////////////////
 
 IJournalPtr CreateJournal(
+    ILoggingServicePtr logging,
+    TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
-    IDevicePageStorePtr dataStore);
+    IDevicePageStorePtr dataStore,
+    ui64 devicePageCount);
 
 }   // namespace NCloud::NJournalled
