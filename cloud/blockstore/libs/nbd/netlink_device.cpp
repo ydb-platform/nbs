@@ -45,6 +45,11 @@ struct TNbdStatusResponse {
     }
 };
 
+using TNetlinkSocket =
+    TNetlinkAttribute<NBD_SOCK_ITEM, TNetlinkAttribute<NBD_SOCK_FD, ui32>>;
+
+using TNetlinkSocketArray = TNetlinkPayload<TNetlinkSocket, TNetlinkSocket>;
+
 using TNbdConfigureRequest = TNetlinkRequest<
     TNetlinkAttribute<NBD_ATTR_INDEX, ui32>,
     TNetlinkAttribute<NBD_ATTR_SIZE_BYTES, ui64>,
@@ -52,9 +57,7 @@ using TNbdConfigureRequest = TNetlinkRequest<
     TNetlinkAttribute<NBD_ATTR_SERVER_FLAGS, ui64>,
     TNetlinkAttribute<NBD_ATTR_TIMEOUT, ui64>,
     TNetlinkAttribute<NBD_ATTR_DEAD_CONN_TIMEOUT, ui64>,
-    TNetlinkAttribute<NBD_ATTR_SOCKETS,
-        TNetlinkAttribute<NBD_SOCK_ITEM,
-            TNetlinkAttribute<NBD_SOCK_FD, ui32>>>>;
+    TNetlinkAttribute<NBD_ATTR_SOCKETS, TNetlinkSocketArray>>;
 
 using TNbdConfigureFreeRequest = TNetlinkRequest<
     TNetlinkAttribute<NBD_ATTR_SIZE_BYTES, ui64>,
@@ -62,9 +65,7 @@ using TNbdConfigureFreeRequest = TNetlinkRequest<
     TNetlinkAttribute<NBD_ATTR_SERVER_FLAGS, ui64>,
     TNetlinkAttribute<NBD_ATTR_TIMEOUT, ui64>,
     TNetlinkAttribute<NBD_ATTR_DEAD_CONN_TIMEOUT, ui64>,
-    TNetlinkAttribute<NBD_ATTR_SOCKETS,
-        TNetlinkAttribute<NBD_SOCK_ITEM,
-            TNetlinkAttribute<NBD_SOCK_FD, ui32>>>>;
+    TNetlinkAttribute<NBD_ATTR_SOCKETS, TNetlinkSocketArray>>;
 
 struct TNbdConfigureResponse {
     TNetlinkHeader Header;
@@ -95,10 +96,12 @@ private:
     const TString DevicePrefix;
     const TDuration RequestTimeout;
     const TDuration ConnectionTimeout;
+    const bool Fallback;
 
     TLog Log;
     IClientHandlerPtr Handler;
     TSocket Socket;
+    TSocket FallbackSocket;
     std::optional<ui32> DeviceIndex;
 
     TPromise<NProto::TError> StartResult;
@@ -111,7 +114,8 @@ public:
         TString devicePath,
         TString devicePrefix,
         TDuration requestTimeout,
-        TDuration connectionTimeout);
+        TDuration connectionTimeout,
+        bool fallback);
 
     ~TNetlinkDevice();
 
@@ -141,7 +145,8 @@ TNetlinkDevice::TNetlinkDevice(
         TString devicePath,
         TString devicePrefix,
         TDuration requestTimeout,
-        TDuration connectionTimeout)
+        TDuration connectionTimeout,
+        bool fallback)
     : FamilyId(NNetlink::GetFamilyId(NBD_GENL_FAMILY_NAME))
     , Logging(std::move(logging))
     , ConnectAddress(std::move(connectAddress))
@@ -149,6 +154,7 @@ TNetlinkDevice::TNetlinkDevice(
     , DevicePrefix(std::move(devicePrefix))
     , RequestTimeout(requestTimeout)
     , ConnectionTimeout(connectionTimeout)
+    , Fallback(fallback)
 {
     Log = Logging->CreateLog("BLOCKSTORE_NBD");
 }
@@ -167,14 +173,15 @@ TFuture<NProto::TError> TNetlinkDevice::Start()
 
     try {
         ConnectSocket();
+
         if (DevicePath) {
             ParseIndex();
             Configure();
         } else {
             ConfigureFree();
         }
-
-    } catch (const std::exception& e) {
+    }
+    catch (const std::exception& e) {
         StartResult.SetValue(MakeError(
             E_FAIL,
             TStringBuilder()
@@ -247,7 +254,14 @@ void TNetlinkDevice::ConnectSocket()
     Handler = CreateClientHandler(Logging);
     Y_ENSURE(Handler->NegotiateClient(in, out));
 
-    Socket = socket;
+    if (Fallback) {
+        FallbackSocket = socket;
+        Socket = TSocket(::socket(AF_INET, SOCK_STREAM, 0));
+    } else {
+        Socket = socket;
+        FallbackSocket = TSocket(::socket(AF_INET, SOCK_STREAM, 0));
+    }
+    Cerr << "socket=" << (int)Socket << " fallback_socket=" << (int)FallbackSocket << Endl;
 }
 
 void TNetlinkDevice::DisconnectSocket()
@@ -255,6 +269,7 @@ void TNetlinkDevice::DisconnectSocket()
     STORAGE_DEBUG("disconnect socket");
 
     Socket.Close();
+    FallbackSocket.Close();
 }
 
 // query device status and connect or reconfigure it
@@ -269,21 +284,18 @@ void TNetlinkDevice::Configure()
     STORAGE_INFO("query " << GetDevice());
 
     const auto& info = Handler->GetExportInfo();
-    socket.Send(
-        TNbdConfigureRequest(
-            FamilyId,
-            status.Msg.Connected ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT,
-            *DeviceIndex,
-            static_cast<ui64>(info.Size),
-            static_cast<ui64>(info.MinBlockSize),
-            static_cast<ui64>(info.Flags),
-            RequestTimeout.Seconds(),
-            ConnectionTimeout.Seconds(),
-            TNetlinkAttribute<
-                NBD_SOCK_ITEM,
-                TNetlinkAttribute<
-                    NBD_SOCK_FD,
-                    ui32>>(static_cast<ui32>(Socket))));
+    socket.Send(TNbdConfigureRequest(
+        FamilyId,
+        status.Msg.Connected ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT,
+        *DeviceIndex,
+        static_cast<ui64>(info.Size),
+        static_cast<ui64>(info.MinBlockSize),
+        static_cast<ui64>(info.Flags),
+        RequestTimeout.Seconds(),
+        ConnectionTimeout.Seconds(),
+        TNetlinkSocketArray(
+            TNetlinkSocket(static_cast<ui32>(Socket)),
+            TNetlinkSocket(static_cast<ui32>(FallbackSocket)))));
 
     NNetlink::TNetlinkResponse<> configure;
     socket.Receive(configure);
@@ -298,20 +310,17 @@ void TNetlinkDevice::ConfigureFree()
     NNetlink::TNetlinkSocket socket;
 
     const auto& info = Handler->GetExportInfo();
-    socket.Send(
-        TNbdConfigureFreeRequest(
-            FamilyId,
-            NBD_CMD_CONNECT,
-            static_cast<ui64>(info.Size),
-            static_cast<ui64>(info.MinBlockSize),
-            static_cast<ui64>(info.Flags),
-            RequestTimeout.Seconds(),
-            ConnectionTimeout.Seconds(),
-            TNetlinkAttribute<
-                NBD_SOCK_ITEM,
-                TNetlinkAttribute<
-                    NBD_SOCK_FD,
-                    ui32>>(static_cast<ui32>(Socket))));
+    socket.Send(TNbdConfigureFreeRequest(
+        FamilyId,
+        NBD_CMD_CONNECT,
+        static_cast<ui64>(info.Size),
+        static_cast<ui64>(info.MinBlockSize),
+        static_cast<ui64>(info.Flags),
+        RequestTimeout.Seconds(),
+        ConnectionTimeout.Seconds(),
+        TNetlinkSocketArray(
+            TNetlinkSocket(static_cast<ui32>(Socket)),
+            TNetlinkSocket(static_cast<ui32>(FallbackSocket)))));
 
     NNetlink::TNetlinkResponse<TNbdConfigureResponse> configure;
     socket.Receive(configure);
@@ -347,25 +356,24 @@ TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
     try {
         const auto& info = Handler->GetExportInfo();
         NNetlink::TNetlinkSocket socket;
-        socket.Send(
-            TNbdConfigureRequest(
-                FamilyId,
-                NBD_CMD_RECONFIGURE,
-                *DeviceIndex,
-                deviceSizeInBytes,
-                static_cast<ui64>(info.MinBlockSize),
-                static_cast<ui64>(info.Flags),
-                RequestTimeout.Seconds(),
-                ConnectionTimeout.Seconds(),
-                TNetlinkAttribute<
-                    NBD_SOCK_ITEM,
-                    TNetlinkAttribute<
-                        NBD_SOCK_FD,
-                        ui32>>(static_cast<ui32>(Socket))));
+        socket.Send(TNbdConfigureRequest(
+            FamilyId,
+            NBD_CMD_RECONFIGURE,
+            *DeviceIndex,
+            deviceSizeInBytes,
+            static_cast<ui64>(info.MinBlockSize),
+            static_cast<ui64>(info.Flags),
+            RequestTimeout.Seconds(),
+            ConnectionTimeout.Seconds(),
+            TNetlinkSocketArray(
+                TNetlinkSocket(static_cast<ui32>(Socket)),
+                TNetlinkSocket(static_cast<ui32>(FallbackSocket)))));
+
         NNetlink::TNetlinkResponse<> response;
         socket.Receive(response);
         STORAGE_INFO("resize " << GetDevice());
-    } catch (const TServiceError& e) {
+    }
+    catch (const TServiceError& e) {
         return MakeFuture(MakeError(
             e.GetCode(),
             TStringBuilder()
@@ -395,15 +403,18 @@ private:
     const ILoggingServicePtr Logging;
     const TDuration RequestTimeout;
     const TDuration ConnectionTimeout;
+    const bool Fallback;
 
 public:
     TNetlinkDeviceFactory(
             ILoggingServicePtr logging,
             TDuration requestTimeout,
-            TDuration connectionTimeout)
+            TDuration connectionTimeout,
+            bool fallback)
         : Logging(std::move(logging))
         , RequestTimeout(requestTimeout)
         , ConnectionTimeout(connectionTimeout)
+        , Fallback(fallback)
     {}
 
     IDevicePtr Create(
@@ -421,7 +432,8 @@ public:
             std::move(devicePath),
             "",
             RequestTimeout,
-            ConnectionTimeout);
+            ConnectionTimeout,
+            Fallback);
     }
 
     IDevicePtr CreateFree(
@@ -439,7 +451,8 @@ public:
             "",
             std::move(devicePrefix),
             RequestTimeout,
-            ConnectionTimeout);
+            ConnectionTimeout,
+            Fallback);
     }
 };
 
@@ -452,7 +465,8 @@ IDevicePtr CreateNetlinkDevice(
     TNetworkAddress connectAddress,
     TString devicePath,
     TDuration requestTimeout,
-    TDuration connectionTimeout)
+    TDuration connectionTimeout,
+    bool fallback)
 {
     return std::make_shared<TNetlinkDevice>(
         std::move(logging),
@@ -460,7 +474,8 @@ IDevicePtr CreateNetlinkDevice(
         std::move(devicePath),
         "",
         requestTimeout,
-        connectionTimeout);
+        connectionTimeout,
+        fallback);
 }
 
 IDevicePtr CreateFreeNetlinkDevice(
@@ -468,7 +483,8 @@ IDevicePtr CreateFreeNetlinkDevice(
     TNetworkAddress connectAddress,
     TString devicePrefix,
     TDuration requestTimeout,
-    TDuration connectionTimeout)
+    TDuration connectionTimeout,
+    bool fallback)
 {
     return std::make_shared<TNetlinkDevice>(
         std::move(logging),
@@ -476,18 +492,21 @@ IDevicePtr CreateFreeNetlinkDevice(
         "",
         std::move(devicePrefix),
         requestTimeout,
-        connectionTimeout);
+        connectionTimeout,
+        fallback);
 }
 
 IDeviceFactoryPtr CreateNetlinkDeviceFactory(
     ILoggingServicePtr logging,
     TDuration requestTimeout,
-    TDuration connectionTimeout)
+    TDuration connectionTimeout,
+    bool fallback)
 {
     return std::make_shared<TNetlinkDeviceFactory>(
         std::move(logging),
         requestTimeout,
-        connectionTimeout);
+        connectionTimeout,
+        fallback);
 }
 
 }   // namespace NCloud::NBlockStore::NBD

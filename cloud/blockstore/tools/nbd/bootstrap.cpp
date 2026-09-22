@@ -279,14 +279,16 @@ void TBootstrap::Start()
                     listenAddress,
                     Options->ConnectDevicePath,
                     Options->RequestTimeout,
-                    Options->ConnectionTimeout);
+                    Options->ConnectionTimeout,
+                    Options->Fallback);
             } else {
                 NbdDevice = CreateFreeNetlinkDevice(
                     Logging,
                     listenAddress,
                     TString(DEVICE_PREFIX),
                     Options->RequestTimeout,
-                    Options->ConnectionTimeout);
+                    Options->ConnectionTimeout,
+                    Options->Fallback);
             }
         } else if (Options->ConnectDevicePath) {
             // The only case we want kernel to retry requests is when the socket
@@ -315,7 +317,7 @@ void TBootstrap::Start()
 void TBootstrap::Stop()
 {
     if (NbdDevice) {
-        NbdDevice->Stop(true);
+        NbdDevice->Stop(Options->Disconnect);
     }
 
     switch (Options->DeviceMode) {

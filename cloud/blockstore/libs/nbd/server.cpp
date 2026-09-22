@@ -363,7 +363,7 @@ private:
     {
         TSocketHolder socket(accept.S->Release());
 
-        auto address = NAddr::GetSockAddr(socket);
+        auto address = NAddr::GetPeerAddr(socket);
         STORAGE_DEBUG("new connection from " << PrintHostAndPort(*address));
 
         if (IsTcpAddress(*address)) {

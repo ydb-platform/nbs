@@ -72,6 +72,7 @@ struct TOptions
 
     TDuration RequestTimeout = TDuration::Minutes(5);
     TDuration ConnectionTimeout = TDuration::Hours(1);
+    bool Fallback = false;
 
     void Parse(int argc, char** argv);
 };
