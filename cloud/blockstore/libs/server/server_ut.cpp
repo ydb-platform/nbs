@@ -3,18 +3,28 @@
 #include "server_test.h"
 
 #include <cloud/blockstore/libs/client/client.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
+#include <cloud/blockstore/libs/diagnostics/request_stats.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+
+#include <cloud/storage/core/libs/common/timer_test.h>
+#include <cloud/storage/core/libs/diagnostics/max_calculator.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 
+#include <util/datetime/cputimer.h>
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/system/datetime.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -730,6 +740,304 @@ Y_UNIT_TEST_SUITE(TServerTest)
         );
 
         writePromise.SetValue(NProto::TWriteBlocksResponse());
+    }
+
+    Y_UNIT_TEST(ShouldTrackMaxTimeAcrossClientChanges)
+    {
+        for (const bool disconnect: {false, true}) {
+            for (const ui32 code: {S_OK, E_REJECTED, E_IO}) {
+                TPortManager portManager;
+                const auto port = portManager.GetPort(9001);
+                const auto dataPort = portManager.GetPort(9002);
+                const TString diskId = "max-time-volume";
+                const TString oldClientId = "old-client";
+                const TString newClientId = "new-client";
+
+                auto completed = NewPromise<NProto::TWriteBlocksResponse>();
+                auto received = NewPromise<void>();
+                auto service = std::make_shared<TTestService>();
+                service->MountVolumeHandler = [diskId](const auto& request)
+                {
+                    UNIT_ASSERT_VALUES_EQUAL(diskId, request->GetDiskId());
+                    NProto::TMountVolumeResponse response;
+                    response.SetSessionId("session");
+                    auto& volume = *response.MutableVolume();
+                    volume.SetDiskId(diskId);
+                    volume.SetBlockSize(DefaultBlockSize);
+                    volume.SetBlocksCount(1024);
+                    volume.SetStorageMediaKind(
+                        NCloud::NProto::STORAGE_MEDIA_HDD);
+                    volume.SetCloudId("cloud");
+                    volume.SetFolderId("folder");
+                    return MakeFuture(response);
+                };
+                service->UnmountVolumeHandler = [](const auto&)
+                {
+                    return MakeFuture<NProto::TUnmountVolumeResponse>();
+                };
+                service->WriteBlocksHandler =
+                    [oldClientId, completed,
+                     received](const auto& request) mutable
+                {
+                    if (request->GetHeaders().GetClientId() == oldClientId) {
+                        received.SetValue();
+                        return completed.GetFuture();
+                    }
+                    return MakeFuture<NProto::TWriteBlocksResponse>();
+                };
+
+                // Keep client counters separate from the server's real stats.
+                TTestFactory serverFactory;
+                TTestFactory clientFactory;
+                auto timer = std::make_shared<TTestTimer>();
+                auto counters =
+                    serverFactory.Monitoring->GetCounters()->GetSubgroup(
+                        "counters", "blockstore");
+                auto serverCounters =
+                    counters->GetSubgroup("component", "server");
+                auto volumeCounters =
+                    counters->GetSubgroup("component", "server_volume")
+                        ->GetSubgroup("host", "cluster");
+                auto requestStats = CreateServerRequestStats(
+                    serverCounters, timer,
+                    EHistogramCounterOption::ReportMultipleCounters,
+                    {});
+                auto volumeStats = CreateVolumeStats(
+                    serverFactory.Monitoring, TDuration::Seconds(1),
+                    EVolumeStatsType::EServerStats, timer);
+
+                NProto::TServerAppConfig proto;
+                proto.MutableServerConfig()->SetPort(port);
+                proto.MutableServerConfig()->SetDataPort(dataPort);
+                auto config = std::make_shared<TServerAppConfig>(proto);
+                auto stats = CreateServerStats(
+                    config, std::make_shared<TDiagnosticsConfig>(),
+                    serverFactory.Monitoring, serverFactory.ProfileLog,
+                    requestStats, volumeStats);
+                auto server = CreateServer(config, serverFactory.Logging, stats,
+                                           service, nullptr,
+                                           {}, CreateCertificateProviderStub());
+                auto client = clientFactory.CreateClientBuilder()
+                                  .SetPort(port)
+                                  .SetDataPort(dataPort)
+                                  .SetClientId(oldClientId)
+                                  .BuildClient();
+                server->Start();
+                client->Start();
+                Y_DEFER
+                {
+                    client->Stop();
+                    server->Stop();
+                    if (!completed.GetFuture().HasValue()) {
+                        completed.SetValue(NProto::TWriteBlocksResponse());
+                    }
+                };
+                auto endpoint = client->CreateEndpoint();
+                endpoint->Start();
+                Y_DEFER
+                {
+                    endpoint->Stop();
+                };
+
+                const auto mount = [&](const auto& ep, const TString& instance)
+                {
+                    auto request =
+                        std::make_shared<NProto::TMountVolumeRequest>();
+                    request->SetDiskId(diskId);
+                    request->SetInstanceId(instance);
+                    const auto response =
+                        ep->MountVolume(MakeIntrusive<TCallContext>(), request)
+                            .GetValue(TDuration::Seconds(5));
+                    UNIT_ASSERT_C(!HasError(response), response.GetError());
+                };
+                const auto write = [&](const auto& ep)
+                {
+                    auto request =
+                        std::make_shared<NProto::TWriteBlocksRequest>();
+                    request->SetDiskId(diskId);
+                    request->SetSessionId("session");
+                    request->MutableBlocks()->AddBuffers(
+                        TString(DefaultBlockSize, 'x'));
+                    return ep->WriteBlocks(MakeIntrusive<TCallContext>(),
+                                           request);
+                };
+                const auto instanceMaxTime = [&](const TString& instance)
+                {
+                    auto volume =
+                        volumeCounters->FindSubgroup("volume", diskId);
+                    UNIT_ASSERT(volume);
+                    auto group = volume->FindSubgroup("instance", instance);
+                    UNIT_ASSERT(group);
+                    auto counter = group->GetSubgroup("cloud", "cloud")
+                                       ->GetSubgroup("folder", "folder")
+                                       ->GetSubgroup("type", "hdd")
+                                       ->GetSubgroup("request", "WriteBlocks")
+                                       ->FindCounter("MaxTime");
+                    UNIT_ASSERT(counter);
+                    return counter;
+                };
+                const auto collect = [&](TDuration age = TDuration::Zero())
+                {
+                    size_t writes = 0;
+                    server->CollectRequests(
+                        [&](auto& context, auto volumeInfo, auto mediaKind,
+                            auto requestType, auto time)
+                        {
+                            if (requestType != EBlockStoreRequest::WriteBlocks)
+                            {
+                                return;
+                            }
+                            ++writes;
+                            if (age) {
+                                context.SetRequestStartedCycles(
+                                    GetCycleCount() -
+                                    DurationToCyclesSafe(age));
+                                time = context.CalcRequestTime(GetCycleCount());
+                            }
+                            stats->AddIncompleteRequest(context, volumeInfo,
+                                                        mediaKind, requestType,
+                                                        time);
+                        });
+                    return writes;
+                };
+                const auto waitForCompletion = [&]
+                {
+                    // A client reply can precede the server's Finish CQ event.
+                    const auto deadline =
+                        TInstant::Now() + TDuration::Seconds(5);
+                    while (collect()) {
+                        UNIT_ASSERT_C(
+                            TInstant::Now() < deadline,
+                            "Completed WriteBlocks still collected by server");
+                        Sleep(TDuration::MilliSeconds(1));
+                    }
+                };
+
+                mount(endpoint, "old-instance");
+                UNIT_ASSERT(volumeStats->GetVolumeInfo(diskId, oldClientId));
+                auto oldMaxTime = instanceMaxTime("old-instance");
+                auto maxTime = serverCounters->GetSubgroup("type", "hdd")
+                                   ->GetSubgroup("request", "WriteBlocks")
+                                   ->GetCounter("MaxTime");
+                auto response = write(endpoint);
+                received.GetFuture().GetValue(TDuration::Seconds(5));
+                // MaxTime advances on every tick; percentile publication is
+                // only needed at the full updates below.
+                auto previous = maxTime->Val();
+                for (ui32 seconds = 1; seconds <= 3; ++seconds) {
+                    UNIT_ASSERT(!completed.GetFuture().HasValue());
+                    UNIT_ASSERT(!response.HasValue());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        1, collect(TDuration::Seconds(seconds)));
+                    stats->UpdateStats(false);
+                    UNIT_ASSERT(maxTime->Val() > previous);
+                    UNIT_ASSERT(oldMaxTime->Val() > previous);
+                    previous = maxTime->Val();
+                }
+
+                auto unmount =
+                    std::make_shared<NProto::TUnmountVolumeRequest>();
+                unmount->SetDiskId(diskId);
+                unmount->SetSessionId("session");
+                UNIT_ASSERT(!HasError(
+                    endpoint
+                        ->UnmountVolume(MakeIntrusive<TCallContext>(), unmount)
+                        .GetValue(TDuration::Seconds(5))));
+                // Unmount alone does not remove VolumeStats: expiration does.
+                UNIT_ASSERT(volumeStats->GetVolumeInfo(diskId, oldClientId));
+                if (disconnect) {
+                    endpoint->Stop();
+                    client->Stop();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        E_GRPC_CANCELLED,
+                        response.GetValue(TDuration::Seconds(5))
+                            .GetError()
+                            .GetCode());
+                }
+                timer->AdvanceTime(TDuration::Seconds(2));
+                stats->UpdateStats(true);
+                UNIT_ASSERT(!volumeStats->GetVolumeInfo(diskId, oldClientId));
+                UNIT_ASSERT(!volumeCounters->FindSubgroup("volume", diskId));
+
+                auto nextClient = clientFactory.CreateClientBuilder()
+                                      .SetPort(port)
+                                      .SetDataPort(dataPort)
+                                      .SetClientId(newClientId)
+                                      .BuildClient();
+                nextClient->Start();
+                Y_DEFER
+                {
+                    nextClient->Stop();
+                };
+                auto nextEndpoint = nextClient->CreateEndpoint();
+                nextEndpoint->Start();
+                Y_DEFER
+                {
+                    nextEndpoint->Stop();
+                };
+                mount(nextEndpoint, "new-instance");
+                auto nextMaxTime = instanceMaxTime("new-instance");
+                UNIT_ASSERT_VALUES_EQUAL(0, nextMaxTime->Val());
+                auto newVolume = volumeCounters->FindSubgroup("volume", diskId);
+                UNIT_ASSERT(newVolume);
+                UNIT_ASSERT(
+                    !newVolume->FindSubgroup("instance", "old-instance"));
+                UNIT_ASSERT(volumeStats->GetVolumeInfo(diskId, newClientId));
+
+                // The backend is still busy even when the old client and its
+                // series have gone. Its age belongs only to the aggregate.
+                for (ui32 seconds = 4; seconds <= 6; ++seconds) {
+                    UNIT_ASSERT(!completed.GetFuture().HasValue());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        1, collect(TDuration::Seconds(seconds)));
+                    stats->UpdateStats(false);
+                    UNIT_ASSERT(maxTime->Val() > previous);
+                    UNIT_ASSERT_VALUES_EQUAL(0, nextMaxTime->Val());
+                    previous = maxTime->Val();
+                }
+
+                NProto::TWriteBlocksResponse backendResponse;
+                *backendResponse.MutableError() = MakeError(code);
+                completed.SetValue(backendResponse);
+                if (!disconnect) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        code,
+                        response.GetValue(TDuration::Seconds(5))
+                            .GetError()
+                            .GetCode());
+                }
+                waitForCompletion();
+                stats->UpdateStats(true);
+                previous = maxTime->Val();
+                UNIT_ASSERT(previous > 0);
+                UNIT_ASSERT_VALUES_EQUAL(0, nextMaxTime->Val());
+                for (size_t i = 0; i < DEFAULT_BUCKET_COUNT; ++i) {
+                    UNIT_ASSERT_VALUES_EQUAL(0, collect());
+                    stats->UpdateStats(false);
+                    UNIT_ASSERT(maxTime->Val() <= previous);
+                    UNIT_ASSERT_VALUES_EQUAL(0, nextMaxTime->Val());
+                    previous = maxTime->Val();
+                }
+                UNIT_ASSERT_VALUES_EQUAL(0, maxTime->Val());
+
+                // A normal completed write contributes to the new series and
+                // expires using the same window, without reviving the old one.
+                UNIT_ASSERT(!HasError(
+                    write(nextEndpoint).GetValue(TDuration::Seconds(5))));
+                waitForCompletion();
+                stats->UpdateStats(true);
+                UNIT_ASSERT(maxTime->Val() > 0);
+                UNIT_ASSERT(nextMaxTime->Val() > 0);
+                UNIT_ASSERT(
+                    !newVolume->FindSubgroup("instance", "old-instance"));
+                for (size_t i = 0; i < DEFAULT_BUCKET_COUNT; ++i) {
+                    UNIT_ASSERT_VALUES_EQUAL(0, collect());
+                    stats->UpdateStats(false);
+                }
+                UNIT_ASSERT_VALUES_EQUAL(0, maxTime->Val());
+                UNIT_ASSERT_VALUES_EQUAL(0, nextMaxTime->Val());
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldIdentifyInsecureControlChannelSource)

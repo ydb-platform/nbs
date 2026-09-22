@@ -2,6 +2,9 @@
 
 #include <cloud/blockstore/libs/common/constants.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
+#include <cloud/blockstore/libs/diagnostics/request_stats.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/storage/api/fresh_blocks_writer.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
@@ -12,6 +15,10 @@
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
+
+#include <cloud/storage/core/libs/common/timer_test.h>
+#include <cloud/storage/core/libs/diagnostics/max_calculator.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <util/system/hostname.h>
 #include <util/thread/lfqueue.h>
@@ -10612,6 +10619,164 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
     Y_UNIT_TEST(ShouldRejectDuplicateWriteBlocksLocalWhenVolumeSysActorIsKilled)
     {
         DoShouldRejectDuplicateWriteBlocksLocalWhenVolumeIsKilled(true);
+    }
+
+    void DoShouldCompleteDuplicateWritesOnRestart(bool rebootSysTablet)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetOverlappingRequestsPolicy(
+            NProto::EOverlappingRequestsPolicy::ORP_ENABLE);
+        auto runtime = PrepareTestActorRuntime(config);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+        auto clientInfo = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE, NProto::VOLUME_MOUNT_LOCAL, 0);
+        volume.AddClient(clientInfo);
+
+        auto timer = std::make_shared<TTestTimer>();
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server");
+        auto stats = CreateServerStats(
+            nullptr,
+            std::make_shared<TDiagnosticsConfig>(),
+            monitoring,
+            CreateProfileLogStub(),
+            CreateServerRequestStats(
+                counters,
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}), CreateVolumeStatsStub());
+        auto maxTime = counters->GetSubgroup("type", "hdd")
+                           ->GetSubgroup("request", "WriteBlocks")
+                           ->GetCounter("MaxTime");
+        TLog log;
+        TMetricRequest metric(EBlockStoreRequest::WriteBlocks);
+        constexpr size_t RequestCount = 3;
+        TVector<TCallContextPtr> contexts;
+        TVector<bool> pending(RequestCount, true);
+        const auto range = TBlockRange64::WithLength(0, 1024);
+        const auto send = [&](size_t cookie)
+        {
+            auto request = volume.CreateWriteBlocksRequest(
+                range, clientInfo.GetClientId(), GetBlockContent(1));
+            contexts.push_back(request->CallContext);
+            stats->RequestStarted(log, metric, *contexts.back());
+            volume.SendToPipe(std::move(request), cookie);
+        };
+        const auto collect = [&](ui32 seconds)
+        {
+            for (size_t i = 0; i < contexts.size(); ++i) {
+                if (pending[i]) {
+                    contexts[i]->SetRequestStartedCycles(
+                        GetCycleCount() -
+                        DurationToCyclesSafe(TDuration::Seconds(seconds)));
+                    stats->AddIncompleteRequest(
+                        *contexts[i],
+                        {},
+                        metric.MediaKind,
+                        metric.RequestType,
+                        contexts[i]->CalcRequestTime(GetCycleCount()));
+                }
+            }
+            stats->UpdateStats(false);
+        };
+
+        // Complete the storage operation, but hold its response so that the
+        // Volume queues duplicate requests instead of sending more writes.
+        ui32 droppedResponses = 0;
+        const auto oldFilter = runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvWriteBlocksResponse) {
+                    ++droppedResponses;
+                    return true;
+                }
+                return false;
+            });
+        send(0);
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return droppedResponses == 1;
+        };
+        runtime->DispatchEvents(options, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, droppedResponses);
+        runtime->SetEventFilter(oldFilter);
+
+        for (size_t i = 1; i < RequestCount; ++i) {
+            send(i);
+        }
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+
+        // A genuinely pending request must age, even if it is a duplicate.
+        auto previous = maxTime->Val();
+        for (ui32 seconds = 1; seconds <= 3; ++seconds) {
+            collect(seconds);
+            UNIT_ASSERT(maxTime->Val() > previous);
+            previous = maxTime->Val();
+        }
+
+        if (rebootSysTablet) {
+            volume.RebootSysTablet();
+        } else {
+            volume.RebootTablet();
+        }
+        volume.WaitReady();
+
+        size_t replies = 0;
+        for (; replies < RequestCount; ++replies) {
+            TAutoPtr<IEventHandle> event;
+            runtime->GrabEdgeEventRethrow<TEvService::TEvWriteBlocksResponse>(
+                event, TDuration::Seconds(1));
+            if (!event) {
+                break;
+            }
+            UNIT_ASSERT_VALUES_EQUAL(volume.GetSender(), event->Recipient);
+            UNIT_ASSERT(event->Cookie < RequestCount);
+            UNIT_ASSERT(pending[event->Cookie]);
+            const auto& response =
+                *event->Get<TEvService::TEvWriteBlocksResponse>();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetStatus());
+            stats->ResponseSent(metric, *contexts[event->Cookie]);
+            stats->RequestCompleted(
+                log, metric, *contexts[event->Cookie], response.GetError());
+            pending[event->Cookie] = false;
+        }
+
+        // The old tablet is gone and cannot execute any of these writes.
+        // Missing duplicate replies used to leave server handlers collecting
+        // ever-increasing ages, even after the entire MaxTime window elapsed.
+        for (ui32 seconds = 4; seconds <= 4 + DEFAULT_BUCKET_COUNT; ++seconds) {
+            collect(seconds);
+        }
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            0,
+            maxTime->Val(),
+            "Completed tablet still contributes to server/MaxTime; replies="
+                << replies << "/" << RequestCount);
+        UNIT_ASSERT_VALUES_EQUAL(RequestCount, replies);
+
+        // A new request after recovery still reaches the payload backend.
+        volume.AddClient(clientInfo);
+        volume.WriteBlocks(range, clientInfo.GetClientId(), GetBlockContent(2));
+        CheckBlockContent<__LINE__>(
+            volume,
+            clientInfo.GetClientId(),
+            {}, range, GetBlockContent(2));
+    }
+
+    Y_UNIT_TEST(ShouldCompleteDuplicateWritesOnUserActorRestart)
+    {
+        DoShouldCompleteDuplicateWritesOnRestart(false);
+    }
+
+    Y_UNIT_TEST(ShouldCompleteDuplicateWritesOnSysTabletRestart)
+    {
+        DoShouldCompleteDuplicateWritesOnRestart(true);
     }
 
     Y_UNIT_TEST(ShouldHandleAllocationErrorsWhenUpdatingConfig)
