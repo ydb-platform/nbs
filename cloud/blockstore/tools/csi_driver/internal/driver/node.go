@@ -329,6 +329,8 @@ func (s *nodeService) NodeStageVolume(
 					}
 				}
 
+				// Preserve endpoint metadata after failure: startup may still be in progress
+				// and cleanup may fail. A later NodeUnstageVolume needs it to retry the stop.
 				if nfsBackend {
 					err = s.nodeStageFileStoreAsVhostSocket(
 						ctx,
@@ -347,10 +349,6 @@ func (s *nodeService) NodeStageVolume(
 						getNbsVolumeAccessMode(req.VolumeCapability.AccessMode, false),
 						vhostSettings,
 						stageData.ClientIndex)
-				}
-
-				if err != nil {
-					ignoreError(os.Remove(stageRecordPath))
 				}
 			}
 		} else {
@@ -405,13 +403,21 @@ func (s *nodeService) NodeUnstageVolume(
 		nbsId, _ := parseVolumeId(req.VolumeId)
 
 		stageRecordPath := filepath.Join(req.StagingTargetPath, nbsId+".json")
-		if stageData, err := s.readStageData(stageRecordPath); err == nil {
+		stageData, err := s.readStageData(stageRecordPath)
+		if os.IsNotExist(err) {
+			logVolume(req.VolumeId, "Stage record %q is missing; skipping unstage", stageRecordPath)
+		} else if err != nil {
+			return nil, s.statusErrorf(codes.Internal,
+				"Failed to read stage record %q: %v", stageRecordPath, err)
+		} else {
 			if err := s.nodeUnstageVhostSocket(ctx, nbsId, stageData); err != nil {
 				return nil, s.statusErrorf(
 					s.GetGrpcErrorCode(err),
 					"Failed to unstage volume: %v", err)
 			}
-			ignoreError(os.Remove(stageRecordPath))
+			if err := os.Remove(stageRecordPath); err != nil {
+				logVolume(req.VolumeId, "Failed to remove stage record %q: %v", stageRecordPath, err)
+			}
 		}
 	} else {
 		if err := s.nodeUnstageVolume(ctx, req); err != nil {

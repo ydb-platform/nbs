@@ -4,6 +4,7 @@ package driver
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"log"
@@ -2049,95 +2050,140 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 	testCtx.mounter.AssertExpectations(t)
 }
 
-func TestNodeStageVolumeErrorForKubevirt(
-	t *testing.T,
-) {
-	t.Helper()
-	testCtx := CreateTestContext(
-		t,
-		true,
-		false,
-		true,
-		defaultNfsVhostReplicaCount,
-		defaultNbsServerReplicaCount,
-	)
+func TestNodeStageVolumeErrorForKubevirt(t *testing.T) {
+	for _, cleanupFails := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cleanupFails=%t", cleanupFails), func(t *testing.T) {
+			testCtx := CreateTestContext(
+				t,
+				true,
+				false,
+				true,
+				defaultNfsVhostReplicaCount,
+				defaultNbsServerReplicaCount,
+			)
 
-	ctx := context.Background()
-	backend := "nbs"
+			ctx := context.Background()
+			backend := "nbs"
+			var cleanupErr error
+			if cleanupFails {
+				cleanupErr = &nbsclient.ClientError{
+					Code:    nbsclient.E_REJECTED,
+					Message: "endpoint is starting now",
+				}
+			}
 
-	nodeService := newNodeService(
-		defaultNodeId,
-		defaultCientId,
-		true, // vmMode
-		testCtx.socketsDir,
-		testCtx.targetFsPathPattern,
-		testCtx.targetBlkPathPattern,
-		testCtx.localFsOverrides,
-		getNbsClients(testCtx.nbsClients),
-		getNfsClients(testCtx.nfsClients),
-		testCtx.nfsLocalClient,
-		testCtx.nfsLocalFilestoreClient,
-		testCtx.mounter,
-		[]string{},
-		false,
-		defaultStartEndpointRequestTimeout,
-		testCtx.nfsVhostReplicaCount,
-		testCtx.nbsServerReplicaCount,
-	)
+			nodeService := newNodeService(
+				defaultNodeId,
+				defaultCientId,
+				true, // vmMode
+				testCtx.socketsDir,
+				testCtx.targetFsPathPattern,
+				testCtx.targetBlkPathPattern,
+				testCtx.localFsOverrides,
+				getNbsClients(testCtx.nbsClients),
+				getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient,
+				testCtx.nfsLocalFilestoreClient,
+				testCtx.mounter,
+				[]string{},
+				false,
+				defaultStartEndpointRequestTimeout,
+				testCtx.nfsVhostReplicaCount,
+				testCtx.nbsServerReplicaCount,
+			)
 
-	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
-	volumeCapability := csi.VolumeCapability{
-		AccessType: &csi.VolumeCapability_Mount{
-			Mount: &csi.VolumeCapability_MountVolume{},
-		},
-		AccessMode: &csi.VolumeCapability_AccessMode{
-			Mode: accessMode,
-		},
+			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
+			volumeCapability := csi.VolumeCapability{
+				AccessType: &csi.VolumeCapability_Mount{
+					Mount: &csi.VolumeCapability_MountVolume{},
+				},
+				AccessMode: &csi.VolumeCapability_AccessMode{
+					Mode: accessMode,
+				},
+			}
+
+			volumeContext := map[string]string{
+				backendVolumeContextKey: backend,
+				instanceIdKey:           defaultInstanceId,
+			}
+
+			hostType := nbs.EHostType_HOST_TYPE_DEFAULT
+			nbsClient := testCtx.nbsClients[0]
+			if backend == "nbs" {
+				nbsClient.On("ListEndpoints",
+					ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
+				nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+					Headers:          getDefaultStartEndpointRequestHeaders(),
+					UnixSocketPath:   testCtx.nbsSocketPath,
+					DiskId:           defaultDiskId,
+					InstanceId:       defaultInstanceId,
+					ClientId:         testCtx.actualClientId,
+					DeviceName:       defaultDiskId,
+					IpcType:          nbs.EClientIpcType_IPC_VHOST,
+					VhostQueuesCount: defaultVhostQueuesCount,
+					VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+					VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+					Persistent:       true,
+					NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
+						UseFreeNbdDeviceFile: false,
+					},
+					ClientProfile: &nbs.TClientProfile{
+						HostType: &hostType,
+					},
+				}).Return(&nbs.TStartEndpointResponse{}, status.Error(codes.DeadlineExceeded, ""))
+				nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+					UnixSocketPath: testCtx.nbsSocketPath,
+				}).Return(&nbs.TStopEndpointResponse{}, cleanupErr).Once()
+			}
+
+			_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+				VolumeCapability:  &volumeCapability,
+				VolumeContext:     volumeContext,
+			})
+			require.Equal(t, codes.DeadlineExceeded, status.Code(err))
+
+			stageRecordPath := filepath.Join(testCtx.stagingTargetPath, defaultDiskId+".json")
+			stageRecord, err := os.ReadFile(stageRecordPath)
+			require.NoError(t, err)
+			var stageData StageData
+			require.NoError(t, json.Unmarshal(stageRecord, &stageData))
+			require.Equal(t, StageData{
+				Backend:       "nbs",
+				InstanceId:    defaultInstanceId,
+				RealStagePath: testCtx.sourcePath,
+				ClientIndex:   0,
+			}, stageData)
+
+			unstageReq := &csi.NodeUnstageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+			}
+			stopReq := &nbs.TStopEndpointRequest{UnixSocketPath: testCtx.nbsSocketPath}
+			if cleanupFails {
+				nbsClient.On("StopEndpoint", ctx, stopReq).
+					Return(&nbs.TStopEndpointResponse{}, cleanupErr).Once()
+				_, err = nodeService.NodeUnstageVolume(ctx, unstageReq)
+				require.Equal(t, codes.Unavailable, status.Code(err))
+				require.FileExists(t, stageRecordPath)
+				require.DirExists(t, testCtx.sourcePath)
+			}
+
+			nbsClient.On("StopEndpoint", ctx, stopReq).
+				Return(&nbs.TStopEndpointResponse{}, nil).Once()
+			_, err = nodeService.NodeUnstageVolume(ctx, unstageReq)
+			require.NoError(t, err)
+			require.NoFileExists(t, stageRecordPath)
+			require.NoDirExists(t, testCtx.sourcePath)
+
+			// A repeated unstage succeeds without another StopEndpoint call.
+			_, err = nodeService.NodeUnstageVolume(ctx, unstageReq)
+			require.NoError(t, err)
+			nbsClient.AssertExpectations(t)
+			testCtx.mounter.AssertExpectations(t)
+		})
 	}
-
-	volumeContext := map[string]string{
-		backendVolumeContextKey: backend,
-		instanceIdKey:           defaultInstanceId,
-	}
-
-	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
-	nbsClient := testCtx.nbsClients[0]
-	if backend == "nbs" {
-		nbsClient.On("ListEndpoints",
-			ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
-		nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
-			Headers:          getDefaultStartEndpointRequestHeaders(),
-			UnixSocketPath:   testCtx.nbsSocketPath,
-			DiskId:           defaultDiskId,
-			InstanceId:       defaultInstanceId,
-			ClientId:         testCtx.actualClientId,
-			DeviceName:       defaultDiskId,
-			IpcType:          nbs.EClientIpcType_IPC_VHOST,
-			VhostQueuesCount: defaultVhostQueuesCount,
-			VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-			VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
-			Persistent:       true,
-			NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-				UseFreeNbdDeviceFile: false,
-			},
-			ClientProfile: &nbs.TClientProfile{
-				HostType: &hostType,
-			},
-		}).Return(&nbs.TStartEndpointResponse{}, status.Error(codes.DeadlineExceeded, ""))
-		nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
-			UnixSocketPath: testCtx.nbsSocketPath,
-		}).Return(&nbs.TStopEndpointResponse{}, nil)
-	}
-
-	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
-		VolumeId:          testCtx.volumeId,
-		StagingTargetPath: testCtx.stagingTargetPath,
-		VolumeCapability:  &volumeCapability,
-		VolumeContext:     volumeContext,
-	})
-	require.Error(t, err)
-
-	testCtx.mounter.AssertExpectations(t)
 }
 
 func TestNodeUnstageVolumeErrorForKubevirt(
@@ -2237,4 +2283,59 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 	assert.Equal(t, codes.DeadlineExceeded, status.Code())
 
 	testCtx.mounter.AssertExpectations(t)
+}
+
+func TestNodeUnstageVolumeStageRecordErrorsForKubevirt(t *testing.T) {
+	for _, testCase := range []struct {
+		name     string
+		prepare  func(t *testing.T, path string)
+		wantCode codes.Code
+	}{
+		{
+			name:     "missing",
+			prepare:  func(t *testing.T, path string) {},
+			wantCode: codes.OK,
+		},
+		{
+			name: "invalid JSON",
+			prepare: func(t *testing.T, path string) {
+				require.NoError(t, os.WriteFile(path, []byte("{"), 0600))
+			},
+			wantCode: codes.Internal,
+		},
+		{
+			name: "read error",
+			prepare: func(t *testing.T, path string) {
+				// Reading a directory fails even when the tests run as root.
+				require.NoError(t, os.Mkdir(path, 0700))
+			},
+			wantCode: codes.Internal,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			stagingTargetPath := t.TempDir()
+			stageRecordPath := filepath.Join(stagingTargetPath, defaultDiskId+".json")
+			testCase.prepare(t, stageRecordPath)
+			nbsClient := mocks.NewNbsClientMock()
+			service := &nodeService{
+				vmMode:     true,
+				nbsClients: []nbsclient.ClientIface{nbsClient},
+				volumeOps:  &sync.Map{},
+			}
+			resp, err := service.NodeUnstageVolume(context.Background(), &csi.NodeUnstageVolumeRequest{
+				VolumeId:          getVolumeId(true),
+				StagingTargetPath: stagingTargetPath,
+			})
+			require.Equal(t, testCase.wantCode, status.Code(err))
+			if testCase.wantCode == codes.OK {
+				require.NotNil(t, resp)
+			} else {
+				require.Nil(t, resp)
+				require.ErrorContains(t, err, stageRecordPath)
+				_, statErr := os.Stat(stageRecordPath)
+				require.NoError(t, statErr)
+			}
+			nbsClient.AssertNotCalled(t, "StopEndpoint", mock.Anything, mock.Anything)
+		})
+	}
 }
