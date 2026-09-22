@@ -118,7 +118,13 @@ class Daemon(object):
     def __kill_process(self):
         self.__verify_process()
         logger.info("killing process")
-        self.__process.kill()
+        try:
+            self.__process.kill()
+        except common.TimeoutError as error:
+            try:
+                self.__process.process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                raise error
         self.__process.wait(check_exit_code=False)
         self.__process = None
 
