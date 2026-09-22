@@ -219,6 +219,10 @@ void TOptions::Parse(int argc, char** argv)
         .NoArgument()
         .SetFlag(&Netlink);
 
+    opts.AddLongOption("fallback", "setup this connection as a fallback")
+        .NoArgument()
+        .StoreTrue(&Fallback);
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.Has(&verbose) && !VerboseLevel) {

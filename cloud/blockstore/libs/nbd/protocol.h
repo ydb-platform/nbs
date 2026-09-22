@@ -55,6 +55,8 @@ enum {
     NBD_FLAG_SEND_TRIM          = 1 << 5,   // Send TRIM (discard)
     NBD_FLAG_SEND_WRITE_ZEROES  = 1 << 6,   // Send WRITE_ZEROES
     NBD_FLAG_SEND_DF            = 1 << 7,   // Send DF (Do not Fragment)
+    NBD_FLAG_CAN_MULTI_CONN	    = 1 << 8,   // Server supports multiple
+                                            // connections per export
 };
 
 ////////////////////////////////////////////////////////////////////////////////

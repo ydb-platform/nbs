@@ -310,6 +310,7 @@ bool TServerHandler::NegotiateClient(TRequestReader& in, TRequestWriter& out)
 
     TClientHello client;
     if (in.ReadClientHello(client)) {
+        Cerr << "client.Flags=" << client.Flags << Endl;
         Y_ENSURE(client.Flags == (NBD_FLAG_C_FIXED_NEWSTYLE | NBD_FLAG_C_NO_ZEROES));
 
         if (ProcessOptions(in, out)) {
@@ -470,7 +471,8 @@ void TServerHandler::ProcessExportInfoRequest(
 
     exp.Flags = NBD_FLAG_HAS_FLAGS
               | NBD_FLAG_SEND_TRIM
-              | NBD_FLAG_SEND_WRITE_ZEROES;
+              | NBD_FLAG_SEND_WRITE_ZEROES
+              | NBD_FLAG_CAN_MULTI_CONN;
 
     if (Options.CheckpointId) {
         exp.Flags |= NBD_FLAG_READ_ONLY;
