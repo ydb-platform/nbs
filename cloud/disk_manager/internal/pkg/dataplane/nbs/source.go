@@ -111,12 +111,6 @@ func (s *diskSource) generateChunkIndicesUsingGetChangedBlocks(
 
 		chunkIndex := uint32(blockIndex / s.blocksInChunk)
 
-		// The last byte can contain bits beyond the end of the disk.
-		maskSize := (int(blockCount) + 7) / 8
-		if len(blockMask) > maskSize {
-			blockMask = blockMask[:maskSize]
-		}
-
 		i := 0
 		for i < len(blockMask) {
 			// blocksInChunk should be multiple of 8.
@@ -124,7 +118,8 @@ func (s *diskSource) generateChunkIndicesUsingGetChangedBlocks(
 
 			for i < len(blockMask) && i < chunkEnd {
 				mask := blockMask[i]
-				if i == maskSize-1 && blockCount%8 != 0 {
+				// Ignore unused bits in the last mask byte.
+				if i == len(blockMask)-1 && blockCount%8 != 0 {
 					mask &= byte((1 << (blockCount % 8)) - 1)
 				}
 
