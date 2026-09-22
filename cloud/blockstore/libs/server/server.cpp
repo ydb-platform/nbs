@@ -163,7 +163,7 @@ struct TAppContext
 
 using TRequestsInFlight = NStorage::NGrpc::TRequestsInFlight<
     TServerRequestHandlerBase,
-    NStorage::NGrpc::TNoIdRequestsInFlightDiag<TWellKnownEntityTypes::SERVER>>;
+    TWellKnownEntityTypes::SERVER>;
 
 using TExecutorContext = NStorage::NGrpc::
     TExecutorContext<grpc::ServerCompletionQueue, TRequestsInFlight>;

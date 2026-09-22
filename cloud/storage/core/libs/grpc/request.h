@@ -26,20 +26,23 @@ public:
 
 using TRequestHandlerPtr = std::unique_ptr<TRequestHandlerBase>;
 
-template <const TStringBuf& EntityTypeName>
-struct TNoIdRequestsInFlightDiag
+// TODO(https://github.com/ydb-platform/nbs/issues/7264)
+template <typename TRequestHandler>
+TStringBuf RequestHandlerEntityId(const TRequestHandler& handler)
 {
-    static constexpr TStringBuf EntityType = EntityTypeName;
-
-    template <typename TRequestHandler>
-    static TStringBuf GetEntityId(const TRequestHandler& handler)
-    {
-        Y_UNUSED(handler);
+    if constexpr (requires { handler.EntityId; }) {
+        return handler.EntityId;
+    } else {
         return {};
     }
-};
+}
 
-template <typename TRequestHandler, typename TDiag>
+// EntityType is a reference (not a by-value TStringBuf) because a by-value
+// class non-type template parameter must be a structural type, and TStringBuf
+// is not one - it inherits std::string_view, whose members are private. A
+// reference to a constexpr value (e.g. TWellKnownEntityTypes::DISK) has no such
+// requirement.
+template <typename TRequestHandler, const TStringBuf& EntityType>
 class TRequestsInFlight final
 {
 protected:
@@ -66,8 +69,8 @@ public:
             auto res = Requests.emplace(handler);
             STORAGE_VERIFY(
                 res.second,
-                TDiag::EntityType,
-                TDiag::GetEntityId(*handler));
+                EntityType,
+                RequestHandlerEntityId(*handler));
         }
 
         return true;
@@ -79,8 +82,8 @@ public:
             auto it = Requests.find(handler);
             STORAGE_VERIFY(
                 it != Requests.end(),
-                TDiag::EntityType,
-                TDiag::GetEntityId(*handler));
+                EntityType,
+                RequestHandlerEntityId(*handler));
             Requests.erase(it);
         }
     }
