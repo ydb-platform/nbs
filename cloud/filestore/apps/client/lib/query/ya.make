@@ -1,8 +1,7 @@
-LIBRARY(filestore-libs-storage-query)
+LIBRARY(filestore-apps-client-query)
 
 SRCS(
-    query.cpp
-    schema.cpp
+    parser.cpp
 )
 
 PEERDIR(

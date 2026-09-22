@@ -1,7 +1,9 @@
-UNITTEST_FOR(cloud/filestore/libs/storage/query)
+UNITTEST_FOR(cloud/filestore/apps/client/lib/query)
+
+INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 
 SRCS(
-    query_ut.cpp
+    parser_ut.cpp
 )
 
 END()
