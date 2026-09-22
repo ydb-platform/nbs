@@ -66,7 +66,6 @@ private:
     ILimiterPtr Limiter;
     IServerHandlerPtr Handler;
     TSocketHolder Socket;
-    const TFuture<void> Ready;
 
     TContLockFreeQueue<TServerResponsePtr> ResponseQueue;
 
@@ -85,15 +84,13 @@ public:
             TContExecutor* e,
             ILimiterPtr limiter,
             IServerHandlerPtr handler,
-            TSocketHolder socket,
-            TFuture<void> ready)
+            TSocketHolder socket)
         : AppCtx(appCtx)
         , Log(appCtx.Log)
         , Executor(e)
         , Limiter(std::move(limiter))
         , Handler(std::move(handler))
         , Socket(std::move(socket))
-        , Ready(std::move(ready))
         , ResponseQueue(e)
     {}
 
@@ -223,13 +220,7 @@ private:
     {
         TContIO io(Socket, c);
 
-        if (!Handler->NegotiateClient(io, io)) {
-            return;
-        }
-
-        CurrentThread().Executor->WaitFor(Ready);
-
-        if (!c->Cancelled() && !IsShuttingDown()) {
+        if (Handler->NegotiateClient(io, io)) {
             Handler->ProcessRequests(this, io, io, c);
         }
     }
@@ -339,8 +330,6 @@ private:
     const TNetworkAddress ListenAddress;
     const ui32 SocketAccessMode;
 
-    // Completion tail for all connections accepted by this endpoint.
-    TFuture<void> DrainResult = MakeFuture();
     std::unique_ptr<TContListener> Listener;
     TConnectionPtr Connection;
 
@@ -391,10 +380,13 @@ public:
 
     TFuture<NProto::TError> Stop(bool deleteSocket)
     {
+        TFuture<void> drainResult = MakeFuture();
+
         auto error = SafeExecute<NProto::TError>([&] {
             if (Connection) {
+                drainResult = Connection->GetDrainResult();
                 Connection->Stop();
-            };
+            }
 
             if (Listener) {
                 Listener->Stop();
@@ -407,7 +399,7 @@ public:
             return NProto::TError();
         });
 
-        return DrainResult.Apply(
+        return drainResult.Apply(
             [error = std::move(error)](const auto& future)
             {
                 Y_UNUSED(future);
@@ -429,16 +421,26 @@ private:
     {
         TSocketHolder socket(accept.S->Release());
 
+        const auto localAddress = PrintHostAndPort(ListenAddress);
         auto address = NAddr::GetPeerAddr(socket);
-        STORAGE_DEBUG("new connection from " << PrintHostAndPort(*address));
+        STORAGE_DEBUG("endpoint " << localAddress
+            << ": new connection from " << PrintHostAndPort(*address));
 
         if (IsTcpAddress(*address)) {
             SetNoDelay(socket, true);
         }
 
-        auto ready = DrainResult;
+        TFuture<void> drainResult = MakeFuture();
         if (Connection) {
+            drainResult = Connection->GetDrainResult();
             Connection->Stop();
+        }
+
+        CurrentThread().Executor->WaitFor(drainResult);
+        if (Executor->Running()->Cancelled()) {
+            STORAGE_INFO("endpoint " << localAddress
+                << ": new connection setup cancelled");
+            return;
         }
 
         Connection = MakeIntrusive<TConnection>(
@@ -446,12 +448,7 @@ private:
             Executor,
             Limiter,
             HandlerFactory->CreateHandler(),
-            std::move(socket),
-            ready);
-
-        // Keep the whole chain even if this connection closes before it starts
-        // processing requests.
-        DrainResult = WaitAll(ready, Connection->GetDrainResult());
+            std::move(socket));
 
         Connection->Start();
     }

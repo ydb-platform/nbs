@@ -1498,10 +1498,10 @@ void TEndpointManager::DoProcessException(
         endpoint->Device.reset();
     }
 
-    const auto& socketPath = endpoint->Request->GetUnixSocketPath();
-
     STORAGE_INFO(prefix << " close socket");
     CloseAllEndpointSockets(*endpoint->Request);
+
+    auto socketPath = endpoint->Request->GetUnixSocketPath();
 
     STORAGE_INFO(prefix << " update error handler");
     NbdErrorHandlerMap->Erase(socketPath);

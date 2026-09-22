@@ -1263,13 +1263,9 @@ Y_UNIT_TEST_SUITE(TServerTest)
         bootstrap->Stop();
     }
 
-    Y_UNIT_TEST(ShouldSerializeRequestsFromDifferentConnections)
+    Y_UNIT_TEST(ShouldDrainRequestsBeforeMountingNewConnection)
     {
-        const ui32 startIndex = 0;
-        const ui64 blocksCount = 42;
-
         TManualEvent firstRequestStarted;
-        TManualEvent secondRequestStarted;
         auto firstRequestCompleted =
             NewPromise<NProto::TZeroBlocksResponse>();
         std::atomic<size_t> requestCount = 0;
@@ -1280,32 +1276,29 @@ Y_UNIT_TEST_SUITE(TServerTest)
             std::shared_ptr<NProto::TZeroBlocksRequest> request)
         {
             Y_UNUSED(callContext);
-
-            UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
-            UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
+            Y_UNUSED(request);
 
             if (requestCount.fetch_add(1) == 0) {
                 firstRequestStarted.Signal();
                 return firstRequestCompleted.GetFuture();
             }
 
-            secondRequestStarted.Signal();
             return MakeFuture<NProto::TZeroBlocksResponse>();
         };
 
-        TPortManager portManager;
-        auto port = portManager.GetPort(9001);
-        TNetworkAddress connectAddress(port);
-
+        TFsPath unixSocket(CreateGuidAsString() + ".sock");
+        TNetworkAddress connectAddress(TUnixSocketPath(unixSocket.GetPath()));
         auto bootstrap = CreateBootstrap(connectAddress, storage);
+        Y_DEFER {
+            firstRequestCompleted.TrySetValue({});
+        };
 
         auto error = bootstrap->Start();
         UNIT_ASSERT_C(!HasError(error), error);
 
         auto firstRequest = std::make_shared<NProto::TZeroBlocksRequest>();
-        firstRequest->SetStartIndex(startIndex);
-        firstRequest->SetBlocksCount(blocksCount);
-
+        firstRequest->SetStartIndex(0);
+        firstRequest->SetBlocksCount(42);
         auto firstRequestFuture = bootstrap->GetClientEndpoint()->ZeroBlocks(
             MakeIntrusive<TCallContext>(),
             std::move(firstRequest));
@@ -1323,29 +1316,23 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         auto mountRequest = std::make_shared<NProto::TMountVolumeRequest>();
         mountRequest->SetDiskId(DefaultStorageOptions.DiskId);
-        auto mountResponse = secondClientEndpoint->MountVolume(
+        auto mountFuture = secondClientEndpoint->MountVolume(
             MakeIntrusive<TCallContext>(),
-            std::move(mountRequest)).GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT_C(!HasError(mountResponse), mountResponse);
+            std::move(mountRequest));
 
-        auto secondRequest = std::make_shared<NProto::TZeroBlocksRequest>();
-        secondRequest->SetStartIndex(startIndex);
-        secondRequest->SetBlocksCount(blocksCount);
-
-        auto secondRequestFuture = secondClientEndpoint->ZeroBlocks(
-            MakeIntrusive<TCallContext>(),
-            std::move(secondRequest));
-
-        UNIT_ASSERT(
-            !secondRequestStarted.WaitT(TDuration::MilliSeconds(100)));
+        // Accepting the new connection closes the old client's socket, but
+        // its backend request remains pending until we complete the promise.
+        UNIT_ASSERT(firstRequestFuture.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(!mountFuture.Wait(TDuration::MilliSeconds(100)));
 
         firstRequestCompleted.SetValue({});
 
-        UNIT_ASSERT(secondRequestStarted.WaitT(TDuration::Seconds(5)));
-        auto secondResponse =
-            secondRequestFuture.GetValue(TDuration::Seconds(5));
-        UNIT_ASSERT_C(!HasError(secondResponse), secondResponse);
-        UNIT_ASSERT(firstRequestFuture.Wait(TDuration::Seconds(5)));
+        auto mountResponse = mountFuture.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(mountResponse), mountResponse);
+
+        error = ZeroBlocks(secondClientEndpoint);
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(2, requestCount.load());
 
         secondClientEndpoint->Stop();
         bootstrap->Stop();
