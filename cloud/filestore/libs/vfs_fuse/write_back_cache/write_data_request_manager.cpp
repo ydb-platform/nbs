@@ -1,7 +1,5 @@
 #include "write_data_request_manager.h"
 
-#include <util/stream/mem.h>
-#include <util/string/builder.h>
 #include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -200,11 +198,6 @@ ui64 TWriteDataRequestManager::GetMaxUnflushedSequenceId() const
                                   : 0;
 }
 
-bool TWriteDataRequestManager::GetStorageIsFull() const
-{
-    return StorageIsFull;
-}
-
 std::unique_ptr<TPendingWriteDataRequest> TWriteDataRequestManager::AddRequest(
     std::shared_ptr<NProto::TWriteDataRequest> request)
 {
@@ -237,6 +230,14 @@ TWriteDataRequestManager::TryAllocPendingRequest()
         // reordered. A front request for a backpressured node may therefore
         // block later requests for unrelated nodes. Per-node commit queues or
         // fair scheduling should be added separately.
+        //
+        // Backpressure is recalculated when a request becomes unflushed, before
+        // that request is answered. Linux FUSE serializes synchronous
+        // write-through writes to an inode: fuse_cache_write_iter holds the
+        // inode's exclusive i_rwsem, and each FUSE_WRITE completes before the
+        // next is submitted. Therefore, backpressure triggered by one request
+        // is already visible when the next request for the same inode reaches
+        // allocation, so no extra requests cross the backpressure boundary.
         return {};
     }
 
@@ -268,17 +269,6 @@ TWriteDataRequestManager::GetNextReadyCachedRequest()
 
     auto* pendingRequest = AllocatedPendingRequests.Front();
     if (!pendingRequest->Serialized) {
-        return {};
-    }
-
-    if (NodesWithBackpressure.contains(
-            pendingRequest->GetRequest().GetNodeId()))
-    {
-        // Known limitation: requests are committed in a single global FIFO
-        // order. Although backpressure is tracked per node, requests are not
-        // reordered. A front request for a backpressured node may therefore
-        // block later requests for unrelated nodes. Per-node commit queues or
-        // fair scheduling should be added separately.
         return {};
     }
 

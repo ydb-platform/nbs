@@ -474,7 +474,21 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         nodeState.Barriers.erase(it);
     }
 
+    // Pending requests are to be failed in order to prevent them from getting
+    // stuck when a flush cannot make progress. Otherwise, they would trigger
+    // unnecessary MaxTime alerts.
+    //
+    // Allocated requests will not hang because they are already on their way to
+    // becoming unflushed requests and will complete normally. They may also be
+    // serialized concurrently while the state lock is released. Canceling them
+    // would complete their promises and allow the memory referenced by their
+    // iovecs to be released while an active serializer is still reading it.
+    // Therefore, only unallocated requests can be safely failed.
+    //
     if (error.GetCode() == E_FS_NOSPC) {
+        // Fail fast for all nodes when the storage is known to be full. Some
+        // nodes may have pending requests but no unflushed requests, so they
+        // would never receive a flush failure of their own.
         FailAllUnallocatedPendingRequests(error);
     } else {
         FailNodeUnallocatedPendingRequests(nodeState, error);
@@ -494,8 +508,11 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
                 "write requests",
                 handle));
 
-            SetFailedFlag();
-            return EFlushRetryStatus::ShouldNotRetry;
+            // Do not treat this as a fatal error. Any request left here is
+            // allocated and cannot be failed safely. It is expected to become
+            // unflushed shortly, after which normal request processing can
+            // complete the handle release.
+            break;
         }
 
         while (!handleState.UnflushedRequests.Empty()) {
@@ -884,31 +901,14 @@ void TWriteBackCacheState::CheckAndAcquireBarriers(TNodeState& nodeState)
 void TWriteBackCacheState::ProcessPendingRequests(
     TGuard<TQueuedOperations>& guard)
 {
-    while (!IsFailed) {
-        auto allocResult = RequestManager.TryAllocPendingRequest();
-        if (allocResult.Failed) {
-            SetFailedFlag();
-            return;
-        }
-
-        if (allocResult.StorageIsFull) {
-            TriggerFlushAll(false);
-            return;
-        }
-
-        if (!allocResult.Request) {
-            // Backpressure or empty queue
-            return;
-        }
-
+    while (auto* pendingRequest = GetNextAllocatedPendingRequest()) {
         // Request serialization is a computationally expensive operation
-        // and it may become a bottleneck if the requests are sumbitted from
-        // multiple thread but processed inside a lock section.
-        // We temporary release and reacquire the lock.
+        // and it may become a bottleneck if the requests are submitted from
+        // multiple threads but processed inside a lock section.
+        // We temporarily release and reacquire the lock.
         guard.GetMutex()->ReleaseWithoutProcessingQueuedOperations();
 
-        bool serializationSucceeded =
-            allocResult.Request->SerializeToAllocation();
+        bool serializationSucceeded = pendingRequest->SerializeToAllocation();
 
         guard.GetMutex()->Acquire();
 
@@ -917,27 +917,51 @@ void TWriteBackCacheState::ProcessPendingRequests(
             return;
         }
 
-        allocResult.Request->SetSerialized();
+        pendingRequest->SetSerialized();
 
-        ProcessReadyCachedRequests();
+        while (auto cachedRequest = GetNextReadyCachedRequest()) {
+            ProcessReadyCachedRequest(std::move(cachedRequest));
+        }
     }
 }
 
-void TWriteBackCacheState::ProcessReadyCachedRequests()
+TPendingWriteDataRequest* TWriteBackCacheState::GetNextAllocatedPendingRequest()
 {
-    while (true) {
-        auto res = RequestManager.GetNextReadyCachedRequest();
-        if (res.Failed) {
-            SetFailedFlag();
-            return;
-        }
-
-        if (!res.Request) {
-            return;
-        }
-
-        ProcessReadyCachedRequest(std::move(res.Request));
+    if (IsFailed) {
+        return nullptr;
     }
+
+    auto allocResult = RequestManager.TryAllocPendingRequest();
+    if (allocResult.Failed) {
+        SetFailedFlag();
+        return nullptr;
+    }
+
+    if (allocResult.StorageIsFull) {
+        TriggerFlushAll(false);
+        return nullptr;
+    }
+
+    // May be empty on backpressure or when the queue is empty
+    return allocResult.Request;
+}
+
+std::unique_ptr<TCachedWriteDataRequest>
+TWriteBackCacheState::GetNextReadyCachedRequest()
+{
+    if (IsFailed) {
+        return nullptr;
+    }
+
+    auto nextReadyResult = RequestManager.GetNextReadyCachedRequest();
+    if (nextReadyResult.Failed) {
+        SetFailedFlag();
+        return nullptr;
+    }
+
+    // May be empty when the queue is empty or the front request is not
+    // serialized yet
+    return std::move(nextReadyResult.Request);
 }
 
 void TWriteBackCacheState::ProcessReadyCachedRequest(
@@ -1079,8 +1103,6 @@ void TWriteBackCacheState::FailUnallocatedPendingRequest(
     std::unique_ptr<TPendingWriteDataRequest> request,
     const NCloud::NProto::TError& error)
 {
-    Y_ABORT_UNLESS(!request->HasAllocation());
-
     QueuedOperations.FailWriteDataPromise(
         std::move(request->AccessPromise()),
         error);

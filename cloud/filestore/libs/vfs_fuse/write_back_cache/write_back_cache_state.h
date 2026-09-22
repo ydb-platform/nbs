@@ -227,8 +227,10 @@ private:
 
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
     void CheckAndAcquireBarriers(TNodeState& nodeState);
+
     void ProcessPendingRequests(TGuard<TQueuedOperations>& guard);
-    void ProcessReadyCachedRequests();
+    TPendingWriteDataRequest* GetNextAllocatedPendingRequest();
+    std::unique_ptr<TCachedWriteDataRequest> GetNextReadyCachedRequest();
     void ProcessReadyCachedRequest(
         std::unique_ptr<TCachedWriteDataRequest> request);
 

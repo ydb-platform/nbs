@@ -857,7 +857,7 @@ private:
     TBootstrap Bootstrap;
 
     TAdaptiveLock GlobalLock;
-    THashMap<ui64, std::shared_ptr<TNodeData>> Nodes;
+    THashMap<ui64, std::unique_ptr<TNodeData>> Nodes;
 
 public:
     explicit TMultiThreadedBootstrap(
@@ -910,6 +910,7 @@ public:
 
     ~TMultiThreadedBootstrap()
     {
+        Bootstrap.Cache.Drain().Wait();
         SubmitThreadPool.Stop();
         ExecutorThreadPool.Stop();
     }
@@ -3102,7 +3103,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
         std::latch start{ThreadCount + 1};
         std::atomic<bool> stopRequested = false;
-        TInstant deadline;
+        TInstant deadline = TInstant::Now() + TestDuration;
 
         TVector<std::exception_ptr> errors(ThreadCount);
         TVector<std::thread> threads;
@@ -3206,7 +3207,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                 });
         }
 
-        deadline = TInstant::Now() + TestDuration;
         start.arrive_and_wait();
 
         for (auto& thread: threads) {

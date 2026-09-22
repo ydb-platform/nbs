@@ -8283,13 +8283,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         UNIT_ASSERT(backpressured);
 
-        WaitForCondition(
+        UNIT_ASSERT(WaitForCondition(
             WaitTimeout,
             [&]()
             {
                 bootstrap.ModuleStatsRegistry->UpdateStats(true);
                 return pendingQueueCount->Val() == 1;
-            });
+            }));
 
         UNIT_ASSERT(!writeFuture.HasValue());
 

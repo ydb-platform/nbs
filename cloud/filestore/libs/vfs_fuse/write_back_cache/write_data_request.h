@@ -11,7 +11,6 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 class TWriteDataRequestManager;
 struct THandleStateTag;
-struct TSerializationNeededTag;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -45,9 +44,6 @@ protected:
 class TPendingWriteDataRequest
     : public TWriteDataRequestBase<TPendingWriteDataRequest>
     , public TIntrusiveListItem<TPendingWriteDataRequest, THandleStateTag>
-    , public TIntrusiveListItem<
-          TPendingWriteDataRequest,
-          TSerializationNeededTag>
 {
 private:
     friend class TWriteDataRequestManager;

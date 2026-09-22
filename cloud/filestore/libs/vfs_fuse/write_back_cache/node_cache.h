@@ -67,8 +67,8 @@ public:
 
     std::unique_ptr<TPendingWriteDataRequest> DequeuePendingRequest();
 
-    // Returns nullptr if the pending queue is empty or the back element is
-    // allocated
+    // Returns nullptr if the pending queue is empty or the back element has
+    // allocation
     std::unique_ptr<TPendingWriteDataRequest>
     PopBackUnallocatedPendingRequest();
 
