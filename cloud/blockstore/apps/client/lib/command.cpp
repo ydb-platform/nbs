@@ -1,5 +1,6 @@
-#include "bootstrap.h"
 #include "command.h"
+
+#include "bootstrap.h"
 #include "factory.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -7,8 +8,8 @@
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/client/throttling.h>
-#include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_request_processor.h>
+#include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -26,8 +27,9 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
-#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
+#include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/version/version.h>
 
@@ -52,6 +54,7 @@ namespace {
 
 const TString DefaultConfigFile = "/Berkanavt/nbs-server/cfg/nbs-client.txt";
 const TString DefaultIamConfigFile = "/Berkanavt/nbs-server/cfg/nbs-iam.txt";
+const TDuration GrpcShutdownTimeout = TDuration::Seconds(5);
 
 ICertificateProviderPtr CreateClientCertificateProvider(
     const TClientAppConfigPtr& config)
@@ -705,6 +708,12 @@ void TCommand::Stop()
 
     if (Monitoring) {
         Monitoring->Stop();
+    }
+
+    if (!WaitForGrpcShutdown(GrpcShutdownTimeout)) {
+        STORAGE_WARN(
+            "Timed out waiting for gRPC shutdown after "
+            << GrpcShutdownTimeout);
     }
 
     if (Logging) {
