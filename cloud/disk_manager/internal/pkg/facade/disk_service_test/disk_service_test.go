@@ -1,8 +1,10 @@
 package disk_service_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"hash/crc32"
 	"testing"
 	"time"
 
@@ -930,6 +932,140 @@ func TestDiskServiceCreateZonalTaskInAnotherZone(t *testing.T) {
 
 func TestDiskServiceResizeDisk(t *testing.T) {
 	testDiskServiceResizeDiskWithZoneID(t, defaultZoneID)
+}
+
+func TestDiskServiceSnapshotsAfterPartialDiskGrowth(t *testing.T) {
+	ctx := testcommon.NewContext()
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, defaultZoneID)
+
+	const blockSize = uint64(4096)
+	const chunkSize = uint64(4 * 1024 * 1024)
+	sizes := []uint64{chunkSize + blockSize, chunkSize + 2*blockSize, 2*chunkSize + blockSize}
+	diskID := t.Name() + "-source"
+	createDisk := func(id string, size uint64, snapshotID string) {
+		request := &disk_manager.CreateDiskRequest{
+			Size:      int64(size),
+			BlockSize: int64(blockSize),
+			Kind:      disk_manager.DiskKind_DISK_KIND_SSD,
+			DiskId:    &disk_manager.DiskId{ZoneId: defaultZoneID, DiskId: id},
+		}
+		if snapshotID == "" {
+			request.Src = &disk_manager.CreateDiskRequest_SrcEmpty{SrcEmpty: &empty.Empty{}}
+		} else {
+			request.Src = &disk_manager.CreateDiskRequest_SrcSnapshotId{SrcSnapshotId: snapshotID}
+		}
+		operation, err := client.CreateDisk(testcommon.GetRequestContext(t, ctx), request)
+		require.NoError(t, err)
+		require.NoError(t, internal_client.WaitOperation(ctx, client, operation.Id))
+	}
+	createDisk(diskID, sizes[0], "")
+	diskContentInfo, err := nbsClient.FillEncryptedDiskWithChunkSize(
+		ctx,
+		diskID,
+		sizes[0],
+		blockSize,
+		nil, // encryption
+	)
+	require.NoError(t, err)
+
+	type expectedSnapshot struct {
+		id      string
+		content nbs.DiskContentInfo
+	}
+	var snapshots []expectedSnapshot
+	previousSnapshotID := ""
+	for stage, size := range sizes {
+		previousSize := diskContentInfo.ContentSize
+		if stage != 0 {
+			operation, err := client.ResizeDisk(
+				testcommon.GetRequestContext(t, ctx),
+				&disk_manager.ResizeDiskRequest{
+					DiskId: &disk_manager.DiskId{ZoneId: defaultZoneID, DiskId: diskID},
+					Size:   int64(size),
+				},
+			)
+			require.NoError(t, err)
+			require.NoError(t, internal_client.WaitOperation(ctx, client, operation.Id))
+
+			// Fill only the added blocks, preserving data shared with the base snapshot.
+			tail := bytes.Repeat([]byte{byte(0x41 + stage)}, int(size-previousSize))
+			require.NoError(t, nbsClient.Write(diskID, int(previousSize), tail))
+			diskContentInfo = nbs.DiskContentInfo{
+				ContentSize: size,
+				Crc32:       crc32.Update(diskContentInfo.Crc32, crc32.IEEETable, tail),
+			}
+		}
+
+		snapshotID := fmt.Sprintf("%s-snapshot-%d", t.Name(), stage)
+		operation, err := client.CreateSnapshot(
+			testcommon.GetRequestContext(t, ctx),
+			&disk_manager.CreateSnapshotRequest{
+				Src:        &disk_manager.DiskId{ZoneId: defaultZoneID, DiskId: diskID},
+				SnapshotId: snapshotID,
+				FolderId:   "folder",
+			},
+		)
+		require.NoError(t, err)
+		response := disk_manager.CreateSnapshotResponse{}
+		require.NoError(t, internal_client.WaitResponse(ctx, client, operation.Id, &response))
+		require.Equal(t, int64(size), response.Size)
+		testcommon.CheckBaseSnapshot(t, ctx, snapshotID, previousSnapshotID)
+		snapshots = append(snapshots, expectedSnapshot{
+			id:      snapshotID,
+			content: diskContentInfo,
+		})
+		previousSnapshotID = snapshotID
+	}
+
+	// Restore every version after all growth to detect changes to shared chunks.
+	// ValidateCrc32 also checks that bytes past ContentSize are zero.
+	for _, snapshot := range snapshots {
+		size := snapshot.content.ContentSize
+		paddedSize := (size + chunkSize - 1) / chunkSize * chunkSize
+		for _, targetSize := range []uint64{size, paddedSize} {
+			destinationID := fmt.Sprintf("%s-restore-%d", snapshot.id, targetSize)
+			createDisk(destinationID, targetSize, snapshot.id)
+			require.NoError(t, nbsClient.ValidateCrc32(ctx, destinationID, snapshot.content))
+			diskParams, err := nbsClient.Describe(ctx, destinationID)
+			require.NoError(t, err)
+			require.Equal(t, targetSize, diskParams.BlocksCount*uint64(diskParams.BlockSize))
+		}
+	}
+
+	// Snapshot-to-image copying must also preserve the exact logical size.
+	lastSnapshot := snapshots[len(snapshots)-1]
+	imageID := t.Name() + "-image"
+	operation, err := client.CreateImage(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateImageRequest{
+			Src:        &disk_manager.CreateImageRequest_SrcSnapshotId{SrcSnapshotId: lastSnapshot.id},
+			DstImageId: imageID,
+			FolderId:   "folder",
+		},
+	)
+	require.NoError(t, err)
+	imageResponse := disk_manager.CreateImageResponse{}
+	require.NoError(t, internal_client.WaitResponse(ctx, client, operation.Id, &imageResponse))
+	require.Equal(t, int64(lastSnapshot.content.ContentSize), imageResponse.Size)
+	imageDiskID := t.Name() + "-image-disk"
+	operation, err = client.CreateDisk(
+		testcommon.GetRequestContext(t, ctx),
+		&disk_manager.CreateDiskRequest{
+			Src:             &disk_manager.CreateDiskRequest_SrcImageId{SrcImageId: imageID},
+			Size:            int64(lastSnapshot.content.ContentSize),
+			BlockSize:       int64(blockSize),
+			Kind:            disk_manager.DiskKind_DISK_KIND_SSD,
+			DiskId:          &disk_manager.DiskId{ZoneId: defaultZoneID, DiskId: imageDiskID},
+			ForceNotLayered: true,
+		},
+	)
+	require.NoError(t, err)
+	require.NoError(t, internal_client.WaitOperation(ctx, client, operation.Id))
+	require.NoError(t, nbsClient.ValidateCrc32(ctx, imageDiskID, lastSnapshot.content))
+	testcommon.CheckConsistency(t, ctx)
 }
 
 func TestDiskServiceAlterDisk(t *testing.T) {

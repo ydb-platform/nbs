@@ -322,6 +322,14 @@ func (t *replicateDiskTask) replicate(
 	}
 	defer target.Close(ctx)
 
+	if target.Size() < source.Size() {
+		return errors.NewNonRetriableErrorf(
+			"destination disk size %v is smaller than source disk size %v",
+			target.Size(),
+			source.Size(),
+		)
+	}
+
 	transferer := common.Transferer{
 		ReaderCount:         t.config.GetReaderCount(),
 		WriterCount:         t.config.GetWriterCount(),

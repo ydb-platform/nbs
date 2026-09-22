@@ -19,7 +19,8 @@ type SnapshotMeta struct {
 	CreateTaskID     string
 	BaseSnapshotID   string
 	BaseCheckpointID string
-	// Snapshot virtual size, i.e. the minimum amount of disk space needed to restore.
+	// Snapshot virtual size in bytes, excluding padding in the last chunk.
+	// Older URL imports may include padding in this size.
 	Size uint64
 	// Snapshot real size, i.e. the amount of disk space occupied in storage.
 	StorageSize uint64
