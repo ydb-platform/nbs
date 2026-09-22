@@ -725,13 +725,19 @@ public:
 
     NProto::TDiskRegistryStateBackup BackupState() const;
 
-    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    struct TStartDeviceMigrationResult
+    {
+        TDiskId DiskId;
+        TDeviceId SourceDeviceId;
+        TResultOrError<NProto::TDeviceConfig> Target;
+    };
+
+    TVector<TStartDeviceMigrationResult> StartDeviceMigrations(
         TInstant now,
         TDiskRegistryDatabase& db,
-        const TDiskId& sourceDiskId,
-        const TDeviceId& sourceDeviceId);
+        const TVector<TDeviceMigration>& migrations);
 
-    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    TResultOrError<NProto::TDeviceConfig> StartForceMigration(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
@@ -1106,6 +1112,15 @@ private:
         const TDiskState& disk,
         TStringBuf callerName);
 
+    NProto::TPlacementGroupConfig* UpdatePlacementGroupInMemory(
+        const TDiskId& diskId,
+        const TDiskState& disk,
+        TStringBuf callerName);
+
+    void PersistPlacementGroup(
+        TDiskRegistryDatabase& db,
+        NProto::TPlacementGroupConfig& config);
+
     void UpdateDiskPlacementInfo(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
@@ -1338,7 +1353,15 @@ private:
         const TDiskId& sourceDiskId,
         const TString& sourceDeviceId);
 
-    NProto::TDeviceConfig StartDeviceMigrationImpl(
+    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& sourceDiskId,
+        const TDeviceId& sourceDeviceId);
+
+    // Starts the migration in memory. The caller is responsible for
+    // persisting the disk and its placement group.
+    NProto::TDeviceConfig StartDeviceMigrationOnTarget(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
