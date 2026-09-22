@@ -16,7 +16,7 @@ private:
     std::atomic_uint64_t RefCount = 1;
 
 public:
-    // TODO(https://github.com/ydb-platform/nbs/issues/7264)
+    // TODO(#7264)
     TString EntityId;
 
 public:
