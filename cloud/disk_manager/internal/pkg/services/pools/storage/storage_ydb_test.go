@@ -24,11 +24,14 @@ func makeDefaultConfig() *pools_config.PoolsConfig {
 	maxActiveSlots := uint32(10)
 	maxBaseDisksInflight := uint32(5)
 	maxBaseDiskUnits := uint32(100)
+	// TODO: remove after deployment of this version is finished.
+	holdBaseDisksWithInflightDependents := true
 
 	return &pools_config.PoolsConfig{
-		MaxActiveSlots:       &maxActiveSlots,
-		MaxBaseDisksInflight: &maxBaseDisksInflight,
-		MaxBaseDiskUnits:     &maxBaseDiskUnits,
+		MaxActiveSlots:                      &maxActiveSlots,
+		MaxBaseDisksInflight:                &maxBaseDisksInflight,
+		MaxBaseDiskUnits:                    &maxBaseDiskUnits,
+		HoldBaseDisksWithInflightDependents: &holdBaseDisksWithInflightDependents,
 	}
 }
 
@@ -3067,6 +3070,68 @@ func TestStorageYDBRetiredBaseDiskShouldBeDeletedAfterReplacementDeletedBeforeCr
 	retired, err := storage.IsBaseDiskRetired(ctx, source.ID)
 	require.NoError(t, err)
 	require.True(t, retired)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+// TODO: remove after deployment of this version is finished.
+func TestStorageYDBRetiredBaseDiskShouldBeDeletedWhenHoldIsDisabled(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	// First stage of rollout: counters are only decremented, base disks are
+	// not held.
+	config := makeDefaultConfig()
+	holdBaseDisksWithInflightDependents := false
+	config.HoldBaseDisksWithInflightDependents = &holdBaseDisksWithInflightDependents
+
+	storage := newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
+
+	overlayDisk := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk",
+	}
+
+	source, replacement := retireBaseDiskWithReplacement(
+		t,
+		ctx,
+		storage,
+		overlayDisk,
+		false, // deletePoolBeforeRetire
+	)
+
+	replacement.CreateTaskID = "create_replacement"
+	err = storage.BaseDisksScheduled(ctx, []BaseDisk{replacement})
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	require.NoError(t, err)
+
+	// Legacy behaviour: source is deleted as soon as its last slot is released.
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	// Decrement of never incremented counter is harmless.
+	err = storage.BaseDiskCreated(ctx, replacement)
+	require.NoError(t, err)
+
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
 
 	err = storage.CheckConsistency(ctx)
 	require.NoError(t, err)

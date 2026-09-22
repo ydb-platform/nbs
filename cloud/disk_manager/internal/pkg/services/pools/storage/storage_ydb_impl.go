@@ -673,7 +673,11 @@ func (s *storageYDB) applyInflightDependents(
 
 		switch {
 		case !oldHolds && newHolds:
-			deltas[t.state.srcDiskID]++
+			// TODO: remove this check after deployment of this version is
+			// finished.
+			if s.holdBaseDisksWithInflightDependents {
+				deltas[t.state.srcDiskID]++
+			}
 		case oldHolds && !newHolds:
 			if t.oldState.srcDiskID != t.state.srcDiskID {
 				err := tx.Commit(ctx)
@@ -739,9 +743,9 @@ func (s *storageYDB) applyInflightDependents(
 		}
 
 		if delta < 0 && uint64(-delta) > srcDisk.inflightDependents {
-			// Should not happen, except for base disks that were already being
-			// created when 'inflight_dependents' column was introduced.
-			logging.Warn(
+			// Dependent was not accounted, e.g. it was generated while
+			// holdBaseDisksWithInflightDependents was disabled.
+			logging.Info(
 				ctx,
 				"inflight dependents underflow for source base disk %+v, delta %v",
 				srcDisk,

@@ -175,11 +175,20 @@ func (s *storageYDB) checkBaseDiskConsistency(
 		)
 	}
 
-	if baseDisk.inflightDependents != inflightDependents[baseDisk.id] {
+	// Counter must never exceed the actual number of dependents (that would
+	// hold base disk forever). It may be less than the actual number while
+	// holdBaseDisksWithInflightDependents is disabled, because increments are
+	// not applied in that case.
+	// TODO: check for equality unconditionally after deployment of this
+	// version is finished.
+	expected := inflightDependents[baseDisk.id]
+	if baseDisk.inflightDependents > expected ||
+		(s.holdBaseDisksWithInflightDependents && baseDisk.inflightDependents != expected) {
+
 		return errors.NewNonRetriableErrorf(
 			"base_disk %+v has inconsistent inflight dependents count, expected %v",
 			baseDisk,
-			inflightDependents[baseDisk.id],
+			expected,
 		)
 	}
 
