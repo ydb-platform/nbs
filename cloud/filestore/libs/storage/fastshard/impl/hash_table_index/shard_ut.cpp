@@ -2,11 +2,12 @@
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/factory/group_factory.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
-#include <cloud/filestore/libs/storage/fastshard/sn/impl/storage_node.h>
-#include <cloud/filestore/libs/storage/fastshard/sn/server/server.h>
-#include <cloud/filestore/libs/storage/fastshard/testlib/fake_storage_node.h>
-#include <cloud/filestore/libs/storage/fastshard/testlib/silk_env.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+
+#include <cloud/fastshard/sn/impl/storage_node.h>
+#include <cloud/fastshard/sn/server/server.h>
+#include <cloud/fastshard/testlib/fake_storage_node.h>
+#include <cloud/fastshard/testlib/silk_env.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -23,7 +24,8 @@
 using namespace NCloud;
 using namespace NFileStore;
 using namespace NFileStore::NProto;
-using namespace NStorage::NFastShard;
+using namespace NFileStore::NStorage::NFastShard;
+using namespace NCloud::NFastShard;
 using silk::FiberScheduler;
 
 ////////////////////////////////////////////////////////////////////////////////

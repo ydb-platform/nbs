@@ -6,7 +6,8 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/libs/storage/fastshard/sn/quorum
-    cloud/filestore/libs/storage/fastshard/testlib
+
+    cloud/fastshard/testlib
 
     contrib/restricted/googletest/googletest
 )

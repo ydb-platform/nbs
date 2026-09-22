@@ -5,6 +5,7 @@
 * [Common storage libs & tools](#cloud-storage)
 * [Blockstore (NBS)](#blockstore-nbs)
 * [Filestore](#filestore)
+* [FastShard](#fastshard)
 * [Disk Manager](#disk-manager)
 
 ## Common
@@ -33,7 +34,7 @@
 * [grpc](/cloud/storage/core/libs/grpc) - Helpers for nontrivial async grpc server/client implementation - executor, channel builders, credentials & auth, keepalive, etc.
 * [hive_proxy](/cloud/storage/core/libs/hive_proxy) - Hive Tablet client actor which caches pipes to Hive
 * [iam](/cloud/storage/core/libs/iam) - IAM client interface
-* [keyring](/cloud/storage/core/libs/keyring) - Contains both the linux keyring-based endpoint storage (together with a convenience wrapper for linux keyring syscall api) and the file-based one 
+* [keyring](/cloud/storage/core/libs/keyring) - Contains both the linux keyring-based endpoint storage (together with a convenience wrapper for linux keyring syscall api) and the file-based one
 * [kikimr](/cloud/storage/core/libs/kikimr) - YDB BlobStorage integration code - cluster registration, actorsystem configuration initialization, helpers
 * [tablet](/cloud/storage/core/libs/tablet) - Some things common for the implementation of our tablets - TPartialBlobId, garbage collection logic
 * [throttling](/cloud/storage/core/libs/throttling) - Request throttling implementation - leaky bucket implementation, throttler policy interface, throttler implementation for actor-based code
@@ -97,8 +98,8 @@
 * [libs/ydbstats](/cloud/blockstore/libs/ydbstats) - uploads detailed diagnostics to YDB tables (not BlobStorage but YDB database) for further YQL-based analytics
 
 ### Blockstore libs/storage
-* [storage/api](/cloud/blockstore/libs/storage/api) - public events (events which are fine to use for inter-component communication) of the actor-based components 
-* [storage/bootstrapper](/cloud/blockstore/libs/storage/bootstrapper) - tablet bootstrapper - used by BlockStore Volume tablet to launch BlockStore Partition tablets 
+* [storage/api](/cloud/blockstore/libs/storage/api) - public events (events which are fine to use for inter-component communication) of the actor-based components
+* [storage/bootstrapper](/cloud/blockstore/libs/storage/bootstrapper) - tablet bootstrapper - used by BlockStore Volume tablet to launch BlockStore Partition tablets
 * [storage/core](/cloud/blockstore/libs/storage/core) - things that are used by 2+ storage components, e.g. TStorageConfig, localdb transaction wrappers, TCompactionMap, misc helpers, etc.
 * [storage/disk_agent](/cloud/blockstore/libs/storage/disk_agent) - blockstore-disk-agent core part - TDiskAgentActor - implements actor-based API, RDMA API, registers itself in DiskRegistry, etc.
 * [storage/disk_common](/cloud/blockstore/libs/storage/disk_common) - common funcs for DiskAgent and DiskRegistry
@@ -108,7 +109,7 @@
 * [storage/model](/cloud/blockstore/libs/storage/model) - things that are used by 2+ storage components - differs from storage/core in that "model" libs shouldn't depend on YDB BlobStorage code (therefore their build times are MUCH lower)
 * [storage/partition](/cloud/blockstore/libs/storage/partition) - BlockStore Partition tablet implementation - it is the actual block storage implementation for STORAGE_MEDIA_{SSD,HDD} disks
 * [storage/partition2](/cloud/blockstore/libs/storage/partition2) - experimental BlockStore Partition2 tablet implementation (also for STORAGE_MEDIA_{SSD,HDD} disks)
-* [storage/partition_common](/cloud/blockstore/libs/storage/partition_common) - common code for the actors that implement block storage - partition, partition2, partition_nonrepl, volume - contains some parts of the implementation of overlay disks, fresh blocks storage, draining, long-running operation tracking, changed blocks tracking 
+* [storage/partition_common](/cloud/blockstore/libs/storage/partition_common) - common code for the actors that implement block storage - partition, partition2, partition_nonrepl, volume - contains some parts of the implementation of overlay disks, fresh blocks storage, draining, long-running operation tracking, changed blocks tracking
 * [storage/partition_nonrepl](/cloud/blockstore/libs/storage/partition_nonrepl) - block storage implementation of STORAGE_MEDIA_{SSD,HDD}_{NONREPLICATED,MIRROR2,MIRROR3}
 * [storage/perf](/cloud/blockstore/libs/storage/perf) - a really tiny amount of benchmarks (which should probably be moved to storage/partition2)
 * [storage/protos](/cloud/blockstore/libs/storage/protos) - internal proto specs which don't depend on YDB BlobStorage proto specs
@@ -119,8 +120,8 @@
 * [storage/testlib](/cloud/blockstore/libs/storage/testlib) - helpers and mocks for actor uts
 * [storage/undelivered](/cloud/blockstore/libs/storage/undelivered) - an actor which can cancel all public NBS events - may be used to handle undelivered requests in a generic way
 * [storage/volume](/cloud/blockstore/libs/storage/volume) - BlockStore Volume tablet implementation - entry point for all requests for a single NBS disk
-* [storage/volume_balancer](/cloud/blockstore/libs/storage/volume_balancer) - a component which tracks some metrics like CpuWait, detects blockstore-server overload and releases Hive locks for some of the locally mounted Volume tablets (so that they get restarted by Hive on other nodes thus reducing the load on the current blockstore-server node) 
-* [storage/volume_proxy](/cloud/blockstore/libs/storage/volume_proxy) - a convenience client for all BlockStore Volumes which caches pipes to Volume tablets                    
+* [storage/volume_balancer](/cloud/blockstore/libs/storage/volume_balancer) - a component which tracks some metrics like CpuWait, detects blockstore-server overload and releases Hive locks for some of the locally mounted Volume tablets (so that they get restarted by Hive on other nodes thus reducing the load on the current blockstore-server node)
+* [storage/volume_proxy](/cloud/blockstore/libs/storage/volume_proxy) - a convenience client for all BlockStore Volumes which caches pipes to Volume tablets
 
 ### Blockstore tools
 * [tools/analytics](/cloud/blockstore/tools/analytics) - various visualization, dumping and statistics calculation
@@ -162,7 +163,7 @@
 * [libs/vhost](/cloud/filestore/libs/vhost) - vhost server and client implementation, used in filestore-vhost
 
 ### Filestore libs/storage
-* [storage/api](/cloud/filestore/libs/storage/api) - public events (events which are fine to use for inter-component communication) of the actor-based components 
+* [storage/api](/cloud/filestore/libs/storage/api) - public events (events which are fine to use for inter-component communication) of the actor-based components
 * [storage/core](/cloud/filestore/libs/storage/core) - things that are used by 2+ storage components, e.g. TStorageConfig, localdb transaction wrappers, misc helpers, etc.
 * [storage/init](/cloud/filestore/libs/storage/init) - ActorSystem bootstrap code for filestore-server and filestore-vhost
 * [storage/model](/cloud/filestore/libs/storage/model) - things that are used by 2+ storage components - differs from storage/core in that "model" libs shouldn't depend on YDB BlobStorage code (therefore their build times are MUCH lower)
@@ -175,6 +176,14 @@
 
 ### Filestore tools
 [cloud/filestore/tools](/cloud/filestore/tools) - the layout is similar to [Blockstore tools](#blockstore-tools)
+
+## FastShard
+* [cloud/fastshard](/cloud/fastshard) - storage node side of the Filestore fastshard: used by Filestore and hosted by blockstore-disk-agent
+* [bootstrap](/cloud/fastshard/bootstrap) - silk runtime initialization and teardown
+* [ipc](/cloud/fastshard/ipc) - async TCP helpers over silk's non-blocking poll
+* [journal](/cloud/fastshard/journal) - journalled device - interface, implementations and TCP server
+* [sn](/cloud/fastshard/sn) - storage node - interface, TCP client and server and in-process implementation
+* [testlib](/cloud/fastshard/testlib) - fake storage node and silk test environment
 
 ## Disk Manager
 

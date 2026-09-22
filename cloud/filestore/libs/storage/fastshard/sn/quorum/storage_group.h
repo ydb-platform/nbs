@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
+#include <cloud/fastshard/sn/iface/storage_node.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -12,6 +12,8 @@
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+using NCloud::NFastShard::IStorageNodePtr;
 
 ////////////////////////////////////////////////////////////////////////////////
 

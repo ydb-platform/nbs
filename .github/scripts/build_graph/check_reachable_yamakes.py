@@ -13,6 +13,7 @@ from typing import Callable, Iterable, Mapping, Sequence
 DEFAULT_CLOUD_ROOTS = (
     "cloud/blockstore",
     "cloud/disk_manager",
+    "cloud/fastshard",
     "cloud/filestore",
     "cloud/storage",
     "cloud/tasks",
