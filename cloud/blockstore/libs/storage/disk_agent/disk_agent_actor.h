@@ -23,8 +23,9 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 
+#include <cloud/fastshard/journal/iface/public.h>
+
 #include <cloud/storage/core/libs/coroutine/public.h>
-#include <cloud/storage/core/libs/journalled/iface/public.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>

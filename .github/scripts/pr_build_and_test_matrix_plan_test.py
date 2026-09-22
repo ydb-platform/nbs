@@ -69,6 +69,7 @@ def test_compute_targets_all_true_means_all_components():
             "disk_manager": True,
             "tasks": True,
             "storage": True,
+            "fastshard": True,
         }
     )
     build_target, test_target, _, _ = compute_targets(inp)

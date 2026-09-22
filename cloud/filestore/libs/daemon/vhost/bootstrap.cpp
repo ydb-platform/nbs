@@ -33,11 +33,12 @@
 #include <cloud/filestore/libs/service_null/service.h>
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
-#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
 #include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 #include <cloud/filestore/libs/vfs/probes.h>
 #include <cloud/filestore/libs/vfs_fuse/persistent_state_manager.h>
 #include <cloud/filestore/libs/vhost/server.h>
+
+#include <cloud/fastshard/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
@@ -714,7 +715,7 @@ void TBootstrapVhost::StartComponents()
 {
     const auto& serviceConfig = *Configs->VhostServiceConfig;
     if (serviceConfig.GetSideChannelType() == NProto::SCT_TCP) {
-        NStorage::NFastShard::Init();
+        NCloud::NFastShard::Init();
     }
 
     FILESTORE_LOG_START_COMPONENT(ModuleStatsUpdater);
@@ -751,7 +752,7 @@ void TBootstrapVhost::StopComponents()
     if (Configs->VhostServiceConfig) {
         const auto& serviceConfig = *Configs->VhostServiceConfig;
         if (serviceConfig.GetSideChannelType() == NProto::SCT_TCP) {
-            NStorage::NFastShard::Destroy();
+            NCloud::NFastShard::Destroy();
         }
     }
 }

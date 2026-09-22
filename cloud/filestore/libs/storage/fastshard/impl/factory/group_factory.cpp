@@ -1,9 +1,12 @@
 #include "group_factory.h"
 
-#include <cloud/filestore/libs/storage/fastshard/sn/client/client.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_quorum.h>
 
+#include <cloud/fastshard/sn/client/client.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+using NCloud::NFastShard::CreateStorageNodeClient;
 
 namespace {
 

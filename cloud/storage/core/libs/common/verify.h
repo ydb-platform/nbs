@@ -32,6 +32,7 @@ struct TWellKnownEntityTypes
     static constexpr TStringBuf DISK = "Disk";
     static constexpr TStringBuf TABLET = "Tablet";
     static constexpr TStringBuf CLIENT = "Client";
+    static constexpr TStringBuf SERVER = "Server";
     static constexpr TStringBuf ENDPOINT = "Endpoint";
     static constexpr TStringBuf DEVICE = "Device";
     static constexpr TStringBuf FILESYSTEM = "Filesystem";

@@ -19,6 +19,7 @@ By default this checks all `cloud/**/ya.make` files from these roots:
 ```text
 cloud/blockstore
 cloud/disk_manager
+cloud/fastshard
 cloud/filestore
 cloud/storage
 cloud/tasks

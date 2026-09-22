@@ -160,8 +160,20 @@ NProto::TError TPageStore::WritePage(
     }
 
     if (!found) {
-        logRecord.push_back(
-            {.FirstPageNo = pageNo, .Content = TVector<TBuffer>({page})});
+        bool added = false;
+        if (logRecord.size()) {
+            const ui64 nextPageNo =
+                logRecord.back().FirstPageNo + logRecord.back().Content.size();
+            if (nextPageNo == pageNo) {
+                logRecord.back().Content.push_back(page);
+                added = true;
+            }
+        }
+
+        if (!added) {
+            logRecord.push_back(
+                {.FirstPageNo = pageNo, .Content = TVector<TBuffer>({page})});
+        }
     }
 
     //
@@ -257,21 +269,22 @@ NProto::TError TPageStore::ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const
     if (pageGroups.size() != 1) {
         return MakeError(
             E_BADMSG,
-            TStringBuilder() << "unexpected pg count: " << pageGroups.size());
+            TStringBuilder() << "lsn=" << lsn << ", pageNo=" << pageNo
+                << ", unexpected pg count: " << pageGroups.size());
     }
 
     auto& rpg = pageGroups[0];
     if (rpg.Content.size() != 1) {
         return MakeError(
             E_BADMSG,
-            TStringBuilder()
+            TStringBuilder() << "lsn=" << lsn << ", pageNo=" << pageNo
                 << "unexpected page count: " << rpg.Content.size());
     }
 
     if (rpg.Content[0].Size() < PageSize) {
         return MakeError(
             E_BADMSG,
-            TStringBuilder()
+            TStringBuilder() << "lsn=" << lsn << ", pageNo=" << pageNo
                 << "unexpected page size: " << rpg.Content[0].Size());
     }
 

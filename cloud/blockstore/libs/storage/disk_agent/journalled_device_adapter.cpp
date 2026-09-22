@@ -3,9 +3,10 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
+#include <cloud/fastshard/journal/iface/device.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
-#include <cloud/storage/core/libs/journalled/iface/device.h>
 
 #include <util/generic/hash_set.h>
 #include <util/string/builder.h>

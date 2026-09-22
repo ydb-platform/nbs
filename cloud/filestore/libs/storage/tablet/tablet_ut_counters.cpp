@@ -1021,6 +1021,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
              {
                  return val == 0;
              }},
+            {{{"sensor", "ShardsCount"}, {"filesystem", "test"}},
+             [](i64 val)
+             {
+                 return val == 0;
+             }},
         });
     }
 
@@ -1055,6 +1060,38 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             registry->Visit(TInstant::Zero(), visitor);
             visitor.ValidateExpectedCounters({
                 {{{"sensor", "HasOverrides"}, {"filesystem", "test"}}, 1},
+            });
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportShardsCount)
+    {
+        TTestEnv env;
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "ShardsCount"}, {"filesystem", "test"}}, 0},
+            });
+        }
+
+        tablet.ConfigureShards(true, TVector<TString>{"shard1", "shard2"});
+        tablet.RebootTablet();
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "ShardsCount"}, {"filesystem", "test"}}, 2},
             });
         }
     }

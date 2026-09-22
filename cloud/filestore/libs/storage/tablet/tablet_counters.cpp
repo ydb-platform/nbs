@@ -302,6 +302,7 @@ void TTabletMetrics::Register(
     REGISTER_LOCAL(TabletId, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(TabletGeneration, EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(HasOverrides, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(ShardsCount, EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(AllocatedCompactionRangesCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(UsedCompactionRangesCount, EMetricType::MT_ABSOLUTE);

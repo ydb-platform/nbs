@@ -628,6 +628,7 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
     Metrics->TabletId.store(TabletID());
     Metrics->TabletGeneration.store(GetGeneration());
     Metrics->HasOverrides.store(StorageConfigOverride.ByteSize() ? 1 : 0);
+    Metrics->ShardsCount.store(fs.GetShardFileSystemIds().size());
 
     Metrics->Register(
         fsId,

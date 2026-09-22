@@ -18,37 +18,42 @@
         {
             "name": "NodeTable",
             "offsetBytes": 0,
-            "sizeBytes": 9752576,
+            "sizeBytes": 9756672,
             "slotSize": 96,
-            "slotCount": 100002
+            "slotCount": 100002,
+            "description": "G=1 P=0 MV=1 V=1 D={C=NodeTable O[Slots]=1}"
         },
         {
             "name": "NameTable",
-            "offsetBytes": 9752576,
-            "sizeBytes": 4820992,
+            "offsetBytes": 9756672,
+            "sizeBytes": 4825088,
             "slotSize": 48,
-            "slotCount": 100045
+            "slotCount": 100045,
+            "description": "G=1 P=2382 MV=1 V=1 D={C=NameTable O[Slots]=2383}"
         },
         {
             "name": "HandleTable",
-            "offsetBytes": 14573568,
-            "sizeBytes": 17604608,
+            "offsetBytes": 14581760,
+            "sizeBytes": 17608704,
             "slotSize": 16,
-            "slotCount": 1100288
+            "slotCount": 1100288,
+            "description": "G=1 P=3560 MV=1 V=1 D={C=HandleTable O[Handles]=3561 O[NodeId2HandleCount]=7468}"
         },
         {
             "name": "PageIndex",
-            "offsetBytes": 32178176,
-            "sizeBytes": 757760,
+            "offsetBytes": 32190464,
+            "sizeBytes": 761856,
             "slotSize": 24,
-            "slotCount": 31450
+            "slotCount": 31450,
+            "description": "G=1 P=7859 MV=1 V=1 D={C=PageIndex O[Slots]=7860}"
         },
         {
             "name": "PageAllocatorBitmap",
-            "offsetBytes": 32935936,
-            "sizeBytes": 4096,
+            "offsetBytes": 32952320,
+            "sizeBytes": 8192,
             "slotSize": 0,
-            "slotCount": 29492
+            "slotCount": 29492,
+            "description": "G=1 P=8045 MV=1 V=1 D={C=PageAllocator O[Bitmap]=8046 O[Data]=32964608}"
         },
         {
             "name": "DataPages",

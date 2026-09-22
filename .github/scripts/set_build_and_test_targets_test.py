@@ -106,6 +106,42 @@ def test_join_rule_tasks_storage_with_third_component():
     assert by["tasks_storage"]["build_target"] == "cloud/tasks/,cloud/storage/"
 
 
+def test_join_rule_tasks_storage_fastshard_applies_when_all_present():
+    inc = parse(
+        mk(
+            build_target="cloud/blockstore/apps/,cloud/tasks/,cloud/storage/,cloud/fastshard/",
+            test_target="cloud/blockstore/,cloud/tasks/,cloud/storage/,cloud/fastshard/",
+            build_preset="relwithdebinfo",
+            split=True,
+            test_size="small,medium,large",
+        )
+    )
+    assert len(inc) == 2
+    assert {r["component"] for r in inc} == {"blockstore", "tasks_storage_fastshard"}
+    by = {r["component"]: r for r in inc}
+    joined = by["tasks_storage_fastshard"]
+    assert joined["build_target"] == "cloud/tasks/,cloud/storage/,cloud/fastshard/"
+    assert joined["test_target"] == "cloud/tasks/,cloud/storage/,cloud/fastshard/"
+    assert joined["vm_name_suffix"] == "-tasks-storage-fastshard"
+    assert joined["test_timeout_minutes"] == 60
+
+
+def test_join_rule_san_storage_fastshard():
+    # tasks is not san-eligible, so asan split joins only storage and fastshard
+    inc = parse(
+        mk(
+            build_target="cloud/tasks/,cloud/storage/,cloud/fastshard/",
+            test_target="cloud/tasks/,cloud/storage/,cloud/fastshard/",
+            build_preset="release-asan",
+            split_san={"asan": True, "tsan": False, "msan": False, "ubsan": False},
+        )
+    )
+    assert len(inc) == 1
+    assert inc[0]["component"] == "storage_fastshard"
+    assert inc[0]["build_target"] == "cloud/storage/,cloud/fastshard/"
+    assert inc[0]["vm_name_suffix"] == "-asan-storage-fastshard"
+
+
 def test_join_rule_tasks_and_other_component():
     inc = parse(
         mk(

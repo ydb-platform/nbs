@@ -1,5 +1,7 @@
 #pragma once
 
+#include "component.h"
+#include "format_page.h"
 #include "page_store.h"
 #include "persistent_hash_table.h"
 
@@ -10,6 +12,9 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 // name table layout
+
+constexpr ui32 NameTableLayoutMinVersion = 1;
+constexpr ui32 NameTableLayoutVersion = 1;
 
 constexpr ui64 NameSlotSize = 48;
 constexpr ui32 NameCapacity = 36;
@@ -25,7 +30,9 @@ static_assert(sizeof(TNameTableSlot) <= NameSlotSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TNameTable
+using TNameTableBase =
+    TComponentBase<NameTableLayoutMinVersion, NameTableLayoutVersion>;
+class TNameTable: public TNameTableBase
 {
 private:
     using THt = TPersistentHashTable<TStringBuf, TNameTableSlot>;
