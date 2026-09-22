@@ -825,6 +825,7 @@ struct TTxIndexTablet
         const ui64 ParentNodeId;
         const ui64 TargetNodeId;
         const TString Name;
+        const NProto::TNode OrigAttrs;
         NProto::TNode Attrs;
         const TString RequestShardId;
         TString ShardId;
@@ -853,7 +854,8 @@ struct TTxIndexTablet
             , ParentNodeId(parentNodeId)
             , TargetNodeId(targetNodeId)
             , Name(request.GetName())
-            , Attrs(std::move(attrs))
+            , OrigAttrs(std::move(attrs))
+            , Attrs(OrigAttrs)
             , RequestShardId(request.GetShardFileSystemId())
             , ShardId(RequestShardId)
             , Request(std::move(request))
@@ -873,6 +875,8 @@ struct TTxIndexTablet
             OpLogEntry.Clear();
 
             Response.Clear();
+
+            Attrs = OrigAttrs;
 
             // deliberately not calling TProfileAware::Clear()
         }

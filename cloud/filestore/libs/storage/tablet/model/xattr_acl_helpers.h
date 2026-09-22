@@ -11,7 +11,7 @@ namespace NCloud::NFileStore::NStorage {
 
 NProto::TError GetChildXattrAcl(TString& xattrAcl, ui32& mode);
 
-constexpr const char* const PosixAclAccessXAttr = "system.posix_acl_access";
-constexpr const char* const PosixAclDefaultXAttr = "system.posix_acl_default";
+constexpr TStringBuf PosixAclAccessXAttr = "system.posix_acl_access";
+constexpr TStringBuf PosixAclDefaultXAttr = "system.posix_acl_default";
 
 }   // namespace NCloud::NFileStore::NStorage

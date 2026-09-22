@@ -27,9 +27,11 @@ posix_acl_xattr_entry MakeEntry(ui16 tag, ui16 perm, ui32 id = ACL_UNDEFINED_ID)
     };
 }
 
-TString SerializeAcl(const TVector<posix_acl_xattr_entry>& entries)
+TString SerializeAcl(
+    const TVector<posix_acl_xattr_entry>& entries,
+    ui32 version = POSIX_ACL_XATTR_VERSION)
 {
-    posix_acl_xattr_header header = {POSIX_ACL_XATTR_VERSION};
+    posix_acl_xattr_header header = {version};
 
     TString result;
     result.resize(sizeof(header) + entries.size() * sizeof(entries.front()));
@@ -72,6 +74,47 @@ void AssertEntry(
 
 Y_UNIT_TEST_SUITE(TGetChildXattrAclTest)
 {
+    Y_UNIT_TEST(ShouldRejectMalformedAcl)
+    {
+        // A POSIX ACL xattr must contain at least a complete version header.
+        TString acl = "bad";
+        ui32 mode = S_IFREG | 0666;
+
+        const auto error = GetChildXattrAcl(acl, mode);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_INVAL, error.GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            error.GetMessage(),
+            "Malformed POSIX ACL xattr");
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnsupportedAclVersion)
+    {
+        TString acl = SerializeAcl(
+            {MakeEntry(ACL_USER_OBJ, 7)},
+            POSIX_ACL_XATTR_VERSION + 1);
+        ui32 mode = S_IFREG | 0666;
+
+        const auto error = GetChildXattrAcl(acl, mode);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_NOTSUPP, error.GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            error.GetMessage(),
+            "Unsupported version of POSIX ACL xattr");
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnknownAclTag)
+    {
+        constexpr ui16 invalidAclTag = 0xffff;
+        TString acl = SerializeAcl({MakeEntry(invalidAclTag, 7)});
+        ui32 mode = S_IFREG | 0666;
+
+        const auto error = GetChildXattrAcl(acl, mode);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_FS_IO, error.GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "Unknown ACL tag");
+    }
+
     Y_UNIT_TEST(ShouldAdjustAllModeClassesUsingMask)
     {
         TString acl = SerializeAcl({

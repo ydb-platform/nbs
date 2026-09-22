@@ -299,7 +299,7 @@ bool TIndexTabletActor::PrepareTx_CreateHandle(
                         *db,
                         args.NodeId,
                         args.ReadCommitId,
-                        PosixAclDefaultXAttr,
+                        PosixAclDefaultXAttr.data(),
                         parentDefaultAcl))
                 {
                     return false;
@@ -446,7 +446,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
                     *db,
                     args.TargetNodeId,
                     args.WriteCommitId,
-                    PosixAclAccessXAttr,
+                    PosixAclAccessXAttr.data(),
                     args.ChildAccessAcl);
             }
         }

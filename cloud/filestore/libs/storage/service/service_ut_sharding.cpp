@@ -20,12 +20,313 @@
 
 #include <contrib/ydb/core/base/hive.h>
 
+#include <contrib/libs/linux-headers/linux/posix_acl.h>
+#include <contrib/libs/linux-headers/linux/posix_acl_xattr.h>
+
+#include <cstring>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TPosixAcl = TVector<posix_acl_xattr_entry>;
+
+// Helpers below emulate setfacl/getfacl by constructing and decoding the
+// binary representation stored in system.posix_acl_* xattrs.
+ui32 Permissions(const TString& value)
+{
+    UNIT_ASSERT_C(
+        value.size() == 3 || value.size() == 9,
+        "Permission string must describe one ACL entry or a complete mode");
+
+    ui32 result = 0;
+    constexpr TStringBuf permissionChars = "rwx";
+    for (size_t i = 0; i < value.size(); ++i) {
+        UNIT_ASSERT_C(
+            value[i] == '-' || value[i] == permissionChars[i % 3],
+            "Invalid permission string: " << value);
+        if (value[i] != '-') {
+            result |= 1U << (value.size() - i - 1);
+        }
+    }
+    return result;
+}
+
+posix_acl_xattr_entry MakeAclEntry(
+    ui16 tag,
+    const TString& permissions,
+    ui32 id = ACL_UNDEFINED_ID)
+{
+    return {
+        .e_tag = tag,
+        .e_perm = static_cast<ui16>(Permissions(permissions)),
+        .e_id = id,
+    };
+}
+
+TString SerializeAcl(const TPosixAcl& acl)
+{
+    const posix_acl_xattr_header header = {POSIX_ACL_XATTR_VERSION};
+
+    TString value;
+    value.resize(sizeof(header) + acl.size() * sizeof(acl.front()));
+    std::memcpy(value.Detach(), &header, sizeof(header));
+    std::memcpy(
+        value.Detach() + sizeof(header),
+        acl.data(),
+        acl.size() * sizeof(acl.front()));
+    return value;
+}
+
+void SetFacl(
+    TServiceClient& service,
+    const THeaders& headers,
+    const TString& fileSystemId,
+    ui64 nodeId,
+    const TString& xattrName,
+    const TPosixAcl& acl)
+{
+    // setfacl ultimately stores the encoded ACL in one of the POSIX ACL
+    // extended attributes. Use the service API directly to emulate it.
+    service.SetNodeXAttr(
+        headers,
+        fileSystemId,
+        nodeId,
+        xattrName,
+        SerializeAcl(acl));
+}
+
+TPosixAcl GetFacl(
+    TServiceClient& service,
+    const THeaders& headers,
+    const TString& fileSystemId,
+    ui64 nodeId,
+    const TString& xattrName)
+{
+    // getfacl reads and decodes the same extended attribute. Keep the helper
+    // deliberately strict so malformed ACL data produces a useful test error.
+    const auto response = service.GetNodeXAttr(
+        headers,
+        fileSystemId,
+        nodeId,
+        xattrName);
+    const TString& value = response->Record.GetValue();
+
+    UNIT_ASSERT_GE(value.size(), sizeof(posix_acl_xattr_header));
+    posix_acl_xattr_header header;
+    std::memcpy(&header, value.data(), sizeof(header));
+    UNIT_ASSERT_VALUES_EQUAL(POSIX_ACL_XATTR_VERSION, header.a_version);
+
+    const size_t entriesSize = value.size() - sizeof(header);
+    UNIT_ASSERT_VALUES_EQUAL(0, entriesSize % sizeof(posix_acl_xattr_entry));
+
+    TPosixAcl acl(entriesSize / sizeof(posix_acl_xattr_entry));
+    std::memcpy(
+        acl.data(),
+        value.data() + sizeof(header),
+        entriesSize);
+    return acl;
+}
+
+void AssertFacl(const TPosixAcl& expected, const TPosixAcl& actual)
+{
+    UNIT_ASSERT_VALUES_EQUAL(expected.size(), actual.size());
+    for (size_t i = 0; i < expected.size(); ++i) {
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expected[i].e_tag,
+            actual[i].e_tag,
+            "ACL entry " << i << " has an unexpected tag");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expected[i].e_perm,
+            actual[i].e_perm,
+            "ACL entry " << i << " has unexpected permissions");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            expected[i].e_id,
+            actual[i].e_id,
+            "ACL entry " << i << " has an unexpected id");
+    }
+}
+
+NProto::TNodeAttr CreateNodeWithUmask(
+    TServiceClient& service,
+    const THeaders& headers,
+    const TCreateNodeArgs& args,
+    const ui32 umask)
+{
+    // The regular test helper does not expose TCreateNodeRequest::Umask, so
+    // build the request explicitly to model the mode sent by a FUSE client.
+    auto request = service.CreateCreateNodeRequest(headers, args);
+    request->Record.SetUmask(umask);
+    auto response = service.SendAndRecvCreateNode(std::move(request));
+    UNIT_ASSERT_C(
+        SUCCEEDED(response->GetStatus()),
+        response->GetErrorReason());
+    return response->Record.GetNode();
+}
+
+void DoShouldApplyUmaskAndInheritDefaultAcl(
+    TServiceClient& service,
+    const TString& fileSystemId)
+{
+    const auto headers = service.InitSession(fileSystemId, "client");
+    // Remove group and other write permissions.
+    const ui32 umask = Permissions("----w--w-");
+
+    // 1. Without a default ACL, the server must apply the caller's
+    // umask to both ordinary files and ordinary directories.
+    const auto testDir = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::Directory(
+            RootNodeId,
+            "test-dir",
+            Permissions("rwxrwxrwx")),
+        umask);
+    UNIT_ASSERT_VALUES_EQUAL(
+        Permissions("rwxr-xr-x"),
+        testDir.GetMode());
+
+    const auto ordinaryFile = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::File(
+            testDir.GetId(),
+            "ordinary-file",
+            Permissions("rw-rw-rw-")),
+        umask);
+    UNIT_ASSERT_VALUES_EQUAL(
+        Permissions("rw-r--r--"),
+        ordinaryFile.GetMode());
+
+    const auto ordinaryDir = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::Directory(
+            testDir.GetId(),
+            "ordinary-directory",
+            Permissions("rwxrwxrwx")),
+        umask);
+    UNIT_ASSERT_VALUES_EQUAL(
+        Permissions("rwxr-xr-x"),
+        ordinaryDir.GetMode());
+
+    // 2. Install and read back a default ACL on the parent directory.
+    constexpr ui32 namedUid = 12345;
+    constexpr ui32 namedGid = 12346;
+    const TPosixAcl defaultAcl = {
+        MakeAclEntry(ACL_USER_OBJ, "rwx"),
+        MakeAclEntry(ACL_USER, "r-x", namedUid),
+        MakeAclEntry(ACL_GROUP_OBJ, "r--"),
+        MakeAclEntry(ACL_GROUP, "-wx", namedGid),
+        MakeAclEntry(ACL_MASK, "rwx"),
+        MakeAclEntry(ACL_OTHER, "---"),
+    };
+    SetFacl(
+        service,
+        headers,
+        fileSystemId,
+        testDir.GetId(),
+        "system.posix_acl_default",
+        defaultAcl);
+    AssertFacl(
+        defaultAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            testDir.GetId(),
+            "system.posix_acl_default"));
+
+    // 3. Create a file and a directory below the ACL-bearing parent.
+    // Their access ACLs must be derived from the parent's default ACL and
+    // restricted by the requested create mode (not by the process umask).
+    const auto childFile = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::File(
+            testDir.GetId(),
+            "child-file",
+            Permissions("rw-rw-rw-")),
+        umask);
+    const auto childDir = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::Directory(
+            testDir.GetId(),
+            "child-dir",
+            Permissions("rwxrwxrwx")),
+        umask);
+
+    const TPosixAcl fileAccessAcl = {
+        MakeAclEntry(ACL_USER_OBJ, "rw-"),
+        MakeAclEntry(ACL_USER, "r-x", namedUid),
+        MakeAclEntry(ACL_GROUP_OBJ, "r--"),
+        MakeAclEntry(ACL_GROUP, "-wx", namedGid),
+        MakeAclEntry(ACL_MASK, "rw-"),
+        MakeAclEntry(ACL_OTHER, "---"),
+    };
+    UNIT_ASSERT_VALUES_EQUAL(
+        Permissions("rw-rw----"),
+        childFile.GetMode());
+    AssertFacl(
+        fileAccessAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            childFile.GetId(),
+            "system.posix_acl_access"));
+
+    UNIT_ASSERT_VALUES_EQUAL(
+        Permissions("rwxrwx---"),
+        childDir.GetMode());
+    AssertFacl(
+        defaultAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            childDir.GetId(),
+            "system.posix_acl_access"));
+
+    // 4. A child directory inherits the parent's default ACL unchanged,
+    // in addition to receiving the derived access ACL checked above.
+    AssertFacl(
+        defaultAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            childDir.GetId(),
+            "system.posix_acl_default"));
+
+    // 5. Create a second-generation child. Its access ACL proves that
+    // the default ACL inherited by childDir was persisted and is functional.
+    const auto nestedFile = CreateNodeWithUmask(
+        service,
+        headers,
+        TCreateNodeArgs::File(
+            childDir.GetId(),
+            "nested-file",
+            Permissions("rw-rw-rw-")),
+        umask);
+    UNIT_ASSERT_VALUES_EQUAL(
+        Permissions("rw-rw----"),
+        nestedFile.GetMode());
+    AssertFacl(
+        fileAccessAcl,
+        GetFacl(
+            service,
+            headers,
+            fileSystemId,
+            nestedFile.GetId(),
+            "system.posix_acl_access"));
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1741,6 +2042,35 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
             UNIT_ASSERT_VALUES_EQUAL(3, getCount("ListNodeXAttr"));
         }
+    }
+
+    Y_UNIT_TEST(ShouldApplyUmaskAndInheritDefaultAclWithoutShards)
+    {
+        // Baseline: all nodes and ACL xattrs live on a single index tablet.
+        auto config = MakeStorageConfig();
+        config.SetGuestPosixAclEnabled(true);
+
+        TTestEnv env({}, config);
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+
+        const TString fileSystemId = "test";
+        service.CreateFileStore(fileSystemId, 1'000);
+
+        DoShouldApplyUmaskAndInheritDefaultAcl(service, fileSystemId);
+    }
+
+    Y_UNIT_TEST(ShouldApplyUmaskAndInheritDefaultAclWithShards)
+    {
+        // Sharded variant: directories may be placed in shards as well, so
+        // ACL inheritance has to survive the full cross-tablet create path.
+        auto config = MakeStorageConfigWithDirectoryCreationInShards();
+        config.SetGuestPosixAclEnabled(true);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        DoShouldApplyUmaskAndInheritDefaultAcl(service, fsConfig.FsId);
     }
 
     SERVICE_TEST(ShouldCreateDirectoryStructureInLeader)

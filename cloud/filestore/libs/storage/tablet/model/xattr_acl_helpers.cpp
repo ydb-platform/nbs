@@ -22,12 +22,10 @@ namespace NCloud::NFileStore::NStorage {
 
 namespace {
 
-#define S_IRWXUGO (S_IRWXU|S_IRWXG|S_IRWXO)
-
 NProto::TError ReportMalformedPosixAcl(const TString& xattrAcl)
 {
     return MakeError(
-        E_FAIL,
+        E_FS_INVAL,
         TStringBuilder() << "Malformed POSIX ACL xattr: " << xattrAcl.Quote());
 }
 
@@ -44,7 +42,7 @@ NProto::TError PosixAclXattrCount(const TString& xattrAcl, size_t& count)
 
     if (header->a_version != POSIX_ACL_XATTR_VERSION) {
         return MakeError(
-            E_FAIL,
+            E_FS_NOTSUPP,
             TStringBuilder() << "Unsupported version of POSIX ACL xattr: "
                              << header->a_version);
     }
@@ -113,7 +111,6 @@ NProto::TError PosixAclCreateMasq(
     constexpr ui32 s_irwxo_32 = S_IRWXO;
     constexpr ui32 s_irwxu_32 = S_IRWXU;
     constexpr ui32 s_irwxg_32 = S_IRWXG;
-    constexpr ui32 s_irwxugo_32 =  S_IRWXUGO;
 
     for (auto& acl: acls) {
         switch (acl.e_tag) {
@@ -135,22 +132,24 @@ NProto::TError PosixAclCreateMasq(
                 mask_obj = &acl;
                 break;
             default:
-                return MakeError(E_FAIL, "Unknown ACL tag");
+                return MakeError(E_FS_IO, "Unknown ACL tag");
         }
     }
 
     if (mask_obj) {
+        // Extended ACL: group mode bits come from ACL_MASK.
         mask_obj->e_perm &= static_cast<__le16>(mode >> 3) | ~s_irwxo_16;
         mode &= static_cast<ui32>(mask_obj->e_perm << 3) | ~s_irwxg_32;
     } else {
+        // Minimal ACL: group mode bits come from ACL_GROUP_OBJ.
         if (!group_obj) {
-            return MakeError(E_FAIL);
+            return MakeError(E_FS_IO, "Minimal ACL requires ACL_GROUP_OBJ");
         }
         group_obj->e_perm &= static_cast<__le16>(mode >> 3) | ~s_irwxo_16;
         mode &= static_cast<ui32>(group_obj->e_perm << 3) | ~s_irwxg_32;
     }
 
-    srcMode = (srcMode & ~s_irwxugo_32) | mode;
+    srcMode = (srcMode & ~(s_irwxo_32 | s_irwxu_32 | s_irwxg_32)) | mode;
     return {};
 }
 

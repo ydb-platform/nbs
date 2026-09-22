@@ -11,7 +11,6 @@ SRCS(
     fresh_bytes_ut.cpp
     fresh_bytes_ut_randomized.cpp
     garbage_queue_ut.cpp
-    xattr_acl_helpers_ut.cpp
     large_blocks_ut.cpp
     mixed_blocks_ut.cpp
     node_access_stats_ut.cpp
@@ -26,6 +25,7 @@ SRCS(
     sparse_segment_ut.cpp
     split_range_ut.cpp
     throttling_policy_ut.cpp
+    xattr_acl_helpers_ut.cpp
 )
 
 END()
