@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from collections import Counter
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -12,6 +12,21 @@ from .critical_path import YaCriticalPath, YaCriticalPathEntry
 from .node import YaNode
 from .statistics import YaBuildStatistics
 from .worker_spans import WorkerSpanProjector
+
+
+@dataclass(frozen=True, slots=True)
+class BuildNodeSelection:
+    indices: list[int]
+    dropped: int = 0
+    critical_dropped: int = 0
+    failed_dropped: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class BuildCommand:
+    node_index: int
+    detail_index: int
+    detail: YaNode
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,26 +94,29 @@ class YaBuildOperations:
         return attributes
 
     def _failures(self, nodes: Sequence[YaNode]) -> tuple[set[str], set[int]]:
-        uids = {node.uid for node in nodes if node.uid and node.uid in self.failures}
+        indices_by_uid: dict[str, list[int]] = defaultdict(list)
+        for index, node in enumerate(nodes):
+            if node.uid and node.uid in self.failures:
+                indices_by_uid[node.uid].append(index)
         representatives = {
             max(
-                (index for index, node in enumerate(nodes) if node.uid == uid),
+                indices,
                 key=lambda index: (
                     nodes[index].kind == "execute",
                     len(nodes[index].interval),
                     nodes[index].end_ns,
                 ),
             )
-            for uid in uids
+            for indices in indices_by_uid.values()
         }
-        return uids, representatives
+        return set(indices_by_uid), representatives
 
     @staticmethod
     def _select_nodes(
         nodes: Sequence[YaNode],
         critical: Mapping[int, YaCriticalPathEntry],
         failed: set[int],
-    ) -> tuple[list[int], int, int, int]:
+    ) -> BuildNodeSelection:
         candidates = [
             index
             for index, node in enumerate(nodes)
@@ -106,7 +124,7 @@ class YaBuildOperations:
         ]
         limit = limits.MAX_BUILD_NODE_SPANS
         if len(candidates) <= limit:
-            return candidates, 0, 0, 0
+            return BuildNodeSelection(indices=candidates)
         protected = [
             index for index in candidates if index in critical or index in failed
         ]
@@ -130,12 +148,14 @@ class YaBuildOperations:
             ]
         )
         selected_set = set(selected)
-        return (
-            selected,
-            len(candidates) - len(selected),
-            sum(index in critical for index in protected)
+        return BuildNodeSelection(
+            indices=selected,
+            dropped=len(candidates) - len(selected),
+            critical_dropped=sum(index in critical for index in protected)
             - sum(index in critical for index in selected),
-            sum(index in failed and index not in selected_set for index in candidates),
+            failed_dropped=sum(
+                index in failed and index not in selected_set for index in candidates
+            ),
         )
 
     @staticmethod
@@ -144,30 +164,30 @@ class YaBuildOperations:
         selected: Sequence[int],
         critical: Mapping[int, YaCriticalPathEntry],
         failed: set[int],
-    ) -> tuple[list[tuple[int, int, YaNode]], int]:
+    ) -> tuple[list[BuildCommand], int]:
         total = sum(
             detail.tag == "exec_cmd" for node in nodes for detail in node.details
         )
         commands = [
-            (node_index, detail_index, detail)
+            BuildCommand(node_index, detail_index, detail)
             for node_index in selected
             for detail_index, detail in enumerate(nodes[node_index].details)
             if detail.tag == "exec_cmd"
         ]
         commands.sort(
-            key=lambda item: (
-                item[0] not in failed,
-                item[0] not in critical,
-                -len(item[2].interval),
-                item[2].start_ns,
+            key=lambda command: (
+                command.node_index not in failed,
+                command.node_index not in critical,
+                -len(command.detail.interval),
+                command.detail.start_ns,
             )
         )
         commands = commands[: limits.MAX_BUILD_COMMAND_SPANS]
         commands.sort(
-            key=lambda item: (
-                item[2].start_ns,
-                item[2].end_ns,
-                nodes[item[0]].name,
+            key=lambda command: (
+                command.detail.start_ns,
+                command.detail.end_ns,
+                nodes[command.node_index].name,
             )
         )
         return commands, total
@@ -181,10 +201,9 @@ class YaBuildOperations:
         critical = self.critical_path.match_build(
             nodes, self.critical_path.build_entries
         )
-        selected, dropped, critical_dropped, failed_dropped = self._select_nodes(
-            nodes, critical, failed
-        )
-        policy_omitted = len(nodes) - len(selected) - dropped
+        selection = self._select_nodes(nodes, critical, failed)
+        selected = selection.indices
+        policy_omitted = len(nodes) - len(selected) - selection.dropped
         selected.sort(
             key=lambda index: (
                 nodes[index].start_ns,
@@ -199,11 +218,11 @@ class YaBuildOperations:
         attributes = self._attributes(interval, nodes)
         attributes["ya.build.node_spans.rendered"] = len(selected)
         attributes["ya.build.node_spans.policy_omitted"] = policy_omitted
-        attributes["ya.build.node_spans.dropped"] = dropped
+        attributes["ya.build.node_spans.dropped"] = selection.dropped
         optional = {
             "ya.build.failed_node.count": len(failed_uids),
-            "ya.build.critical_path.node_spans.dropped": critical_dropped,
-            "ya.build.failed_node_spans.dropped": failed_dropped,
+            "ya.build.critical_path.node_spans.dropped": selection.critical_dropped,
+            "ya.build.failed_node_spans.dropped": selection.failed_dropped,
             "ya.build.command_spans.dropped": command_total - len(commands),
         }
         attributes.update({key: value for key, value in optional.items() if value})
@@ -232,20 +251,21 @@ class YaBuildOperations:
                 failed=node_index in failed,
                 exit_code=self.failures.get(node.uid) if node_index in failed else None,
             )
-        for node_index, detail_index, detail in commands:
+        for command in commands:
+            node = nodes[command.node_index]
             WorkerSpanProjector(
-                nodes[node_index], parent.under(spans[node_index])
+                node, parent.under(spans[command.node_index])
             ).build_command(
-                detail,
-                tool=nodes[node_index].tool,
-                index=detail_index,
-                failed=node_index in failed,
+                command.detail,
+                tool=node.tool,
+                index=command.detail_index,
+                failed=command.node_index in failed,
             )
         return {
             "ya.build.node.count": len(nodes),
             "ya.build.node.span_count": len(selected),
             "ya.build.node.span_policy_omitted_count": policy_omitted,
-            "ya.build.node.span_dropped_count": dropped,
+            "ya.build.node.span_dropped_count": selection.dropped,
             "ya.build.command.span_count": len(commands),
             "ya.build.command.span_dropped_count": command_total - len(commands),
         }
