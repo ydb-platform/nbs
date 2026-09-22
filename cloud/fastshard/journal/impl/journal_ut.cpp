@@ -281,11 +281,316 @@ struct TFixture: public NUnitTest::TBaseFixture
 
 Y_UNIT_TEST_SUITE(TJournalTest)
 {
+    //
+    // Writing
+    //
+
+    Y_UNIT_TEST_F(ShouldWriteAndReadBackAPageGroup, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 3}}));
+
+        auto response = ReadPages({{10, 3}});
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010,A011,A012]",
+            DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetLastAckedLogSequenceNumber());
+    }
+
     Y_UNIT_TEST_F(ShouldRejectTheLsnReservedForTheMetadata, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             WriteRecord(MetadataKey, 1, 'A', {{10, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldAnswerARetryOfAnIndexedRecord, TFixture)
+    {
+        WriteThreeRecords();
+
+        // a retry is answered by the record the chain still holds
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'X', {{30, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'X', {{10, 1}}));
+
+        // and the retry has changed nothing
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 30:[C030]",
+            DescribeGroups(ReadPages({{10, 1}, {30, 1}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectARecordThatFollowsItself, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, WriteRecord(5, 5, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, WriteRecord(5, 6, 'A', {{10, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldIndexOutOfOrderWritesOnceTheGapIsFilled, TFixture)
+    {
+        auto second = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
+        auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
+
+        // neither is acked and neither is visible while lsn 1 is missing
+        UNIT_ASSERT(!second.HasValue());
+        UNIT_ASSERT(!third.HasValue());
+
+        auto response = ReadPages({{20, 1}, {30, 1}});
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetLastAckedLogSequenceNumber());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+
+        // the whole run is applied at once
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            second.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            third.GetValueSync().GetError().GetCode());
+
+        response = ReadPages({{10, 1}, {20, 1}, {30, 1}});
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 20:[B020] 30:[C030]",
+            DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL(3, response.GetLastAckedLogSequenceNumber());
+    }
+
+    Y_UNIT_TEST_F(ShouldDeduplicateARepeatedRecord, TFixture)
+    {
+        auto first = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
+        auto retry = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
+
+        UNIT_ASSERT(!first.HasValue());
+        UNIT_ASSERT(!retry.HasValue());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+
+        // both callers are answered by the record that was inserted
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            first.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            retry.GetValueSync().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldWriteARecordWithoutPages, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {}));
+
+        // it takes no pages but still moves the chain forward
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
+
+        auto response = ReadPages({{20, 1}});
+        UNIT_ASSERT_VALUES_EQUAL("20:[B020]", DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectAWriteThatDoesNotFitTheJournal, TFixture)
+    {
+        PageCount = 4;
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(1, 0, 'A', {{10, 5}}));
+
+        // the rejected record has taken nothing, the journal still fits four
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldReleaseThePagesOfAFailedDataWrite, TFixture)
+    {
+        PageCount = 4;
+        RecreateJournal();
+
+        Device->FailWrites.store(true);
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, WriteRecord(1, 0, 'A', {{10, 4}}));
+
+        Device->FailWrites.store(false);
+
+        // the failed record has left neither its pages nor its lsn behind
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010,A011,A012,A013]",
+            DescribeGroups(ReadPages({{10, 4}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldReleaseThePagesOfAFailedMetaWrite, TFixture)
+    {
+        PageCount = 4;
+        RecreateJournal();
+
+        MetaStore->FailWrites.store(true);
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, WriteRecord(1, 0, 'A', {{10, 4}}));
+
+        MetaStore->FailWrites.store(false);
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
+        UNIT_ASSERT_VALUES_EQUAL("0", StoredKeys());
+    }
+
+    Y_UNIT_TEST_F(ShouldPackSeveralPageGroupsIntoOneRun, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            WriteRecord(1, 0, 'A', {{10, 1}, {20, 2}}));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 20:[A020,A021]",
+            DescribeGroups(ReadPages({{10, 1}, {20, 2}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectARecordWithIntersectingPageGroups, TFixture)
+    {
+        // there is no telling which group owns pages 12 and 13, and the tail
+        // would hand both of them to whoever replays it
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{10, 4}, {12, 4}}));
+
+        // the rejected record has taken nothing: no chain entry, no pages
+        UNIT_ASSERT_VALUES_EQUAL("", StoredKeys());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            WriteRecord(1, 0, 'A', {{10, 4}, {20, 4}}));
+
+        // a group that covers no pages cannot intersect anything
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            WriteRecord(2, 1, 'B', {{10, 1}, {10, 0}}));
+    }
+
+    //
+    // Reading
+    //
+
+    Y_UNIT_TEST_F(ShouldReturnOnlyTheJournalledPages, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 2}}));
+
+        // pages 5 and 20 have never been journalled
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010,A011]",
+            DescribeGroups(ReadPages({{5, 2}, {10, 2}, {20, 1}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldClipTheMappingsToTheRequestedRange, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "11:[A011,A012]",
+            DescribeGroups(ReadPages({{11, 2}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldReturnTheNewestContentOfAPage, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 3}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{11, 1}}));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 11:[B011] 12:[A012]",
+            DescribeGroups(ReadPages({{10, 3}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldFailAReadWhenTheDeviceFails, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+
+        Device->FailReads.store(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            ReadPages({{10, 1}}).GetError().GetCode());
+
+        // a request that touches no journalled page needs no device read
+        Device->FailReads.store(false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            ReadPages({{50, 1}}).GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectARecordOutsideTheDevice, TFixture)
+    {
+        const ui64 last = DevicePageCount - 1;
+
+        // starts past the end
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{last + 1, 1}}));
+
+        // starts inside, runs past the end
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{last, 2}}));
+
+        // a good group does not excuse a bad one
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{10, 1}, {last, 2}}));
+
+        // the end of these wraps around ui64, which used to hide them from
+        // the intersection check and abort the page index
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{Max<ui64>(), 1}, {Max<ui64>(), 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            WriteRecord(1, 0, 'A', {{Max<ui64>() - 1, 3}}));
+
+        // the rejected records have taken nothing: no chain entry, no pages
+        UNIT_ASSERT_VALUES_EQUAL("", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldWriteAndReadBackTheLastDevicePages, TFixture)
+    {
+        const ui64 last = DevicePageCount - 1;
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{last - 1, 2}}));
+
+        // an empty range is not a range, wherever it points
+        auto response = ReadPages({{last + 1, 0}, {last - 1, 2}});
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("1022:[A022,A023]", DescribeGroups(response));
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectAReadOutsideTheDevice, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
+
+        const ui64 last = DevicePageCount - 1;
+
+        auto code = [&](const TGroups& refs)
+        {
+            return ReadPages(refs).GetError().GetCode();
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, code({{last + 1, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, code({{10, 1}, {last, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, code({{Max<ui64>(), 1}}));
+
+        auto response = ReadPages({{last, 2}});
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            response.GetError().GetMessage(),
+            "page range 1023x2 is outside the device of 1024 pages");
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectAReadWithIntersectingPageGroupRefs, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
+
+        auto response = ReadPages({{10, 2}, {11, 2}});
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            response.GetError().GetMessage(),
+            "10x2 and 11x2 of a single request intersect");
+
+        // the refs a request is allowed to hold still work - a ref covering
+        // no pages cannot intersect anything, and the journal answers it
+        // with a group holding nothing
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 11:[] 12:[A012,A013]",
+            DescribeGroups(ReadPages({{10, 1}, {11, 0}, {12, 2}})));
     }
 }
 
