@@ -13,6 +13,7 @@ namespace {
 enum class EToken
 {
     End,
+    Invalid,
     Word,
     Number,
     String,
@@ -109,7 +110,10 @@ public:
                         TString(Input.substr(offset, Position - offset)),
                         offset};
                 }
-                return {EToken::End, {}, offset};
+                return {
+                    EToken::Invalid,
+                    TString(Input.substr(offset, 1)),
+                    offset};
         }
     }
 };

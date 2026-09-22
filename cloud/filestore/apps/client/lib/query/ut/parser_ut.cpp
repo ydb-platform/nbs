@@ -39,6 +39,15 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT(!Parse("SELECT * FROM NodeRefs WHERE child_id IN {}", &error));
         UNIT_ASSERT(!error.Message.empty());
     }
+
+    Y_UNIT_TEST(ShouldRejectUnknownCharacters)
+    {
+        TParseError error;
+        UNIT_ASSERT(!Parse(
+            "SELECT * FROM NodeRefs @ WHERE child_id = 1",
+            &error));
+        UNIT_ASSERT(!error.Message.empty());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NClient::NQuery
