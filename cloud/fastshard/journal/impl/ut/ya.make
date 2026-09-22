@@ -10,6 +10,7 @@ SRCS(
     key_buffer_store_ut.cpp
     log_chain_ut.cpp
     log_index_ut.cpp
+    log_record_ut.cpp
     lsn_barrier_ut.cpp
     memory_device_ut.cpp
 )
