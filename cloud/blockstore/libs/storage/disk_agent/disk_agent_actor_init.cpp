@@ -70,7 +70,8 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
                     std::move(r.Configs),
                     std::move(r.Errors),
                     std::move(r.ConfigMismatchErrors),
-                    std::move(r.DevicesWithSuspendedIO));
+                    std::move(r.DevicesWithSuspendedIO),
+                    std::move(r.JournalledDeviceIds));
 
                 actorSystem->Send(
                     new IEventHandle(replyTo, replyTo, response.release()));
@@ -170,7 +171,7 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         }
     }
 
-    StartJournalledDeviceTcpServer(ctx);
+    StartJournalledDeviceTcpServer(ctx, msg->JournalledDeviceIds);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Ready to work");
 

@@ -75,6 +75,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             device.SetBlockSize(4_KB);
             device.SetDeviceId(uuid);
             device.SetPoolName("journalled");
+            device.SetJournalled(true);
             device.SetFileSize(1_MB);
 
             PrepareFile(device);
