@@ -9,7 +9,10 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/generic/buffer.h>
 #include <util/generic/vector.h>
+
+#include <optional>
 
 namespace NCloud::NJournalled {
 
@@ -33,7 +36,23 @@ struct TLogRecord
     ui64 PrevLsn = 0;
     TVector<TPageMapping> PageMappings;
 
-    NThreading::TPromise<NCloud::NProto::TError> Promise;
+    NThreading::TPromise<NCloud::NProto::TWriteLogRecordResponse> Promise;
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TJournalMetadata
+{
+    ui32 Version = CurrentFormatVersion;
+    ui64 LastAckedLsn = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+TBuffer SerializeRecord(const TLogRecord& record);
+TLogRecordPtr DeserializeRecord(const TBuffer& buffer);
+
+TBuffer SerializeMetadata(const TJournalMetadata& metadata);
+std::optional<TJournalMetadata> DeserializeMetadata(const TBuffer& buffer);
 
 }   // namespace NCloud::NJournalled
