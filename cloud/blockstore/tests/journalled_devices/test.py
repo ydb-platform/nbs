@@ -5,7 +5,7 @@ import socket
 import itertools
 import struct
 
-import cloud.storage.core.protos.device_pb2 as device_pb2
+import cloud.fastshard.protos.device_pb2 as device_pb2
 
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 

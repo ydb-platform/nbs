@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/storage/core/protos/device.pb.h>
+#include <cloud/fastshard/protos/device.pb.h>
 
 #include <memory>
 

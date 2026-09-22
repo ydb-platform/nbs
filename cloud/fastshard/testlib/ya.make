@@ -15,6 +15,7 @@ ELSE()
 ENDIF()
 
 PEERDIR(
+    cloud/fastshard/protos
     cloud/fastshard/sn/iface
 
     cloud/storage/core/protos
