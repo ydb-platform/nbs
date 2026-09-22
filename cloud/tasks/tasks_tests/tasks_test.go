@@ -2319,3 +2319,143 @@ func TestTasksNonCancellableTaskIsAllowedToFailWithNonCancellableError(
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "nonCancellableFailure")
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestDelayedTasksDoNotOccupyRunner(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	cfg := newDefaultConfig()
+	cfg.RunnersCount = proto.Uint64(1)
+	cfg.StalkingRunnersCount = proto.Uint64(1)
+	cfg.RegularSystemTasksEnabled = proto.Bool(false)
+
+	s := createServicesWithConfig(t, ctx, db, cfg, metrics_empty.NewRegistry())
+	require.NoError(t, registerDoublerTask(s.registry))
+	require.NoError(t, s.startRunners(ctx))
+
+	now := time.Now()
+	var delayedIDs []string
+
+	for i := 0; i < 10; i++ {
+		id, err := s.scheduler.ScheduleTaskAt(
+			getRequestContext(t, ctx),
+			"doubler",
+			"",
+			tasks.TaskScheduleTiming{
+				ReceivedAt: now,
+				NotBefore:  now.Add(time.Hour),
+			},
+			&wrappers.UInt64Value{Value: 1},
+		)
+		require.NoError(t, err)
+
+		delayedIDs = append(delayedIDs, id)
+	}
+
+	// The only runner must remain available for an ordinary task.
+	ordinaryID, err := scheduleDoublerTask(
+		getRequestContext(t, ctx),
+		s.scheduler,
+		123,
+	)
+	require.NoError(t, err)
+
+	value, err := waitTaskWithTimeout(ctx, s.scheduler, ordinaryID, 10*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, uint64(246), value)
+
+	for _, id := range delayedIDs {
+		state, err := s.storage.GetTask(ctx, id)
+		require.NoError(t, err)
+		require.True(t, state.FirstRunStartedAt.IsZero())
+	}
+
+	// A delayed task must also be cancellable without waiting for its deadline.
+	_, err = s.scheduler.CancelTask(ctx, delayedIDs[0])
+	require.NoError(t, err)
+	require.NoError(
+		t,
+		s.scheduler.WaitTaskEndedWithTimeout(ctx, delayedIDs[0], 10*time.Second),
+	)
+
+	state, err := s.storage.GetTask(ctx, delayedIDs[0])
+	require.NoError(t, err)
+	require.Equal(t, tasks_storage.TaskStatusCancelled, state.Status)
+	require.True(t, state.FirstRunStartedAt.IsZero())
+}
+
+func TestDelayedTaskSurvivesSchedulerRestart(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db := newYDB(ctx, t)
+	defer db.Close(ctx)
+
+	cfg := newDefaultConfig()
+	cfg.RunnersCount = proto.Uint64(1)
+	cfg.StalkingRunnersCount = proto.Uint64(1)
+	cfg.RegularSystemTasksEnabled = proto.Bool(false)
+
+	oldCtx, stopOld := context.WithCancel(ctx)
+	defer stopOld()
+	old := createServicesWithConfig(t, oldCtx, db, cfg, metrics_empty.NewRegistry())
+
+	now := time.Now()
+	id, err := old.scheduler.ScheduleTaskAt(
+		getRequestContext(t, oldCtx),
+		"doubler",
+		"",
+		tasks.TaskScheduleTiming{
+			ReceivedAt: now,
+			NotBefore:  now.Add(3 * time.Second),
+		},
+		&wrappers.UInt64Value{Value: 123},
+	)
+	require.NoError(t, err)
+
+	before, err := old.storage.GetTask(ctx, id)
+	require.NoError(t, err)
+
+	stopOld()
+
+	// New objects have no in-memory state from the old scheduler.
+	store, err := tasks_storage.NewStorage(cfg, metrics_empty.NewRegistry(), db)
+	require.NoError(t, err)
+
+	registry := tasks.NewRegistry()
+	require.NoError(t, registerDoublerTask(registry))
+
+	scheduler, err := tasks.NewScheduler(
+		ctx,
+		registry,
+		store,
+		cfg,
+		metrics_empty.NewRegistry(),
+	)
+	require.NoError(t, err)
+
+	for _, host := range []string{"worker-a", "worker-b"} {
+		require.NoError(t, tasks.StartRunners(
+			ctx,
+			store,
+			registry,
+			metrics_empty.NewRegistry(),
+			cfg,
+			host,
+		))
+	}
+
+	value, err := waitTaskWithTimeout(ctx, scheduler, id, 20*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, uint64(246), value)
+
+	after, err := store.GetTask(ctx, id)
+	require.NoError(t, err)
+	require.True(t, before.AvailableAt.Equal(after.AvailableAt))
+	require.False(t, after.FirstRunStartedAt.Before(before.AvailableAt))
+}

@@ -159,6 +159,15 @@ func (s *StorageMock) ListSlowTasks(
 	return res, args.Error(1)
 }
 
+func (s *StorageMock) GetDelayedTaskStats(
+	ctx context.Context,
+	now time.Time,
+) (tasks_storage.DelayedTaskStats, error) {
+
+	args := s.Called(ctx, now)
+	return args.Get(0).(tasks_storage.DelayedTaskStats), args.Error(1)
+}
+
 func (s *StorageMock) LockTaskToRun(
 	ctx context.Context,
 	taskInfo tasks_storage.TaskInfo,

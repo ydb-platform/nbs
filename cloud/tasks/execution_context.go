@@ -37,6 +37,9 @@ type ExecutionContext interface {
 
 	IsHanging() bool
 
+	// True only for delayed tasks that have never been locked for Run.
+	IsUnstartedDelayedTask() bool
+
 	SetEstimatedInflightDuration(estimatedInflightDuration time.Duration)
 
 	SetEstimatedStallingDuration(estimatedStallingDuration time.Duration)
@@ -149,6 +152,14 @@ func (c *executionContext) IsHanging() bool {
 	return time.Since(c.taskState.CreatedAt) > c.hangingTaskTimeout ||
 		c.taskState.InflightDuration > inflightTimeout ||
 		c.taskState.StallingDuration > stallingTimeout
+}
+
+func (c *executionContext) IsUnstartedDelayedTask() bool {
+	c.taskStateMutex.Lock()
+	defer c.taskStateMutex.Unlock()
+
+	return !c.taskState.AvailableAt.IsZero() &&
+		c.taskState.FirstRunStartedAt.IsZero()
 }
 
 func (c *executionContext) SetEstimatedInflightDuration(estimatedInflightDuration time.Duration) {

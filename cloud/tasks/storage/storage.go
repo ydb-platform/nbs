@@ -129,6 +129,9 @@ type TaskState struct {
 	Regular                   bool
 	Description               string
 	StorageFolder             string
+	ReceivedAt                time.Time
+	AvailableAt               time.Time
+	FirstRunStartedAt         time.Time
 	CreatedAt                 time.Time
 	CreatedBy                 string
 	ModifiedAt                time.Time
@@ -171,6 +174,10 @@ type TaskState struct {
 	// by client.
 	// TODO: Should be extracted from TaskState.
 	dependants common.StringSet
+
+	// Set only in the result of the first successful LockTaskToRun.
+	// Transient: intentionally not included in the YDB mapping.
+	FirstRun bool
 }
 
 func (s *TaskState) DeepCopy() TaskState {
@@ -216,6 +223,13 @@ type TaskSchedule struct {
 	UseCrontab bool // If set, ScheduleInterval is ignored.
 	Hour       int  // (0 - 23)
 	Min        int  // (0 - 59)
+}
+
+type DelayedTaskStats struct {
+	Total               uint64
+	Due                 uint64
+	MaxOverdueSeconds   float64
+	TotalOverdueSeconds float64
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -289,6 +303,8 @@ type Storage interface {
 	ListHangingTasks(ctx context.Context, limit uint64) ([]TaskInfo, error)
 	ListFailedTasks(ctx context.Context, since time.Time) ([]string, error)
 	ListSlowTasks(ctx context.Context, since time.Time, estimateMiss time.Duration) ([]string, error)
+
+	GetDelayedTaskStats(ctx context.Context, now time.Time) (DelayedTaskStats, error)
 
 	// Fails with WrongGenerationError, if generationID does not match.
 	LockTaskToRun(

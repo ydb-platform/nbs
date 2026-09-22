@@ -44,6 +44,14 @@ func (m *mockRunnerMetrics) OnExecutionStarted(execCtx ExecutionContext) {
 	m.Called(execCtx)
 }
 
+func (m *mockRunnerMetrics) OnInitialRunStarted(
+	state storage.TaskState,
+	at time.Time,
+) {
+
+	m.Called(state, at)
+}
+
 func (m *mockRunnerMetrics) OnExecutionStopped() {
 	m.Called()
 }

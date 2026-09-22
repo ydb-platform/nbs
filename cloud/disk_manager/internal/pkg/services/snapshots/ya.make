@@ -7,6 +7,11 @@ SRCS(
     interface.go
     register.go
     service.go
+    staggering.go
+)
+
+GO_TEST_SRCS(
+    staggering_test.go
 )
 
 END()
@@ -18,4 +23,5 @@ RECURSE(
 
 RECURSE_FOR_TESTS(
     mocks
+    tests
 )

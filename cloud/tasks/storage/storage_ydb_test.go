@@ -5463,3 +5463,280 @@ func TestStorageYDBIsTaskEnded(t *testing.T) {
 		nonExistentTaskID,
 	)))
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestStorageYDBDelayedTaskLifecycle(t *testing.T) {
+	ctx := newContext()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	cfg := &tasks_config.TasksConfig{}
+	s, err := newStorage(t, ctx, db, cfg, empty.NewRegistry())
+	require.NoError(t, err)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	deadline := now.Add(time.Hour)
+	state := TaskState{
+		IdempotencyKey: "delayed",
+		TaskType:       "test",
+		CreatedAt:      now,
+		ModifiedAt:     now,
+		ReceivedAt:     now,
+		AvailableAt:    deadline,
+		Status:         TaskStatusReadyToRun,
+		Request:        []byte("request"),
+		Dependencies:   common.NewStringSet(),
+	}
+
+	id, err := s.CreateTask(ctx, state)
+	require.NoError(t, err)
+
+	listed, err := s.ListTasksReadyToRun(ctx, 100, nil)
+	require.NoError(t, err)
+	require.Empty(t, listed)
+
+	stats, err := s.GetDelayedTaskStats(ctx, now)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), stats.Total)
+	require.Zero(t, stats.Due)
+
+	// Simulate reconstructing storage after a process restart.
+	s, err = NewStorage(cfg, empty.NewRegistry(), db)
+	require.NoError(t, err)
+
+	saved, err := s.GetTask(ctx, id)
+	require.NoError(t, err)
+	require.True(t, deadline.Equal(saved.AvailableAt))
+
+	info := TaskInfo{
+		ID:           id,
+		GenerationID: saved.GenerationID,
+		TaskType:     saved.TaskType,
+	}
+	_, err = s.LockTaskToRun(
+		ctx,
+		info,
+		deadline.Add(-time.Microsecond),
+		"host",
+		"runner",
+	)
+	require.Error(t, err)
+
+	// A duplicate request must preserve the original timestamps.
+	state.ReceivedAt = now.Add(time.Minute)
+	state.AvailableAt = deadline.Add(time.Hour)
+
+	duplicateID, err := s.CreateTask(ctx, state)
+	require.NoError(t, err)
+	require.Equal(t, id, duplicateID)
+
+	saved, err = s.GetTask(ctx, id)
+	require.NoError(t, err)
+	require.True(t, deadline.Equal(saved.AvailableAt))
+	require.True(t, now.Equal(saved.ReceivedAt))
+
+	// Once the deadline is reached, the first run leaves the delayed queue.
+	stats, err = s.GetDelayedTaskStats(ctx, deadline.Add(2*time.Second))
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), stats.Due)
+	require.InDelta(t, 2.0, stats.MaxOverdueSeconds, 0.000001)
+	require.InDelta(t, 2.0, stats.TotalOverdueSeconds, 0.000001)
+
+	locked, err := s.LockTaskToRun(ctx, info, deadline, "host", "runner")
+	require.NoError(t, err)
+	require.True(t, locked.FirstRun)
+
+	stats, err = s.GetDelayedTaskStats(ctx, deadline)
+	require.NoError(t, err)
+	require.Zero(t, stats.Total)
+
+	// A retry belongs to the ordinary queue even though wall time is still
+	// before the original synthetic deadline used in this storage test.
+	locked.Status = TaskStatusReadyToRun
+	locked.ModifiedAt = deadline.Add(time.Second)
+
+	_, err = s.UpdateTask(ctx, locked)
+	require.NoError(t, err)
+
+	listed, err = s.ListTasksReadyToRun(ctx, 100, nil)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+
+	lockedAgain, err := s.LockTaskToRun(
+		ctx,
+		listed[0],
+		deadline.Add(2*time.Second),
+		"host2",
+		"runner",
+	)
+	require.NoError(t, err)
+	require.False(t, lockedAgain.FirstRun)
+	require.True(t, locked.FirstRunStartedAt.Equal(lockedAgain.FirstRunStartedAt))
+
+	// Cancellation before the deadline must use the ordinary cancellation queue.
+	state.IdempotencyKey = "cancel-before-start"
+	cancelID, err := s.CreateTask(ctx, state)
+	require.NoError(t, err)
+
+	_, err = s.MarkForCancellation(ctx, cancelID, now)
+	require.NoError(t, err)
+
+	stats, err = s.GetDelayedTaskStats(ctx, now)
+	require.NoError(t, err)
+	require.Zero(t, stats.Total)
+
+	cancelTasks, err := s.ListTasksReadyToCancel(ctx, 100, nil)
+	require.NoError(t, err)
+	require.Len(t, cancelTasks, 1)
+	require.Equal(t, cancelID, cancelTasks[0].ID)
+
+	cancelled, err := s.LockTaskToCancel(ctx, cancelTasks[0], now, "host", "runner")
+	require.NoError(t, err)
+	require.True(t, cancelled.FirstRunStartedAt.IsZero())
+	require.False(t, cancelled.FirstRun)
+}
+
+func TestStorageYDBDelayedQueuesAndConcurrentLock(t *testing.T) {
+	ctx := newContext()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	s, err := newStorage(
+		t,
+		ctx,
+		db,
+		&tasks_config.TasksConfig{},
+		empty.NewRegistry(),
+	)
+	require.NoError(t, err)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	create := func(key string, deadline time.Time) string {
+		id, err := s.CreateTask(ctx, TaskState{
+			IdempotencyKey: key,
+			TaskType:       "test",
+			Status:         TaskStatusReadyToRun,
+			CreatedAt:      now,
+			ModifiedAt:     now,
+			ReceivedAt:     now,
+			AvailableAt:    deadline,
+			Request:        []byte("request"),
+			Dependencies:   common.NewStringSet(),
+		})
+		require.NoError(t, err)
+
+		return id
+	}
+
+	ordinaryID := create("ordinary", time.Time{})
+	dueID := create("due", now.Add(-time.Second))
+	for i := 0; i < 20; i++ {
+		create(fmt.Sprintf("future-%d", i), now.Add(time.Hour))
+	}
+
+	// A one-slot listing must give both queues a chance without returning future tasks.
+	seen := map[string]bool{}
+	for i := 0; i < 8; i++ {
+		list, err := s.ListTasksReadyToRun(ctx, 1, nil)
+		require.NoError(t, err)
+		require.Len(t, list, 1)
+
+		seen[list[0].ID] = true
+	}
+	require.True(t, seen[ordinaryID])
+	require.True(t, seen[dueID])
+	require.Len(t, seen, 2)
+
+	list, err := s.ListTasksReadyToRun(ctx, 0, nil)
+	require.NoError(t, err)
+	require.Empty(t, list)
+
+	list, err = s.ListTasksReadyToRun(ctx, 100, []string{"another-type"})
+	require.NoError(t, err)
+	require.Empty(t, list)
+
+	// Prove ordinary lock still works: this catches the shared DELETE bug.
+	_, err = s.LockTaskToRun(
+		ctx,
+		TaskInfo{
+			ID:       ordinaryID,
+			TaskType: "test",
+		},
+		now,
+		"ordinary",
+		"runner",
+	)
+	require.NoError(t, err)
+
+	// Only one worker can lock the same delayed task generation.
+	var successes int32
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+
+	for i := 0; i < 2; i++ {
+		wg.Add(1)
+		go func(host string) {
+			defer wg.Done()
+			<-start
+
+			_, err := s.LockTaskToRun(
+				ctx,
+				TaskInfo{
+					ID:       dueID,
+					TaskType: "test",
+				},
+				now,
+				host,
+				"runner",
+			)
+			if err == nil {
+				atomic.AddInt32(&successes, 1)
+			}
+		}(fmt.Sprintf("host-%d", i))
+	}
+
+	close(start)
+	wg.Wait()
+	require.Equal(t, int32(1), successes)
+}
+
+func TestStorageYDBDelayedLegacyStats(t *testing.T) {
+	ctx := newContext()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	legacyFolder := "legacy/" + t.Name()
+	cfg := &tasks_config.TasksConfig{LegacyStorageFolder: &legacyFolder}
+	s, err := newStorage(t, ctx, db, cfg, empty.NewRegistry())
+	require.NoError(t, err)
+
+	compound := s.(*compoundStorage)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	for i, part := range []Storage{compound.legacyStorage, compound.storage} {
+		_, err := part.CreateTask(ctx, TaskState{
+			IdempotencyKey: fmt.Sprintf("legacy-stat-%d", i),
+			TaskType:       "test",
+			Status:         TaskStatusReadyToRun,
+			CreatedAt:      now,
+			ModifiedAt:     now,
+			AvailableAt:    now.Add(-time.Duration(i+1) * time.Second),
+			Dependencies:   common.NewStringSet(),
+		})
+		require.NoError(t, err)
+	}
+
+	stats, err := s.GetDelayedTaskStats(ctx, now)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), stats.Total)
+	require.Equal(t, uint64(2), stats.Due)
+	require.Equal(t, 2.0, stats.MaxOverdueSeconds)
+	require.Equal(t, 3.0, stats.TotalOverdueSeconds)
+}

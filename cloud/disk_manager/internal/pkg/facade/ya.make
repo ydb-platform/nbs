@@ -38,5 +38,6 @@ RECURSE_FOR_TESTS(
     without_shadow_disks_test
     snapshot_service_nemesis_test
     snapshot_service_test
+    snapshot_staggering_test
     testcommon
 )

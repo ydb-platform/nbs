@@ -196,6 +196,10 @@ func (t *createSnapshotFromDiskTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	if execCtx.IsUnstartedDelayedTask() {
+		return nil
+	}
+
 	// Disk cell may differ from the zone presented in the request.
 	disk, err := t.cellSelector.ReplaceZoneIdWithCellIdInDiskMeta(
 		ctx,

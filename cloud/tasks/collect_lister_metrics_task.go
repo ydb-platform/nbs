@@ -17,6 +17,15 @@ const totalHangingTaskCountGaugeName = "totalHangingTaskCount"
 
 ////////////////////////////////////////////////////////////////////////////////
 
+var delayedTaskGaugeNames = []string{
+	"delayedTasks",
+	"delayedTasksDue",
+	"delayedTaskMaxOverdueSeconds",
+	"delayedTaskAvgOverdueSeconds",
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type collectListerMetricsTask struct {
 	registry                  metrics.Registry
 	storage                   storage.Storage
@@ -72,7 +81,12 @@ func (c *collectListerMetricsTask) Run(
 				}
 			}
 
-			err := c.collectHangingTasksMetrics(ctx)
+			err := c.collectDelayedTasksMetrics(ctx)
+			if err != nil {
+				return err
+			}
+
+			err = c.collectHangingTasksMetrics(ctx)
 			if err != nil {
 				return err
 			}
@@ -127,6 +141,28 @@ func (c *collectListerMetricsTask) collectTasksMetrics(
 		})
 		subRegistry.Gauge(sensor).Set(float64(count))
 	}
+
+	return nil
+}
+
+func (c *collectListerMetricsTask) collectDelayedTasksMetrics(
+	ctx context.Context,
+) error {
+
+	stats, err := c.storage.GetDelayedTaskStats(ctx, time.Now())
+	if err != nil {
+		return err
+	}
+
+	avg := 0.0
+	if stats.Due != 0 {
+		avg = stats.TotalOverdueSeconds / float64(stats.Due)
+	}
+
+	c.registry.Gauge("delayedTasks").Set(float64(stats.Total))
+	c.registry.Gauge("delayedTasksDue").Set(float64(stats.Due))
+	c.registry.Gauge("delayedTaskMaxOverdueSeconds").Set(stats.MaxOverdueSeconds)
+	c.registry.Gauge("delayedTaskAvgOverdueSeconds").Set(avg)
 
 	return nil
 }
@@ -212,5 +248,9 @@ func (c *collectListerMetricsTask) cleanupMetrics(taskStatuses []string) {
 
 	for _, gauge := range c.hangingTaskGaugesByID {
 		gauge.Set(float64(0))
+	}
+
+	for _, name := range delayedTaskGaugeNames {
+		c.registry.Gauge(name).Set(0)
 	}
 }

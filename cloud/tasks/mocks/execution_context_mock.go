@@ -58,6 +58,11 @@ func (c *ExecutionContextMock) IsHanging() bool {
 	return args.Bool(0)
 }
 
+func (c *ExecutionContextMock) IsUnstartedDelayedTask() bool {
+	args := c.Called()
+	return args.Bool(0)
+}
+
 func (c *ExecutionContextMock) SetEstimatedInflightDuration(estimatedInflightDuration time.Duration) {
 	c.Called(estimatedInflightDuration)
 }

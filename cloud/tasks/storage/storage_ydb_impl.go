@@ -147,61 +147,111 @@ func (s *storageYDB) updateReadyToExecute(
 	transitions []stateTransition,
 ) error {
 
-	var values []persistence.Value
+	delayed := tableName == "ready_to_run_delayed"
 
-	for _, t := range transitions {
-		if t.lastState != nil &&
-			t.lastState.Status != t.newState.Status &&
-			t.lastState.Status == status {
-
-			values = append(values, persistence.StructValue(
-				persistence.StructFieldValue("id", persistence.UTF8Value(t.lastState.ID)),
-			))
+	belongsToQueue := func(state *TaskState) bool {
+		if state == nil || state.Status != status {
+			return false
 		}
+
+		// Cancellation uses its ordinary queue regardless of the delay.
+		if status != TaskStatusReadyToRun {
+			return true
+		}
+
+		needsInitialDelay := !state.AvailableAt.IsZero() &&
+			state.FirstRunStartedAt.IsZero()
+
+		return needsInitialDelay == delayed
 	}
 
-	if len(values) != 0 {
+	keyType := "Struct<id: Utf8>"
+	rowType := readyToExecuteStructTypeString()
+	if delayed {
+		keyType = "Struct<available_at: Timestamp, id: Utf8>"
+		rowType = readyToRunDelayedStructTypeString()
+	}
+
+	var keysToDelete []persistence.Value
+	var rowsToUpsert []persistence.Value
+
+	for _, t := range transitions {
+		wasInQueue := belongsToQueue(t.lastState)
+		isInQueue := belongsToQueue(&t.newState)
+
+		// AvailableAt is part of the delayed queue's primary key.
+		keyChanged := delayed && wasInQueue && isInQueue &&
+			!t.lastState.AvailableAt.Equal(t.newState.AvailableAt)
+
+		if wasInQueue && (!isInQueue || keyChanged) {
+			if delayed {
+				keysToDelete = append(keysToDelete, persistence.StructValue(
+					persistence.StructFieldValue(
+						"available_at",
+						persistence.TimestampValue(t.lastState.AvailableAt),
+					),
+					persistence.StructFieldValue("id", persistence.UTF8Value(t.lastState.ID)),
+				))
+			} else {
+				keysToDelete = append(keysToDelete, persistence.StructValue(
+					persistence.StructFieldValue("id", persistence.UTF8Value(t.lastState.ID)),
+				))
+			}
+		}
+
+		if !isInQueue {
+			continue
+		}
+
+		if wasInQueue && !keyChanged &&
+			t.lastState.GenerationID == t.newState.GenerationID &&
+			t.lastState.TaskType == t.newState.TaskType &&
+			t.lastState.ZoneID == t.newState.ZoneID {
+
+			// The queue entry already contains the required values.
+			continue
+		}
+
+		state := t.newState
+
+		fields := []persistence.StructValueOption{
+			persistence.StructFieldValue("id", persistence.UTF8Value(state.ID)),
+			persistence.StructFieldValue(
+				"generation_id",
+				persistence.Uint64Value(state.GenerationID),
+			),
+			persistence.StructFieldValue("task_type", persistence.UTF8Value(state.TaskType)),
+			persistence.StructFieldValue("zone_id", persistence.UTF8Value(state.ZoneID)),
+		}
+
+		if delayed {
+			fields = append(fields, persistence.StructFieldValue(
+				"available_at",
+				persistence.TimestampValue(state.AvailableAt),
+			))
+		}
+
+		rowsToUpsert = append(rowsToUpsert, persistence.StructValue(fields...))
+	}
+
+	if len(keysToDelete) != 0 {
 		_, err := tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
-			declare $values as List<Struct<id: Utf8>>;
+			declare $values as List<%v>;
 
 			delete from %v on
 			select *
 			from AS_TABLE($values)
-		`, s.tablesPath, tableName),
-			persistence.ValueParam("$values", persistence.ListValue(values...)),
+		`, s.tablesPath, keyType, tableName),
+			persistence.ValueParam("$values", persistence.ListValue(keysToDelete...)),
 		)
 		if err != nil {
 			return err
 		}
 	}
 
-	values = nil
-
-	for _, t := range transitions {
-		if t.newState.Status != status {
-			// Table is not affected by transition.
-			continue
-		}
-
-		if t.lastState != nil &&
-			t.lastState.Status == t.newState.Status &&
-			t.lastState.GenerationID == t.newState.GenerationID {
-
-			// Nothing to update.
-			continue
-		}
-
-		values = append(values, persistence.StructValue(
-			persistence.StructFieldValue("id", persistence.UTF8Value(t.newState.ID)),
-			persistence.StructFieldValue("generation_id", persistence.Uint64Value(t.newState.GenerationID)),
-			persistence.StructFieldValue("task_type", persistence.UTF8Value(t.newState.TaskType)),
-			persistence.StructFieldValue("zone_id", persistence.UTF8Value(t.newState.ZoneID)),
-		))
-	}
-
-	if len(values) == 0 {
+	if len(rowsToUpsert) == 0 {
 		return nil
 	}
 
@@ -213,8 +263,8 @@ func (s *storageYDB) updateReadyToExecute(
 		upsert into %v
 		select *
 		from AS_TABLE($values)
-	`, s.tablesPath, readyToExecuteStructTypeString(), tableName),
-		persistence.ValueParam("$values", persistence.ListValue(values...)),
+	`, s.tablesPath, rowType, tableName),
+		persistence.ValueParam("$values", persistence.ListValue(rowsToUpsert...)),
 	)
 	return err
 }
@@ -359,6 +409,17 @@ func (s *storageYDB) updateTaskStates(
 		ctx,
 		tx,
 		"ready_to_run",
+		TaskStatusReadyToRun,
+		transitions,
+	)
+	if err != nil {
+		return err
+	}
+
+	err = s.updateReadyToExecute(
+		ctx,
+		tx,
+		"ready_to_run_delayed",
 		TaskStatusReadyToRun,
 		transitions,
 	)
@@ -928,6 +989,50 @@ func (s *storageYDB) listTasks(
 	return scanTaskInfosStream(ctx, res)
 }
 
+func (s *storageYDB) listTasksReadyToRunDelayed(
+	ctx context.Context,
+	session *persistence.Session,
+	limit uint64,
+	taskTypeWhitelist []string,
+	now time.Time,
+) ([]TaskInfo, error) {
+
+	if limit == 0 {
+		return nil, nil
+	}
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		pragma AnsiInForEmptyOrNullableItemsCollections;
+
+		declare $limit as Uint64;
+		declare $now as Timestamp;
+		declare $type_white_list as List<Utf8>;
+		declare $zone_ids as List<Utf8>;
+
+		select *
+		from ready_to_run_delayed
+		where
+			available_at <= $now and
+			(ListLength($type_white_list) == 0 or task_type in $type_white_list) and
+			(Len(zone_id) == 0 or zone_id in $zone_ids)
+		order by available_at, id
+		limit $limit
+	`, s.tablesPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
+		persistence.ValueParam("$now", persistence.TimestampValue(now)),
+		persistence.ValueParam("$type_white_list", strListValue(taskTypeWhitelist)),
+		persistence.ValueParam("$zone_ids", strListValue(s.ZoneIDs)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	return scanTaskInfosStream(ctx, res)
+}
+
 func (s *storageYDB) listHangingTasks(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1173,6 +1278,59 @@ func (s *storageYDB) listSlowTasks(
 	return scanTaskIDsStream(ctx, res)
 }
 
+func (s *storageYDB) getDelayedTaskStats(
+	ctx context.Context,
+	session *persistence.Session,
+	now time.Time,
+) (DelayedTaskStats, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $now as Timestamp;
+
+		$ages = (
+			select
+				available_at <= $now as due,
+				CAST(CAST($now AS Int64) - CAST(available_at AS Int64) AS DOUBLE) / 1000000.0 as age
+			from ready_to_run_delayed
+		);
+
+		select
+			COUNT(*) as total,
+			COUNT_IF(due) as due,
+			COALESCE(MAX(IF(due, age, 0.0)), 0.0) as max_age,
+			COALESCE(SUM(IF(due, age, 0.0)), 0.0) as total_age
+		from $ages;
+	`, s.tablesPath),
+		persistence.ValueParam("$now", persistence.TimestampValue(now)),
+	)
+	if err != nil {
+		return DelayedTaskStats{}, err
+	}
+	defer res.Close()
+
+	var stats DelayedTaskStats
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			if err := res.ScanNamed(
+				persistence.OptionalWithDefault("total", &stats.Total),
+				persistence.OptionalWithDefault("due", &stats.Due),
+				persistence.OptionalWithDefault("max_age", &stats.MaxOverdueSeconds),
+				persistence.OptionalWithDefault("total_age", &stats.TotalOverdueSeconds),
+			); err != nil {
+				return DelayedTaskStats{}, err
+			}
+		}
+	}
+
+	if err := ctx.Err(); err != nil {
+		return DelayedTaskStats{}, err
+	}
+
+	return stats, res.Err()
+}
+
 func (s *storageYDB) lockTaskToExecute(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1243,6 +1401,19 @@ func (s *storageYDB) lockTaskToExecute(
 		)
 	}
 
+	firstRun := newStatus == TaskStatusRunning && state.FirstRunStartedAt.IsZero()
+	if firstRun {
+		if !state.AvailableAt.IsZero() && at.Before(state.AvailableAt) {
+			return TaskState{}, errors.NewRetriableErrorf(
+				"task %q is not available before %v",
+				state.ID,
+				state.AvailableAt,
+			)
+		}
+
+		state.FirstRunStartedAt = at
+	}
+
 	state.Status = newStatus
 	state.GenerationID++
 	state.LastHost = hostname
@@ -1271,6 +1442,8 @@ func (s *storageYDB) lockTaskToExecute(
 	if err != nil {
 		return TaskState{}, err
 	}
+
+	state.FirstRun = firstRun
 
 	return state, nil
 }
@@ -1652,6 +1825,11 @@ func (s *storageYDB) updateTaskTx(
 		// interpreted similar to RetriableError.
 		return TaskState{}, errors.NewWrongGenerationError()
 	}
+
+	// Scheduling timestamps are maintained by storage.
+	state.ReceivedAt = lastState.ReceivedAt
+	state.AvailableAt = lastState.AvailableAt
+	state.FirstRunStartedAt = lastState.FirstRunStartedAt
 
 	state.ChangedStateAt = lastState.ChangedStateAt
 	state.EndedAt = lastState.EndedAt

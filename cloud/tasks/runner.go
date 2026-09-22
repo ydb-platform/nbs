@@ -674,6 +674,20 @@ func lockAndExecuteTask(
 	runnerMetrics.OnExecutionStarted(execCtx)
 	logging.Info(ctx, "started execution of task %v", taskInfo)
 
+	if taskState.FirstRun && !taskState.AvailableAt.IsZero() {
+		startedAt := time.Now()
+		runnerMetrics.OnInitialRunStarted(taskState, startedAt)
+
+		logging.Info(
+			runCtx,
+			"initial delayed run: task=%s received_at=%s not_before=%s started_at=%s",
+			taskState.ID,
+			taskState.ReceivedAt.Format(time.RFC3339Nano),
+			taskState.AvailableAt.Format(time.RFC3339Nano),
+			startedAt.Format(time.RFC3339Nano),
+		)
+	}
+
 	runner.executeTask(runCtx, execCtx, task)
 
 	runnerMetrics.OnExecutionStopped()

@@ -314,6 +314,31 @@ func (s *compoundStorage) ListSlowTasks(
 	return tasks, err
 }
 
+func (s *compoundStorage) GetDelayedTaskStats(
+	ctx context.Context,
+	now time.Time,
+) (DelayedTaskStats, error) {
+
+	var result DelayedTaskStats
+	err := s.visit(ctx, func(part Storage) error {
+		stats, err := part.GetDelayedTaskStats(ctx, now)
+		if err != nil {
+			return err
+		}
+
+		result.Total += stats.Total
+		result.Due += stats.Due
+		result.TotalOverdueSeconds += stats.TotalOverdueSeconds
+		if stats.MaxOverdueSeconds > result.MaxOverdueSeconds {
+			result.MaxOverdueSeconds = stats.MaxOverdueSeconds
+		}
+
+		return nil
+	})
+
+	return result, err
+}
+
 func (s *compoundStorage) LockTaskToRun(
 	ctx context.Context,
 	taskInfo TaskInfo,

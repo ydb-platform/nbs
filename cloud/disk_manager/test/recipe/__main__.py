@@ -82,6 +82,7 @@ def parse_args(args):
         type=str,
         default="",
     )
+    parser.add_argument("--snapshot-staggering-window", type=str, default="0s")
     args, _ = parser.parse_known_args(args=args)
     return args
 
@@ -383,6 +384,7 @@ def start(argv):
             root_certs_file=root_certs_file,
             idx=idx,
             is_dataplane=False,
+            snapshot_staggering_window=args.snapshot_staggering_window,
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
             nfs_port=nfs.secure_port,
