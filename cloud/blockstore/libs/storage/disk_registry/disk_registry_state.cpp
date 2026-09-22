@@ -6645,15 +6645,15 @@ auto TDiskRegistryState::PurgeDevice(
     bool shouldResume,
     bool dryRun) -> TUpdateCmsDeviceStateResult
 {
+    TUpdateCmsDeviceStateResult result;
 
     auto* agent = AgentList.FindAgent(agentId);
     if (!agent) {
-        TUpdateCmsDeviceStateResult result;
         result.Error = MakeError(E_NOT_FOUND, "agent not found");
         return result;
     }
 
-    auto removeDeviceError = UpdateCmsDeviceState(
+    result = UpdateCmsDeviceState(
         db,
         agentId,
         path,
@@ -6663,28 +6663,32 @@ auto TDiskRegistryState::PurgeDevice(
         shouldResume,
         dryRun);
 
-    if (HasError(removeDeviceError.Error)) {
+    if (HasError(result.Error)) {
         ReportDiskRegistryPurgeDeviceError(
-            FormatError(removeDeviceError.Error),
-            {{"AgentId", agent->GetAgentId()}});
+            FormatError(result.Error),
+            {{"AgentId", agentId}, {"DevicePath", path}});
     }
 
     STORAGE_LOG(
-        (HasError(removeDeviceError.Error) ? TLOG_ERR : TLOG_INFO),
-        "Purge device %s requested. Remove device ended with the result: %s; "
+        (HasError(result.Error) ? TLOG_ERR : TLOG_INFO),
+        "Purge device %s from agent %s requested."
+        "Remove device ended with the result: %s; "
         "affectedDisks: [%s]; timeout: %lu",
-        agent->GetAgentId().Quote().c_str(),
-        JoinSeq(", ", removeDeviceError.AffectedDisks).c_str(),
-        FormatError(removeDeviceError.Error).c_str(),
-        removeDeviceError.Timeout.Seconds());
+        path.Quote().c_str(),
+        agentId.Quote().c_str(),
+        FormatError(result.Error).c_str(),
+        JoinSeq(", ", result.AffectedDisks).c_str(),
+        result.Timeout.Seconds());
 
+    result.Error = {};
+    result.Timeout = TDuration();
     if (dryRun) {
-        return {};
+        return result;
     }
 
     CleanupDeviceConfig(db, *agent, path);
 
-    return {};
+    return result;
 }
 
 void TDiskRegistryState::ApplyDeviceStateChange(
