@@ -1404,6 +1404,165 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         diskRegistry.AllocateDisk("disk-2", 20_GB);
     }
 
+    Y_UNIT_TEST(ShouldRestoreBatchedStartedMigrationsAfterReboot)
+    {
+        const TVector agents {
+            CreateAgentConfig("agent-1", {
+                Device("dev-1", "uuid-1.1", "rack-1", 10_GB, 4_KB),
+                Device("dev-2", "uuid-1.2", "rack-1", 10_GB, 4_KB),
+            }),
+            CreateAgentConfig("agent-2", {
+                Device("dev-1", "uuid-2.1", "rack-2", 10_GB, 4_KB),
+                Device("dev-2", "uuid-2.2", "rack-2", 10_GB, 4_KB),
+            })
+        };
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents(agents)
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+        diskRegistry.UpdateConfig(CreateRegistryConfig(agents));
+
+        RegisterAndWaitForAgent(*runtime, 0, 2);
+        diskRegistry.CreatePlacementGroup(
+            "pg",
+            NProto::PLACEMENT_STRATEGY_SPREAD,
+            0);
+        auto response = diskRegistry.AllocateDisk(
+            "disk-1", 20_GB, DefaultLogicalBlockSize, "pg");
+        UNIT_ASSERT_VALUES_EQUAL(2, response->Record.DevicesSize());
+        TVector<TString> sources;
+        for (const auto& device: response->Record.GetDevices()) {
+            sources.push_back(device.GetDeviceUUID());
+        }
+        RegisterAndWaitForAgent(*runtime, 1, 2);
+
+        TBlockEvents<TEvDiskRegistryPrivate::TEvStartMigrationRequest>
+            startRequests(*runtime);
+        diskRegistry.ChangeAgentState("agent-1", NProto::AGENT_STATE_WARNING);
+        runtime->AdvanceCurrentTime(20s);
+        runtime->WaitFor("start migration request", [&] {
+            return !startRequests.empty();
+        });
+        const auto initialBackup = diskRegistry.BackupDiskRegistryState(
+            NProto::BDRSS_LOCAL_DB);
+        const auto& initialState = initialBackup->Record.GetLocalDBBackup();
+        UNIT_ASSERT_VALUES_EQUAL(1, initialState.PlacementGroupsSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, initialState.GetDisks(0).MigrationsSize());
+        const auto placementGroupVersion =
+            initialState.GetPlacementGroups(0).GetConfigVersion();
+
+        TBlockEvents<TEvVolume::TEvReallocateDiskResponse> reallocateResponses(
+            *runtime);
+        TVector<ui32> startedCounts;
+        auto startObserver = runtime->AddObserver<
+            TEvDiskRegistryPrivate::TEvStartMigrationResponse>(
+            [&](const auto& event)
+            {
+                startedCounts.push_back(
+                    event->Get()->StartedDeviceMigrationsCount);
+            });
+        startRequests.Stop().Unblock();
+        runtime->WaitFor(
+            "batched migration start and reallocation response",
+            [&] {
+                return !startedCounts.empty() && !reallocateResponses.empty();
+            });
+        UNIT_ASSERT_VALUES_EQUAL((TVector<ui32>{2}), startedCounts);
+
+        const auto startedBackup = diskRegistry.BackupDiskRegistryState(
+            NProto::BDRSS_LOCAL_DB);
+        const auto& startedDisk =
+            startedBackup->Record.GetLocalDBBackup().GetDisks(0);
+        TVector<std::pair<TString, TString>> expectedMigrations;
+        for (const auto& migration: startedDisk.GetMigrations()) {
+            expectedMigrations.emplace_back(
+                migration.GetSourceDeviceId(),
+                migration.GetTargetDevice().GetDeviceUUID());
+        }
+        Sort(expectedMigrations);
+        UNIT_ASSERT_VALUES_EQUAL(2, expectedMigrations.size());
+        TVector<TString> targets;
+        for (const auto& [source, target]: expectedMigrations) {
+            targets.push_back(target);
+        }
+        Sort(targets);
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<TString>{"uuid-2.1", "uuid-2.2"}), targets);
+
+        auto checkState = [&](const NProto::TDiskRegistryStateBackup& backup,
+                              bool awaitingAck)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(1, backup.DisksSize());
+            const auto& disk = backup.GetDisks(0);
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", disk.GetDiskId());
+            const TVector<TString> actualDevices {
+                disk.GetDeviceUUIDs().begin(), disk.GetDeviceUUIDs().end()};
+            UNIT_ASSERT_VALUES_EQUAL(sources, actualDevices);
+            UNIT_ASSERT_VALUES_EQUAL(0, disk.FinishedMigrationsSize());
+            TVector<std::pair<TString, TString>> migrations;
+            for (const auto& migration: disk.GetMigrations()) {
+                migrations.emplace_back(
+                    migration.GetSourceDeviceId(),
+                    migration.GetTargetDevice().GetDeviceUUID());
+            }
+            Sort(migrations);
+            UNIT_ASSERT_VALUES_EQUAL(expectedMigrations, migrations);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, backup.PlacementGroupsSize());
+            const auto& group = backup.GetPlacementGroups(0);
+            UNIT_ASSERT_VALUES_EQUAL("pg", group.GetGroupId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                placementGroupVersion + 1, group.GetConfigVersion());
+            UNIT_ASSERT_VALUES_EQUAL(1, group.DisksSize());
+            UNIT_ASSERT_VALUES_EQUAL("disk-1", group.GetDisks(0).GetDiskId());
+            TVector<TString> racks {
+                group.GetDisks(0).GetDeviceRacks().begin(),
+                group.GetDisks(0).GetDeviceRacks().end()};
+            Sort(racks);
+            UNIT_ASSERT_VALUES_EQUAL(
+                (TVector<TString>{"rack-1", "rack-2"}), racks);
+            UNIT_ASSERT_VALUES_EQUAL(
+                awaitingAck ? 1 : 0, backup.DisksToNotifySize());
+            if (awaitingAck) {
+                UNIT_ASSERT_VALUES_EQUAL("disk-1", backup.GetDisksToNotify(0));
+            }
+        };
+        auto checkMemoryAndDatabase = [&](bool awaitingAck) {
+            const auto backup = diskRegistry.BackupDiskRegistryState(
+                NProto::BDRSS_MEMORY_AND_LOCAL_DB);
+            checkState(backup->Record.GetMemoryBackup(), awaitingAck);
+            checkState(backup->Record.GetLocalDBBackup(), awaitingAck);
+        };
+        checkMemoryAndDatabase(true);
+
+        reallocateResponses.clear();
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+        runtime->WaitFor("reallocation response after reboot", [&] {
+            return !reallocateResponses.empty();
+        });
+        checkMemoryAndDatabase(true);
+
+        reallocateResponses.Stop().Unblock(1);
+        runtime->WaitFor("restored reallocation acknowledged", [&] {
+            const auto backup = diskRegistry.BackupDiskRegistryState(
+                NProto::BDRSS_LOCAL_DB);
+            return backup->Record.GetLocalDBBackup().DisksToNotifySize() == 0;
+        });
+        checkMemoryAndDatabase(false);
+
+        RegisterAgents(*runtime, agents.size());
+        WaitForAgents(*runtime, agents.size());
+        // Restored migration targets must remain reserved.
+        diskRegistry.SendAllocateDiskRequest("disk-2", 10_GB);
+        const auto allocation = diskRegistry.RecvAllocateDiskResponse();
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_BS_DISK_ALLOCATION_FAILED, allocation->GetStatus());
+    }
+
     Y_UNIT_TEST(ShouldRestoreBatchedFinishedMigrationsAfterReboot)
     {
         const TVector agents {
