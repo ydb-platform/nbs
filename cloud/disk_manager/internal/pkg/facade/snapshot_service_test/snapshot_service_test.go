@@ -120,6 +120,116 @@ func TestSnapshotServiceCreateSnapshotFromDisk(t *testing.T) {
 	)
 }
 
+func testCreateSnapshotFromDiskWithData(
+	t *testing.T,
+	diskKind disk_manager.DiskKind,
+	diskBlockSize uint32,
+	diskSize uint64,
+	zoneID string,
+) {
+
+	t.Helper()
+	ctx := testcommon.NewContext()
+
+	client, err := testcommon.NewClient(ctx)
+	require.NoError(t, err)
+	defer client.Close()
+
+	diskID := t.Name()
+
+	reqCtx := testcommon.GetRequestContext(t, ctx)
+	operation, err := client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcEmpty{
+			SrcEmpty: &empty.Empty{},
+		},
+		Size: int64(diskSize),
+		Kind: diskKind,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: zoneID,
+			DiskId: diskID,
+		},
+		BlockSize: int64(diskBlockSize),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	diskMeta, err := testcommon.GetDiskMeta(t, ctx, diskID)
+	require.NoError(t, err)
+	nbsClient := testcommon.NewNbsTestingClient(t, ctx, diskMeta.ZoneID)
+	diskContentInfo, err := nbsClient.FillEncryptedDiskWithChunkSize(
+		ctx,
+		diskID,
+		diskSize,
+		uint64(diskBlockSize),
+		nil, // encryption
+	)
+	require.NoError(t, err)
+
+	snapshotID := t.Name()
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateSnapshot(reqCtx, &disk_manager.CreateSnapshotRequest{
+		Src: &disk_manager.DiskId{
+			ZoneId: zoneID,
+			DiskId: diskID,
+		},
+		SnapshotId: snapshotID,
+		FolderId:   "folder",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+
+	response := disk_manager.CreateSnapshotResponse{}
+	err = internal_client.WaitResponse(ctx, client, operation.Id, &response)
+	require.NoError(t, err)
+	require.Equal(t, int64(diskSize), response.Size)
+
+	destinationID := t.Name() + "-restored"
+	reqCtx = testcommon.GetRequestContext(t, ctx)
+	operation, err = client.CreateDisk(reqCtx, &disk_manager.CreateDiskRequest{
+		Src: &disk_manager.CreateDiskRequest_SrcSnapshotId{
+			SrcSnapshotId: snapshotID,
+		},
+		Size: int64(diskSize),
+		Kind: diskKind,
+		DiskId: &disk_manager.DiskId{
+			ZoneId: diskMeta.ZoneID,
+			DiskId: destinationID,
+		},
+		BlockSize: int64(diskBlockSize),
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, operation)
+	err = internal_client.WaitOperation(ctx, client, operation.Id)
+	require.NoError(t, err)
+
+	err = nbsClient.ValidateCrc32(ctx, destinationID, diskContentInfo)
+	require.NoError(t, err)
+
+	testcommon.CheckConsistency(t, ctx)
+}
+
+func TestSnapshotServiceCreateSnapshotFromDiskWithPartialChunk(t *testing.T) {
+	testCreateSnapshotFromDiskWithData(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD,
+		4096,             // diskBlockSize
+		5*1024*1024+4096, // diskSize
+		defaultZoneID,
+	)
+}
+
+func TestSnapshotServiceCreateSnapshotFromDiskWithPartialChunkAndLargeBlocks(t *testing.T) {
+	testCreateSnapshotFromDiskWithData(
+		t,
+		disk_manager.DiskKind_DISK_KIND_SSD,
+		65536,             // diskBlockSize
+		5*1024*1024+65536, // diskSize
+		defaultZoneID,
+	)
+}
+
 func TestSnapshotServiceCreateSnapshotFromDiskInZoneWithCells(t *testing.T) {
 	testCreateSnapshotFromDiskWithZoneID(
 		t,
