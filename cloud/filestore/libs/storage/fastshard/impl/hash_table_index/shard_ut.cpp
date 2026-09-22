@@ -496,6 +496,8 @@ TEST(HashTableIndexShardTest, CreatesHandles)
 
 TEST(HashTableIndexShardTest, Formats)
 {
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
     TStorageFixture fx;
 
     auto shard = CreateHashTableIndexFileSystemShard(
@@ -631,6 +633,8 @@ TEST(HashTableIndexShardTest, Formats)
 
 TEST(HashTableIndexShardTest, WritesAndReadsFiles)
 {
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
     TStorageFixture fx;
 
     auto shard = CreateHashTableIndexFileSystemShard(
@@ -758,6 +762,8 @@ TEST(HashTableIndexShardTest, WritesAndReadsFiles)
 
 TEST(HashTableIndexShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
 {
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
     TStorageFixture fx;
 
     auto shard = CreateHashTableIndexFileSystemShard(
@@ -993,6 +999,8 @@ TEST(HashTableIndexShardTest, WritesAndReadsLongUnalignedRangesWithHoles)
 
 TEST(HashTableIndexShardTest, UnalignedAppend)
 {
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
     TStorageFixture fx;
 
     auto shard = CreateHashTableIndexFileSystemShard(

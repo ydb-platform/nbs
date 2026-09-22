@@ -8,6 +8,8 @@
 
 #include <silk/util/logger.h>
 
+#include <library/cpp/json/json_reader.h>
+
 #include <gtest/gtest.h>
 
 using namespace NCloud;
@@ -367,4 +369,137 @@ TEST(HashTableIndexShardErrorTest, LinksPastTheLsnOfAnOperationThatWroteNothing)
     // The chain is unbroken, and the lsn nobody wrote is not in it.
     EXPECT_EQ(links[0].Lsn, links[1].PrevLsn);
     EXPECT_GT(links[1].Lsn, links[0].Lsn + 1);
+}
+
+TEST(HashTableIndexShardErrorTest, EntersErrorStateUponBrokenFormatPage)
+{
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
+    TStorageFixture fx;
+
+    TStringStream json;
+
+    //
+    // Fetching component layouts.
+    //
+
+    {
+        auto shard = CreateHashTableIndexFileSystemShard(
+            "fs0",
+            ShardNo,
+            1 /* generation */,
+            fx.Factory,
+            fx.Config);
+        {
+            auto e = shard->Init().GetValueSync();
+            ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+        }
+
+        shard->DumpLayoutJson(json);
+        shard->TearDown();
+    }
+
+    NJson::TJsonValue parsed;
+    ASSERT_TRUE(NJson::ReadJsonTree(json.Str(), &parsed)) << json.Str();
+    const auto& components = parsed["components"].GetArray();
+
+    //
+    // Checking corruption detection and Format().
+    //
+
+    for (const auto& c: components) {
+        if (c["name"].GetStringSafe() == "DataPages") {
+            //
+            // DataPages section doesn't have a separate format guard.
+            //
+
+            continue;
+        }
+
+        const ui64 off = c["offsetBytes"].GetUIntegerSafe();
+        const ui64 pageNo = off / PageSize;
+
+        //
+        // Corrupting the format page.
+        //
+
+        TVector<TPageGroup> pageGroups;
+        TBuffer page;
+        page.Resize(PageSize);
+        memset(page.Data(), 1, PageSize);
+        pageGroups.push_back(
+            TPageGroup{.FirstPageNo = pageNo, .Content = {page}});
+        auto e = fx.Factory->Group->WriteLogRecord(
+            {} /* headers */,
+            std::move(pageGroups),
+            0 /* lsn */);
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+
+        //
+        // Shard initialization should fail.
+        //
+
+        auto shard = CreateHashTableIndexFileSystemShard(
+            "fs0",
+            ShardNo,
+            1 /* generation */,
+            fx.Factory,
+            fx.Config);
+        e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_FALSE, e.GetCode()) << e.GetMessage();
+
+        //
+        // Requests should return an error.
+        //
+
+        const TString file1 = "file1";
+        const ui32 mode = 0644;
+        const ui64 uid = 111;
+        const ui64 gid = 222;
+
+        const ui32 create = ProtoFlag(TCreateHandleRequest::E_CREATE);
+        const ui32 createExcl =
+            create | ProtoFlag(TCreateHandleRequest::E_EXCLUSIVE);
+
+        {
+            TCreateHandleRequest request;
+            request.SetNodeId(RootNodeId);
+            request.SetName(file1);
+            request.SetMode(mode);
+            request.SetUid(uid);
+            request.SetGid(gid);
+            request.SetFlags(createExcl);
+            auto f = shard->CreateHandle(request);
+            auto response = f.GetValueSync();
+            EXPECT_EQ(E_INVALID_STATE, response.GetError().GetCode())
+                << FormatError(response.GetError());
+        }
+
+        //
+        // Format should work.
+        //
+
+        e = shard->Format().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+
+        //
+        // Requests should work after formatting.
+        //
+
+        {
+            TCreateHandleRequest request;
+            request.SetNodeId(RootNodeId);
+            request.SetName(file1);
+            request.SetMode(mode);
+            request.SetUid(uid);
+            request.SetGid(gid);
+            request.SetFlags(createExcl);
+            auto f = shard->CreateHandle(request);
+            auto response = f.GetValueSync();
+            EXPECT_EQ(S_OK, response.GetError().GetCode())
+                << FormatError(response.GetError());
+        }
+
+        shard->TearDown();
+    }
 }
