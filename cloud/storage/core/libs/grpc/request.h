@@ -3,6 +3,7 @@
 #include <cloud/storage/core/libs/common/verify.h>
 
 #include <util/generic/hash_set.h>
+#include <util/generic/string.h>
 #include <util/system/spinlock.h>
 
 namespace NCloud::NStorage::NGrpc {
@@ -15,6 +16,10 @@ private:
     std::atomic_uint64_t RefCount = 1;
 
 public:
+    // TODO(https://github.com/ydb-platform/nbs/issues/7264)
+    TString EntityId;
+
+public:
     virtual ~TRequestHandlerBase() = default;
 
     virtual void Process(bool ok) = 0;
@@ -25,17 +30,6 @@ public:
 };
 
 using TRequestHandlerPtr = std::unique_ptr<TRequestHandlerBase>;
-
-// TODO(https://github.com/ydb-platform/nbs/issues/7264)
-template <typename TRequestHandler>
-TStringBuf RequestHandlerEntityId(const TRequestHandler& handler)
-{
-    if constexpr (requires { handler.EntityId; }) {
-        return handler.EntityId;
-    } else {
-        return {};
-    }
-}
 
 // EntityType is a reference (not a by-value TStringBuf) because a by-value
 // class non-type template parameter must be a structural type, and TStringBuf
@@ -67,10 +61,7 @@ public:
             }
 
             auto res = Requests.emplace(handler);
-            STORAGE_VERIFY(
-                res.second,
-                EntityType,
-                RequestHandlerEntityId(*handler));
+            STORAGE_VERIFY(res.second, EntityType, handler->EntityId);
         }
 
         return true;
@@ -80,10 +71,7 @@ public:
     {
         with_lock(RequestsLock) {
             auto it = Requests.find(handler);
-            STORAGE_VERIFY(
-                it != Requests.end(),
-                EntityType,
-                RequestHandlerEntityId(*handler));
+            STORAGE_VERIFY(it != Requests.end(), EntityType, handler->EntityId);
             Requests.erase(it);
         }
     }

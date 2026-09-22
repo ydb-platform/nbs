@@ -165,8 +165,6 @@ struct TClientRequestHandlerBase
 {
     const EBlockStoreRequest RequestType;
     ui64 RequestId = 0;
-    // TRequestsInFlight reports this in its invariant aborts
-    TString EntityId;
 
     enum {
         WaitingForRequest = 0,
