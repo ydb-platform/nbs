@@ -253,8 +253,8 @@ TWriteDataRequestManager::TryAllocPendingRequest()
 
     pendingRequest->AllocationPtr = allocResult.GetResult();
 
-    UnallocatedPendingRequestsRemove(pendingRequest);
-    AllocatedPendingRequestsPushBack(pendingRequest);
+    UnallocatedPendingRequests.Remove(pendingRequest);
+    AllocatedPendingRequests.PushBack(pendingRequest);
 
     return {.Request = pendingRequest};
 }
@@ -391,8 +391,7 @@ void TWriteDataRequestManager::UpdateStats() const
                                : TDuration::Zero();
 
     Stats->UpdateStats(
-        maxPendingRequestDuration,
-        maxAllocatedRequestDuration,
+        Max(maxPendingRequestDuration, maxAllocatedRequestDuration),
         maxUnflushedRequestDuration);
 
     PersistentStorage->UpdateStats();
@@ -431,23 +430,11 @@ void TWriteDataRequestManager::UnallocatedPendingRequestsRemove(
     Stats->RemovedPendingRequest(Timer->Now() - request->Time);
 }
 
-void TWriteDataRequestManager::UnallocatedPendingRequestsPopFront()
-{
-    UnallocatedPendingRequestsRemove(UnallocatedPendingRequests.Front());
-}
-
-void TWriteDataRequestManager::AllocatedPendingRequestsPushBack(
-    TPendingWriteDataRequest* request)
-{
-    AllocatedPendingRequests.PushBack(request);
-    Stats->AddedAllocatedRequest();
-}
-
 void TWriteDataRequestManager::AllocatedPendingRequestsRemove(
     TPendingWriteDataRequest* request)
 {
     AllocatedPendingRequests.Remove(request);
-    Stats->RemovedAllocatedRequest(Timer->Now() - request->Time);
+    Stats->RemovedPendingRequest(Timer->Now() - request->Time);
 }
 
 void TWriteDataRequestManager::UnflushedRequestsPushBack(

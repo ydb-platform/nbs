@@ -19,7 +19,6 @@ class TWriteDataRequestManagerStats
 {
 private:
     TRelaxedEventCounterWithTimeStats<> PendingRequestCounter;
-    TRelaxedEventCounterWithTimeStats<> AllocatedRequestCounter;
     TRelaxedEventCounterWithTimeStats<> UnflushedRequestCounter;
     TRelaxedEventCounter<> FlushedRequestCounter;
     TRelaxedCombinedMaxCounter<> NodesWithBackpressureCounter;
@@ -33,16 +32,6 @@ public:
     void RemovedPendingRequest(TDuration duration) override
     {
         PendingRequestCounter.Completed(duration);
-    }
-
-    void AddedAllocatedRequest() override
-    {
-        AllocatedRequestCounter.Started();
-    }
-
-    void RemovedAllocatedRequest(TDuration duration) override
-    {
-        AllocatedRequestCounter.Completed(duration);
     }
 
     void AddedUnflushedRequest() override
@@ -102,28 +91,6 @@ public:
                  .MaxTime = CreateMetric(
                      [self]
                      { return self->PendingRequestCounter.GetMaxTime(); })},
-            .AllocatedQueue =
-                {.Count = CreateMetric(
-                     [self]
-                     { return self->AllocatedRequestCounter.GetActiveCount(); }),
-                 .MaxCount = CreateMetric(
-                     [self]
-                     {
-                         return self->AllocatedRequestCounter.GetActiveMaxCount();
-                     }),
-                 .ProcessedCount = CreateMetric(
-                     [self]
-                     {
-                         return self->AllocatedRequestCounter.GetCompletedCount();
-                     }),
-                 .ProcessedTime = CreateMetric(
-                     [self]
-                     {
-                         return self->AllocatedRequestCounter.GetCompletedTime();
-                     }),
-                 .MaxTime = CreateMetric(
-                     [self]
-                     { return self->AllocatedRequestCounter.GetMaxTime(); })},
             .UnflushedQueue =
                 {.Count = CreateMetric(
                      [self]
@@ -179,11 +146,9 @@ public:
 
     void UpdateStats(
         TDuration maxPendingRequestDuration,
-        TDuration maxAllocatedRequestDuration,
         TDuration maxUnflushedRequestDuration) override
     {
         PendingRequestCounter.Update(maxPendingRequestDuration);
-        AllocatedRequestCounter.Update(maxAllocatedRequestDuration);
         UnflushedRequestCounter.Update(maxUnflushedRequestDuration);
         FlushedRequestCounter.Update();
         NodesWithBackpressureCounter.Update();
@@ -225,36 +190,6 @@ void TWriteDataRequestManagerMetrics::Register(
     localMetricsRegistry.Register(
         {CreateSensor("PendingQueue_MaxTime")},
         PendingQueue.MaxTime,
-        EAggregationType::AT_MAX,
-        EMetricType::MT_ABSOLUTE);
-
-    localMetricsRegistry.Register(
-        {CreateSensor("AllocatedQueue_Count")},
-        AllocatedQueue.Count,
-        EAggregationType::AT_SUM,
-        EMetricType::MT_ABSOLUTE);
-
-    localMetricsRegistry.Register(
-        {CreateSensor("AllocatedQueue_MaxCount")},
-        AllocatedQueue.MaxCount,
-        EAggregationType::AT_SUM,
-        EMetricType::MT_ABSOLUTE);
-
-    localMetricsRegistry.Register(
-        {CreateSensor("AllocatedQueue_ProcessedCount")},
-        AllocatedQueue.ProcessedCount,
-        EAggregationType::AT_SUM,
-        EMetricType::MT_DERIVATIVE);
-
-    localMetricsRegistry.Register(
-        {CreateSensor("AllocatedQueue_ProcessedTime")},
-        AllocatedQueue.ProcessedTime,
-        EAggregationType::AT_SUM,
-        EMetricType::MT_DERIVATIVE);
-
-    localMetricsRegistry.Register(
-        {CreateSensor("AllocatedQueue_MaxTime")},
-        AllocatedQueue.MaxTime,
         EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
 

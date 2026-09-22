@@ -218,34 +218,6 @@ struct TBootstrap
             Metrics.UnflushedQueue.ProcessedTime->Get());
     }
 
-    void CheckAllocatedQueueMetrics(
-        i64 expectedActiveCount,
-        i64 expectedActiveMaxCount,
-        i64 expectedMaxTime,
-        i64 expectedCompletedCount,
-        i64 expectedCompletedTime) const
-    {
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectedActiveCount,
-            Metrics.AllocatedQueue.Count->Get());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectedActiveMaxCount,
-            Metrics.AllocatedQueue.MaxCount->Get());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectedMaxTime,
-            Metrics.AllocatedQueue.MaxTime->Get());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectedCompletedCount,
-            Metrics.AllocatedQueue.ProcessedCount->Get());
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectedCompletedTime,
-            Metrics.AllocatedQueue.ProcessedTime->Get());
-    }
-
     void CheckFlushedQueueMetrics(
         i64 expectedActiveCount,
         i64 expectedActiveMaxCount,
@@ -415,7 +387,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
 
         b.Add(1, 101, 0, "abc");    // SequenceId = 1
 
-        b.CheckPendingQueueMetrics(0, 0, 0, 0, 0);
+        b.CheckPendingQueueMetrics(0, 1, 0, 1, 0);
         b.CheckUnflushedQueueMetrics(1, 1, 0, 0, 0);
         b.CheckFlushedQueueMetrics(0, 0, 0);
 
@@ -428,7 +400,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
         b.Timer->AdvanceTime(TDuration::MilliSeconds(2));
         b.RequestManager.UpdateStats();
 
-        b.CheckPendingQueueMetrics(2, 2, 2000, 0, 0);
+        b.CheckPendingQueueMetrics(2, 2, 2000, 2, 0);
         b.CheckUnflushedQueueMetrics(2, 2, 3000, 0, 0);
         b.CheckFlushedQueueMetrics(0, 0, 0);
 
@@ -439,7 +411,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
         b.Timer->AdvanceTime(TDuration::MilliSeconds(3));
         b.RequestManager.UpdateStats();
 
-        b.CheckPendingQueueMetrics(1, 2, 11000, 1, 8000);
+        b.CheckPendingQueueMetrics(1, 2, 11000, 3, 8000);
         b.CheckUnflushedQueueMetrics(2, 2, 11000, 1, 4000);
         b.CheckFlushedQueueMetrics(0, 1, 1);
 
@@ -448,7 +420,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
         b.Timer->AdvanceTime(TDuration::MilliSeconds(2));
         b.RequestManager.UpdateStats();
 
-        b.CheckPendingQueueMetrics(1, 2, 13000, 1, 8000);
+        b.CheckPendingQueueMetrics(1, 2, 13000, 3, 8000);
         b.CheckUnflushedQueueMetrics(0, 2, 11000, 3, 18000);
         b.CheckFlushedQueueMetrics(2, 2, 1);
 
@@ -459,7 +431,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
         b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
         b.RequestManager.UpdateStats();
 
-        b.CheckPendingQueueMetrics(0, 2, 13000, 2, 21000);
+        b.CheckPendingQueueMetrics(0, 2, 13000, 4, 21000);
         b.CheckUnflushedQueueMetrics(0, 2, 11000, 4, 18000);
         b.CheckFlushedQueueMetrics(0, 2, 4);
 
@@ -468,7 +440,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
             b.RequestManager.UpdateStats();
         }
 
-        b.CheckPendingQueueMetrics(0, 0, 0, 2, 21000);
+        b.CheckPendingQueueMetrics(0, 0, 0, 4, 21000);
         b.CheckUnflushedQueueMetrics(0, 0, 0, 4, 18000);
         b.CheckFlushedQueueMetrics(0, 0, 4);
     }
@@ -516,14 +488,14 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
         auto future1 = request1->AccessPromise().GetFuture();
         auto future2 = request2->AccessPromise().GetFuture();
 
-        UNIT_ASSERT_VALUES_EQUAL(2, b.GetAllocationCount());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.GetAllocationCount());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
             b.RequestManager.GetMinPendingOrUnflushedSequenceId());
         UNIT_ASSERT_VALUES_EQUAL(
             2,
             b.RequestManager.GetMaxPendingOrUnflushedSequenceId());
-        b.CheckAllocatedQueueMetrics(2, 2, 0, 0, 0);
+        b.CheckPendingQueueMetrics(2, 2, 0, 0, 0);
 
         auto* requestToSerialize1 =
             b.RequestManager.TryAllocPendingRequest().Request;
@@ -537,6 +509,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
 
         UNIT_ASSERT(requestToSerialize2->SerializeToAllocation());
         requestToSerialize2->SetSerialized();
+        b.ProcessCachedRequests();
 
         // A newer request must not be committed before the older request has
         // finished serialization.
@@ -546,7 +519,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
 
         b.Timer->AdvanceTime(TDuration::MilliSeconds(3));
         b.RequestManager.UpdateStats();
-        b.CheckAllocatedQueueMetrics(2, 2, 3000, 0, 0);
+        b.CheckPendingQueueMetrics(2, 2, 3000, 0, 0);
 
         UNIT_ASSERT(requestToSerialize1->SerializeToAllocation());
         requestToSerialize1->SetSerialized();
@@ -556,7 +529,7 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
         UNIT_ASSERT(future2.HasValue());
         UNIT_ASSERT_VALUES_EQUAL("P[],C[(1:abc)(2:def)]", b.Dump());
         UNIT_ASSERT(!b.RequestManager.HasPendingRequests());
-        b.CheckAllocatedQueueMetrics(0, 2, 3000, 2, 6000);
+        b.CheckPendingQueueMetrics(0, 2, 3000, 2, 6000);
     }
 }
 

@@ -8252,8 +8252,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 ->FindSubgroup("folder", "")
                 ->FindSubgroup("module", "WriteBackCache");
 
-        auto allocatedQueueCount =
-            counterGroup->GetCounter("AllocatedQueue_Count");
+        auto pendingQueueCount = counterGroup->GetCounter("PendingQueue_Count");
 
         auto unflushedQueueCount =
             counterGroup->GetCounter("UnflushedQueue_Count");
@@ -8262,11 +8261,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             counterGroup->GetCounter("NodesWithBackpressure_Count");
 
         TFuture<ui32> writeFuture;
+        bool backpressured = false;
 
         for (ui32 i = 1; i <= maxRequestCount; i++) {
-            bootstrap.ModuleStatsRegistry->UpdateStats(true);
-            bool backpressured = backpressureCount->Val() == 1;
-
             writeFuture = bootstrap.Fuse->SendRequest<TWriteRequest>(
                 1,
                 101,
@@ -8275,17 +8272,33 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
             if (backpressured) {
                 break;
-            } else {
-                UNIT_ASSERT(writeFuture.Wait(WaitTimeout));
             }
+
+            UNIT_ASSERT(writeFuture.Wait(WaitTimeout));
+
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            backpressured = backpressureCount->Val() == 1;
+            UNIT_ASSERT_VALUES_EQUAL(i, unflushedQueueCount->Val());
         }
+
+        UNIT_ASSERT(backpressured);
+
+        WaitForCondition(
+            WaitTimeout,
+            [&]()
+            {
+                bootstrap.ModuleStatsRegistry->UpdateStats(true);
+                return pendingQueueCount->Val() == 1;
+            });
+
+        UNIT_ASSERT(!writeFuture.HasValue());
 
         firstWriteDataPromise.SetValue({});
 
         UNIT_ASSERT(writeFuture.Wait(WaitTimeout));
 
         bootstrap.ModuleStatsRegistry->UpdateStats(true);
-        UNIT_ASSERT_VALUES_EQUAL(0, allocatedQueueCount->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, pendingQueueCount->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, backpressureCount->Val());
 
         secondWriteDataPromise.SetValue({});

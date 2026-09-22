@@ -1332,9 +1332,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(!f2.HasValue());
         UNIT_ASSERT(!f3.HasValue());
         UNIT_ASSERT(!f4.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(4, b.Metrics.AllocatedQueue.Count->Get());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
-        UNIT_ASSERT_VALUES_EQUAL(9, b.Metrics.Storage.EntryCount->Get());
 
         b.State->FlushSucceeded(1, 2);
 
@@ -1342,15 +1339,13 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT(f2.GetValue());
         UNIT_ASSERT(f3.HasValue());
         UNIT_ASSERT(!f4.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.AllocatedQueue.Count->Get());
 
         b.State->FlushSucceeded(1, 2);
 
         UNIT_ASSERT(f4.GetValue());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.AllocatedQueue.Count->Get());
     }
 
-    Y_UNIT_TEST(ShouldKeepBackpressuredRequestOnFlushFailure)
+    Y_UNIT_TEST(ShouldDropBackpressuredRequestOnFlushFailure)
     {
         TBootstrap b;
         b.FlushBatchLimits.MaxQueuedFlushBatchesPerNode = 2;
@@ -1364,13 +1359,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         auto backpressured = b.Add(1, 101, 25, "pqr");
         UNIT_ASSERT(!backpressured.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(6, b.Metrics.Storage.EntryCount->Get());
+        UNIT_ASSERT_VALUES_EQUAL(5, b.Metrics.Storage.EntryCount->Get());
 
         // Only unallocated pending requests are failed
         b.State->FlushFailed(1, MakeError(E_FAIL, "Flush failed"));
 
-        UNIT_ASSERT(!backpressured.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(6, b.Metrics.Storage.EntryCount->Get());
+        UNIT_ASSERT(backpressured.HasValue());
+        UNIT_ASSERT(!backpressured.GetValueSync());
+        UNIT_ASSERT_VALUES_EQUAL(5, b.Metrics.Storage.EntryCount->Get());
     }
 
     Y_UNIT_TEST(ShouldHandlePinId)
@@ -1445,7 +1441,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            2,
             b.Metrics.PendingQueue.ProcessedCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
 
@@ -1460,7 +1456,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(error, pending.GetValue());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(
-            4,
+            6,
             b.Metrics.PendingQueue.ProcessedCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
     }
@@ -1480,7 +1476,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            2,
             b.Metrics.PendingQueue.ProcessedCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
 
@@ -1489,7 +1485,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            4,
             b.Metrics.PendingQueue.ProcessedCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
 

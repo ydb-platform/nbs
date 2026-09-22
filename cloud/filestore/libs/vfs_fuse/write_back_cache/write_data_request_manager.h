@@ -189,9 +189,6 @@ private:
     // Access methods that triggers stats update
     void UnallocatedPendingRequestsPushBack(TPendingWriteDataRequest* request);
     void UnallocatedPendingRequestsRemove(TPendingWriteDataRequest* request);
-    void UnallocatedPendingRequestsPopFront();
-
-    void AllocatedPendingRequestsPushBack(TPendingWriteDataRequest* request);
     void AllocatedPendingRequestsRemove(TPendingWriteDataRequest* request);
 
     void UnflushedRequestsPushBack(TCachedWriteDataRequest* request);
