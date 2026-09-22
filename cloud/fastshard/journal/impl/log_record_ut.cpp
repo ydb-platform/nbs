@@ -12,21 +12,21 @@ Y_UNIT_TEST_SUITE(TJournalMetadataTest)
 {
     Y_UNIT_TEST(ShouldRoundTrip)
     {
-        for (ui64 lastAckedLsn: {0ul, 1ul, 42ul, Max<ui64>()}) {
+        for (ui64 lsnLowWatermark: {0ul, 1ul, 42ul, Max<ui64>()}) {
             auto out = DeserializeMetadata(SerializeMetadata(
                 {.Version = CurrentFormatVersion,
-                 .LastAckedLsn = lastAckedLsn}));
+                 .LsnLowWatermark = lsnLowWatermark}));
 
             UNIT_ASSERT(out);
             UNIT_ASSERT_VALUES_EQUAL(CurrentFormatVersion, out->Version);
-            UNIT_ASSERT_VALUES_EQUAL(lastAckedLsn, out->LastAckedLsn);
+            UNIT_ASSERT_VALUES_EQUAL(lsnLowWatermark, out->LsnLowWatermark);
         }
     }
 
     Y_UNIT_TEST(ShouldRejectATruncatedBuffer)
     {
         const auto good = SerializeMetadata(
-            {.Version = CurrentFormatVersion, .LastAckedLsn = 7});
+            {.Version = CurrentFormatVersion, .LsnLowWatermark = 7});
 
         // every prefix must be rejected, never read past its end
         for (size_t len = 0; len < good.Size(); ++len) {
@@ -41,7 +41,7 @@ Y_UNIT_TEST_SUITE(TJournalMetadataTest)
     Y_UNIT_TEST(ShouldRejectTrailingGarbage)
     {
         const auto good = SerializeMetadata(
-            {.Version = CurrentFormatVersion, .LastAckedLsn = 7});
+            {.Version = CurrentFormatVersion, .LsnLowWatermark = 7});
 
         TBuffer extra(good.Data(), good.Size());
         extra.Append("x", 1);
@@ -52,7 +52,7 @@ Y_UNIT_TEST_SUITE(TJournalMetadataTest)
     Y_UNIT_TEST(ShouldRejectAnotherFormatVersion)
     {
         auto buffer = SerializeMetadata(
-            {.Version = CurrentFormatVersion, .LastAckedLsn = 7});
+            {.Version = CurrentFormatVersion, .LsnLowWatermark = 7});
 
         const ui64 bogus = CurrentFormatVersion + 1;
         memcpy(buffer.Data(), &bogus, sizeof(bogus));

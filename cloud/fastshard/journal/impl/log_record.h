@@ -44,7 +44,7 @@ struct TLogRecord
 struct TJournalMetadata
 {
     ui32 Version = CurrentFormatVersion;
-    ui64 LastAckedLsn = 0;
+    ui64 LsnLowWatermark = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

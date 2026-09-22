@@ -680,7 +680,7 @@ NProto::TError QueryCurrentJournalPosition(
                     // TODO(#6957): so far device advances lsn only after wm moves
                     // gracefully handle sg device init writes.
                     *params->Lsn = std::max(
-                        response.GetLastAckedLogSequenceNumber(),
+                        response.GetLsnLowWatermark(),
                         params->Proxy->GetLastAckedLsn());
                 }
 

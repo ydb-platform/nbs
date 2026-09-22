@@ -254,7 +254,7 @@ public:
             [request = std::move(request)](auto& self) mutable
             {
                 return self.Executor->ExtractResponse(
-                    self.Journal->AdvanceLastAckedLsn(std::move(request)));
+                    self.Journal->AdvanceLsnLowWatermark(std::move(request)));
             });
     }
 

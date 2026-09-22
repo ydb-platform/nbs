@@ -117,7 +117,7 @@ public:
         Y_UNUSED(request);
 
         NCloud::NProto::TReadJournalTailResponse response;
-        response.SetLastAckedLogSequenceNumber(
+        response.SetLsnLowWatermark(
             LastAckedLsn.load(std::memory_order_relaxed));
 
         return MakeFuture(response);
