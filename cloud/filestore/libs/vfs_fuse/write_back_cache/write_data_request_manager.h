@@ -40,7 +40,8 @@ private:
 public:
     struct TAllocRequestResult
     {
-        bool Allocated = false;
+        TPendingWriteDataRequest* Request = nullptr;
+        bool StorageIsFull = false;
         bool Failed = false;
     };
 
@@ -83,15 +84,10 @@ public:
     bool GetStorageIsFull() const;
 
     /**
-     * Adds a WriteData request to the manager.
-     *
-     * If persistent storage has enough space, the request is assigned an
-     * allocation and queued for serialization. Otherwise, it remains pending
-     * until a later eviction makes space available.
+     * Creates unallocated pending request.
      *
      * The caller must keep the returned request alive and drive request
-     * processing through GetNextPendingRequestToSerialize,
-     * SetPendingRequestSerialized, and GetNextReadyCachedRequest.
+     * processing through TryAllocPendingRequest and GetNextReadyCachedRequest.
      *
      * Returns nullptr if the storage is in failed state.
      */
@@ -99,18 +95,20 @@ public:
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     /**
-     * Gets the next allocated request to serialize.
+     * Gets the front pending request (if it exists) and tried to allocate it.
      *
-     * The caller should serialize it by calling
-     * TPendingWriteDataRequest::SerializeToAllocation (outside lock section)
-     * and then TPendingWriteDataRequest::SetSerialized (inside lock section).
-     *
-     * Then the caller should process ready requests by repeatedly calling
+     * If persistent storage has enough space and the request is not
+     * backpressured, it is assigned an allocation. The caller must then
+     * serialize the request and process ready requests by repeatedly calling
      * GetNextReadyCachedRequest.
      *
-     * Returns nullptr if no allocated request is waiting for serialization.
+     * - TAllocRequestResult::Request contains the request if allocation was
+     *   sucessfull;
+     * - TAllocRequestResult::StorageIsFull is set if the request cannot be
+     *   allocated because the storage doesn't have enough space;
+     * - TAllocRequestResult::Failed is set on storage failure.
      */
-    [[nodiscard]] TPendingWriteDataRequest* GetNextPendingRequestToSerialize();
+    [[nodiscard]] TAllocRequestResult TryAllocPendingRequest();
 
     /**
      * Examines the lowest-sequence request awaiting commit.
@@ -160,10 +158,8 @@ public:
     /**
      * Removes a previously flushed request from persistent storage.
      *
-     * If this makes enough space available, pending requests are assigned
-     * allocations and queued for serialization. The caller should then resume
-     * processing through GetNextPendingRequestToSerialize,
-     * SetPendingRequestSerialized, and GetNextReadyCachedRequest.
+     * Caller must process pending requests by TryAllocPendingRequest and
+     * GetNextReadyCachedRequest.
      *
      * Returns true on success and false if a storage operation fails.
      */
@@ -186,14 +182,6 @@ public:
     void UpdateStats() const;
 
 private:
-    // Returns false if an allocation attempt returns an error
-    // Check for TPendingWriteDataRequest::HasAllocation()
-    bool TryAllocRequestInPersistentStorage(
-        TPendingWriteDataRequest* pendingRequest);
-
-    // Returns false if an allocation attempt returns an error
-    bool AllocPendingRequestsInPersistentStorage();
-
     bool HasUnallocatedPendingRequests() const;
     bool HasAllocatedPendingRequests() const;
     bool HasUnflushedRequests() const;

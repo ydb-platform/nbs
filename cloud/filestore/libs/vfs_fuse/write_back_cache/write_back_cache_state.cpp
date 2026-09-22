@@ -884,29 +884,21 @@ void TWriteBackCacheState::CheckAndAcquireBarriers(TNodeState& nodeState)
 void TWriteBackCacheState::ProcessPendingRequests(
     TGuard<TQueuedOperations>& guard)
 {
-    while (true) {
-        if (IsFailed) {
-            // Prevent from firing repeated critical events on each storage
-            // access
-            return;
-        }
-
-        auto res = RequestManager.GetNextReadyCachedRequest();
-        if (res.Failed) {
+    while (!IsFailed) {
+        auto allocResult = RequestManager.TryAllocPendingRequest();
+        if (allocResult.Failed) {
             SetFailedFlag();
             return;
         }
 
-        if (res.Request) {
-            ProcessReadyCachedRequest(std::move(res.Request));
-            continue;
+        if (allocResult.StorageIsFull) {
+            TriggerFlushAll(false);
+            return;
         }
 
-        auto* pendingRequest =
-            RequestManager.GetNextPendingRequestToSerialize();
-
-        if (!pendingRequest) {
-            break;
+        if (!allocResult.Request) {
+            // Backpressure or empty queue
+            return;
         }
 
         // Request serialization is a computationally expensive operation
@@ -915,20 +907,36 @@ void TWriteBackCacheState::ProcessPendingRequests(
         // We temporary release and reacquire the lock.
         guard.GetMutex()->ReleaseWithoutProcessingQueuedOperations();
 
-        bool serializationSucceeded = pendingRequest->SerializeToAllocation();
+        bool serializationSucceeded =
+            allocResult.Request->SerializeToAllocation();
 
         guard.GetMutex()->Acquire();
 
-        if (serializationSucceeded) {
-            pendingRequest->SetSerialized();
-        } else {
+        if (!serializationSucceeded) {
             SetFailedFlag();
             return;
         }
-    }
 
-    if (RequestManager.GetStorageIsFull()) {
-        TriggerFlushAll(false);
+        allocResult.Request->SetSerialized();
+
+        ProcessReadyCachedRequests();
+    }
+}
+
+void TWriteBackCacheState::ProcessReadyCachedRequests()
+{
+    while (true) {
+        auto res = RequestManager.GetNextReadyCachedRequest();
+        if (res.Failed) {
+            SetFailedFlag();
+            return;
+        }
+
+        if (!res.Request) {
+            return;
+        }
+
+        ProcessReadyCachedRequest(std::move(res.Request));
     }
 }
 

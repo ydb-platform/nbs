@@ -106,13 +106,14 @@ struct TBootstrap
 
     void ProcessPendingRequests()
     {
-        ProcessCachedRequests();
-
-        while (auto* pendingRequest =
-                   RequestManager.GetNextPendingRequestToSerialize())
-        {
-            UNIT_ASSERT(pendingRequest->SerializeToAllocation());
-            pendingRequest->SetSerialized();
+        while (true) {
+            auto res = RequestManager.TryAllocPendingRequest();
+            UNIT_ASSERT(!res.Failed);
+            if (!res.Request) {
+                return;
+            }
+            UNIT_ASSERT(res.Request->SerializeToAllocation());
+            res.Request->SetSerialized();
             ProcessCachedRequests();
         }
     }
@@ -525,14 +526,14 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
         b.CheckAllocatedQueueMetrics(2, 2, 0, 0, 0);
 
         auto* requestToSerialize1 =
-            b.RequestManager.GetNextPendingRequestToSerialize();
+            b.RequestManager.TryAllocPendingRequest().Request;
         auto* requestToSerialize2 =
-            b.RequestManager.GetNextPendingRequestToSerialize();
+            b.RequestManager.TryAllocPendingRequest().Request;
 
         UNIT_ASSERT(request1 == requestToSerialize1);
         UNIT_ASSERT(request2 == requestToSerialize2);
         UNIT_ASSERT(
-            b.RequestManager.GetNextPendingRequestToSerialize() == nullptr);
+            b.RequestManager.TryAllocPendingRequest().Request == nullptr);
 
         UNIT_ASSERT(requestToSerialize2->SerializeToAllocation());
         requestToSerialize2->SetSerialized();

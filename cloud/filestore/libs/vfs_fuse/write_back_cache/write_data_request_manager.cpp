@@ -216,34 +216,47 @@ std::unique_ptr<TPendingWriteDataRequest> TWriteDataRequestManager::AddRequest(
         now,
         std::move(request));
 
-    if (HasUnallocatedPendingRequests()) {
-        UnallocatedPendingRequestsPushBack(pendingRequest.get());
-        return pendingRequest;
-    }
-
-    if (!TryAllocRequestInPersistentStorage(pendingRequest.get())) {
-        // PersistentStorage failures
-        return nullptr;
-    }
-
-    if (pendingRequest->HasAllocation()) {
-        AllocatedPendingRequestsPushBack(pendingRequest.get());
-        SerializationNeededRequests.PushBack(pendingRequest.get());
-    } else {
-        UnallocatedPendingRequestsPushBack(pendingRequest.get());
-    }
-
+    UnallocatedPendingRequestsPushBack(pendingRequest.get());
     return pendingRequest;
 }
 
-TPendingWriteDataRequest*
-TWriteDataRequestManager::GetNextPendingRequestToSerialize()
+TWriteDataRequestManager::TAllocRequestResult
+TWriteDataRequestManager::TryAllocPendingRequest()
 {
-    if (SerializationNeededRequests.Empty()) {
-        return nullptr;
+    if (UnallocatedPendingRequests.Empty()) {
+        return {};
     }
 
-    return SerializationNeededRequests.PopFront();
+    auto* pendingRequest = UnallocatedPendingRequests.Front();
+
+    if (NodesWithBackpressure.contains(
+            pendingRequest->GetRequest().GetNodeId()))
+    {
+        // Known limitation: requests are committed in a single global FIFO
+        // order. Although backpressure is tracked per node, requests are not
+        // reordered. A front request for a backpressured node may therefore
+        // block later requests for unrelated nodes. Per-node commit queues or
+        // fair scheduling should be added separately.
+        return {};
+    }
+
+    auto allocResult =
+        PersistentStorage->Alloc(pendingRequest->AllocationByteCount);
+
+    if (HasError(allocResult)) {
+        return {.Failed = true};
+    }
+
+    if (!allocResult.GetResult()) {
+        return {.StorageIsFull = true};
+    }
+
+    pendingRequest->AllocationPtr = allocResult.GetResult();
+
+    UnallocatedPendingRequestsRemove(pendingRequest);
+    AllocatedPendingRequestsPushBack(pendingRequest);
+
+    return {.Request = pendingRequest};
 }
 
 TWriteDataRequestManager::TGetNextReadyCachedRequestResult
@@ -334,13 +347,9 @@ bool TWriteDataRequestManager::Evict(
     std::unique_ptr<TCachedWriteDataRequest> request)
 {
     FlushedRequestsRemove(request.get());
-
     auto freeResult = PersistentStorage->Free(request->GetAllocationPtr());
-    if (HasError(freeResult)) {
-        return false;
-    }
 
-    return AllocPendingRequestsInPersistentStorage();
+    return !HasError(freeResult);
 }
 
 bool TWriteDataRequestManager::SetBackpressureStatusForNode(ui64 nodeId)
@@ -390,40 +399,6 @@ void TWriteDataRequestManager::UpdateStats() const
 }
 
 // Private methods
-
-bool TWriteDataRequestManager::TryAllocRequestInPersistentStorage(
-    TPendingWriteDataRequest* pendingRequest)
-{
-    auto allocationResult =
-        PersistentStorage->Alloc(pendingRequest->AllocationByteCount);
-
-    if (HasError(allocationResult)) {
-        return false;
-    }
-
-    pendingRequest->AllocationPtr = allocationResult.GetResult();
-    StorageIsFull = !pendingRequest->HasAllocation();
-
-    return true;
-}
-
-bool TWriteDataRequestManager::AllocPendingRequestsInPersistentStorage()
-{
-    while (HasUnallocatedPendingRequests()) {
-        auto* pendingRequest = UnallocatedPendingRequests.Front();
-        if (!TryAllocRequestInPersistentStorage(pendingRequest)) {
-            return false;
-        }
-        if (!pendingRequest->HasAllocation()) {
-            break;
-        }
-        UnallocatedPendingRequestsRemove(pendingRequest);
-        AllocatedPendingRequestsPushBack(pendingRequest);
-        SerializationNeededRequests.PushBack(pendingRequest);
-        pendingRequest->Time = Timer->Now();
-    }
-    return true;
-}
 
 bool TWriteDataRequestManager::HasUnallocatedPendingRequests() const
 {

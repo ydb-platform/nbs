@@ -173,8 +173,7 @@ struct TBootstrap
         *request->MutableBuffer() = std::move(data);
 
         auto res = RequestManager.AddRequest(std::move(request));
-        auto* pendingRequest =
-            RequestManager.GetNextPendingRequestToSerialize();
+        auto* pendingRequest = RequestManager.TryAllocPendingRequest().Request;
         UNIT_ASSERT_VALUES_EQUAL(res.get(), pendingRequest);
         UNIT_ASSERT(pendingRequest->SerializeToAllocation());
         pendingRequest->SetSerialized();
