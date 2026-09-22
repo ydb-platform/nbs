@@ -46,7 +46,6 @@ struct TCellManager: public ICellManager
         TCallContextPtr callContext,
         const TString& diskId,
         const NProto::THeaders& headers,
-        IBlockStorePtr service,
         const NProto::TClientConfig& clientConfig) override;
 
     [[nodiscard]] std::shared_ptr<TCellInboundActivity>
@@ -55,10 +54,7 @@ struct TCellManager: public ICellManager
     [[nodiscard]] TCellsSnapshot GetSnapshot() override;
 
     [[nodiscard]] NThreading::TFuture<TVector<TCellDescribeResult>>
-        SearchVolume(
-            TString diskId,
-            IBlockStorePtr localService,
-            TDuration timeout) override;
+        SearchVolume(TString diskId, TDuration timeout) override;
 
 private:
     [[nodiscard]] TCellHostEndpointsByCellId GetCellsEndpoints(

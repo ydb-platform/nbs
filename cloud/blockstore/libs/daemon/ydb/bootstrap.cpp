@@ -1041,11 +1041,10 @@ void TBootstrapYdb::SetupCellManager()
             GetTraceSerializer(),
             ServerStats,
             std::move(cellCertProvider),
-            RdmaClient);
-
-        CellsMonLocalService = Service;
+            RdmaClient,
+            Service);
     } else {
-        CellManager = NCells::CreateCellManagerStub();
+        CellManager = NCells::CreateCellManagerStub(Service);
     }
 }
 
@@ -1056,7 +1055,6 @@ void TBootstrapYdb::SetupCellMonitoringActor()
     {
         ActorSystem->Register(NCells::CreateCellsMonActor(
             CellManager,
-            CellsMonLocalService,
             Configs->DiagnosticsConfig));
     }
 }

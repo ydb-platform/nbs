@@ -87,9 +87,11 @@ struct TTestCellManager: public ICellManager
         const NClient::TClientAppConfigPtr& clientConfig)>;
 
     TCreateConnectionHandler CreateConnectionHandler;
+    const IBlockStorePtr LocalService;
 
-    TTestCellManager()
+    explicit TTestCellManager(IBlockStorePtr localService = nullptr)
         : ICellManager(nullptr)
+        , LocalService(std::move(localService))
     {}
 
     TCellConnectionFuture CreateConnection(
@@ -109,7 +111,6 @@ struct TTestCellManager: public ICellManager
         TCallContextPtr callContext,
         const TString& diskId,
         const NProto::THeaders& headers,
-        IBlockStorePtr service,
         const NProto::TClientConfig& clientConfig) override
     {
         Y_UNUSED(clientConfig);
@@ -118,7 +119,9 @@ struct TTestCellManager: public ICellManager
         req->MutableHeaders()->CopyFrom(headers);
         req->SetDiskId(diskId);
 
-        return service->DescribeVolume(std::move(callContext), std::move(req));
+        return LocalService->DescribeVolume(
+            std::move(callContext),
+            std::move(req));
     }
 
     std::shared_ptr<NCells::TCellInboundActivity> GetInboundActivity() override
@@ -133,11 +136,9 @@ struct TTestCellManager: public ICellManager
 
     NThreading::TFuture<TVector<NCells::TCellDescribeResult>> SearchVolume(
         TString diskId,
-        IBlockStorePtr localService,
         TDuration timeout) override
     {
         Y_UNUSED(diskId);
-        Y_UNUSED(localService);
         Y_UNUSED(timeout);
         return NThreading::MakeFuture(TVector<NCells::TCellDescribeResult>());
     }
@@ -260,7 +261,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             CreateVolumeStatsStub(),
             serverStats,
             service,
-            CreateCellManagerStub(),
+            CreateCellManagerStub(service),
             CreateDefaultStorageProvider(service),
             encryptionClientFactory,
             executor,
@@ -378,7 +379,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
             service,
-            CreateCellManagerStub(),
+            CreateCellManagerStub(service),
             CreateDefaultStorageProvider(service),
             encryptionClientFactory,
             executor,
@@ -505,7 +506,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             volumeStats,
             serverStats,
             service,
-            CreateCellManagerStub(),
+            CreateCellManagerStub(service),
             CreateDefaultStorageProvider(service),
             encryptionClientFactory,
             executor,
@@ -677,7 +678,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
             CreateVolumeStatsStub(),
             CreateServerStatsStub(),
             service,
-            CreateCellManagerStub(),
+            CreateCellManagerStub(service),
             CreateDefaultStorageProvider(service),
             encryptionClientFactory,
             executor,
@@ -799,7 +800,7 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
                 return MakeFuture(NProto::TUnmountVolumeResponse());
             };
 
-        auto cellManager = std::make_shared<TTestCellManager>();
+        auto cellManager = std::make_shared<TTestCellManager>(service);
         cellManager->CreateConnectionHandler =
             [&] (const TString& requestedCellId,
                  const NClient::TClientAppConfigPtr& clientConfig)

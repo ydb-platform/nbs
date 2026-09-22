@@ -82,7 +82,6 @@ struct ICellManager: public IStartable
         TCallContextPtr callContext,
         const TString& diskId,
         const NProto::THeaders& headers,
-        IBlockStorePtr service,
         const NProto::TClientConfig& clientConfig) = 0;
 
     [[nodiscard]] virtual std::shared_ptr<TCellInboundActivity>
@@ -91,14 +90,11 @@ struct ICellManager: public IStartable
     [[nodiscard]] virtual TCellsSnapshot GetSnapshot() = 0;
 
     [[nodiscard]] virtual NThreading::TFuture<TVector<TCellDescribeResult>>
-        SearchVolume(
-            TString diskId,
-            IBlockStorePtr localService,
-            TDuration timeout) = 0;
+        SearchVolume(TString diskId, TDuration timeout) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellManagerPtr CreateCellManagerStub();
+ICellManagerPtr CreateCellManagerStub(IBlockStorePtr localService);
 
 }   // namespace NCloud::NBlockStore::NCells

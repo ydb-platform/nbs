@@ -89,7 +89,6 @@ TCellsSnapshot TCellManager::GetSnapshot()
 
 NThreading::TFuture<TVector<TCellDescribeResult>> TCellManager::SearchVolume(
     TString diskId,
-    IBlockStorePtr localService,
     TDuration timeout)
 {
     NProto::TClientAppConfig clientAppConfig;
@@ -114,7 +113,7 @@ NThreading::TFuture<TVector<TCellDescribeResult>> TCellManager::SearchVolume(
         std::move(request),
         cellIds,
         GetCellsEndpoints(appConfig),
-        std::move(localService),
+        Bootstrap.LocalService,
         timeout,
         Bootstrap.Scheduler);
 }
@@ -170,7 +169,6 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     TCallContextPtr callContext,
     const TString& diskId,
     const NProto::THeaders& headers,
-    IBlockStorePtr service,
     const NProto::TClientConfig& clientConfig)
 {
     NProto::TDescribeVolumeRequest request;
@@ -179,7 +177,7 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
 
     auto configuredCellCount = Config->GetCells().size();
     if (configuredCellCount == 0) {
-        return service->DescribeVolume(
+        return Bootstrap.LocalService->DescribeVolume(
             std::move(callContext),
             std::make_shared<NProto::TDescribeVolumeRequest>(
                 std::move(request)));
@@ -199,7 +197,7 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     return NCloud::NBlockStore::NCells::DescribeVolume(
         *Config,
         std::move(request),
-        std::move(service),
+        Bootstrap.LocalService,
         cellHostEndpoints,
         hasUnavailableCells,
         Bootstrap);
@@ -216,7 +214,8 @@ ICellManagerPtr CreateCellManager(
     ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
     ICertificateProviderPtr certificateProvider,
-    NCloud::NStorage::NRdma::IClientPtr rdmaClient)
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+    IBlockStorePtr localService)
 {
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
         config->GetGrpcClientConfig());
@@ -250,6 +249,7 @@ ICellManagerPtr CreateCellManager(
         .CertProvider = std::move(certificateProvider),
         .GrpcClient = std::move(result.ExtractResult()),
         .RdmaClient = std::move(rdmaClient),
+        .LocalService = std::move(localService),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
         .EndpointsSetup = CreateCellHostEndpointBootstrap()};
 

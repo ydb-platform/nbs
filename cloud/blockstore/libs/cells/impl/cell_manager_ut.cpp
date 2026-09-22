@@ -67,7 +67,6 @@ void CheckDescribe(
         MakeIntrusive<TCallContext>(),
         "disk",
         std::move(headers),
-        CreateLocalService(),
         config);
 
     const auto& response = future.GetValue(TDuration::Seconds(5));
@@ -330,7 +329,8 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
-            nullptr);
+            nullptr,
+            CreateLocalService());
 
         server->Start();
         cellManager->Start();
@@ -392,7 +392,8 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
-            nullptr);
+            nullptr,
+            CreateLocalService());
 
         server->Start();
         cellManager->Start();
@@ -526,7 +527,8 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
-            nullptr);
+            nullptr,
+            CreateLocalService());
 
         // A cell id we never configured can only come from broken internal
         // state, so it is reported as such rather than as a lookup miss.

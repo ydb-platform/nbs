@@ -107,7 +107,6 @@ private:
     IBlockstoreConfigPtr StartupBlockstoreConfig;
 
     IActorSystemPtr ActorSystem;
-    IBlockStorePtr CellsMonLocalService;
     IAsyncLoggerPtr AsyncLogger;
     IStatsAggregatorPtr StatsAggregator;
     IClientPercentileCalculatorPtr ClientPercentiles;

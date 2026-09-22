@@ -27,6 +27,9 @@ struct TBootstrap
     NClient::IMultiHostClientPtr GrpcClient;
     NCloud::NStorage::NRdma::IClientPtr RdmaClient;
 
+    // the node's own service, queried alongside the cells on a describe/search
+    IBlockStorePtr LocalService;
+
     ITaskQueuePtr RdmaTaskQueue;
 
     ICellHostEndpointBootstrapPtr EndpointsSetup;

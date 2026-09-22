@@ -284,16 +284,13 @@ class TCellsMonActor final
 {
 private:
     const ICellManagerPtr CellManager;
-    const IBlockStorePtr LocalService;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
 
 public:
     TCellsMonActor(
             ICellManagerPtr cellManager,
-            IBlockStorePtr localService,
             TDiagnosticsConfigPtr diagnosticsConfig)
         : CellManager(std::move(cellManager))
-        , LocalService(std::move(localService))
         , DiagnosticsConfig(std::move(diagnosticsConfig))
     {}
 
@@ -352,7 +349,7 @@ private:
         }
 
         auto future =
-            CellManager->SearchVolume(diskId, LocalService, timeout);
+            CellManager->SearchVolume(diskId, timeout);
 
         auto* actorSystem = ctx.ActorSystem();
         const auto self = SelfId();
@@ -416,12 +413,10 @@ void RenderCellsSearchResult(
 
 IActorPtr CreateCellsMonActor(
     ICellManagerPtr cellManager,
-    IBlockStorePtr localService,
     TDiagnosticsConfigPtr diagnosticsConfig)
 {
     return std::make_unique<TCellsMonActor>(
         std::move(cellManager),
-        std::move(localService),
         std::move(diagnosticsConfig));
 }
 

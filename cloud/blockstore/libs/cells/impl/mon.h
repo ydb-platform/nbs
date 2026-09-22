@@ -17,7 +17,6 @@ namespace NCloud::NBlockStore::NCells {
 
 NActors::IActorPtr CreateCellsMonActor(
     ICellManagerPtr cellManager,
-    IBlockStorePtr localService,
     TDiagnosticsConfigPtr diagnosticsConfig);
 
 // Renders the plain page: search form, config, outbound and inbound tables.
