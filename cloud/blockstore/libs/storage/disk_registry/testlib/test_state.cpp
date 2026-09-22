@@ -6,6 +6,20 @@ using NProto::TDeviceConfig;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    TDiskRegistryState& state,
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    const TString& sourceId)
+{
+    auto results = state.StartDeviceMigrations(now, db, {{diskId, sourceId}});
+    Y_ABORT_UNLESS(results.size() == 1);
+    return std::move(results[0].Target);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 NProto::TError FinishDeviceMigration(
     TDiskRegistryState& state,
     TDiskRegistryDatabase& db,

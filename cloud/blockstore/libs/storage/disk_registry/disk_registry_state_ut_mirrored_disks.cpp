@@ -3019,7 +3019,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
             UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
             UNIT_ASSERT_VALUES_EQUAL("disk-1/0", migrations[0].DiskId);
             UNIT_ASSERT_VALUES_EQUAL("uuid-1", migrations[0].SourceDeviceId);
-            auto r = state.StartDeviceMigration(
+            auto r = StartDeviceMigration(
+                state,
                 changeStateTs,
                 db,
                 "disk-1/0",

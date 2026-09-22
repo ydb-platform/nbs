@@ -1105,7 +1105,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                         agents[0].GetDevices()[0].GetDeviceUUID(),
                         migration.SourceDeviceId);
                     UNIT_ASSERT_VALUES_EQUAL("nrd0", migration.DiskId);
-                    auto [device, error] = state.StartDeviceMigration(
+                    auto [device, error] = StartDeviceMigration(
+                        state,
                         Now(),
                         db,
                         migration.DiskId,

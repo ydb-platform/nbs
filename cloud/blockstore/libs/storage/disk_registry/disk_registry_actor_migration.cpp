@@ -395,9 +395,11 @@ void TDiskRegistryActor::ExecuteStartMigration(
 {
     TDiskRegistryDatabase db(tx.DB);
 
-    for (const auto& [diskId, deviceId]: State->BuildMigrationList()) {
-        const auto result = State->StartDeviceMigration(ctx.Now(), db, diskId, deviceId);
-
+    for (const auto& [diskId, deviceId, result]: State->StartDeviceMigrations(
+             ctx.Now(),
+             db,
+             State->BuildMigrationList()))
+    {
         if (HasError(result)) {
             LOG_ERROR(ctx, TBlockStoreComponents::DISK_REGISTRY,
                 "[%lu] Start migration failed. DiskId=%s DeviceId=%s Error=%s",
@@ -519,7 +521,7 @@ void TDiskRegistryActor::ExecuteStartForceMigration(
 
     TDiskRegistryDatabase db(tx.DB);
 
-    const auto result = State->StartDeviceMigration(
+    const auto result = State->StartForceMigration(
         ctx.Now(),
         db,
         args.SourceDiskId,
