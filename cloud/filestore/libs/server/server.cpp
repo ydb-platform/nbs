@@ -475,8 +475,9 @@ void TAppContext::ValidateRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TRequestsInFlight =
-    NStorage::NGrpc::TRequestsInFlight<TServerRequestHandlerBase>;
+using TRequestsInFlight = NStorage::NGrpc::TRequestsInFlight<
+    TServerRequestHandlerBase,
+    TWellKnownEntityTypes::SERVER>;
 
 using TExecutorContext = NStorage::NGrpc::
     TExecutorContext<grpc::ServerCompletionQueue, TRequestsInFlight>;

@@ -14,8 +14,6 @@ RECURSE(
     hive_proxy
     http
     io_uring
-    journalled_device
-    journalled_device_tcp_server
     kikimr
     netlink
     opentelemetry

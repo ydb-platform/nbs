@@ -556,6 +556,22 @@ func (s *storageYDB) imageCreated(
 		return err
 	}
 
+	if s.backupEnabled {
+		_, err = tx.Execute(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $image_id as Utf8;
+
+			upsert into backup_queue (image_id)
+			values ($image_id)
+		`, s.imagesPath),
+			persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+		)
+		if err != nil {
+			return err
+		}
+	}
+
 	return tx.Commit(ctx)
 }
 
@@ -651,6 +667,22 @@ func (s *storageYDB) deleteImage(
 	)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.backupEnabled {
+		_, err = tx.Execute(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $image_id as Utf8;
+
+			delete from backup_queue
+			where image_id = $image_id
+		`, s.imagesPath),
+			persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+		)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	err = tx.Commit(ctx)
@@ -840,6 +872,66 @@ func (s *storageYDB) listImages(
 	)
 }
 
+func (s *storageYDB) listImagesToBackup(
+	ctx context.Context,
+	session *persistence.Session,
+	limit int,
+) ([]string, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $limit as Uint64;
+
+		select image_id
+		from backup_queue
+		limit $limit
+	`, s.imagesPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	var ids []string
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var id string
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault("image_id", &id),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			ids = append(ids, id)
+		}
+	}
+
+	return ids, nil
+}
+
+func (s *storageYDB) removeImageFromBackupQueue(
+	ctx context.Context,
+	session *persistence.Session,
+	imageID string,
+) error {
+
+	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $image_id as Utf8;
+
+		delete from backup_queue
+		where image_id = $image_id
+	`, s.imagesPath),
+		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+	)
+	return err
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func (s *storageYDB) CreateImage(
@@ -970,6 +1062,50 @@ func (s *storageYDB) ListImages(
 	return ids, err
 }
 
+func (s *storageYDB) ListImagesToBackup(
+	ctx context.Context,
+	limit int,
+) ([]string, error) {
+
+	var ids []string
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			ids, err = s.listImagesToBackup(ctx, session, limit)
+			return err
+		},
+	)
+	return ids, err
+}
+
+func (s *storageYDB) ImageBackupScheduled(
+	ctx context.Context,
+	imageID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.removeImageFromBackupQueue(ctx, session, imageID)
+		},
+	)
+}
+
+func (s *storageYDB) ImageBackupCancelled(
+	ctx context.Context,
+	imageID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.removeImageFromBackupQueue(ctx, session, imageID)
+		},
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func createImagesYDBTables(
@@ -1009,6 +1145,21 @@ func createImagesYDBTables(
 	}
 	logging.Info(ctx, "Created deleted table")
 
+	err = db.CreateOrAlterTable(
+		ctx,
+		folder,
+		"backup_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("image_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithPrimaryKeyColumn("image_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_queue table")
+
 	logging.Info(ctx, "Created tables for images")
 
 	return nil
@@ -1033,6 +1184,12 @@ func dropImagesYDBTables(
 		return err
 	}
 	logging.Info(ctx, "Dropped deleted table")
+
+	err = db.DropTable(ctx, folder, "backup_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_queue table")
 
 	logging.Info(ctx, "Dropped tables for images")
 

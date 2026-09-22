@@ -21,6 +21,7 @@ type storageYDB struct {
 	filesystemSnapshotsPath         string
 	placementGroupsPath             string
 	endedMigrationExpirationTimeout time.Duration
+	backupEnabled                   bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,6 +35,7 @@ func NewStorage(
 	placementGroupsPath string,
 	db *persistence.YDBClient,
 	endedMigrationExpirationTimeout time.Duration,
+	backupEnabled bool,
 ) (Storage, error) {
 
 	return &storageYDB{
@@ -47,6 +49,7 @@ func NewStorage(
 		),
 		placementGroupsPath:             db.AbsolutePath(placementGroupsPath),
 		endedMigrationExpirationTimeout: endedMigrationExpirationTimeout,
+		backupEnabled:                   backupEnabled,
 	}, nil
 }
 

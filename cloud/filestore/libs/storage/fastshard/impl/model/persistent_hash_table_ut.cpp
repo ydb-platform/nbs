@@ -9,7 +9,8 @@
 
 using namespace NCloud;
 using namespace NFileStore;
-using namespace NStorage::NFastShard;
+using namespace NFileStore::NStorage::NFastShard;
+using namespace NCloud::NFastShard;
 
 namespace {
 

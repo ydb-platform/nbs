@@ -79,6 +79,9 @@ message TFileDeviceArgs
 
     // Device model.
     optional string DeviceModel = 8;
+
+    // Serve the device via the journalled device TCP server.
+    optional bool Journalled = 9;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,6 +157,9 @@ message TStorageDiscoveryConfig
 
         // Device id hash scheme.
         optional EHashScheme HashScheme = 8;
+
+        // Mark generated devices as journalled.
+        optional bool Journalled = 9;
     }
 
     message TPathConfig

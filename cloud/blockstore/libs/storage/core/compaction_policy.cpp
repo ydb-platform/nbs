@@ -40,13 +40,16 @@ struct TDefaultPolicy
 {
     const ui32 CompactionThreshold;
     const ui64 UsedBlocksThresholdForMixedBlocksCompaction;
+    const bool MixedBlocksCountCompactionEnabled;
 
     TDefaultPolicy(
         ui32 compactionThreshold,
-        ui64 usedBlocksThresholdForMixedBlocksCompaction)
+        ui64 usedBlocksThresholdForMixedBlocksCompaction,
+        bool mixedBlocksCountCompactionEnabled)
         : CompactionThreshold(compactionThreshold)
         , UsedBlocksThresholdForMixedBlocksCompaction(
               usedBlocksThresholdForMixedBlocksCompaction)
+        , MixedBlocksCountCompactionEnabled(mixedBlocksCountCompactionEnabled)
     {}
 
     TCompactionScore CalculateScore(const TRangeStat& stat) const override
@@ -66,6 +69,11 @@ struct TDefaultPolicy
     {
         return UsedBlocksThresholdForMixedBlocksCompaction;
     }
+
+    bool IsMixedBlocksCountCompactionEnabled() const override
+    {
+        return MixedBlocksCountCompactionEnabled;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -80,13 +88,16 @@ struct TLoadOptimizationPolicy
 {
     TLoadOptimizationCompactionPolicyConfig Config;
     ui64 UsedBlocksThresholdForMixedBlocksCompaction;
+    bool MixedBlocksCountCompactionEnabled;
 
     TLoadOptimizationPolicy(
         const TLoadOptimizationCompactionPolicyConfig& config,
-        const ui64 usedBlocksThresholdForMixedBlocksCompaction)
+        const ui64 usedBlocksThresholdForMixedBlocksCompaction,
+        const bool mixedBlocksCountCompactionEnabled)
         : Config(config)
         , UsedBlocksThresholdForMixedBlocksCompaction(
               usedBlocksThresholdForMixedBlocksCompaction)
+        , MixedBlocksCountCompactionEnabled(mixedBlocksCountCompactionEnabled)
     {}
 
     TCompactionScore CalculateScore(const TRangeStat& stat) const override
@@ -152,7 +163,35 @@ struct TLoadOptimizationPolicy
     {
         return UsedBlocksThresholdForMixedBlocksCompaction;
     }
+
+    bool IsMixedBlocksCountCompactionEnabled() const override
+    {
+        return MixedBlocksCountCompactionEnabled;
+    }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool IsMixedBlocksCountCompactionEnabled(
+    const TStorageConfig& storageConfig,
+    const NProto::TPartitionConfig& partitionConfig)
+{
+    const bool isSSD = partitionConfig.GetStorageMediaKind() ==
+                       NCloud::NProto::STORAGE_MEDIA_SSD;
+    const bool enabled =
+        isSSD ? storageConfig.GetMixedBlocksCountCompactionEnabledSSD()
+              : storageConfig.GetMixedBlocksCountCompactionEnabledHDD();
+    const bool enabledByFeature =
+        isSSD ? storageConfig.IsMixedBlocksCountCompactionSSDFeatureEnabled(
+                    partitionConfig.GetCloudId(),
+                    partitionConfig.GetFolderId(),
+                    partitionConfig.GetDiskId())
+              : storageConfig.IsMixedBlocksCountCompactionHDDFeatureEnabled(
+                    partitionConfig.GetCloudId(),
+                    partitionConfig.GetFolderId(),
+                    partitionConfig.GetDiskId());
+    return enabled || enabledByFeature;
+}
 
 }   // namespace
 
@@ -181,20 +220,24 @@ ui32 GetMaxBlobsPerRange(
 
 ICompactionPolicyPtr BuildDefaultCompactionPolicy(
     ui32 compactionThreshold,
-    ui64 usedBlocksThresholdForMixedBlocksCompaction)
+    ui64 usedBlocksThresholdForMixedBlocksCompaction,
+    bool mixedBlocksCountCompactionEnabled)
 {
     return std::make_shared<TDefaultPolicy>(
         compactionThreshold,
-        usedBlocksThresholdForMixedBlocksCompaction);
+        usedBlocksThresholdForMixedBlocksCompaction,
+        mixedBlocksCountCompactionEnabled);
 }
 
 ICompactionPolicyPtr BuildLoadOptimizationCompactionPolicy(
     const TLoadOptimizationCompactionPolicyConfig& config,
-    const ui64 usedBlocksThresholdForMixedBlocksCompaction)
+    const ui64 usedBlocksThresholdForMixedBlocksCompaction,
+    const bool mixedBlocksCountCompactionEnabled)
 {
     return std::make_shared<TLoadOptimizationPolicy>(
         config,
-        usedBlocksThresholdForMixedBlocksCompaction);
+        usedBlocksThresholdForMixedBlocksCompaction,
+        mixedBlocksCountCompactionEnabled);
 }
 
 TLoadOptimizationCompactionPolicyConfig BuildLoadOptimizationCompactionPolicyConfig(
@@ -266,6 +309,9 @@ ICompactionPolicyPtr BuildCompactionPolicy(
                 partitionConfig.GetBlockSize());
     }
 
+    const bool mixedBlocksCountCompactionEnabled =
+        IsMixedBlocksCountCompactionEnabled(storageConfig, partitionConfig);
+
     NProto::ECompactionType ct = NProto::ECompactionType::CT_DEFAULT;
     switch (partitionConfig.GetStorageMediaKind()) {
         case NCloud::NProto::STORAGE_MEDIA_SSD: {
@@ -287,7 +333,8 @@ ICompactionPolicyPtr BuildCompactionPolicy(
         case NProto::ECompactionType::CT_DEFAULT: {
             return BuildDefaultCompactionPolicy(
                 maxBlobsPerRange,
-                usedBlocksThresholdForMixedBlocksCompaction);
+                usedBlocksThresholdForMixedBlocksCompaction,
+                mixedBlocksCountCompactionEnabled);
         }
 
         case NProto::ECompactionType::CT_LOAD: {
@@ -296,7 +343,8 @@ ICompactionPolicyPtr BuildCompactionPolicy(
                     partitionConfig,
                     storageConfig,
                     maxBlobsPerRange),
-                usedBlocksThresholdForMixedBlocksCompaction);
+                usedBlocksThresholdForMixedBlocksCompaction,
+                mixedBlocksCountCompactionEnabled);
         }
 
         default: Y_ABORT_UNLESS(0);

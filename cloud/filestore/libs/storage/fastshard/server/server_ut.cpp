@@ -3,9 +3,10 @@
 #include <cloud/filestore/libs/storage/fastshard/impl/mem/memshard.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 #include <cloud/filestore/libs/storage/fastshard/server/server.h>
-#include <cloud/filestore/libs/storage/fastshard/testlib/silk_env.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
+
+#include <cloud/fastshard/testlib/silk_env.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -22,6 +23,7 @@
 
 using namespace NCloud::NFileStore::NStorage::NFastShard;
 using namespace NCloud::NFileStore::NStorage::NFastShard::NProtoSrv;
+using namespace NCloud::NFastShard;
 using silk::FiberFuture;
 using silk::FiberScheduler;
 

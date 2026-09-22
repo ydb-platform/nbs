@@ -9,6 +9,7 @@ ENDIF()
 SPLIT_FACTOR(1)
 
 TEST_SRCS(
+    conftest.py
     test.py
 )
 

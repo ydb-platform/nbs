@@ -57,7 +57,11 @@ func TestSnapshotStaggeringFacade(t *testing.T) {
 			defer client.Close()
 
 			// Create the source disk before checking snapshot scheduling.
-			diskID := strings.ReplaceAll(t.Name(), "/", "-")
+			diskID := strings.NewReplacer(
+				"/", "-",
+				"=", "-",
+			).Replace(t.Name())
+
 			operation, err := client.CreateDisk(
 				testcommon.GetRequestContext(t, ctx),
 				&disk_manager.CreateDiskRequest{

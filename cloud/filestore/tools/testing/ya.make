@@ -6,4 +6,5 @@ RECURSE(
     loadtest
     open_close_bench
     profile_log
+    readtag
 )

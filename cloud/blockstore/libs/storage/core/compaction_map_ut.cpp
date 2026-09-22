@@ -232,6 +232,22 @@ void AssertRangeStatEqual(const TRangeStat& expected, const TRangeStat& actual)
         static_cast<int>(actual.CompactionScore.Type));
 }
 
+struct TCompactionPolicyOptions
+{
+    ui32 CompactionThreshold = 5;
+    ui64 UsedBlocksThresholdForMixedBlocksCompaction = 0;
+    bool MixedBlocksCountCompactionEnabled = false;
+};
+
+ICompactionPolicyPtr MakeDefaultCompactionPolicy(
+    TCompactionPolicyOptions options = {})
+{
+    return BuildDefaultCompactionPolicy(
+        options.CompactionThreshold,
+        options.UsedBlocksThresholdForMixedBlocksCompaction,
+        options.MixedBlocksCountCompactionEnabled);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -240,7 +256,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 {
     Y_UNIT_TEST(ShouldBeEmptyAtStart)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 0));
+        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
         for (size_t i = 1; i <= 100; ++i) {
             const auto stat = map.Get(GetGroupIndex(i));
             UNIT_ASSERT_VALUES_EQUAL(0, stat.BlobCount);
@@ -254,7 +270,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
     Y_UNIT_TEST(ShouldKeepCompactionCounters)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 0));
+        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
         for (size_t i = 1; i <= 100; ++i) {
             map.Update(GetGroupIndex(i), i, i * 10, i * 5, 0, 0, false);
             map.RegisterRead(GetGroupIndex(i), i + 1, i * 10 + 5);
@@ -305,7 +321,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
     Y_UNIT_TEST(ShouldTrackTopCounters)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 0));
+        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
         const auto blockCount = 123;
         const auto usedBlockCount = 23;
         for (size_t i = 1; i <= 100; ++i) {
@@ -346,7 +362,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
     Y_UNIT_TEST(ShouldTrackTopByGarbageBlockCount)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 0));
+        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
         const auto blobCount = 3;
         for (size_t i = 1; i <= 100; ++i) {
             map.Update(GetGroupIndex(i), blobCount, i * 10, i * 5, 0, 0, false);
@@ -402,7 +418,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
     Y_UNIT_TEST(ShouldTrackTopByGarbageIgnoringZeroed)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 0));
+        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
         const auto blobCount = 3;
         for (size_t i = 1; i <= 100; ++i) {
             // BlockCount = i * 10, UsedBlockCount = i * 5, NewlyZeroedBlocks = i
@@ -467,7 +483,10 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
     Y_UNIT_TEST(ShouldTrackTopByMixedBlockCount)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 0));
+        TCompactionMap map(
+            RangeSize,
+            MakeDefaultCompactionPolicy(
+                {.MixedBlocksCountCompactionEnabled = true}));
 
         const ui32 range0 = GetGroupIndex(0);
         const ui32 range1 = range0 + RangeSize;
@@ -509,9 +528,35 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldNotTrackMixedBlockCountWhenCompactionIsDisabled)
+    {
+        TCompactionMap map(
+            RangeSize,
+            MakeDefaultCompactionPolicy(
+                {.MixedBlocksCountCompactionEnabled = false}));
+
+        const ui32 range0 = GetGroupIndex(0);
+        const ui32 range1 = range0 + RangeSize;
+
+        map.Update(range0, 3, 100, 100, 0, 10, false);
+        map.Update(range1, 3, 100, 100, 0, 20, false);
+
+        UNIT_ASSERT_VALUES_EQUAL(0, map.Get(range0).MixedBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, map.Get(range1).MixedBlockCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, map.GetMixedBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            map.GetTopByMixedBlockCount().Stat.MixedBlockCount);
+        UNIT_ASSERT(map.GetTopByMixedBlockCount(2).empty());
+    }
+
     Y_UNIT_TEST(ShouldFilterRangesBelowUsedBlocksThreshold)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 50));
+        TCompactionMap map(
+            RangeSize,
+            MakeDefaultCompactionPolicy(
+                {.UsedBlocksThresholdForMixedBlocksCompaction = 50,
+                 .MixedBlocksCountCompactionEnabled = true}));
 
         const ui32 range0 = GetGroupIndex(0);
         const ui32 range1 = range0 + RangeSize;
@@ -552,7 +597,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
     Y_UNIT_TEST(ShouldBeEmptyAfterClear)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 0));
+        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
         for (size_t i = 1; i <= 100; ++i) {
             map.Update(GetGroupIndex(i), i, i * 10, i * 5, 0, 0, false);
         }
@@ -571,7 +616,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
     Y_UNIT_TEST(ShouldCorrectlyUpdateFromCounterList)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 0));
+        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
         TCompressedBitmap used(3 * RangeSize);
         used.Set(512, 2048);
         map.Update(
@@ -615,7 +660,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
     Y_UNIT_TEST(ShouldHaveNonEmptyRanges)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 0));
+        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
         const auto blockCount = 123;
         const auto usedBlockCount = 23;
         for (size_t i = 1; i <= 100; ++i) {
@@ -648,7 +693,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
             GetGroupIndex(3),
         };
 
-        const auto policy = BuildDefaultCompactionPolicy(5, 0);
+        const auto policy = MakeDefaultCompactionPolicy();
         TCompactionMap map(RangeSize, policy);
         TReferenceImplementation ref(RangeSize, policy);
 

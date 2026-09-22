@@ -252,8 +252,8 @@ public:
     }
 
     //
-    // The layout is immutable after construction and its dump does no
-    // page IO, so no fiber is needed here.
+    // The layout is immutable after initialization and its dump does no page
+    // IO, so no fiber is needed here.
     //
 
     void DumpLayoutHtml(IOutputStream& out) const override

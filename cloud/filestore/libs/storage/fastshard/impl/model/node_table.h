@@ -1,5 +1,7 @@
 #pragma once
 
+#include "component.h"
+#include "format_page.h"
 #include "page_store.h"
 #include "persistent_hash_table.h"
 
@@ -10,6 +12,9 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 // inode table layout
+
+constexpr ui32 NodeTableLayoutMinVersion = 1;
+constexpr ui32 NodeTableLayoutVersion = 1;
 
 constexpr ui64 NodeSlotSize = 96;   // bigger than the current slot struct - in
                                     // order not to drop all data if we decide
@@ -39,10 +44,10 @@ NProto::TNodeAttr Convert(const TNodeTableSlot& slot);
 TNodeTableSlot Convert(const NProto::TNodeAttr& attr);
 
 ////////////////////////////////////////////////////////////////////////////////
-// This data structure is a PoC, it's not really efficient, can be easily
-// optimized.
 
-class TNodeTable
+using TNodeTableBase =
+    TComponentBase<NodeTableLayoutMinVersion, NodeTableLayoutVersion>;
+class TNodeTable: public TNodeTableBase
 {
 private:
     using THt = TPersistentHashTable<ui64, TNodeTableSlot>;

@@ -23,8 +23,9 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/recent_blocks_tracker.h>
 
+#include <cloud/fastshard/journal/iface/public.h>
+
 #include <cloud/storage/core/libs/coroutine/public.h>
-#include <cloud/storage/core/libs/journalled_device/journalled_device.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 #include <contrib/ydb/library/actors/core/events.h>
@@ -193,7 +194,9 @@ private:
     NProto::TError UpdateControlPlaneRequestNumber(
         TControlPlaneRequestNumber controlPlaneRequestNumber);
 
-    void StartJournalledDeviceTcpServer(const NActors::TActorContext& ctx);
+    void StartJournalledDeviceTcpServer(
+        const NActors::TActorContext& ctx,
+        const TVector<TString>& journalledDeviceIds);
 
 private:
     STFUNC(StateInit);

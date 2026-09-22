@@ -1,6 +1,6 @@
 #include "client.h"
 
-#include <cloud/filestore/libs/storage/fastshard/ipc/ipc.h>
+#include <cloud/fastshard/ipc/ipc.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -20,6 +20,9 @@
 #include <unistd.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+using NCloud::NFastShard::RecvAll;
+using NCloud::NFastShard::SendAll;
 
 using silk::FiberScheduler;
 using namespace NProtoSrv;

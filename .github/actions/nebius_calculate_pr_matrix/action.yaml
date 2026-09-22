@@ -41,6 +41,7 @@ runs:
           CONTAINS_DISK_MANAGER: ${{ contains(github.event.pull_request.labels.*.name, 'disk_manager') && 'true' || 'false' }}
           CONTAINS_TASKS: ${{ contains(github.event.pull_request.labels.*.name, 'tasks') && 'true' || 'false' }}
           CONTAINS_STORAGE: ${{ contains(github.event.pull_request.labels.*.name, 'storage') && 'true' || 'false' }}
+          CONTAINS_FASTSHARD: ${{ contains(github.event.pull_request.labels.*.name, 'fastshard') && 'true' || 'false' }}
 
           HAS_ASAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'asan') && 'true' || 'false' }}
           HAS_TSAN_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'tsan') && 'true' || 'false' }}

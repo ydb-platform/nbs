@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import time
 
+from contextlib import contextmanager
 from pathlib import Path
 
 import yatest.common as common
@@ -25,11 +26,89 @@ BLOCKSTORE_CLIENT_PATH = common.binary_path(
     "cloud/blockstore/apps/client/blockstore-client")
 
 
-def init(
-        nbd_netlink=True,
-        nbd_request_timeout=10,
-        nbds_max=4,
-        max_zero_blocks_sub_request_size=None,
+PRECONFIGURED_NBD_DEV_COUNT = 4
+
+
+@pytest.fixture(autouse=True)
+def load_nbd_module():
+    # Netlink can create extra devices; reset them before the next test.
+    def run(command):
+        logging.info("Running NBD module command: %s", command)
+        try:
+            result = subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as e:
+            logging.exception(
+                "NBD module command failed: %s; stdout: %s; stderr: %s",
+                command,
+                e.stdout,
+                e.stderr,
+            )
+            raise
+        except OSError:
+            logging.exception("Failed to start NBD module command: %s", command)
+            raise
+        logging.info(
+            "NBD module command succeeded: %s; stdout: %s; stderr: %s",
+            command,
+            result.stdout,
+            result.stderr,
+        )
+
+    run(["modprobe", "nbd", f"nbds_max={PRECONFIGURED_NBD_DEV_COUNT}"])
+    yield
+    run(["rmmod", "nbd"])
+
+
+@pytest.fixture
+def nbd_netlink():
+    return True
+
+
+@pytest.fixture
+def nbs_config(request):
+    marker = request.node.get_closest_marker("nbs_config")
+    return marker.kwargs if marker is not None else {}
+
+
+@pytest.fixture
+def nbd_request_timeout(nbs_config):
+    return nbs_config.get("nbd_request_timeout", 10)
+
+
+@pytest.fixture
+def max_zero_blocks_sub_request_size(nbs_config):
+    return nbs_config.get("max_zero_blocks_sub_request_size")
+
+
+@pytest.fixture
+def endpoints_dir():
+    path = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
+    path.mkdir(exist_ok=True)
+    return path
+
+
+@pytest.fixture
+def sockets_dir():
+    # Keep Unix socket paths short and the directory alive until env stops.
+    with tempfile.TemporaryDirectory(dir="/tmp") as path:
+        logging.info("Created temporary dir %s", path)
+        yield Path(path)
+
+
+@pytest.fixture
+def env_factory(
+        load_nbd_module,
+        endpoints_dir,
+        sockets_dir,
+        nbd_netlink,
+        nbd_request_timeout,
+        max_zero_blocks_sub_request_size,
 ):
     server_config_patch = TServerConfig()
     server_config_patch.NbdEnabled = True
@@ -37,15 +116,9 @@ def init(
         server_config_patch.NbdNetlink = True
         server_config_patch.NbdRequestTimeout = nbd_request_timeout * 1000
         server_config_patch.NbdConnectionTimeout = 600 * 1000
-    endpoints_dir = Path(common.output_path()) / f"endpoints-{hash(common.context.test_name)}"
-    endpoints_dir.mkdir(exist_ok=True)
     server_config_patch.EndpointStorageType = EEndpointStorageType.ENDPOINT_STORAGE_FILE
     server_config_patch.EndpointStorageDir = str(endpoints_dir)
     server_config_patch.AllowAllRequestsViaUDS = True
-    # We run inside qemu, so do not need to cleanup
-    temp_dir = tempfile.TemporaryDirectory(dir="/tmp")
-    logging.info("Created temporary dir %s", temp_dir.name)
-    sockets_dir = Path(temp_dir.name)
     server_config_patch.UnixSocketPath = str(sockets_dir / "grpc.sock")
     server_config_patch.VhostEnabled = False
     server_config_patch.NbdDevicePrefix = "/dev/nbd"
@@ -57,15 +130,32 @@ def init(
     if max_zero_blocks_sub_request_size:
         server.ServerConfig.MaxZeroBlocksSubRequestSize = max_zero_blocks_sub_request_size
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
-    subprocess.check_call(["modprobe", "nbd", f"nbds_max={nbds_max}"], timeout=20)
+
     log_config = TLogConfig()
     log_config.Entry.add(Component=b"BLOCKSTORE_NBD", Level=7)
-    env = LocalLoadTest(
-        endpoint="",
-        server_app_config=server,
-        use_in_memory_pdisks=True,
-        log_config=log_config)
 
+    @contextmanager
+    def create_env():
+        env = LocalLoadTest(
+            endpoint="",
+            server_app_config=server,
+            use_in_memory_pdisks=True,
+            log_config=log_config)
+        try:
+            yield env
+        finally:
+            env.tear_down()
+
+    return create_env
+
+
+@pytest.fixture
+def env(env_factory):
+    with env_factory() as environment:
+        yield environment
+
+
+def create_client_runner(env):
     client_config_path = Path(yatest_common.output_path()) / "client-config.txt"
     client_config = TClientAppConfig()
     client_config.ClientConfig.CopyFrom(TClientConfig())
@@ -96,15 +186,12 @@ def init(
         logging.info("Stderr: %s", result.stderr)
         return result
 
-    return env, run
+    return run
 
 
-def cleanup_after_test(env: LocalLoadTest):
-    try:
-        subprocess.check_call(["rmmod", "nbd"], timeout=20)
-    finally:
-        if env is not None:
-            env.tear_down()
+@pytest.fixture
+def nbs_cli(env):
+    return create_client_runner(env)
 
 
 def log_called_process_error(exc):
@@ -117,20 +204,16 @@ def log_called_process_error(exc):
     )
 
 
-@pytest.mark.parametrize('nbd_netlink', [True, False])
-def test_free_device_allocation(nbd_netlink):
+@pytest.mark.parametrize("nbd_netlink", [True, False], ids=["netlink", "ioctl"])
+def test_free_device_allocation(nbs_cli, nbd_netlink):
     disk = "disk"
     block_size = 4096
     blocks_count = 1024
     socket = "/tmp/sock"
-    nbds_max = 4
-
-    env, run = init(
-        nbd_netlink=nbd_netlink,
-        nbds_max=nbds_max)
+    nbds_max = PRECONFIGURED_NBD_DEV_COUNT
 
     def createvolume(i):
-        return run(
+        return nbs_cli(
             "createvolume",
             "--disk-id",
             disk + str(i),
@@ -141,7 +224,7 @@ def test_free_device_allocation(nbd_netlink):
         ).returncode
 
     def startendpoint(i):
-        return run(
+        return nbs_cli(
             "startendpoint",
             "--disk-id",
             disk + str(i),
@@ -174,20 +257,18 @@ def test_free_device_allocation(nbd_netlink):
 
     finally:
         for i in range(0, nbds_max + 1):
-            run(
+            nbs_cli(
                 "stopendpoint",
                 "--socket",
                 socket + str(i),
             )
 
-            run(
+            nbs_cli(
                 "destroyvolume",
                 "--disk-id",
                 disk + str(i),
                 input=disk+str(i),
             )
-
-        cleanup_after_test(env)
 
 
 def force_nbd_reconnect(
@@ -223,25 +304,22 @@ def force_nbd_reconnect(
     assert proc.returncode == 0
 
 
-def test_nbd_reconnect():
+@pytest.mark.nbs_config(nbd_request_timeout=2)
+def test_nbd_reconnect(env, nbs_cli, nbd_request_timeout):
     disk_id = "disk0"
     block_size = 4096
     blocks_count = 1024
     nbd_device = "/dev/nbd0"
     socket = "/tmp/nbd.sock"
-    request_timeout = 2
+    request_timeout = nbd_request_timeout
     runtime = request_timeout * 2
     nbs_downtime = request_timeout + 2
     iodepth = 1024
     reconnects = 3
     nbs_runtime_between_reconnects = request_timeout
 
-    env, run = init(
-        nbd_netlink=True,
-        nbd_request_timeout=request_timeout)
-
     try:
-        result = run(
+        result = nbs_cli(
             "createvolume",
             "--disk-id",
             disk_id,
@@ -252,7 +330,7 @@ def test_nbd_reconnect():
         )
         assert result.returncode == 0
 
-        result = run(
+        result = nbs_cli(
             "startendpoint",
             "--disk-id",
             disk_id,
@@ -282,24 +360,26 @@ def test_nbd_reconnect():
         raise
 
     finally:
-        run(
+        nbs_cli(
             "stopendpoint",
             "--socket",
             socket,
         )
 
-        result = run(
+        result = nbs_cli(
             "destroyvolume",
             "--disk-id",
             disk_id,
             input=disk_id,
         )
 
-        cleanup_after_test(env)
 
-
-@pytest.mark.parametrize('nbd_netlink', [True, False])
-def test_resize_device(nbd_netlink):
+@pytest.mark.parametrize("nbd_netlink", [True, False], ids=["netlink", "ioctl"])
+@pytest.mark.nbs_config(
+    nbd_request_timeout=2,
+    max_zero_blocks_sub_request_size=512 * 1024 * 1024,
+)
+def test_resize_device(env, nbs_cli, nbd_netlink, nbd_request_timeout):
     volume_name = "example-disk"
     block_size = 4096
     blocks_count = 1310720
@@ -307,19 +387,13 @@ def test_resize_device(nbd_netlink):
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
     iodepth = 1024
-    request_timeout = 2
+    request_timeout = nbd_request_timeout
     runtime = request_timeout * 2
     nbs_downtime = request_timeout + 2
     mount_dir = None
 
-    env, run = init(
-        nbd_netlink=nbd_netlink,
-        nbd_request_timeout=request_timeout,
-        max_zero_blocks_sub_request_size=512 * 1024 * 1024
-    )
-
     try:
-        result = run(
+        result = nbs_cli(
             "createvolume",
             "--disk-id",
             volume_name,
@@ -330,7 +404,7 @@ def test_resize_device(nbd_netlink):
         )
         assert result.returncode == 0
 
-        result = run(
+        result = nbs_cli(
             "startendpoint",
             "--disk-id",
             volume_name,
@@ -368,7 +442,7 @@ def test_resize_device(nbd_netlink):
         assert result.returncode == 0
 
         new_volume_size = 2 * volume_size
-        result = run(
+        result = nbs_cli(
             "resizevolume",
             "--disk-id",
             volume_name,
@@ -377,7 +451,7 @@ def test_resize_device(nbd_netlink):
         )
         assert result.returncode == 0
 
-        result = run(
+        result = nbs_cli(
             "refreshendpoint",
             "--socket",
             socket_path
@@ -426,23 +500,21 @@ def test_resize_device(nbd_netlink):
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT)
 
-        run(
+        nbs_cli(
             "stopendpoint",
             "--socket",
             socket_path,
         )
 
-        result = run(
+        result = nbs_cli(
             "destroyvolume",
             "--disk-id",
             volume_name,
             input=volume_name,
         )
 
-        cleanup_after_test(env)
 
-
-def test_do_not_restore_endpoint_with_missing_volume():
+def test_do_not_restore_endpoint_with_missing_volume(env_factory, endpoints_dir):
     # Scenario:
     # 1. run nbs
     # 2. create volume and start endpoint
@@ -452,85 +524,80 @@ def test_do_not_restore_endpoint_with_missing_volume():
     # 7. copy endpoint from backup folder to endpoints folder
     # 8. run nbs
     # 9. check that endpoint was removed from endpoints folder
-    env, run = init()
-
-    test_hash = hash(common.context.test_name)
-    endpoints_dir = Path(common.output_path()) / f"endpoints-{test_hash}"
-    backup_endpoints_dir = Path(common.output_path()) / f"backup-endpoints-{test_hash}"
+    backup_endpoints_dir = endpoints_dir.with_name(f"backup-{endpoints_dir.name}")
 
     volume_name = "example-disk"
     block_size = 4096
     blocks_count = 10000
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
-    try:
-        result = run(
-            "createvolume",
-            "--disk-id",
-            volume_name,
-            "--blocks-count",
-            str(blocks_count),
-            "--block-size",
-            str(block_size),
-        )
-        assert result.returncode == 0
+    with env_factory() as env:
+        nbs_cli = create_client_runner(env)
+        try:
+            result = nbs_cli(
+                "createvolume",
+                "--disk-id",
+                volume_name,
+                "--blocks-count",
+                str(blocks_count),
+                "--block-size",
+                str(block_size),
+            )
+            assert result.returncode == 0
 
-        result = run(
-            "startendpoint",
-            "--disk-id",
-            volume_name,
-            "--socket",
-            socket_path,
-            "--ipc-type",
-            "nbd",
-            "--persistent",
-            "--nbd-device",
-            nbd_device
-        )
-        assert result.returncode == 0
+            result = nbs_cli(
+                "startendpoint",
+                "--disk-id",
+                volume_name,
+                "--socket",
+                socket_path,
+                "--ipc-type",
+                "nbd",
+                "--persistent",
+                "--nbd-device",
+                nbd_device
+            )
+            assert result.returncode == 0
 
-        shutil.copytree(endpoints_dir, backup_endpoints_dir)
+            shutil.copytree(endpoints_dir, backup_endpoints_dir)
 
-    except subprocess.CalledProcessError as e:
-        log_called_process_error(e)
-        raise
-    finally:
-        run(
-            "stopendpoint",
-            "--socket",
-            socket_path,
-        )
+        except subprocess.CalledProcessError as e:
+            log_called_process_error(e)
+            raise
+        finally:
+            nbs_cli(
+                "stopendpoint",
+                "--socket",
+                socket_path,
+            )
 
-        run(
-            "destroyvolume",
-            "--disk-id",
-            volume_name,
-            input=volume_name,
-        )
-
-        cleanup_after_test(env)
+            nbs_cli(
+                "destroyvolume",
+                "--disk-id",
+                volume_name,
+                input=volume_name,
+            )
 
     shutil.rmtree(endpoints_dir)
     shutil.copytree(backup_endpoints_dir, endpoints_dir)
-    env, run = init()
-    try:
-        result = run(
-            "listendpoints",
-            "--wait-for-restoring",
-        )
-        assert result.returncode == 0
-        assert 0 == len(os.listdir(endpoints_dir))
-    finally:
-        run(
-            "stopendpoint",
-            "--socket",
-            socket_path,
-        )
+    with env_factory() as env:
+        nbs_cli = create_client_runner(env)
+        try:
+            result = nbs_cli(
+                "listendpoints",
+                "--wait-for-restoring",
+            )
+            assert result.returncode == 0
+            assert 0 == len(os.listdir(endpoints_dir))
+        finally:
+            nbs_cli(
+                "stopendpoint",
+                "--socket",
+                socket_path,
+            )
 
-        cleanup_after_test(env)
 
-
-def test_restore_endpoint_when_socket_directory_does_not_exist():
+def test_restore_endpoint_when_socket_directory_does_not_exist(env, nbs_cli):
     # Scenario:
     # 1. run nbs
     # 2. create volume and start endpoint
@@ -541,8 +608,6 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
     # 8. remove socket directory
     # 8. run nbs
     # 9. check that endpoint was restored
-    env, run = init()
-
     volume_name = "example-disk"
     block_size = 4096
     blocks_count = 10000
@@ -552,7 +617,7 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
     try:
         socket_dir.mkdir()
 
-        result = run(
+        result = nbs_cli(
             "createvolume",
             "--disk-id",
             volume_name,
@@ -563,7 +628,7 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
         )
         assert result.returncode == 0
 
-        result = run(
+        result = nbs_cli(
             "startendpoint",
             "--disk-id",
             volume_name,
@@ -581,7 +646,7 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
 
         env.nbs.restart()
 
-        result = run(
+        result = nbs_cli(
             "listendpoints",
             "--wait-for-restoring",
         )
@@ -592,20 +657,15 @@ def test_restore_endpoint_when_socket_directory_does_not_exist():
         log_called_process_error(e)
         raise
     finally:
-        run(
+        nbs_cli(
             "stopendpoint",
             "--socket",
             socket_path,
         )
 
-        cleanup_after_test(env)
 
-
-def test_discard_device():
-    env, run = init(
-        max_zero_blocks_sub_request_size=512 * 1024 * 1024
-    )
-
+@pytest.mark.nbs_config(max_zero_blocks_sub_request_size=512 * 1024 * 1024)
+def test_discard_device(nbs_cli):
     volume_name = "example-disk"
     block_size = 4096
     blocks_count = 1310720
@@ -613,7 +673,7 @@ def test_discard_device():
     nbd_device = "/dev/nbd0"
     socket_path = "/tmp/nbd.sock"
     try:
-        result = run(
+        result = nbs_cli(
             "createvolume",
             "--disk-id",
             volume_name,
@@ -624,7 +684,7 @@ def test_discard_device():
         )
         assert result.returncode == 0
 
-        result = run(
+        result = nbs_cli(
             "startendpoint",
             "--disk-id",
             volume_name,
@@ -681,17 +741,15 @@ def test_discard_device():
         log_called_process_error(e)
         raise
     finally:
-        run(
+        nbs_cli(
             "stopendpoint",
             "--socket",
             socket_path,
         )
 
-        result = run(
+        result = nbs_cli(
             "destroyvolume",
             "--disk-id",
             volume_name,
             input=volume_name,
         )
-
-        cleanup_after_test(env)

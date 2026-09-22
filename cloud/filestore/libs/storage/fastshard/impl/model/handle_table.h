@@ -1,5 +1,7 @@
 #pragma once
 
+#include "component.h"
+#include "format_page.h"
 #include "page_store.h"
 #include "persistent_hash_table.h"
 
@@ -10,6 +12,9 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
 // handle table layout
+
+constexpr ui32 HandleTableLayoutMinVersion = 1;
+constexpr ui32 HandleTableLayoutVersion = 1;
 
 constexpr ui64 HandleSlotSize = 16;
 
@@ -33,7 +38,9 @@ static_assert(sizeof(TNodeHandlesSlot) <= NodeHandlesSlotSize);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class THandleTable
+using THandleTableBase =
+    TComponentBase<HandleTableLayoutMinVersion, HandleTableLayoutVersion>;
+class THandleTable: public THandleTableBase
 {
 private:
     using THandles = TPersistentHashTable<ui64, THandleSlot>;

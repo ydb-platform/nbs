@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
+#include <cloud/fastshard/sn/iface/storage_node.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -12,6 +12,8 @@
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+using NCloud::NFastShard::IStorageNodePtr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -25,6 +27,12 @@ struct TPageGroup
 {
     ui64 FirstPageNo = 0;
     TVector<TBuffer> Content;
+};
+
+struct TLsnLink
+{
+    ui64 Lsn = 0;
+    ui64 PrevLsn = 0;
 };
 
 /**
@@ -48,7 +56,7 @@ struct IStorageGroup
     virtual NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
         TVector<TPageGroup> pageGroups,
-        ui64 lsn) = 0;
+        TLsnLink link) = 0;
     virtual NProto::TError ReadPages(
         NProto::TDeviceRequestHeaders headers,
         const TVector<TPageGroupRef>& pageGroupRefs,

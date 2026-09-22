@@ -754,7 +754,7 @@ func (s *timingStorageStub) CreateTask(
 func TestScheduleTaskAtTiming(t *testing.T) {
 	store := &timingStorageStub{}
 	s := &scheduler{storage: store}
-	ctx := headers.SetIncomingIdempotencyKey(context.Background(), "key")
+	ctx := headers.SetIncomingIdempotencyKey(newContext(), "key")
 
 	receivedAt := time.Unix(1700000000, 0).UTC()
 	deadline := receivedAt.Add(time.Second + 123*time.Nanosecond)

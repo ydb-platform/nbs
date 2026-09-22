@@ -16,6 +16,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/scrubbing"
 	filesystem_snapshot "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/filesystem/snapshot"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
@@ -221,6 +222,27 @@ func run(
 	var s3 *persistence.S3Client
 	var s3Bucket string
 
+	var followerS3 *backup.FollowerS3
+	backupConfig := config.GetSnapshotStorageBackupConfig()
+	if backupConfig != nil {
+		var s3Client *persistence.S3Client
+		s3Client, err = persistence.NewS3ClientFromConfig(
+			backupConfig.GetS3Config(),
+			mon.NewRegistry("follower_s3_client"),
+			nil, // availabilityMonitoring
+			creds,
+		)
+		if err != nil {
+			return err
+		}
+
+		followerS3 = backup.NewFollowerS3(
+			s3Client,
+			backupConfig.GetS3Bucket(),
+			backupConfig.GetS3KeyPrefix(),
+		)
+	}
+
 	dataplaneConfig := config.GetDataplaneConfig()
 	if dataplaneConfig == nil {
 		logging.Info(ctx, "Registering dataplane tasks")
@@ -339,6 +361,7 @@ func run(
 			s3,
 			migrationDstDB,
 			migrationDstS3,
+			followerS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize dataplane: %v", err)
@@ -410,6 +433,7 @@ func run(
 			nbsFactory,
 			nfsClientMetricsRegistry,
 			nfsTlsProvider,
+			followerS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize GRPC services: %v", err)

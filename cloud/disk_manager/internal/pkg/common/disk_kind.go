@@ -24,6 +24,8 @@ func DiskKindToString(kind types.DiskKind) string {
 		return "hdd-nonreplicated"
 	case types.DiskKind_DISK_KIND_HDD_LOCAL:
 		return "hdd-local"
+	case types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP:
+		return "ssd-direct-mirror3of5-group"
 	}
 	return "unknown"
 }
@@ -46,6 +48,8 @@ func DiskKindFromString(kind string) (types.DiskKind, error) {
 		return types.DiskKind_DISK_KIND_HDD_NONREPLICATED, nil
 	case "hdd-local":
 		return types.DiskKind_DISK_KIND_HDD_LOCAL, nil
+	case "ssd-direct-mirror3of5-group":
+		return types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP, nil
 	default:
 		return 0, NewInvalidArgumentError(
 			"unknown disk kind %v",
@@ -57,4 +61,8 @@ func DiskKindFromString(kind string) (types.DiskKind, error) {
 func IsLocalDiskKind(kind types.DiskKind) bool {
 	return kind == types.DiskKind_DISK_KIND_SSD_LOCAL ||
 		kind == types.DiskKind_DISK_KIND_HDD_LOCAL
+}
+
+func IsSsdDirectMirror3Of5GroupDiskKind(kind types.DiskKind) bool {
+	return kind == types.DiskKind_DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP
 }

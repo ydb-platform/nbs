@@ -12,11 +12,14 @@ PEERDIR(
     cloud/filestore/tests/python/lib
 
     cloud/storage/core/tools/testing/qemu/lib
+
+    contrib/python/requests/py3
 )
 
 SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
+    cloud/filestore/tests/async_close_test/nfs-storage-patch.txt
 )
 SET(NFS_BS_FAILURE_PROBABILITY 0.001)
 

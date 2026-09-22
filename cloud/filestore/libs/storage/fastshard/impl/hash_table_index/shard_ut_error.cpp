@@ -8,12 +8,15 @@
 
 #include <silk/util/logger.h>
 
+#include <library/cpp/json/json_reader.h>
+
 #include <gtest/gtest.h>
 
 using namespace NCloud;
 using namespace NFileStore;
 using namespace NFileStore::NProto;
-using namespace NStorage::NFastShard;
+using namespace NFileStore::NStorage::NFastShard;
+using namespace NCloud::NFastShard;
 
 namespace {
 
@@ -62,7 +65,7 @@ struct TTestStorageGroup: IStorageGroup
     TTempError ReadError;
     TTempError WriteError;
     ui64 LastLsn = 0;
-    TVector<ui64> WriteLsns;
+    TVector<TLsnLink> WriteLinks;
 
     TResultOrError<ui64> Init() override
     {
@@ -75,7 +78,7 @@ struct TTestStorageGroup: IStorageGroup
     NCloud::NProto::TError WriteLogRecord(
         NCloud::NProto::TDeviceRequestHeaders headers,
         TVector<TPageGroup> pageGroups,
-        ui64 lsn) override
+        TLsnLink link) override
     {
         Y_UNUSED(headers);
 
@@ -84,7 +87,7 @@ struct TTestStorageGroup: IStorageGroup
             return e;
         }
 
-        WriteLsns.push_back(lsn);
+        WriteLinks.push_back(link);
         for (auto& pg: pageGroups) {
             for (ui64 i = 0; i < pg.Content.size(); ++i) {
                 Pages[pg.FirstPageNo + i] = std::move(pg.Content[i]);
@@ -295,6 +298,8 @@ TEST(HashTableIndexShardErrorTest, CreatesHandles)
 
 TEST(HashTableIndexShardErrorTest, NumbersRecordsAboveTheStorageGroupLsn)
 {
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
     TStorageFixture fx;
     fx.Factory->Group->LastLsn = 41;
 
@@ -318,7 +323,189 @@ TEST(HashTableIndexShardErrorTest, NumbersRecordsAboveTheStorageGroupLsn)
     ASSERT_EQ(S_OK, response.GetError().GetCode())
         << FormatError(response.GetError());
 
-    const auto& lsns = fx.Factory->Group->WriteLsns;
-    ASSERT_FALSE(lsns.empty());
-    EXPECT_EQ(42U, lsns.front());
+    const auto& links = fx.Factory->Group->WriteLinks;
+    ASSERT_FALSE(links.empty());
+    EXPECT_EQ(42U, links.front().Lsn);
+    EXPECT_EQ(41U, links.front().PrevLsn);
+}
+
+TEST(HashTableIndexShardErrorTest, LinksPastTheLsnOfAnOperationThatWroteNothing)
+{
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
+    TStorageFixture fx;
+
+    auto shard = CreateHashTableIndexFileSystemShard(
+        "fs0",
+        ShardNo,
+        1 /* generation */,
+        fx.Factory,
+        fx.Config);
+    {
+        auto e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+    }
+
+    auto create = [&](const TString& name)
+    {
+        TCreateHandleRequest request;
+        request.SetNodeId(RootNodeId);
+        request.SetName(name);
+        request.SetMode(0644);
+        request.SetFlags(
+            ProtoFlag(TCreateHandleRequest::E_CREATE)
+            | ProtoFlag(TCreateHandleRequest::E_EXCLUSIVE));
+        return shard->CreateHandle(request).GetValueSync().GetError();
+    };
+
+    auto error = create("file1");
+    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+
+    // The same name again: the op takes an lsn and writes nothing with it.
+    error = create("file1");
+    ASSERT_TRUE(HasError(error));
+
+    error = create("file2");
+    ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
+
+    const auto& links = fx.Factory->Group->WriteLinks;
+    ASSERT_EQ(3U, links.size());
+    // The chain is unbroken, and the lsn nobody wrote is not in it.
+    EXPECT_EQ(links[0].Lsn, links[1].PrevLsn);
+    EXPECT_EQ(links[1].Lsn, links[2].PrevLsn);
+    EXPECT_EQ(links[1].Lsn, links[0].Lsn + 1);
+    EXPECT_GT(links[2].Lsn, links[1].Lsn + 1);
+}
+
+TEST(HashTableIndexShardErrorTest, EntersErrorStateUponBrokenFormatPage)
+{
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
+    TStorageFixture fx;
+
+    TStringStream json;
+
+    //
+    // Fetching component layouts.
+    //
+
+    {
+        auto shard = CreateHashTableIndexFileSystemShard(
+            "fs0",
+            ShardNo,
+            1 /* generation */,
+            fx.Factory,
+            fx.Config);
+        {
+            auto e = shard->Init().GetValueSync();
+            ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+        }
+
+        shard->DumpLayoutJson(json);
+        shard->TearDown();
+    }
+
+    NJson::TJsonValue parsed;
+    ASSERT_TRUE(NJson::ReadJsonTree(json.Str(), &parsed)) << json.Str();
+    const auto& components = parsed["components"].GetArray();
+
+    //
+    // Checking corruption detection and Format().
+    //
+
+    for (const auto& c: components) {
+        if (c["name"].GetStringSafe() == "DataPages") {
+            //
+            // DataPages section doesn't have a separate format guard.
+            //
+
+            continue;
+        }
+
+        const ui64 off = c["offsetBytes"].GetUIntegerSafe();
+        const ui64 pageNo = off / PageSize;
+
+        //
+        // Corrupting the format page.
+        //
+
+        TVector<TPageGroup> pageGroups;
+        TBuffer page;
+        page.Resize(PageSize);
+        memset(page.Data(), 1, PageSize);
+        pageGroups.push_back(
+            TPageGroup{.FirstPageNo = pageNo, .Content = {page}});
+        auto e = fx.Factory->Group->WriteLogRecord(
+            {} /* headers */,
+            std::move(pageGroups),
+            TLsnLink{});
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+
+        //
+        // Shard initialization should fail.
+        //
+
+        auto shard = CreateHashTableIndexFileSystemShard(
+            "fs0",
+            ShardNo,
+            1 /* generation */,
+            fx.Factory,
+            fx.Config);
+        e = shard->Init().GetValueSync();
+        ASSERT_EQ(S_FALSE, e.GetCode()) << e.GetMessage();
+
+        //
+        // Requests should return an error.
+        //
+
+        const TString file1 = "file1";
+        const ui32 mode = 0644;
+        const ui64 uid = 111;
+        const ui64 gid = 222;
+
+        const ui32 create = ProtoFlag(TCreateHandleRequest::E_CREATE);
+        const ui32 createExcl =
+            create | ProtoFlag(TCreateHandleRequest::E_EXCLUSIVE);
+
+        {
+            TCreateHandleRequest request;
+            request.SetNodeId(RootNodeId);
+            request.SetName(file1);
+            request.SetMode(mode);
+            request.SetUid(uid);
+            request.SetGid(gid);
+            request.SetFlags(createExcl);
+            auto f = shard->CreateHandle(request);
+            auto response = f.GetValueSync();
+            EXPECT_EQ(E_INVALID_STATE, response.GetError().GetCode())
+                << FormatError(response.GetError());
+        }
+
+        //
+        // Format should work.
+        //
+
+        e = shard->Format().GetValueSync();
+        ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
+
+        //
+        // Requests should work after formatting.
+        //
+
+        {
+            TCreateHandleRequest request;
+            request.SetNodeId(RootNodeId);
+            request.SetName(file1);
+            request.SetMode(mode);
+            request.SetUid(uid);
+            request.SetGid(gid);
+            request.SetFlags(createExcl);
+            auto f = shard->CreateHandle(request);
+            auto response = f.GetValueSync();
+            EXPECT_EQ(S_OK, response.GetError().GetCode())
+                << FormatError(response.GetError());
+        }
+
+        shard->TearDown();
+    }
 }
