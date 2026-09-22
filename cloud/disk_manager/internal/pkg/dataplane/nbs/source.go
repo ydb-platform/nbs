@@ -2,6 +2,7 @@ package nbs
 
 import (
 	"context"
+	"math"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
@@ -362,7 +363,7 @@ func NewDiskSource(
 	if blockCount%blocksInChunk != 0 {
 		chunkCount++
 	}
-	if chunkCount > uint64(^uint32(0)) {
+	if chunkCount > math.MaxUint32 {
 		session.Close(ctx)
 		return nil, task_errors.NewNonRetriableErrorf(
 			"disk has too many chunks: chunkCount=%v",
