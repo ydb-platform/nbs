@@ -1,10 +1,10 @@
-#include "query.h"
+#include "parser.h"
 
 #include <util/string/cast.h>
 
 #include <cctype>
 
-namespace NCloud::NFileStore::NStorage::NQuery {
+namespace NCloud::NFileStore::NClient::NQuery {
 
 namespace {
 
@@ -315,4 +315,4 @@ TMaybe<TSelect> Parse(TStringBuf input, TParseError* error)
     return TParser(input, error).ParseQuery();
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NQuery
+}   // namespace NCloud::NFileStore::NClient::NQuery

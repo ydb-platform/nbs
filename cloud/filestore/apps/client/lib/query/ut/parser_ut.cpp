@@ -1,8 +1,8 @@
-#include <cloud/filestore/libs/storage/query/query.h>
+#include <cloud/filestore/apps/client/lib/query/parser.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
-namespace NCloud::NFileStore::NStorage::NQuery {
+namespace NCloud::NFileStore::NClient::NQuery {
 
 Y_UNIT_TEST_SUITE(TQueryParserTest)
 {
@@ -41,4 +41,4 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
     }
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NQuery
+}   // namespace NCloud::NFileStore::NClient::NQuery
