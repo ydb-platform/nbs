@@ -2332,13 +2332,15 @@ public:
                     return error;
                 }
             }
+
+            wcg.Link();
         }
 
         auto pages = CollectPages(writeContext);
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_ERROR(
                 "[%s] CheckFormat::WriteLogRecord error=%s",
