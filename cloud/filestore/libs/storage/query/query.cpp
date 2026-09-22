@@ -44,7 +44,8 @@ public:
     TToken Next()
     {
         while (Position < Input.size() &&
-               std::isspace(static_cast<unsigned char>(Input[Position]))) {
+               std::isspace(static_cast<unsigned char>(Input[Position])))
+        {
             ++Position;
         }
 
@@ -55,17 +56,23 @@ public:
 
         const char ch = Input[Position++];
         switch (ch) {
-            case ',': return {EToken::Comma, {}, offset};
-            case '=': return {EToken::Equal, {}, offset};
-            case '*': return {EToken::Star, {}, offset};
-            case '{': return {EToken::OpenBrace, {}, offset};
-            case '}': return {EToken::CloseBrace, {}, offset};
+            case ',':
+                return {EToken::Comma, {}, offset};
+            case '=':
+                return {EToken::Equal, {}, offset};
+            case '*':
+                return {EToken::Star, {}, offset};
+            case '{':
+                return {EToken::OpenBrace, {}, offset};
+            case '}':
+                return {EToken::CloseBrace, {}, offset};
             case '\'':
             case '"': {
                 const char quote = ch;
                 TString value;
                 while (Position < Input.size() && Input[Position] != quote) {
-                    if (Input[Position] == '\\' && Position + 1 < Input.size()) {
+                    if (Input[Position] == '\\' && Position + 1 < Input.size())
+                    {
                         ++Position;
                     }
                     value += Input[Position++];
@@ -79,7 +86,9 @@ public:
             default:
                 if (std::isdigit(static_cast<unsigned char>(ch))) {
                     while (Position < Input.size() &&
-                           std::isdigit(static_cast<unsigned char>(Input[Position]))) {
+                           std::isdigit(
+                               static_cast<unsigned char>(Input[Position])))
+                    {
                         ++Position;
                     }
                     return {
@@ -89,8 +98,10 @@ public:
                 }
                 if (std::isalpha(static_cast<unsigned char>(ch)) || ch == '_') {
                     while (Position < Input.size() &&
-                           (std::isalnum(static_cast<unsigned char>(Input[Position])) ||
-                            Input[Position] == '_')) {
+                           (std::isalnum(
+                                static_cast<unsigned char>(Input[Position])) ||
+                            Input[Position] == '_'))
+                    {
                         ++Position;
                     }
                     return {
@@ -110,7 +121,8 @@ bool EqualsIgnoreCase(TStringBuf lhs, TStringBuf rhs)
     }
     for (size_t i = 0; i < lhs.size(); ++i) {
         if (std::tolower(static_cast<unsigned char>(lhs[i])) !=
-            std::tolower(static_cast<unsigned char>(rhs[i]))) {
+            std::tolower(static_cast<unsigned char>(rhs[i])))
+        {
             return false;
         }
     }
@@ -140,7 +152,7 @@ public:
 
         TSelect result;
         if (Accept(EToken::Star)) {
-            // Keep Columns empty for SELECT *.
+            // SELECT * keeps columns empty
         } else {
             if (!ParseNames(result.Columns)) {
                 return Nothing();
@@ -192,7 +204,8 @@ private:
     bool AcceptWord(TStringBuf word)
     {
         if (Current.Type != EToken::Word ||
-            !EqualsIgnoreCase(Current.Text, word)) {
+            !EqualsIgnoreCase(Current.Text, word))
+        {
             return false;
         }
         Next();
