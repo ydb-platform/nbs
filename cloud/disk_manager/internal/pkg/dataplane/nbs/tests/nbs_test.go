@@ -265,6 +265,7 @@ func checkDisk(
 		)
 		require.NoError(t, err)
 	}
+
 	require.True(t, bytes.Equal(expected, actual), "disk contents differ")
 }
 
@@ -328,6 +329,7 @@ func checkChunkIndices(
 				actual = append(actual, index)
 				processed <- index
 			}
+
 			close(processed)
 
 			for err := range errors {
@@ -340,6 +342,7 @@ func checkChunkIndices(
 					expected = append(expected, index)
 				}
 			}
+
 			require.Equal(t, expected, actual)
 		})
 	}
@@ -366,10 +369,12 @@ func TestChunkIndices(t *testing.T) {
 			} else {
 				require.NoError(t, session.Write(ctx, r.start, r.data(params.blockSize)))
 			}
+
 			for block := r.start; block < r.end; block++ {
 				changedChunks[block/uint64(params.blocksInChunk)] = true
 			}
 		}
+
 		changedIndices := []uint32{}
 		for index, changed := range changedChunks {
 			if changed {
