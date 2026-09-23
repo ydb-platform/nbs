@@ -149,7 +149,17 @@ func (c *executionContext) IsHanging() bool {
 		c.stallingHangingTaskTimeout,
 	)
 
-	return time.Since(c.taskState.CreatedAt) > c.hangingTaskTimeout ||
+	// Ordinary tasks retain the original age calculation.
+	// For delayed tasks, exclude the initial scheduled wait.
+	hangingSince := c.taskState.CreatedAt
+	if !c.taskState.AvailableAt.IsZero() {
+		hangingSince = c.taskState.AvailableAt
+		if !c.taskState.FirstRunStartedAt.IsZero() {
+			hangingSince = c.taskState.FirstRunStartedAt
+		}
+	}
+
+	return time.Since(hangingSince) > c.hangingTaskTimeout ||
 		c.taskState.InflightDuration > inflightTimeout ||
 		c.taskState.StallingDuration > stallingTimeout
 }

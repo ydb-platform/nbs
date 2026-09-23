@@ -1071,7 +1071,16 @@ func (s *storageYDB) listHangingTasks(
 			(tasks.id in $task_ids) and
 			(tasks.task_type not in $except_task_types) and
 			(
-				($now - tasks.created_at >= COALESCE(
+				($now - (
+					CASE
+						WHEN tasks.available_at IS NULL
+							THEN tasks.created_at
+						ELSE COALESCE(
+							tasks.first_run_started_at,
+							tasks.available_at
+						)
+					END
+				) >= COALESCE(
 					hanging_task_timeout_by_type.timeout,
 					$hanging_task_timeout
 				)) or

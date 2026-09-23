@@ -1384,6 +1384,161 @@ func TestStorageYDBListHangingTasksWithTimeoutByType(t *testing.T) {
 	)
 }
 
+func TestStorageYDBListHangingTasksWithInitialDelay(t *testing.T) {
+	hangingTaskTimeout := "1h"
+	inflightHangingTaskTimeout := "1h"
+	stallingHangingTaskTimeout := "30m"
+
+	fixture := newHangingTaskTestFixture(t, &tasks_config.TasksConfig{
+		HangingTaskTimeout:         &hangingTaskTimeout,
+		InflightHangingTaskTimeout: &inflightHangingTaskTimeout,
+		StallingHangingTaskTimeout: &stallingHangingTaskTimeout,
+		HangingTaskTimeoutByType: map[string]string{
+			"fast": "15m",
+		},
+	})
+	defer fixture.teardown()
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	testCases := []struct {
+		name              string
+		taskType          string
+		status            TaskStatus
+		availableAt       time.Time
+		firstRunStartedAt time.Time
+		inflightDuration  time.Duration
+		stallingDuration  time.Duration
+		wantHanging       bool
+	}{
+		{
+			name:        "ordinary task uses creation time",
+			status:      TaskStatusRunning,
+			wantHanging: true,
+		},
+		{
+			name:              "ordinary task ignores recent first run",
+			status:            TaskStatusRunning,
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			wantHanging:       true,
+		},
+		{
+			name:              "delayed task recently started after long wait",
+			status:            TaskStatusRunning,
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			wantHanging:       false,
+		},
+		{
+			name:              "delayed task exceeded timeout after first run",
+			status:            TaskStatusRunning,
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-2 * time.Hour),
+			wantHanging:       true,
+		},
+		{
+			name:        "cancelling unstarted task before available time",
+			status:      TaskStatusCancelling,
+			availableAt: now.Add(time.Hour),
+			wantHanging: false,
+		},
+		{
+			name:        "unstarted task recently became available",
+			status:      TaskStatusReadyToCancel,
+			availableAt: now.Add(-5 * time.Minute),
+			wantHanging: false,
+		},
+		{
+			name:        "unstarted task exceeded timeout since available time",
+			status:      TaskStatusReadyToCancel,
+			availableAt: now.Add(-2 * time.Hour),
+			wantHanging: true,
+		},
+		{
+			name:        "overdue task in delayed queue stays excluded",
+			status:      TaskStatusReadyToRun,
+			availableAt: now.Add(-2 * time.Hour),
+			wantHanging: false,
+		},
+		{
+			name:              "default timeout not exceeded",
+			status:            TaskStatusRunning,
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-30 * time.Minute),
+			wantHanging:       false,
+		},
+		{
+			name:              "per type timeout exceeded",
+			taskType:          "fast",
+			status:            TaskStatusRunning,
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-30 * time.Minute),
+			wantHanging:       true,
+		},
+		{
+			name:              "per type timeout not exceeded",
+			taskType:          "fast",
+			status:            TaskStatusRunning,
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			wantHanging:       false,
+		},
+		{
+			name:              "delayed task still checks inflight duration",
+			status:            TaskStatusRunning,
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			inflightDuration:  2 * time.Hour,
+			wantHanging:       true,
+		},
+		{
+			name:              "delayed task still checks stalling duration",
+			status:            TaskStatusRunning,
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			stallingDuration:  time.Hour,
+			wantHanging:       true,
+		},
+	}
+
+	var expectedTaskIDs []string
+
+	for _, testCase := range testCases {
+		taskType := testCase.taskType
+		if taskType == "" {
+			taskType = "default"
+		}
+
+		state := TaskState{
+			IdempotencyKey:    getIdempotencyKeyForTest(t),
+			TaskType:          taskType,
+			Description:       testCase.name,
+			CreatedAt:         now.Add(-4 * time.Hour),
+			ModifiedAt:        now,
+			AvailableAt:       testCase.availableAt,
+			FirstRunStartedAt: testCase.firstRunStartedAt,
+			Status:            testCase.status,
+			Request:           []byte("request"),
+			Dependencies:      common.NewStringSet(),
+			InflightDuration:  testCase.inflightDuration,
+			StallingDuration:  testCase.stallingDuration,
+		}
+
+		id, err := fixture.storage.CreateTask(fixture.ctx, state)
+		require.NoError(t, err, testCase.name)
+
+		if testCase.wantHanging {
+			expectedTaskIDs = append(expectedTaskIDs, id)
+		}
+	}
+
+	require.ElementsMatch(
+		t,
+		expectedTaskIDs,
+		fixture.ListHangingTasksIDs(),
+	)
+}
+
 func TestStorageYDBListTasksRunning(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()

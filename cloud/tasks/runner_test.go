@@ -528,6 +528,98 @@ func TestExecutionContextIsHanging(t *testing.T) {
 	}
 }
 
+func TestExecutionContextIsHangingWithInitialDelay(t *testing.T) {
+	now := time.Now()
+	hangingTaskTimeout := time.Hour
+	inflightHangingTaskTimeout := time.Hour
+	stallingHangingTaskTimeout := 30 * time.Minute
+
+	testCases := []struct {
+		name              string
+		availableAt       time.Time
+		firstRunStartedAt time.Time
+		inflightDuration  time.Duration
+		stallingDuration  time.Duration
+		wantHanging       bool
+	}{
+		{
+			name:        "ordinary task uses creation time",
+			wantHanging: true,
+		},
+		{
+			name:              "ordinary task ignores recent first run",
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			wantHanging:       true,
+		},
+		{
+			name:        "unstarted delayed task before available time",
+			availableAt: now.Add(time.Hour),
+			wantHanging: false,
+		},
+		{
+			name:        "unstarted delayed task recently became available",
+			availableAt: now.Add(-5 * time.Minute),
+			wantHanging: false,
+		},
+		{
+			name:        "unstarted delayed task exceeded timeout",
+			availableAt: now.Add(-2 * time.Hour),
+			wantHanging: true,
+		},
+		{
+			name:              "delayed task recently started after long wait",
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			wantHanging:       false,
+		},
+		{
+			name:              "delayed task exceeded timeout after first run",
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-2 * time.Hour),
+			wantHanging:       true,
+		},
+		{
+			name:              "delayed task still checks inflight duration",
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			inflightDuration:  inflightHangingTaskTimeout + time.Minute,
+			wantHanging:       true,
+		},
+		{
+			name:              "delayed task still checks stalling duration",
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			stallingDuration:  stallingHangingTaskTimeout + time.Minute,
+			wantHanging:       true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			state := storage.TaskState{
+				ID:                taskID,
+				CreatedAt:         now.Add(-4 * time.Hour),
+				AvailableAt:       testCase.availableAt,
+				FirstRunStartedAt: testCase.firstRunStartedAt,
+				InflightDuration:  testCase.inflightDuration,
+				StallingDuration:  testCase.stallingDuration,
+			}
+
+			execCtx := newExecutionContext(
+				NewTaskMock(),
+				mocks.NewStorageMock(),
+				state,
+				hangingTaskTimeout,
+				inflightHangingTaskTimeout,
+				stallingHangingTaskTimeout,
+				2, // missedEstimatesUntilTaskIsHanging
+			)
+
+			require.Equal(t, testCase.wantHanging, execCtx.IsHanging())
+		})
+	}
+}
+
 func TestExecutionContextFinish(t *testing.T) {
 	ctx := newContext()
 	taskStorage := mocks.NewStorageMock()
