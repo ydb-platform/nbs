@@ -43,7 +43,7 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui32 CacheCapacityBytes = 1024 * 1024 + 1024;
+constexpr ui32 DefaultCacheCapacityBytes = 1024 * 1024 + 1024;
 
 constexpr ui32 DefaultMaxWriteRequestSize = 1_MB;
 constexpr ui32 DefaultMaxWriteRequestsCount = 64;
@@ -171,6 +171,7 @@ struct TBootstrapArgs
     bool ZeroCopyWriteEnabled = false;
     bool DoNotCheckWriteDataRequestBuffer = false;
     bool FlushWritesInParallelEnabled = true;
+    ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -198,6 +199,7 @@ struct TBootstrap
     bool DoNotCheckWriteDataRequestBuffer = false;
     bool FlushWritesInParallelEnabled = false;
     bool DisableExpectedDataValidation = false;
+    ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
 
     TCallContextPtr CallContext;
 
@@ -229,6 +231,7 @@ struct TBootstrap
         , DoNotCheckWriteDataRequestBuffer(
               args.DoNotCheckWriteDataRequestBuffer)
         , FlushWritesInParallelEnabled(args.FlushWritesInParallelEnabled)
+        , CacheCapacityBytes(args.CacheCapacityBytes)
     {
         CacheFlushRetryPeriod = FlushRetryPeriod;
 
@@ -1614,7 +1617,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         auto& stats = b.Metrics.Storage;
 
         UNIT_ASSERT_VALUES_EQUAL(
-            CacheCapacityBytes,
+            DefaultCacheCapacityBytes,
             stats.RawCapacityByteCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.RawUsedByteCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.EntryCount->Get());
@@ -1623,7 +1626,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.WriteToCacheSync(1, 0, "abc");
 
         UNIT_ASSERT_VALUES_EQUAL(
-            CacheCapacityBytes,
+            DefaultCacheCapacityBytes,
             stats.RawCapacityByteCount->Get());
         UNIT_ASSERT_LT(0, stats.RawUsedByteCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(1, stats.EntryCount->Get());
@@ -1634,7 +1637,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.RecreateCache();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            CacheCapacityBytes,
+            DefaultCacheCapacityBytes,
             stats.RawCapacityByteCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(
             prevUsedBytesCount,
@@ -1645,7 +1648,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.FlushCache();
 
         UNIT_ASSERT_VALUES_EQUAL(
-            CacheCapacityBytes,
+            DefaultCacheCapacityBytes,
             stats.RawCapacityByteCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.RawUsedByteCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.EntryCount->Get());
@@ -2947,6 +2950,56 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(HasError(future.GetValueSync()));
         UNIT_ASSERT_VALUES_EQUAL(103, b.Cache.GetMaxWrittenOffset(1));
         UNIT_ASSERT_VALUES_EQUAL(1, b.SessionWriteDataHandlerCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldSupportStateFileResize)
+    {
+        constexpr int MaxAttempts = 10000;
+
+        TBootstrap b(
+            {.UseTestTimerAndScheduler = true,
+             .CacheCapacityBytes = 2 * DefaultCacheCapacityBytes});
+
+        // Prevent from flushing the data
+        TManualProceedHandlers write(b.Session->WriteDataHandler);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * DefaultCacheCapacityBytes,
+            b.Metrics.Storage.RawCapacityByteCount->Get());
+
+        // Do not spam into log
+        b.Log.CloseLog();
+
+        TString data = NUnitTest::RandomString(4096, 12);
+
+        int attempt = 0;
+        while (true) {
+            auto future = b.WriteToCache(1, 100, data);
+            if (!future.HasValue()) {
+                // The cache is full
+                break;
+            }
+
+            attempt++;
+            UNIT_ASSERT_LE(attempt, MaxAttempts);
+        }
+
+        b.CacheCapacityBytes = DefaultCacheCapacityBytes;
+        b.RecreateCache();
+
+        // Only empty cache can be resized
+        UNIT_ASSERT_VALUES_EQUAL(
+            2 * DefaultCacheCapacityBytes,
+            b.Metrics.Storage.RawCapacityByteCount->Get());
+
+        auto flush = b.Cache.FlushNodeData(1);
+        b.RunAllScheduledTasks();
+        write.ProceedAll();
+        UNIT_ASSERT(flush.HasValue());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultCacheCapacityBytes,
+            b.Metrics.Storage.RawCapacityByteCount->Get());
     }
 }
 
