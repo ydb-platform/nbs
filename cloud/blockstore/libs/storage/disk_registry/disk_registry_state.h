@@ -732,6 +732,7 @@ public:
         TResultOrError<NProto::TDeviceConfig> Target;
     };
 
+    // Returns one result per migration, in the same order as the input.
     TVector<TStartDeviceMigrationResult> StartDeviceMigrations(
         TInstant now,
         TDiskRegistryDatabase& db,
@@ -1112,14 +1113,14 @@ private:
         const TDiskState& disk,
         TStringBuf callerName);
 
-    NProto::TPlacementGroupConfig* UpdatePlacementGroupInMemory(
+    bool UpdatePlacementGroupInMemory(
         const TDiskId& diskId,
         const TDiskState& disk,
         TStringBuf callerName);
 
     void PersistPlacementGroup(
         TDiskRegistryDatabase& db,
-        NProto::TPlacementGroupConfig& config);
+        const TString& groupId);
 
     void UpdateDiskPlacementInfo(
         TDiskRegistryDatabase& db,
@@ -1347,9 +1348,10 @@ private:
 
     TDeviceList::TAllocationQuery MakeMigrationQuery(
         const TDiskId& sourceDiskId,
+        const TDiskState& disk,
         const NProto::TDeviceConfig& sourceDevice);
 
-    NProto::TError ValidateStartDeviceMigration(
+    TResultOrError<TDiskState*> FindValidMigrationSource(
         const TDiskId& sourceDiskId,
         const TString& sourceDeviceId);
 
@@ -1359,12 +1361,13 @@ private:
         const TDiskId& sourceDiskId,
         const TDeviceId& sourceDeviceId);
 
-    // Starts the migration in memory. The caller is responsible for
-    // persisting the disk and its placement group.
+    // Does not persist the disk or its placement group; the caller must.
+    // Adjusting the target's block count may persist its agent configuration.
     NProto::TDeviceConfig StartDeviceMigrationOnTarget(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
+        TDiskState& disk,
         const TDeviceId& sourceDeviceId,
         NProto::TDeviceConfig targetDevice);
 
