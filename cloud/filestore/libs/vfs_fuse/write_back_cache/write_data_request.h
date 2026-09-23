@@ -46,19 +46,23 @@ class TPendingWriteDataRequest
     , public TIntrusiveListItem<TPendingWriteDataRequest, THandleStateTag>
 {
 private:
+    friend class TWriteDataRequestManager;
+
     std::shared_ptr<NProto::TWriteDataRequest> Request;
 
     NThreading::TPromise<NProto::TWriteDataResponse> Promise =
         NThreading::NewPromise<NProto::TWriteDataResponse>();
 
+    char* AllocationPtr = nullptr;
+    size_t AllocationByteCount = 0;
+    ui32 Checksum = 0;
+    bool Serialized = false;
+
 public:
     TPendingWriteDataRequest(
         ui64 sequenceId,
         TInstant time,
-        std::shared_ptr<NProto::TWriteDataRequest> request)
-        : TWriteDataRequestBase(sequenceId, time)
-        , Request(std::move(request))
-    {}
+        std::shared_ptr<NProto::TWriteDataRequest> request);
 
     const NProto::TWriteDataRequest& GetRequest() const
     {
@@ -69,6 +73,18 @@ public:
     {
         return Promise;
     }
+
+    bool HasAllocation() const
+    {
+        return AllocationPtr != nullptr;
+    }
+
+    // Serialization can be performed outside of lock section
+    // Returns true on success, false on failure
+    [[nodiscard]] bool SerializeToAllocation();
+
+    // This method should be called inside lock section
+    void SetSerialized();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,6 +123,9 @@ public:
                   allocationPtr))
         , SerializedData(serializedData)
     {}
+
+    static std::unique_ptr<TCachedWriteDataRequest>
+    Deserialize(ui64 sequenceId, TInstant time, TStringBuf allocation);
 
     const void* GetAllocationPtr() const
     {

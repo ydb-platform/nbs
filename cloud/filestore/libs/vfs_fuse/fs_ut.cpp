@@ -8261,36 +8261,36 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             counterGroup->GetCounter("NodesWithBackpressure_Count");
 
         TFuture<ui32> writeFuture;
+        bool backpressured = false;
 
         for (ui32 i = 1; i <= maxRequestCount; i++) {
-            // Requests should not overlap nor touch in order to be put into
-            // separate flush batches
             writeFuture = bootstrap.Fuse->SendRequest<TWriteRequest>(
                 1,
                 101,
                 i * 100,
                 "abc");
 
-            // Request should be put in either unflushed or pending queue
-            UNIT_ASSERT(WaitForCondition(
-                WaitTimeout,
-                [&]()
-                {
-                    bootstrap.ModuleStatsRegistry->UpdateStats(true);
-                    return unflushedQueueCount->Val() == i ||
-                           pendingQueueCount->Val() == 1;
-                }));
-
-            if (pendingQueueCount->Val() == 1) {
-                // This happens when backpressure is applied
+            if (backpressured) {
                 break;
-            } else {
-                UNIT_ASSERT(writeFuture.Wait(WaitTimeout));
             }
+
+            UNIT_ASSERT(writeFuture.Wait(WaitTimeout));
+
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
+            backpressured = backpressureCount->Val() == 1;
+            UNIT_ASSERT_VALUES_EQUAL(i, unflushedQueueCount->Val());
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(1, pendingQueueCount->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, backpressureCount->Val());
+        UNIT_ASSERT(backpressured);
+
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&]()
+            {
+                bootstrap.ModuleStatsRegistry->UpdateStats(true);
+                return pendingQueueCount->Val() == 1;
+            }));
+
         UNIT_ASSERT(!writeFuture.HasValue());
 
         firstWriteDataPromise.SetValue({});

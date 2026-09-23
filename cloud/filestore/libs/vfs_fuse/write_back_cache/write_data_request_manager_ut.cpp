@@ -42,8 +42,8 @@ struct TBootstrap
               Stats->GetWriteDataRequestManagerStats())
     {}
 
-    auto Add(ui64 nodeId, ui64 handle, ui64 offset, TString data)
-        -> NThreading::TFuture<void>
+    TPendingWriteDataRequest*
+    AddWithoutProcessing(ui64 nodeId, ui64 handle, ui64 offset, TString data)
     {
         auto request = std::make_shared<NProto::TWriteDataRequest>();
         request->SetNodeId(nodeId);
@@ -51,20 +51,28 @@ struct TBootstrap
         request->SetOffset(offset);
         *request->MutableBuffer() = std::move(data);
 
-        auto res = RequestManager.AddRequest(std::move(request));
+        auto pendingRequest = RequestManager.AddRequest(std::move(request));
+        UNIT_ASSERT(pendingRequest);
 
-        if (res.PendingRequest) {
-            UNIT_ASSERT(!res.CachedRequest);
-            auto future = res.PendingRequest->AccessPromise().GetFuture();
-            PendingRequests[res.PendingRequest->GetSequenceId()] =
-                std::move(res.PendingRequest);
-            return future.IgnoreResult();
-        }
+        auto* result = pendingRequest.get();
 
-        UNIT_ASSERT(res.CachedRequest);
-        CachedRequests[res.CachedRequest->GetSequenceId()] =
-            std::move(res.CachedRequest);
-        return NThreading::MakeFuture();
+        PendingRequests[pendingRequest->GetSequenceId()] =
+            std::move(pendingRequest);
+
+        return result;
+    }
+
+    auto Add(ui64 nodeId, ui64 handle, ui64 offset, TString data)
+        -> NThreading::TFuture<void>
+    {
+        auto* pendingRequest =
+            AddWithoutProcessing(nodeId, handle, offset, std::move(data));
+
+        auto future = pendingRequest->AccessPromise().GetFuture();
+
+        ProcessPendingRequests();
+
+        return future.IgnoreResult();
     }
 
     void SetFlushed(ui64 sequenceId)
@@ -75,7 +83,8 @@ struct TBootstrap
 
     void Remove(ui64 sequenceId)
     {
-        RequestManager.Remove(std::move(PendingRequests[sequenceId]));
+        RequestManager.RemoveUnallocated(
+            std::move(PendingRequests[sequenceId]));
         PendingRequests.erase(sequenceId);
     }
 
@@ -84,24 +93,46 @@ struct TBootstrap
         UNIT_ASSERT(
             RequestManager.Evict(std::move(CachedRequests[sequenceId])));
         CachedRequests.erase(sequenceId);
+
+        ProcessPendingRequests();
     }
 
-    bool TryProcessPendingRequests()
+    bool ClearBackpressureStatusForNode(ui64 nodeId)
     {
-        while (RequestManager.HasPendingRequests()) {
-            auto res = RequestManager.TryProcessPendingRequest();
+        bool res = RequestManager.ClearBackpressureStatusForNode(nodeId);
+        ProcessPendingRequests();
+        return res;
+    }
+
+    void ProcessPendingRequests()
+    {
+        while (true) {
+            auto res = RequestManager.TryAllocPendingRequest();
             UNIT_ASSERT(!res.Failed);
-            auto request = std::move(res.CachedRequest);
-            if (!request) {
-                return false;
+            if (!res.Request) {
+                return;
             }
+            UNIT_ASSERT(res.Request->SerializeToAllocation());
+            res.Request->SetSerialized();
+            ProcessCachedRequests();
+        }
+    }
+
+    void ProcessCachedRequests()
+    {
+        while (true) {
+            auto res = RequestManager.GetNextReadyCachedRequest();
+            UNIT_ASSERT(!res.Failed);
+            if (!res.Request) {
+                return;
+            }
+            auto request = std::move(res.Request);
 
             PendingRequests[request->GetSequenceId()]->AccessPromise().SetValue(
                 {});
             PendingRequests.erase(request->GetSequenceId());
             CachedRequests[request->GetSequenceId()] = std::move(request);
         }
-        return true;
     }
 
     ui64 GetAllocationCount() const
@@ -210,7 +241,7 @@ struct TBootstrap
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
+Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
 {
     Y_UNIT_TEST(Add_SetFlushed_Evict)
     {
@@ -256,13 +287,11 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         b.Evict(1);
         UNIT_ASSERT_VALUES_EQUAL(1, b.GetAllocationCount());
 
-        UNIT_ASSERT(b.TryProcessPendingRequests());
         UNIT_ASSERT_VALUES_EQUAL("P[],C[(2:b)]", b.Dump());
 
         b.Evict(2);
         UNIT_ASSERT_VALUES_EQUAL(0, b.GetAllocationCount());
 
-        UNIT_ASSERT(b.TryProcessPendingRequests());
         UNIT_ASSERT_VALUES_EQUAL("P[],C[]", b.Dump());
     }
 
@@ -296,7 +325,6 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         UNIT_ASSERT(!add4.HasValue());
 
         b.Evict(1);
-        UNIT_ASSERT(!b.TryProcessPendingRequests());
         UNIT_ASSERT_VALUES_EQUAL("P[(4:d)],C[(2:b)(3:c)]", b.Dump());
         UNIT_ASSERT_VALUES_EQUAL(2, b.GetAllocationCount());
         UNIT_ASSERT(b.RequestManager.HasPendingOrUnflushedRequests());
@@ -308,7 +336,6 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
 
         b.SetFlushed(3);
         b.Evict(2);
-        UNIT_ASSERT(b.TryProcessPendingRequests());
         UNIT_ASSERT_VALUES_EQUAL("P[],C[(3:c)(4:d)]", b.Dump());
         UNIT_ASSERT_VALUES_EQUAL(2, b.GetAllocationCount());
         UNIT_ASSERT(b.RequestManager.HasPendingOrUnflushedRequests());
@@ -343,7 +370,6 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         b.Remove(2);
         b.SetFlushed(1);
         b.Evict(1);
-        b.TryProcessPendingRequests();
 
         UNIT_ASSERT_VALUES_EQUAL("P[],C[(3:c)]", b.Dump());
         UNIT_ASSERT_VALUES_EQUAL(1, b.GetAllocationCount());
@@ -361,7 +387,7 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
 
         b.Add(1, 101, 0, "abc");    // SequenceId = 1
 
-        b.CheckPendingQueueMetrics(0, 0, 0, 0, 0);
+        b.CheckPendingQueueMetrics(0, 1, 0, 1, 0);
         b.CheckUnflushedQueueMetrics(1, 1, 0, 0, 0);
         b.CheckFlushedQueueMetrics(0, 0, 0);
 
@@ -374,7 +400,7 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         b.Timer->AdvanceTime(TDuration::MilliSeconds(2));
         b.RequestManager.UpdateStats();
 
-        b.CheckPendingQueueMetrics(2, 2, 2000, 0, 0);
+        b.CheckPendingQueueMetrics(2, 2, 2000, 2, 0);
         b.CheckUnflushedQueueMetrics(2, 2, 3000, 0, 0);
         b.CheckFlushedQueueMetrics(0, 0, 0);
 
@@ -382,11 +408,10 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         b.SetFlushed(1);
         b.Timer->AdvanceTime(TDuration::MilliSeconds(5));
         b.Evict(1);
-        b.TryProcessPendingRequests();
         b.Timer->AdvanceTime(TDuration::MilliSeconds(3));
         b.RequestManager.UpdateStats();
 
-        b.CheckPendingQueueMetrics(1, 2, 11000, 1, 8000);
+        b.CheckPendingQueueMetrics(1, 2, 11000, 3, 8000);
         b.CheckUnflushedQueueMetrics(2, 2, 11000, 1, 4000);
         b.CheckFlushedQueueMetrics(0, 1, 1);
 
@@ -395,19 +420,18 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         b.Timer->AdvanceTime(TDuration::MilliSeconds(2));
         b.RequestManager.UpdateStats();
 
-        b.CheckPendingQueueMetrics(1, 2, 13000, 1, 8000);
+        b.CheckPendingQueueMetrics(1, 2, 13000, 3, 8000);
         b.CheckUnflushedQueueMetrics(0, 2, 11000, 3, 18000);
         b.CheckFlushedQueueMetrics(2, 2, 1);
 
         b.Evict(2);
         b.Evict(3);
-        b.TryProcessPendingRequests();
         b.SetFlushed(4);
         b.Evict(4);
         b.Timer->AdvanceTime(TDuration::MilliSeconds(1));
         b.RequestManager.UpdateStats();
 
-        b.CheckPendingQueueMetrics(0, 2, 13000, 2, 21000);
+        b.CheckPendingQueueMetrics(0, 2, 13000, 4, 21000);
         b.CheckUnflushedQueueMetrics(0, 2, 11000, 4, 18000);
         b.CheckFlushedQueueMetrics(0, 2, 4);
 
@@ -416,7 +440,7 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
             b.RequestManager.UpdateStats();
         }
 
-        b.CheckPendingQueueMetrics(0, 0, 0, 2, 21000);
+        b.CheckPendingQueueMetrics(0, 0, 0, 4, 21000);
         b.CheckUnflushedQueueMetrics(0, 0, 0, 4, 18000);
         b.CheckFlushedQueueMetrics(0, 0, 4);
     }
@@ -439,20 +463,72 @@ Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
         UNIT_ASSERT(!f2.HasValue());
         UNIT_ASSERT(!f3.HasValue());
 
-        UNIT_ASSERT(b.RequestManager.ClearBackpressureStatusForNode(3));
-        UNIT_ASSERT(!b.RequestManager.ClearBackpressureStatusForNode(3));
+        UNIT_ASSERT(b.ClearBackpressureStatusForNode(3));
+        UNIT_ASSERT(!b.ClearBackpressureStatusForNode(3));
 
-        b.TryProcessPendingRequests();
-
-        // Request reordering in the pending queue is not allowed
+        // Clearing node 3 cannot bypass the earlier request for node 2 because
+        // requests are committed in global FIFO order.
         UNIT_ASSERT(!f2.HasValue());
         UNIT_ASSERT(!f3.HasValue());
 
-        UNIT_ASSERT(b.RequestManager.ClearBackpressureStatusForNode(2));
-        b.TryProcessPendingRequests();
+        UNIT_ASSERT(b.ClearBackpressureStatusForNode(2));
 
         UNIT_ASSERT(f2.HasValue());
         UNIT_ASSERT(f3.HasValue());
+    }
+
+    Y_UNIT_TEST(ShouldCommitRequestsInSequenceWhenSerializationCompletesOutOfOrder)
+    {
+        TBootstrap b;
+
+        auto* request1 = b.AddWithoutProcessing(1, 101, 0, "abc");
+        auto* request2 = b.AddWithoutProcessing(2, 202, 3, "def");
+
+        auto future1 = request1->AccessPromise().GetFuture();
+        auto future2 = request2->AccessPromise().GetFuture();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, b.GetAllocationCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            b.RequestManager.GetMinPendingOrUnflushedSequenceId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            b.RequestManager.GetMaxPendingOrUnflushedSequenceId());
+        b.CheckPendingQueueMetrics(2, 2, 0, 0, 0);
+
+        auto* requestToSerialize1 =
+            b.RequestManager.TryAllocPendingRequest().Request;
+        auto* requestToSerialize2 =
+            b.RequestManager.TryAllocPendingRequest().Request;
+
+        UNIT_ASSERT(request1 == requestToSerialize1);
+        UNIT_ASSERT(request2 == requestToSerialize2);
+        UNIT_ASSERT(
+            b.RequestManager.TryAllocPendingRequest().Request == nullptr);
+
+        UNIT_ASSERT(requestToSerialize2->SerializeToAllocation());
+        requestToSerialize2->SetSerialized();
+        b.ProcessCachedRequests();
+
+        // A newer request must not be committed before the older request has
+        // finished serialization.
+        UNIT_ASSERT(!b.RequestManager.GetNextReadyCachedRequest().Request);
+        UNIT_ASSERT(!future1.HasValue());
+        UNIT_ASSERT(!future2.HasValue());
+
+        b.Timer->AdvanceTime(TDuration::MilliSeconds(3));
+        b.RequestManager.UpdateStats();
+        b.CheckPendingQueueMetrics(2, 2, 3000, 0, 0);
+
+        UNIT_ASSERT(requestToSerialize1->SerializeToAllocation());
+        requestToSerialize1->SetSerialized();
+        b.ProcessCachedRequests();
+
+        UNIT_ASSERT(future1.HasValue());
+        UNIT_ASSERT(future2.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL("P[],C[(1:abc)(2:def)]", b.Dump());
+        UNIT_ASSERT(!b.RequestManager.HasPendingRequests());
+        b.CheckPendingQueueMetrics(0, 2, 3000, 2, 6000);
     }
 }
 

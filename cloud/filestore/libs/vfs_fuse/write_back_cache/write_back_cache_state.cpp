@@ -3,6 +3,7 @@
 #include <cloud/filestore/libs/diagnostics/critical_events.h>
 
 #include <util/string/builder.h>
+#include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
@@ -97,19 +98,12 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
         return HangingRequests.CreateWriteDataResponse();
     }
 
-    auto res = RequestManager.AddRequest(std::move(request));
+    auto pendingRequest = RequestManager.AddRequest(std::move(request));
+    auto future = AddRequest(std::move(pendingRequest));
 
-    if (res.PendingRequest) {
-        return AddRequest(std::move(res.PendingRequest));
-    }
+    ProcessPendingRequests(guard);
 
-    if (res.CachedRequest) {
-        return AddRequest(std::move(res.CachedRequest));
-    }
-
-    SetFailedFlag();
-
-    return HangingRequests.CreateWriteDataResponse();
+    return future;
 }
 
 TFuture<TError> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
@@ -303,6 +297,7 @@ void TWriteBackCacheState::UnpinCachedData(ui64 nodeId, TNodeCachedDataPin pin)
     nodeState->CachedDataPins.erase(it);
 
     EvictUnpinnedFlushedEntries(nodeId, *nodeState);
+    ProcessPendingRequests(guard);
 }
 
 TNodeStatePin TWriteBackCacheState::PinNodeStates()
@@ -402,6 +397,7 @@ void TWriteBackCacheState::FlushSucceeded(ui64 nodeId, size_t requestCount)
     TriggerFlushCompletions(nodeState);
     UpdateFlushStatus(nodeId, nodeState);
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
+    ProcessPendingRequests(guard);
 }
 
 EFlushRetryStatus TWriteBackCacheState::FlushFailed(
@@ -473,17 +469,51 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         nodeState.Barriers.erase(it);
     }
 
-    // Fail all pending requests for all nodes in the case of E_FS_NOSPC
+    // Pending requests are to be failed in order to prevent them from getting
+    // stuck when a flush cannot make progress. Otherwise, they would trigger
+    // unnecessary MaxTime alerts.
+    //
+    // Allocated requests will not hang because they are already on their way to
+    // becoming unflushed requests and will complete normally. They may also be
+    // serialized concurrently while the state lock is released. Canceling them
+    // would complete their promises and allow the memory referenced by their
+    // iovecs to be released while an active serializer is still reading it.
+    // Therefore, only unallocated requests can be safely failed.
+    //
     if (error.GetCode() == E_FS_NOSPC) {
-        FailAllPendingRequests(error);
+        // Fail fast for all nodes when the storage is known to be full. Some
+        // nodes may have pending requests but no unflushed requests, so they
+        // would never receive a flush failure of their own.
+        FailAllUnallocatedPendingRequests(error);
     } else {
-        FailNodePendingRequests(nodeState, error);
+        FailNodeUnallocatedPendingRequests(nodeState, error);
     }
 
     // Fail all ReleaseHandle requests
     while (!nodeState.HandlesWithReleaseRequests.empty()) {
         auto handle = *nodeState.HandlesWithReleaseRequests.begin();
         auto& handleState = nodeState.Handles[handle];
+
+        if (!handleState.PendingRequests.Empty()) {
+            // The Linux FUSE kernel code explicitly delays sending FUSE_RELEASE
+            // while asynchronous READ or WRITE requests referencing that open
+            // handle remain unanswered.
+            ReportWriteBackCacheImpossibleState(Sprintf(
+                "ReleaseHandle was requested for handle %lu having pending "
+                "write requests",
+                handle));
+
+            // Do not treat this as a fatal error. Any request left here is
+            // allocated and cannot be failed safely. It is expected to become
+            // unflushed shortly, after which normal request processing can
+            // complete the handle release.
+            //
+            // We deliberately stop instead of scanning the remaining handles.
+            // Supporting partial processing would complicate this exceptional
+            // path, while the imminent flush retry will either complete their
+            // releases normally or bring us back here shortly.
+            break;
+        }
 
         while (!handleState.UnflushedRequests.Empty()) {
             auto* request = handleState.UnflushedRequests.PopFront();
@@ -515,11 +545,14 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
         nodeState.FlushStatus = ENodeFlushStatus::NothingToFlush;
         Stats->FlushCompleted();
         DropCachedData(nodeId, nodeState, error);
+        ProcessPendingRequests(guard);
         return EFlushRetryStatus::ShouldNotRetry;
     }
 
-    // Keep status ENodeFlushStatus::FlushRequested if flush is retried
-    return EFlushRetryStatus::ShouldRetry;
+    ProcessPendingRequests(guard);
+
+    return IsFailed ? EFlushRetryStatus::ShouldNotRetry
+                    : EFlushRetryStatus::ShouldRetry;
 }
 
 NThreading::TFuture<TResultOrError<ui64>> TWriteBackCacheState::AcquireBarrier(
@@ -630,7 +663,6 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
     std::unique_ptr<TPendingWriteDataRequest> request)
 {
     auto future = request->AccessPromise().GetFuture();
-    TriggerFlushAll(false);
 
     auto& nodeState =
         Nodes.GetOrCreateNodeState(request->GetRequest().GetNodeId());
@@ -641,12 +673,6 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
     nodeState.Cache.EnqueuePendingRequest(std::move(request));
 
     return future;
-}
-
-TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
-    std::unique_ptr<TCachedWriteDataRequest> request)
-{
-    return AddRequest(std::move(request), /* handleReleased = */ false);
 }
 
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
@@ -781,8 +807,6 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         return;
     }
 
-    bool shouldProcessPendingRequests = false;
-
     const ui64 allowedToEvictMaxSequenceId =
         nodeState.CachedDataPins.empty() ? Max<ui64>()
                                          : *nodeState.CachedDataPins.begin();
@@ -797,7 +821,6 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
             SetFailedFlag();
             return;
         }
-        shouldProcessPendingRequests = true;
     }
 
     if (!GetBackpressureStatus(nodeState)) {
@@ -811,18 +834,13 @@ void TWriteBackCacheState::EvictUnpinnedFlushedEntries(
         //
         // This may keep backpressure slightly longer while pins block eviction,
         // but pins are expected to be short-lived so this effect is negligible.
-        shouldProcessPendingRequests |=
-            RequestManager.ClearBackpressureStatusForNode(nodeId);
+        RequestManager.ClearBackpressureStatusForNode(nodeId);
     }
 
     if (nodeState.CanBeDeleted()) {
         Nodes.DeleteNodeState(nodeId);
     } else {
         CheckAndAcquireBarriers(nodeState);
-    }
-
-    if (shouldProcessPendingRequests) {
-        ProcessPendingRequests();
     }
 }
 
@@ -880,41 +898,100 @@ void TWriteBackCacheState::CheckAndAcquireBarriers(TNodeState& nodeState)
     }
 }
 
-void TWriteBackCacheState::ProcessPendingRequests()
+void TWriteBackCacheState::ProcessPendingRequests(
+    TGuard<TQueuedOperations>& guard)
 {
-    while (RequestManager.HasPendingRequests()) {
-        auto res = RequestManager.TryProcessPendingRequest();
-        if (res.Failed) {
+    while (auto* pendingRequest = TryAllocNextPendingRequest()) {
+
+        bool serializationSucceeded = false;
+        {
+            // Request serialization is a computationally expensive operation
+            // and it may become a bottleneck if the requests are submitted from
+            // multiple threads but processed inside a lock section.
+            // Therefore, we temporarily release and reacquire the lock.
+            //
+            // Queued operations are deliberately executed at this point so
+            // requests that became completed in the previous iteration are
+            // reported to a client before another potentially expensive
+            // serialization begins.
+            auto unguard = Unguard(guard);
+
+            serializationSucceeded = pendingRequest->SerializeToAllocation();
+        }
+
+        if (!serializationSucceeded) {
             SetFailedFlag();
             return;
         }
 
-        auto request = std::move(res.CachedRequest);
-        if (!request) {
-            TriggerFlushAll(false);
-            break;
+        pendingRequest->SetSerialized();
+
+        while (auto cachedRequest = GetNextReadyCachedRequest()) {
+            ProcessReadyCachedRequest(std::move(cachedRequest));
         }
-
-        const ui64 nodeId = request->GetNodeId();
-        auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-
-        Y_ABORT_UNLESS(nodeState.Cache.HasPendingRequests());
-        auto pendingRequest = nodeState.Cache.DequeuePendingRequest();
-
-        Y_ABORT_UNLESS(
-            pendingRequest->GetSequenceId() == request->GetSequenceId());
-
-        QueuedOperations.CompleteWriteDataPromise(
-            std::move(pendingRequest->AccessPromise()));
-
-        auto& handleState = nodeState.Handles[request->GetHandle()];
-        handleState.PendingRequests.Remove(pendingRequest.get());
-        handleState.UnflushedRequests.PushBack(request.get());
-
-        EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
-
-        UpdateFlushStatus(nodeId, nodeState);
     }
+}
+
+TPendingWriteDataRequest* TWriteBackCacheState::TryAllocNextPendingRequest()
+{
+    if (IsFailed) {
+        return nullptr;
+    }
+
+    auto allocResult = RequestManager.TryAllocPendingRequest();
+    if (allocResult.Failed) {
+        SetFailedFlag();
+        return nullptr;
+    }
+
+    if (allocResult.StorageIsFull) {
+        TriggerFlushAll(false);
+        return nullptr;
+    }
+
+    // May be empty on backpressure or when the queue is empty
+    return allocResult.Request;
+}
+
+std::unique_ptr<TCachedWriteDataRequest>
+TWriteBackCacheState::GetNextReadyCachedRequest()
+{
+    if (IsFailed) {
+        return nullptr;
+    }
+
+    auto nextReadyResult = RequestManager.GetNextReadyCachedRequest();
+    if (nextReadyResult.Failed) {
+        SetFailedFlag();
+        return nullptr;
+    }
+
+    // May be empty when the queue is empty or the front request is not
+    // serialized yet
+    return std::move(nextReadyResult.Request);
+}
+
+void TWriteBackCacheState::ProcessReadyCachedRequest(
+    std::unique_ptr<TCachedWriteDataRequest> request)
+{
+    const ui64 nodeId = request->GetNodeId();
+    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
+
+    Y_ABORT_UNLESS(nodeState.Cache.HasPendingRequests());
+    auto pendingRequest = nodeState.Cache.DequeuePendingRequest();
+
+    Y_ABORT_UNLESS(pendingRequest->GetSequenceId() == request->GetSequenceId());
+
+    QueuedOperations.CompleteWriteDataPromise(
+        std::move(pendingRequest->AccessPromise()));
+
+    auto& handleState = nodeState.Handles[request->GetHandle()];
+    handleState.PendingRequests.Remove(pendingRequest.get());
+    handleState.UnflushedRequests.PushBack(request.get());
+
+    EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
+
+    UpdateFlushStatus(nodeId, nodeState);
 }
 
 void TWriteBackCacheState::EnqueueUnflushedRequest(
@@ -984,12 +1061,14 @@ void TWriteBackCacheState::DropCachedData(
     TNodeState& nodeState,
     const NCloud::NProto::TError& error)
 {
-    while (nodeState.Cache.HasPendingRequests()) {
-        auto request = nodeState.Cache.DequeuePendingRequest();
-        QueuedOperations.FailWriteDataPromise(
-            std::move(request->AccessPromise()),
-            error);
-        RequestManager.Remove(std::move(request));
+    if (nodeState.Cache.HasPendingRequests()) {
+        // Cached data can be dropped only when all handles are released.
+        // Pending requests cannot exist in this case.
+        ReportWriteBackCacheImpossibleState(
+            "An attempt to drop cached data with the presence of pending "
+            "requests has been made");
+        SetFailedFlag();
+        return;
     }
 
     if (nodeState.Cache.HasUnflushedRequests()) {
@@ -1026,37 +1105,40 @@ void TWriteBackCacheState::DropCachedData(
     EvictUnpinnedFlushedEntries(nodeId, nodeState);
 }
 
-void TWriteBackCacheState::FailPendingRequest(
+void TWriteBackCacheState::FailUnallocatedPendingRequest(
     TNodeState& nodeState,
-    TPendingWriteDataRequest* request,
+    std::unique_ptr<TPendingWriteDataRequest> request,
     const NCloud::NProto::TError& error)
 {
     QueuedOperations.FailWriteDataPromise(
         std::move(request->AccessPromise()),
         error);
 
-    RemoveActiveRequestFromHandleState(nodeState, request);
+    RemoveActiveRequestFromHandleState(nodeState, request.get());
     TriggerFlushCompletions(nodeState);
+
+    RequestManager.RemoveUnallocated(std::move(request));
 }
 
-void TWriteBackCacheState::FailNodePendingRequests(
+void TWriteBackCacheState::FailNodeUnallocatedPendingRequests(
     TNodeState& nodeState,
     const NCloud::NProto::TError& error)
 {
-    while (nodeState.Cache.HasPendingRequests()) {
-        auto request = nodeState.Cache.DequeuePendingRequest();
-        FailPendingRequest(nodeState, request.get(), error);
-        RequestManager.Remove(std::move(request));
+    while (auto request = nodeState.Cache.PopBackUnallocatedPendingRequest()) {
+        FailUnallocatedPendingRequest(nodeState, std::move(request), error);
     }
 }
 
-void TWriteBackCacheState::FailAllPendingRequests(
+void TWriteBackCacheState::FailAllUnallocatedPendingRequests(
     const NCloud::NProto::TError& error)
 {
-    while (auto* request = RequestManager.TryPopFrontPendingRequest()) {
+    while (const auto* request =
+               RequestManager.GetBackUnallocatedPendingRequest())
+    {
         const ui64 nodeId = request->GetRequest().GetNodeId();
         auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-        auto pendingRequest = nodeState.Cache.DequeuePendingRequest();
+        auto pendingRequest =
+            nodeState.Cache.PopBackUnallocatedPendingRequest();
 
         // The same request lives in two queues:
         // - all pending requests
@@ -1064,7 +1146,10 @@ void TWriteBackCacheState::FailAllPendingRequests(
         // Both queues are ordered with respect to their SequenceId
         Y_ABORT_UNLESS(pendingRequest.get() == request);
 
-        FailPendingRequest(nodeState, request, error);
+        FailUnallocatedPendingRequest(
+            nodeState,
+            std::move(pendingRequest),
+            error);
 
         if (nodeState.CanBeDeleted()) {
             Nodes.DeleteNodeState(nodeId);
