@@ -244,7 +244,7 @@ struct TTestJournal final: public IJournal
         return MakeFuture<NCloud::NProto::TReadJournalTailResponse>();
     }
 
-    auto AdvanceLastAckedLsn(
+    auto AdvanceLsnLowWatermark(
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
         -> TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> override
     {

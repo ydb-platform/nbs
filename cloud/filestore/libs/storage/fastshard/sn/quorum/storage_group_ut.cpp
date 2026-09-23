@@ -187,7 +187,7 @@ struct TFakeDevice: TFakeStorageNode
 
         auto response = TFakeStorageNode::ReadJournalTail(std::move(request));
         if (HasError(response.GetError()) || response.RecordsSize() ||
-            response.GetLastAckedLogSequenceNumber())
+            response.GetLsnLowWatermark())
         {
             return response;
         }
@@ -206,7 +206,7 @@ struct TFakeDevice: TFakeStorageNode
             for (const auto* record: tail) {
                 *response.AddRecords() = *record;
             }
-            response.SetLastAckedLogSequenceNumber(Watermark);
+            response.SetLsnLowWatermark(Watermark);
         }
 
         return response;

@@ -124,7 +124,7 @@ public:
 
         ui64 lastLsn = 0;
         for (const auto& response: responses) {
-            lastLsn = Max(lastLsn, response.GetLastAckedLogSequenceNumber());
+            lastLsn = Max(lastLsn, response.GetLsnLowWatermark());
         }
 
         return lastLsn;

@@ -5,6 +5,8 @@
 #include <cloud/fastshard/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/coroutine/public.h>
+#include <cloud/storage/core/libs/diagnostics/public.h>
 
 #include <library/cpp/threading/future/future.h>
 
@@ -16,13 +18,17 @@ struct IJournal
 {
     virtual ~IJournal() = default;
 
+    //
     // Restoring
+    //
 
     // Restores the journal state and returns lsn of the last indexed record
     [[nodiscard]] virtual auto Restore()
         -> NThreading::TFuture<TResultOrError<ui64>> = 0;
 
+    //
     // Device API
+    //
 
     [[nodiscard]] virtual auto Write(
         NCloud::NProto::TWriteLogRecordRequest request)
@@ -36,12 +42,14 @@ struct IJournal
         NCloud::NProto::TReadJournalTailRequest request) const
         -> NThreading::TFuture<NCloud::NProto::TReadJournalTailResponse> = 0;
 
-    [[nodiscard]] virtual auto AdvanceLastAckedLsn(
+    [[nodiscard]] virtual auto AdvanceLsnLowWatermark(
         NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
         -> NThreading::TFuture<
             NCloud::NProto::TAdvanceLsnLowWatermarkResponse> = 0;
 
+    //
     // Background cleanup
+    //
 
     [[nodiscard]] virtual auto GetRecordToFlush(ui64 maxAllowedLsn) const
         -> NThreading::TFuture<
@@ -56,7 +64,10 @@ struct IJournal
 ////////////////////////////////////////////////////////////////////////////////
 
 IJournalPtr CreateJournal(
+    ILoggingServicePtr logging,
+    TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
-    IDevicePageStorePtr dataStore);
+    IDevicePageStorePtr dataStore,
+    ui64 devicePageCount);
 
 }   // namespace NCloud::NJournalled

@@ -1521,7 +1521,7 @@ void TEndpointManager::DoProcessException(
     }
 
     if (hasDevice) {
-        STORAGE_INFO(prefix << "start device");
+        STORAGE_INFO(prefix << " start device");
         auto device = NbdDeviceFactory->Create(
             TNetworkAddress(TUnixSocketPath(socketPath)),
             endpoint->Request->GetNbdDeviceFile(),
@@ -1530,7 +1530,7 @@ void TEndpointManager::DoProcessException(
         auto startDeviceFuture = device->Start();
         error = Executor->WaitFor(startDeviceFuture);
         if (HasError(error)) {
-            STORAGE_ERROR(prefix << "failed to start device: "
+            STORAGE_ERROR(prefix << " failed to start device: "
                 << FormatError(error));
             context->Generation++;
             ProcessException(std::move(context), std::move(prefix));
