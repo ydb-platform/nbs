@@ -1497,7 +1497,8 @@ TEST(TRdmaClientTest, ShouldBindAndInvalidateBuffers)
 
     auto handleRequest = [&]()
     {
-        while (true) {
+        const auto start = TInstant::Now();
+        while (TInstant::Now() - start < clientConfig->MaxResponseDelay) {
             with_lock (testContext->CompletionLock) {
                 if (testContext->RecvEvents && testContext->ReqIds) {
                     auto* recv = testContext->RecvEvents.front();
