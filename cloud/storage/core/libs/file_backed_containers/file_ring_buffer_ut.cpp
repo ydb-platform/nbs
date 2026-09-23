@@ -794,7 +794,6 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         UNIT_ASSERT(HasError(rb.SetTargetDataCapacity(40)));
         UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
-
     }
 
     struct TShouldDetectCorruptionOnPopFrontAndFreeBootstrap
