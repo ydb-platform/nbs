@@ -6,10 +6,13 @@
 #include "log_index.h"
 #include "lsn_barrier.h"
 
+#include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/generic/algorithm.h>
+#include <util/generic/hash.h>
 #include <util/generic/scope.h>
 #include <util/generic/utility.h>
 #include <util/string/builder.h>
@@ -37,6 +40,26 @@ ui64 PageCountOf(const NCloud::NProto::TDevicePageGroup& group)
     return group.ContentSize();
 }
 
+ui64 PageCountOf(const TPageMapping& mapping)
+{
+    return mapping.Location.PageCount;
+}
+
+ui64 FirstPageNoOf(const NCloud::NProto::TDevicePageGroupRef& ref)
+{
+    return ref.GetFirstPageNo();
+}
+
+ui64 FirstPageNoOf(const NCloud::NProto::TDevicePageGroup& group)
+{
+    return group.GetFirstPageNo();
+}
+
+ui64 FirstPageNoOf(const TPageMapping& mapping)
+{
+    return mapping.PageNo;
+}
+
 bool IsInsideDevice(ui64 firstPageNo, ui64 pageCount, ui64 devicePageCount)
 {
     return firstPageNo < devicePageCount &&
@@ -48,17 +71,23 @@ NCloud::NProto::TError ValidatePageRanges(
     const TRanges& ranges,
     ui64 devicePageCount)
 {
-    for (int i = 0; i < ranges.size(); ++i) {
+    const int count = static_cast<int>(ranges.size());
+
+    for (int i = 0; i < count; ++i) {
+        const ui64 begin = FirstPageNoOf(ranges[i]);
         const ui64 pageCount = PageCountOf(ranges[i]);
+
+        //
+        // Check that the range is not empty and lies inside the device
+        //
+
         if (!pageCount) {
-            continue;
+            return MakeError(
+                E_ARGUMENT,
+                TStringBuilder()
+                    << "page range at page " << begin << " is empty");
         }
 
-        //
-        // Check that the range lies inside the device
-        //
-
-        const ui64 begin = ranges[i].GetFirstPageNo();
         if (!IsInsideDevice(begin, pageCount, devicePageCount)) {
             return MakeError(
                 E_ARGUMENT,
@@ -76,11 +105,7 @@ NCloud::NProto::TError ValidatePageRanges(
 
         for (int j = 0; j < i; ++j) {
             const ui64 otherPageCount = PageCountOf(ranges[j]);
-            if (!otherPageCount) {
-                continue;
-            }
-
-            const ui64 otherBegin = ranges[j].GetFirstPageNo();
+            const ui64 otherBegin = FirstPageNoOf(ranges[j]);
             const ui64 otherEnd = otherBegin + otherPageCount;
 
             if (begin < otherEnd && otherBegin < end) {
@@ -89,7 +114,7 @@ NCloud::NProto::TError ValidatePageRanges(
                     TStringBuilder()
                         << "page ranges " << otherBegin << "x" << otherPageCount
                         << " and " << begin << "x" << pageCount
-                        << " of a single request intersect");
+                        << " intersect");
             }
         }
     }
@@ -233,7 +258,9 @@ TVector<TPageMapping> CreatePageMappings(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TJournal final: public IJournal
+class TJournal final
+    : public IJournal
+    , public std::enable_shared_from_this<TJournal>
 {
 private:
     const ILoggingServicePtr Logging;
@@ -285,6 +312,12 @@ public:
         -> TFuture<NCloud::NProto::TError> override;
 
 private:
+    TResultOrError<ui64> RestoreFrom(TVector<TKeyBuffer> buffers);
+
+    TVector<TLogRecordPtr> FilterStrandedRecords(
+        const THashMap<ui64, TLogRecordPtr>& lsnToRecord,
+        ui64* headLsn);
+
     NCloud::NProto::TError ValidateWriteRequest(
         const NCloud::NProto::TWriteLogRecordRequest& request) const;
 
@@ -318,8 +351,212 @@ TJournal::TJournal(
 
 TFuture<TResultOrError<ui64>> TJournal::Restore()
 {
-    return MakeFuture<TResultOrError<ui64>>(
-        MakeError(E_NOT_IMPLEMENTED, "Restore"));
+    return MetaStore->Restore().Apply(
+        [self = shared_from_this()](const auto& future) -> TResultOrError<ui64>
+        {
+            auto response = UnsafeExtractValue(future);
+            if (HasError(response)) {
+                return response.GetError();
+            }
+
+            return self->RestoreFrom(response.ExtractResult());
+        });
+}
+
+TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
+{
+    //
+    // Take the lsn low watermark from the metadata
+    //
+
+    auto metadataIt = FindIf(
+        buffers,
+        [](const auto& keyBuffer) { return keyBuffer.Key == MetadataKey; });
+
+    if (metadataIt != buffers.end()) {
+        const auto& buffer = metadataIt->Buffer;
+        auto metadata = DeserializeMetadata(buffer);
+        if (!metadata) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "failed to deserialize journal metadata from "
+                    << buffer.Size() << " bytes");
+        }
+
+        LsnLowWatermark.store(metadata->LsnLowWatermark);
+        buffers.erase(metadataIt);
+    }
+
+    ui64 lsnLowWatermark = LsnLowWatermark.load();
+
+    //
+    // Deserialize and validate the records
+    //
+
+    THashMap<ui64, TLogRecordPtr> lsnToRecord;
+
+    for (const auto& [key, buffer]: buffers) {
+        auto record = DeserializeRecord(buffer);
+        if (!record) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "failed to deserialize log record with key " << key
+                    << " from " << buffer.Size() << " bytes");
+        }
+
+        if (record->PrevLsn != key) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "log record with key " << key
+                                 << " has prevLsn " << record->PrevLsn);
+        }
+
+        if (record->PrevLsn >= record->Lsn) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "log record with key " << key << " has lsn "
+                    << record->Lsn << ", not above its prevLsn");
+        }
+
+        auto rangeError =
+            ValidatePageRanges(record->PageMappings, DevicePageCount);
+        if (HasError(rangeError)) {
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder() << "log record with key " << key << ": "
+                                 << rangeError.GetMessage());
+        }
+
+        auto [it, inserted] = lsnToRecord.emplace(record->Lsn, record);
+        if (!inserted) {
+            const ui64 otherPrevLsn = it->second->PrevLsn;
+            return MakeError(
+                E_INVALID_STATE,
+                TStringBuilder()
+                    << "records with prev lsn "
+                    << Min(record->PrevLsn, otherPrevLsn) << " and "
+                    << Max(record->PrevLsn, otherPrevLsn)
+                    << " both carry lsn " << record->Lsn);
+        }
+    }
+
+    //
+    // Drop the records that can never join the chain and returns the rest
+    // in chain order. |headLsn| is walked back from the watermark it is
+    // given to the head of the chain.
+    //
+
+    ui64 headLsn = lsnLowWatermark;
+    auto records = FilterStrandedRecords(std::move(lsnToRecord), &headLsn);
+
+    //
+    // Start the chain, the page index and the flushed lsn at the head of the
+    // chain
+    //
+
+    LogRecordChain.InitLastErasedLsn(headLsn);
+    LogPageIndex.InitLastIndexedLsn(headLsn);
+    FlushedLsnBarrier.Advance(headLsn);
+
+    //
+    // Rebuild the page store allocation and the chain
+    //
+
+    for (const auto& record: records) {
+        auto error = DataStore->AllocateAt(GetLocations(record->PageMappings));
+        if (HasError(error)) {
+            return error;
+        }
+
+        auto insertResult = LogRecordChain.Insert(record);
+        if (HasError(insertResult)) {
+            return insertResult.GetError();
+        }
+
+        bool marked = LogRecordChain.MarkAsReady(record->PrevLsn);
+        STORAGE_VERIFY(marked, "MarkAsReady", record->PrevLsn);
+    }
+
+    //
+    // Index the restored records that follow each other unbroken - the log
+    // must reach at least the watermark, or the acked records are lost
+    //
+
+    IndexChainedRecords();
+
+    ui64 lastIndexedLsn = LogPageIndex.GetLastIndexedLsn();
+    if (lastIndexedLsn < lsnLowWatermark) {
+        return MakeError(
+            E_INVALID_STATE,
+            TStringBuilder() << "restored log ends at lsn " << lastIndexedLsn
+                             << ", below the lsn low watermark "
+                             << lsnLowWatermark);
+    }
+
+    return lastIndexedLsn;
+}
+
+TVector<TLogRecordPtr> TJournal::FilterStrandedRecords(
+    const THashMap<ui64, TLogRecordPtr>& lsnToRecord,
+    ui64* headLsn)
+{
+    //
+    // Walk the acked chain back from the watermark to find where it starts
+    //
+
+    for (;;) {
+        auto it = lsnToRecord.find(*headLsn);
+        if (it == lsnToRecord.end()) {
+            break;
+        }
+
+        *headLsn = it->second->PrevLsn;
+    }
+
+    //
+    // Index the records by prev lsn - the chain is walked forward by it
+    //
+
+    THashMap<ui64, TLogRecordPtr> prevLsnToRecord;
+    for (const auto& [_, record]: lsnToRecord) {
+        prevLsnToRecord.emplace(record->PrevLsn, record);
+    }
+
+    //
+    // Walk the chain forward: its records go first, in order. Keep the rest
+    // only if they chain from the end of the chain or past it - the others
+    // are stranded, nothing can join them
+    //
+
+    TVector<TLogRecordPtr> records;
+
+    ui64 tailLsn = *headLsn;
+    for (;;) {
+        auto it = prevLsnToRecord.find(tailLsn);
+        if (it == prevLsnToRecord.end()) {
+            break;
+        }
+
+        tailLsn = it->second->Lsn;
+        records.push_back(std::move(it->second));
+        prevLsnToRecord.erase(it);
+    }
+
+    for (auto& [prevLsn, record]: prevLsnToRecord) {
+        if (prevLsn < tailLsn) {
+            STORAGE_WARN(
+                "dropping the stranded log record with lsn "
+                << record->Lsn << " chaining from lsn " << prevLsn);
+            continue;
+        }
+
+        records.push_back(std::move(record));
+    }
+
+    return records;
 }
 
 TFuture<NCloud::NProto::TWriteLogRecordResponse> TJournal::Write(
