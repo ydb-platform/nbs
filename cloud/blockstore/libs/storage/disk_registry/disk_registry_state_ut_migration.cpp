@@ -2455,8 +2455,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                // Even an empty explicit target must be rejected, rather than
-                // falling back to automatic allocation of the free target.
+                // Invalid explicit targets must leave the disk and the free
+                // target device unchanged.
                 for (const TString targetId: {"", "missing", "source"}) {
                     const auto result = state->StartForceMigration(
                         Now(), db, "disk", "source", targetId);
@@ -2579,14 +2579,17 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
         TDiskInfo disk;
         UNIT_ASSERT_SUCCESS(reloaded->GetDiskInfo("foo", disk));
         UNIT_ASSERT_VALUES_EQUAL(2, disk.Migrations.size());
-        for (const auto& migration: disk.Migrations) {
-            const size_t index =
-                migration.GetSourceDeviceId() == "source-1" ? 0 : 1;
-            UNIT_ASSERT_VALUES_EQUAL(TStringBuilder() << "source-" << index + 1,
-                                     migration.GetSourceDeviceId());
+        SortBy(disk.Migrations, [](const auto& migration) {
+            return migration.GetSourceDeviceId();
+        });
+        for (size_t i = 0; i < disk.Migrations.size(); ++i) {
+            const auto& migration = disk.Migrations[i];
             UNIT_ASSERT_VALUES_EQUAL(
-                targets[index], migration.GetTargetDevice().GetDeviceUUID());
-            UNIT_ASSERT_VALUES_EQUAL("foo", reloaded->FindDisk(targets[index]));
+                TStringBuilder() << "source-" << i + 1,
+                migration.GetSourceDeviceId());
+            UNIT_ASSERT_VALUES_EQUAL(
+                targets[i], migration.GetTargetDevice().GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL("foo", reloaded->FindDisk(targets[i]));
         }
     }
 

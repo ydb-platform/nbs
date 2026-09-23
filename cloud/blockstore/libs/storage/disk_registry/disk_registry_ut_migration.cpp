@@ -1547,11 +1547,15 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         checkMemoryAndDatabase(true);
 
         reallocateResponses.Stop().Unblock(1);
-        runtime->WaitFor("restored reallocation acknowledged", [&] {
+        // BackupDiskRegistryState dispatches events, so poll outside a
+        // WaitFor callback to avoid nesting the runtime's event dispatch.
+        while (true) {
             const auto backup = diskRegistry.BackupDiskRegistryState(
                 NProto::BDRSS_LOCAL_DB);
-            return backup->Record.GetLocalDBBackup().DisksToNotifySize() == 0;
-        });
+            if (backup->Record.GetLocalDBBackup().DisksToNotifySize() == 0) {
+                break;
+            }
+        }
         checkMemoryAndDatabase(false);
 
         RegisterAgents(*runtime, agents.size());
