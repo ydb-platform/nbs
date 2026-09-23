@@ -61,7 +61,7 @@ void TIndexTabletActor::HandleFastShardCommand(
             //
 
             auto stats = std::make_shared<NFastShard::TFileSystemShardStats>();
-            auto* ass = ctx.ActorSystem();
+            auto* actorSystem = ctx.ActorSystem();
             const auto sender = ev->Sender;
             const ui64 cookie = ev->Cookie;
 
@@ -76,7 +76,7 @@ void TIndexTabletActor::HandleFastShardCommand(
             //
 
             FastShard->CollectStats(stats.get()).Subscribe(
-                [ass, sender, cookie, stats] (const auto& f) {
+                [actorSystem, sender, cookie, stats] (const auto& f) {
                     auto response = std::make_unique<TResponse>(f.GetValue());
                     if (!HasError(response->Record.GetError())) {
                         auto* s = response->Record.MutableStats();
@@ -89,7 +89,7 @@ void TIndexTabletActor::HandleFastShardCommand(
                         s->SetUsedPageCount(stats->UsedPageCount);
                         s->SetTotalPageCount(stats->TotalPageCount);
                     }
-                    ass->Send(
+                    actorSystem->Send(
                         sender,
                         response.release(),
                         0 /* flags */,
@@ -105,7 +105,7 @@ void TIndexTabletActor::HandleFastShardCommand(
             // system.
             //
 
-            auto* ass = ctx.ActorSystem();
+            auto* actorSystem = ctx.ActorSystem();
             const auto sender = ev->Sender;
             const ui64 cookie = ev->Cookie;
 
@@ -120,8 +120,8 @@ void TIndexTabletActor::HandleFastShardCommand(
             //
 
             FastShard->Format().Subscribe(
-                [ass, sender, cookie] (const auto& f) {
-                    ass->Send(
+                [actorSystem, sender, cookie] (const auto& f) {
+                    actorSystem->Send(
                         sender,
                         new TResponse(f.GetValue()),
                         0 /* flags */,

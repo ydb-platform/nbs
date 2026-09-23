@@ -16,12 +16,12 @@ void TIndexTabletActor::CreateFastShard(const TActorContext& ctx)
         GetFileSystem().GetShardNo(),
         Executor()->Generation());
 
-    auto* ass = ctx.ActorSystem();
+    auto* actorSystem = ctx.ActorSystem();
     const auto selfId = SelfId();
     FastShard->Init().Subscribe(
-        [ass, selfId](const auto& future)
+        [actorSystem, selfId](const auto& future)
         {
-            ass->Send(
+            actorSystem->Send(
                 selfId,
                 new TEvIndexTabletPrivate::TEvFastShardInitCompleted(
                     future.GetValue()));
