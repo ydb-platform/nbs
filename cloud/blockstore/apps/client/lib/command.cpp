@@ -639,7 +639,8 @@ void TCommand::InitClientConfig()
     }
 
     if (!clientConfig.GetClientId()) {
-        clientConfig.SetClientId(CreateGuidAsString());
+        clientConfig.SetClientId(
+            TStringBuilder() << "cli-" << CreateGuidAsString());
     }
 
     // This retry mode is not expected in blockstore-client
