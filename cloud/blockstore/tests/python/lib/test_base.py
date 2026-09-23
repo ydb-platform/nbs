@@ -42,6 +42,23 @@ def counters_url(host, mon_port, component="blockstore"):
     return "http://%s:%s/counters/counters=%s/json" % (host, mon_port, component)
 
 
+def _check_block_digest_mismatch(host, mon_port):
+    response = requests.get(counters_url(host, mon_port), timeout=10)
+    response.raise_for_status()
+
+    required_metric = "AppCriticalEvents/BlockDigestMismatchInBlob"
+    found = False
+    for sensor in response.json()["sensors"]:
+        name = sensor["labels"].get("sensor")
+        if name == required_metric:
+            found = True
+            assert sensor["value"] == 0, \
+                "Checksum mismatch detected: {} = {} ({})".format(
+                    name, sensor["value"], sensor["labels"])
+
+    assert found, "Required checksum metric is missing: {}".format(required_metric)
+
+
 def _extract_tracks(nbs_log_path, track_filter):
     if nbs_log_path is None:
         return []
@@ -275,7 +292,25 @@ def run_test(
             raise Exception(
                 'Several ({}) processes terminated prematurely.'.format(crashed))
 
+        if mon_port:
+            try:
+                _check_block_digest_mismatch(host, mon_port)
+            except requests.RequestException as e:
+                # The monitoring endpoint can be unavailable during restarts.
+                logging.warning("Cannot check checksum mismatch metrics: %s", e)
+            except Exception:
+                kill_all()
+                raise
+
     r.stop()
+
+    if mon_port:
+        # Require a successful final check, retrying through server restarts.
+        retrying.Retrying(
+            stop_max_delay=60000,
+            wait_fixed=1000,
+            retry_on_exception=is_request_error,
+        ).call(_check_block_digest_mismatch, host, mon_port)
 
     return r.create_canonical_files(
         mon_port,
