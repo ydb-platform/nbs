@@ -115,7 +115,7 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
                 << ", shardNo: "
                 << shardNo << ", shardCount: " << shardIds.size());
 
-            return MakeError(E_INVALID_STATE, std::move(message));
+            return MakeError(E_REJECTED, std::move(message));
         }
 
         const auto& shardId = shardIds[shardIdx];
