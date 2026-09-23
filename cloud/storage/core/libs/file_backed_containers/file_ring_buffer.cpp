@@ -322,12 +322,15 @@ private:
         SetReadAndWritePosToZeroForEmptyBuffer();
 
         if (Header()->DataOffset > Max<ui64>() - Args.DataCapacity) {
-            // Integer overflow protection
-            Args.DataCapacity =  Max<ui64>() - Header()->DataOffset;
+            SetCorrupted(Sprintf(
+                "Cannot resize data capacity to %lu",
+                Args.DataCapacity));
+            return;
         }
 
         const ui64 newFileSize = Header()->DataOffset + Args.DataCapacity;
 
+        // Header must never claim more capacity than the file has
         Header()->DataCapacity = Min(Header()->DataCapacity, Args.DataCapacity);
 
         if (!ResizeAndRemap(newFileSize) || !Validate()) {
@@ -1084,13 +1087,19 @@ public:
         return TSetMetadataResult(true);
     }
 
-    void SetTargetDataCapacity(ui64 dataCapacity)
+    NProto::TError SetTargetDataCapacity(ui64 dataCapacity)
     {
+        if (!ValidateAccess("SetTargetDataCapacity")) {
+            return MakeBufferIsCorruptError();
+        }
+
         Args.DataCapacity = dataCapacity;
 
         if (IsDataCapacityResizeNeeded()) {
             TryResizeDataCapacity();
         }
+
+        return {};
     }
 };
 
@@ -1238,7 +1247,7 @@ TFileRingBuffer::TSetMetadataResult TFileRingBuffer::SetMetadata(
     return Impl->SetMetadata(data);
 }
 
-void TFileRingBuffer::SetTargetDataCapacity(ui64 dataCapacity)
+NProto::TError TFileRingBuffer::SetTargetDataCapacity(ui64 dataCapacity)
 {
     return Impl->SetTargetDataCapacity(dataCapacity);
 }

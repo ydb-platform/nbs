@@ -636,7 +636,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 257);
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
 
-            rb.SetTargetDataCapacity(len);
+            UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
             UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 256);
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
         }
@@ -645,7 +645,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 255);
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
 
-            rb.SetTargetDataCapacity(len);
+            UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
             UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 256);
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
         }
@@ -669,7 +669,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
 
-            rb.SetTargetDataCapacity(len);
+            UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize,
                 rb.GetMaxSupportedAllocationByteCount());
@@ -694,7 +694,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
 
-            rb.SetTargetDataCapacity(len);
+            UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize,
                 rb.GetMaxSupportedAllocationByteCount());
@@ -709,7 +709,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         // Zero size is valid
         {
             TFileRingBuffer rb(f.GetName(), len, 0, ver);
-            rb.SetTargetDataCapacity(0);
+            UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(0)));
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 rb.GetMaxSupportedAllocationByteCount());
@@ -774,6 +774,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 
         UNIT_ASSERT(HasError(rb.SetMetadata("x").Error));
         UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
+
+        UNIT_ASSERT(HasError(rb.SetTargetDataCapacity(40)));
+        UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
+
     }
 
     struct TShouldDetectCorruptionOnPopFrontAndFreeBootstrap

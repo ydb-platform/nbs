@@ -306,7 +306,7 @@ public:
      * Note: while adding new entries is blocked, the buffer behaves like it is
      * full.
      */
-    void SetTargetDataCapacity(ui64 dataCapacity);
+    [[nodiscard]] NProto::TError SetTargetDataCapacity(ui64 dataCapacity);
 };
 
 #undef FILE_RING_BUFFER_RESULT_STRUCT
