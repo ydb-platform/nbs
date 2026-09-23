@@ -1564,6 +1564,11 @@ Y_UNIT_TEST_SUITE(TServerTest)
         auto response = future.GetValue(TDuration::Seconds(3));
         UNIT_ASSERT_C(!HasError(response), response);
 
+        bootstrap->GetClientEndpoint()->Stop();
+        UNIT_ASSERT_C(
+            errorHandler->ErrorReported.WaitT(TDuration::Seconds(3)),
+            "active client shutdown was not reported to the endpoint");
+
         bootstrap->Stop();
     }
 
