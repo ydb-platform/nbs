@@ -139,9 +139,9 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             TActorId(2, 99),   // new pipe server
             TabletGeneration);
 
-        UNIT_ASSERT(ans.StalePipeServer.has_value());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 0), *ans.StalePipeServer);
-        UNIT_ASSERT(!ans.StaleOwner.has_value());
+        UNIT_ASSERT(ans.StalePipeServer);
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 0), ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
     }
 
     Y_UNIT_TEST(ShouldNotReportStalePipeServerWhenOnlyOwnerChanges)
@@ -167,9 +167,9 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             TActorId(2, 0),    // same pipe server
             TabletGeneration);
 
-        UNIT_ASSERT(!ans.StalePipeServer.has_value());
-        UNIT_ASSERT(ans.StaleOwner.has_value());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), *ans.StaleOwner);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(ans.StaleOwner);
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), ans.StaleOwner);
     }
 
     Y_UNIT_TEST(ShouldTrackOwnerGeneration)
@@ -280,10 +280,10 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             TActorId(2, 2),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
-        UNIT_ASSERT(ans.StalePipeServer.has_value());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 0), *ans.StalePipeServer);
-        UNIT_ASSERT(ans.StaleOwner.has_value());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), *ans.StaleOwner);
+        UNIT_ASSERT(ans.StalePipeServer);
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 0), ans.StalePipeServer);
+        UNIT_ASSERT(ans.StaleOwner);
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), ans.StaleOwner);
 
         UNIT_ASSERT_VALUES_EQUAL(3, subsessions.GetMaxSeenSeqNo());
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetMaxSeenRwSeqNo());
@@ -407,6 +407,33 @@ Y_UNIT_TEST_SUITE(TSubSessions)
 
         auto result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT(result.SessionCanBeDestroyed);
+    }
+
+    Y_UNIT_TEST(ShouldDestroySessionWhenSubSessionAlreadyGoneAndReady)
+    {
+        // maxSeenSeqNo=5, maxSeenRwSeqNo=0: seqNo 5 was the last (read-only)
+        // mount, no writer since. Its subsession is already gone (e.g. its
+        // pipe disconnected earlier), so DeleteSubSession(5) can't find it -
+        // but 5 is still the last thing that was ever mounted, so it's fine
+        // to destroy.
+        TSubSessions subsessions(5, 0);
+
+        auto result = subsessions.DeleteSubSession(5);
+        UNIT_ASSERT(!result.Removed);
+        UNIT_ASSERT(result.SessionCanBeDestroyed);
+    }
+
+    Y_UNIT_TEST(ShouldNotDestroySessionWhenSubSessionAlreadyGoneAndNotReady)
+    {
+        // maxSeenSeqNo=5, maxSeenRwSeqNo=3: seqNo 3 is still the writer
+        // mount. A stale DestroySession(5) arrives for a subsession that's
+        // already gone - it must not destroy the session, since 5 isn't the
+        // writer.
+        TSubSessions subsessions(5, 3);
+
+        auto result = subsessions.DeleteSubSession(5);
+        UNIT_ASSERT(!result.Removed);
+        UNIT_ASSERT(!result.SessionCanBeDestroyed);
     }
 }
 

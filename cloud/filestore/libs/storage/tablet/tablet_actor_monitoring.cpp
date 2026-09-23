@@ -767,6 +767,7 @@ void DumpSessions(
                     TABLEH() { out << "ReadOnly"; }
                     TABLEH() { out << "OwnerGeneration"; }
                     TABLEH() { out << "Owner"; }
+                    TABLEH() { out << "PipeServer"; }
                     TABLEH() { out << "Deadline"; }
                 }
             }
