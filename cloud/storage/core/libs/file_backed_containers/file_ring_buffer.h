@@ -299,7 +299,11 @@ public:
     /**
      * Sets the desired data capacity value.
      *
-     * Resizes the buffer immediately if it is empty, otherwise adding new
+     * Resizing the file results in its remap and changing memory addresses for
+     * existing entries that can be referenced by an external code. Therefore,
+     * the buffer can be safely done only when it is empty.
+     *
+     * The buffer is resized immediately if it is empty, otherwise adding new
      * entries will be blocked until the buffer is emptied and resize will take
      * place.
      *

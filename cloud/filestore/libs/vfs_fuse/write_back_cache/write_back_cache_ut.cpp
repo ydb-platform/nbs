@@ -2954,7 +2954,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
     Y_UNIT_TEST(ShouldSupportStateFileResize)
     {
-        constexpr int MaxAttempts = 10000;
+        constexpr int MaxRequestCount = 10000;
+        constexpr size_t RequestSize = 4000;
 
         TBootstrap b(
             {.UseTestTimerAndScheduler = true,
@@ -2970,22 +2971,36 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         // Do not spam into log
         b.Log.CloseLog();
 
-        TString data = NUnitTest::RandomString(4096, 12);
+        TString expected;
 
-        int attempt = 0;
+        int requestCount = 0;
         while (true) {
-            auto future = b.WriteToCache(1, 100, data);
+            auto data =
+                NUnitTest::RandomString(RequestSize, /* seed = */ requestCount);
+
+            auto future = b.WriteToCache(1, requestCount, data);
             if (!future.HasValue()) {
                 // The cache is full
                 break;
             }
 
-            attempt++;
-            UNIT_ASSERT_LE(attempt, MaxAttempts);
+            expected.resize(requestCount + RequestSize);
+            data.copy(expected.begin() + requestCount, RequestSize);
+
+            requestCount++;
+            UNIT_ASSERT_LE(requestCount, MaxRequestCount);
         }
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            requestCount,
+            b.Metrics.UnflushedQueue.Count->Get());
 
         b.CacheCapacityBytes = DefaultCacheCapacityBytes;
         b.RecreateCache();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            requestCount,
+            b.Metrics.UnflushedQueue.Count->Get());
 
         // Only empty cache can be resized
         UNIT_ASSERT_VALUES_EQUAL(
@@ -3000,6 +3015,11 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(
             DefaultCacheCapacityBytes,
             b.Metrics.Storage.RawCapacityByteCount->Get());
+
+        auto resp = b.ReadFromCache(1, 0, 1000000).GetValue();
+        auto actual = resp.GetBuffer().substr(resp.GetBufferOffset());
+
+        UNIT_ASSERT_VALUES_EQUAL(expected, actual);
     }
 }
 

@@ -282,44 +282,36 @@ private:
         return true;
     }
 
-    bool IsMigrationNeeded() const
+    bool IsMigrationOrDataCapacityResizeNeeded() const
     {
-        return !IsCorrupted() && Header()->Version != Args.Version;
+        return !IsCorrupted() && (Header()->Version != Args.Version ||
+                                  Header()->DataCapacity != Args.DataCapacity);
     }
 
-    bool IsDataCapacityResizeNeeded() const
+    void TryMigrateAndResizeDataCapacity()
     {
-        return !IsCorrupted() && Header()->DataCapacity != Args.DataCapacity;
-    }
-
-    void TryMigrate()
-    {
-        if (!IsMigrationNeeded()) {
+        if (!IsMigrationOrDataCapacityResizeNeeded()) {
             return;
         }
 
-        // Migration to any version can be performed when the buffer is empty
-        if (Empty()) {
-            SetReadAndWritePosToZeroForEmptyBuffer();
-            Header()->Version = Args.Version;
-            Validate();
-        }
-    }
-
-    void TryResizeDataCapacity()
-    {
-        if (!IsDataCapacityResizeNeeded()) {
-            return;
-        }
-
-        // Resizing the file results in its remap and changing memory addresses
-        // for existing entries that can be referenced by an external code.
-        // Therefore, the buffer can be safely done only when it is empty.
+        // Migration to any version or data capacity resize can be performed
+        // when the buffer is empty
         if (!Empty()) {
             return;
         }
 
         SetReadAndWritePosToZeroForEmptyBuffer();
+
+        if (Header()->Version != Args.Version) {
+            Header()->Version = Args.Version;
+            if (!Validate()) {
+                return;
+            }
+        }
+
+        if (Header()->DataCapacity == Args.DataCapacity) {
+            return;
+        }
 
         if (Header()->DataOffset > Max<ui64>() - Args.DataCapacity) {
             SetCorrupted(Sprintf(
@@ -435,13 +427,7 @@ private:
             Header()->ReadPos = front.ActualPos;
         }
 
-        if (IsMigrationNeeded()) {
-            TryMigrate();
-        }
-
-        if (IsDataCapacityResizeNeeded()) {
-            TryResizeDataCapacity();
-        }
+        TryMigrateAndResizeDataCapacity();
     }
 
     void WriteSlackSpaceMarker(ui64 pos)
@@ -534,6 +520,15 @@ public:
             }
         }
 
+        auto expectedFileSize = Header()->DataOffset + Header()->DataCapacity;
+        if (expectedFileSize != Accessor.GetRawData().size()) {
+            // Can be possible if resize was interrupted
+            if (!ResizeAndRemap(expectedFileSize) || !Validate()) {
+                // Corruption happened
+                return;
+            }
+        }
+
         VisitEntries(
             [&](const TEntryInfo& e)
             {
@@ -586,7 +581,7 @@ public:
                 "Zero size allocations are not allowed"));
         }
 
-        if (IsMigrationNeeded() || IsDataCapacityResizeNeeded()) {
+        if (IsMigrationOrDataCapacityResizeNeeded()) {
             // Return "storage is full" error.
             // Migration and data capacity resize will happen when the buffer is
             // emptied.
@@ -1025,7 +1020,7 @@ public:
             return 0;
         }
 
-        if (IsMigrationNeeded() || IsDataCapacityResizeNeeded()) {
+        if (IsMigrationOrDataCapacityResizeNeeded()) {
             return 0;
         }
 
@@ -1095,11 +1090,9 @@ public:
 
         Args.DataCapacity = dataCapacity;
 
-        if (IsDataCapacityResizeNeeded()) {
-            TryResizeDataCapacity();
-        }
+        TryMigrateAndResizeDataCapacity();
 
-        return {};
+        return IsCorrupted() ? MakeBufferIsCorruptError() : NProto::TError{};
     }
 };
 

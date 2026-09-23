@@ -627,26 +627,26 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         // For an empty buffer, resize is performed immediately
         {
             TFileRingBuffer rb(f.GetName(), len, 0, ver);
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 256);
+            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             maxDataSize = rb.GetMaxSupportedAllocationByteCount();
         }
         {
             TFileRingBuffer rb(f.GetName(), len + 1, 0, ver);
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 257);
+            UNIT_ASSERT_VALUES_EQUAL(len + 257, f.GetLength());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
 
             UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 256);
+            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
         }
         {
             TFileRingBuffer rb(f.GetName(), len - 1, 0, ver);
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 255);
+            UNIT_ASSERT_VALUES_EQUAL(len + 255, f.GetLength());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
 
             UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 256);
+            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
         }
 
@@ -660,12 +660,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize + 8,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 256);
+            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
             UNIT_ASSERT(!rb.PushBack("abc").Pushed);
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT_VALUES_EQUAL("12345678", Dump(rb));
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 264);
+            UNIT_ASSERT_VALUES_EQUAL(len + 264, f.GetLength());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
 
@@ -673,10 +673,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 264);
+            UNIT_ASSERT_VALUES_EQUAL(len + 264, f.GetLength());
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 256);
+            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
         }
@@ -685,12 +685,12 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize - 8,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 256);
+            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
             UNIT_ASSERT(!rb.PushBack("abc").Pushed);
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT_VALUES_EQUAL("12345678", Dump(rb));
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 248);
+            UNIT_ASSERT_VALUES_EQUAL(len + 248, f.GetLength());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
 
@@ -698,10 +698,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 248);
+            UNIT_ASSERT_VALUES_EQUAL(len + 248, f.GetLength());
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), len + 256);
+            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
         }
@@ -714,9 +714,26 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                 0,
                 rb.GetMaxSupportedAllocationByteCount());
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(f.GetLength(), 256);
+            UNIT_ASSERT_VALUES_EQUAL(256, f.GetLength());
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(!rb.PushBack("12345678").Pushed);
+        }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldResumeAbortedDataCapacityChange)
+    {
+        const auto f = TTempFileHandle();
+        const ui32 len = 64;
+
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            TFileMap m(f.GetName(), TMemoryMapCommon::oRdWr);
+            m.ResizeAndRemap(0, len + 264);
+            UNIT_ASSERT_VALUES_EQUAL(len + 264, f.GetLength());
+        }
+        {
+            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            UNIT_ASSERT_VALUES_EQUAL(len + 256, f.GetLength());
         }
     }
 
