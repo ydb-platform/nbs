@@ -48,6 +48,30 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
             &error));
         UNIT_ASSERT(!error.Message.empty());
     }
+
+    Y_UNIT_TEST(ShouldRejectUnterminatedString)
+    {
+        TParseError error;
+        UNIT_ASSERT(!Parse(
+            "SELECT * FROM NodeRefs WHERE name = 'hello",
+            &error));
+        UNIT_ASSERT(!error.Message.empty());
+    }
+
+    Y_UNIT_TEST(ShouldRejectNumericOverflow)
+    {
+        TParseError error;
+        UNIT_ASSERT(!Parse(
+            "SELECT * FROM NodeRefs WHERE child_id = "
+            "18446744073709551616",
+            &error));
+        UNIT_ASSERT(!error.Message.empty());
+
+        UNIT_ASSERT(!Parse(
+            "SELECT * FROM NodeRefs LIMIT 18446744073709551616",
+            &error));
+        UNIT_ASSERT(!error.Message.empty());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NClient::NQuery

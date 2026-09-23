@@ -79,7 +79,10 @@ public:
                     value += Input[Position++];
                 }
                 if (Position == Input.size()) {
-                    return {EToken::String, {}, offset};
+                    return {
+                        EToken::Invalid,
+                        TString(Input.substr(offset, Position - offset)),
+                        offset};
                 }
                 ++Position;
                 return {EToken::String, std::move(value), offset};
@@ -180,7 +183,11 @@ public:
             if (Current.Type != EToken::Number) {
                 return Fail("expected non-negative LIMIT");
             }
-            result.Limit = FromString<ui64>(Current.Text);
+            ui64 limit = 0;
+            if (!TryFromString(Current.Text, limit)) {
+                return Fail("LIMIT is out of range");
+            }
+            result.Limit = limit;
             Next();
         }
 
@@ -284,7 +291,12 @@ private:
     bool ParseValue(TVector<TValue>& values)
     {
         if (Current.Type == EToken::Number) {
-            values.emplace_back(FromString<ui64>(Current.Text));
+            ui64 value = 0;
+            if (!TryFromString(Current.Text, value)) {
+                Fail("numeric value is out of range");
+                return false;
+            }
+            values.emplace_back(value);
             Next();
             return true;
         }
