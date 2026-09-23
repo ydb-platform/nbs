@@ -249,9 +249,14 @@ NActors::TActorId TIndexTabletState::RecoverSession(
             GetGeneration());
 
     if (updateResult.StalePipeServer) {
-        Impl->SessionByPipeServer.erase(*updateResult.StalePipeServer);
+        Impl->SessionByPipeServer.erase(updateResult.StalePipeServer);
     }
-    TrackSessionByPipeServer(pipeServer, session);
+    // If the subsession we just added is itself the one that got evicted
+    // (e.g. its seqNo is the lowest among the surviving ones), pipeServer
+    // is both new and stale at once.
+    if (updateResult.StalePipeServer != pipeServer) {
+        TrackSessionByPipeServer(pipeServer, session);
+    }
 
     session->InactivityDeadline = {};
     session->Unlink();
@@ -267,12 +272,12 @@ NActors::TActorId TIndexTabletState::RecoverSession(
         session->GetSessionId().c_str(),
         owner.ToString().c_str(),
         pipeServer.ToString().c_str(),
-        updateResult.StalePipeServer.value_or(TActorId()).ToString().c_str(),
-        updateResult.StaleOwner.value_or(TActorId()).ToString().c_str());
+        updateResult.StalePipeServer.ToString().c_str(),
+        updateResult.StaleOwner.ToString().c_str());
 
     session->SetRecoveryTimestampUs(Now().MicroSeconds());
 
-    return updateResult.StaleOwner.value_or(TActorId());
+    return updateResult.StaleOwner;
 }
 
 TSession* TIndexTabletState::FindSession(const TString& sessionId) const

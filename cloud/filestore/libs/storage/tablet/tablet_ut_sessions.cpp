@@ -1920,15 +1920,15 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             UNIT_ASSERT_VALUES_EQUAL(session.GetIsOrphan(), true);
         }
 
-        // Cleanup runs periodically every IdleSessionTimeout since boot,
-        // independent of when this session was disconnected. In the worst
-        // case, disconnect happens right after a cleanup run, so that same
-        // run is already too early for the deadline and the session
-        // survives it - only the next run is guaranteed to be late enough.
-        // So we need to wait for at least 2 cleanup runs.
-        env.GetRuntime().DispatchEvents(
-            {},
-            2 * IdleSessionTimeout + TDuration::Seconds(1));
+        // Advance past the session's inactivity deadline and force the
+        // cleanup tick directly, instead of waiting for however many of
+        // its natural periodic runs land late enough.
+        env.GetRuntime().AdvanceCurrentTime(
+            IdleSessionTimeout + TDuration::Seconds(1));
+        tablet.SendRequest(
+            std::make_unique<
+                TEvIndexTabletPrivate::TEvCleanupSessionsRequest>());
+        env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
 
         UNIT_ASSERT_C(destroyedAt.Defined(), "session was never auto-destroyed");
         UNIT_ASSERT_C(
@@ -2068,6 +2068,84 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         UNIT_ASSERT_C(
             actor->FindSessionByPipeServer(pipeServerD) == nullptr,
             "pipeServerD entry left dangling by RemoveSession's own cleanup");
+    }
+
+    Y_UNIT_TEST(ShouldNotLeaveDanglingPipeServerEntryWhenNewSubSessionSelfEvicts)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        // BootIndexTablet doesn't expose the actor's TActorId - catch it.
+        NActors::TActorId tabletActorId;
+        env.GetRuntime().SetRegistrationObserverFunc(
+            [&](auto& runtime,
+                const NActors::TActorId& parentId,
+                const NActors::TActorId& actorId)
+            {
+                Y_UNUSED(parentId);
+                if (dynamic_cast<TIndexTabletActor*>(
+                        runtime.FindActor(actorId))) {
+                    tabletActorId = actorId;
+                }
+            });
+
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        // ev->Recipient is the pipe server's TActorId for the mount with
+        // the lowest seqNo (5) - the one that will evict itself.
+        NActors::TActorId pipeServerForLowSeqNo;
+        env.GetRuntime().SetObserverFunc(
+            [&](TAutoPtr<NActors::IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvIndexTablet::EvCreateSessionRequest)
+                {
+                    const auto& record =
+                        event->Get<TEvIndexTablet::TEvCreateSessionRequest>()
+                            ->Record;
+                    if (record.GetMountSeqNumber() == 5) {
+                        pipeServerForLowSeqNo = event->Recipient;
+                    }
+                }
+                return NKikimr::TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Two subsessions already mounted - MaxSubSessions (2) is reached.
+        TIndexTabletClient tablet1(env.GetRuntime(), nodeIdx, tabletId);
+        tablet1.InitSession("client", "session", {}, 10, true /* readOnly */);
+
+        TIndexTabletClient tablet2(env.GetRuntime(), nodeIdx, tabletId);
+        tablet2.InitSession("client", "session", {}, 20, true /* readOnly */);
+
+        // A third mount with a seqNo lower than both existing ones: adding
+        // it pushes SubSessions over MaxSubSessions, and the eviction
+        // picks the lowest SeqNo - which is the one just added. The server
+        // rejects the mount itself as "too old", but the pipe server
+        // tracking for it must not be left behind.
+        TIndexTabletClient tablet3(env.GetRuntime(), nodeIdx, tabletId);
+        tablet3.AssertCreateSessionFailed(
+            "client",
+            "session",
+            TString(),
+            5,
+            true /* readOnly */);
+
+        env.GetRuntime().SetObserverFunc(
+            NKikimr::TTestActorRuntime::DefaultObserverFunc);
+
+        UNIT_ASSERT_C(
+            pipeServerForLowSeqNo,
+            "CreateSessionRequest for seqNo=5 not observed");
+
+        auto* actor = dynamic_cast<TIndexTabletActor*>(
+            env.GetRuntime().FindActor(tabletActorId));
+        UNIT_ASSERT_C(actor, "tablet actor not found");
+
+        UNIT_ASSERT_C(
+            actor->FindSessionByPipeServer(pipeServerForLowSeqNo) == nullptr,
+            "dangling SessionByPipeServer entry left for the self-evicted "
+            "pipe");
     }
 }
 
