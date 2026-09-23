@@ -432,6 +432,12 @@ func (s *compoundStorage) SendEvent(
 	return err
 }
 
+func (s *compoundStorage) ReconcileReadyToRunDelayed(ctx context.Context, limit int) error {
+	return s.visit(ctx, func(storage Storage) error {
+		return storage.ReconcileReadyToRunDelayed(ctx, limit)
+	})
+}
+
 func (s *compoundStorage) ClearEndedTasks(
 	ctx context.Context,
 	endedBefore time.Time,

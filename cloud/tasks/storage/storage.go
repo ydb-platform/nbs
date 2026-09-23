@@ -344,6 +344,9 @@ type Storage interface {
 	SendEvent(ctx context.Context, taskID string, event int64) error
 
 	// Used for garbage collecting of ended and outdated tasks.
+	// Reconcile the delayed queue with tasks, scanning at most limit rows per transaction.
+	ReconcileReadyToRunDelayed(ctx context.Context, limit int) error
+
 	ClearEndedTasks(ctx context.Context, endedBefore time.Time, limit int) error
 
 	// NOTE: used for SRE operations only.

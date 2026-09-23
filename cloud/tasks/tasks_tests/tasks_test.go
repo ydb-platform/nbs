@@ -2459,3 +2459,118 @@ func TestDelayedTaskSurvivesSchedulerRestart(t *testing.T) {
 	require.True(t, before.AvailableAt.Equal(after.AvailableAt))
 	require.False(t, after.FirstRunStartedAt.Before(before.AvailableAt))
 }
+
+// The task remains active until the test cancels its context, avoiding elapsed
+// wall-clock waits for hanging detection and exercising the actual runner path.
+type hangingTimeoutProbeTask struct {
+	reported chan bool
+}
+
+func (t *hangingTimeoutProbeTask) Save() ([]byte, error)  { return nil, nil }
+func (t *hangingTimeoutProbeTask) Load(_, _ []byte) error { return nil }
+func (t *hangingTimeoutProbeTask) GetMetadata(context.Context) (proto.Message, error) {
+	return &empty.Empty{}, nil
+}
+func (t *hangingTimeoutProbeTask) GetResponse() proto.Message { return &empty.Empty{} }
+func (t *hangingTimeoutProbeTask) Run(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	select {
+	case t.reported <- execCtx.IsHanging():
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	<-ctx.Done()
+	return ctx.Err()
+}
+func (t *hangingTimeoutProbeTask) Cancel(ctx context.Context, execCtx tasks.ExecutionContext) error {
+	return t.Run(ctx, execCtx)
+}
+
+func TestRunnersUseHangingTimeoutByType(t *testing.T) {
+	for _, status := range []tasks_storage.TaskStatus{
+		tasks_storage.TaskStatusReadyToRun,
+		tasks_storage.TaskStatusReadyToCancel,
+		tasks_storage.TaskStatusRunning,
+		tasks_storage.TaskStatusCancelling,
+	} {
+		t.Run(tasks_storage.TaskStatusToString(status), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(newContext())
+			db := newYDB(ctx, t)
+			defer db.Close(context.Background())
+			defer cancel()
+			cfg := newDefaultConfig()
+			cfg.RegularSystemTasksEnabled = proto.Bool(false)
+			cfg.RunnersCount = proto.Uint64(1)
+			cfg.StalkingRunnersCount = proto.Uint64(0)
+			if status == tasks_storage.TaskStatusRunning || status == tasks_storage.TaskStatusCancelling {
+				cfg.RunnersCount = proto.Uint64(0)
+				cfg.StalkingRunnersCount = proto.Uint64(1)
+			}
+			cfg.HangingTaskTimeout = proto.String("1h")
+			cfg.HangingTaskTimeoutByType = map[string]string{"probe": "15m"}
+			s := createServicesWithConfig(t, ctx, db, cfg, metrics_empty.NewRegistry())
+			reported := make(chan bool, 1)
+			require.NoError(t, s.registry.RegisterForExecution("probe", func() tasks.Task {
+				return &hangingTimeoutProbeTask{reported: reported}
+			}))
+			_, err := s.storage.CreateTask(ctx, tasks_storage.TaskState{
+				IdempotencyKey: "probe",
+				TaskType:       "probe",
+				Status:         status,
+				CreatedAt:      time.Now().Add(-30 * time.Minute),
+				ModifiedAt:     time.Now().Add(-time.Minute),
+				LastHost:       "previous-host",
+				Dependencies:   common.NewStringSet(),
+			})
+			require.NoError(t, err)
+			require.NoError(t, s.startRunners(ctx))
+			select {
+			case hanging := <-reported:
+				require.True(t, hanging)
+			case <-time.After(10 * time.Second):
+				t.Fatal("runner did not execute probe task")
+			}
+		})
+	}
+}
+
+func TestClearEndedTasksReconcilesOrphanedDelayedQueue(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	db := newYDB(ctx, t)
+	defer db.Close(context.Background())
+	defer cancel()
+	cfg := newDefaultConfig()
+	cfg.RunnersCount = proto.Uint64(1)
+	cfg.StalkingRunnersCount = proto.Uint64(1)
+	cfg.ClearEndedTasksTaskScheduleInterval = proto.String("100ms")
+	cfg.ClearEndedTasksLimit = proto.Uint64(1)
+	s := createServicesWithConfig(t, ctx, db, cfg, metrics_empty.NewRegistry())
+	res, err := db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $at as Timestamp;
+		UPSERT INTO ready_to_run_delayed (available_at, id, generation_id, task_type, zone_id)
+		VALUES ($at, 'orphan', 0u, 'unregistered', '');
+	`, db.AbsolutePath(cfg.GetStorageFolder())),
+		persistence.ValueParam("$at", persistence.TimestampValue(time.Now().Add(time.Hour))),
+	)
+	require.NoError(t, err)
+	res.Close()
+	require.NoError(t, s.startRunners(ctx))
+	require.Eventually(t, func() bool {
+		res, err := db.ExecuteRO(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			SELECT COUNT(*) AS count FROM ready_to_run_delayed;
+		`, db.AbsolutePath(cfg.GetStorageFolder())))
+		if err != nil {
+			return false
+		}
+		defer res.Close()
+		if !res.NextResultSet(ctx) || !res.NextRow() {
+			return false
+		}
+		var count uint64
+		return res.ScanNamed(persistence.OptionalWithDefault("count", &count)) == nil &&
+			res.Err() == nil && count == 0
+	}, 10*time.Second, 100*time.Millisecond)
+}

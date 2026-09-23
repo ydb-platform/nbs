@@ -231,6 +231,10 @@ func (s *StorageMock) SendEvent(
 	return args.Error(0)
 }
 
+func (s *StorageMock) ReconcileReadyToRunDelayed(ctx context.Context, limit int) error {
+	return s.Called(ctx, limit).Error(0)
+}
+
 func (s *StorageMock) ClearEndedTasks(
 	ctx context.Context,
 	endedBefore time.Time,

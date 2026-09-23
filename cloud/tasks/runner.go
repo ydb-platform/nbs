@@ -84,6 +84,7 @@ type runnerForRun struct {
 	maxPanicCount                    uint64
 
 	hangingTaskTimeout                          time.Duration
+	hangingTaskTimeoutByType                    map[string]time.Duration
 	inflightHangingTaskTimeout                  time.Duration
 	stallingHangingTaskTimeout                  time.Duration
 	missedEstimatesUntilTaskIsHanging           uint64
@@ -346,6 +347,7 @@ func (r *runnerForRun) lockAndExecuteTask(
 		r,
 		taskInfo,
 		r.hangingTaskTimeout,
+		r.hangingTaskTimeoutByType,
 		r.inflightHangingTaskTimeout,
 		r.stallingHangingTaskTimeout,
 		r.missedEstimatesUntilTaskIsHanging,
@@ -368,6 +370,7 @@ type runnerForCancel struct {
 	id          string
 
 	hangingTaskTimeout                          time.Duration
+	hangingTaskTimeoutByType                    map[string]time.Duration
 	inflightHangingTaskTimeout                  time.Duration
 	stallingHangingTaskTimeout                  time.Duration
 	missedEstimatesUntilTaskIsHanging           uint64
@@ -504,6 +507,7 @@ func (r *runnerForCancel) lockAndExecuteTask(
 		r,
 		taskInfo,
 		r.hangingTaskTimeout,
+		r.hangingTaskTimeoutByType,
 		r.inflightHangingTaskTimeout,
 		r.stallingHangingTaskTimeout,
 		r.missedEstimatesUntilTaskIsHanging,
@@ -576,6 +580,7 @@ func lockAndExecuteTask(
 	runner runner,
 	taskInfo storage.TaskInfo,
 	hangingTaskTimeout time.Duration,
+	hangingTaskTimeoutByType map[string]time.Duration,
 	inflightHangingTaskTimeout time.Duration,
 	stallingHangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
@@ -646,6 +651,10 @@ func lockAndExecuteTask(
 		),
 	)
 	defer span.End()
+
+	if timeout, ok := hangingTaskTimeoutByType[taskState.TaskType]; ok {
+		hangingTaskTimeout = timeout
+	}
 
 	execCtx := newExecutionContext(
 		task,
@@ -734,6 +743,7 @@ func startRunner(
 	pingPeriod time.Duration,
 	pingTimeout time.Duration,
 	hangingTaskTimeout time.Duration,
+	hangingTaskTimeoutByType map[string]time.Duration,
 	inflightHangingTaskTimeout time.Duration,
 	stallingHangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
@@ -771,6 +781,7 @@ func startRunner(
 		maxPanicCount:                    maxPanicCount,
 
 		hangingTaskTimeout:                          hangingTaskTimeout,
+		hangingTaskTimeoutByType:                    hangingTaskTimeoutByType,
 		inflightHangingTaskTimeout:                  inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout:                  stallingHangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging:           missedEstimatesUntilTaskIsHanging,
@@ -796,6 +807,7 @@ func startRunner(
 		id:          idForCancel,
 
 		hangingTaskTimeout:                          hangingTaskTimeout,
+		hangingTaskTimeoutByType:                    hangingTaskTimeoutByType,
 		inflightHangingTaskTimeout:                  inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout:                  stallingHangingTaskTimeout,
 		missedEstimatesUntilTaskIsHanging:           missedEstimatesUntilTaskIsHanging,
@@ -818,6 +830,7 @@ func startRunners(
 	pingPeriod time.Duration,
 	pingTimeout time.Duration,
 	hangingTaskTimeout time.Duration,
+	hangingTaskTimeoutByType map[string]time.Duration,
 	inflightHangingTaskTimeout time.Duration,
 	stallingHangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
@@ -842,6 +855,7 @@ func startRunners(
 			pingPeriod,
 			pingTimeout,
 			hangingTaskTimeout,
+			hangingTaskTimeoutByType,
 			inflightHangingTaskTimeout,
 			stallingHangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging,
@@ -875,6 +889,7 @@ func startStalkingRunners(
 	pingPeriod time.Duration,
 	pingTimeout time.Duration,
 	hangingTaskTimeout time.Duration,
+	hangingTaskTimeoutByType map[string]time.Duration,
 	inflightHangingTaskTimeout time.Duration,
 	stallingHangingTaskTimeout time.Duration,
 	missedEstimatesUntilTaskIsHanging uint64,
@@ -899,6 +914,7 @@ func startStalkingRunners(
 			pingPeriod,
 			pingTimeout,
 			hangingTaskTimeout,
+			hangingTaskTimeoutByType,
 			inflightHangingTaskTimeout,
 			stallingHangingTaskTimeout,
 			missedEstimatesUntilTaskIsHanging,
@@ -956,13 +972,13 @@ func startHeartbeats(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func parseEstimatedDurationOverrides(overrides map[string]string) (map[string]time.Duration, error) {
+func parseDurationOverrides(overrides map[string]string) (map[string]time.Duration, error) {
 	parsedOverrides := make(map[string]time.Duration, len(overrides))
 
 	for taskType, durationStr := range overrides {
 		duration, err := time.ParseDuration(durationStr)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("task type %q: %w", taskType, err)
 		}
 
 		parsedOverrides[taskType] = duration
@@ -1029,6 +1045,11 @@ func StartRunners(
 		return err
 	}
 
+	hangingTaskTimeoutByType, err := parseDurationOverrides(config.GetHangingTaskTimeoutByType())
+	if err != nil {
+		return fmt.Errorf("invalid HangingTaskTimeoutByType: %w", err)
+	}
+
 	inflightHangingTaskTimeout, err := time.ParseDuration(config.GetInflightHangingTaskTimeout())
 	if err != nil {
 		return err
@@ -1039,14 +1060,14 @@ func StartRunners(
 		return err
 	}
 
-	estimatedInflightDurationOverrideByTaskType, err := parseEstimatedDurationOverrides(
+	estimatedInflightDurationOverrideByTaskType, err := parseDurationOverrides(
 		config.GetEstimatedInflightDurationOverrideByTaskType(),
 	)
 	if err != nil {
 		return err
 	}
 
-	estimatedStallingDurationOverrideByTaskType, err := parseEstimatedDurationOverrides(
+	estimatedStallingDurationOverrideByTaskType, err := parseDurationOverrides(
 		config.GetEstimatedStallingDurationOverrideByTaskType(),
 	)
 	if err != nil {
@@ -1099,6 +1120,7 @@ func StartRunners(
 		pingPeriod,
 		pingTimeout,
 		hangingTaskTimeout,
+		hangingTaskTimeoutByType,
 		inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout,
 		config.GetMissedEstimatesUntilTaskIsHanging(),
@@ -1159,6 +1181,7 @@ func StartRunners(
 		pingPeriod,
 		pingTimeout,
 		hangingTaskTimeout,
+		hangingTaskTimeoutByType,
 		inflightHangingTaskTimeout,
 		stallingHangingTaskTimeout,
 		config.GetMissedEstimatesUntilTaskIsHanging(),

@@ -5895,3 +5895,290 @@ func TestStorageYDBDelayedLegacyStats(t *testing.T) {
 	require.Equal(t, 2.0, stats.MaxOverdueSeconds)
 	require.Equal(t, 3.0, stats.TotalOverdueSeconds)
 }
+
+// legacyCancelDelayedTask reproduces a pre-delayed-queue writer for a task
+// without dependencies. It updates only the old tables, preserving the new
+// timestamp columns and deliberately leaving ready_to_run_delayed untouched.
+func legacyCancelDelayedTask(t *testing.T, ctx context.Context, s *storageYDB, id string) {
+	t.Helper()
+	res, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+		declare $at as Timestamp;
+		declare $status as Int64;
+		$task = SELECT * FROM tasks WHERE id = $id;
+		UPSERT INTO tasks
+		SELECT id, generation_id + 1u AS generation_id, $status AS status,
+			$at AS modified_at, $at AS changed_state_at FROM $task;
+		DELETE FROM ready_to_run WHERE id = $id;
+		UPSERT INTO ready_to_cancel
+		SELECT id, generation_id + 1u AS generation_id, task_type, zone_id FROM $task;
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(id)),
+		persistence.ValueParam("$at", persistence.TimestampValue(time.Now())),
+		persistence.ValueParam("$status", persistence.Int64Value(int64(TaskStatusReadyToCancel))),
+	)
+	require.NoError(t, err)
+	res.Close()
+}
+
+func delayedQueueRowCount(t *testing.T, ctx context.Context, s *storageYDB) uint64 {
+	t.Helper()
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		SELECT COUNT(*) AS count FROM ready_to_run_delayed;
+	`, s.tablesPath))
+	require.NoError(t, err)
+	defer res.Close()
+	require.True(t, res.NextResultSet(ctx))
+	require.True(t, res.NextRow())
+	var count uint64
+	require.NoError(t, res.ScanNamed(persistence.OptionalWithDefault("count", &count)))
+	require.NoError(t, res.Err())
+	return count
+}
+
+func newDelayedQueueTestStorage(t *testing.T) (context.Context, *storageYDB) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(newContext())
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { cancel(); db.Close(context.Background()) })
+	s, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{}, empty.NewRegistry())
+	require.NoError(t, err)
+	return ctx, s.(*storageYDB)
+}
+
+func createDelayedQueueTestTask(t *testing.T, ctx context.Context, s Storage, key string, at time.Time) string {
+	t.Helper()
+	id, err := s.CreateTask(ctx, TaskState{
+		IdempotencyKey: key,
+		TaskType:       "test",
+		Status:         TaskStatusReadyToRun,
+		CreatedAt:      time.Now(),
+		ModifiedAt:     time.Now(),
+		AvailableAt:    at,
+		Dependencies:   common.NewStringSet(),
+	})
+	require.NoError(t, err)
+	return id
+}
+
+func TestStorageYDBDelayedQueueLegacyCancellation(t *testing.T) {
+	for _, reconcile := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reconcile=%v", reconcile), func(t *testing.T) {
+			ctx, s := newDelayedQueueTestStorage(t)
+			id := createDelayedQueueTestTask(t, ctx, s, "old-cancel", time.Now().Add(time.Hour))
+			legacyCancelDelayedTask(t, ctx, s, id)
+			require.Equal(t, uint64(1), delayedQueueRowCount(t, ctx, s))
+			stats, err := s.GetDelayedTaskStats(ctx, time.Now().Add(2*time.Hour))
+			require.NoError(t, err)
+			require.Equal(t, DelayedTaskStats{}, stats)
+			if reconcile {
+				require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 1))
+			} else {
+				// Repeating cancellation returns early. The next state transition
+				// must remove the stale entry despite lastState being ReadyToCancel.
+				_, err = s.MarkForCancellation(ctx, id, time.Now())
+				require.NoError(t, err)
+				infos, err := s.ListTasksReadyToCancel(ctx, 10, nil)
+				require.NoError(t, err)
+				require.Len(t, infos, 1)
+				_, err = s.LockTaskToCancel(ctx, infos[0], time.Now(), "host", "runner")
+				require.NoError(t, err)
+			}
+			require.Zero(t, delayedQueueRowCount(t, ctx, s))
+			require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 1))
+		})
+	}
+}
+
+func TestStorageYDBDelayedQueueStaleRowsDoNotConsumeLimit(t *testing.T) {
+	ctx, s := newDelayedQueueTestStorage(t)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	for i := 0; i < 4; i++ {
+		id := createDelayedQueueTestTask(t, ctx, s, fmt.Sprint(i), now.Add(-time.Hour))
+		legacyCancelDelayedTask(t, ctx, s, id)
+	}
+	id := createDelayedQueueTestTask(t, ctx, s, "live", now.Add(-time.Minute))
+	for i := 0; i < 2; i++ {
+		infos, err := s.ListTasksReadyToRun(ctx, 1, nil)
+		require.NoError(t, err)
+		require.Len(t, infos, 1)
+		require.Equal(t, id, infos[0].ID)
+	}
+	stats, err := s.GetDelayedTaskStats(ctx, now)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), stats.Total)
+	require.Equal(t, uint64(1), stats.Due)
+	require.InDelta(t, 60, stats.MaxOverdueSeconds, 0.001)
+	require.InDelta(t, 60, stats.TotalOverdueSeconds, 0.001)
+	require.Equal(t, uint64(5), delayedQueueRowCount(t, ctx, s))
+}
+
+func TestStorageYDBDelayedQueueReconciliation(t *testing.T) {
+	ctx, s := newDelayedQueueTestStorage(t)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	// A consistent first row must not prevent the cursor reaching later rows.
+	dueID := createDelayedQueueTestTask(t, ctx, s, "due", now.Add(-2*time.Hour))
+	futureID := createDelayedQueueTestTask(t, ctx, s, "future", now.Add(2*time.Hour))
+	var repairedIDs []string
+	for _, tc := range []struct {
+		name       string
+		assignment string
+		keep       bool
+	}{
+		{"cancelled", "status = 7", false},
+		{"finished", "status = 3", false},
+		{"running", "status = 2", false},
+		{"waiting", "status = 1", false},
+		{"started", "first_run_started_at = available_at", false},
+		{"generation", "generation_id = generation_id + 1u", true},
+		{"type", "task_type = Utf8('updated')", true},
+		{"zone", "zone_id = Utf8('another-zone')", true},
+		{"earlier-key", "available_at = available_at - Interval('PT2H')", true},
+		{"later-key", "available_at = available_at + Interval('PT2H')", true},
+		{"missing", "", false},
+	} {
+		id := createDelayedQueueTestTask(t, ctx, s, tc.name, now.Add(time.Hour))
+		query := "UPDATE tasks SET " + tc.assignment + " WHERE id = $id;"
+		if tc.name == "missing" {
+			query = "DELETE FROM tasks WHERE id = $id;"
+		}
+		res, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $id as Utf8;
+			%s
+		`, s.tablesPath, query), persistence.ValueParam("$id", persistence.UTF8Value(id)))
+		require.NoError(t, err)
+		res.Close()
+		if tc.keep {
+			repairedIDs = append(repairedIDs, id)
+		}
+	}
+	require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 1))
+	require.Equal(t, uint64(2+len(repairedIDs)), delayedQueueRowCount(t, ctx, s))
+	stats, err := s.GetDelayedTaskStats(ctx, now)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2+len(repairedIDs)), stats.Total)
+	// Every retained row must match the authoritative task, including keys,
+	// generations, type and zone; the stats predicate checks all of these.
+	require.Equal(t, uint64(2), stats.Due)
+	require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 2))
+	require.Equal(t, stats.Total, delayedQueueRowCount(t, ctx, s))
+	future, err := s.GetTask(ctx, futureID)
+	require.NoError(t, err)
+	_, err = s.LockTaskToRun(ctx, TaskInfo{ID: futureID, TaskType: "test"}, now, "host", "runner")
+	require.Error(t, err)
+	require.True(t, future.FirstRunStartedAt.IsZero())
+	_, err = s.LockTaskToRun(ctx, TaskInfo{ID: dueID, TaskType: "test"}, now, "host", "runner")
+	require.NoError(t, err)
+	require.Error(t, s.ReconcileReadyToRunDelayed(ctx, 0))
+	require.Error(t, s.ReconcileReadyToRunDelayed(ctx, -1))
+}
+
+func TestStorageYDBDelayedQueueReconciliationConcurrentTransition(t *testing.T) {
+	for _, cancel := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cancel=%v", cancel), func(t *testing.T) {
+			ctx, s := newDelayedQueueTestStorage(t)
+			for i := 0; i < 10; i++ {
+				id := createDelayedQueueTestTask(t, ctx, s, fmt.Sprint(i), time.Now().Add(-time.Minute))
+				start := make(chan struct{})
+				done := make(chan error, 1)
+				go func() {
+					<-start
+					done <- s.ReconcileReadyToRunDelayed(ctx, 1)
+				}()
+				close(start)
+				if cancel {
+					_, err := s.MarkForCancellation(ctx, id, time.Now())
+					require.NoError(t, err)
+				} else {
+					_, err := s.LockTaskToRun(ctx, TaskInfo{ID: id, TaskType: "test"}, time.Now(), "host", "runner")
+					require.NoError(t, err)
+				}
+				require.NoError(t, <-done)
+				require.Zero(t, delayedQueueRowCount(t, ctx, s))
+			}
+		})
+	}
+}
+
+func TestStorageYDBDelayedQueueReconcileLegacyStorage(t *testing.T) {
+	ctx := newContext()
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+	legacyFolder := "legacy/" + t.Name()
+	s, err := newStorage(t, ctx, db, &tasks_config.TasksConfig{LegacyStorageFolder: &legacyFolder}, empty.NewRegistry())
+	require.NoError(t, err)
+	compound := s.(*compoundStorage)
+	for _, part := range []Storage{compound.storage, compound.legacyStorage} {
+		id := createDelayedQueueTestTask(t, ctx, part, "old-cancel", time.Now().Add(time.Hour))
+		legacyCancelDelayedTask(t, ctx, part.(*storageYDB), id)
+	}
+	require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 1))
+	for _, part := range []Storage{compound.storage, compound.legacyStorage} {
+		require.Zero(t, delayedQueueRowCount(t, ctx, part.(*storageYDB)))
+	}
+}
+
+func TestStorageYDBClearEndedTasksRemovesDelayedEntry(t *testing.T) {
+	ctx, s := newDelayedQueueTestStorage(t)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	id := createDelayedQueueTestTask(t, ctx, s, "ended", now.Add(time.Hour))
+	legacyCancelDelayedTask(t, ctx, s, id)
+	// Finish as an old writer would, without updating the delayed queue.
+	res, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+		declare $at as Timestamp;
+		UPDATE tasks SET status = 7, ended_at = $at WHERE id = $id;
+		DELETE FROM ready_to_cancel WHERE id = $id;
+		UPSERT INTO ended SELECT $at AS ended_at, id, idempotency_key, account_id
+			FROM tasks WHERE id = $id;
+	`, s.tablesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(id)),
+		persistence.ValueParam("$at", persistence.TimestampValue(now)),
+	)
+	require.NoError(t, err)
+	res.Close()
+	require.NoError(t, s.ClearEndedTasks(ctx, now.Add(time.Second), 1))
+	require.Zero(t, delayedQueueRowCount(t, ctx, s))
+	_, err = s.GetTask(ctx, id)
+	require.ErrorIs(t, err, errors.NewNotFoundErrorWithTaskID(id))
+}
+
+func TestStorageYDBDelayedQueueReconcileDuplicateKeys(t *testing.T) {
+	ctx, s := newDelayedQueueTestStorage(t)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	id := createDelayedQueueTestTask(t, ctx, s, "duplicate-keys", now.Add(time.Hour))
+	for _, offset := range []time.Duration{2 * time.Hour, 3 * time.Hour} {
+		res, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $id as Utf8;
+			declare $at as Timestamp;
+			UPSERT INTO ready_to_run_delayed
+			SELECT $at AS available_at, id, generation_id, task_type, zone_id
+			FROM tasks WHERE id = $id;
+		`, s.tablesPath),
+			persistence.ValueParam("$id", persistence.UTF8Value(id)),
+			persistence.ValueParam("$at", persistence.TimestampValue(now.Add(offset))),
+		)
+		require.NoError(t, err)
+		res.Close()
+	}
+	require.Equal(t, uint64(3), delayedQueueRowCount(t, ctx, s))
+	// Both stale keys restore the same canonical row in one transaction.
+	require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 10))
+	require.Equal(t, uint64(1), delayedQueueRowCount(t, ctx, s))
+	stats, err := s.GetDelayedTaskStats(ctx, now)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), stats.Total)
+	require.Zero(t, stats.Due)
+}

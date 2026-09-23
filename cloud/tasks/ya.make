@@ -17,6 +17,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    clear_ended_tasks_task_test.go
     delayed_metrics_test.go
     runner_test.go
     scheduler_test.go

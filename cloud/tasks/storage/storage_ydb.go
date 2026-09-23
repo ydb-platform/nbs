@@ -543,6 +543,15 @@ func (s *storageYDB) SendEvent(
 	return err
 }
 
+func (s *storageYDB) ReconcileReadyToRunDelayed(ctx context.Context, limit int) error {
+	if limit <= 0 {
+		return errors.NewNonRetriableErrorf("delayed queue reconciliation limit must be positive")
+	}
+	return s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+		return s.reconcileReadyToRunDelayed(ctx, session, limit)
+	})
+}
+
 func (s *storageYDB) ClearEndedTasks(
 	ctx context.Context,
 	endedBefore time.Time,

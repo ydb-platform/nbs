@@ -183,7 +183,16 @@ func (s *storageYDB) updateReadyToExecute(
 		keyChanged := delayed && wasInQueue && isInQueue &&
 			!t.lastState.AvailableAt.Equal(t.newState.AvailableAt)
 
-		if wasInQueue && (!isInQueue || keyChanged) {
+		removeOldKey := wasInQueue && (!isInQueue || keyChanged)
+		if delayed {
+			// An older writer may already have changed the status without
+			// removing the delayed entry. Clean up its known key regardless
+			// of whether lastState still belongs to this queue.
+			removeOldKey = t.lastState != nil &&
+				!t.lastState.AvailableAt.IsZero() &&
+				(!isInQueue || !t.lastState.AvailableAt.Equal(t.newState.AvailableAt))
+		}
+		if removeOldKey {
 			if delayed {
 				keysToDelete = append(keysToDelete, persistence.StructValue(
 					persistence.StructFieldValue(
@@ -989,6 +998,20 @@ func (s *storageYDB) listTasks(
 	return scanTaskInfosStream(ctx, res)
 }
 
+// Listing, metrics and reconciliation share this predicate so stale entries
+// cannot occupy listing slots or contribute to delayed-task metrics.
+// LockTaskToRun still checks the generation to handle races after listing.
+const currentDelayedTaskPredicate = `
+	t.id IS NOT NULL AND
+	t.status = $ready_to_run AND
+	t.available_at IS NOT NULL AND
+	t.first_run_started_at IS NULL AND
+	d.available_at = t.available_at AND
+	d.generation_id = t.generation_id AND
+	d.task_type = t.task_type AND
+	COALESCE(d.zone_id, "") = COALESCE(t.zone_id, "")
+`
+
 func (s *storageYDB) listTasksReadyToRunDelayed(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1008,20 +1031,24 @@ func (s *storageYDB) listTasksReadyToRunDelayed(
 
 		declare $limit as Uint64;
 		declare $now as Timestamp;
+		declare $ready_to_run as Int64;
 		declare $type_white_list as List<Utf8>;
 		declare $zone_ids as List<Utf8>;
 
-		select *
-		from ready_to_run_delayed
+		select d.*
+		from ready_to_run_delayed AS d
+		inner join tasks AS t ON d.id = t.id
 		where
-			available_at <= $now and
-			(ListLength($type_white_list) == 0 or task_type in $type_white_list) and
-			(Len(zone_id) == 0 or zone_id in $zone_ids)
+			(%s) and
+			d.available_at <= $now and
+			(ListLength($type_white_list) == 0 or d.task_type in $type_white_list) and
+			(Len(d.zone_id) == 0 or d.zone_id in $zone_ids)
 		order by available_at, id
 		limit $limit
-	`, s.tablesPath),
+	`, s.tablesPath, currentDelayedTaskPredicate),
 		persistence.ValueParam("$limit", persistence.Uint64Value(limit)),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
+		persistence.ValueParam("$ready_to_run", persistence.Int64Value(int64(TaskStatusReadyToRun))),
 		persistence.ValueParam("$type_white_list", strListValue(taskTypeWhitelist)),
 		persistence.ValueParam("$zone_ids", strListValue(s.ZoneIDs)),
 	)
@@ -1297,12 +1324,15 @@ func (s *storageYDB) getDelayedTaskStats(
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $now as Timestamp;
+		declare $ready_to_run as Int64;
 
 		$ages = (
 			select
-				available_at <= $now as due,
-				CAST(CAST($now AS Int64) - CAST(available_at AS Int64) AS DOUBLE) / 1000000.0 as age
-			from ready_to_run_delayed
+				d.available_at <= $now as due,
+				CAST(CAST($now AS Int64) - CAST(d.available_at AS Int64) AS DOUBLE) / 1000000.0 as age
+			from ready_to_run_delayed AS d
+			inner join tasks AS t ON d.id = t.id
+			where %s
 		);
 
 		select
@@ -1311,8 +1341,9 @@ func (s *storageYDB) getDelayedTaskStats(
 			COALESCE(MAX(IF(due, age, 0.0)), 0.0) as max_age,
 			COALESCE(SUM(IF(due, age, 0.0)), 0.0) as total_age
 		from $ages;
-	`, s.tablesPath),
+	`, s.tablesPath, currentDelayedTaskPredicate),
 		persistence.ValueParam("$now", persistence.TimestampValue(now)),
+		persistence.ValueParam("$ready_to_run", persistence.Int64Value(int64(TaskStatusReadyToRun))),
 	)
 	if err != nil {
 		return DelayedTaskStats{}, err
@@ -1338,6 +1369,125 @@ func (s *storageYDB) getDelayedTaskStats(
 	}
 
 	return stats, res.Err()
+}
+
+type delayedQueueKey struct {
+	availableAt time.Time
+	id          string
+}
+
+func scanDelayedQueueKey(ctx context.Context, res persistence.Result) (delayedQueueKey, bool, error) {
+	var key delayedQueueKey
+	found := false
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			if err := res.ScanNamed(
+				persistence.OptionalWithDefault("available_at", &key.availableAt),
+				persistence.OptionalWithDefault("id", &key.id),
+			); err != nil {
+				return key, false, err
+			}
+			found = true
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return key, false, err
+	}
+	return key, found, res.Err()
+}
+
+func (s *storageYDB) reconcileReadyToRunDelayed(
+	ctx context.Context,
+	session *persistence.Session,
+	limit int,
+) error {
+
+	// Bound the pass so newly appended tasks cannot keep it running forever.
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		select available_at, id from ready_to_run_delayed
+		order by available_at desc, id desc limit 1;
+	`, s.tablesPath))
+	if err != nil {
+		return err
+	}
+	upper, found, err := scanDelayedQueueKey(ctx, res)
+	res.Close()
+	if err != nil || !found {
+		return err
+	}
+
+	after := delayedQueueKey{availableAt: time.Unix(0, 0)}
+	hasCursor := false
+	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		// Reading tasks and repairing their queue entries must be atomic with
+		// concurrent locks, cancellations and other state transitions.
+		res, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $limit as Uint64;
+			declare $ready_to_run as Int64;
+			declare $has_cursor as Bool;
+			declare $after_available_at as Timestamp;
+			declare $after_id as Utf8;
+			declare $upper_available_at as Timestamp;
+			declare $upper_id as Utf8;
+
+			$batch = (
+				select * from ready_to_run_delayed
+				where
+					(NOT $has_cursor OR available_at > $after_available_at OR
+						(available_at = $after_available_at AND id > $after_id)) AND
+					(available_at < $upper_available_at OR
+						(available_at = $upper_available_at AND id <= $upper_id))
+				order by available_at, id limit $limit
+			);
+
+			$obsolete = (
+				select d.available_at AS available_at, d.id AS id
+				from $batch AS d left join tasks AS t ON d.id = t.id
+				where NOT COALESCE((%s), false)
+			);
+
+			$replacements = (
+				select distinct t.available_at AS available_at, t.id AS id,
+					t.generation_id AS generation_id, t.task_type AS task_type,
+					t.zone_id AS zone_id
+				from $batch AS d inner join tasks AS t ON d.id = t.id
+				where t.status = $ready_to_run AND t.available_at IS NOT NULL AND
+					t.first_run_started_at IS NULL AND
+					NOT COALESCE((%s), false)
+			);
+
+			delete from ready_to_run_delayed on select * from $obsolete;
+			upsert into ready_to_run_delayed select * from $replacements;
+
+			select available_at, id from $batch
+			order by available_at desc, id desc limit 1;
+		`, s.tablesPath, currentDelayedTaskPredicate, currentDelayedTaskPredicate),
+			persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+			persistence.ValueParam("$ready_to_run", persistence.Int64Value(int64(TaskStatusReadyToRun))),
+			persistence.ValueParam("$has_cursor", persistence.BoolValue(hasCursor)),
+			persistence.ValueParam("$after_available_at", persistence.TimestampValue(after.availableAt)),
+			persistence.ValueParam("$after_id", persistence.UTF8Value(after.id)),
+			persistence.ValueParam("$upper_available_at", persistence.TimestampValue(upper.availableAt)),
+			persistence.ValueParam("$upper_id", persistence.UTF8Value(upper.id)),
+		)
+		if err != nil {
+			return err
+		}
+		after, found, err = scanDelayedQueueKey(ctx, res)
+		res.Close()
+		if err != nil || !found {
+			return err
+		}
+		// Advance even when every row in the batch was already consistent.
+		hasCursor = true
+	}
 }
 
 func (s *storageYDB) lockTaskToExecute(
@@ -2064,6 +2214,11 @@ func (s *storageYDB) clearEndedTasksChunk(
 
 			delete from task_ids
 			on select idempotency_key, account_id from $ended_tasks;
+
+			delete from ready_to_run_delayed on
+				select t.available_at AS available_at, t.id AS id
+				from tasks AS t inner join $ended_tasks AS e ON t.id = e.id
+				where t.available_at IS NOT NULL;
 
 			delete from tasks
 			on select id from $ended_tasks;
