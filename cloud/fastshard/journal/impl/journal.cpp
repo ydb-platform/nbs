@@ -13,6 +13,7 @@
 #include <util/generic/utility.h>
 #include <util/string/builder.h>
 
+#include <atomic>
 #include <utility>
 
 namespace NCloud::NJournalled {
@@ -122,6 +123,7 @@ TVector<TPageRangeRef> GetPageRanges(
     return ranges;
 }
 
+// TODO(#6956): return TVector<TArrayRef> to avoid unnecessary copying
 TVector<TBuffer> GetPages(const NCloud::NProto::TWriteLogRecordRequest& request)
 {
     TVector<TBuffer> pages;
@@ -243,6 +245,9 @@ private:
 
     TLogRecordChain LogRecordChain;
     TLogPageIndex LogPageIndex;
+
+    std::atomic<bool> AdvancingLsnLowWatermark = false;
+    std::atomic<ui64> LsnLowWatermark = 0;
 
 public:
     TJournal(
@@ -488,7 +493,7 @@ TFuture<NCloud::NProto::TReadPagesResponse> TJournal::Read(
              .PageCount = ref.GetPageCount()});
     }
 
-    ui64 lastFlushedLsn = 0; // TODO: implement with MarkRecordAsFlushed
+    ui64 lastFlushedLsn = 0; // TODO(#6956): implement with MarkRecordAsFlushed
     auto lookup = LogPageIndex.Lookup(ranges, lastFlushedLsn);
 
     //
@@ -510,20 +515,103 @@ TFuture<NCloud::NProto::TReadPagesResponse> TJournal::Read(
 TFuture<NCloud::NProto::TReadJournalTailResponse> TJournal::ReadTail(
     NCloud::NProto::TReadJournalTailRequest request) const
 {
-    Y_UNUSED(request);
+    using TResponse = NCloud::NProto::TReadJournalTailResponse;
 
-    return MakeFuture<NCloud::NProto::TReadJournalTailResponse>(
-        TErrorResponse(E_NOT_IMPLEMENTED, "ReadTail"));
+    //
+    // Walk the ready records that follow each other unbroken past the lsn the
+    // reader asks from and the last acked one - the acked records are of no
+    // use to the reader, and a gap must not be skipped
+    //
+
+    auto lsnLowWatermark = LsnLowWatermark.load();
+    auto afterLsn = Max(request.GetAfterLogSequenceNumber(), lsnLowWatermark);
+
+    auto records =
+        LogRecordChain.GetReadyRun(afterLsn, request.GetMaxRecordCount());
+
+    //
+    // Fill the response with the records and their page contents
+    //
+
+    TResponse response;
+    response.SetLsnLowWatermark(lsnLowWatermark);
+
+    for (const auto& record: records) {
+        auto& journalRecord = *response.AddRecords();
+        journalRecord.SetLogSequenceNumber(record->Lsn);
+        journalRecord.SetPrevLogSequenceNumber(record->PrevLsn);
+
+        auto error = FillPageGroups(
+            record->PageMappings,
+            journalRecord.MutablePageGroups());
+
+        if (HasError(error)) {
+            return MakeFuture<TResponse>(TErrorResponse(error));
+        }
+    }
+
+    return MakeFuture(std::move(response));
 }
 
 TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>
 TJournal::AdvanceLsnLowWatermark(
     NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
 {
-    Y_UNUSED(request);
+    using TResponse = NCloud::NProto::TAdvanceLsnLowWatermarkResponse;
 
-    return MakeFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
-        TErrorResponse(E_NOT_IMPLEMENTED, "AdvanceLsnLowWatermark"));
+    //
+    // Reject a watermark past the last indexed lsn - the writer may only ack
+    // what the journal has indexed
+    //
+
+    const auto lsnLowWatermark = request.GetLsnLowWatermark();
+    const auto lastIndexedLsn = LogPageIndex.GetLastIndexedLsn();
+
+    if (lsnLowWatermark > lastIndexedLsn) {
+        return MakeFuture<TResponse>(TErrorResponse(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "lsn low watermark " << lsnLowWatermark
+                << " reaches past the last indexed lsn " << lastIndexedLsn));
+    }
+
+    //
+    // Let one advance in at a time - the metadata write below yields, and
+    // two of them racing could persist the older watermark last
+    //
+
+    if (AdvancingLsnLowWatermark.exchange(true) == true) {
+        return MakeFuture<TResponse>(TErrorResponse(
+            E_REJECTED,
+            TStringBuilder() << "another advance to lsn low watermark "
+                             << lsnLowWatermark << " is already in progress"));
+    }
+    Y_DEFER
+    {
+        AdvancingLsnLowWatermark.store(false);
+    };
+
+    if (lsnLowWatermark <= LsnLowWatermark.load()) {
+        return MakeFuture<TResponse>(TErrorResponse(S_ALREADY));
+    }
+
+    //
+    // Persist the watermark in the journal metadata before taking it: a
+    // restart must not move the lsn low watermark back
+    //
+
+    TJournalMetadata metadata = {
+        .Version = CurrentFormatVersion,
+        .LsnLowWatermark = lsnLowWatermark,
+    };
+
+    auto future = MetaStore->Write(MetadataKey, SerializeMetadata(metadata));
+    if (const auto& error = Executor->WaitFor(future); HasError(error)) {
+        return MakeFuture<TResponse>(TErrorResponse(error));
+    }
+
+    LsnLowWatermark.store(lsnLowWatermark);
+    return MakeFuture<TResponse>();
 }
 
 TFuture<TResultOrError<NCloud::NProto::TJournalRecord>>
