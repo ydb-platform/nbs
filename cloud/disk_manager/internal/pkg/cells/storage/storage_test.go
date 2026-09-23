@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sort"
 	"testing"
 	"time"
 
@@ -14,6 +15,14 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	persistence_config "github.com/ydb-platform/nbs/cloud/tasks/persistence/config"
+)
+
+////////////////////////////////////////////////////////////////////////////////
+
+const (
+	shardedZoneID = "zone-a"
+	cellID1       = "zone-a"
+	cellID2       = "zone-a-cell1"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -71,6 +80,43 @@ func newStorage(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Uses WithinDuration to compare CreatedAt field correctly, since == may fail
+// due to different internal representations.
+func requireClusterCapacitiesAreEqual(
+	t *testing.T,
+	expected ClusterCapacity,
+	actual ClusterCapacity,
+) {
+
+	require.WithinDuration(t, expected.CreatedAt, actual.CreatedAt, time.Microsecond)
+	actual.CreatedAt = expected.CreatedAt
+
+	require.Equal(t, expected, actual)
+}
+
+func requireClusterCapacitiesSlicesAreEqual(
+	t *testing.T,
+	expected []ClusterCapacity,
+	actual []ClusterCapacity,
+) {
+
+	require.Len(t, actual, len(expected))
+
+	// GetRecentClusterCapacities returns results in non-deterministic order.
+	sort.Slice(expected, func(i, j int) bool {
+		return expected[i].CellID < expected[j].CellID
+	})
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i].CellID < actual[j].CellID
+	})
+
+	for i := 0; i < len(expected); i++ {
+		requireClusterCapacitiesAreEqual(t, expected[i], actual[i])
+	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
@@ -82,124 +128,143 @@ func TestGetRecentClusterCapacitiesReturnsOnlyRecentValue(t *testing.T) {
 	storage := newStorage(t, ctx, db)
 
 	zeroTime := time.Time{}
+	firstTime := time.Now()
+	secondTime := firstTime.Add(time.Hour)
 
-	capacity1 := ClusterCapacity{
-		ZoneID:     "zone-a",
-		CellID:     "zone-a",
+	capacityOfFirstCell1 := ClusterCapacity{
+		ZoneID:     shardedZoneID,
+		CellID:     cellID1,
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
+		CreatedAt:  firstTime,
 	}
 
-	cellCapacity1 := ClusterCapacity{
-		ZoneID:     "zone-a",
-		CellID:     "zone-a-shard1",
+	capacityOfSecondCell1 := ClusterCapacity{
+		ZoneID:     shardedZoneID,
+		CellID:     cellID2,
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
+		CreatedAt:  firstTime,
 	}
 
-	cellCapacitySsd1 := ClusterCapacity{
-		ZoneID:     "zone-a",
-		CellID:     "zone-a-shard1",
+	capacityOfSecondCellSsd1 := ClusterCapacity{
+		ZoneID:     shardedZoneID,
+		CellID:     cellID2,
 		Kind:       types.DiskKind_DISK_KIND_SSD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
+		CreatedAt:  firstTime,
 	}
 
-	capacity2 := ClusterCapacity{
-		ZoneID:     "zone-a",
-		CellID:     "zone-a",
+	capacityOfFirstCell2 := ClusterCapacity{
+		ZoneID:     shardedZoneID,
+		CellID:     cellID1,
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 2048,
 		FreeBytes:  2048,
+		CreatedAt:  secondTime,
 	}
 
-	cellCapacity2 := ClusterCapacity{
-		ZoneID:     "zone-a",
-		CellID:     "zone-a-shard1",
+	capacityOfSecondCell2 := ClusterCapacity{
+		ZoneID:     shardedZoneID,
+		CellID:     cellID2,
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 2048,
 		FreeBytes:  2048,
+		CreatedAt:  secondTime,
 	}
 
-	cellCapacitySsd2 := ClusterCapacity{
-		ZoneID:     "zone-a",
-		CellID:     "zone-a-shard1",
+	capacityOfSecondCellSsd2 := ClusterCapacity{
+		ZoneID:     shardedZoneID,
+		CellID:     cellID2,
 		Kind:       types.DiskKind_DISK_KIND_SSD,
 		TotalBytes: 2048,
 		FreeBytes:  2048,
+		CreatedAt:  secondTime,
 	}
 
 	err = storage.UpdateClusterCapacities(
 		ctx,
-		[]ClusterCapacity{capacity1, cellCapacity1, cellCapacitySsd1},
-		zeroTime, // deleteBefore
+		[]ClusterCapacity{capacityOfFirstCell1, capacityOfSecondCell1, capacityOfSecondCellSsd1},
+		zeroTime, // deleteOlderThan
 	)
 	require.NoError(t, err)
 
 	capacities, err := storage.GetRecentClusterCapacities(
 		ctx,
-		"zone-a",
+		shardedZoneID,
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{
-		capacity1,
-		cellCapacity1,
-	}, capacities)
+	requireClusterCapacitiesSlicesAreEqual(
+		t,
+		[]ClusterCapacity{capacityOfFirstCell1, capacityOfSecondCell1},
+		capacities,
+	)
 
 	capacities, err = storage.GetRecentClusterCapacities(
 		ctx,
-		"zone-a",
+		shardedZoneID,
 		types.DiskKind_DISK_KIND_SSD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{cellCapacitySsd1}, capacities)
+	requireClusterCapacitiesSlicesAreEqual(
+		t,
+		[]ClusterCapacity{capacityOfSecondCellSsd1},
+		capacities,
+	)
 
 	err = storage.UpdateClusterCapacities(
 		ctx,
-		[]ClusterCapacity{capacity2},
-		zeroTime, // deleteBefore
+		[]ClusterCapacity{capacityOfFirstCell2},
+		zeroTime, // deleteOlderThan
 	)
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
 		ctx,
-		"zone-a",
+		shardedZoneID,
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{
-		capacity2,
-		cellCapacity1,
-	}, capacities)
+	requireClusterCapacitiesSlicesAreEqual(
+		t,
+		[]ClusterCapacity{capacityOfFirstCell2, capacityOfSecondCell1},
+		capacities,
+	)
 
 	err = storage.UpdateClusterCapacities(
 		ctx,
-		[]ClusterCapacity{cellCapacity2, cellCapacitySsd2},
-		zeroTime, // deleteBefore
+		[]ClusterCapacity{capacityOfSecondCell2, capacityOfSecondCellSsd2},
+		zeroTime, // deleteOlderThan
 	)
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
 		ctx,
-		"zone-a",
+		shardedZoneID,
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{
-		capacity2,
-		cellCapacity2,
-	}, capacities)
+	requireClusterCapacitiesSlicesAreEqual(
+		t,
+		[]ClusterCapacity{capacityOfFirstCell2, capacityOfSecondCell2},
+		capacities,
+	)
 
 	capacities, err = storage.GetRecentClusterCapacities(
 		ctx,
-		"zone-a",
+		shardedZoneID,
 		types.DiskKind_DISK_KIND_SSD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []ClusterCapacity{cellCapacitySsd2}, capacities)
+	requireClusterCapacitiesSlicesAreEqual(
+		t,
+		[]ClusterCapacity{capacityOfSecondCellSsd2},
+		capacities,
+	)
 }
 
 func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
@@ -212,61 +277,77 @@ func TestUpdateClusterCapacitiesDeletesRecordsBeforeTimestamp(t *testing.T) {
 
 	storage := newStorage(t, ctx, db)
 
-	deleteBefore := time.Now()
+	deleteOlderThan := time.Now()
+	createdAt := deleteOlderThan.Add(time.Hour)
 	capacity1 := ClusterCapacity{
-		ZoneID:     "zone-a",
-		CellID:     "zone-a",
+		ZoneID:     shardedZoneID,
+		CellID:     cellID1,
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
+		CreatedAt:  createdAt,
 	}
 	capacity2 := ClusterCapacity{
-		ZoneID:     "zone-a",
-		CellID:     "zone-a-shard1",
+		ZoneID:     shardedZoneID,
+		CellID:     cellID2,
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 1024,
 		FreeBytes:  1024,
+		CreatedAt:  createdAt,
 	}
 
-	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity1}, deleteBefore)
+	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity1}, deleteOlderThan)
 	require.NoError(t, err)
 
 	capacities, err := storage.GetRecentClusterCapacities(
 		ctx,
-		"zone-a",
+		shardedZoneID,
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity1})
+	requireClusterCapacitiesSlicesAreEqual(
+		t,
+		[]ClusterCapacity{capacity1},
+		capacities,
+	)
 
-	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity2}, deleteBefore)
+	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity2}, deleteOlderThan)
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
 		ctx,
-		"zone-a",
+		shardedZoneID,
 		types.DiskKind_DISK_KIND_HDD,
 	)
 	require.NoError(t, err)
-	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity1, capacity2})
+	requireClusterCapacitiesSlicesAreEqual(
+		t,
+		[]ClusterCapacity{capacity1, capacity2},
+		capacities,
+	)
 
-	deleteBefore = time.Now()
+	deleteOlderThan = createdAt.Add(time.Hour)
+	createdAt = deleteOlderThan.Add(time.Hour)
 	capacity3 := ClusterCapacity{
-		ZoneID:     "zone-a",
-		CellID:     "zone-a",
+		ZoneID:     shardedZoneID,
+		CellID:     cellID1,
 		Kind:       types.DiskKind_DISK_KIND_HDD,
 		TotalBytes: 2048,
 		FreeBytes:  2048,
+		CreatedAt:  createdAt,
 	}
 
-	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity3}, deleteBefore)
+	err = storage.UpdateClusterCapacities(ctx, []ClusterCapacity{capacity3}, deleteOlderThan)
 	require.NoError(t, err)
 
 	capacities, err = storage.GetRecentClusterCapacities(
 		ctx,
-		"zone-a",
+		shardedZoneID,
 		types.DiskKind_DISK_KIND_HDD,
 	)
-	require.NoError(t, err)
-	require.ElementsMatch(t, capacities, []ClusterCapacity{capacity3})
+	requireClusterCapacitiesSlicesAreEqual(
+		t,
+		[]ClusterCapacity{capacity3},
+		capacities,
+	)
 }
