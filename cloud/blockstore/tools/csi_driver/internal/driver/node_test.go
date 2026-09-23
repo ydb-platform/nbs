@@ -2050,99 +2050,146 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 	testCtx.mounter.AssertExpectations(t)
 }
 
+func stageVolumeWithTimeoutForKubevirt(
+	t *testing.T,
+	cleanupFails bool,
+) (testContext, csi.NodeServer, error) {
+	t.Helper()
+
+	testCtx := CreateTestContext(
+		t,
+		true,
+		false,
+		true,
+		defaultNfsVhostReplicaCount,
+		defaultNbsServerReplicaCount,
+	)
+
+	ctx := context.Background()
+	var cleanupErr error
+	if cleanupFails {
+		cleanupErr = &nbsclient.ClientError{
+			Code:    nbsclient.E_REJECTED,
+			Message: "endpoint is starting now",
+		}
+	}
+
+	nodeService := newNodeService(
+		defaultNodeId,
+		defaultCientId,
+		true, // vmMode
+		testCtx.socketsDir,
+		testCtx.targetFsPathPattern,
+		testCtx.targetBlkPathPattern,
+		testCtx.localFsOverrides,
+		getNbsClients(testCtx.nbsClients),
+		getNfsClients(testCtx.nfsClients),
+		testCtx.nfsLocalClient,
+		testCtx.nfsLocalFilestoreClient,
+		testCtx.mounter,
+		[]string{},
+		false,
+		defaultStartEndpointRequestTimeout,
+		testCtx.nfsVhostReplicaCount,
+		testCtx.nbsServerReplicaCount,
+	)
+
+	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
+	volumeCapability := csi.VolumeCapability{
+		AccessType: &csi.VolumeCapability_Mount{
+			Mount: &csi.VolumeCapability_MountVolume{},
+		},
+		AccessMode: &csi.VolumeCapability_AccessMode{
+			Mode: accessMode,
+		},
+	}
+
+	volumeContext := map[string]string{
+		backendVolumeContextKey: "nbs",
+		instanceIdKey:           defaultInstanceId,
+	}
+
+	hostType := nbs.EHostType_HOST_TYPE_DEFAULT
+	nbsClient := testCtx.nbsClients[0]
+	nbsClient.On("ListEndpoints",
+		ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
+	nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
+		Headers:          getDefaultStartEndpointRequestHeaders(),
+		UnixSocketPath:   testCtx.nbsSocketPath,
+		DiskId:           defaultDiskId,
+		InstanceId:       defaultInstanceId,
+		ClientId:         testCtx.actualClientId,
+		DeviceName:       defaultDiskId,
+		IpcType:          nbs.EClientIpcType_IPC_VHOST,
+		VhostQueuesCount: defaultVhostQueuesCount,
+		VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
+		VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
+		Persistent:       true,
+		NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
+			UseFreeNbdDeviceFile: false,
+		},
+		ClientProfile: &nbs.TClientProfile{
+			HostType: &hostType,
+		},
+	}).Return(&nbs.TStartEndpointResponse{}, status.Error(codes.DeadlineExceeded, ""))
+	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+		UnixSocketPath: testCtx.nbsSocketPath,
+	}).Return(&nbs.TStopEndpointResponse{}, cleanupErr).Once()
+
+	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+		VolumeId:          testCtx.volumeId,
+		StagingTargetPath: testCtx.stagingTargetPath,
+		VolumeCapability:  &volumeCapability,
+		VolumeContext:     volumeContext,
+	})
+	require.Equal(t, codes.DeadlineExceeded, status.Code(err))
+
+	require.True(t, nbsClient.AssertExpectations(t))
+	return testCtx, nodeService, cleanupErr
+}
+
 func TestNodeStageVolumeErrorForKubevirt(t *testing.T) {
 	for _, cleanupFails := range []bool{false, true} {
 		t.Run(fmt.Sprintf("cleanupFails=%t", cleanupFails), func(t *testing.T) {
-			testCtx := CreateTestContext(
-				t,
-				true,
-				false,
-				true,
-				defaultNfsVhostReplicaCount,
-				defaultNbsServerReplicaCount,
-			)
-
+			testCtx, nodeService, cleanupErr := stageVolumeWithTimeoutForKubevirt(t, cleanupFails)
 			ctx := context.Background()
-			backend := "nbs"
-			var cleanupErr error
-			if cleanupFails {
-				cleanupErr = &nbsclient.ClientError{
-					Code:    nbsclient.E_REJECTED,
-					Message: "endpoint is starting now",
-				}
-			}
-
-			nodeService := newNodeService(
-				defaultNodeId,
-				defaultCientId,
-				true, // vmMode
-				testCtx.socketsDir,
-				testCtx.targetFsPathPattern,
-				testCtx.targetBlkPathPattern,
-				testCtx.localFsOverrides,
-				getNbsClients(testCtx.nbsClients),
-				getNfsClients(testCtx.nfsClients),
-				testCtx.nfsLocalClient,
-				testCtx.nfsLocalFilestoreClient,
-				testCtx.mounter,
-				[]string{},
-				false,
-				defaultStartEndpointRequestTimeout,
-				testCtx.nfsVhostReplicaCount,
-				testCtx.nbsServerReplicaCount,
-			)
-
-			accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
-			volumeCapability := csi.VolumeCapability{
-				AccessType: &csi.VolumeCapability_Mount{
-					Mount: &csi.VolumeCapability_MountVolume{},
-				},
-				AccessMode: &csi.VolumeCapability_AccessMode{
-					Mode: accessMode,
-				},
-			}
-
-			volumeContext := map[string]string{
-				backendVolumeContextKey: backend,
-				instanceIdKey:           defaultInstanceId,
-			}
-
-			hostType := nbs.EHostType_HOST_TYPE_DEFAULT
 			nbsClient := testCtx.nbsClients[0]
-			if backend == "nbs" {
-				nbsClient.On("ListEndpoints",
-					ctx, &nbs.TListEndpointsRequest{}).Return(&nbs.TListEndpointsResponse{}, nil)
-				nbsClient.On("StartEndpoint", ctx, &nbs.TStartEndpointRequest{
-					Headers:          getDefaultStartEndpointRequestHeaders(),
-					UnixSocketPath:   testCtx.nbsSocketPath,
-					DiskId:           defaultDiskId,
-					InstanceId:       defaultInstanceId,
-					ClientId:         testCtx.actualClientId,
-					DeviceName:       defaultDiskId,
-					IpcType:          nbs.EClientIpcType_IPC_VHOST,
-					VhostQueuesCount: defaultVhostQueuesCount,
-					VolumeAccessMode: nbs.EVolumeAccessMode_VOLUME_ACCESS_READ_WRITE,
-					VolumeMountMode:  nbs.EVolumeMountMode_VOLUME_MOUNT_LOCAL,
-					Persistent:       true,
-					NbdDevice: &nbs.TStartEndpointRequest_UseFreeNbdDeviceFile{
-						UseFreeNbdDeviceFile: false,
-					},
-					ClientProfile: &nbs.TClientProfile{
-						HostType: &hostType,
-					},
-				}).Return(&nbs.TStartEndpointResponse{}, status.Error(codes.DeadlineExceeded, ""))
-				nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
-					UnixSocketPath: testCtx.nbsSocketPath,
-				}).Return(&nbs.TStopEndpointResponse{}, cleanupErr).Once()
-			}
 
-			_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
+			unstageReq := &csi.NodeUnstageVolumeRequest{
 				VolumeId:          testCtx.volumeId,
 				StagingTargetPath: testCtx.stagingTargetPath,
-				VolumeCapability:  &volumeCapability,
-				VolumeContext:     volumeContext,
-			})
-			require.Equal(t, codes.DeadlineExceeded, status.Code(err))
+			}
+			stopReq := &nbs.TStopEndpointRequest{UnixSocketPath: testCtx.nbsSocketPath}
+			if cleanupFails {
+				nbsClient.On("StopEndpoint", ctx, stopReq).
+					Return(&nbs.TStopEndpointResponse{}, cleanupErr).Once()
+				_, err := nodeService.NodeUnstageVolume(ctx, unstageReq)
+				require.Equal(t, codes.Unavailable, status.Code(err))
+				require.True(t, nbsClient.AssertExpectations(t))
+			}
+
+			nbsClient.On("StopEndpoint", ctx, stopReq).
+				Return(&nbs.TStopEndpointResponse{}, nil).Once()
+			_, err := nodeService.NodeUnstageVolume(ctx, unstageReq)
+			require.NoError(t, err)
+
+			require.True(t, nbsClient.AssertExpectations(t))
+
+			// A repeated unstage succeeds without another StopEndpoint call.
+			_, err = nodeService.NodeUnstageVolume(ctx, unstageReq)
+			require.NoError(t, err)
+			nbsClient.AssertExpectations(t)
+			testCtx.mounter.AssertExpectations(t)
+		})
+	}
+}
+
+func TestNodeStageVolumeErrorPreservesStageDataForKubevirt(t *testing.T) {
+	for _, cleanupFails := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cleanupFails=%t", cleanupFails), func(t *testing.T) {
+			testCtx, nodeService, cleanupErr := stageVolumeWithTimeoutForKubevirt(t, cleanupFails)
+			ctx := context.Background()
+			nbsClient := testCtx.nbsClients[0]
 
 			stageRecordPath := filepath.Join(testCtx.stagingTargetPath, defaultDiskId+".json")
 			stageRecord, err := os.ReadFile(stageRecordPath)
@@ -2177,9 +2224,6 @@ func TestNodeStageVolumeErrorForKubevirt(t *testing.T) {
 			require.NoFileExists(t, stageRecordPath)
 			require.NoDirExists(t, testCtx.sourcePath)
 
-			// A repeated unstage succeeds without another StopEndpoint call.
-			_, err = nodeService.NodeUnstageVolume(ctx, unstageReq)
-			require.NoError(t, err)
 			nbsClient.AssertExpectations(t)
 			testCtx.mounter.AssertExpectations(t)
 		})

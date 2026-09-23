@@ -329,8 +329,6 @@ func (s *nodeService) NodeStageVolume(
 					}
 				}
 
-				// Preserve endpoint metadata after failure: startup may still be in progress
-				// and cleanup may fail. A later NodeUnstageVolume needs it to retry the stop.
 				if nfsBackend {
 					err = s.nodeStageFileStoreAsVhostSocket(
 						ctx,
