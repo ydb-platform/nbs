@@ -41,6 +41,18 @@ double BPFeature(const TBackpressureFeatureConfig& c, double x)
     return (1 - nx) + nx * c.MaxValue;
 }
 
+ui32 CalculateMaxBlobsPerDisk(
+    ui64 blocksCount,
+    ui32 blockSize,
+    ui32 maxBlobsPerUnit,
+    ui64 allocationUnit)
+{
+    const ui64 allocationUnitBlocks = allocationUnit / blockSize;
+    const ui64 threshold =
+        CeilDiv(blocksCount * maxBlobsPerUnit, allocationUnitBlocks);
+    return Min<ui64>(threshold, Max<ui32>());
+}
+
 ui64 CalculatePerDiskThresholdInBlocksFromAllocationUnitThreshold(
     ui64 blocksCount,
     ui32 blockSize,
@@ -167,10 +179,11 @@ TPartitionState::TPartitionState(
     , CompactionScoreHistory(compactionScoreHistorySize)
     , UsedBlocks(Config.GetBlocksCount())
     , LogicalUsedBlocks(Config.GetBlocksCount())
-    , MaxBlobsPerDisk(
-          Max(Config.GetBlocksCount() * Config.GetBlockSize() / allocationUnit,
-              1ul) *
-          maxBlobsPerUnit)
+    , MaxBlobsPerDisk(CalculateMaxBlobsPerDisk(
+          Config.GetBlocksCount(),
+          Config.GetBlockSize(),
+          maxBlobsPerUnit,
+          allocationUnit))
     , MaxMixedBlocksPerDisk(
           CalculatePerDiskThresholdInBlocksFromAllocationUnitThreshold(
               Config.GetBlocksCount(),

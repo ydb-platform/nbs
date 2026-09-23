@@ -12048,6 +12048,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetV1GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(999999999);
         config.SetCompactionRangeGarbageThreshold(999999999);
+        config.SetAllocationUnitSSD(4);
+        config.SetAllocationUnitHDD(4);
         config.SetSSDMaxBlobsPerUnit(7);
         config.SetHDDMaxBlobsPerUnit(7);
 
@@ -12146,6 +12148,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             decreasingPercentageThreshold);
         config.SetHDDMaxBlobsPerUnit(maxBlobsPerUnit);
         config.SetSSDMaxBlobsPerUnit(maxBlobsPerUnit);
+        config.SetAllocationUnitSSD(16);
+        config.SetAllocationUnitHDD(16);
         config.SetMaxCompactionRangeCountPerRun(maxCompactionRangeCountPerRun);
         config.SetCompactionCountPerRunChangingPeriod(1);
         config.SetSSDMaxBlobsPerRange(maxBlobsPerRange);
@@ -12962,6 +12966,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetV1GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(999999999);
         config.SetCompactionRangeGarbageThreshold(999999999);
+        config.SetAllocationUnitSSD(4);
+        config.SetAllocationUnitHDD(4);
         config.SetSSDMaxBlobsPerUnit(7);
         config.SetHDDMaxBlobsPerUnit(7);
 
