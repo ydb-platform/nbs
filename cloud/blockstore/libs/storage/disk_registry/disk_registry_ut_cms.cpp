@@ -115,6 +115,20 @@ struct TFixture
         return CmsAction(std::move(action));
     }
 
+    auto PurgeDevice(
+        const TString& agentId,
+        const TString& path,
+        bool dryRun = false)
+    {
+        NProto::TAction action;
+        action.SetHost(agentId);
+        action.SetType(NProto::TAction::PURGE_DEVICE);
+        action.SetDevice(path);
+        action.SetDryRun(dryRun);
+
+        return DiskRegistry->CmsAction(TVector{std::move(action)});
+    }
+
     void ShouldRestoreCMSTimeoutAfterReboot(auto removeAction)
     {
         const auto agent = CreateAgentConfig("agent-1", {
@@ -560,6 +574,53 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             NProto::EDeviceState::DEVICE_STATE_ONLINE);
 
         DiskRegistry->AllocateDisk("vol1", 10_GB);
+    }
+
+    Y_UNIT_TEST_F(ShouldPurgeDeviceUponCmsRequest, TFixture)
+    {
+        const auto agent = CreateAgentConfig("agent-1", {
+            Device("dev-1", "uuid-1", "rack-1", 10_GB),
+            Device("dev-2", "uuid-2", "rack-1", 10_GB),
+        });
+
+        SetUpRuntime(TTestRuntimeBuilder()
+            .WithAgents({agent})
+            .Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
+        WaitForSecureErase(*Runtime, {agent});
+
+        DiskRegistry->AllocateDisk("vol1", 10_GB);
+
+        {
+            auto response =
+                PurgeDevice("agent-1", "dev-1", /*dryRun=*/true);
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.ActionResultsSize());
+            const auto& result = response->Record.GetActionResults(0);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, result.GetTimeout());
+            UNIT_ASSERT_VALUES_EQUAL(0, result.DependentDisksSize());
+        }
+
+        {
+            auto response = PurgeDevice("agent-1", "dev-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response->Record.ActionResultsSize());
+            const auto& result = response->Record.GetActionResults(0);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, result.GetTimeout());
+            UNIT_ASSERT_VALUES_EQUAL(1, result.DependentDisksSize());
+            UNIT_ASSERT_VALUES_EQUAL("vol1", result.GetDependentDisks(0));
+        }
     }
 
     Y_UNIT_TEST_F(ShouldFailCmsRequestIfDiskRegistryRestarts, TFixture)

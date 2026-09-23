@@ -180,6 +180,201 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldPurgeDevice)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const auto agentConfig = AgentConfig(1, {
+            Device("NVMENBS01", "uuid-1.1", "rack-1"),
+            Device("NVMENBS02", "uuid-1.2", "rack-1"),
+        });
+
+        auto statePtr =
+            TDiskRegistryStateBuilder().WithConfig({agentConfig}).Build();
+
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx([&](TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(
+                RegisterAgent(state, db, agentConfig, Now()));
+            for (const auto& device: agentConfig.GetDevices()) {
+                state.MarkDeviceAsClean(
+                    Now(),
+                    db,
+                    device.GetDeviceUUID());
+            }
+        });
+
+        TString deviceId;
+        TString devicePath;
+        executor.WriteTx([&](TDiskRegistryDatabase db) {
+            TDiskRegistryState::TAllocateDiskResult result;
+            UNIT_ASSERT_SUCCESS(state.AllocateDisk(
+                Now(),
+                db,
+                {
+                    .DiskId = "vol0",
+                    .BlockSize = DefaultLogicalBlockSize,
+                    .BlocksCount =
+                        DefaultDeviceSize / DefaultLogicalBlockSize,
+                },
+                &result));
+
+            UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());
+            deviceId = result.Devices[0].GetDeviceUUID();
+            devicePath = result.Devices[0].GetDeviceName();
+        });
+
+        executor.WriteTx([&](TDiskRegistryDatabase db) {
+            auto result = state.PurgeDevice(
+                db,
+                agentConfig.GetAgentId(),
+                devicePath,
+                /*customMessage=*/TString("test-message"),
+                Now(),
+                /*shouldResume=*/false,
+                /*dryRun=*/false);
+
+            UNIT_ASSERT_SUCCESS(result.Error);
+            ASSERT_VECTORS_EQUAL(
+                TVector<TString>{"vol0"},
+                result.AffectedDisks);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, result.Timeout);
+
+            // The disk still owns the device, so purge only starts
+            // migration and leaves the device in the config
+            const auto& knownAgent = state.GetConfig().GetKnownAgents(0);
+            UNIT_ASSERT_VALUES_EQUAL(2, knownAgent.DevicesSize());
+
+            const auto* agent = state.FindAgent(agentConfig.GetAgentId());
+            UNIT_ASSERT(agent);
+
+            const auto* device = FindIfPtr(agent->GetDevices(),
+                [&devicePath](const auto& d) {
+                    return d.GetDeviceName() == devicePath;
+                });
+            UNIT_ASSERT(device);
+
+            UNIT_ASSERT_EQUAL(NProto::DEVICE_STATE_WARNING, device->GetState());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                "cms remove device action (test-message)",
+                device->GetStateMessage());
+        });
+
+        executor.WriteTx([&](TDiskRegistryDatabase db) {
+            const auto migrations = state.BuildMigrationList();
+            UNIT_ASSERT_VALUES_EQUAL(1, migrations.size());
+            UNIT_ASSERT_VALUES_EQUAL("vol0", migrations[0].DiskId);
+            UNIT_ASSERT_VALUES_EQUAL(deviceId, migrations[0].SourceDeviceId);
+
+            auto [target, error] = state.StartDeviceMigration(
+                Now(),
+                db,
+                migrations[0].DiskId,
+                migrations[0].SourceDeviceId);
+
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+            UNIT_ASSERT_SUCCESS(FinishDeviceMigration(
+                state,
+                db,
+                migrations[0].DiskId,
+                migrations[0].SourceDeviceId,
+                target.GetDeviceUUID()));
+
+            auto notification = state.GetDisksToReallocate().find("vol0");
+            UNIT_ASSERT(notification != state.GetDisksToReallocate().end());
+            state.DeleteDiskToReallocate(
+                Now(),
+                db,
+                TDiskNotificationResult{
+                    TDiskNotification{"vol0", notification->second},
+                    {},
+                });
+        });
+
+        executor.WriteTx([&](TDiskRegistryDatabase db) {
+            auto result = state.PurgeDevice(
+                db,
+                agentConfig.GetAgentId(),
+                devicePath,
+                /*customMessage=*/TString("test-message"),
+                Now(),
+                /*shouldResume=*/false,
+                /*dryRun=*/false);
+
+            UNIT_ASSERT_SUCCESS(result.Error);
+            UNIT_ASSERT(result.AffectedDisks.empty());
+            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, result.Timeout);
+
+            const auto& knownAgent = state.GetConfig().GetKnownAgents(0);
+            UNIT_ASSERT_VALUES_EQUAL(1, knownAgent.DevicesSize());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                devicePath,
+                knownAgent.GetDevices(0).GetDeviceName());
+        });
+    }
+
+    Y_UNIT_TEST(ShouldPurgeMultipleDevicesWithSamePath)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const auto agentConfig = AgentConfig(1, {
+            Device("same/path", "uuid-1.1", "rack-1"),
+            Device("same/path", "uuid-1.2", "rack-1"),
+            Device("other/path", "uuid-1.3", "rack-1"),
+        });
+
+        auto statePtr =
+            TDiskRegistryStateBuilder().WithConfig({agentConfig}).Build();
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx([&](TDiskRegistryDatabase db) {
+            UNIT_ASSERT_SUCCESS(
+                RegisterAgent(state, db, agentConfig, Now()));
+
+            auto result = state.PurgeDevice(
+                db,
+                agentConfig.GetAgentId(),
+                "same/path",
+                /*customMessage=*/TString(),
+                Now(),
+                /*shouldResume=*/false,
+                /*dryRun=*/false);
+
+            UNIT_ASSERT_SUCCESS(result.Error);
+            UNIT_ASSERT(result.AffectedDisks.empty());
+            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, result.Timeout);
+
+            const auto& knownAgent =
+                state.GetConfig().GetKnownAgents(0);
+            UNIT_ASSERT_VALUES_EQUAL(1, knownAgent.DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "other/path",
+                knownAgent.GetDevices(0).GetDeviceName());
+
+            const auto* agent =
+                state.FindAgent(agentConfig.GetAgentId());
+            UNIT_ASSERT(agent);
+            UNIT_ASSERT_VALUES_EQUAL(1, agent->DevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "other/path",
+                agent->GetDevices(0).GetDeviceName());
+            UNIT_ASSERT_VALUES_EQUAL(2, agent->UnknownDevicesSize());
+
+            TVector<TString> unknownDeviceIds;
+            for (const auto& device: agent->GetUnknownDevices()) {
+                unknownDeviceIds.push_back(device.GetDeviceUUID());
+            }
+            Sort(unknownDeviceIds);
+            ASSERT_VECTORS_EQUAL(
+                (TVector<TString>{"uuid-1.1", "uuid-1.2"}),
+                unknownDeviceIds);
+        });
+    }
+
     Y_UNIT_TEST(ShouldRemoveBrokenDeviceWithDisk)
     {
         TTestExecutor executor;

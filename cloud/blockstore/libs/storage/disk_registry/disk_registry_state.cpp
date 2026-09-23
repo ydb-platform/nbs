@@ -6681,7 +6681,7 @@ auto TDiskRegistryState::PurgeDevice(
         result.Timeout.Seconds());
 
     result.Error = {};
-    result.Timeout = TDuration();
+    result.Timeout = TDuration{};
     if (dryRun) {
         return result;
     }
