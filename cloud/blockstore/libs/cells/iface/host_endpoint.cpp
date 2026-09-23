@@ -8,11 +8,12 @@ namespace NCloud::NBlockStore::NCells {
 ////////////////////////////////////////////////////////////////////////////////
 
 TCellHostEndpoint::TCellHostEndpoint(
-    const NClient::TClientAppConfigPtr& clientConfig,
-    const TString& fqdn,
-    IBlockStorePtr controlService,
-    IStoragePtr dataStorage)
+        const NClient::TClientAppConfigPtr& clientConfig,
+        const TString& fqdn,
+        IBlockStorePtr controlService,
+        IStoragePtr dataStorage)
     : LogTag(BuildLogTag(clientConfig, fqdn))
+    , Fqdn(fqdn)
     , Service(std::move(controlService))
     , Storage(std::move(dataStorage))
 {}

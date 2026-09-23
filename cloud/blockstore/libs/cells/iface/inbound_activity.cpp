@@ -14,7 +14,6 @@ void TCellInboundActivity::PruneLocked(TInstant now)
 }
 
 void TCellInboundActivity::Record(
-    const TString& cellId,
     const TString& peer,
     const TString& diskId,
     const TString& clientId,
@@ -31,8 +30,7 @@ void TCellInboundActivity::Record(
             LastPruned = now;
         }
 
-        auto& row = Rows[TKey{cellId, peer, diskId, clientId}];
-        row.CellId = cellId;
+        auto& row = Rows[TKey{peer, diskId, clientId}];
         row.Peer = peer;
         row.DiskId = diskId;
         row.ClientId = clientId;

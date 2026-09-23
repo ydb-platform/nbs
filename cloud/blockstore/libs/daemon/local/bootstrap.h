@@ -53,6 +53,10 @@ protected:
     void InitRdmaRequestServer() override;
 
     void SetupCellManager() override;
+    void SetupCellMonitoringActor() override;
+    IBlockStorePtr WrapServiceForInterCellForward(
+        IBlockStorePtr authorized,
+        IBlockStorePtr trusted) override;
 };
 
 }   // namespace NCloud::NBlockStore::NServer

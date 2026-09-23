@@ -501,7 +501,7 @@ IEndpointManagerPtr CreateEndpointManager(TBootstrap& bootstrap)
             bootstrap.VolumeStats,
             bootstrap.ServerStats,
             bootstrap.Service,
-            CreateCellManagerStub(),
+            CreateCellManagerStub(bootstrap.Service),
             CreateDefaultStorageProvider(bootstrap.Service),
             std::move(encryptionClientFactory),
             bootstrap.Executor,

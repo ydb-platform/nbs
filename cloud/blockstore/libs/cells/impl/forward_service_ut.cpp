@@ -62,6 +62,7 @@ struct TEnv
         auto request = std::make_shared<NProto::TMountVolumeRequest>();
         auto& internal = *request->MutableHeaders()->MutableInternal();
         internal.SetRequestSource(source);
+        internal.SetPeer("peer-1");
         if (cellId) {
             request->MutableHeaders()->SetCellId(cellId);
         }
@@ -112,7 +113,7 @@ Y_UNIT_TEST_SUITE(TCellForwardServiceTest)
 
         auto rows = env.Activity->Snapshot(env.Timer->Now());
         UNIT_ASSERT_VALUES_EQUAL(1, rows.size());
-        UNIT_ASSERT_VALUES_EQUAL("cell-7", rows[0].CellId);
+        UNIT_ASSERT_VALUES_EQUAL("peer-1", rows[0].Peer);
         UNIT_ASSERT_VALUES_EQUAL("disk-42", rows[0].DiskId);
         UNIT_ASSERT_VALUES_EQUAL(1, rows[0].Mounts);
     }
