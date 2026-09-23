@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "read_data_actor_pool.h"
 #include "service_private.h"
 #include "service_state.h"
 
@@ -61,6 +62,8 @@ private:
     TInFlightRequestStoragePtr InFlightRequests;
     ui64 InFlightRequestCounter = 0;
 
+    TReadDataActorPool ReadDataActorPool;
+
     using TCounterPtr = NMonitoring::TDynamicCounters::TCounterPtr;
 
     TCounterPtr CpuWaitCounter;
@@ -111,6 +114,10 @@ private:
 
     void HandleUpdateStats(
         const TEvServicePrivate::TEvUpdateStats::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleReleaseReadDataActor(
+        const TEvServicePrivate::TEvReleaseReadDataActor::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     template <typename TMethod>
