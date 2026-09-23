@@ -44,9 +44,9 @@ public:
     // not chain from it.
     [[nodiscard]] bool TryApplyNext(const TLogRecord& record);
 
-    // Removes the mappings written at or below |lsn|. Does not move
+    // Removes the mappings written below |lsn|. Does not move
     // LastIndexedLsn.
-    void EraseUpTo(ui64 lsn);
+    void EraseBelow(ui64 lsn);
 
     ui64 GetLastIndexedLsn() const;
 

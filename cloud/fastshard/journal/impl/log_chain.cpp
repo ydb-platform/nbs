@@ -93,14 +93,14 @@ bool TLogRecordChain::Remove(ui64 prevLsn)
     return true;
 }
 
-TResultOrError<TVector<TLogRecordPtr>> TLogRecordChain::EraseUpTo(ui64 lsn)
+TResultOrError<TVector<TLogRecordPtr>> TLogRecordChain::EraseBelow(ui64 lsn)
 {
     TVector<TLogRecordPtr> records;
 
     {
         std::lock_guard lock(Lock);
 
-        if (lsn > LastChainedLsn) {
+        if (lsn > LastChainedLsn + 1) {
             return MakeError(
                 E_INVALID_STATE,
                 TStringBuilder() << "lsn " << lsn
@@ -110,7 +110,7 @@ TResultOrError<TVector<TLogRecordPtr>> TLogRecordChain::EraseUpTo(ui64 lsn)
 
         for (;;) {
             auto it = Records.find(LastErasedLsn);
-            if (it == Records.end() || it->second.Record->Lsn > lsn) {
+            if (it == Records.end() || it->second.Record->Lsn >= lsn) {
                 break;
             }
 
