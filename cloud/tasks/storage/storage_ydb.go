@@ -117,8 +117,10 @@ func (s *storageYDB) ListTasksReadyToRun(
 
 	delayedLimit := limit / 2
 
-	// Alternate the extra slot when the limit is odd.
-	if limit%2 != 0 && atomic.AddUint32(&s.readyToRunListCounter, 1)%2 == 1 {
+	// Alternate the extra slot only for worker listings. Unlimited diagnostic
+	// reads must not change which queue gets the next worker slot.
+	if limit%2 != 0 && limit != ^uint64(0) &&
+		atomic.AddUint32(&s.readyToRunListCounter, 1)%2 == 1 {
 		delayedLimit++
 	}
 
@@ -543,13 +545,36 @@ func (s *storageYDB) SendEvent(
 	return err
 }
 
-func (s *storageYDB) ReconcileReadyToRunDelayed(ctx context.Context, limit int) error {
+func (s *storageYDB) ReconcileReadyToRunDelayed(
+	ctx context.Context,
+	limit int,
+	cursor DelayedQueueCursor,
+) (DelayedQueueCursor, error) {
 	if limit <= 0 {
-		return errors.NewNonRetriableErrorf("delayed queue reconciliation limit must be positive")
+		return cursor, errors.NewNonRetriableErrorf("delayed queue reconciliation limit must be positive")
 	}
-	return s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
-		return s.reconcileReadyToRunDelayed(ctx, session, limit)
+	if cursor.StorageFolder != "" && cursor.StorageFolder != s.folder {
+		return cursor, errors.NewNonRetriableErrorf("unexpected reconciliation storage folder %q", cursor.StorageFolder)
+	}
+	cursor.StorageFolder = s.folder
+	if cursor.Done {
+		return cursor, nil
+	}
+	// Also bound the duration of a page, including database retries.
+	ctx, cancel := context.WithTimeout(ctx, s.updateTaskTimeout)
+	defer cancel()
+	var next DelayedQueueCursor
+	err := s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+		var err error
+		next, err = s.reconcileReadyToRunDelayed(ctx, session, limit, cursor)
+		return err
 	})
+	if err != nil {
+		// The last write may have committed with its response lost. Replay from
+		// the old cursor instead of skipping any unconfirmed work.
+		return cursor, err
+	}
+	return next, nil
 }
 
 func (s *storageYDB) ClearEndedTasks(

@@ -638,6 +638,9 @@ func (s *storageYDB) prepareCreateTask(
 	}
 
 	state.ChangedStateAt = state.CreatedAt
+	if state.CancelRequestedAt.IsZero() && IsCancellingOrCancelled(state.Status) {
+		state.CancelRequestedAt = state.CreatedAt
+	}
 
 	transitions, err := s.prepareUnfinishedDependencies(ctx, tx, state)
 	if err != nil {
@@ -1073,6 +1076,7 @@ func (s *storageYDB) listHangingTasks(
 		pragma AnsiInForEmptyOrNullableItemsCollections;
 		declare $limit as Uint64;
 		declare $except_task_types as List<Utf8>;
+		declare $ready_to_cancel as Int64;
 		declare $hanging_task_timeout as Interval;
 		declare $hanging_task_timeout_by_type as List<Struct<
 			task_type: Utf8,
@@ -1102,6 +1106,10 @@ func (s *storageYDB) listHangingTasks(
 					CASE
 						WHEN tasks.available_at IS NULL
 							THEN tasks.created_at
+						WHEN tasks.first_run_started_at IS NULL AND
+							tasks.status >= $ready_to_cancel
+							THEN COALESCE(tasks.cancel_requested_at,
+								tasks.changed_state_at, tasks.created_at)
 						ELSE COALESCE(
 							tasks.first_run_started_at,
 							tasks.available_at
@@ -1127,6 +1135,7 @@ func (s *storageYDB) listHangingTasks(
 			"$except_task_types",
 			strListValue(s.exceptHangingTaskTypes),
 		),
+		persistence.ValueParam("$ready_to_cancel", persistence.Int64Value(int64(TaskStatusReadyToCancel))),
 		persistence.ValueParam(
 			"$hanging_task_timeout",
 			persistence.IntervalValue(s.hangingTaskTimeout),
@@ -1371,19 +1380,14 @@ func (s *storageYDB) getDelayedTaskStats(
 	return stats, res.Err()
 }
 
-type delayedQueueKey struct {
-	availableAt time.Time
-	id          string
-}
-
-func scanDelayedQueueKey(ctx context.Context, res persistence.Result) (delayedQueueKey, bool, error) {
-	var key delayedQueueKey
+func scanDelayedQueueKey(ctx context.Context, res persistence.Result) (DelayedQueueKey, bool, error) {
+	var key DelayedQueueKey
 	found := false
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			if err := res.ScanNamed(
-				persistence.OptionalWithDefault("available_at", &key.availableAt),
-				persistence.OptionalWithDefault("id", &key.id),
+				persistence.OptionalWithDefault("available_at", &key.AvailableAt),
+				persistence.OptionalWithDefault("id", &key.ID),
 			); err != nil {
 				return key, false, err
 			}
@@ -1400,94 +1404,105 @@ func (s *storageYDB) reconcileReadyToRunDelayed(
 	ctx context.Context,
 	session *persistence.Session,
 	limit int,
-) error {
-
-	// Bound the pass so newly appended tasks cannot keep it running forever.
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		select available_at, id from ready_to_run_delayed
-		order by available_at desc, id desc limit 1;
-	`, s.tablesPath))
-	if err != nil {
-		return err
-	}
-	upper, found, err := scanDelayedQueueKey(ctx, res)
-	res.Close()
-	if err != nil || !found {
-		return err
-	}
-
-	after := delayedQueueKey{availableAt: time.Unix(0, 0)}
-	hasCursor := false
-	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		// Reading tasks and repairing their queue entries must be atomic with
-		// concurrent locks, cancellations and other state transitions.
-		res, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+	cursor DelayedQueueCursor,
+) (DelayedQueueCursor, error) {
+	if cursor.Upper == nil {
+		res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
-			declare $limit as Uint64;
-			declare $ready_to_run as Int64;
-			declare $has_cursor as Bool;
-			declare $after_available_at as Timestamp;
-			declare $after_id as Utf8;
-			declare $upper_available_at as Timestamp;
-			declare $upper_id as Utf8;
-
-			$batch = (
-				select * from ready_to_run_delayed
-				where
-					(NOT $has_cursor OR available_at > $after_available_at OR
-						(available_at = $after_available_at AND id > $after_id)) AND
-					(available_at < $upper_available_at OR
-						(available_at = $upper_available_at AND id <= $upper_id))
-				order by available_at, id limit $limit
-			);
-
-			$obsolete = (
-				select d.available_at AS available_at, d.id AS id
-				from $batch AS d left join tasks AS t ON d.id = t.id
-				where NOT COALESCE((%s), false)
-			);
-
-			$replacements = (
-				select distinct t.available_at AS available_at, t.id AS id,
-					t.generation_id AS generation_id, t.task_type AS task_type,
-					t.zone_id AS zone_id
-				from $batch AS d inner join tasks AS t ON d.id = t.id
-				where t.status = $ready_to_run AND t.available_at IS NOT NULL AND
-					t.first_run_started_at IS NULL AND
-					NOT COALESCE((%s), false)
-			);
-
-			delete from ready_to_run_delayed on select * from $obsolete;
-			upsert into ready_to_run_delayed select * from $replacements;
-
-			select available_at, id from $batch
+			select available_at, id from ready_to_run_delayed
 			order by available_at desc, id desc limit 1;
-		`, s.tablesPath, currentDelayedTaskPredicate, currentDelayedTaskPredicate),
-			persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
-			persistence.ValueParam("$ready_to_run", persistence.Int64Value(int64(TaskStatusReadyToRun))),
-			persistence.ValueParam("$has_cursor", persistence.BoolValue(hasCursor)),
-			persistence.ValueParam("$after_available_at", persistence.TimestampValue(after.availableAt)),
-			persistence.ValueParam("$after_id", persistence.UTF8Value(after.id)),
-			persistence.ValueParam("$upper_available_at", persistence.TimestampValue(upper.availableAt)),
-			persistence.ValueParam("$upper_id", persistence.UTF8Value(upper.id)),
-		)
+		`, s.tablesPath))
 		if err != nil {
-			return err
+			return cursor, err
 		}
-		after, found, err = scanDelayedQueueKey(ctx, res)
+		upper, found, err := scanDelayedQueueKey(ctx, res)
 		res.Close()
-		if err != nil || !found {
-			return err
+		if err != nil {
+			return cursor, err
 		}
-		// Advance even when every row in the batch was already consistent.
-		hasCursor = true
+		if !found {
+			cursor.Done = true
+			return cursor, nil
+		}
+		cursor.Upper = &upper
 	}
+
+	after := DelayedQueueKey{AvailableAt: time.Unix(0, 0)}
+	hasCursor := cursor.After != nil
+	if hasCursor {
+		after = *cursor.After
+	}
+	// Check the task and repair its queue entry in the same transaction as
+	// the page read, atomically with concurrent locks and cancellations.
+	res, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $limit as Uint64;
+		declare $ready_to_run as Int64;
+		declare $has_cursor as Bool;
+		declare $after_available_at as Timestamp;
+		declare $after_id as Utf8;
+		declare $upper_available_at as Timestamp;
+		declare $upper_id as Utf8;
+
+		$batch = (
+			select * from ready_to_run_delayed
+			where
+				(NOT $has_cursor OR available_at > $after_available_at OR
+					(available_at = $after_available_at AND id > $after_id)) AND
+				(available_at < $upper_available_at OR
+					(available_at = $upper_available_at AND id <= $upper_id))
+			order by available_at, id limit $limit
+		);
+
+		$obsolete = (
+			select d.available_at AS available_at, d.id AS id
+			from $batch AS d left join tasks AS t ON d.id = t.id
+			where NOT COALESCE((%s), false)
+		);
+
+		$replacements = (
+			select distinct t.available_at AS available_at, t.id AS id,
+				t.generation_id AS generation_id, t.task_type AS task_type,
+				t.zone_id AS zone_id
+			from $batch AS d inner join tasks AS t ON d.id = t.id
+			where t.status = $ready_to_run AND t.available_at IS NOT NULL AND
+				t.first_run_started_at IS NULL AND
+				NOT COALESCE((%s), false)
+		);
+
+		delete from ready_to_run_delayed on select * from $obsolete;
+		upsert into ready_to_run_delayed select * from $replacements;
+
+		select available_at, id from $batch
+		order by available_at desc, id desc limit 1;
+	`, s.tablesPath, currentDelayedTaskPredicate, currentDelayedTaskPredicate),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+		persistence.ValueParam("$ready_to_run", persistence.Int64Value(int64(TaskStatusReadyToRun))),
+		persistence.ValueParam("$has_cursor", persistence.BoolValue(hasCursor)),
+		persistence.ValueParam("$after_available_at", persistence.TimestampValue(after.AvailableAt)),
+		persistence.ValueParam("$after_id", persistence.UTF8Value(after.ID)),
+		persistence.ValueParam("$upper_available_at", persistence.TimestampValue(cursor.Upper.AvailableAt)),
+		persistence.ValueParam("$upper_id", persistence.UTF8Value(cursor.Upper.ID)),
+	)
+	if err != nil {
+		return cursor, err
+	}
+	after, found, err := scanDelayedQueueKey(ctx, res)
+	res.Close()
+	if err != nil {
+		return cursor, err
+	}
+	if !found {
+		cursor.Done = true
+		return cursor, nil
+	}
+	// Advance even when every row on the page was already consistent.
+	cursor.After = &after
+	cursor.Done = after.AvailableAt.Equal(cursor.Upper.AvailableAt) &&
+		after.ID == cursor.Upper.ID
+	return cursor, nil
 }
 
 func (s *storageYDB) lockTaskToExecute(
@@ -1802,6 +1817,7 @@ func (s *storageYDB) markForCancellation(
 		state.WaitingDuration += at.Sub(state.ChangedStateAt)
 	}
 	state.Status = TaskStatusReadyToCancel
+	state.CancelRequestedAt = at
 	state.GenerationID++
 	state.ModifiedAt = at
 	state.ChangedStateAt = at
@@ -1989,6 +2005,10 @@ func (s *storageYDB) updateTaskTx(
 	state.ReceivedAt = lastState.ReceivedAt
 	state.AvailableAt = lastState.AvailableAt
 	state.FirstRunStartedAt = lastState.FirstRunStartedAt
+	state.CancelRequestedAt = lastState.CancelRequestedAt
+	if state.CancelRequestedAt.IsZero() && IsCancellingOrCancelled(state.Status) {
+		state.CancelRequestedAt = state.ModifiedAt
+	}
 
 	state.ChangedStateAt = lastState.ChangedStateAt
 	state.EndedAt = lastState.EndedAt

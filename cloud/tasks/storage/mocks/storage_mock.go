@@ -231,8 +231,13 @@ func (s *StorageMock) SendEvent(
 	return args.Error(0)
 }
 
-func (s *StorageMock) ReconcileReadyToRunDelayed(ctx context.Context, limit int) error {
-	return s.Called(ctx, limit).Error(0)
+func (s *StorageMock) ReconcileReadyToRunDelayed(
+	ctx context.Context,
+	limit int,
+	cursor tasks_storage.DelayedQueueCursor,
+) (tasks_storage.DelayedQueueCursor, error) {
+	args := s.Called(ctx, limit, cursor)
+	return args.Get(0).(tasks_storage.DelayedQueueCursor), args.Error(1)
 }
 
 func (s *StorageMock) ClearEndedTasks(

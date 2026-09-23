@@ -715,6 +715,10 @@ func (s *scheduler) registerAndScheduleRegularSystemTasks(
 		},
 	)
 
+	if err := s.registerAndScheduleDelayedQueueReconciliation(ctx, config); err != nil {
+		return err
+	}
+
 	listerMetricsCollectionInterval, err := time.ParseDuration(
 		config.GetListerMetricsCollectionInterval(),
 	)

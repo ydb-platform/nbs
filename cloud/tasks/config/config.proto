@@ -85,4 +85,9 @@ message TasksConfig {
 
     // Overrides HangingTaskTimeout by task type.
     map<string, string> HangingTaskTimeoutByType = 41;
+
+    // Disable scheduling before downgrade; already created tasks still execute.
+    optional bool ReconcileReadyToRunDelayedEnabled = 42 [default = true];
+    optional string ReconcileReadyToRunDelayedTaskScheduleInterval = 43 [default = "1h"];
+    optional uint32 ReconcileReadyToRunDelayedLimit = 44 [default = 5000];
 }

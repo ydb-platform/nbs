@@ -30,10 +30,6 @@ func (t *clearEndedTasksTask) Run(
 	execCtx ExecutionContext,
 ) error {
 
-	if err := t.storage.ReconcileReadyToRunDelayed(ctx, t.limit); err != nil {
-		return err
-	}
-
 	endedBefore := time.Now().Add(-t.expirationTimeout)
 	return t.storage.ClearEndedTasks(ctx, endedBefore, t.limit)
 }

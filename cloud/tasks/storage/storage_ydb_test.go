@@ -1407,6 +1407,7 @@ func TestStorageYDBListHangingTasksWithInitialDelay(t *testing.T) {
 		status            TaskStatus
 		availableAt       time.Time
 		firstRunStartedAt time.Time
+		cancelRequestedAt time.Time
 		inflightDuration  time.Duration
 		stallingDuration  time.Duration
 		wantHanging       bool
@@ -1437,22 +1438,25 @@ func TestStorageYDBListHangingTasksWithInitialDelay(t *testing.T) {
 			wantHanging:       true,
 		},
 		{
-			name:        "cancelling unstarted task before available time",
-			status:      TaskStatusCancelling,
-			availableAt: now.Add(time.Hour),
-			wantHanging: false,
+			name:              "fresh cancellation before available time",
+			cancelRequestedAt: now.Add(-5 * time.Minute),
+			status:            TaskStatusCancelling,
+			availableAt:       now.Add(time.Hour),
+			wantHanging:       false,
 		},
 		{
-			name:        "unstarted task recently became available",
-			status:      TaskStatusReadyToCancel,
-			availableAt: now.Add(-5 * time.Minute),
-			wantHanging: false,
+			name:              "fresh cancellation after available time",
+			cancelRequestedAt: now.Add(-5 * time.Minute),
+			status:            TaskStatusReadyToCancel,
+			availableAt:       now.Add(-5 * time.Minute),
+			wantHanging:       false,
 		},
 		{
-			name:        "unstarted task exceeded timeout since available time",
-			status:      TaskStatusReadyToCancel,
-			availableAt: now.Add(-2 * time.Hour),
-			wantHanging: true,
+			name:              "unstarted cancellation exceeded timeout",
+			cancelRequestedAt: now.Add(-2 * time.Hour),
+			status:            TaskStatusReadyToCancel,
+			availableAt:       now.Add(-2 * time.Hour),
+			wantHanging:       true,
 		},
 		{
 			name:        "overdue task in delayed queue stays excluded",
@@ -1517,6 +1521,7 @@ func TestStorageYDBListHangingTasksWithInitialDelay(t *testing.T) {
 			ModifiedAt:        now,
 			AvailableAt:       testCase.availableAt,
 			FirstRunStartedAt: testCase.firstRunStartedAt,
+			CancelRequestedAt: testCase.cancelRequestedAt,
 			Status:            testCase.status,
 			Request:           []byte("request"),
 			Dependencies:      common.NewStringSet(),
@@ -5977,7 +5982,7 @@ func TestStorageYDBDelayedQueueLegacyCancellation(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, DelayedTaskStats{}, stats)
 			if reconcile {
-				require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 1))
+				require.NoError(t, reconcileDelayedQueue(ctx, s, 1))
 			} else {
 				// Repeating cancellation returns early. The next state transition
 				// must remove the stale entry despite lastState being ReadyToCancel.
@@ -5990,7 +5995,7 @@ func TestStorageYDBDelayedQueueLegacyCancellation(t *testing.T) {
 				require.NoError(t, err)
 			}
 			require.Zero(t, delayedQueueRowCount(t, ctx, s))
-			require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 1))
+			require.NoError(t, reconcileDelayedQueue(ctx, s, 1))
 		})
 	}
 }
@@ -6059,7 +6064,7 @@ func TestStorageYDBDelayedQueueReconciliation(t *testing.T) {
 			repairedIDs = append(repairedIDs, id)
 		}
 	}
-	require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 1))
+	require.NoError(t, reconcileDelayedQueue(ctx, s, 1))
 	require.Equal(t, uint64(2+len(repairedIDs)), delayedQueueRowCount(t, ctx, s))
 	stats, err := s.GetDelayedTaskStats(ctx, now)
 	require.NoError(t, err)
@@ -6067,7 +6072,7 @@ func TestStorageYDBDelayedQueueReconciliation(t *testing.T) {
 	// Every retained row must match the authoritative task, including keys,
 	// generations, type and zone; the stats predicate checks all of these.
 	require.Equal(t, uint64(2), stats.Due)
-	require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 2))
+	require.NoError(t, reconcileDelayedQueue(ctx, s, 2))
 	require.Equal(t, stats.Total, delayedQueueRowCount(t, ctx, s))
 	future, err := s.GetTask(ctx, futureID)
 	require.NoError(t, err)
@@ -6076,8 +6081,8 @@ func TestStorageYDBDelayedQueueReconciliation(t *testing.T) {
 	require.True(t, future.FirstRunStartedAt.IsZero())
 	_, err = s.LockTaskToRun(ctx, TaskInfo{ID: dueID, TaskType: "test"}, now, "host", "runner")
 	require.NoError(t, err)
-	require.Error(t, s.ReconcileReadyToRunDelayed(ctx, 0))
-	require.Error(t, s.ReconcileReadyToRunDelayed(ctx, -1))
+	require.Error(t, reconcileDelayedQueue(ctx, s, 0))
+	require.Error(t, reconcileDelayedQueue(ctx, s, -1))
 }
 
 func TestStorageYDBDelayedQueueReconciliationConcurrentTransition(t *testing.T) {
@@ -6090,7 +6095,7 @@ func TestStorageYDBDelayedQueueReconciliationConcurrentTransition(t *testing.T) 
 				done := make(chan error, 1)
 				go func() {
 					<-start
-					done <- s.ReconcileReadyToRunDelayed(ctx, 1)
+					done <- reconcileDelayedQueue(ctx, s, 1)
 				}()
 				close(start)
 				if cancel {
@@ -6120,7 +6125,7 @@ func TestStorageYDBDelayedQueueReconcileLegacyStorage(t *testing.T) {
 		id := createDelayedQueueTestTask(t, ctx, part, "old-cancel", time.Now().Add(time.Hour))
 		legacyCancelDelayedTask(t, ctx, part.(*storageYDB), id)
 	}
-	require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 1))
+	require.NoError(t, reconcileDelayedQueue(ctx, s, 1))
 	for _, part := range []Storage{compound.storage, compound.legacyStorage} {
 		require.Zero(t, delayedQueueRowCount(t, ctx, part.(*storageYDB)))
 	}
@@ -6175,10 +6180,30 @@ func TestStorageYDBDelayedQueueReconcileDuplicateKeys(t *testing.T) {
 	}
 	require.Equal(t, uint64(3), delayedQueueRowCount(t, ctx, s))
 	// Both stale keys restore the same canonical row in one transaction.
-	require.NoError(t, s.ReconcileReadyToRunDelayed(ctx, 10))
+	require.NoError(t, reconcileDelayedQueue(ctx, s, 10))
 	require.Equal(t, uint64(1), delayedQueueRowCount(t, ctx, s))
 	stats, err := s.GetDelayedTaskStats(ctx, now)
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), stats.Total)
 	require.Zero(t, stats.Due)
+}
+
+// The production API repairs one bounded page. Existing whole-pass regressions
+// use this test-only driver for both configured storage folders.
+func reconcileDelayedQueue(ctx context.Context, s Storage, limit int) error {
+	if compound, ok := s.(*compoundStorage); ok {
+		if err := reconcileDelayedQueue(ctx, compound.legacyStorage, limit); err != nil {
+			return err
+		}
+		return reconcileDelayedQueue(ctx, compound.storage, limit)
+	}
+	var cursor DelayedQueueCursor
+	for !cursor.Done {
+		var err error
+		cursor, err = s.ReconcileReadyToRunDelayed(ctx, limit, cursor)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

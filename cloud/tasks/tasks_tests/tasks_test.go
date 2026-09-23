@@ -2512,14 +2512,21 @@ func TestRunnersUseHangingTimeoutByType(t *testing.T) {
 			require.NoError(t, s.registry.RegisterForExecution("probe", func() tasks.Task {
 				return &hangingTimeoutProbeTask{reported: reported}
 			}))
+			var availableAt, cancelRequestedAt time.Time
+			if tasks_storage.IsCancellationRequested(status) {
+				availableAt = time.Now().Add(time.Hour)
+				cancelRequestedAt = time.Now().Add(-30 * time.Minute)
+			}
 			_, err := s.storage.CreateTask(ctx, tasks_storage.TaskState{
-				IdempotencyKey: "probe",
-				TaskType:       "probe",
-				Status:         status,
-				CreatedAt:      time.Now().Add(-30 * time.Minute),
-				ModifiedAt:     time.Now().Add(-time.Minute),
-				LastHost:       "previous-host",
-				Dependencies:   common.NewStringSet(),
+				AvailableAt:       availableAt,
+				CancelRequestedAt: cancelRequestedAt,
+				IdempotencyKey:    "probe",
+				TaskType:          "probe",
+				Status:            status,
+				CreatedAt:         time.Now().Add(-30 * time.Minute),
+				ModifiedAt:        time.Now().Add(-time.Minute),
+				LastHost:          "previous-host",
+				Dependencies:      common.NewStringSet(),
 			})
 			require.NoError(t, err)
 			require.NoError(t, s.startRunners(ctx))
@@ -2533,23 +2540,37 @@ func TestRunnersUseHangingTimeoutByType(t *testing.T) {
 	}
 }
 
-func TestClearEndedTasksReconcilesOrphanedDelayedQueue(t *testing.T) {
+func TestReconciliationTaskClearsOrphanedDelayedQueue(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	db := newYDB(ctx, t)
 	defer db.Close(context.Background())
 	defer cancel()
 	cfg := newDefaultConfig()
-	cfg.RunnersCount = proto.Uint64(1)
+	// CollectListerMetrics occupies one runner for the entire test.
+	cfg.RunnersCount = proto.Uint64(3)
 	cfg.StalkingRunnersCount = proto.Uint64(1)
-	cfg.ClearEndedTasksTaskScheduleInterval = proto.String("100ms")
-	cfg.ClearEndedTasksLimit = proto.Uint64(1)
+	cfg.ReconcileReadyToRunDelayedTaskScheduleInterval = proto.String("100ms")
+	cfg.ReconcileReadyToRunDelayedLimit = proto.Uint32(1)
 	s := createServicesWithConfig(t, ctx, db, cfg, metrics_empty.NewRegistry())
+	// Correct future rows must not be re-read forever after each yield.
+	for i := 0; i < 3; i++ {
+		_, err := s.storage.CreateTask(ctx, tasks_storage.TaskState{
+			IdempotencyKey: fmt.Sprintf("future-%d", i), TaskType: "unregistered",
+			Status:    tasks_storage.TaskStatusReadyToRun,
+			CreatedAt: time.Now(), ModifiedAt: time.Now(),
+			AvailableAt:  time.Now().Add(30 * time.Minute),
+			Dependencies: common.NewStringSet(),
+		})
+		require.NoError(t, err)
+	}
 	res, err := db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $at as Timestamp;
 		UPSERT INTO ready_to_run_delayed (available_at, id, generation_id, task_type, zone_id)
-		VALUES ($at, 'orphan', 0u, 'unregistered', '');
+		VALUES ($at, 'orphan-a', 0u, 'unregistered', ''),
+		($at, 'orphan-b', 0u, 'unregistered', ''),
+		($at, 'orphan-c', 0u, 'unregistered', '');
 	`, db.AbsolutePath(cfg.GetStorageFolder())),
 		persistence.ValueParam("$at", persistence.TimestampValue(time.Now().Add(time.Hour))),
 	)
@@ -2571,6 +2592,42 @@ func TestClearEndedTasksReconcilesOrphanedDelayedQueue(t *testing.T) {
 		}
 		var count uint64
 		return res.ScanNamed(persistence.OptionalWithDefault("count", &count)) == nil &&
-			res.Err() == nil && count == 0
-	}, 10*time.Second, 100*time.Millisecond)
+			res.Err() == nil && count == 3
+	}, 30*time.Second, 100*time.Millisecond)
+}
+
+func TestEarlyCancellationIsReportedByListerMetrics(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	db := newYDB(ctx, t)
+	defer db.Close(context.Background())
+	defer cancel()
+	registry := mocks.NewIgnoreUnknownCallsRegistryMock()
+	cfg := newHangingTaskTestConfig()
+	cfg.HangingTaskTimeout = proto.String("1h")
+	cfg.HangingTaskTimeoutByType = map[string]string{"long": "10m"}
+	s := createServicesWithConfig(t, ctx, db, cfg, registry)
+	require.NoError(t, registerLongTaskNotForExecution(s.registry))
+	now := time.Now()
+	id, err := s.storage.CreateTask(ctx, tasks_storage.TaskState{
+		IdempotencyKey: "early-cancel", TaskType: "long",
+		Status:    tasks_storage.TaskStatusReadyToCancel,
+		CreatedAt: now.Add(-time.Hour), ModifiedAt: now,
+		AvailableAt: now.Add(time.Hour), CancelRequestedAt: now.Add(-20 * time.Minute),
+		Dependencies: common.NewStringSet(),
+	})
+	require.NoError(t, err)
+	reported := make(chan struct{}, 1)
+	registry.GetGauge("hangingTasks", map[string]string{"type": "long", "id": id}).
+		On("Set", float64(1)).Return(mock.Anything).Run(func(_ mock.Arguments) {
+		select {
+		case reported <- struct{}{}:
+		default:
+		}
+	})
+	require.NoError(t, s.startRunners(ctx))
+	select {
+	case <-reported:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the lister did not report an overdue cancellation before its execution deadline")
+	}
 }

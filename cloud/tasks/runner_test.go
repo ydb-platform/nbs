@@ -2140,3 +2140,26 @@ func TestStartRunnersRejectsInvalidHangingTimeoutByType(t *testing.T) {
 	require.Contains(t, err.Error(), "HangingTaskTimeoutByType")
 	require.Contains(t, err.Error(), "task")
 }
+
+func TestExecutionContextEarlyCancellationHanging(t *testing.T) {
+	now := time.Now()
+	for _, status := range []storage.TaskStatus{storage.TaskStatusReadyToCancel, storage.TaskStatusCancelling} {
+		for _, age := range []time.Duration{5 * time.Minute, 20 * time.Minute} {
+			t.Run(fmt.Sprintf("%s/%s", storage.TaskStatusToString(status), age), func(t *testing.T) {
+				state := storage.TaskState{
+					Status:            status,
+					CreatedAt:         now.Add(-2 * time.Hour),
+					AvailableAt:       now.Add(time.Hour),
+					CancelRequestedAt: now.Add(-age),
+					ChangedStateAt:    now,
+				}
+				execCtx := newExecutionContext(NewTaskMock(), mocks.NewStorageMock(), state,
+					10*time.Minute, time.Hour, time.Hour, 2)
+				require.Equal(t, age > 10*time.Minute, execCtx.IsHanging())
+				// The same task with a one-hour default is still within timeout.
+				execCtx.hangingTaskTimeout = time.Hour
+				require.False(t, execCtx.IsHanging())
+			})
+		}
+	}
+}

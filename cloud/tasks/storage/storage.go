@@ -132,6 +132,7 @@ type TaskState struct {
 	ReceivedAt                time.Time
 	AvailableAt               time.Time
 	FirstRunStartedAt         time.Time
+	CancelRequestedAt         time.Time // First cancellation request, preserved across retries.
 	CreatedAt                 time.Time
 	CreatedBy                 string
 	ModifiedAt                time.Time
@@ -233,6 +234,22 @@ type DelayedTaskStats struct {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// DelayedQueueKey is the ordered primary key of ready_to_run_delayed.
+type DelayedQueueKey struct {
+	AvailableAt time.Time
+	ID          string
+}
+
+// DelayedQueueCursor is persisted by the reconciliation task. Upper bounds a
+// pass so concurrent insertions cannot extend it indefinitely. Nil After means
+// the first page; nil Upper means the pass has not started.
+type DelayedQueueCursor struct {
+	StorageFolder string
+	After         *DelayedQueueKey
+	Upper         *DelayedQueueKey
+	Done          bool
+}
 
 type Storage interface {
 	// Attempt to register new task in the storage. TaskState.ID is ignored.
@@ -345,7 +362,13 @@ type Storage interface {
 
 	// Used for garbage collecting of ended and outdated tasks.
 	// Reconcile the delayed queue with tasks, scanning at most limit rows per transaction.
-	ReconcileReadyToRunDelayed(ctx context.Context, limit int) error
+	// Repairs at most limit rows in one storage folder. The caller must persist
+	// the returned cursor after success; replaying a step is safe.
+	ReconcileReadyToRunDelayed(
+		ctx context.Context,
+		limit int,
+		cursor DelayedQueueCursor,
+	) (DelayedQueueCursor, error)
 
 	ClearEndedTasks(ctx context.Context, endedBefore time.Time, limit int) error
 

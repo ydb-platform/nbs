@@ -185,6 +185,7 @@ func (s *TaskState) structValue() persistence.Value {
 			"first_run_started_at",
 			optionalTimestampValue(s.FirstRunStartedAt),
 		),
+		persistence.StructFieldValue("cancel_requested_at", optionalTimestampValue(s.CancelRequestedAt)),
 		persistence.StructFieldValue("created_at", persistence.TimestampValue(s.CreatedAt)),
 		persistence.StructFieldValue("created_by", persistence.UTF8Value(s.CreatedBy)),
 		persistence.StructFieldValue("modified_at", persistence.TimestampValue(s.ModifiedAt)),
@@ -227,6 +228,7 @@ func taskStateStructTypeString() string {
 		received_at: Optional<Timestamp>,
 		available_at: Optional<Timestamp>,
 		first_run_started_at: Optional<Timestamp>,
+		cancel_requested_at: Optional<Timestamp>,
 		created_at: Timestamp,
 		created_by: Utf8,
 		modified_at: Timestamp,
@@ -270,6 +272,7 @@ func taskStateTableDescription() persistence.CreateTableDescription {
 			"first_run_started_at",
 			persistence.Optional(persistence.TypeTimestamp),
 		),
+		persistence.WithColumn("cancel_requested_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("created_by", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
@@ -418,6 +421,7 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 		persistence.OptionalWithDefault("received_at", &state.ReceivedAt),
 		persistence.OptionalWithDefault("available_at", &state.AvailableAt),
 		persistence.OptionalWithDefault("first_run_started_at", &state.FirstRunStartedAt),
+		persistence.OptionalWithDefault("cancel_requested_at", &state.CancelRequestedAt),
 		persistence.OptionalWithDefault("created_at", &state.CreatedAt),
 		persistence.OptionalWithDefault("created_by", &state.CreatedBy),
 		persistence.OptionalWithDefault("modified_at", &state.ModifiedAt),
@@ -449,6 +453,16 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 	)
 	if err != nil {
 		return
+	}
+
+	// Older writers did not record the cancellation request. Use the last
+	// known state transition as an approximation, then preserve it on the next
+	// write, before a lock or heartbeat can change the transition timestamp.
+	if state.CancelRequestedAt.IsZero() && IsCancellingOrCancelled(state.Status) {
+		state.CancelRequestedAt = state.ChangedStateAt
+		if state.CancelRequestedAt.IsZero() {
+			state.CancelRequestedAt = state.CreatedAt
+		}
 	}
 
 	state.StorageFolder = s.folder

@@ -10,20 +10,14 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/storage/mocks"
 )
 
-func TestClearEndedTasksReconcilesDelayedQueue(t *testing.T) {
+func TestClearEndedTasksDoesNotDependOnDelayedQueue(t *testing.T) {
 	ctx := newContext()
-	for _, fail := range []bool{false, true} {
+	for _, gcErr := range []error{nil, errors.NewRetriableErrorf("GC failed")} {
 		s := mocks.NewStorageMock()
-		var reconcileErr error
-		if fail {
-			reconcileErr = errors.NewRetriableErrorf("reconciliation failed")
-		}
-		reconcile := s.On("ReconcileReadyToRunDelayed", ctx, 10).Return(reconcileErr).Once()
-		if !fail {
-			s.On("ClearEndedTasks", ctx, mock.Anything, 10).Return(nil).Once().NotBefore(reconcile)
-		}
+		s.On("ClearEndedTasks", ctx, mock.Anything, 10).Return(gcErr).Once()
 		task := clearEndedTasksTask{storage: s, expirationTimeout: time.Hour, limit: 10}
-		require.Equal(t, reconcileErr, task.Run(ctx, nil))
+		require.Equal(t, gcErr, task.Run(ctx, nil))
+		// No access to the delayed table is necessary to run GC.
 		s.AssertExpectations(t)
 	}
 }

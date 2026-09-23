@@ -156,6 +156,14 @@ func (c *executionContext) IsHanging() bool {
 		hangingSince = c.taskState.AvailableAt
 		if !c.taskState.FirstRunStartedAt.IsZero() {
 			hangingSince = c.taskState.FirstRunStartedAt
+		} else if storage.IsCancellingOrCancelled(c.taskState.Status) {
+			hangingSince = c.taskState.CancelRequestedAt
+			if hangingSince.IsZero() {
+				hangingSince = c.taskState.ChangedStateAt
+				if hangingSince.IsZero() {
+					hangingSince = c.taskState.CreatedAt
+				}
+			}
 		}
 	}
 

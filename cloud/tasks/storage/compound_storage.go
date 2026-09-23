@@ -432,10 +432,21 @@ func (s *compoundStorage) SendEvent(
 	return err
 }
 
-func (s *compoundStorage) ReconcileReadyToRunDelayed(ctx context.Context, limit int) error {
-	return s.visit(ctx, func(storage Storage) error {
-		return storage.ReconcileReadyToRunDelayed(ctx, limit)
+func (s *compoundStorage) ReconcileReadyToRunDelayed(
+	ctx context.Context,
+	limit int,
+	cursor DelayedQueueCursor,
+) (DelayedQueueCursor, error) {
+	if cursor.StorageFolder == "" {
+		cursor.StorageFolder = s.storageFolder
+	}
+	next := cursor
+	err := s.dispatch(ctx, cursor.StorageFolder, func(storage Storage) error {
+		var err error
+		next, err = storage.ReconcileReadyToRunDelayed(ctx, limit, cursor)
+		return err
 	})
+	return next, err
 }
 
 func (s *compoundStorage) ClearEndedTasks(
