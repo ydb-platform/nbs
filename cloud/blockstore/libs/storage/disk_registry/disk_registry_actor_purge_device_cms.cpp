@@ -25,10 +25,11 @@ void TDiskRegistryActor::HandlePurgeDeviceCms(
         ctx,
         TBlockStoreComponents::DISK_REGISTRY,
         "%s Received PurgeDeviceCms request: host=%s, path=%s, "
-        "State=%s %s",
+        "DryRun=%s %s",
         LogTitle.GetWithTime().c_str(),
         msg->Host.c_str(),
         msg->Path.c_str(),
+        msg->DryRun ? "true" : "false",
         TransactionTimeTracker.GetInflightInfo(GetCycleCount()).c_str());
 
     const ui32 maxInFlight = Config->GetMaxInFlightCmsRequests();
@@ -88,12 +89,6 @@ void TDiskRegistryActor::ExecutePurgeDeviceCms(
 
     args.Error = std::move(result.Error);
     args.AffectedDisks = std::move(result.AffectedDisks);
-    args.Timeout = result.Timeout;
-    // Round up to seconds because TActionResult::Timeout is specified in
-    // seconds
-    if (args.Timeout) {
-        args.Timeout = Max(args.Timeout, TDuration::Seconds(1));
-    }
 }
 
 void TDiskRegistryActor::CompletePurgeDeviceCms(
