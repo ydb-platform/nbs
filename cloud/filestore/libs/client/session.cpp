@@ -483,7 +483,7 @@ private:
                     GetSessionParams(response);
 
                 SchedulePingSession();
-            } else if (!state->SessionId) {
+            } else {
                 SessionState = SessionBroken;
             }
         }
