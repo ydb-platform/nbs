@@ -168,10 +168,19 @@ TDeleteSubSessionResult TSubSessions::DeleteSubSessionByPipeServer(
 
 TDeleteSubSessionResult TSubSessions::DeleteSubSession(ui64 sessionSeqNo)
 {
-    return DeleteSubSessionIf(
+    auto result = DeleteSubSessionIf(
         [&] (const TSubSession& subsession) {
             return subsession.SeqNo == sessionSeqNo;
         });
+
+    if (!result.Removed) {
+        // No subsession with this seqNo exists right now - it could have
+        // already been removed earlier. With nothing to check, decide
+        // readiness the same way as when one is found: by seqNo alone.
+        result.SessionCanBeDestroyed = ReadyToDestroy(sessionSeqNo);
+    }
+
+    return result;
 }
 
 TVector<NActors::TActorId> TSubSessions::GetSubSessionOwnerIds() const
