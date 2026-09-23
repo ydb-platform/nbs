@@ -96,18 +96,6 @@ struct IPersistentStorage
      */
     [[nodiscard]] virtual NProto::TError SetTag(const void* ptr, ui32 tag) = 0;
 
-    /**
-     * Sets the desired data capacity value.
-     *
-     * Resizes the buffer immediately if it is empty, otherwise adding new
-     * entries will be blocked until the buffer is emptied and resize will take
-     * place.
-     *
-     * Note: while adding new entries is blocked, the buffer behaves like it is
-     * full.
-     */
-    virtual void SetTargetDataCapacity(ui64 dataCapacity) = 0;
-
     virtual void UpdateStats() const = 0;
 };
 

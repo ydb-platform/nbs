@@ -37,7 +37,6 @@ public:
     NProto::TError Commit(const void* ptr, ui32 crc32) override;
     NProto::TError Free(const void* ptr) override;
     NProto::TError SetTag(const void* ptr, ui32 tag) override;
-    void SetTargetDataCapacity(ui64 dataCapacity) override;
     void UpdateStats() const override;
 
     void SetCapacity(size_t capacity);

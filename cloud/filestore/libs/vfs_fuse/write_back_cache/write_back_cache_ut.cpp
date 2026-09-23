@@ -2248,20 +2248,6 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(drain.HasValue());
     }
 
-    Y_UNIT_TEST(ShouldDownsizeStateFileAfterDrainingCompleted)
-    {
-        TBootstrap b;
-
-        auto prevSize = b.TempFileHandle.GetLength();
-
-        b.WriteToCacheSync(1, 0, "abc");
-        UNIT_ASSERT(b.Cache.Drain().HasValue());
-
-        auto newSize = b.TempFileHandle.GetLength();
-
-        UNIT_ASSERT_LE(newSize, prevSize);
-    }
-
     Y_UNIT_TEST(ShouldEvictFlushedRequestsOnRestart)
     {
         TBootstrap b;

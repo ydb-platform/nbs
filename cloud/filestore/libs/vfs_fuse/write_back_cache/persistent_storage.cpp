@@ -185,11 +185,6 @@ public:
         return setTagResult;
     }
 
-    void SetTargetDataCapacity(ui64 dataCapacity) override
-    {
-        Storage.SetTargetDataCapacity(dataCapacity);
-    }
-
     void UpdateStats() const override
     {
         Stats->UpdateStats();

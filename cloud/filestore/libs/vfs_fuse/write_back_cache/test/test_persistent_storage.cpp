@@ -86,11 +86,6 @@ NProto::TError TTestStorage::SetTag(const void* ptr, ui32 tag)
     return {};
 }
 
-void TTestStorage::SetTargetDataCapacity(ui64 dataCapacity)
-{
-    SetCapacity(dataCapacity);
-}
-
 void TTestStorage::UpdateStats() const
 {}
 
