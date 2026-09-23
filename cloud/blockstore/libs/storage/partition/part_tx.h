@@ -579,6 +579,11 @@ struct TTxPartition
 
         ui32 ReadCount = 0;
 
+        ui64 MixedIndexBlobCount = 0;
+        ui64 MergedIndexBlobCount = 0;
+        ui64 MixedChannelBlobCount = 0;
+        ui64 MergedChannelBlobCount = 0;
+
         ui64 MixedIndexBlockCount = 0;
         ui64 MergedIndexBlockCount = 0;
         ui64 MixedChannelBlockCount = 0;
@@ -604,6 +609,10 @@ struct TTxPartition
         void Clear()
         {
             ReadCount = 0;
+            MixedIndexBlobCount = 0;
+            MergedIndexBlobCount = 0;
+            MixedChannelBlobCount = 0;
+            MergedChannelBlobCount = 0;
             MixedIndexBlockCount = 0;
             MergedIndexBlockCount = 0;
             MixedChannelBlockCount = 0;
