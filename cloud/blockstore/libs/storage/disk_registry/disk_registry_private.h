@@ -562,11 +562,11 @@ struct TEvDiskRegistryPrivate
         bool DryRun;
 
         TPurgeDeviceCmsRequest(
-                TString host,
-                TString path,
-                TString customMessage,
-                bool shouldResumeDevice,
-                bool dryRun)
+            TString host,
+            TString path,
+            TString customMessage,
+            bool shouldResumeDevice,
+            bool dryRun)
             : Host(std::move(host))
             , Path(std::move(path))
             , CustomMessage(std::move(customMessage))

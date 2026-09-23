@@ -18,10 +18,8 @@ void TDiskRegistryActor::HandlePurgeDeviceCms(
 
     auto* msg = ev->Get();
 
-    auto requestInfo = CreateRequestInfo(
-        ev->Sender,
-        ev->Cookie,
-        msg->CallContext);
+    auto requestInfo =
+        CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
     LOG_INFO(
         ctx,
@@ -41,8 +39,7 @@ void TDiskRegistryActor::HandlePurgeDeviceCms(
         NCloud::Reply(
             ctx,
             *requestInfo,
-            std::make_unique<
-                TEvDiskRegistryPrivate::TEvPurgeDeviceCmsResponse>(
+            std::make_unique<TEvDiskRegistryPrivate::TEvPurgeDeviceCmsResponse>(
                 MakeError(E_REJECTED, "too many inflight transactions")));
         return;
     }

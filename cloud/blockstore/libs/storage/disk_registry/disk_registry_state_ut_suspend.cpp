@@ -367,63 +367,66 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
 
     Y_UNIT_TEST_F(ShouldSuspendLocalDeviceOnPurgeDevice, TFixture)
     {
-        auto statePtr =
-            TDiskRegistryStateBuilder()
-                .WithConfig(
-                    MakeConfig(0, TVector{Agents[1]}) | WithPoolConfig(
-                                                        "local-ssd",
-                                                        NProto::DEVICE_POOL_KIND_LOCAL,
-                                                        DefaultDeviceSize))
-                .WithAgents({Agents[1]})
-                .Build();
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithConfig(
+                                MakeConfig(0, TVector{Agents[1]}) |
+                                WithPoolConfig(
+                                    "local-ssd",
+                                    NProto::DEVICE_POOL_KIND_LOCAL,
+                                    DefaultDeviceSize))
+                            .WithAgents({Agents[1]})
+                            .Build();
         TDiskRegistryState& state = *statePtr;
 
         TString deviceId;
         TString devicePath;
-        WriteTx([&](auto db) {
-            TDiskRegistryState::TAllocateDiskResult result;
-            UNIT_ASSERT_SUCCESS(state.AllocateDisk(
-                Now(),
-                db,
-                TDiskRegistryState::TAllocateDiskParams{
-                    .DiskId = "local0",
-                    .BlockSize = DefaultLogicalBlockSize,
-                    .BlocksCount =
-                        DefaultDeviceSize / DefaultLogicalBlockSize,
-                    .AgentIds = {Agents[1].GetAgentId()},
-                    .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL,
-                },
-                &result));
+        WriteTx(
+            [&](auto db)
+            {
+                TDiskRegistryState::TAllocateDiskResult result;
+                UNIT_ASSERT_SUCCESS(state.AllocateDisk(
+                    Now(),
+                    db,
+                    TDiskRegistryState::TAllocateDiskParams{
+                        .DiskId = "local0",
+                        .BlockSize = DefaultLogicalBlockSize,
+                        .BlocksCount =
+                            DefaultDeviceSize / DefaultLogicalBlockSize,
+                        .AgentIds = {Agents[1].GetAgentId()},
+                        .MediaKind = NProto::STORAGE_MEDIA_SSD_LOCAL,
+                    },
+                    &result));
 
-            UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());
-            deviceId = result.Devices[0].GetDeviceUUID();
-            devicePath = result.Devices[0].GetDeviceName();
-        });
+                UNIT_ASSERT_VALUES_EQUAL(1, result.Devices.size());
+                deviceId = result.Devices[0].GetDeviceUUID();
+                devicePath = result.Devices[0].GetDeviceName();
+            });
 
-        WriteTx([&](auto db) {
-            auto result = state.PurgeDevice(
-                db,
-                Agents[1].GetAgentId(),
-                devicePath,
-                /*customMessage=*/TString(),
-                Now(),
-                /*shouldResume=*/false,
-                /*dryRun=*/false);
+        WriteTx(
+            [&](auto db)
+            {
+                auto result = state.PurgeDevice(
+                    db,
+                    Agents[1].GetAgentId(),
+                    devicePath,
+                    /*customMessage=*/TString(),
+                    Now(),
+                    /*shouldResume=*/false,
+                    /*dryRun=*/false);
 
-            UNIT_ASSERT_SUCCESS(result.Error);
-            ASSERT_VECTORS_EQUAL(
-                TVector<TString>{"local0"},
-                result.AffectedDisks);
-            UNIT_ASSERT_VALUES_EQUAL(TDuration{}, result.Timeout);
+                UNIT_ASSERT_SUCCESS(result.Error);
+                ASSERT_VECTORS_EQUAL(
+                    TVector<TString>{"local0"},
+                    result.AffectedDisks);
+                UNIT_ASSERT_VALUES_EQUAL(TDuration{}, result.Timeout);
 
-            UNIT_ASSERT(state.IsSuspendedDevice(deviceId));
+                UNIT_ASSERT(state.IsSuspendedDevice(deviceId));
 
-            const auto& knownAgent =
-                state.GetConfig().GetKnownAgents(0);
-            UNIT_ASSERT_VALUES_EQUAL(
-                Agents[1].DevicesSize(),
-                knownAgent.DevicesSize());
-        });
+                const auto& knownAgent = state.GetConfig().GetKnownAgents(0);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    Agents[1].DevicesSize(),
+                    knownAgent.DevicesSize());
+            });
     }
 }
 

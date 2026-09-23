@@ -578,14 +578,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
 
     Y_UNIT_TEST_F(ShouldPurgeDeviceUponCmsRequest, TFixture)
     {
-        const auto agent = CreateAgentConfig("agent-1", {
-            Device("dev-1", "uuid-1", "rack-1", 10_GB),
-            Device("dev-2", "uuid-2", "rack-1", 10_GB),
-        });
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
 
-        SetUpRuntime(TTestRuntimeBuilder()
-            .WithAgents({agent})
-            .Build());
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
 
         DiskRegistry->SetWritableState(true);
         DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
@@ -597,12 +597,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         DiskRegistry->AllocateDisk("vol1", 10_GB);
 
         {
-            auto response =
-                PurgeDevice("agent-1", "dev-1", /*dryRun=*/true);
+            auto response = PurgeDevice("agent-1", "dev-1", /*dryRun=*/true);
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                response->Record.ActionResultsSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
             const auto& result = response->Record.GetActionResults(0);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
             UNIT_ASSERT_VALUES_EQUAL(0, result.GetTimeout());
@@ -612,9 +609,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         {
             auto response = PurgeDevice("agent-1", "dev-1");
 
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                response->Record.ActionResultsSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
             const auto& result = response->Record.GetActionResults(0);
             UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
             UNIT_ASSERT_VALUES_EQUAL(0, result.GetTimeout());

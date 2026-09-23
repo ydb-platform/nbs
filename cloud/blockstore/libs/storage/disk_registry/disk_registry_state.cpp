@@ -6094,9 +6094,9 @@ NProto::TError TDiskRegistryState::TryToRemoveAgentDevices(
 }
 
 void TDiskRegistryState::CleanupDeviceConfig(
-        TDiskRegistryDatabase& db,
-        const NProto::TAgentConfig& agent,
-        const TString& path)
+    TDiskRegistryDatabase& db,
+    const NProto::TAgentConfig& agent,
+    const TString& path)
 {
     auto error = TryToRemoveDevice(db, agent.GetAgentId(), path);
     if (!HasError(error) || error.GetCode() == E_NOT_FOUND) {
@@ -6118,23 +6118,19 @@ NProto::TError TDiskRegistryState::TryToRemoveDevice(
         *agents,
         [&agentId](const auto& x) { return x.GetAgentId() == agentId; });
 
-    if (agentIt == agents->end())
-    {
+    if (agentIt == agents->end()) {
         return MakeError(
             E_NOT_FOUND,
             TStringBuilder() << "Couldn't find agent " << agentId.Quote()
                              << " in the DR config.");
     }
 
-    EraseIf(*agentIt->MutableDevices(),
+    EraseIf(
+        *agentIt->MutableDevices(),
         [&path](const auto& device) { return device.GetDeviceName() == path; });
 
     TVector<TString> affectedDisks;
-    auto error = UpdateConfig(
-        db,
-        std::move(newConfig),
-        false,
-        affectedDisks);
+    auto error = UpdateConfig(db, std::move(newConfig), false, affectedDisks);
     return error;
 }
 
@@ -6143,8 +6139,10 @@ void TDiskRegistryState::SuspendLocalDevice(
     const NProto::TAgentConfig& agent,
     const TString& path)
 {
-    for (const auto& d : agent.GetDevices()) {
-        if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL && d.GetDeviceName() == path) {
+    for (const auto& d: agent.GetDevices()) {
+        if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL &&
+            d.GetDeviceName() == path)
+        {
             STORAGE_INFO(
                 "Suspend the local device %s (%s)",
                 d.GetDeviceUUID().c_str(),

@@ -682,12 +682,12 @@ struct TTxDiskRegistry
         TDuration Timeout;
 
         TPurgeDeviceCms(
-                TRequestInfoPtr requestInfo,
-                TString host,
-                TString path,
-                TString customMessage,
-                bool shouldResumeDevice,
-                bool dryRun)
+            TRequestInfoPtr requestInfo,
+            TString host,
+            TString path,
+            TString customMessage,
+            bool shouldResumeDevice,
+            bool dryRun)
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , Path(std::move(path))
