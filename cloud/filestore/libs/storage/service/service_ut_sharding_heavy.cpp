@@ -15,23 +15,10 @@ namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
 
-#define SERVICE_TEST_DECL(name)                                                \
-    void TestImpl##name(NProto::TStorageConfig config)                         \
-// SERVICE_TEST_DECL
-
-#define SERVICE_TEST(name)                                                     \
-    SERVICE_TEST_DECL(name);                                                   \
-    Y_UNIT_TEST(name)                                                          \
-    {                                                                          \
-        TestImpl##name(MakeStorageConfig());                                   \
-    }                                                                          \
-    SERVICE_TEST_DECL(name)                                                    \
-// SERVICE_TEST_SIMPLE
-
 Y_UNIT_TEST_SUITE(TStorageServiceShardingHeavyTest)
 {
 
-    SERVICE_TEST(ShouldCreateALotOfShards)
+    Y_UNIT_TEST(ShouldCreateALotOfShards)
     {
         const ui64 blockSize = 4_KB;
         const ui64 shardBlockCount = 1024;
@@ -40,6 +27,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingHeavyTest)
         const ui64 fsSize =
             shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
 
+        NProto::TStorageConfig config;
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(shardAllocationUnit);
@@ -134,7 +122,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingHeavyTest)
             mainStats.GetStats().GetSevenBytesHandlesCount());
     }
 
-    SERVICE_TEST(ShouldCreateALotOfShardsThrottled)
+    Y_UNIT_TEST(ShouldCreateALotOfShardsThrottled)
     {
         const ui64 blockSize = 4_KB;
         const ui64 shardBlockCount = 1024;
@@ -144,6 +132,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingHeavyTest)
             shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
         const ui32 requestsLimit = 32;
 
+        NProto::TStorageConfig config;
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(shardAllocationUnit);
