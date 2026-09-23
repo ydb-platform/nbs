@@ -27,6 +27,35 @@ type service struct {
 	createSnapshotStaggeringWindow time.Duration
 }
 
+func validateCreateSnapshotTask(
+	state tasks_storage.TaskState,
+	req *disk_manager.CreateSnapshotRequest,
+) error {
+
+	if state.TaskType != "snapshots.CreateSnapshotFromDisk" {
+		return common.NewInvalidArgumentError(
+			"idempotency key is already used by another operation",
+		)
+	}
+
+	existing := &protos.CreateSnapshotFromDiskRequest{}
+	if err := proto.Unmarshal(state.Request, existing); err != nil {
+		return fmt.Errorf("decode snapshot task %q: %w", state.ID, err)
+	}
+
+	if existing.GetSrcDisk().GetZoneId() != req.GetSrc().GetZoneId() ||
+		existing.GetSrcDisk().GetDiskId() != req.GetSrc().GetDiskId() ||
+		existing.GetDstSnapshotId() != req.GetSnapshotId() ||
+		existing.GetFolderId() != req.GetFolderId() {
+
+		return common.NewInvalidArgumentError(
+			"idempotency key is already used by a different snapshot request",
+		)
+	}
+
+	return nil
+}
+
 func (s *service) findExistingCreateSnapshot(
 	ctx context.Context,
 	req *disk_manager.CreateSnapshotRequest,
@@ -45,25 +74,8 @@ func (s *service) findExistingCreateSnapshot(
 		return "", false, err
 	}
 
-	if state.TaskType != "snapshots.CreateSnapshotFromDisk" {
-		return "", false, common.NewInvalidArgumentError(
-			"idempotency key is already used by another operation",
-		)
-	}
-
-	existing := &protos.CreateSnapshotFromDiskRequest{}
-	if err := proto.Unmarshal(state.Request, existing); err != nil {
-		return "", false, fmt.Errorf("decode snapshot task %q: %w", state.ID, err)
-	}
-
-	if existing.GetSrcDisk().GetZoneId() != req.GetSrc().GetZoneId() ||
-		existing.GetSrcDisk().GetDiskId() != req.GetSrc().GetDiskId() ||
-		existing.GetDstSnapshotId() != req.GetSnapshotId() ||
-		existing.GetFolderId() != req.GetFolderId() {
-
-		return "", false, common.NewInvalidArgumentError(
-			"idempotency key is already used by a different snapshot request",
-		)
+	if err := validateCreateSnapshotTask(state, req); err != nil {
+		return "", false, err
 	}
 
 	return state.ID, true, nil
@@ -152,6 +164,17 @@ func (s *service) CreateSnapshot(
 	}
 
 	if scheduleErr == nil {
+		// The scheduler may return an existing task from legacy storage.
+		// Validate the task identified by the returned operation ID.
+		state, err := s.taskStorage.GetTask(ctx, taskID)
+		if err != nil {
+			return "", fmt.Errorf("read scheduled snapshot task %q: %w", taskID, err)
+		}
+
+		if err := validateCreateSnapshotTask(state, req); err != nil {
+			return "", err
+		}
+
 		return taskID, nil
 	}
 

@@ -21,7 +21,24 @@ import (
 
 type staggeringStorageStub struct {
 	storage.Storage
-	state *storage.TaskState
+	state      *storage.TaskState
+	getTaskErr error
+}
+
+func (s *staggeringStorageStub) GetTask(
+	_ context.Context,
+	taskID string,
+) (storage.TaskState, error) {
+
+	if s.getTaskErr != nil {
+		return storage.TaskState{}, s.getTaskErr
+	}
+
+	if s.state == nil || s.state.ID != taskID {
+		return storage.TaskState{}, tasks_errors.NewNotFoundErrorWithTaskID(taskID)
+	}
+
+	return *s.state, nil
 }
 
 func (s *staggeringStorageStub) GetTaskByIdempotencyKey(
@@ -84,7 +101,7 @@ func TestSnapshotStaggeringConfig(t *testing.T) {
 		(&config.SnapshotsConfig{}).GetCreateSnapshotStaggeringWindow(),
 	)
 	require.NoError(t, err)
-	require.Equal(t, 5*time.Minute, value)
+	require.Zero(t, value)
 }
 
 func TestSnapshotStaggeringHash(t *testing.T) {
@@ -210,6 +227,227 @@ func TestSnapshotStaggeringServiceIdempotency(t *testing.T) {
 				require.Error(t, err)
 			})
 		}
+	}
+}
+
+func TestSnapshotStaggeringServiceConcurrentRequest(t *testing.T) {
+	testCases := []struct {
+		name          string
+		taskType      string
+		changeRequest func(*protos.CreateSnapshotFromDiskRequest)
+		wantError     string
+	}{
+		{
+			name: "same request",
+		},
+		{
+			name:     "different task type",
+			taskType: "snapshots.DeleteSnapshot",
+			wantError: "idempotency key is already used " +
+				"by another operation",
+		},
+		{
+			name: "different source zone",
+			changeRequest: func(req *protos.CreateSnapshotFromDiskRequest) {
+				req.SrcDisk.ZoneId = "another-zone"
+			},
+			wantError: "idempotency key is already used " +
+				"by a different snapshot request",
+		},
+		{
+			name: "different source disk",
+			changeRequest: func(req *protos.CreateSnapshotFromDiskRequest) {
+				req.SrcDisk.DiskId = "another-disk"
+			},
+			wantError: "idempotency key is already used " +
+				"by a different snapshot request",
+		},
+		{
+			name: "different snapshot",
+			changeRequest: func(req *protos.CreateSnapshotFromDiskRequest) {
+				req.DstSnapshotId = "another-snapshot"
+			},
+			wantError: "idempotency key is already used " +
+				"by a different snapshot request",
+		},
+		{
+			name: "different folder",
+			changeRequest: func(req *protos.CreateSnapshotFromDiskRequest) {
+				req.FolderId = "another-folder"
+			},
+			wantError: "idempotency key is already used " +
+				"by a different snapshot request",
+		},
+		{
+			name: "different internal decisions",
+			changeRequest: func(req *protos.CreateSnapshotFromDiskRequest) {
+				req.UseS3 = !req.UseS3
+				req.UseProxyOverlayDisk = !req.UseProxyOverlayDisk
+				req.RetryBrokenDRBasedDiskCheckpoint =
+					!req.RetryBrokenDRBasedDiskCheckpoint
+			},
+		},
+	}
+
+	for _, window := range []string{"0s", "5m"} {
+		for _, scheduleFails := range []bool{false, true} {
+			for _, testCase := range testCases {
+				t.Run(
+					fmt.Sprintf(
+						"%s/scheduleFails=%v/%s",
+						window,
+						scheduleFails,
+						testCase.name,
+					),
+					func(t *testing.T) {
+						// The initial lookup must not find any task.
+						store := &staggeringStorageStub{}
+						calls := 0
+
+						scheduler := &staggeringSchedulerStub{}
+						scheduler.create = func(
+							timing tasks.TaskScheduleTiming,
+							request proto.Message,
+						) (string, error) {
+
+							calls++
+
+							// Simulate a concurrent request becoming visible
+							// between the initial lookup and scheduling.
+							saved := proto.Clone(request).(*protos.CreateSnapshotFromDiskRequest)
+
+							if testCase.changeRequest != nil {
+								testCase.changeRequest(saved)
+							}
+
+							data, err := proto.Marshal(saved)
+							require.NoError(t, err)
+
+							taskType := "snapshots.CreateSnapshotFromDisk"
+							if testCase.taskType != "" {
+								taskType = testCase.taskType
+							}
+
+							store.state = &storage.TaskState{
+								ID:          "concurrent-task",
+								TaskType:    taskType,
+								Request:     data,
+								ReceivedAt:  timing.ReceivedAt,
+								AvailableAt: timing.NotBefore,
+							}
+
+							if scheduleFails {
+								return "", fmt.Errorf(
+									"concurrent task already exists",
+								)
+							}
+
+							// Legacy storage may return an existing ID
+							// without validating the request.
+							return store.state.ID, nil
+						}
+
+						svc, err := NewService(
+							scheduler,
+							store,
+							&config.SnapshotsConfig{
+								CreateSnapshotStaggeringWindow: proto.String(window),
+								UseS3Percentage:                proto.Uint32(0),
+							},
+						)
+						require.NoError(t, err)
+
+						ctx := headers.SetIncomingIdempotencyKey(
+							context.Background(),
+							"key",
+						)
+						req := &disk_manager.CreateSnapshotRequest{
+							Src: &disk_manager.DiskId{
+								ZoneId: "zone",
+								DiskId: "disk",
+							},
+							SnapshotId: "snapshot",
+							FolderId:   "folder",
+						}
+
+						id, err := svc.CreateSnapshot(ctx, req)
+						require.Equal(t, 1, calls)
+
+						if testCase.wantError != "" {
+							require.Error(t, err)
+							require.Contains(t, err.Error(), testCase.wantError)
+							require.Empty(t, id)
+							return
+						}
+
+						require.NoError(t, err)
+						require.Equal(t, "concurrent-task", id)
+					},
+				)
+			}
+		}
+	}
+}
+
+func TestSnapshotStaggeringServiceScheduledTaskReadError(t *testing.T) {
+	for _, window := range []string{"0s", "5m"} {
+		t.Run(window, func(t *testing.T) {
+			readErr := fmt.Errorf("storage read failed")
+			store := &staggeringStorageStub{
+				getTaskErr: readErr,
+			}
+
+			scheduler := &staggeringSchedulerStub{}
+			scheduler.create = func(
+				timing tasks.TaskScheduleTiming,
+				request proto.Message,
+			) (string, error) {
+
+				data, err := proto.Marshal(request)
+				require.NoError(t, err)
+
+				store.state = &storage.TaskState{
+					ID:          "snapshot-task",
+					TaskType:    "snapshots.CreateSnapshotFromDisk",
+					Request:     data,
+					ReceivedAt:  timing.ReceivedAt,
+					AvailableAt: timing.NotBefore,
+				}
+
+				return store.state.ID, nil
+			}
+
+			svc, err := NewService(
+				scheduler,
+				store,
+				&config.SnapshotsConfig{
+					CreateSnapshotStaggeringWindow: proto.String(window),
+				},
+			)
+			require.NoError(t, err)
+
+			ctx := headers.SetIncomingIdempotencyKey(
+				context.Background(),
+				"key",
+			)
+			req := &disk_manager.CreateSnapshotRequest{
+				Src: &disk_manager.DiskId{
+					ZoneId: "zone",
+					DiskId: "disk",
+				},
+				SnapshotId: "snapshot",
+				FolderId:   "folder",
+			}
+
+			id, err := svc.CreateSnapshot(ctx, req)
+			require.Error(t, err)
+			require.True(t, tasks_errors.Is(err, readErr))
+			require.Empty(t, id)
+
+			// Scheduling succeeded before the subsequent read failed.
+			require.NotNil(t, store.state)
+			require.Equal(t, "snapshot-task", store.state.ID)
+		})
 	}
 }
 
