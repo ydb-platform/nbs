@@ -17,6 +17,8 @@
 #include <util/string/builder.h>
 #include <util/string/join.h>
 #include <util/string/printf.h>
+#include <util/system/event.h>
+#include <util/system/mutex.h>
 
 #include <atomic>
 #include <optional>
@@ -83,6 +85,25 @@ NCloud::NProto::TReadPagesRequest MakeReadRequest(const TGroups& refs)
     return request;
 }
 
+NCloud::NProto::TReadJournalTailRequest MakeReadTailRequest(
+    ui64 afterLsn,
+    ui32 maxRecordCount = 0)
+{
+    NCloud::NProto::TReadJournalTailRequest request;
+    request.SetAfterLogSequenceNumber(afterLsn);
+    request.SetMaxRecordCount(maxRecordCount);
+
+    return request;
+}
+
+NCloud::NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
+{
+    NCloud::NProto::TAdvanceLsnLowWatermarkRequest request;
+    request.SetLsnLowWatermark(lsn);
+
+    return request;
+}
+
 // "10:[A010,A011] 20:[A020]"
 template <typename T>
 TString DescribeGroups(const T& source)
@@ -96,6 +117,38 @@ TString DescribeGroups(const T& source)
     }
 
     return JoinSeq(" ", groups);
+}
+
+// "2<-1 20:[B020]", empty for the empty record the journal hands back when
+// there is nothing to flush
+TString DescribeRecord(const NCloud::NProto::TJournalRecord& record)
+{
+    if (!record.GetLogSequenceNumber() && !record.PageGroupsSize()) {
+        return {};
+    }
+
+    TStringBuilder sb;
+    sb << record.GetLogSequenceNumber() << "<-"
+       << record.GetPrevLogSequenceNumber();
+
+    if (const auto groups = DescribeGroups(record)) {
+        sb << " " << groups;
+    }
+
+    return sb;
+}
+
+// "1<-0 10:[A010]; 2<-1 20:[B020]"
+TString DescribeRecords(
+    const NCloud::NProto::TReadJournalTailResponse& response)
+{
+    TVector<TString> records;
+
+    for (const auto& record: response.GetRecords()) {
+        records.push_back(DescribeRecord(record));
+    }
+
+    return JoinSeq("; ", records);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -132,13 +185,26 @@ struct TTestDevice final: public IDevice
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The same for the meta store - the underlying store is reachable through
-// |Impl| so that a test can look at what the journal has persisted.
+// The same for the meta store, which can also hold the writes until the test
+// lets them through - the underlying store is reachable through |Impl| so
+// that a test can look at what the journal has persisted.
 struct TTestKeyBufferStore final: public IKeyBufferStore
 {
     const IKeyBufferStorePtr Impl = CreateInMemoryKeyBufferStore();
 
     std::atomic<bool> FailWrites = false;
+
+    struct TBlockedWrite
+    {
+        ui64 Key = 0;
+        TBuffer Buffer;
+        TPromise<NCloud::NProto::TError> Error;
+    };
+
+    TMutex Mutex;
+    bool BlockWrites = false;
+    TManualEvent WriteBlocked;
+    TVector<TBlockedWrite> BlockedWrites;
 
     TFuture<TResultOrError<TVector<TKeyBuffer>>> Restore() override
     {
@@ -151,12 +217,45 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
             return MakeFuture(MakeError(E_IO, "meta write failed"));
         }
 
+        with_lock (Mutex) {
+            if (BlockWrites) {
+                auto error = NewPromise<NCloud::NProto::TError>();
+                BlockedWrites.push_back(
+                    {.Key = key, .Buffer = std::move(buffer), .Error = error});
+                WriteBlocked.Signal();
+                return error.GetFuture();
+            }
+        }
+
         return Impl->Write(key, std::move(buffer));
     }
 
     TFuture<NCloud::NProto::TError> EraseBelow(ui64 key) override
     {
         return Impl->EraseBelow(key);
+    }
+
+    void BlockWritesUntilReleased()
+    {
+        with_lock (Mutex) {
+            BlockWrites = true;
+        }
+    }
+
+    void ReleaseWrites()
+    {
+        TVector<TBlockedWrite> blocked;
+
+        with_lock (Mutex) {
+            BlockWrites = false;
+            blocked.swap(BlockedWrites);
+            WriteBlocked.Reset();
+        }
+
+        for (auto& write: blocked) {
+            write.Error.SetValue(
+                Impl->Write(write.Key, std::move(write.Buffer)).GetValueSync());
+        }
     }
 };
 
@@ -246,6 +345,32 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         return Run([&] { return Journal->Read(MakeReadRequest(refs)); })
             .GetValueSync();
+    }
+
+    NCloud::NProto::TReadJournalTailResponse ReadTail(
+        ui64 afterLsn,
+        ui32 maxRecordCount = 0)
+    {
+        return Run(
+                   [&]
+                   {
+                       return Journal->ReadTail(
+                           MakeReadTailRequest(afterLsn, maxRecordCount));
+                   })
+            .GetValueSync();
+    }
+
+    ui32 AdvanceLsnLowWatermark(ui64 lsn)
+    {
+        return Run(
+                   [&]
+                   {
+                       return Journal->AdvanceLsnLowWatermark(
+                           MakeAdvanceRequest(lsn));
+                   })
+            .GetValueSync()
+            .GetError()
+            .GetCode();
     }
 
     // "0,1,meta" - the keys the meta store holds, a record under its prev lsn
@@ -370,6 +495,11 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             retry.GetValueSync().GetError().GetCode());
+
+        // and the retry took no pages of its own
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]; 2<-1 20:[B020]",
+            DescribeRecords(ReadTail(0)));
     }
 
     Y_UNIT_TEST_F(ShouldWriteARecordWithoutPages, TFixture)
@@ -377,6 +507,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {}));
 
         // it takes no pages but still moves the chain forward
+        UNIT_ASSERT_VALUES_EQUAL("1<-0", DescribeRecords(ReadTail(0)));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
 
         auto response = ReadPages({{20, 1}});
@@ -446,6 +577,7 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             WriteRecord(1, 0, 'A', {{10, 4}, {12, 4}}));
 
         // the rejected record has taken nothing: no chain entry, no pages
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(0)));
         UNIT_ASSERT_VALUES_EQUAL("", StoredKeys());
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -591,6 +723,150 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 11:[] 12:[A012,A013]",
             DescribeGroups(ReadPages({{10, 1}, {11, 0}, {12, 2}})));
+    }
+
+    // Reading the tail
+
+    Y_UNIT_TEST_F(ShouldReadTheWholeTail, TFixture)
+    {
+        WriteThreeRecords();
+
+        auto response = ReadTail(0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]; 2<-1 20:[B020]; 3<-2 30:[C030]",
+            DescribeRecords(response));
+        UNIT_ASSERT_VALUES_EQUAL(0, response.GetLsnLowWatermark());
+    }
+
+    Y_UNIT_TEST_F(ShouldReadTheTailAfterTheGivenLsn, TFixture)
+    {
+        WriteThreeRecords();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "3<-2 30:[C030]",
+            DescribeRecords(ReadTail(2)));
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(3)));
+    }
+
+    Y_UNIT_TEST_F(ShouldLimitTheNumberOfTailRecords, TFixture)
+    {
+        WriteThreeRecords();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]; 2<-1 20:[B020]",
+            DescribeRecords(ReadTail(0, 2)));
+    }
+
+    Y_UNIT_TEST_F(ShouldStopTheTailAtAGap, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+
+        auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
+
+        // lsn 3 is written and durable but the reader must not skip lsn 2
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]",
+            DescribeRecords(ReadTail(0)));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            third.GetValueSync().GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]; 2<-1 20:[B020]; 3<-2 30:[C030]",
+            DescribeRecords(ReadTail(0)));
+    }
+
+    Y_UNIT_TEST_F(ShouldNotReturnAckedRecordsInTheTail, TFixture)
+    {
+        WriteThreeRecords();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+
+        // the acked records are of no use to the reader, even when it asks
+        // from the very beginning
+        auto response = ReadTail(0);
+        UNIT_ASSERT_VALUES_EQUAL("3<-2 30:[C030]", DescribeRecords(response));
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetLsnLowWatermark());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailATailReadWhenTheDeviceFails, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+
+        Device->FailReads.store(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, ReadTail(0).GetError().GetCode());
+    }
+
+    // Advancing the lsn low watermark
+
+    Y_UNIT_TEST_F(ShouldAdvanceTheLsnLowWatermark, TFixture)
+    {
+        WriteThreeRecords();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+        UNIT_ASSERT_VALUES_EQUAL("0,1,2,meta", StoredKeys());
+
+        // it only moves forward
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, AdvanceLsnLowWatermark(2));
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, AdvanceLsnLowWatermark(1));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            ReadTail(0).GetLsnLowWatermark());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectAnUnindexedLsnLowWatermark, TFixture)
+    {
+        WriteThreeRecords();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, AdvanceLsnLowWatermark(4));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ReadTail(0).GetLsnLowWatermark());
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldNotAdvanceTheLsnLowWatermarkWhenTheMetaStoreFails,
+        TFixture)
+    {
+        WriteThreeRecords();
+
+        MetaStore->FailWrites.store(true);
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, AdvanceLsnLowWatermark(2));
+
+        MetaStore->FailWrites.store(false);
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            ReadTail(0).GetLsnLowWatermark());
+
+        // and the failure has not blocked the next attempt
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectAConcurrentAdvanceOfTheLsnLowWatermark, TFixture)
+    {
+        WriteThreeRecords();
+
+        MetaStore->BlockWritesUntilReleased();
+
+        auto first = Executor->Execute(
+            [&]
+            { return Journal->AdvanceLsnLowWatermark(MakeAdvanceRequest(2)); });
+
+        UNIT_ASSERT(MetaStore->WriteBlocked.WaitT(TDuration::Seconds(30)));
+
+        // only one advance may be in flight at a time
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, AdvanceLsnLowWatermark(3));
+
+        MetaStore->ReleaseWrites();
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            first.GetValueSync().GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
     }
 }
 

@@ -438,20 +438,34 @@ TCellHostEndpoints TCellHostPool::GetDescribeEndpoints(
                     continue;
                 }
 
-                auto future = EnsureChannelLocked(fqdn);
-                if (!future.HasValue() || !future.GetValue()) {
-                    // still connecting - skip it rather than block a describe
+                try {
+                    auto future = EnsureChannelLocked(fqdn);
+                    if (!future.HasValue() || !future.GetValue()) {
+                        // still connecting - skip it rather than block a
+                        // describe
+                        continue;
+                    }
+
+                    auto endpoint = future.GetValue()->CreateClientEndpoint(
+                        clientConfig->GetClientId(),
+                        clientConfig->GetInstanceId());
+
+                    --count;
+                    result.emplace_back(
+                        clientConfig,
+                        fqdn,
+                        std::move(endpoint),
+                        nullptr);
+                } catch (...) {
+                    // building the endpoint can throw (a bad address or port,
+                    // the client shutting down); skip this host rather than
+                    // fail the whole describe or escape to the caller
+                    STORAGE_WARN(
+                        "[" << fqdn << "] could not build a describe endpoint "
+                            "in cell " << Config->GetCellId() << ": "
+                            << CurrentExceptionMessage());
                     continue;
                 }
-
-                --count;
-                result.emplace_back(
-                    clientConfig,
-                    fqdn,
-                    future.GetValue()->CreateClientEndpoint(
-                        clientConfig->GetClientId(),
-                        clientConfig->GetInstanceId()),
-                    nullptr);
             }
 
             if (!result.empty()) {

@@ -46,4 +46,107 @@ void WaitForTabletStart(TServiceClient& service)
     service.AccessRuntime().DispatchEvents(options, TDuration::Seconds(5));
 }
 
+NProtoPrivate::TGetStorageStatsResponse GetStorageStats(
+    TServiceClient& service,
+    const TString& fsId,
+    const ui64 cacheTTL,
+    const NProtoPrivate::EStatsRequestMode mode)
+{
+    NProtoPrivate::TGetStorageStatsRequest request;
+    request.SetFileSystemId(fsId);
+    request.SetCacheTTL(cacheTTL);
+    request.SetMode(mode);
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+    const auto actionResponse = service.ExecuteAction("GetStorageStats", buf);
+    NProtoPrivate::TGetStorageStatsResponse response;
+    auto status = google::protobuf::util::JsonStringToMessage(
+        actionResponse->Record.GetOutput(),
+        &response);
+
+    return response;
+}
+
+void CreateOrResizeFilesystem(
+    TServiceClient& service,
+    const TString& fsId,
+    ui64 fsBlocksCount,
+    bool resize,
+    TMap<TString, TActorId>& fsToActor)
+{
+    fsToActor.clear();
+
+    TActorId mainActorId{};
+
+    bool configureShardsRequestObserved = false;
+    auto prevFilter = service.AccessRuntime().SetEventFilter(
+        [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+        {
+            Y_UNUSED(runtime);
+            switch (event->GetTypeRewrite()) {
+                case TEvIndexTablet::EvConfigureAsShardRequest: {
+                    using R = TEvIndexTablet::TEvConfigureAsShardRequest;
+                    const auto* msg = event->Get<R>();
+                    fsToActor[msg->Record.GetFileSystemId()] = event->Recipient;
+                    break;
+                }
+
+                case TEvIndexTablet::EvConfigureShardsRequest: {
+                    configureShardsRequestObserved = true;
+                    break;
+                }
+
+                case TEvIndexTabletPrivate::EvLoadCompactionMapChunkRequest: {
+                    // The first tablet to start after ConfigureShards
+                    // request is sent is the main tablet (after suiciding)
+                    if (configureShardsRequestObserved) {
+                        mainActorId = event->Recipient;
+                        fsToActor[fsId] = event->Recipient;
+                    }
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+    if (resize) {
+        service.ResizeFileStore(fsId, fsBlocksCount);
+    } else {
+        service.CreateFileStore(fsId, fsBlocksCount);
+    }
+
+    service.AccessRuntime().DispatchEvents(
+        {.CustomFinalCondition = [&]() -> bool
+         {
+             return static_cast<bool>(mainActorId);
+         }});
+
+    service.AccessRuntime().SetEventFilter(prevFilter);
+}
+
+void UpdateCounters(
+    TTestEnv& env,
+    TServiceClient& service,
+    ui32 nodeIdx,
+    TActorId fsActorId)
+{
+    using TRequest = TEvIndexTabletPrivate::TEvUpdateCounters;
+    env.GetRuntime().Send(
+        new IEventHandle(
+            fsActorId, // recipient
+            TActorId(), // sender
+            new TRequest(),
+            0, // flags
+            0),
+        nodeIdx);
+
+    TDispatchOptions options;
+    options.FinalEvents = {
+        TDispatchOptions::TFinalEventCondition(
+            TEvIndexTabletPrivate::EvAggregateStatsCompleted)};
+
+    service.AccessRuntime().DispatchEvents(options);
+}
+
 }   // namespace NCloud::NFileStore::NStorage

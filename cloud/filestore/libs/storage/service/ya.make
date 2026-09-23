@@ -76,5 +76,5 @@ END()
 
 RECURSE_FOR_TESTS(
     ut
-    ut_sharding
+    ut_sharding_heavy
 )

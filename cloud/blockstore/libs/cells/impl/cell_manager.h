@@ -22,6 +22,7 @@ ICellManagerPtr CreateCellManager(
     ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
     ICertificateProviderPtr certificateProvider,
-    NCloud::NStorage::NRdma::IClientPtr rdmaClient);
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+    IBlockStorePtr localService);
 
 }   // namespace NCloud::NBlockStore::NCells
