@@ -736,19 +736,53 @@ TCompactionCounter TCompactionMap::GetTopByBlobCount() const
 TVector<TCompactionCounter> TCompactionMap::GetTopByBlobCount(
     size_t count) const
 {
+    if (!count) {
+        return {};
+    }
+
+    const auto byBlobCount =
+        [](const TCompactionCounter& l, const TCompactionCounter& r)
+    {
+        return l.Stat.BlobCount > r.Stat.BlobCount;
+    };
+
+    // Keep the smallest selected blob count at the top of the heap.
     TVector<TCompactionCounter> tops(Reserve(count));
     for (auto it = Impl->GroupByBlobCount.Begin();
-         it != Impl->GroupByBlobCount.End() && tops.size() < count;
+         it != Impl->GroupByBlobCount.End();
          ++it)
     {
         const auto& group = static_cast<const TImpl::TGroupNode&>(*it);
         if (group.MaxBlobCount < 2) {
             break;
         }
-        tops.push_back(
-            {group.BlockIndex + group.RangeWithMaxBlobCount * Impl->RangeSize,
-             group.Stats[group.RangeWithMaxBlobCount]});
+        // Later groups cannot improve the selection either.
+        if (tops.size() == count &&
+            group.MaxBlobCount <= tops.front().Stat.BlobCount)
+        {
+            break;
+        }
+
+        for (ui32 i = 0; i < group.Stats.size(); ++i) {
+            const auto& stat = group.Stats[i];
+            if (stat.Compacted || stat.BlobCount < 2) {
+                continue;
+            }
+
+            if (tops.size() == count) {
+                if (stat.BlobCount <= tops.front().Stat.BlobCount) {
+                    continue;
+                }
+                PopHeap(tops.begin(), tops.end(), byBlobCount);
+                tops.pop_back();
+            }
+
+            tops.emplace_back(group.BlockIndex + i * Impl->RangeSize, stat);
+            PushHeap(tops.begin(), tops.end(), byBlobCount);
+        }
     }
+
+    SortHeap(tops.begin(), tops.end(), byBlobCount);
     return tops;
 }
 

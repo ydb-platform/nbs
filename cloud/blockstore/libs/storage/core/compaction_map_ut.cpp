@@ -109,18 +109,11 @@ struct TReferenceImplementation
 
     TVector<ui16> GetTopBlobCounts(size_t count) const
     {
-        THashMap<ui32, ui16> groupMaxima;
-        for (const auto& [rangeStart, stat]: Stats) {
-            if (!stat.Compacted && stat.BlobCount >= 2) {
-                auto& maximum = groupMaxima[TCompactionMap::GetGroupStart(
-                    rangeStart,
-                    RangeSize)];
-                maximum = Max(maximum, stat.BlobCount);
-            }
-        }
         TVector<ui16> result;
-        for (const auto& [_, maximum]: groupMaxima) {
-            result.push_back(maximum);
+        for (const auto& [_, stat]: Stats) {
+            if (!stat.Compacted && stat.BlobCount >= 2) {
+                result.push_back(stat.BlobCount);
+            }
         }
         Sort(result, std::greater<ui16>());
         result.crop(count);
@@ -394,7 +387,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
 
     Y_UNIT_TEST(ShouldTrackTopByBlobCount)
     {
-        TCompactionMap map(RangeSize, BuildDefaultCompactionPolicy(5, 0));
+        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
         UNIT_ASSERT_VALUES_EQUAL(0, map.GetTopByBlobCount().Stat.BlobCount);
         UNIT_ASSERT(map.GetTopByBlobCount(10).empty());
 
@@ -408,9 +401,10 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         UNIT_ASSERT(map.GetTopByBlobCount(0).empty());
         UNIT_ASSERT_VALUES_EQUAL(1, map.GetTopByBlobCount(1).size());
         const auto tops = map.GetTopByBlobCount(10);
-        UNIT_ASSERT_VALUES_EQUAL(2, tops.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, tops.size());
         UNIT_ASSERT_VALUES_EQUAL(RangeSize, tops[0].BlockIndex);
-        UNIT_ASSERT_VALUES_EQUAL(GetGroupIndex(1), tops[1].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(2 * RangeSize, tops[1].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(GetGroupIndex(1), tops[2].BlockIndex);
 
         // A compacted range becomes eligible again even if its count decreases.
         map.Update(0, 7, 100, 100, 0, 0, false);
@@ -452,6 +446,33 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         UNIT_ASSERT_VALUES_EQUAL(
             Max<ui16>(),
             map.GetTopByBlobCount().Stat.BlobCount);
+    }
+
+    Y_UNIT_TEST(ShouldSelectTopBlobCountsAcrossAllRanges)
+    {
+        TCompactionMap map(RangeSize, MakeDefaultCompactionPolicy());
+        map.Update(0, 500, 1024, 1024, 0, 0, false);
+        map.Update(RangeSize, 400, 1024, 1024, 0, 0, false);
+        map.Update(2 * RangeSize, 300, 1024, 1024, 0, 0, false);
+        map.Update(3 * RangeSize, 200, 1024, 1024, 0, 0, false);
+        map.Update(GetGroupIndex(1), 10, 1024, 1024, 0, 0, false);
+
+        // Both top ranges belong to the first group.
+        auto tops = map.GetTopByBlobCount(2);
+        UNIT_ASSERT_VALUES_EQUAL(2, tops.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, tops[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(500, tops[0].Stat.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(RangeSize, tops[1].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(400, tops[1].Stat.BlobCount);
+
+        // A later group's maximum can replace the second selected range.
+        map.Update(GetGroupIndex(1), 450, 1024, 1024, 0, 0, false);
+        tops = map.GetTopByBlobCount(2);
+        UNIT_ASSERT_VALUES_EQUAL(2, tops.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, tops[0].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(500, tops[0].Stat.BlobCount);
+        UNIT_ASSERT_VALUES_EQUAL(GetGroupIndex(1), tops[1].BlockIndex);
+        UNIT_ASSERT_VALUES_EQUAL(450, tops[1].Stat.BlobCount);
     }
 
     Y_UNIT_TEST(ShouldSelectByBlobCountIndependentlyOfLoadScore)
@@ -867,16 +888,13 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
                 const auto mapTops = map.GetTopByBlobCount(3);
                 const auto refCounts = ref.GetTopBlobCounts(3);
                 UNIT_ASSERT_VALUES_EQUAL(mapTops.size(), refCounts.size());
-                THashSet<ui32> groups;
+                THashSet<ui32> ranges;
                 for (size_t j = 0; j < mapTops.size(); ++j) {
                     UNIT_ASSERT_VALUES_EQUAL(
                         mapTops[j].Stat.BlobCount,
                         refCounts[j]);
                     UNIT_ASSERT(!mapTops[j].Stat.Compacted);
-                    const auto groupStart = TCompactionMap::GetGroupStart(
-                        mapTops[j].BlockIndex,
-                        RangeSize);
-                    UNIT_ASSERT(groups.insert(groupStart).second);
+                    UNIT_ASSERT(ranges.insert(mapTops[j].BlockIndex).second);
                 }
             }
             UNIT_ASSERT_VALUES_EQUAL(

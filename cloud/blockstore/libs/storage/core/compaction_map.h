@@ -88,9 +88,9 @@ public:
     [[nodiscard]] TVector<TCompactionCounter> GetTopByGarbageIgnoringZeroed(size_t count) const;
     // Ranges with insufficient used or mixed blocks are excluded.
     [[nodiscard]] TVector<TCompactionCounter> GetTopByMixedBlockCount(size_t count) const;
-
-    // Returns at most one non-compacted range per group, in descending blob
-    // count order. Ranges with fewer than two blobs are excluded.
+    // Returns up to `count` non-compacted ranges with the highest blob counts
+    // across all groups, in descending order. Ranges with fewer than two blobs
+    // are excluded.
     [[nodiscard]] TVector<TCompactionCounter> GetTopByBlobCount(
         size_t count) const;
 
