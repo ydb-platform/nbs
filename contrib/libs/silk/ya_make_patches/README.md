@@ -38,7 +38,8 @@ ya_make_patches/
 │   ├── 02-fiber-uring24-compat.patch
 │   ├── 03-rseq-register-per-thread.patch
 │   ├── 04-fiber-cxa-get-globals-arcadia-libcxxrt.patch
-│   └── 05-fiber-uring24-sqes-sz.patch
+│   ├── 05-fiber-uring24-sqes-sz.patch
+│   └── 06-fiber-destroy-leak-dump.patch
 └── overlay/                          # Files copied verbatim into silk tree
     ├── ya.make
     ├── include/sys/rseq.h            # Stub for ya include checker
@@ -84,6 +85,26 @@ ya_make_patches/
   Silk targets liburing 2.9 where `sqes_sz` records the length of the sqes
   mapping; the repo has 2.4 without that field. The computed expression is
   exactly the length 2.4 itself mmaps and munmaps for the sqes array.
+- **06-fiber-destroy-leak-dump**: two fixes to `FiberScheduler::destroy`.
+  First, the fiber-leak asserts gain a per-fiber stderr dump. The stock
+  asserts abort on the first non-empty list and only name the CPU, which
+  makes a rare CI hit undiagnosable: the leaked fiber's identity is lost,
+  and a fiber woken concurrently with teardown sits in both a suspended
+  list (removal is lazy - a woken fiber stays listed until its next
+  dispatch) and a ready queue, so "still suspended" may really mean
+  "woken but never dispatched". The patch walks the global ready queue,
+  every per-CPU suspended list, and every per-CPU ready queue, prints
+  each leaked fiber's entry-point address (symbolizable with addr2line
+  against the test binary), state, home/suspended CPU, category and
+  counter, then fails a single assert with the total count.
+  Second, worker threads are joined before the processors (and their
+  io_uring rings) are destroyed, not after. A worker's runFiber epilogue
+  touches the dispatched fiber's home processor (submitIo, postWakeup)
+  and can be preempted there long after the fiber itself terminated and
+  was joined by the application; destroying the rings before joining the
+  worker turned that stall into a use-after-free segfault inside
+  io_uring_get_sqe (reproduced under CPU starvation).
+  Both are candidates for upstreaming; drop once silk ships equivalents.
 
 If a future silk version is built against a newer liburing or librseq, the
 corresponding patch can be dropped. Patches 02 and 05 can be dropped

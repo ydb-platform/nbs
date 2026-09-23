@@ -135,12 +135,15 @@ void TIndexTabletActor::HandleAdapter##name(                                   \
     TInstant startedTs = ctx.Now();                                            \
     const ui64 requestBytes = CalculateByteCount(msg->Record);                 \
     /*                                                                         \
-     * The shard is captured to pin its lifetime: the interface does not      \
-     * promise that the future may outlive the shard object, and the actor    \
-     * may die and drop its reference before the callback runs.               \
+     * The shard must not be captured here: the callback runs inside the      \
+     * shard's own fiber (during SetValue), so dropping the last shard        \
+     * reference there would run the shard destructor - which joins every     \
+     * inflight fiber, including the one executing the callback - inside      \
+     * that very fiber. The shard destructor waits for all of its fibers,     \
+     * so the callback outliving the actor's reference is safe.               \
      */                                                                       \
     FastShard->name(std::move(msg->Record)).Subscribe(                         \
-        [=, shard = FastShard] (const auto& f) {                               \
+        [=] (const auto& f) {                                                  \
             OnResponse<TMethod>(                                               \
                 ass,                                                           \
                 *config,                                                       \
