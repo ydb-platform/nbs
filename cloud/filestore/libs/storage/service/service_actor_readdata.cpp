@@ -21,6 +21,7 @@
 #include <contrib/libs/protobuf/src/google/protobuf/io/coded_stream.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <memory>
 #include <optional>
@@ -45,6 +46,67 @@ bool IsTwoStageReadEnabled(const NProto::TFileStore& fs)
         fs.GetFeatures().GetTwoStageReadDisabledForHDD();
     return !disabledAsHdd && fs.GetFeatures().GetTwoStageReadEnabled();
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TEvStartReadData final
+    : public TEventLocal<TEvStartReadData, TEvServicePrivate::EvStartReadData>
+{
+    NProto::TReadDataRequest ReadRequest;
+    TString LogTag;
+    ui32 BlockSize;
+    bool ReadBlobDisabled;
+    IRequestStatsPtr RequestStats;
+    TActorId Sender;
+    ui64 Cookie;
+    TCallContextPtr CallContext;
+    TChecksumCalcInfo ChecksumCalcInfo;
+    TInstant StartTime;
+    ui64 RequestCookie;
+    TString ClientId;
+    TShardStatePtr ShardState;
+    NCloud::NProto::EStorageMediaKind MediaKind;
+    bool UseTwoStageRead;
+    bool UseCustomReadDataResponseParser;
+    bool ZeroCopyReadEnabled;
+
+    TEvStartReadData(
+        NProto::TReadDataRequest readRequest,
+        TString logTag,
+        ui32 blockSize,
+        bool readBlobDisabled,
+        IRequestStatsPtr requestStats,
+        TActorId sender,
+        ui64 cookie,
+        TCallContextPtr callContext,
+        TChecksumCalcInfo checksumCalcInfo,
+        TInstant startTime,
+        ui64 requestCookie,
+        TString clientId,
+        TShardStatePtr shardState,
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        bool useTwoStageRead,
+        bool useCustomReadDataResponseParser,
+        bool zeroCopyReadEnabled)
+        : ReadRequest(std::move(readRequest))
+        , LogTag(std::move(logTag))
+        , BlockSize(blockSize)
+        , ReadBlobDisabled(readBlobDisabled)
+        , RequestStats(std::move(requestStats))
+        , Sender(sender)
+        , Cookie(cookie)
+        , CallContext(std::move(callContext))
+        , ChecksumCalcInfo(std::move(checksumCalcInfo))
+        , StartTime(startTime)
+        , RequestCookie(requestCookie)
+        , ClientId(std::move(clientId))
+        , ShardState(std::move(shardState))
+        , MediaKind(mediaKind)
+        , UseTwoStageRead(useTwoStageRead)
+        , UseCustomReadDataResponseParser(useCustomReadDataResponseParser)
+        , ZeroCopyReadEnabled(zeroCopyReadEnabled)
+    {}
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -75,11 +137,11 @@ private:
         IRequestStatsPtr RequestStats;
         const TActorId Sender;
         const ui64 Cookie;
-        TCallContextPtr CallContext;          // invalid after Bootstrap()
-        TChecksumCalcInfo ChecksumCalcInfo;   // invalid after Bootstrap()
+        TCallContextPtr CallContext;          // invalid after StartRequest()
+        TChecksumCalcInfo ChecksumCalcInfo;   // invalid after StartRequest()
         const TInstant StartTime;
         const ui64 RequestCookie;
-        TString ClientId;   // invalid after Bootstrap()
+        TString ClientId;   // invalid after StartRequest()
         TInFlightRequest* MainInFlightRequest = nullptr;
         std::optional<TInFlightRequest> InFlightRequest;
         TShardStatePtr ShardState;
@@ -143,7 +205,14 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
+    void StartRequest(const TActorContext& ctx);
+
+    STFUNC(StateIdle);
     STFUNC(StateWork);
+
+    void HandleStartReadData(
+        const TEvStartReadData::TPtr& ev,
+        const TActorContext& ctx);
 
     void Cleanup();
 
@@ -289,7 +358,44 @@ void TReadDataActor::Cleanup()
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
+    if (RequestState) {
+        StartRequest(ctx);
+    } else {
+        Become(&TThis::StateIdle);
+    }
+}
+
+void TReadDataActor::HandleStartReadData(
+    const TEvStartReadData::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    Initialize(
+        std::move(msg->ReadRequest),
+        std::move(msg->LogTag),
+        msg->BlockSize,
+        msg->ReadBlobDisabled,
+        std::move(msg->RequestStats),
+        msg->Sender,
+        msg->Cookie,
+        std::move(msg->CallContext),
+        std::move(msg->ChecksumCalcInfo),
+        msg->StartTime,
+        msg->RequestCookie,
+        std::move(msg->ClientId),
+        std::move(msg->ShardState),
+        msg->MediaKind,
+        msg->UseTwoStageRead,
+        msg->UseCustomReadDataResponseParser,
+        msg->ZeroCopyReadEnabled);
+
+    StartRequest(ctx);
+}
+
+void TReadDataActor::StartRequest(const TActorContext& ctx)
+{
     Y_ABORT_UNLESS(RequestState);
+    Become(&TThis::StateWork);
     auto& state = *RequestState;
 
     if (state.UseTwoStageRead) {
@@ -330,7 +436,6 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     } else {
         ReadData(ctx, {} /* fallbackReason */);
     }
-    Become(&TThis::StateWork);
 }
 
 void TReadDataActor::DescribeData(const TActorContext& ctx)
@@ -780,6 +885,11 @@ void TReadDataActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
+    if (!RequestState) {
+        Die(ctx);
+        return;
+    }
+
     HandleError(ctx, MakeError(E_REJECTED, "request cancelled"));
 }
 
@@ -1124,6 +1234,21 @@ void TReadDataActor::HandleError(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(TReadDataActor::StateIdle)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvStartReadData, HandleStartReadData);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
 
 STFUNC(TReadDataActor::StateWork)
 {
