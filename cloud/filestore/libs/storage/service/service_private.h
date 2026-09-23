@@ -63,6 +63,7 @@ struct TEvServicePrivate
         EvSessionCreated,
         EvSessionDestroyed,
         EvUpdateStats,
+        EvStartReadData,
 
         EvEnd
     };

@@ -21,6 +21,7 @@
 #include <contrib/libs/protobuf/src/google/protobuf/io/coded_stream.h>
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/event_local.h>
 
 #include <memory>
 #include <optional>
@@ -112,6 +113,18 @@ struct TReadRequestContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TEvStartReadData final
+    : public TEventLocal<TEvStartReadData, TEvServicePrivate::EvStartReadData>
+{
+    TReadRequestContext RequestContext;
+
+    TEvStartReadData(TReadRequestContext&& context)
+        : RequestContext(std::move(context))
+    {}
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TReadDataActor final: public TActorBootstrapped<TReadDataActor>
 {
 private:
@@ -155,9 +168,16 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
+    void StartRequest(const TActorContext& ctx);
+
+    STFUNC(StateIdle);
     STFUNC(StateWork);
 
     TRequestState& GetState();
+
+    void HandleStartReadData(
+        const TEvStartReadData::TPtr& ev,
+        const TActorContext& ctx);
 
     void DescribeData(const TActorContext& ctx);
 
@@ -232,6 +252,25 @@ TReadDataActor::TRequestState& TReadDataActor::GetState()
 
 void TReadDataActor::Bootstrap(const TActorContext& ctx)
 {
+    if (RequestState) {
+        StartRequest(ctx);
+    } else {
+        Become(&TThis::StateIdle);
+    }
+}
+
+void TReadDataActor::HandleStartReadData(
+    const TEvStartReadData::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+    Initialize(std::move(msg->RequestContext));
+    StartRequest(ctx);
+}
+
+void TReadDataActor::StartRequest(const TActorContext& ctx)
+{
+    Become(&TThis::StateWork);
     auto& state = GetState();
 
     if (state.RequestContext.UseTwoStageRead) {
@@ -274,7 +313,6 @@ void TReadDataActor::Bootstrap(const TActorContext& ctx)
     } else {
         ReadData(ctx, {} /* fallbackReason */);
     }
-    Become(&TThis::StateWork);
 }
 
 void TReadDataActor::DescribeData(const TActorContext& ctx)
@@ -725,6 +763,11 @@ void TReadDataActor::HandlePoisonPill(
     const TActorContext& ctx)
 {
     Y_UNUSED(ev);
+    if (!RequestState) {
+        Die(ctx);
+        return;
+    }
+
     HandleError(ctx, MakeError(E_REJECTED, "request cancelled"));
 }
 
@@ -1076,6 +1119,21 @@ void TReadDataActor::HandleError(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(TReadDataActor::StateIdle)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvStartReadData, HandleStartReadData);
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
 
 STFUNC(TReadDataActor::StateWork)
 {
