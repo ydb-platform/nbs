@@ -56,6 +56,7 @@ constexpr ui32 DefaultMaxSumWriteRequestsSize = 32_MB;
 constexpr ui64 NodeToHandleOffset = 1000;
 
 constexpr TDuration FlushRetryPeriod = TDuration::MilliSeconds(100);
+constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -879,6 +880,11 @@ public:
         };
     }
 
+    TBootstrap& Sync()
+    {
+        return Bootstrap;
+    }
+
     NThreading::TFuture<NProto::TWriteDataResponse> WriteData(
         std::shared_ptr<NProto::TWriteDataRequest> request)
     {
@@ -888,6 +894,17 @@ public:
                 return Bootstrap.Cache.WriteData(
                     Bootstrap.CallContext, std::move(request));
             }, SubmitThreadPool);
+    }
+
+    NThreading::TFuture<NProto::TWriteDataResponse>
+    WriteData(ui64 nodeId, ui64 handle, ui64 offset, TString data)
+    {
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(nodeId);
+        request->SetHandle(handle);
+        request->SetOffset(offset);
+        request->SetBuffer(std::move(data));
+        return WriteData(std::move(request));
     }
 
     NThreading::TFuture<NProto::TReadDataResponse> ReadData(
@@ -910,7 +927,7 @@ public:
 
     ~TMultiThreadedBootstrap()
     {
-        Bootstrap.Cache.Drain().Wait();
+        UNIT_ASSERT(Bootstrap.Cache.Drain().Wait(WaitTimeout));
         SubmitThreadPool.Stop();
         ExecutorThreadPool.Stop();
     }
@@ -3099,7 +3116,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         constexpr ui64 FileSize = 256_KB;
         constexpr TDuration TestDuration = TDuration::Seconds(5);
 
-        TMultiThreadedBootstrap b({.MaxWriteRequestsCount = 2});
+        TMultiThreadedBootstrap b(
+            {.MaxWriteRequestsCount = 2, .ZeroCopyWriteEnabled = true});
 
         std::latch start{ThreadCount + 1};
         std::atomic<bool> stopRequested = false;
@@ -3121,13 +3139,15 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                     {
                         auto request =
                             std::make_shared<NProto::TReadDataRequest>();
+
                         request->SetNodeId(nodeId);
                         request->SetHandle(handle);
                         request->SetOffset(offset);
                         request->SetLength(length);
 
-                        const auto response =
-                            b.ReadData(std::move(request)).GetValueSync();
+                        const auto response = b.ReadData(std::move(request))
+                                                  .GetValue(WaitTimeout);
+
                         if (HasError(response)) {
                             ythrow yexception()
                                 << "ReadData failed for @" << nodeId << ": "
@@ -3140,6 +3160,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
                         const auto actual = response.GetBuffer().substr(
                             response.GetBufferOffset());
+
                         if (expected != actual) {
                             ythrow yexception()
                                 << "Data mismatch while reading @" << nodeId
@@ -3162,18 +3183,25 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
 
                             if (RandomNumber(2u) == 0) {
                                 auto buffer = NUnitTest::RandomString(
-                                    length, RandomNumber<ui32>());
+                                    length,
+                                    RandomNumber<ui32>());
 
                                 auto request = std::make_shared<
                                     NProto::TWriteDataRequest>();
+
                                 request->SetNodeId(nodeId);
                                 request->SetHandle(handle);
                                 request->SetOffset(offset);
-                                request->SetBuffer(buffer);
+
+                                auto* iovec = request->AddIovecs();
+                                iovec->SetBase(
+                                    reinterpret_cast<ui64>(buffer.data()));
+                                iovec->SetLength(buffer.size());
 
                                 const auto response =
                                     b.WriteData(std::move(request))
-                                        .GetValueSync();
+                                        .GetValue(WaitTimeout);
+
                                 if (HasError(response)) {
                                     ythrow yexception()
                                         << "WriteData failed for @" << nodeId
@@ -3187,7 +3215,9 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                             }
                         }
 
-                        const auto error = b.Flush(nodeId).GetValueSync();
+                        const auto error =
+                            b.Flush(nodeId).GetValue(WaitTimeout);
+
                         if (HasError(error)) {
                             ythrow yexception()
                                 << "Flush failed for @" << nodeId << ": "
@@ -3198,7 +3228,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                              offset += MaxRequestSize)
                         {
                             readAndValidate(
-                                offset, Min(MaxRequestSize, FileSize - offset));
+                                offset,
+                                Min(MaxRequestSize, FileSize - offset));
                         }
                     } catch (...) {
                         errors[i] = std::current_exception();

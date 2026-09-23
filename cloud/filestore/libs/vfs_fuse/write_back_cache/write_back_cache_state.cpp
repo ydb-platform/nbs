@@ -99,11 +99,6 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
     }
 
     auto pendingRequest = RequestManager.AddRequest(std::move(request));
-    if (!pendingRequest) {
-        SetFailedFlag();
-        return HangingRequests.CreateWriteDataResponse();
-    }
-
     auto future = AddRequest(std::move(pendingRequest));
 
     ProcessPendingRequests(guard);
@@ -512,6 +507,11 @@ EFlushRetryStatus TWriteBackCacheState::FlushFailed(
             // allocated and cannot be failed safely. It is expected to become
             // unflushed shortly, after which normal request processing can
             // complete the handle release.
+            //
+            // We deliberately stop instead of scanning the remaining handles.
+            // Supporting partial processing would complicate this exceptional
+            // path, while the imminent flush retry will either complete their
+            // releases normally or bring us back here shortly.
             break;
         }
 
@@ -901,16 +901,23 @@ void TWriteBackCacheState::CheckAndAcquireBarriers(TNodeState& nodeState)
 void TWriteBackCacheState::ProcessPendingRequests(
     TGuard<TQueuedOperations>& guard)
 {
-    while (auto* pendingRequest = GetNextAllocatedPendingRequest()) {
-        // Request serialization is a computationally expensive operation
-        // and it may become a bottleneck if the requests are submitted from
-        // multiple threads but processed inside a lock section.
-        // We temporarily release and reacquire the lock.
-        guard.GetMutex()->ReleaseWithoutProcessingQueuedOperations();
+    while (auto* pendingRequest = TryAllocNextPendingRequest()) {
 
-        bool serializationSucceeded = pendingRequest->SerializeToAllocation();
+        bool serializationSucceeded = false;
+        {
+            // Request serialization is a computationally expensive operation
+            // and it may become a bottleneck if the requests are submitted from
+            // multiple threads but processed inside a lock section.
+            // Therefore, we temporarily release and reacquire the lock.
+            //
+            // Queued operations are deliberately executed at this point so
+            // requests that became completed in the previous iteration are
+            // reported to a client before another potentially expensive
+            // serialization begins.
+            auto unguard = Unguard(guard);
 
-        guard.GetMutex()->Acquire();
+            serializationSucceeded = pendingRequest->SerializeToAllocation();
+        }
 
         if (!serializationSucceeded) {
             SetFailedFlag();
@@ -925,7 +932,7 @@ void TWriteBackCacheState::ProcessPendingRequests(
     }
 }
 
-TPendingWriteDataRequest* TWriteBackCacheState::GetNextAllocatedPendingRequest()
+TPendingWriteDataRequest* TWriteBackCacheState::TryAllocNextPendingRequest()
 {
     if (IsFailed) {
         return nullptr;
@@ -1056,7 +1063,7 @@ void TWriteBackCacheState::DropCachedData(
 {
     if (nodeState.Cache.HasPendingRequests()) {
         // Cached data can be dropped only when all handles are released.
-        // Pending requests cannot exist it this case.
+        // Pending requests cannot exist in this case.
         ReportWriteBackCacheImpossibleState(
             "An attempt to drop cached data with the presence of pending "
             "requests has been made");

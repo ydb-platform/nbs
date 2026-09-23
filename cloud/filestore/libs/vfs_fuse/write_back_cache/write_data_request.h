@@ -81,7 +81,7 @@ public:
 
     // Serialization can be performed outside of lock section
     // Returns true on success, false on failure
-    [[nodiscard]] bool SerializeToAllocation() noexcept;
+    [[nodiscard]] bool SerializeToAllocation();
 
     // This method should be called inside lock section
     void SetSerialized();

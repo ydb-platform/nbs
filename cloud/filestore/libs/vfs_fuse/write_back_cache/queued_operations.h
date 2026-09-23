@@ -38,7 +38,6 @@ public:
 
     void Acquire();
     void Release();
-    void ReleaseWithoutProcessingQueuedOperations();
 
     void ScheduleFlushNode(ui64 nodeId);
 

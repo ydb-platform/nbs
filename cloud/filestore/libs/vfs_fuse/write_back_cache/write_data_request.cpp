@@ -24,7 +24,7 @@ TPendingWriteDataRequest::TPendingWriteDataRequest(
     AllocationByteCount = sizeof(TSerializedWriteDataRequestHeader) + byteCount;
 }
 
-bool TPendingWriteDataRequest::SerializeToAllocation() noexcept
+bool TPendingWriteDataRequest::SerializeToAllocation()
 {
     try {
         if (!AllocationPtr) {

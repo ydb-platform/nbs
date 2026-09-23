@@ -229,7 +229,7 @@ private:
     void CheckAndAcquireBarriers(TNodeState& nodeState);
 
     void ProcessPendingRequests(TGuard<TQueuedOperations>& guard);
-    TPendingWriteDataRequest* GetNextAllocatedPendingRequest();
+    TPendingWriteDataRequest* TryAllocNextPendingRequest();
     std::unique_ptr<TCachedWriteDataRequest> GetNextReadyCachedRequest();
     void ProcessReadyCachedRequest(
         std::unique_ptr<TCachedWriteDataRequest> request);

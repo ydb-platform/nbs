@@ -367,13 +367,10 @@ void TWriteDataRequestManager::UpdateStats() const
     auto now = Timer->Now();
 
     auto maxPendingRequestDuration =
-        HasUnallocatedPendingRequests()
-            ? now - UnallocatedPendingRequests.Front()->Time
-            : TDuration::Zero();
-
-    auto maxAllocatedRequestDuration =
         HasAllocatedPendingRequests()
             ? now - AllocatedPendingRequests.Front()->Time
+        : HasUnallocatedPendingRequests()
+            ? now - UnallocatedPendingRequests.Front()->Time
             : TDuration::Zero();
 
     auto maxUnflushedRequestDuration =
@@ -381,7 +378,7 @@ void TWriteDataRequestManager::UpdateStats() const
                                : TDuration::Zero();
 
     Stats->UpdateStats(
-        Max(maxPendingRequestDuration, maxAllocatedRequestDuration),
+        maxPendingRequestDuration,
         maxUnflushedRequestDuration);
 
     PersistentStorage->UpdateStats();
