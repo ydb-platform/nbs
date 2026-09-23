@@ -3136,7 +3136,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvAddDataRequest));
             UNIT_ASSERT_VALUES_EQUAL(1, runtime.GetCounter(TEvIndexTabletPrivate::EvAddBlobRequest));
             UNIT_ASSERT_VALUES_EQUAL(0, runtime.GetCounter(TEvIndexTabletPrivate::EvWriteBlobRequest));
-            UNIT_ASSERT_VALUES_EQUAL(1, runtime.GetCounter(TEvService::EvWriteDataResponse));
+            // TWriteDataActor responds directly to TServiceClient, bypassing
+            // TStorageServiceActor, so there are no internal response events.
+            UNIT_ASSERT_VALUES_EQUAL(0, runtime.GetCounter(TEvService::EvWriteDataResponse));
             UNIT_ASSERT_VALUES_EQUAL(expectedPutCount, putRequestCount);
             // clang-format on
             runtime.ClearCounters();
@@ -3476,7 +3478,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         auto& runtime = env.GetRuntime();
         // clang-format off
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsResponse));
-        UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataResponse));
+        // 2 responses:
+        // 1. TIndexTabletProxyActor -> TWriteDataActor
+        // 2. TWriteDataActor -> TServiceClient
+        UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvService::EvWriteDataResponse));
         // clang-format on
         runtime.ClearCounters();
 
@@ -3504,7 +3509,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // clang-format off
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvAddDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsResponse));
-        UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataResponse));
+        UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvService::EvWriteDataResponse));
         // clang-format on
 
         // TEvGet fails
@@ -3550,7 +3555,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // clang-format off
         UNIT_ASSERT_VALUES_EQUAL(0, runtime.GetCounter(TEvIndexTablet::EvAddDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsResponse));
-        UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataResponse));
+        UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvService::EvWriteDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
 
