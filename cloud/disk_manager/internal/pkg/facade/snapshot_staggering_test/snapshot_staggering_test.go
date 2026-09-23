@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/binary"
 	"fmt"
@@ -77,10 +78,16 @@ func TestSnapshotStaggeringFacade(t *testing.T) {
 					},
 				},
 			)
+
 			require.NoError(t, err)
+
+			diskWaitCtx, cancelDiskWait := context.WithTimeout(ctx, time.Minute)
+			defer cancelDiskWait()
+
 			require.NoError(
 				t,
-				internal_client.WaitOperation(ctx, client, operation.Id),
+				internal_client.WaitOperation(diskWaitCtx, client, operation.Id),
+				"waiting for source disk operation %s", operation.Id,
 			)
 
 			// Schedule a snapshot whose deadline leaves time for the checks below.
@@ -157,10 +164,19 @@ func TestSnapshotStaggeringFacade(t *testing.T) {
 				require.True(t, after.FirstRunStartedAt.IsZero())
 				testcommon.RequireCheckpointsDoNotExist(t, ctx, diskID)
 			} else {
+				snapshotWaitCtx, cancelSnapshotWait := context.WithTimeout(ctx, time.Minute)
+				defer cancelSnapshotWait()
+
 				response := &disk_manager.CreateSnapshotResponse{}
 				require.NoError(
 					t,
-					internal_client.WaitResponse(ctx, client, operation.Id, response),
+					internal_client.WaitResponse(
+						snapshotWaitCtx,
+						client,
+						operation.Id,
+						response,
+					),
+					"waiting for snapshot operation %s", operation.Id,
 				)
 
 				after, err := store.GetTask(ctx, operation.Id)
