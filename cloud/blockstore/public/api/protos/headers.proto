@@ -107,7 +107,10 @@ message THeaders
     // copy with a mangled name with an additional suffix.
     bool ExactDiskIdMatch = 16;
 
-    // True for the blob-storage to use AsyncRead class for ReadBlocks requests.
+    // Required for the blob-storage to use AsyncRead class for ReadBlocks requests.
+    // Used for snapshot creation, assigned in grpc.go
+    // Set to true, whenever the context has value asyncReadContextKey added
+    // Set to false otherwise
     bool AsyncRead = 17;
 }
 
