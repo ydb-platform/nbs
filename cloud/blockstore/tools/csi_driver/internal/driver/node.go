@@ -1442,15 +1442,10 @@ func (s *nodeService) nodeUnstageVolume(
 		mounted, _ = s.mounter.IsMountPoint(mountPoint)
 	}
 
-	if !mounted {
-		// Fallback to previous implementation for already mounted volumes to
-		// stop endpoint in nodeUnpublishVolume
-		// Must be removed after migration of all endpoints to the new format
-		return nil
-	}
-
-	if err := s.mounter.CleanupMountPoint(mountPoint); err != nil {
-		return err
+	if mounted {
+		if err := s.mounter.CleanupMountPoint(mountPoint); err != nil {
+			return err
+		}
 	}
 
 	endpointDir := s.getEndpointDir("", diskId)
