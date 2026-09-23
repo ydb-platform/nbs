@@ -488,6 +488,8 @@ public:
     TDuration GetNodeLatencyHalfLife() const;
 
     [[nodiscard]] bool GetEnableRdmaForWrites() const;
+
+    bool GetEnablePreallocatedDataActors() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -1031,4 +1031,7 @@ message TStorageConfig
     // Max FUSE read / write request size in bytes
     // Zero uses TVFSConfig.MaxWritePages (default 256) * host page size.
     optional uint32 MaxRequestSize = 566;
+
+    // Enables pre-allocated actors for reading data in storage service
+    optional bool EnablePreallocatedDataActors = 567;
 }

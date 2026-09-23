@@ -37,3 +37,4 @@ FakeTxPageFaultsProbability: 0.001
 AvailabilityTrackingEnabled: true
 AvailabilityTrackingInterval: 15000
 WriteDataZeroBlockStatsEnabled: true
+EnablePreallocatedDataActors: true
