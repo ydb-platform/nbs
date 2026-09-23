@@ -468,7 +468,6 @@ Y_UNIT_TEST_SUITE(TWriteDataRequestManagerTest)
 
         // Clearing node 3 cannot bypass the earlier request for node 2 because
         // requests are committed in global FIFO order.
-        // requests are committed in global FIFO order.
         UNIT_ASSERT(!f2.HasValue());
         UNIT_ASSERT(!f3.HasValue());
 

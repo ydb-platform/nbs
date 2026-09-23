@@ -366,12 +366,13 @@ void TWriteDataRequestManager::UpdateStats() const
 {
     auto now = Timer->Now();
 
-    auto maxPendingRequestDuration =
-        HasAllocatedPendingRequests()
-            ? now - AllocatedPendingRequests.Front()->Time
-        : HasUnallocatedPendingRequests()
-            ? now - UnallocatedPendingRequests.Front()->Time
-            : TDuration::Zero();
+    const auto* frontPendingRequest = HasAllocatedPendingRequests()
+                                          ? AllocatedPendingRequests.Front()
+                                          : UnallocatedPendingRequests.Front();
+
+    auto maxPendingRequestDuration = frontPendingRequest
+                                         ? now - frontPendingRequest->Time
+                                         : TDuration::Zero();
 
     auto maxUnflushedRequestDuration =
         HasUnflushedRequests() ? now - UnflushedRequests.Front()->Time
