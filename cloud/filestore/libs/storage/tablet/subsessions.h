@@ -30,8 +30,8 @@ struct TSubSession
 
 struct TSubSessionUpdateResult
 {
-    std::optional<NActors::TActorId> StalePipeServer;
-    std::optional<NActors::TActorId> StaleOwner;
+    NActors::TActorId StalePipeServer;
+    NActors::TActorId StaleOwner;
 };
 
 struct TDeleteSubSessionResult
