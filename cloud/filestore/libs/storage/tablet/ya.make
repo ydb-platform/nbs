@@ -164,4 +164,5 @@ RECURSE_FOR_TESTS(
     ut_cache_stress
     ut_counters
     ut_stress
+    ut_stress_large
 )
