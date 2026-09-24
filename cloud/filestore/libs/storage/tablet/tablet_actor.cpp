@@ -1158,7 +1158,11 @@ void TIndexTabletActor::HandleSessionDisconnected(
     // GenerateBlobIds, so clean it up when the pipe disconnects.
     DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
     FileSystemEventClients.erase(msg.ServerId);
-    OrphanSession(msg.ServerId, ctx.Now() + Config->GetIdleSessionTimeout());
+
+    OrphanSession(
+        msg.ServerId,
+        ctx.Now() + Config->GetIdleSessionTimeout(),
+        Config->GetSessionOrphaningEnabled());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
