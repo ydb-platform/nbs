@@ -1,8 +1,11 @@
 #include "app.h"
 #include "bootstrap.h"
 
+#include <cloud/storage/core/libs/grpc/init.h>
+
 #include <library/cpp/getopt/small/last_getopt.h>
 
+#include <util/generic/scope.h>
 #include <util/generic/singleton.h>
 #include <util/generic/yexception.h>
 #include <util/string/join.h>
@@ -14,6 +17,14 @@
 #include <new>
 
 namespace NCloud::NBlockStore::NClient {
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+const TDuration GrpcShutdownTimeout = TDuration::Seconds(5);
+
+}   // namespace
 
 using namespace NLastGetopt;
 
@@ -36,6 +47,16 @@ int TApp::Run(
     int argc,
     const char* argv[])
 {
+    Y_DEFER {
+        // Release all command-owned gRPC resources before waiting for global
+        // gRPC shutdown.
+        Handler.Reset();
+        if (!WaitForGrpcShutdown(GrpcShutdownTimeout)) {
+            Cerr << "Timed out waiting for gRPC shutdown after "
+                 << GrpcShutdownTimeout << Endl;
+        }
+    };
+
     TOpts opts;
     opts.AddHelpOption('h');
     opts.SetFreeArgsNum(1);
