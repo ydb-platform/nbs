@@ -1481,7 +1481,7 @@ private:
 
     NProto::TError TryToRemoveDevice(
         TDiskRegistryDatabase& db,
-        const TAgentId& agentId,
+        const NProto::TAgentConfig& agent,
         const TString& path);
 
     void SuspendLocalDevice(

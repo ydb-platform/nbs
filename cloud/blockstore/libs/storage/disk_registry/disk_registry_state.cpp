@@ -6098,7 +6098,7 @@ void TDiskRegistryState::CleanupDeviceConfig(
     const NProto::TAgentConfig& agent,
     const TString& path)
 {
-    auto error = TryToRemoveDevice(db, agent.GetAgentId(), path);
+    auto error = TryToRemoveDevice(db, agent, path);
     if (!HasError(error) || error.GetCode() == E_NOT_FOUND) {
         return;
     }
@@ -6108,16 +6108,11 @@ void TDiskRegistryState::CleanupDeviceConfig(
 
 NProto::TError TDiskRegistryState::TryToRemoveDevice(
     TDiskRegistryDatabase& db,
-    const TAgentId& agentId,
+    const NProto::TAgentConfig& agent,
     const TString& path)
 {
-    auto* agent = AgentList.FindAgent(agentId);
-    if (!agent) {
-        return {};
-    }
-
     THashSet<TDeviceId> toRemove;
-    for (const auto& device: agent->GetDevices()) {
+    for (const auto& device: agent.GetDevices()) {
         if (device.GetDeviceName() == path) {
             toRemove.insert(device.GetDeviceUUID());
         }
@@ -6128,13 +6123,15 @@ NProto::TError TDiskRegistryState::TryToRemoveDevice(
 
     const auto agentIt = FindIf(
         *configAgents,
-        [&agentId](const auto& x) { return x.GetAgentId() == agentId; });
+        [&agent](const auto& x)
+        { return x.GetAgentId() == agent.GetAgentId(); });
 
     if (agentIt == configAgents->end()) {
         return MakeError(
             E_NOT_FOUND,
-            TStringBuilder() << "Couldn't find agent " << agentId.Quote()
-                             << " in the DR config.");
+            TStringBuilder()
+                << "Couldn't find agent " << agent.GetAgentId().Quote()
+                << " in the DR config.");
     }
 
     EraseIf(
