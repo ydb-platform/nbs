@@ -37,6 +37,10 @@ func (s *FollowerS3) PutObject(
 	return s.s3.PutObject(ctx, s.bucket, s.Key(key), object)
 }
 
+func (s *FollowerS3) DeleteObject(ctx context.Context, key string) error {
+	return s.s3.DeleteObject(ctx, s.bucket, s.Key(key))
+}
+
 func (s *FollowerS3) Key(key string) string {
 	if len(s.keyPrefix) == 0 {
 		return key

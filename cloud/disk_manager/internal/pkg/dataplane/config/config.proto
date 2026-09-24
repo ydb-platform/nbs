@@ -44,4 +44,6 @@ message DataplaneConfig {
     optional uint32 BackupChunksTaskBatchSize = 22 [default = 100];
     optional uint32 BackupChunksTaskWorkerCount = 23 [default = 10];
     optional uint32 BackupSnapshotChunksBatchSize = 24 [default = 1000];
+    optional string DeleteBackupObjectsTaskScheduleInterval = 25 [default = "10s"];
+    optional uint32 DeleteBackupObjectsTaskBatchSize = 26 [default = 100];
 }

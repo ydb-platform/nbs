@@ -15,6 +15,7 @@ func NewStorage(
 	metricsRegistry common_metrics.Registry,
 	db *persistence.YDBClient,
 	s3 *persistence.S3Client,
+	backupEnabled bool,
 ) (Storage, error) {
 
 	tablesPath := db.AbsolutePath(config.GetStorageFolder())
@@ -54,5 +55,6 @@ func NewStorage(
 			probeCompressionPercentage,
 		),
 		chunkStorageS3: chunkStorageS3,
+		backupEnabled:  backupEnabled,
 	}, nil
 }

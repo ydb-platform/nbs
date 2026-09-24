@@ -22,6 +22,7 @@ type storageYDB struct {
 	chunkCompression         string
 	chunkStorageS3           *chunks.StorageS3
 	chunkStorageYDB          *chunks.StorageYDB
+	backupEnabled            bool
 }
 
 func (s *storageYDB) CreateSnapshot(

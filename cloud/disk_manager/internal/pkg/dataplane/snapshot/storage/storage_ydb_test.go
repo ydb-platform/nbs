@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
@@ -316,7 +317,7 @@ func newStorage(
 	err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
 	require.NoError(t, err)
 
-	storage, err := NewStorage(config, registry, db, s3)
+	storage, err := NewStorage(config, registry, db, s3, true)
 	require.NoError(t, err)
 
 	return storage
@@ -1810,4 +1811,74 @@ func TestGetSnapshotIDFromChunkID(t *testing.T) {
 	require.Equal(t, "snap.1", getSnapshotIDFromChunkID("task1.snap.1.7"))
 	require.Empty(t, getSnapshotIDFromChunkID("task1.snap1"))
 	require.Empty(t, getSnapshotIDFromChunkID(""))
+}
+
+func TestBackupDeleteQueue(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunkID, err := f.storage.WriteChunk(
+		f.ctx,
+		"",
+		"src",
+		makeChunk(0, "abc"),
+		true, // useS3
+	)
+	require.NoError(t, err)
+
+	err = f.storage.ShallowCopySnapshot(f.ctx, "src", "dst", 0, nil)
+	require.NoError(t, err)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "src")
+	require.NoError(t, err)
+
+	objectKeys, err := f.storage.GetBackupDeleteQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{backup.ChunkMapKey("src")}, objectKeys)
+
+	err = f.storage.BackupDeletionsCompleted(f.ctx, objectKeys)
+	require.NoError(t, err)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "dst")
+	require.NoError(t, err)
+
+	objectKeys, err = f.storage.GetBackupDeleteQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.ElementsMatch(
+		t,
+		[]string{backup.ChunkKey(chunkID), backup.ChunkMapKey("dst")},
+		objectKeys,
+	)
+
+	length, err := f.storage.GetBackupDeleteQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, length)
+
+	err = f.storage.BackupDeletionsCompleted(f.ctx, objectKeys)
+	require.NoError(t, err)
+
+	objectKeys, err = f.storage.GetBackupDeleteQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, objectKeys)
+}
+
+func TestBackupDeleteQueueIsEmptyForYDBChunks(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.WriteChunk(
+		f.ctx,
+		"",
+		"snapshot",
+		makeChunk(0, "abc"),
+		false, // useS3
+	)
+	require.NoError(t, err)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "snapshot")
+	require.NoError(t, err)
+
+	objectKeys, err := f.storage.GetBackupDeleteQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{backup.ChunkMapKey("snapshot")}, objectKeys)
 }

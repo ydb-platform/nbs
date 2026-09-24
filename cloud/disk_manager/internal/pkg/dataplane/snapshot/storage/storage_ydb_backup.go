@@ -170,6 +170,135 @@ func (s *storageYDB) GetBackupChunkQueueLength(
 	return count, res.Err()
 }
 
+func (s *storageYDB) enqueueBackupDeletions(
+	ctx context.Context,
+	objectKeys []string,
+) (err error) {
+
+	defer s.metrics.StatOperation("enqueueBackupDeletions")(&err)
+
+	if !s.backupEnabled || len(objectKeys) == 0 {
+		return nil
+	}
+
+	values := make([]persistence.Value, 0, len(objectKeys))
+	for _, objectKey := range objectKeys {
+		values = append(values, objectKeyValue(objectKey))
+	}
+
+	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $entries as List<Struct<object_key: Utf8>>;
+
+		upsert into backup_delete_queue
+		select *
+		from AS_TABLE($entries)
+	`, s.tablesPath),
+		persistence.ValueParam("$entries", persistence.ListValue(values...)),
+	)
+	return err
+}
+
+func (s *storageYDB) GetBackupDeleteQueue(
+	ctx context.Context,
+	limit int,
+) (objectKeys []string, err error) {
+
+	defer s.metrics.StatOperation("GetBackupDeleteQueue")(&err)
+
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $limit as Uint64;
+
+		select object_key
+		from backup_delete_queue
+		limit $limit
+	`, s.tablesPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var objectKey string
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault("object_key", &objectKey),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			objectKeys = append(objectKeys, objectKey)
+		}
+	}
+
+	return objectKeys, res.Err()
+}
+
+func (s *storageYDB) BackupDeletionsCompleted(
+	ctx context.Context,
+	objectKeys []string,
+) (err error) {
+
+	defer s.metrics.StatOperation("BackupDeletionsCompleted")(&err)
+
+	if len(objectKeys) == 0 {
+		return nil
+	}
+
+	values := make([]persistence.Value, 0, len(objectKeys))
+	for _, objectKey := range objectKeys {
+		values = append(values, objectKeyValue(objectKey))
+	}
+
+	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $keys as List<Struct<object_key: Utf8>>;
+
+		delete from backup_delete_queue
+		on select * from AS_TABLE($keys)
+	`, s.tablesPath),
+		persistence.ValueParam("$keys", persistence.ListValue(values...)),
+	)
+	return err
+}
+
+func (s *storageYDB) GetBackupDeleteQueueLength(
+	ctx context.Context,
+) (count uint64, err error) {
+
+	defer s.metrics.StatOperation("GetBackupDeleteQueueLength")(&err)
+
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+
+		select count(*)
+		from backup_delete_queue
+	`, s.tablesPath))
+	if err != nil {
+		return 0, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return 0, nil
+	}
+
+	err = res.Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, res.Err()
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func backupChunkQueueEntryValue(entry BackupChunkQueueEntry) persistence.Value {
@@ -181,6 +310,15 @@ func backupChunkQueueEntryValue(entry BackupChunkQueueEntry) persistence.Value {
 		persistence.StructFieldValue(
 			"chunk_id",
 			persistence.UTF8Value(entry.ChunkID),
+		),
+	)
+}
+
+func objectKeyValue(objectKey string) persistence.Value {
+	return persistence.StructValue(
+		persistence.StructFieldValue(
+			"object_key",
+			persistence.UTF8Value(objectKey),
 		),
 	)
 }

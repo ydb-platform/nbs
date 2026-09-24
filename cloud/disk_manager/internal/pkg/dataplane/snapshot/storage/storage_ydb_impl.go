@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
@@ -619,7 +620,15 @@ func (s *storageYDB) deleteSnapshotData(
 		return err
 	}
 
-	return <-errors
+	err = <-errors
+	if err != nil {
+		return err
+	}
+
+	return s.enqueueBackupDeletions(
+		ctx,
+		[]string{backup.ChunkMapKey(snapshotID)},
+	)
 }
 
 func (s *storageYDB) deleteChunk(
@@ -634,9 +643,19 @@ func (s *storageYDB) deleteChunk(
 	// map entry to avoid orphaning blobs.
 	if len(entry.ChunkID) != 0 {
 		chunkStorage := s.getChunkStorage(entry.StoredInS3)
-		err := chunkStorage.UnrefChunk(ctx, snapshotID, entry.ChunkID)
+		deleted, err := chunkStorage.UnrefChunk(ctx, snapshotID, entry.ChunkID)
 		if err != nil {
 			return err
+		}
+
+		if deleted && entry.StoredInS3 {
+			err = s.enqueueBackupDeletions(
+				ctx,
+				[]string{backup.ChunkKey(entry.ChunkID)},
+			)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
