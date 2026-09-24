@@ -32,7 +32,7 @@ private:
 
     IMortalActor* Owner;
     TSet<NActors::TActorId> OwnedActors;
-    std::optional<TPoisoner> Poisoner;
+    TVector<TPoisoner> Poisoners;
 
     THashMap<ui64, NActors::TActorId> PoisonPillCookieToOwnedActorId;
 
