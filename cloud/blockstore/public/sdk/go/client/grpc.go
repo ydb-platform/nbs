@@ -26,6 +26,13 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type asyncReadContextKey struct{}
+
+// WithAsyncRead routes ReadBlocks requests through the blob-storage AsyncRead handler class
+func WithAsyncRead(ctx context.Context) context.Context {
+	return context.WithValue(ctx, asyncReadContextKey{}, true)
+}
+
 func WithClientID(ctx context.Context, clientId string) context.Context {
 	return context.WithValue(ctx, ClientIdHeaderKey, clientId)
 }
@@ -42,6 +49,12 @@ type grpcClient struct {
 
 func (client *grpcClient) setupHeaders(ctx context.Context, req request) {
 	headers := req.GetHeaders()
+
+	if _, ok := req.(*protos.TReadBlocksRequest); ok {
+		if asyncRead, ok := ctx.Value(asyncReadContextKey{}).(bool); ok {
+			headers.AsyncRead = asyncRead
+		}
+	}
 
 	if val := ctx.Value(IdempotenceIdHeaderKey); val != nil {
 		if str, ok := val.(string); ok {

@@ -4,6 +4,8 @@ import (
 	"context"
 
 	"github.com/golang/protobuf/proto"
+
+	blockstore_client "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
@@ -342,7 +344,7 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	transferredChunkCount, err := transferer.Transfer(
-		ctx,
+		blockstore_client.WithAsyncRead(ctx),
 		source,
 		target,
 		common.Milestone{
