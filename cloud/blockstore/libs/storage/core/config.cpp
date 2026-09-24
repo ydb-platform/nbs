@@ -205,9 +205,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(WriteBlobThreshold,            ui32,      1_MB                        )\
     xxx(WriteBlobThresholdSSD,         ui32,      128_KB                      )\
     xxx(WriteMixedBlobThresholdHDD,    ui32,      0                           )\
-    xxx(FlushThreshold,                ui32,      4_MB                        )\
-    xxx(FreshBlobCountFlushThreshold,  ui32,      3200                        )\
-    xxx(FreshBlobByteCountFlushThreshold,   ui32,      16_MB                  )\
+    xxx(FlushThreshold,                ui64,      4_MB                        )\
+    xxx(FreshBlobCountFlushThreshold,  ui64,      3200                        )\
+    xxx(FreshBlobByteCountFlushThreshold,   ui64,      16_MB                  )\
                                                                                \
     xxx(SSDCompactionType,                                                     \
             NProto::ECompactionType,                                           \
@@ -405,10 +405,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionScoreThresholdForBackpressure,        ui32,   100           )\
     xxx(CompactionScoreFeatureMaxValue,                 ui32,   10            )\
                                                                                \
-    xxx(FreshByteCountLimitForBackpressure,             ui32,   128_MB        )\
-    xxx(FreshByteCountThresholdForBackpressure,         ui32,   40_MB         )\
+    xxx(FreshByteCountLimitForBackpressure,             ui64,   128_MB        )\
+    xxx(FreshByteCountThresholdForBackpressure,         ui64,   40_MB         )\
     xxx(FreshByteCountFeatureMaxValue,                  ui32,   10            )\
-    xxx(FreshByteCountHardLimit,                        ui32,   256_MB        )\
+    xxx(FreshByteCountHardLimit,                        ui64,   256_MB        )\
     xxx(FreshLogicalBlocksByteCountHardLimit,           ui64,   512_TB        )\
                                                                                \
     xxx(CleanupQueueBytesLimitForBackpressure,            ui64,   4_TB        )\

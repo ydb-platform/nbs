@@ -42,8 +42,7 @@ void TPartitionActor::WriteFreshBlocks(
 
     if (auto error = CheckFreshHardLimits(
             State->GetUnflushedFreshBlobByteCount(),
-            static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
-                State->GetBlockSize(),
+            State->GetUnflushedFreshBlocksCount() * State->GetBlockSize(),
             Config->GetFreshByteCountHardLimit(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))
@@ -463,8 +462,7 @@ void TPartitionActor::ZeroFreshBlocks(
 
     if (auto error = CheckFreshHardLimits(
             State->GetUnflushedFreshBlobByteCount(),
-            static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
-                State->GetBlockSize(),
+            State->GetUnflushedFreshBlocksCount() * State->GetBlockSize(),
             Config->GetFreshByteCountHardLimit(),
             Config->GetFreshLogicalBlocksByteCountHardLimit());
         HasError(error))

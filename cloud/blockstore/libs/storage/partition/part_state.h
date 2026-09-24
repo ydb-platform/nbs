@@ -546,7 +546,7 @@ public:
         ui32 blockIndex,
         ui64 commitId);
 
-    ui32 GetUnflushedFreshBlocksCount() const
+    ui64 GetUnflushedFreshBlocksCount() const
     {
         return GetStats().GetFreshBlocksCount() +
                GetUnflushedFreshBlocksCountFromChannel();
@@ -1377,7 +1377,7 @@ public:
     {
         const ui64 mixedBytesCount = GetMixedBlocksCount() * GetBlockSize();
         const ui64 freshBytesCount =
-            static_cast<ui64>(GetUnflushedFreshBlocksCount()) * GetBlockSize();
+            GetUnflushedFreshBlocksCount() * GetBlockSize();
         const ui64 mergedBytesCount = GetMergedBlocksCount() * GetBlockSize();
         const ui64 bytesCount = GetBlocksCount() * GetBlockSize();
 

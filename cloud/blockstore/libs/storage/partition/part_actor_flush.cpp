@@ -446,8 +446,9 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    const ui32 freshBlockByteCount =
-        State->GetUnflushedFreshBlocksCount() * State->GetBlockSize();
+    const ui64 freshBlockByteCount =
+        static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
+        State->GetBlockSize();
     const ui64 freshBlobCount = State->GetUnflushedFreshBlobCount();
     const ui64 freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
 
@@ -809,7 +810,7 @@ void TPartitionActor::HandleFlushCompleted(
 
     const auto d = CyclesToDurationSafe(msg->TotalCycles);
     Y_DEBUG_ABORT_UNLESS(msg->Stats.GetSysReadCounters().GetBlocksCount() == 0);
-    ui32 blocks = msg->Stats.GetSysWriteCounters().GetBlocksCount();
+    const ui64 blocks = msg->Stats.GetSysWriteCounters().GetBlocksCount();
     PartCounters->RequestCounters.Flush.AddRequest(
         d.MicroSeconds(),
         blocks * State->GetBlockSize());
