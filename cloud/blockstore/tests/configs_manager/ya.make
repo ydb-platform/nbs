@@ -20,6 +20,7 @@ PEERDIR(
 DEPENDS(
     cloud/blockstore/apps/client
     cloud/blockstore/apps/server
+    cloud/blockstore/apps/server_lightweight
     contrib/ydb/apps/ydbd
 )
 
