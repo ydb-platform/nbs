@@ -456,6 +456,26 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldUpdateIndexBlobCountersAfterRebuildOnlyWhenEnabled)
+    {
+        for (bool useChannelCounters: {false, true}) {
+            auto state = MakeState(
+                DefaultBlockCount,
+                {.UseBlobChannelDataKindForCounters = useChannelCounters});
+            auto& stats = state.AccessStats();
+            stats.SetMixedIndexBlobsCount(7);
+            stats.SetMergedIndexBlobsCount(11);
+
+            state.UpdateBlobsCountersAfterMetadataRebuild(2, 6, 1, 7);
+
+            AssertBlobAndBlockCounts(
+                state.GetStats(),
+                {1, 7, 0, 0},
+                useChannelCounters ? TBlobAndBlockCounts{2, 6, 0, 0}
+                                   : TBlobAndBlockCounts{7, 11, 0, 0});
+        }
+    }
+
     Y_UNIT_TEST(ShouldUseChannelBlobTotalsWhenIndexCountersAreDisabled)
     {
         for (bool useChannelCounters: {false, true}) {
