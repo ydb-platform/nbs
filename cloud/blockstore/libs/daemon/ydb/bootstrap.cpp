@@ -69,6 +69,7 @@
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/diagnostics/trace_serializer.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
+#include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/iam/iface/client.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 #include <cloud/storage/core/libs/io_uring/service.h>
@@ -434,19 +435,20 @@ void TBootstrapYdb::InitConfigs()
 void TBootstrapYdb::InitSpdk()
 {
     const bool needSpdkForInitiator =
-        Configs->ServerConfig->GetNvmfInitiatorEnabled();
+        BootstrapConfig->ServerConfig->GetNvmfInitiatorEnabled();
 
     const bool needSpdkForTarget =
-        Configs->ServerConfig->GetNVMeEndpointEnabled() ||
-        Configs->ServerConfig->GetSCSIEndpointEnabled();
+        BootstrapConfig->ServerConfig->GetNVMeEndpointEnabled() ||
+        BootstrapConfig->ServerConfig->GetSCSIEndpointEnabled();
 
     const bool needSpdkForDiskAgent =
-        Configs->DiskAgentConfig->GetEnabled() &&
-        Configs->DiskAgentConfig->GetBackend() == NProto::DISK_AGENT_BACKEND_SPDK;
+        BootstrapConfig->DiskAgentConfig->GetEnabled() &&
+        BootstrapConfig->DiskAgentConfig->GetBackend() ==
+            NProto::DISK_AGENT_BACKEND_SPDK;
 
     if (needSpdkForInitiator || needSpdkForTarget || needSpdkForDiskAgent) {
-        auto spdkParts =
-            ServerModuleFactories->SpdkFactory(Configs->SpdkEnvConfig);
+        auto spdkParts = ServerModuleFactories->SpdkFactory(
+            BootstrapConfig->SpdkEnvConfig);
         Spdk = std::move(spdkParts.Env);
         VhostCallbacks = std::move(spdkParts.VhostCallbacks);
         SpdkLogInitializer = std::move(spdkParts.LogInitializer);
@@ -458,11 +460,11 @@ void TBootstrapYdb::InitSpdk()
 void TBootstrapYdb::InitRdmaClient()
 {
     try {
-        if (Configs->RdmaConfig->GetClientEnabled()) {
+        if (BootstrapConfig->RdmaConfig->GetClientEnabled()) {
             RdmaClient = ServerModuleFactories->RdmaClientFactory(
                 Logging,
                 Monitoring,
-                CreateRdmaClientConfig(*Configs->RdmaConfig));
+                CreateRdmaClientConfig(*BootstrapConfig->RdmaConfig));
 
             STORAGE_INFO("RDMA client initialized");
         }
@@ -488,7 +490,7 @@ void TBootstrapYdb::InitRdmaServer()
 
 void TBootstrapYdb::InitDiskAgentBackend()
 {
-    const auto& config = *Configs->DiskAgentConfig;
+    const auto& config = *StartupBlockstoreConfig->GetDiskAgentConfig();
     if (!config.GetEnabled()) {
         return;
     }
@@ -517,10 +519,14 @@ void TBootstrapYdb::InitKikimrService()
 {
     InitConfigs();
 
-    auto preemptedVolumes = NStorage::CreateManuallyPreemptedVolumes(
-        Configs->StorageConfig,
-        Log,
-        PostponedCriticalEvents);
+    // Defer YAML-dependent file loading until the startup snapshot is ready.
+    NStorage::TManuallyPreemptedVolumesPtr preemptedVolumes;
+    if (!Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
+        preemptedVolumes = NStorage::CreateManuallyPreemptedVolumes(
+            Configs->StorageConfig,
+            Log,
+            PostponedCriticalEvents);
+    }
 
     const auto& cert = Configs->StorageConfig->GetNodeRegistrationCert();
 
@@ -677,6 +683,35 @@ void TBootstrapYdb::InitKikimrService()
             *Configs->DiskAgentConfig);
     }
 
+    // Bind common consumers to the same snapshot as YDB services and actors.
+    // Read Storage values at their original call sites to preserve live ICB.
+    const auto storageConfig = StartupBlockstoreConfig->GetStorageConfig();
+    SetBootstrapConfig({
+        .ServerConfig = StartupBlockstoreConfig->GetServerConfig(),
+        .EndpointConfig = StartupBlockstoreConfig->GetEndpointConfig(),
+        .DiagnosticsConfig = StartupBlockstoreConfig->GetDiagnosticsConfig(),
+        .DiskAgentConfig = StartupBlockstoreConfig->GetDiskAgentConfig(),
+        .RdmaConfig = StartupBlockstoreConfig->GetRdmaConfig(),
+        .CellsConfig = StartupBlockstoreConfig->GetCellsConfig(),
+        .SpdkEnvConfig = StartupBlockstoreConfig->GetSpdkEnvConfig(),
+        .DiscoveryConfig = StartupBlockstoreConfig->GetDiscoveryServiceConfig(),
+        .GetUseNonreplicatedRdmaActor =
+            [storageConfig]
+            { return storageConfig->GetUseNonreplicatedRdmaActor(); },
+        .GetInactiveClientsTimeout =
+            [storageConfig]
+            { return storageConfig->GetInactiveClientsTimeout(); },
+    });
+
+    if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
+        preemptedVolumes = NStorage::CreateManuallyPreemptedVolumes(
+            StartupBlockstoreConfig->GetStorageConfig(),
+            Log,
+            PostponedCriticalEvents);
+        SetGrpcThreadsLimit(
+            StartupBlockstoreConfig->GetServerConfig()->GetGrpcThreadsLimit());
+    }
+
     STORAGE_INFO("Aggregate Blockstore config initialized");
 
     auto logging = std::make_shared<TLoggingProxy>();
@@ -692,8 +727,8 @@ void TBootstrapYdb::InitKikimrService()
     Monitoring = monitoring;
 
     std::shared_ptr<TFakeRdmaClientProxy> fakeRdmaClientProxy;
-    if (Configs->ServerConfig->GetUseFakeRdmaClient() &&
-        Configs->RdmaConfig->GetClientEnabled())
+    if (StartupBlockstoreConfig->GetServerConfig()->GetUseFakeRdmaClient() &&
+        StartupBlockstoreConfig->GetRdmaConfig()->GetClientEnabled())
     {
         fakeRdmaClientProxy = std::make_shared<TFakeRdmaClientProxy>();
         RdmaClient = fakeRdmaClientProxy;
@@ -705,8 +740,8 @@ void TBootstrapYdb::InitKikimrService()
 
     VolumeStats = CreateVolumeStats(
         monitoring,
-        Configs->DiagnosticsConfig,
-        Configs->StorageConfig->GetInactiveClientsTimeout(),
+        StartupBlockstoreConfig->GetDiagnosticsConfig(),
+        StartupBlockstoreConfig->GetStorageConfig()->GetInactiveClientsTimeout(),
         EVolumeStatsType::EServerStats,
         Timer);
 
@@ -732,12 +767,12 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("StatsAggregator initialized");
 
     IamTokenClient = ServerModuleFactories->IamClientFactory(
-        Configs->IamClientConfig,
+        StartupBlockstoreConfig->GetIamClientConfig(),
         logging,
         Scheduler,
         Timer);
 
-    auto statsConfig = Configs->StatsConfig;
+    auto statsConfig = StartupBlockstoreConfig->GetYdbStatsConfig();
     if (statsConfig->IsValid() && !Configs->Options->TemporaryServer) {
         YdbStorage = NYdbStats::CreateYdbStorage(
             statsConfig,
@@ -758,11 +793,11 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("StatsUploader initialized");
 
     ComputeClient = ServerModuleFactories->ComputeClientFactory(
-        Configs->ComputeClientConfig,
+        *StartupBlockstoreConfig->GetComputeClientConfig(),
         logging);
 
     KmsClient = ServerModuleFactories->KmsClientFactory(
-        Configs->KmsClientConfig,
+        *StartupBlockstoreConfig->GetKmsClientConfig(),
         logging);
 
     KmsKeyProvider = CreateKmsKeyProvider(
@@ -774,16 +809,16 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("KmsKeyProvider initialized");
 
     RootKmsClient = ServerModuleFactories->RootKmsClientFactory(
-        Configs->RootKmsConfig,
+        *StartupBlockstoreConfig->GetRootKmsConfig(),
         logging);
 
     RootKmsKeyProvider = CreateRootKmsKeyProvider(
         RootKmsClient,
-        Configs->RootKmsConfig.GetKeyId());
+        StartupBlockstoreConfig->GetRootKmsConfig()->GetKeyId());
 
     STORAGE_INFO("RootKmsKeyProvider initialized");
 
-    auto discoveryConfig = Configs->DiscoveryConfig;
+    auto discoveryConfig = StartupBlockstoreConfig->GetDiscoveryServiceConfig();
     if (discoveryConfig->GetConductorGroups()
             || discoveryConfig->GetInstanceListFile())
     {
@@ -812,7 +847,9 @@ void TBootstrapYdb::InitKikimrService()
                 logging,
                 monitoring,
                 CreateInsecurePingClient(),
-                CreateSecurePingClient(Configs->ServerConfig->GetRootCertsFile())
+                CreateSecurePingClient(
+                    StartupBlockstoreConfig->GetServerConfig()
+                        ->GetRootCertsFile())
         );
 
         auto balancingPolicy = CreateBalancingPolicy();
@@ -839,7 +876,7 @@ void TBootstrapYdb::InitKikimrService()
 
     STORAGE_INFO("DiscoveryService initialized");
 
-    if (Configs->DiagnosticsConfig->GetUseAsyncLogger()) {
+    if (StartupBlockstoreConfig->GetDiagnosticsConfig()->GetUseAsyncLogger()) {
         AsyncLogger = CreateAsyncLogger();
 
         STORAGE_INFO("AsyncLogger initialized");
@@ -851,9 +888,9 @@ void TBootstrapYdb::InitKikimrService()
 
     Allocator = CreateCachingAllocator(
         Spdk ? Spdk->GetAllocator() : TDefaultAllocator::Instance(),
-        Configs->DiskAgentConfig->GetPageSize(),
-        Configs->DiskAgentConfig->GetMaxPageCount(),
-        Configs->DiskAgentConfig->GetPageDropSize());
+        StartupBlockstoreConfig->GetDiskAgentConfig()->GetPageSize(),
+        StartupBlockstoreConfig->GetDiskAgentConfig()->GetMaxPageCount(),
+        StartupBlockstoreConfig->GetDiskAgentConfig()->GetPageDropSize());
 
     STORAGE_INFO("Allocator initialized");
 
@@ -862,8 +899,8 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("ProfileLog initialized");
 
     StatsFetcher = NCloud::NStorage::BuildStatsFetcher(
-        Configs->DiagnosticsConfig->GetStatsFetcherType(),
-        Configs->DiagnosticsConfig->GetCpuWaitFilename(),
+        StartupBlockstoreConfig->GetDiagnosticsConfig()->GetStatsFetcherType(),
+        StartupBlockstoreConfig->GetDiagnosticsConfig()->GetCpuWaitFilename(),
         Log);
 
     STORAGE_INFO("StatsFetcher initialized");
@@ -871,18 +908,18 @@ void TBootstrapYdb::InitKikimrService()
     BlockDigestGeneratorFactory = NStorage::CreateBlockDigestGeneratorFactory();
     BlockDigestGenerator =
         BlockDigestGeneratorFactory->CreateBlockDigestGenerator(
-            *Configs->StorageConfig);
+            *StartupBlockstoreConfig->GetStorageConfig());
 
     STORAGE_INFO("DigestGenerator initialized");
 
     LogbrokerService = ServerModuleFactories->LogbrokerServiceFactory(
-        Configs->LogbrokerConfig,
+        StartupBlockstoreConfig->GetLogbrokerConfig(),
         logging);
 
     STORAGE_INFO("LogbrokerService initialized");
 
     NotifyService = ServerModuleFactories->NotifyServiceFactory(
-        Configs->NotifyConfig,
+        StartupBlockstoreConfig->GetNotifyConfig(),
         IamTokenClient,
         logging);
 
@@ -890,18 +927,19 @@ void TBootstrapYdb::InitKikimrService()
 
     PartitionBudgetManager =
         std::make_shared<NStorage::TPartitionBudgetManager>(
-            Configs->StorageConfig);
+            StartupBlockstoreConfig->GetStorageConfig());
 
     STORAGE_INFO("PartitionBudgetManager initialized")
 
-    if (Configs->LocalNVMeConfig->GetDevicesSourceUri()) {
+    if (StartupBlockstoreConfig->GetLocalNVMeConfig()->GetDevicesSourceUri()) {
         LocalNVMeDeviceProvider =
             ServerModuleFactories->LocalNVMeDeviceProviderFactory(
                 logging,
-                Configs->LocalNVMeConfig->GetDevicesSourceUri());
+                StartupBlockstoreConfig->GetLocalNVMeConfig()
+                    ->GetDevicesSourceUri());
 
         LocalNVMeService = CreateLocalNVMeService(
-            Configs->LocalNVMeConfig,
+            StartupBlockstoreConfig->GetLocalNVMeConfig(),
             logging,
             Monitoring,
             LocalNVMeDeviceProvider,
@@ -916,7 +954,7 @@ void TBootstrapYdb::InitKikimrService()
     STORAGE_INFO("Local NVMe service initialized");
 
     const bool isHiveLocalServiceEnabled =
-        !Configs->StorageConfig->GetDisableLocalService() &&
+        !StartupBlockstoreConfig->GetStorageConfig()->GetDisableLocalService() &&
         !Configs->HostPerformanceProfile.IsTightServiceMemoryPlatform;
 
     NStorage::TServerActorSystemArgs args;
@@ -955,9 +993,11 @@ void TBootstrapYdb::InitKikimrService()
                 return false;
             }
 
-            const auto& nodes = Configs->StorageConfig->GetKnownSpareNodes();
+            const auto& nodes = StartupBlockstoreConfig->GetStorageConfig()
+                                    ->GetKnownSpareNodes();
             const auto& fqdn = FQDNHostName();
-            const ui32 p = Configs->StorageConfig->GetSpareNodeProbability();
+            const ui32 p = StartupBlockstoreConfig->GetStorageConfig()
+                               ->GetSpareNodeProbability();
 
             return FindPtr(nodes, fqdn) || CityHash64(fqdn) % 100 < p;
         }();
@@ -995,7 +1035,8 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     TraceServiceClient = ServerModuleFactories->TraceServiceClientFactory(
-        Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
+        StartupBlockstoreConfig->GetDiagnosticsConfig()
+            ->GetOpentelemetryTraceConfig()
             .GetClientConfig(),
         logging);
 
@@ -1006,8 +1047,10 @@ void TBootstrapYdb::InitKikimrService()
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOBSTORAGE_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(TABLET_FLAT_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(STORAGE_RDMA_PROVIDER));
-    InitLWTrace(Configs->DiagnosticsConfig->GetOpentelemetryTraceConfig()
-                    .GetServiceName());
+    InitLWTrace(
+        StartupBlockstoreConfig->GetDiagnosticsConfig()
+            ->GetOpentelemetryTraceConfig()
+            .GetServiceName());
 
     STORAGE_INFO("LWTrace initialized");
 
@@ -1016,9 +1059,11 @@ void TBootstrapYdb::InitKikimrService()
         SpdkLogInitializer(SpdkLog);
     }
 
-    const auto& config = Configs->ServerConfig->GetKikimrServiceConfig()
-        ? *Configs->ServerConfig->GetKikimrServiceConfig()
-        : NProto::TKikimrServiceConfig();
+    const auto& config =
+        StartupBlockstoreConfig->GetServerConfig()->GetKikimrServiceConfig()
+            ? *StartupBlockstoreConfig->GetServerConfig()
+                   ->GetKikimrServiceConfig()
+            : NProto::TKikimrServiceConfig();
 
     Service = CreateKikimrService(ActorSystem, config);
 }
@@ -1036,8 +1081,9 @@ void TBootstrapYdb::InitAuthService()
 
 void TBootstrapYdb::WarmupBSGroupConnections()
 {
-    if (!Configs->StorageConfig ||
-        !Configs->StorageConfig->GetTabletBootInfoBackupFilePath())
+    if (!StartupBlockstoreConfig ||
+        !StartupBlockstoreConfig->GetStorageConfig()
+             ->GetTabletBootInfoBackupFilePath())
     {
         return;
     }
@@ -1047,8 +1093,10 @@ void TBootstrapYdb::WarmupBSGroupConnections()
 
     ActorSystem->Register(std::make_unique<TWarmupBSGroupConnectionsActor>(
         std::move(promise),
-        Configs->StorageConfig->GetWarmupBSGroupConnectionsTimeout(),
-        Configs->StorageConfig->GetBSGroupsPerChannelToWarmup()));
+        StartupBlockstoreConfig->GetStorageConfig()
+            ->GetWarmupBSGroupConnectionsTimeout(),
+        StartupBlockstoreConfig->GetStorageConfig()
+            ->GetBSGroupsPerChannelToWarmup()));
 
     future.Wait();
 }
@@ -1056,7 +1104,7 @@ void TBootstrapYdb::WarmupBSGroupConnections()
 void TBootstrapYdb::InitRdmaRequestServer()
 {
     auto rdmaConfig = NCloud::NStorage::NRdma::CreateServerConfigPtr(
-        Configs->RdmaConfig->GetServer());
+        BootstrapConfig->RdmaConfig->GetServer());
 
     RdmaRequestServer = ServerModuleFactories->RdmaServerFactory(
         Logging,
@@ -1066,8 +1114,9 @@ void TBootstrapYdb::InitRdmaRequestServer()
 
 void TBootstrapYdb::SetupCellManager()
 {
-    if (Configs->CellsConfig->GetCellsEnabled()) {
-        const auto& grpcConfig = Configs->CellsConfig->GetGrpcClientConfig();
+    if (BootstrapConfig->CellsConfig->GetCellsEnabled()) {
+        const auto& grpcConfig =
+            BootstrapConfig->CellsConfig->GetGrpcClientConfig();
         TVector<NCloud::TCertificateFiles> certList {{
             .PrivateKeyPath = grpcConfig.GetCertPrivateKeyFile(),
             .CertChainPath  = grpcConfig.GetCertFile(),
@@ -1092,11 +1141,11 @@ void TBootstrapYdb::SetupCellManager()
                     ->GetSubgroup("component", "cells"),
                 grpcConfig.GetRootCertsFile(),
                 std::move(certList),
-                Configs->ServerConfig->GetRefreshCertsPeriod());
+                BootstrapConfig->ServerConfig->GetRefreshCertsPeriod());
         }
 
         CellManager = CreateCellManager(
-            Configs->CellsConfig,
+            BootstrapConfig->CellsConfig,
             Timer,
             Scheduler,
             Logging,
@@ -1114,11 +1163,11 @@ void TBootstrapYdb::SetupCellManager()
 void TBootstrapYdb::SetupCellMonitoringActor()
 {
     if (CellManager && ActorSystem &&
-        Configs->CellsConfig->GetCellsEnabled())
+        BootstrapConfig->CellsConfig->GetCellsEnabled())
     {
         ActorSystem->Register(NCells::CreateCellsMonActor(
             CellManager,
-            Configs->DiagnosticsConfig));
+            BootstrapConfig->DiagnosticsConfig));
     }
 }
 

@@ -14,10 +14,14 @@ import pytest
 import requests
 import yaml
 
+import yatest.common as yatest_common
+from yatest.common.network import PortManager
+
 from google.protobuf.text_format import MessageToString
 
+from cloud.blockstore.config.disk_pb2 import TDiskAgentConfig
 from cloud.blockstore.tests.python.lib.config import NbsConfigurator
-from cloud.blockstore.tests.python.lib.daemon import start_nbs, start_ydb
+from cloud.blockstore.tests.python.lib.daemon import Nbs, start_nbs, start_ydb
 
 from contrib.ydb.public.api.protos.ydb_status_codes_pb2 import StatusIds
 from contrib.ydb.public.api.protos.draft import ydb_dynamic_config_pb2
@@ -137,6 +141,114 @@ def start_dynamic_config_ydb():
     return start_ydb(
         extra_feature_flags=["database_yaml_config_allowed"],
     )
+
+
+# Verify that both bootstraps initialize Local/Null without a YDB snapshot.
+@pytest.mark.parametrize("binary", [
+    "server/nbsd",
+    "server_lightweight/nbsd-lightweight",
+])
+@pytest.mark.parametrize("service", ["local", "null"])
+def test_startup_without_ydb(binary, service, tmp_path):
+    # Exercise the local configuration path without starting YDB.
+    with PortManager() as ports:
+        server_port = ports.get_port()
+        mon_port = ports.get_port()
+        nbs = Nbs(
+            mon_port=mon_port,
+            server_port=server_port,
+            commands=[[
+                yatest_common.binary_path(f"cloud/blockstore/apps/{binary}"),
+                "--service", service,
+                "--server-port", str(server_port),
+                "--mon-port", str(mon_port),
+            ]],
+            cwd=str(tmp_path),
+        )
+        try:
+            nbs.start()
+
+            # Reach the listener after all early configuration consumers ran.
+            yatest_common.execute([
+                yatest_common.binary_path(
+                    "cloud/blockstore/apps/client/blockstore-client"),
+                "ping",
+                "--host", "localhost",
+                "--port", str(server_port),
+                "--timeout", "10",
+            ], timeout=30)
+        finally:
+            nbs.stop()
+
+
+# Verify that startup factories and actors use the same private configuration.
+def test_startup_configures_disk_agent_backend_and_listener(tmp_path):
+    # Provide a real file device while the local configuration disables its agent.
+    device_path = tmp_path / "device.data"
+    with device_path.open("wb") as device:
+        device.truncate(4 * 1024 * 1024)
+    device_id = "private-startup-device"
+
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    try:
+        config = make_nbs_config(ydb, True)
+        config.files["disk-agent"] = TDiskAgentConfig(Enabled=False)
+
+        # Enable the backend and select a listener port exclusively through YAML.
+        with PortManager() as ports:
+            private_port = ports.get_port()
+            assert private_port != config.server_port
+            replace_config(ydb, make_main_config(ydb))
+            replace_database_config(ydb, 0, yaml.safe_dump({
+                "server": {"server_config": {"port": private_port}},
+                "disk_agent": {
+                    "enabled": True,
+                    "backend": "DISK_AGENT_BACKEND_AIO",
+                    "file_devices": [{
+                        "path": str(device_path),
+                        "block_size": 4096,
+                        "device_id": device_id,
+                        "serial_number": "private-startup-serial",
+                        "device_model": "test-file",
+                    }],
+                },
+            }))
+            nbs = start_nbs(config)
+
+            # Connect to the effective listener instead of the port in the file.
+            yatest_common.execute([
+                yatest_common.binary_path(
+                    "cloud/blockstore/apps/client/blockstore-client"),
+                "ping",
+                "--host", "localhost",
+                "--port", str(private_port),
+                "--timeout", "10",
+            ], timeout=30)
+
+            # Check the initialized device rather than only its configuration.
+            def device_is_online():
+                page = requests.get(
+                    f"http://localhost:{nbs.mon_port}/blockstore/disk_agent",
+                    timeout=10,
+                )
+                page.raise_for_status()
+                row = re.search(
+                    rf"<tr>\s*<td>{device_id}</td>(.*?)</tr>",
+                    page.text,
+                    re.DOTALL,
+                )
+                return row is not None and ">online</font>" in row.group(1)
+
+            yatest_common.wait_for(
+                device_is_online,
+                timeout=30,
+                fail_message="Private YAML file device did not become online",
+            )
+    finally:
+        if nbs:
+            nbs.stop()
+        ydb.stop()
 
 
 # Verify startup delivery, replacement, rejection, and removal with real nodes.

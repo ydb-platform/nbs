@@ -35,7 +35,7 @@ using TExternalEndpointFactory = std::function<IExternalEndpointPtr (
 ////////////////////////////////////////////////////////////////////////////////
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
-    TServerAppConfigPtr serverConfig,
+    TServerAppConfigConstPtr serverConfig,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,
@@ -44,7 +44,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     IEndpointListenerPtr fallbackListener);
 
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
-    TServerAppConfigPtr serverConfig,
+    TServerAppConfigConstPtr serverConfig,
     ILoggingServicePtr logging,
     IServerStatsPtr serverStats,
     TExecutorPtr executor,

@@ -48,8 +48,8 @@ class TServerStats final
     class TMonPage;
 
 private:
-    const IDumpablePtr Config;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const IDumpableConstPtr Config;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
     const IRequestStatsPtr RequestStats;
     const IVolumeStatsPtr VolumeStats;
@@ -61,8 +61,8 @@ private:
 
 public:
     TServerStats(
-        IDumpablePtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        IDumpableConstPtr config,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IMonitoringServicePtr monitoring,
         IProfileLogPtr profileLog,
         IRequestStatsPtr requestStats,
@@ -192,8 +192,8 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 TServerStats::TServerStats(
-        IDumpablePtr config,
-        TDiagnosticsConfigPtr diagnosticsConfig,
+        IDumpableConstPtr config,
+        TDiagnosticsConfigConstPtr diagnosticsConfig,
         IMonitoringServicePtr monitoring,
         IProfileLogPtr profileLog,
         IRequestStatsPtr requestStats,
@@ -934,8 +934,8 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IServerStatsPtr CreateServerStats(
-    IDumpablePtr config,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    IDumpableConstPtr config,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     IMonitoringServicePtr monitoring,
     IProfileLogPtr profileLog,
     IRequestStatsPtr requestStats,
@@ -957,7 +957,7 @@ IServerStatsPtr CreateServerStats(
 }
 
 IServerStatsPtr CreateClientStats(
-    IDumpablePtr config,
+    IDumpableConstPtr config,
     IMonitoringServicePtr monitoring,
     IRequestStatsPtr requestStats,
     IVolumeStatsPtr volumeStats,

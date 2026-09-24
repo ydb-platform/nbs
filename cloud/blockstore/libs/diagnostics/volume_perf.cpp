@@ -40,7 +40,7 @@ template <typename T>
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumePerfSettings TVolumePerformanceCalculator::GetConfigSettings(
-    TDiagnosticsConfigPtr diagnosticsConfig) const
+    TDiagnosticsConfigConstPtr diagnosticsConfig) const
 {
     switch (MediaKind) {
         case NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED: {
@@ -74,7 +74,7 @@ TVolumePerfSettings TVolumePerformanceCalculator::GetConfigSettings(
 
 TVolumePerformanceCalculator::TVolumePerformanceCalculator(
         const NProto::TVolume& volume,
-        TDiagnosticsConfigPtr diagnosticsConfig)
+        TDiagnosticsConfigConstPtr diagnosticsConfig)
     : MediaKind(volume.GetStorageMediaKind())
     , ConfigSettings(GetConfigSettings(diagnosticsConfig))
     , ExpectedIoParallelism(diagnosticsConfig->GetExpectedIoParallelism())

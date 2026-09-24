@@ -320,7 +320,7 @@ class TYdbStatsUploader final
     };
 
 private:
-    const TYdbStatsConfigPtr Config;
+    const TYdbStatsConfigConstPtr Config;
     const ILoggingServicePtr Logging;
 
     const IYdbStoragePtr DbStorage;
@@ -339,7 +339,7 @@ private:
 
 public:
     TYdbStatsUploader(
-        TYdbStatsConfigPtr config,
+        TYdbStatsConfigConstPtr config,
         ILoggingServicePtr logging,
         IYdbStoragePtr dbStorage,
         TYDBTableSchemes tableSchemes);
@@ -402,7 +402,7 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TYdbStatsUploader::TYdbStatsUploader(
-        TYdbStatsConfigPtr config,
+        TYdbStatsConfigConstPtr config,
         ILoggingServicePtr logging,
         IYdbStoragePtr dbStorage,
         TYDBTableSchemes tableSchemes)
@@ -993,7 +993,7 @@ IStartable* AsStartable(IYdbStoragePtr storagePtr)
 }
 
 IYdbVolumesStatsUploaderPtr CreateYdbVolumesStatsUploader(
-    TYdbStatsConfigPtr config,
+    TYdbStatsConfigConstPtr config,
     ILoggingServicePtr logging,
     IYdbStoragePtr dbStorage,
     TYDBTableSchemes tableSchemes)
