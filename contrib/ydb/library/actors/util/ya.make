@@ -40,6 +40,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/restricted/abseil-cpp-tstring
     library/cpp/containers/absl_flat_hash
     library/cpp/deprecated/atomic
 )
