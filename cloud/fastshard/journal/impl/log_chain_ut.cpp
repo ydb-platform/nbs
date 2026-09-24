@@ -30,11 +30,11 @@ TLogRecordPtr InsertReady(TLogRecordChain& chain, ui64 prevLsn, ui64 lsn)
     return record;
 }
 
-// erases up to |lsn| the way cleanup does, once the watermark is known to
+// erases below |lsn| the way cleanup does, once the watermark is known to
 // sit inside the chained run
-TVector<TLogRecordPtr> EraseUpTo(TLogRecordChain& chain, ui64 lsn)
+TVector<TLogRecordPtr> EraseBelow(TLogRecordChain& chain, ui64 lsn)
 {
-    auto result = chain.EraseUpTo(lsn);
+    auto result = chain.EraseBelow(lsn);
     UNIT_ASSERT_VALUES_EQUAL_C(
         S_OK,
         result.GetError().GetCode(),
@@ -153,7 +153,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
-            GetSortedLsns(EraseUpTo(chain, 30)));
+            GetSortedLsns(EraseBelow(chain, 31)));
     }
 
     Y_UNIT_TEST(ShouldReturnTheHeldRecordForAnExactDuplicate)
@@ -333,7 +333,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
             GetLsns(chain.GetReadyRun(10, 10)));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
-            GetSortedLsns(EraseUpTo(chain, 40)));
+            GetSortedLsns(EraseBelow(chain, 41)));
     }
 
     Y_UNIT_TEST(ShouldExtendTheRunThroughWaitingRecords)
@@ -357,7 +357,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30, 40}),
-            GetSortedLsns(EraseUpTo(chain, 40)));
+            GetSortedLsns(EraseBelow(chain, 41)));
     }
 
     Y_UNIT_TEST(ShouldGetRecordChainedFromLsn)
@@ -569,7 +569,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldEraseRecordsUpToLsn)
+    Y_UNIT_TEST(ShouldEraseRecordsBelowLsn)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -578,10 +578,10 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         InsertReady(chain, 20, 30);
         InsertReady(chain, 30, 40);
 
-        // everything at or below lsn 30 is removed and handed back
+        // everything below lsn 31 is removed and handed back
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
-            GetSortedLsns(EraseUpTo(chain, 30)));
+            GetSortedLsns(EraseBelow(chain, 31)));
         UNIT_ASSERT_VALUES_EQUAL(40, chain.GetOldest()->Lsn);
     }
 
@@ -592,12 +592,12 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         InsertReady(chain, 10, 20);
 
-        UNIT_ASSERT(EraseUpTo(chain, 19).empty());
+        UNIT_ASSERT(EraseBelow(chain, 20).empty());
         UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
 
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20}),
-            GetLsns(EraseUpTo(chain, 20)));
+            GetLsns(EraseBelow(chain, 21)));
         UNIT_ASSERT(!chain.GetOldest());
     }
 
@@ -618,7 +618,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         // below the watermark: it can never join the chain
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 25}),
-            GetSortedLsns(EraseUpTo(chain, 20)));
+            GetSortedLsns(EraseBelow(chain, 21)));
 
         // the chain does not touch promises, the caller fails them
         UNIT_ASSERT(!ready->Promise.Initialized());
@@ -628,7 +628,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(chain.MarkAsReady(18));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{28}),
-            GetLsns(EraseUpTo(chain, 20)));
+            GetLsns(EraseBelow(chain, 21)));
         UNIT_ASSERT(!chain.MarkAsReady(18));
         UNIT_ASSERT_VALUES_EQUAL(30, chain.GetOldest()->Lsn);
     }
@@ -641,7 +641,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         InsertReady(chain, 10, 20);
         InsertReady(chain, 20, 30);
         InsertReady(chain, 30, 40);
-        EraseUpTo(chain, 30);
+        EraseBelow(chain, 31);
 
         // an erased record is gone for good, the chain will not take it back
         UNIT_ASSERT_VALUES_EQUAL(
@@ -671,7 +671,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT_VALUES_EQUAL(40, chain.GetOldest()->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldRejectEraseUpToPastTheChainedRun)
+    Y_UNIT_TEST(ShouldRejectEraseBelowPastTheChainedRun)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
@@ -682,7 +682,7 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
 
         // the run ends at 20, so nothing past it can be erased yet and the
         // chain stays as it was
-        auto result = chain.EraseUpTo(30);
+        auto result = chain.EraseBelow(31);
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
         UNIT_ASSERT(result.GetResult().empty());
         UNIT_ASSERT_VALUES_EQUAL(20, chain.GetOldest()->Lsn);
@@ -691,19 +691,19 @@ Y_UNIT_TEST_SUITE(TLogRecordChainTest)
         UNIT_ASSERT(chain.MarkAsReady(20));
         UNIT_ASSERT_VALUES_EQUAL(
             (TVector<ui64>{20, 30}),
-            GetSortedLsns(EraseUpTo(chain, 30)));
+            GetSortedLsns(EraseBelow(chain, 31)));
         UNIT_ASSERT_VALUES_EQUAL(40, chain.GetOldest()->Lsn);
     }
 
-    Y_UNIT_TEST(ShouldNotRewindLastErasedLsnOnEraseUpTo)
+    Y_UNIT_TEST(ShouldNotRewindLastErasedLsnOnEraseBelow)
     {
         TLogRecordChain chain;
         chain.InitLastErasedLsn(10);
 
         InsertReady(chain, 10, 20);
         InsertReady(chain, 20, 30);
-        EraseUpTo(chain, 30);
-        EraseUpTo(chain, 10);
+        EraseBelow(chain, 31);
+        EraseBelow(chain, 11);
 
         // the watermark stays at 30, so lsn 20 is still reported as erased
         UNIT_ASSERT_VALUES_EQUAL(
