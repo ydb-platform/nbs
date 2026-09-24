@@ -12,6 +12,8 @@
 #include <library/cpp/coroutine/engine/sockpool.h>
 #include <library/cpp/coroutine/listener/listen.h>
 
+#include <library/cpp/threading/future/subscription/wait_any.h>
+
 #include <util/folder/path.h>
 #include <util/generic/map.h>
 #include <util/network/address.h>
@@ -73,6 +75,7 @@ private:
         NewPromise<NProto::TError>();
     TPromise<NProto::TError> ActivationResult =
         NewPromise<NProto::TError>();
+    TPromise<void> CancellationResult = NewPromise<void>();
 
     size_t InFlightBytes = 0;
 
@@ -128,12 +131,18 @@ public:
     {
         ActivationResult.TrySetValue(
             MakeError(E_REJECTED, "connection negotiation cancelled"));
+        CancellationResult.TrySetValue();
         ShutDown();
     }
 
     TFuture<void> GetDrainResult() const
     {
         return DrainResult.GetFuture();
+    }
+
+    TFuture<void> GetCancellationResult() const
+    {
+        return CancellationResult.GetFuture();
     }
 
     void Enqueue(ITaskPtr task) override
@@ -336,7 +345,12 @@ private:
     void ShutDown()
     {
         if (!ShuttingDown.test_and_set(std::memory_order_acq_rel)) {
-            Socket.ShutDown(SHUT_RDWR);
+            try {
+                Socket.ShutDown(SHUT_RDWR);
+            } catch (...) {
+                STORAGE_DEBUG("failed to shut down connection socket: "
+                    << CurrentExceptionMessage());
+            }
         }
     }
 
@@ -370,6 +384,7 @@ using TConnectionPtr = TIntrusivePtr<TConnection>;
 
 class TEndpoint final
     : public TContListener::ICallBack
+    , public std::enable_shared_from_this<TEndpoint>
 {
 private:
     TAppContext& AppCtx;
@@ -383,6 +398,9 @@ private:
 
     std::unique_ptr<TContListener> Listener;
     TConnectionPtr Connection;
+    TConnectionPtr Candidate;
+    TVector<TConnectionPtr> NegotiatingConnections;
+    bool Stopping = false;
 
 public:
     TEndpoint(
@@ -436,6 +454,13 @@ public:
         TFuture<void> drainResult = MakeFuture();
 
         auto error = SafeExecute<NProto::TError>([&] {
+            Stopping = true;
+            Candidate.Reset();
+            for (auto& connection: NegotiatingConnections) {
+                connection->Stop();
+            }
+            NegotiatingConnections.clear();
+
             if (Connection) {
                 drainResult = Connection->GetDrainResult();
                 Connection->Stop();
@@ -490,10 +515,32 @@ private:
             HandlerFactory->CreateHandler(),
             std::move(socket));
 
+        if (Stopping) {
+            connection->Stop();
+            return;
+        }
+        NegotiatingConnections.push_back(connection);
+
+        Executor->GetContExecutor()->CreateOwned(
+            [self = shared_from_this(),
+             connection = std::move(connection),
+             localAddress](TCont*) mutable
+            {
+                self->SetupConnection(
+                    std::move(connection),
+                    localAddress);
+            },
+            "setup");
+    }
+
+    void SetupConnection(
+        TConnectionPtr connection,
+        const TString& localAddress)
+    {
         auto future = connection->Negotiate();
         const auto& error = Executor->WaitFor(future);
-        if (HasError(error)) {
-            connection->Stop();
+        if (HasError(error) || !SelectCandidate(connection)) {
+            RejectCandidate(connection);
             return;
         }
 
@@ -503,9 +550,14 @@ private:
             Connection->Stop();
         }
 
-        Executor->WaitFor(drainResult);
-        if (Executor->GetContExecutor()->Running()->Cancelled()) {
-            connection->Stop();
+        auto drainOrCancellation = NWait::WaitAny(
+            drainResult,
+            connection->GetCancellationResult());
+        Executor->WaitFor(drainOrCancellation);
+        if (!IsCandidate(connection) ||
+            Executor->GetContExecutor()->Running()->Cancelled())
+        {
+            RejectCandidate(connection);
             STORAGE_INFO("endpoint " << localAddress
                 << ": new connection setup cancelled");
             return;
@@ -513,13 +565,72 @@ private:
 
         auto activationFuture = connection->Activate();
         const auto& negotiationError = Executor->WaitFor(activationFuture);
-        if (HasError(negotiationError)) {
-            connection->Stop();
+        if (HasError(negotiationError) || !IsCandidate(connection)) {
+            RejectCandidate(connection);
             return;
         }
 
+        Candidate.Reset();
+        RemoveNegotiatingConnection(connection);
         Connection = std::move(connection);
         Connection->Start();
+    }
+
+    bool SelectCandidate(const TConnectionPtr& connection)
+    {
+        if (Stopping || !IsNegotiating(connection)) {
+            return false;
+        }
+
+        Candidate = connection;
+        for (auto it = NegotiatingConnections.begin();
+             it != NegotiatingConnections.end();)
+        {
+            if (it->Get() == connection.Get()) {
+                ++it;
+            } else {
+                (*it)->Stop();
+                it = NegotiatingConnections.erase(it);
+            }
+        }
+        return true;
+    }
+
+    bool IsCandidate(const TConnectionPtr& connection) const
+    {
+        return Candidate.Get() == connection.Get();
+    }
+
+    bool IsNegotiating(const TConnectionPtr& connection) const
+    {
+        for (const auto& item: NegotiatingConnections) {
+            if (item.Get() == connection.Get()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void RemoveNegotiatingConnection(const TConnectionPtr& connection)
+    {
+        for (auto it = NegotiatingConnections.begin();
+             it != NegotiatingConnections.end();
+             ++it)
+        {
+            if (it->Get() == connection.Get()) {
+                NegotiatingConnections.erase(it);
+                return;
+            }
+        }
+    }
+
+    void RejectCandidate(const TConnectionPtr& connection)
+    {
+        if (IsCandidate(connection)) {
+            Candidate.Reset();
+        }
+        RemoveNegotiatingConnection(connection);
+        connection->Stop();
     }
 
     void OnError() override
