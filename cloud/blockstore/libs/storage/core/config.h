@@ -898,6 +898,10 @@ public:
     [[nodiscard]] ui64 GetL0RangeSizeV2() const;
 
     [[nodiscard]] ui64 GetL1RangeSizeV2() const;
+
+    [[nodiscard]] ui32 GetL1PromotedBlobExpectedSize() const;
+
+    [[nodiscard]] ui32 GetMergedPromotedBlobExpectedSize() const;
 };
 
 ui64 GetAllocationUnit(

@@ -733,6 +733,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CheckpointAwareCleanupEnabled,              bool,       false         )\
     xxx(L0RangeSizeV2,                              ui64,       4_GB          )\
     xxx(L1RangeSizeV2,                              ui64,       64_MB         )\
+    xxx(L1PromotedBlobExpectedSize,                 ui32,       256_KB        )\
+    xxx(MergedPromotedBlobExpectedSize,             ui32,       256_KB        )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

@@ -169,6 +169,7 @@ struct TTestPartitionInfo
         NCloud::NProto::STORAGE_MEDIA_DEFAULT;
     TMaybe<ui32> MaxBlocksInBlob;
     ui32 BlockSize = DefaultBlockSize;
+    ui32 MixedChannelCount = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -300,7 +301,9 @@ void InitTestActorRuntime(
     cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
 
     for (ui32 i = 0; i < channelCount - DataChannelOffset - 1; ++i) {
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
+        cps->Add()->SetDataKind(static_cast<ui32>(
+            i < partitionInfo.MixedChannelCount ? EChannelDataKind::Mixed
+                                                : EChannelDataKind::Merged));
     }
 
     cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
@@ -7437,10 +7440,11 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         UNIT_ASSERT_VALUES_EQUAL(1, statusResponse->Record.GetTotal());
     }
 
-    Y_UNIT_TEST(ShouldCountHugeAndNonHugeBlobs)
+    void DoTestCountHugeAndNonHugeBlobs(bool separateMixedChannels)
     {
-        for (const auto mediaKind: {NCloud::NProto::STORAGE_MEDIA_HDD,
-                                    NCloud::NProto::STORAGE_MEDIA_SSD})
+        for (const auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_HDD,
+              NCloud::NProto::STORAGE_MEDIA_SSD})
         {
             auto config = DefaultConfig(4_MB);
             config.SetWriteBlobThreshold(3 * DefaultBlockSize);
@@ -7454,15 +7458,17 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
 
             TTestPartitionInfo partitionInfo;
             partitionInfo.MediaKind = mediaKind;
+            partitionInfo.MixedChannelCount = separateMixedChannels ? 1 : 0;
             auto runtime =
-                PrepareTestActorRuntime(config, 1024, {}, partitionInfo);
+                PrepareTestActorRuntime(config, 1024, 6, partitionInfo);
             TPartitionClient partition(*runtime);
             partition.WaitReady();
 
             ui64 hugeBlobs = 0;
             ui64 nonHugeBlobs = 0;
-            ui64 hugeBlobsWritten = 0;
-            ui64 nonHugeBlobsWritten = 0;
+            TPartitionDiskCounters accumulatedCounters(
+                EPublishingPolicy::Repl,
+                EHistogramCounterOption::ReportMultipleCounters);
             runtime->SetObserverFunc(
                 [&](TAutoPtr<IEventHandle>& event)
                 {
@@ -7475,15 +7481,14 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                                  ->DiskCounters;
                         hugeBlobs = counters.Simple.HugeBlobsCount.Value;
                         nonHugeBlobs = counters.Simple.NonHugeBlobsCount.Value;
-                        hugeBlobsWritten +=
-                            counters.Cumulative.HugeBlobsWritten.Value;
-                        nonHugeBlobsWritten +=
-                            counters.Cumulative.NonHugeBlobsWritten.Value;
+                        accumulatedCounters.Add(counters);
                     }
                     return TTestActorRuntime::DefaultObserverFunc(event);
                 });
 
-            auto checkCounts = [&](ui64 expectedHuge, ui64 expectedNonHuge)
+            auto checkCounts = [&](ui64 expectedHuge,
+                                   ui64 expectedNonHuge,
+                                   ui64 expectedFreshNonHuge)
             {
                 partition.SendToPipe(
                     std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
@@ -7493,6 +7498,30 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                 runtime->DispatchEvents(options);
                 UNIT_ASSERT_VALUES_EQUAL(expectedHuge, hugeBlobs);
                 UNIT_ASSERT_VALUES_EQUAL(expectedNonHuge, nonHugeBlobs);
+
+                const auto& written = accumulatedCounters.Cumulative;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedHuge, written.HugeBlobsWritten.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedNonHuge + expectedFreshNonHuge,
+                    written.NonHugeBlobsWritten.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    separateMixedChannels ? expectedHuge : 0,
+                    written.MixedHugeBlobsWritten.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    separateMixedChannels ? expectedNonHuge : 0,
+                    written.MixedNonHugeBlobsWritten.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    separateMixedChannels ? 0 : expectedHuge,
+                    written.MergedHugeBlobsWritten.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    separateMixedChannels ? 0 : expectedNonHuge,
+                    written.MergedNonHugeBlobsWritten.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0, written.FreshHugeBlobsWritten.Value);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedFreshNonHuge,
+                    written.FreshNonHugeBlobsWritten.Value);
             };
 
             const ui32 thresholdBlocks =
@@ -7503,9 +7532,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
             partition.WriteBlocks(
                 TBlockRange32::WithLength(0, thresholdBlocks - 1));
             partition.Flush();
-            checkCounts(0, 1);
-            UNIT_ASSERT_VALUES_EQUAL(0, hugeBlobsWritten);
-            UNIT_ASSERT_VALUES_EQUAL(2, nonHugeBlobsWritten);
+            checkCounts(0, 1, 1);
 
             // Batch small writes into flush blobs at and above the threshold.
             // The fresh-channel blobs are non-huge; the flushed blobs are huge.
@@ -7513,23 +7540,28 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
                 partition.WriteBlocks(10 + i);
             }
             partition.Flush();
-            checkCounts(1, 1);
-            UNIT_ASSERT_VALUES_EQUAL(1, hugeBlobsWritten);
-            UNIT_ASSERT_VALUES_EQUAL(2 + thresholdBlocks, nonHugeBlobsWritten);
+            checkCounts(1, 1, 1 + thresholdBlocks);
 
             for (ui32 i = 0; i <= thresholdBlocks; ++i) {
                 partition.WriteBlocks(20 + i);
             }
             partition.Flush();
-            checkCounts(2, 1);
-            UNIT_ASSERT_VALUES_EQUAL(2, hugeBlobsWritten);
-            UNIT_ASSERT_VALUES_EQUAL(3 + 2 * thresholdBlocks,
-                                     nonHugeBlobsWritten);
+            checkCounts(2, 1, 2 + 2 * thresholdBlocks);
 
             partition.RebootTablet();
             partition.WaitReady();
-            checkCounts(2, 1);
+            checkCounts(2, 1, 2 + 2 * thresholdBlocks);
         }
+    }
+
+    Y_UNIT_TEST(ShouldCountHugeAndNonHugeBlobs)
+    {
+        DoTestCountHugeAndNonHugeBlobs(false);
+    }
+
+    Y_UNIT_TEST(ShouldCountHugeAndNonHugeBlobsWithMixedChannels)
+    {
+        DoTestCountHugeAndNonHugeBlobs(true);
     }
 
     Y_UNIT_TEST(ShouldUseWriteBlobThreshold)

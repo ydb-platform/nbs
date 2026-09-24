@@ -356,6 +356,30 @@ struct TCumulativeDiskCounters
     TCounter NonHugeBlobsWritten{EPublishingPolicy::Repl,
                                  TCumulativeCounter::ECounterType::Generic,
                                  ECounterExpirationPolicy::Permanent};
+    TCounter MixedHugeBlobsWritten{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MixedNonHugeBlobsWritten{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedHugeBlobsWritten{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MergedNonHugeBlobsWritten{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter FreshHugeBlobsWritten{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter FreshNonHugeBlobsWritten{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
     TCounter BytesWritten{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
@@ -466,6 +490,12 @@ struct TCumulativeDiskCounters
     static constexpr TMeta AllCounters[] = {
         MakeMeta<&TCumulativeDiskCounters::HugeBlobsWritten>(),
         MakeMeta<&TCumulativeDiskCounters::NonHugeBlobsWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::MixedHugeBlobsWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::MixedNonHugeBlobsWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedHugeBlobsWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::MergedNonHugeBlobsWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::FreshHugeBlobsWritten>(),
+        MakeMeta<&TCumulativeDiskCounters::FreshNonHugeBlobsWritten>(),
         MakeMeta<&TCumulativeDiskCounters::BytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::BytesRead>(),
         MakeMeta<&TCumulativeDiskCounters::SysBytesWritten>(),

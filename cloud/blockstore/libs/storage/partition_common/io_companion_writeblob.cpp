@@ -441,21 +441,49 @@ void TIOCompanion::HandleWriteBlobCompleted(
                 msg->BlobId.BlobSize()));
     }
 
+    const auto channelKind = ChannelsState.GetChannelDataKind(channel);
     PartCounters->Access(
         [&](auto& counters)
         {
             if (SUCCEEDED(msg->GetStatus())) {
                 const auto threshold = GetWriteBlobThreshold(
                     *Config, PartitionConfig.GetStorageMediaKind());
-                auto& counter = msg->BlobId.BlobSize() >= threshold
-                                    ? counters->Cumulative.HugeBlobsWritten
-                                    : counters->Cumulative.NonHugeBlobsWritten;
+                const bool isHuge = msg->BlobId.BlobSize() >= threshold;
+                auto& cumulative = counters->Cumulative;
+                auto& counter = isHuge ? cumulative.HugeBlobsWritten
+                                       : cumulative.NonHugeBlobsWritten;
                 counter.Increment(1);
+
+                switch (channelKind) {
+                    case EChannelDataKind::Mixed: {
+                        auto& channelCounter =
+                            isHuge ? cumulative.MixedHugeBlobsWritten
+                                   : cumulative.MixedNonHugeBlobsWritten;
+                        channelCounter.Increment(1);
+                        break;
+                    }
+                    case EChannelDataKind::Merged: {
+                        auto& channelCounter =
+                            isHuge ? cumulative.MergedHugeBlobsWritten
+                                   : cumulative.MergedNonHugeBlobsWritten;
+                        channelCounter.Increment(1);
+                        break;
+                    }
+                    case EChannelDataKind::Fresh: {
+                        auto& channelCounter =
+                            isHuge ? cumulative.FreshHugeBlobsWritten
+                                   : cumulative.FreshNonHugeBlobsWritten;
+                        channelCounter.Increment(1);
+                        break;
+                    }
+                    default:
+                        break;
+                }
             }
 
             counters->RequestCounters.WriteBlob.AddRequest(
-                msg->RequestTime.MicroSeconds(), msg->BlobId.BlobSize(), 1,
-                ChannelsState.GetChannelDataKind(channel));
+                msg->RequestTime.MicroSeconds(),
+                msg->BlobId.BlobSize(), 1, channelKind);
         });
 
     ChannelsState.CompleteIORequest(channel);

@@ -582,20 +582,23 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         constexpr ui32 MergedRangeBlockCount = MaxBlocksCount;
         constexpr ui32 L1RangeBlockCount = 2 * MergedRangeBlockCount;
         constexpr ui32 L0RangeBlockCount = 2 * L1RangeBlockCount;
-        constexpr ui32 BlocksForHugeBlob = 2;
+        constexpr ui32 BlocksForL1Blob = 2;
+        constexpr ui32 BlocksForMergedBlob = 4;
         constexpr ui32 UsedBlocksNeededForL0Promote =
-            BlocksForHugeBlob * L0RangeBlockCount / L1RangeBlockCount;
+            BlocksForL1Blob * L0RangeBlockCount / L1RangeBlockCount;
         constexpr ui32 UsedBlocksNeededForL1Promote =
-            BlocksForHugeBlob * L1RangeBlockCount / MergedRangeBlockCount;
+            BlocksForMergedBlob * L1RangeBlockCount / MergedRangeBlockCount;
         constexpr ui32 BlockCount = L0RangeBlockCount;
 
         static_assert(UsedBlocksNeededForL0Promote == 4);
-        static_assert(UsedBlocksNeededForL1Promote == 4);
+        static_assert(UsedBlocksNeededForL1Promote == 8);
 
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-        config.SetWriteBlobThresholdSSD(
-            BlocksForHugeBlob * DefaultBlockSize);
+        config.SetL1PromotedBlobExpectedSize(
+            BlocksForL1Blob * DefaultBlockSize);
+        config.SetMergedPromotedBlobExpectedSize(
+            BlocksForMergedBlob * DefaultBlockSize);
         config.SetCleanupThreshold(1);
         config.SetL0RangeSizeV2(L0RangeBlockCount * DefaultBlockSize);
         config.SetL1RangeSizeV2(L1RangeBlockCount * DefaultBlockSize);
@@ -681,8 +684,21 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         partition.WriteBlocks(5, 'd');
         partition.Flush();
 
-        waitForCompactions(2, 1);
+        waitForCompactions(2, 0);
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
         UNIT_ASSERT_VALUES_EQUAL(2, l0PromoteCompletedCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, l1PromoteCompletedCount);
+
+        // Six blocks in the first L1 range are below the merged promotion
+        // threshold, even though they exceed the L0 promotion threshold.
+        partition.WriteBlocks(6, 'e');
+        partition.WriteBlocks(7, 'e');
+        partition.WriteBlocks(L1RangeBlockCount + 2, 'e');
+        partition.WriteBlocks(L1RangeBlockCount + 3, 'e');
+        partition.Flush();
+
+        waitForCompactions(3, 1);
+        UNIT_ASSERT_VALUES_EQUAL(3, l0PromoteCompletedCount);
         UNIT_ASSERT_VALUES_EQUAL(1, l1PromoteCompletedCount);
     }
 
@@ -695,7 +711,8 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
 
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-        config.SetWriteBlobThresholdSSD(16_MB);
+        config.SetL1PromotedBlobExpectedSize(16_MB);
+        config.SetMergedPromotedBlobExpectedSize(16_MB);
         config.SetL0RangeSizeV2(L0RangeBlockCount * DefaultBlockSize);
         config.SetL1RangeSizeV2(L1RangeBlockCount * DefaultBlockSize);
 
@@ -848,7 +865,8 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
 
         auto config = DefaultConfig();
         config.SetFreshChannelWriteRequestsEnabled(true);
-        config.SetWriteBlobThresholdSSD(16_MB);
+        config.SetL1PromotedBlobExpectedSize(16_MB);
+        config.SetMergedPromotedBlobExpectedSize(16_MB);
         config.SetL0RangeSizeV2(L0RangeBlockCount * DefaultBlockSize);
         config.SetL1RangeSizeV2(L1RangeBlockCount * DefaultBlockSize);
 

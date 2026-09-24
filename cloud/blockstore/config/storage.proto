@@ -1695,4 +1695,10 @@ message TStorageServiceConfig
 
     // L1 range size for partition v2.
     optional uint64 L1RangeSizeV2 = 531;
+
+    // Expected blob size in bytes for L0 to L1 promotion in partition v2.
+    optional uint32 L1PromotedBlobExpectedSize = 532;
+
+    // Expected blob size in bytes for L1 to merged promotion in partition v2.
+    optional uint32 MergedPromotedBlobExpectedSize = 533;
 }

@@ -78,10 +78,13 @@ ui64 CalculateUsedBlocksNeededForPromote(
         GetTargetRangeBlocksCount(state, source);
     const ui64 targetRangesCount =
         (sourceRangeBlocksCount - 1) / targetRangeBlocksCount + 1;
-    const ui64 blocksForHugeBlob =
-        config->GetWriteBlobThresholdSSD() / state.GetBlockSize();
+    const ui64 expectedBlobSize =
+        source == EPromoteCompactionSource::L0
+            ? config->GetL1PromotedBlobExpectedSize()
+            : config->GetMergedPromotedBlobExpectedSize();
+    const ui64 blocksForPromotedBlob = expectedBlobSize / state.GetBlockSize();
 
-    return blocksForHugeBlob * targetRangesCount;
+    return blocksForPromotedBlob * targetRangesCount;
 }
 
 class TPromoteCompactionActor final
