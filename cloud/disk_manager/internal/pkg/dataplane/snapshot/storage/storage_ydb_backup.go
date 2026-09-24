@@ -362,6 +362,15 @@ func (s *storageYDB) ClearCompletedBackupChunkQueueEntries(
 	return int(count), nil
 }
 
+func (s *storageYDB) FilterExistingChunkIDs(
+	ctx context.Context,
+	chunkIDs []string,
+) (existing []string, err error) {
+
+	defer s.metrics.StatOperation("FilterExistingChunkIDs")(&err)
+	return s.chunkStorageYDB.FilterExistingChunkIDs(ctx, chunkIDs)
+}
+
 func (s *storageYDB) GetBackupChunkQueueLength(
 	ctx context.Context,
 ) (count uint64, err error) {

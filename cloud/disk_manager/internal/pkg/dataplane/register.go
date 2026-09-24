@@ -321,6 +321,22 @@ func RegisterForExecution(
 				MaxTasksInflight: 1,
 			},
 		)
+
+		err = taskRegistry.RegisterForExecution(
+			"dataplane.DeleteBackupSnapshotData",
+			func() tasks.Task {
+				return &deleteBackupSnapshotDataTask{
+					storage:  storage,
+					backupS3: backupS3,
+					batchSize: int(
+						config.GetBackupSnapshotDataBatchSize(),
+					),
+				}
+			},
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -354,4 +370,5 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.CreateDRBasedDiskCheckpoint": func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
 	"dataplane.BackupSnapshotData":          func() tasks.Task { return &backupSnapshotDataTask{} },
 	"dataplane.BackupChunks":                func() tasks.Task { return &backupChunksTask{} },
+	"dataplane.DeleteBackupSnapshotData":    func() tasks.Task { return &deleteBackupSnapshotDataTask{} },
 }

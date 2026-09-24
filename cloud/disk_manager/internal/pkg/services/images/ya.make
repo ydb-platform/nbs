@@ -8,6 +8,7 @@ SRCS(
     create_image_from_image_task.go
     create_image_from_snapshot_task.go
     create_image_from_url_task.go
+    delete_backup_meta_task.go
     delete_image_task.go
     interface.go
     register.go

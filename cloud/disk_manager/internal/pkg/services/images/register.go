@@ -48,6 +48,13 @@ func RegisterForExecution(
 		return err
 	}
 
+	deleteBackupMetaTaskScheduleInterval, err := time.ParseDuration(
+		config.GetDeleteBackupMetaTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution("images.CreateImageFromURL", func() tasks.Task {
 		return &createImageFromURLTask{
 			config:      config,
@@ -126,6 +133,32 @@ func RegisterForExecution(
 			"images.ScheduleBackupImageTasks",
 			tasks.TaskSchedule{
 				ScheduleInterval: scheduleBackupImageTasksScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
+
+		err = taskRegistry.RegisterForExecution(
+			"images.DeleteBackupMeta",
+			func() tasks.Task {
+				return &deleteBackupMetaTask{
+					scheduler: taskScheduler,
+					storage:   storage,
+					backupS3:  backupS3,
+					batchSize: int(
+						config.GetDeleteBackupMetaTaskBatchSize(),
+					),
+				}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"images.DeleteBackupMeta",
+			tasks.TaskSchedule{
+				ScheduleInterval: deleteBackupMetaTaskScheduleInterval,
 				MaxTasksInflight: 1,
 			},
 		)

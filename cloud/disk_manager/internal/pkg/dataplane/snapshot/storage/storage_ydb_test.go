@@ -1918,3 +1918,70 @@ func TestGetSnapshotIDFromChunkID(t *testing.T) {
 	require.False(t, IsChunkCreatedBySnapshot("task1.snap1.7", "snap2"))
 	require.False(t, IsChunkCreatedBySnapshot("", ""))
 }
+
+func TestFilterExistingChunkIDs(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunkID, err := f.storage.WriteChunk(
+		f.ctx,
+		"",
+		"src",
+		makeChunk(0, "abc"),
+		true, // useS3
+	)
+	require.NoError(t, err)
+
+	err = f.storage.ShallowCopySnapshot(f.ctx, "src", "dst", 0, nil)
+	require.NoError(t, err)
+
+	existing, err := f.storage.FilterExistingChunkIDs(
+		f.ctx,
+		[]string{chunkID, "missing"},
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{chunkID}, existing)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "src")
+	require.NoError(t, err)
+
+	existing, err = f.storage.FilterExistingChunkIDs(f.ctx, []string{chunkID})
+	require.NoError(t, err)
+	require.Equal(t, []string{chunkID}, existing)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "dst")
+	require.NoError(t, err)
+
+	existing, err = f.storage.FilterExistingChunkIDs(f.ctx, []string{chunkID})
+	require.NoError(t, err)
+	require.Empty(t, existing)
+
+	existing, err = f.storage.FilterExistingChunkIDs(f.ctx, nil)
+	require.NoError(t, err)
+	require.Empty(t, existing)
+}
+
+func TestFilterExistingChunkIDsForYDBChunks(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunkID, err := f.storage.WriteChunk(
+		f.ctx,
+		"",
+		"snapshot",
+		makeChunk(0, "abc"),
+		false, // useS3
+	)
+	require.NoError(t, err)
+
+	existing, err := f.storage.FilterExistingChunkIDs(f.ctx, []string{chunkID})
+	require.NoError(t, err)
+	require.Equal(t, []string{chunkID}, existing)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "snapshot")
+	require.NoError(t, err)
+
+	existing, err = f.storage.FilterExistingChunkIDs(f.ctx, []string{chunkID})
+	require.NoError(t, err)
+	require.Empty(t, existing)
+}

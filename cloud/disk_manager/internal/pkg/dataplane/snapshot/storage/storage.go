@@ -193,4 +193,9 @@ type Storage interface {
 
 	// Used for monitoring only.
 	GetBackupChunkQueueLength(ctx context.Context) (uint64, error)
+
+	FilterExistingChunkIDs(
+		ctx context.Context,
+		chunkIDs []string,
+	) ([]string, error)
 }

@@ -29,4 +29,6 @@ message ImagesConfig {
     optional string S3DefaultStorageClass = 10;
     optional string ScheduleBackupImageTasksScheduleInterval = 11 [default = "1m"];
     optional uint32 ScheduleBackupImageTasksLimit = 12 [default = 1000];
+    optional string DeleteBackupMetaTaskScheduleInterval = 13 [default = "10s"];
+    optional uint32 DeleteBackupMetaTaskBatchSize = 14 [default = 100];
 }
