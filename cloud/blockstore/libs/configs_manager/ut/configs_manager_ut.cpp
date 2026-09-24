@@ -445,6 +445,75 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         AssertNoConfigChanged(subscriber);
     }
 
+    // Check that empty sections left by filtering do not publish changes, while
+    // removing a dynamic value still restores the static configuration.
+    Y_UNIT_TEST_F(ShouldIgnoreSectionsContainingOnlyStaticFields, TFixture)
+    {
+        // Observe the startup snapshot, including its value received from CMS.
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+        const auto startupConfig = ConfigHolder->Get();
+        const auto parser = CreateBlockstoreOpaqueConfigParser();
+        ui64 cookie = 70;
+
+        // Add and remove ignored Server fields without changing the dynamic
+        // storage value or discarding the startup CMS value.
+        for (const TString yaml: {
+                 "storage_service: {write_blob_threshold: 200}\n"
+                 "server: {server_config: "
+                 "{dynamic_yaml_configuration_enabled: false}}",
+                 "storage_service: {write_blob_threshold: 200}",
+                 "storage_service: {write_blob_threshold: 200}\n"
+                 "server: {server_config: {}}",
+                 "storage_service: {write_blob_threshold: 200}\n"
+                 "server: {}",
+                 "storage_service: {write_blob_threshold: 200}"})
+        {
+            SendNotification(parser(yaml), cookie);
+            WaitForAck(cookie++);
+            UNIT_ASSERT_EQUAL(
+                NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+                ConfigHolder->Get()
+                    ->GetStorageConfig()
+                    ->GetVolumePreemptionType());
+            UNIT_ASSERT_EQUAL(startupConfig.Get(), ConfigHolder->Get().Get());
+            AssertNoConfigChanged(subscriber);
+        }
+
+        // Publish a real removal even when ignored fields remain in its source.
+        SendNotification(parser("storage_service: {node_type: other}"), cookie);
+        WaitForAck(cookie++);
+        WaitForConfigChanged(subscriber);
+        const auto emptyConfig = ConfigHolder->Get();
+        UNIT_ASSERT_UNEQUAL(startupConfig.Get(), emptyConfig.Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            100,
+            emptyConfig->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_EQUAL(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            emptyConfig->GetStorageConfig()->GetVolumePreemptionType());
+
+        // Treat absent, empty and static-only sections as the same empty source.
+        for (const TString yaml: {
+                 "{}",
+                 "storage_service: {node_type: other, "
+                 "scheme_shard_dir: /Root/other, "
+                 "config_dispatcher_settings: {}}",
+                 "{}",
+                 "storage_service: {}",
+                 "{}",
+                 "server: {server_config: "
+                 "{dynamic_yaml_configuration_enabled: true}}",
+                 "{}"})
+        {
+            SendNotification(parser(yaml), cookie);
+            WaitForAck(cookie++);
+            UNIT_ASSERT_EQUAL(emptyConfig.Get(), ConfigHolder->Get().Get());
+            AssertNoConfigChanged(subscriber);
+        }
+    }
+
     // Check that a duplicate is acknowledged without replacing the config.
     Y_UNIT_TEST_F(ShouldAcknowledgeDuplicateWithoutRepublishing, TFixture)
     {
