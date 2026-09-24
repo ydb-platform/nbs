@@ -2,6 +2,7 @@ package nbs
 
 import (
 	"context"
+	"math"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
@@ -18,6 +19,13 @@ const (
 )
 
 ////////////////////////////////////////////////////////////////////////////////
+
+type DiskSource interface {
+	dataplane_common.Source
+
+	// Returns the mounted disk's exact size in bytes, excluding chunk padding.
+	Size() uint64
+}
 
 type diskSource struct {
 	client           nbs.Client
@@ -109,7 +117,13 @@ func (s *diskSource) generateChunkIndicesUsingGetChangedBlocks(
 			chunkEnd := i + int(s.blocksInChunk/8)
 
 			for i < len(blockMask) && i < chunkEnd {
-				if blockMask[i] != 0 {
+				mask := blockMask[i]
+				// Ignore unused bits in the last mask byte.
+				if i == len(blockMask)-1 && blockCount%8 != 0 {
+					mask &= byte((1 << (blockCount % 8)) - 1)
+				}
+
+				if mask != 0 {
 					err := s.sendChunkIndex(ctx, chunkIndex)
 					if err != nil {
 						return err
@@ -202,7 +216,27 @@ func (s *diskSource) Read(
 	logging.Debug(ctx, "reading chunk %v", chunk.Index)
 
 	startIndex := uint64(chunk.Index) * s.blocksInChunk
-	// blockCount should be multiple of blocksInChunk.
+	if startIndex >= s.blockCount {
+		return task_errors.NewNonRetriableErrorf(
+			"chunk %v starts beyond the disk: blockCount=%v",
+			chunk.Index,
+			s.blockCount,
+		)
+	}
+
+	blockCount := min(s.blocksInChunk, s.blockCount-startIndex)
+	dataSize := blockCount * uint64(s.blockSize)
+	if uint64(len(chunk.Data)) < s.blocksInChunk*uint64(s.blockSize) {
+		return task_errors.NewNonRetriableErrorf(
+			"chunk %v buffer is too small: size=%v",
+			chunk.Index,
+			len(chunk.Data),
+		)
+	}
+
+	// Transfer reuses buffers. Padding must not contain a previous chunk's data.
+	clear(chunk.Data[dataSize:])
+	chunk.Zero = false
 
 	checkpointID := s.checkpointID
 	if s.dontReadFromCheckpoint {
@@ -214,9 +248,9 @@ func (s *diskSource) Read(
 	return s.session.Read(
 		ctx,
 		startIndex,
-		uint32(s.blocksInChunk),
+		uint32(blockCount),
 		checkpointID,
-		chunk.Data,
+		chunk.Data[:dataSize],
 		&chunk.Zero,
 	)
 }
@@ -233,6 +267,10 @@ func (s *diskSource) Milestone() dataplane_common.Milestone {
 
 func (s *diskSource) ChunkCount(ctx context.Context) (uint32, error) {
 	return s.chunkCount, nil
+}
+
+func (s *diskSource) Size() uint64 {
+	return s.blockCount * uint64(s.blockSize)
 }
 
 func (s *diskSource) EstimatedBytesToRead(ctx context.Context) (uint64, error) {
@@ -270,7 +308,7 @@ func NewDiskSource(
 	duplicateChunkIndices bool,
 	ignoreBaseDisk bool,
 	dontReadFromCheckpoint bool,
-) (dataplane_common.Source, error) {
+) (DiskSource, error) {
 
 	var session *nbs.Session
 	var err error
@@ -287,7 +325,7 @@ func NewDiskSource(
 	blockSize := session.BlockSize()
 	blockCount := session.BlockCount()
 
-	err = validate(blockCount, chunkSize, blockSize)
+	err = validate(chunkSize, blockSize)
 	if err != nil {
 		session.Close(ctx)
 		return nil, err
@@ -316,7 +354,17 @@ func NewDiskSource(
 		)
 	}
 
-	chunkCount := uint32(blockCount / blocksInChunk)
+	chunkCount := blockCount / blocksInChunk
+	if blockCount%blocksInChunk != 0 {
+		chunkCount++
+	}
+	if chunkCount > math.MaxUint32 {
+		session.Close(ctx)
+		return nil, task_errors.NewNonRetriableErrorf(
+			"disk has too many chunks: chunkCount=%v",
+			chunkCount,
+		)
+	}
 
 	return &diskSource{
 		client:           client,
@@ -327,7 +375,7 @@ func NewDiskSource(
 		blockSize:        blockSize,
 		blocksInChunk:    blocksInChunk,
 		blockCount:       blockCount,
-		chunkCount:       chunkCount,
+		chunkCount:       uint32(chunkCount),
 		encryptionDesc:   encryption,
 
 		maxChangedBlockCountPerIteration: maxChangedBlockCountPerIteration,

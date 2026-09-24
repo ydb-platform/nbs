@@ -6,14 +6,24 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type DiskTarget interface {
+	common.Target
+
+	// Returns the mounted disk's exact size in bytes.
+	Size() uint64
+}
+
 type diskTarget struct {
 	client           nbs.Client
 	session          *nbs.Session
+	blockSize        uint32
+	blockCount       uint64
 	blocksInChunk    uint64
 	ignoreZeroChunks bool
 }
@@ -28,20 +38,40 @@ func (t *diskTarget) Write(
 		return nil
 	}
 
+	startIndex := uint64(chunk.Index) * t.blocksInChunk
+	if startIndex >= t.blockCount {
+		return errors.NewNonRetriableErrorf(
+			"chunk %v starts beyond the disk: blockCount=%v",
+			chunk.Index,
+			t.blockCount,
+		)
+	}
+
 	logging.Debug(ctx, "writing chunk %v", chunk.Index)
 
-	startIndex := uint64(chunk.Index) * t.blocksInChunk
+	blockCount := min(t.blocksInChunk, t.blockCount-startIndex)
 
 	var err error
 	if chunk.Zero {
-		// blockCount should be multiple of blocksInChunk.
-		err = t.session.Zero(ctx, startIndex, uint32(t.blocksInChunk))
+		err = t.session.Zero(ctx, startIndex, uint32(blockCount))
 	} else {
-		// TODO: normalize chunk data.
-		err = t.session.Write(ctx, startIndex, chunk.Data)
+		dataSize := blockCount * uint64(t.blockSize)
+		if uint64(len(chunk.Data)) < dataSize {
+			return errors.NewNonRetriableErrorf(
+				"chunk %v buffer is too small: size=%v, expected at least %v",
+				chunk.Index,
+				len(chunk.Data),
+				dataSize,
+			)
+		}
+		err = t.session.Write(ctx, startIndex, chunk.Data[:dataSize])
 	}
 
 	return err
+}
+
+func (t *diskTarget) Size() uint64 {
+	return t.blockCount * uint64(t.blockSize)
 }
 
 func (t *diskTarget) Close(ctx context.Context) {
@@ -59,7 +89,7 @@ func NewDiskTarget(
 	ignoreZeroChunks bool,
 	fillGeneration uint64,
 	fillSeqNumber uint64,
-) (common.Target, error) {
+) (DiskTarget, error) {
 
 	client, err := factory.GetClient(ctx, disk.ZoneId)
 	if err != nil {
@@ -79,7 +109,7 @@ func NewDiskTarget(
 
 	blockSize := session.BlockSize()
 
-	err = validate(session.BlockCount(), chunkSize, blockSize)
+	err = validate(chunkSize, blockSize)
 	if err != nil {
 		session.Close(ctx)
 		return nil, err
@@ -88,6 +118,8 @@ func NewDiskTarget(
 	return &diskTarget{
 		client:           client,
 		session:          session,
+		blockSize:        blockSize,
+		blockCount:       session.BlockCount(),
 		blocksInChunk:    uint64(chunkSize / blockSize),
 		ignoreZeroChunks: ignoreZeroChunks,
 	}, nil

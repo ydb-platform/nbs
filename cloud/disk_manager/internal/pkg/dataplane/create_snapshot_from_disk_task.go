@@ -296,7 +296,23 @@ func (t *createSnapshotFromDiskTask) run(
 		return err
 	}
 
+	size := source.Size()
+	if t.state.SnapshotSize != 0 && t.state.SnapshotSize != size {
+		return errors.NewNonRetriableErrorf(
+			"source disk size changed while creating snapshot: expected %v, actual %v",
+			t.state.SnapshotSize,
+			size,
+		)
+	}
+
+	// Persist the exact size before transferring any chunks. After a resize,
+	// resuming at a saved milestone could reuse a previously padded last chunk.
+	t.state.SnapshotSize = size
 	t.state.ChunkCount = chunkCount
+	err = execCtx.SaveState(ctx)
+	if err != nil {
+		return err
+	}
 
 	err = t.setEstimate(ctx, execCtx, source)
 	if err != nil {
@@ -386,7 +402,6 @@ func (t *createSnapshotFromDiskTask) run(
 		return err
 	}
 
-	size := uint64(chunkCount) * chunkSize
 	storageSize := dataChunkCount * chunkSize
 
 	t.state.SnapshotSize = size

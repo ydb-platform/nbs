@@ -404,6 +404,14 @@ type TestingClient interface {
 		encryption *types.EncryptionDesc,
 	) (DiskContentInfo, error)
 
+	FillEncryptedDiskWithChunkSize(
+		ctx context.Context,
+		diskID string,
+		contentSize uint64,
+		chunkSize uint64,
+		encryption *types.EncryptionDesc,
+	) (DiskContentInfo, error)
+
 	GoWriteRandomBlocksToNbsDisk(
 		ctx context.Context,
 		diskID string,
