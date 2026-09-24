@@ -329,7 +329,9 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
 
                 const auto* agent = state.FindAgent(agentConfig.GetAgentId());
                 UNIT_ASSERT_VALUES_EQUAL(1, agent->UnknownDevicesSize());
-                UNIT_ASSERT_VALUES_EQUAL(deviceId, agent->GetUnknownDevices()[0].GetDeviceUUID());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    deviceId,
+                    agent->GetUnknownDevices()[0].GetDeviceUUID());
             });
     }
 
