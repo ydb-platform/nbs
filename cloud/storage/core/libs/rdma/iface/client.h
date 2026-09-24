@@ -78,6 +78,8 @@ struct TClientRequest
     IClientRequestHandlerPtr Handler;
     std::unique_ptr<TNullContext> Context;
 
+    // Fill before IClientEndpoint::SendRequest(); may be empty by the time
+    // HandleResponse() runs.
     TStringBuf RequestBuffer;
     TStringBuf ResponseBuffer;
 

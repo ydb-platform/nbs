@@ -150,8 +150,7 @@ message TRdmaClient
     uint32 MemoryWindowsPoolSize = 23;
 
     // The largest user payload that can be sent alongside `TRequestMessage`.
-    // Sending both in one go makes a separate `RDMA_READ` unnecessary. Rounded
-    // up to a page multiple, the effective limit is min(client, server).
-    // 0 disables.
+    // Sending both in one go makes a separate `RDMA_READ` unnecessary. The
+    // effective limit is min(client, server). 0 disables.
     uint32 MaxEagerRequestBytes = 24;
 }

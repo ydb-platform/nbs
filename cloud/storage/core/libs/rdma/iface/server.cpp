@@ -48,7 +48,11 @@ void TServerConfig::Validate(TLog& log)
         RDMA_WARN(
             log,
             "MaxEagerRequestBytes=" << MaxEagerRequestBytes
-                                    << " adjusted to " << maxEagerRequestBytes);
+                                    << " adjusted to " << maxEagerRequestBytes
+                                    << " (page multiple, at most MaxBufferSize "
+                                       "and BufferPool.MaxChunkAlloc so that "
+                                       "receive slot buffers come from pooled "
+                                       "chunks)");
         MaxEagerRequestBytes = maxEagerRequestBytes;
     }
     if (QpTimeout > FiveBitsMax) {

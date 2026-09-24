@@ -193,19 +193,16 @@ TEST(TRdmaClientTest, ShouldAlignEagerLimitAtValidate)
 
     const ui32 pageSize = GetPlatformPageSize();
 
+    // the client limit is only a negotiation cap, no rounding
     TClientConfig clientConfig;
     clientConfig.MaxEagerRequestBytes = 7 * pageSize + 1;
     clientConfig.Validate(log);
-    EXPECT_EQ(8 * pageSize, clientConfig.MaxEagerRequestBytes);
-
-    clientConfig.MaxEagerRequestBytes = pageSize / 2;
-    clientConfig.Validate(log);
-    EXPECT_EQ(pageSize, clientConfig.MaxEagerRequestBytes);
+    EXPECT_EQ(7 * pageSize + 1, clientConfig.MaxEagerRequestBytes);
 
     clientConfig.MaxBufferSize = 3 * pageSize + 1;
     clientConfig.MaxEagerRequestBytes = 4 * pageSize;
     clientConfig.Validate(log);
-    EXPECT_EQ(3 * pageSize, clientConfig.MaxEagerRequestBytes);
+    EXPECT_EQ(3 * pageSize + 1, clientConfig.MaxEagerRequestBytes);
 
     TServerConfig serverConfig;
     serverConfig.MaxEagerRequestBytes = 7 * pageSize + 1;
@@ -1339,9 +1336,11 @@ TEST(TRdmaClientTest, ShouldSendEagerRequestsUpToNegotiatedLimit)
     for (const auto& testCase: cases) {
         TManualEvent ev;
         bool received = false;
+        TStringBuf requestBuffer;
 
         auto ctx = std::make_unique<TRequestContext>();
-        ctx->Handler = [&](TStringBuf, TStringBuf, ui32, size_t) {
+        ctx->Handler = [&](TStringBuf request, TStringBuf, ui32, size_t) {
+            requestBuffer = request;
             received = true;
             ev.Signal();
         };
@@ -1369,9 +1368,12 @@ TEST(TRdmaClientTest, ShouldSendEagerRequestsUpToNegotiatedLimit)
             ASSERT_EQ(sent.InLength, sent.PayloadSgeLen);
             ASSERT_GE(sent.InLength, testCase.RequestBytes);
             ASSERT_LE(sent.InLength, clientConfig->MaxEagerRequestBytes);
+            // the request buffer went back to the pool with the SEND
+            ASSERT_TRUE(requestBuffer.empty());
         } else {
             ASSERT_EQ(1, sent.NumSge);
             ASSERT_NE(0u, sent.InAddress);
+            ASSERT_GE(requestBuffer.size(), testCase.RequestBytes);
         }
     }
 
