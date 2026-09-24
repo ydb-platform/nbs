@@ -1977,6 +1977,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
 
         NProto::TStorageConfig config;
         config.SetIdleSessionTimeout(IdleSessionTimeout.MilliSeconds());
+        config.SetSessionOrphaningEnabled(true);
         TTestEnv env({}, config);
 
         ui32 nodeIdx = env.AddDynamicNode();
