@@ -557,6 +557,33 @@ func (client *safeClient) CmsRemoveDevices(
 	)
 }
 
+func (client *safeClient) CmsPurgeDevices(
+	ctx context.Context,
+	host string,
+	devices []string,
+	dryRun bool,
+) (*protos.TCmsActionResponse, error) {
+
+	actions := make([]*protos.TAction, len(devices))
+	t := protos.TAction_PURGE_DEVICE
+	for i, device := range devices {
+		action := protos.TAction{
+			Type:   &t,
+			Host:   &host,
+			Device: &device,
+			DryRun: &dryRun,
+		}
+		actions[i] = &action
+	}
+
+	return client.Impl.CmsAction(
+		ctx,
+		&protos.TCmsActionRequest{
+			Actions: actions,
+		},
+	)
+}
+
 func (client *safeClient) CmsGetDependentDisks(
 	ctx context.Context,
 	host string,
