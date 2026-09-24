@@ -55,12 +55,14 @@ Y_UNIT_TEST_SUITE(TRequestsInFlightTest)
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
         }
 
-        UNIT_ASSERT(!shutdownReturned.load());
+        const bool returnedEarly = shutdownReturned.load();
 
         // the request finishes its enqueue/processing and unregisters - only
         // now may Shutdown() return
         requests.Unregister(&handler);
         shutdownThread.join();
+
+        UNIT_ASSERT(!returnedEarly);
         UNIT_ASSERT(shutdownReturned.load());
     }
 
