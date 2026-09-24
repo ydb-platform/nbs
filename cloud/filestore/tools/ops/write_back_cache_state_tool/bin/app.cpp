@@ -1,5 +1,6 @@
 #include "app.h"
 
+#include <cloud/filestore/tools/ops/write_back_cache_state_tool/lib/existing_file_lock.h>
 #include <cloud/filestore/tools/ops/write_back_cache_state_tool/lib/state_file_locator.h>
 #include <cloud/filestore/tools/ops/write_back_cache_state_tool/lib/state_file_processor.h>
 
@@ -11,7 +12,6 @@
 
 #include <util/stream/file.h>
 #include <util/stream/output.h>
-#include <util/system/file_lock.h>
 
 namespace NCloud::NFileStore::NWriteBackCacheStateTool {
 
@@ -62,6 +62,7 @@ private:
         } else {
             TOFStream stream(Options.OutputFile);
             NProtobufJson::Proto2Json(proto, stream, config);
+            stream << '\n';
         }
     }
 
@@ -108,7 +109,10 @@ private:
 
         Cerr << "Using state file: " << stateFile << "\n";
 
-        TFileLock fileLock(stateFile, EFileLockType::Exclusive);
+        TExistingFileLock fileLock(
+            stateFile,
+            readOnly ? EFileLockType::Shared : EFileLockType::Exclusive,
+            readOnly ? EOpenModeFlag::RdOnly : EOpenModeFlag::RdWr);
 
         if (!fileLock.TryAcquire()) {
             Cerr << "State file is locked by another process\n";
@@ -120,7 +124,7 @@ private:
         }
 
         TFileMapFileRingBufferAccessor accessor(
-            stateFile,
+            fileLock.GetFile(),
             EFileRingBufferAccessorValidationMode::Debug,
             readOnly ? TMemoryMapCommon::EOpenModeFlag::oRdOnly
                      : TMemoryMapCommon::EOpenModeFlag::oRdWr);

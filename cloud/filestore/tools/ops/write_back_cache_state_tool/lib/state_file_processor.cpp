@@ -1,24 +1,22 @@
 #include "state_file_processor.h"
 
+#include <cloud/filestore/libs/vfs_fuse/write_back_cache/write_data_request.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer_format.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
 
+#include <util/generic/ylimits.h>
 #include <util/string/printf.h>
 
 namespace NCloud::NFileStore::NWriteBackCacheStateTool {
 
+using namespace NFuse::NWriteBackCache;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-struct Y_PACKED TSerializedWriteDataRequestHeader
-{
-    ui64 NodeId = 0;
-    ui64 Handle = 0;
-    ui64 Offset = 0;
-};
 
 void FillHeader(
     NProto::TStateFileHeader& protoHeader,
@@ -76,10 +74,86 @@ NCloud::NProto::TError MakeInvalidStateError(TString message)
     return MakeError(E_INVALID_STATE, std::move(message));
 }
 
-NCloud::NProto::TError ValidateHeaderPatch(
-    const NProto::TStateFileHeader& curHeader,
-    const NProto::TStateFileHeader& newHeader)
+bool IsKnownEntryBoundary(
+    const NProto::TStateFileDump& curState,
+    ui64 pos,
+    const IFileRingBufferDataProcessor& dataProcessor)
 {
+    if (pos == 0 || pos == curState.GetHeader().GetWritePos()) {
+        return true;
+    }
+
+    for (const auto& entry: curState.GetEntries()) {
+        if (pos == entry.GetEntryPos()) {
+            return true;
+        }
+    }
+
+    if (!curState.GetEntries().empty()) {
+        const auto& lastEntry =
+            curState.GetEntries(curState.GetEntries().size() - 1);
+        const ui64 lastEntrySize =
+            dataProcessor.GetEntrySize(lastEntry.GetDataSize());
+
+        if (lastEntry.GetEntryPos() <= Max<ui64>() - lastEntrySize &&
+            pos == lastEntry.GetEntryPos() + lastEntrySize)
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+NCloud::NProto::TError ValidateHeaderPositionPatch(
+    TStringBuf fieldName,
+    ui64 curPos,
+    ui64 newPos,
+    const NProto::TStateFileDump& curState,
+    const IFileRingBufferDataProcessor& dataProcessor)
+{
+    if (curPos == newPos) {
+        return {};
+    }
+
+    const auto dataCapacity = curState.GetHeader().GetDataCapacity();
+    if (newPos > dataCapacity) {
+        return MakeArgumentError(Sprintf(
+            "%s %lu exceeds data capacity %lu",
+            fieldName.data(),
+            newPos,
+            dataCapacity));
+    }
+
+    const auto capabilities = dataProcessor.GetCapabilities(false);
+    if (capabilities.Alignment > 1 &&
+        newPos % capabilities.Alignment != 0)
+    {
+        return MakeArgumentError(Sprintf(
+            "%s %lu is not aligned to %lu",
+            fieldName.data(),
+            newPos,
+            capabilities.Alignment));
+    }
+
+    if (!IsKnownEntryBoundary(curState, newPos, dataProcessor)) {
+        return MakeArgumentError(Sprintf(
+            "%s %lu does not point to a known entry boundary",
+            fieldName.data(),
+            newPos));
+    }
+
+    return {};
+}
+
+NCloud::NProto::TError ValidateHeaderPatch(
+    const NProto::TStateFileDump& curState,
+    const NProto::TStateFileDump& newState,
+    const IFileRingBufferDataProcessor& dataProcessor)
+{
+    const auto& curHeader = curState.GetHeader();
+    const auto& newHeader = newState.GetHeader();
+
     const char* messagePattern =
         "Changing header field %s is not allowed (cur: %lu, new: %lu)";
 
@@ -139,7 +213,56 @@ NCloud::NProto::TError ValidateHeaderPatch(
             static_cast<ui64>(newHeader.GetMetadataSize())));
     }
 
-    // ReadPos, WritePos, MetadataChecksum - allowed to change
+    auto error = ValidateHeaderPositionPatch(
+        "ReadPos",
+        curHeader.GetReadPos(),
+        newHeader.GetReadPos(),
+        curState,
+        dataProcessor);
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    error = ValidateHeaderPositionPatch(
+        "WritePos",
+        curHeader.GetWritePos(),
+        newHeader.GetWritePos(),
+        curState,
+        dataProcessor);
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    TFileRingBufferValidator validator(/* validateChecksums = */ false);
+
+    error = validator.ValidateData(
+        dataProcessor,
+        newHeader.GetReadPos(),
+        newHeader.GetWritePos());
+
+    if (HasError(error)) {
+        return MakeArgumentError(Sprintf(
+            "Invalid ReadPos/WritePos pair (%lu, %lu): %s",
+            newHeader.GetReadPos(),
+            newHeader.GetWritePos(),
+            error.GetMessage().c_str()));
+    }
+
+    if (curHeader.GetMetadataChecksum() != newHeader.GetMetadataChecksum() &&
+        newHeader.GetMetadataChecksum() !=
+            curState.GetActualMetadataChecksum())
+    {
+        return MakeArgumentError(Sprintf(
+            "Changing MetadataChecksum is only allowed to the actual metadata "
+            "checksum (actual: %u, new: %u)",
+            curState.GetActualMetadataChecksum(),
+            newHeader.GetMetadataChecksum()));
+    }
+
+    // ReadPos, WritePos and MetadataChecksum are allowed to change subject to
+    // the checks above.
 
     return {};
 }
@@ -286,7 +409,7 @@ void ApplyEntryPatch(
 NCloud::NProto::TError ValidatePatch(
     const NProto::TStateFileDump& curState,
     const NProto::TStateFileDump& newState,
-    const TFileRingBufferCapabilities& capabilities)
+    const IFileRingBufferDataProcessor& dataProcessor)
 {
     if (curState.GetChecksum() != newState.GetChecksum()) {
         return MakeInvalidStateError(Sprintf(
@@ -295,8 +418,17 @@ NCloud::NProto::TError ValidatePatch(
             newState.GetChecksum()));
     }
 
+    if (curState.GetActualMetadataChecksum() !=
+        newState.GetActualMetadataChecksum())
+    {
+        return MakeInvalidStateError(Sprintf(
+            "Actual metadata checksum mismatch (cur: %u, new: %u)",
+            curState.GetActualMetadataChecksum(),
+            newState.GetActualMetadataChecksum()));
+    }
+
     auto validateHeaderPatchResult =
-        ValidateHeaderPatch(curState.GetHeader(), newState.GetHeader());
+        ValidateHeaderPatch(curState, newState, dataProcessor);
 
     if (HasError(validateHeaderPatchResult)) {
         return validateHeaderPatchResult;
@@ -308,6 +440,8 @@ NCloud::NProto::TError ValidatePatch(
             curState.GetEntries().size(),
             newState.GetEntries().size()));
     }
+
+    const auto capabilities = dataProcessor.GetCapabilities(false);
 
     for (int i = 0; i < curState.GetEntries().size(); ++i) {
         auto validateEntryPatchResult = ValidateEntryPatch(
@@ -321,6 +455,26 @@ NCloud::NProto::TError ValidatePatch(
     }
 
     return {};
+}
+
+bool DumpEntry(
+    NProto::TStateFileDump& state,
+    IFileRingBufferDataProcessor& dataProcessor,
+    ui64& pos)
+{
+    const auto eh = dataProcessor.ReadEntryHeader(pos);
+    if (eh.DataSize == 0) {
+        return false;
+    }
+
+    FillEntryInfo(
+        *state.AddEntries(),
+        eh,
+        pos,
+        dataProcessor.GetEntryDataPtr(pos, eh.DataSize));
+
+    pos += dataProcessor.GetEntrySize(eh.DataSize);
+    return true;
 }
 
 }   // namespace
@@ -342,6 +496,13 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
     auto* header = accessor.GetHeader();
     if (header != nullptr) {
         FillHeader(*res.MutableHeader(), *header);
+
+        const auto rawMetadata = accessor.GetRawMetadata();
+        if (header->MetadataSize <= rawMetadata.size()) {
+            const auto metadata = rawMetadata.subspan(0, header->MetadataSize);
+            res.SetActualMetadataChecksum(
+                Crc32c(metadata.data(), metadata.size()));
+        }
     }
 
     auto* dataProcessor = accessor.GetDataProcessor();
@@ -349,37 +510,25 @@ NProto::TStateFileDump TStateFileProcessor::DumpStateFile(
         return res;
     }
 
-    auto pos = header->ReadPos;
+    const auto readPos = header->ReadPos;
+    auto pos = readPos;
     while (pos > header->WritePos) {
-        auto eh = dataProcessor->ReadEntryHeader(pos);
-        if (eh.DataSize == 0) {
-            pos = 0;
+        if (!DumpEntry(res, *dataProcessor, pos)) {
+            // A slack marker at ReadPos is invalid unless WritePos == 0. Do
+            // not wrap in that case: doing so would report unrelated entries
+            // at the start of a corrupt buffer as if they were live.
+            if (pos != readPos) {
+                pos = 0;
+            }
             break;
         }
-
-        FillEntryInfo(
-            *res.AddEntries(),
-            eh,
-            pos,
-            dataProcessor->GetEntryDataPtr(pos, eh.DataSize));
-
-        pos += dataProcessor->GetEntrySize(eh.DataSize);
     }
 
     while (pos < header->WritePos) {
-        auto eh = dataProcessor->ReadEntryHeader(pos);
-        if (eh.DataSize == 0) {
-            pos = 0;
+        if (!DumpEntry(res, *dataProcessor, pos)) {
+            // A slack marker is not valid in the second, low-address segment.
             break;
         }
-
-        FillEntryInfo(
-            *res.AddEntries(),
-            eh,
-            pos,
-            dataProcessor->GetEntryDataPtr(pos, eh.DataSize));
-
-        pos += dataProcessor->GetEntrySize(eh.DataSize);
     }
 
     return res;
@@ -401,13 +550,24 @@ NCloud::NProto::TError TStateFileProcessor::PatchStateFile(
     auto validatePatchResult = ValidatePatch(
         curState,
         newState,
-        accessor.GetDataProcessor()->GetCapabilities(false));
+        *accessor.GetDataProcessor());
 
     if (HasError(validatePatchResult)) {
         return validatePatchResult;
     }
 
-    // Patch header
+    // Persist entry data and entry headers before making the new ring-buffer
+    // boundaries visible. If the second flush is interrupted, any visible
+    // entry has already reached persistent storage.
+    for (int i = 0; i < curState.GetEntries().size(); ++i) {
+        ApplyEntryPatch(newState.GetEntries(i), *accessor.GetDataProcessor());
+    }
+
+    auto flushError = accessor.Flush();
+    if (HasError(flushError)) {
+        return flushError;
+    }
+
     auto* header = accessor.GetHeader();
     const auto& newHeader = newState.GetHeader();
 
@@ -415,12 +575,7 @@ NCloud::NProto::TError TStateFileProcessor::PatchStateFile(
     header->WritePos = newHeader.GetWritePos();
     header->MetadataChecksum = newHeader.GetMetadataChecksum();
 
-    // Patch entries
-    for (int i = 0; i < curState.GetEntries().size(); ++i) {
-        ApplyEntryPatch(newState.GetEntries(i), *accessor.GetDataProcessor());
-    }
-
-    return {};
+    return accessor.Flush();
 }
 
 }   // namespace NCloud::NFileStore::NWriteBackCacheStateTool

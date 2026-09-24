@@ -1,7 +1,5 @@
 #include "file_ring_buffer_accessor.h"
 
-#include <cloud/storage/core/libs/common/error.h>
-
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/algorithm.h>
@@ -118,10 +116,19 @@ NProto::TError ValidateHeader(
     return {};
 }
 
-TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
-    IFileRingBufferDataProcessor& dataProcessor,
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TFileRingBufferValidator::TFileRingBufferValidator(bool validateChecksums)
+    : ValidateChecksums(validateChecksums)
+{}
+
+TResultOrError<TFileRingBufferEntryHeader>
+TFileRingBufferValidator::ReadAndValidateEntry(
+    const IFileRingBufferDataProcessor& dataProcessor,
     ui64 pos,
-    const TFileRingBufferCapabilities& capabilities)
+    const TFileRingBufferCapabilities& capabilities) const
 {
     if (capabilities.Alignment > 0 && pos % capabilities.Alignment != 0) {
         return MakeError(Sprintf(
@@ -171,7 +178,8 @@ TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
         if (eh.FreeFlag) {
             // When entry header is not written atomically, we cannot be sure
             // that the checksum is not slate so we skip this check
-            if (capabilities.EntryHeaderIsProcessedAtomically &&
+            if (ValidateChecksums &&
+                capabilities.EntryHeaderIsProcessedAtomically &&
                 eh.DataChecksum != 0)
             {
                 return MakeError(Sprintf(
@@ -179,7 +187,7 @@ TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
                     "(free flag is set and data checksum is non-zero)",
                     pos));
             }
-        } else {
+        } else if (ValidateChecksums) {
             auto actualCrc = Crc32c(payload, eh.DataSize);
             if (actualCrc != eh.DataChecksum) {
                 return MakeError(Sprintf(
@@ -194,10 +202,10 @@ TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
     return eh;
 }
 
-NProto::TError ValidateData(
-    IFileRingBufferDataProcessor& dataProcessor,
+NProto::TError TFileRingBufferValidator::ValidateData(
+    const IFileRingBufferDataProcessor& dataProcessor,
     ui64 readPos,
-    ui64 writePos)
+    ui64 writePos) const
 {
     auto capabilities = dataProcessor.GetCapabilities(false);
 
@@ -309,8 +317,6 @@ NProto::TError ValidateData(
     return {};
 }
 
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TFileRingBufferAccessor::TFileRingBufferAccessor(
@@ -402,8 +408,12 @@ EValidationStatus TFileRingBufferAccessor::DoValidateAndInitialize()
 
     Capabilities = DataProcessor->GetCapabilities(true);
 
-    LastValidationError =
-        ValidateData(*DataProcessor, Header->ReadPos, Header->WritePos);
+    TFileRingBufferValidator validator(/* validateChecksums = */ true);
+
+    LastValidationError = validator.ValidateData(
+        *DataProcessor,
+        Header->ReadPos,
+        Header->WritePos);
 
     if (HasError(LastValidationError)) {
         return EValidationStatus::Failed;
@@ -442,13 +452,24 @@ TFileMapFileRingBufferAccessor::TFileMapFileRingBufferAccessor(
     : TFileRingBufferAccessor(validationMode)
     , FileName(std::move(fileName))
     , OpenModeFlags(openModeFlags)
+    , BackingFile(std::nullopt)
+{}
+
+TFileMapFileRingBufferAccessor::TFileMapFileRingBufferAccessor(
+    TFile file,
+    EFileRingBufferAccessorValidationMode validationMode,
+    TMemoryMapCommon::EOpenModeFlag openModeFlags)
+    : TFileRingBufferAccessor(validationMode)
+    , FileName(file.GetName())
+    , OpenModeFlags(openModeFlags)
+    , BackingFile(std::move(file))
 {}
 
 NProto::TError TFileMapFileRingBufferAccessor::Map()
 {
     try {
         if (!FileMap) {
-            FileMap.emplace(FileName, OpenModeFlags);
+            CreateFileMap();
         }
         FileMap->Map(0, FileMap->Length());
     } catch (...) {
@@ -468,7 +489,7 @@ NProto::TError TFileMapFileRingBufferAccessor::ResizeAndRemap(size_t newSize)
 {
     try {
         if (!FileMap) {
-            FileMap.emplace(FileName, OpenModeFlags);
+            CreateFileMap();
         }
         FileMap->ResizeAndRemap(0, newSize);
     } catch (...) {
@@ -484,10 +505,46 @@ NProto::TError TFileMapFileRingBufferAccessor::ResizeAndRemap(size_t newSize)
     return ProcessMap();
 }
 
+NProto::TError TFileMapFileRingBufferAccessor::Flush()
+{
+    if (!FileMap) {
+        return MakeError(
+            E_INVALID_STATE,
+            "Cannot flush a state file that is not mapped");
+    }
+
+    try {
+        // TFileMap::Flush performs a synchronous msync. Its legacy void API
+        // does not expose an msync failure, so also flush the backing file to
+        // get an explicit error when the OS reports one.
+        FileMap->Flush();
+        auto file = FileMap->GetFile();
+        file.Flush();
+    } catch (...) {
+        return MakeError(
+            E_IO,
+            Sprintf(
+                "Failed to flush file %s: %s",
+                FileName.c_str(),
+                CurrentExceptionMessage().c_str()));
+    }
+
+    return {};
+}
+
 void TFileMapFileRingBufferAccessor::Close()
 {
     UpdateRawData({});
     FileMap.reset();
+}
+
+void TFileMapFileRingBufferAccessor::CreateFileMap()
+{
+    if (BackingFile) {
+        FileMap.emplace(*BackingFile, OpenModeFlags, FileName);
+    } else {
+        FileMap.emplace(FileName, OpenModeFlags);
+    }
 }
 
 NProto::TError TFileMapFileRingBufferAccessor::ProcessMap()

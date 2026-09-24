@@ -67,6 +67,7 @@ message TStateFileDump
 {
     uint32 Checksum = 1;
     bool IsCorrupted = 2;
+    uint32 ActualMetadataChecksum = 3;
     optional TStateFileHeader Header = 4;
     repeated TStateFileEntry Entries = 5;
 }

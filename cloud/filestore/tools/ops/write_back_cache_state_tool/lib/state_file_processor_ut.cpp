@@ -1,8 +1,12 @@
 #include "state_file_processor.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
 
 #include <library/cpp/digest/crc32c/crc32c.h>
+#include <library/cpp/protobuf/json/config.h>
+#include <library/cpp/protobuf/json/json2proto.h>
+#include <library/cpp/protobuf/json/proto2json.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/system/tempfile.h>
@@ -15,33 +19,49 @@ namespace {
 
 using EVersion = EFileRingBufferVersion;
 
-#define FILE_RING_BUFFER_TEST(name)    \
-    void TestImpl##name(EVersion ver); \
-    Y_UNIT_TEST(name##V5)              \
-    {                                  \
-        TestImpl##name(EVersion::V5);  \
-    }                                  \
-    Y_UNIT_TEST(name##V6)              \
-    {                                  \
-        TestImpl##name(EVersion::V6);  \
-    }                                  \
+#define FILE_RING_BUFFER_TEST(name)                                            \
+    void TestImpl##name(EVersion ver);                                         \
+    Y_UNIT_TEST(name##V5)                                                      \
+    {                                                                          \
+        TestImpl##name(EVersion::V5);                                          \
+    }                                                                          \
+    Y_UNIT_TEST(name##V6)                                                      \
+    {                                                                          \
+        TestImpl##name(EVersion::V6);                                          \
+    }                                                                          \
     void TestImpl##name(EVersion ver)
 // FILE_RING_BUFFER_TEST
 
 const void* Alloc(TFileRingBuffer& rb, const TString& entry)
 {
-    auto resultOrError = rb.Alloc(entry.size());
-    UNIT_ASSERT(!HasError(resultOrError));
-    char* ptr = resultOrError.GetResult();
+    const auto result = rb.Alloc(entry.size());
+    UNIT_ASSERT_C(!HasError(result.Error), FormatError(result.Error));
+    char* ptr = result.AllocationPtr;
+    UNIT_ASSERT(ptr != nullptr);
     MemCopy(ptr, entry.data(), entry.size());
-    UNIT_ASSERT(rb.Commit());
+    const auto commitError = rb.Commit(ptr);
+    UNIT_ASSERT_C(!HasError(commitError), FormatError(commitError));
     return ptr;
+}
+
+bool PushBack(TFileRingBuffer& rb, TStringBuf entry)
+{
+    const auto result = rb.PushBack(entry);
+    UNIT_ASSERT_C(!HasError(result.Error), FormatError(result.Error));
+    return result.Pushed;
+}
+
+bool PopFront(TFileRingBuffer& rb)
+{
+    const auto result = rb.PopFront();
+    UNIT_ASSERT_C(!HasError(result.Error), FormatError(result.Error));
+    return result.Removed;
 }
 
 TString Dump(TFileRingBuffer& rb)
 {
     TStringBuilder sb;
-    rb.Visit(
+    const auto error = rb.Visit(
         [&](ui32 checksum, ui32 tag, TStringBuf entry)
         {
             Y_UNUSED(checksum);
@@ -50,6 +70,7 @@ TString Dump(TFileRingBuffer& rb)
             }
             sb << entry << ":" << tag;
         });
+    UNIT_ASSERT_C(!HasError(error), FormatError(error));
     return sb;
 }
 
@@ -198,11 +219,52 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             header.GetMetadataCapacity());
     }
 
+    FILE_RING_BUFFER_TEST(ShouldDumpAndRepairMetadataChecksum)
+    {
+        TBootstrap b;
+        b.Execute(
+            [](TFileRingBuffer& rb)
+            {
+                const auto result = rb.SetMetadata("meta");
+                UNIT_ASSERT_C(
+                    !HasError(result.Error),
+                    FormatError(result.Error));
+                UNIT_ASSERT(result.Updated);
+            },
+            ver);
+
+        auto initialDump = b.Dump();
+        UNIT_ASSERT(!initialDump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(
+            initialDump.GetHeader().GetMetadataChecksum(),
+            initialDump.GetActualMetadataChecksum());
+
+        b.Accessor.GetRawMetadata()[0] ^= 1;
+
+        auto corruptDump = b.Dump();
+        UNIT_ASSERT(corruptDump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            corruptDump.GetHeader().GetMetadataChecksum(),
+            corruptDump.GetActualMetadataChecksum());
+
+        corruptDump.MutableHeader()->SetMetadataChecksum(
+            corruptDump.GetActualMetadataChecksum());
+        UNIT_ASSERT(!HasError(b.Patch(corruptDump)));
+
+        auto repairedDump = b.Dump();
+        UNIT_ASSERT(!repairedDump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(
+            repairedDump.GetHeader().GetMetadataChecksum(),
+            repairedDump.GetActualMetadataChecksum());
+    }
+
     FILE_RING_BUFFER_TEST(ShouldDumpFileWithSingleEntry)
     {
         TBootstrap b;
 
-        b.Execute([](TFileRingBuffer& rb) { rb.PushBack("Hello"); }, ver);
+        b.Execute(
+            [](TFileRingBuffer& rb) { UNIT_ASSERT(PushBack(rb, "Hello")); },
+            ver);
 
         auto dump = b.Dump();
 
@@ -229,9 +291,9 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                rb.PushBack("Hello");
-                rb.PushBack("Bye");
-                rb.PopFront();
+                UNIT_ASSERT(PushBack(rb, "Hello"));
+                UNIT_ASSERT(PushBack(rb, "Bye"));
+                UNIT_ASSERT(PopFront(rb));
             },
             ver);
 
@@ -267,7 +329,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
                 UNIT_ASSERT(p1 != nullptr);
                 UNIT_ASSERT(p2 != nullptr);
 
-                rb.Free(p1);
+                UNIT_ASSERT(!HasError(rb.Free(p1)));
             },
             ver);
 
@@ -308,8 +370,8 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
                 expected0 = Min(1U, rb.GetMaxTag());
                 expected1 = Min(2U, rb.GetMaxTag());
 
-                rb.SetTag(p0, expected0);
-                rb.SetTag(p1, expected1);
+                UNIT_ASSERT(!HasError(rb.SetTag(p0, expected0)));
+                UNIT_ASSERT(!HasError(rb.SetTag(p1, expected1)));
             },
             ver);
 
@@ -334,16 +396,16 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         b.Execute(
             [&](TFileRingBuffer& rb)
             {
-                while (rb.PushBack("123")) {
+                while (PushBack(rb, "123")) {
                     entryCount++;
                 }
 
-                rb.PopFront();
-                rb.PopFront();
+                UNIT_ASSERT(PopFront(rb));
+                UNIT_ASSERT(PopFront(rb));
 
                 UNIT_ASSERT(!rb.Empty());
 
-                UNIT_ASSERT(rb.PushBack("ABCD"));
+                UNIT_ASSERT(PushBack(rb, "ABCD"));
             },
             ver);
 
@@ -375,8 +437,8 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                rb.PushBack("Hello");
-                rb.PushBack("Bye");
+                UNIT_ASSERT(PushBack(rb, "Hello"));
+                UNIT_ASSERT(PushBack(rb, "Bye"));
             },
             ver);
 
@@ -412,10 +474,7 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             entry1.GetActualDataChecksum());
 
         b.Execute(
-            [](TFileRingBuffer& rb)
-            {
-                UNIT_ASSERT(rb.IsCorrupted());
-            },
+            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.IsCorrupted()); },
             ver);
 
         // 2. Corrupted entry size
@@ -435,11 +494,27 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         UNIT_ASSERT_VALUES_EQUAL(2, dump2.GetEntries().size());
 
         b.Execute(
+            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.IsCorrupted()); },
+            ver);
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldNotDumpPhantomEntriesAfterSlackAtReadPos)
+    {
+        TBootstrap b;
+        b.Execute(
             [](TFileRingBuffer& rb)
             {
-                UNIT_ASSERT(rb.IsCorrupted());
+                UNIT_ASSERT(PushBack(rb, "Hello"));
+                UNIT_ASSERT(PushBack(rb, "Bye"));
             },
             ver);
+
+        b.Accessor.ValidateAndInitialize();
+        b.Accessor.GetHeader()->ReadPos = TBootstrap::DataCapacity - 8;
+
+        const auto dump = b.Dump();
+        UNIT_ASSERT(dump.GetIsCorrupted());
+        UNIT_ASSERT_VALUES_EQUAL(0, dump.GetEntries().size());
     }
 
     // Patch tests
@@ -450,9 +525,9 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         b.Execute(
             [](TFileRingBuffer& rb)
             {
-                rb.PushBack("Hello");
-                rb.PushBack("What");
-                rb.PushBack("Bye");
+                UNIT_ASSERT(PushBack(rb, "Hello"));
+                UNIT_ASSERT(PushBack(rb, "What"));
+                UNIT_ASSERT(PushBack(rb, "Bye"));
             },
             ver);
 
@@ -490,9 +565,9 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         b.Execute(
             [&](TFileRingBuffer& rb)
             {
-                rb.PushBack("Hello");
-                rb.PushBack("What");
-                rb.PushBack("Bye");
+                UNIT_ASSERT(PushBack(rb, "Hello"));
+                UNIT_ASSERT(PushBack(rb, "What"));
+                UNIT_ASSERT(PushBack(rb, "Bye"));
 
                 tag = Min(2U, rb.GetMaxTag());
             },
@@ -541,10 +616,11 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         b.Execute(
             [&](TFileRingBuffer& rb)
             {
-                TVector<ui64> payload {1, 2, 3, 4};
-                rb.PushBack(
+                TVector<ui64> payload{1, 2, 3, 4};
+                UNIT_ASSERT(PushBack(
+                    rb,
                     {reinterpret_cast<char*>(payload.data()),
-                     payload.size() * sizeof(ui64)});
+                     payload.size() * sizeof(ui64)}));
             },
             ver);
 
@@ -585,6 +661,36 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
         UNIT_ASSERT_VALUES_EQUAL(30, info2.GetOffset());
     }
 
+    FILE_RING_BUFFER_TEST(ShouldPatchJsonRoundTrip)
+    {
+        TBootstrap b;
+        b.Execute(
+            [](TFileRingBuffer& rb) { UNIT_ASSERT(PushBack(rb, "Hello")); },
+            ver);
+
+        auto dump = b.Dump();
+        dump.MutableEntries(0)->SetTag(1);
+
+        using EMissingKeyMode =
+            NProtobufJson::TProto2JsonConfig::MissingKeyMode;
+
+        NProtobufJson::TProto2JsonConfig config;
+        config.SetEnumMode(NProtobufJson::TProto2JsonConfig::EnumName)
+            .SetFormatOutput(true)
+            .SetMissingSingleKeyMode(EMissingKeyMode::MissingKeyDefault);
+
+        const auto json = NProtobufJson::Proto2Json(dump, config);
+
+        NProto::TStateFileDump parsedDump;
+        NProtobufJson::Json2Proto(TStringBuf(json), parsedDump);
+
+        UNIT_ASSERT(!HasError(b.Patch(parsedDump)));
+        b.Execute(
+            [](TFileRingBuffer& rb)
+            { UNIT_ASSERT_VALUES_EQUAL("Hello:1", Dump(rb)); },
+            ver);
+    }
+
     Y_UNIT_TEST(ShouldRejectPatchForUninitializedStateFile)
     {
         TBootstrap b;
@@ -599,11 +705,15 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
     FILE_RING_BUFFER_TEST(ShouldRejectStaleState)
     {
         TBootstrap b;
-        b.Execute([&](TFileRingBuffer& rb) { rb.PushBack("Hello"); }, ver);
+        b.Execute(
+            [&](TFileRingBuffer& rb) { UNIT_ASSERT(PushBack(rb, "Hello")); },
+            ver);
 
         auto dump = b.Dump();
 
-        b.Execute([&](TFileRingBuffer& rb) { rb.PushBack("Bye"); }, ver);
+        b.Execute(
+            [&](TFileRingBuffer& rb) { UNIT_ASSERT(PushBack(rb, "Bye")); },
+            ver);
 
         auto error = b.Patch(dump);
 
@@ -616,7 +726,9 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
     FILE_RING_BUFFER_TEST(ShouldRejectOnFieldsMismatch)
     {
         TBootstrap b;
-        b.Execute([&](TFileRingBuffer& rb) { rb.PushBack("Hello"); }, ver);
+        b.Execute(
+            [&](TFileRingBuffer& rb) { UNIT_ASSERT(PushBack(rb, "Hello")); },
+            ver);
 
         auto dump = b.Dump();
 
@@ -664,6 +776,14 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
                     entry->GetActualDataChecksum() + 1);
             },
             "Entry ActualDataChecksum mismatch");
+
+        check(
+            [](auto& state)
+            {
+                state.SetActualMetadataChecksum(
+                    state.GetActualMetadataChecksum() + 1);
+            },
+            "Actual metadata checksum mismatch");
     }
 
     FILE_RING_BUFFER_TEST(ShouldRejectInvalidChanges)
@@ -673,13 +793,14 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             [](TFileRingBuffer& rb)
             {
                 TVector<ui64> payload{1, 2, 3, 4};
-                rb.PushBack(
+                UNIT_ASSERT(PushBack(
+                    rb,
                     {reinterpret_cast<char*>(payload.data()),
-                     payload.size() * sizeof(ui64)});
+                     payload.size() * sizeof(ui64)}));
 
                 // This request is too short to be represented as a WriteData
                 // request
-                rb.PushBack("Hello");
+                UNIT_ASSERT(PushBack(rb, "Hello"));
             },
             ver);
 
@@ -760,6 +881,57 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
                 header->SetMetadataSize(header->GetMetadataSize() + 1);
             },
             "MetadataSize");
+
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetReadPos(header->GetDataCapacity() + 1);
+            },
+            "ReadPos");
+
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetWritePos(header->GetDataCapacity() + 1);
+            },
+            "WritePos");
+
+        check(
+            [](auto& state) { state.MutableHeader()->SetReadPos(1); },
+            ver == EVersion::V6 ? "not aligned" : "known entry boundary");
+
+        check(
+            [](auto& state) { state.MutableHeader()->SetWritePos(8); },
+            "known entry boundary");
+
+        check(
+            [](auto& state)
+            {
+                state.MutableHeader()->SetReadPos(
+                    state.GetEntries(1).GetEntryPos());
+                state.MutableHeader()->SetWritePos(0);
+            },
+            "Invalid ReadPos/WritePos pair");
+
+        check(
+            [](auto& state)
+            {
+                state.MutableHeader()->SetReadPos(
+                    state.GetHeader().GetWritePos());
+                state.MutableHeader()->SetWritePos(
+                    state.GetEntries(1).GetEntryPos());
+            },
+            "Invalid ReadPos/WritePos pair");
+
+        check(
+            [](auto& state)
+            {
+                auto* header = state.MutableHeader();
+                header->SetMetadataChecksum(header->GetMetadataChecksum() + 1);
+            },
+            "actual metadata checksum");
 
         check(
             [](auto& state)

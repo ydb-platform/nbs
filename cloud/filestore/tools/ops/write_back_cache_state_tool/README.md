@@ -14,7 +14,8 @@ Build `write_back_cache_state_tool` binary
 
 Commands:
 
-`list` — list states and give summary in JSON format;
+`list` — list state files under `--state-dir` and give a summary in JSON
+format; it does not accept `--state-file`, `--fs-id`, or `--session-id`;
 
 `check` — check integrity of the state file;
 
@@ -40,9 +41,16 @@ Options:
 
 `-O`, `--output` — write command output to a file instead of stdout;
 
-`--unsafe-ignore-lock` — do not check and acquire advisory lock;
+`--unsafe-ignore-lock` — continue even if the advisory lock cannot be acquired;
 
 `--unsafe-ignore-corruption` — allow patching corrupted files.
+
+The tool and filestore modules cooperate through advisory file locks. An active
+service therefore prevents the tool from processing its state file, and `list`
+reports that file as locked. Advisory locking only protects against processes
+that honor the same convention: using `--unsafe-ignore-lock`, or accessing the
+file with unrelated software, can race with the service and corrupt the state
+file.
 
 
 ### How to patch
@@ -51,7 +59,7 @@ Options:
 
 2. Edit fields in the dump file.
 
-3. Apply changed using `patch` command.
+3. Apply changes using `patch` command.
 
 4. Verify state file using `check` command.
 
@@ -66,6 +74,11 @@ Fields that are allowed to change:
 
 It is not possible to change entry size, modify request data, add new entries.
 
+Changed `ReadPos` and `WritePos` values must be within `DataCapacity`, satisfy
+the state-file format's alignment, and point to a boundary known from the
+dump. Together they must also describe a valid ring-buffer traversal.
+`MetadataChecksum` can only be changed to `ActualMetadataChecksum`.
+
 Entry header and entry payload can be changed only when DataChecksum matches
 the actual checksum.
 
@@ -75,9 +88,12 @@ Example scenarios:
 
 2. Delete unwanted entries: set `FreeFlag` to `true`.
 
-3. Fix checksum error: set `DataChecksum` to `ActualDataChecksum`.
+3. Fix an entry checksum error: set `DataChecksum` to `ActualDataChecksum`.
 
-4. Fix `E_FS_BADHANDLE` error: change `Handle` field to a live handle or change
+4. Fix a metadata checksum error: set `MetadataChecksum` to
+`ActualMetadataChecksum`.
+
+5. Fix `E_FS_BADHANDLE` error: change `Handle` field to a live handle or change
 `Tag` value from 0 to 1.
 
 

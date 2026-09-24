@@ -2,6 +2,7 @@
 
 #include "file_ring_buffer_format.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/protos/error.pb.h>
 
 #include <util/generic/function_ref.h>
@@ -52,6 +53,33 @@ enum class EFileRingBufferAccessorValidationStatus
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TFileRingBufferValidator
+{
+private:
+    bool ValidateChecksums = false;
+
+public:
+    explicit TFileRingBufferValidator(bool validateChecksums);
+
+    /**
+     * Validates whether readPos and writePos describe a structurally valid
+     * traversal of dataProcessor. Additionals performs payload checksum
+     * validation if ValidateChecksums is set.
+     */
+    NProto::TError ValidateData(
+        const IFileRingBufferDataProcessor& dataProcessor,
+        ui64 readPos,
+        ui64 writePos) const;
+
+private:
+    TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
+        const IFileRingBufferDataProcessor& dataProcessor,
+        ui64 pos,
+        const TFileRingBufferCapabilities& capabilities) const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TFileRingBufferAccessor
 {
 private:
@@ -67,6 +95,13 @@ private:
 public:
     explicit TFileRingBufferAccessor(
         EFileRingBufferAccessorValidationMode validationMode);
+
+    virtual ~TFileRingBufferAccessor() = default;
+
+    // Flushes changes made through RawData, Header, RawMetadata or
+    // DataProcessor to persistent storage. Implementations must complete the
+    // flush synchronously and report any observable error.
+    virtual NProto::TError Flush() = 0;
 
     // Validates raw data and initializes Header, DataProcessor, RawMetadata and
     // Capabilities depending on the validation result and mode
@@ -142,6 +177,7 @@ class TFileMapFileRingBufferAccessor final: public TFileRingBufferAccessor
 private:
     const TString FileName;
     const TMemoryMapCommon::EOpenModeFlag OpenModeFlags;
+    const std::optional<TFile> BackingFile;
 
     std::optional<TFileMap> FileMap;
 
@@ -151,11 +187,19 @@ public:
         EFileRingBufferAccessorValidationMode validationMode,
         TMemoryMapCommon::EOpenModeFlag openModeFlags);
 
+    // Maps this exact open file description and never reopens its pathname
+    TFileMapFileRingBufferAccessor(
+        TFile file,
+        EFileRingBufferAccessorValidationMode validationMode,
+        TMemoryMapCommon::EOpenModeFlag openModeFlags);
+
     NProto::TError Map();
     NProto::TError ResizeAndRemap(size_t newSize);
+    NProto::TError Flush() override;
     void Close();
 
 private:
+    void CreateFileMap();
     NProto::TError ProcessMap();
 };
 

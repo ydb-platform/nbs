@@ -47,7 +47,7 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue("/Berkanavt/nfs-vhost/state")
         .StoreResult(&StateDir);
 
-    opts.AddLongOption("fs-id", "file system id ")
+    opts.AddLongOption("fs-id", "file system id")
         .RequiredArgument("STR")
         .StoreResult(&FsId);
 
@@ -80,8 +80,8 @@ void TOptions::Parse(int argc, char** argv)
 
     opts.AddLongOption(
             "unsafe-ignore-lock",
-            "do not check and acquire advisory lock (dangerous, will be "
-            "removed)")
+            "continue even if the advisory lock cannot be acquired "
+            "(dangerous, will be removed)")
         .StoreTrue(&UnsafeIgnoreLock);
 
     opts.AddLongOption(
@@ -97,11 +97,37 @@ void TOptions::Parse(int argc, char** argv)
     }
     Command = *command;
 
-    if (!StateFile.empty()) {
-        if (!StateDir.empty() || !FsId.empty() || !SessionId.empty()) {
+    const bool hasStateFile = parser.Has("state-file");
+    const bool hasStateDir = parser.Has("state-dir");
+    const bool hasFsId = parser.Has("fs-id");
+    const bool hasSessionId = parser.Has("session-id");
+
+    if (Command == ECommand::List) {
+        if (hasStateFile || hasFsId || hasSessionId) {
+            ythrow yexception()
+                << "The list command accepts --state-dir only; "
+                   "--state-file, --fs-id and --session-id are not allowed";
+        }
+        return;
+    }
+
+    if (hasStateFile) {
+        if (StateFile.empty()) {
+            ythrow yexception() << "State file path must not be empty";
+        }
+
+        // StateDir has a default value, so checking the stored value would
+        // reject every use of --state-file.  Has() does not count defaults.
+        if (hasStateDir || hasFsId || hasSessionId) {
             ythrow yexception() << "Cannot specify --state-file with "
                                    "--state-dir, --fs-id or --session-id";
         }
+        return;
+    }
+
+    if (FsId.empty()) {
+        ythrow yexception()
+            << "--fs-id is required unless --state-file is specified";
     }
 }
 

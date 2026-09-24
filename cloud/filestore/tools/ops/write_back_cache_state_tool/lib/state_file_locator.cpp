@@ -1,7 +1,10 @@
 #include "state_file_locator.h"
 
+#include "existing_file_lock.h"
+
 #include <util/folder/path.h>
 #include <util/generic/algorithm.h>
+#include <util/stream/output.h>
 #include <util/string/printf.h>
 #include <util/system/file.h>
 #include <util/system/file_lock.h>
@@ -35,7 +38,9 @@ NProto::EStateFileType GetFileType(const TString& fileName)
 
 NProto::TStateFileInfo GetStateFileInfo(const TFsPath& path)
 {
-    TFileLock fileLock(path.GetPath());
+    // Probe with an exclusive lock so IsLocked also reflects concurrent
+    // read-only tool invocations, which hold shared locks.
+    TExistingFileLock fileLock(path.GetPath(), EFileLockType::Exclusive);
 
     NProto::TStateFileInfo res;
     res.SetFilePath(path.GetPath());
@@ -158,7 +163,9 @@ public:
         const TString& sessionId,
         NProto::EStateFileType fileType) override
     {
-        Y_ENSURE(!fsId.empty(), "Filesystem ID must not be empty");
+        if (fsId.empty()) {
+            return MakeError(E_ARGUMENT, "Filesystem ID must not be empty");
+        }
 
         auto stateFileListOrError = ListStateFiles();
         if (HasError(stateFileListOrError)) {
