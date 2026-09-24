@@ -11,6 +11,7 @@ SRCS(
     create_snapshot_from_disk_task.proto
     create_snapshot_from_snapshot_task.proto
     create_snapshot_from_url_task.proto
+    delete_backup_objects_task.proto
     delete_disk_from_incremental.proto
     delete_snapshot_data_task.proto
     delete_snapshot_task.proto

@@ -194,4 +194,11 @@ type Storage interface {
 
 	// Used for monitoring only.
 	GetBackupChunkQueueLength(ctx context.Context) (uint64, error)
+
+	GetBackupDeleteQueue(ctx context.Context, limit int) ([]string, error)
+
+	BackupDeletionsCompleted(ctx context.Context, objectKeys []string) error
+
+	// Used for monitoring only.
+	GetBackupDeleteQueueLength(ctx context.Context) (uint64, error)
 }

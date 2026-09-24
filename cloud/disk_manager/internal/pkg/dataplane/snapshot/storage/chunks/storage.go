@@ -26,5 +26,9 @@ type Storage interface {
 
 	RefChunk(ctx context.Context, referer string, chunkID string) (err error)
 
-	UnrefChunk(ctx context.Context, referer string, chunkID string) (err error)
+	UnrefChunk(
+		ctx context.Context,
+		referer string,
+		chunkID string,
+	) (deleted bool, err error)
 }
