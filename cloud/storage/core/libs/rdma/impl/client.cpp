@@ -1682,6 +1682,7 @@ void TClientEndpoint::SendRequest(TRequest* req, TSendWr* send) noexcept
         // the SEND reads the request buffer until it completes
         send->EagerBuffer = req->InBuffer;
         req->InBuffer = {};
+        req->RequestBuffer = {};
     }
 
     LWTRACK(
