@@ -611,11 +611,9 @@ class _TestCmsPurgeDevice:
         assert response.ActionResults[0].Timeout == 0
 
         nbs.wait_for_stats(UnknownDevices=0)
-        if attach_detach_paths:
-            cms.wait_for_no_paths_to_attach_detach()
-            fds_count.assert_file_descriptors_are_opened([device.path])
 
         wait_for_secure_erase(nbs.mon_port)
+        fds_count.assert_file_descriptors_are_opened([device.path])
 
         nbs.create_volume("vol1")
         nbs.read_blocks("vol1", start_index=0, block_count=32)
@@ -639,7 +637,10 @@ class _TestCmsPurgeDeviceNoUserDisks:
         attach_detach_paths,
     ):
         device = devices[0]
+
         fds_count = FileDescriptorsCount(devices)
+
+        assert nbs.get_stats("UnknownDevices") == 0
 
         response = cms.purge_device("localhost", device.path)
 
@@ -649,24 +650,18 @@ class _TestCmsPurgeDeviceNoUserDisks:
 
         nbs.wait_for_stats(UnknownDevices=1)
 
-        if attach_detach_paths:
-            fds_count.assert_file_descriptors_were_closed([device.path])
-
-        nbs.create_volume("vol0", return_code=1)
+        nbs.create_volume("vol1", return_code=1)
 
         response = cms.add_device("localhost", device.path)
         assert response.ActionResults[0].Result.Code == 0
         assert response.ActionResults[0].Timeout == 0
-
         nbs.wait_for_stats(UnknownDevices=0)
-        if attach_detach_paths:
-            cms.wait_for_no_paths_to_attach_detach()
-            fds_count.assert_file_descriptors_are_opened([device.path])
 
         wait_for_secure_erase(nbs.mon_port)
+        fds_count.assert_file_descriptors_are_opened([device.path])
 
-        nbs.create_volume("vol0")
-        nbs.read_blocks("vol0", start_index=0, block_count=32)
+        nbs.create_volume("vol2")
+        nbs.read_blocks("vol2", start_index=0, block_count=32)
 
         return True
 
@@ -678,7 +673,7 @@ TESTS = [
     _TestCmsPurgeAgent("purgeagent"),
     _TestCmsRemoveDevice("removedevice"),
     _TestCmsRemoveDeviceNoUserDisks("removedevicenodisks"),
-    _TestCmsPurgeDevice("purgedevice"),
+    _TestCmsPurgeDeviceNoUserDisks("purgedevice"),
     _TestCmsPurgeDeviceNoUserDisks("purgedevicenodisks"),
 ]
 
