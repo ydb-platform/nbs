@@ -22,5 +22,6 @@ Tests {
             WriteBytes: 4096
             MinFileCount: 3
         }
+        ValidateGarbageCollection: true
     }
 }

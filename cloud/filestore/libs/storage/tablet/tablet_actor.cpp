@@ -1280,6 +1280,11 @@ TIndexTabletActor::ProcessForcedRangeOperationRequest(
         return std::make_unique<TResponse>(std::move(error));
     }
 
+    if (!CompactionStateLoadStatus.Finished) {
+        auto error = MakeError(E_TRY_AGAIN, "compaction map not loaded yet");
+        return std::make_unique<TResponse>(std::move(error));
+    }
+
     TVector<ui32> ranges;
     if (mode == EMode::DeleteZeroCompactionRanges) {
         ranges = GenerateForceDeleteZeroCompactionRanges();
