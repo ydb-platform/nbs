@@ -6111,14 +6111,26 @@ NProto::TError TDiskRegistryState::TryToRemoveDevice(
     const TAgentId& agentId,
     const TString& path)
 {
-    auto newConfig = GetConfig();
+    auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        return {};
+    }
 
-    auto* agents = newConfig.MutableKnownAgents();
+    THashSet<TDeviceId> toRemove;
+    for (const auto& device: agent->GetDevices()) {
+        if (device.GetDeviceName() == path) {
+            toRemove.insert(device.GetDeviceUUID());
+        }
+    }
+
+    auto newConfig = GetConfig();
+    auto* configAgents = newConfig.MutableKnownAgents();
+
     const auto agentIt = FindIf(
-        *agents,
+        *configAgents,
         [&agentId](const auto& x) { return x.GetAgentId() == agentId; });
 
-    if (agentIt == agents->end()) {
+    if (agentIt == configAgents->end()) {
         return MakeError(
             E_NOT_FOUND,
             TStringBuilder() << "Couldn't find agent " << agentId.Quote()
@@ -6127,7 +6139,8 @@ NProto::TError TDiskRegistryState::TryToRemoveDevice(
 
     EraseIf(
         *agentIt->MutableDevices(),
-        [&path](const auto& device) { return device.GetDeviceName() == path; });
+        [&toRemove](const auto& device)
+        { return toRemove.contains(device.GetDeviceUUID()); });
 
     TVector<TString> affectedDisks;
     auto error = UpdateConfig(db, std::move(newConfig), false, affectedDisks);
