@@ -129,6 +129,14 @@ NProto::TBlobMeta MakeMergedBlobMeta(ui32 start, ui32 end, ui32 skipped = 0)
     return meta;
 }
 
+NProto::TCleanupQueueAdditionalFields MakeCleanupQueueAdditionalFields(
+    const NProto::TBlobMeta& blobMeta)
+{
+    NProto::TCleanupQueueAdditionalFields additionalFields;
+    *additionalFields.MutableBlobMeta() = blobMeta;
+    return additionalFields;
+}
+
 struct TMixedAndMergedBlobsSetup
 {
     TPartialBlobId MixedBlobId;
@@ -154,7 +162,10 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
             setup.MixedBlobId = MoveToDataChannel(executor.MakeBlobId(3));
             state.WriteMixedBlocks(db, setup.MixedBlobId, {0, 1, 2}, 1);
             db.WriteBlobMeta(setup.MixedBlobId, setup.MixedBlobMeta);
-            db.WriteCleanupQueue(setup.MixedBlobId, deletionCommitId);
+            db.WriteCleanupQueue(
+                setup.MixedBlobId,
+                deletionCommitId,
+                MakeCleanupQueueAdditionalFields(setup.MixedBlobMeta));
 
             setup.MergedBlobId = MoveToDataChannel(executor.MakeBlobId(4));
             db.WriteMergedBlocks(
@@ -162,7 +173,10 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
                 TBlockRange32::MakeClosedInterval(10, 13),
                 TBlockMask{});
             db.WriteBlobMeta(setup.MergedBlobId, setup.MergedBlobMeta);
-            db.WriteCleanupQueue(setup.MergedBlobId, deletionCommitId);
+            db.WriteCleanupQueue(
+                setup.MergedBlobId,
+                deletionCommitId,
+                MakeCleanupQueueAdditionalFields(setup.MergedBlobMeta));
         });
 
     state.GetCleanupQueue().Add({setup.MixedBlobId, deletionCommitId, {}});
@@ -740,11 +754,11 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         cleanupQueue.emplace_back(
             setup.MixedBlobId,
             deletionCommitId,
-            setup.MixedBlobMeta);
+            MakeCleanupQueueAdditionalFields(setup.MixedBlobMeta));
         cleanupQueue.emplace_back(
             setup.MergedBlobId,
             deletionCommitId,
-            setup.MergedBlobMeta);
+            MakeCleanupQueueAdditionalFields(setup.MergedBlobMeta));
 
         auto args = MakeCleanupArgs(
             cleanupQueue,
@@ -788,11 +802,11 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         cleanupQueue.emplace_back(
             setup.MixedBlobId,
             deletionCommitId,
-            setup.MixedBlobMeta);
+            MakeCleanupQueueAdditionalFields(setup.MixedBlobMeta));
         cleanupQueue.emplace_back(
             setup.MergedBlobId,
             deletionCommitId,
-            setup.MergedBlobMeta);
+            MakeCleanupQueueAdditionalFields(setup.MergedBlobMeta));
 
         auto args = MakeCleanupArgs(
             cleanupQueue,
@@ -843,11 +857,11 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
         cleanupQueue.emplace_back(
             setup.MixedBlobId,
             deletionCommitId,
-            MakeMixedBlobMeta({0, 1}));
+            MakeCleanupQueueAdditionalFields(MakeMixedBlobMeta({0, 1})));
         cleanupQueue.emplace_back(
             setup.MergedBlobId,
             deletionCommitId,
-            setup.MergedBlobMeta);
+            MakeCleanupQueueAdditionalFields(setup.MergedBlobMeta));
 
         auto args = MakeCleanupArgs(
             cleanupQueue,
