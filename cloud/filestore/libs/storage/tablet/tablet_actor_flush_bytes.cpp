@@ -46,7 +46,7 @@ public:
     {
     }
 
-    void Accept(const TBlock& block, TStringBuf blockData) override
+    void Accept(const TBlock& block, std::pair<TStringBuf, IBlockBufferPtr> blockData) override
     {
         TABLET_VERIFY(!ApplyingByteLayer);
 
@@ -54,7 +54,7 @@ public:
             BlockMinCommitId = block.MinCommitId;
             TOwningFreshBlock ofb;
             static_cast<TBlock&>(ofb) = block;
-            ofb.BlockData = blockData;
+            ofb.BlockData = blockData.first;
             Block.Block = std::move(ofb);
         }
     }

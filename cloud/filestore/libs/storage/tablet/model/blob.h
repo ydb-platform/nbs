@@ -10,6 +10,8 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -39,14 +41,14 @@ struct TMixedBlobMeta
 
 struct TMixedBlob: TMixedBlobMeta
 {
-    TString BlobContent;
+    TVector<std::pair<TStringBuf, IBlockBufferPtr>> BlobContent;
 
     TMixedBlob() = default;
 
     TMixedBlob(
             const TPartialBlobId& blobId,
             TVector<TBlock> blocks,
-            TString blobContent)
+            TVector<std::pair<TStringBuf, IBlockBufferPtr>> blobContent)
         : TMixedBlobMeta(blobId, std::move(blocks))
         , BlobContent(std::move(blobContent))
     {}
