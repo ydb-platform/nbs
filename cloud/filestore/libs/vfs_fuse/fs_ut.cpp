@@ -8376,8 +8376,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 "Availability_AvailableIntervals",
                 true)->Val());
 
-        // the fuse create callback is published under request=create
-        auto createCounters = counters->FindSubgroup("request", "create");
+        // the fuse create callback is published under request=open
+        auto createCounters = counters->FindSubgroup("request", "open");
         UNIT_ASSERT(createCounters);
         UNIT_ASSERT_VALUES_EQUAL(
             1,
@@ -8445,7 +8445,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             counters->GetCounter(
                 "Availability_LastIntervalAvailable")->Val());
 
-        auto createCounters = counters->FindSubgroup("request", "create");
+        auto createCounters = counters->FindSubgroup("request", "open");
         UNIT_ASSERT(createCounters);
         UNIT_ASSERT_VALUES_EQUAL(
             1,
