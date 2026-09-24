@@ -560,3 +560,69 @@ func TestBackupSnapshotChunksTaskFailsOnDeletedSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, queue)
 }
+
+func TestBackupSnapshotChunksTaskCancelClearsQueue(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage, closeFunc := newStorage(t, ctx)
+	defer closeFunc()
+
+	follower := newTestFollower(t, ctx)
+	createSnapshotWithChunk(t, ctx, storage, "snap1")
+	otherChunkID := createSnapshotWithChunk(t, ctx, storage, "snap2")
+
+	execCtx := newBackupExecutionContext(ctx)
+	task := newBackupSnapshotChunksTask(storage, follower, "snap1")
+
+	err := task.Run(ctx, execCtx)
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	err = storage.EnqueueBackupChunks(
+		ctx,
+		[]snapshot_storage.BackupChunkQueueEntry{
+			{SnapshotID: "snap2", ChunkID: otherChunkID},
+		},
+	)
+	require.NoError(t, err)
+
+	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, queue, 2)
+
+	err = task.Cancel(ctx, execCtx)
+	require.NoError(t, err)
+
+	queue, err = storage.GetBackupChunkQueue(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		[]snapshot_storage.BackupChunkQueueEntry{
+			{SnapshotID: "snap2", ChunkID: otherChunkID},
+		},
+		queue,
+	)
+}
+
+func TestBackupSnapshotChunksTaskDoesNotWriteMapOfDeletedSnapshot(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage, closeFunc := newStorage(t, ctx)
+	defer closeFunc()
+
+	follower := newTestFollower(t, ctx)
+	createSnapshotWithChunk(t, ctx, storage, "snap1")
+
+	meta, err := storage.CheckSnapshotReady(ctx, "snap1")
+	require.NoError(t, err)
+
+	_, err = storage.DeletingSnapshot(ctx, "snap1", "delete")
+	require.NoError(t, err)
+
+	task := newBackupSnapshotChunksTask(storage, follower, "snap1")
+
+	err = task.writeChunkMap(ctx, meta)
+	require.Error(t, err)
+
+	_, err = follower.getObject(ctx, backup.ChunkMapKey("snap1"))
+	require.Error(t, err)
+}

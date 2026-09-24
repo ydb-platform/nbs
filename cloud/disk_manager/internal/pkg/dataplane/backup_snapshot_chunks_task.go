@@ -71,10 +71,7 @@ func (t *backupSnapshotChunksTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	// TODO(https://github.com/ydb-platform/nbs/issues/7237):
-	// lock the snapshot while its chunks are copied and remove them from
-	// backup_chunk_queue on cancellation.
-	return nil
+	return t.storage.ClearBackupChunkQueue(ctx, t.request.SnapshotId)
 }
 
 func (t *backupSnapshotChunksTask) GetMetadata(
@@ -245,6 +242,11 @@ func (t *backupSnapshotChunksTask) writeChunkMap(
 	data, err := proto.Marshal(chunkMap)
 	if err != nil {
 		return errors.NewNonRetriableError(err)
+	}
+
+	err = t.storage.CheckSnapshotAlive(ctx, meta.ID)
+	if err != nil {
+		return err
 	}
 
 	return t.followerS3.PutObject(

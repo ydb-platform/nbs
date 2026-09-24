@@ -93,9 +93,6 @@ func (t *backupChunksTask) copyChunk(
 		if errors.Is(err, errors.NewEmptyNonRetriableError()) &&
 			errors.IsSilent(err) {
 
-			// TODO(https://github.com/ydb-platform/nbs/issues/7237):
-			// the chunk blob is gone together with its snapshot, the races
-			// between backup and snapshot deletion are to be handled there.
 			logging.Warn(
 				ctx,
 				"Chunk %v of snapshot %v is gone, skipping it",

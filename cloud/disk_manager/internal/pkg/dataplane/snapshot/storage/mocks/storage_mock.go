@@ -313,6 +313,15 @@ func (s *StorageMock) GetBackupChunkQueueLength(
 	return args.Get(0).(uint64), args.Error(1)
 }
 
+func (s *StorageMock) ClearBackupChunkQueue(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Error(0)
+}
+
 func (s *StorageMock) GetBackupDeleteQueue(
 	ctx context.Context,
 	limit int,

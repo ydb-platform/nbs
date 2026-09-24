@@ -185,6 +185,8 @@ type Storage interface {
 		entries []BackupChunkQueueEntry,
 	) error
 
+	ClearBackupChunkQueue(ctx context.Context, snapshotID string) error
+
 	// Used for monitoring only.
 	GetBackupChunkQueueLength(ctx context.Context) (uint64, error)
 

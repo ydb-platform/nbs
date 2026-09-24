@@ -140,6 +140,29 @@ func (s *storageYDB) ChunksBackupCompleted(
 	return err
 }
 
+func (s *storageYDB) ClearBackupChunkQueue(
+	ctx context.Context,
+	snapshotID string,
+) (err error) {
+
+	defer s.metrics.StatOperation("ClearBackupChunkQueue")(&err)
+
+	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+
+		delete from backup_chunk_queue
+		where snapshot_id = $snapshot_id
+	`, s.tablesPath),
+		persistence.ValueParam(
+			"$snapshot_id",
+			persistence.UTF8Value(snapshotID),
+		),
+	)
+	return err
+}
+
 func (s *storageYDB) GetBackupChunkQueueLength(
 	ctx context.Context,
 ) (count uint64, err error) {
