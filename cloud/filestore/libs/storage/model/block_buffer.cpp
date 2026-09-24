@@ -17,21 +17,33 @@ private:
     const TByteRange ByteRange;
     TString Buffer;
 
+    void AllocateBufferIfNeeded()
+    {
+        if (Buffer.empty()) {
+            Buffer = TString(ByteRange.Length, 0);
+        }
+    }
+
 public:
     TBlockBuffer(TByteRange byteRange, TString buffer)
         : ByteRange(byteRange)
         , Buffer(std::move(buffer))
-    {
-    }
+    {}
+
+    TBlockBuffer(TByteRange byteRange)
+        : ByteRange(byteRange)
+    {}
 
     TStringBuf GetUnalignedHead() override
     {
+        AllocateBufferIfNeeded();
         const char* ptr = Buffer.data();
         return { ptr, ByteRange.UnalignedHeadLength() };
     }
 
     TStringBuf GetUnalignedTail() override
     {
+        AllocateBufferIfNeeded();
         const auto offset = ByteRange.RelativeUnalignedTailOffset();
         const char* ptr = Buffer.data() + offset;
         return { ptr, ByteRange.UnalignedTailLength() };
@@ -39,6 +51,7 @@ public:
 
     TStringBuf GetBlock(size_t index) override
     {
+        AllocateBufferIfNeeded();
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
         const char* ptr = Buffer.data() + offset;
         return { ptr, ByteRange.BlockSize };
@@ -46,6 +59,7 @@ public:
 
     void SetBlock(size_t index, TStringBuf block) override
     {
+        AllocateBufferIfNeeded();
         Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
 
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
@@ -55,6 +69,7 @@ public:
 
     void ClearBlock(size_t index) override
     {
+        AllocateBufferIfNeeded();
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
         char* ptr = const_cast<char*>(Buffer.data()) + offset;
         memset(ptr, 0, ByteRange.BlockSize);
@@ -139,6 +154,16 @@ IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TString buffer)
 IBlockBufferPtr CreateLazyBlockBuffer(TByteRange byteRange)
 {
     return std::make_shared<TLazyBlockBuffer>(byteRange);
+}
+
+IBlockBufferPtr CreateContiguousBlockBuffer(
+    TByteRange byteRange,
+    bool lazyAllocation)
+{
+    return lazyAllocation ? std::make_shared<TBlockBuffer>(byteRange)
+                          : std::make_shared<TBlockBuffer>(
+                                byteRange,
+                                TString(byteRange.Length, 0));
 }
 
 ////////////////////////////////////////////////////////////////////////////////

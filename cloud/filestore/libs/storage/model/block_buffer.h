@@ -27,6 +27,9 @@ struct IBlockBuffer
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange);
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TString buffer);
 IBlockBufferPtr CreateLazyBlockBuffer(TByteRange byteRange);
+IBlockBufferPtr CreateContiguousBlockBuffer(
+    TByteRange byteRange,
+    bool lazyAllocation);
 
 ////////////////////////////////////////////////////////////////////////////////
 
