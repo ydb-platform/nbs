@@ -79,7 +79,7 @@ void TIndexTabletActor::HandleHttpInfo_FastShardStatsJson(
     //
 
     auto stats = std::make_shared<NFastShard::TFileSystemShardStats>();
-    auto* ass = ctx.ActorSystem();
+    auto* actorSystem = ctx.ActorSystem();
     const auto sender = requestInfo->Sender;
     const ui64 cookie = requestInfo->Cookie;
 
@@ -93,11 +93,11 @@ void TIndexTabletActor::HandleHttpInfo_FastShardStatsJson(
     //
 
     FastShard->CollectStats(stats.get()).Subscribe(
-        [ass, sender, cookie, stats] (const auto& f) {
+        [actorSystem, sender, cookie, stats] (const auto& f) {
             const auto& error = f.GetValue();
             TString json =
                 HasError(error) ? JsonError(error) : StatsToJson(*stats);
-            ass->Send(
+            actorSystem->Send(
                 sender,
                 new TEvRemoteJsonInfoRes(std::move(json)),
                 0 /* flags */,
