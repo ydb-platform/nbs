@@ -80,4 +80,10 @@ using IFileIOServicePtr = std::shared_ptr<IFileIOService>;
 struct IFileIOServiceFactory;
 using IFileIOServiceFactoryPtr = std::shared_ptr<IFileIOServiceFactory>;
 
+class TFileIOStats;
+using TFileIOStatsPtr = std::shared_ptr<TFileIOStats>;
+
+class TFileIOStatsRegistry;
+using TFileIOStatsRegistryPtr = std::shared_ptr<TFileIOStatsRegistry>;
+
 }   // namespace NCloud

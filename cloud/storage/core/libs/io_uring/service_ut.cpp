@@ -1,6 +1,7 @@
 #include "service.h"
 
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/file_io_stats.h>
 
 #include <library/cpp/testing/common/env.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -439,6 +440,101 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
                 }
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldCollectStats)
+    {
+        const TFsPath filePath = TryGetRamDrivePath() / "test";
+        TFileHandle fileData(
+            filePath,
+            OpenAlways | RdWr | DirectAligned | Sync);
+        fileData.Resize(BlockCount * BlockSize);
+
+        auto registry = std::make_shared<TFileIOStatsRegistry>();
+        auto service = CreateIoUringServiceFactory(
+                           {.SubmissionQueueEntries = SubmissionQueueSize},
+                           registry)
+                           ->CreateFileIOService();
+        service->Start();
+
+        const auto& stats = *registry->GetEntries()[0].Stats;
+
+        const ui64 length = 2 * BlockSize;
+        std::shared_ptr<char> memory = AllocMem(length);
+        TArrayRef<char> buffer{memory.get(), length};
+
+        TVector<TArrayRef<char>> buffers{
+            {memory.get(), BlockSize},
+            {memory.get() + BlockSize, BlockSize}};
+
+        TVector<TArrayRef<const char>> constBuffers{
+            {memory.get(), BlockSize},
+            {memory.get() + BlockSize, BlockSize}};
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            length,
+            service->AsyncWrite(fileData, 0, buffer).GetValue(Timeout));
+        UNIT_ASSERT_VALUES_EQUAL(
+            length,
+            service->AsyncWriteV(fileData, 0, constBuffers).GetValue(Timeout));
+        UNIT_ASSERT_VALUES_EQUAL(
+            length,
+            service->AsyncRead(fileData, 0, buffer).GetValue(Timeout));
+        UNIT_ASSERT_VALUES_EQUAL(
+            length,
+            service->AsyncReadV(fileData, 0, buffers).GetValue(Timeout));
+
+        // a partial read at the end of the file is a successful operation
+        UNIT_ASSERT_VALUES_EQUAL(
+            BlockSize,
+            service
+                ->AsyncRead(fileData, (BlockCount - 1) * BlockSize, buffer)
+                .GetValue(Timeout));
+
+        // failed operation
+        {
+            TFileHandle invalid;
+            UNIT_ASSERT_EXCEPTION(
+                service->AsyncWrite(invalid, 0, buffer).GetValue(Timeout),
+                TServiceError);
+        }
+
+        const auto reads = stats.GetStats(EFileIORequest::Read);
+        UNIT_ASSERT_VALUES_EQUAL(3, reads.Count);
+        UNIT_ASSERT_VALUES_EQUAL(0, reads.Errors);
+        UNIT_ASSERT_VALUES_EQUAL(3 * length, reads.RequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(0, reads.InProgress);
+
+        const auto writes = stats.GetStats(EFileIORequest::Write);
+        UNIT_ASSERT_VALUES_EQUAL(2, writes.Count);
+        UNIT_ASSERT_VALUES_EQUAL(1, writes.Errors);
+        UNIT_ASSERT_VALUES_EQUAL(3 * length, writes.RequestBytes);
+        UNIT_ASSERT_VALUES_EQUAL(0, writes.InProgress);
+
+        service->Stop();
+
+        // the stop signal is not accounted
+        UNIT_ASSERT_VALUES_EQUAL(
+            3,
+            stats.GetStats(EFileIORequest::Read).Count);
+    }
+
+    Y_UNIT_TEST(ShouldRegisterStats)
+    {
+        auto registry = std::make_shared<TFileIOStatsRegistry>();
+        auto factory = CreateIoUringServiceFactory(
+            {.SubmissionQueueEntries = SubmissionQueueSize},
+            registry);
+
+        auto service1 = factory->CreateFileIOService();
+        auto service2 = factory->CreateFileIOService();
+
+        const auto entries = registry->GetEntries();
+        UNIT_ASSERT_VALUES_EQUAL(2, entries.size());
+        UNIT_ASSERT_VALUES_EQUAL("io_uring", entries[0].Backend);
+        UNIT_ASSERT_VALUES_EQUAL("0", entries[0].ServiceId);
+        UNIT_ASSERT_VALUES_EQUAL("io_uring", entries[1].Backend);
+        UNIT_ASSERT_VALUES_EQUAL("1", entries[1].ServiceId);
     }
 }
 

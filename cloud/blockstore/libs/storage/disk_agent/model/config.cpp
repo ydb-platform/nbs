@@ -70,6 +70,7 @@ namespace {
     xxx(UseOneSubmissionThreadPerAIOServiceEnabled,     bool,       false     )\
     xxx(JournalledDeviceTcpServerListenAddress,      TString,          ""     )\
     xxx(JournalEnabled,                     bool,       false                 )\
+    xxx(FileIOStatsEnabled,                 bool,       false                 )\
 // BLOCKSTORE_AGENT_CONFIG
 
 // clang-format on

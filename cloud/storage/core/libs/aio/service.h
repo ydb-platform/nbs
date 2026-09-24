@@ -16,7 +16,9 @@ struct TAioServiceParams
 };
 
 IFileIOServicePtr CreateAIOService(TAioServiceParams params = {});
-IFileIOServiceFactoryPtr CreateAIOServiceFactory(TAioServiceParams params = {});
+IFileIOServiceFactoryPtr CreateAIOServiceFactory(
+    TAioServiceParams params = {},
+    TFileIOStatsRegistryPtr statsRegistry = nullptr);
 
 IFileIOServicePtr CreateThreadedAIOService(
     ui32 threadCount,
