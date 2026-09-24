@@ -859,9 +859,12 @@ public:
         const NActors::TActorId& pipeServer);
     void OrphanSession(
         const NActors::TActorId& pipeServer,
-        TInstant inactivityDeadline);
+        TInstant inactivityDeadline,
+        bool sessionOrphaningEnabled);
     void ResetSession(IIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
-    void RemovePipeServer(const NActors::TActorId& pipeServer);
+    void RemovePipeServer(
+        const NActors::TActorId& pipeServer,
+        const TSession* expectedSession);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
     TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;

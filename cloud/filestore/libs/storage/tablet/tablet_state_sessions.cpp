@@ -229,6 +229,18 @@ void TIndexTabletState::TrackSessionByPipeServer(
     // that marks a session as orphan when its pipe disconnects, and only
     // the main tablet marks sessions as orphan.
     if (IsMainTablet()) {
+        auto it = Impl->SessionByPipeServer.find(pipeServer);
+        if (it != Impl->SessionByPipeServer.end() && it->second != session) {
+            LOG_WARN(*TlsActivationContext, TFileStoreComponents::TABLET,
+                "%s SessionByPipeServer[%s] overwritten: was c: %s, s: %s, "
+                "now c: %s, s: %s",
+                LogTag.c_str(),
+                pipeServer.ToString().c_str(),
+                it->second->GetClientId().c_str(),
+                it->second->GetSessionId().c_str(),
+                session->GetClientId().c_str(),
+                session->GetSessionId().c_str());
+        }
         Impl->SessionByPipeServer[pipeServer] = session;
     }
 }
@@ -249,6 +261,19 @@ NActors::TActorId TIndexTabletState::RecoverSession(
             GetGeneration());
 
     if (updateResult.StalePipeServer) {
+        auto it =
+            Impl->SessionByPipeServer.find(updateResult.StalePipeServer);
+        if (it != Impl->SessionByPipeServer.end() && it->second != session) {
+            LOG_WARN(*TlsActivationContext, TFileStoreComponents::TABLET,
+                "%s erasing SessionByPipeServer[%s] for c: %s, s: %s, but "
+                "it points to a different session c: %s, s: %s",
+                LogTag.c_str(),
+                updateResult.StalePipeServer.ToString().c_str(),
+                session->GetClientId().c_str(),
+                session->GetSessionId().c_str(),
+                it->second->GetClientId().c_str(),
+                it->second->GetSessionId().c_str());
+        }
         Impl->SessionByPipeServer.erase(updateResult.StalePipeServer);
     }
     // If the subsession we just added is itself the one that got evicted
@@ -330,7 +355,8 @@ TSession* TIndexTabletState::FindSession(
 
 void TIndexTabletState::OrphanSession(
     const TActorId& pipeServer,
-    TInstant deadline)
+    TInstant deadline,
+    bool sessionOrphaningEnabled)
 {
     // The session is found only if pipeServer is the pipe it was created or
     // recovered through. Such pipes are tracked only on the main tablet.
@@ -351,16 +377,20 @@ void TIndexTabletState::OrphanSession(
         LOG_INFO(
             *TlsActivationContext,
             TFileStoreComponents::TABLET,
-            "%s removed last owner for session, orphaning session c: %s, s: "
-            "%s, pipeServer: %s",
+            "%s removed last owner for session, %s session c: %s, s: "
+            "%s, pipeServer: %s, deadline: %s",
             LogTag.c_str(),
+            sessionOrphaningEnabled ? "orphaning" : "would orphan",
             session->GetClientId().c_str(),
             session->GetSessionId().c_str(),
-            pipeServer.ToString().c_str());
+            pipeServer.ToString().c_str(),
+            deadline.ToString().c_str());
 
-        session->InactivityDeadline = deadline;
-        session->Unlink();
-        Impl->OrphanSessions.PushBack(session);
+        if (sessionOrphaningEnabled) {
+            session->InactivityDeadline = deadline;
+            session->Unlink();
+            Impl->OrphanSessions.PushBack(session);
+        }
     }
 }
 
@@ -404,8 +434,22 @@ void TIndexTabletState::ResetSession(
     }
 }
 
-void TIndexTabletState::RemovePipeServer(const NActors::TActorId& pipeServer)
+void TIndexTabletState::RemovePipeServer(
+    const NActors::TActorId& pipeServer,
+    const TSession* expectedSession)
 {
+    auto it = Impl->SessionByPipeServer.find(pipeServer);
+    if (it != Impl->SessionByPipeServer.end() && it->second != expectedSession) {
+        LOG_WARN(*TlsActivationContext, TFileStoreComponents::TABLET,
+            "%s erasing SessionByPipeServer[%s] for c: %s, s: %s, but it "
+            "points to a different session c: %s, s: %s",
+            LogTag.c_str(),
+            pipeServer.ToString().c_str(),
+            expectedSession->GetClientId().c_str(),
+            expectedSession->GetSessionId().c_str(),
+            it->second->GetClientId().c_str(),
+            it->second->GetSessionId().c_str());
+    }
     Impl->SessionByPipeServer.erase(pipeServer);
 }
 
@@ -442,7 +486,7 @@ void TIndexTabletState::RemoveSession(TSession* session)
         session->GetSessionId().c_str());
 
     for (const auto& s: session->GetSubSessionPipeServerIds()) {
-        Impl->SessionByPipeServer.erase(s);
+        RemovePipeServer(s, session);
     }
 
     std::unique_ptr<TSession> holder(session);
