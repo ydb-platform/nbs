@@ -7,9 +7,15 @@ namespace NCloud::NBlockStore {
 void RemoveStaticOnlyBlockstoreFields(NProto::TBlockstoreConfig& config)
 {
     if (config.HasServer() && config.GetServer().HasServerConfig()) {
-        config.MutableServer()
-            ->MutableServerConfig()
-            ->ClearDynamicYamlConfigurationEnabled();
+        auto* serverConfig = config.MutableServer()->MutableServerConfig();
+        serverConfig->ClearDynamicYamlConfigurationEnabled();
+        if (serverConfig->ByteSizeLong() == 0) {
+            config.MutableServer()->ClearServerConfig();
+        }
+    }
+
+    if (config.HasServer() && config.GetServer().ByteSizeLong() == 0) {
+        config.ClearServer();
     }
 
     if (config.HasStorageService()) {
@@ -17,6 +23,9 @@ void RemoveStaticOnlyBlockstoreFields(NProto::TBlockstoreConfig& config)
         storageConfig->ClearConfigDispatcherSettings();
         storageConfig->ClearSchemeShardDir();
         storageConfig->ClearNodeType();
+        if (storageConfig->ByteSizeLong() == 0) {
+            config.ClearStorageService();
+        }
     }
 }
 
