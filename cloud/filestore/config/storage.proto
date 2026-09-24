@@ -1007,4 +1007,10 @@ message TStorageConfig
     // Zero uses the client's default size (currently 256 MiB).
     // New files are subject to the vhost minimum size and total size limit.
     optional uint64 ServerWriteBackCacheStateFileSize = 562;
+
+    // If false, a pipe disconnect does not actually mark the session as
+    // orphan (all other bookkeeping still happens) - it is only logged.
+    // Default false; this flag is temporary and will be removed once
+    // verified against real clusters, making orphaning unconditional.
+    optional bool SessionOrphaningEnabled = 563;
 }
