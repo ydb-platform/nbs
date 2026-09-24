@@ -65,6 +65,49 @@ storage_service:
         }
     }
 
+    // Check that a null repeated message returns an error for its required fields.
+    Y_UNIT_TEST(ShouldRejectMissingRequiredFields)
+    {
+        // Parse a repeated element that creates an interval without boundaries.
+        const auto parser = CreateBlockstoreOpaqueConfigParser();
+        const auto message = parser(R"(
+diagnostics:
+  execution_time_size_classes: [null]
+)");
+
+        // Return an input error with both missing fields instead of a config.
+        UNIT_ASSERT(message);
+        UNIT_ASSERT_VALUES_EQUAL(
+            NCloud::NProto::TError::descriptor(),
+            message->GetDescriptor());
+        NCloud::NProto::TError error;
+        error.CopyFrom(*message);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "Start");
+        UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "End");
+    }
+
+    // Check that optional fields may be omitted while present intervals are valid.
+    Y_UNIT_TEST(ShouldAcceptPartialConfigWithInitializedMessages)
+    {
+        const auto parser = CreateBlockstoreOpaqueConfigParser();
+        for (const TString yaml: {
+                 "storage_service: {write_blob_threshold: 300}",
+                 "diagnostics: {}",
+                 "diagnostics: {execution_time_size_classes: []}",
+                 "diagnostics: {execution_time_size_classes: "
+                 "[{start: 0, end: 4096}]}"})
+        {
+            const auto message = parser(yaml);
+            UNIT_ASSERT(message);
+            UNIT_ASSERT_C(
+                NProto::TBlockstoreConfig::descriptor() ==
+                    message->GetDescriptor(),
+                yaml);
+            UNIT_ASSERT_C(message->IsInitialized(), yaml);
+        }
+    }
+
     // Check that empty input, empty mappings, and unknown fields produce
     // empty configs.
     Y_UNIT_TEST(ShouldAcceptEmptyAndUnknownOpaqueConfig)

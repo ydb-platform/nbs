@@ -6,6 +6,8 @@
 
 #include <contrib/ydb/library/yaml_config/yaml_config_helpers.h>
 
+#include <util/generic/yexception.h>
+
 namespace NCloud::NBlockStore {
 
 namespace {
@@ -23,6 +25,9 @@ std::shared_ptr<const google::protobuf::Message> BlockstoreOpaqueConfigParser(
             opaqueYamlConfig,
             /*allowUnknownFields=*/true);
         if (config) {
+            Y_ENSURE(
+                config->IsInitialized(),
+                config->InitializationErrorString());
             return config;
         }
 

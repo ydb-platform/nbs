@@ -537,6 +537,47 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
     }
 
+    // Check that missing required fields report a critical event without
+    // publication or ACK, and a corrected update is accepted.
+    Y_UNIT_TEST_F(ShouldRejectMissingRequiredFields, TFixture)
+    {
+        // Observe publications and retain the configuration before rejection.
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+        const auto previousConfig = ConfigHolder->Get();
+        const auto parser = CreateBlockstoreOpaqueConfigParser();
+
+        // Deliver the actual parser result for an incomplete repeated message.
+        SendNotification(
+            parser("diagnostics: {execution_time_size_classes: [null]}"),
+            19);
+        TAutoPtr<IEventHandle> handle;
+        UNIT_ASSERT(!Runtime.GrabEdgeEventRethrow<
+                     TEvConsole::TEvConfigNotificationResponse>(
+            handle,
+            TDuration::MilliSeconds(10)));
+
+        // Preserve the snapshot and report the input error without notifying.
+        UNIT_ASSERT_EQUAL(previousConfig.Get(), ConfigHolder->Get().Get());
+        AssertNoConfigChanged(subscriber);
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(),
+            "CRITICAL_EVENT:AppCriticalEvents/GetConfigsFromCmsYamlParseError");
+        UNIT_ASSERT_STRING_CONTAINS(CriticalEventsLog.Str(), "Start");
+        UNIT_ASSERT_STRING_CONTAINS(CriticalEventsLog.Str(), "End");
+
+        // Accept and publish a valid configuration after the rejected update.
+        SendNotification(
+            parser("storage_service: {write_blob_threshold: 300}"),
+            22);
+        WaitForAck(22);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+    }
+
     // Check that removing PrivateDatabaseConfig restores the pre-CMS value,
     // excluding both startup CMS and PrivateDatabaseConfig values.
     Y_UNIT_TEST_F(ShouldTreatMissingPayloadAsRemoval, TFixture)
