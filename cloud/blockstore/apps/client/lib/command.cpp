@@ -27,7 +27,6 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
-#include <cloud/storage/core/libs/grpc/init.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
@@ -54,7 +53,6 @@ namespace {
 
 const TString DefaultConfigFile = "/Berkanavt/nbs-server/cfg/nbs-client.txt";
 const TString DefaultIamConfigFile = "/Berkanavt/nbs-server/cfg/nbs-iam.txt";
-const TDuration GrpcShutdownTimeout = TDuration::Seconds(5);
 
 ICertificateProviderPtr CreateClientCertificateProvider(
     const TClientAppConfigPtr& config)
@@ -709,12 +707,6 @@ void TCommand::Stop()
 
     if (Monitoring) {
         Monitoring->Stop();
-    }
-
-    if (!WaitForGrpcShutdown(GrpcShutdownTimeout)) {
-        STORAGE_WARN(
-            "Timed out waiting for gRPC shutdown after "
-            << GrpcShutdownTimeout);
     }
 
     if (Logging) {

@@ -1436,23 +1436,27 @@ func (s *nodeService) nodeUnstageVolume(
 	// as it's not possible to distinguish mount and block mode from request
 	// parameters
 	mountPoint := req.StagingTargetPath
-	mounted, _ := s.mounter.IsMountPoint(mountPoint)
+	mounted, err := s.mounter.IsMountPoint(mountPoint)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to check mount point %q: %w", mountPoint, err)
+	}
 	if !mounted {
 		mountPoint = filepath.Join(req.StagingTargetPath, diskId)
-		mounted, _ = s.mounter.IsMountPoint(mountPoint)
+		mounted, err = s.mounter.IsMountPoint(mountPoint)
+		if err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("failed to check mount point %q: %w", mountPoint, err)
+		}
 	}
 
-	if !mounted {
-		// Fallback to previous implementation for already mounted volumes to
-		// stop endpoint in nodeUnpublishVolume
-		// Must be removed after migration of all endpoints to the new format
-		return nil
+	if mounted {
+		if err := s.mounter.CleanupMountPoint(mountPoint); err != nil {
+			return err
+		}
 	}
 
-	if err := s.mounter.CleanupMountPoint(mountPoint); err != nil {
-		return err
-	}
-
+	// A previous attempt may have unmounted the volume but failed to stop
+	// the endpoint. Retry StopEndpoint even when the mount point is gone.
+	// Legacy pod endpoints use a different path and are stopped in unpublish.
 	endpointDir := s.getEndpointDir("", diskId)
 	// Use index 0, as multiple blockstore servers are supported only in VM mode
 	nbsClient := s.getNbsClient(0)
@@ -1506,25 +1510,23 @@ func (s *nodeService) nodeUnpublishVolume(
 	nbsId := req.VolumeId
 	endpointDir := s.getEndpointDir(podId, nbsId)
 
-	// Fallback to previous implementation for already mounted volumes
-	// in VM mode to stop endpoint in nodeUnpublishVolume.
-	// Must be removed after migration of all endpoints to the new format
-	if s.vmMode {
-		// Trying to stop both NBS and NFS endpoints,
-		// because the endpoint's backend service is unknown here.
-		// When we miss we get S_FALSE/S_ALREADY code (err == nil).
-
-		// Use index 0, as multiple blockstore servers are not supported in legacy VM mode
-		nbsClient := s.getNbsClient(0)
-		if nbsClient != nil {
-			_, err := nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
-				UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
-			})
-			if err != nil {
-				return s.statusError(s.GetGrpcErrorCode(err), "failed to stop nbs endpoint")
-			}
+	// Legacy endpoints are scoped to a pod and must be stopped in unpublish
+	// in both VM and non-VM modes. Staged endpoints use a different path;
+	// stopping a missing legacy endpoint returns S_FALSE/S_ALREADY (err == nil).
+	// Use index 0, as multiple blockstore servers are not supported in legacy mode.
+	nbsClient := s.getNbsClient(0)
+	if nbsClient != nil {
+		_, err := nbsClient.StopEndpoint(ctx, &nbsapi.TStopEndpointRequest{
+			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
+		})
+		if err != nil {
+			return s.statusError(s.GetGrpcErrorCode(err), "failed to stop nbs endpoint")
 		}
+	}
 
+	if s.vmMode {
+		// Legacy VM endpoints can use either NBS or NFS; the request does not
+		// identify the backend, so try both. Non-VM endpoints only use NBS.
 		nfsClient := s.getNfsClient(nbsId, 0)
 		if nfsClient != nil {
 			_, err := nfsClient.StopEndpoint(ctx, &nfsapi.TStopEndpointRequest{
@@ -1534,14 +1536,14 @@ func (s *nodeService) nodeUnpublishVolume(
 				return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to stop nfs endpoint (%T)", nfsClient)
 			}
 		}
-
-		if err := os.RemoveAll(endpointDir); err != nil {
-			return err
-		}
-
-		// remove pod's folder if it's empty
-		ignoreError(os.Remove(s.getEndpointDir(podId, "")))
 	}
+
+	if err := os.RemoveAll(endpointDir); err != nil {
+		return err
+	}
+
+	// remove pod's folder if it's empty
+	ignoreError(os.Remove(s.getEndpointDir(podId, "")))
 
 	return nil
 }

@@ -12,9 +12,11 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1266,6 +1268,10 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 
 	testCtx.mounter.On("CleanupMountPoint", testCtx.targetPathBlockMode).Return(nil)
 
+	nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+		UnixSocketPath: filepath.Join(testCtx.socketsDir, defaultPodId, testCtx.volumeId, nbsSocketName),
+	}).Return(&nbs.TStopEndpointResponse{}, nil).Once()
+
 	_, err = nodeService.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
 		VolumeId:   testCtx.volumeId,
 		TargetPath: testCtx.targetPathBlockMode,
@@ -1291,6 +1297,290 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 
 	nbsClient.AssertExpectations(t)
 	testCtx.mounter.AssertExpectations(t)
+}
+
+func newVolumeCleanupTestServiceForInfrakuber(t *testing.T) (*nodeService, testContext) {
+	t.Helper()
+	testCtx := CreateTestContext(t, false, false, false,
+		defaultNfsVhostReplicaCount, defaultNbsServerReplicaCount)
+	return &nodeService{
+		nodeId:              defaultNodeId,
+		socketsDir:          testCtx.socketsDir,
+		targetFsPathRegexp:  regexp.MustCompile(testCtx.targetFsPathPattern),
+		targetBlkPathRegexp: regexp.MustCompile(testCtx.targetBlkPathPattern),
+		nbsClients:          getNbsClients(testCtx.nbsClients),
+		mounter:             testCtx.mounter,
+		volumeOps:           new(sync.Map),
+	}, testCtx
+}
+
+func TestNodeUnstageVolumeRetryForInfrakuber(t *testing.T) {
+	for _, blockMode := range []bool{false, true} {
+		for _, cancelContext := range []bool{false, true} {
+			t.Run(fmt.Sprintf("block=%t/cancel=%t", blockMode, cancelContext), func(t *testing.T) {
+				service, testCtx := newVolumeCleanupTestServiceForInfrakuber(t)
+				require.NoError(t, os.MkdirAll(testCtx.sourcePath, 0755))
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				mountPoint := testCtx.stagingTargetPath
+				if blockMode {
+					testCtx.mounter.On("IsMountPoint", mountPoint).Return(false, nil).Once()
+					mountPoint = filepath.Join(mountPoint, testCtx.volumeId)
+				}
+				testCtx.mounter.On("IsMountPoint", mountPoint).Return(true, nil).Once()
+				unmounted := false
+				testCtx.mounter.On("CleanupMountPoint", mountPoint).Run(func(mock.Arguments) {
+					unmounted = true
+					if cancelContext {
+						cancel()
+					}
+				}).Return(nil).Once()
+
+				stopErr := &nbsclient.ClientError{Code: nbsclient.E_REJECTED}
+				wantCode := codes.Unavailable
+				if cancelContext {
+					stopErr.Code = nbsclient.E_GRPC_CANCELLED
+					wantCode = codes.Canceled
+				}
+				nbsClient := testCtx.nbsClients[0]
+				stopReq := &nbs.TStopEndpointRequest{UnixSocketPath: testCtx.nbsSocketPath}
+				nbsClient.On("StopEndpoint", ctx, stopReq).Run(func(mock.Arguments) {
+					require.True(t, unmounted, "must unmount before stopping the endpoint")
+					if cancelContext {
+						require.ErrorIs(t, ctx.Err(), context.Canceled)
+					} else {
+						require.NoError(t, ctx.Err())
+					}
+				}).Return(&nbs.TStopEndpointResponse{}, stopErr).Once()
+
+				req := &csi.NodeUnstageVolumeRequest{
+					VolumeId:          testCtx.volumeId,
+					StagingTargetPath: testCtx.stagingTargetPath,
+				}
+				resp, err := service.NodeUnstageVolume(ctx, req)
+				require.Nil(t, resp)
+				require.Equal(t, wantCode, status.Code(err))
+				require.DirExists(t, testCtx.sourcePath)
+
+				// CleanupMountPoint removed the mount path. Retry with a fresh context.
+				testCtx.mounter.On("IsMountPoint", testCtx.stagingTargetPath).
+					Return(false, os.ErrNotExist).Twice()
+				testCtx.mounter.On("IsMountPoint", filepath.Join(testCtx.stagingTargetPath, testCtx.volumeId)).
+					Return(false, os.ErrNotExist).Twice()
+				retryCtx := context.Background()
+				nbsClient.On("StopEndpoint", retryCtx, stopReq).
+					Return(&nbs.TStopEndpointResponse{}, nil).Twice()
+				for i := 0; i < 2; i++ {
+					resp, err = service.NodeUnstageVolume(retryCtx, req)
+					require.NoError(t, err)
+					require.NotNil(t, resp)
+					require.NoDirExists(t, testCtx.sourcePath)
+				}
+				testCtx.mounter.AssertNumberOfCalls(t, "CleanupMountPoint", 1)
+				testCtx.mounter.AssertExpectations(t)
+				nbsClient.AssertExpectations(t)
+			})
+		}
+	}
+}
+
+func TestNodeUnstageVolumeMountStateForInfrakuber(t *testing.T) {
+	for _, testCase := range []struct {
+		name       string
+		mounted    bool
+		mountErr   error
+		blockErr   error
+		cleanupErr error
+		wantCode   codes.Code
+	}{
+		{name: "not mounted", wantCode: codes.OK},
+		{name: "missing paths", mountErr: os.ErrNotExist, blockErr: os.ErrNotExist, wantCode: codes.OK},
+		{name: "filesystem check error", mountErr: os.ErrPermission, wantCode: codes.Internal},
+		{name: "block check error", blockErr: os.ErrPermission, wantCode: codes.Internal},
+		{name: "unmount error", mounted: true,
+			cleanupErr: status.Error(codes.Unavailable, "target is busy"), wantCode: codes.Unavailable},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			service, testCtx := newVolumeCleanupTestServiceForInfrakuber(t)
+			require.NoError(t, os.MkdirAll(testCtx.sourcePath, 0755))
+			// Unstage must only target the new endpoint path, not a legacy pod endpoint.
+			legacySocketPath := filepath.Join(testCtx.socketsDir, defaultPodId, testCtx.volumeId, nbsSocketName)
+			require.NoError(t, os.MkdirAll(filepath.Dir(legacySocketPath), 0755))
+			require.NoError(t, os.WriteFile(legacySocketPath, nil, 0600))
+			testCtx.mounter.On("IsMountPoint", testCtx.stagingTargetPath).
+				Return(testCase.mounted, testCase.mountErr).Once()
+			if !testCase.mounted && (testCase.mountErr == nil || os.IsNotExist(testCase.mountErr)) {
+				testCtx.mounter.On("IsMountPoint", filepath.Join(testCtx.stagingTargetPath, testCtx.volumeId)).
+					Return(false, testCase.blockErr).Once()
+			}
+			if testCase.mounted {
+				testCtx.mounter.On("CleanupMountPoint", testCtx.stagingTargetPath).
+					Return(testCase.cleanupErr).Once()
+			}
+			ctx := context.Background()
+			nbsClient := testCtx.nbsClients[0]
+			if testCase.wantCode == codes.OK {
+				nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+					UnixSocketPath: testCtx.nbsSocketPath,
+				}).Return(&nbs.TStopEndpointResponse{}, nil).Once()
+			}
+			resp, err := service.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
+				VolumeId:          testCtx.volumeId,
+				StagingTargetPath: testCtx.stagingTargetPath,
+			})
+			require.Equal(t, testCase.wantCode, status.Code(err))
+			if testCase.wantCode == codes.OK {
+				require.NotNil(t, resp)
+				require.NoDirExists(t, testCtx.sourcePath)
+			} else {
+				require.Nil(t, resp)
+				require.DirExists(t, testCtx.sourcePath)
+				nbsClient.AssertNotCalled(t, "StopEndpoint", mock.Anything, mock.Anything)
+			}
+			require.FileExists(t, legacySocketPath)
+			testCtx.mounter.AssertExpectations(t)
+			nbsClient.AssertExpectations(t)
+		})
+	}
+}
+
+func TestNodeUnpublishLegacyEndpointForInfrakuber(t *testing.T) {
+	for _, blockMode := range []bool{false, true} {
+		for _, failure := range []string{"none", "unmount", "cancel", "stop"} {
+			t.Run(fmt.Sprintf("block=%t/failure=%s", blockMode, failure), func(t *testing.T) {
+				service, testCtx := newVolumeCleanupTestServiceForInfrakuber(t)
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				targetPath := testCtx.targetPathMountMode
+				if blockMode {
+					targetPath = testCtx.targetPathBlockMode
+				}
+				legacyDir := filepath.Join(testCtx.socketsDir, defaultPodId, testCtx.volumeId)
+				legacySocketPath := filepath.Join(legacyDir, nbsSocketName)
+				require.NoError(t, os.MkdirAll(legacyDir, 0755))
+				require.NoError(t, os.WriteFile(legacySocketPath, nil, 0600))
+
+				var cleanupErr, stopErr error
+				wantCode := codes.OK
+				switch failure {
+				case "unmount":
+					cleanupErr = status.Error(codes.Unavailable, "target is busy")
+					wantCode = codes.Unavailable
+				case "cancel":
+					stopErr = &nbsclient.ClientError{Code: nbsclient.E_GRPC_CANCELLED}
+					wantCode = codes.Canceled
+				case "stop":
+					stopErr = &nbsclient.ClientError{Code: nbsclient.E_REJECTED}
+					wantCode = codes.Unavailable
+				}
+				unmounted := false
+				testCtx.mounter.On("CleanupMountPoint", targetPath).Run(func(mock.Arguments) {
+					unmounted = cleanupErr == nil
+					if failure == "cancel" {
+						cancel()
+					}
+				}).Return(cleanupErr).Once()
+				nbsClient := testCtx.nbsClients[0]
+				stopReq := &nbs.TStopEndpointRequest{UnixSocketPath: legacySocketPath}
+				if cleanupErr == nil {
+					nbsClient.On("StopEndpoint", ctx, stopReq).Run(func(mock.Arguments) {
+						require.True(t, unmounted)
+						if failure == "cancel" {
+							require.ErrorIs(t, ctx.Err(), context.Canceled)
+						}
+					}).Return(&nbs.TStopEndpointResponse{}, stopErr).Once()
+				}
+				req := &csi.NodeUnpublishVolumeRequest{VolumeId: testCtx.volumeId, TargetPath: targetPath}
+				resp, err := service.NodeUnpublishVolume(ctx, req)
+				require.Equal(t, wantCode, status.Code(err))
+				if wantCode != codes.OK {
+					require.Nil(t, resp)
+					require.FileExists(t, legacySocketPath)
+					if cleanupErr != nil {
+						nbsClient.AssertNotCalled(t, "StopEndpoint", mock.Anything, mock.Anything)
+					}
+				} else {
+					require.NotNil(t, resp)
+					require.NoDirExists(t, legacyDir)
+				}
+
+				// Retry (or repeat after success) even if the pod mount is already gone.
+				retryCtx := context.Background()
+				testCtx.mounter.On("CleanupMountPoint", targetPath).Return(nil).Twice()
+				nbsClient.On("StopEndpoint", retryCtx, stopReq).
+					Return(&nbs.TStopEndpointResponse{}, nil).Twice()
+				for i := 0; i < 2; i++ {
+					resp, err = service.NodeUnpublishVolume(retryCtx, req)
+					require.NoError(t, err)
+					require.NotNil(t, resp)
+					require.NoDirExists(t, legacyDir)
+				}
+
+				// Unstage only stops the new path, which does not exist for this legacy volume.
+				testCtx.mounter.On("IsMountPoint", testCtx.stagingTargetPath).
+					Return(false, os.ErrNotExist).Once()
+				testCtx.mounter.On("IsMountPoint", filepath.Join(testCtx.stagingTargetPath, testCtx.volumeId)).
+					Return(false, os.ErrNotExist).Once()
+				nbsClient.On("StopEndpoint", retryCtx, &nbs.TStopEndpointRequest{
+					UnixSocketPath: testCtx.nbsSocketPath,
+				}).Return(&nbs.TStopEndpointResponse{}, nil).Once()
+				_, err = service.NodeUnstageVolume(retryCtx, &csi.NodeUnstageVolumeRequest{
+					VolumeId: testCtx.volumeId, StagingTargetPath: testCtx.stagingTargetPath,
+				})
+				require.NoError(t, err)
+				nbsClient.AssertExpectations(t)
+				testCtx.mounter.AssertExpectations(t)
+			})
+		}
+	}
+}
+
+func TestNodeUnpublishPreservesSharedEndpointForInfrakuber(t *testing.T) {
+	for _, blockMode := range []bool{false, true} {
+		t.Run(fmt.Sprintf("block=%t", blockMode), func(t *testing.T) {
+			service, testCtx := newVolumeCleanupTestServiceForInfrakuber(t)
+			ctx := context.Background()
+			nbsClient := testCtx.nbsClients[0]
+			require.NoError(t, os.MkdirAll(testCtx.sourcePath, 0755))
+			require.NoError(t, os.WriteFile(testCtx.nbsSocketPath, nil, 0600))
+			for _, podId := range []string{defaultPodId, "second-pod"} {
+				targetPath := filepath.Join(testCtx.tempDir, "pods", podId, "volumes", testCtx.volumeId, "mount")
+				if blockMode {
+					targetPath = filepath.Join(testCtx.tempDir, "volumeDevices", "publish", testCtx.volumeId, podId)
+				}
+				testCtx.mounter.On("CleanupMountPoint", targetPath).Return(nil).Once()
+				nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+					UnixSocketPath: filepath.Join(testCtx.socketsDir, podId, testCtx.volumeId, nbsSocketName),
+				}).Return(&nbs.TStopEndpointResponse{}, nil).Once()
+				_, err := service.NodeUnpublishVolume(ctx, &csi.NodeUnpublishVolumeRequest{
+					VolumeId: testCtx.volumeId, TargetPath: targetPath,
+				})
+				require.NoError(t, err)
+				require.FileExists(t, testCtx.nbsSocketPath)
+				nbsClient.AssertNotCalled(t, "StopEndpoint", mock.Anything, &nbs.TStopEndpointRequest{
+					UnixSocketPath: testCtx.nbsSocketPath,
+				})
+			}
+
+			mountPoint := testCtx.stagingTargetPath
+			if blockMode {
+				testCtx.mounter.On("IsMountPoint", mountPoint).Return(false, nil).Once()
+				mountPoint = filepath.Join(mountPoint, testCtx.volumeId)
+			}
+			testCtx.mounter.On("IsMountPoint", mountPoint).Return(true, nil).Once()
+			testCtx.mounter.On("CleanupMountPoint", mountPoint).Return(nil).Once()
+			nbsClient.On("StopEndpoint", ctx, &nbs.TStopEndpointRequest{
+				UnixSocketPath: testCtx.nbsSocketPath,
+			}).Return(&nbs.TStopEndpointResponse{}, nil).Once()
+			_, err := service.NodeUnstageVolume(ctx, &csi.NodeUnstageVolumeRequest{
+				VolumeId: testCtx.volumeId, StagingTargetPath: testCtx.stagingTargetPath,
+			})
+			require.NoError(t, err)
+			require.NoDirExists(t, testCtx.sourcePath)
+			nbsClient.AssertExpectations(t)
+			testCtx.mounter.AssertExpectations(t)
+		})
+	}
 }
 
 func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {

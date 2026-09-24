@@ -79,22 +79,25 @@ void TIndexTabletActor::HandleHttpInfo_FastShardStatsJson(
     //
 
     auto stats = std::make_shared<NFastShard::TFileSystemShardStats>();
-    auto* ass = ctx.ActorSystem();
+    auto* actorSystem = ctx.ActorSystem();
     const auto sender = requestInfo->Sender;
     const ui64 cookie = requestInfo->Cookie;
 
     //
-    // The shard is captured to pin its lifetime: the interface does not
-    // promise that the future may outlive the shard object, and the actor
-    // may die and drop its reference before the callback runs.
+    // The shard must not be captured here: the callback runs inside the
+    // shard's own fiber (during SetValue), so dropping the last shard
+    // reference there would run the shard destructor - which joins every
+    // inflight fiber, including the one executing the callback - inside
+    // that very fiber. The shard destructor waits for all of its fibers,
+    // so the callback outliving the actor's reference is safe.
     //
 
     FastShard->CollectStats(stats.get()).Subscribe(
-        [ass, sender, cookie, stats, shard = FastShard] (const auto& f) {
+        [actorSystem, sender, cookie, stats] (const auto& f) {
             const auto& error = f.GetValue();
             TString json =
                 HasError(error) ? JsonError(error) : StatsToJson(*stats);
-            ass->Send(
+            actorSystem->Send(
                 sender,
                 new TEvRemoteJsonInfoRes(std::move(json)),
                 0 /* flags */,
