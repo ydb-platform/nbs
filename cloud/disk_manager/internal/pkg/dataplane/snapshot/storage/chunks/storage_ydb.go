@@ -160,11 +160,11 @@ func (s *StorageYDB) UnrefChunk(
 	ctx context.Context,
 	referer string,
 	chunkID string,
-) (err error) {
+) (deleted bool, err error) {
 
 	defer s.metrics.StatOperation(metrics.OperationUnrefChunkBlob)(&err)
-	_, err = s.unrefChunk(ctx, referer, chunkID)
-	return err
+	refCount, err := s.unrefChunk(ctx, referer, chunkID)
+	return refCount == 0, err
 }
 
 ////////////////////////////////////////////////////////////////////////////////

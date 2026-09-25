@@ -84,6 +84,7 @@ func newStorage(
 		metrics.NewEmptyRegistry(),
 		db,
 		s3,
+		true, // backupEnabled
 	)
 	require.NoError(t, err)
 

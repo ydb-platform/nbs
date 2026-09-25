@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -70,7 +71,7 @@ func (t *backupImageTask) Run(
 	err = t.followerS3.PutObject(
 		ctx,
 		backup.ImageMetaKey(imageID),
-		data,
+		persistence.S3Object{Data: data},
 	)
 	if err != nil {
 		return err
@@ -80,9 +81,9 @@ func (t *backupImageTask) Run(
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
-		"dataplane.ScheduleBackupChunksTasks",
+		"dataplane.BackupSnapshotChunks",
 		"",
-		&dataplane_protos.ScheduleBackupChunksTasksRequest{
+		&dataplane_protos.BackupSnapshotChunksRequest{
 			SnapshotId: imageID,
 		},
 	)
