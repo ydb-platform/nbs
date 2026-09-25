@@ -18,15 +18,10 @@ enum class EStableReadDecision
     Apply,
 };
 
-// Files such as certificates are rewritten by external tools, not necessarily
-// atomically, and a partially written file may be syntactically valid, e.g. a
-// certificate chain without its intermediate certificate. TStableRead lets new
-// content be applied only after it has been read unchanged twice in a row. The
-// caller is responsible for spacing the reads apart, e.g. by feeding only
-// periodic reads. This is a heuristic that reduces the chance of picking up an
-// intermediate state of a rewrite, not a guarantee: a writer that stalls for
-// longer than the interval between reads is indistinguishable from a finished
-// one.
+// Guards against picking up a file that is still being rewritten: new content
+// is applied only after two consecutive reads return it unchanged. The caller
+// must space the reads apart. A best effort only: a writer that stalls longer
+// than the interval between reads leaves a partial file that gets applied.
 template <typename T>
 class TStableRead
 {

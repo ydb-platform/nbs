@@ -381,48 +381,22 @@ private:
         }
     }
 
-    // The initial load is lenient so that the service is able to start, and
-    // unchanged files are never re-validated, so this is the only place where
-    // certificates that are already invalid on disk get reported.
+    // The initial load accepts certificates that fail validation so that the
+    // service is able to start; they are only reported, and since unchanged
+    // files are never re-validated, this is the only place where they are.
     void PublishInitialState()
     {
         PublishRootCaFingerprint();
         for (size_t i = 0; i < Certificates.size(); ++i) {
-            const auto& cert = Certificates[i];
-            const auto& path = cert.Files.CertChainPath;
-
-            auto validity = NTlsUtils::ValidateIdentity(cert.Content);
-            if (HasError(validity.GetError())) {
-                STORAGE_WARN(
-                    "Identity certificate " << path.Quote()
-                    << " is loaded but not valid: "
-                    << FormatError(validity.GetError()));
-            }
-
-            auto notAfterTs =
-                NTlsUtils::GetCertificateNotAfterTimestampSec(
-                    cert.Content.CertChain);
-            if (HasError(notAfterTs)) {
-                STORAGE_WARN(
-                    "Unable to parse certificate notAfter date for "
-                    << path.Quote() << ": "
-                    << FormatError(notAfterTs.GetError()));
-                continue;
-            }
-            PublishExpireTs(i, TInstant::Seconds(notAfterTs.ExtractResult()));
+            ApplyIdentity(i, Certificates[i].Content, /*acceptInvalid=*/true);
         }
         PublishCerts();
     }
 
-    // Re-reads the certificate files. On periodic checks new content is
-    // applied only after it has been read unchanged by two checks in a row,
-    // see TStableRead: checks are a refresh interval apart, so a change takes
-    // effect within two intervals. An on-demand update is an explicit request
-    // to pick up rotated files, so it applies new content right away and its
-    // reads do not count towards the stable read. The last successfully loaded
-    // content is kept if the files cannot be read, parsed or validated; new
-    // content that fails these checks is reported on every check until the
-    // files change. Every certificate is refreshed independently.
+    // Periodic checks apply new content after two of them read it unchanged
+    // (see TStableRead), i.e. within two refresh intervals. On-demand updates
+    // apply it right away. Content that fails to load or validate is logged
+    // and the previous one is kept.
     void RefreshCertificates(bool periodic)
     {
         bool changed = false;
@@ -538,17 +512,41 @@ private:
                 break;
         }
 
-        auto validity = NTlsUtils::ValidateIdentity(content.GetResult());
+        return ApplyIdentity(
+            index,
+            content.ExtractResult(),
+            /*acceptInvalid=*/false);
+    }
+
+    // Validates the content, and unless acceptInvalid is set, rejects it on
+    // failure. Returns true if the content has been applied.
+    bool ApplyIdentity(
+        size_t index,
+        NTlsUtils::TIdentityContent content,
+        bool acceptInvalid)
+    {
+        auto& cert = Certificates[index];
+        const auto& path = cert.Files.CertChainPath;
+
+        auto validity = NTlsUtils::ValidateIdentity(content);
         if (HasError(validity.GetError())) {
+            if (!acceptInvalid) {
+                STORAGE_WARN(
+                    "Identity certificate update is skipped for "
+                    << path.Quote() << ": "
+                    << FormatError(validity.GetError()));
+                return false;
+            }
+
             STORAGE_WARN(
-                "Identity certificate update is skipped for " << path.Quote()
-                << ": " << FormatError(validity.GetError()));
-            return false;
+                "Identity certificate " << path.Quote()
+                << " is loaded but not valid: "
+                << FormatError(validity.GetError()));
         }
 
         TInstant notValidAfter;
-        auto notAfterTs = NTlsUtils::GetCertificateNotAfterTimestampSec(
-            content.GetResult().CertChain);
+        auto notAfterTs =
+            NTlsUtils::GetCertificateNotAfterTimestampSec(content.CertChain);
         if (HasError(notAfterTs)) {
             STORAGE_WARN(
                 "Unable to parse certificate notAfter date for "
@@ -557,10 +555,10 @@ private:
             notValidAfter = TInstant::Seconds(notAfterTs.ExtractResult());
         }
 
-        cert.Content = content.ExtractResult();
+        cert.Content = std::move(content);
         PublishExpireTs(index, notValidAfter);
         STORAGE_INFO(
-            "Identity certificate " << path.Quote() << " has been updated"
+            "Identity certificate " << path.Quote() << " is loaded"
             << ", expires at " << notValidAfter);
         return true;
     }

@@ -42,14 +42,9 @@ TResultOrError<ui64> GetCertificateNotAfterTimestampSec(
 
 TResultOrError<TIdentityContent> ReadIdentity(const TCertificateFiles& files);
 
-// Checks that the private key matches the certificate, that every certificate
-// in the chain is valid now and that the chain can be built from the leaf up
-// to the last certificate the same way clients do it: issuer names,
-// signatures, CA and name constraints. The last certificate serves as the
-// trust anchor: there is no trust store here, and whether the chain ends at a
-// trusted root is the client's job anyway. Applied to
-// refreshed certificates; the initial load is lenient so that the service is
-// able to start, see LoadCertificatePairs.
+// Checks that the key matches the leaf, every certificate is currently valid
+// and the chain can be built up to its last certificate. Whether that
+// certificate is trusted is not checked: that is the client's job.
 TResultOrError<void> ValidateIdentity(const TIdentityContent& identity);
 
 TVector<TCertificateFiles> PrepareCertificateFilePairs(
