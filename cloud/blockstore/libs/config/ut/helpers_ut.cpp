@@ -48,7 +48,8 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigHelpersTest)
         config.MutableStorageService()->SetNodeType("other");
         auto* server = config.MutableServer();
         server->MutableServerConfig()->SetPort(0);
-        server->MutableServerConfig()->SetDynamicYamlConfigurationEnabled(false);
+        server->MutableServerConfig()->SetDynamicYamlConfigurationEnabled(
+            false);
         server->MutableLocalServiceConfig()->SetDataDir("/tmp/local");
 
         RemoveStaticOnlyBlockstoreFields(config);
@@ -58,7 +59,9 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigHelpersTest)
             0,
             config.GetStorageService().GetWriteBlobThreshold());
         UNIT_ASSERT(config.GetServer().GetServerConfig().HasPort());
-        UNIT_ASSERT_VALUES_EQUAL(0, config.GetServer().GetServerConfig().GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            config.GetServer().GetServerConfig().GetPort());
 
         // Remove the empty child without discarding another Server section.
         config.MutableServer()->MutableServerConfig()->ClearPort();
@@ -79,6 +82,44 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigHelpersTest)
 
         UNIT_ASSERT(!config.HasStorageService());
         UNIT_ASSERT(!config.HasServer());
+    }
+
+    // Check that parser errors retain diagnostics and remain distinguishable
+    // from unexpected payload types regardless of the original error code.
+    Y_UNIT_TEST(ShouldDistinguishParserErrorsFromUnexpectedPayloads)
+    {
+        // Classify a parser error independently of the code it carries.
+        const auto parseError =
+            MakeError(E_INVALID_STATE, "parser diagnostics");
+        const auto result = ExtractBlockstoreConfig(parseError);
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            result.GetError().GetMessage(),
+            FormatError(parseError));
+
+        // Reject even a success-coded TError instead of accepting an empty
+        // config.
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_ARGUMENT,
+            ExtractBlockstoreConfig(NCloud::NProto::TError())
+                .GetError()
+                .GetCode());
+
+        // Identify an unexpected type without exposing its field values.
+        NProto::TStorageServiceConfig unexpectedConfig;
+        unexpectedConfig.SetNodeType("private-secret-value");
+        const auto unexpectedResult = ExtractBlockstoreConfig(unexpectedConfig);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            unexpectedResult.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            unexpectedResult.GetError().GetMessage(),
+            NProto::TStorageServiceConfig::descriptor()->full_name());
+        UNIT_ASSERT_STRING_CONTAINS(
+            unexpectedResult.GetError().GetMessage(),
+            NProto::TBlockstoreConfig::descriptor()->full_name());
+        UNIT_ASSERT(!unexpectedResult.GetError().GetMessage().Contains(
+            "private-secret-value"));
     }
 }
 

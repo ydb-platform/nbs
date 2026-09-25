@@ -625,30 +625,15 @@ void TBootstrapYdb::InitKikimrService()
             !Configs->Options->TemporaryServer &&
             cmsConfig->PrivateDatabaseConfig)
         {
-            const auto payload = cmsConfig->PrivateDatabaseConfig;
-            const auto* descriptor = payload->GetDescriptor();
-
-            if (descriptor == NCloud::NProto::TError::descriptor()) {
-                NCloud::NProto::TError error;
-                error.CopyFrom(*payload);
+            auto [config, error] =
+                ExtractBlockstoreConfig(*cmsConfig->PrivateDatabaseConfig);
+            if (HasError(error)) {
                 ReportGetConfigsFromCmsYamlParseError(
                     TStringBuilder()
-                    << "Failed to parse PrivateDatabaseConfig from CMS: "
-                    << FormatError(error)
+                    << error.GetMessage()
                     << ". Starting without PrivateDatabaseConfig.");
-            } else if (descriptor == NProto::TBlockstoreConfig::descriptor()) {
-                initialDynamicBlockstoreConfig.CopyFrom(*payload);
-                RemoveStaticOnlyBlockstoreFields(
-                    initialDynamicBlockstoreConfig);
             } else {
-                ReportGetConfigsFromCmsYamlParseError(
-                    TStringBuilder()
-                    << "Internal error: received an unexpected "
-                       "PrivateDatabaseConfig payload type "
-                    << descriptor->full_name()
-                    << " from CMS; expected "
-                    << NProto::TBlockstoreConfig::descriptor()->full_name()
-                    << ". Starting without PrivateDatabaseConfig.");
+                initialDynamicBlockstoreConfig = std::move(config);
             }
         }
 

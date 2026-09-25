@@ -229,32 +229,15 @@ void TConfigsManagerActor::Handle(
             return;
         }
 
-        const auto* descriptor = payload->GetDescriptor();
-        if (descriptor == NCloud::NProto::TError::descriptor()) {
-            NCloud::NProto::TError error;
-            error.CopyFrom(*payload);
+        auto [config, error] = ExtractBlockstoreConfig(*payload);
+        if (HasError(error)) {
             ReportConfigUpdateError(
-                TStringBuilder()
-                    << "Failed to parse PrivateDatabaseConfig from CMS: "
-                    << FormatError(error),
-                /*rollbackShallHelp=*/true);
+                error.GetMessage(),
+                /*rollbackShallHelp=*/error.GetCode() == E_ARGUMENT);
             return;
         }
 
-        if (descriptor != NProto::TBlockstoreConfig::descriptor()) {
-            ReportConfigUpdateError(
-                TStringBuilder()
-                    << "Internal error: received an unexpected "
-                       "PrivateDatabaseConfig payload type "
-                    << descriptor->full_name()
-                    << " from ConfigsDispatcher; expected "
-                    << NProto::TBlockstoreConfig::descriptor()->full_name(),
-                /*rollbackShallHelp=*/false);
-            return;
-        }
-
-        dynamicConfig.CopyFrom(*payload);
-        RemoveStaticOnlyBlockstoreFields(dynamicConfig);
+        dynamicConfig = std::move(config);
     }
 
     if (google::protobuf::util::MessageDifferencer::Equals(
