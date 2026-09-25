@@ -153,7 +153,8 @@ TString DescribeRecords(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// An in-memory device that can be told to fail its requests.
+// An in-memory device that can be told to fail its requests or to hold the
+// reads until the test lets them through.
 struct TTestDevice final: public IDevice
 {
     const IDevicePtr Impl = CreateInMemoryDevice(DefaultPageSize);
@@ -161,12 +162,34 @@ struct TTestDevice final: public IDevice
     std::atomic<bool> FailReads = false;
     std::atomic<bool> FailWrites = false;
 
+    struct TBlockedRead
+    {
+        TVector<TPageRangeRef> RangeRefs;
+        TPromise<TResultOrError<TVector<TBuffer>>> Response;
+    };
+
+    TMutex Mutex;
+    bool BlockReads = false;
+    TManualEvent ReadBlocked;
+    TVector<TBlockedRead> BlockedReads;
+
     TFuture<TResultOrError<TVector<TBuffer>>> ReadPages(
         TVector<TPageRangeRef> rangeRefs) override
     {
         if (FailReads.load()) {
             return MakeFuture<TResultOrError<TVector<TBuffer>>>(
                 MakeError(E_IO, "read failed"));
+        }
+
+        with_lock (Mutex) {
+            if (BlockReads) {
+                auto response =
+                    NewPromise<TResultOrError<TVector<TBuffer>>>();
+                BlockedReads.push_back(
+                    {.RangeRefs = std::move(rangeRefs), .Response = response});
+                ReadBlocked.Signal();
+                return response.GetFuture();
+            }
         }
 
         return Impl->ReadPages(std::move(rangeRefs));
@@ -180,6 +203,29 @@ struct TTestDevice final: public IDevice
         }
 
         return Impl->WritePages(std::move(ranges));
+    }
+
+    void BlockReadsUntilReleased()
+    {
+        with_lock (Mutex) {
+            BlockReads = true;
+        }
+    }
+
+    void ReleaseReads()
+    {
+        TVector<TBlockedRead> blocked;
+
+        with_lock (Mutex) {
+            BlockReads = false;
+            blocked.swap(BlockedReads);
+            ReadBlocked.Reset();
+        }
+
+        for (auto& read: blocked) {
+            read.Response.SetValue(
+                Impl->ReadPages(std::move(read.RangeRefs)).GetValueSync());
+        }
     }
 };
 
@@ -347,6 +393,14 @@ struct TFixture: public NUnitTest::TBaseFixture
             .GetValueSync();
     }
 
+    TFuture<NCloud::NProto::TReadPagesResponse> ReadPagesAsync(
+        const TGroups& refs)
+    {
+        return Executor->Execute(
+            [this, request = MakeReadRequest(refs)]() mutable
+            { return Journal->Read(std::move(request)); });
+    }
+
     NCloud::NProto::TReadJournalTailResponse ReadTail(
         ui64 afterLsn,
         ui32 maxRecordCount = 0)
@@ -371,6 +425,34 @@ struct TFixture: public NUnitTest::TBaseFixture
             .GetValueSync()
             .GetError()
             .GetCode();
+    }
+
+    TResultOrError<NCloud::NProto::TJournalRecord> GetRecordToFlush(
+        ui64 maxAllowedLsn = Max<ui64>())
+    {
+        return Run([&] { return Journal->GetRecordToFlush(maxAllowedLsn); })
+            .GetValueSync();
+    }
+
+    TString GetRecordToFlushDescription(ui64 maxAllowedLsn = Max<ui64>())
+    {
+        auto result = GetRecordToFlush(maxAllowedLsn);
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        return DescribeRecord(result.GetResult());
+    }
+
+    ui32 CleanupFlushedRecords()
+    {
+        return Run([&] { return Journal->CleanupFlushedRecords(); })
+            .GetValueSync()
+            .GetCode();
+    }
+
+    // Takes the given record through the whole flush cycle.
+    void FlushUpTo(ui64 lsn)
+    {
+        Journal->MarkRecordAsFlushed(lsn);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());
     }
 
     // "0,1,meta" - the keys the meta store holds, a record under its prev lsn
@@ -446,6 +528,34 @@ Y_UNIT_TEST_SUITE(TJournalTest)
     {
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, WriteRecord(5, 5, 'A', {{10, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, WriteRecord(5, 6, 'A', {{10, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectARecordThatContradictsTheChain, TFixture)
+    {
+        // held until lsn 2 shows up
+        auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
+        UNIT_ASSERT(!third.HasValue());
+
+        // lsn 4 following lsn 1 leaves no room for lsn 2, so lsn 3 can never
+        // be chained - but the chain only finds that out once the run passes
+        // lsn 2 by
+        auto fourth = WriteAsync(MakeWriteRequest(4, 1, 'D', {{40, 1}}));
+        UNIT_ASSERT(!fourth.HasValue());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            fourth.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT(!third.HasValue());
+
+        // erasing the run strands lsn 3 for good
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(4));
+        FlushUpTo(4);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            third.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(ReadPages({{30, 1}})));
     }
 
     Y_UNIT_TEST_F(ShouldIndexOutOfOrderWritesOnceTheGapIsFilled, TFixture)
@@ -557,6 +667,26 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL("0", StoredKeys());
     }
 
+    Y_UNIT_TEST_F(ShouldSpreadARecordOverFragmentedPages, TFixture)
+    {
+        PageCount = 5;
+        RecreateJournal();
+
+        // pages 0-1 go to lsn 1, pages 2-3 to lsn 2, page 4 stays free
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 2}}));
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+        FlushUpTo(1);
+
+        // the three pages of lsn 3 land in two runs - 0-1 and 4
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 3}}));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "30:[C030,C031] 32:[C032]",
+            DescribeGroups(ReadPages({{30, 3}})));
+    }
+
     Y_UNIT_TEST_F(ShouldPackSeveralPageGroupsIntoOneRun, TFixture)
     {
         UNIT_ASSERT_VALUES_EQUAL(
@@ -621,6 +751,19 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 11:[B011] 12:[A012]",
             DescribeGroups(ReadPages({{10, 3}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldStopReturningTheFlushedPages, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 1}}));
+
+        Journal->MarkRecordAsFlushed(1);
+
+        // lsn 1 is on the device now, the reader is expected to go there
+        auto response = ReadPages({{10, 1}, {20, 1}});
+        UNIT_ASSERT_VALUES_EQUAL("20:[B020]", DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
     }
 
     Y_UNIT_TEST_F(ShouldFailAReadWhenTheDeviceFails, TFixture)
@@ -867,6 +1010,132 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             first.GetValueSync().GetError().GetCode());
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
+    }
+
+    // Flushing
+
+    Y_UNIT_TEST_F(ShouldNotOfferUnackedRecordsToTheFlusher, TFixture)
+    {
+        WriteThreeRecords();
+
+        // nothing may leave the journal before the writer has acked it
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]",
+            GetRecordToFlushDescription());
+
+        // and the caller may hold it back further
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription(0));
+    }
+
+    Y_UNIT_TEST_F(ShouldWalkTheRecordsToFlushInOrder, TFixture)
+    {
+        WriteThreeRecords();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]",
+            GetRecordToFlushDescription());
+
+        Journal->MarkRecordAsFlushed(1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "2<-1 20:[B020]",
+            GetRecordToFlushDescription());
+
+        Journal->MarkRecordAsFlushed(2);
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "3<-2 30:[C030]",
+            GetRecordToFlushDescription());
+    }
+
+    Y_UNIT_TEST_F(ShouldNotOfferAnUnwrittenRecordToTheFlusher, TFixture)
+    {
+        auto second = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
+
+        // lsn 1 has not been written at all, so the chain starts at a gap
+        UNIT_ASSERT_VALUES_EQUAL("", GetRecordToFlushDescription());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            second.GetValueSync().GetError().GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "1<-0 10:[A010]",
+            GetRecordToFlushDescription());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToFetchARecordToFlushWhenTheDeviceFails, TFixture)
+    {
+        WriteThreeRecords();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(1));
+
+        Device->FailReads.store(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, GetRecordToFlush().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldCleanupTheFlushedRecords, TFixture)
+    {
+        PageCount = 4;
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{20, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+        UNIT_ASSERT_VALUES_EQUAL("0,1,meta", StoredKeys());
+
+        FlushUpTo(1);
+
+        // the record is gone from the meta store, its pages are free again
+        UNIT_ASSERT_VALUES_EQUAL("1,meta", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(ReadPages({{10, 2}})));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 2}}));
+
+        // and lsn 2 is still served from the journal
+        UNIT_ASSERT_VALUES_EQUAL(
+            "20:[B020,B021] 30:[C030,C031]",
+            DescribeGroups(ReadPages({{20, 2}, {30, 2}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldCleanupNothingWhenNothingHasBeenFlushed, TFixture)
+    {
+        WriteThreeRecords();
+
+        // the watermark sits at lsn zero, so there is nothing below it
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());
+        UNIT_ASSERT_VALUES_EQUAL("0,1,2", StoredKeys());
+    }
+
+    Y_UNIT_TEST_F(ShouldNotCleanupWhatAReaderIsStillLookingAt, TFixture)
+    {
+        WriteThreeRecords();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(3));
+
+        Device->BlockReadsUntilReleased();
+        auto read = ReadPagesAsync({{10, 1}});
+        UNIT_ASSERT(Device->ReadBlocked.WaitT(TDuration::Seconds(30)));
+
+        // the reader has decided to take lsn 1 from the journal, so its pages
+        // must stay put even though the flusher is done with them
+        Journal->MarkRecordAsFlushed(2);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());
+        UNIT_ASSERT_VALUES_EQUAL("0,1,2,meta", StoredKeys());
+
+        Device->ReleaseReads();
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010]",
+            DescribeGroups(read.GetValueSync()));
+
+        // once it is done the cleanup goes through
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());
+        UNIT_ASSERT_VALUES_EQUAL("2,meta", StoredKeys());
     }
 }
 

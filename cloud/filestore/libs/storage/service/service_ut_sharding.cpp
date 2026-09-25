@@ -1776,7 +1776,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         service.DestroyHandle(headers, fsConfig.FsId, nodeId2, handle2);
     }
 
-    SERVICE_TEST(ShouldReturnErrorForInvalidShardNo)
+    SERVICE_TEST(ShouldReturnRetriableErrorForUnknownShardNo)
     {
         TShardedFileSystemConfig fsConfig;
         CREATE_ENV_AND_SHARDED_FILESYSTEM();
@@ -1804,7 +1804,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             data);
         auto writeDataResponse = service.RecvWriteDataResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            E_INVALID_STATE,
+            E_REJECTED,
             writeDataResponse->GetStatus(),
             writeDataResponse->GetErrorReason());
     }
@@ -7939,6 +7939,122 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         UNIT_ASSERT(sawShard3);
         UNIT_ASSERT_VALUES_EQUAL(0, critCounter->GetAtomic());
+    }
+
+    SERVICE_TEST(ShouldRejectRequestsToNewShardWhileSessionHasStaleShardList)
+    {
+        // See https://github.com/ydb-platform/nbs/issues/7061
+        config.SetDirectoryCreationInShardsEnabled(true);
+        // the test relies on round-robin shard selection (the default)
+        config.SetShardBalancerPolicy(NProto::SBP_ROUND_ROBIN);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        // the session caches the 2-shard filesystem config in the service
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        // a directory owned by an existing shard - that shard picks the target
+        // shard for nodes created under it
+        const ui64 dirId = service.CreateNode(
+            headers,
+            TCreateNodeArgs::Directory(RootNodeId, "dir"))
+            ->Record.GetNode().GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(dirId));
+
+        // hold back the final ConfigureShards for the main tablet: s3 is
+        // configured and s1/s2 already know the 3-shard list, but the main
+        // tablet has not been reconfigured (and restarted) yet, so the session
+        // keeps the 2-shard config
+        TVector<TAutoPtr<IEventHandle>> delayedMainConfig;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& ev)
+            {
+                Y_UNUSED(runtime);
+                if (ev->GetTypeRewrite()
+                        == TEvIndexTablet::EvConfigureShardsRequest)
+                {
+                    const auto* msg =
+                        ev->Get<TEvIndexTablet::TEvConfigureShardsRequest>();
+                    if (msg->Record.GetFileSystemId() == fsConfig.FsId) {
+                        delayedMainConfig.emplace_back(ev.Release());
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        // 2 -> 3 shard expansion
+        service.SendResizeFileStoreRequest(
+            fsConfig.FsId,
+            fsConfig.MainFsBlockCount,
+            false /* force */,
+            3 /* shardCount */);
+
+        for (ui32 i = 0; i < 200 && delayedMainConfig.empty(); ++i) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(10));
+        }
+        UNIT_ASSERT(!delayedMainConfig.empty());
+
+        // create files under the directory until one lands on the new shard
+        ui64 nodeOnShard3 = 0;
+        for (ui32 i = 0; i < 12 && !nodeOnShard3; ++i) {
+            const ui64 nodeId = service.CreateNode(
+                headers,
+                TCreateNodeArgs::File(dirId, TStringBuilder() << "file" << i))
+                ->Record.GetNode().GetId();
+            if (ExtractShardNo(nodeId) == 3) {
+                nodeOnShard3 = nodeId;
+            }
+        }
+        UNIT_ASSERT_VALUES_UNEQUAL(0, nodeOnShard3);
+
+        // a by-id request for that node is routed via the stale 2-shard list
+        // and must be rejected with a retriable error
+        {
+            auto response = service.SendAndRecvGetNodeAttr(
+                headers,
+                fsConfig.FsId,
+                nodeOnShard3,
+                "");
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+
+        // let the expansion finish: the main tablet restarts after
+        // ConfigureShards and the service recreates the session by itself,
+        // refreshing the cached shard list without the client's involvement
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+        for (auto& ev: delayedMainConfig) {
+            env.GetRuntime().Send(ev.Release(), nodeIdx);
+        }
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            service.RecvResizeFileStoreResponse()->GetError().GetCode(),
+            "resize failed");
+        WaitForTabletStart(service);
+
+        // the durable client keeps retrying with the same session - emulate it
+        NProto::TError error;
+        for (ui32 i = 0; i < 100; ++i) {
+            auto response = service.SendAndRecvGetNodeAttr(
+                headers,
+                fsConfig.FsId,
+                nodeOnShard3,
+                "");
+            error = response->GetError();
+            if (!HasError(error)) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    nodeOnShard3,
+                    response->Record.GetNode().GetId());
+                break;
+            }
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(100));
+        }
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 
     SERVICE_TEST(ShouldHandleRenameNodeInDestinationError)

@@ -4,6 +4,7 @@
 #include "key_buffer_store.h"
 #include "log_chain.h"
 #include "log_index.h"
+#include "lsn_barrier.h"
 
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -245,6 +246,7 @@ private:
 
     TLogRecordChain LogRecordChain;
     TLogPageIndex LogPageIndex;
+    mutable TLsnBarrier FlushedLsnBarrier;
 
     std::atomic<bool> AdvancingLsnLowWatermark = false;
     std::atomic<ui64> LsnLowWatermark = 0;
@@ -481,6 +483,13 @@ TFuture<NCloud::NProto::TReadPagesResponse> TJournal::Read(
     }
 
     //
+    // Pin the flushed lsn until the read is done: the records past it stay in
+    // the journal, and the ones up to it are on the device already
+    //
+
+    auto lsnBarrierGuard = FlushedLsnBarrier.Acquire();
+
+    //
     // Look up the journalled pages of the requested ranges, skipping the
     // flushed records - the reader takes their pages from the device
     //
@@ -493,8 +502,7 @@ TFuture<NCloud::NProto::TReadPagesResponse> TJournal::Read(
              .PageCount = ref.GetPageCount()});
     }
 
-    ui64 lastFlushedLsn = 0; // TODO(#6956): implement with MarkRecordAsFlushed
-    auto lookup = LogPageIndex.Lookup(ranges, lastFlushedLsn);
+    auto lookup = LogPageIndex.Lookup(ranges, lsnBarrierGuard.GetLsn());
 
     //
     // Fill the response with the content of the journalled pages and the lsn
@@ -518,13 +526,21 @@ TFuture<NCloud::NProto::TReadJournalTailResponse> TJournal::ReadTail(
     using TResponse = NCloud::NProto::TReadJournalTailResponse;
 
     //
-    // Walk the ready records that follow each other unbroken past the lsn the
-    // reader asks from and the last acked one - the acked records are of no
-    // use to the reader, and a gap must not be skipped
+    // Pin the flushed lsn, at least at the lsn the reader asks from, so that
+    // the records past it stay in the journal until the read is done
     //
 
-    auto lsnLowWatermark = LsnLowWatermark.load();
-    auto afterLsn = Max(request.GetAfterLogSequenceNumber(), lsnLowWatermark);
+    auto lsnBarrierGuard =
+        FlushedLsnBarrier.AcquireAtLeast(request.GetAfterLogSequenceNumber());
+
+    //
+    // Walk the ready records that follow each other unbroken past the pinned
+    // lsn and the lsn low watermark - the acked records are of no use to the
+    // reader, and a gap must not be skipped
+    //
+
+    ui64 lsnLowWatermark = LsnLowWatermark.load(std::memory_order_acquire);
+    ui64 afterLsn = Max(lsnBarrierGuard.GetLsn(), lsnLowWatermark);
 
     auto records =
         LogRecordChain.GetReadyRun(afterLsn, request.GetMaxRecordCount());
@@ -564,8 +580,8 @@ TJournal::AdvanceLsnLowWatermark(
     // what the journal has indexed
     //
 
-    const auto lsnLowWatermark = request.GetLsnLowWatermark();
-    const auto lastIndexedLsn = LogPageIndex.GetLastIndexedLsn();
+    const ui64 lsnLowWatermark = request.GetLsnLowWatermark();
+    const ui64 lastIndexedLsn = LogPageIndex.GetLastIndexedLsn();
 
     if (lsnLowWatermark > lastIndexedLsn) {
         return MakeFuture<TResponse>(TErrorResponse(
@@ -580,7 +596,7 @@ TJournal::AdvanceLsnLowWatermark(
     // two of them racing could persist the older watermark last
     //
 
-    if (AdvancingLsnLowWatermark.exchange(true) == true) {
+    if (AdvancingLsnLowWatermark.exchange(true, std::memory_order_acquire)) {
         return MakeFuture<TResponse>(TErrorResponse(
             E_REJECTED,
             TStringBuilder() << "another advance to lsn low watermark "
@@ -588,10 +604,10 @@ TJournal::AdvanceLsnLowWatermark(
     }
     Y_DEFER
     {
-        AdvancingLsnLowWatermark.store(false);
+        AdvancingLsnLowWatermark.store(false, std::memory_order_release);
     };
 
-    if (lsnLowWatermark <= LsnLowWatermark.load()) {
+    if (lsnLowWatermark <= LsnLowWatermark.load(std::memory_order_acquire)) {
         return MakeFuture<TResponse>(TErrorResponse(S_ALREADY));
     }
 
@@ -610,27 +626,110 @@ TJournal::AdvanceLsnLowWatermark(
         return MakeFuture<TResponse>(TErrorResponse(error));
     }
 
-    LsnLowWatermark.store(lsnLowWatermark);
+    LsnLowWatermark.store(lsnLowWatermark, std::memory_order_release);
     return MakeFuture<TResponse>();
 }
 
 TFuture<TResultOrError<NCloud::NProto::TJournalRecord>>
 TJournal::GetRecordToFlush(ui64 maxAllowedLsn) const
 {
-    Y_UNUSED(maxAllowedLsn);
+    using TResult = TResultOrError<NCloud::NProto::TJournalRecord>;
 
-    return MakeFuture<TResultOrError<NCloud::NProto::TJournalRecord>>(
-        MakeError(E_NOT_IMPLEMENTED, "GetRecordToFlush"));
+    //
+    // Pin the flushed lsn and take the ready record right after it - hand
+    // back an empty record when there is none, or when the next one has not
+    // been acked yet or is past what the caller allows
+    //
+
+    auto lsnBarrierGuard = FlushedLsnBarrier.Acquire();
+
+    NCloud::NProto::TJournalRecord response;
+
+    auto record = LogRecordChain.GetNext(lsnBarrierGuard.GetLsn());
+    const ui64 lsnLowWatermark =
+        LsnLowWatermark.load(std::memory_order_acquire);
+    if (!record || record->Lsn > Min(maxAllowedLsn, lsnLowWatermark)) {
+        return MakeFuture<TResult>(std::move(response));
+    }
+
+    //
+    // Fill the record with its page contents
+    //
+
+    response.SetLogSequenceNumber(record->Lsn);
+    response.SetPrevLogSequenceNumber(record->PrevLsn);
+
+    auto error =
+        FillPageGroups(record->PageMappings, response.MutablePageGroups());
+
+    if (HasError(error)) {
+        return MakeFuture<TResult>(error);
+    }
+
+    return MakeFuture<TResult>(std::move(response));
 }
 
 void TJournal::MarkRecordAsFlushed(ui64 lsn)
 {
-    Y_UNUSED(lsn);
+    FlushedLsnBarrier.Advance(lsn);
 }
 
 TFuture<NCloud::NProto::TError> TJournal::CleanupFlushedRecords()
 {
-    return MakeFuture(MakeError(E_NOT_IMPLEMENTED, "CleanupFlushedRecords"));
+    //
+    // Erase the records up to the barrier lsn - the flushed ones that no
+    // reader is looking at any more - from the meta store first: a restart
+    // must not find a record whose pages have been reused
+    //
+
+    ui64 eraseUpToLsn = FlushedLsnBarrier.GetBarrierLsn();
+
+    // The meta store holds the records by their PrevLsn
+    auto future = MetaStore->EraseBelow(eraseUpToLsn);
+    if (const auto& error = Executor->WaitFor(future); HasError(error)) {
+        return MakeFuture(error);
+    }
+
+    //
+    // Erase them from the chain and the page index, then release their pages
+    //
+
+    // The chain holds the records by their lsn
+    auto recordsOrError = LogRecordChain.EraseBelow(eraseUpToLsn + 1);
+
+    // Verify that the erased run is chained: the barrier never moves past a
+    // record the chain does not hold ready
+    STORAGE_VERIFY_C(
+        !HasError(recordsOrError),
+        "Lsn",
+        eraseUpToLsn,
+        FormatError(recordsOrError.GetError()));
+
+    auto records = recordsOrError.ExtractResult();
+
+    // The index holds the records by their lsn
+    LogPageIndex.EraseBelow(eraseUpToLsn + 1);
+
+    auto result = MakeError(S_OK);
+    for (const auto& record: records) {
+        // a flushed record has its promise set, a ready record stranded
+        // below the erased watermark does not - its writer is still waiting
+        record->Promise.TrySetValue(TErrorResponse(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "record with lsn " << record->Lsn << " chaining from lsn "
+                << record->PrevLsn << " can no longer join the chain"));
+
+        auto error = DataStore->Free(GetLocations(record->PageMappings));
+        if (HasError(error)) {
+            STORAGE_ERROR(
+                "unable to free the pages of the flushed record with lsn "
+                << record->Lsn << ": " << FormatError(error));
+            result = error;
+        }
+    }
+
+    return MakeFuture(result);
 }
 
 NCloud::NProto::TError TJournal::FillPageGroups(
