@@ -487,3 +487,86 @@ def test_disabled_feature_does_not_start_configs_manager():
         if nbs:
             nbs.kill()
         ydb.stop()
+
+
+# Verify that temporary startup retains CMS while ignoring private YAML and updates.
+@pytest.mark.parametrize("invalid_private_config", [False, True], ids=["valid", "invalid"])
+def test_temporary_server_skips_private_config(tmp_path, invalid_private_config):
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    try:
+        # Distinguish common CMS, legacy NamedConfigs, and private YAML sources.
+        main_config = yaml.safe_load(make_main_config(ydb))
+        main_config["config"]["blockstore_config"] = {"volume_preemption_type": 2}
+        replace_config(ydb, yaml.safe_dump(main_config))
+        cms_config = TAppConfig()
+        named = cms_config.NamedConfigs.add()
+        named.Name = "Cloud.NBS.StorageServiceConfig"
+        named.Config = b"WriteBlobThreshold: 300"
+        ydb.client.add_config_item(cms_config)
+        private_config = "storage_service: invalid" if invalid_private_config else yaml.safe_dump({
+            "storage_service": {
+                "write_blob_threshold": 200,
+                "remote_mount_only": False,
+                "disable_manually_preempted_volumes_tracking": False,
+            },
+            "server": {"server_config": {"port": 0}},
+        })
+        replace_database_config(ydb, 0, private_config)
+
+        # Use a local nameservice marker that must be replaced by the CMS config.
+        config = make_nbs_config(ydb, True)
+        config.files["storage"].WriteBlobThreshold = 100
+        config.files["storage"].VolumePreemptionType = 1
+        config.files["naming"] = copy.deepcopy(ydb.config.names_txt)
+        config.files["naming"].ClusterUUID = "temporary-local-nameservice"
+        config_path = tmp_path / "cfg"
+        config_path.mkdir()
+        config.install(str(config_path))
+        nbs = Nbs(
+            mon_port=config.mon_port,
+            server_port=config.server_port,
+            commands=[[
+                yatest_common.binary_path("cloud/blockstore/apps/server/nbsd"),
+                *config.params,
+                "--temporary-server",
+                "--server-port", str(config.server_port),
+            ]],
+            cwd=str(tmp_path),
+        )
+        nbs.start()
+
+        # Preserve temporary restrictions and local NBS values without PROTO fallback.
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>WriteBlobThreshold</td>\s*<td>100</td>", page.text)
+        assert re.search(r"<td>RemoteMountOnly</td>\s*<td>(1|true)</td>", page.text)
+        assert re.search(
+            r"<td>DisableManuallyPreemptedVolumesTracking</td>\s*<td>(1|true)</td>",
+            page.text,
+        )
+        assert re.search(
+            r"<td>VolumePreemptionType</td>\s*<td>(2|PREEMPTION_MOVE_LEAST_HEAVY)</td>",
+            page.text,
+        )
+        yatest_common.execute([
+            yatest_common.binary_path("cloud/blockstore/apps/client/blockstore-client"),
+            "ping", "--host", "localhost", "--port", str(config.server_port),
+            "--timeout", "10",
+        ], timeout=30)
+
+        # Check the actual startup AppConfig, independently of later CMS deliveries.
+        page = requests.get(f"http://localhost:{nbs.mon_port}/actors/configs_dispatcher", timeout=10)
+        page.raise_for_status()
+        startup_config = page.text.split("id='effective-startup-config'", 1)[1]
+        startup_config = startup_config.split("data-target='#effective-dynamic-config'", 1)[0]
+        assert "NameserviceConfig" in startup_config
+        assert "temporary-local-nameservice" not in startup_config
+        assert get_config_subscription(nbs) is None
+        log = Path(nbs.stderr_file_name).read_text()
+        assert "Received CMS configuration for YAML mode; PrivateDatabaseConfig: no" in log
+        assert "GetConfigsFromCmsYamlParseError" not in log
+    finally:
+        if nbs:
+            nbs.kill()
+        ydb.stop()

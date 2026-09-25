@@ -150,7 +150,9 @@ public:
 
         const NServer::TServerAppConfig staticServerConfig(
             Args.StaticBlockstoreConfigProto.GetServer());
-        if (staticServerConfig.GetDynamicYamlConfigurationEnabled()) {
+        if (staticServerConfig.GetDynamicYamlConfigurationEnabled() &&
+            !Args.TemporaryServer)
+        {
             setup->LocalServices.emplace_back(
                 MakeConfigsManagerServiceId(),
                 TActorSetupCmd(
@@ -637,7 +639,9 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
                 staticStorageConfig.GetSchemeShardDir(),
                 staticStorageConfig.GetNodeType(),
                 &runConfig.ConfigsDispatcherInitInfo);
-            if (staticServerConfig.GetDynamicYamlConfigurationEnabled()) {
+            if (staticServerConfig.GetDynamicYamlConfigurationEnabled() &&
+                !sArgs.TemporaryServer)
+            {
                 constexpr ui32 kind =
                     NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem;
                 AllowConfigItem(kind, &runConfig.ConfigsDispatcherInitInfo);
