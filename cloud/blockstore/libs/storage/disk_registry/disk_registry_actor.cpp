@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/api/disk_agent.h>
 
+#include <cloud/storage/core/libs/api/hive_proxy.h>
+
 #include <contrib/ydb/core/base/appdata.h>
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/mon/mon.h>
@@ -163,6 +165,13 @@ void TDiskRegistryActor::OnActivateExecutor(const TActorContext& ctx)
     RegisterCounters(ctx);
 
     if (!Executor()->GetStats().IsFollower()) {
+        // Hive Local starts DiskRegistry without going through HiveProxy's
+        // external-boot backup path. Record storage metadata and the actual
+        // generation needed for fallback recovery without Hive.
+        NCloud::NStorage::UpdateTabletBootInfoBackup(
+            ctx,
+            Info(),
+            Executor()->Generation());
         ExecuteTx<TInitSchema>(ctx);
     } else {
         SignalTabletActive(ctx);

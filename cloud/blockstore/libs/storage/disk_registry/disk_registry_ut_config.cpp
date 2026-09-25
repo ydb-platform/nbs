@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_client.h>
+#include <cloud/blockstore/libs/storage/testlib/tablet_boot_info.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 
@@ -1076,6 +1077,35 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
 
         UNIT_ASSERT_VALUES_EQUAL(true, exactDiskIdMatch);
+    }
+
+    Y_UNIT_TEST(ShouldReportHiveLocalBootInfo)
+    {
+        auto runtime = TTestRuntimeBuilder().Build();
+
+        // The DR test runtime has no HiveProxy. Register a receiver before boot
+        // so that the notification reaches the runtime's event filter.
+        runtime->RegisterService(
+            NCloud::NStorage::MakeHiveProxyServiceId(),
+            runtime->AllocateEdgeActor());
+
+        TTabletStorageInfoPtr storageInfo = CreateTestTabletInfo(
+            TestTabletId,
+            TTabletTypes::BlockStoreDiskRegistry);
+        TTabletBootInfoObserver bootInfo(*runtime, *storageInfo);
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        bootInfo.CheckReports();
+
+        const auto generation = bootInfo.GetLastGeneration();
+        const auto reportCount = bootInfo.GetReportCount();
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        bootInfo.CheckReports();
+        UNIT_ASSERT_GT(bootInfo.GetReportCount(), reportCount);
+        UNIT_ASSERT_GT(bootInfo.GetLastGeneration(), generation);
     }
 }
 
