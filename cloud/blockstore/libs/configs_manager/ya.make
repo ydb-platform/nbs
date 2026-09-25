@@ -8,6 +8,7 @@ PEERDIR(
     cloud/blockstore/libs/config
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/storage/core
+    cloud/storage/core/libs/actors
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
 

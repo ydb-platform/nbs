@@ -636,14 +636,19 @@ void TBootstrapYdb::InitKikimrService()
                     << "Failed to parse PrivateDatabaseConfig from CMS: "
                     << FormatError(error)
                     << ". Starting without PrivateDatabaseConfig.");
-            } else {
-                Y_ABORT_UNLESS(
-                    descriptor == NProto::TBlockstoreConfig::descriptor(),
-                    "Unexpected PrivateDatabaseConfig type from CMS: %s",
-                    descriptor->full_name().c_str());
+            } else if (descriptor == NProto::TBlockstoreConfig::descriptor()) {
                 initialDynamicBlockstoreConfig.CopyFrom(*payload);
                 RemoveStaticOnlyBlockstoreFields(
                     initialDynamicBlockstoreConfig);
+            } else {
+                ReportGetConfigsFromCmsYamlParseError(
+                    TStringBuilder()
+                    << "Internal error: received an unexpected "
+                       "PrivateDatabaseConfig payload type "
+                    << descriptor->full_name()
+                    << " from CMS; expected "
+                    << NProto::TBlockstoreConfig::descriptor()->full_name()
+                    << ". Starting without PrivateDatabaseConfig.");
             }
         }
 

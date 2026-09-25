@@ -14,6 +14,7 @@ section clears dynamic overrides; equivalent inputs do not republish.
 #include <cloud/blockstore/libs/config/helpers.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 
+#include <cloud/storage/core/libs/actors/helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
@@ -21,7 +22,10 @@ section clears dynamic overrides; equivalent inputs do not republish.
 #include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/protos/console_config.pb.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
+#include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/log.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 #include <util/generic/hash_set.h>
 #include <util/string/builder.h>
@@ -96,6 +100,9 @@ private:
         const TEvConfigsManager::TEvRemoveConfigSubscriptionRequest::TPtr& ev,
         const TActorContext& ctx);
 
+    // Remove a subscriber when delivery confirms that its actor no longer exists.
+    void Handle(const TEvents::TEvUndelivered::TPtr& ev);
+
     // Process new config from ConfigsDispatcher
     void Handle(
         const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
@@ -135,7 +142,15 @@ STFUNC(TConfigsManagerActor::StateWork)
         HFunc(TEvConfigsManager::TEvSetConfigSubscriptionRequest, Handle);
         HFunc(TEvConfigsManager::TEvRemoveConfigSubscriptionRequest, Handle);
         HFunc(TEvConsole::TEvConfigNotificationRequest, Handle);
+        hFunc(TEvents::TEvUndelivered, Handle);
         IgnoreFunc(TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TBlockStoreComponents::CONFIGS_MANAGER,
+                __PRETTY_FUNCTION__);
+            break;
     }
 }
 
@@ -155,7 +170,10 @@ void TConfigsManagerActor::Handle(
         new TEvConfigsManager::TEvSetConfigSubscriptionResponse(),
         0,
         ev->Cookie);
-    ctx.Send(subscriber, new TEvConfigsManager::TEvConfigChanged());
+    ctx.Send(
+        subscriber,
+        new TEvConfigsManager::TEvConfigChanged(),
+        IEventHandle::FlagTrackDelivery);
 }
 
 // Remove the selected recipient and confirm even an already absent entry.
@@ -173,6 +191,17 @@ void TConfigsManagerActor::Handle(
         new TEvConfigsManager::TEvRemoveConfigSubscriptionResponse(),
         0,
         ev->Cookie);
+}
+
+// Remove a subscriber only when its config notice targets a missing actor.
+void TConfigsManagerActor::Handle(const TEvents::TEvUndelivered::TPtr& ev)
+{
+    const auto* message = ev->Get();
+    if (message->SourceType == TEvConfigsManager::TEvConfigChanged::EventType &&
+        message->Reason == TEvents::TEvUndelivered::ReasonActorUnknown)
+    {
+        Subscribers.erase(ev->Sender);
+    }
 }
 
 // Process new config from ConfigsDispatcher
@@ -228,7 +257,9 @@ void TConfigsManagerActor::Handle(
         RemoveStaticOnlyBlockstoreFields(dynamicConfig);
     }
 
-    if (dynamicConfig.SerializeAsString() == DynamicConfig.SerializeAsString())
+    if (google::protobuf::util::MessageDifferencer::Equals(
+            dynamicConfig,
+            DynamicConfig))
     {
         LOG_INFO_S(
             ctx,
@@ -260,7 +291,10 @@ void TConfigsManagerActor::Handle(
     // Do not wait for consumers: they read the provider at their safe point
     // and may skip intermediate publications.
     for (const auto& subscriber: Subscribers) {
-        ctx.Send(subscriber, new TEvConfigsManager::TEvConfigChanged());
+        ctx.Send(
+            subscriber,
+            new TEvConfigsManager::TEvConfigChanged(),
+            IEventHandle::FlagTrackDelivery);
     }
 
     ReplyConfigNotificationResponse(ev, ctx);

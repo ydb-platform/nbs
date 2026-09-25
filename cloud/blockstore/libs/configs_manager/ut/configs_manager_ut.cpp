@@ -35,6 +35,31 @@ NProto::TBlockstoreConfig MakeConfig(ui32 writeBlobThreshold)
     return config;
 }
 
+// A runtime-owned subscriber that discards notices and stops on PoisonPill
+// without unsubscribing. Register it to exercise failed notification delivery.
+class TSubscriberActor final: public TActor<TSubscriberActor>
+{
+public:
+    TSubscriberActor();
+
+private:
+    // Consume notifications and stop without removing the subscription.
+    STFUNC(StateWork);
+};
+
+TSubscriberActor::TSubscriberActor()
+    : TActor(&TThis::StateWork)
+{}
+
+// Consume notifications and stop without removing the subscription.
+STFUNC(TSubscriberActor::StateWork)
+{
+    switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvConfigsManager::TEvConfigChanged);
+        cFunc(TEvents::TSystem::PoisonPill, PassAway);
+    }
+}
+
 // A ConfigsManager fixture with an edge actor representing ConfigsDispatcher.
 // Each test receives the shared holder and ICB controls.
 class TFixture: public NUnitTest::TBaseFixture
@@ -318,6 +343,93 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         WaitForAck(34);
         AssertNoConfigChanged(subscriber);
         AssertNoConfigChanged(requester);
+    }
+
+    // Check that failed update and initial deliveries remove a dead subscriber
+    // while publications continue for live subscribers with upstream ACKs.
+    Y_UNIT_TEST_F(ShouldRemoveUndeliveredSubscribers, TFixture)
+    {
+        // Observe delivery attempts to an independently stopped subscriber.
+        const auto live = Runtime.AllocateEdgeActor();
+        const auto subscriber = Runtime.Register(new TSubscriberActor());
+        ui32 notifications = 0;
+        ui32 undelivered = 0;
+        auto observer = Runtime.AddObserver(
+            [&](TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                        TEvConfigsManager::TEvConfigChanged::EventType &&
+                    ev->Recipient == subscriber)
+                {
+                    ++notifications;
+                }
+                if (ev->GetTypeRewrite() ==
+                        TEvents::TEvUndelivered::EventType &&
+                    ev->Recipient == Manager && ev->Sender == subscriber)
+                {
+                    ++undelivered;
+                }
+            });
+
+        // Wait until the manager has processed the runtime's delivery failure.
+        const auto waitForUndelivered = [&](ui32 count)
+        {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return undelivered == count;
+            };
+            Runtime.DispatchEvents(options, TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(count, undelivered);
+        };
+
+        // Establish both subscriptions before stopping one without unsubscribe.
+        Subscribe(live);
+        WaitForConfigChanged(live);
+        Subscribe(live, subscriber);
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return notifications == 1;
+        };
+        Runtime.DispatchEvents(options, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, notifications);
+        Runtime.Send(new IEventHandle(
+            subscriber,
+            live,
+            new TEvents::TEvPoisonPill()));
+        UNIT_ASSERT(!Runtime.FindActor(subscriber));
+
+        // Remove the dead recipient without blocking updates to the live one.
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300)),
+            70);
+        WaitForAck(70);
+        WaitForConfigChanged(live);
+        waitForUndelivered(1);
+        UNIT_ASSERT_VALUES_EQUAL(2, notifications);
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+
+        // Remove a delegated subscription after its initial delivery fails.
+        Subscribe(live, subscriber);
+        waitForUndelivered(2);
+        UNIT_ASSERT_VALUES_EQUAL(3, notifications);
+
+        // Publish again without retrying the dead recipient or reporting errors.
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(400)),
+            71);
+        WaitForAck(71);
+        WaitForConfigChanged(live);
+        AssertNoConfigChanged(live);
+        UNIT_ASSERT_VALUES_EQUAL(3, notifications);
+        UNIT_ASSERT_VALUES_EQUAL(2, undelivered);
+        UNIT_ASSERT_VALUES_EQUAL(
+            400,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT(CriticalEventsLog.Str().empty());
     }
 
     // Check that re-registration after self-removal sends an initial notice.
