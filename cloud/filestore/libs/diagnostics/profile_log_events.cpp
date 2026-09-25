@@ -692,6 +692,12 @@ void FinalizeProfileLogRequestInfo(
     nodeInfo->SetNodeId(response.GetNodeAttr().GetId());
     nodeInfo->SetHandle(response.GetHandle());
     nodeInfo->SetSize(response.GetNodeAttr().GetSize());
+
+    // Only emitted when set, in order not to bloat every CreateHandle entry
+    if (response.GetGuestKeepCache()) {
+        auto* createHandleInfo = profileLogRequest.MutableCreateHandleInfo();
+        createHandleInfo->SetGuestKeepCache(true);
+    }
 }
 
 template <>
