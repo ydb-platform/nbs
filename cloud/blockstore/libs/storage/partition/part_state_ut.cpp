@@ -854,8 +854,34 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     Y_UNIT_TEST(CheckMaxBlobsPerDisk)
     {
         CheckMaxBlobsPerDisk(320_GB, 32_GB, 100, 1000);
+        CheckMaxBlobsPerDisk(32_GB, 32_GB, 100, 100);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 100, 150);
+        CheckMaxBlobsPerDisk(16_GB, 32_GB, 100, 50);
+        CheckMaxBlobsPerDisk(10_GB, 32_GB, 100, 32);
+        CheckMaxBlobsPerDisk(32_GB, 256_GB, 800, 100);
+        CheckMaxBlobsPerDisk(48_GB, 256_GB, 800, 150);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 100, 150, 0, 0, 16_KB);
+    }
+
+    Y_UNIT_TEST(ShouldRoundMaxBlobsPerDiskUp)
+    {
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 1, 2);
+        CheckMaxBlobsPerDisk(DefaultBlockSize, 32_GB, 1, 1);
+    }
+
+    Y_UNIT_TEST(ShouldKeepMaxBlobsPerDiskDisabled)
+    {
         CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0);
-        CheckMaxBlobsPerDisk(10_GB, 32_GB, 100, 100);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 0, 0);
+        CheckMaxBlobsPerDisk(10_GB, 32_GB, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldCalculateMaxBlobsPerDiskWithoutOverflow)
+    {
+        CheckMaxBlobsPerDisk(32_GB, 32_GB, 1'000'000'000, 1'000'000'000);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 1'000'000'000, 1'500'000'000);
+        CheckMaxBlobsPerDisk(32_GB, 32_GB, Max<ui32>(), Max<ui32>());
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, Max<ui32>(), Max<ui32>());
     }
 
     Y_UNIT_TEST(CheckMaxMixedBlocksPerDisk)
