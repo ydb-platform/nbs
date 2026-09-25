@@ -127,10 +127,8 @@ private:
                     (ws ',' ws value)* ws '}'
                 );
 
-    # The machine enforces operand/operator order. C++ actions match
-    # parentheses and reduce AND before OR.
     atom = ('(' @OpenParen ws)* predicate (ws ')' @CloseParen)*;
-    expr = atom (ws ("AND"i @LogicalAnd | "OR"i @LogicalOr)
+    expr = atom (required_ws ("AND"i @LogicalAnd | "OR"i @LogicalOr)
                  required_ws atom)*;
 
     query = ws "SELECT"i required_ws ('*' | columns)

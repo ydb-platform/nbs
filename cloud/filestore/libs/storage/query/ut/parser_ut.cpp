@@ -131,6 +131,28 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT_VALUES_EQUAL(5, *query->Limit);
     }
 
+    Y_UNIT_TEST(ShouldNotTreatKeywordsInsideIdentifiersAsOperators)
+    {
+        auto candy = Parse("SELECT a FROM t WHERE a == candy");
+        UNIT_ASSERT(candy);
+        UNIT_ASSERT(candy->Where);
+        UNIT_ASSERT(candy->Where->Kind == TExpression::EKind::Predicate);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "candy",
+            std::get<TColumnRef>(candy->Where->Predicate.Values[0]).Name);
+
+        auto logical = Parse("SELECT a FROM t WHERE a == floor OR  c == d");
+        UNIT_ASSERT(logical);
+        UNIT_ASSERT(logical->Where);
+        UNIT_ASSERT(logical->Where->Kind == TExpression::EKind::Logical);
+        UNIT_ASSERT(logical->Where->Operator == ELogicalOperator::Or);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "floor",
+            std::get<TColumnRef>(
+                logical->Where->Left->Predicate.Values[0]).Name);
+        UNIT_ASSERT_VALUES_EQUAL("c", logical->Where->Right->Predicate.Column);
+    }
+
     Y_UNIT_TEST(ShouldRejectMalformedQueries)
     {
         TParseError error;
