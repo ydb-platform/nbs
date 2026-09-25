@@ -20,6 +20,8 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
+#include <util/folder/tempdir.h>
+#include <util/generic/hash_set.h>
 #include <util/stream/file.h>
 #include <util/system/fstat.h>
 
@@ -109,6 +111,26 @@ void AssertBackupEntry(
     UNIT_ASSERT(it != backup.GetData().end());
     AssertStorageInfo(expectedStorageInfo, it->second.GetStorageInfo());
     UNIT_ASSERT_VALUES_EQUAL(expectedGeneration, it->second.GetSuggestedGeneration());
+}
+
+void AssertBootInfos(
+    const TVector<TTabletBootInfo>& actual,
+    const NHiveProxy::NProto::TTabletBootInfoBackup& expected)
+{
+    UNIT_ASSERT_VALUES_EQUAL(actual.size(), expected.GetData().size());
+    THashSet<ui64> tabletIds;
+    for (const auto& info: actual) {
+        const auto tabletId = info.StorageInfoProto.GetTabletID();
+        UNIT_ASSERT(tabletIds.insert(tabletId).second);
+        const auto it = expected.GetData().find(tabletId);
+        UNIT_ASSERT(it != expected.GetData().end());
+        UNIT_ASSERT_VALUES_EQUAL(
+            info.StorageInfoProto.DebugString(),
+            it->second.GetStorageInfo().DebugString());
+        UNIT_ASSERT_VALUES_EQUAL(
+            info.SuggestedGeneration,
+            it->second.GetSuggestedGeneration());
+    }
 }
 
 void AssertNoHiveBootRequests(TTestActorRuntime& runtime)
@@ -959,12 +981,13 @@ struct TTestEnv
 
     TEvHiveProxy::TGetTabletBootInfosResponse SendGetTabletBootInfos(
         const TActorId& sender,
-        ui32 errorCode)
+        ui32 errorCode,
+        ui64 tabletId = 0)
     {
         Runtime.Send(new IEventHandle(
             MakeHiveProxyServiceId(),
             sender,
-            new TEvHiveProxy::TEvGetTabletBootInfosRequest()));
+            new TEvHiveProxy::TEvGetTabletBootInfosRequest(tabletId)));
         auto ev =
             Runtime.GrabEdgeEvent<TEvHiveProxy::TEvGetTabletBootInfosResponse>(
                 sender);
@@ -2518,6 +2541,60 @@ Y_UNIT_TEST_SUITE(THiveProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(
             1u,
             getResult.TabletBootInfos[0].SuggestedGeneration);
+    }
+
+    Y_UNIT_TEST(ShouldReadOneTabletBootInfoWithoutHiveInBothModesAndFormats)
+    {
+        const auto volume = CreateStorageInfoWithHistory(
+            FakeTablet2,
+            TTabletTypes::BlockStoreVolume,
+            10);
+        const auto diskRegistry = CreateStorageInfoWithHistory(
+            FakeTablet3,
+            TTabletTypes::BlockStoreDiskRegistry,
+            20);
+        auto backup = CreateTabletBootInfoBackup(volume, 10);
+        backup.MergeFrom(CreateTabletBootInfoBackup(diskRegistry, 20));
+
+        for (bool fallbackMode: {false, true}) {
+            for (bool binaryFormat: {false, true}) {
+                TTempDir directory;
+                const TString path = directory.Path() / "boot_info";
+                {
+                    TFileOutput output(path);
+                    if (binaryFormat) {
+                        backup.SerializeToArcadiaStream(&output);
+                    } else {
+                        SerializeToTextFormat(backup, output);
+                    }
+                }
+                const auto originalBytes = TFileInput(path).ReadAll();
+
+                TTestBasicRuntime runtime;
+                TTestEnv env(runtime, path, fallbackMode);
+                AssertNoHiveBootRequests(runtime);
+                auto sender = runtime.AllocateEdgeActor();
+
+                for (ui64 tabletId: {FakeTablet2, FakeTablet3}) {
+                    const auto response =
+                        env.SendGetTabletBootInfos(sender, S_OK, tabletId);
+                    NHiveProxy::NProto::TTabletBootInfoBackup expected;
+                    (*expected.MutableData())[tabletId] =
+                        backup.GetData().at(tabletId);
+                    AssertBootInfos(response.TabletBootInfos, expected);
+                }
+
+                const auto missing =
+                    env.SendGetTabletBootInfos(sender, S_OK, FakeMissingTablet);
+                UNIT_ASSERT(missing.TabletBootInfos.empty());
+                AssertBootInfos(
+                    env.SendGetTabletBootInfos(sender, S_OK).TabletBootInfos,
+                    backup);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    TFileInput(path).ReadAll(),
+                    originalBytes);
+            }
+        }
     }
 
     Y_UNIT_TEST(GetWithoutBackupFilePath)
