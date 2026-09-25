@@ -515,6 +515,7 @@ struct TTxIndexTablet
     struct TCreateSession: TTxIndexTabletBase, TErrorAware
     {
         /* const */ TRequestInfoPtr RequestInfo;
+        const NActors::TActorId PipeServerId;
         /* const */ NProtoPrivate::TCreateSessionRequest Request;
 
         TString SessionId;
@@ -523,8 +524,10 @@ struct TTxIndexTablet
 
         TCreateSession(
                 TRequestInfoPtr requestInfo,
+                const NActors::TActorId& pipeServerId,
                 NProtoPrivate::TCreateSessionRequest request)
             : RequestInfo(std::move(requestInfo))
+            , PipeServerId(pipeServerId)
             , Request(std::move(request))
         {}
 

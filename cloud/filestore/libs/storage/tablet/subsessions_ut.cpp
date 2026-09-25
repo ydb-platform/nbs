@@ -24,6 +24,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             true,
             TActorId(0, 1),
+            TActorId(0, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
     }
@@ -36,6 +37,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             true,
             TActorId(0, 1),
+            TActorId(2, 0),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetMaxSeenSeqNo());
@@ -45,6 +47,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             false,
             TActorId(1, 1),
+            TActorId(2, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetMaxSeenSeqNo());
@@ -55,7 +58,12 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             UNIT_ASSERT_VALUES_EQUAL(true, subsession.has_value());
             UNIT_ASSERT_VALUES_EQUAL(1, subsession->SeqNo);
             UNIT_ASSERT_VALUES_EQUAL(false, subsession->ReadOnly);
-            UNIT_ASSERT_VALUES_EQUAL(TActorId(1, 1), subsession->Owner);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TActorId(1, 1),
+                subsession->PipeInfo.Owner);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TActorId(2, 1),
+                subsession->PipeInfo.PipeServer);
         }
 
         {
@@ -63,6 +71,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
                 2,
                 true,
                 TActorId(2, 1),
+                TActorId(2, 2),
                 TabletGeneration);
             UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
             auto subsession = subsessions.GetSubSessionBySeqNo(2);
@@ -71,8 +80,96 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             UNIT_ASSERT_VALUES_EQUAL(true, subsession->ReadOnly);
             UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetMaxSeenSeqNo());
             UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetMaxSeenRwSeqNo());
-            UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 1), subsession->Owner);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TActorId(2, 1),
+                subsession->PipeInfo.Owner);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TActorId(2, 2),
+                subsession->PipeInfo.PipeServer);
         }
+    }
+
+    Y_UNIT_TEST(ShouldUpdatePipeServerWhenOwnerUnchanged)
+    {
+        TSubSessions subsessions(0, 0);
+
+        subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 1),
+            TActorId(2, 0),
+            TabletGeneration);
+
+        // Client reconnects through a new pipe server, but the owner actor
+        // (the session actor on the client side) stays the same.
+        subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 1),
+            TActorId(2, 99),
+            TabletGeneration);
+
+        auto subsession = subsessions.GetSubSessionBySeqNo(1);
+        UNIT_ASSERT(subsession.has_value());
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), subsession->PipeInfo.Owner);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TActorId(2, 99),
+            subsession->PipeInfo.PipeServer);
+    }
+
+    Y_UNIT_TEST(ShouldNotReportStaleOwnerWhenOnlyPipeServerChanges)
+    {
+        // The caller kills whatever UpdateSubSession reports as StaleOwner
+        // (see TIndexTabletState::RecoverSession). If a pipe-only reconnect
+        // reported the (unchanged) owner as stale, the tablet would send a
+        // PoisonPill to the very session actor that just reconnected.
+        TSubSessions subsessions(0, 0);
+
+        subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 1),
+            TActorId(2, 0),
+            TabletGeneration);
+
+        auto ans = subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 1),    // same owner
+            TActorId(2, 99),   // new pipe server
+            TabletGeneration);
+
+        UNIT_ASSERT(ans.StalePipeServer);
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 0), ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
+    }
+
+    Y_UNIT_TEST(ShouldNotReportStalePipeServerWhenOnlyOwnerChanges)
+    {
+        // The caller unbinds whatever UpdateSubSession reports as
+        // StalePipeServer (see TIndexTabletState::RecoverSession). Reporting
+        // the current, unchanged pipe server as stale would erase and
+        // immediately re-add the same PipeServer -> TSession entry - harmless
+        // there, but the field would no longer mean "actually stale".
+        TSubSessions subsessions(0, 0);
+
+        subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 1),
+            TActorId(2, 0),
+            TabletGeneration);
+
+        auto ans = subsessions.UpdateSubSession(
+            1,
+            true,
+            TActorId(0, 99),   // new owner
+            TActorId(2, 0),    // same pipe server
+            TabletGeneration);
+
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(ans.StaleOwner);
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), ans.StaleOwner);
     }
 
     Y_UNIT_TEST(ShouldTrackOwnerGeneration)
@@ -83,6 +180,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             true,
             TActorId(0, 1),
+            TActorId(2, 0),
             TabletGeneration);
         {
             auto subsession = subsessions.GetSubSessionBySeqNo(1);
@@ -99,6 +197,25 @@ Y_UNIT_TEST_SUITE(TSubSessions)
         subsessions.UpdateSubSession(
             1,
             false,
+            TActorId(0, 1),
+            TActorId(2, 0),
+            TabletGeneration);
+        {
+            auto subsession = subsessions.GetSubSessionBySeqNo(1);
+            UNIT_ASSERT(subsession);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TabletGeneration,
+                ExtractTabletGeneration(subsession->OwnerGeneration));
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                ExtractSubSessionOwnerGeneration(
+                    subsession->OwnerGeneration));
+        }
+
+        subsessions.UpdateSubSession(
+            1,
+            false,
+            TActorId(0, 1),
             TActorId(0, 1),
             TabletGeneration);
         {
@@ -117,6 +234,7 @@ Y_UNIT_TEST_SUITE(TSubSessions)
             1,
             false,
             TActorId(1, 1),
+            TActorId(2, 1),
             TabletGeneration);
         {
             auto subsession = subsessions.GetSubSessionBySeqNo(1);
@@ -134,31 +252,38 @@ Y_UNIT_TEST_SUITE(TSubSessions)
     Y_UNIT_TEST(ShouldRemoveSubSessionWithLowestSeqNo)
     {
         TSubSessions subsessions(0, 0);
-        TActorId ans;
 
-        ans = subsessions.UpdateSubSession(
+        auto ans = subsessions.UpdateSubSession(
             1,
             true,
             TActorId(0, 1),
+            TActorId(2, 0),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
 
         ans = subsessions.UpdateSubSession(
             2,
             false,
             TActorId(1, 1),
+            TActorId(2, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
 
         ans = subsessions.UpdateSubSession(
             3,
             true,
             TActorId(2, 1),
+            TActorId(2, 2),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), ans);
+        UNIT_ASSERT(ans.StalePipeServer);
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(2, 0), ans.StalePipeServer);
+        UNIT_ASSERT(ans.StaleOwner);
+        UNIT_ASSERT_VALUES_EQUAL(TActorId(0, 1), ans.StaleOwner);
 
         UNIT_ASSERT_VALUES_EQUAL(3, subsessions.GetMaxSeenSeqNo());
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetMaxSeenRwSeqNo());
@@ -167,113 +292,148 @@ Y_UNIT_TEST_SUITE(TSubSessions)
     Y_UNIT_TEST(ShouldRemoveSubSession)
     {
         TSubSessions subsessions(0, 0);
-        TActorId ans;
-        ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(
+        auto ans = subsessions.UpdateSubSession(
             1,
             true,
             TActorId(0, 1),
+            TActorId(2, 0),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
 
         ans = subsessions.UpdateSubSession(
             2,
             true,
             TActorId(1, 1),
+            TActorId(2, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
 
-        size = subsessions.DeleteSubSession(TActorId(0, 1));
+        auto result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(1, size);
+        UNIT_ASSERT(!result.SessionCanBeDestroyed);
 
-        size = subsessions.DeleteSubSession(TActorId(1, 1));
+        result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(0, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(0, size);
+        UNIT_ASSERT(result.SessionCanBeDestroyed);
         UNIT_ASSERT_VALUES_EQUAL(false, subsessions.IsValid());
     }
 
     Y_UNIT_TEST(ShouldNotRemoveSessionIfWriterIsStillAlive)
     {
         TSubSessions subsessions(0, 0);
-        TActorId ans;
-        ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(
+        auto ans = subsessions.UpdateSubSession(
             1,
             false,
             TActorId(0, 1),
+            TActorId(2, 0),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
 
         ans = subsessions.UpdateSubSession(
             2,
             true,
             TActorId(1, 1),
+            TActorId(2, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
 
-        size = subsessions.DeleteSubSession(TActorId(1, 1));
+        auto result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(1, size);
+        UNIT_ASSERT(!result.SessionCanBeDestroyed);
     }
 
     Y_UNIT_TEST(ShouldNotRemoveSessionSeqNoIsLower)
     {
         TSubSessions subsessions(0, 0);
-        TActorId ans;
-        ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(
+        auto ans = subsessions.UpdateSubSession(
             1,
             false,
             TActorId(0, 1),
+            TActorId(2, 0),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
 
         ans = subsessions.UpdateSubSession(
             2,
             true,
             TActorId(1, 1),
+            TActorId(2, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
 
-        size = subsessions.DeleteSubSession(TActorId(0, 1));
+        auto result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 0));
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(1, size);
+        UNIT_ASSERT(!result.SessionCanBeDestroyed);
     }
 
     Y_UNIT_TEST(ShouldRemoveSubSessionIfRemovedWriterWithHighestSeqNo)
     {
         TSubSessions subsessions(0, 0);
-        TActorId ans;
-        ui32 size = 0;
 
-        ans = subsessions.UpdateSubSession(
+        auto ans = subsessions.UpdateSubSession(
             1,
             true,
             TActorId(0, 1),
+            TActorId(2, 0),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(1, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
 
         ans = subsessions.UpdateSubSession(
             2,
             false,
             TActorId(1, 1),
+            TActorId(2, 1),
             TabletGeneration);
         UNIT_ASSERT_VALUES_EQUAL(2, subsessions.GetSize());
-        UNIT_ASSERT_VALUES_EQUAL(TActorId(), ans);
+        UNIT_ASSERT(!ans.StalePipeServer);
+        UNIT_ASSERT(!ans.StaleOwner);
 
-        size = subsessions.DeleteSubSession(TActorId(1, 1));
-        UNIT_ASSERT_VALUES_EQUAL(0, size);
+        auto result = subsessions.DeleteSubSessionByPipeServer(TActorId(2, 1));
+        UNIT_ASSERT(result.SessionCanBeDestroyed);
+    }
+
+    Y_UNIT_TEST(ShouldDestroySessionWhenSubSessionAlreadyGoneAndReady)
+    {
+        // maxSeenSeqNo=5, maxSeenRwSeqNo=0: seqNo 5 was the last (read-only)
+        // mount, no writer since. Its subsession is already gone (e.g. its
+        // pipe disconnected earlier), so DeleteSubSession(5) can't find it -
+        // but 5 is still the last thing that was ever mounted, so it's fine
+        // to destroy.
+        TSubSessions subsessions(5, 0);
+
+        auto result = subsessions.DeleteSubSession(5);
+        UNIT_ASSERT(!result.Removed);
+        UNIT_ASSERT(result.SessionCanBeDestroyed);
+    }
+
+    Y_UNIT_TEST(ShouldNotDestroySessionWhenSubSessionAlreadyGoneAndNotReady)
+    {
+        // maxSeenSeqNo=5, maxSeenRwSeqNo=3: seqNo 3 is still the writer
+        // mount. A stale DestroySession(5) arrives for a subsession that's
+        // already gone - it must not destroy the session, since 5 isn't the
+        // writer.
+        TSubSessions subsessions(5, 3);
+
+        auto result = subsessions.DeleteSubSession(5);
+        UNIT_ASSERT(!result.Removed);
+        UNIT_ASSERT(!result.SessionCanBeDestroyed);
     }
 }
 
