@@ -31,13 +31,11 @@ struct TCertificateFiles
 struct ICertificateProvider
     : IStartable
 {
-    // Requests a re-read of the certificate files. The future completes when
-    // any new content has been either applied or rejected, or when the
-    // provider is stopped. New content is applied only after it has stayed
-    // unchanged for a while (see TStableRead), so this takes at least that
-    // long, and content that keeps changing keeps the future pending until it
-    // settles or the provider is stopped: wait on it with a timeout.
-    // Providers that do not refresh certificates complete it right away.
+    // Re-reads the certificate files right away and applies new content that
+    // passes validation, bypassing the stable read done by periodic checks:
+    // call it once the files have been written completely. The future
+    // completes when the files have been processed. Providers that do not
+    // refresh certificates complete it right away.
     virtual NThreading::TFuture<void> UpdateCertificates() = 0;
     virtual std::shared_ptr<grpc::ChannelCredentials>
         CreateSecureClientCredentials() = 0;
@@ -68,8 +66,7 @@ ICertificateProviderPtr CreatePeriodicCertificateProvider(
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval,
-    ITimerPtr timer);
+    TDuration refreshInterval);
 
 ICertificateProviderPtr CreateCertificateProvider(
     ILoggingServicePtr logging,
@@ -79,7 +76,6 @@ ICertificateProviderPtr CreateCertificateProvider(
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval,
-    ITimerPtr timer);
+    TDuration refreshInterval);
 
 }   // namespace NCloud

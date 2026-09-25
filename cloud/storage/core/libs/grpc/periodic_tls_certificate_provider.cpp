@@ -5,7 +5,6 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
-#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -127,7 +126,6 @@ class TPeriodicCertificateProvider final
     const TDuration RefreshInterval;
     const ISchedulerPtr Scheduler;
     const ITaskQueuePtr TaskQueue;
-    const ITimerPtr Timer;
 
     grpc_core::RefCountedPtr<TGrpcTlsCertificateProvider> TlsProvider;
     std::shared_ptr<grpc::experimental::CertificateProviderInterface>
@@ -156,15 +154,13 @@ public:
             NMonitoring::TDynamicCountersPtr serverGroup,
             TString rootCertPath,
             TVector<TCertificateFiles> certificates,
-            TDuration refreshInterval,
-            ITimerPtr timer)
+            TDuration refreshInterval)
         : Logging(std::move(logging))
         , LogComponent(std::move(logComponent))
         , ServerGroup(std::move(serverGroup))
         , RefreshInterval(refreshInterval)
         , Scheduler(std::move(scheduler))
         , TaskQueue(std::move(taskQueue))
-        , Timer(std::move(timer))
         , TlsProvider(grpc_core::MakeRefCounted<TGrpcTlsCertificateProvider>())
         , GrpcProvider(std::make_shared<TGrpcCertificateProvider>(TlsProvider))
         , RootCaPair(NTlsUtils::LoadRootCaPair(std::move(rootCertPath)))
@@ -179,8 +175,6 @@ public:
         Y_ABORT_UNLESS(Started.load() == false);
     }
 
-    // See ICertificateProvider. The hold time is the refresh interval,
-    // repeated calls share the same future.
     NThreading::TFuture<void> UpdateCertificates() override
     {
         NThreading::TFuture<void> future;
@@ -196,7 +190,7 @@ public:
             future = PendingUpdate.GetFuture();
         }
         if (scheduleUpdate) {
-            ScheduleUpdateAt(Timer->Now(), /*periodic=*/false);
+            ScheduleUpdateAt(TInstant::Now(), /*periodic=*/false);
         }
         return future;
     }
@@ -266,7 +260,7 @@ public:
 
         PublishInitialState();
 
-        ScheduleUpdateAt(Timer->Now() + RefreshInterval, true);
+        ScheduleUpdateAt(TInstant::Now() + RefreshInterval, true);
     }
 
     void Stop() override
@@ -326,41 +320,29 @@ private:
             }
         }
 
-        bool pending = false;
         if (run) {
-            pending = RefreshCertificates();
+            RefreshCertificates(periodic);
 
-            // The requested update is complete when no content is waiting
-            // for a stable read anymore, or when the provider is stopped.
-            // Until then repeated UpdateCertificates() calls share the same
-            // future instead of triggering extra reads.
             NThreading::TPromise<void> promise;
             {
                 TGuard<TMutex> lock(UpdateMutex);
+                promise = std::exchange(PendingUpdate, {});
                 UpdateInProgress = false;
-                if (!pending || !Started.load()) {
-                    promise = std::exchange(PendingUpdate, {});
-                }
             }
             if (promise.Initialized()) {
                 promise.SetValue();
             }
         }
 
-        bool alive = false;
-        {
-            TGuard<TMutex> lock(UpdateMutex);
-            alive = Started;
-        }
-        if (!alive) {
-            return;
-        }
-
-        // Files are checked once per interval and new content must stay
-        // unchanged for an interval, so a change takes effect within two
-        // intervals.
         if (periodic) {
-            ScheduleUpdateAt(Timer->Now() + RefreshInterval, true);
+            bool alive = false;
+            {
+                TGuard<TMutex> lock(UpdateMutex);
+                alive = Started;
+            }
+            if (alive) {
+                ScheduleUpdateAt(TInstant::Now() + RefreshInterval, true);
+            }
         }
     }
 
@@ -437,28 +419,26 @@ private:
         PublishCerts();
     }
 
-    // Re-reads the certificate files. New content is applied only after it
-    // has stayed unchanged for the refresh interval, see TStableRead.
-    // The last successfully loaded content is kept if the files cannot be
-    // read, parsed or validated; new content that fails these checks is
-    // reported on every check until the files change. Every certificate is
-    // refreshed independently. Returns true if some content is waiting for a
-    // stable read.
-    bool RefreshCertificates()
+    // Re-reads the certificate files. On periodic checks new content is
+    // applied only after it has been read unchanged by two checks in a row,
+    // see TStableRead: checks are a refresh interval apart, so a change takes
+    // effect within two intervals. An on-demand update is an explicit request
+    // to pick up rotated files, so it applies new content right away and its
+    // reads do not count towards the stable read. The last successfully loaded
+    // content is kept if the files cannot be read, parsed or validated; new
+    // content that fails these checks is reported on every check until the
+    // files change. Every certificate is refreshed independently.
+    void RefreshCertificates(bool periodic)
     {
-        const TInstant now = Timer->Now();
-        const TDuration holdTime = RefreshInterval;
-
-        bool pending = false;
         bool changed = false;
 
-        if (RefreshRootCa(now, holdTime, pending)) {
+        if (RefreshRootCa(periodic)) {
             PublishRootCaFingerprint();
             changed = true;
         }
 
         for (size_t i = 0; i < Certificates.size(); ++i) {
-            if (RefreshIdentity(i, now, holdTime, pending)) {
+            if (RefreshIdentity(i, periodic)) {
                 changed = true;
             }
         }
@@ -468,12 +448,26 @@ private:
         if (changed) {
             PublishCerts();
         }
+    }
 
-        return pending;
+    template <typename T>
+    static EStableReadDecision Decide(
+        TStableRead<T>& stableRead,
+        const T& current,
+        const T& content,
+        bool periodic)
+    {
+        if (periodic) {
+            return stableRead.Observe(current, content);
+        }
+
+        return content == current
+            ? EStableReadDecision::Unchanged
+            : EStableReadDecision::Apply;
     }
 
     // Returns true if the root certificate has been replaced.
-    bool RefreshRootCa(TInstant now, TDuration holdTime, bool& pending)
+    bool RefreshRootCa(bool periodic)
     {
         const auto& path = RootCaPair.RootCaPath;
         if (path.empty()) {
@@ -489,16 +483,15 @@ private:
             return false;
         }
 
-        switch (RootCaStableRead.Observe(
+        switch (Decide(
+            RootCaStableRead,
             RootCaPair.RootCa,
             content.GetResult(),
-            now,
-            holdTime))
+            periodic))
         {
             case EStableReadDecision::Unchanged:
                 return false;
             case EStableReadDecision::Wait:
-                pending = true;
                 STORAGE_INFO(
                     "New root certificate " << path.Quote()
                     << ", waiting for a stable read");
@@ -522,11 +515,7 @@ private:
     }
 
     // Returns true if the certificate has been replaced.
-    bool RefreshIdentity(
-        size_t index,
-        TInstant now,
-        TDuration holdTime,
-        bool& pending)
+    bool RefreshIdentity(size_t index, bool periodic)
     {
         auto& cert = Certificates[index];
         auto& stableRead = IdentityStableReads[index];
@@ -545,12 +534,10 @@ private:
             .PrivateKey = cert.PrivateKey,
             .CertChain = cert.CertChain,
         };
-        switch (stableRead.Observe(current, content.GetResult(), now, holdTime))
-        {
+        switch (Decide(stableRead, current, content.GetResult(), periodic)) {
             case EStableReadDecision::Unchanged:
                 return false;
             case EStableReadDecision::Wait:
-                pending = true;
                 STORAGE_INFO(
                     "New identity certificate " << path.Quote()
                     << ", waiting for a stable read");
@@ -601,11 +588,9 @@ ICertificateProviderPtr CreatePeriodicCertificateProvider(
     NMonitoring::TDynamicCountersPtr serverGroup,
     TString rootCertPath,
     TVector<TCertificateFiles> certificates,
-    TDuration refreshInterval,
-    ITimerPtr timer)
+    TDuration refreshInterval)
 {
     Y_ABORT_UNLESS(refreshInterval, "refreshInterval should not be zero");
-    Y_ABORT_UNLESS(timer, "timer should not be null");
 
     return std::make_shared<TPeriodicCertificateProvider>(
         std::move(logging),
@@ -615,8 +600,7 @@ ICertificateProviderPtr CreatePeriodicCertificateProvider(
         std::move(serverGroup),
         std::move(rootCertPath),
         std::move(certificates),
-        refreshInterval,
-        std::move(timer));
+        refreshInterval);
 }
 
 }   // namespace NCloud

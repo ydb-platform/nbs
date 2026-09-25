@@ -187,8 +187,7 @@ void TBootstrapServer::InitComponents()
             serverCounters,
             Configs->ServerConfig->GetRootCertsFile(),
             std::move(certPathList),
-            Configs->ServerConfig->GetRefreshCertsPeriod(),
-            Timer);
+            Configs->ServerConfig->GetRefreshCertsPeriod());
     }
 
     Server = NServer::CreateServer(

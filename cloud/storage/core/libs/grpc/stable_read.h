@@ -1,6 +1,5 @@
 #pragma once
 
-#include <util/datetime/base.h>
 #include <util/generic/maybe.h>
 #include <util/stream/output.h>
 
@@ -12,35 +11,30 @@ enum class EStableReadDecision
 {
     // Content equals the current one.
     Unchanged,
-    // Content has been read for the first time, differs from the content
-    // read previously or has not been stable for long enough yet.
+    // Content has been read for the first time or differs from the content
+    // read previously.
     Wait,
-    // Content has stayed unchanged for the hold time and can be applied.
+    // Content has been read unchanged twice in a row and can be applied.
     Apply,
 };
 
 // Files such as certificates are rewritten by external tools, not necessarily
 // atomically, and a partially written file may be syntactically valid, e.g. a
 // certificate chain without its intermediate certificate. TStableRead lets new
-// content be applied only after it has stayed unchanged for the hold time
-// since it was first read. A read is counted by the time it was made, so reads
-// that happen to follow each other closely do not shorten the hold. This is a
-// heuristic that reduces the chance of picking up an intermediate state of a
-// rewrite, not a guarantee: a writer that stalls for longer than the hold time
-// is indistinguishable from a finished one.
+// content be applied only after it has been read unchanged twice in a row. The
+// caller is responsible for spacing the reads apart, e.g. by feeding only
+// periodic reads. This is a heuristic that reduces the chance of picking up an
+// intermediate state of a rewrite, not a guarantee: a writer that stalls for
+// longer than the interval between reads is indistinguishable from a finished
+// one.
 template <typename T>
 class TStableRead
 {
 private:
     TMaybe<T> Pending;
-    TInstant PendingSince;
 
 public:
-    EStableReadDecision Observe(
-        const T& current,
-        const T& content,
-        TInstant now,
-        TDuration holdTime)
+    EStableReadDecision Observe(const T& current, const T& content)
     {
         if (content == current) {
             Pending.Clear();
@@ -49,16 +43,13 @@ public:
 
         if (!Pending.Defined() || *Pending != content) {
             Pending = content;
-            PendingSince = now;
             return EStableReadDecision::Wait;
         }
 
-        return now - PendingSince >= holdTime
-            ? EStableReadDecision::Apply
-            : EStableReadDecision::Wait;
+        return EStableReadDecision::Apply;
     }
 
-    // Forgets the pending content, e.g. after a read error: the hold starts
+    // Forgets the pending content, e.g. after a read error: the count starts
     // over when the content is read again.
     void Reset()
     {
