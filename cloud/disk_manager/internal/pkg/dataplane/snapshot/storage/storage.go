@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,6 +36,13 @@ type ChunkMapEntry struct {
 	ChunkIndex uint32
 	ChunkID    string
 	StoredInS3 bool
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type BackupChunkQueueEntry struct {
+	SnapshotID string
+	ChunkID    string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -95,13 +103,23 @@ type Storage interface {
 		useS3 bool,
 	) (string, error)
 
+	// With includeShallowCopied set to false returns only the chunks created
+	// by this snapshot, skipping the ones shallow copied from another snapshot
+	// and the zero ones.
 	ReadChunkMap(
 		ctx context.Context,
 		snapshotID string,
 		milestoneChunkIndex uint32,
+		includeShallowCopied bool,
 	) (<-chan ChunkMapEntry, <-chan error)
 
 	ReadChunk(ctx context.Context, chunk *common.Chunk) error
+
+	// Returns the chunk blob as it is stored in s3.
+	ReadChunkBlob(
+		ctx context.Context,
+		chunkID string,
+	) (persistence.S3Object, error)
 
 	CheckSnapshotReady(
 		ctx context.Context,
@@ -146,4 +164,36 @@ type Storage interface {
 	) (snapshotID string, checkpointID string, err error)
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
+
+	EnqueueBackupChunks(
+		ctx context.Context,
+		entries []BackupChunkQueueEntry,
+	) error
+
+	GetBackupChunkQueue(
+		ctx context.Context,
+		limit int,
+	) ([]BackupChunkQueueEntry, error)
+
+	HasBackupChunkQueueEntries(
+		ctx context.Context,
+		snapshotID string,
+	) (bool, error)
+
+	ChunksBackupCompleted(
+		ctx context.Context,
+		entries []BackupChunkQueueEntry,
+	) error
+
+	ClearBackupChunkQueue(ctx context.Context, snapshotID string) error
+
+	// Used for monitoring only.
+	GetBackupChunkQueueLength(ctx context.Context) (uint64, error)
+
+	GetBackupDeleteQueue(ctx context.Context, limit int) ([]string, error)
+
+	BackupDeletionsCompleted(ctx context.Context, objectKeys []string) error
+
+	// Used for monitoring only.
+	GetBackupDeleteQueueLength(ctx context.Context) (uint64, error)
 }

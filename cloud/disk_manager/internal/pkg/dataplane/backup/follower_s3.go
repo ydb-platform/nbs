@@ -31,15 +31,14 @@ func NewFollowerS3(
 func (s *FollowerS3) PutObject(
 	ctx context.Context,
 	key string,
-	data []byte,
+	object persistence.S3Object,
 ) error {
 
-	return s.s3.PutObject(
-		ctx,
-		s.bucket,
-		s.Key(key),
-		persistence.S3Object{Data: data},
-	)
+	return s.s3.PutObject(ctx, s.bucket, s.Key(key), object)
+}
+
+func (s *FollowerS3) DeleteObject(ctx context.Context, key string) error {
+	return s.s3.DeleteObject(ctx, s.bucket, s.Key(key))
 }
 
 func (s *FollowerS3) Key(key string) string {
