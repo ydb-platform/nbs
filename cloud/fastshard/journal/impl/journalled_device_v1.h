@@ -8,6 +8,6 @@ namespace NCloud::NJournalled {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IJournalledDevicePtr CreateJournalledDevice(IDevicePtr dataStore);
+IJournalledDevicePtr CreateJournalledDeviceV1(IDevicePtr dataStore);
 
 }   // namespace NCloud::NJournalled

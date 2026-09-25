@@ -49,7 +49,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     void SetUp(NUnitTest::TTestContext& /*context*/) override
     {
         DataStore = std::make_shared<TTestDevice>();
-        Device = CreateJournalledDevice(DataStore);
+        Device = CreateJournalledDeviceV1(DataStore);
     }
 
     NProto::TError WriteLogRecord(ui64 lsn, ui64 prevLsn)

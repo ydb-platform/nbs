@@ -231,6 +231,8 @@ void TServer::Start()
 {
     Log = Logging->CreateLog("DEVICE_SERVER");
 
+    Backend->Start();
+
     auto future = Executor->Execute([this] { StartListen(); });
     future.GetValueSync();
 }
@@ -239,6 +241,8 @@ void TServer::Stop()
 {
     auto future = Executor->Execute([this] { StopImpl(); });
     future.Wait();
+
+    Backend->Stop();
 }
 
 // TContListener::ICallBack
