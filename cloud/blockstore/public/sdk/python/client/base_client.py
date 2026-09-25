@@ -51,6 +51,7 @@ NBS_CLIENT_METHODS = [
     "list_nvme_devices",
     "acquire_nvme_device",
     "release_nvme_device",
+    "query_known_storage",
 ]
 
 

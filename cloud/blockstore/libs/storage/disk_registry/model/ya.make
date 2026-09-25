@@ -10,6 +10,7 @@ SRCS(
     pending_cleanup.cpp
     replica_table.cpp
     user_notification.cpp
+    public.cpp
 )
 
 PEERDIR(
