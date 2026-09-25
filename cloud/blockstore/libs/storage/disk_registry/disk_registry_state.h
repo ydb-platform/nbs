@@ -1346,14 +1346,16 @@ private:
         TDiskRegistryDatabase& db,
         const TVector<TDeviceId>& uuids);
 
-    TDeviceList::TAllocationQuery MakeMigrationQuery(
-        const TDiskId& sourceDiskId,
-        const TDiskState& disk,
-        const NProto::TDeviceConfig& sourceDevice);
+    struct TMigrationSource
+    {
+        TDiskState* Disk = nullptr;
+        NProto::TDeviceConfig Device;
+        TDeviceList::TAllocationQuery Query;
+    };
 
-    TResultOrError<TDiskState*> FindValidMigrationSource(
+    TResultOrError<TMigrationSource> PrepareDeviceMigration(
         const TDiskId& sourceDiskId,
-        const TString& sourceDeviceId);
+        const TDeviceId& sourceDeviceId);
 
     TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
         TInstant now,
@@ -1363,12 +1365,12 @@ private:
 
     // Does not persist the disk or its placement group; the caller must.
     // Adjusting the target's block count may persist its agent configuration.
+    // The target must already be marked as allocated.
     NProto::TDeviceConfig StartDeviceMigrationOnTarget(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
-        TDiskState& disk,
-        const TDeviceId& sourceDeviceId,
+        const TMigrationSource& source,
         NProto::TDeviceConfig targetDevice);
 
     void ChangeAgentState(
