@@ -13,6 +13,49 @@ import yatest.common as common
 logger = logging.getLogger(__name__)
 
 
+def _log_process_threads(pid):
+    task_dir = "/proc/{}/task".format(pid)
+    try:
+        thread_ids = sorted(
+            (entry for entry in os.listdir(task_dir) if entry.isdigit()),
+            key=int)
+    except OSError as error:
+        logger.warning("failed to list threads for PID %s: %s", pid, error)
+        return
+
+    logger.warning("PID %s has %s thread(s)", pid, len(thread_ids))
+    for thread_id in thread_ids:
+        diagnostics = []
+        # These per-thread procfs files help explain why a process remains
+        # unreapable after SIGKILL and wait:
+        #   status - thread state (notably D for uninterruptible sleep and Z
+        #            for zombie) and other thread metadata.
+        #            Does not require elevated permissions.
+        #            https://man7.org/linux/man-pages/man5/proc_pid_status.5.html
+        #   wchan  - kernel function in which a sleeping thread is blocked.
+        #            Does not require elevated permissions if process has same UID.
+        #            https://man7.org/linux/man-pages/man5/proc_pid_wchan.5.html
+        #   stack  - kernel call stack, which can identify the blocked I/O or
+        #            subsystem; reading it most definetely require elevated permissions.
+        #            https://man7.org/linux/man-pages/man5/proc_pid_stack.5.html
+        # Thread directories are documented at:
+        # https://man7.org/linux/man-pages/man5/proc_pid_task.5.html
+        for name in ("status", "wchan", "stack"):
+            path = os.path.join(task_dir, thread_id, name)
+            try:
+                with open(path, errors="replace") as proc_file:
+                    contents = proc_file.read().rstrip()
+            except OSError as error:
+                contents = "<failed to read {}: {}>".format(path, error)
+            diagnostics.append("{}:\n{}".format(name, contents))
+
+        logger.warning(
+            "PID %s TID %s diagnostics:\n%s",
+            pid,
+            thread_id,
+            "\n".join(diagnostics))
+
+
 def _on_wait_timeout(ex, timeout):
     logger.warning(
         f"wait for pid {ex.process.pid} timed out after {timeout} seconds"
@@ -122,8 +165,9 @@ class Daemon(object):
             self.__process.kill()
         except common.TimeoutError as error:
             try:
-                self.__process.process.wait(timeout=2)
+                self.__process.process.wait(timeout=5)
             except subprocess.TimeoutExpired:
+                _log_process_threads(self.__process.process.pid)
                 raise error
         self.__process.wait(check_exit_code=False)
         self.__process = None
