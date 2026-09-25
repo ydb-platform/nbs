@@ -26,3 +26,4 @@ PyGithub==2.9.1
 nebius==0.5.7
 tabulate
 numpy
+opentelemetry-proto-json==0.65b0
