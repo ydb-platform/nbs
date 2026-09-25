@@ -695,7 +695,6 @@ public:
         const TString& path,
         const TString& customMessage,
         TInstant now,
-        bool shouldResume,
         bool dryRun);
 
     NProto::TError ReplaceDevice(

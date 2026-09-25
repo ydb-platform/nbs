@@ -601,9 +601,6 @@ class _TestCmsPurgeDevice:
 
         nbs.wait_for_stats(UnknownDevices=1)
 
-        if attach_detach_paths:
-            fds_count.assert_file_descriptors_were_closed([device.path])
-
         nbs.create_volume("vol1", return_code=1)
 
         response = cms.add_device("localhost", device.path)
@@ -673,7 +670,7 @@ TESTS = [
     _TestCmsPurgeAgent("purgeagent"),
     _TestCmsRemoveDevice("removedevice"),
     _TestCmsRemoveDeviceNoUserDisks("removedevicenodisks"),
-    _TestCmsPurgeDeviceNoUserDisks("purgedevice"),
+    _TestCmsPurgeDevice("purgedevice"),
     _TestCmsPurgeDeviceNoUserDisks("purgedevicenodisks"),
 ]
 

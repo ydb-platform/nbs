@@ -141,7 +141,6 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
                 action.GetHost(),
                 action.GetDevice(),
                 /*customMessage=*/TString(),
-                /*shouldResumeDevice=*/false,
                 action.GetDryRun());
 
             NCloud::Send(ctx, Owner, std::move(request));

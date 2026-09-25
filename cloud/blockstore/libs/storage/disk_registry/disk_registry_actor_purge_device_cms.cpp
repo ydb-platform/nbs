@@ -51,7 +51,6 @@ void TDiskRegistryActor::HandlePurgeDeviceCms(
         std::move(msg->Host),
         std::move(msg->Path),
         std::move(msg->CustomMessage),
-        msg->ShouldResumeDevice,
         msg->DryRun);
 }
 
@@ -84,7 +83,6 @@ void TDiskRegistryActor::ExecutePurgeDeviceCms(
         args.Path,
         args.CustomMessage,
         args.TxTs,
-        args.ShouldResumeDevice,
         args.DryRun);
 
     args.Error = std::move(result.Error);

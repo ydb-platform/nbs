@@ -411,7 +411,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateSuspendTest)
                     devicePath,
                     /*customMessage=*/TString(),
                     Now(),
-                    /*shouldResume=*/false,
                     /*dryRun=*/false);
 
                 UNIT_ASSERT_SUCCESS(result.Error);

@@ -6650,7 +6650,6 @@ auto TDiskRegistryState::PurgeDevice(
     const TString& path,
     const TString& customMessage,
     TInstant now,
-    bool shouldResume,
     bool dryRun) -> TUpdateCmsDeviceStateResult
 {
     TUpdateCmsDeviceStateResult result;
@@ -6668,7 +6667,7 @@ auto TDiskRegistryState::PurgeDevice(
         NProto::DEVICE_STATE_WARNING,
         customMessage,
         now,
-        shouldResume,
+        /*shouldResume=*/false,
         dryRun);
 
     if (HasError(result.Error)) {

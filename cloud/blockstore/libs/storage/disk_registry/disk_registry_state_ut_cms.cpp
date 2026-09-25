@@ -238,7 +238,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     devicePath,
                     /*customMessage=*/TString("test-message"),
                     Now(),
-                    /*shouldResume=*/false,
                     /*dryRun=*/false);
 
                 UNIT_ASSERT_SUCCESS(result.Error);
@@ -314,7 +313,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     devicePath,
                     /*customMessage=*/TString("test-message"),
                     Now(),
-                    /*shouldResume=*/false,
                     /*dryRun=*/false);
 
                 UNIT_ASSERT_SUCCESS(result.Error);
@@ -364,7 +362,6 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     "same/path",
                     /*customMessage=*/TString(),
                     Now(),
-                    /*shouldResume=*/false,
                     /*dryRun=*/false);
 
                 UNIT_ASSERT_SUCCESS(result.Error);

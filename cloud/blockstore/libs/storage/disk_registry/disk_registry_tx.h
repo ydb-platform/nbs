@@ -673,7 +673,6 @@ struct TTxDiskRegistry
         const TString Host;
         const TString Path;
         const TString CustomMessage;
-        const bool ShouldResumeDevice;
         const bool DryRun;
 
         NProto::TError Error;
@@ -686,13 +685,11 @@ struct TTxDiskRegistry
             TString host,
             TString path,
             TString customMessage,
-            bool shouldResumeDevice,
             bool dryRun)
             : RequestInfo(std::move(requestInfo))
             , Host(std::move(host))
             , Path(std::move(path))
             , CustomMessage(std::move(customMessage))
-            , ShouldResumeDevice(shouldResumeDevice)
             , DryRun(dryRun)
         {}
 

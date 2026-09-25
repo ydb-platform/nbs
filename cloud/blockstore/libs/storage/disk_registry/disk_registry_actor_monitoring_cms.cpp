@@ -166,7 +166,6 @@ void TSendCmsRequestActor::Bootstrap(const TActorContext& ctx)
                 AgentID,
                 DevicePath,
                 /*customMessage=*/"monpage",
-                /*shouldResumeDevice=*/false,
                 DryRun);
 
             NCloud::Send(ctx, Owner, std::move(request));
