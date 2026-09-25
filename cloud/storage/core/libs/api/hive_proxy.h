@@ -283,6 +283,12 @@ struct TEvHiveProxy
 
     struct TGetTabletBootInfosRequest
     {
+        // Zero preserves the existing request for all entries.
+        const ui64 TabletId;
+
+        explicit TGetTabletBootInfosRequest(ui64 tabletId = 0)
+            : TabletId(tabletId)
+        {}
     };
 
     struct TGetTabletBootInfosResponse

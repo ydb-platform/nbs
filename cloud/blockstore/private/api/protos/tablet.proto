@@ -50,3 +50,84 @@ message TGetTabletBootInfosResponse
 {
     repeated TTabletBootInfoProto TabletBootInfos = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Passive tablet diagnostics. Does not query Hive or initiate tablet boot.
+
+message TGetTabletStateRequest
+{
+    uint64 TabletId = 1;
+
+    // 0 uses 5000 ms. Values above 30000 ms are rejected.
+    uint32 TimeoutMs = 2;
+}
+
+message TGetTabletStateResponse
+{
+    enum EState
+    {
+        UNKNOWN = 0;
+        // A pipe connected through the leader's system tablet. This does not
+        // guarantee readiness of every partition or availability of disk data.
+        RUNNING = 1;
+    }
+
+    enum ELocalState
+    {
+        // The local whiteboard request failed or timed out, or its response
+        // could not be interpreted unambiguously.
+        LOCAL_UNKNOWN = 0;
+
+        // The local whiteboard last reported a tablet startup stage.
+        LOCAL_STARTING = 1;
+
+        // The local whiteboard last reported an active leader.
+        // This does not confirm that the leader is currently reachable.
+        LOCAL_ACTIVE = 2;
+
+        // The local whiteboard last reported Dead, Deleted or Stopped.
+        // This does not prove that the tablet is absent on other nodes.
+        LOCAL_STOPPED = 3;
+
+        // No local primary tablet record was found in the whiteboard response.
+        // A new startup attempt may not have been reported yet.
+        LOCAL_NOT_OBSERVED = 4;
+    }
+
+    enum EBootInfoState
+    {
+        // The local backup request failed or timed out, or its response
+        // could not be interpreted as a valid lookup result.
+        BOOT_INFO_UNKNOWN = 0;
+
+        // An entry exists in this process's loaded backup. This does not
+        // confirm tablet liveness or guarantee successful recovery.
+        BOOT_INFO_AVAILABLE = 1;
+
+        // No entry for this TabletId exists in this process's loaded backup.
+        BOOT_INFO_MISSING = 2;
+
+        // The local tablet boot info backup is not configured.
+        BOOT_INFO_NOT_CONFIGURED = 3;
+    }
+
+    uint64 TabletId = 1;
+    EState State = 2;
+    uint32 LeaderNodeId = 3;
+    uint64 LeaderGeneration = 4;
+    string Message = 5;
+
+    // Last local whiteboard observation, independent of the leader probe.
+    // STOPPED and NOT_OBSERVED are scoped to LocalNodeId only and never grant
+    // permission to boot the tablet. A new attempt may not be reported yet.
+    ELocalState LocalState = 6;
+    uint32 LocalNodeId = 7;
+    uint32 LocalGeneration = 8;
+    string LocalStateMessage = 9;
+
+    // Presence in the receiving NBS process's loaded backup, independent of
+    // liveness. A running tablet may have no backup entry, and vice versa.
+    EBootInfoState BootInfoState = 10;
+    uint64 SuggestedGeneration = 11;
+    string BootInfoMessage = 12;
+}
