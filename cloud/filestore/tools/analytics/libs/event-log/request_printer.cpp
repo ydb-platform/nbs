@@ -222,6 +222,34 @@ TString PrintListNodesInfo(
     return out;
 }
 
+TString PrintCreateHandleInfo(
+    const NProto::TProfileLogCreateHandleInfo& createHandleInfo)
+{
+    TStringBuilder out;
+    bool hasInfo = false;
+
+    out << "{";
+
+    if (createHandleInfo.HasGuestKeepCache()) {
+        out << PrintValue(
+                   "guest_keep_cache",
+                   createHandleInfo.GetGuestKeepCache())
+            << ", ";
+        hasInfo = true;
+    }
+
+    if (!hasInfo) {
+        out << "no_create_handle_info";
+    } else {
+        out.pop_back();
+        out.pop_back();
+    }
+
+    out << "}";
+
+    return out;
+}
+
 TString PrintRanges(
     TStringBuf nodeIdLabel,
     TStringBuf handleLabel,
@@ -403,6 +431,11 @@ public:
 
         if (request.HasListNodesInfo()) {
             out << PrintListNodesInfo(request.GetListNodesInfo()) << "\t";
+        }
+
+        if (request.HasCreateHandleInfo()) {
+            out << PrintCreateHandleInfo(request.GetCreateHandleInfo())
+                << "\t";
         }
 
         if (request.HasLockInfo()) {

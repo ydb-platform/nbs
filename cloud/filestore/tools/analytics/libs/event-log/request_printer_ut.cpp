@@ -181,6 +181,43 @@ Y_UNIT_TEST_SUITE(TRequestPrinterTest)
             printer->DumpInfo(Request));
     }
 
+    Y_UNIT_TEST_F(ShouldPrintRequestInfoForCreateHandleRequestType, TEnv)
+    {
+        Request.SetRequestType(
+            static_cast<ui32>(EFileStoreRequest::CreateHandle));
+
+        auto printer = CreateRequestPrinter(Request.GetRequestType());
+        UNIT_ASSERT_VALUES_EQUAL("{no_info}", printer->DumpInfo(Request));
+
+        auto* nodeInfo = Request.MutableNodeInfo();
+        nodeInfo->SetParentNodeId(10);
+        nodeInfo->SetNodeName("name_1");
+        nodeInfo->SetFlags(5);
+        nodeInfo->SetNodeId(30);
+        nodeInfo->SetHandle(40);
+        nodeInfo->SetSize(50);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "{parent_node_id=10, node_name=name_1, flags=5, node_id=30, "
+            "handle=40, size=50}",
+            printer->DumpInfo(Request));
+
+        auto* createHandleInfo = Request.MutableCreateHandleInfo();
+        createHandleInfo->SetGuestKeepCache(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "{parent_node_id=10, node_name=name_1, flags=5, node_id=30, "
+            "handle=40, size=50}\t{guest_keep_cache=1}",
+            printer->DumpInfo(Request));
+
+        createHandleInfo->ClearGuestKeepCache();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "{parent_node_id=10, node_name=name_1, flags=5, node_id=30, "
+            "handle=40, size=50}\t{no_create_handle_info}",
+            printer->DumpInfo(Request));
+    }
+
     Y_UNIT_TEST_F(ShouldPrintRequestInfoForAccessNodeRequestType, TEnv)
     {
         Request.SetRequestType(static_cast<ui32>(EFileStoreRequest::AccessNode));

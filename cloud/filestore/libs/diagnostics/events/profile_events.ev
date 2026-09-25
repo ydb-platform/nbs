@@ -109,6 +109,15 @@ message TProfileLogListNodesInfo {
     optional uint64 NameCount = 5;
 };
 
+message TProfileLogCreateHandleInfo {
+    option (message_id) = 10;
+
+    // from response
+    // If set, the guest (or any other client) was allowed not to invalidate
+    // caches associated with the node, see TCreateHandleResponse.GuestKeepCache
+    optional bool GuestKeepCache = 1;
+};
+
 message TProfileLogRequestInfo {
     option (message_id) = 1;
 
@@ -137,6 +146,8 @@ message TProfileLogRequestInfo {
     optional uint64 CommitId = 15;
 
     optional TProfileLogListNodesInfo ListNodesInfo = 16;
+
+    optional TProfileLogCreateHandleInfo CreateHandleInfo = 17;
 };
 
 message TProfileLogRecord {

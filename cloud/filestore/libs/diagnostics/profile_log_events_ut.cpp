@@ -815,6 +815,7 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         res.MutableNodeAttr()->SetId(nodeId);
         res.MutableNodeAttr()->SetSize(size);
         res.SetHandle(handle);
+        res.SetGuestKeepCache(true);
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         FinalizeProfileLogRequestInfo(profileLogRequest, res);
@@ -833,6 +834,17 @@ Y_UNIT_TEST_SUITE(TProfileLogEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(nodeId, nodeInfo.GetNodeId());
         UNIT_ASSERT_VALUES_EQUAL(handle, nodeInfo.GetHandle());
         UNIT_ASSERT_VALUES_EQUAL(size, nodeInfo.GetSize());
+
+        UNIT_ASSERT(profileLogRequest.HasCreateHandleInfo());
+        UNIT_ASSERT(
+            profileLogRequest.GetCreateHandleInfo().GetGuestKeepCache());
+
+        res.SetGuestKeepCache(false);
+        profileLogRequest.Clear();
+        FinalizeProfileLogRequestInfo(profileLogRequest, res);
+
+        UNIT_ASSERT(profileLogRequest.HasNodeInfo());
+        UNIT_ASSERT(!profileLogRequest.HasCreateHandleInfo());
     }
 
     Y_UNIT_TEST(ShouldTestLockResponseInitializeFieldsCorrectly)
