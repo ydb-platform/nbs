@@ -6,6 +6,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/folder/tempdir.h>
+#include <util/stream/file.h>
 #include <util/stream/output.h>
 #include <util/system/tempfile.h>
 
@@ -138,6 +140,13 @@ public:
     {
         UpdateRawData(rawData);
     }
+
+    NProto::TError Flush() override
+    {
+        // Test-only accessor over caller-owned memory: writes are immediately
+        // visible and there is no persistent backing store to flush.
+        return {};
+    }
 };
 
 }   // namespace
@@ -230,6 +239,34 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         header.Version = static_cast<EFileRingBufferVersion>(11111);
 
         b.AssertValidateFailed("Unsupported file ring buffer version");
+    }
+
+    Y_UNIT_TEST(ShouldMapProvidedFileAfterPathIsReplaced)
+    {
+        TTempDir tempDir;
+        const auto stateFile = tempDir.Path() / "state";
+        const auto movedStateFile = tempDir.Path() / "original-state";
+        TFileOutput(stateFile).Write("original");
+
+        TFile openFile(
+            stateFile.GetPath(),
+            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+
+        stateFile.RenameTo(movedStateFile);
+        TFileOutput(stateFile).Write("replacement");
+
+        TFileMapFileRingBufferAccessor accessor(
+            openFile,
+            EFileRingBufferAccessorValidationMode::Debug,
+            TMemoryMapCommon::EOpenModeFlag::oRdOnly);
+
+        auto error = accessor.Map();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        auto rawData = accessor.GetRawData();
+        UNIT_ASSERT_VALUES_EQUAL(
+            "original",
+            TString(rawData.data(), rawData.size()));
     }
 
     FILE_RING_BUFFER_TEST(ShouldValidateCorrectHeader)
