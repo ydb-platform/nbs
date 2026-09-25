@@ -51,7 +51,7 @@ TOptionsYdbPtr CreateOptions()
     return options;
 }
 
-// Initialize static sections, including RDMA only when its file is provided.
+// Initialize static sections, including RDMA from its file or legacy fields.
 void InitStaticConfigs(TConfigInitializerYdb& ci)
 {
     // Initialize Server and Features before the sections that depend on them.
@@ -74,9 +74,7 @@ void InitStaticConfigs(TConfigInitializerYdb& ci)
     ci.InitCellsConfig();
     ci.InitLocalNVMeConfig();
     ci.InitDiskAgentConfig();
-    if (ci.Options->RdmaConfig) {
-        ci.InitRdmaConfig();
-    }
+    ci.InitRdmaConfig();
 }
 
 /**
@@ -466,8 +464,9 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         InitStaticConfigs(ci);
         const auto staticConfig = ci.GetCurrentBlockstoreConfig();
         const auto staticText = staticConfig.SerializeAsString();
-        UNIT_ASSERT(!staticConfig.HasRdma());
-        UNIT_ASSERT(!ci.RdmaConfig);
+        UNIT_ASSERT(staticConfig.HasRdma());
+        UNIT_ASSERT_VALUES_EQUAL(0, staticConfig.GetRdma().ByteSizeLong());
+        UNIT_ASSERT(ci.RdmaConfig);
         UNIT_ASSERT_VALUES_EQUAL(
             staticText,
             ci.GetCurrentBlockstoreConfig().SerializeAsString());
@@ -520,6 +519,114 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             23456,
             ci.GetCurrentBlockstoreConfig().GetDiagnostics().GetNbsMonPort());
         UNIT_ASSERT_VALUES_EQUAL(staticText, staticConfig.SerializeAsString());
+    }
+
+    // Verify that local legacy RDMA settings or the explicit RDMA file survive
+    // unrelated dynamic updates and are restored after removing overrides.
+    Y_UNIT_TEST(ShouldPreserveStaticRdmaConfigAcrossUnrelatedDynamicUpdates)
+    {
+        for (const bool useRdmaFile: {false, true}) {
+            // Give legacy fields and the optional RDMA file different values
+            // to check both sources and the file's precedence.
+            TTempDir dir;
+            const auto serverPath = dir.Path() / "server.txt";
+            TOFStream(serverPath.GetPath()).Write(R"(ServerConfig {
+                DynamicYamlConfigurationEnabled: true
+                RdmaClientEnabled: true
+                RdmaClientConfig { QueueSize: 128 }
+            })");
+            const auto diskAgentPath = dir.Path() / "disk-agent.txt";
+            TOFStream(diskAgentPath.GetPath()).Write(
+                "RdmaTarget { Server { QueueSize: 64 } }");
+            auto options = CreateOptions();
+            options->ServerConfig = serverPath.GetPath();
+            options->DiskAgentConfig = diskAgentPath.GetPath();
+            if (useRdmaFile) {
+                const auto rdmaPath = dir.Path() / "rdma.txt";
+                TOFStream(rdmaPath.GetPath()).Write(R"(
+                    ClientEnabled: false
+                    Client { QueueSize: 256 }
+                    ServerEnabled: false
+                    Server { QueueSize: 192 }
+                )");
+                options->RdmaConfig = rdmaPath.GetPath();
+            }
+            auto ci = TConfigInitializerYdb(std::move(options));
+            InitStaticConfigs(ci);
+            const auto staticConfig = ci.GetCurrentBlockstoreConfig();
+
+            // Complete startup initialization independently of the saved base.
+            // Runtime rebuilds must retain these local settings as well.
+            if (!useRdmaFile) {
+                ci.InitRdmaConfig();
+            }
+            const auto localRdma = ci.RdmaConfig->GetConfigProto();
+            UNIT_ASSERT_VALUES_EQUAL(
+                !useRdmaFile,
+                localRdma.GetClientEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(
+                !useRdmaFile,
+                localRdma.GetServerEnabled());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useRdmaFile ? 256 : 128,
+                localRdma.GetClient().GetQueueSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                useRdmaFile ? 192 : 64,
+                localRdma.GetServer().GetQueueSize());
+
+            NProto::TBlockstoreConfig dynamicConfig;
+
+            // Preserve local RDMA settings when only StorageService changes.
+            {
+                dynamicConfig.MutableStorageService()->SetWriteBlobThreshold(
+                    300);
+                const auto config = MakeBlockstoreConfig(
+                    staticConfig,
+                    dynamicConfig,
+                    ci.StorageConfigControls);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    localRdma.DebugString(),
+                    config->GetRdmaConfig()->GetConfigProto().DebugString());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    300,
+                    config->GetStorageConfig()->GetWriteBlobThreshold());
+            }
+
+            // Apply explicit RDMA overrides over the same local base.
+            {
+                auto* rdma = dynamicConfig.MutableRdma();
+                rdma->CopyFrom(localRdma);
+                rdma->SetClientEnabled(useRdmaFile);
+                rdma->SetServerEnabled(useRdmaFile);
+                rdma->MutableClient()->SetQueueSize(512);
+                rdma->MutableServer()->SetQueueSize(384);
+                const auto config = MakeBlockstoreConfig(
+                    staticConfig,
+                    dynamicConfig,
+                    ci.StorageConfigControls);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    dynamicConfig.GetRdma().DebugString(),
+                    config->GetRdmaConfig()->GetConfigProto().DebugString());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    300,
+                    config->GetStorageConfig()->GetWriteBlobThreshold());
+            }
+
+            // Restore local settings after removing the entire dynamic source.
+            {
+                dynamicConfig.Clear();
+                const auto config = MakeBlockstoreConfig(
+                    staticConfig,
+                    dynamicConfig,
+                    ci.StorageConfigControls);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    localRdma.DebugString(),
+                    config->GetRdmaConfig()->GetConfigProto().DebugString());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    ci.StorageConfig->GetWriteBlobThreshold(),
+                    config->GetStorageConfig()->GetWriteBlobThreshold());
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldLoadStorageConfigFromCms)

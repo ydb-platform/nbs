@@ -464,16 +464,23 @@ def test_invalid_config_is_skipped_at_startup():
         ydb.stop()
 
 
-# Verify that CMS cannot enable ConfigsManager when the static flag is false.
-def test_disabled_feature_does_not_start_configs_manager():
+# Verify the static mode and RDMA rebuild when CMS preserves or removes legacy fields.
+@pytest.mark.parametrize("remove_rdma_config", [False, True], ids=["rdma_unchanged", "rdma_removed"])
+def test_disabled_feature_does_not_start_configs_manager(remove_rdma_config):
     ydb = start_dynamic_config_ydb()
     nbs = None
     try:
         # Supply the opposite flag through the PROTO ServerAppConfig in CMS.
         config = make_nbs_config(ydb, False)
         config.files["storage"].ConfigsDispatcherServiceEnabled = True
+        config.files["server"].ServerConfig.RdmaClientEnabled = True
+        config.files["server"].ServerConfig.RdmaClientConfig.QueueSize = 128
+        config.files["server"].ServerConfig.UseFakeRdmaClient = True
         cms_server = copy.deepcopy(config.files["server"])
         cms_server.ServerConfig.DynamicYamlConfigurationEnabled = True
+        if remove_rdma_config:
+            cms_server.ServerConfig.ClearField("RdmaClientEnabled")
+            cms_server.ServerConfig.ClearField("RdmaClientConfig")
         cms_config = TAppConfig()
         named_config = cms_config.NamedConfigs.add()
         named_config.Name = "Cloud.NBS.ServerAppConfig"
@@ -483,6 +490,13 @@ def test_disabled_feature_does_not_start_configs_manager():
         # Start with the static mode even after ServerConfig is replaced by CMS.
         nbs = start_nbs(config)
         assert get_config_subscription(nbs) is None
+
+        # Build the static RDMA source before CMS and report only an actual change.
+        log = Path(nbs.stderr_file_name).read_text()
+        assert log.index("Static RDMA config initialized from legacy fields") < log.index("CMS configs initialized")
+        updated = "RDMA config updated from legacy fields after applying CMS configs"
+        assert log.count(updated) == int(remove_rdma_config)
+        assert ("Fake RDMA client initialized" in log) == (not remove_rdma_config)
     finally:
         if nbs:
             nbs.kill()
