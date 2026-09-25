@@ -138,14 +138,10 @@ class TPeriodicCertificateProvider final
     TVector<NMonitoring::TDynamicCountersPtr> CertificateMetrics;
     NMonitoring::TDynamicCountersPtr RootCaMetrics;
 
-    // Serializes updates: tasks may run concurrently.
     TMutex RefreshMutex;
 
     mutable TMutex UpdateMutex;
     std::atomic<bool> Started = false;
-    // On-demand requests that no on-demand update has picked up yet. Only an
-    // on-demand update completes them: a periodic one may just start the
-    // stable read without applying anything.
     NThreading::TPromise<void> PendingUpdate;
 
     TLog Log;
@@ -186,6 +182,9 @@ public:
         bool scheduleUpdate = false;
         {
             TGuard<TMutex> lock(UpdateMutex);
+            if (!Started) {
+                return NThreading::MakeFuture();
+            }
             if (!PendingUpdate.Initialized()) {
                 PendingUpdate = NThreading::NewPromise<void>();
                 scheduleUpdate = true;
@@ -229,6 +228,8 @@ public:
 
     void Start() override
     {
+        // Updates requested once Started is set wait for the initialization.
+        TGuard<TMutex> refreshGuard(RefreshMutex);
         {
             TGuard<TMutex> lock(UpdateMutex);
             if (Started.load()) {
@@ -282,7 +283,6 @@ public:
             promise.SetValue();
         }
 
-        // Wait for the update in progress, if any.
         TGuard<TMutex> refreshGuard(RefreshMutex);
     }
 
@@ -299,30 +299,33 @@ private:
                 if (!self) {
                     return;
                 }
-                self->RunPeriodicUpdate(periodic);
+                self->RunUpdate(periodic);
             });
         });
     }
 
-    void RunPeriodicUpdate(bool periodic)
+    void RunUpdate(bool periodic)
     {
-        TGuard<TMutex> refreshGuard(RefreshMutex);
-
         // On-demand requests served by this update.
         NThreading::TPromise<void> served;
         {
-            TGuard<TMutex> lock(UpdateMutex);
-            if (!Started) {
-                return;
+            TGuard<TMutex> refreshGuard(RefreshMutex);
+            {
+                TGuard<TMutex> lock(UpdateMutex);
+                if (!Started) {
+                    return;
+                }
+                if (!periodic) {
+                    // Requests made from now on get a new update.
+                    served = std::exchange(PendingUpdate, {});
+                }
             }
-            if (!periodic) {
-                // Requests made from now on get a new update.
-                served = std::exchange(PendingUpdate, {});
-            }
+
+            RefreshCertificates(periodic);
         }
 
-        RefreshCertificates(periodic);
-
+        // Completed without holding locks: continuations run synchronously
+        // and may request and wait for another update.
         if (served.Initialized()) {
             served.SetValue();
         }

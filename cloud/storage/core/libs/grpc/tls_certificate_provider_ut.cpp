@@ -725,6 +725,9 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             TVector<TCertificateFiles>{pair},
             TDuration::MilliSeconds(1));
         provider->Start();
+        Y_DEFER {
+            provider->Stop();
+        };
 
         const ui64 initial = expireTs();
         WriteTextFile(pair.PrivateKeyPath, ReadCertResource("server3.key"));
@@ -742,6 +745,52 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         auto pending = provider->UpdateCertificates();
         provider->Stop();
         UNIT_ASSERT(pending.HasValue());
+    }
+
+    Y_UNIT_TEST(ShouldAllowRequestingUpdateFromCompletionCallback)
+    {
+        TTempDir tempDir;
+        const TString rootPath = TStringBuilder()
+            << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+        const auto pair = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server1.key"),
+            ReadCertResource("server1.crt"));
+
+        auto scheduler = CreateScheduler();
+        scheduler->Start();
+        Y_DEFER {
+            scheduler->Stop();
+        };
+
+        auto provider = CreatePeriodicCertificateProvider(
+            CreateLoggingService("console"),
+            "TLS_CERTIFICATE_PROVIDER",
+            scheduler,
+            CreateLongRunningTaskExecutor("TLS_UT"),
+            MakeIntrusive<NMonitoring::TDynamicCounters>(),
+            rootPath,
+            TVector<TCertificateFiles>{pair},
+            TDuration::Hours(1));
+        provider->Start();
+        Y_DEFER {
+            provider->Stop();
+        };
+
+        // The completion callback runs synchronously in the updating thread
+        // and waits for another update.
+        auto nested = NThreading::NewPromise<bool>();
+        provider->UpdateCertificates().Subscribe(
+            [provider, nested](const auto&) mutable
+            {
+                nested.SetValue(provider->UpdateCertificates().Wait(
+                    TDuration::Seconds(10)));
+            });
+
+        UNIT_ASSERT(nested.GetFuture().Wait(TDuration::Seconds(30)));
+        UNIT_ASSERT(nested.GetFuture().GetValue());
     }
 
     Y_UNIT_TEST(ShouldKeepCertificateWhenRefreshedFilesAreInvalid)
