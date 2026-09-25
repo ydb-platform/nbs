@@ -52,9 +52,9 @@ public:
         , Certificates(NTlsUtils::LoadCertificatePairs(std::move(certificates)))
     {}
 
-    NThreading::TFuture<void> UpdateCertificates() override
+    NThreading::TFuture<NProto::TError> UpdateCertificates() override
     {
-        return NThreading::MakeFuture();
+        return NThreading::MakeFuture(NProto::TError());
     }
 
     std::shared_ptr<grpc::ChannelCredentials>

@@ -43,6 +43,19 @@ ui64 RootCaFingerprint(TStringBuf rootCa)
     return CityHash64(rootCa) & ((1ULL << 53) - 1);
 }
 
+// Retries while the provider is busy with another update, e.g. a periodic one
+// run by a real scheduler.
+NProto::TError UpdateCertificatesSync(const ICertificateProviderPtr& provider)
+{
+    while (true) {
+        auto error = provider->UpdateCertificates().GetValueSync();
+        if (error.GetCode() != E_TRY_AGAIN) {
+            return error;
+        }
+        Sleep(TDuration::MilliSeconds(1));
+    }
+}
+
 void WriteTextFile(const TString& path, const TString& content)
 {
     TFileOutput out(path);
@@ -340,7 +353,8 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         WriteTextFile(
             context.ServerPair.CertChainPath,
             ReadCertResource("server3.crt"));
-        context.Provider->UpdateCertificates().GetValueSync();
+        const auto error = UpdateCertificatesSync(context.Provider);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
 
         UNIT_ASSERT_VALUES_UNEQUAL(
             initial,
@@ -581,6 +595,9 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         context.Scheduler->RunPendingWithin(TDuration::Zero());
 
         UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_C(
+            !HasError(future.GetValue()),
+            FormatError(future.GetValue()));
         UNIT_ASSERT_VALUES_UNEQUAL(
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
@@ -607,6 +624,12 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         context.Scheduler->RunPendingWithin(TDuration::Zero());
 
         UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_STRING_CONTAINS(
+            future.GetValue().GetMessage(),
+            "chain cannot be built");
+        UNIT_ASSERT_STRING_CONTAINS(
+            future.GetValue().GetMessage(),
+            context.ServerPair.CertChainPath);
         UNIT_ASSERT_VALUES_EQUAL(
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
@@ -668,6 +691,9 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
         context.Scheduler->RunNext();
         UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_C(
+            !HasError(future.GetValue()),
+            FormatError(future.GetValue()));
         UNIT_ASSERT_VALUES_UNEQUAL(
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
@@ -683,9 +709,46 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
 
         context.Provider->Stop();
         UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, future.GetValue().GetCode());
     }
 
-    Y_UNIT_TEST(ShouldServeConcurrentOnDemandUpdates)
+    Y_UNIT_TEST(ShouldRejectOnDemandUpdateWhileAnotherIsPending)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        auto first = context.Provider->UpdateCertificates();
+        auto second = context.Provider->UpdateCertificates();
+        UNIT_ASSERT(second.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, second.GetValue().GetCode());
+
+        context.Scheduler->RunPendingWithin(TDuration::Zero());
+        UNIT_ASSERT(first.HasValue());
+        UNIT_ASSERT_C(
+            !HasError(first.GetValue()),
+            FormatError(first.GetValue()));
+    }
+
+    Y_UNIT_TEST(ShouldRejectOnDemandUpdateWhenNotStarted)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+
+        auto future = context.Provider->UpdateCertificates();
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, future.GetValue().GetCode());
+
+        context.Provider->Start();
+        context.Provider->Stop();
+
+        future = context.Provider->UpdateCertificates();
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, future.GetValue().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldRunOnDemandUpdatesConcurrentlyWithPeriodicOnes)
     {
         TTempDir tempDir;
         const TString rootPath = TStringBuilder()
@@ -703,68 +766,8 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             scheduler->Stop();
         };
 
-        auto rootCounters = MakeIntrusive<NMonitoring::TDynamicCounters>();
-        auto serverGroup = rootCounters->GetSubgroup("component", "server");
-        auto expireTs = [&]
-        {
-            return serverGroup->GetSubgroup("subsystem", "certificates")
-                ->GetSubgroup("cert", GetBaseName(pair.CertChainPath))
-                ->GetCounter("ExpireTs", false)
-                ->Val();
-        };
-
-        // Every task runs in its own thread, so updates run concurrently
-        // with each other and with the periodic checks.
-        auto provider = CreatePeriodicCertificateProvider(
-            CreateLoggingService("console"),
-            "TLS_CERTIFICATE_PROVIDER",
-            scheduler,
-            CreateLongRunningTaskExecutor("TLS_UT"),
-            serverGroup,
-            rootPath,
-            TVector<TCertificateFiles>{pair},
-            TDuration::MilliSeconds(1));
-        provider->Start();
-        Y_DEFER {
-            provider->Stop();
-        };
-
-        const ui64 initial = expireTs();
-        WriteTextFile(pair.PrivateKeyPath, ReadCertResource("server3.key"));
-        WriteTextFile(pair.CertChainPath, ReadCertResource("server3.crt"));
-
-        TVector<NThreading::TFuture<void>> futures;
-        for (int i = 0; i < 100; ++i) {
-            futures.push_back(provider->UpdateCertificates());
-        }
-        for (auto& future: futures) {
-            UNIT_ASSERT(future.Wait(TDuration::Seconds(30)));
-        }
-        UNIT_ASSERT_VALUES_UNEQUAL(initial, expireTs());
-
-        auto pending = provider->UpdateCertificates();
-        provider->Stop();
-        UNIT_ASSERT(pending.HasValue());
-    }
-
-    Y_UNIT_TEST(ShouldAllowRequestingUpdateFromCompletionCallback)
-    {
-        TTempDir tempDir;
-        const TString rootPath = TStringBuilder()
-            << tempDir.Name() << "/ca.crt";
-        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
-        const auto pair = CreateCertificatePair(
-            tempDir.Name(),
-            "server",
-            ReadCertResource("server1.key"),
-            ReadCertResource("server1.crt"));
-
-        auto scheduler = CreateScheduler();
-        scheduler->Start();
-        Y_DEFER {
-            scheduler->Stop();
-        };
-
+        // Every task runs in its own thread, so on-demand updates race with
+        // the periodic ones.
         auto provider = CreatePeriodicCertificateProvider(
             CreateLoggingService("console"),
             "TLS_CERTIFICATE_PROVIDER",
@@ -773,24 +776,20 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             MakeIntrusive<NMonitoring::TDynamicCounters>(),
             rootPath,
             TVector<TCertificateFiles>{pair},
-            TDuration::Hours(1));
+            TDuration::MilliSeconds(1));
         provider->Start();
         Y_DEFER {
             provider->Stop();
         };
 
-        // The completion callback runs synchronously in the updating thread
-        // and waits for another update.
-        auto nested = NThreading::NewPromise<bool>();
-        provider->UpdateCertificates().Subscribe(
-            [provider, nested](const auto&) mutable
-            {
-                nested.SetValue(provider->UpdateCertificates().Wait(
-                    TDuration::Seconds(10)));
-            });
+        WriteTextFile(pair.PrivateKeyPath, ReadCertResource("server3.key"));
+        WriteTextFile(pair.CertChainPath, ReadCertResource("server3.crt"));
+        const auto error = UpdateCertificatesSync(provider);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
 
-        UNIT_ASSERT(nested.GetFuture().Wait(TDuration::Seconds(30)));
-        UNIT_ASSERT(nested.GetFuture().GetValue());
+        auto pending = provider->UpdateCertificates();
+        provider->Stop();
+        UNIT_ASSERT(pending.HasValue());
     }
 
     Y_UNIT_TEST(ShouldKeepCertificateWhenRefreshedFilesAreInvalid)

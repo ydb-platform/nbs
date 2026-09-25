@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/libs/common/startable.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -33,10 +34,11 @@ struct ICertificateProvider
 {
     // Re-reads the certificate files right away and applies new content that
     // passes validation, bypassing the stable read done by periodic checks:
-    // call it once the files have been written completely. The future
-    // completes when the files have been processed. Providers that do not
-    // refresh certificates complete it right away.
-    virtual NThreading::TFuture<void> UpdateCertificates() = 0;
+    // call it once the files have been written completely. Returns the first
+    // read or validation error, E_TRY_AGAIN if another update is pending or
+    // in progress and E_INVALID_STATE if the provider is not started.
+    // Providers that do not refresh certificates return S_OK right away.
+    virtual NThreading::TFuture<NProto::TError> UpdateCertificates() = 0;
     virtual std::shared_ptr<grpc::ChannelCredentials>
         CreateSecureClientCredentials() = 0;
     virtual std::shared_ptr<grpc::ServerCredentials>

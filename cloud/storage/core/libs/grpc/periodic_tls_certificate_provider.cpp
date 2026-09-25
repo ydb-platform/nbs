@@ -142,7 +142,8 @@ class TPeriodicCertificateProvider final
 
     mutable TMutex UpdateMutex;
     std::atomic<bool> Started = false;
-    NThreading::TPromise<void> PendingUpdate;
+    // The on-demand update requested and not finished yet.
+    NThreading::TPromise<NProto::TError> OnDemandUpdate;
 
     TLog Log;
 
@@ -176,24 +177,26 @@ public:
         Y_ABORT_UNLESS(Started.load() == false);
     }
 
-    NThreading::TFuture<void> UpdateCertificates() override
+    NThreading::TFuture<NProto::TError> UpdateCertificates() override
     {
-        NThreading::TFuture<void> future;
-        bool scheduleUpdate = false;
+        NThreading::TFuture<NProto::TError> future;
         {
             TGuard<TMutex> lock(UpdateMutex);
             if (!Started) {
-                return NThreading::MakeFuture();
+                return NThreading::MakeFuture(MakeError(
+                    E_INVALID_STATE,
+                    "Certificate provider is not started"));
             }
-            if (!PendingUpdate.Initialized()) {
-                PendingUpdate = NThreading::NewPromise<void>();
-                scheduleUpdate = true;
+            if (OnDemandUpdate.Initialized()) {
+                return NThreading::MakeFuture(MakeError(
+                    E_TRY_AGAIN,
+                    "Another certificate update is pending"));
             }
-            future = PendingUpdate.GetFuture();
+            OnDemandUpdate = NThreading::NewPromise<NProto::TError>();
+            future = OnDemandUpdate.GetFuture();
         }
-        if (scheduleUpdate) {
-            ScheduleUpdateAt(TInstant::Now(), /*periodic=*/false);
-        }
+
+        ScheduleUpdateAt(TInstant::Now(), /*periodic=*/false);
         return future;
     }
 
@@ -269,21 +272,23 @@ public:
 
     void Stop() override
     {
-        NThreading::TPromise<void> promise;
         {
             TGuard<TMutex> lock(UpdateMutex);
             if (!Started.load()) {
                 return;
             }
             Started.store(false);
-            promise = std::exchange(PendingUpdate, {});
         }
 
-        if (promise.Initialized()) {
-            promise.SetValue();
+        // Wait for the update in progress, if any: it completes its request
+        // itself.
+        {
+            TGuard<TMutex> refreshGuard(RefreshMutex);
         }
 
-        TGuard<TMutex> refreshGuard(RefreshMutex);
+        CompleteOnDemandUpdate(MakeError(
+            E_INVALID_STATE,
+            "Certificate provider is stopped"));
     }
 
 private:
@@ -306,32 +311,42 @@ private:
 
     void RunUpdate(bool periodic)
     {
-        // On-demand requests served by this update.
-        NThreading::TPromise<void> served;
         {
-            TGuard<TMutex> refreshGuard(RefreshMutex);
-            {
-                TGuard<TMutex> lock(UpdateMutex);
-                if (!Started) {
-                    return;
-                }
+            // Updates do not wait for each other: a periodic one is skipped
+            // until the next interval and an on-demand one is rejected.
+            TTryGuard<TMutex> refreshGuard(RefreshMutex);
+            if (!refreshGuard.WasAcquired()) {
                 if (!periodic) {
-                    // Requests made from now on get a new update.
-                    served = std::exchange(PendingUpdate, {});
+                    CompleteOnDemandUpdate(MakeError(
+                        E_TRY_AGAIN,
+                        "Another certificate update is in progress"));
+                }
+            } else if (Started) {
+                auto error = RefreshCertificates(periodic);
+                // Completed while RefreshMutex is held, so that Stop() does
+                // not return before that. The callbacks may request another
+                // update: it is rejected instead of waiting for this one.
+                if (!periodic) {
+                    CompleteOnDemandUpdate(std::move(error));
                 }
             }
-
-            RefreshCertificates(periodic);
-        }
-
-        // Completed without holding locks: continuations run synchronously
-        // and may request and wait for another update.
-        if (served.Initialized()) {
-            served.SetValue();
         }
 
         if (periodic && Started) {
             ScheduleUpdateAt(TInstant::Now() + RefreshInterval, true);
+        }
+    }
+
+    void CompleteOnDemandUpdate(NProto::TError error)
+    {
+        NThreading::TPromise<NProto::TError> promise;
+        {
+            TGuard<TMutex> lock(UpdateMutex);
+            promise = std::exchange(OnDemandUpdate, {});
+        }
+
+        if (promise.Initialized()) {
+            promise.SetValue(std::move(error));
         }
     }
 
@@ -377,7 +392,15 @@ private:
     {
         PublishRootCaFingerprint();
         for (size_t i = 0; i < Certificates.size(); ++i) {
-            ApplyIdentity(i, Certificates[i].Content, /*acceptInvalid=*/true);
+            const auto& cert = Certificates[i];
+            auto validity = NTlsUtils::ValidateIdentity(cert.Content);
+            if (HasError(validity.GetError())) {
+                STORAGE_WARN(
+                    "Identity certificate " << cert.Files.CertChainPath.Quote()
+                    << " is loaded but not valid: "
+                    << FormatError(validity.GetError()));
+            }
+            ApplyIdentity(i, cert.Content);
         }
         PublishCerts();
     }
@@ -386,17 +409,18 @@ private:
     // (see TStableRead), i.e. within two refresh intervals. On-demand updates
     // apply it right away. Content that fails to load or validate is logged
     // and the previous one is kept.
-    void RefreshCertificates(bool periodic)
+    NProto::TError RefreshCertificates(bool periodic)
     {
+        NProto::TError error;
         bool changed = false;
 
-        if (RefreshRootCa(periodic)) {
+        if (RefreshRootCa(periodic, error)) {
             PublishRootCaFingerprint();
             changed = true;
         }
 
         for (size_t i = 0; i < Certificates.size(); ++i) {
-            if (RefreshIdentity(i, periodic)) {
+            if (RefreshIdentity(i, periodic, error)) {
                 changed = true;
             }
         }
@@ -405,6 +429,21 @@ private:
         // SSL context, so publish only when something has changed.
         if (changed) {
             PublishCerts();
+        }
+
+        return error;
+    }
+
+    static void KeepFirstError(
+        NProto::TError& error,
+        const TString& path,
+        const NProto::TError& e)
+    {
+        if (!HasError(error)) {
+            error = MakeError(
+                e.GetCode(),
+                TStringBuilder() << "Failed to update " << path.Quote()
+                                 << ": " << e.GetMessage());
         }
     }
 
@@ -428,7 +467,7 @@ private:
     }
 
     // Returns true if the root certificate has been replaced.
-    bool RefreshRootCa(bool periodic)
+    bool RefreshRootCa(bool periodic, NProto::TError& error)
     {
         const auto& path = RootCaPair.RootCaPath;
         if (path.empty()) {
@@ -441,6 +480,7 @@ private:
             STORAGE_WARN(
                 "Root certificate update is skipped: "
                 << FormatError(content.GetError()));
+            KeepFirstError(error, path, content.GetError());
             return false;
         }
 
@@ -466,6 +506,7 @@ private:
             STORAGE_WARN(
                 "Root certificate update is skipped: "
                 << FormatError(validity.GetError()));
+            KeepFirstError(error, path, validity.GetError());
             return false;
         }
 
@@ -476,7 +517,7 @@ private:
     }
 
     // Returns true if the certificate has been replaced.
-    bool RefreshIdentity(size_t index, bool periodic)
+    bool RefreshIdentity(size_t index, bool periodic, NProto::TError& error)
     {
         auto& cert = Certificates[index];
         auto& stableRead = IdentityStableReads[index];
@@ -488,6 +529,7 @@ private:
             STORAGE_WARN(
                 "Identity certificate update is skipped for " << path.Quote()
                 << ": " << FormatError(content.GetError()));
+            KeepFirstError(error, path, content.GetError());
             return false;
         }
 
@@ -504,37 +546,23 @@ private:
                 break;
         }
 
-        return ApplyIdentity(
-            index,
-            content.ExtractResult(),
-            /*acceptInvalid=*/false);
+        auto validity = NTlsUtils::ValidateIdentity(content.GetResult());
+        if (HasError(validity.GetError())) {
+            STORAGE_WARN(
+                "Identity certificate update is skipped for " << path.Quote()
+                << ": " << FormatError(validity.GetError()));
+            KeepFirstError(error, path, validity.GetError());
+            return false;
+        }
+
+        ApplyIdentity(index, content.ExtractResult());
+        return true;
     }
 
-    // Validates the content, and unless acceptInvalid is set, rejects it on
-    // failure. Returns true if the content has been applied.
-    bool ApplyIdentity(
-        size_t index,
-        NTlsUtils::TIdentityContent content,
-        bool acceptInvalid)
+    void ApplyIdentity(size_t index, NTlsUtils::TIdentityContent content)
     {
         auto& cert = Certificates[index];
         const auto& path = cert.Files.CertChainPath;
-
-        auto validity = NTlsUtils::ValidateIdentity(content);
-        if (HasError(validity.GetError())) {
-            if (!acceptInvalid) {
-                STORAGE_WARN(
-                    "Identity certificate update is skipped for "
-                    << path.Quote() << ": "
-                    << FormatError(validity.GetError()));
-                return false;
-            }
-
-            STORAGE_WARN(
-                "Identity certificate " << path.Quote()
-                << " is loaded but not valid: "
-                << FormatError(validity.GetError()));
-        }
 
         TInstant notValidAfter;
         auto notAfterTs =
@@ -552,7 +580,6 @@ private:
         STORAGE_INFO(
             "Identity certificate " << path.Quote() << " is loaded"
             << ", expires at " << notValidAfter);
-        return true;
     }
 };
 
