@@ -1,4 +1,4 @@
-# The shared BlockStore configuration, holder, and process provider library.
+# The shared Blockstore configuration, holder, and process provider library.
 # Runtime consumers link this module to read one consistent snapshot.
 
 LIBRARY()
@@ -7,6 +7,8 @@ SRCS(
     blockstore_config.cpp
     blockstore_config_holder.cpp
     blockstore_config_provider.cpp
+    helpers.cpp
+    opaque_config_parser.cpp
 )
 
 PEERDIR(
@@ -25,8 +27,12 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_agent/model
     cloud/blockstore/libs/storage/disk_registry_proxy/model
     cloud/blockstore/libs/ydbstats
+    cloud/storage/core/libs/common
     cloud/storage/core/libs/features
     cloud/storage/core/libs/iam/iface
+
+    contrib/ydb/core/config/init
+    contrib/ydb/library/yaml_config
 
     library/cpp/threading/hot_swap
 )

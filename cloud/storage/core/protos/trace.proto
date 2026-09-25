@@ -35,7 +35,7 @@ message TLWTraceThreshold
     map<string, uint32> ByRequestType = 2;
 
     // Storage media kind.
-    NCloud.NProto.EStorageMediaKind MediaKind = 3;
+    optional NCloud.NProto.EStorageMediaKind MediaKind = 3;
 
     // Default threshold increment per 1KiB of the request size.
     optional uint32 PerSizeUnit = 4;

@@ -487,7 +487,7 @@ bool TBootstrap::InitKikimrService()
         Log);
 
     if (cmsConfig) {
-        Configs->ApplyCMSConfigs(std::move(*cmsConfig));
+        Configs->ApplyCMSConfigs(std::move(cmsConfig->AppConfig));
     }
 
     STORAGE_INFO("CMS configs initialized");
