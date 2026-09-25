@@ -83,8 +83,12 @@ diagnostics:
         NCloud::NProto::TError error;
         error.CopyFrom(*message);
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
-        UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "Start");
-        UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "End");
+        UNIT_ASSERT_STRING_CONTAINS(
+            error.GetMessage(),
+            "Diagnostics.ExecutionTimeSizeClasses[0].Start");
+        UNIT_ASSERT_STRING_CONTAINS(
+            error.GetMessage(),
+            "Diagnostics.ExecutionTimeSizeClasses[0].End");
     }
 
     // Check that optional fields may be omitted while present intervals are valid.

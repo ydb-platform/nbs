@@ -683,8 +683,6 @@ void TBootstrapYdb::InitKikimrService()
     }
 
     // Bind common consumers to the same snapshot as YDB services and actors.
-    // Read Storage values at their original call sites to preserve live ICB.
-    const auto storageConfig = StartupBlockstoreConfig->GetStorageConfig();
     SetBootstrapConfig({
         .ServerConfig = StartupBlockstoreConfig->GetServerConfig(),
         .EndpointConfig = StartupBlockstoreConfig->GetEndpointConfig(),
@@ -694,12 +692,12 @@ void TBootstrapYdb::InitKikimrService()
         .CellsConfig = StartupBlockstoreConfig->GetCellsConfig(),
         .SpdkEnvConfig = StartupBlockstoreConfig->GetSpdkEnvConfig(),
         .DiscoveryConfig = StartupBlockstoreConfig->GetDiscoveryServiceConfig(),
-        .GetUseNonreplicatedRdmaActor =
-            [storageConfig]
-            { return storageConfig->GetUseNonreplicatedRdmaActor(); },
-        .GetInactiveClientsTimeout =
-            [storageConfig]
-            { return storageConfig->GetInactiveClientsTimeout(); },
+        .UseNonreplicatedRdmaActor =
+            StartupBlockstoreConfig->GetStorageConfig()
+                ->GetUseNonreplicatedRdmaActor(),
+        .InactiveClientsTimeout =
+            StartupBlockstoreConfig->GetStorageConfig()
+                ->GetInactiveClientsTimeout(),
     });
 
     if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
