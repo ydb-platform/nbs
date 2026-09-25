@@ -118,7 +118,9 @@ def wait_config_delivery(nbs, previous_updates=0, acknowledged=True, timeout=120
     while time.monotonic() < deadline:
         subscription = get_config_subscription(nbs)
         if subscription:
-            updates = int(re.search(r"UpdatesSent: (\d+)", subscription).group(1))
+            match = re.search(r"UpdatesSent: (\d+)", subscription)
+            assert match is not None, f"Missing UpdatesSent in subscription: {subscription}"
+            updates = int(match.group(1))
             pending = "UpdateInProcess:" in subscription
             if updates > previous_updates and pending != acknowledged:
                 return updates

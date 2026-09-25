@@ -31,7 +31,8 @@
 
 #include <library/cpp/logger/log.h>
 
-#include <functional>
+#include <util/datetime/base.h>
+
 #include <memory>
 
 namespace NCloud::NBlockStore::NServer {
@@ -39,8 +40,8 @@ namespace NCloud::NBlockStore::NServer {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Configuration inputs selected once before service initialization. Section
-// pointers must own non-null wrappers. StorageConfig not included - Storage
-// readers retain their source and preserve live ICB values.
+// pointers must own non-null wrappers. Storage values are captured during
+// preparation of the bundle.
 // Prepare all inputs before installing the bundle.
 struct TBootstrapConfig
 {
@@ -53,10 +54,10 @@ struct TBootstrapConfig
     NSpdk::TSpdkEnvConfigConstPtr SpdkEnvConfig;
     NDiscovery::TDiscoveryConfigConstPtr DiscoveryConfig;
 
-    // RDMA actor selection; a non-empty reader of the selected Storage source.
-    std::function<bool()> GetUseNonreplicatedRdmaActor;
-    // Client expiration timeout; non-empty reader, returning Max in Local/Null.
-    std::function<TDuration()> GetInactiveClientsTimeout;
+    // RDMA actor selection for service initialization.
+    bool UseNonreplicatedRdmaActor = false;
+    // Client expiration timeout selected at startup; Max in Local/Null.
+    TDuration InactiveClientsTimeout = TDuration::Max();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

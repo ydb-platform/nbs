@@ -745,8 +745,12 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         UNIT_ASSERT_STRING_CONTAINS(
             CriticalEventsLog.Str(),
             "CRITICAL_EVENT:AppCriticalEvents/GetConfigsFromCmsYamlParseError");
-        UNIT_ASSERT_STRING_CONTAINS(CriticalEventsLog.Str(), "Start");
-        UNIT_ASSERT_STRING_CONTAINS(CriticalEventsLog.Str(), "End");
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(),
+            "Diagnostics.ExecutionTimeSizeClasses[0].Start");
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(),
+            "Diagnostics.ExecutionTimeSizeClasses[0].End");
 
         // Accept and publish a valid configuration after the rejected update.
         SendNotification(

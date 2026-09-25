@@ -234,11 +234,10 @@ void TBootstrapBase::SetBootstrapConfig(TBootstrapConfig config)
         config.ServerConfig && config.EndpointConfig &&
         config.DiagnosticsConfig && config.DiskAgentConfig &&
         config.RdmaConfig && config.CellsConfig && config.SpdkEnvConfig &&
-        config.DiscoveryConfig &&
-        config.GetUseNonreplicatedRdmaActor && config.GetInactiveClientsTimeout,
+        config.DiscoveryConfig,
         "Bootstrap configuration is incomplete");
 
-    // Retain the selected wrappers and readers for the bootstrap lifetime.
+    // Retain the selected wrappers and values for the bootstrap lifetime.
     BootstrapConfig =
         std::make_unique<const TBootstrapConfig>(std::move(config));
 }
@@ -324,8 +323,7 @@ void TBootstrapBase::Init()
         STORAGE_INFO("TraceProcessor initialized");
     }
 
-    auto inactiveClientsTimeout =
-        BootstrapConfig->GetInactiveClientsTimeout();
+    auto inactiveClientsTimeout = BootstrapConfig->InactiveClientsTimeout;
 
     auto rootGroup = Monitoring->GetCounters()
         ->GetSubgroup("counters", "blockstore");
@@ -438,7 +436,7 @@ void TBootstrapBase::Init()
             ServerStats));
     }
 
-    if (!BootstrapConfig->GetUseNonreplicatedRdmaActor() && RdmaClient) {
+    if (!BootstrapConfig->UseNonreplicatedRdmaActor && RdmaClient) {
         storageProviders.push_back(CreateRdmaStorageProvider(
             ServerStats,
             RdmaClient,
@@ -883,12 +881,8 @@ void TBootstrapBase::InitDbgConfigs()
         .CellsConfig = Configs->CellsConfig,
         .SpdkEnvConfig = Configs->SpdkEnvConfig,
         .DiscoveryConfig = Configs->DiscoveryConfig,
-        .GetUseNonreplicatedRdmaActor =
-            [enabled = Configs->GetUseNonreplicatedRdmaActor()]
-            { return enabled; },
-        .GetInactiveClientsTimeout =
-            [timeout = Configs->GetInactiveClientsTimeout()]
-            { return timeout; },
+        .UseNonreplicatedRdmaActor = Configs->GetUseNonreplicatedRdmaActor(),
+        .InactiveClientsTimeout = Configs->GetInactiveClientsTimeout(),
     });
 
     TLogSettings logSettings;
