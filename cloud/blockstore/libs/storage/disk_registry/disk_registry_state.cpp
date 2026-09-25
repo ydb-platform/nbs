@@ -6093,6 +6093,76 @@ NProto::TError TDiskRegistryState::TryToRemoveAgentDevices(
     return error;
 }
 
+void TDiskRegistryState::CleanupDeviceConfig(
+    TDiskRegistryDatabase& db,
+    const NProto::TAgentConfig& agent,
+    const TString& path)
+{
+    auto error = TryToRemoveDevice(db, agent, path);
+    if (!HasError(error) || error.GetCode() == E_NOT_FOUND) {
+        return;
+    }
+
+    SuspendLocalDevice(db, agent, path);
+}
+
+NProto::TError TDiskRegistryState::TryToRemoveDevice(
+    TDiskRegistryDatabase& db,
+    const NProto::TAgentConfig& agent,
+    const TString& path)
+{
+    THashSet<TDeviceId> toRemove;
+    for (const auto& device: agent.GetDevices()) {
+        if (device.GetDeviceName() == path) {
+            toRemove.insert(device.GetDeviceUUID());
+        }
+    }
+
+    auto newConfig = GetConfig();
+    auto* configAgents = newConfig.MutableKnownAgents();
+
+    const auto agentIt = FindIf(
+        *configAgents,
+        [&agent](const auto& x)
+        { return x.GetAgentId() == agent.GetAgentId(); });
+
+    if (agentIt == configAgents->end()) {
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder()
+                << "Couldn't find agent " << agent.GetAgentId().Quote()
+                << " in the DR config.");
+    }
+
+    EraseIf(
+        *agentIt->MutableDevices(),
+        [&toRemove](const auto& device)
+        { return toRemove.contains(device.GetDeviceUUID()); });
+
+    TVector<TString> affectedDisks;
+    auto error = UpdateConfig(db, std::move(newConfig), false, affectedDisks);
+    return error;
+}
+
+void TDiskRegistryState::SuspendLocalDevice(
+    TDiskRegistryDatabase& db,
+    const NProto::TAgentConfig& agent,
+    const TString& path)
+{
+    for (const auto& d: agent.GetDevices()) {
+        if (d.GetPoolKind() == NProto::DEVICE_POOL_KIND_LOCAL &&
+            d.GetDeviceName() == path)
+        {
+            STORAGE_INFO(
+                "Suspend the local device %s (%s)",
+                d.GetDeviceUUID().c_str(),
+                d.GetDeviceName().c_str());
+
+            SuspendDevice(db, d.GetDeviceUUID());
+        }
+    }
+}
+
 void TDiskRegistryState::DeleteDiskStateUpdate(
     TDiskRegistryDatabase& db,
     ui64 maxSeqNo)
@@ -6570,6 +6640,60 @@ auto TDiskRegistryState::UpdateCmsDeviceState(
     }
 
     SortUnique(result.AffectedDisks);
+
+    return result;
+}
+
+auto TDiskRegistryState::PurgeDevice(
+    TDiskRegistryDatabase& db,
+    const TAgentId& agentId,
+    const TString& path,
+    const TString& customMessage,
+    TInstant now,
+    bool dryRun) -> TUpdateCmsDeviceStateResult
+{
+    TUpdateCmsDeviceStateResult result;
+
+    auto* agent = AgentList.FindAgent(agentId);
+    if (!agent) {
+        result.Error = MakeError(E_NOT_FOUND, "agent not found");
+        return result;
+    }
+
+    result = UpdateCmsDeviceState(
+        db,
+        agentId,
+        path,
+        NProto::DEVICE_STATE_WARNING,
+        customMessage,
+        now,
+        /*shouldResume=*/false,
+        dryRun);
+
+    if (HasError(result.Error)) {
+        ReportDiskRegistryPurgeDeviceError(
+            FormatError(result.Error),
+            {{"AgentId", agentId}, {"DevicePath", path}});
+    }
+
+    STORAGE_LOG(
+        (HasError(result.Error) ? TLOG_ERR : TLOG_INFO),
+        "Purge device %s from agent %s requested."
+        "Remove device ended with the result: %s; "
+        "affectedDisks: [%s]; timeout: %lu",
+        path.Quote().c_str(),
+        agentId.Quote().c_str(),
+        FormatError(result.Error).c_str(),
+        JoinSeq(", ", result.AffectedDisks).c_str(),
+        result.Timeout.Seconds());
+
+    result.Error = {};
+    result.Timeout = TDuration{};
+    if (dryRun) {
+        return result;
+    }
+
+    CleanupDeviceConfig(db, *agent, path);
 
     return result;
 }

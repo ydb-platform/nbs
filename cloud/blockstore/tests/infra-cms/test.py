@@ -98,6 +98,17 @@ class CMS:
         r = self.__nbs_client.cms_action(request)
         return r
 
+    def purge_device(self, host, path):
+        logging.info('[CMS] Try to purge device "{}":"{}"'.format(host, path))
+
+        request = protos.TCmsActionRequest()
+        action = request.Actions.add()
+        action.Type = protos.TAction.PURGE_DEVICE
+        action.Host = host
+        action.Device = path
+        r = self.__nbs_client.cms_action(request)
+        return r
+
     def wait_for_no_paths_to_attach_detach(self, poll_interval=1):
         while True:
             bkp = self.__nbs_client.backup_disk_registry_state()
@@ -553,13 +564,114 @@ class _TestCmsRemoveDeviceNoUserDisks:
         return True
 
 
+class _TestCmsPurgeDevice:
+
+    def __init__(self, name):
+        self.name = name
+
+    def run(
+        self,
+        storage,
+        nbs,
+        disk_agent,
+        cms: CMS,
+        devices,
+        always_allocate_local_ssd,
+        attach_detach_paths,
+    ):
+        nbs.create_volume("vol0")
+
+        device = devices[0]
+        fds_count = FileDescriptorsCount(devices)
+
+        response = cms.purge_device("localhost", device.path)
+
+        assert response.ActionResults[0].Result.Code == 0
+        assert response.ActionResults[0].Timeout == 0
+        assert "vol0" in response.ActionResults[0].DependentDisks
+        assert nbs.get_stats("UnknownDevices") == 0
+
+        nbs.destroy_volume("vol0", sync=True)
+
+        response = cms.purge_device("localhost", device.path)
+
+        assert response.ActionResults[0].Result.Code == 0
+        assert response.ActionResults[0].Timeout == 0
+        assert len(response.ActionResults[0].DependentDisks) == 0
+
+        nbs.wait_for_stats(UnknownDevices=1)
+
+        nbs.create_volume("vol1", return_code=1)
+
+        response = cms.add_device("localhost", device.path)
+        assert response.ActionResults[0].Result.Code == 0
+        assert response.ActionResults[0].Timeout == 0
+
+        nbs.wait_for_stats(UnknownDevices=0)
+
+        wait_for_secure_erase(nbs.mon_port)
+        fds_count.assert_file_descriptors_are_opened([device.path])
+
+        nbs.create_volume("vol1")
+        nbs.read_blocks("vol1", start_index=0, block_count=32)
+
+        return True
+
+
+class _TestCmsPurgeDeviceNoUserDisks:
+
+    def __init__(self, name):
+        self.name = name
+
+    def run(
+        self,
+        storage,
+        nbs,
+        disk_agent,
+        cms: CMS,
+        devices,
+        always_allocate_local_ssd,
+        attach_detach_paths,
+    ):
+        device = devices[0]
+
+        fds_count = FileDescriptorsCount(devices)
+
+        assert nbs.get_stats("UnknownDevices") == 0
+
+        response = cms.purge_device("localhost", device.path)
+
+        assert response.ActionResults[0].Result.Code == 0
+        assert response.ActionResults[0].Timeout == 0
+        assert len(response.ActionResults[0].DependentDisks) == 0
+
+        nbs.wait_for_stats(UnknownDevices=1)
+
+        nbs.create_volume("vol1", return_code=1)
+
+        response = cms.add_device("localhost", device.path)
+        assert response.ActionResults[0].Result.Code == 0
+        assert response.ActionResults[0].Timeout == 0
+        nbs.wait_for_stats(UnknownDevices=0)
+
+        wait_for_secure_erase(nbs.mon_port)
+        fds_count.assert_file_descriptors_are_opened([device.path])
+
+        nbs.create_volume("vol2")
+        nbs.read_blocks("vol2", start_index=0, block_count=32)
+
+        return True
+
+
 TESTS = [
     _TestCmsRemoveAgentNoUserDisks("removeagentnodisks"),
     _TestCmsRemoveAgent("removeagent"),
     _TestCmsPurgeAgentNoUserDisks("purgeagentnodisks"),
     _TestCmsPurgeAgent("purgeagent"),
     _TestCmsRemoveDevice("removedevice"),
-    _TestCmsRemoveDeviceNoUserDisks("removedevicenodisks")
+    _TestCmsRemoveDeviceNoUserDisks("removedevicenodisks"),
+    _TestCmsPurgeDevice("purgedevice"),
+    _TestCmsPurgeDeviceNoUserDisks("purgedevicenodisks"),
 ]
 
 

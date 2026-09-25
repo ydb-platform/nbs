@@ -689,6 +689,14 @@ public:
         bool shouldResume,
         bool dryRun);
 
+    TUpdateCmsDeviceStateResult PurgeDevice(
+        TDiskRegistryDatabase& db,
+        const TAgentId& agentId,
+        const TString& path,
+        const TString& customMessage,
+        TInstant now,
+        bool dryRun);
+
     NProto::TError ReplaceDevice(
         TDiskRegistryDatabase& db,
         const TString& diskId,
@@ -1464,6 +1472,21 @@ private:
     void CleanupAgentConfig(
         TDiskRegistryDatabase& db,
         const NProto::TAgentConfig& agent);
+
+    void CleanupDeviceConfig(
+        TDiskRegistryDatabase& db,
+        const NProto::TAgentConfig& agent,
+        const TString& path);
+
+    NProto::TError TryToRemoveDevice(
+        TDiskRegistryDatabase& db,
+        const NProto::TAgentConfig& agent,
+        const TString& path);
+
+    void SuspendLocalDevice(
+        TDiskRegistryDatabase& db,
+        const NProto::TAgentConfig& agent,
+        const TString& path);
 
     static bool MigrationCanBeStarted(
         const TDiskState& disk,

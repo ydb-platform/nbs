@@ -48,6 +48,7 @@ using TCritEventParams =
     xxx(DiskAgentInconsistentMultiWriteResponse)                               \
     xxx(WrongCellIdInDescribeVolume)                                           \
     xxx(DiskRegistryStateIntegrityBroken)                                      \
+    xxx(DiskRegistryPurgeDeviceError)                                          \
     // BLOCKSTORE_CRITICAL_EVENTS
 
 #define BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(xxx)                             \
