@@ -12,6 +12,7 @@ SRCS(
 
 GO_TEST_SRCS(
     storage_ydb_test.go
+    delayed_queue_regression_test.go
 )
 
 END()

@@ -8,10 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/common"
+	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/storage"
@@ -42,6 +44,14 @@ type mockRunnerMetrics struct {
 
 func (m *mockRunnerMetrics) OnExecutionStarted(execCtx ExecutionContext) {
 	m.Called(execCtx)
+}
+
+func (m *mockRunnerMetrics) OnInitialRunStarted(
+	state storage.TaskState,
+	at time.Time,
+) {
+
+	m.Called(state, at)
 }
 
 func (m *mockRunnerMetrics) OnExecutionStopped() {
@@ -516,6 +526,98 @@ func TestExecutionContextIsHanging(t *testing.T) {
 			)
 
 			require.Equal(t, testCase.isHanging, execCtx.IsHanging())
+		})
+	}
+}
+
+func TestExecutionContextIsHangingWithInitialDelay(t *testing.T) {
+	now := time.Now()
+	hangingTaskTimeout := time.Hour
+	inflightHangingTaskTimeout := time.Hour
+	stallingHangingTaskTimeout := 30 * time.Minute
+
+	testCases := []struct {
+		name              string
+		availableAt       time.Time
+		firstRunStartedAt time.Time
+		inflightDuration  time.Duration
+		stallingDuration  time.Duration
+		wantHanging       bool
+	}{
+		{
+			name:        "ordinary task uses creation time",
+			wantHanging: true,
+		},
+		{
+			name:              "ordinary task ignores recent first run",
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			wantHanging:       true,
+		},
+		{
+			name:        "unstarted delayed task before available time",
+			availableAt: now.Add(time.Hour),
+			wantHanging: false,
+		},
+		{
+			name:        "unstarted delayed task recently became available",
+			availableAt: now.Add(-5 * time.Minute),
+			wantHanging: false,
+		},
+		{
+			name:        "unstarted delayed task exceeded timeout",
+			availableAt: now.Add(-2 * time.Hour),
+			wantHanging: true,
+		},
+		{
+			name:              "delayed task recently started after long wait",
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			wantHanging:       false,
+		},
+		{
+			name:              "delayed task exceeded timeout after first run",
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-2 * time.Hour),
+			wantHanging:       true,
+		},
+		{
+			name:              "delayed task still checks inflight duration",
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			inflightDuration:  inflightHangingTaskTimeout + time.Minute,
+			wantHanging:       true,
+		},
+		{
+			name:              "delayed task still checks stalling duration",
+			availableAt:       now.Add(-3 * time.Hour),
+			firstRunStartedAt: now.Add(-5 * time.Minute),
+			stallingDuration:  stallingHangingTaskTimeout + time.Minute,
+			wantHanging:       true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			state := storage.TaskState{
+				ID:                taskID,
+				CreatedAt:         now.Add(-4 * time.Hour),
+				AvailableAt:       testCase.availableAt,
+				FirstRunStartedAt: testCase.firstRunStartedAt,
+				InflightDuration:  testCase.inflightDuration,
+				StallingDuration:  testCase.stallingDuration,
+			}
+
+			execCtx := newExecutionContext(
+				NewTaskMock(),
+				mocks.NewStorageMock(),
+				state,
+				hangingTaskTimeout,
+				inflightHangingTaskTimeout,
+				stallingHangingTaskTimeout,
+				2, // missedEstimatesUntilTaskIsHanging
+			)
+
+			require.Equal(t, testCase.wantHanging, execCtx.IsHanging())
 		})
 	}
 }
@@ -1593,6 +1695,7 @@ func TestTryExecutingTask(t *testing.T) {
 		runner,
 		taskInfo,
 		24*time.Hour,   // hangingTaskTimeout
+		nil,            // hangingTaskTimeoutByType
 		time.Hour,      // inflightHangingTaskTimeout
 		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging,
@@ -1655,6 +1758,7 @@ func TestTryExecutingTaskFailToPing(t *testing.T) {
 		runner,
 		taskInfo,
 		24*time.Hour,   // hangingTaskTimeout
+		nil,            // hangingTaskTimeoutByType
 		time.Hour,      // inflightHangingTaskTimeout
 		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging
@@ -1739,6 +1843,7 @@ func testTryExecutingTaskWithEstimatedDurationOverride(
 		runner,
 		taskInfo,
 		24*time.Hour,   // hangingTaskTimeout
+		nil,            // hangingTaskTimeoutByType
 		time.Hour,      // inflightHangingTaskTimeout
 		30*time.Minute, // stallingHangingTaskTimeout
 		2,              // missedEstimatesUntilTaskIsHanging
@@ -1974,4 +2079,87 @@ func TestHeartbeats(t *testing.T) {
 	go startHeartbeats(ctx, 10*time.Millisecond, host, taskStorage, inflightTasksReporter)
 	wg.Wait()
 	mock.AssertExpectationsForObjects(t, taskStorage)
+}
+
+func TestTryExecutingTaskWithHangingTimeoutByType(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		overrides map[string]time.Duration
+		age       time.Duration
+		delayed   bool
+		want      bool
+	}{
+		{"shorter", map[string]time.Duration{"task": 15 * time.Minute}, 30 * time.Minute, false, true},
+		{"longer", map[string]time.Duration{"task": 2 * time.Hour}, 90 * time.Minute, false, false},
+		{"fallback-young", nil, 30 * time.Minute, false, false},
+		{"fallback-old", map[string]time.Duration{"other": 2 * time.Hour}, 90 * time.Minute, false, true},
+		{"zero", map[string]time.Duration{"task": 0}, time.Minute, false, true},
+		{"delayed-young", map[string]time.Duration{"task": 15 * time.Minute}, 5 * time.Minute, true, false},
+		{"delayed-old", map[string]time.Duration{"task": 15 * time.Minute}, 30 * time.Minute, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := newContext()
+			taskStorage := mocks.NewStorageMock()
+			registry := NewRegistry()
+			runner := &mockRunner{}
+			metrics := &mockRunnerMetrics{}
+			task := NewTaskMock()
+			require.NoError(t, registry.RegisterForExecution("task", func() Task { return task }))
+			// The authoritative locked state determines the override, even if
+			// the task info passed by the lister has no task type.
+			info := storage.TaskInfo{ID: taskID}
+			state := storage.TaskState{ID: taskID, TaskType: "task", CreatedAt: time.Now().Add(-tc.age)}
+			if tc.delayed {
+				state.CreatedAt = time.Now().Add(-24 * time.Hour)
+				state.AvailableAt = time.Now().Add(-12 * time.Hour)
+				state.FirstRunStartedAt = time.Now().Add(-tc.age)
+			}
+			runner.On("lockTask", ctx, info).Return(state, nil).Once()
+			task.On("Load", state.Request, state.State).Return(nil).Once()
+			taskStorage.On("UpdateTask", mock.Anything, mock.Anything).Return(state, nil).Maybe()
+			metrics.On("OnExecutionStarted", mock.Anything).Once()
+			metrics.On("OnExecutionStopped").Once()
+			runner.On("executeTask", mock.Anything, mock.Anything, task).Run(func(args mock.Arguments) {
+				require.Equal(t, tc.want, args.Get(1).(*executionContext).IsHanging())
+			}).Once()
+			require.NoError(t, lockAndExecuteTask(
+				ctx, taskStorage, registry, metrics, time.Hour, time.Hour, runner, info,
+				time.Hour, tc.overrides, time.Hour, time.Hour, 2, nil, nil, 100,
+			))
+			mock.AssertExpectationsForObjects(t, runner, metrics, task)
+		})
+	}
+}
+
+func TestStartRunnersRejectsInvalidHangingTimeoutByType(t *testing.T) {
+	err := StartRunners(newContext(), nil, nil, nil, &tasks_config.TasksConfig{
+		HangingTaskTimeout:       proto.String("1h"),
+		HangingTaskTimeoutByType: map[string]string{"task": "invalid"},
+	}, "host")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "HangingTaskTimeoutByType")
+	require.Contains(t, err.Error(), "task")
+}
+
+func TestExecutionContextEarlyCancellationHanging(t *testing.T) {
+	now := time.Now()
+	for _, status := range []storage.TaskStatus{storage.TaskStatusReadyToCancel, storage.TaskStatusCancelling} {
+		for _, age := range []time.Duration{5 * time.Minute, 20 * time.Minute} {
+			t.Run(fmt.Sprintf("%s/%s", storage.TaskStatusToString(status), age), func(t *testing.T) {
+				state := storage.TaskState{
+					Status:            status,
+					CreatedAt:         now.Add(-2 * time.Hour),
+					AvailableAt:       now.Add(time.Hour),
+					CancelRequestedAt: now.Add(-age),
+					ChangedStateAt:    now,
+				}
+				execCtx := newExecutionContext(NewTaskMock(), mocks.NewStorageMock(), state,
+					10*time.Minute, time.Hour, time.Hour, 2)
+				require.Equal(t, age > 10*time.Minute, execCtx.IsHanging())
+				// The same task with a one-hour default is still within timeout.
+				execCtx.hangingTaskTimeout = time.Hour
+				require.False(t, execCtx.IsHanging())
+			})
+		}
+	}
 }

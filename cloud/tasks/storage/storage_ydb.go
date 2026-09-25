@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -26,6 +27,8 @@ type storageYDB struct {
 	inflightHangingTaskTimeout        time.Duration
 	stallingHangingTaskTimeout        time.Duration
 	missedEstimatesUntilTaskIsHanging uint64
+
+	readyToRunListCounter uint32
 }
 
 func (s *storageYDB) CreateTask(
@@ -108,22 +111,78 @@ func (s *storageYDB) ListTasksReadyToRun(
 	taskTypeWhitelist []string,
 ) ([]TaskInfo, error) {
 
+	if limit == 0 {
+		return nil, nil
+	}
+
+	delayedLimit := limit / 2
+
+	// Alternate the extra slot only for worker listings. Unlimited diagnostic
+	// reads must not change which queue gets the next worker slot.
+	if limit%2 != 0 && limit != ^uint64(0) &&
+		atomic.AddUint32(&s.readyToRunListCounter, 1)%2 == 1 {
+		delayedLimit++
+	}
+
+	now := time.Now()
 	var tasks []TaskInfo
 
 	err := s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			var err error
-			tasks, err = s.listTasks(
+			delayedTasks, err := s.listTasksReadyToRunDelayed(
 				ctx,
 				session,
-				"ready_to_run",
-				limit,
+				delayedLimit,
 				taskTypeWhitelist,
+				now,
 			)
-			return err
+			if err != nil {
+				return err
+			}
+
+			// The ordinary queue can use unfilled delayed slots.
+			readyLimit := limit - uint64(len(delayedTasks))
+
+			var readyTasks []TaskInfo
+			if readyLimit != 0 {
+				readyTasks, err = s.listTasks(
+					ctx,
+					session,
+					"ready_to_run",
+					readyLimit,
+					taskTypeWhitelist,
+				)
+				if err != nil {
+					return err
+				}
+			}
+
+			selected := uint64(len(readyTasks) + len(delayedTasks))
+
+			// If the delayed quota was filled but the ordinary queue has too few tasks,
+			// give the remaining slots to delayed.
+			if selected < limit && uint64(len(delayedTasks)) == delayedLimit {
+				delayedTasks, err = s.listTasksReadyToRunDelayed(
+					ctx,
+					session,
+					limit-uint64(len(readyTasks)),
+					taskTypeWhitelist,
+					now,
+				)
+				if err != nil {
+					return err
+				}
+			}
+
+			tasks = append(readyTasks, delayedTasks...)
+			return nil
 		},
 	)
+	if err != nil {
+		return nil, err
+	}
+
 	return tasks, err
 }
 
@@ -332,6 +391,24 @@ func (s *storageYDB) ListSlowTasks(
 	return tasks, err
 }
 
+func (s *storageYDB) GetDelayedTaskStats(
+	ctx context.Context,
+	now time.Time,
+) (DelayedTaskStats, error) {
+
+	var stats DelayedTaskStats
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			stats, err = s.getDelayedTaskStats(ctx, session, now)
+			return err
+		},
+	)
+	return stats, err
+}
+
 func (s *storageYDB) LockTaskToRun(
 	ctx context.Context,
 	taskInfo TaskInfo,
@@ -466,6 +543,38 @@ func (s *storageYDB) SendEvent(
 		},
 	)
 	return err
+}
+
+func (s *storageYDB) ReconcileReadyToRunDelayed(
+	ctx context.Context,
+	limit int,
+	cursor DelayedQueueCursor,
+) (DelayedQueueCursor, error) {
+	if limit <= 0 {
+		return cursor, errors.NewNonRetriableErrorf("delayed queue reconciliation limit must be positive")
+	}
+	if cursor.StorageFolder != "" && cursor.StorageFolder != s.folder {
+		return cursor, errors.NewNonRetriableErrorf("unexpected reconciliation storage folder %q", cursor.StorageFolder)
+	}
+	cursor.StorageFolder = s.folder
+	if cursor.Done {
+		return cursor, nil
+	}
+	// Also bound the duration of a page, including database retries.
+	ctx, cancel := context.WithTimeout(ctx, s.updateTaskTimeout)
+	defer cancel()
+	var next DelayedQueueCursor
+	err := s.db.Execute(ctx, func(ctx context.Context, session *persistence.Session) error {
+		var err error
+		next, err = s.reconcileReadyToRunDelayed(ctx, session, limit, cursor)
+		return err
+	})
+	if err != nil {
+		// The last write may have committed with its response lost. Replay from
+		// the old cursor instead of skipping any unconfirmed work.
+		return cursor, err
+	}
+	return next, nil
 }
 
 func (s *storageYDB) ClearEndedTasks(

@@ -159,6 +159,16 @@ func scanTaskInfosStream(ctx context.Context, res persistence.Result) ([]TaskInf
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func optionalTimestampValue(t time.Time) persistence.Value {
+	if t.IsZero() {
+		return persistence.ZeroValue(persistence.Optional(persistence.TypeTimestamp))
+	}
+
+	return persistence.OptionalValue(persistence.TimestampValue(t))
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // TaskState marshal/unmarshal routines.
 
 func (s *TaskState) structValue() persistence.Value {
@@ -169,6 +179,13 @@ func (s *TaskState) structValue() persistence.Value {
 		persistence.StructFieldValue("task_type", persistence.UTF8Value(s.TaskType)),
 		persistence.StructFieldValue("regular", persistence.BoolValue(s.Regular)),
 		persistence.StructFieldValue("description", persistence.UTF8Value(s.Description)),
+		persistence.StructFieldValue("received_at", optionalTimestampValue(s.ReceivedAt)),
+		persistence.StructFieldValue("available_at", optionalTimestampValue(s.AvailableAt)),
+		persistence.StructFieldValue(
+			"first_run_started_at",
+			optionalTimestampValue(s.FirstRunStartedAt),
+		),
+		persistence.StructFieldValue("cancel_requested_at", optionalTimestampValue(s.CancelRequestedAt)),
 		persistence.StructFieldValue("created_at", persistence.TimestampValue(s.CreatedAt)),
 		persistence.StructFieldValue("created_by", persistence.UTF8Value(s.CreatedBy)),
 		persistence.StructFieldValue("modified_at", persistence.TimestampValue(s.ModifiedAt)),
@@ -208,6 +225,10 @@ func taskStateStructTypeString() string {
 		task_type: Utf8,
 		regular: Bool,
 		description: Utf8,
+		received_at: Optional<Timestamp>,
+		available_at: Optional<Timestamp>,
+		first_run_started_at: Optional<Timestamp>,
+		cancel_requested_at: Optional<Timestamp>,
 		created_at: Timestamp,
 		created_by: Utf8,
 		modified_at: Timestamp,
@@ -245,6 +266,13 @@ func taskStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("regular", persistence.Optional(persistence.TypeBool)),
 		persistence.WithColumn("description", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("received_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("available_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn(
+			"first_run_started_at",
+			persistence.Optional(persistence.TypeTimestamp),
+		),
+		persistence.WithColumn("cancel_requested_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("created_by", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("modified_at", persistence.Optional(persistence.TypeTimestamp)),
@@ -300,6 +328,26 @@ func readyToCancelTableDescription() persistence.CreateTableDescription {
 
 func readyToExecuteStructTypeString() string {
 	return `Struct<
+		id: Utf8,
+		generation_id: Uint64,
+		task_type: Utf8,
+		zone_id: Utf8>`
+}
+
+func readyToRunDelayedTableDescription() persistence.CreateTableDescription {
+	return persistence.NewCreateTableDescription(
+		persistence.WithColumn("available_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("generation_id", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("task_type", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithColumn("zone_id", persistence.Optional(persistence.TypeUTF8)),
+		persistence.WithPrimaryKeyColumn("available_at", "id"),
+	)
+}
+
+func readyToRunDelayedStructTypeString() string {
+	return `Struct<
+		available_at: Timestamp,
 		id: Utf8,
 		generation_id: Uint64,
 		task_type: Utf8,
@@ -370,6 +418,10 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 		persistence.OptionalWithDefault("task_type", &state.TaskType),
 		persistence.OptionalWithDefault("regular", &state.Regular),
 		persistence.OptionalWithDefault("description", &state.Description),
+		persistence.OptionalWithDefault("received_at", &state.ReceivedAt),
+		persistence.OptionalWithDefault("available_at", &state.AvailableAt),
+		persistence.OptionalWithDefault("first_run_started_at", &state.FirstRunStartedAt),
+		persistence.OptionalWithDefault("cancel_requested_at", &state.CancelRequestedAt),
 		persistence.OptionalWithDefault("created_at", &state.CreatedAt),
 		persistence.OptionalWithDefault("created_by", &state.CreatedBy),
 		persistence.OptionalWithDefault("modified_at", &state.ModifiedAt),
@@ -401,6 +453,16 @@ func (s *storageYDB) scanTaskState(res persistence.Result) (state TaskState, err
 	)
 	if err != nil {
 		return
+	}
+
+	// Older writers did not record the cancellation request. Use the last
+	// known state transition as an approximation, then preserve it on the next
+	// write, before a lock or heartbeat can change the transition timestamp.
+	if state.CancelRequestedAt.IsZero() && IsCancellingOrCancelled(state.Status) {
+		state.CancelRequestedAt = state.ChangedStateAt
+		if state.CancelRequestedAt.IsZero() {
+			state.CancelRequestedAt = state.CreatedAt
+		}
 	}
 
 	state.StorageFolder = s.folder
@@ -469,6 +531,17 @@ func CreateYDBTables(
 	dropUnusedColumns bool,
 ) error {
 
+	legacyFolder := config.GetLegacyStorageFolder()
+	if legacyFolder != "" && legacyFolder != config.GetStorageFolder() {
+		legacyConfig := proto.Clone(config).(*tasks_config.TasksConfig)
+		legacyConfig.StorageFolder = proto.String(legacyFolder)
+		legacyConfig.LegacyStorageFolder = nil
+
+		if err := CreateYDBTables(ctx, legacyConfig, db, false); err != nil {
+			return err
+		}
+	}
+
 	logging.Info(ctx, "Creating tables for tasks in %v", db.AbsolutePath(config.GetStorageFolder()))
 
 	err := db.CreateOrAlterTable(
@@ -512,6 +585,18 @@ func CreateYDBTables(
 		return err
 	}
 	logging.Info(ctx, "Created ready_to_run table")
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"ready_to_run_delayed",
+		readyToRunDelayedTableDescription(),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created ready_to_run_delayed table")
 
 	err = db.CreateOrAlterTable(
 		ctx,
@@ -626,6 +711,12 @@ func DropYDBTables(
 		return err
 	}
 	logging.Info(ctx, "Dropped ready_to_run table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "ready_to_run_delayed")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped ready_to_run_delayed table")
 
 	err = db.DropTable(ctx, config.GetStorageFolder(), "ready_to_cancel")
 	if err != nil {

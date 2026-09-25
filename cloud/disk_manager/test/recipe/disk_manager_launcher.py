@@ -257,6 +257,7 @@ SnapshotsConfig: <
     UseS3Percentage: {use_s3_percentage}
     UseProxyOverlayDisk: true
     RetryBrokenDRBasedDiskCheckpoint: {retry_broken_disk_registry_based_disk_checkpoint}
+    CreateSnapshotStaggeringWindow: "{snapshot_staggering_window}"
 >
 LoggingConfig: <
     LoggingStderr: <>
@@ -597,6 +598,7 @@ class DiskManagerLauncher:
         # creating an already deleted resourse (see #5539).
         deleted_disk_expiration_timeout="100s",
         released_slot_expiration_timeout="100s",
+        snapshot_staggering_window="0s",
     ):
         self.__idx = idx
 
@@ -715,6 +717,7 @@ class DiskManagerLauncher:
                     image_use_s3_percentage=image_use_s3_percentage,
                     deleted_disk_expiration_timeout=deleted_disk_expiration_timeout,
                     released_slot_expiration_timeout=released_slot_expiration_timeout,
+                    snapshot_staggering_window=snapshot_staggering_window,
                 )
                 f.write(self.__server_config)
 
