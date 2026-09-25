@@ -210,6 +210,7 @@ static const TString RequestNames[] = {
     "FuseFlush",
     "FuseFsync",
     "FuseFsyncDir",
+    "AsyncDestroyHandle",
 };
 
 static_assert(

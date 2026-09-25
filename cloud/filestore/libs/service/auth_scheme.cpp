@@ -41,6 +41,7 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::CreateHandle:
         case EFileStoreRequest::ConfirmCreateHandle:
         case EFileStoreRequest::DestroyHandle:
+        case EFileStoreRequest::AsyncDestroyHandle:
         case EFileStoreRequest::WriteData:
         case EFileStoreRequest::AllocateData:
         case EFileStoreRequest::AcquireLock:
