@@ -2516,6 +2516,90 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             getNodeAttrResponse->GetErrorReason().c_str());
     }
 
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldHandleGetNodeAttrByNameRacingWithRenameNodeOverExistingNode)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto nodeId1 =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        const auto nodeId2 =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file2"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_EQUAL(2, ExtractShardNo(nodeId2));
+
+        // GetNodeAttr by name is resolved in 2 steps: leader (nodeRef) then
+        // shard (node). Intercepting the shard step to run a rename over
+        // file1 in between.
+
+        TAutoPtr<IEventHandle> shardRequest;
+
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() == TEvService::EvGetNodeAttrRequest)
+                {
+                    const auto* msg =
+                        event->template Get<TEvService::TEvGetNodeAttrRequest>();
+
+                    if (!shardRequest
+                            && msg->Record.GetFileSystemId() == fsConfig.Shard1Id)
+                    {
+                        shardRequest = event.Release();
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        service.SendGetNodeAttrRequest(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1");
+
+        for (ui32 attempt = 0; attempt < 100 && !shardRequest; ++attempt) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT(shardRequest);
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+
+        // file1 keeps existing at every moment - only the node behind it
+        // changes
+
+        service.RenameNode(
+            headers,
+            RootNodeId,
+            "file2",
+            RootNodeId,
+            "file1",
+            0);
+
+        env.GetRuntime().Send(shardRequest.Release(), nodeIdx);
+
+        auto getNodeAttrResponse = service.RecvGetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            getNodeAttrResponse->GetError().GetCode(),
+            getNodeAttrResponse->GetError().GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId2,
+            getNodeAttrResponse->Record.GetNode().GetId());
+    }
+
     SERVICE_TEST(ShouldPerformLocksForExternalNodes)
     {
         TShardedFileSystemConfig fsConfig;
