@@ -402,6 +402,7 @@ public:
 
     bool GetReadBlobDisabled() const;
     bool GetWriteBlobDisabled() const;
+    bool GetWriteDataActorOptimizationEnabled() const;
 
     ui32 GetCpuLackOverloadThreshold() const;
     ui32 GetTabletActorCpuUsageOverloadThreshold() const;

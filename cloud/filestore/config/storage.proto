@@ -928,4 +928,8 @@ message TStorageConfig
 
     // Maximum number of queued handle operations processed concurrently.
     optional uint32 AsyncHandleOperationBatchSize = 546;
+
+    // Enables WriteData lifecycle and payload handling optimizations.
+    // Disabled by default to allow a gradual rollout.
+    optional bool WriteDataActorOptimizationEnabled = 547;
 }
