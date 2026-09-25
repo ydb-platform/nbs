@@ -218,7 +218,8 @@ enum class EFileStoreRequest
     FuseFlush = 65,
     FuseFsync = 66,
     FuseFsyncDir = 67,
-    MAX = 68,
+    AsyncDestroyHandle = 68,
+    MAX = 69,
 };
 
 constexpr size_t FileStoreRequestCount = static_cast<size_t>(EFileStoreRequest::MAX);
