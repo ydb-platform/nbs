@@ -701,10 +701,17 @@ func (s *storageYDB) applyInflightDependents(
 	for srcDiskID := range deltas {
 		srcDiskIDs = append(srcDiskIDs, srcDiskID)
 	}
+
 	sort.Strings(srcDiskIDs)
 
 	for _, srcDiskID := range srcDiskIDs {
 		delta := deltas[srcDiskID]
+		if delta == 0 {
+			// Increments and decrements cancelled each other out, source base
+			// disk should not be touched (and, in particular, should not be
+			// loaded and rewritten).
+			continue
+		}
 
 		// Source base disk may be present in |transitions| (e.g. retiring
 		// base disk is used as a source for its replacement).
@@ -742,7 +749,8 @@ func (s *storageYDB) applyInflightDependents(
 			srcDisk = found
 		}
 
-		if delta < 0 && uint64(-delta) > srcDisk.inflightDependents {
+		srcDisk.inflightDependents += delta
+		if srcDisk.inflightDependents < 0 {
 			// Dependent was not accounted, e.g. it was generated while
 			// holdBaseDisksWithInflightDependents was disabled.
 			logging.Info(
@@ -752,10 +760,6 @@ func (s *storageYDB) applyInflightDependents(
 				delta,
 			)
 			srcDisk.inflightDependents = 0
-		} else {
-			srcDisk.inflightDependents = uint64(
-				int64(srcDisk.inflightDependents) + delta,
-			)
 		}
 
 		logging.Info(

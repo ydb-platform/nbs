@@ -121,8 +121,8 @@ type baseDisk struct {
 	// 'scheduling' or 'creating' status) using this disk as a source
 	// (see srcDiskID).
 	// This counter protects a base disk from deletion while there is at least
-	// one dependent base disk.
-	inflightDependents uint64
+	// one dependent base disk. Never negative.
+	inflightDependents int64
 	status             baseDiskStatus
 }
 
@@ -239,7 +239,7 @@ func (d *baseDisk) structValue() persistence.Value {
 		persistence.StructFieldValue("retiring", persistence.BoolValue(d.retiring)),
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(d.deletedAt)),
 		persistence.StructFieldValue("idle_since", persistence.TimestampValue(d.idleSince)),
-		persistence.StructFieldValue("inflight_dependents", persistence.Uint64Value(d.inflightDependents)),
+		persistence.StructFieldValue("inflight_dependents", persistence.Int64Value(d.inflightDependents)),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(d.status))),
 	)
 }
@@ -265,7 +265,7 @@ func baseDiskStructTypeString() string {
 		retiring: Bool,
 		deleted_at: Timestamp,
 		idle_since: Timestamp,
-		inflight_dependents: Uint64,
+		inflight_dependents: Int64,
 		status: Int64>`
 }
 
@@ -290,7 +290,7 @@ func baseDisksTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("retiring", persistence.Optional(persistence.TypeBool)),
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("idle_since", persistence.Optional(persistence.TypeTimestamp)),
-		persistence.WithColumn("inflight_dependents", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("inflight_dependents", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 
 		persistence.WithPrimaryKeyColumn("id"),

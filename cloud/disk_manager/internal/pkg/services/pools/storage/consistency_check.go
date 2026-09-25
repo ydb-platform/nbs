@@ -143,7 +143,7 @@ func (s *storageYDB) checkBaseDiskConsistency(
 	ctx context.Context,
 	baseDisk baseDisk,
 	slots []slot,
-	inflightDependents map[string]uint64,
+	inflightDependents map[string]int64,
 ) error {
 
 	slotsBaseDiskCount := uint64(0)
@@ -175,14 +175,15 @@ func (s *storageYDB) checkBaseDiskConsistency(
 		)
 	}
 
-	// Counter must never exceed the actual number of dependents (that would
-	// hold base disk forever). It may be less than the actual number while
-	// holdBaseDisksWithInflightDependents is disabled, because increments are
-	// not applied in that case.
+	// Counter must never be negative or exceed the actual number of dependents
+	// (that would hold base disk forever). It may be less than the actual
+	// number while holdBaseDisksWithInflightDependents is disabled, because
+	// increments are not applied in that case.
 	// TODO: check for equality unconditionally after deployment of this
 	// version is finished.
 	expected := inflightDependents[baseDisk.id]
-	if baseDisk.inflightDependents > expected ||
+	if baseDisk.inflightDependents < 0 ||
+		baseDisk.inflightDependents > expected ||
 		(s.holdBaseDisksWithInflightDependents && baseDisk.inflightDependents != expected) {
 
 		return errors.NewNonRetriableErrorf(
@@ -222,7 +223,7 @@ func (s *storageYDB) checkBaseDisksConsistency(
 	}
 
 	// Number of base disks being created from each source base disk.
-	inflightDependents := make(map[string]uint64)
+	inflightDependents := make(map[string]int64)
 	for _, baseDisk := range baseDisks {
 		if baseDisk.holdsSrcDisk() {
 			inflightDependents[baseDisk.srcDiskID]++
