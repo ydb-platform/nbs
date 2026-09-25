@@ -122,6 +122,15 @@ func (s *scheduler) ScheduleRegularTasks(
 	taskType string,
 	schedule TaskSchedule,
 ) {
+	s.scheduleRegularTasksInFolder(ctx, taskType, "", schedule)
+}
+
+func (s *scheduler) scheduleRegularTasksInFolder(
+	ctx context.Context,
+	taskType string,
+	folder string,
+	schedule TaskSchedule,
+) {
 
 	ctx = withComponentLoggingField(ctx)
 
@@ -199,16 +208,17 @@ func (s *scheduler) ScheduleRegularTasks(
 			}
 
 			err = s.storage.CreateRegularTasks(ctx, tasks_storage.TaskState{
-				ID:           "",
-				TaskType:     taskType,
-				Description:  "",
-				CreatedAt:    createdAt,
-				CreatedBy:    headers.GetAccountID(ctx),
-				ModifiedAt:   createdAt,
-				GenerationID: 0,
-				Status:       tasks_storage.TaskStatusReadyToRun,
-				Metadata:     metadata,
-				Dependencies: common.NewStringSet(),
+				ID:            "",
+				TaskType:      taskType,
+				StorageFolder: folder,
+				Description:   "",
+				CreatedAt:     createdAt,
+				CreatedBy:     headers.GetAccountID(ctx),
+				ModifiedAt:    createdAt,
+				GenerationID:  0,
+				Status:        tasks_storage.TaskStatusReadyToRun,
+				Metadata:      metadata,
+				Dependencies:  common.NewStringSet(),
 			}, schedule)
 			if err != nil {
 				logging.Warn(ctx, "failed to persist task %v: %v", taskType, err)

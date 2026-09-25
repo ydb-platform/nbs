@@ -2631,3 +2631,113 @@ func TestEarlyCancellationIsReportedByListerMetrics(t *testing.T) {
 		t.Fatal("the lister did not report an overdue cancellation before its execution deadline")
 	}
 }
+
+func TestReconciliationContinuesWhenOtherFolderIsUnavailable(t *testing.T) {
+	for _, tc := range []struct {
+		name         string
+		breakCurrent bool
+	}{
+		{name: "legacy unavailable"},
+		{name: "current unavailable", breakCurrent: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(newContext())
+			defer cancel()
+
+			db := newYDB(ctx, t)
+			defer db.Close(context.Background())
+
+			cfg := newDefaultConfig()
+			legacyFolder := fmt.Sprintf("tasks_ydb_test/%s/legacy", t.Name())
+			cfg.LegacyStorageFolder = &legacyFolder
+			cfg.RunnersCount = proto.Uint64(3)
+			cfg.StalkingRunnersCount = proto.Uint64(1)
+			cfg.ReconcileReadyToRunDelayedTaskScheduleInterval = proto.String("100ms")
+			cfg.ReconcileReadyToRunDelayedLimit = proto.Uint32(1)
+
+			s := createServicesWithConfig(t, ctx, db, cfg, metrics_empty.NewRegistry())
+
+			healthyFolder := cfg.GetStorageFolder()
+			brokenFolder := legacyFolder
+			expectedType := "tasks.ReconcileReadyToRunDelayed"
+			if tc.breakCurrent {
+				healthyFolder = legacyFolder
+				brokenFolder = cfg.GetStorageFolder()
+				expectedType = "tasks.ReconcileLegacyReadyToRunDelayed"
+			}
+
+			// Прямой storage нужен для проверки здоровой папки:
+			// compoundStorage.GetTask обращается сначала к legacy.
+			healthyConfig := &tasks_config.TasksConfig{
+				StorageFolder: &healthyFolder,
+			}
+			healthyStorage, err := tasks_storage.NewStorage(
+				healthyConfig,
+				metrics_empty.NewRegistry(),
+				db,
+			)
+			require.NoError(t, err)
+
+			res, err := db.ExecuteRW(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				declare $at as Timestamp;
+				UPSERT INTO ready_to_run_delayed
+					(available_at, id, generation_id, task_type, zone_id)
+				VALUES ($at, 'orphan', 0u, 'unregistered', '');
+			`, db.AbsolutePath(healthyFolder)),
+				persistence.ValueParam(
+					"$at",
+					persistence.TimestampValue(time.Now().Add(time.Hour)),
+				),
+			)
+			require.NoError(t, err)
+			res.Close()
+
+			var taskID string
+			require.Eventually(t, func() bool {
+				infos, err := healthyStorage.ListTasksReadyToRun(ctx, 100, nil)
+				if err != nil {
+					return false
+				}
+				for _, info := range infos {
+					if info.TaskType == expectedType {
+						taskID = info.ID
+						return true
+					}
+				}
+				return false
+			}, 10*time.Second, 100*time.Millisecond)
+
+			// Одна таблица ломает listing; другая — прежний
+			// legacy-first путь LockTaskToRun/UpdateTask.
+			require.NoError(t, db.DropTable(ctx, brokenFolder, "ready_to_run"))
+			require.NoError(t, db.DropTable(ctx, brokenFolder, "tasks"))
+
+			require.NoError(t, s.startRunners(ctx))
+			require.Eventually(t, func() bool {
+				state, err := healthyStorage.GetTask(ctx, taskID)
+				return err == nil &&
+					state.Status == tasks_storage.TaskStatusFinished
+			}, 30*time.Second, 100*time.Millisecond)
+
+			res, err = db.ExecuteRO(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				SELECT COUNT(*) AS count FROM ready_to_run_delayed;
+			`, db.AbsolutePath(healthyFolder)))
+			require.NoError(t, err)
+			defer res.Close()
+
+			require.True(t, res.NextResultSet(ctx))
+			require.True(t, res.NextRow())
+
+			var count uint64
+			require.NoError(t, res.ScanNamed(
+				persistence.OptionalWithDefault("count", &count),
+			))
+			require.NoError(t, res.Err())
+			require.Zero(t, count)
+		})
+	}
+}

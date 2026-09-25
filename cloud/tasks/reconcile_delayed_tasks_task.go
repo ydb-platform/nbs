@@ -84,10 +84,15 @@ func (s *scheduler) registerAndScheduleDelayedQueueReconciliation(
 		// Registration is retained when scheduling is disabled so outstanding
 		// tasks can finish before the last supporting binary is rolled back.
 		if config.GetReconcileReadyToRunDelayedEnabled() {
-			s.ScheduleRegularTasks(ctx, entry.taskType, TaskSchedule{
-				ScheduleInterval: interval,
-				MaxTasksInflight: 1,
-			})
+			s.scheduleRegularTasksInFolder(
+				ctx,
+				entry.taskType,
+				entry.folder,
+				TaskSchedule{
+					ScheduleInterval: interval,
+					MaxTasksInflight: 1,
+				},
+			)
 		}
 	}
 	return nil

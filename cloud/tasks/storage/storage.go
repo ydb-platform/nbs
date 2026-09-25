@@ -210,9 +210,10 @@ func (s *TaskState) SetError(e error) {
 ////////////////////////////////////////////////////////////////////////////////
 
 type TaskInfo struct {
-	ID           string
-	GenerationID uint64
-	TaskType     string
+	ID            string
+	GenerationID  uint64
+	TaskType      string
+	StorageFolder string
 }
 
 type TaskSchedule struct {
