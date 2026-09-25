@@ -3643,6 +3643,112 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldCalculateBlockChecksumsForThreeStageAndFallbackWrites)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetThreeStageWriteThreshold(1);
+        config.SetBlockChecksumsInProfileLogEnabled(true);
+
+        const auto profileLog = std::make_shared<TTestProfileLog>();
+        TTestEnv env({}, config, {}, profileLog);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(
+            fs,
+            1'000,
+            DefaultBlockSize,
+            NProto::STORAGE_MEDIA_SSD);
+
+        auto headers = service.InitSession(fs, "client");
+        const ui64 nodeId =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        const ui64 handle =
+            service
+                .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+                ->Record.GetHandle();
+
+        const auto requestType = static_cast<ui32>(EFileStoreRequest::WriteData);
+        const auto assertChecksummedWriteRecords = [&] (size_t begin) {
+            const auto& records = profileLog->Requests[requestType];
+            for (size_t i = begin; i < records.size(); ++i) {
+                const auto& request = records[i].Request;
+                UNIT_ASSERT_VALUES_EQUAL(1, request.RangesSize());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    request.GetRanges(0).BlockChecksumsSize());
+            }
+        };
+
+        // The optimized path: GenerateBlobIds -> BlobStorage -> AddData.
+        const auto data = GenerateValidateData(DefaultBlockSize);
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
+        auto readDataResult =
+            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        const auto threeStageWriteRecords =
+            profileLog->Requests[requestType].size();
+        UNIT_ASSERT_VALUES_EQUAL(1, threeStageWriteRecords);
+        assertChecksummedWriteRecords(0);
+
+        NProto::TError error;
+        error.SetCode(E_REJECTED);
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, auto& event) {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvIndexTablet::EvGenerateBlobIdsResponse)
+                {
+                    auto* msg = event->template Get<
+                        TEvIndexTablet::TEvGenerateBlobIdsResponse>();
+                    msg->Record.MutableError()->CopyFrom(error);
+                }
+                return false;
+            });
+
+        // The GenerateBlobIds error switches the actor to regular WriteData.
+        service.WriteData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            DefaultBlockSize,
+            data);
+        readDataResult = service.ReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            DefaultBlockSize,
+            data.size());
+        UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
+
+        const auto fallbackWriteRecords =
+            profileLog->Requests[requestType].size();
+        // One record is emitted by TWriteDataActor and one by the tablet.
+        UNIT_ASSERT_VALUES_EQUAL(threeStageWriteRecords + 2, fallbackWriteRecords);
+        assertChecksummedWriteRecords(threeStageWriteRecords);
+
+        // UpdateStats obtains the value from TInFlightRequestStorage.  Both
+        // the successful three-stage write and the fallback must have erased
+        // their main requests by this point.
+        env.GetRuntime().AdvanceCurrentTime(TDuration::Seconds(15));
+        env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+
+        auto inFlightRequestCounter =
+            env.GetRuntime().GetAppData(nodeIdx).Counters
+                ->FindSubgroup("counters", "filestore")
+                ->FindSubgroup("component", "service")
+                ->GetCounter("InFlightRequestCount", false);
+        UNIT_ASSERT_VALUES_EQUAL(0, inFlightRequestCounter->GetAtomic());
+    }
+
     Y_UNIT_TEST(ShouldThrottleMultipleStageReadsAndWrites)
     {
         const auto maxBandwidth = 10000;
@@ -4793,7 +4899,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
     void TestZeroCopyWrite(
         const NProto::TStorageConfig& config,
         ui64 offset,
-        const std::vector<ui64>& iovecSizes)
+        const std::vector<ui64>& iovecSizes,
+        bool expectDirectExternalPayload = false,
+        bool forceThreeStageFallback = false)
     {
         TTestEnv env({}, config);
 
@@ -4830,7 +4938,55 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             writeIovecs.push_back(GenerateValidateData(iovecSizes[i], i));
             readIovecs.emplace_back(iovecSizes[i], '\0');
         }
+        bool directExternalPayloadSeen = false;
+        if (expectDirectExternalPayload || forceThreeStageFallback) {
+            env.GetRuntime().SetEventFilter(
+                [&] (auto&, auto& event) {
+                    if (forceThreeStageFallback &&
+                        event->GetTypeRewrite() ==
+                            TEvIndexTablet::EvGenerateBlobIdsResponse)
+                    {
+                        auto* response = event->template Get<
+                            TEvIndexTablet::TEvGenerateBlobIdsResponse>();
+                        response->Record.MutableError()->SetCode(E_REJECTED);
+                    }
+
+                    if (expectDirectExternalPayload &&
+                        !directExternalPayloadSeen &&
+                        event->GetTypeRewrite() ==
+                            TEvService::EvWriteDataRequest)
+                    {
+                        auto* request = event->template Get<
+                            TEvService::TEvWriteDataRequest>();
+                        if (request->GetPayloadCount() == 1) {
+                            auto it = request->GetPayload(0).Begin();
+                            for (const auto& buffer: writeIovecs) {
+                                if (buffer.empty()) {
+                                    continue;
+                                }
+
+                                UNIT_ASSERT(it.Valid());
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    buffer.data(),
+                                    it.ContiguousData());
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    buffer.size(),
+                                    it.ContiguousSize());
+                                ++it;
+                            }
+                            UNIT_ASSERT(!it.Valid());
+                            directExternalPayloadSeen = true;
+                        }
+                    }
+
+                    return false;
+                });
+        }
+
         service.WriteData(headers, fs, nodeId, handle, offset, writeIovecs);
+        if (expectDirectExternalPayload) {
+            UNIT_ASSERT(directExternalPayloadSeen);
+        }
         auto readDataResult = service.ReadData(
             headers,
             fs,
@@ -4958,7 +5114,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetZeroCopyWriteEnabled(true);
         config.SetExternalWriteDataPayloadEnabled(true);
         config.SetExternalReadDataPayload(true);
-        TestZeroCopyWrite(config, 4_KB, std::vector<ui64>(64, 4_KB));
+        TestZeroCopyWrite(
+            config,
+            4_KB,
+            std::vector<ui64>(64, 4_KB),
+            true);
     }
 
     Y_UNIT_TEST(TestUnalignedZeroCopyWriteFallbackWithExternalPayload)
@@ -4969,7 +5129,27 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetZeroCopyWriteEnabled(true);
         config.SetExternalWriteDataPayloadEnabled(true);
         config.SetExternalReadDataPayload(true);
-        TestZeroCopyWrite(config, 111, std::vector<ui64>(64, 4_KB));
+        TestZeroCopyWrite(
+            config,
+            111,
+            std::vector<ui64>(64, 4_KB),
+            true);
+    }
+
+    Y_UNIT_TEST(TestZeroCopyThreeStageWriteFallbackWithExternalPayload)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetUnalignedThreeStageWriteEnabled(true);
+        config.SetZeroCopyWriteEnabled(true);
+        config.SetExternalWriteDataPayloadEnabled(true);
+        config.SetExternalReadDataPayload(true);
+        TestZeroCopyWrite(
+            config,
+            0,
+            std::vector<ui64>(64, 4_KB),
+            true,
+            true);
     }
 
     Y_UNIT_TEST(TestZeroCopyWriteWithEmptyIovecs)

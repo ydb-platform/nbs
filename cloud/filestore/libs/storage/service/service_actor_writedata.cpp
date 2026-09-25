@@ -82,14 +82,13 @@ ui64 CopyBufferFromRope(
 /**
  * @brief Prepares a WriteData request to be sent to the tablet.
  *
- * If the request payload is represented by iovecs, this function copies the
- * required data slice from the iovecs into the request buffer, or into the
- * request payload when @p useExternalPayload is set. The iovecs are then
- * cleared from the request.
+ * If the request payload is represented by iovecs, this function either wraps
+ * them in an external rope without copying or copies their data into the
+ * request buffer. The iovecs are then cleared from the request.
  *
  * @param request The write request containing iovecs used as the data source.
- * @param useExternalPayload If true, stores the copied data as an external
- * payload; otherwise, stores it in the request buffer.
+ * @param useExternalPayload If true, stores the iovec-backed rope as an
+ * external payload; otherwise, copies the data into the request buffer.
  */
 void PrepareWriteDataRequestPayload(
     TEvService::TEvWriteDataRequest& request,
@@ -106,6 +105,12 @@ void PrepareWriteDataRequestPayload(
     }
 
     auto rope = CreateRope(record.GetIovecs());
+    if (useExternalPayload) {
+        record.MutableIovecs()->Clear();
+        request.AddPayload(std::move(rope));
+        return;
+    }
+
     TString buffer;
     const auto bytesToCopy = NFileStore::CalculateByteCount(record);
     buffer.ReserveAndResize(bytesToCopy);
@@ -113,12 +118,7 @@ void PrepareWriteDataRequestPayload(
         TRopeUtils::SafeMemcpy(buffer.begin(), rope.Begin(), bytesToCopy);
     record.MutableIovecs()->Clear();
     Y_ABORT_UNLESS(bytesCopied == bytesToCopy);
-
-    if (useExternalPayload) {
-        request.AddPayload(TRope(std::move(buffer)));
-    } else {
-        record.SetBuffer(std::move(buffer));
-    }
+    record.SetBuffer(std::move(buffer));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -379,7 +379,7 @@ private:
             return;
         }
 
-        GenerateBlobIdsResponse.CopyFrom(msg->Record);
+        GenerateBlobIdsResponse.Swap(&msg->Record);
 
         LOG_DEBUG(
             ctx,
@@ -1132,8 +1132,7 @@ void TStorageServiceActor::HandleWriteData(
     auto logTag = filestore.GetFileSystemId();
     TChecksumCalcInfo checksumCalcInfo;
     if (blockChecksumsEnabled) {
-        checksumCalcInfo =
-            TChecksumCalcInfo(blockSize, msg->Record.GetIovecs());
+        checksumCalcInfo = TChecksumCalcInfo(blockSize);
     }
 
     auto actor = std::make_unique<TWriteDataActor>(
