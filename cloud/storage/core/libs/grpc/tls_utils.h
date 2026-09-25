@@ -3,9 +3,6 @@
 #include "tls_certificate_provider.h"
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
-
-#include <src/core/lib/security/credentials/tls/grpc_tls_certificate_provider.h>
 
 #include <util/generic/strbuf.h>
 
@@ -13,11 +10,19 @@ namespace NCloud::NTlsUtils {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Contents of a private key file and a certificate chain file.
+struct TIdentityContent
+{
+    TString PrivateKey;
+    TString CertChain;
+
+    bool operator==(const TIdentityContent& other) const = default;
+};
+
 struct TCertificatePair
 {
     TCertificateFiles Files;
-    TString PrivateKey;
-    TString CertChain;
+    TIdentityContent Content;
 };
 
 struct TRootCaPair
@@ -26,39 +31,21 @@ struct TRootCaPair
     TString RootCa;
 };
 
-struct TCertificate
-{
-    grpc_core::PemKeyCertPairList CertificatesChain;
-    TInstant NotValidAfter;
-};
-
-struct TCertificatesUpdateResult
-{
-    TVector<TMaybe<TCertificate>> Certificates;
-    TMaybe<TString> RootCa;
-};
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TResultOrError<TString> TryReadFile(const TString& path);
 
 TResultOrError<void> IsValidPemCertificate(TStringBuf pem);
 
-TResultOrError<void> PrivateKeyAndCertificateMatch(
-    TStringBuf privateKey,
-    TStringBuf certChain);
-
-TResultOrError<void> ValidateIdentityCertificateValidity(
-    TStringBuf certChainPem);
-
 TResultOrError<ui64> GetCertificateNotAfterTimestampSec(
     TStringBuf certChainPem);
 
-TResultOrError<TString> ReadAndValidateRootCertificate(
-    const TString& rootCertPath);
+TResultOrError<TIdentityContent> ReadIdentity(const TCertificateFiles& files);
 
-TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
-    const TCertificateFiles& files);
+// Checks that the key matches the leaf, every certificate is currently valid
+// and the chain can be built up to its last certificate. Whether that
+// certificate is trusted is not checked: that is the client's job.
+TResultOrError<void> ValidateIdentity(const TIdentityContent& identity);
 
 TVector<TCertificateFiles> PrepareCertificateFilePairs(
     TVector<TCertificateFiles> certificates);
@@ -67,10 +54,5 @@ TVector<TCertificatePair> LoadCertificatePairs(
     TVector<TCertificateFiles> certificates);
 
 TRootCaPair LoadRootCaPair(TString rootCaPath);
-
-TCertificatesUpdateResult UpdateCertificates(
-    const TVector<TCertificatePair>& certificates,
-    const TRootCaPair& root,
-    TLog& log);
 
 }   // namespace NCloud::NTlsUtils

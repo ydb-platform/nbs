@@ -3,6 +3,7 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/logger/log.h>
@@ -40,6 +41,19 @@ TString ReadCertResource(TStringBuf relativePath)
 ui64 RootCaFingerprint(TStringBuf rootCa)
 {
     return CityHash64(rootCa) & ((1ULL << 53) - 1);
+}
+
+// Retries while the provider is busy with another update, e.g. a periodic one
+// run by a real scheduler.
+NProto::TError UpdateCertificatesSync(const ICertificateProviderPtr& provider)
+{
+    while (true) {
+        auto error = provider->UpdateCertificates().GetValueSync();
+        if (error.GetCode() != E_TRY_AGAIN) {
+            return error;
+        }
+        Sleep(TDuration::MilliSeconds(1));
+    }
 }
 
 void WriteTextFile(const TString& path, const TString& content)
@@ -153,8 +167,15 @@ class TManualScheduler final
     : public IScheduler
 {
 private:
+    struct TScheduled
+    {
+        // How far ahead of the scheduling time the task was scheduled.
+        TDuration Delay;
+        TCallback Callback;
+    };
+
     TMutex Lock;
-    TDeque<TCallback> Pending;
+    TDeque<TScheduled> Pending;
 
 public:
     void Start() override
@@ -163,10 +184,13 @@ public:
     void Stop() override
     {}
 
-    void Schedule(ITaskQueue*, TInstant, TCallback callback) override
+    void Schedule(ITaskQueue*, TInstant deadline, TCallback callback) override
     {
         TGuard guard(Lock);
-        Pending.push_back(std::move(callback));
+        Pending.push_back({
+            .Delay = deadline - TInstant::Now(),
+            .Callback = std::move(callback),
+        });
     }
 
     size_t PendingCount()
@@ -175,15 +199,59 @@ public:
         return Pending.size();
     }
 
+    TVector<TDuration> PendingDelays()
+    {
+        TGuard guard(Lock);
+        TVector<TDuration> delays;
+        for (const auto& scheduled: Pending) {
+            delays.push_back(scheduled.Delay);
+        }
+        return delays;
+    }
+
     void RunPending()
     {
-        TDeque<TCallback> batch;
+        RunPending([](const TDuration&) { return true; });
+    }
+
+    // Runs the task that was scheduled first.
+    void RunNext()
+    {
+        TScheduled scheduled;
         {
             TGuard guard(Lock);
-            batch.swap(Pending);
+            UNIT_ASSERT(!Pending.empty());
+            scheduled = std::move(Pending.front());
+            Pending.pop_front();
         }
-        for (auto& callback: batch) {
-            callback();
+        scheduled.Callback();
+    }
+
+    // Runs only the tasks scheduled at most |maxDelay| ahead.
+    void RunPendingWithin(TDuration maxDelay)
+    {
+        RunPending([=](const TDuration& delay) { return delay <= maxDelay; });
+    }
+
+private:
+    template <typename TPredicate>
+    void RunPending(TPredicate shouldRun)
+    {
+        TDeque<TScheduled> batch;
+        {
+            TGuard guard(Lock);
+            TDeque<TScheduled> rest;
+            for (auto& scheduled: Pending) {
+                if (shouldRun(scheduled.Delay)) {
+                    batch.push_back(std::move(scheduled));
+                } else {
+                    rest.push_back(std::move(scheduled));
+                }
+            }
+            Pending.swap(rest);
+        }
+        for (auto& scheduled: batch) {
+            scheduled.Callback();
         }
     }
 };
@@ -203,7 +271,8 @@ struct TManualProviderContext
     NMonitoring::TDynamicCountersPtr ServerGroup;
     ICertificateProviderPtr Provider;
 
-    TManualProviderContext()
+    explicit TManualProviderContext(
+            TDuration refreshInterval = TDuration::Seconds(1))
         : RootPath(TStringBuilder() << TempDir.Name() << "/ca.crt")
         , ServerPair(CreateCertificatePair(
               TempDir.Name(),
@@ -229,7 +298,15 @@ struct TManualProviderContext
             ServerGroup,
             RootPath,
             TVector<TCertificateFiles>{ServerPair, ClientPair},
-            TDuration::Seconds(1));
+            refreshInterval);
+    }
+
+    // New content is applied by a periodic check only after it has been read
+    // unchanged by two periodic checks in a row.
+    void RunUntilStable() const
+    {
+        Scheduler->RunPending();
+        Scheduler->RunPending();
     }
 
     void RotateServer(const TString& key, const TString& cert) const
@@ -266,52 +343,22 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
     {
         TCertificateProviderTestContext context;
 
-        context.Provider->UpdateCertificates().GetValueSync();
-
-        UNIT_ASSERT(
-            context.GetExpireTs(context.ServerPair.CertChainPath) > 0);
-        UNIT_ASSERT(
-            context.GetExpireTs(context.ClientPair.CertChainPath) > 0);
-    }
-
-    Y_UNIT_TEST(ShouldSkipUpdateIfRootCaIsInvalid)
-    {
-        TCertificateProviderTestContext context;
-        context.Provider->UpdateCertificates().GetValueSync();
-
-        UNIT_ASSERT(
-            context.GetExpireTs(context.ServerPair.CertChainPath) > 0);
-        const ui64 before = context.GetExpireTs(
-            context.ServerPair.CertChainPath);
-
-        WriteTextFile(context.RootPath, "not a certificate");
-
-        context.Provider->UpdateCertificates().GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            before,
-            context.GetExpireTs(context.ServerPair.CertChainPath));
-    }
-
-    Y_UNIT_TEST(ShouldSkipUpdateIfAnyIdentityPairBecomesInvalid)
-    {
-        TCertificateProviderTestContext context;
-
-        context.Provider->UpdateCertificates().GetValueSync();
-        UNIT_ASSERT(
-            context.GetExpireTs(context.ClientPair.CertChainPath) > 0);
-        const ui64 before = context.GetExpireTs(
-            context.ClientPair.CertChainPath);
+        const ui64 initial =
+            context.GetExpireTs(context.ServerPair.CertChainPath);
+        UNIT_ASSERT(initial > 0);
 
         WriteTextFile(
-            context.ClientPair.CertChainPath,
-            "broken certificate chain");
+            context.ServerPair.PrivateKeyPath,
+            ReadCertResource("server3.key"));
+        WriteTextFile(
+            context.ServerPair.CertChainPath,
+            ReadCertResource("server3.crt"));
+        const auto error = UpdateCertificatesSync(context.Provider);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
 
-        context.Provider->UpdateCertificates().GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            before,
-            context.GetExpireTs(context.ClientPair.CertChainPath));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
     }
 
     Y_UNIT_TEST(ShouldFailStartWithInvalidInitialCertificates)
@@ -411,54 +458,6 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             yexception);
     }
 
-    Y_UNIT_TEST(ShouldPickUpRotatedCertificateOnTimer)
-    {
-        TManualProviderContext context;
-        context.Provider->Start();
-        Y_DEFER {
-            context.Provider->Stop();
-        };
-
-        const ui64 before =
-            context.GetExpireTs(context.ServerPair.CertChainPath);
-        UNIT_ASSERT(before > 0);
-
-        context.RotateServer("server3.key", "server3.crt");
-        context.Scheduler->RunPending();
-
-        const ui64 after =
-            context.GetExpireTs(context.ServerPair.CertChainPath);
-        UNIT_ASSERT(after > 0);
-        UNIT_ASSERT_VALUES_UNEQUAL(before, after);
-    }
-
-    Y_UNIT_TEST(ShouldRecoverAfterIdentityBecomesValidAgain)
-    {
-        TManualProviderContext context;
-        context.Provider->Start();
-        Y_DEFER {
-            context.Provider->Stop();
-        };
-
-        const ui64 initial =
-            context.GetExpireTs(context.ServerPair.CertChainPath);
-        UNIT_ASSERT(initial > 0);
-
-        WriteTextFile(context.ServerPair.CertChainPath, "broken");
-        context.Scheduler->RunPending();
-        UNIT_ASSERT_VALUES_EQUAL(
-            initial,
-            context.GetExpireTs(context.ServerPair.CertChainPath));
-
-        context.RotateServer("server3.key", "server3.crt");
-        context.Scheduler->RunPending();
-
-        const ui64 recovered =
-            context.GetExpireTs(context.ServerPair.CertChainPath);
-        UNIT_ASSERT(recovered > 0);
-        UNIT_ASSERT_VALUES_UNEQUAL(initial, recovered);
-    }
-
     Y_UNIT_TEST(ShouldUsePeriodicProviderForRootOnlyTlsConfig)
     {
         TTempDir tempDir;
@@ -466,7 +465,8 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             << tempDir.Name() << "/ca.crt";
         WriteTextFile(rootPath, ReadCertResource("ca.crt"));
 
-        auto scheduler = std::make_shared<TManualScheduler>();
+        auto scheduler =
+            std::make_shared<TManualScheduler>();
         auto provider = CreateCertificateProvider(
             CreateLoggingService("console"),
             "TLS_CERTIFICATE_PROVIDER",
@@ -492,7 +492,8 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             << tempDir.Name() << "/ca.crt";
         WriteTextFile(rootPath, ReadCertResource("ca.crt"));
 
-        auto scheduler = std::make_shared<TManualScheduler>();
+        auto scheduler =
+            std::make_shared<TManualScheduler>();
         auto provider = CreateCertificateProvider(
             CreateLoggingService("console"),
             "TLS_CERTIFICATE_PROVIDER",
@@ -513,7 +514,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         UNIT_ASSERT_VALUES_EQUAL(initialPending + 1, scheduler->PendingCount());
     }
 
-    Y_UNIT_TEST(ShouldReportRootCaFingerprint)
+    Y_UNIT_TEST(ShouldNotApplyRotatedCertificateUntilStableRead)
     {
         TManualProviderContext context;
         context.Provider->Start();
@@ -521,14 +522,431 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             context.Provider->Stop();
         };
 
-        const auto beforeFingerprint = context.GetRootCaFingerprint();
+        const ui64 initial =
+            context.GetExpireTs(context.ServerPair.CertChainPath);
 
-        WriteTextFile(context.RootPath, ReadCertResource("server2.crt"));
+        // Content seen once is not applied yet.
+        context.RotateServer("server2.key", "server2.crt");
+        context.Scheduler->RunPending();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+
+        // Content changed again, so it is still not stable.
+        context.RotateServer("server3.key", "server3.crt");
+        context.Scheduler->RunPending();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+
+        context.Scheduler->RunPending();
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+    }
+
+    Y_UNIT_TEST(ShouldCheckFilesOncePerInterval)
+    {
+        const auto interval = TDuration::Hours(1);
+        const auto tolerance = TDuration::Seconds(10);
+        TManualProviderContext context(interval);
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        auto assertNextDelay = [&](TDuration expected)
+        {
+            const auto delays = context.Scheduler->PendingDelays();
+            UNIT_ASSERT_VALUES_EQUAL(1, delays.size());
+            UNIT_ASSERT_C(
+                delays[0] <= expected && delays[0] + tolerance >= expected,
+                delays[0]);
+        };
+
+        assertNextDelay(interval);
+
+        // Unchanged files are checked once per interval.
+        context.Scheduler->RunPending();
+        assertNextDelay(interval);
+
+        // New content does not change the schedule either.
+        context.RotateServer("server3.key", "server3.crt");
+        context.Scheduler->RunPending();
+        assertNextDelay(interval);
+
+        context.Scheduler->RunPending();
+        assertNextDelay(interval);
+    }
+
+    Y_UNIT_TEST(ShouldApplyNewContentOnDemandRightAway)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        const ui64 initial =
+            context.GetExpireTs(context.ServerPair.CertChainPath);
+
+        context.RotateServer("server3.key", "server3.crt");
+        auto future = context.Provider->UpdateCertificates();
+        context.Scheduler->RunPendingWithin(TDuration::Zero());
+
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_C(
+            !HasError(future.GetValue()),
+            FormatError(future.GetValue()));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+        // Only the periodic check is left.
+        UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
+    }
+
+    Y_UNIT_TEST(ShouldValidateNewContentOnDemand)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        const ui64 initial =
+            context.GetExpireTs(context.ServerPair.CertChainPath);
+
+        // Chain cannot be built.
+        WriteTextFile(
+            context.ServerPair.CertChainPath,
+            ReadCertResource("server1.crt") + ReadCertResource("server3.crt"));
+        auto future = context.Provider->UpdateCertificates();
+        context.Scheduler->RunPendingWithin(TDuration::Zero());
+
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_STRING_CONTAINS(
+            future.GetValue().GetMessage(),
+            "chain cannot be built");
+        UNIT_ASSERT_STRING_CONTAINS(
+            future.GetValue().GetMessage(),
+            context.ServerPair.CertChainPath);
+        UNIT_ASSERT_VALUES_EQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+    }
+
+    Y_UNIT_TEST(ShouldRestartStableReadAfterOnDemandUpdate)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        const ui64 initial =
+            context.GetExpireTs(context.ServerPair.CertChainPath);
+
+        context.RotateServer("server3.key", "server3.crt");
         context.Scheduler->RunPending();
 
-        const auto afterFingerprint = context.GetRootCaFingerprint();
+        // An on-demand update in between sees the current content again.
+        context.RotateServer("server1.key", "server1.crt");
+        context.Provider->UpdateCertificates();
+        context.Scheduler->RunPendingWithin(TDuration::Zero());
 
-        UNIT_ASSERT_VALUES_UNEQUAL(beforeFingerprint, afterFingerprint);
+        // The content seen by the first periodic check is not stable.
+        context.RotateServer("server3.key", "server3.crt");
+        context.Scheduler->RunPending();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+
+        context.Scheduler->RunPending();
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+    }
+
+    Y_UNIT_TEST(ShouldServePendingOnDemandUpdateByPeriodicCheck)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        const ui64 initial =
+            context.GetExpireTs(context.ServerPair.CertChainPath);
+
+        context.RotateServer("server3.key", "server3.crt");
+        auto future = context.Provider->UpdateCertificates();
+
+        // The periodic check scheduled at start runs before the on-demand
+        // update and serves the pending request: the new content is applied
+        // right away.
+        context.Scheduler->RunNext();
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_C(
+            !HasError(future.GetValue()),
+            FormatError(future.GetValue()));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+
+        // The on-demand update finds nothing to do, the next periodic check
+        // is scheduled.
+        context.Scheduler->RunNext();
+        UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
+    }
+
+    Y_UNIT_TEST(ShouldCompletePendingOnDemandUpdateOnStop)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+        context.Provider->Start();
+
+        auto future = context.Provider->UpdateCertificates();
+        UNIT_ASSERT(!future.HasValue());
+
+        context.Provider->Stop();
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, future.GetValue().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldRejectOnDemandUpdateWhileAnotherIsPending)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        auto first = context.Provider->UpdateCertificates();
+        auto second = context.Provider->UpdateCertificates();
+        UNIT_ASSERT(second.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_TRY_AGAIN, second.GetValue().GetCode());
+
+        context.Scheduler->RunPendingWithin(TDuration::Zero());
+        UNIT_ASSERT(first.HasValue());
+        UNIT_ASSERT_C(
+            !HasError(first.GetValue()),
+            FormatError(first.GetValue()));
+    }
+
+    Y_UNIT_TEST(ShouldRejectOnDemandUpdateWhenNotStarted)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+
+        auto future = context.Provider->UpdateCertificates();
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, future.GetValue().GetCode());
+
+        context.Provider->Start();
+        context.Provider->Stop();
+
+        future = context.Provider->UpdateCertificates();
+        UNIT_ASSERT(future.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, future.GetValue().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldRunOnDemandUpdatesConcurrentlyWithPeriodicOnes)
+    {
+        TTempDir tempDir;
+        const TString rootPath = TStringBuilder()
+            << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+        const auto pair = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server1.key"),
+            ReadCertResource("server1.crt"));
+
+        auto scheduler = CreateScheduler();
+        scheduler->Start();
+        Y_DEFER {
+            scheduler->Stop();
+        };
+
+        // Every task runs in its own thread, so on-demand updates race with
+        // the periodic ones.
+        auto provider = CreatePeriodicCertificateProvider(
+            CreateLoggingService("console"),
+            "TLS_CERTIFICATE_PROVIDER",
+            scheduler,
+            CreateLongRunningTaskExecutor("TLS_UT"),
+            MakeIntrusive<NMonitoring::TDynamicCounters>(),
+            rootPath,
+            TVector<TCertificateFiles>{pair},
+            TDuration::MilliSeconds(1));
+        provider->Start();
+        Y_DEFER {
+            provider->Stop();
+        };
+
+        WriteTextFile(pair.PrivateKeyPath, ReadCertResource("server3.key"));
+        WriteTextFile(pair.CertChainPath, ReadCertResource("server3.crt"));
+        const auto error = UpdateCertificatesSync(provider);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        auto pending = provider->UpdateCertificates();
+        provider->Stop();
+        UNIT_ASSERT(pending.HasValue());
+    }
+
+    Y_UNIT_TEST(ShouldAllowStoppingFromCompletionCallback)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+        context.Provider->Start();
+
+        // Hangs if Stop() waits for the update that runs the callback.
+        bool stopped = false;
+        context.Provider->UpdateCertificates().Subscribe(
+            [&](const auto&)
+            {
+                context.Provider->Stop();
+                stopped = true;
+            });
+        context.Scheduler->RunPendingWithin(TDuration::Zero());
+
+        UNIT_ASSERT(stopped);
+    }
+
+    Y_UNIT_TEST(ShouldKeepCertificateWhenRefreshedFilesAreInvalid)
+    {
+        TManualProviderContext context;
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        const ui64 initial =
+            context.GetExpireTs(context.ServerPair.CertChainPath);
+
+        // Broken certificate file.
+        WriteTextFile(context.ServerPair.CertChainPath, "broken");
+        context.RunUntilStable();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+
+        // Private key does not match the certificate.
+        context.RotateServer("server3.key", "server1.crt");
+        context.RunUntilStable();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+
+        // Chain cannot be built.
+        WriteTextFile(
+            context.ServerPair.PrivateKeyPath,
+            ReadCertResource("server1.key"));
+        WriteTextFile(
+            context.ServerPair.CertChainPath,
+            ReadCertResource("server1.crt") + ReadCertResource("server3.crt"));
+        context.RunUntilStable();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+
+        // Valid content is applied.
+        context.RotateServer("server3.key", "server3.crt");
+        context.RunUntilStable();
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+    }
+
+    Y_UNIT_TEST(ShouldRestartStableReadOnReadError)
+    {
+        TManualProviderContext context;
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        const ui64 initial =
+            context.GetExpireTs(context.ServerPair.CertChainPath);
+
+        context.RotateServer("server3.key", "server3.crt");
+        context.Scheduler->RunPending();
+
+        // A read error, e.g. in the middle of a non-atomic rotation, restarts
+        // the hold.
+        NFs::Remove(context.ServerPair.PrivateKeyPath);
+        context.Scheduler->RunPending();
+
+        WriteTextFile(
+            context.ServerPair.PrivateKeyPath,
+            ReadCertResource("server3.key"));
+        context.Scheduler->RunPending();
+        UNIT_ASSERT_VALUES_EQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+
+        context.Scheduler->RunPending();
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
+    }
+
+    Y_UNIT_TEST(ShouldKeepRootCaWhenRefreshedFileIsInvalid)
+    {
+        TManualProviderContext context;
+        context.Provider->Start();
+        Y_DEFER {
+            context.Provider->Stop();
+        };
+
+        const auto initial = context.GetRootCaFingerprint();
+
+        WriteTextFile(context.RootPath, "not a certificate");
+        context.RunUntilStable();
+        UNIT_ASSERT_VALUES_EQUAL(initial, context.GetRootCaFingerprint());
+
+        WriteTextFile(context.RootPath, ReadCertResource("server2.crt"));
+        context.RunUntilStable();
+        UNIT_ASSERT_VALUES_UNEQUAL(initial, context.GetRootCaFingerprint());
+    }
+
+    Y_UNIT_TEST(ShouldStartWithInvalidInitialChain)
+    {
+        TTempDir tempDir;
+        const TString rootPath = TStringBuilder()
+            << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
+
+        // The chain cannot be built. It is served as is and only reported,
+        // so that the service is able to start.
+        const auto pair = CreateCertificatePair(
+            tempDir.Name(),
+            "server",
+            ReadCertResource("server1.key"),
+            ReadCertResource("server1.crt") + ReadCertResource("server3.crt"));
+
+        auto scheduler = std::make_shared<TManualScheduler>();
+        auto rootCounters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        auto serverGroup = rootCounters->GetSubgroup("component", "server");
+
+        auto provider = CreatePeriodicCertificateProvider(
+            CreateLoggingService("console"),
+            "TLS_CERTIFICATE_PROVIDER",
+            scheduler,
+            CreateTaskQueueStub(),
+            serverGroup,
+            rootPath,
+            TVector<TCertificateFiles>{pair},
+            TDuration::Seconds(1));
+        provider->Start();
+        Y_DEFER {
+            provider->Stop();
+        };
+
+        const auto expireTs = serverGroup
+            ->GetSubgroup("subsystem", "certificates")
+            ->GetSubgroup("cert", GetBaseName(pair.CertChainPath))
+            ->GetCounter("ExpireTs", false)
+            ->Val();
+        UNIT_ASSERT(expireTs > 0);
+        UNIT_ASSERT(provider->CreateSecureServerCredentials());
     }
 
     Y_UNIT_TEST(ShouldReportExpireTsCountersForStaticProvider)
