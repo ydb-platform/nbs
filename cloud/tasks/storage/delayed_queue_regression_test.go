@@ -281,3 +281,80 @@ func TestStorageYDBReconciliationFoldersAreIndependent(t *testing.T) {
 	require.True(t, cursor.Done)
 	require.Zero(t, delayedQueueRowCount(t, ctx, current))
 }
+
+type readyToRunStorageStub struct {
+	Storage
+	list func(context.Context) ([]TaskInfo, error)
+}
+
+func (s *readyToRunStorageStub) ListTasksReadyToRun(
+	ctx context.Context,
+	_ uint64,
+	_ []string,
+) ([]TaskInfo, error) {
+	return s.list(ctx)
+}
+
+func TestCompoundStorageListsHealthyFolderWhenOtherReadRetries(t *testing.T) {
+	for _, unavailableLegacy := range []bool{false, true} {
+		t.Run(fmt.Sprintf("unavailableLegacy=%v", unavailableLegacy), func(t *testing.T) {
+			unavailable := &readyToRunStorageStub{
+				list: func(ctx context.Context) ([]TaskInfo, error) {
+					<-ctx.Done()
+					return nil, ctx.Err()
+				},
+			}
+			healthy := &readyToRunStorageStub{
+				list: func(context.Context) ([]TaskInfo, error) {
+					return []TaskInfo{{ID: "healthy"}}, nil
+				},
+			}
+
+			compound := &compoundStorage{
+				legacyStorageFolder: "legacy",
+				storageFolder:       "current",
+				listTimeout:         50 * time.Millisecond,
+			}
+			wantFolder := "current"
+			if unavailableLegacy {
+				compound.legacyStorage = unavailable
+				compound.storage = healthy
+			} else {
+				compound.legacyStorage = healthy
+				compound.storage = unavailable
+				wantFolder = "legacy"
+			}
+
+			ctx, cancel := context.WithTimeout(newContext(), time.Second)
+			defer cancel()
+			infos, err := compound.ListTasksReadyToRun(ctx, 1, nil)
+			require.NoError(t, err)
+			require.Equal(t, []TaskInfo{{ID: "healthy", StorageFolder: wantFolder}}, infos)
+		})
+	}
+}
+
+func TestCompoundStorageAcceptsEmptySuccessfulFolder(t *testing.T) {
+	unavailable := &readyToRunStorageStub{
+		list: func(ctx context.Context) ([]TaskInfo, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+	healthy := &readyToRunStorageStub{
+		list: func(context.Context) ([]TaskInfo, error) {
+			return nil, nil
+		},
+	}
+	compound := &compoundStorage{
+		legacyStorageFolder: "legacy",
+		legacyStorage:       healthy,
+		storageFolder:       "current",
+		storage:             unavailable,
+		listTimeout:         50 * time.Millisecond,
+	}
+
+	infos, err := compound.ListTasksReadyToRun(newContext(), 1, nil)
+	require.NoError(t, err)
+	require.Empty(t, infos)
+}

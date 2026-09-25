@@ -22,6 +22,7 @@ type compoundStorage struct {
 
 	storageFolder string
 	storage       Storage
+	listTimeout   time.Duration
 }
 
 func (s *compoundStorage) invoke(
@@ -59,10 +60,61 @@ func (s *compoundStorage) visit(
 func (s *compoundStorage) listAvailable(
 	ctx context.Context,
 	operation string,
-	list func(Storage) ([]TaskInfo, error),
+	list func(context.Context, Storage) ([]TaskInfo, error),
 ) ([]TaskInfo, error) {
-	legacy, legacyErr := list(s.legacyStorage)
-	current, currentErr := list(s.storage)
+	type result struct {
+		legacy bool
+		tasks  []TaskInfo
+		err    error
+	}
+
+	// Table().Do retries retriable errors until its context ends. Bound each
+	// folder read so an unavailable folder cannot hold up the other forever.
+	listTimeout := s.listTimeout
+	if listTimeout <= 0 {
+		listTimeout = 30 * time.Second
+	}
+	listCtx, cancel := context.WithTimeout(ctx, listTimeout)
+	defer cancel()
+
+	results := make(chan result, 2)
+	go func() {
+		tasks, err := list(listCtx, s.legacyStorage)
+		results <- result{legacy: true, tasks: tasks, err: err}
+	}()
+	go func() {
+		tasks, err := list(listCtx, s.storage)
+		results <- result{tasks: tasks, err: err}
+	}()
+
+	var legacy, current []TaskInfo
+	var legacyErr, currentErr error
+	var gotLegacy, gotCurrent bool
+	for !gotLegacy || !gotCurrent {
+		select {
+		case res := <-results:
+			if res.legacy {
+				legacy, legacyErr = res.tasks, res.err
+				gotLegacy = true
+			} else {
+				current, currentErr = res.tasks, res.err
+				gotCurrent = true
+			}
+		case <-listCtx.Done():
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			if !gotLegacy {
+				legacyErr = listCtx.Err()
+			}
+			if !gotCurrent {
+				currentErr = listCtx.Err()
+			}
+			goto finished
+		}
+	}
+
+finished:
 
 	if err := ctx.Err(); err != nil {
 		return nil, err
@@ -234,8 +286,8 @@ func (s *compoundStorage) ListTasksReadyToRun(
 	limit uint64,
 	taskTypeWhitelist []string,
 ) ([]TaskInfo, error) {
-	return s.listAvailable(ctx, "ListTasksReadyToRun", func(part Storage) ([]TaskInfo, error) {
-		return part.ListTasksReadyToRun(ctx, limit, taskTypeWhitelist)
+	return s.listAvailable(ctx, "ListTasksReadyToRun", func(listCtx context.Context, part Storage) ([]TaskInfo, error) {
+		return part.ListTasksReadyToRun(listCtx, limit, taskTypeWhitelist)
 	})
 }
 
@@ -244,8 +296,8 @@ func (s *compoundStorage) ListTasksReadyToCancel(
 	limit uint64,
 	taskTypeWhitelist []string,
 ) ([]TaskInfo, error) {
-	return s.listAvailable(ctx, "ListTasksReadyToCancel", func(part Storage) ([]TaskInfo, error) {
-		return part.ListTasksReadyToCancel(ctx, limit, taskTypeWhitelist)
+	return s.listAvailable(ctx, "ListTasksReadyToCancel", func(listCtx context.Context, part Storage) ([]TaskInfo, error) {
+		return part.ListTasksReadyToCancel(listCtx, limit, taskTypeWhitelist)
 	})
 }
 
@@ -258,9 +310,9 @@ func (s *compoundStorage) ListTasksStallingWhileRunning(
 	return s.listAvailable(
 		ctx,
 		"ListTasksStallingWhileRunning",
-		func(part Storage) ([]TaskInfo, error) {
+		func(listCtx context.Context, part Storage) ([]TaskInfo, error) {
 			return part.ListTasksStallingWhileRunning(
-				ctx,
+				listCtx,
 				excludingHostname,
 				limit,
 				taskTypeWhitelist,
@@ -278,9 +330,9 @@ func (s *compoundStorage) ListTasksStallingWhileCancelling(
 	return s.listAvailable(
 		ctx,
 		"ListTasksStallingWhileCancelling",
-		func(part Storage) ([]TaskInfo, error) {
+		func(listCtx context.Context, part Storage) ([]TaskInfo, error) {
 			return part.ListTasksStallingWhileCancelling(
-				ctx,
+				listCtx,
 				excludingHostname,
 				limit,
 				taskTypeWhitelist,
@@ -651,6 +703,14 @@ func NewStorage(
 		return storage, nil
 	}
 
+	listTimeout, err := time.ParseDuration(config.GetCompoundStorageListTimeout())
+	if err != nil {
+		return nil, fmt.Errorf("invalid CompoundStorageListTimeout: %w", err)
+	}
+	if listTimeout <= 0 {
+		return nil, fmt.Errorf("CompoundStorageListTimeout must be positive")
+	}
+
 	// Ignore legacy metrics.
 	legacyStorage := newStorage(
 		config.GetLegacyStorageFolder(),
@@ -663,6 +723,7 @@ func NewStorage(
 
 		storageFolder: config.GetStorageFolder(),
 		storage:       storage,
+		listTimeout:   listTimeout,
 	}, nil
 }
 

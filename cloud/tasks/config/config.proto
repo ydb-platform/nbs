@@ -90,4 +90,7 @@ message TasksConfig {
     optional bool ReconcileReadyToRunDelayedEnabled = 42 [default = true];
     optional string ReconcileReadyToRunDelayedTaskScheduleInterval = 43 [default = "1h"];
     optional uint32 ReconcileReadyToRunDelayedLimit = 44 [default = 5000];
+
+    // Maximum time to wait for either folder while listing tasks from compound storage.
+    optional string CompoundStorageListTimeout = 45 [default = "30s"];
 }

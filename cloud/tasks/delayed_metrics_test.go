@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -71,7 +72,9 @@ func (r *delayedRegistry) DurationHistogram(
 
 type delayedStatsStorage struct {
 	storage.Storage
-	stats storage.DelayedTaskStats
+	stats    storage.DelayedTaskStats
+	statsErr error
+	listErr  error
 }
 
 func (s *delayedStatsStorage) GetDelayedTaskStats(
@@ -79,7 +82,14 @@ func (s *delayedStatsStorage) GetDelayedTaskStats(
 	time.Time,
 ) (storage.DelayedTaskStats, error) {
 
-	return s.stats, nil
+	return s.stats, s.statsErr
+}
+
+func (s *delayedStatsStorage) ListTasksWithStatus(
+	context.Context,
+	string,
+) ([]storage.TaskInfo, error) {
+	return nil, s.listErr
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,13 +117,52 @@ func TestDelayedQueueMetrics(t *testing.T) {
 	require.Equal(t, 2.0, r.gauges["delayedTasksDue"].value)
 	require.Equal(t, 5.0, r.gauges["delayedTaskMaxOverdueSeconds"].value)
 	require.Equal(t, 4.0, r.gauges["delayedTaskAvgOverdueSeconds"].value)
+	require.Equal(t, 1.0, r.gauges["delayedTaskStatsValid"].value)
 
 	// An empty queue must clear the values from the previous collection.
 	s.stats = storage.DelayedTaskStats{}
 	require.NoError(t, c.collectDelayedTasksMetrics(context.Background()))
-	for _, gauge := range r.gauges {
-		require.Zero(t, gauge.value)
+	for _, name := range []string{
+		"delayedTasks", "delayedTasksDue",
+		"delayedTaskMaxOverdueSeconds", "delayedTaskAvgOverdueSeconds",
+	} {
+		require.Zero(t, r.gauges[name].value)
 	}
+	require.Equal(t, 1.0, r.gauges["delayedTaskStatsValid"].value)
+}
+
+func TestDelayedQueueMetricsStayStaleOnCollectionError(t *testing.T) {
+	r := &delayedRegistry{gauges: map[string]*delayedGauge{}}
+	s := &delayedStatsStorage{stats: storage.DelayedTaskStats{Total: 10, Due: 2}}
+	c := &collectListerMetricsTask{registry: r, storage: s}
+
+	require.NoError(t, c.collectDelayedTasksMetrics(context.Background()))
+	s.statsErr = errors.New("unavailable")
+	require.Error(t, c.collectDelayedTasksMetrics(context.Background()))
+	require.Equal(t, 10.0, r.gauges["delayedTasks"].value)
+	require.Equal(t, 2.0, r.gauges["delayedTasksDue"].value)
+	require.Zero(t, r.gauges["delayedTaskStatsValid"].value)
+}
+
+func TestDelayedQueueMetricsStayStaleOnEarlierListerError(t *testing.T) {
+	r := &delayedRegistry{gauges: map[string]*delayedGauge{}}
+	s := &delayedStatsStorage{
+		stats:   storage.DelayedTaskStats{Total: 10, Due: 2},
+		listErr: errors.New("legacy folder unavailable"),
+	}
+	c := &collectListerMetricsTask{
+		registry:                  r,
+		storage:                   s,
+		metricsCollectionInterval: time.Millisecond,
+	}
+	require.NoError(t, c.collectDelayedTasksMetrics(context.Background()))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	require.ErrorIs(t, c.Run(ctx, nil), s.listErr)
+	require.Equal(t, 10.0, r.gauges["delayedTasks"].value)
+	require.Equal(t, 2.0, r.gauges["delayedTasksDue"].value)
+	require.Zero(t, r.gauges["delayedTaskStatsValid"].value)
 }
 
 func TestInitialRunDelayMetrics(t *testing.T) {
