@@ -14,7 +14,7 @@ DEPENDS(
 )
 
 DATA(
-    arcadia/cloud/filestore/tests/loadtest/service-kikimr-memshard-test
+    arcadia/cloud/filestore/tests/fastshard/loadtest/service-kikimr-memshard-test
 )
 
 PEERDIR(
