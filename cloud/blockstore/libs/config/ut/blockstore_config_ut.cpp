@@ -2,12 +2,15 @@
 #include <cloud/blockstore/libs/config/blockstore_config_holder.h>
 #include <cloud/blockstore/libs/config/blockstore_config_provider.h>
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
+#include <cloud/blockstore/libs/config/opaque_config_parser.h>
 
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/hash_set.h>
 #include <util/generic/scope.h>
+#include <util/generic/vector.h>
 
 #include <atomic>
 #include <thread>
@@ -61,6 +64,140 @@ Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
         UNIT_ASSERT(descriptor->FindFieldByName("StorageService"));
         UNIT_ASSERT(descriptor->FindFieldByName("Features"));
         UNIT_ASSERT(descriptor->FindFieldByName("LocalNVMe"));
+    }
+
+    // Check presence for every singular scalar reachable from the aggregate,
+    // including fields inside repeated messages and map values.
+    Y_UNIT_TEST(ShouldTrackPresenceForAllConfigurationScalars)
+    {
+        THashSet<const google::protobuf::Descriptor*> visited;
+        TVector<const google::protobuf::Descriptor*> pending = {
+            NProto::TBlockstoreConfig::descriptor()};
+        TString missingPresence;
+
+        // Visit shared types once and follow message-valued map entries without
+        // imposing presence on the generated map key and value fields.
+        while (!pending.empty()) {
+            const auto* descriptor = pending.back();
+            pending.pop_back();
+            if (!visited.insert(descriptor).second) {
+                continue;
+            }
+
+            for (int i = 0; i < descriptor->field_count(); ++i) {
+                const auto* field = descriptor->field(i);
+                if (const auto* nested = field->message_type()) {
+                    if (field->is_map()) {
+                        nested = nested->map_value()->message_type();
+                    }
+                    if (nested) {
+                        pending.push_back(nested);
+                    }
+                } else if (!field->is_repeated() && !field->has_presence()) {
+                    missingPresence += field->full_name();
+                    missingPresence += '\n';
+                }
+            }
+        }
+
+        // Report all offending fields so schema changes cannot silently turn
+        // explicit default values into absent overrides.
+        UNIT_ASSERT_C(missingPresence.empty(), missingPresence);
+    }
+
+    // Check that YAML preserves explicit scalar defaults through snapshot
+    // construction and that omitted fields retain the static configuration.
+    Y_UNIT_TEST(ShouldApplyExplicitYamlDefaultsToSnapshot)
+    {
+        const TString yamlConfigs[] = {
+            R"(
+rdma:
+  client_enabled: false
+  server_enabled: false
+  disk_agent_target_enabled: false
+  blockstore_server_target_enabled: false
+  client:
+    aligned_data_enabled: false
+    source_interface: ""
+    wait_mode: WAIT_MODE_POLL
+server: {server_config: {keep_alive_enabled: false}}
+kms_client: {request_timeout: 0}
+root_kms: {address: ""}
+)",
+            R"(
+rdma:
+  client_enabled: true
+  server_enabled: true
+  disk_agent_target_enabled: true
+  blockstore_server_target_enabled: true
+  client:
+    aligned_data_enabled: true
+    source_interface: ib0
+    wait_mode: WAIT_MODE_BUSY_WAIT
+server: {server_config: {keep_alive_enabled: true}}
+kms_client: {request_timeout: 42}
+root_kms: {address: kms}
+)"};
+        const auto parser = CreateBlockstoreOpaqueConfigParser();
+        const auto parse = [&] (const TString& yaml) {
+            const auto message = parser(yaml);
+            UNIT_ASSERT(message);
+            UNIT_ASSERT_VALUES_EQUAL(
+                NProto::TBlockstoreConfig::descriptor(),
+                message->GetDescriptor());
+            NProto::TBlockstoreConfig config;
+            config.CopyFrom(*message);
+            return config;
+        };
+
+        // Exercise both override directions and absent input against each base.
+        for (const ui32 dynamicValue: {0, 1}) {
+            auto staticConfig = parse(yamlConfigs[1 - dynamicValue]);
+            staticConfig.MutableRdma()->MutableClient()->SetPollerThreads(7);
+            for (const bool applyOverride: {false, true}) {
+                const auto config = MakeBlockstoreConfig(
+                    staticConfig,
+                    parse(applyOverride ? yamlConfigs[dynamicValue] : "{}"),
+                    std::make_shared<NStorage::TStorageConfigControls>());
+                const bool enabled =
+                    applyOverride ? dynamicValue : 1 - dynamicValue;
+
+                // Read the published wrappers, including proto3 fields that
+                // already track presence, to protect their existing contract.
+                const auto& rdma = config->GetRdmaConfig();
+                UNIT_ASSERT_VALUES_EQUAL(enabled, rdma->GetClientEnabled());
+                UNIT_ASSERT_VALUES_EQUAL(enabled, rdma->GetServerEnabled());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled,
+                    rdma->GetDiskAgentTargetEnabled());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled,
+                    rdma->GetBlockstoreServerTargetEnabled());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled,
+                    config->GetServerConfig()->GetKeepAliveEnabled());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? 42 : 0,
+                    config->GetKmsClientConfig()->GetRequestTimeout());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? "kms" : "",
+                    config->GetRootKmsConfig()->GetAddress());
+
+                // Preserve the selected RDMA values when creating its working
+                // configuration and retain the omitted nested parameter.
+                const auto client = NCloud::NStorage::NRdma::CreateClientConfig(
+                    rdma->GetClient());
+                UNIT_ASSERT_VALUES_EQUAL(enabled, client.AlignedDataEnabled);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    enabled ? "ib0" : "",
+                    client.SourceInterface);
+                UNIT_ASSERT(
+                    client.WaitMode ==
+                    (enabled ? NCloud::NStorage::NRdma::EWaitMode::BusyWait
+                             : NCloud::NStorage::NRdma::EWaitMode::Poll));
+                UNIT_ASSERT_VALUES_EQUAL(7, client.PollerThreads);
+            }
+        }
     }
 
     // Merge static and dynamic configs. Check that a dynamic scalar overrides
