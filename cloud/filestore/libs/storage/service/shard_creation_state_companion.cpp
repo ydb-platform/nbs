@@ -261,27 +261,23 @@ void TShardCreationStateCompanion::UpdateShardCreationState(
         return;
     }
 
-    // Implement this block after adding ShardCreationState
-    // into TEvUnsafeChangeTabletStateRequest
-    Y_ABORT("add ShardCreationState into TEvUnsafeChangeTabletStateRequest");
+    auto request =
+        std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
+    request->Record.SetFileSystemId(FileSystemId);
+    auto* shardCreationState = request->Record.MutableShardCreationState();
+    shardCreationState->SetVersion(ShardCreationState.GetVersion());
+    shardCreationState->SetBaseShardCount(
+        ShardCreationState.GetBaseShardCount());
+    shardCreationState->SetTargetShardCount(
+        ShardCreationState.GetTargetShardCount());
+    shardCreationState->SetTargetShardConfigHash(
+        ShardCreationState.GetTargetShardConfigHash());
+    SaveCompressedBitmap(
+        *CreatedShardBitmap,
+        ShardBitmapBitCount,
+        *shardCreationState->MutableCreatedShardBitmap());
 
-    // auto request =
-    // std::make_unique<TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>();
-    // request->Record.SetFileSystemId(FileSystemId);
-    // auto* shardCreationState = request->Record.MutableShardCreationState();
-    // shardCreationState->SetVersion(ShardCreationState.GetVersion());
-    // shardCreationState->SetBaseShardCount(
-    //     ShardCreationState.GetBaseShardCount());
-    // shardCreationState->SetTargetShardCount(
-    //     ShardCreationState.GetTargetShardCount());
-    // shardCreationState->SetTargetShardConfigHash(
-    //     ShardCreationState.GetTargetShardConfigHash());
-    // SaveCompressedBitmap(
-    //     *CreatedShardBitmap,
-    //     ShardBitmapBitCount,
-    //     *shardCreationState->MutableCreatedShardBitmap());
-
-    // NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
+    NCloud::Send(ctx, MakeIndexTabletProxyServiceId(), std::move(request));
 }
 
 void TShardCreationStateCompanion::UpdateShardCreatedState(
