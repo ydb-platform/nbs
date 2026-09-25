@@ -584,10 +584,10 @@ void TBootstrapYdb::InitKikimrService()
 
     Configs->InitDiskAgentConfig();
 
-    if (Configs->Options->RdmaConfig) {
-        Configs->InitRdmaConfig();
-        STORAGE_INFO("RDMA config initialized");
-    }
+    Configs->InitRdmaConfig();
+    STORAGE_INFO(
+        "Static RDMA config initialized from "
+        << (Configs->Options->RdmaConfig ? "file" : "legacy fields"));
 
     auto staticBlockstoreConfig = Configs->GetCurrentBlockstoreConfig();
     registerOpts.UseYamlConfig =
@@ -650,15 +650,21 @@ void TBootstrapYdb::InitKikimrService()
         Configs->ApplyCMSConfigs(std::move(cmsConfig->AppConfig));
     }
 
-    STORAGE_INFO("CMS configs initialized");
-
     // If no --rdma-file provided, InitRdmaConfig should be called after
     // InitDiskAgentConfig, InitServerConfig and ApplyCMSConfigs
     // to backport legacy RDMA config
     if (!Configs->Options->RdmaConfig) {
         Configs->InitRdmaConfig();
-        STORAGE_INFO("RDMA config initialized");
+        if (Configs->RdmaConfig->GetConfigProto().SerializeAsString() !=
+            staticBlockstoreConfig.GetRdma().SerializeAsString())
+        {
+            STORAGE_INFO(
+                "RDMA config updated from legacy fields after applying CMS "
+                "configs");
+        }
     }
+
+    STORAGE_INFO("CMS configs initialized");
 
     auto startupBlockstoreConfigProto = Configs->GetCurrentBlockstoreConfig();
     if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
