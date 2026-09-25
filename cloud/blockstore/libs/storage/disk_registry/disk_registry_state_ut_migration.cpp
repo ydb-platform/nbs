@@ -2490,6 +2490,71 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMigrationTest)
             });
     }
 
+    Y_UNIT_TEST(ShouldPersistForcedMigrationOnce)
+    {
+        for (const bool withGroup: {false, true}) {
+            TTestExecutor executor;
+            executor.WriteTx([](TDiskRegistryDatabase db) { db.InitSchema(); });
+            auto group = SpreadPlacementGroup("pg", {"disk"});
+            group.SetConfigVersion(7);
+            group.MutableDisks(0)->AddDeviceRacks("rack-1");
+            TVector<NProto::TPlacementGroupConfig> groups;
+            if (withGroup) {
+                groups.push_back(group);
+            }
+            auto state =
+                TDiskRegistryStateBuilder()
+                    .WithKnownAgents({
+                        AgentConfig(1, {Device("dev-1", "source", "rack-1")}),
+                        AgentConfig(2, {Device("dev-2", "target", "rack-2")})})
+                    .WithDisks({Disk("disk", {"source"})})
+                    .WithPlacementGroups(groups)
+                    .Build();
+            auto diskUpdates = MakeIntrusive<TTableUpdateCounter>();
+            auto groupUpdates = MakeIntrusive<TTableUpdateCounter>();
+            auto notificationUpdates = MakeIntrusive<TTableUpdateCounter>();
+            executor.DB.SetTableObserver(TDiskRegistrySchema::Disks::TableId,
+                                         diskUpdates);
+            executor.DB.SetTableObserver(
+                TDiskRegistrySchema::PlacementGroups::TableId, groupUpdates);
+            executor.DB.SetTableObserver(
+                TDiskRegistrySchema::DisksToNotify::TableId,
+                notificationUpdates);
+
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db)
+                {
+                    const auto result = state->StartForceMigration(
+                        Now(), db, "disk", "source", "target");
+                    UNIT_ASSERT_SUCCESS(result.GetError());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        "target",
+                        result.GetResult().GetDeviceUUID());
+                    UNIT_ASSERT_VALUES_EQUAL("disk", state->FindDisk("target"));
+                });
+            UNIT_ASSERT_VALUES_EQUAL(1, diskUpdates->UpdateCount);
+            UNIT_ASSERT_VALUES_EQUAL(withGroup ? 1 : 0,
+                                     groupUpdates->UpdateCount);
+            UNIT_ASSERT_VALUES_EQUAL(1, notificationUpdates->UpdateCount);
+
+            if (!withGroup) {
+                continue;
+            }
+
+            executor.ReadTx(
+                [&](TDiskRegistryDatabase db)
+                {
+                    TVector<NProto::TPlacementGroupConfig> groups;
+                    UNIT_ASSERT(db.ReadPlacementGroups(groups));
+                    UNIT_ASSERT_VALUES_EQUAL(1, groups.size());
+                    UNIT_ASSERT_VALUES_EQUAL(8, groups[0].GetConfigVersion());
+                    const auto& racks = groups[0].GetDisks(0).GetDeviceRacks();
+                    UNIT_ASSERT(FindPtr(racks, "rack-1"));
+                    UNIT_ASSERT(FindPtr(racks, "rack-2"));
+                });
+        }
+    }
+
     Y_UNIT_TEST(ShouldPersistStartedMigrationsOncePerDisk)
     {
         TTestExecutor executor;
