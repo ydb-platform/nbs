@@ -339,6 +339,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ReadBlobDisabled,                  bool,      false                   )\
     xxx(WriteBlobDisabled,                 bool,      false                   )\
+    xxx(WriteDataActorOptimizationEnabled, bool,      false                   )\
                                                                                \
     xxx(CpuLackOverloadThreshold,               ui32,      101                )\
     xxx(TabletActorCpuUsageOverloadThreshold,   ui32,      101                )\

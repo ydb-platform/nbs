@@ -3048,7 +3048,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    void CheckThreeStageWrites(NProto::EStorageMediaKind kind, bool disableForHdd)
+    void CheckThreeStageWrites(
+        NProto::EStorageMediaKind kind,
+        bool disableForHdd,
+        bool writeDataActorOptimizationEnabled = true)
     {
         TTestEnv env;
 
@@ -3063,6 +3066,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             newConfig.SetThreeStageWriteEnabled(true);
             newConfig.SetThreeStageWriteThreshold(1);
             newConfig.SetThreeStageWriteDisabledForHDD(disableForHdd);
+            if (writeDataActorOptimizationEnabled) {
+                newConfig.SetWriteDataActorOptimizationEnabled(true);
+            }
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -3074,6 +3080,10 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 disableForHdd,
                 response.GetStorageConfig().GetThreeStageWriteDisabledForHDD());
+            UNIT_ASSERT_VALUES_EQUAL(
+                writeDataActorOptimizationEnabled,
+                response.GetStorageConfig()
+                    .GetWriteDataActorOptimizationEnabled());
 
             TDispatchOptions options;
             env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
@@ -3136,9 +3146,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvAddDataRequest));
             UNIT_ASSERT_VALUES_EQUAL(1, runtime.GetCounter(TEvIndexTabletPrivate::EvAddBlobRequest));
             UNIT_ASSERT_VALUES_EQUAL(0, runtime.GetCounter(TEvIndexTabletPrivate::EvWriteBlobRequest));
-            // TWriteDataActor responds directly to TServiceClient, bypassing
-            // TStorageServiceActor, so there are no internal response events.
-            UNIT_ASSERT_VALUES_EQUAL(0, runtime.GetCounter(TEvService::EvWriteDataResponse));
+            // The optimized actor responds directly to TServiceClient. The
+            // legacy path sends one internal response via TStorageServiceActor.
+            UNIT_ASSERT_VALUES_EQUAL(
+                writeDataActorOptimizationEnabled ? 0 : 1,
+                runtime.GetCounter(TEvService::EvWriteDataResponse));
             UNIT_ASSERT_VALUES_EQUAL(expectedPutCount, putRequestCount);
             // clang-format on
             runtime.ClearCounters();
@@ -3212,6 +3224,14 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldUseLegacyWriteDataPathByDefault)
+    {
+        CheckThreeStageWrites(
+            NProto::STORAGE_MEDIA_SSD,
+            false,
+            false /* writeDataActorOptimizationEnabled */);
+    }
+
     Y_UNIT_TEST(ShouldPerformThreeStageWritesHdd)
     {
         CheckThreeStageWrites(NProto::STORAGE_MEDIA_HDD, false);
@@ -3240,6 +3260,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         {
             NProto::TStorageConfig newConfig;
             newConfig.SetThreeStageWriteEnabled(true);
+            newConfig.SetWriteDataActorOptimizationEnabled(true);
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -3452,6 +3473,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         {
             NProto::TStorageConfig newConfig;
             newConfig.SetThreeStageWriteEnabled(true);
+            newConfig.SetWriteDataActorOptimizationEnabled(true);
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -3649,6 +3671,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetThreeStageWriteThreshold(1);
         config.SetBlockChecksumsInProfileLogEnabled(true);
+        config.SetWriteDataActorOptimizationEnabled(true);
 
         const auto profileLog = std::make_shared<TTestProfileLog>();
         TTestEnv env({}, config, {}, profileLog);
@@ -4901,7 +4924,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         ui64 offset,
         const std::vector<ui64>& iovecSizes,
         bool expectDirectExternalPayload = false,
-        bool forceThreeStageFallback = false)
+        bool forceThreeStageFallback = false,
+        bool expectCopiedExternalPayload = false)
     {
         TTestEnv env({}, config);
 
@@ -4939,7 +4963,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             readIovecs.emplace_back(iovecSizes[i], '\0');
         }
         bool directExternalPayloadSeen = false;
-        if (expectDirectExternalPayload || forceThreeStageFallback) {
+        bool copiedExternalPayloadSeen = false;
+        if (expectDirectExternalPayload ||
+            expectCopiedExternalPayload ||
+            forceThreeStageFallback)
+        {
             env.GetRuntime().SetEventFilter(
                 [&] (auto&, auto& event) {
                     if (forceThreeStageFallback &&
@@ -4979,6 +5007,31 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                         }
                     }
 
+                    if (expectCopiedExternalPayload &&
+                        !copiedExternalPayloadSeen &&
+                        event->GetTypeRewrite() ==
+                            TEvService::EvWriteDataRequest)
+                    {
+                        auto* request = event->template Get<
+                            TEvService::TEvWriteDataRequest>();
+                        if (request->GetPayloadCount() == 1) {
+                            auto it = request->GetPayload(0).Begin();
+                            UNIT_ASSERT(it.Valid());
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                dataSize,
+                                it.ContiguousSize());
+                            for (const auto& buffer: writeIovecs) {
+                                if (!buffer.empty()) {
+                                    UNIT_ASSERT(
+                                        buffer.data() != it.ContiguousData());
+                                }
+                            }
+                            ++it;
+                            UNIT_ASSERT(!it.Valid());
+                            copiedExternalPayloadSeen = true;
+                        }
+                    }
+
                     return false;
                 });
         }
@@ -4986,6 +5039,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.WriteData(headers, fs, nodeId, handle, offset, writeIovecs);
         if (expectDirectExternalPayload) {
             UNIT_ASSERT(directExternalPayloadSeen);
+        }
+        if (expectCopiedExternalPayload) {
+            UNIT_ASSERT(copiedExternalPayloadSeen);
         }
         auto readDataResult = service.ReadData(
             headers,
@@ -5106,6 +5162,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         TestZeroCopyWrite(config, 0, iovecSizes);
     }
 
+    Y_UNIT_TEST(TestExternalPayloadIsCopiedByDefault)
+    {
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(false);
+        config.SetZeroCopyWriteEnabled(true);
+        config.SetExternalWriteDataPayloadEnabled(true);
+        config.SetExternalReadDataPayload(true);
+        TestZeroCopyWrite(
+            config,
+            4_KB,
+            std::vector<ui64>(64, 4_KB),
+            false,
+            false,
+            true);
+    }
+
     Y_UNIT_TEST(TestAlignedZeroCopyWriteFallbackWithExternalPayload)
     {
         NProto::TStorageConfig config;
@@ -5113,6 +5185,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
         config.SetExternalWriteDataPayloadEnabled(true);
+        config.SetWriteDataActorOptimizationEnabled(true);
         config.SetExternalReadDataPayload(true);
         TestZeroCopyWrite(
             config,
@@ -5128,6 +5201,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
         config.SetExternalWriteDataPayloadEnabled(true);
+        config.SetWriteDataActorOptimizationEnabled(true);
         config.SetExternalReadDataPayload(true);
         TestZeroCopyWrite(
             config,
@@ -5143,6 +5217,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
         config.SetExternalWriteDataPayloadEnabled(true);
+        config.SetWriteDataActorOptimizationEnabled(true);
         config.SetExternalReadDataPayload(true);
         TestZeroCopyWrite(
             config,

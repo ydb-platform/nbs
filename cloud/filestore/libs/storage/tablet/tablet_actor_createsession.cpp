@@ -118,6 +118,8 @@ void FillFeatures(
 
     features->SetReadBlobDisabled(config.GetReadBlobDisabled());
     features->SetWriteBlobDisabled(config.GetWriteBlobDisabled());
+    features->SetWriteDataActorOptimizationEnabled(
+        config.GetWriteDataActorOptimizationEnabled());
 
     features->SetUnconfirmedFlowEnabled(
         config.GetAddingUnconfirmedDataEnabled());
