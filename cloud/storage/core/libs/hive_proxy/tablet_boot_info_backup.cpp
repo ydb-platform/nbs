@@ -345,18 +345,32 @@ void TTabletBootInfoBackup::HandleBackupTabletBootInfos(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-TVector<TTabletBootInfo> TTabletBootInfoBackup::CollectTabletBootInfos() const
+TVector<TTabletBootInfo> TTabletBootInfoBackup::CollectTabletBootInfos(
+    ui64 tabletId) const
 {
     // Not using "value_or()" because it copies the value.
     const auto& backupProto =
         InitialBackupProto ? *InitialBackupProto : BackupProto;
+    const auto& data = backupProto.GetData();
 
     TVector<TTabletBootInfo> tabletBootInfos;
-    tabletBootInfos.reserve(backupProto.GetData().size());
-    for (const auto& [_, tabletBootInfo]: backupProto.GetData()) {
+    const auto append = [&](const auto& tabletBootInfo)
+    {
         tabletBootInfos.emplace_back(
             tabletBootInfo.GetStorageInfo(),
             tabletBootInfo.GetSuggestedGeneration());
+    };
+
+    if (tabletId) {
+        const auto it = data.find(tabletId);
+        if (it != data.end()) {
+            append(it->second);
+        }
+    } else {
+        tabletBootInfos.reserve(data.size());
+        for (const auto& [_, tabletBootInfo]: data) {
+            append(tabletBootInfo);
+        }
     }
     return tabletBootInfos;
 }
@@ -367,7 +381,7 @@ void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
 {
     auto response =
         std::make_unique<TEvHiveProxy::TEvListTabletBootInfoBackupsResponse>(
-            CollectTabletBootInfos());
+            CollectTabletBootInfos(0));
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -377,7 +391,7 @@ void TTabletBootInfoBackup::HandleGetTabletBootInfos(
 {
     auto response =
         std::make_unique<TEvHiveProxy::TEvGetTabletBootInfosResponse>(
-            CollectTabletBootInfos());
+            CollectTabletBootInfos(ev->Get()->TabletId));
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

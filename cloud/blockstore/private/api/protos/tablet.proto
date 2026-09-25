@@ -50,3 +50,62 @@ message TGetTabletBootInfosResponse
 {
     repeated TTabletBootInfoProto TabletBootInfos = 1;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// Passive tablet diagnostics. Does not query Hive or initiate tablet boot.
+
+message TGetTabletStateRequest
+{
+    uint64 TabletId = 1;
+
+    // 0 uses 5000 ms. Values above 30000 ms are rejected.
+    uint32 TimeoutMs = 2;
+}
+
+message TGetTabletStateResponse
+{
+    enum EState
+    {
+        UNKNOWN = 0;
+        // A pipe connected through the leader's system tablet. This does not
+        // guarantee readiness of every partition or availability of disk data.
+        RUNNING = 1;
+    }
+
+    enum ELocalState
+    {
+        LOCAL_UNKNOWN = 0;
+        LOCAL_STARTING = 1;
+        LOCAL_ACTIVE = 2;
+        LOCAL_STOPPED = 3;
+        LOCAL_NOT_OBSERVED = 4;
+    }
+
+    enum EBootInfoState
+    {
+        BOOT_INFO_UNKNOWN = 0;
+        BOOT_INFO_AVAILABLE = 1;
+        BOOT_INFO_MISSING = 2;
+        BOOT_INFO_NOT_CONFIGURED = 3;
+    }
+
+    uint64 TabletId = 1;
+    EState State = 2;
+    uint32 LeaderNodeId = 3;
+    uint64 LeaderGeneration = 4;
+    string Message = 5;
+
+    // Last local whiteboard observation, independent of the leader probe.
+    // STOPPED and NOT_OBSERVED are scoped to LocalNodeId only and never grant
+    // permission to boot the tablet. A new attempt may not be reported yet.
+    ELocalState LocalState = 6;
+    uint32 LocalNodeId = 7;
+    uint32 LocalGeneration = 8;
+    string LocalStateMessage = 9;
+
+    // Presence in the receiving NBS process's loaded backup, independent of
+    // liveness. A running tablet may have no backup entry, and vice versa.
+    EBootInfoState BootInfoState = 10;
+    uint64 SuggestedGeneration = 11;
+    string BootInfoMessage = 12;
+}
