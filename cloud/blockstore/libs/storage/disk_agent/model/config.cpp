@@ -69,6 +69,9 @@ namespace {
     xxx(KickOutOldClientsEnabled,           bool,       false                 )\
     xxx(UseOneSubmissionThreadPerAIOServiceEnabled,     bool,       false     )\
     xxx(JournalledDeviceTcpServerListenAddress,      TString,          ""     )\
+    xxx(JournalEnabled,                     bool,       false                 )\
+    xxx(LogMetaSizePercents,                ui32,       1                     )\
+    xxx(LogDataSizePercents,                ui32,       12                    )\
 // BLOCKSTORE_AGENT_CONFIG
 
 // clang-format on
