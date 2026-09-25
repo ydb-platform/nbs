@@ -1324,7 +1324,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
         checkWriteBackCacheConfig(1, 0);
 
         NProto::TStorageConfig patch2;
-        patch1.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
+        patch2.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
 
         tablet.ChangeStorageConfig(std::move(patch2));
         tablet.RebootTablet();
