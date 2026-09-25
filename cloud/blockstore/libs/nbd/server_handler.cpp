@@ -93,7 +93,11 @@ public:
                 response.RequestBytes);
         }
 
-        UnregisterRequest(response.RequestContext, response.Error);
+        UnregisterRequest(
+            response.RequestContext,
+            response.Error,
+            false   // already recorded before response delivery
+        );
     }
 
     void ProcessRequests(
@@ -157,6 +161,11 @@ private:
         EBlockStoreRequest requestType);
 
     void UnregisterRequest(
+        const TRequestContextPtr& requestCtx,
+        const NProto::TError& error,
+        bool recordLatency = true);
+
+    void RecordLatencyCompletion(
         const TRequestContextPtr& requestCtx,
         const NProto::TError& error);
 
@@ -558,6 +567,26 @@ void TServerHandler::ProcessRequests(
 
             case NBD_CMD_WRITE: {
                 if (Options.CheckpointId) {
+                    // The write payload is part of the NBD request and must be
+                    // consumed even though checkpoint exports are read-only.
+                    TBuffer ignoredRequestData;
+                    in.ReadOrFail(ignoredRequestData, request.Length);
+
+                    // This request is rejected before RegisterRequest, so it
+                    // must use the latency-only batch hook. Do not register a
+                    // legacy request just to account for the new diagnostic.
+                    TMetricRequest metricRequest(
+                        EBlockStoreRequest::WriteBlocks);
+                    ServerStats->PrepareMetricRequest(
+                        metricRequest,
+                        Options.ClientId,
+                        Options.DiskId,
+                        Options.BlockSize
+                            ? request.From / Options.BlockSize
+                            : 0,
+                        request.Length,
+                        false);
+                    ServerStats->RecordLatencyBatch(metricRequest, 0, 0, 1);
                     replyError(E_ARGUMENT, "invalid write request");
                     break;
                 }
@@ -671,6 +700,7 @@ void TServerHandler::ProcessReadRequest(
     }
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
+    RecordLatencyCompletion(requestCtx, error);
     STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
         << " PROCESS ReadResponse"
         << " #" << request.Handle
@@ -741,6 +771,7 @@ void TServerHandler::ProcessWriteRequest(
     }
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
+    RecordLatencyCompletion(requestCtx, error);
     STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
         << " PROCESS WriteResponse"
         << " #" << request.Handle
@@ -832,6 +863,7 @@ TRequestContextPtr TServerHandler::RegisterRequest(
         endIndex * Options.BlockSize != request.From + request.Length;
 
     auto requestCtx = MakeIntrusive<TRequestContext>(request.Handle, requestType);
+    requestCtx->LatencyRequestBytes = request.Length;
 
     ServerStats->PrepareMetricRequest(
         requestCtx->MetricRequest,
@@ -853,15 +885,35 @@ TRequestContextPtr TServerHandler::RegisterRequest(
 
 void TServerHandler::UnregisterRequest(
     const TRequestContextPtr& requestCtx,
-    const NProto::TError& error)
+    const NProto::TError& error,
+    bool recordLatency)
 {
     requestCtx->Unlink();
+
+    if (recordLatency) {
+        RecordLatencyCompletion(requestCtx, error);
+    }
 
     ServerStats->RequestCompleted(
         Log,
         requestCtx->MetricRequest,
         *requestCtx->CallContext,
         error);
+}
+
+void TServerHandler::RecordLatencyCompletion(
+    const TRequestContextPtr& requestCtx,
+    const NProto::TError& error)
+{
+    if (IsReadWriteRequest(requestCtx->MetricRequest.RequestType) &&
+        requestCtx->MetricRequest.RequestType != EBlockStoreRequest::ZeroBlocks)
+    {
+        ServerStats->RecordLatencyCompletion(
+            requestCtx->MetricRequest,
+            *requestCtx->CallContext,
+            requestCtx->LatencyRequestBytes,
+            error);
+    }
 }
 
 size_t TServerHandler::CollectRequests(

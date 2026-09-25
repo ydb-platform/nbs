@@ -192,7 +192,11 @@ IStoragePtr CreateTestStorage(
         std::move(serverStats));
 }
 
-auto RequestReadBlocksLocal(IStoragePtr storage, ui64 startIndex, ui32 blockCount)
+auto RequestReadBlocksLocal(
+    IStoragePtr storage,
+    ui64 startIndex,
+    ui32 blockCount,
+    TCallContextPtr callContext = MakeIntrusive<TCallContext>())
 {
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
@@ -207,7 +211,7 @@ auto RequestReadBlocksLocal(IStoragePtr storage, ui64 startIndex, ui32 blockCoun
     }
 
     return storage->ReadBlocksLocal(
-        MakeIntrusive<TCallContext>(),
+        std::move(callContext),
         std::move(request)).ExtractValueSync();
 }
 
@@ -248,7 +252,8 @@ auto RequestWriteBlocksLocal(
     IStoragePtr storage,
     ui64 startIndex,
     ui32 blockCount,
-    char value)
+    char value,
+    TCallContextPtr callContext = MakeIntrusive<TCallContext>())
 {
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->SetStartIndex(startIndex);
@@ -265,7 +270,7 @@ auto RequestWriteBlocksLocal(
     }
 
     return storage->WriteBlocksLocal(
-        MakeIntrusive<TCallContext>(),
+        std::move(callContext),
         std::move(request)).ExtractValueSync();
 }
 
@@ -487,6 +492,55 @@ Y_UNIT_TEST_SUITE(TCompoundStorageTest)
         ValidateBlocks(storage, 0, 200, 'X');
         ValidateBlocks(storage, 200, 100, 'Y');
         ValidateBlocks(storage, 300, 300, 'Z');
+    }
+
+    Y_UNIT_TEST(ShouldMarkOnlyMultiStorageReadAndWriteAsParallel)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto storage = CreateTestStorage(
+            {
+                std::make_shared<TTestStorage>(100, 'A'),
+                std::make_shared<TTestStorage>(100, 'B'),
+            },
+            monitoring);
+
+        auto directReadContext = MakeIntrusive<TCallContext>();
+        auto directReadResponse = RequestReadBlocksLocal(
+            storage,
+            0,
+            100,
+            directReadContext);
+        UNIT_ASSERT(!HasError(directReadResponse));
+        UNIT_ASSERT(!directReadContext->GetHasParallelSubRequests());
+
+        auto splitReadContext = MakeIntrusive<TCallContext>();
+        auto splitReadResponse = RequestReadBlocksLocal(
+            storage,
+            50,
+            100,
+            splitReadContext);
+        UNIT_ASSERT(!HasError(splitReadResponse));
+        UNIT_ASSERT(splitReadContext->GetHasParallelSubRequests());
+
+        auto directWriteContext = MakeIntrusive<TCallContext>();
+        auto directWriteResponse = RequestWriteBlocksLocal(
+            storage,
+            0,
+            100,
+            'X',
+            directWriteContext);
+        UNIT_ASSERT(!HasError(directWriteResponse));
+        UNIT_ASSERT(!directWriteContext->GetHasParallelSubRequests());
+
+        auto splitWriteContext = MakeIntrusive<TCallContext>();
+        auto splitWriteResponse = RequestWriteBlocksLocal(
+            storage,
+            50,
+            100,
+            'Y',
+            splitWriteContext);
+        UNIT_ASSERT(!HasError(splitWriteResponse));
+        UNIT_ASSERT(splitWriteContext->GetHasParallelSubRequests());
     }
 
     Y_UNIT_TEST(ShouldHandleEmptyRanges)

@@ -43,6 +43,16 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     bool isAlignedDataEnabled,
     IEndpointListenerPtr fallbackListener);
 
+IEndpointListenerPtr CreateExternalVhostEndpointListenerWithDiagnostics(
+    TServerAppConfigPtr serverConfig,
+    ILoggingServicePtr logging,
+    IServerStatsPtr serverStats,
+    TExecutorPtr executor,
+    TString localAgentId,
+    bool isAlignedDataEnabled,
+    IEndpointListenerPtr fallbackListener,
+    TDiagnosticsConfigPtr diagnosticsConfig);
+
 IEndpointListenerPtr CreateExternalVhostEndpointListener(
     TServerAppConfigPtr serverConfig,
     ILoggingServicePtr logging,

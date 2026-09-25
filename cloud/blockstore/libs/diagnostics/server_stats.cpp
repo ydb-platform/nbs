@@ -53,6 +53,7 @@ private:
     const IProfileLogPtr ProfileLog;
     const IRequestStatsPtr RequestStats;
     const IVolumeStatsPtr VolumeStats;
+    const bool LatencyTrackingEnabled;
     const TString RequestInstanceId;
 
     TDynamicCountersPtr Counters;
@@ -126,6 +127,12 @@ public:
         TCallContext& callContext,
         const NProto::TError& error) override;
 
+    void RecordLatencyCompletion(
+        TMetricRequest& req,
+        TCallContext& callContext,
+        ui64 requestBytes,
+        const NProto::TError& error) override;
+
     void RequestFastPathHit(
         const TString& diskId,
         const TString& clientId,
@@ -160,6 +167,12 @@ public:
         ui64 errors,
         std::span<TTimeBucket> timeHist,
         std::span<TSizeBucket> sizeHist) override;
+
+    void RecordLatencyBatch(
+        TMetricRequest& metricRequest,
+        ui64 goodOps,
+        ui64 badOps,
+        ui64 skippedOps) override;
 
     void UpdateStats(bool updateIntervalFinished) override;
 
@@ -205,6 +218,10 @@ TServerStats::TServerStats(
     , ProfileLog(std::move(profileLog))
     , RequestStats(std::move(requestStats))
     , VolumeStats(std::move(volumeStats))
+    , LatencyTrackingEnabled(
+          DiagnosticsConfig &&
+          VolumeStats &&
+          VolumeStats->IsLatencyTrackingEnabled())
     , RequestInstanceId(std::move(requestInstanceId))
 {
     auto counters = monitoring->GetCounters();
@@ -573,6 +590,48 @@ void TServerStats::RequestCompleted(
         << ")");
 }
 
+void TServerStats::RecordLatencyCompletion(
+    TMetricRequest& req,
+    TCallContext& callContext,
+    ui64 requestBytes,
+    const NProto::TError& error)
+{
+    // Use the effective state after threshold validation, not the raw config
+    // flag. This keeps both disabled and invalid configurations off the hot
+    // path entirely.
+    if (!LatencyTrackingEnabled) {
+        return;
+    }
+
+    const bool isPayloadWrite = IsWriteRequest(req.RequestType) &&
+        req.RequestType != EBlockStoreRequest::ZeroBlocks;
+    if (!req.VolumeInfo ||
+        (!IsReadRequest(req.RequestType) && !isPayloadWrite))
+    {
+        return;
+    }
+
+    auto shapingTime = callContext.Time(EProcessingStage::Shaping);
+    if (shapingTime && callContext.GetHasParallelSubRequests()) {
+        // Parallel parts add their shaping delays to one shared context. The
+        // sum is not the amount by which shaping extended the logical
+        // request: intervals may overlap or be hidden behind useful work in
+        // another part. Use the full elapsed time instead. This keeps the
+        // operation in the sample and can only make the verdict conservative.
+        shapingTime = TDuration::Zero();
+    }
+
+    req.VolumeInfo->RecordLatencyCompletion(
+        req.RequestType,
+        callContext.GetRequestStartedCycles(),
+        TDuration::Zero(),   // generic postponed time remains in latency
+        TDuration::Zero(),   // retry backoff remains in latency
+        shapingTime,
+        requestBytes,
+        error,
+        callContext.GetResponseSentCycles());
+}
+
 void TServerStats::RequestFastPathHit(
     const TString& diskId,
     const TString& clientId,
@@ -701,6 +760,21 @@ void TServerStats::BatchCompleted(
             errors,
             timeHist,
             sizeHist);
+    }
+}
+
+void TServerStats::RecordLatencyBatch(
+    TMetricRequest& req,
+    ui64 goodOps,
+    ui64 badOps,
+    ui64 skippedOps)
+{
+    if (req.VolumeInfo) {
+        req.VolumeInfo->RecordLatencyBatch(
+            req.RequestType,
+            goodOps,
+            badOps,
+            skippedOps);
     }
 }
 
