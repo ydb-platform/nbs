@@ -366,14 +366,11 @@ private:
     {
         PemKeyCertPairList identityPairs;
         for (const auto& certificate: Certificates) {
-            if (certificate.PrivateKey.empty() ||
-                certificate.CertChain.empty())
-            {
+            const auto& content = certificate.Content;
+            if (content.PrivateKey.empty() || content.CertChain.empty()) {
                 continue;
             }
-            identityPairs.emplace_back(
-                certificate.PrivateKey,
-                certificate.CertChain);
+            identityPairs.emplace_back(content.PrivateKey, content.CertChain);
         }
 
         TMaybe<TString> rootCert = RootCaPair.RootCa.empty()
@@ -394,10 +391,7 @@ private:
             const auto& cert = Certificates[i];
             const auto& path = cert.Files.CertChainPath;
 
-            auto validity = NTlsUtils::ValidateIdentity({
-                .PrivateKey = cert.PrivateKey,
-                .CertChain = cert.CertChain,
-            });
+            auto validity = NTlsUtils::ValidateIdentity(cert.Content);
             if (HasError(validity.GetError())) {
                 STORAGE_WARN(
                     "Identity certificate " << path.Quote()
@@ -406,7 +400,8 @@ private:
             }
 
             auto notAfterTs =
-                NTlsUtils::GetCertificateNotAfterTimestampSec(cert.CertChain);
+                NTlsUtils::GetCertificateNotAfterTimestampSec(
+                    cert.Content.CertChain);
             if (HasError(notAfterTs)) {
                 STORAGE_WARN(
                     "Unable to parse certificate notAfter date for "
@@ -530,11 +525,8 @@ private:
             return false;
         }
 
-        const NTlsUtils::TIdentityContent current{
-            .PrivateKey = cert.PrivateKey,
-            .CertChain = cert.CertChain,
-        };
-        switch (Decide(stableRead, current, content.GetResult(), periodic)) {
+        switch (Decide(stableRead, cert.Content, content.GetResult(), periodic))
+        {
             case EStableReadDecision::Unchanged:
                 return false;
             case EStableReadDecision::Wait:
@@ -565,9 +557,7 @@ private:
             notValidAfter = TInstant::Seconds(notAfterTs.ExtractResult());
         }
 
-        auto identity = content.ExtractResult();
-        cert.PrivateKey = std::move(identity.PrivateKey);
-        cert.CertChain = std::move(identity.CertChain);
+        cert.Content = content.ExtractResult();
         PublishExpireTs(index, notValidAfter);
         STORAGE_INFO(
             "Identity certificate " << path.Quote() << " has been updated"

@@ -156,33 +156,68 @@ bool IsEmptyPair(const TCertificateFiles& certPair)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
-TResultOrError<TString> TryReadFile(const TString& path)
+TResultOrError<void> ValidateIdentityCertificateChain(
+    TStringBuf certChainPem)
 {
-    try {
-        TFileInput in(path);
-        return in.ReadAll();
-    } catch (const std::exception& e) {
-        const auto message = TStringBuilder()
-            << "Reading certificate file " << path.Quote()
-            << " failed: " << e.what();
-        return TErrorResponse(E_IO, message);
-    }
-}
+    TSslErrorQueueGuard errorGuard;
 
-TResultOrError<void> IsValidPemCertificate(TStringBuf pem)
-{
-    if (pem.empty()) {
-        return TErrorResponse(E_INVALID_STATE, "PEM certificate is empty");
+    auto chainResult = ParseNonEmptyPemCertificates(
+        certChainPem,
+        "Identity certificate chain");
+    if (HasError(chainResult.GetError())) {
+        return chainResult.GetError();
     }
 
-    auto parseResult = ParseNonEmptyPemCertificates(pem, "PEM");
-    if (HasError(parseResult.GetError())) {
-        return parseResult.GetError();
+    const auto& chain = chainResult.GetResult();
+
+    TX509StorePtr store(X509_STORE_new(), X509_STORE_free);
+    if (!store) {
+        return MakeOpenSslError("Failed to allocate X509 store");
     }
+    if (X509_STORE_add_cert(store.get(), chain.back().get()) != 1) {
+        return MakeOpenSslError("Failed to add trust anchor to X509 store");
+    }
+
+    // Does not own the certificates.
+    TX509StackPtr intermediates(sk_X509_new_null(), sk_X509_free);
+    if (!intermediates) {
+        return MakeOpenSslError("Failed to allocate X509 stack");
+    }
+    for (size_t i = 1; i + 1 < chain.size(); ++i) {
+        if (sk_X509_push(intermediates.get(), chain[i].get()) <= 0) {
+            return MakeOpenSslError("Failed to add certificate to X509 stack");
+        }
+    }
+
+    TX509StoreCtxPtr ctx(X509_STORE_CTX_new(), X509_STORE_CTX_free);
+    if (!ctx) {
+        return MakeOpenSslError("Failed to allocate X509 store context");
+    }
+    if (X509_STORE_CTX_init(
+            ctx.get(),
+            store.get(),
+            chain.front().get(),
+            intermediates.get()) != 1)
+    {
+        return MakeOpenSslError("Failed to init X509 store context");
+    }
+
+    // The trust anchor is not necessarily self-signed.
+    X509_STORE_CTX_set_flags(ctx.get(), X509_V_FLAG_PARTIAL_CHAIN);
+
+    if (X509_verify_cert(ctx.get()) != 1) {
+        const int error = X509_STORE_CTX_get_error(ctx.get());
+        return TErrorResponse(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "Identity certificate chain cannot be built: "
+                << X509_verify_cert_error_string(error)
+                << " (certificate #"
+                << X509_STORE_CTX_get_error_depth(ctx.get()) << ")");
+    }
+
     return {};
 }
 
@@ -273,66 +308,47 @@ TResultOrError<void> ValidateIdentityCertificateValidity(
     return {};
 }
 
-TResultOrError<void> ValidateIdentityCertificateChain(
-    TStringBuf certChainPem)
+TResultOrError<TString> ReadAndValidateRootCertificate(
+    const TString& rootCertPath)
 {
-    TSslErrorQueueGuard errorGuard;
+    auto pem = TryReadFile(rootCertPath);
+    if (HasError(pem.GetError())) {
+        return pem.GetError();
+    }
+    auto certValidity = IsValidPemCertificate(pem.GetResult());
+    if (HasError(certValidity.GetError())) {
+        return certValidity.GetError();
+    }
+    return pem.ExtractResult();
+}
 
-    auto chainResult = ParseNonEmptyPemCertificates(
-        certChainPem,
-        "Identity certificate chain");
-    if (HasError(chainResult.GetError())) {
-        return chainResult.GetError();
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+TResultOrError<TString> TryReadFile(const TString& path)
+{
+    try {
+        TFileInput in(path);
+        return in.ReadAll();
+    } catch (const std::exception& e) {
+        const auto message = TStringBuilder()
+            << "Reading certificate file " << path.Quote()
+            << " failed: " << e.what();
+        return TErrorResponse(E_IO, message);
+    }
+}
+
+TResultOrError<void> IsValidPemCertificate(TStringBuf pem)
+{
+    if (pem.empty()) {
+        return TErrorResponse(E_INVALID_STATE, "PEM certificate is empty");
     }
 
-    const auto& chain = chainResult.GetResult();
-
-    TX509StorePtr store(X509_STORE_new(), X509_STORE_free);
-    if (!store) {
-        return MakeOpenSslError("Failed to allocate X509 store");
+    auto parseResult = ParseNonEmptyPemCertificates(pem, "PEM");
+    if (HasError(parseResult.GetError())) {
+        return parseResult.GetError();
     }
-    if (X509_STORE_add_cert(store.get(), chain.back().get()) != 1) {
-        return MakeOpenSslError("Failed to add trust anchor to X509 store");
-    }
-
-    // Does not own the certificates.
-    TX509StackPtr intermediates(sk_X509_new_null(), sk_X509_free);
-    if (!intermediates) {
-        return MakeOpenSslError("Failed to allocate X509 stack");
-    }
-    for (size_t i = 1; i + 1 < chain.size(); ++i) {
-        if (sk_X509_push(intermediates.get(), chain[i].get()) <= 0) {
-            return MakeOpenSslError("Failed to add certificate to X509 stack");
-        }
-    }
-
-    TX509StoreCtxPtr ctx(X509_STORE_CTX_new(), X509_STORE_CTX_free);
-    if (!ctx) {
-        return MakeOpenSslError("Failed to allocate X509 store context");
-    }
-    if (X509_STORE_CTX_init(
-            ctx.get(),
-            store.get(),
-            chain.front().get(),
-            intermediates.get()) != 1)
-    {
-        return MakeOpenSslError("Failed to init X509 store context");
-    }
-
-    // The trust anchor is not necessarily self-signed.
-    X509_STORE_CTX_set_flags(ctx.get(), X509_V_FLAG_PARTIAL_CHAIN);
-
-    if (X509_verify_cert(ctx.get()) != 1) {
-        const int error = X509_STORE_CTX_get_error(ctx.get());
-        return TErrorResponse(
-            E_INVALID_STATE,
-            TStringBuilder()
-                << "Identity certificate chain cannot be built: "
-                << X509_verify_cert_error_string(error)
-                << " (certificate #"
-                << X509_STORE_CTX_get_error_depth(ctx.get()) << ")");
-    }
-
     return {};
 }
 
@@ -383,43 +399,6 @@ TResultOrError<ui64> GetCertificateNotAfterTimestampSec(TStringBuf certChainPem)
     return earliestTimestamp;
 }
 
-TResultOrError<TString> ReadAndValidateRootCertificate(
-    const TString& rootCertPath)
-{
-    auto pem = TryReadFile(rootCertPath);
-    if (HasError(pem.GetError())) {
-        return pem.GetError();
-    }
-    auto certValidity = IsValidPemCertificate(pem.GetResult());
-    if (HasError(certValidity.GetError())) {
-        return certValidity.GetError();
-    }
-    return pem.ExtractResult();
-}
-
-TResultOrError<grpc_core::PemKeyCertPairList> ReadAndValidateIdentityPair(
-    const TCertificateFiles& files)
-{
-    auto privateKey = TryReadFile(files.PrivateKeyPath);
-    if (HasError(privateKey.GetError())) {
-        return privateKey.GetError();
-    }
-    auto certChain = TryReadFile(files.CertChainPath);
-    if (HasError(certChain.GetError())) {
-        return certChain.GetError();
-    }
-    auto keyMatchesCert = PrivateKeyAndCertificateMatch(
-        privateKey.GetResult(),
-        certChain.GetResult());
-    if (HasError(keyMatchesCert.GetError())) {
-        return keyMatchesCert.GetError();
-    }
-
-    grpc_core::PemKeyCertPairList result;
-    result.emplace_back(privateKey.ExtractResult(), certChain.ExtractResult());
-    return result;
-}
-
 TResultOrError<TIdentityContent> ReadIdentity(const TCertificateFiles& files)
 {
     auto privateKey = TryReadFile(files.PrivateKeyPath);
@@ -463,16 +442,21 @@ TVector<TCertificatePair> LoadCertificatePairs(
     TVector<TCertificatePair> result;
     result.reserve(prepared.size());
     for (auto& cert: prepared) {
-        auto keyCertPair = ReadAndValidateIdentityPair(cert);
-        if (HasError(keyCertPair.GetError())) {
-            ythrow yexception() << keyCertPair.GetError().GetMessage();
+        auto identity = ReadIdentity(cert);
+        if (HasError(identity.GetError())) {
+            ythrow yexception() << identity.GetError().GetMessage();
         }
 
-        const auto& keyCert = keyCertPair.GetResult().front();
+        auto keyMatchesCert = PrivateKeyAndCertificateMatch(
+            identity.GetResult().PrivateKey,
+            identity.GetResult().CertChain);
+        if (HasError(keyMatchesCert.GetError())) {
+            ythrow yexception() << keyMatchesCert.GetError().GetMessage();
+        }
+
         result.push_back({
             .Files = std::move(cert),
-            .PrivateKey = TString(keyCert.private_key()),
-            .CertChain = TString(keyCert.cert_chain()),
+            .Content = identity.ExtractResult(),
         });
     }
     return result;

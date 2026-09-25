@@ -66,8 +66,8 @@ public:
 
         if (!Certificates.empty()) {
             const auto& cert = Certificates.front();
-            sslOptions.pem_cert_chain = cert.CertChain;
-            sslOptions.pem_private_key = cert.PrivateKey;
+            sslOptions.pem_cert_chain = cert.Content.CertChain;
+            sslOptions.pem_private_key = cert.Content.PrivateKey;
         }
 
         return grpc::SslCredentials(sslOptions);
@@ -85,8 +85,8 @@ public:
 
         for (const auto& cert: Certificates) {
             sslOptions.pem_key_cert_pairs.push_back({
-                .cert_chain = cert.CertChain,
-                .private_key = cert.PrivateKey,
+                .cert_chain = cert.Content.CertChain,
+                .private_key = cert.Content.PrivateKey,
             });
         }
 
@@ -131,7 +131,8 @@ private:
             auto expireTs = certMetrics->GetCounter("ExpireTs", false);
 
             auto [seconds, error] =
-                NTlsUtils::GetCertificateNotAfterTimestampSec(cert.CertChain);
+                NTlsUtils::GetCertificateNotAfterTimestampSec(
+                    cert.Content.CertChain);
             if (HasError(error)) {
                 STORAGE_WARN(
                     "Unable to parse certificate notAfter date for "

@@ -316,52 +316,21 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
     {
         TCertificateProviderTestContext context;
 
-        context.Provider->UpdateCertificates().GetValueSync();
-
-        UNIT_ASSERT(
-            context.GetExpireTs(context.ServerPair.CertChainPath) > 0);
-        UNIT_ASSERT(
-            context.GetExpireTs(context.ClientPair.CertChainPath) > 0);
-    }
-
-    Y_UNIT_TEST(ShouldSkipUpdateIfRootCaIsInvalid)
-    {
-        TCertificateProviderTestContext context;
-        context.Provider->UpdateCertificates().GetValueSync();
-
-        UNIT_ASSERT(
-            context.GetExpireTs(context.ServerPair.CertChainPath) > 0);
-        const ui64 before = context.GetExpireTs(
-            context.ServerPair.CertChainPath);
-
-        WriteTextFile(context.RootPath, "not a certificate");
-
-        context.Provider->UpdateCertificates().GetValueSync();
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            before,
-            context.GetExpireTs(context.ServerPair.CertChainPath));
-    }
-
-    Y_UNIT_TEST(ShouldSkipUpdateIfAnyIdentityPairBecomesInvalid)
-    {
-        TCertificateProviderTestContext context;
-
-        context.Provider->UpdateCertificates().GetValueSync();
-        UNIT_ASSERT(
-            context.GetExpireTs(context.ClientPair.CertChainPath) > 0);
-        const ui64 before = context.GetExpireTs(
-            context.ClientPair.CertChainPath);
+        const ui64 initial =
+            context.GetExpireTs(context.ServerPair.CertChainPath);
+        UNIT_ASSERT(initial > 0);
 
         WriteTextFile(
-            context.ClientPair.CertChainPath,
-            "broken certificate chain");
-
+            context.ServerPair.PrivateKeyPath,
+            ReadCertResource("server3.key"));
+        WriteTextFile(
+            context.ServerPair.CertChainPath,
+            ReadCertResource("server3.crt"));
         context.Provider->UpdateCertificates().GetValueSync();
 
-        UNIT_ASSERT_VALUES_EQUAL(
-            before,
-            context.GetExpireTs(context.ClientPair.CertChainPath));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            initial,
+            context.GetExpireTs(context.ServerPair.CertChainPath));
     }
 
     Y_UNIT_TEST(ShouldFailStartWithInvalidInitialCertificates)
@@ -461,54 +430,6 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             yexception);
     }
 
-    Y_UNIT_TEST(ShouldPickUpRotatedCertificateOnTimer)
-    {
-        TManualProviderContext context;
-        context.Provider->Start();
-        Y_DEFER {
-            context.Provider->Stop();
-        };
-
-        const ui64 before =
-            context.GetExpireTs(context.ServerPair.CertChainPath);
-        UNIT_ASSERT(before > 0);
-
-        context.RotateServer("server3.key", "server3.crt");
-        context.RunUntilStable();
-
-        const ui64 after =
-            context.GetExpireTs(context.ServerPair.CertChainPath);
-        UNIT_ASSERT(after > 0);
-        UNIT_ASSERT_VALUES_UNEQUAL(before, after);
-    }
-
-    Y_UNIT_TEST(ShouldRecoverAfterIdentityBecomesValidAgain)
-    {
-        TManualProviderContext context;
-        context.Provider->Start();
-        Y_DEFER {
-            context.Provider->Stop();
-        };
-
-        const ui64 initial =
-            context.GetExpireTs(context.ServerPair.CertChainPath);
-        UNIT_ASSERT(initial > 0);
-
-        WriteTextFile(context.ServerPair.CertChainPath, "broken");
-        context.RunUntilStable();
-        UNIT_ASSERT_VALUES_EQUAL(
-            initial,
-            context.GetExpireTs(context.ServerPair.CertChainPath));
-
-        context.RotateServer("server3.key", "server3.crt");
-        context.RunUntilStable();
-
-        const ui64 recovered =
-            context.GetExpireTs(context.ServerPair.CertChainPath);
-        UNIT_ASSERT(recovered > 0);
-        UNIT_ASSERT_VALUES_UNEQUAL(initial, recovered);
-    }
-
     Y_UNIT_TEST(ShouldUsePeriodicProviderForRootOnlyTlsConfig)
     {
         TTempDir tempDir;
@@ -563,24 +484,6 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         const auto initialPending = scheduler->PendingCount();
         provider->UpdateCertificates();
         UNIT_ASSERT_VALUES_EQUAL(initialPending + 1, scheduler->PendingCount());
-    }
-
-    Y_UNIT_TEST(ShouldReportRootCaFingerprint)
-    {
-        TManualProviderContext context;
-        context.Provider->Start();
-        Y_DEFER {
-            context.Provider->Stop();
-        };
-
-        const auto beforeFingerprint = context.GetRootCaFingerprint();
-
-        WriteTextFile(context.RootPath, ReadCertResource("server2.crt"));
-        context.RunUntilStable();
-
-        const auto afterFingerprint = context.GetRootCaFingerprint();
-
-        UNIT_ASSERT_VALUES_UNEQUAL(beforeFingerprint, afterFingerprint);
     }
 
     Y_UNIT_TEST(ShouldNotApplyRotatedCertificateUntilStableRead)

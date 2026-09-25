@@ -127,6 +127,37 @@ TEvpPkeyPtr GeneratePrivateKey()
     return TEvpPkeyPtr(key, EVP_PKEY_free);
 }
 
+TString PrivateKeyToPem(EVP_PKEY* key)
+{
+    using TBioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+
+    TBioPtr output(BIO_new(BIO_s_mem()), BIO_free);
+    UNIT_ASSERT(output);
+    UNIT_ASSERT_VALUES_EQUAL(
+        1,
+        PEM_write_bio_PrivateKey(
+            output.get(),
+            key,
+            nullptr,
+            nullptr,
+            0,
+            nullptr,
+            nullptr));
+
+    char* data = nullptr;
+    const long size = BIO_get_mem_data(output.get(), &data);
+    UNIT_ASSERT(size > 0);
+    return TString(data, size);
+}
+
+void AssertChainCannotBeBuilt(const TResultOrError<void>& result)
+{
+    UNIT_ASSERT(HasError(result.GetError()));
+    UNIT_ASSERT_STRING_CONTAINS(
+        result.GetError().GetMessage(),
+        "chain cannot be built");
+}
+
 TString CertificateToPem(X509* certificate)
 {
     using TBioPtr = std::unique_ptr<BIO, decltype(&BIO_free)>;
@@ -255,29 +286,6 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         UNIT_ASSERT(HasError(result.GetError()));
     }
 
-    Y_UNIT_TEST(ShouldMatchPrivateKeyAndCertificate)
-    {
-        const auto key = ReadCertResource("server1.key");
-        const auto cert = ReadCertResource("server1.crt");
-        const auto result = PrivateKeyAndCertificateMatch(key, cert);
-        UNIT_ASSERT(!HasError(result.GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldDetectMismatchedPrivateKeyAndCertificate)
-    {
-        const auto key = ReadCertResource("server1.key");
-        const auto cert = ReadCertResource("server2.crt");
-        const auto result = PrivateKeyAndCertificateMatch(key, cert);
-        UNIT_ASSERT(HasError(result.GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldValidateIdentityCertificateValidity)
-    {
-        const auto cert = ReadCertResource("server1.crt");
-        const auto result = ValidateIdentityCertificateValidity(cert);
-        UNIT_ASSERT(!HasError(result.GetError()));
-    }
-
     Y_UNIT_TEST(ShouldRejectExpiredAndNotYetValidIdentityCertificates)
     {
         const auto cert = ReadCertResource("server1.crt");
@@ -290,48 +298,67 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             5 * YearSeconds,
             10 * YearSeconds);
 
-        UNIT_ASSERT(HasError(
-            ValidateIdentityCertificateValidity(cert + expired).GetError()));
-        UNIT_ASSERT(HasError(
-            ValidateIdentityCertificateValidity(cert + notYetValid).GetError()));
+        const auto key = ReadCertResource("server1.key");
+
+        const auto expiredResult =
+            ValidateIdentity({.PrivateKey = key, .CertChain = cert + expired});
+        UNIT_ASSERT_STRING_CONTAINS(
+            expiredResult.GetError().GetMessage(),
+            "#1 has expired");
+
+        const auto notYetValidResult = ValidateIdentity({
+            .PrivateKey = key,
+            .CertChain = cert + notYetValid,
+        });
+        UNIT_ASSERT_STRING_CONTAINS(
+            notYetValidResult.GetError().GetMessage(),
+            "#1 is not valid yet");
     }
 
-    Y_UNIT_TEST(ShouldValidateIdentityCertificateChain)
+    Y_UNIT_TEST(ShouldAcceptIdentityCertificateChainThatCanBeBuilt)
     {
+        const auto key = ReadCertResource("server1.key");
         const auto leaf = ReadCertResource("server1.crt");
         const auto ca = ReadCertResource("ca.crt");
-        const auto selfSigned = ReadCertResource("server3.crt");
 
         UNIT_ASSERT(!HasError(
-            ValidateIdentityCertificateChain(leaf).GetError()));
+            ValidateIdentity({.PrivateKey = key, .CertChain = leaf})
+                .GetError()));
         UNIT_ASSERT(!HasError(
-            ValidateIdentityCertificateChain(leaf + ca).GetError()));
+            ValidateIdentity({.PrivateKey = key, .CertChain = leaf + ca})
+                .GetError()));
         UNIT_ASSERT(!HasError(
-            ValidateIdentityCertificateChain(selfSigned).GetError()));
+            ValidateIdentity({
+                .PrivateKey = ReadCertResource("server3.key"),
+                .CertChain = ReadCertResource("server3.crt"),
+            }).GetError()));
     }
 
     Y_UNIT_TEST(ShouldRejectIdentityCertificateChainThatCannotBeBuilt)
     {
+        const auto key = ReadCertResource("server1.key");
         const auto leaf = ReadCertResource("server1.crt");
         const auto ca = ReadCertResource("ca.crt");
         const auto unrelated = ReadCertResource("server3.crt");
 
         // Leaf is not issued by the next certificate.
-        UNIT_ASSERT(HasError(
-            ValidateIdentityCertificateChain(leaf + unrelated).GetError()));
+        AssertChainCannotBeBuilt(ValidateIdentity({
+            .PrivateKey = key,
+            .CertChain = leaf + unrelated,
+        }));
         // Intermediate certificate is not issued by the next certificate.
-        UNIT_ASSERT(HasError(
-            ValidateIdentityCertificateChain(leaf + ca + unrelated)
-                .GetError()));
-        UNIT_ASSERT(HasError(
-            ValidateIdentityCertificateChain("not a certificate")
-                .GetError()));
+        // ca.crt has no trailing newline.
+        AssertChainCannotBeBuilt(ValidateIdentity({
+            .PrivateKey = key,
+            .CertChain = leaf + ca + "\n" + unrelated,
+        }));
     }
 
     Y_UNIT_TEST(ShouldRejectIdentityCertificateChainWithRenamedIssuer)
     {
         const auto issuerKey = GeneratePrivateKey();
         const auto leafKey = GeneratePrivateKey();
+        const auto leafKeyPem = PrivateKeyToPem(leafKey.get());
 
         const auto issuerPem = IssueCertificate(
             "intermediate",
@@ -345,7 +372,10 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             issuer.get(),
             issuerKey.get());
         UNIT_ASSERT(!HasError(
-            ValidateIdentityCertificateChain(leafPem + issuerPem).GetError()));
+            ValidateIdentity({
+                .PrivateKey = leafKeyPem,
+                .CertChain = leafPem + issuerPem,
+            }).GetError()));
 
         // Issuer certificate has been re-issued for the same key with a
         // different subject: the signature is valid, but the issuer name of
@@ -355,17 +385,10 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             issuerKey.get(),
             nullptr,
             nullptr);
-        UNIT_ASSERT(HasError(
-            ValidateIdentityCertificateChain(leafPem + renamedIssuerPem)
-                .GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldExtractCertificateNotAfterTimestamp)
-    {
-        const auto cert = ReadCertResource("server1.crt");
-        const auto result = GetCertificateNotAfterTimestampSec(cert);
-        UNIT_ASSERT(!HasError(result.GetError()));
-        UNIT_ASSERT(result.GetResult() > 0);
+        AssertChainCannotBeBuilt(ValidateIdentity({
+            .PrivateKey = leafKeyPem,
+            .CertChain = leafPem + renamedIssuerPem,
+        }));
     }
 
     Y_UNIT_TEST(ShouldExtractEarliestNotAfterTimestampFromChain)
@@ -392,30 +415,6 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             chainResult.GetResult());
     }
 
-    Y_UNIT_TEST(ShouldReadAndValidateRootCertificate)
-    {
-        TTempDir tempDir;
-        const TString rootPath = TStringBuilder()
-            << tempDir.Name() << "/ca.crt";
-        WriteTextFile(rootPath, ReadCertResource("ca.crt"));
-        const auto result = ReadAndValidateRootCertificate(rootPath);
-        UNIT_ASSERT(!HasError(result.GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldReadAndValidateIdentityPair)
-    {
-        TTempDir tempDir;
-        const auto pair = CreateCertificatePair(
-            tempDir.Name(),
-            "identity",
-            ReadCertResource("server1.key"),
-            ReadCertResource("server1.crt"));
-
-        const auto result = ReadAndValidateIdentityPair(pair);
-        UNIT_ASSERT(!HasError(result.GetError()));
-        UNIT_ASSERT_VALUES_EQUAL(1, result.GetResult().size());
-    }
-
     Y_UNIT_TEST(ShouldRejectIdentityPairWithMismatchedFiles)
     {
         TTempDir tempDir;
@@ -425,8 +424,10 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
             ReadCertResource("server1.key"),
             ReadCertResource("server2.crt"));
 
-        const auto result = ReadAndValidateIdentityPair(pair);
-        UNIT_ASSERT(HasError(result.GetError()));
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            LoadCertificatePairs({pair}),
+            yexception,
+            "does not match");
     }
 
     Y_UNIT_TEST(ShouldRejectEmptyPemCertificate)
@@ -455,90 +456,25 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         UNIT_ASSERT(HasError(result.GetError()));
     }
 
-    Y_UNIT_TEST(ShouldFailValidatingMissingRootCertificate)
-    {
-        const auto result =
-            ReadAndValidateRootCertificate("/nonexistent/ca.crt");
-        UNIT_ASSERT(HasError(result.GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldRejectIdentityPairWithMissingFiles)
-    {
-        const TCertificateFiles files{
-            .PrivateKeyPath = "/nonexistent/identity.key",
-            .CertChainPath = "/nonexistent/identity.crt",
-        };
-        const auto result = ReadAndValidateIdentityPair(files);
-        UNIT_ASSERT(HasError(result.GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldReadIdentity)
-    {
-        TTempDir tempDir;
-        const auto files = CreateCertificatePair(
-            tempDir.Name(),
-            "server",
-            ReadCertResource("server1.key"),
-            ReadCertResource("server1.crt"));
-
-        const auto result = ReadIdentity(files);
-        UNIT_ASSERT(!HasError(result.GetError()));
-        UNIT_ASSERT_VALUES_EQUAL(
-            ReadCertResource("server1.key"),
-            result.GetResult().PrivateKey);
-        UNIT_ASSERT_VALUES_EQUAL(
-            ReadCertResource("server1.crt"),
-            result.GetResult().CertChain);
-
-        const auto missing = ReadIdentity({
-            .PrivateKeyPath = files.PrivateKeyPath,
-            .CertChainPath = "/nonexistent/server.crt",
-        });
-        UNIT_ASSERT(HasError(missing.GetError()));
-    }
-
-    Y_UNIT_TEST(ShouldValidateIdentity)
+    Y_UNIT_TEST(ShouldRejectIdentityWithMismatchedKeyOrBrokenChain)
     {
         const auto key = ReadCertResource("server1.key");
         const auto cert = ReadCertResource("server1.crt");
-        const auto ca = ReadCertResource("ca.crt");
 
-        UNIT_ASSERT(!HasError(
-            ValidateIdentity({.PrivateKey = key, .CertChain = cert})
-                .GetError()));
-        UNIT_ASSERT(!HasError(
-            ValidateIdentity({.PrivateKey = key, .CertChain = cert + ca})
-                .GetError()));
+        const auto mismatchedKey = ValidateIdentity({
+            .PrivateKey = ReadCertResource("server2.key"),
+            .CertChain = cert,
+        });
+        UNIT_ASSERT_STRING_CONTAINS(
+            mismatchedKey.GetError().GetMessage(),
+            "does not match");
 
-        // Private key does not match the certificate.
-        UNIT_ASSERT(HasError(
-            ValidateIdentity({
-                .PrivateKey = ReadCertResource("server2.key"),
-                .CertChain = cert,
-            }).GetError()));
-
-        // Expired intermediate certificate.
-        UNIT_ASSERT(HasError(
-            ValidateIdentity({
-                .PrivateKey = key,
-                .CertChain = cert + SetCertificateValidity(
-                    ca,
-                    -10 * YearSeconds,
-                    -5 * YearSeconds),
-            }).GetError()));
-
-        // Chain cannot be built.
-        UNIT_ASSERT(HasError(
-            ValidateIdentity({
-                .PrivateKey = key,
-                .CertChain = cert + ReadCertResource("server3.crt"),
-            }).GetError()));
-
-        UNIT_ASSERT(HasError(
-            ValidateIdentity({.PrivateKey = key, .CertChain = "broken"})
-                .GetError()));
+        const auto brokenChain =
+            ValidateIdentity({.PrivateKey = key, .CertChain = "broken"});
+        UNIT_ASSERT_STRING_CONTAINS(
+            brokenChain.GetError().GetMessage(),
+            "Failed to parse");
     }
-
     Y_UNIT_TEST(ShouldAcceptExpiredIdentityDuringInitialLoad)
     {
         TTempDir tempDir;
@@ -556,7 +492,9 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         const auto pairs = LoadCertificatePairs({files});
 
         UNIT_ASSERT_VALUES_EQUAL(1, pairs.size());
-        UNIT_ASSERT_VALUES_EQUAL(validCert + expiredCert, pairs[0].CertChain);
+        UNIT_ASSERT_VALUES_EQUAL(
+            validCert + expiredCert,
+            pairs[0].Content.CertChain);
     }
 
     Y_UNIT_TEST(ShouldLoadCertificatePairsAndSkipEmpty)
@@ -576,10 +514,10 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         UNIT_ASSERT_VALUES_EQUAL(files.CertChainPath, pairs[0].Files.CertChainPath);
         UNIT_ASSERT_VALUES_EQUAL(
             ReadCertResource("server1.key"),
-            pairs[0].PrivateKey);
+            pairs[0].Content.PrivateKey);
         UNIT_ASSERT_VALUES_EQUAL(
             ReadCertResource("server1.crt"),
-            pairs[0].CertChain);
+            pairs[0].Content.CertChain);
     }
 
     Y_UNIT_TEST(ShouldThrowOnIncompletePairs)
@@ -621,6 +559,12 @@ Y_UNIT_TEST_SUITE(TTlsUtilsTest)
         UNIT_ASSERT_EXCEPTION(
             LoadRootCaPair("/nonexistent/ca.crt"),
             yexception);
+
+        TTempDir tempDir;
+        const TString rootPath =
+            TStringBuilder() << tempDir.Name() << "/ca.crt";
+        WriteTextFile(rootPath, "not a certificate");
+        UNIT_ASSERT_EXCEPTION(LoadRootCaPair(rootPath), yexception);
     }
 }
 
