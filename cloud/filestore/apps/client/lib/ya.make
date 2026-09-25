@@ -50,7 +50,6 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/filestore/apps/client/lib/query
     cloud/filestore/libs/client
     cloud/filestore/libs/diagnostics
     cloud/filestore/libs/vfs

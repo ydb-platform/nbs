@@ -1,4 +1,4 @@
-UNITTEST_FOR(cloud/filestore/apps/client/lib/query)
+UNITTEST_FOR(cloud/filestore/libs/storage/query)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/small.inc)
 

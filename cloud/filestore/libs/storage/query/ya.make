@@ -1,7 +1,7 @@
-LIBRARY(filestore-apps-client-query)
+LIBRARY(cloud-filestore-libs-storage-query)
 
 SRCS(
-    parser.cpp
+    parser.rl6
 )
 
 PEERDIR(
