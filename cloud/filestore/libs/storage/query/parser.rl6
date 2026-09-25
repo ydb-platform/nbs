@@ -1,0 +1,318 @@
+#include <cloud/filestore/libs/storage/query/parser.h>
+
+#include <util/string/cast.h>
+
+#include <utility>
+
+namespace NCloud::NFileStore::NStorage::NQuery {
+
+namespace {
+
+class TParser
+{
+private:
+    enum class EExprStackItem
+    {
+        OpenParen,
+        And,
+        Or,
+    };
+
+    TStringBuf Input;
+    TParseError* Error;
+    TSelect Query;
+    TPredicate Predicate;
+    bool PendingPredicate = false;
+    bool HasWhere = false;
+    TVector<std::shared_ptr<TExpression>> Expressions;
+    TVector<EExprStackItem> Operators;
+    const char* Start = nullptr;
+
+    const char* p = nullptr;
+    const char* pe = nullptr;
+    const char* eof = nullptr;
+    int cs = 0;
+
+public:
+    TParser(TStringBuf input, TParseError* error);
+    TMaybe<TSelect> Parse();
+
+private:
+    TString Matched() const;
+    TString Unquote() const;
+    void SetError(TStringBuf message, const char* at);
+    bool FinishPredicate();
+    bool Reduce();
+    bool OnLogical(EExprStackItem op);
+    bool OnCloseParen();
+    bool FinishExpression();
+};
+
+%%{
+    machine query_parser;
+
+    action Mark { Start = p; }
+    action BeginColumn { Query.Columns.emplace_back(); }
+    action SetColumn { Query.Columns.back() = Matched(); }
+    action SetTable { Query.Table = Matched(); }
+    action BeginPredicate {
+        Predicate = {};
+        PendingPredicate = true;
+    }
+    action SetPredicateColumn { Predicate.Column = Matched(); }
+    action SetEqual { Predicate.Operator = EOperator::Equal; }
+    action SetNotEqual { Predicate.Operator = EOperator::NotEqual; }
+    action SetSubstr { Predicate.Operator = EOperator::Substr; }
+    action SetIn { Predicate.Operator = EOperator::In; }
+    action BeginColumnValue { Predicate.Values.emplace_back(TColumnRef{}); }
+    action SetColumnValue {
+        std::get<TColumnRef>(Predicate.Values.back()).Name = Matched();
+    }
+    action BeginNumber { Predicate.Values.emplace_back(ui64{}); }
+    action SetNumber {
+        ui64 value = 0;
+        if (!TryFromString(Matched(), value)) {
+            SetError("numeric value is out of range", Start);
+            goto PARSE_ERROR;
+        }
+        Predicate.Values.back() = value;
+    }
+    action AddString { Predicate.Values.emplace_back(Unquote()); }
+    action BeginWhere { HasWhere = true; }
+    action OpenParen { Operators.push_back(EExprStackItem::OpenParen); }
+    action CloseParen {
+        if (!OnCloseParen()) {
+            goto PARSE_ERROR;
+        }
+    }
+    action LogicalAnd {
+        if (!OnLogical(EExprStackItem::And)) {
+            goto PARSE_ERROR;
+        }
+    }
+    action LogicalOr {
+        if (!OnLogical(EExprStackItem::Or)) {
+            goto PARSE_ERROR;
+        }
+    }
+    action SetLimit {
+        ui64 value = 0;
+        if (!TryFromString(Matched(), value)) {
+            SetError("LIMIT is out of range", Start);
+            goto PARSE_ERROR;
+        }
+        Query.Limit = value;
+    }
+
+    ws = [ \t\r\n\f\v]*;
+    required_ws = [ \t\r\n\f\v]+;
+    identifier = [a-zA-Z_][a-zA-Z_0-9]*;
+    number = [0-9]+;
+    single_quoted = "'" ( [^'\\] | '\\' any )* "'";
+    double_quoted = '"' ( [^"\\] | '\\' any )* '"';
+
+    value = (identifier >Mark >BeginColumnValue @SetColumnValue)
+          | (number >Mark >BeginNumber @SetNumber)
+          | ((single_quoted | double_quoted) >Mark @AddString);
+
+    columns = (identifier >Mark >BeginColumn @SetColumn)
+              (ws ',' ws (identifier >Mark >BeginColumn @SetColumn))*;
+
+    predicate = (identifier >Mark >BeginPredicate @SetPredicateColumn) ws
+                (
+                    (('==' | '=') @SetEqual | '!=' @SetNotEqual)
+                    ws value
+                  | "SUBSTR"i @SetSubstr required_ws value
+                  | "IN"i @SetIn ws '{' ws value
+                    (ws ',' ws value)* ws '}'
+                );
+
+    atom = ('(' @OpenParen ws)* predicate (ws ')' @CloseParen)*;
+    expr = atom (required_ws ("AND"i @LogicalAnd | "OR"i @LogicalOr)
+                 required_ws atom)*;
+
+    query = ws "SELECT"i required_ws ('*' | columns)
+            required_ws "FROM"i required_ws
+            (identifier >Mark @SetTable)
+            (required_ws "WHERE"i @BeginWhere required_ws expr)?
+            (required_ws "LIMIT"i required_ws
+             (number >Mark @SetLimit))?
+            ws;
+
+    main := query;
+}%%
+
+%% write data;
+
+TParser::TParser(TStringBuf input, TParseError* error)
+    : Input(input)
+    , Error(error)
+    , p(input.data())
+    , pe(input.end())
+    , eof(input.end())
+{
+    %% write init;
+}
+
+TString TParser::Matched() const
+{
+    return TString(Start, p - Start + 1);
+}
+
+TString TParser::Unquote() const
+{
+    TString result;
+    for (const char* pos = Start + 1; pos < p; ++pos) {
+        if (*pos == '\\') {
+            ++pos;
+        }
+        result += *pos;
+    }
+    return result;
+}
+
+void TParser::SetError(TStringBuf message, const char* at)
+{
+    if (Error) {
+        Error->Offset = Input.empty() ? 0 : at - Input.data();
+        Error->Message = message;
+    }
+}
+
+bool TParser::FinishPredicate()
+{
+    if (PendingPredicate) {
+        auto node = std::make_shared<TExpression>();
+        node->Predicate = std::move(Predicate);
+        Expressions.push_back(std::move(node));
+        PendingPredicate = false;
+    }
+    return !Expressions.empty();
+}
+
+bool TParser::Reduce()
+{
+    if (Operators.empty() || Expressions.size() < 2) {
+        SetError("missing operator or operand", p);
+        return false;
+    }
+
+    auto node = std::make_shared<TExpression>();
+    node->Kind = TExpression::EKind::Logical;
+    switch (Operators.back()) {
+      case EExprStackItem::And:
+          node->Operator = ELogicalOperator::And;
+          break;
+      case EExprStackItem::Or:
+          node->Operator = ELogicalOperator::Or;
+          break;
+      case EExprStackItem::OpenParen:
+          SetError("cannot reduce an opening parenthesis", p);
+          return false;
+    }
+    Operators.pop_back();
+
+    node->Right = std::move(Expressions.back());
+    Expressions.pop_back();
+    node->Left = std::move(Expressions.back());
+    Expressions.back() = std::move(node);
+    return true;
+}
+
+bool TParser::OnLogical(EExprStackItem op)
+{
+    if (!FinishPredicate()) {
+        SetError("missing predicate before logical operator", p);
+        return false;
+    }
+
+    const auto precedence = [] (EExprStackItem value) {
+        return value == EExprStackItem::And ? 2 : 1;
+    };
+    while (!Operators.empty() &&
+           Operators.back() != EExprStackItem::OpenParen &&
+           precedence(Operators.back()) >= precedence(op))
+    {
+        if (!Reduce()) {
+            return false;
+        }
+    }
+    Operators.push_back(op);
+    return true;
+}
+
+bool TParser::OnCloseParen()
+{
+    if (!FinishPredicate()) {
+        SetError("missing predicate before ')'", p);
+        return false;
+    }
+    while (!Operators.empty() &&
+           Operators.back() != EExprStackItem::OpenParen)
+    {
+        if (!Reduce()) {
+            return false;
+        }
+    }
+    if (Operators.empty()) {
+        SetError("unmatched ')'", p);
+        return false;
+    }
+    Operators.pop_back();
+    return true;
+}
+
+bool TParser::FinishExpression()
+{
+    if (!HasWhere) {
+        return true;
+    }
+    if (!FinishPredicate()) {
+        SetError("missing WHERE expression", p);
+        return false;
+    }
+    while (!Operators.empty()) {
+        if (Operators.back() == EExprStackItem::OpenParen) {
+            SetError("unmatched '('", p);
+            return false;
+        }
+        if (!Reduce()) {
+            return false;
+        }
+    }
+    if (Expressions.size() != 1) {
+        SetError("invalid WHERE expression", p);
+        return false;
+    }
+    Query.Where = std::move(Expressions.back());
+    return true;
+}
+
+TMaybe<TSelect> TParser::Parse()
+{
+    %% write exec;
+
+    if (cs >= query_parser_first_final && p == pe) {
+        if (!FinishExpression()) {
+            return Nothing();
+        }
+        return std::move(Query);
+    }
+
+    SetError("invalid query", p);
+
+PARSE_ERROR:
+    return Nothing();
+}
+
+}   // namespace
+
+TMaybe<TSelect> Parse(TStringBuf input, TParseError* error)
+{
+    if (error) {
+        *error = {};
+    }
+    return TParser(input, error).Parse();
+}
+
+}   // namespace NCloud::NFileStore::NStorage::NQuery
