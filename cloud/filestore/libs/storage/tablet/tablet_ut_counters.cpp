@@ -1315,27 +1315,28 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
                   expectedParallelWritesEnabled}});
         };
 
-        NProto::TStorageConfig patch1;
-        patch1.SetServerWriteBackCacheEnabled(true);
+        NProto::TStorageConfig config1;
+        config1.SetServerWriteBackCacheEnabled(true);
 
-        tablet.ChangeStorageConfig(std::move(patch1));
+        tablet.ChangeStorageConfig(std::move(config1));
         tablet.RebootTablet();
 
         checkWriteBackCacheConfig(1, 0);
 
-        NProto::TStorageConfig patch2;
-        patch2.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
+        NProto::TStorageConfig config2;
+        config2.SetServerWriteBackCacheEnabled(true);
+        config2.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
 
-        tablet.ChangeStorageConfig(std::move(patch2));
+        tablet.ChangeStorageConfig(std::move(config2));
         tablet.RebootTablet();
 
         checkWriteBackCacheConfig(1, 1);
 
-        NProto::TStorageConfig patch3;
-        patch3.SetServerWriteBackCacheEnabled(false);
-        patch3.SetServerWriteBackCacheFlushWritesInParallelEnabled(false);
+        NProto::TStorageConfig config3;
+        config3.SetServerWriteBackCacheEnabled(false);
+        config3.SetServerWriteBackCacheFlushWritesInParallelEnabled(false);
 
-        tablet.ChangeStorageConfig(std::move(patch3));
+        tablet.ChangeStorageConfig(std::move(config3));
         tablet.RebootTablet();
 
         checkWriteBackCacheConfig(0, 0);
