@@ -85,4 +85,10 @@ void TIndexFetcherLogic::DoOnDataCollected(NReader::NCommon::TFetchingResultCont
     }
 }
 
+std::shared_ptr<NReader::NCommon::IKernelFetchLogic> IIndexMeta::BuildDefaultFetchTask(
+    const THashSet<NRequest::TOriginalDataAddress>& dataAddresses, const std::shared_ptr<IIndexMeta>& selfPtr,
+    const std::shared_ptr<IStoragesManager>& storagesManager) const {
+    return std::make_shared<TIndexFetcherLogic>(dataAddresses, selfPtr, storagesManager);
+}
+
 }   // namespace NKikimr::NOlap::NIndexes
