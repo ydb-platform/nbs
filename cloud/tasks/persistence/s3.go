@@ -279,8 +279,10 @@ func (c *S3Client) BucketExists(
 		Bucket: &bucket,
 	})
 	if err != nil {
-		if isNotFound(err) {
-			return false, nil
+		if aerr, ok := err.(awserr.RequestFailure); ok {
+			if aerr.StatusCode() == 404 {
+				return false, nil
+			}
 		}
 
 		return false, errors.NewRetriableError(err)
@@ -527,11 +529,4 @@ func NewS3CredentialsFromFile(filePath string) (S3Credentials, error) {
 	}
 
 	return credentials, nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-func isNotFound(err error) bool {
-	aerr, ok := err.(awserr.RequestFailure)
-	return ok && aerr.StatusCode() == 404
 }

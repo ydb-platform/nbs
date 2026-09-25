@@ -61,7 +61,6 @@ func (s *snapshotSource) ChunkIndices(
 			ctx,
 			s.snapshotID,
 			milestone.ChunkIndex,
-			true, // includeShallowCopied
 		)
 
 		var entry storage.ChunkMapEntry

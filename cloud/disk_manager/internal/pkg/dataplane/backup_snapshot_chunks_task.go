@@ -63,7 +63,12 @@ func (t *backupSnapshotChunksTask) Run(
 		return err
 	}
 
-	return t.writeChunkMap(ctx, meta)
+	err = t.writeChunkMap(ctx, meta)
+	if err != nil {
+		return err
+	}
+
+	return t.deleteCopiedChunks(ctx, snapshotID)
 }
 
 func (t *backupSnapshotChunksTask) Cancel(
@@ -151,7 +156,6 @@ func (t *backupSnapshotChunksTask) enqueueChunks(
 		readCtx,
 		snapshotID,
 		t.state.MilestoneChunkIndex,
-		false, // includeShallowCopied
 	)
 
 	var batch []storage.BackupChunkQueueEntry
@@ -163,6 +167,10 @@ func (t *backupSnapshotChunksTask) enqueueChunks(
 		err := validateChunkMapEntry(entry, snapshotID, t.state.ChunkCount)
 		if err != nil {
 			return err
+		}
+
+		if !storage.IsChunkCreatedBySnapshot(entry.ChunkID, snapshotID) {
+			continue
 		}
 
 		batch = append(batch, storage.BackupChunkQueueEntry{
@@ -210,6 +218,27 @@ func (t *backupSnapshotChunksTask) waitForChunks(
 	return nil
 }
 
+func (t *backupSnapshotChunksTask) deleteCopiedChunks(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	for {
+		deleted, err := t.storage.DeleteCopiedBackupChunks(
+			ctx,
+			snapshotID,
+			t.batchSize,
+		)
+		if err != nil {
+			return err
+		}
+
+		if deleted < t.batchSize {
+			return nil
+		}
+	}
+}
+
 func (t *backupSnapshotChunksTask) writeChunkMap(
 	ctx context.Context,
 	meta storage.SnapshotMeta,
@@ -225,8 +254,7 @@ func (t *backupSnapshotChunksTask) writeChunkMap(
 	entries, entriesErrors := t.storage.ReadChunkMap(
 		readCtx,
 		meta.ID,
-		0,    // milestoneChunkIndex
-		true, // includeShallowCopied
+		0, // milestoneChunkIndex
 	)
 	for entry := range entries {
 		err := validateChunkMapEntry(entry, meta.ID, meta.ChunkCount)

@@ -66,16 +66,56 @@ func TestBackupChunksTask(t *testing.T) {
 	require.Empty(t, queue)
 }
 
-func TestBackupChunksTaskSkipsMissingChunk(t *testing.T) {
+func TestBackupChunksTaskCopiesSeveralBatches(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
 	defer closeFunc()
 
 	follower := newTestFollower(t, ctx)
+	chunk0 := createSnapshotWithChunk(t, ctx, storage, "snap1")
+	chunk1 := createSnapshotWithChunk(t, ctx, storage, "snap2")
 
 	entries := []snapshot_storage.BackupChunkQueueEntry{
-		{SnapshotID: "snap1", ChunkID: "task.snap1.0"},
+		{SnapshotID: "snap1", ChunkID: chunk0},
+		{SnapshotID: "snap2", ChunkID: chunk1},
+	}
+	err := storage.EnqueueBackupChunks(ctx, entries)
+	require.NoError(t, err)
+
+	task := newBackupChunksTask(storage, follower)
+	task.batchSize = 1
+	execCtx := mocks.NewExecutionContextMock()
+
+	err = task.Run(ctx, execCtx)
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	for _, chunkID := range []string{chunk0, chunk1} {
+		_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+		require.NoError(t, err)
+	}
+
+	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, queue)
+}
+
+func TestBackupChunksTaskGoesOnPastMissingChunk(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage, closeFunc := newStorage(t, ctx)
+	defer closeFunc()
+
+	follower := newTestFollower(t, ctx)
+	chunkID := createSnapshotWithChunk(t, ctx, storage, "snap2")
+
+	missing := snapshot_storage.BackupChunkQueueEntry{
+		SnapshotID: "snap1",
+		ChunkID:    "task.snap1.0",
+	}
+	entries := []snapshot_storage.BackupChunkQueueEntry{
+		missing,
+		{SnapshotID: "snap2", ChunkID: chunkID},
 	}
 	err := storage.EnqueueBackupChunks(ctx, entries)
 	require.NoError(t, err)
@@ -84,9 +124,17 @@ func TestBackupChunksTaskSkipsMissingChunk(t *testing.T) {
 	execCtx := mocks.NewExecutionContextMock()
 
 	err = task.Run(ctx, execCtx)
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	require.Error(t, err)
+	require.False(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
+	require.NoError(t, err)
 
 	queue, err := storage.GetBackupChunkQueue(ctx, 10)
 	require.NoError(t, err)
-	require.Empty(t, queue)
+	require.Equal(
+		t,
+		[]snapshot_storage.BackupChunkQueueEntry{missing},
+		queue,
+	)
 }

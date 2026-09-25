@@ -2,6 +2,7 @@ package dataplane
 
 import (
 	"context"
+	"math/rand"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
@@ -12,8 +13,14 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	"golang.org/x/sync/errgroup"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+// A data query returns at most 1000 rows.
+const backupChunkQueueWindowSize = 1000
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -41,7 +48,10 @@ func (t *backupChunksTask) Run(
 ) error {
 
 	for {
-		entries, err := t.storage.GetBackupChunkQueue(ctx, t.batchSize)
+		entries, err := t.storage.GetBackupChunkQueue(
+			ctx,
+			backupChunkQueueWindowSize,
+		)
 		if err != nil {
 			return err
 		}
@@ -50,12 +60,17 @@ func (t *backupChunksTask) Run(
 			return errors.NewInterruptExecutionError()
 		}
 
-		err = t.copyChunks(ctx, entries)
-		if err != nil {
+		rand.Shuffle(len(entries), func(i, j int) {
+			entries[i], entries[j] = entries[j], entries[i]
+		})
+		entries = entries[:min(len(entries), t.batchSize)]
+
+		copied, err := t.copyChunks(ctx, entries)
+		if len(copied) == 0 {
 			return err
 		}
 
-		err = t.storage.ChunksBackupCompleted(ctx, entries)
+		err = t.storage.ChunksBackupCompleted(ctx, copied)
 		if err != nil {
 			return err
 		}
@@ -90,25 +105,17 @@ func (t *backupChunksTask) copyChunk(
 
 	object, err := t.storage.ReadChunkBlob(ctx, entry.ChunkID)
 	if err != nil {
-		if errors.Is(err, errors.NewEmptyNonRetriableError()) &&
-			errors.IsSilent(err) {
-
-			// TODO(https://github.com/ydb-platform/nbs/issues/7237):
-			// the chunk blob is gone together with its snapshot, the races
-			// between backup and snapshot deletion are to be handled there.
-			logging.Warn(
-				ctx,
-				"Chunk %v of snapshot %v is gone, skipping it",
-				entry.ChunkID,
-				entry.SnapshotID,
-			)
-			return nil
-		}
-
 		return err
 	}
 
-	err = t.followerS3.PutObject(ctx, backup.ChunkKey(entry.ChunkID), object)
+	err = t.followerS3.PutObject(
+		ctx,
+		backup.ChunkKey(entry.ChunkID),
+		persistence.S3Object{
+			Data:     object.Data,
+			Metadata: object.Metadata,
+		},
+	)
 	if err != nil {
 		return err
 	}
@@ -118,13 +125,16 @@ func (t *backupChunksTask) copyChunk(
 	return nil
 }
 
+// Returns the copied chunks and the first error of the ones that failed.
 func (t *backupChunksTask) copyChunks(
 	ctx context.Context,
 	entries []storage.BackupChunkQueueEntry,
-) error {
+) ([]storage.BackupChunkQueueEntry, error) {
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	queue := make(chan storage.BackupChunkQueueEntry)
+	copiedEntries := make(chan storage.BackupChunkQueueEntry, len(entries))
+	copyErrors := make(chan error, len(entries))
 
 	group.Go(func() error {
 		defer close(queue)
@@ -143,15 +153,42 @@ func (t *backupChunksTask) copyChunks(
 	for i := 0; i < t.workerCount; i++ {
 		group.Go(func() error {
 			for entry := range queue {
+				if groupCtx.Err() != nil {
+					return groupCtx.Err()
+				}
+
 				err := t.copyChunk(groupCtx, entry)
 				if err != nil {
-					return err
+					logging.Warn(
+						groupCtx,
+						"Chunk %v of snapshot %v is not backed up: %v",
+						entry.ChunkID,
+						entry.SnapshotID,
+						err,
+					)
+					copyErrors <- err
+					continue
 				}
+
+				copiedEntries <- entry
 			}
 
 			return nil
 		})
 	}
 
-	return group.Wait()
+	err := group.Wait()
+	if err != nil {
+		return nil, err
+	}
+
+	close(copiedEntries)
+	close(copyErrors)
+
+	var copied []storage.BackupChunkQueueEntry
+	for entry := range copiedEntries {
+		copied = append(copied, entry)
+	}
+
+	return copied, <-copyErrors
 }

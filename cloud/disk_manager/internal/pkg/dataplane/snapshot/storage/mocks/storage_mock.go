@@ -135,10 +135,9 @@ func (s *StorageMock) ReadChunkMap(
 	ctx context.Context,
 	snapshotID string,
 	milestoneChunkIndex uint32,
-	includeShallowCopied bool,
 ) (<-chan storage.ChunkMapEntry, <-chan error) {
 
-	args := s.Called(ctx, snapshotID, milestoneChunkIndex, includeShallowCopied)
+	args := s.Called(ctx, snapshotID, milestoneChunkIndex)
 	return args.Get(0).(<-chan storage.ChunkMapEntry), args.Get(1).(<-chan error)
 }
 
@@ -303,6 +302,16 @@ func (s *StorageMock) ChunksBackupCompleted(
 
 	args := s.Called(ctx, entries)
 	return args.Error(0)
+}
+
+func (s *StorageMock) DeleteCopiedBackupChunks(
+	ctx context.Context,
+	snapshotID string,
+	limit int,
+) (int, error) {
+
+	args := s.Called(ctx, snapshotID, limit)
+	return args.Int(0), args.Error(1)
 }
 
 func (s *StorageMock) GetBackupChunkQueueLength(

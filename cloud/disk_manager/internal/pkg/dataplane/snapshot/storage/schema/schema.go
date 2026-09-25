@@ -127,6 +127,10 @@ func Create(
 		"backup_chunk_queue",
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn(
+				"status",
+				persistence.Optional(persistence.TypeInt64),
+			),
+			persistence.WithColumn(
 				"snapshot_id",
 				persistence.Optional(persistence.TypeUTF8),
 			),
@@ -134,7 +138,11 @@ func Create(
 				"chunk_id",
 				persistence.Optional(persistence.TypeUTF8),
 			),
-			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
+			persistence.WithPrimaryKeyColumn(
+				"status",
+				"snapshot_id",
+				"chunk_id",
+			),
 		),
 		dropUnusedColumns,
 	)

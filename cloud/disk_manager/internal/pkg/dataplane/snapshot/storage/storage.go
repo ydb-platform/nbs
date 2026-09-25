@@ -103,14 +103,10 @@ type Storage interface {
 		useS3 bool,
 	) (string, error)
 
-	// With includeShallowCopied set to false returns only the chunks created
-	// by this snapshot, skipping the ones shallow copied from another snapshot
-	// and the zero ones.
 	ReadChunkMap(
 		ctx context.Context,
 		snapshotID string,
 		milestoneChunkIndex uint32,
-		includeShallowCopied bool,
 	) (<-chan ChunkMapEntry, <-chan error)
 
 	ReadChunk(ctx context.Context, chunk *common.Chunk) error
@@ -184,6 +180,13 @@ type Storage interface {
 		ctx context.Context,
 		entries []BackupChunkQueueEntry,
 	) error
+
+	// Returns the number of deleted chunks, at most limit.
+	DeleteCopiedBackupChunks(
+		ctx context.Context,
+		snapshotID string,
+		limit int,
+	) (int, error)
 
 	// Used for monitoring only.
 	GetBackupChunkQueueLength(ctx context.Context) (uint64, error)

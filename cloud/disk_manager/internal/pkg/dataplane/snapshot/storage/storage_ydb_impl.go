@@ -47,6 +47,12 @@ func getSnapshotIDFromChunkID(chunkID string) string {
 	return after[:index]
 }
 
+// Zero chunks and the chunks shallow copied from another snapshot are not
+// created by the snapshot.
+func IsChunkCreatedBySnapshot(chunkID string, snapshotID string) bool {
+	return len(chunkID) != 0 && getSnapshotIDFromChunkID(chunkID) == snapshotID
+}
+
 func makeShardID(s string) uint64 {
 	return cityhash.Hash64([]byte(s))
 }
@@ -598,14 +604,7 @@ func (s *storageYDB) deleteSnapshotData(
 	snapshotID string,
 ) error {
 
-	entries, errors := s.readChunkMap(
-		ctx,
-		session,
-		snapshotID,
-		0,    // milestoneChunkIndex
-		nil,  // inflightQueue
-		true, // includeShallowCopied
-	)
+	entries, errors := s.readChunkMap(ctx, session, snapshotID, 0, nil)
 
 	err := s.processChunkMapEntries(
 		ctx,
@@ -782,7 +781,6 @@ func (s *storageYDB) shallowCopySnapshot(
 		srcSnapshotID,
 		milestoneChunkIndex,
 		inflightQueue,
-		true, // includeShallowCopied
 	)
 
 	err := s.processChunkMapEntries(
@@ -937,7 +935,6 @@ func (s *storageYDB) readChunkMap(
 	snapshotID string,
 	milestoneChunkIndex uint32,
 	inflightQueue *common.InflightQueue,
-	includeShallowCopied bool,
 ) (<-chan ChunkMapEntry, <-chan error) {
 
 	entries := make(chan ChunkMapEntry)
@@ -992,12 +989,6 @@ func (s *storageYDB) readChunkMap(
 				if err != nil {
 					errors <- err
 					return
-				}
-
-				if !includeShallowCopied &&
-					getSnapshotIDFromChunkID(entry.ChunkID) != snapshotID {
-
-					continue
 				}
 
 				if inflightQueue != nil {
