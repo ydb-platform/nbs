@@ -118,6 +118,7 @@ diagnostics:
                  " \t\n",
                  "---\n",
                  "{}",
+                 "null",
                  "future_option: 1"})
         {
             const auto message = parser(yaml);

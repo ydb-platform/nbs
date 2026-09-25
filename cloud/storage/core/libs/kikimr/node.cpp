@@ -218,7 +218,9 @@ TResultOrError<TCmsConfig> GetConfigsFromCms(
             cmsConfig.PrivateDatabaseConfig =
                 std::make_shared<NProto::TError>(MakeError(
                     E_ARGUMENT,
-                    "Failed to parse startup PrivateDatabaseConfig"));
+                    TStringBuilder()
+                        << "Failed to parse startup PrivateDatabaseConfig: "
+                        << CurrentExceptionMessage()));
         }
     }
     cmsConfig.AppConfig = SelectCmsAppConfig(
