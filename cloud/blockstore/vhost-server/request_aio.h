@@ -143,6 +143,18 @@ void PrepareIO(
     TCpuCycles now,
     TSimpleStats& queueStats);
 
+using TCompleteBioFn = void (*)(vhd_io* io, vhd_bdev_io_result status);
+
+// Accounts the completion of a cross-device subrequest. The last one to
+// complete finishes the parent request via completeBio.
+void CompleteCompoundRequestImpl(
+    TLog& log,
+    IEncryptor* encryptor,
+    TAioSubRequestHolder sub,
+    vhd_bdev_io_result status,
+    TAtomicStats& stats,
+    TCompleteBioFn completeBio = vhd_complete_bio);
+
 // Copies the data, and if an encryptor is specified, encrypt it. Returns true
 // if successful.
 [[nodiscard]] bool SgListCopyWithOptionalEncryption(

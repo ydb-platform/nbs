@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstring>
 #include <random>
 
 namespace NCloud::NBlockStore::NVHostServer {
@@ -30,6 +31,58 @@ struct virtio_blk_io
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TCompletedBio
+{
+    vhd_io* Io = nullptr;
+    vhd_bdev_io_result Status = VHD_BDEV_SUCCESS;
+};
+
+// Filled by CompleteBio() instead of vhd_complete_bio(), which needs a live
+// libvhost request queue.
+TVector<TCompletedBio> CompletedBios;
+
+void CompleteBio(vhd_io* io, vhd_bdev_io_result status)
+{
+    CompletedBios.push_back({.Io = io, .Status = status});
+}
+
+class TCountingEncryptor final: public IEncryptor
+{
+public:
+    ui32 DecryptCount = 0;
+
+    NProto::TError Encrypt(
+        TBlockDataRef src,
+        TBlockDataRef dst,
+        ui64 blockIndex) override
+    {
+        Y_UNUSED(blockIndex);
+        std::memcpy(const_cast<char*>(dst.Data()), src.Data(), src.Size());
+        return {};
+    }
+
+    NProto::TError Decrypt(
+        TBlockDataRef src,
+        TBlockDataRef dst,
+        ui64 blockIndex) override
+    {
+        Y_UNUSED(blockIndex);
+        ++DecryptCount;
+        std::memcpy(const_cast<char*>(dst.Data()), src.Data(), src.Size());
+        return {};
+    }
+};
+
+template <typename THist>
+ui64 GetTotalCount(const THist& hist)
+{
+    ui64 total = 0;
+    hist.IterateBuckets([&](ui64, ui64, ui64 count) { total += count; });
+    return total;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 using TBlockSize = ui32;
 
 class TRequestAIOTest: public testing::TestWithParam<TBlockSize>
@@ -43,6 +96,11 @@ protected:
 public:
     TRequestAIOTest() = default;
     ~TRequestAIOTest() override = default;
+
+    void SetUp() override
+    {
+        CompletedBios.clear();
+    }
 
     void TearDown() override
     {
@@ -102,7 +160,50 @@ public:
         }
         Devices.clear();
     }
+
+    TVector<TAioSubRequestHolder> PrepareCompoundIO(
+        virtio_blk_io& bio,
+        IEncryptor* encryptor = nullptr)
+    {
+        TVector<iocb*> batch;
+        TSimpleStats queueStats;
+        PrepareIO(
+            Log,
+            encryptor,
+            Devices,
+            &bio.io,
+            batch,
+            GetCycleCount(),
+            queueStats);
+
+        TVector<TAioSubRequestHolder> subs;
+        for (iocb* cb: batch) {
+            subs.push_back(TAioSubRequest::FromIocb(cb));
+        }
+        return subs;
+    }
+
+    void CompleteSubRequest(
+        TAioSubRequestHolder& sub,
+        vhd_bdev_io_result status,
+        TAtomicStats& stats,
+        IEncryptor* encryptor = nullptr)
+    {
+        CompleteCompoundRequestImpl(
+            Log,
+            encryptor,
+            std::move(sub),
+            status,
+            stats,
+            CompleteBio);
+    }
 };
+
+void ExpectNoSuccessStats(const TAtomicStats& stats, vhd_bdev_io_type type)
+{
+    EXPECT_EQ(0u, GetTotalCount(stats.Times[type]));
+    EXPECT_EQ(0u, GetTotalCount(stats.Sizes[type]));
+}
 
 }   // namespace
 
@@ -536,6 +637,239 @@ TEST_P(TRequestAIOTest, ShouldPrepareCompoundIOForSplitDevices)
     }
 
     auto holder = sub1->TakeParentRequest();
+}
+
+TEST_P(TRequestAIOTest, ShouldFailCompoundWriteIfEarlierPartFailed)
+{
+    InitDevices(1_MB);
+
+    const ui64 offset = 1_MB - 8_KB;   // devices #0 & #1
+    const ui64 size = 16_KB;
+
+    TVector<char> guest(size, 'W');
+    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
+
+    virtio_blk_io bio{
+        .bdev_io = {
+            .type = VHD_BDEV_WRITE,
+            .first_sector = offset / VHD_SECTOR_SIZE,
+            .total_sectors = size / VHD_SECTOR_SIZE,
+            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
+
+    auto subs = PrepareCompoundIO(bio);
+    ASSERT_EQ(2u, subs.size());
+
+    TAtomicStats stats;
+
+    CompleteSubRequest(subs[0], VHD_BDEV_IOERR, stats);
+    EXPECT_TRUE(CompletedBios.empty());
+
+    CompleteSubRequest(subs[1], VHD_BDEV_SUCCESS, stats);
+    ASSERT_EQ(1u, CompletedBios.size());
+    EXPECT_EQ(&bio.io, CompletedBios[0].Io);
+    EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
+
+    EXPECT_EQ(1u, stats.Requests[VHD_BDEV_WRITE].Errors.load());
+    ExpectNoSuccessStats(stats, VHD_BDEV_WRITE);
+}
+
+TEST_P(TRequestAIOTest, ShouldNotCopyCompoundReadIfEarlierPartFailed)
+{
+    InitDevices(1_MB);
+
+    const ui64 offset = 1_MB - 8_KB;   // devices #0 & #1
+    const ui64 size = 16_KB;
+
+    TVector<char> guest(size, 'G');
+    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
+
+    virtio_blk_io bio{
+        .bdev_io = {
+            .type = VHD_BDEV_READ,
+            .first_sector = offset / VHD_SECTOR_SIZE,
+            .total_sectors = size / VHD_SECTOR_SIZE,
+            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
+
+    TCountingEncryptor encryptor;
+    auto subs = PrepareCompoundIO(bio, &encryptor);
+    ASSERT_EQ(2u, subs.size());
+
+    // Pretend that the subrequests read some data into the shared buffer.
+    auto* req = subs[0]->GetParentRequest();
+    std::memset(req->Buffer.get(), 'R', req->BufferSize);
+
+    TAtomicStats stats;
+
+    CompleteSubRequest(subs[0], VHD_BDEV_IOERR, stats, &encryptor);
+    CompleteSubRequest(subs[1], VHD_BDEV_SUCCESS, stats, &encryptor);
+
+    ASSERT_EQ(1u, CompletedBios.size());
+    EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
+
+    EXPECT_EQ(0u, encryptor.DecryptCount);
+    EXPECT_EQ(TVector<char>(size, 'G'), guest);
+
+    EXPECT_EQ(1u, stats.Requests[VHD_BDEV_READ].Errors.load());
+    ExpectNoSuccessStats(stats, VHD_BDEV_READ);
+}
+
+TEST_P(TRequestAIOTest, ShouldFailCompoundRequestIfLastPartFailed)
+{
+    InitDevices(1_MB);
+
+    const ui64 offset = 1_MB - 8_KB;   // devices #0 & #1
+    const ui64 size = 16_KB;
+
+    TVector<char> guest(size, 'W');
+    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
+
+    virtio_blk_io bio{
+        .bdev_io = {
+            .type = VHD_BDEV_WRITE,
+            .first_sector = offset / VHD_SECTOR_SIZE,
+            .total_sectors = size / VHD_SECTOR_SIZE,
+            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
+
+    auto subs = PrepareCompoundIO(bio);
+    ASSERT_EQ(2u, subs.size());
+
+    TAtomicStats stats;
+
+    CompleteSubRequest(subs[0], VHD_BDEV_SUCCESS, stats);
+    EXPECT_TRUE(CompletedBios.empty());
+
+    CompleteSubRequest(subs[1], VHD_BDEV_IOERR, stats);
+    ASSERT_EQ(1u, CompletedBios.size());
+    EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
+
+    EXPECT_EQ(1u, stats.Requests[VHD_BDEV_WRITE].Errors.load());
+    ExpectNoSuccessStats(stats, VHD_BDEV_WRITE);
+}
+
+TEST_P(TRequestAIOTest, ShouldFailCompoundRequestIfMiddlePartFailed)
+{
+    InitDevices(64_KB);
+
+    const ui64 offset = 64_KB - 8_KB;   // devices #0, #1 & #2
+    const ui64 size = 80_KB;
+
+    TVector<char> guest(size, 'W');
+    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
+
+    virtio_blk_io bio{
+        .bdev_io = {
+            .type = VHD_BDEV_WRITE,
+            .first_sector = offset / VHD_SECTOR_SIZE,
+            .total_sectors = size / VHD_SECTOR_SIZE,
+            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
+
+    auto subs = PrepareCompoundIO(bio);
+    ASSERT_EQ(3u, subs.size());
+
+    TAtomicStats stats;
+
+    CompleteSubRequest(subs[0], VHD_BDEV_SUCCESS, stats);
+    CompleteSubRequest(subs[1], VHD_BDEV_IOERR, stats);
+    EXPECT_TRUE(CompletedBios.empty());
+
+    CompleteSubRequest(subs[2], VHD_BDEV_SUCCESS, stats);
+    ASSERT_EQ(1u, CompletedBios.size());
+    EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
+
+    EXPECT_EQ(1u, stats.Requests[VHD_BDEV_WRITE].Errors.load());
+    ExpectNoSuccessStats(stats, VHD_BDEV_WRITE);
+}
+
+TEST_P(TRequestAIOTest, ShouldCompleteCompoundReadIfAllPartsSucceeded)
+{
+    InitDevices(1_MB);
+
+    const ui64 offset = 1_MB - 8_KB;   // devices #0 & #1
+    const ui64 size = 16_KB;
+
+    TVector<char> guest(size, 'G');
+    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
+
+    virtio_blk_io bio{
+        .bdev_io = {
+            .type = VHD_BDEV_READ,
+            .first_sector = offset / VHD_SECTOR_SIZE,
+            .total_sectors = size / VHD_SECTOR_SIZE,
+            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
+
+    TCountingEncryptor encryptor;
+    auto subs = PrepareCompoundIO(bio, &encryptor);
+    ASSERT_EQ(2u, subs.size());
+
+    auto* req = subs[0]->GetParentRequest();
+    std::memset(req->Buffer.get(), 'R', req->BufferSize);
+
+    TAtomicStats stats;
+
+    CompleteSubRequest(subs[0], VHD_BDEV_SUCCESS, stats, &encryptor);
+    CompleteSubRequest(subs[1], VHD_BDEV_SUCCESS, stats, &encryptor);
+
+    ASSERT_EQ(1u, CompletedBios.size());
+    EXPECT_EQ(VHD_BDEV_SUCCESS, CompletedBios[0].Status);
+
+    EXPECT_EQ(size / VHD_SECTOR_SIZE, encryptor.DecryptCount);
+    EXPECT_EQ(TVector<char>(size, 'R'), guest);
+
+    EXPECT_EQ(0u, stats.Requests[VHD_BDEV_READ].Errors.load());
+    EXPECT_EQ(1u, stats.Requests[VHD_BDEV_READ].Count.load());
+    EXPECT_EQ(1u, GetTotalCount(stats.Times[VHD_BDEV_READ]));
+    EXPECT_EQ(1u, GetTotalCount(stats.Sizes[VHD_BDEV_READ]));
+}
+
+TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
+{
+    InitDevices(64_KB);
+
+    const ui64 offset = 64_KB - 8_KB;   // devices #0, #1 & #2
+    const ui64 size = 80_KB;
+
+    TVector<char> guest(size, 'W');
+    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
+
+    // -1 means that all the parts succeed.
+    for (int failedPart: {-1, 0, 1, 2}) {
+        std::array<size_t, 3> order{0, 1, 2};
+        do {
+            SCOPED_TRACE(
+                TStringBuilder() << "failed part: " << failedPart
+                                 << ", order: " << order[0] << order[1]
+                                 << order[2]);
+
+            CompletedBios.clear();
+
+            virtio_blk_io bio{
+                .bdev_io = {
+                    .type = VHD_BDEV_WRITE,
+                    .first_sector = offset / VHD_SECTOR_SIZE,
+                    .total_sectors = size / VHD_SECTOR_SIZE,
+                    .sglist = {
+                        .nbuffers = buffers.size(),
+                        .buffers = buffers.data()}}};
+
+            auto subs = PrepareCompoundIO(bio);
+            ASSERT_EQ(3u, subs.size());
+
+            TAtomicStats stats;
+            for (size_t i: order) {
+                CompleteSubRequest(
+                    subs[i],
+                    static_cast<int>(i) == failedPart ? VHD_BDEV_IOERR
+                                                      : VHD_BDEV_SUCCESS,
+                    stats);
+            }
+
+            ASSERT_EQ(1u, CompletedBios.size());
+            EXPECT_EQ(&bio.io, CompletedBios[0].Io);
+            EXPECT_EQ(
+                failedPart == -1 ? VHD_BDEV_SUCCESS : VHD_BDEV_IOERR,
+                CompletedBios[0].Status);
+        } while (std::next_permutation(order.begin(), order.end()));
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(

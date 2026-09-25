@@ -71,12 +71,17 @@ void CompleteRequestImpl(
     vhd_complete_bio(req->Io, status);
 }
 
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
 void CompleteCompoundRequestImpl(
     TLog& log,
     IEncryptor* encryptor,
     TAioSubRequestHolder sub,
     vhd_bdev_io_result status,
-    TAtomicStats& stats)
+    TAtomicStats& stats,
+    TCompleteBioFn completeBio)
 {
     auto* req = sub->GetParentRequest();
 
@@ -86,6 +91,12 @@ void CompleteCompoundRequestImpl(
         // This is the last subrequest. Take ownership of the parent request and
         // release it when leave the scope.
         auto holder = sub->TakeParentRequest();
+
+        // The last subrequest may succeed after an earlier one failed. The
+        // whole request fails if any of its subrequests failed.
+        if (req->Errors.load() != 0) {
+            status = VHD_BDEV_IOERR;
+        }
 
         auto* bio = vhd_get_bdev_io(req->Io);
         const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
@@ -117,9 +128,11 @@ void CompleteCompoundRequestImpl(
             stats.Sizes[bio->type].Increment(bytes);
         }
 
-        vhd_complete_bio(req->Io, status);
+        completeBio(req->Io, status);
     }
 }
+
+namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
