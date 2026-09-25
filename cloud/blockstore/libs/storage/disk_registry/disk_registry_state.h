@@ -1351,8 +1351,9 @@ private:
         const TDiskState& disk,
         const NProto::TDeviceConfig& sourceDevice);
 
-    TResultOrError<TDiskState*> FindValidMigrationSource(
+    TResultOrError<NProto::TDeviceConfig> GetMigrationSource(
         const TDiskId& sourceDiskId,
+        const TDiskState& disk,
         const TString& sourceDeviceId);
 
     TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
@@ -1368,7 +1369,7 @@ private:
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
         TDiskState& disk,
-        const TDeviceId& sourceDeviceId,
+        const NProto::TDeviceConfig& sourceDevice,
         NProto::TDeviceConfig targetDevice);
 
     void ChangeAgentState(
