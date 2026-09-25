@@ -485,6 +485,58 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldHandleDestroySessionAfterFailedSessionRestore)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Start();
+
+        UNIT_ASSERT(!HasError(
+            bootstrap.Session->CreateSession().GetValue(WaitTimeout)));
+
+        auto restoreResponse = NewPromise<NProto::TCreateSessionResponse>();
+        bootstrap.FileStore->CreateSessionHandler = [&] (
+            auto callContext,
+            auto request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                callContext->FileSystemId,
+                FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(GetFileSystemId(*request), FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(GetClientId(*request), ClientId);
+            UNIT_ASSERT_VALUES_EQUAL(GetSessionId(*request), SessionId);
+            return restoreResponse;
+        };
+
+        bootstrap.FileStore->CreateNodeHandler = [] (
+            auto callContext,
+            auto request)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(
+                callContext->FileSystemId,
+                FileSystemId);
+            UNIT_ASSERT_VALUES_EQUAL(GetSessionId(*request), SessionId);
+            return MakeFuture<NProto::TCreateNodeResponse>(
+                TErrorResponse(E_FS_INVALID_SESSION, ""));
+        };
+
+        auto requestFuture = bootstrap.Session->CreateNode(
+            MakeIntrusive<TCallContext>(FileSystemId),
+            std::make_shared<NProto::TCreateNodeRequest>());
+        UNIT_ASSERT(!requestFuture.HasValue());
+
+        auto destroyFuture = bootstrap.Session->DestroySession();
+        UNIT_ASSERT(!destroyFuture.HasValue());
+
+        restoreResponse.SetValue(TErrorResponse(E_REJECTED, ""));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            requestFuture.GetValue(WaitTimeout).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            destroyFuture.GetValue(WaitTimeout).GetError().GetCode());
+    }
+
     Y_UNIT_TEST(ShouldSetSessionSeqNo)
     {
         TBootstrap bootstrap;
