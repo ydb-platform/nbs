@@ -5,9 +5,11 @@ import time
 import logging
 import signal
 import subprocess
+import tempfile
 
 from concurrent.futures import ThreadPoolExecutor, wait
 from itertools import count
+from pathlib import Path
 
 from cloud.blockstore.public.sdk.python.protos import STORAGE_MEDIA_SSD, \
     IPC_NBD, VOLUME_ACCESS_READ_WRITE
@@ -27,6 +29,12 @@ def load_nbd_module():
     subprocess.check_call(["modprobe", "nbd", "nbds_max=4"], timeout=20)
 
 
+@pytest.fixture
+def sockets_dir():
+    with tempfile.TemporaryDirectory(prefix='nbd-', dir="/tmp") as path:
+        yield Path(path)
+
+
 @pytest.fixture(name='ydb')
 def start_ydb_cluster():
 
@@ -36,7 +44,7 @@ def start_ydb_cluster():
 
 
 @pytest.fixture(name='nbs')
-def start_nbs_daemon(ydb, tmp_path):
+def start_nbs_daemon(ydb, tmp_path, sockets_dir):
 
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
@@ -57,7 +65,7 @@ def start_nbs_daemon(ydb, tmp_path):
     server_config.EndpointStorageDir = str(tmp_path)
     server_config.AllowAllRequestsViaUDS = True
 
-    server_config.UnixSocketPath = str(tmp_path / "grpc.sock")
+    server_config.UnixSocketPath = str(sockets_dir / "grpc.sock")
     server_config.VhostEnabled = False
     server_config.AutomaticNbdDeviceManagement = True
 
@@ -69,7 +77,7 @@ def start_nbs_daemon(ydb, tmp_path):
 
 
 @pytest.fixture(name='bdev')
-def mount_nbd_device(nbs, tmp_path):
+def mount_nbd_device(nbs, sockets_dir):
     test_disk_id = "vol0"
     nbd_device = "/dev/nbd0"
     client_id = common.context.test_name
@@ -82,7 +90,7 @@ def mount_nbd_device(nbs, tmp_path):
         blocks_count=1024 ** 3 // BLOCK_SIZE,
         storage_media_kind=STORAGE_MEDIA_SSD)
 
-    socket_path = str(tmp_path / f"{test_disk_id}.nbd.sock")
+    socket_path = str(sockets_dir / f"{test_disk_id}.nbd.sock")
 
     cli.start_endpoint(
         unix_socket_path=socket_path,
