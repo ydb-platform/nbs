@@ -41,37 +41,19 @@ double BPFeature(const TBackpressureFeatureConfig& c, double x)
     return (1 - nx) + nx * c.MaxValue;
 }
 
-ui32 CalculateMaxBlobsPerDisk(
+// Scales a threshold defined per allocation unit to the whole disk.
+ui64 CalculatePerDiskThreshold(
     ui64 blocksCount,
     ui32 blockSize,
-    ui32 maxBlobsPerUnit,
-    ui64 allocationUnit)
+    ui64 allocationUnit,
+    ui64 perUnitThreshold)
 {
-    const ui64 allocationUnitBlocks = allocationUnit / blockSize;
-    const ui64 threshold =
-        CeilDiv(blocksCount * maxBlobsPerUnit, allocationUnitBlocks);
-    return Min<ui64>(threshold, Max<ui32>());
-}
-
-ui64 CalculatePerDiskThresholdInBlocksFromAllocationUnitThreshold(
-    ui64 blocksCount,
-    ui32 blockSize,
-    ui64 perUnitThreshold,
-    ui64 allocationUnit)
-{
-    perUnitThreshold = Min(perUnitThreshold, allocationUnit);
-    if (!perUnitThreshold) {
-        return 0;
-    }
-
     const ui64 allocationUnitBlocks = allocationUnit / blockSize;
     const ui64 whole = blocksCount / allocationUnitBlocks;
     const ui64 remainder = blocksCount % allocationUnitBlocks;
-    const ui64 perUnitThresholdBlocks =
-        CeilDiv<ui64>(perUnitThreshold, blockSize);
 
-    return whole * perUnitThresholdBlocks +
-           CeilDiv(remainder * perUnitThreshold, allocationUnit);
+    return whole * perUnitThreshold +
+           CeilDiv(remainder * perUnitThreshold, allocationUnitBlocks);
 }
 
 void InitializeMixedMergedBlobsAndBlocksCounts(
@@ -179,17 +161,20 @@ TPartitionState::TPartitionState(
     , CompactionScoreHistory(compactionScoreHistorySize)
     , UsedBlocks(Config.GetBlocksCount())
     , LogicalUsedBlocks(Config.GetBlocksCount())
-    , MaxBlobsPerDisk(CalculateMaxBlobsPerDisk(
-          Config.GetBlocksCount(),
-          Config.GetBlockSize(),
-          maxBlobsPerUnit,
-          allocationUnit))
-    , MaxMixedBlocksPerDisk(
-          CalculatePerDiskThresholdInBlocksFromAllocationUnitThreshold(
+    , MaxBlobsPerDisk(Min<ui64>(
+          CalculatePerDiskThreshold(
               Config.GetBlocksCount(),
               Config.GetBlockSize(),
-              maxMixedBytesPerUnit,
-              allocationUnit))
+              allocationUnit,
+              maxBlobsPerUnit),
+          Max<ui32>()))
+    , MaxMixedBlocksPerDisk(CalculatePerDiskThreshold(
+          Config.GetBlocksCount(),
+          Config.GetBlockSize(),
+          allocationUnit,
+          CeilDiv<ui64>(
+              Min(maxMixedBytesPerUnit, allocationUnit),
+              Config.GetBlockSize())))
     , MaxBlobsPerRange(maxBlobsPerRange)
     , CompactionRangeCountPerRun(compactionRangeCountPerRun)
     , CleanupQueue(GetBlockSize())
