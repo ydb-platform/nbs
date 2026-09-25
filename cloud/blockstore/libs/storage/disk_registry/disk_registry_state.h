@@ -725,13 +725,20 @@ public:
 
     NProto::TDiskRegistryStateBackup BackupState() const;
 
-    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    struct TStartDeviceMigrationResult
+    {
+        TDiskId DiskId;
+        TDeviceId SourceDeviceId;
+        TResultOrError<NProto::TDeviceConfig> Target;
+    };
+
+    // Returns one result per migration, in the same order as the input.
+    TVector<TStartDeviceMigrationResult> StartDeviceMigrations(
         TInstant now,
         TDiskRegistryDatabase& db,
-        const TDiskId& sourceDiskId,
-        const TDeviceId& sourceDeviceId);
+        const TVector<TDeviceMigration>& migrations);
 
-    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    TResultOrError<NProto::TDeviceConfig> StartForceMigration(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
@@ -1106,6 +1113,15 @@ private:
         const TDiskState& disk,
         TStringBuf callerName);
 
+    bool UpdatePlacementGroupInMemory(
+        const TDiskId& diskId,
+        const TDiskState& disk,
+        TStringBuf callerName);
+
+    void PersistPlacementGroup(
+        TDiskRegistryDatabase& db,
+        const TString& groupId);
+
     void UpdateDiskPlacementInfo(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
@@ -1330,19 +1346,31 @@ private:
         TDiskRegistryDatabase& db,
         const TVector<TDeviceId>& uuids);
 
-    TDeviceList::TAllocationQuery MakeMigrationQuery(
-        const TDiskId& sourceDiskId,
-        const NProto::TDeviceConfig& sourceDevice);
+    struct TMigrationSource
+    {
+        TDiskState* Disk = nullptr;
+        NProto::TDeviceConfig Device;
+        TDeviceList::TAllocationQuery Query;
+    };
 
-    NProto::TError ValidateStartDeviceMigration(
+    TResultOrError<TMigrationSource> PrepareDeviceMigration(
         const TDiskId& sourceDiskId,
-        const TString& sourceDeviceId);
+        const TDeviceId& sourceDeviceId);
 
-    NProto::TDeviceConfig StartDeviceMigrationImpl(
+    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
-        const TDeviceId& sourceDeviceId,
+        const TDeviceId& sourceDeviceId);
+
+    // Does not persist the disk or its placement group; the caller must.
+    // Adjusting the target's block count may persist its agent configuration.
+    // The target must already be marked as allocated.
+    NProto::TDeviceConfig StartDeviceMigrationOnTarget(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& sourceDiskId,
+        const TMigrationSource& source,
         NProto::TDeviceConfig targetDevice);
 
     void ChangeAgentState(
