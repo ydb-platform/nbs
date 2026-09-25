@@ -12,6 +12,7 @@ RECURSE(
     tablet/model
     tablet/protos
     tablet_proxy
+    query
 )
 
 RECURSE_FOR_TESTS(
