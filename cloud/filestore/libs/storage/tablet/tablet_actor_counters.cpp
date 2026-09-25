@@ -383,6 +383,12 @@ void TIndexTabletActor::UpdateMetrics(
     Store(
         Metrics->DirectoryCreationInShardsEnabled,
         fileSystem.GetDirectoryCreationInShardsEnabled());
+    Store(
+        Metrics->ServerWriteBackCacheEnabled,
+        Config->GetServerWriteBackCacheEnabled());
+    Store(
+        Metrics->ServerWriteBackCacheFlushWritesInParallelEnabled,
+        Config->GetServerWriteBackCacheFlushWritesInParallelEnabled());
 
     Store(Metrics->FreshBytesCount, stats.GetFreshBytesCount());
     Store(Metrics->FreshBytesItemCount, stats.GetFreshBytesItemCount());

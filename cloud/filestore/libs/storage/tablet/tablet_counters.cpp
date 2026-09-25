@@ -195,6 +195,10 @@ void TTabletMetrics::Register(
         StrictFileSystemSizeEnforcementEnabled,
         EMetricType::MT_ABSOLUTE);
     REGISTER_LOCAL(DirectoryCreationInShardsEnabled, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(ServerWriteBackCacheEnabled, EMetricType::MT_ABSOLUTE);
+    REGISTER_LOCAL(
+        ServerWriteBackCacheFlushWritesInParallelEnabled,
+        EMetricType::MT_ABSOLUTE);
 
     REGISTER_AGGREGATABLE_SUM(ReassignCount, EMetricType::MT_ABSOLUTE);
     REGISTER_AGGREGATABLE_SUM(WritableChannelCount, EMetricType::MT_ABSOLUTE);
