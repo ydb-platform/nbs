@@ -138,12 +138,13 @@ class TPeriodicCertificateProvider final
     TVector<NMonitoring::TDynamicCountersPtr> CertificateMetrics;
     NMonitoring::TDynamicCountersPtr RootCaMetrics;
 
-    TMutex RefreshMutex;
-
     mutable TMutex UpdateMutex;
     std::atomic<bool> Started = false;
-    // The on-demand update requested and not finished yet.
-    NThreading::TPromise<NProto::TError> OnDemandUpdate;
+    // Updates do not run concurrently and do not wait for each other.
+    bool UpdateInProgress = false;
+    // The pending on-demand request, or, while an update is in progress, the
+    // result of that update.
+    NThreading::TPromise<NProto::TError> Update;
 
     TLog Log;
 
@@ -187,13 +188,13 @@ public:
                     E_INVALID_STATE,
                     "Certificate provider is not started"));
             }
-            if (OnDemandUpdate.Initialized()) {
+            if (Update.Initialized()) {
                 return NThreading::MakeFuture(MakeError(
                     E_TRY_AGAIN,
-                    "Another certificate update is pending"));
+                    "Another certificate update is pending or in progress"));
             }
-            OnDemandUpdate = NThreading::NewPromise<NProto::TError>();
-            future = OnDemandUpdate.GetFuture();
+            Update = NThreading::NewPromise<NProto::TError>();
+            future = Update.GetFuture();
         }
 
         ScheduleUpdateAt(TInstant::Now(), /*periodic=*/false);
@@ -231,14 +232,8 @@ public:
 
     void Start() override
     {
-        // Updates requested once Started is set wait for the initialization.
-        TGuard<TMutex> refreshGuard(RefreshMutex);
-        {
-            TGuard<TMutex> lock(UpdateMutex);
-            if (Started.load()) {
-                return;
-            }
-            Started.store(true);
+        if (Started.load()) {
+            return;
         }
 
         Log = Logging->CreateLog(LogComponent);
@@ -267,28 +262,37 @@ public:
 
         PublishInitialState();
 
+        // Updates are rejected until the initialization is done.
+        {
+            TGuard<TMutex> lock(UpdateMutex);
+            Started.store(true);
+        }
+
         ScheduleUpdateAt(TInstant::Now() + RefreshInterval, true);
     }
 
     void Stop() override
     {
+        NThreading::TFuture<NProto::TError> update;
         {
             TGuard<TMutex> lock(UpdateMutex);
             if (!Started.load()) {
                 return;
             }
             Started.store(false);
+
+            if (UpdateInProgress) {
+                update = Update.GetFuture();
+            } else if (Update.Initialized()) {
+                std::exchange(Update, {}).SetValue(MakeError(
+                    E_INVALID_STATE,
+                    "Certificate provider is stopped"));
+            }
         }
 
-        // Wait for the update in progress, if any: it completes its request
-        // itself.
-        {
-            TGuard<TMutex> refreshGuard(RefreshMutex);
+        if (update.Initialized()) {
+            update.Wait();
         }
-
-        CompleteOnDemandUpdate(MakeError(
-            E_INVALID_STATE,
-            "Certificate provider is stopped"));
     }
 
 private:
@@ -309,27 +313,35 @@ private:
         });
     }
 
+    // Any update serves the pending on-demand request, if there is one: it
+    // applies new content right away. An on-demand update that finds no
+    // request has nothing to do, a periodic one that finds another update in
+    // progress is skipped until the next interval.
     void RunUpdate(bool periodic)
     {
+        bool run = false;
+        bool onDemand = false;
         {
-            // Updates do not wait for each other: a periodic one is skipped
-            // until the next interval and an on-demand one is rejected.
-            TTryGuard<TMutex> refreshGuard(RefreshMutex);
-            if (!refreshGuard.WasAcquired()) {
-                if (!periodic) {
-                    CompleteOnDemandUpdate(MakeError(
-                        E_TRY_AGAIN,
-                        "Another certificate update is in progress"));
+            TGuard<TMutex> lock(UpdateMutex);
+            if (Started && !UpdateInProgress) {
+                if (Update.Initialized()) {
+                    run = onDemand = true;
+                } else if (periodic) {
+                    Update = NThreading::NewPromise<NProto::TError>();
+                    run = true;
                 }
-            } else if (Started) {
-                auto error = RefreshCertificates(periodic);
-                // Completed while RefreshMutex is held, so that Stop() does
-                // not return before that. The callbacks may request another
-                // update: it is rejected instead of waiting for this one.
-                if (!periodic) {
-                    CompleteOnDemandUpdate(std::move(error));
-                }
+                UpdateInProgress = run;
             }
+        }
+
+        if (run) {
+            auto result = RefreshCertificates(/*periodic=*/!onDemand);
+
+            // Completed under UpdateMutex, so that Stop() does not return
+            // before that.
+            TGuard<TMutex> lock(UpdateMutex);
+            UpdateInProgress = false;
+            std::exchange(Update, {}).SetValue(std::move(result));
         }
 
         if (periodic && Started) {
@@ -337,18 +349,7 @@ private:
         }
     }
 
-    void CompleteOnDemandUpdate(NProto::TError error)
-    {
-        NThreading::TPromise<NProto::TError> promise;
-        {
-            TGuard<TMutex> lock(UpdateMutex);
-            promise = std::exchange(OnDemandUpdate, {});
-        }
 
-        if (promise.Initialized()) {
-            promise.SetValue(std::move(error));
-        }
-    }
 
     void PublishRootCaFingerprint()
     {

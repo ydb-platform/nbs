@@ -667,7 +667,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
             context.GetExpireTs(context.ServerPair.CertChainPath));
     }
 
-    Y_UNIT_TEST(ShouldNotCompleteOnDemandUpdateByPeriodicCheck)
+    Y_UNIT_TEST(ShouldServePendingOnDemandUpdateByPeriodicCheck)
     {
         TManualProviderContext context(TDuration::Hours(1));
         context.Provider->Start();
@@ -682,13 +682,8 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         auto future = context.Provider->UpdateCertificates();
 
         // The periodic check scheduled at start runs before the on-demand
-        // update: it only starts the stable read.
-        context.Scheduler->RunNext();
-        UNIT_ASSERT(!future.HasValue());
-        UNIT_ASSERT_VALUES_EQUAL(
-            initial,
-            context.GetExpireTs(context.ServerPair.CertChainPath));
-
+        // update and serves the pending request: the new content is applied
+        // right away.
         context.Scheduler->RunNext();
         UNIT_ASSERT(future.HasValue());
         UNIT_ASSERT_C(
@@ -697,6 +692,11 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         UNIT_ASSERT_VALUES_UNEQUAL(
             initial,
             context.GetExpireTs(context.ServerPair.CertChainPath));
+
+        // The on-demand update finds nothing to do, the next periodic check
+        // is scheduled.
+        context.Scheduler->RunNext();
+        UNIT_ASSERT_VALUES_EQUAL(1, context.Scheduler->PendingCount());
     }
 
     Y_UNIT_TEST(ShouldCompletePendingOnDemandUpdateOnStop)
@@ -790,6 +790,24 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         auto pending = provider->UpdateCertificates();
         provider->Stop();
         UNIT_ASSERT(pending.HasValue());
+    }
+
+    Y_UNIT_TEST(ShouldAllowStoppingFromCompletionCallback)
+    {
+        TManualProviderContext context(TDuration::Hours(1));
+        context.Provider->Start();
+
+        // Hangs if Stop() waits for the update that runs the callback.
+        bool stopped = false;
+        context.Provider->UpdateCertificates().Subscribe(
+            [&](const auto&)
+            {
+                context.Provider->Stop();
+                stopped = true;
+            });
+        context.Scheduler->RunPendingWithin(TDuration::Zero());
+
+        UNIT_ASSERT(stopped);
     }
 
     Y_UNIT_TEST(ShouldKeepCertificateWhenRefreshedFilesAreInvalid)

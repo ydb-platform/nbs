@@ -38,6 +38,7 @@ struct ICertificateProvider
     // read or validation error, E_TRY_AGAIN if another update is pending or
     // in progress and E_INVALID_STATE if the provider is not started.
     // Providers that do not refresh certificates return S_OK right away.
+    // The callbacks of the future must not wait for another update.
     virtual NThreading::TFuture<NProto::TError> UpdateCertificates() = 0;
     virtual std::shared_ptr<grpc::ChannelCredentials>
         CreateSecureClientCredentials() = 0;
