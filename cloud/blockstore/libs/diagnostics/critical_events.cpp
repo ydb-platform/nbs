@@ -23,11 +23,11 @@ namespace NCloud::NBlockStore {
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-// VolumeCriticalEvents
+// AppCriticalEvents, AppImpossibleEvents and VolumeCriticalEvents
 ////////////////////////////////////////////////////////////////////////////////
 
 /*
-TVolumeCriticalEventCounter - per-interval critical event counter with
+TCriticalEventCounter - per-interval critical event counter with
 deferred publishing
 
 Writing the number of critical events for an interval directly into the
@@ -40,7 +40,7 @@ and the monitoring one - generally do not coincide:
    internal interval yet)
 
 2. End of the next internal interval -
-   PublishVolumeCriticalEventCounters() resets the counter to 0.
+   PublishCriticalEventCounters() resets the counter to 0.
 
 3. If a critical event was registered between (1) and (2) (Report...() was
    called with an increment of the counter), that event will be lost and
@@ -59,13 +59,13 @@ Additionally:
 
 - the separate use of Unpublished and Published counters avoids losing
   critical events registered before module initialization (before
-  TVolumeCriticalEvents::CountersRoot is set) - the value accumulated in
-  Unpublished is not reset at the end of an interval when writing to Published
-  is not possible. At the end of the first interval after CountersRoot
+  the corresponding counter root is set) - the value accumulated in Unpublished
+  is not reset at the end of an interval when writing to Published
+  is not possible. At the end of the first interval after counter root
   initialization, the value accumulated since startup in the Unpublished counter
   will be written into Published
 */
-struct TVolumeCriticalEventCounter
+struct TCriticalEventCounter
 {
     // Per-interval critical events counter, not published yet
     i64 Unpublished{0};
@@ -75,16 +75,18 @@ struct TVolumeCriticalEventCounter
     NMonitoring::TDynamicCounters::TCounterPtr Published;
 };
 
-struct TVolumeCriticalEventKey
+// Sensor identity; empty volume labels select the process-wide application root.
+struct TCriticalEventKey
 {
-    TString Event;                // == "VolumeCriticalEvent/<event>"
-    TVolumeLabels VolumeLabels;   // published as the 'volume', 'cloud' and
-                                  // 'folder' metric labels
+    // Full sensor name, including its App or Volume event family.
+    TString Event;
+    // Volume labels; empty DiskId selects the application counter root.
+    TVolumeLabels VolumeLabels;
 };
 
 inline bool operator==(
-    const TVolumeCriticalEventKey& lhs,
-    const TVolumeCriticalEventKey& rhs)
+    const TCriticalEventKey& lhs,
+    const TCriticalEventKey& rhs)
 {
     return std::tie(lhs.Event, lhs.VolumeLabels) ==
            std::tie(rhs.Event, rhs.VolumeLabels);
@@ -97,10 +99,10 @@ inline bool operator==(
 ////////////////////////////////////////////////////////////////////////////////
 
 template <>
-struct THash<NCloud::NBlockStore::TVolumeCriticalEventKey>
+struct THash<NCloud::NBlockStore::TCriticalEventKey>
 {
     size_t operator()(
-        const NCloud::NBlockStore::TVolumeCriticalEventKey& val) const
+        const NCloud::NBlockStore::TCriticalEventKey& val) const
     {
         const auto& a = std::tie(val.Event, val.VolumeLabels);
         return THash<std::decay_t<decltype(a)>>{}(a);
@@ -113,43 +115,61 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-using TVolumeCriticalEventCounterMap =
-    THashMap<TVolumeCriticalEventKey, TVolumeCriticalEventCounter>;
+using TCriticalEventCounterMap =
+    THashMap<TCriticalEventKey, TCriticalEventCounter>;
 
-struct TVolumeCriticalEvents
+// Shared interval counters, protected by Lock and published by one stats handler.
+struct TCriticalEvents
 {
     TAdaptiveLock Lock;
-    TVolumeCriticalEventCounterMap Counters;
+    TCriticalEventCounterMap Counters;
     NMonitoring::TDynamicCountersPtr CountersRoot;
+    // Application event subtree; null until the bootstrap attaches monitoring.
+    NMonitoring::TDynamicCountersPtr AppCountersRoot;
 };
 
 NProto::EVolumeCriticalEventsReportingMode VolumeCriticalEventsReportingMode =
     NProto::EVolumeCriticalEventsReportingMode::APP_ONLY;
-TVolumeCriticalEvents VolumeCriticalEvents;
+TCriticalEvents CriticalEvents;
+bool AppCriticalEventsEnabled = false;
 
-void PublishVolumeCriticalEventCounters()
+// Accumulate application events and leave other families on the default path.
+bool AccumulateAppCriticalEvent(const TString& sensorName)
 {
-    TGuard<TAdaptiveLock> guard(VolumeCriticalEvents.Lock);
+    // Preserve cumulative reporting for unrelated sensor families.
+    if (!sensorName.StartsWith("AppCriticalEvents/") &&
+        !sensorName.StartsWith("AppImpossibleEvents/"))
+    {
+        return false;
+    }
 
-    for (auto& [k, e]: VolumeCriticalEvents.Counters) {
-        // NOTE: a single instance of TCriticalEventsStatsHandler is expected
-        // (as the sole writer of e->Published). This simplifies Lock usage
-        // (e->Published can be written under the read guard only).
+    // Keep early events pending until the application counter root is attached.
+    with_lock (CriticalEvents.Lock) {
+        ++CriticalEvents.Counters[TCriticalEventKey{sensorName, {}}].Unpublished;
+    }
+    return true;
+}
+
+// Publish each completed interval and retain pending events without a root.
+void PublishCriticalEventCounters()
+{
+    TGuard<TAdaptiveLock> guard(CriticalEvents.Lock);
+
+    for (auto& [k, e]: CriticalEvents.Counters) {
+        // Attach each counter lazily once its monitoring root is available.
         if (!e.Published) {
-            if (!VolumeCriticalEvents.CountersRoot) {
-                // Root not initialized yet; keep accumulating in Unpublished,
-                // see the first-fire branch in Report##name().
+            auto counters = k.VolumeLabels.DiskId.empty()
+                                ? CriticalEvents.AppCountersRoot
+                                : CriticalEvents.CountersRoot;
+            if (!counters) {
                 continue;
             }
-            // Root became available after the first fire (e.g. Report ran
-            // before InitVolumeCriticalEventsCounter) - materialize the
-            // published GAUGE now so the accumulated Unpublished can be
-            // flushed.
-            e.Published = VolumeCriticalEvents.CountersRoot
-                              ->GetSubgroup("volume", k.VolumeLabels.DiskId)
-                              ->GetSubgroup("cloud", k.VolumeLabels.CloudId)
-                              ->GetSubgroup("folder", k.VolumeLabels.FolderId)
-                              ->GetCounter(k.Event, /*derivative=*/false);
+            if (!k.VolumeLabels.DiskId.empty()) {
+                counters = counters->GetSubgroup("volume", k.VolumeLabels.DiskId)
+                               ->GetSubgroup("cloud", k.VolumeLabels.CloudId)
+                               ->GetSubgroup("folder", k.VolumeLabels.FolderId);
+            }
+            e.Published = counters->GetCounter(k.Event, /*derivative=*/false);
         }
         *e.Published = e.Unpublished;   // GAUGE set; held until next flush
         e.Unpublished = 0;
@@ -161,7 +181,7 @@ struct TCriticalEventsStatsHandler: public NCloud::IStatsHandler
     void UpdateStats(bool updateIntervalFinished) override
     {
         if (updateIntervalFinished) {
-            PublishVolumeCriticalEventCounters();
+            PublishCriticalEventCounters();
         }
     }
 };
@@ -187,6 +207,13 @@ TString ComposeMessageWithSuffix(const TString& message, const TString& suffix)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Enable the shared counter override before startup can report an app event.
+void InitAppCriticalEventsReporting()
+{
+    AppCriticalEventsEnabled = true;
+    SetCriticalEventReporter(AccumulateAppCriticalEvent);
+}
+
 void InitVolumeCriticalEventsReportingMode(
     NProto::EVolumeCriticalEventsReportingMode reportingMode)
 {
@@ -195,20 +222,33 @@ void InitVolumeCriticalEventsReportingMode(
 
 void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 {
+    const bool derivative = !AppCriticalEventsEnabled;
+    const auto initCounter = [&](const TString& name, bool rate)
+    {
+        auto counter = counters->GetCounter(name, rate);
+        if (rate) {
+            *counter = 0;
+        }
+    };
 #define BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER(name)                           \
-    *counters->GetCounter(GetCriticalEventFor##name(), true) = 0;              \
+    initCounter(GetCriticalEventFor##name(), derivative);                      \
 // BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER
 
     BLOCKSTORE_CRITICAL_EVENTS(BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER)
-    BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(
-        BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER)
     BLOCKSTORE_IMPOSSIBLE_EVENTS(BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER)
 #undef BLOCKSTORE_INIT_CRITICAL_EVENT_COUNTER
+
+#define BLOCKSTORE_INIT_DISK_AGENT_CRITICAL_EVENT_COUNTER(name)                 \
+    initCounter(GetCriticalEventFor##name(), true);
+
+    BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS(
+        BLOCKSTORE_INIT_DISK_AGENT_CRITICAL_EVENT_COUNTER)
+#undef BLOCKSTORE_INIT_DISK_AGENT_CRITICAL_EVENT_COUNTER
 
 // Keeps existing AppCriticalEvents/ * for new VolumeCriticalEvents/ * metrics
 // alive
 #define BLOCKSTORE_INIT_APP_CRITICAL_EVENT_COUNTER(name)                       \
-    *counters->GetCounter(GetAppCriticalEventFor##name(), true) = 0;
+    initCounter(GetAppCriticalEventFor##name(), derivative);
 
     if (VolumeCriticalEventsReportingMode !=
         NProto::EVolumeCriticalEventsReportingMode::VOLUME_ONLY)
@@ -219,13 +259,23 @@ void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 
 #undef BLOCKSTORE_INIT_APP_CRITICAL_EVENT_COUNTER
 
-    NCloud::InitCriticalEventsCounter(std::move(counters));
+    NCloud::InitCriticalEventsCounter(counters, derivative);
+    if (AppCriticalEventsEnabled) {
+        with_lock (CriticalEvents.Lock) {
+            CriticalEvents.AppCountersRoot = std::move(counters);
+            for (auto& [key, counter]: CriticalEvents.Counters) {
+                if (key.VolumeLabels.DiskId.empty()) {
+                    counter.Published.Reset();
+                }
+            }
+        }
+    }
 }
 
 void InitVolumeCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters)
 {
-    with_lock (VolumeCriticalEvents.Lock) {
-        VolumeCriticalEvents.CountersRoot = counters;
+    with_lock (CriticalEvents.Lock) {
+        CriticalEvents.CountersRoot = counters;
     }
 }
 
@@ -234,13 +284,16 @@ NCloud::IStatsHandlerPtr CreateCriticalEventsStatsHandler()
     return std::make_shared<TCriticalEventsStatsHandler>();
 }
 
-// For unit test purposes
-void ResetVolumeCriticalEventsCounter()
+// Clear pending events and roots and restore default reporting for tests.
+void ResetCriticalEventsCounter()
 {
-    with_lock (VolumeCriticalEvents.Lock) {
-        VolumeCriticalEvents.Counters.clear();
-        VolumeCriticalEvents.CountersRoot.Reset();
+    with_lock (CriticalEvents.Lock) {
+        CriticalEvents.Counters.clear();
+        CriticalEvents.CountersRoot.Reset();
+        CriticalEvents.AppCountersRoot.Reset();
     }
+    AppCriticalEventsEnabled = false;
+    SetCriticalEventReporter(nullptr);
 }
 
 #define BLOCKSTORE_DEFINE_CRITICAL_EVENT_ROUTINE(name)                         \
@@ -416,17 +469,17 @@ void ResetVolumeCriticalEventsCounter()
                 return retMessage;                                             \
             }                                                                  \
                                                                                \
-            auto key = TVolumeCriticalEventKey{                                \
+            auto key = TCriticalEventKey{                                     \
                 .Event = GetVolumeCriticalEventFor##name(),                    \
                 .VolumeLabels = {                                              \
                     .DiskId = diskId,                                          \
                     .CloudId = cloudId,                                        \
                     .FolderId = folderId}};                                    \
                                                                                \
-            with_lock (VolumeCriticalEvents.Lock) {                            \
+            with_lock (CriticalEvents.Lock) {                                 \
                 /*                                                             \
                 1. The Published GAUGE counter is materialized lazily          \
-                   by PublishVolumeCriticalEventCounters() on the publish      \
+                   by PublishCriticalEventCounters() on the publish           \
                    tick. Here we only create and bump the Unpublished          \
                    accumulator.                                                \
                 2. The footprint of the unbounded-lifetime                     \
@@ -434,7 +487,7 @@ void ResetVolumeCriticalEventsCounter()
                    concern due to rare tablet migrations, rare critical        \
                    events, and periodic (release-based) process restarts.      \
                 */                                                             \
-                VolumeCriticalEvents.Counters[key].Unpublished++;              \
+                CriticalEvents.Counters[key].Unpublished++;                   \
             }                                                                  \
                                                                                \
             return retMessage;                                                 \
