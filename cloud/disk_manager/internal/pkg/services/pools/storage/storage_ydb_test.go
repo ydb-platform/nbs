@@ -3131,6 +3131,13 @@ func TestStorageYDBShouldNotUseCreatingBaseDiskAsSource(t *testing.T) {
 		0, // useImageSize
 	)
 	require.Error(t, err)
+	require.False(t, errors.CanRetry(err))
+	require.ErrorContains(
+		t,
+		err,
+		"can't be used as a source for replacement base disks: it is not ready",
+	)
+	require.ErrorContains(t, err, replacement.ID)
 
 	// Nothing has changed: |source| is still held by |replacement|.
 	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
