@@ -64,9 +64,9 @@ func TestBackupSnapshotTask(t *testing.T) {
 	scheduler.On(
 		"ScheduleTask",
 		mock.Anything,
-		"dataplane.ScheduleBackupChunksTasks",
+		"dataplane.BackupSnapshotChunks",
 		"",
-		mock.MatchedBy(func(request *dataplane_protos.ScheduleBackupChunksTasksRequest) bool {
+		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotChunksRequest) bool {
 			return request.SnapshotId == "snap1"
 		}),
 	).Return("dataplane1", nil)

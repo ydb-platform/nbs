@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,6 +36,13 @@ type ChunkMapEntry struct {
 	ChunkIndex uint32
 	ChunkID    string
 	StoredInS3 bool
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type BackupChunkQueueEntry struct {
+	SnapshotID string
+	ChunkID    string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -103,6 +111,12 @@ type Storage interface {
 
 	ReadChunk(ctx context.Context, chunk *common.Chunk) error
 
+	// Returns the chunk blob as it is stored in s3.
+	ReadChunkBlob(
+		ctx context.Context,
+		chunkID string,
+	) (persistence.S3Object, error)
+
 	CheckSnapshotReady(
 		ctx context.Context,
 		snapshotID string,
@@ -146,4 +160,34 @@ type Storage interface {
 	) (snapshotID string, checkpointID string, err error)
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
+
+	EnqueueBackupChunks(
+		ctx context.Context,
+		entries []BackupChunkQueueEntry,
+	) error
+
+	GetBackupChunkQueue(
+		ctx context.Context,
+		limit int,
+	) ([]BackupChunkQueueEntry, error)
+
+	HasBackupChunkQueueEntries(
+		ctx context.Context,
+		snapshotID string,
+	) (bool, error)
+
+	ChunksBackupCompleted(
+		ctx context.Context,
+		entries []BackupChunkQueueEntry,
+	) error
+
+	// Returns the number of deleted chunks, at most limit.
+	DeleteCopiedBackupChunks(
+		ctx context.Context,
+		snapshotID string,
+		limit int,
+	) (int, error)
+
+	// Used for monitoring only.
+	GetBackupChunkQueueLength(ctx context.Context) (uint64, error)
 }

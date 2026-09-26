@@ -6,8 +6,6 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message ScheduleBackupChunksTasksRequest {
-    string SnapshotId = 1;
+message BackupChunkMap {
+    repeated string ChunkIds = 1;
 }
-
-message ScheduleBackupChunksTasksState {}

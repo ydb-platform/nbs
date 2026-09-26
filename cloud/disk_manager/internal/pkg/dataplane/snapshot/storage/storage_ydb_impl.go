@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,26 @@ func makeChunkID(
 ) string {
 
 	return fmt.Sprintf("%v.%v.%v", uniqueID, snapshotID, chunk.Index)
+}
+
+func getSnapshotIDFromChunkID(chunkID string) string {
+	_, after, ok := strings.Cut(chunkID, ".")
+	if !ok {
+		return ""
+	}
+
+	index := strings.LastIndex(after, ".")
+	if index < 0 {
+		return ""
+	}
+
+	return after[:index]
+}
+
+// Zero chunks and the chunks shallow copied from another snapshot are not
+// created by the snapshot.
+func IsChunkCreatedBySnapshot(chunkID string, snapshotID string) bool {
+	return len(chunkID) != 0 && getSnapshotIDFromChunkID(chunkID) == snapshotID
 }
 
 func makeShardID(s string) uint64 {
@@ -1009,6 +1030,22 @@ func (s *storageYDB) ReadChunk(
 
 	chunkStorage := s.getChunkStorage(chunk.StoredInS3)
 	return chunkStorage.ReadChunk(ctx, chunk)
+}
+
+func (s *storageYDB) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+) (object persistence.S3Object, err error) {
+
+	defer s.metrics.StatOperation("ReadChunkBlob")(&err)
+
+	if s.chunkStorageS3 == nil {
+		return persistence.S3Object{}, task_errors.NewNonRetriableErrorf(
+			"s3 chunk storage is not configured",
+		)
+	}
+
+	return s.chunkStorageS3.ReadChunkBlob(ctx, chunkID)
 }
 
 func (s *storageYDB) CheckSnapshotReady(
