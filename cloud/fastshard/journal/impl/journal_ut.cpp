@@ -2,6 +2,7 @@
 
 #include "device_page_store.h"
 #include "key_buffer_store.h"
+#include "log_record.h"
 #include "memory_device.h"
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -102,6 +103,11 @@ NCloud::NProto::TAdvanceLsnLowWatermarkRequest MakeAdvanceRequest(ui64 lsn)
     request.SetLsnLowWatermark(lsn);
 
     return request;
+}
+
+TPageRangeRef Range(ui64 firstPageNo, ui64 pageCount)
+{
+    return {.FirstPageNo = firstPageNo, .PageCount = pageCount};
 }
 
 // "10:[A010,A011] 20:[A020]"
@@ -233,11 +239,13 @@ struct TTestDevice final: public IDevice
 
 // The same for the meta store, which can also hold the writes until the test
 // lets them through - the underlying store is reachable through |Impl| so
-// that a test can look at what the journal has persisted.
+// that a test can look at what the journal has persisted and inject what a
+// restart should find.
 struct TTestKeyBufferStore final: public IKeyBufferStore
 {
     const IKeyBufferStorePtr Impl = CreateInMemoryKeyBufferStore();
 
+    std::atomic<bool> FailRestore = false;
     std::atomic<bool> FailWrites = false;
 
     struct TBlockedWrite
@@ -254,8 +262,26 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
 
     TFuture<TResultOrError<TVector<TKeyBuffer>>> Restore() override
     {
-        return Impl->Restore();
+        if (FailRestore.load()) {
+            return MakeFuture<TResultOrError<TVector<TKeyBuffer>>>(
+                MakeError(E_IO, "restore failed"));
+        }
+
+        auto response = Impl->Restore().GetValueSync();
+        if (HasError(response)) {
+            return MakeFuture<TResultOrError<TVector<TKeyBuffer>>>(
+                response.GetError());
+        }
+
+        // the interface promises no particular order, so hand the buffers
+        // back reversed - restoring must not depend on how they arrive
+        auto buffers = response.ExtractResult();
+        Reverse(buffers.begin(), buffers.end());
+
+        return MakeFuture<TResultOrError<TVector<TKeyBuffer>>>(
+            std::move(buffers));
     }
+
 
     TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override
     {
@@ -343,8 +369,9 @@ struct TFixture: public NUnitTest::TBaseFixture
         Logging->Stop();
     }
 
-    // Builds a journal over the device and the meta store, with a page store
-    // of |PageCount| pages.
+    // Builds a journal over the device and the meta store the previous one
+    // used - what a restart does. The page store is rebuilt from scratch, its
+    // allocation state is restored from the log records.
     void RecreateJournal()
     {
         DataStore = CreateDevicePageStore(Device, PageCount, DefaultPageSize);
@@ -364,6 +391,18 @@ struct TFixture: public NUnitTest::TBaseFixture
         std::optional<std::invoke_result_t<F>> result;
         Executor->Execute([&] { result.emplace(func()); }).GetValueSync();
         return std::move(*result);
+    }
+
+    TResultOrError<ui64> Restore()
+    {
+        return Run([&] { return Journal->Restore(); }).GetValueSync();
+    }
+
+    ui64 RestoreOrFail()
+    {
+        auto result = Restore();
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+        return result.ExtractResult();
     }
 
     // The response is ready only once the record has made it into the page
@@ -455,6 +494,44 @@ struct TFixture: public NUnitTest::TBaseFixture
         UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());
     }
 
+    // Meta store access, to look at what a restart would find and to plant
+    // what it should choke on.
+
+    void PutBuffer(ui64 key, TBuffer buffer)
+    {
+        const auto error =
+            MetaStore->Impl->Write(key, std::move(buffer)).GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+    }
+
+    void PutGarbage(ui64 key, TStringBuf data)
+    {
+        PutBuffer(key, TBuffer(data.data(), data.size()));
+    }
+
+    void PutRecord(
+        ui64 key,
+        ui64 lsn,
+        ui64 prevLsn,
+        TVector<TPageMapping> pageMappings = {})
+    {
+        TLogRecord record;
+        record.Lsn = lsn;
+        record.PrevLsn = prevLsn;
+        record.PageMappings = std::move(pageMappings);
+
+        PutBuffer(key, SerializeRecord(record));
+    }
+
+    void PutMetadata(ui64 lsnLowWatermark)
+    {
+        PutBuffer(
+            MetadataKey,
+            SerializeMetadata(
+                {.Version = CurrentFormatVersion,
+                 .LsnLowWatermark = lsnLowWatermark}));
+    }
+
     // "0,1,meta" - the keys the meta store holds, a record under its prev lsn
     TString StoredKeys()
     {
@@ -489,11 +566,377 @@ struct TFixture: public NUnitTest::TBaseFixture
 Y_UNIT_TEST_SUITE(TJournalTest)
 {
     //
+    // Restoring
+    //
+
+    Y_UNIT_TEST_F(ShouldRestoreAnEmptyJournal, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        // and be usable right away
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreWhenTheMetaStoreFails, TFixture)
+    {
+        MetaStore->FailRestore.store(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreTheRecordsAndTheirContents, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 2}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{11, 1}}));
+
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(2, RestoreOrFail());
+
+        // the newest content of every journalled page survives the restart
+        auto response = ReadPages({{10, 2}});
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 11:[B011]",
+            DescribeGroups(response));
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetLastAckedLogSequenceNumber());
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreTheLsnLowWatermark, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        WriteThreeRecords();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(3, RestoreOrFail());
+
+        auto response = ReadTail(0);
+        UNIT_ASSERT_VALUES_EQUAL(2, response.GetLsnLowWatermark());
+        UNIT_ASSERT_VALUES_EQUAL("3<-2 30:[C030]", DescribeRecords(response));
+
+        // and it is not silently moved back
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, AdvanceLsnLowWatermark(2));
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreALogThatDoesNotStartAtTheFirstLsn, TFixture)
+    {
+        // what is left after the head of the log has been flushed away
+        PutMetadata(6);
+        PutRecord(4, 5, 4);
+        PutRecord(5, 6, 5);
+
+        UNIT_ASSERT_VALUES_EQUAL(6, RestoreOrFail());
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(7, 6, 'A', {{10, 1}}));
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldFlushARestoredLogThatDoesNotStartAtTheFirstLsn,
+        TFixture)
+    {
+        PutMetadata(5);
+        PutRecord(4, 5, 4, {{.PageNo = 10, .Location = Range(0, 1)}});
+        PutRecord(5, 6, 5, {{.PageNo = 20, .Location = Range(1, 1)}});
+
+        UNIT_ASSERT_VALUES_EQUAL(6, RestoreOrFail());
+
+        // the flusher starts where the restored log starts, not at lsn 0 -
+        // the pages were never written, so only the record is looked at
+        UNIT_ASSERT_STRING_CONTAINS(
+            GetRecordToFlushDescription(),
+            "5<-4 10:[");
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(6));
+        Journal->MarkRecordAsFlushed(5);
+        UNIT_ASSERT_STRING_CONTAINS(
+            GetRecordToFlushDescription(),
+            "6<-5 20:[");
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreAPendingRecordBehindAGap, TFixture)
+    {
+        // everything acked has been flushed and cleaned up, lsn 5 <- 4 was
+        // written before lsns 3 and 4 made it: the chain still starts at 2
+        PutMetadata(2);
+        PutRecord(4, 5, 4);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, RestoreOrFail());
+        UNIT_ASSERT_VALUES_EQUAL("", DescribeRecords(ReadTail(2)));
+
+        // once the gap is filled the pending record joins the chain
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(3, 2, 'C', {{30, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(4, 3, 'D', {{40, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "3<-2 30:[C030]; 4<-3 40:[D040]; 5<-4",
+            DescribeRecords(ReadTail(2)));
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreTheAllocationStateOfTheRecords, TFixture)
+    {
+        PageCount = 4;
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
+
+        RecreateJournal();
+        UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
+
+        // the restored record still holds every page of the store
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(2, 1, 'B', {{20, 1}}));
+
+        // and its contents are where the mappings say they are
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010,A011,A012,A013]",
+            DescribeGroups(ReadPages({{10, 4}})));
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreCorruptedMetadata, TFixture)
+    {
+        PutGarbage(MetadataKey, "not a metadata buffer");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreACorruptedRecord, TFixture)
+    {
+        PutRecord(0, 1, 0);
+        PutGarbage(2, "not a log record");
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreARecordStoredUnderAnotherKey, TFixture)
+    {
+        PutRecord(1, 7, 0);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreARecordWithABrokenChain, TFixture)
+    {
+        // a record cannot follow itself
+        PutRecord(5, 5, 5);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreARecordChainingFromAboveItself, TFixture)
+    {
+        // the watermark points at the record, so the walk back from it would
+        // never end
+        PutMetadata(5);
+        PutRecord(5, 5, 5);
+
+        auto result = Restore();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            result.GetError().GetMessage(),
+            "log record with key 5 has lsn 5, not above its prevLsn");
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreRecordsWithTheSameLsn, TFixture)
+    {
+        PutRecord(0, 5, 0);
+        PutRecord(3, 5, 3);
+
+        auto result = Restore();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            result.GetError().GetMessage(),
+            "records with prev lsn 0 and 3 both carry lsn 5");
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreAJournalHoldingAStrandedRecord, TFixture)
+    {
+        // a journal of three pages, all of them taken before the restart
+        PageCount = 3;
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        // lsn 3 chains from lsn 2, but lsn 4 continues from lsn 1: once lsn 1
+        // arrives the chain is 0 -> 1 -> 4 and lsn 3 is stranded, durable and
+        // still holding its page
+        auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
+        auto fourth = WriteAsync(MakeWriteRequest(4, 1, 'D', {{40, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            fourth.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT(!third.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL("0,1,2", StoredKeys());
+
+        RecreateJournal();
+
+        // the restart drops the stranded record and restores the chain
+        UNIT_ASSERT_VALUES_EQUAL(4, RestoreOrFail());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[A010] 40:[D040]",
+            DescribeGroups(ReadPages({{10, 1}, {30, 1}, {40, 1}})));
+
+        // its page is free again - the journal fits one more record
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(5, 4, 'E', {{50, 1}}));
+
+        // and its meta store entry goes with the first cleanup past its key
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(5));
+        FlushUpTo(5);
+        UNIT_ASSERT_VALUES_EQUAL("meta", StoredKeys());
+    }
+
+    Y_UNIT_TEST_F(ShouldDropTheStrandedRecordsAroundTheWatermark, TFixture)
+    {
+        // the chain 0 -> 1 -> 4 -> 6 is acked up to 4; lsn 3 <- 2 sits below
+        // the watermark with a gap before it, lsn 5 <- 3 chains from below
+        // the watermark and ends past it: neither can ever join
+        PutMetadata(4);
+        PutRecord(0, 1, 0);
+        PutRecord(1, 4, 1);
+        PutRecord(2, 3, 2);
+        PutRecord(4, 6, 4);
+        PutRecord(3, 5, 3);
+
+        UNIT_ASSERT_VALUES_EQUAL(6, RestoreOrFail());
+
+        // the unacked tail is kept and can be continued
+        UNIT_ASSERT_VALUES_EQUAL("6<-4", DescribeRecords(ReadTail(4)));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(7, 6, 'G', {{70, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreRecordsSharingTheSamePages, TFixture)
+    {
+        PutRecord(0, 1, 0, {{.PageNo = 10, .Location = Range(0, 2)}});
+        PutRecord(1, 2, 1, {{.PageNo = 20, .Location = Range(1, 2)}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreARecordWithSelfIntersectingPages, TFixture)
+    {
+        // a single record whose own mappings share a journal page - there is
+        // no telling which of the two the page belongs to
+        PutRecord(
+            0,
+            1,
+            0,
+            {{.PageNo = 10, .Location = Range(0, 2)},
+             {.PageNo = 20, .Location = Range(1, 2)}});
+
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreARecordWithAnEmptyPageRange, TFixture)
+    {
+        // a write never produces an empty mapping, and the page index would
+        // choke on it at the next write of the page
+        PutRecord(0, 1, 0, {{.PageNo = 10, .Location = Range(0, 0)}});
+
+        auto result = Restore();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            result.GetError().GetMessage(),
+            "log record with key 0: page range at page 10 is empty");
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldFailToRestoreARecordWithIntersectingDevicePages,
+        TFixture)
+    {
+        // a write with these page groups is rejected, so is the record
+        PutRecord(
+            0,
+            1,
+            0,
+            {{.PageNo = 10, .Location = Range(0, 4)},
+             {.PageNo = 12, .Location = Range(4, 4)}});
+
+        auto result = Restore();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            result.GetError().GetMessage(),
+            "log record with key 0: page ranges 10x4 and 12x4 intersect");
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreARecordStartingPastTheDevice, TFixture)
+    {
+        PutRecord(
+            0,
+            1,
+            0,
+            {{.PageNo = DevicePageCount, .Location = Range(0, 1)}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreARecordRunningPastTheDevice, TFixture)
+    {
+        PutRecord(0, 1, 0, {{.PageNo = 10, .Location = Range(0, 1)}});
+        PutRecord(
+            1,
+            2,
+            1,
+            {{.PageNo = DevicePageCount - 1, .Location = Range(1, 2)}});
+
+        auto result = Restore();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            result.GetError().GetMessage(),
+            "log record with key 1: page range 1023x2 is outside the device of "
+            "1024 pages");
+    }
+
+    Y_UNIT_TEST_F(ShouldFailToRestoreAnOverflowingRecord, TFixture)
+    {
+        // a record left behind by a writer that did not bound page numbers;
+        // indexing it would wrap around and abort
+        const ui64 lastPageNo = Max<ui64>();
+        PutRecord(
+            0,
+            1,
+            0,
+            {{.PageNo = lastPageNo, .Location = Range(0, 1)},
+             {.PageNo = lastPageNo, .Location = Range(1, 1)}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            Restore().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreARecordEndingAtTheLastDevicePage, TFixture)
+    {
+        PutRecord(
+            0,
+            1,
+            0,
+            {{.PageNo = DevicePageCount - 2, .Location = Range(0, 2)}});
+
+        UNIT_ASSERT_VALUES_EQUAL(1, RestoreOrFail());
+    }
+
+    //
     // Writing
     //
 
     Y_UNIT_TEST_F(ShouldWriteAndReadBackAPageGroup, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 3}}));
 
         auto response = ReadPages({{10, 3}});
@@ -505,6 +948,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldRejectTheLsnReservedForTheMetadata, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(
             E_ARGUMENT,
             WriteRecord(MetadataKey, 1, 'A', {{10, 1}}));
@@ -512,6 +957,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldAnswerARetryOfAnIndexedRecord, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         WriteThreeRecords();
 
         // a retry is answered by the record the chain still holds
@@ -526,6 +973,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldRejectARecordThatFollowsItself, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, WriteRecord(5, 5, 'A', {{10, 1}}));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, WriteRecord(5, 6, 'A', {{10, 1}}));
     }
@@ -560,6 +1009,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldIndexOutOfOrderWritesOnceTheGapIsFilled, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         auto second = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
         auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
 
@@ -590,6 +1041,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldDeduplicateARepeatedRecord, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         auto first = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
         auto retry = WriteAsync(MakeWriteRequest(2, 1, 'B', {{20, 1}}));
 
@@ -614,6 +1067,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldWriteARecordWithoutPages, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {}));
 
         // it takes no pages but still moves the chain forward
@@ -630,6 +1085,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         PageCount = 4;
         RecreateJournal();
 
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, WriteRecord(1, 0, 'A', {{10, 5}}));
 
         // the rejected record has taken nothing, the journal still fits four
@@ -640,6 +1097,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
     {
         PageCount = 4;
         RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
         Device->FailWrites.store(true);
         UNIT_ASSERT_VALUES_EQUAL(E_IO, WriteRecord(1, 0, 'A', {{10, 4}}));
@@ -657,6 +1116,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
     {
         PageCount = 4;
         RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
 
         MetaStore->FailWrites.store(true);
         UNIT_ASSERT_VALUES_EQUAL(E_IO, WriteRecord(1, 0, 'A', {{10, 4}}));
@@ -689,6 +1150,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldPackSeveralPageGroupsIntoOneRun, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
             WriteRecord(1, 0, 'A', {{10, 1}, {20, 2}}));
@@ -700,6 +1163,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldRejectARecordWithIntersectingPageGroups, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         // there is no telling which group owns pages 12 and 13, and the tail
         // would hand both of them to whoever replays it
         UNIT_ASSERT_VALUES_EQUAL(
@@ -714,10 +1179,10 @@ Y_UNIT_TEST_SUITE(TJournalTest)
             S_OK,
             WriteRecord(1, 0, 'A', {{10, 4}, {20, 4}}));
 
-        // a group that covers no pages cannot intersect anything
+        // a group that covers no pages carries nothing to write
         UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            WriteRecord(2, 1, 'B', {{10, 1}, {10, 0}}));
+            E_ARGUMENT,
+            WriteRecord(2, 1, 'B', {{20, 1}, {30, 0}}));
     }
 
     //
@@ -726,6 +1191,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldReturnOnlyTheJournalledPages, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 2}}));
 
         // pages 5 and 20 have never been journalled
@@ -736,6 +1203,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldClipTheMappingsToTheRequestedRange, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -745,6 +1214,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldReturnTheNewestContentOfAPage, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 3}}));
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(2, 1, 'B', {{11, 1}}));
 
@@ -768,6 +1239,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldFailAReadWhenTheDeviceFails, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
 
         Device->FailReads.store(true);
@@ -785,6 +1258,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldRejectARecordOutsideTheDevice, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         const ui64 last = DevicePageCount - 1;
 
         // starts past the end
@@ -818,18 +1293,28 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldWriteAndReadBackTheLastDevicePages, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         const ui64 last = DevicePageCount - 1;
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{last - 1, 2}}));
 
-        // an empty range is not a range, wherever it points
-        auto response = ReadPages({{last + 1, 0}, {last - 1, 2}});
+        auto response = ReadPages({{last - 1, 2}});
         UNIT_ASSERT_VALUES_EQUAL(S_OK, response.GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL("1022:[A022,A023]", DescribeGroups(response));
+
+        // a ref that covers no pages asks for nothing, wherever it points
+        response = ReadPages({{last + 1, 0}, {last - 1, 2}});
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            response.GetError().GetMessage(),
+            "page range at page 1024 is empty");
     }
 
     Y_UNIT_TEST_F(ShouldRejectAReadOutsideTheDevice, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
 
         const ui64 last = DevicePageCount - 1;
@@ -852,26 +1337,28 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldRejectAReadWithIntersectingPageGroupRefs, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 4}}));
 
         auto response = ReadPages({{10, 2}, {11, 2}});
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
         UNIT_ASSERT_STRING_CONTAINS(
             response.GetError().GetMessage(),
-            "10x2 and 11x2 of a single request intersect");
+            "page ranges 10x2 and 11x2 intersect");
 
-        // the refs a request is allowed to hold still work - a ref covering
-        // no pages cannot intersect anything, and the journal answers it
-        // with a group holding nothing
+        // the refs a request is allowed to hold still work
         UNIT_ASSERT_VALUES_EQUAL(
-            "10:[A010] 11:[] 12:[A012,A013]",
-            DescribeGroups(ReadPages({{10, 1}, {11, 0}, {12, 2}})));
+            "10:[A010] 12:[A012,A013]",
+            DescribeGroups(ReadPages({{10, 1}, {12, 2}})));
     }
 
     // Reading the tail
 
     Y_UNIT_TEST_F(ShouldReadTheWholeTail, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         WriteThreeRecords();
 
         auto response = ReadTail(0);
@@ -883,6 +1370,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldReadTheTailAfterTheGivenLsn, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         WriteThreeRecords();
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -893,6 +1382,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldLimitTheNumberOfTailRecords, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         WriteThreeRecords();
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -902,6 +1393,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldStopTheTailAtAGap, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
 
         auto third = WriteAsync(MakeWriteRequest(3, 2, 'C', {{30, 1}}));
@@ -923,6 +1416,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldNotReturnAckedRecordsInTheTail, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         WriteThreeRecords();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
 
@@ -935,6 +1430,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldFailATailReadWhenTheDeviceFails, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(1, 0, 'A', {{10, 1}}));
 
         Device->FailReads.store(true);
@@ -946,6 +1443,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldAdvanceTheLsnLowWatermark, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         WriteThreeRecords();
 
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
@@ -963,6 +1462,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldRejectAnUnindexedLsnLowWatermark, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         WriteThreeRecords();
 
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, AdvanceLsnLowWatermark(4));
@@ -975,6 +1476,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         ShouldNotAdvanceTheLsnLowWatermarkWhenTheMetaStoreFails,
         TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         WriteThreeRecords();
 
         MetaStore->FailWrites.store(true);
@@ -991,6 +1494,8 @@ Y_UNIT_TEST_SUITE(TJournalTest)
 
     Y_UNIT_TEST_F(ShouldRejectAConcurrentAdvanceOfTheLsnLowWatermark, TFixture)
     {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
         WriteThreeRecords();
 
         MetaStore->BlockWritesUntilReleased();
@@ -1111,6 +1616,24 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // the watermark sits at lsn zero, so there is nothing below it
         UNIT_ASSERT_VALUES_EQUAL(S_OK, CleanupFlushedRecords());
         UNIT_ASSERT_VALUES_EQUAL("0,1,2", StoredKeys());
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreAJournalThatHasBeenCleanedUp, TFixture)
+    {
+        UNIT_ASSERT_VALUES_EQUAL(0, RestoreOrFail());
+
+        WriteThreeRecords();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(2));
+        FlushUpTo(2);
+
+        UNIT_ASSERT_VALUES_EQUAL("2,meta", StoredKeys());
+
+        RecreateJournal();
+
+        UNIT_ASSERT_VALUES_EQUAL(3, RestoreOrFail());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "30:[C030]",
+            DescribeGroups(ReadPages({{10, 1}, {20, 1}, {30, 1}})));
     }
 
     Y_UNIT_TEST_F(ShouldNotCleanupWhatAReaderIsStillLookingAt, TFixture)
