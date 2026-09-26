@@ -789,6 +789,45 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldUpdateMTimeUponBlobWriteWithoutSizeChange)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(2 * block);
+
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const auto size = 4 * block;
+        // ftruncate to the final size, then overwrite in place
+        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(size));
+        const auto before = GetNodeAttrs(tablet, id);
+
+        Sleep(TDuration::MilliSeconds(10));
+        tablet.WriteData(handle, 0, size, 'a');
+
+        const auto& stats = tablet.GetStorageStats()->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+
+        const auto after = GetNodeAttrs(tablet, id);
+        UNIT_ASSERT_VALUES_EQUAL(size, after.GetSize());
+        UNIT_ASSERT_GT(after.GetMTime(), before.GetMTime());
+        UNIT_ASSERT_GT(after.GetCTime(), before.GetCTime());
+    }
+
     TABLET_TEST(ShouldAcceptLargeUnalignedWrites)
     {
         const auto rangeSize = 4 * tabletConfig.BlockSize;

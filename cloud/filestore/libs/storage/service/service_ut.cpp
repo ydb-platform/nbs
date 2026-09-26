@@ -3227,6 +3227,56 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldUpdateMTimeUponThreeStageWriteWithoutSizeChange)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        {
+            NProto::TStorageConfig config;
+            config.SetThreeStageWriteEnabled(true);
+            config.SetThreeStageWriteThreshold(1);
+            ExecuteChangeStorageConfig(std::move(config), service);
+
+            TDispatchOptions options;
+            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+
+        const ui64 size = DefaultBlockSize * BlockGroupSize;
+        // ftruncate to the final size, then overwrite in place
+        service.SetNodeAttr(headers, fs, nodeId, size);
+        const auto before = service
+            .GetNodeAttr(headers, fs, RootNodeId, "file")
+            ->Record.GetNode();
+
+        Sleep(TDuration::MilliSeconds(10));
+        service.WriteData(
+            headers, fs, nodeId, handle, 0, GenerateValidateData(size));
+
+        auto& runtime = env.GetRuntime();
+        UNIT_ASSERT(runtime.GetCounter(TEvIndexTablet::EvAddDataRequest));
+
+        const auto after = service
+            .GetNodeAttr(headers, fs, RootNodeId, "file")
+            ->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(size, after.GetSize());
+        UNIT_ASSERT_GT(after.GetMTime(), before.GetMTime());
+        UNIT_ASSERT_GT(after.GetCTime(), before.GetCTime());
+    }
+
     Y_UNIT_TEST(ShouldPerformThreeStageWritesHdd)
     {
         CheckThreeStageWrites(NProto::STORAGE_MEDIA_HDD, false);
