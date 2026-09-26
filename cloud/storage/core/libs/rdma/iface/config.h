@@ -71,6 +71,7 @@ inline TClientConfig CreateClientConfig(const NProto::TRdmaClient& config)
     SET(RecvQueueSize);
     SET(ResolveTimeout, TDuration::MilliSeconds);
     SET(FlushTimeout, TDuration::MilliSeconds);
+    SET(MaxEagerRequestBytes);
     SET(UseMemoryWindows);
     SET(MemoryWindowsPoolSize);
 
@@ -120,6 +121,7 @@ inline TServerConfig CreateServerConfig(const NProto::TRdmaServer& config)
     SET(SendQueueSize);
     SET(RecvQueueSize);
     SET(StrictValidation);
+    SET(MaxEagerRequestBytes);
 
     SET_OPTIONAL(QpRetryCount);
     SET_OPTIONAL(QpRnrRetryCount);
