@@ -3075,6 +3075,124 @@ func TestStorageYDBRetiredBaseDiskShouldBeDeletedAfterReplacementDeletedBeforeCr
 	require.NoError(t, err)
 }
 
+// Chains of holds are forbidden: base disk that is still being created from
+// |source| (and therefore holds it) can't be used as a source for its own
+// replacement.
+func TestStorageYDBShouldNotUseCreatingBaseDiskAsSource(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	overlayDisk := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk",
+	}
+
+	source, replacement := retireBaseDiskWithReplacement(
+		t,
+		ctx,
+		storage,
+		overlayDisk,
+		false, // deletePoolBeforeRetire
+	)
+
+	replacement.CreateTaskID = "create_replacement"
+	err = storage.BaseDisksScheduled(ctx, []BaseDisk{replacement})
+	require.NoError(t, err)
+
+	// Overlay disk can acquire slot on base disk that is still being created.
+	overlayDisk2 := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk2",
+	}
+
+	acquired, err := storage.AcquireBaseDiskSlot(
+		ctx,
+		"image",
+		Slot{OverlayDisk: overlayDisk2},
+	)
+	require.NoError(t, err)
+	require.Equal(t, replacement.ID, acquired.ID)
+
+	// Retiring |replacement| requires a replacement for |overlayDisk2|, and
+	// |replacement| is not ready, so it can't be used as a source for it.
+	_, err = storage.RetireBaseDisk(
+		ctx,
+		replacement.ID,
+		&types.Disk{
+			ZoneId: replacement.ZoneID,
+			DiskId: replacement.ID,
+		},
+		0, // useImageSize
+	)
+	require.Error(t, err)
+
+	// Nothing has changed: |source| is still held by |replacement|.
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
+
+	retired, err := storage.IsBaseDiskRetired(ctx, replacement.ID)
+	require.NoError(t, err)
+	require.False(t, retired)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk2)
+	require.NoError(t, err)
+
+	// |source| has no active units, but it is still held.
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	err = storage.BaseDiskCreated(ctx, replacement)
+	require.NoError(t, err)
+
+	// |replacement| is ready, so |source| is released.
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	// Ready base disk can be used as a source for its own replacement.
+	overlayDisk3 := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk3",
+	}
+
+	acquired, err = storage.AcquireBaseDiskSlot(
+		ctx,
+		"image",
+		Slot{OverlayDisk: overlayDisk3},
+	)
+	require.NoError(t, err)
+	require.Equal(t, replacement.ID, acquired.ID)
+
+	rebaseInfos, err := storage.RetireBaseDisk(
+		ctx,
+		replacement.ID,
+		&types.Disk{
+			ZoneId: replacement.ZoneID,
+			DiskId: replacement.ID,
+		},
+		0, // useImageSize
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(rebaseInfos))
+	require.Equal(t, replacement.ID, rebaseInfos[0].BaseDiskID)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
 // TODO: remove after deployment of this version is finished.
 func TestStorageYDBRetiredBaseDiskShouldBeDeletedWhenHoldIsDisabled(
 	t *testing.T,

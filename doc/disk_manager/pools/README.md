@@ -190,6 +190,12 @@ disk transitions, so invariants run on it and it is written in the same
 transaction as the dependent. While the counter is non-zero, invariants keep
 the source alive even with `from_pool=false` and no active units.
 
+Chains of holds are forbidden: a base disk can be used as a source only after
+its own creation is finished, so `RetireBaseDisk` refuses to generate a
+replacement from a source base disk that is not `ready`. Therefore a base disk
+that holds its source never has dependents itself, and releasing a hold never
+changes the hold state of the source. The consistency check verifies this.
+
 Without this hold, releasing the last overlay of a retiring base disk while its
 replacement was still transferring from it deleted the source and failed the
 replacement.

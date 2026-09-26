@@ -182,6 +182,17 @@ func (s *storageYDB) checkBaseDiskConsistency(
 	// TODO: check for equality unconditionally after deployment of this
 	// version is finished.
 	expected := inflightDependents[baseDisk.id]
+
+	// Chains of holds are forbidden (see retireBaseDisk): base disk that is
+	// being created from another base disk can't be a source itself.
+	if baseDisk.holdsSrcDisk() && expected != 0 {
+		return errors.NewNonRetriableErrorf(
+			"base_disk %+v is being created from another base disk, but has %v inflight dependents",
+			baseDisk,
+			expected,
+		)
+	}
+
 	if baseDisk.inflightDependents < 0 ||
 		baseDisk.inflightDependents > expected ||
 		(s.holdBaseDisksWithInflightDependents && baseDisk.inflightDependents != expected) {
