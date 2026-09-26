@@ -3,7 +3,9 @@
 #include "client.h"
 #include "client_handler.h"
 #include "error_handler.h"
+#include "protocol.h"
 #include "server_handler.h"
+#include "utils.h"
 
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -26,8 +28,11 @@
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
 
+#include <library/cpp/coroutine/engine/impl.h>
+
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/network/sock.h>
 
 #include <atomic>
 
@@ -66,6 +71,247 @@ public:
         }
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TTestErrorHandler final
+    : IErrorHandler
+{
+    TManualEvent ErrorReported;
+
+    void ProcessException(std::exception_ptr) override
+    {
+        ErrorReported.Signal();
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TRawNbdClient
+{
+private:
+    TInetStreamSocket Socket4;
+    TInet6StreamSocket Socket6;
+    TStreamSocket* Socket = nullptr;
+    TStreamSocketInput Input{nullptr};
+    TStreamSocketOutput Output{nullptr};
+    TRequestReader Reader{Input};
+    TRequestWriter Writer{Output};
+
+public:
+    explicit TRawNbdClient(ui16 port, bool ipv6 = true)
+    {
+        int error;
+        if (ipv6) {
+            TSockAddrInet6 address("::1", port);
+            Socket = &Socket6;
+            error = Socket->Connect(&address);
+        } else {
+            TSockAddrInet address("127.0.0.1", port);
+            Socket = &Socket4;
+            error = Socket->Connect(&address);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL_C(0, error, "failed to connect raw NBD client");
+        Input.SetSocket(Socket);
+        Output.SetSocket(Socket);
+        SetSocketTimeout(*Socket, 5);
+    }
+
+    void ReadServerHello()
+    {
+        TServerHello hello;
+        UNIT_ASSERT(Reader.ReadServerHello(hello));
+        UNIT_ASSERT_VALUES_EQUAL(NBD_MAGIC, hello.Passwd);
+        UNIT_ASSERT_VALUES_EQUAL(NBD_OPTS_MAGIC, hello.Magic);
+    }
+
+    void WriteClientHello()
+    {
+        Writer.WriteClientHello(
+            NBD_FLAG_C_FIXED_NEWSTYLE | NBD_FLAG_C_NO_ZEROES);
+    }
+
+    void WriteGo()
+    {
+        TExportInfoRequest request;
+        request.InfoTypes = {NBD_INFO_BLOCK_SIZE};
+
+        TBufferRequestWriter requestOut;
+        requestOut.WriteExportInfoRequest(request);
+        Writer.WriteOption(NBD_OPT_GO, AsStringBuf(requestOut.Buffer()));
+    }
+
+    void Disconnect(bool reset = false)
+    {
+        if (reset) {
+            SetZeroLinger(*Socket);
+        }
+        Socket->Close();
+    }
+
+    void WaitForDisconnect()
+    {
+        char c;
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            0,
+            Socket->Recv(&c, sizeof(c)),
+            "raw NBD client was not disconnected");
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TNegotiateHandler = std::function<bool(
+    IServerHandler&,
+    IInputStream&,
+    IOutputStream&,
+    const std::function<bool()>&)>;
+
+class TServerHandlerDecorator final
+    : public IServerHandler
+{
+private:
+    const IServerHandlerPtr Inner;
+    const TNegotiateHandler NegotiateHandler;
+
+public:
+    TServerHandlerDecorator(
+            IServerHandlerPtr inner,
+            TNegotiateHandler negotiateHandler)
+        : Inner(std::move(inner))
+        , NegotiateHandler(std::move(negotiateHandler))
+    {}
+
+    bool NegotiateClient(
+        IInputStream& in,
+        IOutputStream& out,
+        const std::function<bool()>& connectionReadyHandler) override
+    {
+        return NegotiateHandler(
+            *Inner,
+            in,
+            out,
+            connectionReadyHandler);
+    }
+
+    void SendResponse(
+        IOutputStream& out,
+        TServerResponse& response) override
+    {
+        Inner->SendResponse(out, response);
+    }
+
+    void ProcessRequests(
+        IServerContextPtr ctx,
+        IInputStream& in,
+        IOutputStream& out,
+        TCont* cont) override
+    {
+        Inner->ProcessRequests(std::move(ctx), in, out, cont);
+    }
+
+    void ProcessException(std::exception_ptr e) override
+    {
+        Inner->ProcessException(std::move(e));
+    }
+
+    size_t CollectRequests(
+        const TIncompleteRequestsCollector& collector) override
+    {
+        return Inner->CollectRequests(collector);
+    }
+};
+
+using THandlerDecorator =
+    std::function<IServerHandlerPtr(size_t, IServerHandlerPtr)>;
+
+class TServerHandlerFactoryDecorator final
+    : public IServerHandlerFactory
+{
+private:
+    const IServerHandlerFactoryPtr Inner;
+    const THandlerDecorator Decorator;
+    std::atomic<size_t> HandlerCount = 0;
+
+public:
+    TServerHandlerFactoryDecorator(
+            IServerHandlerFactoryPtr inner,
+            THandlerDecorator decorator)
+        : Inner(std::move(inner))
+        , Decorator(std::move(decorator))
+    {}
+
+    IServerHandlerPtr CreateHandler() override
+    {
+        return Decorator(
+            HandlerCount.fetch_add(1),
+            Inner->CreateHandler());
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TFailingOutput final
+    : public IOutputStream
+{
+private:
+    IOutputStream& Inner;
+    TManualEvent& WriteAttempted;
+    bool Failing = false;
+
+public:
+    TFailingOutput(IOutputStream& inner, TManualEvent& writeAttempted)
+        : Inner(inner)
+        , WriteAttempted(writeAttempted)
+    {}
+
+    void FailWrites()
+    {
+        Failing = true;
+    }
+
+private:
+    void DoWrite(const void* buf, size_t len) override
+    {
+        if (Failing) {
+            WriteAttempted.Signal();
+            ythrow TSystemError(EPIPE) << "injected GO response write failure";
+        }
+
+        Inner.Write(buf, len);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+void ConnectInvalidClient(ui16 port)
+{
+    TInet6StreamSocket socket;
+    TSockAddrInet6 address("::1", port);
+
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        0,
+        socket.Connect(&address),
+        "failed to connect invalid client");
+
+    TStreamSocketInput input(&socket);
+    TRequestReader reader(input);
+
+    TServerHello hello;
+    UNIT_ASSERT(reader.ReadServerHello(hello));
+
+    TStreamSocketOutput output(&socket);
+    TRequestWriter writer(output);
+    writer.WriteClientHello(0);
+
+    SetSocketTimeout(socket, 3);
+    char c;
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        0,
+        socket.Recv(&c, sizeof(c)),
+        "invalid client connection was not closed");
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -296,7 +542,8 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
     const TStorageOptions& options = DefaultStorageOptions,
     TServerConfig serverConfig = Default<TServerConfig>(),
     IBlockStorePtr grpcClientEndpoint = nullptr,
-    IErrorHandlerPtr errorHandler = nullptr)
+    IErrorHandlerPtr errorHandler = nullptr,
+    THandlerDecorator handlerDecorator = {})
 {
     const ui32 clientThreadsCount = 1;
 
@@ -318,6 +565,12 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
         CreateServerStatsStub(),
         std::move(errorHandler),
         options);
+
+    if (handlerDecorator) {
+        handlerFactory = std::make_shared<TServerHandlerFactoryDecorator>(
+            std::move(handlerFactory),
+            std::move(handlerDecorator));
+    }
 
     auto client = CreateClient(
         logging,
@@ -1338,6 +1591,469 @@ Y_UNIT_TEST_SUITE(TServerTest)
         bootstrap->Stop();
     }
 
+    // A client stalled before NBD_OPT_GO must not block a later valid client.
+    Y_UNIT_TEST(ShouldAcceptAnotherCandidateWhileOneStallsBeforeGo)
+    {
+        auto storage = std::make_shared<TTestStorage>();
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto bootstrap = CreateBootstrap(connectAddress, storage);
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        TRawNbdClient candidate(port, false);
+        candidate.ReadServerHello();
+        candidate.WriteClientHello();
+
+        auto nextClient = bootstrap->GetClient()->CreateEndpoint(
+            connectAddress,
+            CreateClientHandler(
+                bootstrap->GetLogging(),
+                StructuredReply,
+                UseNbsErrors),
+            bootstrap->GetGrpcClientEndpoint());
+        nextClient->Start();
+
+        auto mountRequest = std::make_shared<NProto::TMountVolumeRequest>();
+        mountRequest->SetDiskId(DefaultStorageOptions.DiskId);
+        auto mountFuture = nextClient->MountVolume(
+            MakeIntrusive<TCallContext>(),
+            std::move(mountRequest));
+
+        auto mountResponse = mountFuture.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(mountResponse), mountResponse);
+
+        candidate.WaitForDisconnect();
+        nextClient->Stop();
+        bootstrap->Stop();
+    }
+
+    // A candidate disconnected during drain must not prevent a later handoff.
+    Y_UNIT_TEST(ShouldRejectCandidateDisconnectedWhileActiveConnectionDrains)
+    {
+        TManualEvent firstRequestStarted;
+        auto firstRequestCompleted =
+            NewPromise<NProto::TZeroBlocksResponse>();
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ZeroBlocksHandler = [&] (
+            TCallContextPtr callContext,
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+
+            firstRequestStarted.Signal();
+            return firstRequestCompleted.GetFuture();
+        };
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto bootstrap = CreateBootstrap(connectAddress, storage);
+        Y_DEFER {
+            firstRequestCompleted.TrySetValue({});
+        };
+
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        auto firstRequest = std::make_shared<NProto::TZeroBlocksRequest>();
+        firstRequest->SetStartIndex(0);
+        firstRequest->SetBlocksCount(1);
+        auto firstRequestFuture = bootstrap->GetClientEndpoint()->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(firstRequest));
+        UNIT_ASSERT(firstRequestStarted.WaitT(TDuration::Seconds(5)));
+
+        TRawNbdClient candidate(port, false);
+        candidate.ReadServerHello();
+        candidate.WriteClientHello();
+        candidate.WriteGo();
+
+        // A closed socket means the server reached the drain phase.
+        UNIT_ASSERT(firstRequestFuture.Wait(TDuration::Seconds(5)));
+        candidate.Disconnect(true);
+
+        auto nextClient = bootstrap->GetClient()->CreateEndpoint(
+            connectAddress,
+            CreateClientHandler(
+                bootstrap->GetLogging(),
+                StructuredReply,
+                UseNbsErrors),
+            bootstrap->GetGrpcClientEndpoint());
+        nextClient->Start();
+
+        auto mountRequest = std::make_shared<NProto::TMountVolumeRequest>();
+        mountRequest->SetDiskId(DefaultStorageOptions.DiskId);
+        auto mountFuture = nextClient->MountVolume(
+            MakeIntrusive<TCallContext>(),
+            std::move(mountRequest));
+        UNIT_ASSERT(!mountFuture.Wait(TDuration::MilliSeconds(100)));
+
+        firstRequestCompleted.SetValue({});
+
+        auto mountResponse = mountFuture.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(mountResponse), mountResponse);
+
+        nextClient->Stop();
+        bootstrap->Stop();
+    }
+
+    // Handoff and endpoint shutdown must wait for active backend I/O to drain.
+    Y_UNIT_TEST(ShouldKeepHandoffAndEndpointShutdownPendingWhileDraining)
+    {
+        TManualEvent firstRequestStarted;
+        auto firstRequestCompleted =
+            NewPromise<NProto::TZeroBlocksResponse>();
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ZeroBlocksHandler = [&] (
+            TCallContextPtr callContext,
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+
+            firstRequestStarted.Signal();
+            return firstRequestCompleted.GetFuture();
+        };
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto bootstrap = CreateBootstrap(connectAddress, storage);
+        Y_DEFER {
+            firstRequestCompleted.TrySetValue({});
+        };
+
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        auto firstRequest = std::make_shared<NProto::TZeroBlocksRequest>();
+        firstRequest->SetStartIndex(0);
+        firstRequest->SetBlocksCount(1);
+        auto firstRequestFuture = bootstrap->GetClientEndpoint()->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(firstRequest));
+        UNIT_ASSERT(firstRequestStarted.WaitT(TDuration::Seconds(5)));
+
+        auto candidate = bootstrap->GetClient()->CreateEndpoint(
+            connectAddress,
+            CreateClientHandler(
+                bootstrap->GetLogging(),
+                StructuredReply,
+                UseNbsErrors),
+            bootstrap->GetGrpcClientEndpoint());
+        candidate->Start();
+
+        auto mountRequest = std::make_shared<NProto::TMountVolumeRequest>();
+        mountRequest->SetDiskId(DefaultStorageOptions.DiskId);
+        auto mountFuture = candidate->MountVolume(
+            MakeIntrusive<TCallContext>(),
+            std::move(mountRequest));
+
+        UNIT_ASSERT(firstRequestFuture.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(!mountFuture.Wait(TDuration::MilliSeconds(100)));
+
+        auto stopFuture = bootstrap->StopEndpointAsync();
+        UNIT_ASSERT(!stopFuture.Wait(TDuration::MilliSeconds(100)));
+
+        firstRequestCompleted.SetValue({});
+
+        auto stopError = stopFuture.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(stopError), stopError);
+        UNIT_ASSERT(mountFuture.Wait(TDuration::Seconds(5)));
+        UNIT_ASSERT(HasError(mountFuture.GetValue()));
+
+        candidate->Stop();
+        bootstrap->Stop(true);
+    }
+
+    // Endpoint shutdown must cancel a client stalled before NBD_OPT_GO.
+    Y_UNIT_TEST(ShouldCompleteEndpointShutdownWhileWaitingForNegotiationReady)
+    {
+        auto storage = std::make_shared<TTestStorage>();
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto bootstrap = CreateBootstrap(connectAddress, storage);
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        TRawNbdClient candidate(port);
+        candidate.ReadServerHello();
+        candidate.WriteClientHello();
+
+        auto stopError = bootstrap->StopEndpointAsync().GetValue(
+            TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(stopError), stopError);
+
+        candidate.WaitForDisconnect();
+        bootstrap->Stop(true);
+    }
+
+    // Endpoint shutdown must not wait for negotiation after candidate selection.
+    Y_UNIT_TEST(ShouldCompleteEndpointShutdownWhileWaitingForNegotiationResult)
+    {
+        TManualEvent activationCompleted;
+        TManualEvent negotiationCompleted;
+        std::atomic<bool> continueNegotiation = false;
+
+        THandlerDecorator decorator = [&] (
+            size_t handlerIndex,
+            IServerHandlerPtr handler) -> IServerHandlerPtr
+        {
+            if (handlerIndex != 1) {
+                return handler;
+            }
+
+            TNegotiateHandler negotiateHandler = [&] (
+                IServerHandler& inner,
+                IInputStream& in,
+                IOutputStream& out,
+                const std::function<bool()>& connectionReadyHandler)
+            {
+                auto wrappedReadyHandler = [&] {
+                    const bool result = connectionReadyHandler();
+                    activationCompleted.Signal();
+
+                    while (!continueNegotiation.load()) {
+                        RunningCont()->SleepT(TDuration::MilliSeconds(10));
+                    }
+
+                    return result;
+                };
+
+                Y_DEFER {
+                    negotiationCompleted.Signal();
+                };
+                return inner.NegotiateClient(
+                    in,
+                    out,
+                    wrappedReadyHandler);
+            };
+
+            return std::make_shared<TServerHandlerDecorator>(
+                std::move(handler),
+                std::move(negotiateHandler));
+        };
+
+        auto storage = std::make_shared<TTestStorage>();
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto bootstrap = CreateBootstrap(
+            connectAddress,
+            storage,
+            DefaultStorageOptions,
+            Default<TServerConfig>(),
+            nullptr,
+            nullptr,
+            std::move(decorator));
+        Y_DEFER {
+            continueNegotiation.store(true);
+        };
+
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        TRawNbdClient candidate(port);
+        candidate.ReadServerHello();
+        candidate.WriteClientHello();
+        candidate.WriteGo();
+        UNIT_ASSERT(activationCompleted.WaitT(TDuration::Seconds(5)));
+
+        auto stopError = bootstrap->StopEndpointAsync().GetValue(
+            TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(stopError), stopError);
+
+        continueNegotiation.store(true);
+        UNIT_ASSERT(negotiationCompleted.WaitT(TDuration::Seconds(5)));
+        candidate.WaitForDisconnect();
+
+        bootstrap->Stop(true);
+    }
+
+    // A failed GO response must reject the candidate without restarting the endpoint.
+    Y_UNIT_TEST(ShouldRejectCandidateWhenWritingGoResponseFails)
+    {
+        TManualEvent writeAttempted;
+        THandlerDecorator decorator = [&] (
+            size_t handlerIndex,
+            IServerHandlerPtr handler) -> IServerHandlerPtr
+        {
+            if (handlerIndex != 1) {
+                return handler;
+            }
+
+            TNegotiateHandler negotiateHandler = [&] (
+                IServerHandler& inner,
+                IInputStream& in,
+                IOutputStream& out,
+                const std::function<bool()>& connectionReadyHandler)
+            {
+                TFailingOutput failingOutput(out, writeAttempted);
+                auto wrappedReadyHandler = [&] {
+                    const bool result = connectionReadyHandler();
+                    if (result) {
+                        failingOutput.FailWrites();
+                    }
+                    return result;
+                };
+
+                return inner.NegotiateClient(
+                    in,
+                    failingOutput,
+                    wrappedReadyHandler);
+            };
+
+            return std::make_shared<TServerHandlerDecorator>(
+                std::move(handler),
+                std::move(negotiateHandler));
+        };
+
+        auto storage = std::make_shared<TTestStorage>();
+        auto errorHandler = std::make_shared<TTestErrorHandler>();
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto bootstrap = CreateBootstrap(
+            connectAddress,
+            storage,
+            DefaultStorageOptions,
+            Default<TServerConfig>(),
+            nullptr,
+            errorHandler,
+            std::move(decorator));
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        TRawNbdClient candidate(port);
+        candidate.ReadServerHello();
+        candidate.WriteClientHello();
+        candidate.WriteGo();
+
+        UNIT_ASSERT(writeAttempted.WaitT(TDuration::Seconds(5)));
+        candidate.WaitForDisconnect();
+        UNIT_ASSERT_C(
+            !errorHandler->ErrorReported.WaitT(TDuration::Zero()),
+            "candidate write failure was reported to the endpoint");
+
+        auto nextClient = bootstrap->GetClient()->CreateEndpoint(
+            connectAddress,
+            CreateClientHandler(
+                bootstrap->GetLogging(),
+                StructuredReply,
+                UseNbsErrors),
+            bootstrap->GetGrpcClientEndpoint());
+        nextClient->Start();
+
+        auto mountRequest = std::make_shared<NProto::TMountVolumeRequest>();
+        mountRequest->SetDiskId(DefaultStorageOptions.DiskId);
+        auto mountResponse = nextClient->MountVolume(
+            MakeIntrusive<TCallContext>(),
+            std::move(mountRequest)).GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(mountResponse), mountResponse);
+
+        nextClient->Stop();
+        bootstrap->Stop();
+    }
+
+    // If candidates share a drain, only the latest candidate may become active.
+    Y_UNIT_TEST(ShouldActivateOnlyLatestCandidateWaitingForSameDrain)
+    {
+        TManualEvent firstRequestStarted;
+        auto firstRequestCompleted =
+            NewPromise<NProto::TZeroBlocksResponse>();
+        std::atomic<size_t> requestCount = 0;
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ZeroBlocksHandler = [&] (
+            TCallContextPtr callContext,
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(callContext);
+            Y_UNUSED(request);
+
+            if (requestCount.fetch_add(1) == 0) {
+                firstRequestStarted.Signal();
+                return firstRequestCompleted.GetFuture();
+            }
+
+            return MakeFuture<NProto::TZeroBlocksResponse>();
+        };
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto bootstrap = CreateBootstrap(connectAddress, storage);
+        Y_DEFER {
+            firstRequestCompleted.TrySetValue({});
+        };
+
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        auto firstRequest = std::make_shared<NProto::TZeroBlocksRequest>();
+        firstRequest->SetStartIndex(0);
+        firstRequest->SetBlocksCount(1);
+        auto firstRequestFuture = bootstrap->GetClientEndpoint()->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(firstRequest));
+        UNIT_ASSERT(firstRequestStarted.WaitT(TDuration::Seconds(5)));
+
+        TRawNbdClient firstCandidate(port, false);
+        firstCandidate.ReadServerHello();
+        firstCandidate.WriteClientHello();
+        firstCandidate.WriteGo();
+
+        UNIT_ASSERT(firstRequestFuture.Wait(TDuration::Seconds(5)));
+
+        auto secondCandidate = bootstrap->GetClient()->CreateEndpoint(
+            connectAddress,
+            CreateClientHandler(
+                bootstrap->GetLogging(),
+                StructuredReply,
+                UseNbsErrors),
+            bootstrap->GetGrpcClientEndpoint());
+        secondCandidate->Start();
+
+        auto secondMountRequest =
+            std::make_shared<NProto::TMountVolumeRequest>();
+        secondMountRequest->SetDiskId(DefaultStorageOptions.DiskId);
+        auto secondMountFuture = secondCandidate->MountVolume(
+            MakeIntrusive<TCallContext>(),
+            std::move(secondMountRequest));
+        firstCandidate.WaitForDisconnect();
+        UNIT_ASSERT(!secondMountFuture.Wait(TDuration::MilliSeconds(100)));
+
+        firstRequestCompleted.SetValue({});
+
+        auto secondMountResponse =
+            secondMountFuture.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(secondMountResponse), secondMountResponse);
+
+        error = ZeroBlocks(secondCandidate);
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(2, requestCount.load());
+
+        secondCandidate->Stop();
+        bootstrap->Stop();
+    }
+
     // NBS-2078
     Y_UNIT_TEST(ShouldNotFreezeSocketReadingDueToLimiter)
     {
@@ -1456,6 +2172,73 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT(!HasError(future1.GetValue(TDuration::Seconds(3))));
         UNIT_ASSERT(!HasError(future2.GetValue(TDuration::Seconds(3))));
         UNIT_ASSERT(!HasError(future3.GetValue(TDuration::Seconds(3))));
+
+        bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldNotDropActiveConnectionOnInvalidConnection)
+    {
+        const ui32 startIndex = 13;
+        const ui32 blocksCount = 1;
+
+        TManualEvent requestReceived;
+        auto trigger = NewPromise<NProto::TZeroBlocksResponse>();
+
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ZeroBlocksHandler = [&] (
+            TCallContextPtr callContext,
+            std::shared_ptr<NProto::TZeroBlocksRequest> request)
+        {
+            Y_UNUSED(callContext);
+
+            UNIT_ASSERT_VALUES_EQUAL(startIndex, request->GetStartIndex());
+            UNIT_ASSERT_VALUES_EQUAL(blocksCount, request->GetBlocksCount());
+
+            requestReceived.Signal();
+            return trigger.GetFuture();
+        };
+
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto errorHandler = std::make_shared<TTestErrorHandler>();
+        auto bootstrap = CreateBootstrap(
+            connectAddress,
+            storage,
+            DefaultStorageOptions,
+            Default<TServerConfig>(),
+            nullptr,
+            errorHandler);
+
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->SetStartIndex(startIndex);
+        request->SetBlocksCount(blocksCount);
+
+        auto future = bootstrap->GetClientEndpoint()->ZeroBlocks(
+            MakeIntrusive<TCallContext>(),
+            std::move(request));
+
+        requestReceived.Wait();
+        UNIT_ASSERT(!future.HasValue());
+
+        ConnectInvalidClient(port);
+        UNIT_ASSERT_C(
+            !errorHandler->ErrorReported.WaitT(TDuration::Zero()),
+            "invalid client error was reported to the endpoint");
+
+        trigger.SetValue({});
+
+        auto response = future.GetValue(TDuration::Seconds(3));
+        UNIT_ASSERT_C(!HasError(response), response);
+
+        bootstrap->GetClientEndpoint()->Stop();
+        UNIT_ASSERT_C(
+            errorHandler->ErrorReported.WaitT(TDuration::Seconds(3)),
+            "active client shutdown was not reported to the endpoint");
 
         bootstrap->Stop();
     }

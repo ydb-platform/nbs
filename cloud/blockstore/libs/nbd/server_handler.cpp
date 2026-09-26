@@ -71,12 +71,15 @@ public:
         Log = Logging->CreateLog("BLOCKSTORE_NBD");
     }
 
-    bool NegotiateClient(IInputStream& in, IOutputStream& out) override
+    bool NegotiateClient(
+        IInputStream& in,
+        IOutputStream& out,
+        const std::function<bool()>& connectionReadyHandler) override
     {
         TRequestReader reader(in);
         TRequestWriter writer(out);
 
-        return NegotiateClient(reader, writer);
+        return NegotiateClient(reader, writer, connectionReadyHandler);
     }
 
     void SendResponse(
@@ -117,18 +120,25 @@ public:
     }
 
 private:
-    bool NegotiateClient(TRequestReader& in, TRequestWriter& out);
+    bool NegotiateClient(
+        TRequestReader& in,
+        TRequestWriter& out,
+        const std::function<bool()>& connectionReadyHandler);
 
-    bool ProcessOptions(TRequestReader& in, TRequestWriter& out);
+    bool ProcessOptions(
+        TRequestReader& in,
+        TRequestWriter& out,
+        const std::function<bool()>& connectionReadyHandler);
 
     void ProcessExportListRequest(
         const TOption& option,
         TRequestWriter& out);
 
-    void ProcessExportInfoRequest(
+    bool ProcessExportInfoRequest(
         const TOption& option,
         TRequestReader& in,
-        TRequestWriter& out);
+        TRequestWriter& out,
+        const std::function<bool()>& connectionReadyHandler);
 
     void ProcessRequests(
         IServerContextPtr ctx,
@@ -302,7 +312,10 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool TServerHandler::NegotiateClient(TRequestReader& in, TRequestWriter& out)
+bool TServerHandler::NegotiateClient(
+    TRequestReader& in,
+    TRequestWriter& out,
+    const std::function<bool()>& connectionReadyHandler)
 {
     STORAGE_DEBUG(Options << " Negotiate client connection");
 
@@ -312,7 +325,7 @@ bool TServerHandler::NegotiateClient(TRequestReader& in, TRequestWriter& out)
     if (in.ReadClientHello(client)) {
         Y_ENSURE(client.Flags == (NBD_FLAG_C_FIXED_NEWSTYLE | NBD_FLAG_C_NO_ZEROES));
 
-        if (ProcessOptions(in, out)) {
+        if (ProcessOptions(in, out, connectionReadyHandler)) {
             return true;
         }
     }
@@ -320,7 +333,10 @@ bool TServerHandler::NegotiateClient(TRequestReader& in, TRequestWriter& out)
     return false;
 }
 
-bool TServerHandler::ProcessOptions(TRequestReader& in, TRequestWriter& out)
+bool TServerHandler::ProcessOptions(
+    TRequestReader& in,
+    TRequestWriter& out,
+    const std::function<bool()>& connectionReadyHandler)
 {
     TOption option;
     TBuffer optionData;
@@ -363,9 +379,13 @@ bool TServerHandler::ProcessOptions(TRequestReader& in, TRequestWriter& out)
             case NBD_OPT_GO:
                 try {
                     TBufferRequestReader optionIn(optionData);
-                    ProcessExportInfoRequest(option, optionIn, out);
+                    const bool processed = ProcessExportInfoRequest(
+                        option,
+                        optionIn,
+                        out,
+                        connectionReadyHandler);
 
-                    if (option.Option == NBD_OPT_GO) {
+                    if (option.Option == NBD_OPT_GO && processed) {
                         return true;
                     }
                 } catch (const std::exception& e) {
@@ -426,10 +446,11 @@ void TServerHandler::ProcessExportListRequest(
     WriteOptionReply(out, option.Option, NBD_REP_ACK);
 }
 
-void TServerHandler::ProcessExportInfoRequest(
+bool TServerHandler::ProcessExportInfoRequest(
     const TOption& option,
     TRequestReader& in,
-    TRequestWriter& out)
+    TRequestWriter& out,
+    const std::function<bool()>& connectionReadyHandler)
 {
     TExportInfoRequest request;
     if (!in.ReadExportInfoRequest(request)) {
@@ -443,7 +464,7 @@ void TServerHandler::ProcessExportInfoRequest(
             NBD_REP_ERR_UNKNOWN,
             TStringBuilder()
                 << "unknown export: " << request.Name);
-        return;
+        return false;
     }
 
     bool sendName = false;
@@ -489,8 +510,15 @@ void TServerHandler::ProcessExportInfoRequest(
                 option.Option,
                 NBD_REP_ERR_BLOCK_SIZE_REQD,
                 "request NBD_INFO_BLOCK_SIZE to use this export");
-            return;
+            return false;
         }
+    }
+
+    if (option.Option == NBD_OPT_GO &&
+        connectionReadyHandler &&
+        !connectionReadyHandler())
+    {
+        return false;
     }
 
     TVector<ui16> infoTypes;
@@ -512,6 +540,7 @@ void TServerHandler::ProcessExportInfoRequest(
     }
 
     WriteOptionReply(out, option.Option, NBD_REP_ACK);
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
