@@ -413,18 +413,18 @@ private:
             auto it = args.Nodes.find(id);
             TABLET_VERIFY(it != args.Nodes.end());
 
-            if (it->Attrs.GetSize() < maxOffset) {
-                auto attrs = CopyAttrs(it->Attrs, E_CM_CMTIME);
+            auto attrs = CopyAttrs(it->Attrs, E_CM_CMTIME);
+            if (attrs.GetSize() < maxOffset) {
                 attrs.SetSize(maxOffset);
-
-                Tablet.UpdateNode(
-                    db,
-                    id,
-                    it->MinCommitId,
-                    args.CommitId,
-                    attrs,
-                    it->Attrs);
             }
+
+            Tablet.UpdateNode(
+                db,
+                id,
+                it->MinCommitId,
+                args.CommitId,
+                attrs,
+                it->Attrs);
         }
     }
 
