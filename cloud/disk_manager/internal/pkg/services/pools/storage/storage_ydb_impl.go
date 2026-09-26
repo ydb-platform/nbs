@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -648,32 +649,179 @@ func (s *storageYDB) getPoolOrDefault(
 	return scanPool(res)
 }
 
+// Base disk that is being created from another base disk (see srcDiskID)
+// holds its source base disk from deletion until creation is finished (see
+// inflightDependents). Increments the counter of source base disk for every
+// base disk in |transitions| that becomes inflight and decrements it for every
+// base disk that stops being inflight (created, failed or deleted before
+// creation).
+//
+// NOTE: should be called after invariants are applied to |transitions|,
+// because invariants may change inflight status (e.g. make unscheduled base
+// disk doomed).
+func (s *storageYDB) applyInflightDependents(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	transitions []baseDiskTransition,
+) ([]baseDiskTransition, error) {
+
+	deltas := make(map[string]int64)
+
+	for _, t := range transitions {
+		oldHolds := t.oldState != nil && t.oldState.holdsSrcDisk()
+		newHolds := t.state.holdsSrcDisk()
+
+		switch {
+		case !oldHolds && newHolds:
+			// TODO: remove this check after deployment of this version is
+			// finished.
+			if s.holdBaseDisksWithInflightDependents {
+				deltas[t.state.srcDiskID]++
+			}
+		case oldHolds && !newHolds:
+			if t.oldState.srcDiskID != t.state.srcDiskID {
+				err := tx.Commit(ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				return nil, errors.NewNonRetriableErrorf(
+					"internal inconsistency: base disk cannot change srcDiskID, oldState %v, state %v",
+					t.oldState,
+					t.state,
+				)
+			}
+
+			deltas[t.state.srcDiskID]--
+		}
+	}
+
+	// Sort for determinism.
+	srcDiskIDs := make([]string, 0, len(deltas))
+	for srcDiskID := range deltas {
+		srcDiskIDs = append(srcDiskIDs, srcDiskID)
+	}
+
+	sort.Strings(srcDiskIDs)
+
+	for _, srcDiskID := range srcDiskIDs {
+		delta := deltas[srcDiskID]
+		if delta == 0 {
+			// Increments and decrements cancelled each other out, source base
+			// disk should not be touched (and, in particular, should not be
+			// loaded and rewritten).
+			continue
+		}
+
+		// Source base disk may be present in |transitions| (e.g. retiring
+		// base disk is used as a source for its replacement).
+		var srcDisk *baseDisk
+		for _, t := range transitions {
+			if t.state.id == srcDiskID {
+				srcDisk = t.state
+				break
+			}
+		}
+
+		if srcDisk == nil {
+			found, err := s.findBaseDisk(ctx, tx, srcDiskID)
+			if err != nil {
+				return nil, err
+			}
+
+			if found == nil {
+				// Source disk is not managed by pools (or it's already
+				// cleared), nothing to hold.
+				logging.Info(
+					ctx,
+					"source base disk %v is not found, skipping inflight dependents delta %v",
+					srcDiskID,
+					delta,
+				)
+				continue
+			}
+
+			oldState := *found
+			transitions = append(transitions, baseDiskTransition{
+				oldState: &oldState,
+				state:    found,
+			})
+			srcDisk = found
+		}
+
+		if delta > 0 && srcDisk.holdsSrcDisk() {
+			// Chains of holds are forbidden (see retireBaseDisk).
+			err := tx.Commit(ctx)
+			if err != nil {
+				return nil, err
+			}
+
+			return nil, errors.NewNonRetriableErrorf(
+				"internal inconsistency: base disk %+v is used as a source while it is being created from another base disk",
+				srcDisk,
+			)
+		}
+
+		srcDisk.inflightDependents += delta
+		if srcDisk.inflightDependents < 0 {
+			// Dependent was not accounted, e.g. it was generated while
+			// holdBaseDisksWithInflightDependents was disabled.
+			logging.Info(
+				ctx,
+				"inflight dependents underflow for source base disk %+v, delta %v",
+				srcDisk,
+				delta,
+			)
+			srcDisk.inflightDependents = 0
+		}
+
+		logging.Info(
+			ctx,
+			"applied inflight dependents delta %v to source base disk %+v",
+			delta,
+			srcDisk,
+		)
+	}
+
+	return transitions, nil
+}
+
+// Applies invariants to |transitions| and computes resulting pool transitions.
+// May append transitions of source base disks (see applyInflightDependents),
+// so the returned transitions should be used by the caller.
 func (s *storageYDB) applyBaseDiskInvariants(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	baseDiskTransitions []baseDiskTransition,
-) ([]poolTransition, error) {
+) ([]baseDiskTransition, []poolTransition, error) {
 
 	poolTransitions := make(map[string]poolTransition)
 
-	for _, baseDiskTransition := range baseDiskTransitions {
-		baseDisk := baseDiskTransition.state
+	poolKey := func(baseDisk *baseDisk) string {
+		return baseDisk.imageID + baseDisk.zoneID
+	}
 
-		imageID := baseDisk.imageID
-		zoneID := baseDisk.zoneID
-		key := imageID + zoneID
+	// NOTE: idempotent.
+	applyInvariants := func(baseDisk *baseDisk) error {
+		key := poolKey(baseDisk)
 
 		t, ok := poolTransitions[key]
 		if !ok {
-			p, err := s.getPoolOrDefault(ctx, tx, imageID, zoneID)
+			p, err := s.getPoolOrDefault(
+				ctx,
+				tx,
+				baseDisk.imageID,
+				baseDisk.zoneID,
+			)
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			t = poolTransition{
 				oldState: p,
 				state:    p,
 			}
+			poolTransitions[key] = t
 		}
 
 		if t.state.status == poolStatusDeleted {
@@ -682,7 +830,42 @@ func (s *storageYDB) applyBaseDiskInvariants(
 		}
 
 		baseDisk.applyInvariants()
+		return nil
+	}
 
+	for _, t := range baseDiskTransitions {
+		err := applyInvariants(t.state)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	baseDiskTransitions, err := s.applyInflightDependents(
+		ctx,
+		tx,
+		baseDiskTransitions,
+	)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Some in-flight dependents might have held the source base disk from
+	// deletion, and we need to re-apply the invariants in case a dependent
+	// no longer holds the base disk and it should be deleted.
+	//
+	// NOTE: this can't change hold state of any base disk, so counters don't
+	// need to be updated again: only base disks whose counter has changed
+	// (i.e. source base disks) can change their status here, and source base
+	// disks never hold other base disks, because chains of holds are
+	// forbidden (see retireBaseDisk).
+	for _, t := range baseDiskTransitions {
+		err := applyInvariants(t.state)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+
+	for _, baseDiskTransition := range baseDiskTransitions {
 		logging.Info(
 			ctx,
 			"applying base disk transition from %+v to %+v",
@@ -692,7 +875,7 @@ func (s *storageYDB) applyBaseDiskInvariants(
 
 		action, err := computePoolAction(baseDiskTransition)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		logging.Info(
@@ -701,17 +884,19 @@ func (s *storageYDB) applyBaseDiskInvariants(
 			action,
 		)
 
-		action.apply(&t.state)
+		key := poolKey(baseDiskTransition.state)
+		t := poolTransitions[key]
 
+		action.apply(&t.state)
 		poolTransitions[key] = t
 	}
 
-	var res []poolTransition
+	var poolTransitionSlice []poolTransition
 	for _, t := range poolTransitions {
-		res = append(res, t)
+		poolTransitionSlice = append(poolTransitionSlice, t)
 	}
 
-	return res, nil
+	return baseDiskTransitions, poolTransitionSlice, nil
 }
 
 func (s *storageYDB) updatePoolsTable(
@@ -766,7 +951,11 @@ func (s *storageYDB) updateBaseDisks(
 	}
 	transitions = filtered
 
-	poolTransitions, err := s.applyBaseDiskInvariants(ctx, tx, transitions)
+	transitions, poolTransitions, err := s.applyBaseDiskInvariants(
+		ctx,
+		tx,
+		transitions,
+	)
 	if err != nil {
 		return err
 	}
@@ -3161,6 +3350,20 @@ func (s *storageYDB) retireBaseDisk(
 		return nil, tx.Commit(ctx)
 	}
 
+	// Base disk that |srcDisk| refers to, nil if |srcDisk| is not a base disk
+	// managed by pools.
+	var srcBaseDisk *baseDisk
+	if srcDisk != nil {
+		if srcDisk.DiskId == found.id {
+			srcBaseDisk = found
+		} else {
+			srcBaseDisk, err = s.findBaseDisk(ctx, tx, srcDisk.DiskId)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	slots, err := s.getAcquiredSlots(ctx, tx, baseDiskID)
 	if err != nil {
 		return nil, err
@@ -3264,6 +3467,24 @@ func (s *storageYDB) retireBaseDisk(
 		}
 
 		if baseDiskIndex >= len(baseDiskTransitions) {
+			// Base disk can be used as a source for other base disks only
+			// after its own creation is finished. In particular, this forbids
+			// chains of holds (see inflightDependents): base disk that holds
+			// its source base disk never has dependents itself, so releasing
+			// a hold never changes hold state of the source base disk (see
+			// applyBaseDiskInvariants).
+			if srcBaseDisk != nil && srcBaseDisk.status != baseDiskStatusReady {
+				err := tx.Commit(ctx)
+				if err != nil {
+					return nil, err
+				}
+
+				return nil, errors.NewNonRetriableErrorf(
+					"base disk %+v can't be used as a source for replacement base disks: it is not ready",
+					srcBaseDisk,
+				)
+			}
+
 			baseDisk := s.generateBaseDisk(
 				imageID,
 				zoneID,

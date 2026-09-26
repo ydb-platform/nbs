@@ -114,8 +114,16 @@ type baseDisk struct {
 	fromPool       bool
 	retiring       bool
 	deletedAt      time.Time
-	idleSince      time.Time // zero if disk has at least one active unit
-	status         baseDiskStatus
+	// Zero if disk has at least one active unit.
+	idleSince time.Time
+
+	// Number of base disks that are currently being created (i.e. are in
+	// 'scheduling' or 'creating' status) using this disk as a source
+	// (see srcDiskID).
+	// This counter protects a base disk from deletion while there is at least
+	// one dependent base disk. Never negative.
+	inflightDependents int64
+	status             baseDiskStatus
 }
 
 func (d *baseDisk) toBaseDisk() BaseDisk {
@@ -151,6 +159,12 @@ func (d *baseDisk) isDoomed() bool {
 	return d.status >= baseDiskStatusDeleting
 }
 
+// Returns true if this base disk is being created from another base disk
+// (srcDiskID) and, therefore, holds that base disk from deletion.
+func (d *baseDisk) holdsSrcDisk() bool {
+	return len(d.srcDiskID) != 0 && d.isInflight()
+}
+
 func (d *baseDisk) applyInvariants() {
 	if d.activeUnits == 0 {
 		if d.status == baseDiskStatusCreationFailed {
@@ -159,8 +173,9 @@ func (d *baseDisk) applyInvariants() {
 		}
 
 		// If base disk is not from pool and it does not have active slots then
-		// it should be deleted.
-		if !d.isDoomed() && !d.fromPool {
+		// it should be deleted, unless other base disks are still being created
+		// from it (see inflightDependents).
+		if !d.isDoomed() && !d.fromPool && d.inflightDependents == 0 {
 			d.status = baseDiskStatusDeleting
 		}
 
@@ -224,6 +239,7 @@ func (d *baseDisk) structValue() persistence.Value {
 		persistence.StructFieldValue("retiring", persistence.BoolValue(d.retiring)),
 		persistence.StructFieldValue("deleted_at", persistence.TimestampValue(d.deletedAt)),
 		persistence.StructFieldValue("idle_since", persistence.TimestampValue(d.idleSince)),
+		persistence.StructFieldValue("inflight_dependents", persistence.Int64Value(d.inflightDependents)),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(d.status))),
 	)
 }
@@ -249,6 +265,7 @@ func baseDiskStructTypeString() string {
 		retiring: Bool,
 		deleted_at: Timestamp,
 		idle_since: Timestamp,
+		inflight_dependents: Int64,
 		status: Int64>`
 }
 
@@ -273,6 +290,7 @@ func baseDisksTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("retiring", persistence.Optional(persistence.TypeBool)),
 		persistence.WithColumn("deleted_at", persistence.Optional(persistence.TypeTimestamp)),
 		persistence.WithColumn("idle_since", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("inflight_dependents", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 
 		persistence.WithPrimaryKeyColumn("id"),
@@ -300,6 +318,7 @@ func scanBaseDisk(res persistence.Result) (baseDisk baseDisk, err error) {
 		persistence.OptionalWithDefault("retiring", &baseDisk.retiring),
 		persistence.OptionalWithDefault("deleted_at", &baseDisk.deletedAt),
 		persistence.OptionalWithDefault("idle_since", &baseDisk.idleSince),
+		persistence.OptionalWithDefault("inflight_dependents", &baseDisk.inflightDependents),
 		persistence.OptionalWithDefault("status", &baseDisk.status),
 	)
 	return

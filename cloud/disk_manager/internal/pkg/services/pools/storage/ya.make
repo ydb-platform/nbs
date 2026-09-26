@@ -10,6 +10,7 @@ SRCS(
 
 GO_TEST_SRCS(
     common_test.go
+    consistency_check_test.go
     storage_ydb_test.go
 )
 
