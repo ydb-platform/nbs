@@ -388,6 +388,15 @@ message TDiskAgentConfig
     // Listen address for the Journalled Device TCP server.
     // If set, the Disk Agent starts a TCP server to handle Journalled Device requests.
     optional string JournalledDeviceTcpServerListenAddress = 49;
+
+    // Enables the journal for Journalled Devices.
+    optional bool JournalEnabled = 50;
+
+    // Journal metadata size, in percents of the device.
+    optional uint32 LogMetaSizePercents = 51;
+
+    // Journal data size, in percents of the device.
+    optional uint32 LogDataSizePercents = 52;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

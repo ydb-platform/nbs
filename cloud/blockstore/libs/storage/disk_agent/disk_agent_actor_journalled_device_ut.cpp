@@ -77,7 +77,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             device.SetDeviceId(uuid);
             device.SetPoolName("journalled");
             device.SetJournalled(true);
-            device.SetFileSize(1_MB);
+            // large enough for the journal parts to hold a few pages each
+            device.SetFileSize(4_MB);
 
             PrepareFile(device);
         }
@@ -333,7 +334,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
                 NProto::TDeviceProtocolResponse::ResponseCase::kReadPages,
                 response.GetResponseCase());
 
-            return response.GetReadPages().GetError();
+            return response.GetReadPages();
         };
 
         // the requests reach the device hosted by this agent
@@ -347,18 +348,28 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
         }
 
         {
-            const auto error = readPages(uuid);
+            const auto response = readPages(uuid);
+            const auto& error = response.GetError();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_OK,
                 error.GetCode(),
                 FormatError(error));
+
+            // and the data written comes back
+            UNIT_ASSERT_VALUES_EQUAL(1, response.PageGroupsSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                response.GetPageGroups(0).ContentSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                TString(DefaultBlockSize, 'A'),
+                response.GetPageGroups(0).GetContent(0));
         }
 
         // an unknown device is rejected before the request is validated
 
         for (const auto& error: {
                  writeLogRecord(unknownUuid),
-                 readPages(unknownUuid)})
+                 readPages(unknownUuid).GetError()})
         {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_NOT_FOUND,
@@ -371,7 +382,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
         // a request without a device is rejected as well
 
-        for (const auto& error: {writeLogRecord({}), readPages({})}) {
+        for (const auto& error:
+             {writeLogRecord({}), readPages({}).GetError()})
+        {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 error.GetCode(),
@@ -385,7 +398,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
         clientId = {};
 
-        for (const auto& error: {writeLogRecord(uuid), readPages(uuid)}) {
+        for (const auto& error:
+             {writeLogRecord(uuid), readPages(uuid).GetError()})
+        {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_ARGUMENT,
                 error.GetCode(),
@@ -397,7 +412,9 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
         clientId = "other-client-id";
 
-        for (const auto& error: {writeLogRecord(uuid), readPages(uuid)}) {
+        for (const auto& error:
+             {writeLogRecord(uuid), readPages(uuid).GetError()})
+        {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
                 error.GetCode(),

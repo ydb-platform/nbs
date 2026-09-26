@@ -240,6 +240,105 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
         }
     }
 
+    Y_UNIT_TEST_F(ShouldServeADeviceRegion, TFixture)
+    {
+        constexpr ui64 firstBlock = 16;
+        constexpr ui64 blockCount = 32;
+
+        auto region = CreateDeviceAdapter(
+            Timer,
+            DeviceUUID,
+            DefaultBlockSize,
+            DeviceClient,
+            {.FirstBlockIndex = firstBlock, .BlockCount = blockCount});
+
+        FillDevice();
+
+        const auto readPage = [&](ui64 pageNo)
+        {
+            return region->ReadPages({{.FirstPageNo = pageNo, .PageCount = 1}})
+                .GetValueSync();
+        };
+
+        const auto assertBlock = [&](const TBuffer& page, char expected)
+        {
+            TStringBuf block(page.Data(), page.Size());
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, block.size());
+            UNIT_ASSERT_VALUES_EQUAL(
+                block.size(),
+                std::ranges::count(block, expected));
+        };
+
+        // page 0 of the region is the first block of the region
+        {
+            const auto result = readPage(0);
+            UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(1, result.GetResult().size());
+            assertBlock(result.GetResult()[0], BlockData(firstBlock));
+        }
+
+        // the pages beyond the region are rejected
+        {
+            const auto error = readPage(blockCount).GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "beyond the device");
+        }
+
+        // a write lands in the region as well
+        {
+            TVector<NJournalled::TPageRange> ranges;
+            auto& range = ranges.emplace_back();
+            range.FirstPageNo = 1;
+            range.Pages.push_back(MakeBlock(DefaultBlockSize, 'Z'));
+
+            const auto error =
+                region->WritePages(std::move(ranges)).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            const auto result =
+                ReadPages({{.FirstPageNo = firstBlock + 1, .PageCount = 1}});
+            UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(1, result.GetResult().size());
+            assertBlock(result.GetResult()[0], 'Z');
+        }
+
+        // a write beyond the region is rejected before anything is written
+        {
+            TVector<NJournalled::TPageRange> ranges;
+            auto& range = ranges.emplace_back();
+            range.FirstPageNo = blockCount - 1;
+            range.Pages.push_back(MakeBlock(DefaultBlockSize, 'Q'));
+            range.Pages.push_back(MakeBlock(DefaultBlockSize, 'Q'));
+
+            const auto error =
+                region->WritePages(std::move(ranges)).GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "beyond the device");
+
+            const ui64 lastBlock = firstBlock + blockCount - 1;
+            const auto result =
+                ReadPages({{.FirstPageNo = lastBlock, .PageCount = 1}});
+            UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(1, result.GetResult().size());
+            assertBlock(result.GetResult()[0], BlockData(lastBlock));
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldWritePages, TFixture)
     {
         const auto makeRanges = []
