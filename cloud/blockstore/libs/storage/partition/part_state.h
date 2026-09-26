@@ -711,7 +711,7 @@ public:
 
     ui32 GetLegacyCompactionScore() const
     {
-        return CompactionMap.GetTop().Stat.BlobCount;
+        return CompactionMap.GetTopByBlobCount().Stat.BlobCount;
     }
 
     ui32 GetCompactionGarbageScore() const

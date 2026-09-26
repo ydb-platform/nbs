@@ -37,7 +37,7 @@ def configure_memshard():
 
 def make_config(fast_shard_port):
     template_path = common.source_path(
-        "cloud/filestore/tests/loadtest/service-kikimr-memshard-test"
+        "cloud/filestore/tests/fastshard/loadtest/service-kikimr-memshard-test"
         "/memshard-read-write.txt"
     )
     with open(template_path) as f:

@@ -1292,6 +1292,7 @@ private:
     TPartitionState& State;
 
     TRangeStat TopRangeStat;
+    TRangeStat TopByBlobCount;
     TRangeStat TopGarbageRangeStat;
     TRangeStat TopByGarbageIgnoringZeroed;
     TRangeStat TopByMixedBlockCount;
@@ -1351,6 +1352,7 @@ public:
     {
         const auto& cm = State.GetCompactionMap();
         TopRangeStat = cm.GetTop().Stat;
+        TopByBlobCount = cm.GetTopByBlobCount().Stat;
         TopGarbageRangeStat = cm.GetTopByGarbageBlockCount().Stat;
         TopByGarbageIgnoringZeroed = cm.GetTopByGarbageIgnoringZeroed().Stat;
         TopByMixedBlockCount = cm.GetTopByMixedBlockCount().Stat;
@@ -1374,6 +1376,11 @@ public:
         std::optional<TTriggerInfo> info;
 
         info = TriggerRangeCompactionIfNeeded();
+        if (info) {
+            return info;
+        }
+
+        info = TriggerBlobCountCompactionIfNeeded();
         if (info) {
             return info;
         }
@@ -1405,31 +1412,21 @@ private:
     [[nodiscard]] std::optional<TTriggerInfo>
     TriggerRangeCompactionIfNeeded() const
     {
-        const ui64 blobCount = State.GetTotalBlobsCount();
-        const bool diskBlobCountOverThreshold =
-            State.GetMaxBlobsPerDisk() &&
-            blobCount >
-                State.GetMaxBlobsPerDisk() + State.GetCleanupQueue().GetCount();
-
-        if (TopRangeStat.CompactionScore.Score <= 0 &&
-            !diskBlobCountOverThreshold)
-        {
+        if (TopRangeStat.CompactionScore.Score <= 0) {
             return std::nullopt;
         }
 
         ECompactionTriggerKind triggerKind =
-            ECompactionTriggerKind::ByBlobCountPerDisk;
+            ECompactionTriggerKind::ByBlobCountPerRange;
 
-        if (TopRangeStat.CompactionScore.Score > 0) {
-            switch (TopRangeStat.CompactionScore.Type) {
-                case TCompactionScore::EType::BlobCount: {
-                    triggerKind = ECompactionTriggerKind::ByBlobCountPerRange;
-                    break;
-                }
-                case TCompactionScore::EType::Read: {
-                    triggerKind = ECompactionTriggerKind::ByReadStats;
-                    break;
-                }
+        switch (TopRangeStat.CompactionScore.Type) {
+            case TCompactionScore::EType::BlobCount: {
+                triggerKind = ECompactionTriggerKind::ByBlobCountPerRange;
+                break;
+            }
+            case TCompactionScore::EType::Read: {
+                triggerKind = ECompactionTriggerKind::ByReadStats;
+                break;
             }
         }
 
@@ -1446,10 +1443,40 @@ private:
         return TTriggerInfo(
             TopRangeStat.BlobCount,
             State.GetMaxBlobsPerRange(),
-            blobCount,
+            State.GetTotalBlobsCount(),
             State.GetMaxBlobsPerDisk(),
             TEvPartitionPrivate::RangeCompaction,
             triggerKind,
+            throttlingAllowed,
+            fullCompaction);
+    }
+
+    [[nodiscard]] std::optional<TTriggerInfo>
+    TriggerBlobCountCompactionIfNeeded() const
+    {
+        const ui64 blobCount = State.GetTotalBlobsCount();
+        if (!State.GetMaxBlobsPerDisk() ||
+            blobCount <= State.GetMaxBlobsPerDisk() +
+                             State.GetCleanupQueue().GetCount() ||
+            TopByBlobCount.BlobCount < 2)
+        {
+            return std::nullopt;
+        }
+
+        const bool throttlingAllowed =
+            TopByBlobCount.CompactionScore.Score <
+            Config->GetCompactionScoreLimitForThrottling();
+
+        const bool fullCompaction =
+            GetGarbagePercentage() >= Config->GetCompactionGarbageThreshold();
+
+        return TTriggerInfo(
+            TopByBlobCount.BlobCount,
+            State.GetMaxBlobsPerRange(),
+            blobCount,
+            State.GetMaxBlobsPerDisk(),
+            TEvPartitionPrivate::BlobCountCompaction,
+            ECompactionTriggerKind::ByBlobCountPerDisk,
             throttlingAllowed,
             fullCompaction);
     }
@@ -2009,6 +2036,14 @@ void TPartitionActor::HandleCompaction(
             }
         }
         State->OnNewCompactionRange(msg->RangeBlockIndices.size());
+    } else if (msg->Mode == TEvPartitionPrivate::BlobCountCompaction) {
+        if (batchCompactionEnabled &&
+            State->GetCompactionRangeCountPerRun() > 1)
+        {
+            tops = cm.GetTopByBlobCount(State->GetCompactionRangeCountPerRun());
+        } else {
+            tops.push_back(cm.GetTopByBlobCount());
+        }
     } else if (msg->Mode == TEvPartitionPrivate::GarbageCompaction) {
         if (batchCompactionEnabled &&
             Config->GetGarbageCompactionRangeCountPerRun() > 1)

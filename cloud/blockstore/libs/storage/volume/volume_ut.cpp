@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_nonrepl/model/processing_blocks.h>
 #include <cloud/blockstore/libs/storage/stats_service/stats_service_events_private.h>
+#include <cloud/blockstore/libs/storage/testlib/tablet_boot_info.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
 
@@ -11720,6 +11721,52 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
             UNIT_ASSERT_VALUES_EQUAL(2, req->BlockInfos[0].BlockIndex);
             UNIT_ASSERT_VALUES_UNEQUAL(0, req->BlockInfos[0].Checksum);
         }
+    }
+
+    void CheckBootInfoReporting(EVolumeStartMode startMode)
+    {
+        auto runtime = TTestRuntimeBuilder().With(startMode).Build();
+        TTabletStorageInfoPtr storageInfo = CreateTestTabletInfo(
+            TestVolumeTablets[0],
+            TTabletTypes::BlockStoreVolume);
+        TTabletBootInfoObserver bootInfo(*runtime, *storageInfo);
+
+        // No Volume config, mount or endpoint is needed to capture a boot.
+        runtime->DispatchEvents(
+            {.CustomFinalCondition = [&]
+             { return bootInfo.GetBootCount() && bootInfo.GetReportCount(); }},
+            WaitTimeout);
+        bootInfo.CheckReports();
+
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+        bootInfo.CheckReports();
+        UNIT_ASSERT_VALUES_EQUAL(
+            volume.StatVolume()->Record.GetVolumeGeneration(),
+            bootInfo.GetLastGeneration());
+
+        const auto generation = bootInfo.GetLastGeneration();
+        const auto reportCount = bootInfo.GetReportCount();
+        volume.RebootTablet();
+        volume.WaitReady();
+
+        bootInfo.CheckReports();
+        UNIT_ASSERT_GT(bootInfo.GetReportCount(), reportCount);
+        UNIT_ASSERT_GT(bootInfo.GetLastGeneration(), generation);
+        UNIT_ASSERT_VALUES_EQUAL(
+            volume.StatVolume()->Record.GetVolumeGeneration(),
+            bootInfo.GetLastGeneration());
+    }
+
+    Y_UNIT_TEST(ShouldReportHiveLocalBootInfoBeforeMount)
+    {
+        CheckBootInfoReporting(EVolumeStartMode::ONLINE);
+    }
+
+    Y_UNIT_TEST(ShouldReportBootInfoForExternallyStartedVolume)
+    {
+        CheckBootInfoReporting(EVolumeStartMode::MOUNTED);
     }
 }
 

@@ -92,6 +92,7 @@ private:
             HFunc(TEvHiveProxy::TEvGetStorageInfoRequest, HandleGetStorageInfo);
             HFunc(TEvHiveProxy::TEvBootExternalRequest, HandleBootExternal);
             IgnoreFunc(TEvLocal::TEvTabletMetrics);
+            IgnoreFunc(TEvHiveProxy::TEvUpdateTabletBootInfoBackup);
 
             default:
                 HandleUnexpectedEvent(
@@ -599,16 +600,20 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     NCloud::NStorage::NRdma::IClientPtr rdmaClient = {},
     TVector<TDiskAgentStatePtr> diskAgentStates = {},
     bool debugActorRegistration = false,
-    IProfileLogPtr profileLog = nullptr);
+    IProfileLogPtr profileLog = nullptr,
+    EVolumeStartMode startMode = EVolumeStartMode::ONLINE);
 
 struct TTestRuntimeBuilder
 {
     NProto::TStorageServiceConfig StorageServiceConfig;
     TDiskRegistryStatePtr DiskRegistryState = MakeIntrusive<TDiskRegistryState>();
+    EVolumeStartMode VolumeStartMode = EVolumeStartMode::ONLINE;
 
     TTestRuntimeBuilder& With(NProto::TStorageServiceConfig config);
 
     TTestRuntimeBuilder& With(TDiskRegistryStatePtr state);
+
+    TTestRuntimeBuilder& With(EVolumeStartMode startMode);
 
     std::unique_ptr<TTestActorRuntime> Build();
 };
