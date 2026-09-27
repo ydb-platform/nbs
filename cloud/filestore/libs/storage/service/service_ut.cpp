@@ -3227,24 +3227,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldUpdateMTimeUponThreeStageWriteWithoutSizeChange)
+    Y_UNIT_TEST(ShouldUpdateTimestampsUponThreeStageWrite)
     {
-        TTestEnv env;
+        NProto::TStorageConfig config;
+        config.SetThreeStageWriteEnabled(true);
+        config.SetThreeStageWriteThreshold(1);
+        TTestEnv env({}, config);
+
         ui32 nodeIdx = env.AddDynamicNode();
 
         TServiceClient service(env.GetRuntime(), nodeIdx);
         const TString fs = "test";
         service.CreateFileStore(fs, 1000);
-
-        {
-            NProto::TStorageConfig config;
-            config.SetThreeStageWriteEnabled(true);
-            config.SetThreeStageWriteThreshold(1);
-            ExecuteChangeStorageConfig(std::move(config), service);
-
-            TDispatchOptions options;
-            env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
-        }
 
         auto headers = service.InitSession(fs, "client");
         ui64 nodeId = service
@@ -3256,25 +3250,39 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             ->Record.GetHandle();
 
         const ui64 size = DefaultBlockSize * BlockGroupSize;
-        // ftruncate to the final size, then overwrite in place
-        service.SetNodeAttr(headers, fs, nodeId, size);
-        const auto before = service
-            .GetNodeAttr(headers, fs, RootNodeId, "file")
-            ->Record.GetNode();
+        const ui64 oldTime = 1;
+        const auto resetTimes = TSetNodeAttrArgs(nodeId)
+            .SetMTime(oldTime)
+            .SetCTime(oldTime);
+        const auto data = GenerateValidateData(size);
 
-        Sleep(TDuration::MilliSeconds(10));
-        service.WriteData(
-            headers, fs, nodeId, handle, 0, GenerateValidateData(size));
+        auto getAttrs = [&]
+        {
+            return service.GetNodeAttr(headers, fs, RootNodeId, "file")
+                ->Record.GetNode();
+        };
+
+        // in-place overwrite: only mtime changes
+        service.SetNodeAttr(headers, fs, nodeId, size);
+        service.SetNodeAttr(headers, fs, resetTimes);
+        service.WriteData(headers, fs, nodeId, handle, 0, data);
 
         auto& runtime = env.GetRuntime();
         UNIT_ASSERT(runtime.GetCounter(TEvIndexTablet::EvAddDataRequest));
 
-        const auto after = service
-            .GetNodeAttr(headers, fs, RootNodeId, "file")
-            ->Record.GetNode();
-        UNIT_ASSERT_VALUES_EQUAL(size, after.GetSize());
-        UNIT_ASSERT_GT(after.GetMTime(), before.GetMTime());
-        UNIT_ASSERT_GT(after.GetCTime(), before.GetCTime());
+        auto attrs = getAttrs();
+        UNIT_ASSERT_VALUES_EQUAL(size, attrs.GetSize());
+        UNIT_ASSERT_GT(attrs.GetMTime(), oldTime);
+        UNIT_ASSERT_VALUES_EQUAL(oldTime, attrs.GetCTime());
+
+        // the file grows: both mtime and ctime change
+        service.SetNodeAttr(headers, fs, resetTimes);
+        service.WriteData(headers, fs, nodeId, handle, size, data);
+
+        attrs = getAttrs();
+        UNIT_ASSERT_VALUES_EQUAL(2 * size, attrs.GetSize());
+        UNIT_ASSERT_GT(attrs.GetMTime(), oldTime);
+        UNIT_ASSERT_GT(attrs.GetCTime(), oldTime);
     }
 
     Y_UNIT_TEST(ShouldPerformThreeStageWritesHdd)

@@ -789,7 +789,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
-    TABLET_TEST(ShouldUpdateMTimeUponBlobWriteWithoutSizeChange)
+    TABLET_TEST(ShouldUpdateTimestampsUponBlobWrite)
     {
         const auto block = tabletConfig.BlockSize;
 
@@ -812,20 +812,106 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         ui64 handle = CreateHandle(tablet, id);
 
         const auto size = 4 * block;
-        // ftruncate to the final size, then overwrite in place
-        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(size));
-        const auto before = GetNodeAttrs(tablet, id);
+        const ui64 oldTime = 1;
+        const auto resetTimes = TSetNodeAttrArgs(id)
+            .SetMTime(oldTime)
+            .SetCTime(oldTime);
 
-        Sleep(TDuration::MilliSeconds(10));
+        // in-place overwrite: only mtime changes
+        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(size));
+        tablet.SetNodeAttr(resetTimes);
         tablet.WriteData(handle, 0, size, 'a');
 
         const auto& stats = tablet.GetStorageStats()->Record.GetStats();
         UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
 
-        const auto after = GetNodeAttrs(tablet, id);
-        UNIT_ASSERT_VALUES_EQUAL(size, after.GetSize());
-        UNIT_ASSERT_GT(after.GetMTime(), before.GetMTime());
-        UNIT_ASSERT_GT(after.GetCTime(), before.GetCTime());
+        auto attrs = GetNodeAttrs(tablet, id);
+        UNIT_ASSERT_VALUES_EQUAL(size, attrs.GetSize());
+        UNIT_ASSERT_GT(attrs.GetMTime(), oldTime);
+        UNIT_ASSERT_VALUES_EQUAL(oldTime, attrs.GetCTime());
+
+        // the file grows: both mtime and ctime change
+        tablet.SetNodeAttr(resetTimes);
+        tablet.WriteData(handle, size, size, 'b');
+
+        attrs = GetNodeAttrs(tablet, id);
+        UNIT_ASSERT_VALUES_EQUAL(2 * size, attrs.GetSize());
+        UNIT_ASSERT_GT(attrs.GetMTime(), oldTime);
+        UNIT_ASSERT_GT(attrs.GetCTime(), oldTime);
+    }
+
+    TABLET_TEST(ShouldUpdateTimestampsUponAddData)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        TTestEnv env(testEnvConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto addData = [&](ui64 offset)
+        {
+            auto gbi =
+                tablet.GenerateBlobIds(id, handle, offset, block)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, gbi.BlobsSize());
+            const auto blobId =
+                LogoBlobIDFromLogoBlobID(gbi.GetBlobs(0).GetBlobId());
+
+            auto evPut = std::make_unique<TEvBlobStorage::TEvPut>(
+                blobId,
+                TString(block, 'a'),
+                TInstant::Max(),
+                NKikimrBlobStorage::UserData);
+            const auto proxy =
+                MakeBlobStorageProxyID(gbi.GetBlobs(0).GetBSGroupId());
+            env.GetRuntime().Send(CreateEventForBSProxy(
+                env.GetRuntime().AllocateEdgeActor(proxy.NodeId()),
+                proxy,
+                evPut.release(),
+                blobId.Cookie()));
+
+            tablet.AddData(
+                id,
+                handle,
+                offset,
+                block,
+                TVector<NKikimr::TLogoBlobID>({blobId}),
+                gbi.GetCommitId());
+        };
+
+        const ui64 oldTime = 1;
+        const auto resetTimes = TSetNodeAttrArgs(id)
+            .SetMTime(oldTime)
+            .SetCTime(oldTime);
+
+        // in-place overwrite: only mtime changes
+        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(block));
+        tablet.SetNodeAttr(resetTimes);
+        addData(0);
+
+        auto attrs = GetNodeAttrs(tablet, id);
+        UNIT_ASSERT_VALUES_EQUAL(block, attrs.GetSize());
+        UNIT_ASSERT_GT(attrs.GetMTime(), oldTime);
+        UNIT_ASSERT_VALUES_EQUAL(oldTime, attrs.GetCTime());
+
+        // the file grows: both mtime and ctime change
+        tablet.SetNodeAttr(resetTimes);
+        addData(block);
+
+        attrs = GetNodeAttrs(tablet, id);
+        UNIT_ASSERT_VALUES_EQUAL(2 * block, attrs.GetSize());
+        UNIT_ASSERT_GT(attrs.GetMTime(), oldTime);
+        UNIT_ASSERT_GT(attrs.GetCTime(), oldTime);
     }
 
     TABLET_TEST(ShouldAcceptLargeUnalignedWrites)

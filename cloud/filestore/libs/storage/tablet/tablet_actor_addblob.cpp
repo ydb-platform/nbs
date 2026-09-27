@@ -413,10 +413,11 @@ private:
             auto it = args.Nodes.find(id);
             TABLET_VERIFY(it != args.Nodes.end());
 
-            auto attrs = CopyAttrs(it->Attrs, E_CM_CMTIME);
-            if (attrs.GetSize() < maxOffset) {
-                attrs.SetSize(maxOffset);
-            }
+            // mtime is always updated, ctime - only if the file size changes
+            auto attrs = CopyAttrs(
+                it->Attrs,
+                it->Attrs.GetSize() < maxOffset ? E_CM_CMTIME : E_CM_MTIME);
+            attrs.SetSize(Max<ui64>(attrs.GetSize(), maxOffset));
 
             Tablet.UpdateNode(
                 db,
