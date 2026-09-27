@@ -427,7 +427,7 @@ class FilestoreCliClient:
 
         return common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code).stdout
 
-    def execute_action(self, action, request):
+    def execute_action(self, action, request, all_shards=False):
         request_file = tempfile.NamedTemporaryFile(mode="w", delete=False)
         json.dump(request, request_file)
         request_file.close()
@@ -436,6 +436,8 @@ class FilestoreCliClient:
             "--action", action,
             "--input-file", request_file.name,
         ] + self.__cmd_opts()
+        if all_shards:
+            cmd.append("--all-shards")
         print(cmd)
 
         res = common.execute(cmd, env=self.__env, check_exit_code=self.__check_exit_code)
