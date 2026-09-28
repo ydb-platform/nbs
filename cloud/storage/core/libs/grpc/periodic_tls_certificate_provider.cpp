@@ -24,6 +24,8 @@
 
 namespace NCloud {
 
+using namespace NThreading;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -144,7 +146,7 @@ class TPeriodicCertificateProvider final
     bool UpdateInProgress = false;
     // The pending on-demand request, or, while an update is in progress, the
     // result of that update.
-    NThreading::TPromise<NProto::TError> Update;
+    TPromise<NProto::TError> UpdatePromise;
 
     TLog Log;
 
@@ -178,23 +180,23 @@ public:
         Y_ABORT_UNLESS(Started.load() == false);
     }
 
-    NThreading::TFuture<NProto::TError> UpdateCertificates() override
+    TFuture<NProto::TError> UpdateCertificates() override
     {
-        NThreading::TFuture<NProto::TError> future;
+        TFuture<NProto::TError> future;
         {
             TGuard<TMutex> lock(UpdateMutex);
             if (!Started) {
-                return NThreading::MakeFuture(MakeError(
+                return MakeFuture(MakeError(
                     E_INVALID_STATE,
                     "Certificate provider is not started"));
             }
-            if (Update.Initialized()) {
-                return NThreading::MakeFuture(MakeError(
+            if (UpdatePromise.Initialized()) {
+                return MakeFuture(MakeError(
                     E_TRY_AGAIN,
                     "Another certificate update is pending or in progress"));
             }
-            Update = NThreading::NewPromise<NProto::TError>();
-            future = Update.GetFuture();
+            UpdatePromise = NewPromise<NProto::TError>();
+            future = UpdatePromise.GetFuture();
         }
 
         ScheduleUpdateAt(TInstant::Now(), /*periodic=*/false);
@@ -273,7 +275,7 @@ public:
 
     void Stop() override
     {
-        NThreading::TFuture<NProto::TError> update;
+        TFuture<NProto::TError> update;
         {
             TGuard<TMutex> lock(UpdateMutex);
             if (!Started.load()) {
@@ -282,9 +284,9 @@ public:
             Started.store(false);
 
             if (UpdateInProgress) {
-                update = Update.GetFuture();
-            } else if (Update.Initialized()) {
-                std::exchange(Update, {}).SetValue(MakeError(
+                update = UpdatePromise.GetFuture();
+            } else if (UpdatePromise.Initialized()) {
+                std::exchange(UpdatePromise, {}).SetValue(MakeError(
                     E_INVALID_STATE,
                     "Certificate provider is stopped"));
             }
@@ -320,14 +322,14 @@ private:
     void RunUpdate(bool periodic)
     {
         bool run = false;
-        bool onDemand = false;
-        {
-            TGuard<TMutex> lock(UpdateMutex);
+        bool requireStableRead = true;
+        with_lock(UpdateMutex) {
             if (Started && !UpdateInProgress) {
-                if (Update.Initialized()) {
-                    run = onDemand = true;
+                if (UpdatePromise.Initialized()) {
+                    run = true;
+                    requireStableRead = false;
                 } else if (periodic) {
-                    Update = NThreading::NewPromise<NProto::TError>();
+                    UpdatePromise = NewPromise<NProto::TError>();
                     run = true;
                 }
                 UpdateInProgress = run;
@@ -335,21 +337,19 @@ private:
         }
 
         if (run) {
-            auto result = RefreshCertificates(/*periodic=*/!onDemand);
+            auto result = RefreshCertificates(requireStableRead);
 
             // Completed under UpdateMutex, so that Stop() does not return
             // before that.
             TGuard<TMutex> lock(UpdateMutex);
             UpdateInProgress = false;
-            std::exchange(Update, {}).SetValue(std::move(result));
+            std::exchange(UpdatePromise, {}).SetValue(std::move(result));
         }
 
         if (periodic && Started) {
             ScheduleUpdateAt(TInstant::Now() + RefreshInterval, true);
         }
     }
-
-
 
     void PublishRootCaFingerprint()
     {
@@ -410,18 +410,18 @@ private:
     // (see TStableRead), i.e. within two refresh intervals. On-demand updates
     // apply it right away. Content that fails to load or validate is logged
     // and the previous one is kept.
-    NProto::TError RefreshCertificates(bool periodic)
+    NProto::TError RefreshCertificates(bool requireStableRead)
     {
         NProto::TError error;
         bool changed = false;
 
-        if (RefreshRootCa(periodic, error)) {
+        if (RefreshRootCa(requireStableRead, error)) {
             PublishRootCaFingerprint();
             changed = true;
         }
 
         for (size_t i = 0; i < Certificates.size(); ++i) {
-            if (RefreshIdentity(i, periodic, error)) {
+            if (RefreshIdentity(i, requireStableRead, error)) {
                 changed = true;
             }
         }
@@ -453,9 +453,9 @@ private:
         TStableRead<T>& stableRead,
         const T& current,
         const T& content,
-        bool periodic)
+        bool requireStableRead)
     {
-        if (periodic) {
+        if (requireStableRead) {
             return stableRead.Observe(current, content);
         }
 
@@ -468,7 +468,7 @@ private:
     }
 
     // Returns true if the root certificate has been replaced.
-    bool RefreshRootCa(bool periodic, NProto::TError& error)
+    bool RefreshRootCa(bool requireStableRead, NProto::TError& error)
     {
         const auto& path = RootCaPair.RootCaPath;
         if (path.empty()) {
@@ -489,7 +489,7 @@ private:
             RootCaStableRead,
             RootCaPair.RootCa,
             content.GetResult(),
-            periodic))
+            requireStableRead))
         {
             case EStableReadDecision::Unchanged:
                 return false;
@@ -518,7 +518,7 @@ private:
     }
 
     // Returns true if the certificate has been replaced.
-    bool RefreshIdentity(size_t index, bool periodic, NProto::TError& error)
+    bool RefreshIdentity(size_t index, bool requireStableRead, NProto::TError& error)
     {
         auto& cert = Certificates[index];
         auto& stableRead = IdentityStableReads[index];
@@ -534,7 +534,11 @@ private:
             return false;
         }
 
-        switch (Decide(stableRead, cert.Content, content.GetResult(), periodic))
+        switch (Decide(
+            stableRead,
+            cert.Content,
+            content.GetResult(),
+            requireStableRead))
         {
             case EStableReadDecision::Unchanged:
                 return false;
