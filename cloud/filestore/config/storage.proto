@@ -23,14 +23,11 @@ enum EGuestCachingType
     // No caching is allowed, every CreateHandle forces a guest page cache
     // invalidation
     GCT_NONE = 0;
-    // The second RDONLY open call will be allowed not to invalidate the guest
-    // page cache if there are no other write handles and mtime of the file
-    // has not been changed since the last cache invalidation within a given
-    // session
-    GCT_SECOND_READ = 1;
-    // Same as GCT_SECOND_READ but the first RDONLY open call is also allowed
-    // to use the cache if the conditions regarding the write handles and
-    // mtime are met
+    // Behaves as GCT_ANY_READ
+    GCT_SECOND_READ = 1 [deprecated = true];
+    // A RDONLY open call is allowed not to invalidate the guest page cache if
+    // mtime of the file has not been changed since the last cache
+    // invalidation within a given session
     GCT_ANY_READ = 2;
 }
 
@@ -562,12 +559,14 @@ message TStorageConfig
     // Use SSL for dynamic node registration.
     optional bool NodeRegistrationUseSsl = 422;
 
-    // If set to true, in some cases the client is allowed not to invalidate the
-    // guest page cache associated with the inode. It is allowed only for
-    // handles to nodes that are not being edited and are already opened
-    // within a given session
+    // Client-side (vhost) setting. If set to true, the client is allowed not
+    // to invalidate the guest page cache associated with the inode if the
+    // tablet sets GuestKeepCache in the CreateHandle response. Doesn't affect
+    // the tablet, see GuestCachingType
     optional bool GuestKeepCacheAllowed = 423;
 
+    // Tablet-side setting. Defines whether the tablet is allowed to set
+    // GuestKeepCache in the CreateHandle response
     optional EGuestCachingType GuestCachingType = 424;
 
     // In addition to the actively opened handles the tablet will also keep
