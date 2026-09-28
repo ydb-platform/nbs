@@ -85,7 +85,8 @@ TAddPipeResult TVolumeClientState::AddPipe(
             TPipeInfo{
                 .MountMode = mountMode,
                 .State = EPipeState::WAIT_START,
-                .SenderNodeId = senderNodeId});
+                .SenderNodeId = senderNodeId,
+                .ServerId = serverId});
 
         VolumeClientInfo.SetVolumeAccessMode(accessMode);
         VolumeClientInfo.SetMountFlags(mountFlags);
