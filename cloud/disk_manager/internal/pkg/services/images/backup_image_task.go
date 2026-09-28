@@ -14,6 +14,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,10 +68,23 @@ func (t *backupImageTask) Run(
 		return errors.NewNonRetriableError(err)
 	}
 
+	if len(t.state.EncryptedDek) == 0 {
+		t.state.EncryptedDek, err = t.followerS3.NewEncryptedDEK()
+		if err != nil {
+			return err
+		}
+
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
 	err = t.followerS3.PutObject(
 		ctx,
 		backup.ImageMetaKey(imageID),
-		data,
+		t.state.EncryptedDek,
+		persistence.S3Object{Data: data},
 	)
 	if err != nil {
 		return err
@@ -80,10 +94,11 @@ func (t *backupImageTask) Run(
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
-		"dataplane.ScheduleBackupChunksTasks",
+		"dataplane.BackupSnapshotChunks",
 		"",
-		&dataplane_protos.ScheduleBackupChunksTasksRequest{
-			SnapshotId: imageID,
+		&dataplane_protos.BackupSnapshotChunksRequest{
+			SnapshotId:   imageID,
+			EncryptedDek: t.state.EncryptedDek,
 		},
 	)
 	if err != nil {
