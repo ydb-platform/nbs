@@ -236,11 +236,22 @@ func run(
 			return err
 		}
 
-		followerS3 = backup.NewFollowerS3(
+		var kek []byte
+		kek, err = os.ReadFile(backupConfig.GetKekFile())
+		if err != nil {
+			return err
+		}
+
+		followerS3, err = backup.NewFollowerS3(
 			s3Client,
 			backupConfig.GetS3Bucket(),
 			backupConfig.GetS3KeyPrefix(),
+			backupConfig.GetKekId(),
+			kek,
 		)
+		if err != nil {
+			return err
+		}
 	}
 
 	dataplaneConfig := config.GetDataplaneConfig()

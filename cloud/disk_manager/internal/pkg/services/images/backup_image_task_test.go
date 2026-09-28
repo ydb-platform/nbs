@@ -60,7 +60,8 @@ func TestBackupImageTask(t *testing.T) {
 		"dataplane.BackupSnapshotChunks",
 		"",
 		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotChunksRequest) bool {
-			return request.SnapshotId == "image1"
+			return request.SnapshotId == "image1" &&
+				len(request.EncryptedDek) != 0
 		}),
 	).Return("dataplane1", nil)
 	scheduler.On(
@@ -70,7 +71,14 @@ func TestBackupImageTask(t *testing.T) {
 		"dataplane1",
 	).Return(&empty.Empty{}, nil)
 
-	followerS3 := backup.NewFollowerS3(s3, backupTestBucket, t.Name())
+	followerS3, err := backup.NewFollowerS3(
+		s3,
+		backupTestBucket,
+		t.Name(),
+		"kek1",
+		make([]byte, 32),
+	)
+	require.NoError(t, err)
 
 	task := &backupImageTask{
 		scheduler:  scheduler,
@@ -85,11 +93,7 @@ func TestBackupImageTask(t *testing.T) {
 	require.Equal(t, "dataplane1", task.state.DataplaneTaskID)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	object, err := s3.GetObject(
-		ctx,
-		backupTestBucket,
-		followerS3.Key(backup.ImageMetaKey("image1")),
-	)
+	object, err := followerS3.GetObject(ctx, backup.ImageMetaKey("image1"))
 	require.NoError(t, err)
 
 	var meta backup.ImageMeta

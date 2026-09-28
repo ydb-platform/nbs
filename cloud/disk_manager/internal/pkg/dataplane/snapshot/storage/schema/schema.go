@@ -138,6 +138,10 @@ func Create(
 				"chunk_id",
 				persistence.Optional(persistence.TypeUTF8),
 			),
+			persistence.WithColumn(
+				"encrypted_dek",
+				persistence.Optional(persistence.TypeString),
+			),
 			persistence.WithPrimaryKeyColumn(
 				"status",
 				"snapshot_id",

@@ -111,6 +111,7 @@ func (t *backupChunksTask) copyChunk(
 	err = t.followerS3.PutObject(
 		ctx,
 		backup.ChunkKey(entry.ChunkID),
+		entry.EncryptedDEK,
 		persistence.S3Object{
 			Data:     object.Data,
 			Metadata: object.Metadata,

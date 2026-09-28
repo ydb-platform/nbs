@@ -7,6 +7,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    follower_s3_test.go
     keys_test.go
     meta_test.go
 )

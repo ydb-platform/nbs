@@ -37,11 +37,8 @@ func (s *storageYDB) EnqueueBackupChunks(
 		upsert into backup_chunk_queue
 		select *
 		from AS_TABLE($entries)
-	`, s.tablesPath, backupChunkQueueKeyStructTypeString()),
-		persistence.ValueParam(
-			"$entries",
-			backupChunkQueueKeyListValue(backupChunkStatusQueued, entries),
-		),
+	`, s.tablesPath, backupChunkQueueStructTypeString()),
+		persistence.ValueParam("$entries", backupChunkQueueListValue(entries)),
 	)
 	return err
 }
@@ -59,7 +56,7 @@ func (s *storageYDB) GetBackupChunkQueue(
 		declare $status as Int64;
 		declare $limit as Uint64;
 
-		select snapshot_id, chunk_id
+		select snapshot_id, chunk_id, encrypted_dek
 		from backup_chunk_queue
 		where status = $status
 		limit $limit
@@ -81,6 +78,10 @@ func (s *storageYDB) GetBackupChunkQueue(
 			err = res.ScanNamed(
 				persistence.OptionalWithDefault("snapshot_id", &entry.SnapshotID),
 				persistence.OptionalWithDefault("chunk_id", &entry.ChunkID),
+				persistence.OptionalWithDefault(
+					"encrypted_dek",
+					&entry.EncryptedDEK,
+				),
 			)
 			if err != nil {
 				return nil, err
@@ -264,6 +265,40 @@ func (s *storageYDB) GetBackupChunkQueueLength(
 
 func backupChunkQueueKeyStructTypeString() string {
 	return "Struct<status: Int64, snapshot_id: Utf8, chunk_id: Utf8>"
+}
+
+func backupChunkQueueStructTypeString() string {
+	return "Struct<status: Int64, snapshot_id: Utf8, chunk_id: Utf8, " +
+		"encrypted_dek: String>"
+}
+
+func backupChunkQueueListValue(
+	entries []BackupChunkQueueEntry,
+) persistence.Value {
+
+	values := make([]persistence.Value, 0, len(entries))
+	for _, entry := range entries {
+		values = append(values, persistence.StructValue(
+			persistence.StructFieldValue(
+				"status",
+				persistence.Int64Value(int64(backupChunkStatusQueued)),
+			),
+			persistence.StructFieldValue(
+				"snapshot_id",
+				persistence.UTF8Value(entry.SnapshotID),
+			),
+			persistence.StructFieldValue(
+				"chunk_id",
+				persistence.UTF8Value(entry.ChunkID),
+			),
+			persistence.StructFieldValue(
+				"encrypted_dek",
+				persistence.StringValue(entry.EncryptedDEK),
+			),
+		))
+	}
+
+	return persistence.ListValue(values...)
 }
 
 func backupChunkQueueKeyListValue(

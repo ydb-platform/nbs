@@ -1728,9 +1728,21 @@ func TestBackupChunkQueue(t *testing.T) {
 	defer f.teardown()
 
 	entries := []BackupChunkQueueEntry{
-		{SnapshotID: "snap1", ChunkID: "t.snap1.0"},
-		{SnapshotID: "snap1", ChunkID: "t.snap1.1"},
-		{SnapshotID: "snap2", ChunkID: "t.snap2.0"},
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      "t.snap1.0",
+			EncryptedDEK: []byte("dek"),
+		},
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      "t.snap1.1",
+			EncryptedDEK: []byte("dek"),
+		},
+		{
+			SnapshotID:   "snap2",
+			ChunkID:      "t.snap2.0",
+			EncryptedDEK: []byte("dek"),
+		},
 	}
 	err := f.storage.EnqueueBackupChunks(f.ctx, entries)
 	require.NoError(t, err)
@@ -1778,10 +1790,26 @@ func TestDeleteCopiedBackupChunks(t *testing.T) {
 	defer f.teardown()
 
 	entries := []BackupChunkQueueEntry{
-		{SnapshotID: "snap1", ChunkID: "t.snap1.0"},
-		{SnapshotID: "snap1", ChunkID: "t.snap1.1"},
-		{SnapshotID: "snap1", ChunkID: "t.snap1.2"},
-		{SnapshotID: "snap2", ChunkID: "t.snap2.0"},
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      "t.snap1.0",
+			EncryptedDEK: []byte("dek"),
+		},
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      "t.snap1.1",
+			EncryptedDEK: []byte("dek"),
+		},
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      "t.snap1.2",
+			EncryptedDEK: []byte("dek"),
+		},
+		{
+			SnapshotID:   "snap2",
+			ChunkID:      "t.snap2.0",
+			EncryptedDEK: []byte("dek"),
+		},
 	}
 	err := f.storage.EnqueueBackupChunks(f.ctx, entries)
 	require.NoError(t, err)

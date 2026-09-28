@@ -174,8 +174,9 @@ func (t *backupSnapshotChunksTask) enqueueChunks(
 		}
 
 		batch = append(batch, storage.BackupChunkQueueEntry{
-			SnapshotID: snapshotID,
-			ChunkID:    entry.ChunkID,
+			SnapshotID:   snapshotID,
+			ChunkID:      entry.ChunkID,
+			EncryptedDEK: t.request.EncryptedDek,
 		})
 
 		if len(batch) >= t.batchSize {
@@ -278,6 +279,7 @@ func (t *backupSnapshotChunksTask) writeChunkMap(
 	return t.followerS3.PutObject(
 		ctx,
 		backup.ChunkMapKey(meta.ID),
+		t.request.EncryptedDek,
 		persistence.S3Object{Data: data},
 	)
 }

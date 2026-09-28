@@ -22,8 +22,9 @@ import (
 const backupTestBucket = "chunks-backup"
 
 type testFollower struct {
-	s3         *persistence.S3Client
-	followerS3 *backup.FollowerS3
+	s3           *persistence.S3Client
+	followerS3   *backup.FollowerS3
+	encryptedDEK []byte
 }
 
 func newTestFollower(t *testing.T, ctx context.Context) testFollower {
@@ -37,13 +38,34 @@ func newTestFollower(t *testing.T, ctx context.Context) testFollower {
 		require.NoError(t, err)
 	}
 
+	followerS3, err := backup.NewFollowerS3(
+		s3,
+		backupTestBucket,
+		t.Name(),
+		"kek1",
+		make([]byte, 32),
+	)
+	require.NoError(t, err)
+
+	encryptedDEK, err := followerS3.NewEncryptedDEK()
+	require.NoError(t, err)
+
 	return testFollower{
-		s3:         s3,
-		followerS3: backup.NewFollowerS3(s3, backupTestBucket, t.Name()),
+		s3:           s3,
+		followerS3:   followerS3,
+		encryptedDEK: encryptedDEK,
 	}
 }
 
 func (f testFollower) getObject(
+	ctx context.Context,
+	key string,
+) (persistence.S3Object, error) {
+
+	return f.followerS3.GetObject(ctx, key)
+}
+
+func (f testFollower) getRawObject(
 	ctx context.Context,
 	key string,
 ) (persistence.S3Object, error) {
@@ -62,7 +84,8 @@ func newBackupSnapshotChunksTask(
 		followerS3: follower.followerS3,
 		batchSize:  1000,
 		request: &protos.BackupSnapshotChunksRequest{
-			SnapshotId: snapshotID,
+			SnapshotId:   snapshotID,
+			EncryptedDek: follower.encryptedDEK,
 		},
 		state: &protos.BackupSnapshotChunksTaskState{},
 	}
@@ -188,7 +211,11 @@ func TestBackupSnapshotChunksTask(t *testing.T) {
 	require.Equal(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap1", ChunkID: chunk0},
+			{
+				SnapshotID:   "snap1",
+				ChunkID:      chunk0,
+				EncryptedDEK: follower.encryptedDEK,
+			},
 		},
 		queue,
 	)
@@ -301,7 +328,11 @@ func TestBackupSnapshotChunksTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	require.Equal(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap2", ChunkID: chunk1},
+			{
+				SnapshotID:   "snap2",
+				ChunkID:      chunk1,
+				EncryptedDEK: follower.encryptedDEK,
+			},
 		},
 		queue,
 	)
@@ -372,8 +403,16 @@ func TestBackupSnapshotChunksTaskEnqueuesInBatches(t *testing.T) {
 	require.ElementsMatch(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap1", ChunkID: chunk0},
-			{SnapshotID: "snap1", ChunkID: chunk1},
+			{
+				SnapshotID:   "snap1",
+				ChunkID:      chunk0,
+				EncryptedDEK: follower.encryptedDEK,
+			},
+			{
+				SnapshotID:   "snap1",
+				ChunkID:      chunk1,
+				EncryptedDEK: follower.encryptedDEK,
+			},
 		},
 		queue,
 	)
@@ -395,7 +434,11 @@ func TestBackupSnapshotChunksTaskEnqueuesInBatches(t *testing.T) {
 	require.Equal(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap1", ChunkID: chunk1},
+			{
+				SnapshotID:   "snap1",
+				ChunkID:      chunk1,
+				EncryptedDEK: follower.encryptedDEK,
+			},
 		},
 		queue,
 	)
