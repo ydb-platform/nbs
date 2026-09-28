@@ -748,7 +748,7 @@ Y_UNIT_TEST_SUITE(TTlsCertificateProviderTest)
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, future.GetValue().GetCode());
     }
 
-    Y_UNIT_TEST(ShouldRunOnDemandUpdatesConcurrentlyWithPeriodicOnes)
+    Y_UNIT_TEST(ShouldHandleOnDemandRequestsDuringPeriodicUpdates)
     {
         TTempDir tempDir;
         const TString rootPath = TStringBuilder()
