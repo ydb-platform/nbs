@@ -1057,6 +1057,86 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
             DefaultBlocksCount * 2,
             volume.GetBlocksCount());
     }
+
+    Y_UNIT_TEST(ShouldResizeSsdDirectMirror3Of5GroupVolume)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume(DefaultDiskId, DefaultBlocksCount);
+
+        std::optional<NKikimrBlockStore::TVolumeConfig> alterVolumeConfig;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        // Report the test volume as a direct volume.
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto& pathDescription =
+                            const_cast<NKikimrSchemeOp::TPathDescription&>(
+                                msg->PathDescription);
+                        pathDescription.MutableBlockStoreVolumeDescription()
+                            ->MutableVolumeConfig()
+                            ->SetStorageMediaKind(
+                                NCloud::NProto::
+                                    STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
+                        break;
+                    }
+                    case TEvSSProxy::EvModifySchemeRequest: {
+                        // Capture the resize config and reply with success.
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvModifySchemeRequest>();
+                        alterVolumeConfig =
+                            msg->ModifyScheme.GetAlterBlockStoreVolume()
+                                .GetVolumeConfig();
+
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvModifySchemeResponse>();
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.SendResizeVolumeRequest(DefaultDiskId, DefaultBlocksCount);
+        auto response = service.RecvResizeVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
+        UNIT_ASSERT(!alterVolumeConfig);
+
+        service.SendResizeVolumeRequest(DefaultDiskId, DefaultBlocksCount / 2);
+        response = service.RecvResizeVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        UNIT_ASSERT(!alterVolumeConfig);
+
+        service.SendResizeVolumeRequest(DefaultDiskId, DefaultBlocksCount * 2);
+        response = service.RecvResizeVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        UNIT_ASSERT(alterVolumeConfig);
+        UNIT_ASSERT_VALUES_EQUAL(1, alterVolumeConfig->PartitionsSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultBlocksCount * 2,
+            alterVolumeConfig->GetPartitions(0).GetBlockCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            alterVolumeConfig->ExplicitChannelProfilesSize());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

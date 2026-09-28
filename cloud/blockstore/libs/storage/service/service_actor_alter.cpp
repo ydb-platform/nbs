@@ -127,6 +127,10 @@ private:
 
     void DescribeVolume(const TActorContext& ctx);
 
+    bool PrepareSsdDirectMirror3Of5GroupVolumeResize(
+        const TActorContext& ctx,
+        const NKikimrBlockStore::TVolumeConfig& oldVolumeConfig);
+
     void StatVolume(const TActorContext& ctx);
 
     void AlterVolume(
@@ -240,6 +244,54 @@ void TAlterVolumeActor::DescribeVolume(const TActorContext& ctx)
             /*exactDiskIdMatch=*/false));
 }
 
+bool TAlterVolumeActor::PrepareSsdDirectMirror3Of5GroupVolumeResize(
+    const TActorContext& ctx,
+    const NKikimrBlockStore::TVolumeConfig& oldVolumeConfig)
+{
+    if (SetupChannelsRequested) {
+        Error = MakeError(
+            E_NOT_IMPLEMENTED,
+            "SetupChannels is not supported for ssd-direct-mirror3of5-group "
+            "volumes");
+        ReplyAndDie(ctx);
+        return false;
+    }
+
+    if (oldVolumeConfig.PartitionsSize() != 1) {
+        Error = MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "ssd-direct-mirror3of5-group volume should have exactly "
+                   "one partition, got "
+                << oldVolumeConfig.PartitionsSize());
+        ReplyAndDie(ctx);
+        return false;
+    }
+
+    if (NewBlocksCount) {
+        const ui64 oldBlocksCount =
+            oldVolumeConfig.GetPartitions(0).GetBlockCount();
+
+        if (NewBlocksCount < oldBlocksCount) {
+            Error = MakeError(E_ARGUMENT, "Cannot decrease volume size");
+            ReplyAndDie(ctx);
+            return false;
+        }
+
+        if (NewBlocksCount == oldBlocksCount) {
+            Error = MakeError(
+                S_ALREADY,
+                "Volume already has the required settings");
+            WaitReady(ctx);
+            return false;
+        }
+
+        VolumeConfig.AddPartitions()->SetBlockCount(NewBlocksCount);
+    }
+
+    return true;
+}
+
 void TAlterVolumeActor::StatVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateStatVolume);
@@ -326,7 +378,13 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
         ConfigVersion = oldVolumeConfig.GetVersion();
     }
 
-    if (NewBlocksCount || SetupChannelsRequested) {
+    const auto mediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
+        oldVolumeConfig.GetStorageMediaKind());
+    if (IsSsdDirectMirror3Of5GroupMediaKind(mediaKind)) {
+        if (!PrepareSsdDirectMirror3Of5GroupVolumeResize(ctx, oldVolumeConfig)) {
+            return;
+        }
+    } else if (NewBlocksCount || SetupChannelsRequested) {
         ui32 oldBlocksCount = 0;
         for (const auto& partition: oldVolumeConfig.GetPartitions()) {
             oldBlocksCount += partition.GetBlockCount();
