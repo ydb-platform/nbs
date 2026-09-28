@@ -10930,10 +10930,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     }
 
     Y_UNIT_TEST(
-        ShouldRejectSmallWritesAndZerosAfterReachingFreshLogicalBlocksByteCountHardLimit)
+        ShouldRejectSmallWritesAndZerosAfterReachingFreshBlobCountHardLimit)
     {
         NProto::TStorageServiceConfig config;
-        config.SetFreshLogicalBlocksByteCountHardLimit(8_KB);
+        config.SetFreshBlobCountHardLimit(2);
         config.SetFlushThreshold(4_MB);
         config.SetFreshChannelWriteRequestsEnabled(true);
         config.SetFreshChannelZeroRequestsEnabled(true);
@@ -10956,7 +10956,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             NProto::EF_SILENT));
         UNIT_ASSERT_STRING_CONTAINS(
             zeroResponse->GetErrorReason(),
-            "FreshLogicalBlocksByteCountHardLimit");
+            "FreshBlobCountHardLimit");
 
         partition.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(2), 1);
         auto writeResponse = partition.RecvWriteBlocksResponse();
@@ -10969,7 +10969,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             NProto::EF_SILENT));
         UNIT_ASSERT_STRING_CONTAINS(
             writeResponse->GetErrorReason(),
-            "FreshLogicalBlocksByteCountHardLimit");
+            "FreshBlobCountHardLimit");
 
         partition.Flush();
 

@@ -189,7 +189,7 @@ void TWriteFreshBlocksActor::AddBlocks(const NActors::TActorContext& ctx)
 
     if (SharedState) {
         SharedState->UnflushedFreshBlobByteCount.fetch_add(BlobSize);
-        SharedState->UnflushedFreshBlocksCount.fetch_add(BlockCount);
+        SharedState->UnflushedFreshBlobCount.fetch_add(1);
     }
 
     IEventBasePtr request =

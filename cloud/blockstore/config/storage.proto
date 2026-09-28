@@ -1693,9 +1693,9 @@ message TStorageServiceConfig
     // resuming after secure erase.
     optional bool QueryAvailableStorageForResumingDevicesEnabled = 528;
 
-    // Maximum allowed logical size of all blocks (block count * block size) in
-    // fresh after which we start to reject write and zero requests.
-    optional uint64 FreshLogicalBlocksByteCountHardLimit = 529;
+    // Maximum allowed number of unflushed fresh blobs after which we start to
+    // reject write and zero requests.
+    optional uint64 FreshBlobCountHardLimit = 529;
 
     // Enables compaction triggered by the number of mixed blocks for HDD
     // volumes.

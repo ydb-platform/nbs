@@ -75,11 +75,9 @@ public:
     NPartition::TThreadSafePartStats PartStats;
     NPartition::TGroupDowntimes GroupDowntimes;
 
-    // UnflushedFreshBlobByteCount is the physical size of encoded fresh blobs,
-    // while UnflushedFreshBlocksCount is the logical number of fresh blocks,
-    // including blocks from both write and zero requests.
+    // Physical size and number of unflushed encoded fresh blobs.
     std::atomic<ui64> UnflushedFreshBlobByteCount = 0;
-    std::atomic<ui64> UnflushedFreshBlocksCount = 0;
+    std::atomic<ui64> UnflushedFreshBlobCount = 0;
 
     std::atomic<ui64> WriteAndZeroRequestsInProgress = 0;
 

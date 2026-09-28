@@ -33,10 +33,9 @@ void TFreshBlocksWriterActor::WriteFreshBlocks(
 
     if (auto error = CheckFreshHardLimits(
             SharedState->UnflushedFreshBlobByteCount.load(),
-            SharedState->UnflushedFreshBlocksCount.load() *
-                PartitionConfig.GetBlockSize(),
+            SharedState->UnflushedFreshBlobCount.load(),
             Config->GetFreshByteCountHardLimit(),
-            Config->GetFreshLogicalBlocksByteCountHardLimit());
+            Config->GetFreshBlobCountHardLimit());
         HasError(error))
     {
         for (auto& r: requestsInBuffer) {
@@ -142,10 +141,9 @@ void TFreshBlocksWriterActor::ZeroFreshBlocks(
 {
     if (auto error = CheckFreshHardLimits(
             SharedState->UnflushedFreshBlobByteCount.load(),
-            SharedState->UnflushedFreshBlocksCount.load() *
-                PartitionConfig.GetBlockSize(),
+            SharedState->UnflushedFreshBlobCount.load(),
             Config->GetFreshByteCountHardLimit(),
-            Config->GetFreshLogicalBlocksByteCountHardLimit());
+            Config->GetFreshBlobCountHardLimit());
         HasError(error))
     {
         auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(

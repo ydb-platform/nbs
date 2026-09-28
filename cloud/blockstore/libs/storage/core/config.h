@@ -354,7 +354,7 @@ public:
     ui32 GetCleanupQueueBytesFeatureMaxValue() const;
     ui32 GetMaxWriteCostMultiplier() const;
     ui32 GetFreshByteCountHardLimit() const;
-    ui64 GetFreshLogicalBlocksByteCountHardLimit() const;
+    ui64 GetFreshBlobCountHardLimit() const;
     bool GetDiskSpaceScoreThrottlingEnabled() const;
 
     TDuration GetStatsUploadInterval() const;

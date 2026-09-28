@@ -1022,11 +1022,11 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
     }
 
     Y_UNIT_TEST(
-        ShouldRejectSmallWritesAndZerosAfterReachingFreshLogicalBlocksByteCountHardLimit)
+        ShouldRejectSmallWritesAndZerosAfterReachingFreshBlobCountHardLimit)
     {
         auto config = DefaultConfig();
         config.SetFreshBlocksWriterEnabled(true);
-        config.SetFreshLogicalBlocksByteCountHardLimit(8_KB);
+        config.SetFreshBlobCountHardLimit(3);
         config.SetFlushThreshold(4_MB);
 
         TMyTestEnv testEnv;
@@ -1039,10 +1039,10 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
         fbwClient.WaitReady();
 
         fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 1);
-        // The previous write becomes garbage and should not be accounted in
-        // the unflushed fresh bytes count.
+        // Overwriting a block creates another fresh blob. Both blobs are
+        // accounted until they are flushed.
         fbwClient.WriteBlocks(TBlockRange32::MakeOneBlock(0), 2);
-        // Zero block should be accounted in the unflushed fresh bytes count.
+        // A zero request also creates a fresh blob.
         fbwClient.ZeroBlocks(TBlockRange32::MakeOneBlock(1));
 
         fbwClient.SendWriteBlocksRequest(TBlockRange32::MakeOneBlock(2), 1);
@@ -1056,7 +1056,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             NProto::EF_SILENT));
         UNIT_ASSERT_STRING_CONTAINS(
             writeResponse->GetErrorReason(),
-            "FreshLogicalBlocksByteCountHardLimit");
+            "FreshBlobCountHardLimit");
 
         fbwClient.SendZeroBlocksRequest(3);
         auto zeroResponse = fbwClient.RecvZeroBlocksResponse();
@@ -1069,7 +1069,7 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             NProto::EF_SILENT));
         UNIT_ASSERT_STRING_CONTAINS(
             writeResponse->GetErrorReason(),
-            "FreshLogicalBlocksByteCountHardLimit");
+            "FreshBlobCountHardLimit");
 
         partition.Flush();
 
@@ -1088,10 +1088,10 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             zeroResponse->GetErrorReason());
     }
 
-    Y_UNIT_TEST(ShouldInitializeFreshLogicalBlocksCountBeforeStartupFlushCompletes)
+    Y_UNIT_TEST(ShouldInitializeFreshBlobCountBeforeStartupFlushCompletes)
     {
         auto config = DefaultConfig();
-        config.SetFreshLogicalBlocksByteCountHardLimit(8_KB);
+        config.SetFreshBlobCountHardLimit(2);
         config.SetFlushThreshold(4_MB);
 
         TMyTestEnv testEnv;

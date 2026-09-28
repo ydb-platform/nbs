@@ -42,10 +42,9 @@ void TPartitionActor::WriteFreshBlocks(
 
     if (auto error = CheckFreshHardLimits(
             State->GetUnflushedFreshBlobByteCount(),
-            static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
-                State->GetBlockSize(),
+            State->GetUnflushedFreshBlobCount(),
             Config->GetFreshByteCountHardLimit(),
-            Config->GetFreshLogicalBlocksByteCountHardLimit());
+            Config->GetFreshBlobCountHardLimit());
         HasError(error))
     {
         for (auto& r: requestsInBuffer) {
@@ -193,7 +192,6 @@ void TPartitionActor::HandleAddFreshBlocks(
     const TActorContext& ctx)
 {
     auto* msg = ev->Get();
-    ui64 removedBlocksCount = 0;
 
     STORAGE_VERIFY(
         msg->WriteHandlers.size() == msg->BlockRanges.size() ||
@@ -207,8 +205,7 @@ void TPartitionActor::HandleAddFreshBlocks(
         if (!msg->WriteHandlers) {
             State->ZeroFreshBlocks(
                 blockRange,
-                msg->CommitId,
-                removedBlocksCount);
+                msg->CommitId);
             State->DecrementFreshBlocksInFlight(blockRange.Size());
 
             continue;
@@ -224,8 +221,7 @@ void TPartitionActor::HandleAddFreshBlocks(
                 blockRange,
                 msg->CommitId,
                 sgList,
-                msg->BlobId,
-                removedBlocksCount);
+                msg->BlobId);
             State->DecrementFreshBlocksInFlight(blockRange.Size());
         } else {
             LOG_ERROR(
@@ -246,10 +242,6 @@ void TPartitionActor::HandleAddFreshBlocks(
     }
 
     State->AddFreshBlob(msg->CommitId, msg->BlobSize);
-
-    if (FreshBlocksWriter) {
-        SharedState->UnflushedFreshBlocksCount.fetch_sub(removedBlocksCount);
-    }
 
     // TODO(NBS-1976): update used blocks map
 
@@ -463,10 +455,9 @@ void TPartitionActor::ZeroFreshBlocks(
 
     if (auto error = CheckFreshHardLimits(
             State->GetUnflushedFreshBlobByteCount(),
-            static_cast<ui64>(State->GetUnflushedFreshBlocksCount()) *
-                State->GetBlockSize(),
+            State->GetUnflushedFreshBlobCount(),
             Config->GetFreshByteCountHardLimit(),
-            Config->GetFreshLogicalBlocksByteCountHardLimit());
+            Config->GetFreshBlobCountHardLimit());
         HasError(error))
     {
         auto response = std::make_unique<TEvService::TEvZeroBlocksResponse>(

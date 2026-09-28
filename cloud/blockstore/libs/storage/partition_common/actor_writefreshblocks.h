@@ -37,20 +37,17 @@ NActors::IEventBasePtr CreateWriteBlocksResponse(bool replyLocal, T&&... args)
 
 inline NProto::TError CheckFreshHardLimits(
     ui64 freshByteCount,
-    ui64 freshLogicalBlocksByteCount,
+    ui64 freshBlobCount,
     ui64 freshByteCountHardLimit,
-    ui64 freshLogicalBlocksByteCountHardLimit)
+    ui64 freshBlobCountHardLimit)
 {
     TString message;
     if (freshByteCount >= freshByteCountHardLimit) {
         message = TStringBuilder()
                   << "FreshByteCountHardLimit exceeded: " << freshByteCount;
-    } else if (
-        freshLogicalBlocksByteCount >= freshLogicalBlocksByteCountHardLimit)
-    {
+    } else if (freshBlobCount >= freshBlobCountHardLimit) {
         message = TStringBuilder()
-                  << "FreshLogicalBlocksByteCountHardLimit exceeded: "
-                  << freshLogicalBlocksByteCount;
+                  << "FreshBlobCountHardLimit exceeded: " << freshBlobCount;
     } else {
         return {};
     }

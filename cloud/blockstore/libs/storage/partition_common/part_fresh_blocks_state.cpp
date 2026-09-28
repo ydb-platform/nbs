@@ -186,8 +186,7 @@ void TPartitionFreshBlocksState::WriteFreshBlocks(
     const TBlockRange32& writeRange,
     ui64 commitId,
     TSgList sglist,
-    TPartialBlobId blobId,
-    ui64& removedBlocksCount)
+    TPartialBlobId blobId)
 {
     Y_ABORT_UNLESS(writeRange.Size() == sglist.size());
 
@@ -195,21 +194,18 @@ void TPartitionFreshBlocksState::WriteFreshBlocks(
         writeRange,
         commitId,
         [&](ui32 index) { return sglist[index]; },
-        blobId,
-        removedBlocksCount);
+        blobId);
 }
 
 void TPartitionFreshBlocksState::ZeroFreshBlocks(
     const TBlockRange32& zeroRange,
-    ui64 commitId,
-    ui64& removedBlocksCount)
+    ui64 commitId)
 {
     WriteFreshBlocksImpl(
         zeroRange,
         commitId,
         [](ui32) { return TBlockDataRef(); },
-        {},  // blobId
-        removedBlocksCount);
+        {});  // blobId
 }
 
 void TPartitionFreshBlocksState::DeleteFreshBlock(
@@ -230,8 +226,7 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
     const TBlockRange32& writeRange,
     ui64 commitId,
     auto getBlockContent,
-    TPartialBlobId blobId,
-    ui64& removedBlocksCount)
+    TPartialBlobId blobId)
 {
     TVector<ui64> checkpoints;
     CommitIdsState.GetCheckpointCommitIds(checkpoints);
@@ -269,7 +264,6 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
                 false);   // isStoredInDb
 
             if (removed) {
-                ++removedBlocksCount;
                 DecrementUnflushedFreshBlocksFromChannelCount(1);
                 ThreadSafeState->AccessTrimFreshLogBarriers()->ReleaseBarrier(
                     garbageCommitId);

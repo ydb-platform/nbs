@@ -762,16 +762,13 @@ struct TEvPartitionPrivate
     {
         TVector<ui64> FlushedFreshBlobCommitIds;
         TFlushedCommitIds FlushedCommitIdsFromChannel;
-        ui64 FlushedBlocksCount = 0;
 
         TFlushCompleted(
             TVector<ui64> flushedFreshBlobCommitIds,
-            TFlushedCommitIds flushedCommitIdsFromChannel,
-            ui64 flushedBlocksCount)
+            TFlushedCommitIds flushedCommitIdsFromChannel)
             : FlushedFreshBlobCommitIds(std::move(flushedFreshBlobCommitIds))
             , FlushedCommitIdsFromChannel(
                   std::move(flushedCommitIdsFromChannel))
-            , FlushedBlocksCount(flushedBlocksCount)
         {}
     };
 
