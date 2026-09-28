@@ -45,7 +45,9 @@ inline NProto::TError CheckFreshHardLimits(
     if (freshByteCount >= freshByteCountHardLimit) {
         message = TStringBuilder()
                   << "FreshByteCountHardLimit exceeded: " << freshByteCount;
-    } else if (freshBlobCount >= freshBlobCountHardLimit) {
+    } else if (
+        freshBlobCountHardLimit && freshBlobCount >= freshBlobCountHardLimit)
+    {
         message = TStringBuilder()
                   << "FreshBlobCountHardLimit exceeded: " << freshBlobCount;
     } else {

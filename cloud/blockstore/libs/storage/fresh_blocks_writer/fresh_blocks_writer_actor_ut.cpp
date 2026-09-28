@@ -1088,6 +1088,24 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             zeroResponse->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldDisableFreshBlobCountHardLimitWhenZero)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshBlobCountHardLimit(0);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+
+        fbwClient.WriteBlocks(0, '1');
+        fbwClient.ZeroBlocks(1);
+    }
+
     Y_UNIT_TEST(ShouldInitializeFreshBlobCountBeforeStartupFlushCompletes)
     {
         auto config = DefaultConfig();
