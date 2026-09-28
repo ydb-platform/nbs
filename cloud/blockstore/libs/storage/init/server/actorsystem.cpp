@@ -623,10 +623,6 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 
     const NServer::TServerAppConfig staticServerConfig(
         sArgs.StaticBlockstoreConfigProto.GetServer());
-    Y_ABORT_UNLESS(
-        !staticServerConfig.GetDynamicYamlConfigurationEnabled() ||
-        startupStorageConfig->GetStorageConfigControls());
-
     const bool enableConfigsDispatcher = ShouldEnableConfigsDispatcher(
         staticServerConfig,
         *startupStorageConfig);

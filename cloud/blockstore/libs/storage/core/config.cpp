@@ -1020,29 +1020,11 @@ constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The private control collection owned by one TStorageConfigControls. It keeps
-// one TControlWrapper for every read-write storage setting and applies one of
-// these default-value policies:
-//  - a config-bound set:
-//      - created by the two-argument TStorageConfig constructor
-//      - uses values from its initial proto as ICB defaults
-//      - may be shared only by TStorageConfig copy construction, which also
-//        copies the raw proto
-//  - a config-independent set:
-//      - uses a reserved default to represent "no override" (represents only
-//        explicit ICB overrides)
-//      - may be used by (shared between) multiple TStorageConfig instances
+// The control collection owned by TStorageConfigControls and shared by storage
+// configurations. It initializes one wrapper per read-write field from a raw
+// proto and tracks registration with one non-owning board pointer.
 struct TStorageConfigControls::TImpl
 {
-    // The reserved default used by config-independent controls to mean
-    // "no override". Their lower bound is NoOverride + 1, so ICB cannot set
-    // this value itself.
-    static constexpr TAtomicBase NoOverride = Min<TAtomicBase>();
-
-    // The control-set mode: true for config-independent defaults that represent
-    // absent overrides; false for defaults bound to one configuration proto.
-    const bool ConfigIndependent;
-
     // Registration-state lock. It serializes the first registration and
     // protects RegisteredBoard.
     TMutex RegistrationLock;
@@ -1060,21 +1042,16 @@ struct TStorageConfigControls::TImpl
 
 #undef BLOCKSTORE_CONFIG_CONTROL
 
-    explicit TImpl(
-        const NProto::TStorageServiceConfig& storageServiceConfig,
-        bool configIndependent)
-        : ConfigIndependent(configIndependent)
+    explicit TImpl(const NProto::TStorageServiceConfig& storageServiceConfig)
     {
 #define BLOCKSTORE_CONFIG_RESET(name, type, value)                             \
     Control##name.Reset(                                                       \
-        ConfigIndependent                                                      \
-            ? NoOverride                                                       \
-            : ConvertToAtomicBase<type>(BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(    \
-                  storageServiceConfig,                                        \
-                  name,                                                        \
-                  type,                                                        \
-                  value)),                                                     \
-        ConfigIndependent ? NoOverride + 1 : Min<TAtomicBase>(),               \
+        ConvertToAtomicBase<type>(BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(          \
+            storageServiceConfig,                                              \
+            name,                                                              \
+            type,                                                              \
+            value)),                                                           \
+        Min<TAtomicBase>(),                                                    \
         Max<TAtomicBase>());                                                   \
     // BLOCKSTORE_CONFIG_RESET
 
@@ -1094,13 +1071,9 @@ struct TStorageConfigControls::TImpl
     }
 };
 
-TStorageConfigControls::TStorageConfigControls()
-    : Impl(new TImpl(NProto::TStorageServiceConfig(), true))
-{}
-
 TStorageConfigControls::TStorageConfigControls(
     const NProto::TStorageServiceConfig& storageServiceConfig)
-    : Impl(new TImpl(storageServiceConfig, false))
+    : Impl(new TImpl(storageServiceConfig))
 {}
 
 TStorageConfigControls::~TStorageConfigControls() = default;
@@ -1130,16 +1103,31 @@ void TStorageConfigControls::Register(TControlBoard& controlBoard)
 
 #undef BLOCKSTORE_CONFIG_REGISTER
 
-    // On a name collision, RegisterSharedControl replaces the wrapper's control
-    // with the TControl object already registered by another control set.
-    //  - a config-independent wrapper would then lose its NoOverride default
-    //    and adopt that object's default, bounds, and current value
-    //  - config-bound wrappers intentionally preserve the existing
-    //    shared-registration behavior.
-    // Register one config-independent set per board and share it between
-    // TStorageConfig instances; abort if this contract is violated.
-    Y_ABORT_UNLESS(!Impl->ConfigIndependent || allControlsWereInserted);
+    // Reject collisions: adopting another set's controls would replace the
+    // defaults and wrappers already shared by TStorageConfig instances.
+    Y_ABORT_UNLESS(allControlsWereInserted);
     Impl->RegisteredBoard = &controlBoard;
+}
+
+// Update changed defaults from the raw configuration and compiled fallbacks.
+// Compare defaults rather than values to preserve overrides of unchanged
+// parameters. Write Value before Default for changed parameters; concurrent
+// ICB value writes may win or be overwritten.
+void TStorageConfigControls::UpdateDefaults(
+    const NProto::TStorageServiceConfig& config)
+{
+#define BLOCKSTORE_CONFIG_UPDATE_DEFAULT(name, type, value)                    \
+    {                                                                          \
+        const auto defaultValue = ConvertToAtomicBase<type>(                   \
+            BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value));    \
+        if (Impl->Control##name.GetDefault() != defaultValue) {                \
+            Impl->Control##name = defaultValue;                                \
+        }                                                                      \
+    }
+
+    BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_UPDATE_DEFAULT)
+
+#undef BLOCKSTORE_CONFIG_UPDATE_DEFAULT
 }
 
 std::optional<i64> TStorageConfigControls::GetOverride(TStringBuf name) const
@@ -1159,18 +1147,18 @@ std::optional<i64> TStorageConfigControls::GetOverride(TStringBuf name) const
 
 bool TStorageConfigControls::RestoreDefault(TStringBuf name)
 {
+    TControlBoard* controlBoard;
     {
         TGuard<TMutex> guard(Impl->RegistrationLock);
-        if (!Impl->RegisteredBoard) {
+        controlBoard = Impl->RegisteredBoard;
+        if (!controlBoard) {
             return false;
         }
     }
 
 #define BLOCKSTORE_CONFIG_RESTORE_DEFAULT(field, ...)                          \
     if (name == #field) {                                                      \
-        /* Assign only GetDefault(), because operator= rewrites the control's  \
-           Default as well as control's Value */                               \
-        Impl->Control##field = Impl->Control##field.GetDefault();              \
+        controlBoard->RestoreDefault("BlockStore_" #field);                    \
         return true;                                                           \
     }                                                                          \
     // BLOCKSTORE_CONFIG_RESTORE_DEFAULT
@@ -1189,10 +1177,7 @@ struct TStorageConfig::TImpl
     NProto::TStorageServiceConfig StorageServiceConfig;
     NFeatures::TFeaturesConfigConstPtr FeaturesConfig;
 
-    // Non-null ICB controls for all read-write storage fields. The
-    // three-argument constructor can reuse a config-independent collection;
-    // the two-argument constructor creates a config-bound collection; the copy
-    // constructor shares the collection in either mode.
+    // Non-null ICB controls shared by copies and Merge results.
     TStorageConfigControlsPtr Controls;
 
     TImpl(
@@ -1255,11 +1240,9 @@ TStorageConfig::TStorageConfig(
     NFeatures::TFeaturesConfigConstPtr featuresConfig,
     TStorageConfigControlsPtr controls)
 {
-    Y_ABORT_UNLESS(!controls || controls->Impl->ConfigIndependent);
-
     if (!controls) {
-        controls = TStorageConfigControlsPtr(
-            new TStorageConfigControls(storageServiceConfig));
+        controls =
+            std::make_shared<TStorageConfigControls>(storageServiceConfig);
     }
 
     Impl = std::make_unique<TImpl>(
@@ -1285,7 +1268,7 @@ const TStorageConfigControls::TImpl* TStorageConfig::ControlsImpl() const
 TStorageConfigControlsPtr
 TStorageConfig::GetStorageConfigControls() const
 {
-    return ControlsImpl()->ConfigIndependent ? Impl->Controls : nullptr;
+    return Impl->Controls;
 }
 
 void TStorageConfig::SetFeaturesConfig(
@@ -1434,14 +1417,13 @@ TString TStorageConfig::Get##name##FeatureValue(                               \
 
 #undef BLOCKSTORE_STRING_FEATURE_GETTER
 
+// Apply the patch without materializing ICB overrides into the raw proto.
+// Reuse unchanged configurations and retain live controls when creating a copy.
 TStorageConfigConstPtr TStorageConfig::Merge(
     TStorageConfigConstPtr config,
     const NProto::TStorageServiceConfig& patch)
 {
-    auto controls = config->GetStorageConfigControls();
-    const auto configProto = controls
-                                 ? config->Impl->StorageServiceConfig
-                                 : config->GetEffectiveStorageConfigProto();
+    const auto& configProto = config->Impl->StorageServiceConfig;
     auto patchedConfigProto = configProto;
     patchedConfigProto.MergeFrom(patch);
     if (google::protobuf::util::MessageDifferencer::Equals(
@@ -1454,7 +1436,7 @@ TStorageConfigConstPtr TStorageConfig::Merge(
     return std::make_shared<TStorageConfig>(
         std::move(patchedConfigProto),
         config->Impl->FeaturesConfig,
-        std::move(controls));
+        config->Impl->Controls);
 }
 
 ui64 GetAllocationUnit(

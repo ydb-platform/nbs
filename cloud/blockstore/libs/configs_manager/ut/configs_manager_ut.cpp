@@ -8,6 +8,7 @@
 
 #include <contrib/ydb/core/cms/console/configs_dispatcher.h>
 #include <contrib/ydb/core/cms/console/console.h>
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/testlib/tablet_helpers.h>
 
 #include <library/cpp/logger/log.h>
@@ -157,6 +158,8 @@ void TFixture::SetUp(NUnitTest::TTestContext&)
         NProto::PREEMPTION_MOVE_LEAST_HEAVY);
     ConfigHolder = std::make_shared<TBlockstoreConfigHolder>(
         MakeBlockstoreConfig(startupConfig, dynamicConfig, Controls));
+    Controls->UpdateDefaults(
+        MergeBlockstoreConfig(startupConfig, dynamicConfig).GetStorageService());
 
     Manager = Runtime.Register(CreateConfigsManager({
         .ConfigHolder = ConfigHolder,
@@ -281,6 +284,83 @@ void TFixture::Unsubscribe(TActorId requester, TActorId subscriber)
 
 Y_UNIT_TEST_SUITE(TConfigsManagerTest)
 {
+    // Check that publication resets only changed ICB defaults and that removal
+    // restores the static base without changing retained snapshot protos.
+    Y_UNIT_TEST_F(ShouldUpdateOnlyChangedIcbDefaults, TFixture)
+    {
+        // Retain the startup snapshot and install an operator override.
+        auto& board = *Runtime.GetAppData().Icb;
+        Controls->Register(board);
+        NKikimr::TControlWrapper control;
+        UNIT_ASSERT(!board.RegisterSharedControl(
+            control,
+            "BlockStore_WriteBlobThreshold"));
+        const auto initialConfig = ConfigHolder->Get();
+        TAtomic previousValue = {};
+        board.SetValue("BlockStore_WriteBlobThreshold", 400, previousValue);
+
+        // Replace the configured value and expose the new native default.
+        auto dynamicConfig = MakeConfig(300);
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
+            70);
+        WaitForAck(70);
+        UNIT_ASSERT_VALUES_EQUAL(300, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(300, static_cast<i64>(control));
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            initialConfig->GetStorageConfig()->GetWriteBlobThreshold());
+
+        // Publish another field without overwriting the unchanged field's ICB.
+        board.SetValue("BlockStore_WriteBlobThreshold", 500, previousValue);
+        dynamicConfig.MutableStorageService()->SetMaxMigrationIoDepth(7);
+        const auto beforeUnrelatedUpdate = ConfigHolder->Get();
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
+            71);
+        WaitForAck(71);
+        UNIT_ASSERT_UNEQUAL(
+            beforeUnrelatedUpdate.Get(),
+            ConfigHolder->Get().Get());
+        UNIT_ASSERT_VALUES_EQUAL(300, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(500, static_cast<i64>(control));
+        UNIT_ASSERT_VALUES_EQUAL(
+            500,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+
+        // Preserve the override and snapshot for duplicate and rejected input.
+        const auto publishedConfig = ConfigHolder->Get();
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
+            72);
+        WaitForAck(72);
+        const auto parser = CreateBlockstoreOpaqueConfigParser();
+        SendNotification(parser("storage_service: invalid"), 73);
+        TAutoPtr<IEventHandle> handle;
+        UNIT_ASSERT(!Runtime.GrabEdgeEventRethrow<
+                     TEvConsole::TEvConfigNotificationResponse>(
+            handle,
+            TDuration::MilliSeconds(10)));
+        UNIT_ASSERT_EQUAL(publishedConfig.Get(), ConfigHolder->Get().Get());
+        UNIT_ASSERT_VALUES_EQUAL(300, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(500, static_cast<i64>(control));
+
+        // Remove the dynamic source and reset only the changed baselines.
+        SendNotification({}, 74);
+        WaitForAck(74);
+        UNIT_ASSERT_VALUES_EQUAL(100, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(100, static_cast<i64>(control));
+        UNIT_ASSERT_VALUES_EQUAL(
+            100,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            publishedConfig->GetStorageConfig()->GetWriteBlobThreshold());
+    }
+
     // Check initial delivery and independent updates without subscriber ACKs.
     Y_UNIT_TEST_F(
         ShouldNotifySubscribersAfterPublicationWithoutWaitingForAck,
