@@ -159,8 +159,7 @@ public:
                     CreateConfigsManager({
                         .ConfigHolder = std::move(ConfigHolder),
                         .StaticConfig = Args.StaticBlockstoreConfigProto,
-                        .InitialDynamicConfig =
-                            Args.InitialDynamicBlockstoreConfig,
+                        .InitialDynamicConfig = Args.CmsBlockstoreConfig,
                         .StorageConfigControls =
                             storageConfig->GetStorageConfigControls(),
                     }),
