@@ -1088,6 +1088,113 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             zeroResponse->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldInitializeFreshLogicalBlocksCountBeforeStartupFlushCompletes)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshLogicalBlocksByteCountHardLimit(8_KB);
+        config.SetFlushThreshold(4_MB);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+        fbwClient.WriteBlocks(0, '1');
+
+        std::unique_ptr<IEventHandle> waitReadyResponse;
+        std::unique_ptr<IEventHandle> addBlobsResponse;
+        bool interceptStartup = true;
+        bool freshChannelsInfoReceived = false;
+        bool flushCompleted = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (interceptStartup &&
+                    event->GetTypeRewrite() ==
+                        TEvPartition::EvWaitReadyResponse &&
+                    !waitReadyResponse)
+                {
+                    waitReadyResponse.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                if (interceptStartup &&
+                    event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsResponse &&
+                    !addBlobsResponse)
+                {
+                    addBlobsResponse.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                freshChannelsInfoReceived |=
+                    event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvGetFreshChannelsInfoResponse;
+                flushCompleted |= event->GetTypeRewrite() ==
+                                  TEvPartitionPrivate::EvFlushCompleted;
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        partition.KillTablet();
+        partition.ReconnectPipe();
+
+        TDispatchOptions dispatchOptions;
+        dispatchOptions.CustomFinalCondition = [&]()
+        {
+            return waitReadyResponse && addBlobsResponse;
+        };
+        runtime.DispatchEvents(dispatchOptions, 10ms);
+
+        UNIT_ASSERT(waitReadyResponse);
+        UNIT_ASSERT(addBlobsResponse);
+        UNIT_ASSERT(!flushCompleted);
+
+        runtime.SendAsync(waitReadyResponse.release());
+
+        dispatchOptions.CustomFinalCondition = [&]()
+        {
+            return freshChannelsInfoReceived;
+        };
+        runtime.DispatchEvents(dispatchOptions, 10ms);
+
+        UNIT_ASSERT(freshChannelsInfoReceived);
+        UNIT_ASSERT(!flushCompleted);
+
+        interceptStartup = false;
+        runtime.SendAsync(addBlobsResponse.release());
+
+        dispatchOptions.CustomFinalCondition = [&]()
+        {
+            return flushCompleted;
+        };
+        runtime.DispatchEvents(dispatchOptions, 10ms);
+
+        UNIT_ASSERT(flushCompleted);
+
+        auto newFbwClient = testEnv.GetFreshBlocksWriterClient();
+        newFbwClient.WaitReady();
+
+        newFbwClient.SendWriteBlocksRequest(1, '2');
+        auto response = newFbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        newFbwClient.SendWriteBlocksRequest(2, '3');
+        response = newFbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+    }
+
     Y_UNIT_TEST(ShouldNotTrimInProgressWrites)
     {
         TMyTestEnv testEnv;
