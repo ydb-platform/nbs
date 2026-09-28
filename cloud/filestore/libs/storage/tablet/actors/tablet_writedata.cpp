@@ -25,6 +25,7 @@ TWriteDataActor::TWriteDataActor(
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
+        ui32 nodeType,
         TVector<TMergedBlob> blobs,
         TWriteRange writeRange,
         IProfileLogPtr profileLog,
@@ -36,6 +37,7 @@ TWriteDataActor::TWriteDataActor(
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
     , CommitId(commitId)
+    , NodeType(nodeType)
     , Blobs(std::move(blobs))
     , WriteRange(writeRange)
     , ProfileLog(std::move(profileLog))
@@ -138,6 +140,7 @@ void TWriteDataActor::ReplyAndDie(
             TSet<ui32>(),
             CommitId,
             WriteRange.NodeId,
+            NodeType,
             1,
             BlobsSize,
             ctx.Now() - RequestInfo->StartedTs,

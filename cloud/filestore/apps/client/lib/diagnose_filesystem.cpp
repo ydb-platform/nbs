@@ -126,6 +126,20 @@ private:
         return result;
     }
 
+    static TString NodeTypeToString(ui32 type)
+    {
+        switch (type) {
+            case NProto::E_REGULAR_NODE:
+                return "file";
+            case NProto::E_DIRECTORY_NODE:
+                return "dir";
+            case NProto::E_INVALID_NODE:
+                return "unknown";
+            default:
+                return "other";
+        }
+    }
+
     ui32 TopLoaded;
     TString SortBy;
     ui32 TopAccessed;

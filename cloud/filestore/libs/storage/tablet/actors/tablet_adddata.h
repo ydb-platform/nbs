@@ -30,6 +30,7 @@ private:
 
     const ui64 CommitId;
     const ui64 NodeId;
+    const ui32 NodeType;
     const TVector<TMergedBlob> Blobs;
     TVector<TBlockBytesMeta> UnalignedDataParts;
     const TWriteRange WriteRange;
@@ -47,6 +48,7 @@ public:
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         ui64 nodeId,
+        ui32 nodeType,
         TVector<TMergedBlob> blobs,
         TVector<TBlockBytesMeta> unalignedDataParts,
         TWriteRange writeRange,
