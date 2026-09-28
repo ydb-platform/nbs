@@ -611,7 +611,7 @@ void TBootstrapYdb::InitKikimrService()
         std::move(registrant),
         Log);
 
-    NProto::TBlockstoreConfig initialDynamicBlockstoreConfig;
+    NProto::TBlockstoreConfig cmsBlockstoreConfig;
 
     if (cmsConfig) {
         if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
@@ -633,7 +633,7 @@ void TBootstrapYdb::InitKikimrService()
                     << error.GetMessage()
                     << ". Starting without PrivateDatabaseConfig.");
             } else {
-                initialDynamicBlockstoreConfig = std::move(config);
+                cmsBlockstoreConfig = std::move(config);
             }
         }
 
@@ -658,6 +658,10 @@ void TBootstrapYdb::InitKikimrService()
 
     auto startupBlockstoreConfigProto = Configs->GetCurrentBlockstoreConfig();
     if (Configs->GetDynamicYamlConfigurationStaticallyEnabled()) {
+        NormalizeDynamicBlockstoreConfig(
+            staticBlockstoreConfig,
+            cmsBlockstoreConfig);
+
         TBlockstoreConfigExtraParameters extraParameters;
         extraParameters.DiskAgent.Rack = Configs->DiskAgentConfig->GetRack();
         extraParameters.DiskAgent.NetworkMbitThroughput =
@@ -665,12 +669,12 @@ void TBootstrapYdb::InitKikimrService()
 
         StartupBlockstoreConfig = MakeBlockstoreConfig(
             startupBlockstoreConfigProto,
-            initialDynamicBlockstoreConfig,
+            cmsBlockstoreConfig,
             Configs->StorageConfigControls,
             std::move(extraParameters));
 
         STORAGE_INFO(
-            (initialDynamicBlockstoreConfig.ByteSizeLong()
+            (cmsBlockstoreConfig.ByteSizeLong()
                  ? "Applied startup PrivateDatabaseConfig"
                  : "No startup PrivateDatabaseConfig applied; "
                    "using configuration after CMS"));
@@ -960,10 +964,9 @@ void TBootstrapYdb::InitKikimrService()
     args.ScopeId = scopeId;
     args.AppConfig = Configs->KikimrConfig;
     args.StaticBlockstoreConfigProto = std::move(staticBlockstoreConfig);
+    args.CmsBlockstoreConfig = std::move(cmsBlockstoreConfig);
     args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
     args.StartupBlockstoreConfig = StartupBlockstoreConfig;
-    args.InitialDynamicBlockstoreConfig =
-        std::move(initialDynamicBlockstoreConfig);
     args.AsyncLogger = AsyncLogger;
     args.StatsAggregator = StatsAggregator;
     args.StatsUploader = StatsUploader;

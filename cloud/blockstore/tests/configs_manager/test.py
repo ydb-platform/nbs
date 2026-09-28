@@ -183,9 +183,10 @@ def test_startup_without_ydb(binary, service, tmp_path):
             nbs.stop()
 
 
-# Verify that startup factories and actors use the same private configuration.
-def test_startup_configures_disk_agent_backend_and_listener(tmp_path):
-    # Provide a real file device while the local configuration disables its agent.
+# Verify that startup applies private settings while preserving the static agent role.
+@pytest.mark.parametrize("dedicated_agent", [False, True])
+def test_startup_configures_disk_agent_backend_and_listener(tmp_path, dedicated_agent):
+    # Provide a file device for an embedded or separately running agent.
     device_path = tmp_path / "device.data"
     with device_path.open("wb") as device:
         device.truncate(4 * 1024 * 1024)
@@ -195,9 +196,12 @@ def test_startup_configures_disk_agent_backend_and_listener(tmp_path):
     nbs = None
     try:
         config = make_nbs_config(ydb, True)
-        config.files["disk-agent"] = TDiskAgentConfig(Enabled=False)
+        config.files["disk-agent"] = TDiskAgentConfig(
+            Enabled=dedicated_agent,
+            DedicatedDiskAgent=dedicated_agent,
+        )
 
-        # Enable the backend and select a listener port exclusively through YAML.
+        # Request the embedded backend and a listener port through YAML.
         with PortManager() as ports:
             private_port = ports.get_port()
             assert private_port != config.server_port
@@ -206,6 +210,7 @@ def test_startup_configures_disk_agent_backend_and_listener(tmp_path):
                 "server": {"server_config": {"port": private_port}},
                 "disk_agent": {
                     "enabled": True,
+                    "dedicated_disk_agent": not dedicated_agent,
                     "backend": "DISK_AGENT_BACKEND_AIO",
                     "file_devices": [{
                         "path": str(device_path),
@@ -227,6 +232,29 @@ def test_startup_configures_disk_agent_backend_and_listener(tmp_path):
                 "--port", str(private_port),
                 "--timeout", "10",
             ], timeout=30)
+
+            # Advertise the new listener port through discovery as well.
+            response = yatest_common.execute([
+                yatest_common.binary_path(
+                    "cloud/blockstore/apps/client/blockstore-client"),
+                "discoverinstances",
+                "--host", "localhost",
+                "--port", str(private_port),
+                "--timeout", "10",
+            ], timeout=30)
+            instances = response.std_out.decode().splitlines()
+            assert len(instances) == 1
+            assert instances[0].rsplit(":", 1)[1] == str(private_port)
+
+            # Keep both the backend and actor absent for a dedicated agent.
+            if dedicated_agent:
+                assert "Disk Agent backend (" not in Path(nbs.stderr_file_name).read_text()
+                page = requests.get(
+                    f"http://localhost:{nbs.mon_port}/blockstore/disk_agent",
+                    timeout=10,
+                )
+                assert page.status_code == 404
+                return
 
             # Check the initialized device rather than only its configuration.
             def device_is_online():

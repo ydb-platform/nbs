@@ -136,6 +136,8 @@ void TFixture::SetUp(NUnitTest::TTestContext&)
 
     Controls = std::make_shared<NStorage::TStorageConfigControls>();
     auto staticConfig = MakeConfig(100);
+    staticConfig.MutableDiskAgent()->SetDedicatedDiskAgent(true);
+    staticConfig.MutableDiskAgent()->SetEnabled(false);
     staticConfig.MutableStorageService()->SetVolumePreemptionType(
         NProto::PREEMPTION_MOVE_MOST_HEAVY);
     staticConfig.MutableStorageService()->SetNodeType("nbs");
@@ -624,6 +626,107 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             UNIT_ASSERT_EQUAL(emptyConfig.Get(), ConfigHolder->Get().Get());
             AssertNoConfigChanged(subscriber);
         }
+    }
+
+    // Check that forbidden DiskAgent overrides preserve the startup snapshot
+    // and CMS values while receiving an ACK without notifying subscribers.
+    Y_UNIT_TEST_F(ShouldIgnoreDedicatedDiskAgentOverrides, TFixture)
+    {
+        // Retain the startup snapshot and observe subsequent publications.
+        const auto startupConfig = ConfigHolder->Get();
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+        const auto parser = CreateBlockstoreOpaqueConfigParser();
+
+        // Try to enable the embedded agent and override its static role.
+        SendNotification(
+            parser("storage_service: {write_blob_threshold: 200}\n"
+                   "disk_agent: {enabled: true, dedicated_disk_agent: false}"),
+            80);
+        WaitForAck(80);
+
+        // Keep the complete snapshot, including the value received from CMS.
+        UNIT_ASSERT(!ConfigHolder->Get()->GetDiskAgentConfig()->GetEnabled());
+        UNIT_ASSERT(
+            ConfigHolder->Get()->GetDiskAgentConfig()->GetDedicatedDiskAgent());
+        UNIT_ASSERT_EQUAL(startupConfig.Get(), ConfigHolder->Get().Get());
+        UNIT_ASSERT_EQUAL(
+            NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+            ConfigHolder->Get()->GetStorageConfig()->GetVolumePreemptionType());
+        AssertNoConfigChanged(subscriber);
+
+        // Apply an independent setting without enabling the embedded agent.
+        SendNotification(
+            parser("storage_service: {write_blob_threshold: 300}\n"
+                   "disk_agent: {enabled: true, dedicated_disk_agent: false}"),
+            81);
+        WaitForAck(81);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT(!ConfigHolder->Get()->GetDiskAgentConfig()->GetEnabled());
+        UNIT_ASSERT(
+            ConfigHolder->Get()->GetDiskAgentConfig()->GetDedicatedDiskAgent());
+    }
+
+    // Verify that linked discovery ports follow updates, normalized duplicates
+    // do not publish, and removing the source restores the static ports.
+    Y_UNIT_TEST_F(ShouldNormalizeDiscoveryPortsAcrossUpdates, TFixture)
+    {
+        // Retain the static ports and subscribe to configuration publications.
+        const auto startupConfig = ConfigHolder->Get();
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+        const auto parser = CreateBlockstoreOpaqueConfigParser();
+
+        // Derive both discovery ports from the new server ports.
+        SendNotification(
+            parser("server: {server_config: {port: 12000, secure_port: 12001}}"),
+            90);
+        WaitForAck(90);
+        WaitForConfigChanged(subscriber);
+        const auto publishedConfig = ConfigHolder->Get();
+        UNIT_ASSERT_VALUES_EQUAL(
+            12000,
+            publishedConfig->GetDiscoveryServiceConfig()
+                ->GetConductorInstancePort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            12001,
+            publishedConfig->GetDiscoveryServiceConfig()
+                ->GetConductorSecureInstancePort());
+
+        // Treat the same explicitly specified ports as a normalized duplicate.
+        SendNotification(
+            parser("server: {server_config: {port: 12000, secure_port: 12001}}\n"
+                   "discovery_service: {conductor_instance_port: 12000, "
+                   "conductor_secure_instance_port: 12001}"),
+            91);
+        WaitForAck(91);
+        UNIT_ASSERT_EQUAL(publishedConfig.Get(), ConfigHolder->Get().Get());
+        AssertNoConfigChanged(subscriber);
+
+        // Remove both supplied and derived overrides by removing the source.
+        SendNotification(parser("{}"), 92);
+        WaitForAck(92);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_VALUES_EQUAL(
+            startupConfig->GetServerConfig()->GetPort(),
+            ConfigHolder->Get()->GetServerConfig()->GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            startupConfig->GetDiscoveryServiceConfig()
+                ->GetConductorInstancePort(),
+            ConfigHolder->Get()
+                ->GetDiscoveryServiceConfig()
+                ->GetConductorInstancePort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            startupConfig->GetDiscoveryServiceConfig()
+                ->GetConductorSecureInstancePort(),
+            ConfigHolder->Get()
+                ->GetDiscoveryServiceConfig()
+                ->GetConductorSecureInstancePort());
     }
 
     // Check that a duplicate is acknowledged without replacing the config.

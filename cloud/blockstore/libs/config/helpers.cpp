@@ -1,5 +1,8 @@
 #include "helpers.h"
 
+#include <cloud/blockstore/libs/discovery/config.h>
+#include <cloud/blockstore/libs/server/config.h>
+
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore {
@@ -27,6 +30,62 @@ void RemoveStaticOnlyBlockstoreFields(NProto::TBlockstoreConfig& config)
         storageConfig->ClearNodeType();
         if (storageConfig->ByteSizeLong() == 0) {
             config.ClearStorageService();
+        }
+    }
+
+    if (config.HasDiskAgent()) {
+        auto* diskAgentConfig = config.MutableDiskAgent();
+        diskAgentConfig->ClearDedicatedDiskAgent();
+        if (diskAgentConfig->ByteSizeLong() == 0) {
+            config.ClearDiskAgent();
+        }
+    }
+}
+
+// Normalize overrides while preserving the static agent role and linked
+// discovery ports; remove empty sections so ignored overrides do not publish.
+void NormalizeDynamicBlockstoreConfig(
+    const NProto::TBlockstoreConfig& staticConfig,
+    NProto::TBlockstoreConfig& dynamicConfig)
+{
+    RemoveStaticOnlyBlockstoreFields(dynamicConfig);
+
+    // DiskAgent: preserve the static Enabled value when DedicatedDiskAgent is
+    // set.
+    if (dynamicConfig.HasDiskAgent() &&
+        staticConfig.GetDiskAgent().GetDedicatedDiskAgent())
+    {
+        auto* diskAgentConfig = dynamicConfig.MutableDiskAgent();
+        diskAgentConfig->ClearEnabled();
+        if (diskAgentConfig->ByteSizeLong() == 0) {
+            dynamicConfig.ClearDiskAgent();
+        }
+    }
+
+    // Discovery: preserve a link expressed by equal static ports, unless a
+    // dynamic discovery port is explicitly supplied.
+    const auto& dynamicServer = dynamicConfig.GetServer().GetServerConfig();
+    if (dynamicServer.HasPort() || dynamicServer.HasSecurePort()) {
+        const NServer::TServerAppConfig staticServer(staticConfig.GetServer());
+        const NDiscovery::TDiscoveryConfig staticDiscovery(
+            staticConfig.GetDiscoveryService());
+
+        if (dynamicServer.HasPort() &&
+            !dynamicConfig.GetDiscoveryService().HasConductorInstancePort() &&
+            staticDiscovery.GetConductorInstancePort() == staticServer.GetPort())
+        {
+            dynamicConfig.MutableDiscoveryService()->SetConductorInstancePort(
+                dynamicServer.GetPort());
+        }
+
+        if (dynamicServer.HasSecurePort() &&
+            !dynamicConfig.GetDiscoveryService()
+                 .HasConductorSecureInstancePort() &&
+            staticDiscovery.GetConductorSecureInstancePort() ==
+                staticServer.GetSecurePort())
+        {
+            dynamicConfig.MutableDiscoveryService()
+                ->SetConductorSecureInstancePort(dynamicServer.GetSecurePort());
         }
     }
 }
@@ -57,10 +116,9 @@ TResultOrError<NProto::TBlockstoreConfig> ExtractBlockstoreConfig(
                 << NProto::TBlockstoreConfig::descriptor()->full_name());
     }
 
-    // Filter a copy to leave the payload owned by the producer unchanged.
+    // Copy the payload so callers can normalize it without changing the source.
     NProto::TBlockstoreConfig config;
     config.CopyFrom(privateDatabaseConfig);
-    RemoveStaticOnlyBlockstoreFields(config);
     return config;
 }
 

@@ -240,6 +240,8 @@ void TConfigsManagerActor::Handle(
         dynamicConfig = std::move(config);
     }
 
+    NormalizeDynamicBlockstoreConfig(StaticConfig, dynamicConfig);
+
     if (google::protobuf::util::MessageDifferencer::Equals(
             dynamicConfig,
             DynamicConfig))

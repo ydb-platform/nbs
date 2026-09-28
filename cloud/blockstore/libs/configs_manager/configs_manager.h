@@ -32,7 +32,8 @@ struct TConfigsManagerArgs
     // accepted PrivateDatabaseConfig is applied to these unchanged values.
     NProto::TBlockstoreConfig StaticConfig;
 
-    // Parsed PrivateDatabaseConfig applied at startup; empty without overrides.
+    // Normalized PrivateDatabaseConfig applied at startup; empty without
+    // overrides.
     NProto::TBlockstoreConfig InitialDynamicConfig;
 
     // The non-null ICB controls reused by every storage adapter.
