@@ -3596,6 +3596,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     void CheckLoadOptimizingCompaction(ui32 maxBlobsPerUnit)
     {
         auto config = DefaultConfig();
+        // Keep the enabled disk budget above 512 blobs on this 4 MiB disk.
+        config.SetAllocationUnitHDD(1);
         config.SetHDDCompactionType(NProto::CT_LOAD);
         config.SetHDDMaxBlobsPerRange(999);
         config.SetHDDMaxBlobsPerUnit(maxBlobsPerUnit);
@@ -12174,6 +12176,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     void CheckCompactionOfRangesWithMostBlobs(bool batchCompaction)
     {
         auto config = DefaultConfig();
+        // Match the 16 GiB disk so its blob budget is 11.
+        config.SetAllocationUnitHDD(16);
         config.SetHDDCompactionType(NProto::CT_LOAD);
         config.SetHDDMaxBlobsPerUnit(11);
         config.SetHDDMaxBlobsPerRange(100);
