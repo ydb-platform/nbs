@@ -91,7 +91,7 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubc
 
 # nebius cli
 # nosemgrep: bash.curl.security.curl-pipe-bash.curl-pipe-bash
-curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | NEBIUS_INSTALL_FOLDER=/usr/local/bin bash
+curl -sSL https://artifacts.nebius.cloud/cli/install.sh | NEBIUS_INSTALL_FOLDER=/usr/local/bin bash
 nebius version || nebius --version
 
 apt-get update
