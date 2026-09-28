@@ -42,21 +42,45 @@ def counters_url(host, mon_port, component="blockstore"):
     return "http://%s:%s/counters/counters=%s/json" % (host, mon_port, component)
 
 
-def _check_block_digest_mismatch(host, mon_port):
-    response = requests.get(counters_url(host, mon_port), timeout=10)
-    response.raise_for_status()
+def _check_block_digest_mismatch(
+        host, mon_port, on_failure=None, ignore_request_errors=False):
+    try:
+        response = requests.get(counters_url(host, mon_port), timeout=10)
+        response.raise_for_status()
 
-    required_metric = "AppCriticalEvents/BlockDigestMismatchInBlob"
-    found = False
-    for sensor in response.json()["sensors"]:
-        name = sensor["labels"].get("sensor")
-        if name == required_metric:
-            found = True
-            assert sensor["value"] == 0, \
-                "Checksum mismatch detected: {} = {} ({})".format(
-                    name, sensor["value"], sensor["labels"])
+        required_metric = "AppCriticalEvents/BlockDigestMismatchInBlob"
+        found = False
+        for sensor in response.json()["sensors"]:
+            name = sensor["labels"].get("sensor")
+            if name == required_metric:
+                found = True
+                assert sensor["value"] == 0, \
+                    "Checksum mismatch detected: {} = {} ({})".format(
+                        name, sensor["value"], sensor["labels"])
 
-    assert found, "Required checksum metric is missing: {}".format(required_metric)
+        assert found, "Required checksum metric is missing: {}".format(required_metric)
+    except requests.RequestException as e:
+        if not ignore_request_errors:
+            raise
+        # The monitoring endpoint can be unavailable during restarts.
+        logging.warning("Cannot check checksum mismatch metrics: %s", e)
+    except Exception:
+        if on_failure is not None:
+            on_failure()
+        raise
+
+
+def is_request_error(exception):
+    return isinstance(exception, requests.exceptions.RequestException)
+
+
+@retrying.retry(
+    stop_max_delay=60000,
+    wait_fixed=1000,
+    retry_on_exception=is_request_error,
+)
+def _check_final_block_digest_mismatch(host, mon_port):
+    _check_block_digest_mismatch(host, mon_port)
 
 
 def _extract_tracks(nbs_log_path, track_filter):
@@ -293,24 +317,14 @@ def run_test(
                 'Several ({}) processes terminated prematurely.'.format(crashed))
 
         if mon_port:
-            try:
-                _check_block_digest_mismatch(host, mon_port)
-            except requests.RequestException as e:
-                # The monitoring endpoint can be unavailable during restarts.
-                logging.warning("Cannot check checksum mismatch metrics: %s", e)
-            except Exception:
-                kill_all()
-                raise
+            _check_block_digest_mismatch(
+                host, mon_port, on_failure=kill_all, ignore_request_errors=True)
 
     r.stop()
 
     if mon_port:
         # Require a successful final check, retrying through server restarts.
-        retrying.Retrying(
-            stop_max_delay=60000,
-            wait_fixed=1000,
-            retry_on_exception=is_request_error,
-        ).call(_check_block_digest_mismatch, host, mon_port)
+        _check_final_block_digest_mismatch(host, mon_port)
 
     return r.create_canonical_files(
         mon_port,
@@ -325,10 +339,6 @@ def is_grpc_error(exception):
         return exception.facility == EFacility.FACILITY_GRPC.value
 
     return False
-
-
-def is_request_error(exception):
-    return isinstance(exception, requests.exceptions.RequestException)
 
 
 @retrying.retry(stop_max_delay=60000, wait_fixed=1000, retry_on_exception=is_grpc_error)
