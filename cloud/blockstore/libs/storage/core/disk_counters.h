@@ -554,6 +554,8 @@ struct THistogramRequestCounters
     TLowResCounter Flush{EPublishingPolicy::Repl, HistCounterOptions};
     TLowResCounter AddBlobs{EPublishingPolicy::Repl, HistCounterOptions};
     TLowResCounter Compaction{EPublishingPolicy::Repl, HistCounterOptions};
+    TLowResCounter PromoteCompaction{EPublishingPolicy::Repl,
+                                     HistCounterOptions};
     TLowResCounter Cleanup{EPublishingPolicy::Repl, HistCounterOptions};
     TLowResCounter CollectGarbage{EPublishingPolicy::Repl, HistCounterOptions};
     TLowResCounter DeleteGarbage{EPublishingPolicy::Repl, HistCounterOptions};
@@ -587,6 +589,7 @@ struct THistogramRequestCounters
         MakeMeta<&THistogramRequestCounters::Flush>(),
         MakeMeta<&THistogramRequestCounters::AddBlobs>(),
         MakeMeta<&THistogramRequestCounters::Compaction>(),
+        MakeMeta<&THistogramRequestCounters::PromoteCompaction>(),
         MakeMeta<&THistogramRequestCounters::Cleanup>(),
         MakeMeta<&THistogramRequestCounters::CollectGarbage>(),
         MakeMeta<&THistogramRequestCounters::DeleteGarbage>(),

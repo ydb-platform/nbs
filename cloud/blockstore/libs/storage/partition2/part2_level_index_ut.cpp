@@ -5,7 +5,9 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
+#include <cloud/blockstore/libs/storage/api/stats_service.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
 #include <cloud/blockstore/libs/storage/testlib/part2_client.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
@@ -724,6 +726,12 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         TVector<TBlockRange32> mergedRanges;
         TVector<ui64> mergedCommitIds;
         TMap<ui32, TLogoBlobID> mergedBlobIds;
+        ui64 sysBytesRead = 0;
+        ui64 sysBytesWritten = 0;
+        ui64 realSysBytesRead = 0;
+        ui64 realSysBytesWritten = 0;
+        ui64 promoteCompactionCount = 0;
+        ui64 promoteCompactionBytes = 0;
 
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -776,6 +784,23 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
                                 MakeBlobId(TestTabletId, blob.BlobId));
                         }
                     }
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvStatsService::EvVolumePartCounters)
+                {
+                    const auto* msg =
+                        event->Get<TEvStatsService::TEvVolumePartCounters>();
+                    const auto& counters = msg->DiskCounters->Cumulative;
+                    sysBytesRead += counters.SysBytesRead.Value;
+                    sysBytesWritten += counters.SysBytesWritten.Value;
+                    realSysBytesRead += counters.RealSysBytesRead.Value;
+                    realSysBytesWritten += counters.RealSysBytesWritten.Value;
+
+                    const auto& promoteCompaction =
+                        msg->DiskCounters->RequestCounters.PromoteCompaction;
+                    promoteCompactionCount += promoteCompaction.GetCount();
+                    promoteCompactionBytes +=
+                        promoteCompaction.GetRequestBytes();
                 }
 
                 return TTestActorRuntime::DefaultObserverFunc(event);
@@ -803,6 +828,24 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         auto l1Response = partition.RecvResponse<
             TEvPartitionPrivate::TEvPromoteCompactionResponse>();
         UNIT_ASSERT_VALUES_EQUAL(S_OK, l1Response->GetStatus());
+
+        partition.SendToPipe(
+            std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
+        {
+            TDispatchOptions options;
+            options.FinalEvents.emplace_back(
+                TEvStatsService::EvVolumePartCounters);
+            runtime->DispatchEvents(options);
+        }
+
+        // Two promotions read and write four blocks each.
+        // The initial flush writes another four blocks.
+        UNIT_ASSERT_VALUES_EQUAL(8 * DefaultBlockSize, sysBytesRead);
+        UNIT_ASSERT_VALUES_EQUAL(12 * DefaultBlockSize, sysBytesWritten);
+        UNIT_ASSERT_VALUES_EQUAL(sysBytesRead, realSysBytesRead);
+        UNIT_ASSERT_VALUES_EQUAL(sysBytesWritten, realSysBytesWritten);
+        UNIT_ASSERT_VALUES_EQUAL(2, promoteCompactionCount);
+        UNIT_ASSERT_VALUES_EQUAL(16 * DefaultBlockSize, promoteCompactionBytes);
 
         Sort(
             mergedRanges.begin(),

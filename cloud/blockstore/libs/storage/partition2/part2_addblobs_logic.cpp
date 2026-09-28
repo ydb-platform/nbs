@@ -135,7 +135,7 @@ public:
             const auto& blob = Args.MergedBlobs[i];
             ProcessNewBlob(actorSystem, db, blob);
             UpdateCompactionCounters(blob);
-            if (Args.Mode == EAddBlobMode::ADD_WRITE_RESULT) {
+            if (Args.Mode != ADD_COMPACTION_RESULT) {
                 UpdateUsedBlocks(db, blob);
             }
 
@@ -891,10 +891,19 @@ private:
 
     void UpdateUsedBlocks(TPartitionDatabase& db, const TAddMergedBlob& blob)
     {
+        TVector<ui32> blocks;
+        for (ui32 blockIndex: xrange(blob.BlockRange)) {
+            if (blob.SkipMask.Get(blockIndex - blob.BlockRange.Start)) {
+                continue;
+            }
+
+            blocks.push_back(blockIndex);
+        }
+
         if (IsDeletionMarker(blob.BlobId)) {
-            State.UnsetUsedBlocks(db, blob.BlockRange);
+            State.UnsetUsedBlocks(db, blocks);
         } else {
-            State.SetUsedBlocks(db, blob.BlockRange, blob.SkipMask.Count());
+            State.SetUsedBlocks(db, blocks);
         }
     }
 

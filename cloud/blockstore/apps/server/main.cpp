@@ -31,6 +31,8 @@ int main(int argc, char** argv)
     using namespace NCloud::NBlockStore;
 
     auto moduleFactories = std::make_shared<NKikimr::TModuleFactories>();
+    moduleFactories->SchemeOperationFactory.reset(
+        NKikimr::NSchemeShard::DefaultOperationFactory());
     moduleFactories->CreateTicketParser = NKikimr::CreateTicketParser;
 
     auto serverModuleFactories =

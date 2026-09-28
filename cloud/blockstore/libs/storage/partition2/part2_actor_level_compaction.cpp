@@ -107,6 +107,8 @@ private:
 
     ui64 ReadBlobsWaitingResponses = 0;
     ui64 WriteBlobsWaitingResponses = 0;
+    ui64 ReadBlocksCompleted = 0;
+    ui64 WriteBlocksCompleted = 0;
 
 public:
     TPromoteCompactionActor(
@@ -173,7 +175,8 @@ private:
 
 void TPromoteCompactionActor::ReadBlobs(const TActorContext& ctx)
 {
-    for (const auto& request: ReadBlobRequests) {
+    for (size_t i = 0; i < ReadBlobRequests.size(); ++i) {
+        const auto& request = ReadBlobRequests[i];
         TGuardedSgList guardedSglist =
             GuardedEmptySgList.Create(request.Sglist);
 
@@ -193,7 +196,7 @@ void TPromoteCompactionActor::ReadBlobs(const TActorContext& ctx)
                 false              // shouldCalculateChecksums
             );
 
-        NCloud::Send(ctx, TabletActorId, std::move(readBlobRequest));
+        NCloud::Send(ctx, TabletActorId, std::move(readBlobRequest), i);
         ++ReadBlobsWaitingResponses;
     }
 
@@ -223,7 +226,7 @@ void TPromoteCompactionActor::WriteBlobs(const TActorContext& ctx)
                 TInstant::Max()   // deadline
             );
 
-        NCloud::Send(ctx, TabletActorId, std::move(writeBlobRequest));
+        NCloud::Send(ctx, TabletActorId, std::move(writeBlobRequest), i);
         ++WriteBlobsWaitingResponses;
     }
 
@@ -332,7 +335,14 @@ void TPromoteCompactionActor::ReplyAndDie(
     completionEvent->TotalCycles = RequestInfo->GetTotalCycles();
     completionEvent->CommitId = CommitId;
 
-    // TODO: add stats
+    completionEvent->Stats.MutableSysReadCounters()->SetBlocksCount(
+        ReadBlocksCompleted);
+    completionEvent->Stats.MutableSysWriteCounters()->SetBlocksCount(
+        WriteBlocksCompleted);
+    completionEvent->Stats.MutableRealSysReadCounters()->SetBlocksCount(
+        ReadBlocksCompleted);
+    completionEvent->Stats.MutableRealSysWriteCounters()->SetBlocksCount(
+        WriteBlocksCompleted);
 
     NCloud::Send(ctx, TabletActorId, std::move(completionEvent));
 
@@ -382,6 +392,7 @@ void TPromoteCompactionActor::HandleReadBlobResponse(
         return;
     }
 
+    ReadBlocksCompleted += ReadBlobRequests[ev->Cookie].BlobOffsets.size();
     --ReadBlobsWaitingResponses;
     if (ReadBlobsWaitingResponses == 0) {
         WriteBlobs(ctx);
@@ -399,6 +410,7 @@ void TPromoteCompactionActor::HandleWriteBlobResponse(
         return;
     }
 
+    WriteBlocksCompleted += BlobIds[ev->Cookie].BlobSize() / BlockSize;
     --WriteBlobsWaitingResponses;
     if (WriteBlobsWaitingResponses == 0) {
         AddBlobs(ctx);
@@ -655,6 +667,12 @@ void TPartitionActor::HandlePromoteCompactionCompleted(
     State->GetGarbageQueue().ReleaseBarrier(commitId);
 
     Actors.Erase(ev->Sender);
+
+    const auto duration = CyclesToDurationSafe(msg->TotalCycles);
+    const ui64 blocks = msg->Stats.GetSysReadCounters().GetBlocksCount() +
+                        msg->Stats.GetSysWriteCounters().GetBlocksCount();
+    PartCounters->RequestCounters.PromoteCompaction.AddRequest(
+        duration.MicroSeconds(), blocks * State->GetBlockSize());
 
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
