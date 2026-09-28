@@ -29,6 +29,7 @@ private:
     const TRequestInfoPtr RequestInfo;
 
     const ui64 CommitId;
+    const ui32 NodeType;
     /*const*/ TVector<TMergedBlob> Blobs;
     const TWriteRange WriteRange;
     IProfileLogPtr ProfileLog;
@@ -44,6 +45,7 @@ public:
         TActorId tablet,
         TRequestInfoPtr requestInfo,
         ui64 commitId,
+        ui32 nodeType,
         TVector<TMergedBlob> blobs,
         TWriteRange writeRange,
         IProfileLogPtr profileLog,
