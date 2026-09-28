@@ -25,4 +25,8 @@ PEERDIR(
     library/cpp/json
 )
 
+# The silk crash dumper sources its gdb scripts from the source tree
+# (see SetUpCrashDumperScriptDir in cloud/fastshard/testlib).
+DATA(arcadia/contrib/libs/silk/src/gdb)
+
 END()

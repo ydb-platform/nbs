@@ -14,9 +14,11 @@ namespace silk
  * signal-safe and survives a fiber-level deadlock.
  *
  * Call once, FIRST in main, BEFORE silk initialization: the dumper is forked here, while the process is
- * still single-threaded, so it is a clean child. Run under "timeout --signal=<dumpSignal>" so a wedged run
- * self-dumps. Requires crash-dumper.py and fiber.py installed next to the binary, which the build does
- * automatically.
+ * still single-threaded, so it is a clean child. Repeated calls are no-ops. Run under
+ * "timeout --signal=<dumpSignal>" so a wedged run self-dumps. Requires crash-dumper.py and fiber.py
+ * installed next to the binary, which the build does automatically; SILK_CRASH_DUMPER_SCRIPT_DIR
+ * overrides the script directory and SILK_CRASH_DUMPER_GDB overrides the gdb to exec, for environments
+ * where the binary path or PATH do not resolve them (both read at install time).
  */
 void installCrashDumper(int dumpSignal = SIGQUIT, int exitCode = 124) noexcept;
 

@@ -38,7 +38,9 @@ ya_make_patches/
 │   ├── 02-fiber-uring24-compat.patch
 │   ├── 03-rseq-register-per-thread.patch
 │   ├── 04-fiber-cxa-get-globals-arcadia-libcxxrt.patch
-│   └── 05-fiber-uring24-sqes-sz.patch
+│   ├── 05-fiber-uring24-sqes-sz.patch
+│   ├── 06-crash-dumper-env-overrides.patch
+│   └── 07-fiber-py-tls-fallback.patch
 └── overlay/                          # Files copied verbatim into silk tree
     ├── ya.make
     ├── include/sys/rseq.h            # Stub for ya include checker
@@ -84,10 +86,40 @@ ya_make_patches/
   Silk targets liburing 2.9 where `sqes_sz` records the length of the sqes
   mapping; the repo has 2.4 without that field. The computed expression is
   exactly the length 2.4 itself mmaps and munmaps for the sqes array.
+- **06-crash-dumper-env-overrides**: makes `installCrashDumper`
+  idempotent (a gtest environment re-runs its SetUp under
+  `--gtest_repeat`, and each install used to fork another dumper) and
+  adds two environment overrides read at install time:
+  `SILK_CRASH_DUMPER_SCRIPT_DIR` for the gdb script directory - under ya,
+  `/proc/self/exe` resolves through the build-cache symlink store, so
+  "next to the binary" does not find the scripts - and
+  `SILK_CRASH_DUMPER_GDB` for the gdb executable, for machines where gdb
+  is not on PATH (e.g. only `ya tool gdb` is available). The dumper's gdb
+  invocation also opens the auto-load safe path (`-iex "set auto-load
+  safe-path /"`): `-nx` skips every gdbinit, and without the safe path
+  gdb declines to load libthread_db, cannot read TLS, and the fiber list
+  misses RUNNING fibers (their only reference is the thread-local
+  `threadFiber`).
+- **07-fiber-py-tls-fallback**: two fixes to `src/gdb/fiber.py`. First,
+  reading `threadFiber` gains a fallback that needs no libthread_db at
+  all - working TLS via gdb additionally requires matching glibc debug
+  symbols (`libc6-dbg`), which CI containers and many hosts lack, and
+  without it `fiber-list` silently misses RUNNING fibers. The fallback
+  computes the slot's link-time offset from the thread pointer out of
+  the ELF image (`PT_TLS` size/alignment plus the symbol's `st_value`)
+  and reads it via the per-thread `$fs_base` / `$tpidr_el0` register,
+  which plain ptrace provides. Second, `_atomic_load` learns the libc++
+  field layout (`__a_.__a_value`) and its raw-memory fallback reads the
+  atomic's own size instead of a fixed 8 bytes - the 1-byte fiber state
+  atomic otherwise folds in the neighbouring fields and prints as
+  garbage instead of RUNNING/SUSPENDED.
+  Both patches are candidates for upstreaming; drop once silk ships
+  equivalents.
 
-Dropped patches: **06-fiber-destroy-join-workers-first** (join worker
-threads before destroying the processors in `FiberScheduler::destroy`)
-was accepted upstream verbatim and removed from this set.
+Dropped patches: the former **06-fiber-destroy-join-workers-first** (join
+worker threads before destroying the processors in
+`FiberScheduler::destroy`) was accepted upstream verbatim and removed from
+this set; the patches after it were renumbered.
 
 If a future silk version is built against a newer liburing or librseq, the
 corresponding patch can be dropped. Patches 02 and 05 can be dropped
