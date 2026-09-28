@@ -1,7 +1,11 @@
-"""End-to-end Blockstore dynamic configuration scenarios.
+"""End-to-end Blockstore configuration tests.
 
-The suite starts real YDB and NBS processes and covers startup, update rejection,
-removal, and startup with DynamicYamlConfigurationEnabled=false.
+Run real NBS processes to verify startup with DynamicYamlConfigurationEnabled
+set to true or false, and Local/Null startup without YDB. Use real YDB processes
+to check application of valid dynamic updates, rejection of invalid updates,
+recovery after rejection, and removal of PrivateDatabaseConfig. Verify on the
+native ICB page that changed configuration values update control defaults and
+replace operator overrides, while changes to other parameters preserve them.
 """
 
 import copy
@@ -143,6 +147,30 @@ def start_dynamic_config_ydb():
     return start_ydb(
         extra_feature_flags=["database_yaml_config_allowed"],
     )
+
+
+# Read the current value and default from one row of the native ICB page.
+def get_icb_values(nbs, name):
+    page = requests.get(f"http://localhost:{nbs.mon_port}/actors/icb", timeout=10)
+    page.raise_for_status()
+    row = re.search(
+        rf"<td>BlockStore_{re.escape(name)}</td>(.*?)</tr>",
+        page.text,
+        re.DOTALL,
+    )
+    assert row is not None, f"Missing ICB control: {name}"
+    cells = re.findall(r"<td>(.*?)</td>", row.group(1), re.DOTALL)
+    return tuple(int(re.sub(r"<[^>]+>", "", cell)) for cell in cells[1:3])
+
+
+# Apply an operator override through the native ICB HTTP handler.
+def set_icb_value(nbs, name, value):
+    response = requests.post(
+        f"http://localhost:{nbs.mon_port}/actors/icb",
+        data={f"BlockStore_{name}": value},
+        timeout=10,
+    )
+    response.raise_for_status()
 
 
 # Verify that both bootstraps initialize Local/Null without a YDB snapshot.
@@ -308,17 +336,34 @@ def test_dynamic_blockstore_config_lifecycle():
         assert re.search(r"BLOCKSTORE_SERVER.*Received CMS configuration for YAML mode", log)
         assert re.search(r"BLOCKSTORE_SERVER.*Applied startup PrivateDatabaseConfig", log)
         updates = wait_config_delivery(nbs)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (200, 200)
 
+        # Replace an operator override when the configured base changes.
+        set_icb_value(nbs, "WriteBlobThreshold", 500)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (500, 200)
         replace_database_config(
             ydb,
             1,
             "storage_service:\n  write_blob_threshold: 300",
         )
         updates = wait_config_delivery(nbs, updates)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (300, 300)
 
+        # Keep this override when another control's configured base changes.
+        set_icb_value(nbs, "WriteBlobThreshold", 600)
         replace_database_config(
             ydb,
             2,
+            "storage_service:\n  write_blob_threshold: 300\n  max_migration_io_depth: 7",
+        )
+        updates = wait_config_delivery(nbs, updates)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (600, 300)
+        assert get_icb_values(nbs, "MaxMigrationIoDepth") == (7, 7)
+
+        # Reject malformed input without changing defaults or overrides.
+        replace_database_config(
+            ydb,
+            3,
             "storage_service: invalid",
         )
         log = wait_runtime_rejection(nbs)
@@ -332,21 +377,24 @@ def test_dynamic_blockstore_config_lifecycle():
         assert "Keeping the last successfully applied configuration" in log
         assert "Fix or roll back the cluster configuration before restarting nodes" in log
         assert "will be lost after a restart" in log
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (600, 300)
 
         # Recover after an error without restarting the subscriber.
         replace_database_config(
             ydb,
-            3,
+            4,
             "storage_service:\n  write_blob_threshold: 400",
         )
         updates = wait_config_delivery(nbs, updates)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (400, 400)
 
         # Remove an invalid source after another rejection.
-        replace_database_config(ydb, 4, "storage_service: invalid")
+        replace_database_config(ydb, 5, "storage_service: invalid")
         wait_runtime_rejection(nbs, count=2)
         updates = wait_config_delivery(nbs, updates, acknowledged=False)
-        replace_database_config(ydb, 5, "")
+        replace_database_config(ydb, 6, "")
         wait_config_delivery(nbs, updates)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (100, 100)
     finally:
         if nbs:
             nbs.kill()

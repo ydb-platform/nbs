@@ -14,6 +14,8 @@
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/actors/follower_disk_actor.h>
 
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
+
 #include <util/system/hostname.h>
 #include <util/thread/lfqueue.h>
 
@@ -10414,6 +10416,92 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
                 !range.Contains(0),
                 resp->Record.GetAllZeroes());
         }
+    }
+
+    // Verify that live host ICB stays above a volume StorageConfig patch
+    // through replacement and tablet reboot, and that Restore exposes raw
+    // patch/global values.
+    Y_UNIT_TEST(ShouldKeepLiveIcbAfterStorageConfigPatch)
+    {
+        // Start with distinct global values and check ICB before any patch.
+        NProto::TStorageServiceConfig config;
+        config.SetMaxMigrationIoDepth(4);
+        config.SetMaxMigrationBandwidth(100);
+        auto runtime = PrepareTestActorRuntime(config);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        volume.WaitReady();
+        auto& board = *runtime->GetAppData().Icb;
+        TAtomic previousValue = {};
+        board.SetValue("BlockStore_MaxMigrationIoDepth", 8, previousValue);
+        UNIT_ASSERT_VALUES_EQUAL(
+            8,
+            volume.GetStorageConfig()
+                ->Record.GetStorageConfig()
+                .GetMaxMigrationIoDepth());
+
+        // Keep the operator value above a newly persisted volume patch.
+        NProto::TStorageServiceConfig patch;
+        patch.SetMaxMigrationIoDepth(1);
+        volume.ChangeStorageConfig(patch);
+        UNIT_ASSERT_VALUES_EQUAL(
+            8,
+            volume.GetStorageConfig()
+                ->Record.GetStorageConfig()
+                .GetMaxMigrationIoDepth());
+        board.SetValue("BlockStore_MaxMigrationIoDepth", 16, previousValue);
+        UNIT_ASSERT_VALUES_EQUAL(
+            16,
+            volume.GetStorageConfig()
+                ->Record.GetStorageConfig()
+                .GetMaxMigrationIoDepth());
+
+        // Reload the persisted patch while both controls have overrides.
+        board.SetValue("BlockStore_MaxMigrationBandwidth", 400, previousValue);
+        volume.RebootTablet();
+        volume.WaitReady();
+        auto response = volume.GetStorageConfig();
+        UNIT_ASSERT_VALUES_EQUAL(
+            16,
+            response->Record.GetStorageConfig().GetMaxMigrationIoDepth());
+        UNIT_ASSERT_VALUES_EQUAL(
+            400,
+            response->Record.GetStorageConfig().GetMaxMigrationBandwidth());
+
+        // Observe a later ICB write after loading the patch from the database.
+        board.SetValue("BlockStore_MaxMigrationIoDepth", 32, previousValue);
+        UNIT_ASSERT_VALUES_EQUAL(
+            32,
+            volume.GetStorageConfig()
+                ->Record.GetStorageConfig()
+                .GetMaxMigrationIoDepth());
+
+        // Restore the patched field and the unpatched field to their raw bases.
+        board.RestoreDefault("BlockStore_MaxMigrationIoDepth");
+        board.RestoreDefault("BlockStore_MaxMigrationBandwidth");
+        response = volume.GetStorageConfig();
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            response->Record.GetStorageConfig().GetMaxMigrationIoDepth());
+        UNIT_ASSERT_VALUES_EQUAL(
+            100,
+            response->Record.GetStorageConfig().GetMaxMigrationBandwidth());
+
+        // Replace the persisted patch and retain the same live ICB connection.
+        patch.SetMaxMigrationIoDepth(2);
+        volume.ChangeStorageConfig(patch);
+        board.SetValue("BlockStore_MaxMigrationIoDepth", 64, previousValue);
+        UNIT_ASSERT_VALUES_EQUAL(
+            64,
+            volume.GetStorageConfig()
+                ->Record.GetStorageConfig()
+                .GetMaxMigrationIoDepth());
+        board.RestoreDefault("BlockStore_MaxMigrationIoDepth");
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            volume.GetStorageConfig()
+                ->Record.GetStorageConfig()
+                .GetMaxMigrationIoDepth());
     }
 
     Y_UNIT_TEST(ShouldGetStorageConfig)
