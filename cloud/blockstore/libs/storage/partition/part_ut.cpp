@@ -3598,6 +3598,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
         config.SetHDDMaxBlobsPerRange(999);
+        config.SetAllocationUnitHDD(1);
         config.SetHDDMaxBlobsPerUnit(maxBlobsPerUnit);
 
         auto runtime = PrepareTestActorRuntime(config);
@@ -12175,6 +12176,7 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
     {
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
+        config.SetAllocationUnitHDD(16);
         config.SetHDDMaxBlobsPerUnit(11);
         config.SetHDDMaxBlobsPerRange(100);
         config.SetBatchCompactionEnabled(batchCompaction);
