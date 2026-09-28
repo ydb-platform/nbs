@@ -2,6 +2,8 @@
 
 #include "shard_request_actor.h"
 
+#include <cloud/filestore/libs/storage/api/tablet_proxy.h>
+
 #include <util/string/join.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -10,6 +12,119 @@ using namespace NActors;
 
 using namespace NKikimr;
 using namespace NKikimr::NTabletFlatExecutor;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+// Fetches the current quota list from main, in response to a mismatch
+// detected via GetStorageStats' MainQuotasHash. Read-only round trip - the
+// actual local reconciliation happens back on the owning tablet, via
+// TEvQuotasFetched -> ExecuteTx<TReconcileQuotas>.
+
+class TFetchQuotasActor final: public TActorBootstrapped<TFetchQuotasActor>
+{
+private:
+    const TString LogTag;
+    const TActorId Owner;
+    const TString MainFileSystemId;
+
+public:
+    TFetchQuotasActor(
+            TString logTag,
+            TActorId owner,
+            TString mainFileSystemId)
+        : LogTag(std::move(logTag))
+        , Owner(owner)
+        , MainFileSystemId(std::move(mainFileSystemId))
+    {}
+
+    void Bootstrap(const TActorContext& ctx)
+    {
+        auto request =
+            std::make_unique<TEvIndexTablet::TEvListQuotasRequest>();
+        request->Record.SetFileSystemId(MainFileSystemId);
+
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET_WORKER,
+            "%s Fetching quotas from main %s",
+            LogTag.c_str(),
+            MainFileSystemId.c_str());
+
+        ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+        Become(&TThis::StateWork);
+    }
+
+private:
+    STFUNC(StateWork)
+    {
+        switch (ev->GetTypeRewrite()) {
+            HFunc(
+                TEvIndexTablet::TEvListQuotasResponse,
+                HandleListQuotasResponse);
+            HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+            default:
+                HandleUnexpectedEvent(
+                    ev,
+                    TFileStoreComponents::TABLET_WORKER,
+                    __PRETTY_FUNCTION__);
+                break;
+        }
+    }
+
+    void HandleListQuotasResponse(
+        const TEvIndexTablet::TEvListQuotasResponse::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        auto* msg = ev->Get();
+
+        using TCompletion = TEvIndexTabletPrivate::TEvQuotasFetched;
+
+        if (HasError(msg->GetError())) {
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::TABLET_WORKER,
+                "%s Fetching quotas from main %s failed: %s",
+                LogTag.c_str(),
+                MainFileSystemId.c_str(),
+                FormatError(msg->GetError()).c_str());
+
+            NCloud::Send(
+                ctx,
+                Owner,
+                std::make_unique<TCompletion>(TVector<NProto::TQuota>{}, false));
+        } else {
+            TVector<NProto::TQuota> quotas(
+                msg->Record.GetQuotas().begin(),
+                msg->Record.GetQuotas().end());
+
+            NCloud::Send(
+                ctx,
+                Owner,
+                std::make_unique<TCompletion>(std::move(quotas), true));
+        }
+
+        Die(ctx);
+    }
+
+    void HandlePoisonPill(
+        const TEvents::TEvPoisonPill::TPtr& ev,
+        const TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+
+        using TCompletion = TEvIndexTabletPrivate::TEvQuotasFetched;
+        NCloud::Send(
+            ctx,
+            Owner,
+            std::make_unique<TCompletion>(TVector<NProto::TQuota>{}, false));
+
+        Die(ctx);
+    }
+};
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -249,6 +364,41 @@ void TIndexTabletActor::CompleteTx_DeleteQuota(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+bool TIndexTabletActor::PrepareTx_ReconcileQuotas(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TReconcileQuotas& args)
+{
+    Y_UNUSED(ctx, tx, args);
+
+    return true;
+}
+
+void TIndexTabletActor::ExecuteTx_ReconcileQuotas(
+    const TActorContext& ctx,
+    TTransactionContext& tx,
+    TTxIndexTablet::TReconcileQuotas& args)
+{
+    Y_UNUSED(ctx);
+
+    auto db = CreateIndexTabletDatabase(tx.DB);
+    ReconcileQuotas(*db, args.Quotas);
+}
+
+void TIndexTabletActor::CompleteTx_ReconcileQuotas(
+    const TActorContext& ctx,
+    TTxIndexTablet::TReconcileQuotas& args)
+{
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::TABLET,
+        "%s ReconcileQuotas completed (count: %lu)",
+        LogTag.c_str(),
+        args.Quotas.size());
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TIndexTabletActor::HandleListQuotas(
     const TEvIndexTablet::TEvListQuotasRequest::TPtr& ev,
     const TActorContext& ctx)
@@ -275,6 +425,42 @@ void TIndexTabletActor::HandleListQuotas(
         quotas.size());
 
     NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TIndexTabletActor::RegisterFetchQuotasActor(const TActorContext& ctx)
+{
+    if (QuotasFetchInProgress) {
+        return;
+    }
+    QuotasFetchInProgress = true;
+
+    auto actor = std::make_unique<TFetchQuotasActor>(
+        LogTag,
+        SelfId(),
+        GetFileSystem().GetMainFileSystemId());
+
+    auto actorId = NCloud::Register(ctx, std::move(actor));
+    WorkerActors.insert(actorId);
+}
+
+void TIndexTabletActor::HandleQuotasFetched(
+    const TEvIndexTabletPrivate::TEvQuotasFetched::TPtr& ev,
+    const TActorContext& ctx)
+{
+    WorkerActors.erase(ev->Sender);
+    QuotasFetchInProgress = false;
+
+    auto* msg = ev->Get();
+    if (!msg->Success) {
+        return;
+    }
+
+    ExecuteTx<TReconcileQuotas>(
+        ctx,
+        nullptr /* requestInfo */,
+        std::move(msg->Quotas));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

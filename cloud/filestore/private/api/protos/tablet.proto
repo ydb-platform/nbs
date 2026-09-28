@@ -222,6 +222,13 @@ message TGetStorageStatsRequest
 
     // If the cache is older than Now() - CacheTTL, it is not used.
     uint64 CacheTTL = 9; // in ms
+
+    // Hash of the sender's current Quotas table (0 = not advertised, e.g.
+    // an ad hoc request against a shard's own FileSystemId, not part of
+    // main's periodic fan-out). A shard receiving a nonzero hash that
+    // differs from its own local one is out of sync and fetches the
+    // authoritative list from main to catch up.
+    uint64 MainQuotasHash = 10;
 }
 
 message TGetStorageStatsResponse

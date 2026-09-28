@@ -1561,6 +1561,9 @@ STFUNC(TIndexTabletActor::StateWork)
             TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
             HandleAggregateStatsCompleted);
         HFunc(
+            TEvIndexTabletPrivate::TEvQuotasFetched,
+            HandleQuotasFetched);
+        HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
         HFunc(
@@ -1674,6 +1677,9 @@ STFUNC(TIndexTabletActor::StateAdapter)
             TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
             HandleAggregateStatsCompleted);
         HFunc(
+            TEvIndexTabletPrivate::TEvQuotasFetched,
+            HandleQuotasFetched);
+        HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);
 
@@ -1723,6 +1729,7 @@ STFUNC(TIndexTabletActor::StateZombie)
         // private api
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvAggregateStatsCompleted);
+        IgnoreFunc(TEvIndexTabletPrivate::TEvQuotasFetched);
         IgnoreFunc(TEvIndexTabletPrivate::TEvUpdateLeakyBucketCounters);
         IgnoreFunc(TEvIndexTabletPrivate::TEvRunRegularTasks);
 
@@ -1840,6 +1847,9 @@ STFUNC(TIndexTabletActor::StateBroken)
         HFunc(
             TEvIndexTabletPrivate::TEvAggregateStatsCompleted,
             HandleAggregateStatsCompleted);
+        HFunc(
+            TEvIndexTabletPrivate::TEvQuotasFetched,
+            HandleQuotasFetched);
         HFunc(
             TEvIndexTabletPrivate::TEvShardRequestCompleted,
             HandleShardRequestCompleted);

@@ -106,6 +106,7 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(SetQuota,                           __VA_ARGS__)                       \
     xxx(DeleteQuota,                        __VA_ARGS__)                       \
+    xxx(ReconcileQuotas,                    __VA_ARGS__)                       \
                                                                                \
     xxx(CreateNode,                         __VA_ARGS__)                       \
     xxx(UnlinkNode,                         __VA_ARGS__)                       \
@@ -770,6 +771,32 @@ struct TTxIndexTablet
         void Clear() override
         {
             TErrorAware::Clear();
+        }
+    };
+
+    //
+    // ReconcileQuotas - brings this tablet's local Quotas table in line
+    // with an authoritative list fetched from main (self-healing catch-up
+    // for a hash mismatch detected via GetStorageStats - see
+    // tablet_actor_counters.cpp). Background operation, no client to reply
+    // to.
+    //
+
+    struct TReconcileQuotas
+        : TTxIndexTabletBase
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TVector<NProto::TQuota> Quotas;
+
+        TReconcileQuotas(
+                TRequestInfoPtr requestInfo,
+                TVector<NProto::TQuota> quotas)
+            : RequestInfo(std::move(requestInfo))
+            , Quotas(std::move(quotas))
+        {}
+
+        void Clear() override
+        {
         }
     };
 

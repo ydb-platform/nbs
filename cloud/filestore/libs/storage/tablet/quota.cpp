@@ -1,5 +1,6 @@
 #include "quota.h"
 
+#include <util/digest/multi.h>
 #include <util/generic/algorithm.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -57,6 +58,22 @@ TVector<NProto::TQuota> TQuotaStore::GetQuotas() const
 ui32 TQuotaStore::GetQuotaCount() const
 {
     return static_cast<ui32>(QuotaById.size());
+}
+
+ui64 TQuotaStore::GetQuotasHash() const
+{
+    // Seeded so an empty quota set doesn't hash to 0 - 0 is reserved on the
+    // wire to mean "no hash advertised" (see TGetStorageStatsRequest).
+    ui64 hash = 0x9E3779B97F4A7C15ULL;
+    for (const auto& quota: GetQuotas()) {
+        hash = CombineHashes<ui64>(
+            hash,
+            MultiHash(
+                quota.GetQuotaId(),
+                quota.GetMaxBytes(),
+                quota.GetMaxNodes()));
+    }
+    return hash;
 }
 
 void TQuotaStore::LoadUsage(const TQuotaUsage& usage)

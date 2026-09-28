@@ -58,6 +58,7 @@ private:
     ui64 RemainingResponses = 0;
     const bool IsBackgroundRequest;
     const bool FanoutStatsCollectionInShardsDisabled;
+    const ui64 OwnQuotasHash;
 
 public:
     TAggregateStatsActor(
@@ -69,7 +70,8 @@ public:
         google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response,
         bool isBackgroundRequest,
-        bool fanoutStatsCollectionInShardsDisabled);
+        bool fanoutStatsCollectionInShardsDisabled,
+        ui64 ownQuotasHash);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -114,7 +116,8 @@ TAggregateStatsActor::TAggregateStatsActor(
     google::protobuf::RepeatedPtrField<TString> shardIds,
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response,
     bool isBackgroundRequest,
-    bool fanoutStatsCollectionInShardsDisabled)
+    bool fanoutStatsCollectionInShardsDisabled,
+    ui64 ownQuotasHash)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -125,6 +128,7 @@ TAggregateStatsActor::TAggregateStatsActor(
     , IsBackgroundRequest(isBackgroundRequest)
     , FanoutStatsCollectionInShardsDisabled(
           fanoutStatsCollectionInShardsDisabled)
+    , OwnQuotasHash(ownQuotasHash)
 {
     auto& dst = *Response->Record.MutableStats();
     auto& shardStats = *dst.MutableShardStats();
@@ -164,6 +168,7 @@ void TAggregateStatsActor::SendRequestToFileSystem(
         std::make_unique<TEvIndexTablet::TEvGetStorageStatsRequest>();
     request->Record = Request;
     request->Record.SetFileSystemId(fileSystemId);
+    request->Record.SetMainQuotasHash(OwnQuotasHash);
     if (ShouldOnlyGetStatsFromMainTablet()) {
         // Get cached statistics even it's 'inifinetely' old.
         request->Record.SetCacheTTL(TDuration::Max().MilliSeconds());
@@ -765,7 +770,8 @@ void TIndexTabletActor::HandleUpdateCounters(
             shardIds,
             std::move(response),
             true, /* isBackgroundRequest */
-            Config->GetFanoutStatsCollectionInShardsDisabled());
+            Config->GetFanoutStatsCollectionInShardsDisabled(),
+            GetQuotasHash());
 
         auto actorId = NCloud::Register(ctx, std::move(actor));
         WorkerActors.insert(actorId);
@@ -844,6 +850,26 @@ void TIndexTabletActor::HandleGetStorageStats(
     }
     auto& req = ev->Get()->Record;
     auto* stats = response->Record.MutableStats();
+
+    // A nonzero MainQuotasHash only arrives on requests main fans out to
+    // its own shards (see TAggregateStatsActor::SendRequestToFileSystem) -
+    // a mismatch means this shard missed a SetQuota/DeleteQuota, most
+    // often because it's a newly created shard that never had a chance to
+    // catch up. Self-heals by fetching the authoritative list from main.
+    if (!IsMainTablet() && req.GetMainQuotasHash() &&
+        req.GetMainQuotasHash() != GetQuotasHash())
+    {
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Quotas out of sync with main (local hash: %lu, main hash: "
+            "%lu) - fetching current quotas",
+            LogTag.c_str(),
+            GetQuotasHash(),
+            req.GetMainQuotasHash());
+
+        RegisterFetchQuotasActor(ctx);
+    }
 
     // shards shouldn't collect other shards' stats (unless it's background
     // shard <-> shard stats exchange which is handled in HandleUpdateCounters
@@ -926,7 +952,8 @@ void TIndexTabletActor::HandleGetStorageStats(
         shardIds,
         std::move(response),
         false, /* isBackgroundRequest */
-        Config->GetFanoutStatsCollectionInShardsDisabled());
+        Config->GetFanoutStatsCollectionInShardsDisabled(),
+        GetQuotasHash());
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

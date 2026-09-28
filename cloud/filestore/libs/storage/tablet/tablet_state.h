@@ -1397,6 +1397,7 @@ public:
 
     TVector<NProto::TQuota> GetQuotas() const;
     ui32 GetQuotaCount() const;
+    ui64 GetQuotasHash() const;
 
     const NProto::TQuota* FindQuota(ui32 quotaId) const;
 
@@ -1408,6 +1409,12 @@ public:
         TInstant now);
 
     void DeleteQuota(IIndexTabletDatabase& db, ui32 quotaId);
+
+    // Full resync against an authoritative list (from main): upserts every
+    // quota in the list, deletes every local quota that's not in it.
+    void ReconcileQuotas(
+        IIndexTabletDatabase& db,
+        const TVector<NProto::TQuota>& quotas);
 
     void LoadQuotaUsages(const TVector<TQuotaUsage>& usages);
 

@@ -575,6 +575,76 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         }
     }
 
+    SERVICE_TEST(ShouldReconcileQuotasOnAStaleShard)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto listQuotas = [&](const TString& fileSystemId)
+        {
+            NProtoPrivate::TListQuotasRequest request;
+            request.SetFileSystemId(fileSystemId);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            auto jsonResponse = service.ExecuteAction("listquotas", buf);
+            NProtoPrivate::TListQuotasResponse response;
+            UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                jsonResponse->Record.GetOutput(), &response).ok());
+
+            return response.GetQuotas();
+        };
+
+        auto setQuota = [&](
+            const TString& fileSystemId,
+            ui32 quotaId,
+            ui64 maxBytes,
+            ui64 maxNodes)
+        {
+            NProtoPrivate::TSetQuotaRequest request;
+            request.SetFileSystemId(fileSystemId);
+            request.SetQuotaId(quotaId);
+            request.SetMaxBytes(maxBytes);
+            request.SetMaxNodes(maxNodes);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("setquota", buf);
+        };
+
+        // the real quota, established on main - propagates to every shard
+        // that exists right now
+        setQuota(fsConfig.FsId, 42, 1_GB, 100);
+
+        // simulate a shard whose local Quotas table has drifted from
+        // main's (e.g. it's a freshly created shard that never received
+        // this SetQuota, or it missed an update while it was down) - since
+        // SetQuota has no IsMainTablet() guard, writing directly to one
+        // shard's own FileSystemId is a legitimate, reachable local write
+        setQuota(fsConfig.Shard1Id, 42, 555, 5);
+        UNIT_ASSERT_VALUES_EQUAL(555u, listQuotas(fsConfig.Shard1Id)[0].GetMaxBytes());
+
+        // a stats round trip from main to every shard carries main's
+        // current quotas hash (see GetStorageStats' MainQuotasHash) - the
+        // drifted shard notices the mismatch and self-heals by fetching
+        // the authoritative list from main
+        {
+            NProtoPrivate::TGetStorageStatsRequest request;
+            request.SetFileSystemId(fsConfig.FsId);
+            request.SetMode(NProtoPrivate::STATS_REQUEST_MODE_FORCE_FETCH_SHARDS);
+
+            TString buf;
+            google::protobuf::util::MessageToJsonString(request, &buf);
+            service.ExecuteAction("GetStorageStats", buf);
+        }
+
+        auto quotas = listQuotas(fsConfig.Shard1Id);
+        UNIT_ASSERT_VALUES_EQUAL(1, quotas.size());
+        UNIT_ASSERT_VALUES_EQUAL(42u, quotas[0].GetQuotaId());
+        UNIT_ASSERT_VALUES_EQUAL(1_GB, quotas[0].GetMaxBytes());
+        UNIT_ASSERT_VALUES_EQUAL(100u, quotas[0].GetMaxNodes());
+    }
+
     SERVICE_TEST(ShouldAggregateQuotaUsageAcrossShards)
     {
         TShardedFileSystemConfig fsConfig;

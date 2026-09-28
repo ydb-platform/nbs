@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/shard_balancer.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/public/api/protos/quota.pb.h>
 
 #include <cloud/storage/core/libs/common/byte_range.h>
 
@@ -1206,6 +1207,24 @@ struct TEvIndexTabletPrivate
     };
 
     //
+    // QuotasFetched - a shard's local Quotas table was found out of sync
+    // with main (see GetStorageStats' MainQuotasHash) and the authoritative
+    // list has been fetched from main; ExecuteTx<TReconcileQuotas> applies
+    // it. See tablet_actor_quota.cpp.
+    //
+
+    struct TQuotasFetched
+    {
+        TVector<NProto::TQuota> Quotas;
+        bool Success = false;
+
+        TQuotasFetched(TVector<NProto::TQuota> quotas, bool success)
+            : Quotas(std::move(quotas))
+            , Success(success)
+        {}
+    };
+
+    //
     // ConfirmBlobs - used during crash recovery to confirm blobs in blob storage
     //
 
@@ -1256,6 +1275,8 @@ struct TEvIndexTabletPrivate
         EvResponseLogEntryDeleted,
 
         EvAggregateStatsCompleted,
+
+        EvQuotasFetched,
 
         EvShardRequestCompleted,
 
@@ -1327,6 +1348,9 @@ struct TEvIndexTabletPrivate
 
     using TEvAggregateStatsCompleted =
         TResponseEvent<TAggregateStatsCompleted, EvAggregateStatsCompleted>;
+
+    using TEvQuotasFetched =
+        TResponseEvent<TQuotasFetched, EvQuotasFetched>;
 
     using TEvShardRequestCompleted =
         TResponseEvent<TEmpty, EvShardRequestCompleted>;
