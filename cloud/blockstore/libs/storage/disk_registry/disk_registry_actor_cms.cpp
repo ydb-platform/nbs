@@ -80,10 +80,10 @@ private:
 };
 
 TCmsRequestActor::TCmsRequestActor(
-        const TActorId& owner,
-        TRequestInfoPtr requestInfo,
-        google::protobuf::RepeatedPtrField<NProto::TAction> requests,
-        TDuration requestTimeout)
+    const TActorId& owner,
+    TRequestInfoPtr requestInfo,
+    google::protobuf::RepeatedPtrField<NProto::TAction> requests,
+    TDuration requestTimeout)
     : Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , Requests(std::move(requests))
@@ -303,7 +303,9 @@ void TCmsRequestActor::HandleGetDependentDisksResponse(
     HandleCmsActionResponseProto(*ev->Get(), ctx);
 }
 
-void TCmsRequestActor::HandleWakeup(const TEvents::TEvWakeup::TPtr& ev, const TActorContext& ctx)
+void TCmsRequestActor::HandleWakeup(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
 {
     Y_UNUSED(ev);
 
