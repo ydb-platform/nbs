@@ -10,6 +10,7 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
+#include <util/system/defaults.h>
 
 namespace NCloud::NStorage::NRdma {
 
@@ -48,6 +49,28 @@ struct TServerConfig
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IServerSession
+{
+    virtual ~IServerSession() = default;
+
+    [[nodiscard]] virtual ui64 GetId() const = 0;
+    [[nodiscard]] virtual TString GetPeer() const = 0;
+    [[nodiscard]] virtual TInstant GetStartTs() const = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct IServerRequest
+{
+    virtual ~IServerRequest() = default;
+
+    // Id of the connection the request arrived from, the same one that was
+    // reported by IServerHandler::OnSessionCreated().
+    [[nodiscard]] virtual ui64 GetSessionId() const = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IServerHandler
 {
     virtual ~IServerHandler() = default;
@@ -55,10 +78,18 @@ struct IServerHandler
     virtual TCallContextBasePtr CreateCallContext() = 0;
 
     virtual void HandleRequest(
-        void* context,
+        IServerRequest* context,
         TCallContextBasePtr callContext,
         TStringBuf in,
         TStringBuf out) = 0;
+
+    virtual void OnSessionCreated(const IServerSession&) noexcept
+    {}
+
+    virtual void OnSessionClosed(ui64 sessionId) noexcept
+    {
+        Y_UNUSED(sessionId);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -67,8 +98,13 @@ struct IServerEndpoint
 {
     virtual ~IServerEndpoint() = default;
 
-    virtual void SendResponse(void* context, size_t responseBytes) = 0;
-    virtual void SendError(void* context, ui32 error, TStringBuf message) = 0;
+    virtual void SendResponse(
+        IServerRequest* context,
+        size_t responseBytes) = 0;
+    virtual void SendError(
+        IServerRequest* context,
+        ui32 error,
+        TStringBuf message) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
