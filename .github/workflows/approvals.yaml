@@ -9,6 +9,10 @@ permissions: {}
 
 jobs:
     approval-check:
+        if: >-
+            ${{ github.event.sender.type == 'User' &&
+                (github.event_name == 'pull_request_review' ||
+                 (github.event_name == 'issue_comment' && github.event.issue.pull_request != null)) }}
         runs-on: [self-hosted, "self-hosted", "runner_light"]
         steps:
         - name: Check approvals from left and right teams
@@ -19,6 +23,25 @@ jobs:
                 const org            = 'ydb-platform';
                 const nebiusTeamSlug = 'nbs_nebius';
                 const yandexTeamSlug = 'nbs_yandex';
+
+                // Immutable IDs: SvartMetal and EvgeniyKozev.
+                const superUsers = new Set([2557343, 127485837]);
+                const sender = context.payload.sender;
+                const isComment = context.eventName === 'issue_comment';
+                const isReview = context.eventName === 'pull_request_review';
+                const pullRequest = isComment ? context.payload.issue : context.payload.pull_request;
+
+                if (sender?.type !== 'User' || (!isComment && !isReview) ||
+                    !pullRequest?.number || (isComment && !pullRequest.pull_request)) {
+                    core.info('Skipping bot, non-PR, or unsupported event.');
+                    return;
+                }
+
+                if (isComment && superUsers.has(sender.id) &&
+                    context.payload.comment?.body?.trim() === '/approve') {
+                    core.info('Approval bypassed by super user ID ' + sender.id);
+                    return;
+                }
 
                 const exemptLeftFolders  = [
                     /* paths that remove the *left-team* requirement */
@@ -48,13 +71,16 @@ jobs:
                     github.rest.teams.listMembersInOrg, { org, team_slug: yandexTeamSlug }
                 );
 
-                const leftUsers  = leftUsersData .map(u => u.login);
-                const rightUsers = rightUsersData.map(u => u.login);
+                const leftUsers  = new Set(leftUsersData.map(u => u.id));
+                const rightUsers = new Set(rightUsersData.map(u => u.id));
 
-                const superUsers = ['SvartMetal', 'EvgeniyKozev'];
+                if (!leftUsers.has(sender.id) && !rightUsers.has(sender.id) && !superUsers.has(sender.id)) {
+                    core.setFailed('Actor ID ' + sender.id + ' is outside the approval allowlist.');
+                    return;
+                }
 
                 const { owner, repo } = context.repo;
-                const prNumber        = context.issue.number;
+                const prNumber        = pullRequest.number;
 
                 const changedFiles = await github.paginate(
                     github.rest.pulls.listFiles,
@@ -94,22 +120,6 @@ jobs:
                     `\n→ Right approval ${needsRightApproval ? 'REQUIRED' : 'NOT required'}`
                 );
 
-                const isInList = (user, list) => list.includes(user);
-
-                if (
-                    context.eventName === 'issue_comment' &&
-                    isInList(context.actor, superUsers) &&
-                    context.payload.comment.body.trim() === '/approve'
-                ) {
-                    console.log('Approval bypassed by super user.');
-                    return;
-                }
-
-                if (context.eventName !== 'pull_request_review') {
-                    core.setFailed('Not enough approvals');
-                    return;
-                }
-
                 const reviews = await github.paginate(
                     github.rest.pulls.listReviews,
                     { owner, repo, pull_number: prNumber },
@@ -121,12 +131,12 @@ jobs:
 
                 for (const r of reviews) {
                     if (r.state === 'APPROVED') {
-                        if (isInList(r.user.login, leftUsers))  leftApprovals.add(r.user.login);
-                        if (isInList(r.user.login, rightUsers)) rightApprovals.add(r.user.login);
+                        if (leftUsers.has(r.user.id))  leftApprovals.add(r.user.id);
+                        if (rightUsers.has(r.user.id)) rightApprovals.add(r.user.id);
                     }
                     if (r.state === 'DISMISSED') {
-                        leftApprovals.delete(r.user.login);
-                        rightApprovals.delete(r.user.login);
+                        leftApprovals.delete(r.user.id);
+                        rightApprovals.delete(r.user.id);
                     }
                 }
 
