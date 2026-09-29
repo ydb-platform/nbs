@@ -14,6 +14,12 @@ namespace {
 class TCmsRequestActor final
     : public TActorBootstrapped<TCmsRequestActor>
 {
+    enum ECmsRequestActorWakeupTag
+    {
+        Retry = 0,
+        Timeout,
+    };
+
 private:
     const TActorId Owner;
     const TRequestInfoPtr RequestInfo;
@@ -76,10 +82,6 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
-    void HandleCompleted(
-        const TEvents::TEvCompleted::TPtr& ev,
-        const TActorContext& ctx);
-
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
@@ -101,7 +103,9 @@ void TCmsRequestActor::Bootstrap(const TActorContext& ctx)
 {
     SendNextRequest(ctx);
 
-    ctx.Schedule(RequestTimeout, new TEvents::TEvCompleted());
+    ctx.Schedule(
+        RequestTimeout,
+        new TEvents::TEvWakeup(ECmsRequestActorWakeupTag::Timeout));
     Become(&TThis::StateWork);
 }
 
@@ -245,7 +249,7 @@ void TCmsRequestActor::HandleCmsActionResponse(
     {
         ctx.Schedule(
             CmsSubrequestTimeout.GetDelayAndIncrease(),
-            new TEvents::TEvWakeup());
+            new TEvents::TEvWakeup(ECmsRequestActorWakeupTag::Retry));
         return;
     }
 
@@ -309,21 +313,23 @@ void TCmsRequestActor::HandleWakeup(
 {
     Y_UNUSED(ev);
 
-    SendNextRequest(ctx);
-}
+    switch (ev->Get()->Tag) {
+        case ECmsRequestActorWakeupTag::Retry:
+            SendNextRequest(ctx);
+            break;
 
-void TCmsRequestActor::HandleCompleted(
-    const TEvents::TEvCompleted::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
+        case ECmsRequestActorWakeupTag::Timeout: {
+            auto& result = *Response->Record.MutableActionResults()->Add();
 
-    auto& result = *Response->Record.MutableActionResults()->Add();
+            *result.MutableResult() =
+                MakeError(E_TIMEOUT, "request failed to meet the deadline");
 
-    *result.MutableResult() =
-        MakeError(E_TIMEOUT, "request failed to meet the deadline");
-
-    ReplyAndDie(ctx);
+            ReplyAndDie(ctx);
+            break;
+        }
+        default:
+            break;
+    }
 }
 
 void TCmsRequestActor::HandlePoisonPill(
@@ -360,8 +366,6 @@ STFUNC(TCmsRequestActor::StateWork)
             HandleGetDependentDisksResponse);
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
-
-        HFunc(TEvents::TEvCompleted, HandleCompleted);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
