@@ -35,6 +35,7 @@ IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
         contrib/libs/silk/src/fibers
         contrib/restricted/googletest/googletest
 
+        library/cpp/testing/common
         library/cpp/threading/future
     )
 ENDIF()

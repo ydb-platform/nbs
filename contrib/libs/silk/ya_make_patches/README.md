@@ -40,7 +40,7 @@ ya_make_patches/
 │   ├── 04-fiber-cxa-get-globals-arcadia-libcxxrt.patch
 │   ├── 05-fiber-uring24-sqes-sz.patch
 │   ├── 06-crash-dumper-env-overrides.patch
-│   └── 07-fiber-py-tls-fallback.patch
+│   └── 07-fiber-py-libcxx-atomics.patch
 └── overlay/                          # Files copied verbatim into silk tree
     ├── ya.make
     ├── include/sys/rseq.h            # Stub for ya include checker
@@ -100,19 +100,11 @@ ya_make_patches/
   gdb declines to load libthread_db, cannot read TLS, and the fiber list
   misses RUNNING fibers (their only reference is the thread-local
   `threadFiber`).
-- **07-fiber-py-tls-fallback**: two fixes to `src/gdb/fiber.py`. First,
-  reading `threadFiber` gains a fallback that needs no libthread_db at
-  all - working TLS via gdb additionally requires matching glibc debug
-  symbols (`libc6-dbg`), which CI containers and many hosts lack, and
-  without it `fiber-list` silently misses RUNNING fibers. The fallback
-  computes the slot's link-time offset from the thread pointer out of
-  the ELF image (`PT_TLS` size/alignment plus the symbol's `st_value`)
-  and reads it via the per-thread `$fs_base` / `$tpidr_el0` register,
-  which plain ptrace provides. Second, `_atomic_load` learns the libc++
-  field layout (`__a_.__a_value`) and its raw-memory fallback reads the
-  atomic's own size instead of a fixed 8 bytes - the 1-byte fiber state
-  atomic otherwise folds in the neighbouring fields and prints as
-  garbage instead of RUNNING/SUSPENDED.
+- **07-fiber-py-libcxx-atomics**: `_atomic_load` in `src/gdb/fiber.py`
+  learns the libc++ field layout (`__a_.__a_value`), and its raw-memory
+  fallback reads the atomic's own size instead of a fixed 8 bytes. The
+  1-byte fiber state atomic otherwise folds in the neighbouring fields
+  and prints as garbage instead of RUNNING/SUSPENDED.
   Both patches are candidates for upstreaming; drop once silk ships
   equivalents.
 

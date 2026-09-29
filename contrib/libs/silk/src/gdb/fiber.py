@@ -377,98 +377,6 @@ def _walk_bounded_queue(val):
                 yield value
 
 
-# ── TLS fallback (no libthread_db) ────────────────────────────────────────────
-#
-# gdb resolves thread_local variables through libthread_db, which needs both an
-# open auto-load safe path and matching glibc debug symbols; when either is
-# missing the evaluation fails and fiber-list would silently miss RUNNING
-# fibers, whose only reference is the thread-local threadFiber. For a variable
-# in the main executable the offset from the thread pointer is a link-time
-# constant, so compute it from the ELF image instead:
-#   x86_64  (variant II): addr = fs_base - align_up(PT_TLS.memsz, align) + st_value
-#   aarch64 (variant I):  addr = tpidr_el0 + align_up(16, align) + st_value
-
-_tls_tp_offset_cache = {}
-
-
-def _tls_tp_offset(symbol_name):
-    """Offset from the thread pointer to symbol_name's TLS slot, or None."""
-    if symbol_name in _tls_tp_offset_cache:
-        return _tls_tp_offset_cache[symbol_name]
-
-    offset = None
-    try:
-        with open(gdb.current_progspace().filename, "rb") as f:
-            data = f.read()
-        if data[:5] == b"\x7fELF\x02":
-            (phoff,) = struct.unpack_from("<Q", data, 0x20)
-            (shoff,) = struct.unpack_from("<Q", data, 0x28)
-            phentsize, phnum = struct.unpack_from("<HH", data, 0x36)
-            shentsize, shnum = struct.unpack_from("<HH", data, 0x3A)
-
-            tls_memsz = tls_align = None
-            for i in range(phnum):
-                p_type, _, _, _, _, _, p_memsz, p_align = struct.unpack_from(
-                    "<IIQQQQQQ", data, phoff + i * phentsize
-                )
-                if p_type == 7:  # PT_TLS
-                    tls_memsz, tls_align = p_memsz, p_align
-                    break
-
-            sections = []
-            for i in range(shnum):
-                _, sh_type, _, _, sh_offset, sh_size, sh_link, _, _, sh_entsize = (
-                    struct.unpack_from("<IIQQQQIIQQ", data, shoff + i * shentsize)
-                )
-                sections.append((sh_type, sh_offset, sh_size, sh_link, sh_entsize))
-
-            st_value = None
-            wanted = symbol_name.encode()
-            for sh_type, sh_offset, sh_size, sh_link, sh_entsize in sections:
-                if sh_type in (2, 11) and sh_entsize:  # SYMTAB, DYNSYM
-                    str_offset = sections[sh_link][1]
-                    for j in range(sh_size // sh_entsize):
-                        st_name, st_info, _, _, value, _ = struct.unpack_from(
-                            "<IBBHQQ", data, sh_offset + j * sh_entsize
-                        )
-                        if (st_info & 0xF) == 6:  # STT_TLS
-                            end = data.index(b"\0", str_offset + st_name)
-                            if data[str_offset + st_name : end] == wanted:
-                                st_value = value
-                                break
-                if st_value is not None:
-                    break
-
-            if tls_memsz is not None and st_value is not None:
-                align_up = lambda v, a: (v + a - 1) & ~(a - 1)
-                if _arch() == "x86_64":
-                    offset = st_value - align_up(tls_memsz, tls_align)
-                else:
-                    offset = align_up(16, tls_align) + st_value
-    except Exception as error:
-        print(f"warning: TLS fallback unavailable: {error}")
-
-    _tls_tp_offset_cache[symbol_name] = offset
-    return offset
-
-
-def _read_tls_pointer(symbol_name):
-    """Read symbol_name's 8-byte TLS slot of the selected thread, or None."""
-    offset = _tls_tp_offset(symbol_name)
-    if offset is None:
-        return None
-
-    tp = _get_reg("fs_base" if _arch() == "x86_64" else "tpidr_el0")
-    if not tp:
-        return None
-
-    try:
-        raw = gdb.selected_inferior().read_memory(tp + offset, 8)
-    except gdb.error:
-        return None
-    return struct.unpack("<Q", bytes(raw))[0]
-
-
 # ── Thread fiber walker ───────────────────────────────────────────────────────
 
 
@@ -479,26 +387,16 @@ def _walk_thread_fibers(show_proxy=False):
     Proxy fibers (isProxyFiber=true) are skipped unless show_proxy is True.
     """
     orig = gdb.selected_thread()
-    warned = False
     try:
         for thread in gdb.inferiors()[0].threads():
             thread.switch()
             try:
                 ptr = int(gdb.parse_and_eval("'fiber.cpp'::silk::threadFiber"))
-            except gdb.error:
-                ptr = _read_tls_pointer("_ZN4silk11threadFiberE")
-                if ptr is None:
-                    if not warned:
-                        warned = True
-                        print(
-                            "warning: cannot read threadFiber TLS"
-                            " (no libthread_db and no ELF fallback);"
-                            " RUNNING fibers are not listed"
-                        )
-                    continue
-            if ptr:
-                if show_proxy or not bool(_fiber_val(ptr)["isProxyFiber"]):
-                    yield (thread, ptr)
+                if ptr:
+                    if show_proxy or not bool(_fiber_val(ptr)["isProxyFiber"]):
+                        yield (thread, ptr)
+            except gdb.error as error:
+                print(f"warning: thread {thread.num}: cannot read threadFiber: {error}")
     finally:
         if orig and orig.is_valid():
             orig.switch()
