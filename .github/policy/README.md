@@ -1,10 +1,33 @@
 # GitHub Actions execution policies
 
-Repository policies for `ydb-platform/nbs`. JSON files can be imported directly via
-`POST /repos/ydb-platform/nbs/actions/policies`.
+Repository policies for `ydb-platform/nbs`. Import from the repository root:
 
-All policies are currently `disabled`. Validate and simulate before activating them;
-activate scoped exceptions before or together with the catch-all.
+```bash
+for policy in .github/policy/*.json; do
+  gh api --method POST repos/ydb-platform/nbs/actions/policies \
+    -H 'X-GitHub-Api-Version: 2026-03-10' \
+    --input "$policy" || exit 1
+done
+```
+
+To update an existing policy, use `--method PUT` and append `/POLICY_ID` to the endpoint
+instead of creating it again. Imports preserve each file's `enforcement` value.
+
+Optional cleanup before import: deletes **all repository-level policies**, including non-NBS
+policies. Back up anything you need to retain. Inherited policies remain; repository-level
+restrictions are removed until active replacements are installed.
+
+```bash
+policy_ids=$(gh api --paginate \
+  'repos/ydb-platform/nbs/actions/policies?has_parents=false&per_page=100' \
+  -H 'X-GitHub-Api-Version: 2026-03-10' \
+  --jq '.policies[].id') || exit 1
+for policy_id in $policy_ids; do
+  gh api --method DELETE "repos/ydb-platform/nbs/actions/policies/$policy_id" \
+    -H 'X-GitHub-Api-Version: 2026-03-10' || exit 1
+done
+```
+
 
 ## Policies
 
@@ -22,8 +45,8 @@ The CI allowlist includes write/maintain/admin roles and the `nbs_yandex`, `nbs_
 Every applicable policy must allow a run; there is no ordering or override. Check automation
 actors before activation: bots, including Dependabot, have no explicit allowance.
 
-The approval job ignores bots and ordinary issue comments. Only SvartMetal and EvgeniyKozev
-can bypass approval requirements with `/approve`; authorization uses immutable user IDs.
+Every review run recalculates team approvals regardless of the sender. Bot comments and ordinary
+issue comments are ignored.
 
 Actor allowlists are a trust boundary, not secret isolation: `pull_request_review` executes
 PR-controlled workflow code, which can access repository secrets on same-repository PRs.
@@ -31,8 +54,7 @@ PR-controlled workflow code, which can access repository secrets on same-reposit
 ## Usage
 
 Install [dependencies](../scripts/requirements.txt) and run from the repository root.
-The API commands require `GITHUB_TOKEN`; `GH_TOKEN` is not supported. None of these commands
-changes GitHub settings.
+The Python API commands require `GITHUB_TOKEN`; The commands below do not change GitHub settings.
 
 ```bash
 export PYTHONPATH=.github
@@ -54,6 +76,8 @@ For fixed dates, use timezone-qualified timestamps such as
 Simulation evaluates even disabled policies using recorded runs and current membership, not a
 full event replay. `DENY` is hypothetical; `observed_conclusion` is the actual historical result.
 Output includes run links; add `--show-allowed` to include allowed runs. Denials cause a nonzero exit.
+Known GitHub built-in Dependabot update and Copilot review runs are reported as `EXEMPT` from actor
+rules; event rules still apply. Ordinary repository workflows triggered by bots are not exempt.
 
 The drift checker compares policies named `NBS: ...`. See [schema documentation](../scripts/policy/schemas/README.md)
 for validation details.

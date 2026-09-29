@@ -12,6 +12,14 @@ REPOSITORY_ROLE_NAMES = {2: "maintain", 4: "write", 5: "admin"}
 UNSUPPORTED_SIMULATION_ACTORS = frozenset(
     {"App", "IntegrationInstallation", "BusinessTeam", "EnterpriseTeam"}
 )
+# Exact API paths for GitHub feature processes, not repository workflows run by bots.
+# https://docs.github.com/en/actions/how-tos/administer/control-workflow-execution#restrict-actors
+GITHUB_BUILTIN_WORKFLOW_PATHS = frozenset(
+    {
+        "dynamic/dependabot/dependabot-updates",
+        "dynamic/agents/copilot-pull-request-reviewer",
+    }
+)
 
 
 class PolicyValidationError(ValueError):
@@ -46,6 +54,10 @@ class ObservedRun:
     event: str
     actor: Actor
     conclusion: str | None
+
+    @property
+    def is_github_builtin(self) -> bool:
+        return self.workflow_path in GITHUB_BUILTIN_WORKFLOW_PATHS
 
 
 @dataclass(frozen=True)
@@ -89,6 +101,8 @@ class ActorRule:
     allowed_actors: tuple[ActorSelector, ...]
 
     def violation(self, run: ObservedRun, evidence: ActorEvidence) -> str | None:
+        if run.is_github_builtin:
+            return None
         if not any(actor.matches(run.actor, evidence) for actor in self.allowed_actors):
             return "actor is not allowed"
         return None
@@ -213,6 +227,7 @@ class SimulationResult:
     allowed: int
     denied: int
     denied_skipped: int
+    exempt: int
 
 
 class PolicySource(Protocol):

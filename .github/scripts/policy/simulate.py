@@ -130,6 +130,7 @@ def simulate_repository_policies(
     allowed = 0
     denied = 0
     denied_skipped = 0
+    exempt = 0
     for workflow_path, runs in runs_by_path.items():
         for run in runs:
             violations = tuple(
@@ -137,8 +138,19 @@ def simulate_repository_policies(
                 for policy in policies_by_path[workflow_path]
                 for violation in policy.violations(run, evidence)
             )
+            if violations:
+                decision = "DENY"
+                denied += 1
+                if run.conclusion == "skipped":
+                    denied_skipped += 1
+            elif run.is_github_builtin:
+                decision = "EXEMPT"
+                exempt += 1
+            else:
+                decision = "ALLOW"
+                allowed += 1
             outcome = Outcome(
-                decision="DENY" if violations else "ALLOW",
+                decision=decision,
                 workflow_path=workflow_path,
                 event=run.event,
                 actor_login=run.actor.login,
@@ -148,12 +160,6 @@ def simulate_repository_policies(
                 violations=violations,
             )
             outcomes[outcome].append(run.id)
-            if violations:
-                denied += 1
-                if run.conclusion == "skipped":
-                    denied_skipped += 1
-            else:
-                allowed += 1
 
     lines = [
         f"WINDOW  {format_time(since)}..{format_time(until)}",
@@ -175,6 +181,8 @@ def simulate_repository_policies(
         )
         if outcome.violations:
             line += " reason=" + "; ".join(outcome.violations)
+        elif outcome.decision == "EXEMPT":
+            line += " reason=GitHub built-in process: actor restrictions do not apply"
         lines.append(line)
         lines.extend(
             f"          run={run_id} url=https://github.com/{repository}/actions/runs/{run_id}"
@@ -182,7 +190,7 @@ def simulate_repository_policies(
         )
     lines.append(
         f"SUMMARY allowed={allowed} denied={denied} "
-        f"denied_skipped={denied_skipped} "
+        f"denied_skipped={denied_skipped} exempt={exempt} "
         f"no_runs={sum(not runs for runs in runs_by_path.values())}"
     )
     return SimulationResult(
@@ -191,6 +199,7 @@ def simulate_repository_policies(
         allowed=allowed,
         denied=denied,
         denied_skipped=denied_skipped,
+        exempt=exempt,
     )
 
 

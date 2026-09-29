@@ -9,10 +9,11 @@ permissions: {}
 
 jobs:
     approval-check:
+        # A skipped required job counts as success, so every review must evaluate approvals.
         if: >-
-            ${{ github.event.sender.type == 'User' &&
-                (github.event_name == 'pull_request_review' ||
-                 (github.event_name == 'issue_comment' && github.event.issue.pull_request != null)) }}
+            ${{ github.event_name == 'pull_request_review' ||
+                (github.event_name == 'issue_comment' && github.event.sender.type == 'User' &&
+                 github.event.issue.pull_request != null) }}
         runs-on: [self-hosted, "self-hosted", "runner_light"]
         steps:
         - name: Check approvals from left and right teams
@@ -31,9 +32,14 @@ jobs:
                 const isReview = context.eventName === 'pull_request_review';
                 const pullRequest = isComment ? context.payload.issue : context.payload.pull_request;
 
-                if (sender?.type !== 'User' || (!isComment && !isReview) ||
-                    !pullRequest?.number || (isComment && !pullRequest.pull_request)) {
-                    core.info('Skipping bot, non-PR, or unsupported event.');
+                if ((!isComment && !isReview) ||
+                    (isComment && (sender?.type !== 'User' || !pullRequest?.pull_request))) {
+                    core.info('Skipping bot comment, non-PR comment, or unsupported event.');
+                    return;
+                }
+
+                if (!pullRequest?.number) {
+                    core.setFailed('Missing pull request number.');
                     return;
                 }
 
@@ -74,7 +80,8 @@ jobs:
                 const leftUsers  = new Set(leftUsersData.map(u => u.id));
                 const rightUsers = new Set(rightUsersData.map(u => u.id));
 
-                if (!leftUsers.has(sender.id) && !rightUsers.has(sender.id) && !superUsers.has(sender.id)) {
+                if (isComment && !leftUsers.has(sender.id) &&
+                    !rightUsers.has(sender.id) && !superUsers.has(sender.id)) {
                     core.setFailed('Actor ID ' + sender.id + ' is outside the approval allowlist.');
                     return;
                 }

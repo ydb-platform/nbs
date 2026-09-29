@@ -98,13 +98,19 @@ class FakeHistory:
         return dict(self.roles)
 
 
-def policy(actor_type: str, actor_id: int, event: str = "pull_request") -> PolicyFile:
+def policy(
+    actor_type: str,
+    actor_id: int,
+    event: str = "pull_request",
+    *,
+    workflow_path: str = WORKFLOW,
+) -> PolicyFile:
     return PolicyFile(
         Path("example.json"),
         Policy(
             name="NBS: example",
             enforcement="disabled",
-            workflow_paths=frozenset({WORKFLOW}),
+            workflow_paths=frozenset({workflow_path}),
             excluded_workflow_paths=frozenset(),
             rules=(
                 ActorRule((ActorSelector(id=actor_id, type=actor_type),)),
@@ -311,6 +317,101 @@ def test_catch_all_checks_new_paths_without_applying_to_exceptions() -> None:
     denial = next(line for line in result.lines if line.startswith("DENY"))
     assert renamed.workflow_path in denial
     assert "NBS: default: actor is not allowed" in denial
+
+
+@pytest.mark.parametrize("show_allowed", [False, True])
+@pytest.mark.parametrize(
+    "workflow_path",
+    [
+        "dynamic/dependabot/dependabot-updates",
+        "dynamic/agents/copilot-pull-request-reviewer",
+    ],
+)
+def test_builtin_runs_are_reported_separately_with_links(
+    workflow_path: str, show_allowed: bool
+) -> None:
+    observed = replace(
+        run(event="dynamic"),
+        workflow_path=workflow_path,
+        actor=Actor(49699333, "dependabot[bot]", "Bot"),
+    )
+    result = simulate_repository_policies(
+        FakeHistory((observed, replace(observed, id=101))),
+        REPOSITORY,
+        (policy("User", 1, "dynamic", workflow_path="~ALL"),),
+        SINCE,
+        UNTIL,
+        show_allowed=show_allowed,
+    )
+
+    assert result.ok
+    assert result.exempt == 2
+    assert result.allowed == result.denied == result.denied_skipped == 0
+    exemption = next(line for line in result.lines if line.startswith("EXEMPT"))
+    assert "count=2 " in exemption
+    assert workflow_path in exemption
+    assert "actor restrictions do not apply" in exemption
+    assert not any(line.startswith(("ALLOW", "DENY")) for line in result.lines)
+    assert result.lines[-1] == (
+        "SUMMARY allowed=0 denied=0 denied_skipped=0 exempt=2 no_runs=0"
+    )
+    for run_id in (100, 101):
+        assert (
+            f"          run={run_id} url=https://github.com/{REPOSITORY}/actions/runs/{run_id}"
+            in result.lines
+        )
+
+
+@pytest.mark.parametrize(
+    "workflow_path",
+    [
+        "dynamic/dependabot/dependabot-updates",
+        "dynamic/agents/copilot-pull-request-reviewer",
+    ],
+)
+def test_builtin_event_violations_still_fail_simulation(workflow_path: str) -> None:
+    observed = replace(run(event="dynamic"), workflow_path=workflow_path)
+    result = simulate_repository_policies(
+        FakeHistory((observed,)),
+        REPOSITORY,
+        (policy("User", 2, workflow_path="~ALL"),),
+        SINCE,
+        UNTIL,
+    )
+
+    assert not result.ok
+    assert result.denied == 1
+    assert result.exempt == result.allowed == 0
+    denial = next(line for line in result.lines if line.startswith("DENY"))
+    assert "event 'dynamic' is not allowed" in denial
+    assert "actor is not allowed" not in denial
+
+
+def test_builtin_exemption_does_not_hide_denials_for_repository_bot_workflows() -> None:
+    bot = Actor(49699333, "dependabot[bot]", "Bot")
+    builtin = replace(
+        run(),
+        id=101,
+        workflow_path="dynamic/dependabot/dependabot-updates",
+        actor=bot,
+    )
+    repository_bot_run = replace(run(), id=102, actor=bot)
+    result = simulate_repository_policies(
+        FakeHistory((run(), builtin, repository_bot_run)),
+        REPOSITORY,
+        (policy("User", 1, workflow_path="~ALL"),),
+        SINCE,
+        UNTIL,
+    )
+
+    assert not result.ok
+    assert result.allowed == result.denied == result.exempt == 1
+    denial = next(line for line in result.lines if line.startswith("DENY"))
+    assert WORKFLOW in denial
+    assert "actor is not allowed" in denial
+    assert result.lines[-1] == (
+        "SUMMARY allowed=1 denied=1 denied_skipped=0 exempt=1 no_runs=0"
+    )
 
 
 @pytest.mark.parametrize(

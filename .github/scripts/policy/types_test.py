@@ -75,6 +75,51 @@ def test_dependabot_app_is_not_confused_with_its_bot_user() -> None:
     assert ActorSelector(49699333, "Bot").matches(dependabot, EVIDENCE)
 
 
+@pytest.mark.parametrize(
+    "workflow_path",
+    [
+        "dynamic/dependabot/dependabot-updates",
+        "dynamic/agents/copilot-pull-request-reviewer",
+    ],
+)
+def test_github_builtin_runs_are_exempt_only_from_actor_rules(
+    workflow_path: str,
+) -> None:
+    observed = replace(RUN, workflow_path=workflow_path, event="dynamic")
+
+    assert observed.is_github_builtin
+    assert ActorRule((ActorSelector(2, "User"),)).violation(observed, EVIDENCE) is None
+    assert EventRule(("pull_request",)).violation(observed, EVIDENCE) == (
+        "event 'dynamic' is not allowed"
+    )
+
+
+@pytest.mark.parametrize(
+    "login", ["dependabot[bot]", "copilot-pull-request-reviewer[bot]"]
+)
+@pytest.mark.parametrize(
+    "workflow_path",
+    [
+        RUN.workflow_path,
+        ".github/workflows/dependabot-updates.yaml",
+        ".github/workflows/copilot-pull-request-reviewer.yaml",
+        "dynamic/dependabot/dependabot-updates-copy",
+        "dynamic/agents/unknown-process",
+    ],
+)
+def test_bot_identity_does_not_exempt_other_workflows(
+    workflow_path: str, login: str
+) -> None:
+    observed = replace(
+        RUN, workflow_path=workflow_path, actor=Actor(49699333, login, "Bot")
+    )
+
+    assert not observed.is_github_builtin
+    assert ActorRule((ActorSelector(2, "User"),)).violation(observed, EVIDENCE) == (
+        "actor is not allowed"
+    )
+
+
 def test_rules_allow_any_matching_actor_but_require_every_rule() -> None:
     policy = Policy(
         name="NBS: example",
