@@ -822,7 +822,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.SetNodeAttr(resetTimes);
         tablet.WriteData(handle, 0, size, 'a');
 
-        const auto& stats = tablet.GetStorageStats()->Record.GetStats();
+        auto response = tablet.GetStorageStats();
+        const auto& stats = response->Record.GetStats();
         UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
 
         auto attrs = GetNodeAttrs(tablet, id);
