@@ -201,6 +201,7 @@ public:
 
 void ExpectNoSuccessStats(const TAtomicStats& stats, vhd_bdev_io_type type)
 {
+    EXPECT_EQ(0u, stats.Requests[type].Count.load());
     EXPECT_EQ(0u, GetTotalCount(stats.Times[type]));
     EXPECT_EQ(0u, GetTotalCount(stats.Sizes[type]));
 }

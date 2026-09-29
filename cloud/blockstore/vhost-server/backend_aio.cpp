@@ -103,7 +103,7 @@ void CompleteCompoundRequestImpl(
 
         auto& requestStat = stats.Requests[bio->type];
         requestStat.Errors += req->Errors != 0;
-        requestStat.Count += 1;
+        requestStat.Count += status == VHD_BDEV_SUCCESS;
         requestStat.Bytes += bytes;
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
