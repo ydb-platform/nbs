@@ -1,6 +1,7 @@
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -23,9 +24,10 @@ private:
 
     std::unique_ptr<TEvService::TEvCmsActionResponse> Response;
 
-    TMonotonic Start = TMonotonic::Now();
+    TBackoffDelayProvider CmsSubrequestTimeout{
+        TDuration::Seconds(1),
+        TDuration::Seconds(300)};
 
-    const TDuration ScheduleTimeout = TDuration::MilliSeconds(2);
     TDuration RequestTimeout;
 
 public:
@@ -74,6 +76,10 @@ private:
         const TEvents::TEvWakeup::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleCompleted(
+        const TEvents::TEvCompleted::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
@@ -95,6 +101,7 @@ void TCmsRequestActor::Bootstrap(const TActorContext& ctx)
 {
     SendNextRequest(ctx);
 
+    ctx.Schedule(RequestTimeout, new TEvents::TEvCompleted());
     Become(&TThis::StateWork);
 }
 
@@ -233,27 +240,20 @@ void TCmsRequestActor::HandleCmsActionResponse(
     const TActorContext& ctx)
 {
     auto& error = response.GetError();
-    if (error.GetCode() == E_REJECTED) {
-        auto duration = TMonotonic::Now() - Start;
+    if (error.GetCode() == E_REJECTED &&
+        error.GetMessage() == "too many inflight transactions")
+    {
+        ctx.Schedule(
+            CmsSubrequestTimeout.GetDelayAndIncrease(),
+            new TEvents::TEvWakeup());
+        return;
+    }
 
-        if (duration.MicroSeconds() < RequestTimeout.MicroSeconds()) {
-            ctx.Schedule(ScheduleTimeout, new TEvents::TEvWakeup());
-            return;
-        }
-
-        auto& result = *Response->Record.MutableActionResults()->Add();
-
-        *result.MutableResult() =
-            MakeError(E_TIMEOUT, "request failed to meet the deadline");
-
-        result.SetTimeout(duration.MilliSeconds());
-    } else {
-        auto& result = *Response->Record.MutableActionResults()->Add();
-        *result.MutableResult() = error;
-        result.SetTimeout(response.Timeout.Seconds());
-        for (auto& diskId: response.DependentDiskIds) {
-            *result.AddDependentDisks() = std::move(diskId);
-        }
+    auto& result = *Response->Record.MutableActionResults()->Add();
+    *result.MutableResult() = error;
+    result.SetTimeout(response.Timeout.Seconds());
+    for (auto& diskId: response.DependentDiskIds) {
+        *result.AddDependentDisks() = std::move(diskId);
     }
 
     ++CurrentRequest;
@@ -312,6 +312,20 @@ void TCmsRequestActor::HandleWakeup(
     SendNextRequest(ctx);
 }
 
+void TCmsRequestActor::HandleCompleted(
+    const TEvents::TEvCompleted::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    auto& result = *Response->Record.MutableActionResults()->Add();
+
+    *result.MutableResult() =
+        MakeError(E_TIMEOUT, "request failed to meet the deadline");
+
+    ReplyAndDie(ctx);
+}
+
 void TCmsRequestActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
@@ -347,6 +361,8 @@ STFUNC(TCmsRequestActor::StateWork)
 
         HFunc(TEvents::TEvWakeup, HandleWakeup);
 
+        HFunc(TEvents::TEvCompleted, HandleCompleted);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         default:
@@ -371,14 +387,16 @@ void TDiskRegistryActor::HandleCmsAction(
         ev->Cookie,
         MakeIntrusive<TCallContext>());
 
-    auto requestTimeout = TDuration::MilliSeconds(
-        ev->Get()->Record.GetHeaders().GetRequestTimeout());
+    const auto& msg = ev->Get()->Record;
+
+    auto requestTimeout =
+        TDuration::MilliSeconds(msg.GetHeaders().GetRequestTimeout());
 
     auto actor = NCloud::Register<TCmsRequestActor>(
         ctx,
         SelfId(),
         std::move(requestInfo),
-        ev->Get()->Record.GetActions(),
+        msg.GetActions(),
         requestTimeout);
 
     Actors.insert(actor);

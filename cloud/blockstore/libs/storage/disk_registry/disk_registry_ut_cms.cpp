@@ -2216,7 +2216,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         };
 
         NProto::THeaders headers;
-        headers.SetRequestTimeout(TDuration::Seconds(1).MilliSeconds());
+        headers.SetRequestTimeout(TDuration::Seconds(10).MilliSeconds());
 
         DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
         DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
