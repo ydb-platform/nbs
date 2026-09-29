@@ -61,8 +61,8 @@ public:
     void Register(NKikimr::TControlBoard& controlBoard);
 
     // Update defaults from raw configuration values, resetting overrides only
-    // for changed defaults. Serialize calls to this method; concurrent ICB
-    // value updates are allowed.
+    // for changed defaults. Calls for the same control set must not overlap.
+    // Concurrent ICB value updates are allowed.
     void UpdateDefaults(const NProto::TStorageServiceConfig& config);
 
     // Return an explicit ICB override for a known read-write field. An empty
