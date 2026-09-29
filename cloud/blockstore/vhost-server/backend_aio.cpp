@@ -71,69 +71,6 @@ void CompleteRequestImpl(
     vhd_complete_bio(req->Io, status);
 }
 
-}   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-void CompleteCompoundRequestImpl(
-    TLog& log,
-    IEncryptor* encryptor,
-    TAioSubRequestHolder sub,
-    vhd_bdev_io_result status,
-    TAtomicStats& stats,
-    TCompleteBioFn completeBio)
-{
-    auto* req = sub->GetParentRequest();
-
-    req->Errors += status != VHD_BDEV_SUCCESS;
-
-    if (req->Inflight.fetch_sub(1) == 1) {
-        // This is the last subrequest. Take ownership of the parent request and
-        // release it when leave the scope.
-        auto holder = sub->TakeParentRequest();
-
-        // The last subrequest may succeed after an earlier one failed. The
-        // whole request fails if any of its subrequests failed.
-        if (req->Errors.load() != 0) {
-            status = VHD_BDEV_IOERR;
-        }
-
-        auto* bio = vhd_get_bdev_io(req->Io);
-        const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
-
-        auto& requestStat = stats.Requests[bio->type];
-        requestStat.Errors += req->Errors != 0;
-        requestStat.Count += status == VHD_BDEV_SUCCESS;
-        requestStat.Bytes += bytes;
-
-        if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
-            TBlockDataRef data = req->GetData();
-            NSan::Unpoison(data.data(), data.size());
-            const bool success = SgListCopyWithOptionalDecryption(
-                log,
-                data,
-                bio->sglist,
-                encryptor,
-                bio->first_sector);
-            if (!success) {
-                status = VHD_BDEV_IOERR;
-                stats.EncryptorErrors++;
-            }
-        }
-
-        const TCpuCycles now = GetCycleCount();
-
-        if (status == VHD_BDEV_SUCCESS) {
-            stats.Times[bio->type].Increment(now - req->SubmitTs);
-            stats.Sizes[bio->type].Increment(bytes);
-        }
-
-        completeBio(req->Io, status);
-    }
-}
-
-namespace {
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TAioBackend final: public IBackend
