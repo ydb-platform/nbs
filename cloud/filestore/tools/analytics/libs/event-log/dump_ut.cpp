@@ -102,7 +102,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
     {
         const auto requests = GetRequestTypes();
 
-        UNIT_ASSERT_VALUES_EQUAL(86, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(87, requests.size());
 
         ui32 index = 0;
 #define TEST_REQUEST_TYPE(id, name)                                            \
@@ -183,6 +183,7 @@ Y_UNIT_TEST_SUITE(TDumpTest)
         TEST_REQUEST_TYPE(65, FuseFlush);
         TEST_REQUEST_TYPE(66, FuseFsync);
         TEST_REQUEST_TYPE(67, FuseFsyncDir);
+        TEST_REQUEST_TYPE(68, AsyncDestroyHandle);
 
         // Tablet
         TEST_REQUEST_TYPE(10001, Flush);

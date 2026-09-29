@@ -133,6 +133,7 @@ TFuture<TCompletedRequest> IReplayRequestGenerator::ProcessRequest(
         case EFileStoreRequest::CreateHandle:
             return DoCreateHandle(request);
         case EFileStoreRequest::DestroyHandle:
+        case EFileStoreRequest::AsyncDestroyHandle:
             return DoDestroyHandle(request);
         case EFileStoreRequest::GetNodeAttr:
             return DoGetNodeAttr(request);
