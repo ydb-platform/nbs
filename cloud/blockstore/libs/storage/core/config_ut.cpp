@@ -1,15 +1,18 @@
 #include "config.h"
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/vector.h>
 
+#include <cmath>
 #include <functional>
 #include <latch>
+#include <limits>
 #include <thread>
 #include <type_traits>
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -154,8 +157,8 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             NProto::PREEMPTION_MOVE_LEAST_HEAVY);
     }
 
-    // Check double override reset on fractional changes and removal, and
-    // preservation when only the presence of the compiled default changes.
+    // Check selective override reset for raw double defaults, including
+    // fractional changes, saturation, NaN and compiled fallback.
     Y_UNIT_TEST(ShouldUpdateDefaultsForDouble)
     {
         // Reset the override when only the fractional part changes.
@@ -227,6 +230,157 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(
             10,
             controls->GetOverride(name).value());
+
+        // Preserve an override on repeated NaN defaults, including a sign
+        // change.
+        proto.SetNonReplicatedAgentTimeoutGrowthFactor(
+            std::numeric_limits<double>::quiet_NaN());
+        controls->UpdateDefaults(proto);
+        board.SetValue(
+            "BlockStore_NonReplicatedAgentTimeoutGrowthFactor",
+            10,
+            previousValue);
+        proto.SetNonReplicatedAgentTimeoutGrowthFactor(
+            -std::numeric_limits<double>::quiet_NaN());
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT(controls->GetOverride(name));
+        UNIT_ASSERT_VALUES_EQUAL(10, controls->GetOverride(name).value());
+
+        // Reset overrides on NaN-to-zero and zero-to-NaN transitions even
+        // though both defaults have the same integer representation.
+        proto.SetNonReplicatedAgentTimeoutGrowthFactor(0);
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT(!controls->GetOverride(name));
+        board.SetValue(
+            "BlockStore_NonReplicatedAgentTimeoutGrowthFactor",
+            10,
+            previousValue);
+        proto.SetNonReplicatedAgentTimeoutGrowthFactor(
+            std::numeric_limits<double>::quiet_NaN());
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT(!controls->GetOverride(name));
+
+        // Reset overrides for distinct raw values that saturate to one limit.
+        CheckUpdateDefaults<double>(
+            "NonReplicatedAgentTimeoutGrowthFactor",
+            &TStorageProto::SetNonReplicatedAgentTimeoutGrowthFactor,
+            &TStorageConfig::GetNonReplicatedAgentTimeoutGrowthFactor,
+            1e100,
+            2e100,
+            10);
+        CheckUpdateDefaults<double>(
+            "DiskRegistryInitialAgentRejectionThreshold",
+            &TStorageProto::SetDiskRegistryInitialAgentRejectionThreshold,
+            &TStorageConfig::GetDiskRegistryInitialAgentRejectionThreshold,
+            -1e100,
+            -2e100,
+            -10);
+    }
+
+    // Check saturated native defaults and raw getters for both double fields
+    // on construction and update, including operator writes and Restore.
+    Y_UNIT_TEST(ShouldSaturateDoubleControls)
+    {
+        // Cover integer boundaries, adjacent doubles, infinities and NaN.
+        const auto min = Min<TAtomicBase>();
+        const auto max = Max<TAtomicBase>();
+        const double infinity = std::numeric_limits<double>::infinity();
+        const double upper =
+            std::ldexp(1.0, std::numeric_limits<TAtomicBase>::digits);
+        const double belowUpper = std::nextafter(upper, 0.0);
+        const double aboveLower = std::nextafter(-upper, 0.0);
+        const std::pair<double, TAtomicBase> cases[] = {
+            {2.9, 2},
+            {-2.9, -2},
+            {0.0, 0},
+            {-0.0, 0},
+            {1e100, max},
+            {-1e100, min},
+            {std::numeric_limits<double>::max(), max},
+            {std::numeric_limits<double>::lowest(), min},
+            {infinity, max},
+            {-infinity, min},
+            {std::numeric_limits<double>::quiet_NaN(), 0},
+            {upper, max},
+            {belowUpper, static_cast<TAtomicBase>(belowUpper)},
+            {std::nextafter(upper, infinity), max},
+            {-upper, min},
+            {aboveLower, static_cast<TAtomicBase>(aboveLower)},
+            {std::nextafter(-upper, -infinity), min},
+        };
+
+        // Exercise each entry point with fresh controls and an independent
+        // board.
+        const auto checkField =
+            [&](const TString& name, auto setter, auto getter)
+        {
+            for (const auto& [rawValue, nativeDefault]: cases) {
+                for (const bool initializeFromProto: {true, false}) {
+                    TStorageProto proto;
+                    std::invoke(setter, proto, rawValue);
+                    auto controls = std::make_shared<TStorageConfigControls>(
+                        initializeFromProto ? proto : TStorageProto());
+                    NKikimr::TControlBoard board;
+                    controls->Register(board);
+                    const TString controlName = "BlockStore_" + name;
+                    NKikimr::TControlWrapper control;
+                    UNIT_ASSERT(
+                        !board.RegisterSharedControl(control, controlName));
+                    if (!initializeFromProto) {
+                        controls->UpdateDefaults(proto);
+                    }
+                    const TStorageConfig config(proto, nullptr, controls);
+
+                    // Expose the integer representation while retaining the raw
+                    // double, including NaN and the sign of zero.
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        nativeDefault,
+                        control.GetDefault());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        nativeDefault,
+                        static_cast<TAtomicBase>(control));
+                    UNIT_ASSERT(!controls->GetOverride(name));
+                    const double actual = (config.*getter)();
+                    if (std::isnan(rawValue)) {
+                        UNIT_ASSERT(std::isnan(actual));
+                    } else {
+                        UNIT_ASSERT_VALUES_EQUAL(rawValue, actual);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            std::signbit(rawValue),
+                            std::signbit(actual));
+                    }
+
+                    // Preserve an operator override on the same raw default.
+                    TAtomic previousValue = {};
+                    board.SetValue(controlName, 123, previousValue);
+                    controls->UpdateDefaults(proto);
+                    UNIT_ASSERT_VALUES_EQUAL(123, (config.*getter)());
+
+                    // Restore the native default and resume reading raw double.
+                    UNIT_ASSERT(controls->RestoreDefault(name));
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        nativeDefault,
+                        control.GetDefault());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        nativeDefault,
+                        static_cast<TAtomicBase>(control));
+                    UNIT_ASSERT(!controls->GetOverride(name));
+                    if (std::isnan(rawValue)) {
+                        UNIT_ASSERT(std::isnan((config.*getter)()));
+                    } else {
+                        UNIT_ASSERT_VALUES_EQUAL(rawValue, (config.*getter)());
+                    }
+                }
+            }
+        };
+        checkField(
+            "NonReplicatedAgentTimeoutGrowthFactor",
+            &TStorageProto::SetNonReplicatedAgentTimeoutGrowthFactor,
+            &TStorageConfig::GetNonReplicatedAgentTimeoutGrowthFactor);
+        checkField(
+            "DiskRegistryInitialAgentRejectionThreshold",
+            &TStorageProto::SetDiskRegistryInitialAgentRejectionThreshold,
+            &TStorageConfig::GetDiskRegistryInitialAgentRejectionThreshold);
     }
 
     // Check that shared controls expose compiled defaults on the native board
