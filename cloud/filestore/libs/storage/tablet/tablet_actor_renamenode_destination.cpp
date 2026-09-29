@@ -839,8 +839,7 @@ void TIndexTabletActor::CompleteTx_RenameNodeInDestination(
                 std::move(args.ProfileLogRequest),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
-                std::move(args.Response),
-                false);
+                std::move(args.Response));
 
             return;
         }

@@ -520,8 +520,7 @@ private:
         NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result,
-        bool shouldUnlockUponCompletion);
+        TUnlinkNodeInShardResult result);
 
     void RegisterRenameNodeInDestinationActor(
         const NActors::TActorContext& ctx,

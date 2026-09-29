@@ -1390,6 +1390,13 @@ message TUnlinkNodeInShardRequest
 
     // Original request that caused this unlink.
     NProto.TUnlinkNodeRequest OriginalRequest = 6;
+
+    // This flag indicates that the external node is unlinked and that directory
+    // creation in shards is enabled. It also means that the node in the leader
+    // is unlinked after the node in the shard is unlinked. The field is
+    // optional to allow requests created by the previous version
+    // to be replayed.
+    optional bool ShouldUnlockUponCompletion = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
