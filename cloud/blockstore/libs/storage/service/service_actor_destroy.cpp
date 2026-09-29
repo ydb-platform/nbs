@@ -74,6 +74,8 @@ public:
     void Bootstrap(const TActorContext& ctx);
 
 private:
+    void DescribeVolume(const TActorContext& ctx);
+    void CheckVolume(const TActorContext& ctx);
     void WaitReady(const TActorContext& ctx);
     void DestroyVolume(const TActorContext& ctx);
     void NotifyDiskRegistry(const TActorContext& ctx);
@@ -81,6 +83,10 @@ private:
     void DeallocateDisk(const TActorContext& ctx);
     void GracefulShutdown(const TActorContext& ctx);
     NProto::TError CheckIfDestructionIsAllowed() const;
+
+    void HandleDescribeVolumeResponse(
+        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandleModifyResponse(
         const TEvSSProxy::TEvModifyVolumeResponse::TPtr& ev,
@@ -146,13 +152,28 @@ TDestroyVolumeActor::TDestroyVolumeActor(
 void TDestroyVolumeActor::Bootstrap(const TActorContext& ctx)
 {
     ctx.Schedule(Timeout, new TEvents::TEvWakeup());
+    DescribeVolume(ctx);
+
+    Become(&TThis::StateWork);
+}
+
+void TDestroyVolumeActor::DescribeVolume(const TActorContext& ctx)
+{
+    NCloud::Send(
+        ctx,
+        MakeSSProxyServiceId(),
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+            DiskId,
+            /*exactDiskIdMatch=*/true));
+}
+
+void TDestroyVolumeActor::CheckVolume(const TActorContext& ctx)
+{
     if (DestroyIfBroken) {
         WaitReady(ctx);
     } else {
         StatVolume(ctx);
     }
-
-    Become(&TThis::StateWork);
 }
 
 void TDestroyVolumeActor::WaitReady(const TActorContext& ctx)
@@ -244,6 +265,33 @@ NProto::TError TDestroyVolumeActor::CheckIfDestructionIsAllowed() const
     }
 
     return MakeError(S_OK);
+}
+
+void TDestroyVolumeActor::HandleDescribeVolumeResponse(
+    const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+
+    const auto mediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
+        msg->PathDescription.GetBlockStoreVolumeDescription()
+            .GetVolumeConfig()
+            .GetStorageMediaKind());
+    if (HasError(msg->GetError()) ||
+        !IsSsdDirectMirror3Of5GroupMediaKind(mediaKind))
+    {
+        CheckVolume(ctx);
+        return;
+    }
+
+    if (auto error = CheckIfDestructionIsAllowed(); HasError(error)) {
+        ReplyAndDie(ctx, std::move(error));
+        return;
+    }
+
+    // TODO: NBS-7763 support StatVolume and WaitReady for
+    // ssd-direct-mirror3of5-group media kind.
+    DestroyVolume(ctx);
 }
 
 void TDestroyVolumeActor::HandleModifyResponse(
@@ -539,6 +587,9 @@ void TDestroyVolumeActor::ReplyAndDie(
 STFUNC(TDestroyVolumeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvSSProxy::TEvDescribeVolumeResponse,
+            HandleDescribeVolumeResponse);
         HFunc(TEvSSProxy::TEvModifyVolumeResponse, HandleModifyResponse);
         HFunc(TEvVolume::TEvWaitReadyResponse, HandleWaitReadyResponse);
         HFunc(

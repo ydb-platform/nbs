@@ -657,6 +657,62 @@ Y_UNIT_TEST_SUITE(TServiceDestroyTest)
             IsPathDoesNotExistsError(response->GetError()),
             FormatError(response->GetError()));
     }
+
+    Y_UNIT_TEST(ShouldDestroySsdDirectMirror3Of5GroupVolume)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        CreateSimpleSsdDisk(service, DefaultDiskId);
+
+        bool detectedDestroyVolumeRequest = false;
+        bool detectedVolumeTabletRequest = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        auto& pathDescription =
+                            const_cast<NKikimrSchemeOp::TPathDescription&>(
+                                msg->PathDescription);
+                        pathDescription.MutableBlockStoreVolumeDescription()
+                            ->MutableVolumeConfig()
+                            ->SetStorageMediaKind(
+                                NCloud::NProto::
+                                    STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
+                        break;
+                    }
+                    case TEvSSProxy::EvModifyVolumeRequest: {
+                        detectedDestroyVolumeRequest = true;
+                        break;
+                    }
+                    case TEvService::EvStatVolumeRequest:
+                    case TEvVolume::EvWaitReadyRequest: {
+                        detectedVolumeTabletRequest = true;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        service.SendDestroyVolumeRequest(DefaultDiskId);
+        auto response = service.RecvDestroyVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT(detectedDestroyVolumeRequest);
+        UNIT_ASSERT(!detectedVolumeTabletRequest);
+
+        service.SendDescribeVolumeRequest(DefaultDiskId);
+        UNIT_ASSERT(IsPathDoesNotExistsError(
+            service.RecvDescribeVolumeResponse()->GetError()));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -51,6 +51,8 @@ private:
     NPrivateProto::TVolumeChannelsToPoolsKinds VolumeChannelsToPoolsKinds;
     bool SetupChannelsRequested = false;
 
+    bool IsSsdDirectMirror3Of5GroupVolume = false;
+
 public:
     TAlterVolumeActor(
         const TActorId& sender,
@@ -126,6 +128,10 @@ private:
     }
 
     void DescribeVolume(const TActorContext& ctx);
+
+    bool ResizeSsdDirectMirror3Of5GroupVolume(
+        const TActorContext& ctx,
+        const NKikimrBlockStore::TVolumeConfig& oldVolumeConfig);
 
     void StatVolume(const TActorContext& ctx);
 
@@ -240,6 +246,54 @@ void TAlterVolumeActor::DescribeVolume(const TActorContext& ctx)
             /*exactDiskIdMatch=*/false));
 }
 
+bool TAlterVolumeActor::ResizeSsdDirectMirror3Of5GroupVolume(
+    const TActorContext& ctx,
+    const NKikimrBlockStore::TVolumeConfig& oldVolumeConfig)
+{
+    if (SetupChannelsRequested) {
+        Error = MakeError(
+            E_NOT_IMPLEMENTED,
+            "SetupChannels is not supported for ssd-direct-mirror3of5-group "
+            "volumes");
+        ReplyAndDie(ctx);
+        return false;
+    }
+
+    if (!NewBlocksCount) {
+        return true;
+    }
+
+    if (oldVolumeConfig.PartitionsSize() != 1) {
+        Error = MakeError(
+            E_INVALID_STATE,
+            TStringBuilder()
+                << "ssd-direct-mirror3of5-group volume should have exactly "
+                   "one partition, got "
+                << oldVolumeConfig.PartitionsSize());
+        ReplyAndDie(ctx);
+        return false;
+    }
+
+    const ui64 oldBlocksCount =
+        oldVolumeConfig.GetPartitions(0).GetBlockCount();
+
+    if (NewBlocksCount < oldBlocksCount) {
+        Error = MakeError(E_ARGUMENT, "Cannot decrease volume size");
+        ReplyAndDie(ctx);
+        return false;
+    }
+
+    if (NewBlocksCount == oldBlocksCount) {
+        Error =
+            MakeError(S_ALREADY, "Volume already has the required settings");
+        ReplyAndDie(ctx);
+        return false;
+    }
+
+    VolumeConfig.AddPartitions()->SetBlockCount(NewBlocksCount);
+    return true;
+}
+
 void TAlterVolumeActor::StatVolume(const TActorContext& ctx)
 {
     Become(&TThis::StateStatVolume);
@@ -326,7 +380,15 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
         ConfigVersion = oldVolumeConfig.GetVersion();
     }
 
-    if (NewBlocksCount || SetupChannelsRequested) {
+    const auto mediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
+        oldVolumeConfig.GetStorageMediaKind());
+    IsSsdDirectMirror3Of5GroupVolume =
+        IsSsdDirectMirror3Of5GroupMediaKind(mediaKind);
+    if (IsSsdDirectMirror3Of5GroupVolume) {
+        if (!ResizeSsdDirectMirror3Of5GroupVolume(ctx, oldVolumeConfig)) {
+            return;
+        }
+    } else if (NewBlocksCount || SetupChannelsRequested) {
         ui32 oldBlocksCount = 0;
         for (const auto& partition: oldVolumeConfig.GetPartitions()) {
             oldBlocksCount += partition.GetBlockCount();
@@ -471,7 +533,9 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
         VolumeConfig.SetVersion(ConfigVersion);
     }
 
-    if (CheckVolumeOperationRestriction) {
+    // TODO: NBS-7763 support StatVolume for ssd-direct-mirror3of5-group media
+    // kind.
+    if (CheckVolumeOperationRestriction && !IsSsdDirectMirror3Of5GroupVolume) {
         Path = path;
         PathId = pathDescription.GetSelf().GetPathId();
         PathVersion = pathDescription.GetSelf().GetPathVersion();
@@ -527,6 +591,13 @@ void TAlterVolumeActor::HandleAlterVolumeResponse(
             msg->GetErrorReason().c_str());
 
         Error = std::move(error);
+        ReplyAndDie(ctx);
+        return;
+    }
+
+    if (IsSsdDirectMirror3Of5GroupVolume) {
+        // TODO: NBS-7763 support WaitReady for ssd-direct-mirror3of5-group
+        // media kind.
         ReplyAndDie(ctx);
         return;
     }
