@@ -2273,7 +2273,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         };
 
         NProto::THeaders headers;
-        headers.SetRequestTimeout(TDuration::MilliSeconds(0).MilliSeconds());
+        headers.SetRequestTimeout(TDuration::MilliSeconds(1).MilliSeconds());
 
         DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
         DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
@@ -2337,7 +2337,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         };
 
         NProto::THeaders headers;
-        headers.SetRequestTimeout(TDuration::MilliSeconds(0).MilliSeconds());
+        headers.SetRequestTimeout(TDuration::MilliSeconds(1).MilliSeconds());
 
         size_t nReqs = 5;
         DiskRegistry->SendCmsActionRequest(
@@ -2374,6 +2374,63 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_C(
             timeoutCount == 5,
             "Expected at 5 timeout responses, got: " << timeoutCount);
+    }
+
+    Y_UNIT_TEST_F(ShouldProcessAllRequestsDueToZeroTimeout, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetMaxInFlightCmsRequests(1);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
+
+        auto makeRemoveHostActions = [&]()
+        {
+            NProto::TAction action;
+            action.SetHost("agent-1");
+            action.SetType(NProto::TAction::REMOVE_HOST);
+            return TVector<NProto::TAction>{action};
+        };
+
+        NProto::THeaders headers;
+        headers.SetRequestTimeout(TDuration::Seconds(0).MilliSeconds());
+
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+
+        int rejectedCount = 0;
+        int timeoutCount = 0;
+        for (int i = 0; i < 4; ++i) {
+            auto response = DiskRegistry->RecvCmsActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
+            const auto code =
+                response->Record.GetActionResults(0).GetResult().GetCode();
+            if (code == E_REJECTED) {
+                ++rejectedCount;
+            } else if (code == E_TIMEOUT) {
+                ++timeoutCount;
+            }
+        }
+
+        UNIT_ASSERT_C(
+            rejectedCount == 0,
+            "Expected at 0 rejected responses, got: " << rejectedCount);
+
+        UNIT_ASSERT_C(
+            timeoutCount == 0,
+            "Expected at 0 timeout responses, got: " << timeoutCount);
     }
 }
 

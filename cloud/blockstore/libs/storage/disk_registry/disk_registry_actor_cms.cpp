@@ -103,9 +103,11 @@ void TCmsRequestActor::Bootstrap(const TActorContext& ctx)
 {
     SendNextRequest(ctx);
 
-    ctx.Schedule(
-        RequestTimeout,
-        new TEvents::TEvWakeup(ECmsRequestActorWakeupTag::Timeout));
+    if (RequestTimeout > TDuration::Zero()) {
+        ctx.Schedule(
+            RequestTimeout,
+            new TEvents::TEvWakeup(ECmsRequestActorWakeupTag::Timeout));
+    }
     Become(&TThis::StateWork);
 }
 
