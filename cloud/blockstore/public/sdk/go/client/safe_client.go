@@ -543,7 +543,7 @@ func (client *safeClient) CmsRemoveDevices(
 		action := protos.TAction{
 			Type:   &t,
 			Host:   &host,
-			Device: &device,
+			Device: &devices[i],
 			DryRun: &dryRun,
 		}
 		actions[i] = &action
@@ -570,7 +570,7 @@ func (client *safeClient) CmsPurgeDevices(
 		action := protos.TAction{
 			Type:   &t,
 			Host:   &host,
-			Device: &device,
+			Device: &devices[i],
 			DryRun: &dryRun,
 		}
 		actions[i] = &action

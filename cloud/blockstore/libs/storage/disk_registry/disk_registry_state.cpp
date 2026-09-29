@@ -6660,6 +6660,9 @@ auto TDiskRegistryState::PurgeDevice(
         return result;
     }
 
+    // Since "PURGE_DEVICE" should be called after "REMOVE_DEVICE", we call the
+    // remove one more time to make sure. However, the result of this operation
+    // should not be visible to the caller.
     result = UpdateCmsDeviceState(
         db,
         agentId,
