@@ -884,6 +884,21 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         CheckMaxBlobsPerDisk(48_GB, 32_GB, Max<ui32>(), Max<ui32>());
     }
 
+    Y_UNIT_TEST(ShouldTreatAllocationUnitSmallerThanBlockAsOneBlock)
+    {
+        // 1_MB disk with 4_KB blocks has 256 blocks, each block is a unit.
+        CheckMaxBlobsPerDisk(1_MB, 0, 1, 256);
+        CheckMaxBlobsPerDisk(1_MB, 1, 2, 512);
+        CheckMaxBlobsPerDisk(1_MB, DefaultBlockSize - 1, 3, 768);
+        CheckMaxBlobsPerDisk(1_MB, 4_KB, 1, 64, 0, 0, 16_KB);
+        CheckMaxBlobsPerDisk(32_GB, 1, Max<ui32>(), Max<ui32>());
+
+        // Mixed bytes per unit are capped by the allocation unit.
+        CheckMaxBlobsPerDisk(1_MB, 0, 0, 0, 1_MB, 0);
+        CheckMaxBlobsPerDisk(1_MB, 1_KB, 0, 0, 1_MB, 256);
+        CheckMaxBlobsPerDisk(1_MB, 4_KB, 0, 0, 1_MB, 64, 16_KB);
+    }
+
     Y_UNIT_TEST(CheckMaxMixedBlocksPerDisk)
     {
         CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0, 100 * DefaultBlockSize, 1000);

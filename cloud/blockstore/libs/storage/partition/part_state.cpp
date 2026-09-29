@@ -48,7 +48,7 @@ ui64 CalculatePerDiskThreshold(
     ui64 allocationUnit,
     ui64 perUnitThreshold)
 {
-    const ui64 allocationUnitBlocks = allocationUnit / blockSize;
+    const ui64 allocationUnitBlocks = Max<ui64>(1, allocationUnit / blockSize);
     const ui64 whole = blocksCount / allocationUnitBlocks;
     const ui64 remainder = blocksCount % allocationUnitBlocks;
 
