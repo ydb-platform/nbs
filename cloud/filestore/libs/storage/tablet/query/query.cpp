@@ -10,6 +10,8 @@ extern void yy_delete_buffer(yy_buffer_state*);
 
 namespace NCloud::NFileStore::NStorage::NQuery {
 
+////////////////////////////////////////////////////////////////////////////////
+
 struct TParseContext
 {
     TSelect Query;
