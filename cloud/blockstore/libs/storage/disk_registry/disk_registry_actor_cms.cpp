@@ -16,7 +16,7 @@ class TCmsRequestActor final
 {
     enum ECmsRequestActorWakeupTag
     {
-        Retry = 0,
+        Retry = 1,
         Timeout,
     };
 
@@ -243,7 +243,7 @@ void TCmsRequestActor::HandleCmsActionResponse(
     const TResponse& response,
     const TActorContext& ctx)
 {
-    auto& error = response.GetError();
+    const auto& error = response.GetError();
     if (error.GetCode() == E_REJECTED &&
         error.GetMessage() == "too many inflight transactions")
     {
@@ -311,19 +311,20 @@ void TCmsRequestActor::HandleWakeup(
     const TEvents::TEvWakeup::TPtr& ev,
     const TActorContext& ctx)
 {
-    Y_UNUSED(ev);
-
     switch (ev->Get()->Tag) {
         case ECmsRequestActorWakeupTag::Retry:
             SendNextRequest(ctx);
             break;
 
         case ECmsRequestActorWakeupTag::Timeout: {
-            auto& result = *Response->Record.MutableActionResults()->Add();
+            while (CurrentRequest != Requests.size()) {
+                auto& result = *Response->Record.MutableActionResults()->Add();
 
-            *result.MutableResult() =
-                MakeError(E_TIMEOUT, "request failed to meet the deadline");
+                *result.MutableResult() =
+                    MakeError(E_TIMEOUT, "request failed to meet the deadline");
 
+                ++CurrentRequest;
+            }
             ReplyAndDie(ctx);
             break;
         }

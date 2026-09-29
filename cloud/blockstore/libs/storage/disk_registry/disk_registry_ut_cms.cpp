@@ -2302,6 +2302,79 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             timeoutCount == 3,
             "Expected at 3 timeout responses, got: " << timeoutCount);
     }
+
+    Y_UNIT_TEST_F(
+        ShouldRetryCmsRequestsUntilTimeoutExceededNActionsInRequest,
+        TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetMaxInFlightCmsRequests(1);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
+
+        auto makeRemoveHostActions = [&](size_t nReqs)
+        {
+            TVector<NProto::TAction> actions;
+            actions.reserve(nReqs);
+            for (size_t i = 0; i < nReqs; ++i) {
+                NProto::TAction action;
+                action.SetHost("agent-1");
+                action.SetType(NProto::TAction::REMOVE_HOST);
+                actions.emplace_back(std::move(action));
+            }
+            return actions;
+        };
+
+        NProto::THeaders headers;
+        headers.SetRequestTimeout(TDuration::MilliSeconds(0).MilliSeconds());
+
+        size_t nReqs = 5;
+        DiskRegistry->SendCmsActionRequest(
+            makeRemoveHostActions(nReqs),
+            headers);
+        DiskRegistry->SendCmsActionRequest(
+            makeRemoveHostActions(nReqs),
+            headers);
+
+        int rejectedCount = 0;
+        int timeoutCount = 0;
+
+        for (int i = 0; i < 2; ++i) {
+            auto response = DiskRegistry->RecvCmsActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                nReqs,
+                response->Record.ActionResultsSize());
+
+            for (size_t i = 0; i < nReqs; ++i) {
+                const auto code =
+                    response->Record.GetActionResults(i).GetResult().GetCode();
+                if (code == E_REJECTED) {
+                    ++rejectedCount;
+                } else if (code == E_TIMEOUT) {
+                    ++timeoutCount;
+                }
+            }
+        }
+
+        UNIT_ASSERT_C(
+            rejectedCount == 0,
+            "Expected at 0 rejected responses, got: " << rejectedCount);
+
+        UNIT_ASSERT_C(
+            timeoutCount == 5,
+            "Expected at 5 timeout responses, got: " << timeoutCount);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
