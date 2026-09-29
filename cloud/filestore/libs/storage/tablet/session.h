@@ -4,6 +4,7 @@
 
 #include "subsessions.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
@@ -351,8 +352,17 @@ public:
         DupCacheEntries.emplace_back(std::move(proto), committed);
 
         auto& entry = DupCacheEntries.back();
-        auto [_, inserted] = DupCache.emplace(entry.GetRequestId(), &entry);
-        Y_ABORT_UNLESS(inserted);
+        auto [p, inserted] = DupCache.emplace(entry.GetRequestId(), &entry);
+        if (!inserted) {
+            ReportDupCacheEntryRequestIdCollision(TStringBuilder()
+                << "PrevEntry=" << p->second->Utf8DebugString().Quote()
+                << "Entry=" << entry.Utf8DebugString().Quote()
+                << " ClientId=" << GetClientId()
+                << " SessionId=" << this->GetSessionId());
+
+            DropDupEntry(entry.GetRequestId());
+            DupCache.emplace(entry.GetRequestId(), &entry);
+        }
     }
 
     void CommitDupCacheEntry(ui64 requestId)

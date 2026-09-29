@@ -77,6 +77,7 @@ namespace NCloud::NFileStore{
     xxx(ListNodesLocalNodeNotFound)                                            \
     xxx(PersistentStateUnstatableEntry)                                        \
     xxx(PersistentStateUnlistableDir)                                          \
+    xxx(DupCacheEntryRequestIdCollision)                                       \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \
