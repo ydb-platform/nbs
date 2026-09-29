@@ -1,0 +1,21 @@
+{
+  "fs0":
+    {
+      "Response":
+        {
+          "StorageConfig":
+            {
+              "ThrottlingEnabled":true
+            }
+        }
+    }
+}
+{
+  "fs0":
+    {
+      "Response":
+        {
+          "ThrottlingEnabled":true
+        }
+    }
+}

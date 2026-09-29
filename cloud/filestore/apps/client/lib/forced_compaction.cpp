@@ -106,7 +106,7 @@ public:
             const auto status = statusResponse.GetStatus();
             if (status == TStatus::E_PENDING) {
                 Cerr << "pending" << Endl;
-                Sleep(TDuration::Seconds(1));
+                InterruptibleSleep(TDuration::Seconds(1));
                 continue;
             }
 
@@ -127,7 +127,7 @@ public:
 
             MinRangeId = statusResponse.GetLastProcessedRangeId();
 
-            Sleep(TDuration::Seconds(1));
+            InterruptibleSleep(TDuration::Seconds(1));
         }
 
         return true;

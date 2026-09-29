@@ -1,0 +1,9 @@
+E_ARGUMENT --all-shards is supported only for changestorageconfig and getstorageconfig
+E_ARGUMENT --all-shards requires FileSystemId of the main filesystem
+E_ARGUMENT --all-shards requires the main filesystem, got shard fs0_s1
+{
+  "missing":
+    {
+      "Error":"E_NOT_FOUND ss error: SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found, path=\"/Root/nfs/_37B/missing\""
+    }
+}
