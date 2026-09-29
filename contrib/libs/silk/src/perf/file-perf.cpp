@@ -1,5 +1,6 @@
 #include <perf/util/latency.h>
 #include <perf/util/parse.h>
+#include <perf/util/pmc.h>
 #include <perf/util/report.h>
 #include <perf/util/signals.h>
 #include <silk/fibers/fiber.h>
@@ -18,6 +19,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <exception>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -348,7 +350,7 @@ int Benchmark::workerFiberMain(WorkerFiberParams * params) noexcept
     return 0;
 }
 
-static void printJson(std::vector<uint64_t> & latNs, const ClientConfig & cfg)
+static void printJson(std::vector<uint64_t> & latNs, const ClientConfig & cfg, const Pmc::Counts * pmcCounts, uint64_t windowIos)
 {
     uint64_t total = latNs.size();
     double durationS = static_cast<double>(cfg.durationNs) / 1e9;
@@ -369,12 +371,38 @@ static void printJson(std::vector<uint64_t> & latNs, const ClientConfig & cfg)
     printLatencyUs(latNs);
     if (cfg.printCounters)
     {
+        if (pmcCounts)
+        {
+            printf(",");
+            printPmc(*pmcCounts, windowIos);
+        }
         printf(",");
         printSchedulerLatency();
         printf(",");
         printCounters();
     }
     printf("}\n");
+}
+
+/** Aggregate the IoCompleted scheduler counter across CPUs; 0 when not registered. */
+static uint64_t readIoCompleted() noexcept
+{
+    uint32_t count = silk::Perf::getSimpleCounterCount();
+
+    for (uint32_t i = 0; i < count; ++i)
+    {
+        if (std::strcmp(silk::Perf::getSimpleCounterInfo(i).name, "IoCompleted") != 0)
+        {
+            continue;
+        }
+
+        silk::Perf::SimpleCounter counter;
+        uint32_t written = silk::Perf::getSimpleCounters(i, &counter, 1);
+        SILK_ASSERT(written == 1);
+        return counter.value.load(std::memory_order_relaxed);
+    }
+
+    return 0;
 }
 
 /**
@@ -407,7 +435,7 @@ int main(int argc, char ** argv)
         ("filename",       "file path",                                                                     cxxopts::value<std::string>(cfg.filename))
         ("direct",         "use O_DIRECT (bypass page cache)",                                              cxxopts::value<bool>(cfg.direct))
         ("fixed-buffers",  "use registered buffers (IORING_OP_READ_FIXED / WRITE_FIXED)",                   cxxopts::value<bool>(cfg.fixedBuffers))
-        ("print-counters", "enable per-CPU profiler and include counters in the JSON report",               cxxopts::value<bool>(cfg.printCounters))
+        ("print-counters", "enable per-CPU profiler and PMCs and include counters in the JSON report",      cxxopts::value<bool>(cfg.printCounters))
         ("v,verbose",      "enable debug logging",                                                          cxxopts::value<bool>(verbose))
         ;
     // clang-format on
@@ -436,16 +464,39 @@ int main(int argc, char ** argv)
         return 1;
     }
 
+    if (cfg.iodepth == 0)
+    {
+        std::cerr << "error: --iodepth must be greater than zero\n";
+        return 1;
+    }
+
     if (!parseMode(rwStr, &cfg.mode))
     {
         std::cerr << "error: unknown --rw mode: " << rwStr << " (expected randread | seqread | randwrite)\n";
         return 1;
     }
 
-    cfg.blockSize = static_cast<uint32_t>(parseSize(bsStr));
-    cfg.fileSize = parseSize(sizeStr);
-    cfg.durationNs = parseDuration(runtimeStr);
-    cfg.warmupNs = parseDuration(warmupStr);
+    uint64_t blockSize;
+    try
+    {
+        blockSize = parseSize(bsStr);
+        cfg.fileSize = parseSize(sizeStr);
+        cfg.durationNs = parseDuration(runtimeStr);
+        cfg.warmupNs = parseDuration(warmupStr);
+    }
+    catch (const std::exception & ex)
+    {
+        std::cerr << "error: " << ex.what() << "\n";
+        return 1;
+    }
+
+    if (blockSize == 0 || blockSize > UINT32_MAX)
+    {
+        std::cerr << "error: --bs must be between 1 and " << UINT32_MAX << " bytes\n";
+        return 1;
+    }
+
+    cfg.blockSize = static_cast<uint32_t>(blockSize);
     SILK_ASSERT(cfg.fileSize >= cfg.blockSize);
     SILK_ASSERT(cfg.fileSize / cfg.blockSize >= cfg.numJobs);
 
@@ -492,10 +543,30 @@ int main(int argc, char ** argv)
         signalled = sigwaitFor(mask, cfg.warmupNs);
     }
 
+    Pmc pmc;
+    Pmc::Counts pmcCounts;
+    const Pmc::Counts * pmcResult = nullptr;
+    uint64_t windowIos = 0;
+
     if (!signalled)
     {
+        if (cfg.printCounters)
+        {
+            pmc.open();
+        }
+
         SILK_INFO("measuring for %s...", formatDuration(cfg.durationNs).c_str());
+        uint64_t windowStartIos = readIoCompleted();
+        pmc.enable();
         sigwaitFor(mask, cfg.durationNs);
+        pmc.disable();
+        windowIos = readIoCompleted() - windowStartIos;
+
+        r = pmc.read(&pmcCounts);
+        if (!r)
+        {
+            pmcResult = &pmcCounts;
+        }
     }
 
     pthread_sigmask(SIG_UNBLOCK, &mask, nullptr);
@@ -504,7 +575,7 @@ int main(int argc, char ** argv)
     benchmark.stop();
 
     std::vector<uint64_t> allLat = benchmark.collectLatencies();
-    printJson(allLat, cfg);
+    printJson(allLat, cfg, pmcResult, windowIos);
 
     silk::FiberScheduler::destroy();
     silk::destroy();

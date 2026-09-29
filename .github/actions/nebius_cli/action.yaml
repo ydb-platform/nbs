@@ -29,7 +29,7 @@ runs:
               if command -v nebius > /dev/null; then
                   echo "Nebius CLI already installed at $(command -v nebius)"
               elif [ ! -f "$HOME/.nebius/bin/nebius" ]; then
-                  curl -sSL https://storage.eu-north1.nebius.cloud/cli/install.sh | bash
+                  curl -sSL https://artifacts.nebius.cloud/cli/install.sh | bash
               else
                   echo "Nebius CLI already installed"
               fi

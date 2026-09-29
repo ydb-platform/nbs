@@ -86,6 +86,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_common
     cloud/blockstore/libs/storage/disk_registry/actors
     cloud/blockstore/libs/storage/disk_registry/model
+    cloud/storage/core/libs/api
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     contrib/ydb/library/actors/core
