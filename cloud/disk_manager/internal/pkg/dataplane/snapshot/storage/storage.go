@@ -43,6 +43,7 @@ type ChunkMapEntry struct {
 type BackupChunkQueueEntry struct {
 	SnapshotID string
 	ChunkID    string
+	StoredInS3 bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -111,10 +112,11 @@ type Storage interface {
 
 	ReadChunk(ctx context.Context, chunk *common.Chunk) error
 
-	// Returns the chunk blob as it is stored in s3.
+	// Returns the chunk as an s3 chunk object, also for chunks stored in ydb.
 	ReadChunkBlob(
 		ctx context.Context,
 		chunkID string,
+		storedInS3 bool,
 	) (persistence.S3Object, error)
 
 	CheckSnapshotReady(
@@ -166,12 +168,12 @@ type Storage interface {
 		entries []BackupChunkQueueEntry,
 	) error
 
-	GetBackupChunkQueue(
+	GetQueuedChunksToBackup(
 		ctx context.Context,
 		limit int,
 	) ([]BackupChunkQueueEntry, error)
 
-	HasBackupChunkQueueEntries(
+	HasQueuedChunksToBackup(
 		ctx context.Context,
 		snapshotID string,
 	) (bool, error)
@@ -181,8 +183,9 @@ type Storage interface {
 		entries []BackupChunkQueueEntry,
 	) error
 
-	// Returns the number of deleted chunks, at most limit.
-	DeleteCopiedBackupChunks(
+	// Returns the number of cleared entries: limit, or fewer if there are no
+	// more completed entries of the snapshot.
+	ClearCompletedBackupChunkQueueEntries(
 		ctx context.Context,
 		snapshotID string,
 		limit int,

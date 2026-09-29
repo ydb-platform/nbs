@@ -41,7 +41,12 @@ message DataplaneConfig {
     optional filesystem_dataplane.FilesystemDataplaneConfig FilesystemConfig = 20;
 
     optional string BackupChunksTaskScheduleInterval = 21 [default = "10s"];
-    optional uint32 BackupChunksTaskBatchSize = 22 [default = 100];
-    optional uint32 BackupChunksTaskWorkerCount = 23 [default = 10];
-    optional uint32 BackupSnapshotChunksBatchSize = 24 [default = 1000];
+    // Number of chunks of a snapshot added to or removed from the backup chunk
+    // queue at a time.
+    optional uint32 BackupSnapshotDataBatchSize = 22 [default = 1000];
+    // Number of chunks taken from the backup chunk queue at a time to be copied
+    // to the follower bucket.
+    optional uint32 BackupChunksTaskBatchSize = 23 [default = 100];
+    // Maximum number of chunks copied to the follower bucket at the same time.
+    optional uint32 BackupChunksInflightLimit = 24 [default = 10];
 }

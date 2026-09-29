@@ -1742,29 +1742,29 @@ func TestBackupChunkQueue(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 3, length)
 
-	got, err := f.storage.GetBackupChunkQueue(f.ctx, 2)
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 2)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
-	has, err := f.storage.HasBackupChunkQueueEntries(f.ctx, "snap1")
+	has, err := f.storage.HasQueuedChunksToBackup(f.ctx, "snap1")
 	require.NoError(t, err)
 	require.True(t, has)
 
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
 	require.NoError(t, err)
 
-	has, err = f.storage.HasBackupChunkQueueEntries(f.ctx, "snap1")
+	has, err = f.storage.HasQueuedChunksToBackup(f.ctx, "snap1")
 	require.NoError(t, err)
 	require.False(t, has)
 
-	got, err = f.storage.GetBackupChunkQueue(f.ctx, 10)
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:], got)
 
 	err = f.storage.ChunksBackupCompleted(f.ctx, got)
 	require.NoError(t, err)
 
-	got, err = f.storage.GetBackupChunkQueue(f.ctx, 10)
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, got)
 
@@ -1773,7 +1773,7 @@ func TestBackupChunkQueue(t *testing.T) {
 	require.EqualValues(t, 0, length)
 }
 
-func TestDeleteCopiedBackupChunks(t *testing.T) {
+func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
@@ -1792,7 +1792,7 @@ func TestDeleteCopiedBackupChunks(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	got, err := f.storage.GetBackupChunkQueue(f.ctx, 10)
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:3], got)
 
@@ -1801,18 +1801,26 @@ func TestDeleteCopiedBackupChunks(t *testing.T) {
 	require.EqualValues(t, 1, length)
 
 	for _, expected := range []int{1, 1, 0} {
-		deleted, err := f.storage.DeleteCopiedBackupChunks(f.ctx, "snap1", 1)
+		cleared, err := f.storage.ClearCompletedBackupChunkQueueEntries(
+			f.ctx,
+			"snap1",
+			1, // limit
+		)
 		require.NoError(t, err)
-		require.Equal(t, expected, deleted)
+		require.Equal(t, expected, cleared)
 	}
 
-	has, err := f.storage.HasBackupChunkQueueEntries(f.ctx, "snap1")
+	has, err := f.storage.HasQueuedChunksToBackup(f.ctx, "snap1")
 	require.NoError(t, err)
 	require.True(t, has)
 
-	deleted, err := f.storage.DeleteCopiedBackupChunks(f.ctx, "snap2", 10)
+	cleared, err := f.storage.ClearCompletedBackupChunkQueueEntries(
+		f.ctx,
+		"snap2",
+		10, // limit
+	)
 	require.NoError(t, err)
-	require.Equal(t, 1, deleted)
+	require.Equal(t, 1, cleared)
 }
 
 func TestReadChunkBlob(t *testing.T) {
@@ -1829,11 +1837,54 @@ func TestReadChunkBlob(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	object, err := f.storage.ReadChunkBlob(f.ctx, chunkID)
+	object, err := f.storage.ReadChunkBlob(
+		f.ctx,
+		chunkID,
+		true, // storedInS3
+	)
 	require.NoError(t, err)
 	require.Equal(t, getS3Object(f, chunkID), object)
 
-	_, err = f.storage.ReadChunkBlob(f.ctx, "missing")
+	_, err = f.storage.ReadChunkBlob(
+		f.ctx,
+		"missing",
+		true, // storedInS3
+	)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+}
+
+func TestReadChunkBlobStoredInYDB(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunk := makeChunk(0, "abc")
+	chunkID, err := f.storage.WriteChunk(
+		f.ctx,
+		"",
+		"snapshot",
+		chunk,
+		false, // useS3
+	)
+	require.NoError(t, err)
+
+	object, err := f.storage.ReadChunkBlob(
+		f.ctx,
+		chunkID,
+		false, // storedInS3
+	)
+	require.NoError(t, err)
+	require.Equal(t, chunk.Data, object.Data)
+	require.Equal(
+		t,
+		strconv.FormatUint(uint64(chunk.Checksum()), 10),
+		*object.Metadata["Checksum"],
+	)
+
+	_, err = f.storage.ReadChunkBlob(
+		f.ctx,
+		"missing",
+		false, // storedInS3
+	)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 }
 

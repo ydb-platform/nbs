@@ -109,6 +109,56 @@ func (s *StorageYDB) ReadChunk(
 	return nil
 }
 
+func (s *StorageYDB) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+) (object persistence.S3Object, err error) {
+
+	defer s.metrics.StatOperation(metrics.OperationReadChunkBlob)(&err)
+
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%[1]v";
+		declare $shard_id as Uint64;
+		declare $chunk_id as Utf8;
+
+		select data, checksum, compression from %[2]v
+		where shard_id = $shard_id and
+			chunk_id = $chunk_id and
+			referer = "";
+	`, s.tablesPath, s.tableName),
+		persistence.ValueParam(
+			"$shard_id",
+			persistence.Uint64Value(makeShardID(chunkID)),
+		),
+		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
+	)
+	if err != nil {
+		return persistence.S3Object{}, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return persistence.S3Object{}, errors.NewNonRetriableErrorf(
+			"chunk not found: %v",
+			chunkID,
+		)
+	}
+
+	var metadata s3Metadata
+	err = res.ScanNamed(
+		persistence.OptionalWithDefault("data", &object.Data),
+		persistence.OptionalWithDefault("checksum", &metadata.checksum),
+		persistence.OptionalWithDefault("compression", &metadata.compression),
+	)
+	if err != nil {
+		return persistence.S3Object{}, err
+	}
+
+	object.Metadata = metadata.toMap()
+	return object, nil
+}
+
 func (s *StorageYDB) WriteChunk(
 	ctx context.Context,
 	referer string,

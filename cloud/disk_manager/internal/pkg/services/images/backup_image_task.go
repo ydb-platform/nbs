@@ -20,11 +20,11 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type backupImageTask struct {
-	scheduler  tasks.Scheduler
-	storage    resources.Storage
-	followerS3 *backup.FollowerS3
-	request    *protos.BackupImageRequest
-	state      *protos.BackupImageTaskState
+	scheduler tasks.Scheduler
+	storage   resources.Storage
+	backupS3  *backup.S3
+	request   *protos.BackupImageRequest
+	state     *protos.BackupImageTaskState
 }
 
 func (t *backupImageTask) Save() ([]byte, error) {
@@ -68,7 +68,7 @@ func (t *backupImageTask) Run(
 		return errors.NewNonRetriableError(err)
 	}
 
-	err = t.followerS3.PutObject(
+	err = t.backupS3.PutObject(
 		ctx,
 		backup.ImageMetaKey(imageID),
 		persistence.S3Object{Data: data},
@@ -81,9 +81,9 @@ func (t *backupImageTask) Run(
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
-		"dataplane.BackupSnapshotChunks",
+		"dataplane.BackupSnapshotData",
 		"",
-		&dataplane_protos.BackupSnapshotChunksRequest{
+		&dataplane_protos.BackupSnapshotDataRequest{
 			SnapshotId: imageID,
 		},
 	)

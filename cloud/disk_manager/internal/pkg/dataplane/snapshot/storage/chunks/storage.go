@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -11,6 +12,11 @@ import (
 // Interface for communicating with different chunk storages.
 type Storage interface {
 	ReadChunk(ctx context.Context, chunk *common.Chunk) (err error)
+
+	ReadChunkBlob(
+		ctx context.Context,
+		chunkID string,
+	) (object persistence.S3Object, err error)
 
 	WriteChunk(
 		ctx context.Context,

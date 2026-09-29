@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
@@ -12,8 +13,8 @@ import (
 type backupChunkStatus int64
 
 const (
-	backupChunkStatusQueued backupChunkStatus = iota
-	backupChunkStatusCopied backupChunkStatus = iota
+	backupChunkStatusQueued    backupChunkStatus = iota
+	backupChunkStatusCompleted backupChunkStatus = iota
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,10 +26,6 @@ func (s *storageYDB) EnqueueBackupChunks(
 
 	defer s.metrics.StatOperation("EnqueueBackupChunks")(&err)
 
-	if len(entries) == 0 {
-		return nil
-	}
-
 	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -37,29 +34,28 @@ func (s *storageYDB) EnqueueBackupChunks(
 		upsert into backup_chunk_queue
 		select *
 		from AS_TABLE($entries)
-	`, s.tablesPath, backupChunkQueueKeyStructTypeString()),
+	`, s.tablesPath, backupChunkQueueEntryStructTypeString()),
 		persistence.ValueParam(
 			"$entries",
-			backupChunkQueueKeyListValue(backupChunkStatusQueued, entries),
+			backupChunkQueueEntryListValue(entries),
 		),
 	)
 	return err
 }
 
-func (s *storageYDB) GetBackupChunkQueue(
+func (s *storageYDB) getQueuedChunksToBackup(
 	ctx context.Context,
+	session *persistence.Session,
 	limit int,
-) (entries []BackupChunkQueueEntry, err error) {
+) ([]BackupChunkQueueEntry, error) {
 
-	defer s.metrics.StatOperation("GetBackupChunkQueue")(&err)
-
-	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $status as Int64;
 		declare $limit as Uint64;
 
-		select snapshot_id, chunk_id
+		select snapshot_id, chunk_id, stored_in_s3
 		from backup_chunk_queue
 		where status = $status
 		limit $limit
@@ -75,12 +71,14 @@ func (s *storageYDB) GetBackupChunkQueue(
 	}
 	defer res.Close()
 
+	var entries []BackupChunkQueueEntry
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
 			var entry BackupChunkQueueEntry
 			err = res.ScanNamed(
 				persistence.OptionalWithDefault("snapshot_id", &entry.SnapshotID),
 				persistence.OptionalWithDefault("chunk_id", &entry.ChunkID),
+				persistence.OptionalWithDefault("stored_in_s3", &entry.StoredInS3),
 			)
 			if err != nil {
 				return nil, err
@@ -90,15 +88,36 @@ func (s *storageYDB) GetBackupChunkQueue(
 		}
 	}
 
-	return entries, res.Err()
+	if res.Err() != nil {
+		return nil, task_errors.NewRetriableError(res.Err())
+	}
+
+	return entries, nil
 }
 
-func (s *storageYDB) HasBackupChunkQueueEntries(
+func (s *storageYDB) GetQueuedChunksToBackup(
+	ctx context.Context,
+	limit int,
+) (entries []BackupChunkQueueEntry, err error) {
+
+	defer s.metrics.StatOperation("GetQueuedChunksToBackup")(&err)
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			entries, err = s.getQueuedChunksToBackup(ctx, session, limit)
+			return err
+		},
+	)
+	return entries, err
+}
+
+func (s *storageYDB) HasQueuedChunksToBackup(
 	ctx context.Context,
 	snapshotID string,
 ) (has bool, err error) {
 
-	defer s.metrics.StatOperation("HasBackupChunkQueueEntries")(&err)
+	defer s.metrics.StatOperation("HasQueuedChunksToBackup")(&err)
 
 	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -136,10 +155,6 @@ func (s *storageYDB) ChunksBackupCompleted(
 
 	defer s.metrics.StatOperation("ChunksBackupCompleted")(&err)
 
-	if len(entries) == 0 {
-		return nil
-	}
-
 	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -162,19 +177,19 @@ func (s *storageYDB) ChunksBackupCompleted(
 		),
 		persistence.ValueParam(
 			"$copied",
-			backupChunkQueueKeyListValue(backupChunkStatusCopied, entries),
+			backupChunkQueueKeyListValue(backupChunkStatusCompleted, entries),
 		),
 	)
 	return err
 }
 
-func (s *storageYDB) DeleteCopiedBackupChunks(
+func (s *storageYDB) ClearCompletedBackupChunkQueueEntries(
 	ctx context.Context,
 	snapshotID string,
 	limit int,
-) (deleted int, err error) {
+) (cleared int, err error) {
 
-	defer s.metrics.StatOperation("DeleteCopiedBackupChunks")(&err)
+	defer s.metrics.StatOperation("ClearCompletedBackupChunkQueueEntries")(&err)
 
 	res, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -197,7 +212,7 @@ func (s *storageYDB) DeleteCopiedBackupChunks(
 	`, s.tablesPath),
 		persistence.ValueParam(
 			"$status",
-			persistence.Int64Value(int64(backupChunkStatusCopied)),
+			persistence.Int64Value(int64(backupChunkStatusCompleted)),
 		),
 		persistence.ValueParam(
 			"$snapshot_id",
@@ -261,6 +276,43 @@ func (s *storageYDB) GetBackupChunkQueueLength(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func backupChunkQueueEntryStructTypeString() string {
+	return `Struct<
+		status: Int64,
+		snapshot_id: Utf8,
+		chunk_id: Utf8,
+		stored_in_s3: Bool>`
+}
+
+func backupChunkQueueEntryListValue(
+	entries []BackupChunkQueueEntry,
+) persistence.Value {
+
+	values := make([]persistence.Value, 0, len(entries))
+	for _, entry := range entries {
+		values = append(values, persistence.StructValue(
+			persistence.StructFieldValue(
+				"status",
+				persistence.Int64Value(int64(backupChunkStatusQueued)),
+			),
+			persistence.StructFieldValue(
+				"snapshot_id",
+				persistence.UTF8Value(entry.SnapshotID),
+			),
+			persistence.StructFieldValue(
+				"chunk_id",
+				persistence.UTF8Value(entry.ChunkID),
+			),
+			persistence.StructFieldValue(
+				"stored_in_s3",
+				persistence.BoolValue(entry.StoredInS3),
+			),
+		))
+	}
+
+	return persistence.ListValue(values...)
+}
 
 func backupChunkQueueKeyStructTypeString() string {
 	return "Struct<status: Int64, snapshot_id: Utf8, chunk_id: Utf8>"

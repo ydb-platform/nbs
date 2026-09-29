@@ -144,9 +144,10 @@ func (s *StorageMock) ReadChunkMap(
 func (s *StorageMock) ReadChunkBlob(
 	ctx context.Context,
 	chunkID string,
+	storedInS3 bool,
 ) (persistence.S3Object, error) {
 
-	args := s.Called(ctx, chunkID)
+	args := s.Called(ctx, chunkID, storedInS3)
 	return args.Get(0).(persistence.S3Object), args.Error(1)
 }
 
@@ -277,7 +278,7 @@ func (s *StorageMock) EnqueueBackupChunks(
 	return args.Error(0)
 }
 
-func (s *StorageMock) GetBackupChunkQueue(
+func (s *StorageMock) GetQueuedChunksToBackup(
 	ctx context.Context,
 	limit int,
 ) ([]storage.BackupChunkQueueEntry, error) {
@@ -286,7 +287,7 @@ func (s *StorageMock) GetBackupChunkQueue(
 	return args.Get(0).([]storage.BackupChunkQueueEntry), args.Error(1)
 }
 
-func (s *StorageMock) HasBackupChunkQueueEntries(
+func (s *StorageMock) HasQueuedChunksToBackup(
 	ctx context.Context,
 	snapshotID string,
 ) (bool, error) {
@@ -304,7 +305,7 @@ func (s *StorageMock) ChunksBackupCompleted(
 	return args.Error(0)
 }
 
-func (s *StorageMock) DeleteCopiedBackupChunks(
+func (s *StorageMock) ClearCompletedBackupChunkQueueEntries(
 	ctx context.Context,
 	snapshotID string,
 	limit int,

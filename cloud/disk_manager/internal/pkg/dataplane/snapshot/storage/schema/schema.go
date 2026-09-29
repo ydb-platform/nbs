@@ -138,6 +138,10 @@ func Create(
 				"chunk_id",
 				persistence.Optional(persistence.TypeUTF8),
 			),
+			persistence.WithColumn(
+				"stored_in_s3",
+				persistence.Optional(persistence.TypeBool),
+			),
 			persistence.WithPrimaryKeyColumn(
 				"status",
 				"snapshot_id",

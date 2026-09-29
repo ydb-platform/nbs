@@ -47,8 +47,8 @@ func getSnapshotIDFromChunkID(chunkID string) string {
 	return after[:index]
 }
 
-// Zero chunks and the chunks shallow copied from another snapshot are not
-// created by the snapshot.
+// Zero chunks and the chunks shallow copied from another snapshot (the
+// snapshot only references them) are not created by the snapshot.
 func IsChunkCreatedBySnapshot(chunkID string, snapshotID string) bool {
 	return len(chunkID) != 0 && getSnapshotIDFromChunkID(chunkID) == snapshotID
 }
@@ -1035,17 +1035,13 @@ func (s *storageYDB) ReadChunk(
 func (s *storageYDB) ReadChunkBlob(
 	ctx context.Context,
 	chunkID string,
+	storedInS3 bool,
 ) (object persistence.S3Object, err error) {
 
 	defer s.metrics.StatOperation("ReadChunkBlob")(&err)
 
-	if s.chunkStorageS3 == nil {
-		return persistence.S3Object{}, task_errors.NewNonRetriableErrorf(
-			"s3 chunk storage is not configured",
-		)
-	}
-
-	return s.chunkStorageS3.ReadChunkBlob(ctx, chunkID)
+	chunkStorage := s.getChunkStorage(storedInS3)
+	return chunkStorage.ReadChunkBlob(ctx, chunkID)
 }
 
 func (s *storageYDB) CheckSnapshotReady(

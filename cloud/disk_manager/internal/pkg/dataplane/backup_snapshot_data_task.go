@@ -16,30 +16,30 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type backupSnapshotChunksTask struct {
-	storage    storage.Storage
-	followerS3 *backup.FollowerS3
-	batchSize  int
-	request    *protos.BackupSnapshotChunksRequest
-	state      *protos.BackupSnapshotChunksTaskState
+type backupSnapshotDataTask struct {
+	storage   storage.Storage
+	backupS3  *backup.S3
+	batchSize int
+	request   *protos.BackupSnapshotDataRequest
+	state     *protos.BackupSnapshotDataTaskState
 }
 
-func (t *backupSnapshotChunksTask) Save() ([]byte, error) {
+func (t *backupSnapshotDataTask) Save() ([]byte, error) {
 	return proto.Marshal(t.state)
 }
 
-func (t *backupSnapshotChunksTask) Load(request, state []byte) error {
-	t.request = &protos.BackupSnapshotChunksRequest{}
+func (t *backupSnapshotDataTask) Load(request, state []byte) error {
+	t.request = &protos.BackupSnapshotDataRequest{}
 	err := proto.Unmarshal(request, t.request)
 	if err != nil {
 		return err
 	}
 
-	t.state = &protos.BackupSnapshotChunksTaskState{}
+	t.state = &protos.BackupSnapshotDataTaskState{}
 	return proto.Unmarshal(state, t.state)
 }
 
-func (t *backupSnapshotChunksTask) Run(
+func (t *backupSnapshotDataTask) Run(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -58,20 +58,20 @@ func (t *backupSnapshotChunksTask) Run(
 		return err
 	}
 
-	err = t.waitForChunks(ctx, snapshotID)
+	err = t.waitForChunksBackupCompleted(ctx, snapshotID)
 	if err != nil {
 		return err
 	}
 
-	err = t.writeChunkMap(ctx, meta)
+	err = t.backupChunkMap(ctx, meta)
 	if err != nil {
 		return err
 	}
 
-	return t.deleteCopiedChunks(ctx, snapshotID)
+	return t.clearCompletedBackupChunkQueueEntries(ctx, snapshotID)
 }
 
-func (t *backupSnapshotChunksTask) Cancel(
+func (t *backupSnapshotDataTask) Cancel(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -82,14 +82,14 @@ func (t *backupSnapshotChunksTask) Cancel(
 	return nil
 }
 
-func (t *backupSnapshotChunksTask) GetMetadata(
+func (t *backupSnapshotDataTask) GetMetadata(
 	ctx context.Context,
 ) (proto.Message, error) {
 
 	return &empty.Empty{}, nil
 }
 
-func (t *backupSnapshotChunksTask) GetResponse() proto.Message {
+func (t *backupSnapshotDataTask) GetResponse() proto.Message {
 	return &empty.Empty{}
 }
 
@@ -110,27 +110,21 @@ func validateChunkMapEntry(
 		)
 	}
 
-	if len(entry.ChunkID) != 0 && !entry.StoredInS3 {
-		return errors.NewNonRetriableErrorf(
-			"chunk %v of snapshot %v is stored in ydb, only s3 chunks are backed up",
-			entry.ChunkID,
-			snapshotID,
-		)
-	}
-
 	return nil
 }
 
-func (t *backupSnapshotChunksTask) enqueueBatch(
+func (t *backupSnapshotDataTask) enqueueBatch(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 	batch []storage.BackupChunkQueueEntry,
 	milestoneChunkIndex uint32,
 ) error {
 
-	err := t.storage.EnqueueBackupChunks(ctx, batch)
-	if err != nil {
-		return err
+	if len(batch) != 0 {
+		err := t.storage.EnqueueBackupChunks(ctx, batch)
+		if err != nil {
+			return err
+		}
 	}
 
 	t.state.EnqueuedChunkCount += uint32(len(batch))
@@ -138,7 +132,7 @@ func (t *backupSnapshotChunksTask) enqueueBatch(
 	return execCtx.SaveState(ctx)
 }
 
-func (t *backupSnapshotChunksTask) enqueueChunks(
+func (t *backupSnapshotDataTask) enqueueChunks(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
 ) error {
@@ -169,6 +163,9 @@ func (t *backupSnapshotChunksTask) enqueueChunks(
 			return err
 		}
 
+		// Zero chunks have no data, and the chunks shallow copied from another
+		// snapshot (this snapshot only references them) are copied when that
+		// snapshot is backed up.
 		if !storage.IsChunkCreatedBySnapshot(entry.ChunkID, snapshotID) {
 			continue
 		}
@@ -176,6 +173,7 @@ func (t *backupSnapshotChunksTask) enqueueChunks(
 		batch = append(batch, storage.BackupChunkQueueEntry{
 			SnapshotID: snapshotID,
 			ChunkID:    entry.ChunkID,
+			StoredInS3: entry.StoredInS3,
 		})
 
 		if len(batch) >= t.batchSize {
@@ -196,12 +194,12 @@ func (t *backupSnapshotChunksTask) enqueueChunks(
 	return t.enqueueBatch(ctx, execCtx, batch, t.state.ChunkCount)
 }
 
-func (t *backupSnapshotChunksTask) waitForChunks(
+func (t *backupSnapshotDataTask) waitForChunksBackupCompleted(
 	ctx context.Context,
 	snapshotID string,
 ) error {
 
-	hasEntries, err := t.storage.HasBackupChunkQueueEntries(ctx, snapshotID)
+	hasEntries, err := t.storage.HasQueuedChunksToBackup(ctx, snapshotID)
 	if err != nil {
 		return err
 	}
@@ -209,7 +207,7 @@ func (t *backupSnapshotChunksTask) waitForChunks(
 	if hasEntries {
 		logging.Debug(
 			ctx,
-			"Backup of snapshot with id %v is waiting for its chunks",
+			"Backup of snapshot with id %v is waiting for its chunks to finish backing up",
 			snapshotID,
 		)
 		return errors.NewInterruptExecutionError()
@@ -218,13 +216,13 @@ func (t *backupSnapshotChunksTask) waitForChunks(
 	return nil
 }
 
-func (t *backupSnapshotChunksTask) deleteCopiedChunks(
+func (t *backupSnapshotDataTask) clearCompletedBackupChunkQueueEntries(
 	ctx context.Context,
 	snapshotID string,
 ) error {
 
 	for {
-		deleted, err := t.storage.DeleteCopiedBackupChunks(
+		cleared, err := t.storage.ClearCompletedBackupChunkQueueEntries(
 			ctx,
 			snapshotID,
 			t.batchSize,
@@ -233,13 +231,15 @@ func (t *backupSnapshotChunksTask) deleteCopiedChunks(
 			return err
 		}
 
-		if deleted < t.batchSize {
+		// The storage clears fewer than batchSize entries only when no
+		// completed entries are left.
+		if cleared < t.batchSize {
 			return nil
 		}
 	}
 }
 
-func (t *backupSnapshotChunksTask) writeChunkMap(
+func (t *backupSnapshotDataTask) backupChunkMap(
 	ctx context.Context,
 	meta storage.SnapshotMeta,
 ) error {
@@ -275,7 +275,7 @@ func (t *backupSnapshotChunksTask) writeChunkMap(
 		return errors.NewNonRetriableError(err)
 	}
 
-	return t.followerS3.PutObject(
+	return t.backupS3.PutObject(
 		ctx,
 		backup.ChunkMapKey(meta.ID),
 		persistence.S3Object{Data: data},

@@ -19,18 +19,17 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// A data query returns at most 1000 rows.
 const backupChunkQueueWindowSize = 1000
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type backupChunksTask struct {
-	storage     storage.Storage
-	followerS3  *backup.FollowerS3
-	batchSize   int
-	workerCount int
-	registry    metrics.Registry
-	state       *protos.BackupChunksTaskState
+	storage       storage.Storage
+	backupS3      *backup.S3
+	batchSize     int
+	inflightLimit int
+	registry      metrics.Registry
+	state         *protos.BackupChunksTaskState
 }
 
 func (t *backupChunksTask) Save() ([]byte, error) {
@@ -48,7 +47,7 @@ func (t *backupChunksTask) Run(
 ) error {
 
 	for {
-		entries, err := t.storage.GetBackupChunkQueue(
+		entries, err := t.storage.GetQueuedChunksToBackup(
 			ctx,
 			backupChunkQueueWindowSize,
 		)
@@ -103,12 +102,16 @@ func (t *backupChunksTask) copyChunk(
 	entry storage.BackupChunkQueueEntry,
 ) error {
 
-	object, err := t.storage.ReadChunkBlob(ctx, entry.ChunkID)
+	object, err := t.storage.ReadChunkBlob(
+		ctx,
+		entry.ChunkID,
+		entry.StoredInS3,
+	)
 	if err != nil {
 		return err
 	}
 
-	err = t.followerS3.PutObject(
+	err = t.backupS3.PutObject(
 		ctx,
 		backup.ChunkKey(entry.ChunkID),
 		persistence.S3Object{
@@ -150,7 +153,7 @@ func (t *backupChunksTask) copyChunks(
 		return nil
 	})
 
-	for i := 0; i < t.workerCount; i++ {
+	for i := 0; i < t.inflightLimit; i++ {
 		group.Go(func() error {
 			for entry := range queue {
 				if groupCtx.Err() != nil {
@@ -161,7 +164,7 @@ func (t *backupChunksTask) copyChunks(
 				if err != nil {
 					logging.Warn(
 						groupCtx,
-						"Chunk %v of snapshot %v is not backed up: %v",
+						"Failed to copy chunk %v of snapshot %v, will retry: %v",
 						entry.ChunkID,
 						entry.SnapshotID,
 						err,

@@ -21,12 +21,12 @@ func newBackupChunksTask(
 ) *backupChunksTask {
 
 	return &backupChunksTask{
-		storage:     storage,
-		followerS3:  follower.followerS3,
-		batchSize:   10,
-		workerCount: 2,
-		registry:    metrics.NewEmptyRegistry(),
-		state:       &protos.BackupChunksTaskState{},
+		storage:       storage,
+		backupS3:      follower.backupS3,
+		batchSize:     10,
+		inflightLimit: 2,
+		registry:      metrics.NewEmptyRegistry(),
+		state:         &protos.BackupChunksTaskState{},
 	}
 }
 
@@ -42,7 +42,7 @@ func TestBackupChunksTask(t *testing.T) {
 	chunkID := createSnapshotWithChunk(t, ctx, storage, "snap1")
 
 	entries := []snapshot_storage.BackupChunkQueueEntry{
-		{SnapshotID: "snap1", ChunkID: chunkID},
+		{SnapshotID: "snap1", ChunkID: chunkID, StoredInS3: true},
 	}
 	err := storage.EnqueueBackupChunks(ctx, entries)
 	require.NoError(t, err)
@@ -53,7 +53,11 @@ func TestBackupChunksTask(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	src, err := storage.ReadChunkBlob(ctx, chunkID)
+	src, err := storage.ReadChunkBlob(
+		ctx,
+		chunkID,
+		true, // storedInS3
+	)
 	require.NoError(t, err)
 
 	object, err := follower.getObject(ctx, backup.ChunkKey(chunkID))
@@ -61,7 +65,7 @@ func TestBackupChunksTask(t *testing.T) {
 	require.Equal(t, src.Data, object.Data)
 	require.Equal(t, *src.Metadata["Checksum"], *object.Metadata["Checksum"])
 
-	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 }
@@ -77,8 +81,8 @@ func TestBackupChunksTaskCopiesSeveralBatches(t *testing.T) {
 	chunk1 := createSnapshotWithChunk(t, ctx, storage, "snap2")
 
 	entries := []snapshot_storage.BackupChunkQueueEntry{
-		{SnapshotID: "snap1", ChunkID: chunk0},
-		{SnapshotID: "snap2", ChunkID: chunk1},
+		{SnapshotID: "snap1", ChunkID: chunk0, StoredInS3: true},
+		{SnapshotID: "snap2", ChunkID: chunk1, StoredInS3: true},
 	}
 	err := storage.EnqueueBackupChunks(ctx, entries)
 	require.NoError(t, err)
@@ -95,7 +99,7 @@ func TestBackupChunksTaskCopiesSeveralBatches(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 }
@@ -112,10 +116,11 @@ func TestBackupChunksTaskGoesOnPastMissingChunk(t *testing.T) {
 	missing := snapshot_storage.BackupChunkQueueEntry{
 		SnapshotID: "snap1",
 		ChunkID:    "task.snap1.0",
+		StoredInS3: true,
 	}
 	entries := []snapshot_storage.BackupChunkQueueEntry{
 		missing,
-		{SnapshotID: "snap2", ChunkID: chunkID},
+		{SnapshotID: "snap2", ChunkID: chunkID, StoredInS3: true},
 	}
 	err := storage.EnqueueBackupChunks(ctx, entries)
 	require.NoError(t, err)
@@ -130,7 +135,7 @@ func TestBackupChunksTaskGoesOnPastMissingChunk(t *testing.T) {
 	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
 	require.NoError(t, err)
 
-	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Equal(
 		t,

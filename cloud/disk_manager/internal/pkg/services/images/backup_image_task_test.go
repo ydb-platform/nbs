@@ -57,9 +57,9 @@ func TestBackupImageTask(t *testing.T) {
 	scheduler.On(
 		"ScheduleTask",
 		mock.Anything,
-		"dataplane.BackupSnapshotChunks",
+		"dataplane.BackupSnapshotData",
 		"",
-		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotChunksRequest) bool {
+		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotDataRequest) bool {
 			return request.SnapshotId == "image1"
 		}),
 	).Return("dataplane1", nil)
@@ -70,14 +70,14 @@ func TestBackupImageTask(t *testing.T) {
 		"dataplane1",
 	).Return(&empty.Empty{}, nil)
 
-	followerS3 := backup.NewFollowerS3(s3, backupTestBucket, t.Name())
+	backupS3 := backup.NewS3(s3, backupTestBucket, t.Name())
 
 	task := &backupImageTask{
-		scheduler:  scheduler,
-		storage:    storage,
-		followerS3: followerS3,
-		request:    &protos.BackupImageRequest{ImageId: "image1"},
-		state:      &protos.BackupImageTaskState{},
+		scheduler: scheduler,
+		storage:   storage,
+		backupS3:  backupS3,
+		request:   &protos.BackupImageRequest{ImageId: "image1"},
+		state:     &protos.BackupImageTaskState{},
 	}
 
 	err = task.Run(ctx, execCtx)
@@ -88,7 +88,7 @@ func TestBackupImageTask(t *testing.T) {
 	object, err := s3.GetObject(
 		ctx,
 		backupTestBucket,
-		followerS3.Key(backup.ImageMetaKey("image1")),
+		backupS3.Key(backup.ImageMetaKey("image1")),
 	)
 	require.NoError(t, err)
 

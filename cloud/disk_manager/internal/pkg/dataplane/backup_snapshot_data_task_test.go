@@ -22,8 +22,8 @@ import (
 const backupTestBucket = "chunks-backup"
 
 type testFollower struct {
-	s3         *persistence.S3Client
-	followerS3 *backup.FollowerS3
+	s3       *persistence.S3Client
+	backupS3 *backup.S3
 }
 
 func newTestFollower(t *testing.T, ctx context.Context) testFollower {
@@ -38,8 +38,8 @@ func newTestFollower(t *testing.T, ctx context.Context) testFollower {
 	}
 
 	return testFollower{
-		s3:         s3,
-		followerS3: backup.NewFollowerS3(s3, backupTestBucket, t.Name()),
+		s3:       s3,
+		backupS3: backup.NewS3(s3, backupTestBucket, t.Name()),
 	}
 }
 
@@ -48,23 +48,23 @@ func (f testFollower) getObject(
 	key string,
 ) (persistence.S3Object, error) {
 
-	return f.s3.GetObject(ctx, backupTestBucket, f.followerS3.Key(key))
+	return f.s3.GetObject(ctx, backupTestBucket, f.backupS3.Key(key))
 }
 
-func newBackupSnapshotChunksTask(
+func newBackupSnapshotDataTask(
 	storage snapshot_storage.Storage,
 	follower testFollower,
 	snapshotID string,
-) *backupSnapshotChunksTask {
+) *backupSnapshotDataTask {
 
-	return &backupSnapshotChunksTask{
-		storage:    storage,
-		followerS3: follower.followerS3,
-		batchSize:  1000,
-		request: &protos.BackupSnapshotChunksRequest{
+	return &backupSnapshotDataTask{
+		storage:   storage,
+		backupS3:  follower.backupS3,
+		batchSize: 1000,
+		request: &protos.BackupSnapshotDataRequest{
 			SnapshotId: snapshotID,
 		},
-		state: &protos.BackupSnapshotChunksTaskState{},
+		state: &protos.BackupSnapshotDataTaskState{},
 	}
 }
 
@@ -131,7 +131,7 @@ func readBackupChunkMap(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func TestBackupSnapshotChunksTask(t *testing.T) {
+func TestBackupSnapshotDataTask(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -175,7 +175,7 @@ func TestBackupSnapshotChunksTask(t *testing.T) {
 	require.NoError(t, err)
 
 	execCtx := newBackupExecutionContext(ctx)
-	task := newBackupSnapshotChunksTask(storage, follower, "snap1")
+	task := newBackupSnapshotDataTask(storage, follower, "snap1")
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
@@ -183,12 +183,12 @@ func TestBackupSnapshotChunksTask(t *testing.T) {
 	_, err = follower.getObject(ctx, backup.ChunkMapKey("snap1"))
 	require.Error(t, err)
 
-	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Equal(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap1", ChunkID: chunk0},
+			{SnapshotID: "snap1", ChunkID: chunk0, StoredInS3: true},
 		},
 		queue,
 	)
@@ -206,12 +206,12 @@ func TestBackupSnapshotChunksTask(t *testing.T) {
 	chunkMap := readBackupChunkMap(t, ctx, follower, "snap1")
 	require.Equal(t, []string{chunk0, ""}, chunkMap.ChunkIds)
 
-	deleted, err := storage.DeleteCopiedBackupChunks(ctx, "snap1", 10)
+	cleared, err := storage.ClearCompletedBackupChunkQueueEntries(ctx, "snap1", 10)
 	require.NoError(t, err)
-	require.Zero(t, deleted)
+	require.Zero(t, cleared)
 }
 
-func TestBackupSnapshotChunksTaskEnqueuesOnlyOwnChunks(t *testing.T) {
+func TestBackupSnapshotDataTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -291,17 +291,17 @@ func TestBackupSnapshotChunksTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	require.NoError(t, err)
 
 	execCtx := newBackupExecutionContext(ctx)
-	task := newBackupSnapshotChunksTask(storage, follower, "snap2")
+	task := newBackupSnapshotDataTask(storage, follower, "snap2")
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Equal(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap2", ChunkID: chunk1},
+			{SnapshotID: "snap2", ChunkID: chunk1, StoredInS3: true},
 		},
 		queue,
 	)
@@ -316,7 +316,7 @@ func TestBackupSnapshotChunksTaskEnqueuesOnlyOwnChunks(t *testing.T) {
 	require.Equal(t, []string{chunk0, chunk1}, chunkMap.ChunkIds)
 }
 
-func TestBackupSnapshotChunksTaskEnqueuesInBatches(t *testing.T) {
+func TestBackupSnapshotDataTaskEnqueuesInBatches(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -359,7 +359,7 @@ func TestBackupSnapshotChunksTaskEnqueuesInBatches(t *testing.T) {
 	require.NoError(t, err)
 
 	execCtx := newBackupExecutionContext(ctx)
-	task := newBackupSnapshotChunksTask(storage, follower, "snap1")
+	task := newBackupSnapshotDataTask(storage, follower, "snap1")
 	task.batchSize = 1
 
 	err = task.Run(ctx, execCtx)
@@ -367,13 +367,13 @@ func TestBackupSnapshotChunksTaskEnqueuesInBatches(t *testing.T) {
 	require.EqualValues(t, 2, task.state.EnqueuedChunkCount)
 	require.EqualValues(t, 2, task.state.MilestoneChunkIndex)
 
-	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.ElementsMatch(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap1", ChunkID: chunk0},
-			{SnapshotID: "snap1", ChunkID: chunk1},
+			{SnapshotID: "snap1", ChunkID: chunk0, StoredInS3: true},
+			{SnapshotID: "snap1", ChunkID: chunk1, StoredInS3: true},
 		},
 		queue,
 	)
@@ -381,7 +381,7 @@ func TestBackupSnapshotChunksTaskEnqueuesInBatches(t *testing.T) {
 	err = storage.ChunksBackupCompleted(ctx, queue)
 	require.NoError(t, err)
 
-	resumed := newBackupSnapshotChunksTask(storage, follower, "snap1")
+	resumed := newBackupSnapshotDataTask(storage, follower, "snap1")
 	resumed.batchSize = 1
 	resumed.state.MilestoneChunkIndex = 1
 	resumed.state.EnqueuedChunkCount = 1
@@ -390,18 +390,18 @@ func TestBackupSnapshotChunksTaskEnqueuesInBatches(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 	require.EqualValues(t, 2, resumed.state.EnqueuedChunkCount)
 
-	queue, err = storage.GetBackupChunkQueue(ctx, 10)
+	queue, err = storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Equal(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap1", ChunkID: chunk1},
+			{SnapshotID: "snap1", ChunkID: chunk1, StoredInS3: true},
 		},
 		queue,
 	)
 }
 
-func TestBackupSnapshotChunksTaskFailsOnChunkStoredInYDB(t *testing.T) {
+func TestBackupSnapshotDataTaskBacksUpChunkStoredInYDB(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -415,7 +415,7 @@ func TestBackupSnapshotChunksTaskFailsOnChunkStoredInYDB(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = storage.WriteChunk(
+	chunkID, err := storage.WriteChunk(
 		ctx,
 		"task",
 		"snap1",
@@ -435,17 +435,45 @@ func TestBackupSnapshotChunksTaskFailsOnChunkStoredInYDB(t *testing.T) {
 	require.NoError(t, err)
 
 	execCtx := newBackupExecutionContext(ctx)
-	task := newBackupSnapshotChunksTask(storage, follower, "snap1")
+	task := newBackupSnapshotDataTask(storage, follower, "snap1")
 
 	err = task.Run(ctx, execCtx)
-	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
-	require.Empty(t, queue)
+	require.Equal(
+		t,
+		[]snapshot_storage.BackupChunkQueueEntry{
+			{SnapshotID: "snap1", ChunkID: chunkID},
+		},
+		queue,
+	)
+
+	chunksTask := newBackupChunksTask(storage, follower)
+	err = chunksTask.Run(ctx, mocks.NewExecutionContextMock())
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	src, err := storage.ReadChunkBlob(
+		ctx,
+		chunkID,
+		false, // storedInS3
+	)
+	require.NoError(t, err)
+
+	object, err := follower.getObject(ctx, backup.ChunkKey(chunkID))
+	require.NoError(t, err)
+	require.Equal(t, src.Data, object.Data)
+	require.Equal(t, *src.Metadata["Checksum"], *object.Metadata["Checksum"])
+
+	err = task.Run(ctx, execCtx)
+	require.NoError(t, err)
+
+	chunkMap := readBackupChunkMap(t, ctx, follower, "snap1")
+	require.Equal(t, []string{chunkID}, chunkMap.ChunkIds)
 }
 
-func TestBackupSnapshotChunksTaskFailsOnChunkIndexOutOfRange(t *testing.T) {
+func TestBackupSnapshotDataTaskFailsOnChunkIndexOutOfRange(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -481,7 +509,7 @@ func TestBackupSnapshotChunksTaskFailsOnChunkIndexOutOfRange(t *testing.T) {
 	require.NoError(t, err)
 
 	execCtx := newBackupExecutionContext(ctx)
-	task := newBackupSnapshotChunksTask(storage, follower, "snap1")
+	task := newBackupSnapshotDataTask(storage, follower, "snap1")
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
@@ -490,7 +518,7 @@ func TestBackupSnapshotChunksTaskFailsOnChunkIndexOutOfRange(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestBackupSnapshotChunksTaskEnqueuesNothingForShallowCopy(t *testing.T) {
+func TestBackupSnapshotDataTaskEnqueuesNothingForShallowCopy(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -529,12 +557,12 @@ func TestBackupSnapshotChunksTaskEnqueuesNothingForShallowCopy(t *testing.T) {
 	require.NoError(t, err)
 
 	execCtx := newBackupExecutionContext(ctx)
-	task := newBackupSnapshotChunksTask(storage, follower, "image1")
+	task := newBackupSnapshotDataTask(storage, follower, "image1")
 
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 
-	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 
@@ -542,7 +570,7 @@ func TestBackupSnapshotChunksTaskEnqueuesNothingForShallowCopy(t *testing.T) {
 	require.Equal(t, []string{chunk0}, chunkMap.ChunkIds)
 }
 
-func TestBackupSnapshotChunksTaskFailsOnDeletedSnapshot(t *testing.T) {
+func TestBackupSnapshotDataTaskFailsOnDeletedSnapshot(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -555,12 +583,12 @@ func TestBackupSnapshotChunksTaskFailsOnDeletedSnapshot(t *testing.T) {
 	require.NoError(t, err)
 
 	execCtx := newBackupExecutionContext(ctx)
-	task := newBackupSnapshotChunksTask(storage, follower, "snap1")
+	task := newBackupSnapshotDataTask(storage, follower, "snap1")
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
-	queue, err := storage.GetBackupChunkQueue(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 }
