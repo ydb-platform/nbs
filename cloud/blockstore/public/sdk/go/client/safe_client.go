@@ -539,7 +539,7 @@ func (client *safeClient) CmsRemoveDevices(
 
 	actions := make([]*protos.TAction, len(devices))
 	t := protos.TAction_REMOVE_DEVICE
-	for i, device := range devices {
+	for i := range devices {
 		action := protos.TAction{
 			Type:   &t,
 			Host:   &host,
@@ -566,7 +566,7 @@ func (client *safeClient) CmsPurgeDevices(
 
 	actions := make([]*protos.TAction, len(devices))
 	t := protos.TAction_PURGE_DEVICE
-	for i, device := range devices {
+	for i := range devices {
 		action := protos.TAction{
 			Type:   &t,
 			Host:   &host,
