@@ -12,6 +12,7 @@ SRCS(
     disk_registry_state_ut_lagging_agents.cpp
     disk_registry_state_ut_migration.cpp
     disk_registry_state_ut_mirrored_disks.cpp
+    disk_registry_state_ut_owner_volume.cpp
     disk_registry_state_ut_pending_cleanup.cpp
     disk_registry_state_ut_pools.cpp
     disk_registry_state_ut_ranking.cpp

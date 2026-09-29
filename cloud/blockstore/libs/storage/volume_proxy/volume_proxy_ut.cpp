@@ -15,6 +15,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/size_literals.h>
+
 #include <unordered_set>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -597,6 +599,70 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         service.StatVolume();
         service.StatVolume();
+    }
+
+    Y_UNIT_TEST(ShouldForwardRequestToOwnerVolumeTabletWithoutDescribe)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(100);
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        // Only a disk registry based volume handles ReallocateDisk.
+        service.CreateVolume(
+            DefaultDiskId,
+            100_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "",   // folderId
+            "",   // cloudId
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        service.WaitForVolume();
+
+        ui64 volumeTabletId = 0;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg = event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription.GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        service.DescribeVolume();
+        UNIT_ASSERT(volumeTabletId);
+
+        TVector<TString> described;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
+                        described.push_back(
+                            event->Get<TEvSSProxy::TEvDescribeVolumeRequest>()
+                                ->DiskId);
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // The disk id is unknown to SchemeShard: only the owner tablet id
+        // can route the request.
+        auto request = std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
+        request->Record.SetDiskId("external-disk");
+        request->Record.SetOwnerVolumeTabletId(volumeTabletId);
+        service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+
+        auto response =
+            service.RecvResponse<TEvVolume::TEvReallocateDiskResponse>();
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(0, described.size());
     }
 
     Y_UNIT_TEST(ShouldMapBaseDiskIfSchemeShardIsNotAvailable)

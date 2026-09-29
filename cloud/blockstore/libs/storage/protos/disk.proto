@@ -316,6 +316,10 @@ message TDiskConfig
 
     // Last applied SeqNo from TVolumeActor health notification.
     uint64 VolumeHealthSeqNo = 20;
+
+    // Tablet id of the external volume that owns this disk. Zero means that
+    // the disk belongs to a native NBS volume registered in SchemeShard.
+    uint64 OwnerVolumeTabletId = 21;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -712,6 +716,10 @@ message TAllocateDiskRequest
 
     // Placement partition index.
     uint32 PlacementPartitionIndex = 12;
+
+    // Tablet id of the external volume that owns this disk. Zero means that
+    // the disk belongs to a native NBS volume registered in SchemeShard.
+    uint64 OwnerVolumeTabletId = 13;
 }
 
 message TReplica
@@ -767,6 +775,10 @@ message TDeallocateDiskRequest
 
     // Wait for secure cleanup of disk's devices before response.
     bool Sync = 4;
+
+    // Tablet id of the external volume that owns this disk. Must match the
+    // owner persisted on the disk. Zero for native NBS volumes.
+    uint64 OwnerVolumeTabletId = 5;
 }
 
 message TDeallocateDiskResponse
@@ -1491,6 +1503,10 @@ message TMarkDiskForCleanupRequest
 
     // Volume label.
     string DiskId = 2;
+
+    // Tablet id of the external volume that owns this disk. Must match the
+    // owner persisted on the disk. Zero for native NBS volumes.
+    uint64 OwnerVolumeTabletId = 3;
 }
 
 message TMarkDiskForCleanupResponse

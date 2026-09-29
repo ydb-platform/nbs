@@ -157,6 +157,41 @@ Y_UNIT_TEST_SUITE(TRestoreValidatorActorTest)
             "Disk 3");
     }
 
+    Y_UNIT_TEST_F(CheckExternalDisksAreKeptWithoutSS, TSetupEnvironment)
+    {
+        TDiskRegistryStateSnapshot backup;
+        backup.Disks.emplace_back().SetDiskId("Disk 1");
+        auto& external = backup.Disks.emplace_back();
+        external.SetDiskId("Disk 2");
+        external.SetOwnerVolumeTabletId(42);
+
+        auto validatorId = ActorSystem.Register(
+            new TRestoreValidationActor(
+                EdgeActor,
+                {},
+                0,
+                backup
+            ));
+
+        ActorSystem.GrabEdgeEvent<TEvService::TEvListVolumesRequest>();
+
+        // Neither disk is registered in SS: the native one is dropped, the
+        // external one is owned by a tablet that is not registered there.
+        ActorSystem.Send(new NActors::IEventHandle(
+            validatorId,
+            EdgeActor,
+            new TEvService::TEvListVolumesResponse()));
+
+        auto response = ActorSystem.GrabEdgeEvent<
+            TEvDiskRegistryPrivate::TEvRestoreDiskRegistryValidationResponse>();
+        UNIT_ASSERT(!HasError(response->GetError()));
+
+        const auto& disks = response->LoadDBState.Disks;
+        UNIT_ASSERT_VALUES_EQUAL(1, disks.size());
+        UNIT_ASSERT_VALUES_EQUAL("Disk 2", disks[0].GetDiskId());
+        UNIT_ASSERT_VALUES_EQUAL(42, disks[0].GetOwnerVolumeTabletId());
+    }
+
     Y_UNIT_TEST_F(CheckNewDisksInSS, TSetupEnvironment)
     {
         TDiskRegistryStateSnapshot backup;

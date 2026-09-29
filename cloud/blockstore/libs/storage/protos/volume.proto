@@ -355,6 +355,10 @@ message TReallocateDiskRequest
 
     // Label of volume.
     string DiskId = 2;
+
+    // Tablet id of the external volume that owns the disk. When set, the
+    // request is delivered directly to this tablet, bypassing SchemeShard.
+    uint64 OwnerVolumeTabletId = 3;
 }
 
 message TReallocateDiskResponse

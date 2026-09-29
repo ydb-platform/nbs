@@ -88,7 +88,8 @@ void TDiskRegistryActor::HandleAllocateDisk(
             msg->Record.GetAgentIds().end()
         },
         msg->Record.GetPoolName(),
-        msg->Record.GetStorageMediaKind());
+        msg->Record.GetStorageMediaKind(),
+        msg->Record.GetOwnerVolumeTabletId());
 }
 
 bool TDiskRegistryActor::PrepareAddDisk(
@@ -128,7 +129,8 @@ void TDiskRegistryActor::ExecuteAddDisk(
             .ReplicaCount = args.ReplicaCount,
             .AgentIds = args.AgentIds,
             .PoolName = args.PoolName,
-            .MediaKind = args.MediaKind
+            .MediaKind = args.MediaKind,
+            .OwnerVolumeTabletId = args.OwnerVolumeTabletId
         },
         &result);
 
@@ -318,6 +320,20 @@ void TDiskRegistryActor::HandleDeallocateDisk(
     const auto& diskId = msg->Record.GetDiskId();
 
     if (msg->Record.GetSync() && State->HasPendingCleanup(diskId)) {
+        // The disk may still be alive while some of its former devices are
+        // being erased, so the owner check can't be skipped here.
+        auto error = State->CheckOwnerVolumeTabletId(
+            diskId,
+            msg->Record.GetOwnerVolumeTabletId());
+        if (HasError(error)) {
+            NCloud::Reply(
+                ctx,
+                *requestInfo,
+                std::make_unique<TEvDiskRegistry::TEvDeallocateDiskResponse>(
+                    std::move(error)));
+            return;
+        }
+
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY,
@@ -334,7 +350,8 @@ void TDiskRegistryActor::HandleDeallocateDisk(
         ctx,
         std::move(requestInfo),
         msg->Record.GetDiskId(),
-        msg->Record.GetSync());
+        msg->Record.GetSync(),
+        msg->Record.GetOwnerVolumeTabletId());
 }
 
 bool TDiskRegistryActor::PrepareRemoveDisk(
@@ -357,7 +374,8 @@ void TDiskRegistryActor::ExecuteRemoveDisk(
     Y_UNUSED(ctx);
 
     TDiskRegistryDatabase db(tx.DB);
-    args.Error = State->DeallocateDisk(db, args.DiskId);
+    args.Error =
+        State->DeallocateDisk(db, args.DiskId, args.OwnerVolumeTabletId);
 }
 
 void TDiskRegistryActor::CompleteRemoveDisk(

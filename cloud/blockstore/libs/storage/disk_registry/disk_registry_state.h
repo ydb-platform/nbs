@@ -70,6 +70,7 @@ struct TDiskInfo
     TString SourceDiskId;
     TInstant MigrationStartTs;
     TVector<NProto::TDiskHistoryItem> History;
+    ui64 OwnerVolumeTabletId = 0;
 
     ui64 GetBlocksCount() const;
     TVector<TBlockRange64> GetDeviceRanges() const;
@@ -290,6 +291,9 @@ class TDiskRegistryState
 
         NProto::EVolumeHealth VolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
         ui64 VolumeHealthSeqNo = 0;
+
+        // Zero for disks of native NBS volumes.
+        ui64 OwnerVolumeTabletId = 0;
     };
 
     struct TVolumeDeviceOverrides
@@ -416,6 +420,8 @@ public:
 
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+
+        ui64 OwnerVolumeTabletId = 0;
     };
 
     struct TAllocateDiskResult
@@ -450,6 +456,12 @@ public:
     NProto::TError DeallocateDisk(
         TDiskRegistryDatabase& db,
         const TString& diskId);
+
+    // Rejects the request if the disk exists and belongs to another owner.
+    NProto::TError DeallocateDisk(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        ui64 ownerVolumeTabletId);
 
     NProto::TError AllocateCheckpoint(
         TInstant now,
@@ -498,6 +510,20 @@ public:
     NProto::TError MarkDiskForCleanup(
         TDiskRegistryDatabase& db,
         const TString& diskId);
+
+    // Rejects the request if the disk belongs to another owner.
+    NProto::TError MarkDiskForCleanup(
+        TDiskRegistryDatabase& db,
+        const TString& diskId,
+        ui64 ownerVolumeTabletId);
+
+    // Returns zero for unknown disks and disks of native NBS volumes.
+    ui64 GetOwnerVolumeTabletId(const TDiskId& diskId) const;
+
+    // Fails if the disk exists and belongs to another owner.
+    NProto::TError CheckOwnerVolumeTabletId(
+        const TDiskId& diskId,
+        ui64 ownerVolumeTabletId) const;
 
     bool HasPendingCleanup(const TDiskId& diskId) const;
 
@@ -1262,9 +1288,16 @@ private:
     ui64 GetAllocationUnit(const TString& poolName) const;
     NProto::EDevicePoolKind GetDevicePoolKind(const TString& poolName) const;
 
+    static bool IsNewDisk(const TDiskState& disk);
+
     NProto::TError ValidateAllocateDiskParams(
         const TDiskState& disk,
         const TAllocateDiskParams& params) const;
+
+    void AddOutdatedVolumeConfig(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        const TDiskState& disk);
 
     NProto::TError AllocateSimpleDisk(
         TInstant now,
@@ -1320,7 +1353,7 @@ private:
     void AddToBrokenDisks(
         TInstant now,
         TDiskRegistryDatabase& db,
-        const TString& diskId);
+        const TAllocateDiskParams& params);
 
     NProto::TError AddDevicesToPendingCleanup(
         const TString& diskId,

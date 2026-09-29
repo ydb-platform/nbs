@@ -698,12 +698,16 @@ public:
         return request;
     }
 
-    auto CreateDeallocateDiskRequest(const TString& diskId, bool sync = false)
+    auto CreateDeallocateDiskRequest(
+        const TString& diskId,
+        bool sync = false,
+        ui64 ownerVolumeTabletId = 0)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvDeallocateDiskRequest>();
 
         request->Record.SetDiskId(diskId);
         request->Record.SetSync(sync);
+        request->Record.SetOwnerVolumeTabletId(ownerVolumeTabletId);
 
         return request;
     }
@@ -1038,10 +1042,13 @@ public:
         return request;
     }
 
-    auto CreateMarkDiskForCleanupRequest(const TString& diskId)
+    auto CreateMarkDiskForCleanupRequest(
+        const TString& diskId,
+        ui64 ownerVolumeTabletId = 0)
     {
         auto request = std::make_unique<TEvDiskRegistry::TEvMarkDiskForCleanupRequest>();
         request->Record.SetDiskId(diskId);
+        request->Record.SetOwnerVolumeTabletId(ownerVolumeTabletId);
         return request;
     }
 

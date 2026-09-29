@@ -31,12 +31,18 @@ struct TDiskNotification
 {
     TString DiskId;
     ui64 SeqNo = 0;
+    // Zero for disks of native NBS volumes.
+    ui64 OwnerVolumeTabletId = 0;
 
     TDiskNotification() = default;
 
-    TDiskNotification(TString diskId, ui64 seqNo)
+    TDiskNotification(
+            TString diskId,
+            ui64 seqNo,
+            ui64 ownerVolumeTabletId = 0)
         : DiskId(std::move(diskId))
         , SeqNo(seqNo)
+        , OwnerVolumeTabletId(ownerVolumeTabletId)
     {}
 };
 

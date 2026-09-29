@@ -57,6 +57,18 @@ constexpr bool IsDataPlaneMethod =
     std::is_same_v<TMethod, TEvService::TReadBlocksLocalMethod> ||
     std::is_same_v<TMethod, TEvService::TWriteBlocksLocalMethod>;
 
+// Only the requests that may target an external volume carry the owner tablet
+// id. Zero means a native NBS volume registered in SchemeShard.
+template <typename TRequest>
+ui64 GetOwnerVolumeTabletId(const TRequest& request)
+{
+    if constexpr (requires { request.Record.GetOwnerVolumeTabletId(); }) {
+        return request.Record.GetOwnerVolumeTabletId();
+    } else {
+        return 0;
+    }
+}
+
 // VolumeProxy discovers the volume specified in the DiskId field of request,
 // establishes a connection to the tablet of this volume and redirects the
 // request to it. VolumeProxy keeps the pipe to the volume tablet and ensures
@@ -68,6 +80,10 @@ constexpr bool IsDataPlaneMethod =
 // Additionally, VolumeProxy tracks the list of base disks tablets. The
 // connection to the base disks occurs even if the describe returned an error,
 // since the tablet id is already known.
+//
+// A request that names the tablet of an external volume (OwnerVolumeTabletId)
+// is delivered to this tablet directly: such volumes are not registered in
+// SchemeShard.
 
 class TVolumeProxyActor final
     : public TActor<TVolumeProxyActor>
@@ -771,6 +787,17 @@ void TVolumeProxyActor::HandleRequest(
         case FAILED:
         {
             conn.State = RESOLVING;
+            if (const ui64 ownerTabletId = GetOwnerVolumeTabletId(*msg)) {
+                PostponeRequest(conn, IEventHandlePtr(ev.Release()));
+                StartConnection(
+                    ctx,
+                    conn,
+                    ownerTabletId,
+                    "OwnerVolumeTabletId",
+                    diskId);
+                break;
+            }
+
             if (auto* baseDisk = BaseDiskIdToTabletId.FindPtr(diskId)) {
                 Y_ABORT_UNLESS(baseDisk->TabletId,
                     "%s Base disk %s tablet id is not set",

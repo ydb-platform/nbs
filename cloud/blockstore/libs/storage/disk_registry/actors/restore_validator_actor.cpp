@@ -451,6 +451,10 @@ void TRestoreValidationActor::StartDeviceCheck(const NActors::TActorContext& ctx
             std::move(request));
         ++DisksWaitedConfirmSize;
     }
+
+    if (DisksWaitedConfirmSize == 0) {
+        NextValidation(ctx);
+    }
 }
 
 
@@ -520,7 +524,9 @@ void TRestoreValidationActor::HandleListVolumesResponse(
     for (auto itr = ValidSnapshot.Disks.begin();
         itr != ValidSnapshot.Disks.end(); )
     {
-        if (!DisksInSS.contains(itr->GetDiskId())
+        // Disks of external volumes are not registered in SS.
+        if (!itr->GetOwnerVolumeTabletId()
+            && !DisksInSS.contains(itr->GetDiskId())
             && !CheckMirrorDiskId(
                 DisksInSS,
                 ValidSnapshot.Disks,
@@ -566,6 +572,8 @@ void TRestoreValidationActor::HandleListVolumesResponse(
     if (ValidSnapshot.Disks.size() == 0) {
         ReplyAndDie(ctx,
             MakeError(E_REJECTED, "Zero count of disks for restore"));
+    } else if (DisksWaitedConfirmSize == 0) {
+        NextValidation(ctx);
     }
 }
 

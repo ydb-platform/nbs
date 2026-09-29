@@ -117,6 +117,7 @@ RECURSE_FOR_TESTS(
     ut_mirrored_disk_migration
     ut_monitoring_cms
     ut_notify
+    ut_owner_volume
     ut_pools
     ut_restore
     ut_session

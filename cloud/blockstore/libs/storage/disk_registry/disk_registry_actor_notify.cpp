@@ -119,16 +119,18 @@ void TNotifyActor::ReallocateDisks(const TActorContext& ctx)
     PendingOperations = DiskNotifications.size();
 
     ui64 cookie = 0;
-    for (const auto& [diskId, seqNo]: DiskNotifications) {
+    for (const auto& [diskId, seqNo, ownerVolumeTabletId]: DiskNotifications) {
         LOG_INFO(
             ctx,
             TBlockStoreComponents::DISK_REGISTRY_WORKER,
-            "%s Notifying volume: DiskId=%s",
+            "%s Notifying volume: DiskId=%s OwnerVolumeTabletId=%lu",
             LogTitle.GetWithTime().c_str(),
-            diskId.Quote().c_str());
+            diskId.Quote().c_str(),
+            ownerVolumeTabletId);
 
         auto request = std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
         request->Record.SetDiskId(diskId);
+        request->Record.SetOwnerVolumeTabletId(ownerVolumeTabletId);
         NCloud::Send(
             ctx,
             MakeVolumeProxyServiceId(),
@@ -293,7 +295,10 @@ void TDiskRegistryActor::HandleNotifyDisks(
 
     DisksBeingNotified.reserve(State->GetDisksToReallocate().size());
     for (const auto& [diskId, seqNo]: State->GetDisksToReallocate()) {
-        DisksBeingNotified.emplace_back(diskId, seqNo);
+        DisksBeingNotified.emplace_back(
+            diskId,
+            seqNo,
+            State->GetOwnerVolumeTabletId(diskId));
     }
 
     auto actor = NCloud::Register<TNotifyActor>(
