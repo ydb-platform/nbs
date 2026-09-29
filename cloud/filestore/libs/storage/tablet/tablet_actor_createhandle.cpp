@@ -106,8 +106,10 @@ void TIndexTabletActor::HandleCreateHandle(
         if (!GetDupCacheEntry(e, response->Record)) {
             // invalid entry type - it's certainly a request id collision
             session->DropDupEntry(requestId);
-        } else if (msg->Record.GetName().empty() && msg->Record.GetNodeId()
-                != response->Record.GetNodeAttr().GetId())
+        } else if (msg->Record.GetName().empty()
+                && e->Committed
+                && msg->Record.GetNodeId()
+                    != response->Record.GetNodeAttr().GetId())
         {
             // this handle relates to a different node id => it's certainly a
             // request id collision as well

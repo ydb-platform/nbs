@@ -1921,6 +1921,88 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldRejectRefreshWhileNbdDeviceIsRestarting)
+    {
+        TTempDir dir;
+        const TString socketPath = (dir.Path() / "testSocket").GetPath();
+        const TString devicePrefix = (dir.Path() / "nbd").GetPath();
+        TFsPath(devicePrefix + "0").Touch();
+
+        TMap<TString, NProto::TMountVolumeRequest> mountedVolumes;
+        auto restartEntered = NewPromise<void>();
+        auto finishRestart = NewPromise<NProto::TError>();
+        ui32 startCount = 0;
+
+        TBootstrap bootstrap;
+        bootstrap.Service = CreateTestService(mountedVolumes);
+        bootstrap.NbdDeviceFactory = std::make_shared<TTestDeviceFactory>();
+        bootstrap.Options.NbdDevicePrefix = devicePrefix;
+
+        auto listener = std::make_shared<TTestEndpointListener>();
+        auto startEndpoint = listener->StartEndpointHandler;
+        listener->StartEndpointHandler =
+            [&](const NProto::TStartEndpointRequest& request,
+                NClient::ISessionPtr session)
+        {
+            auto result = startEndpoint(request, std::move(session));
+            if (++startCount == 2) {
+                // DoProcessException has reset Device, but cannot install a new
+                // one until the listener has finished reopening the socket.
+                restartEntered.SetValue();
+                return finishRestart.GetFuture();
+            }
+            return result;
+        };
+        bootstrap.EndpointListeners = {{NProto::IPC_NBD, listener}};
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        manager->RestoreEndpoints().GetValue(TDuration::Seconds(5));
+
+        NProto::TStartEndpointRequest request;
+        SetDefaultHeaders(request);
+        request.SetUnixSocketPath(socketPath);
+        request.SetDiskId("testDiskId");
+        request.SetClientId(TestClientId);
+        request.SetIpcType(NProto::IPC_NBD);
+        request.SetNbdDeviceFile(devicePrefix + "0");
+        request.SetPersistent(true);
+
+        auto startResponse =
+            StartEndpoint(*manager, request).GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(startResponse), startResponse.GetError());
+
+        // Schedule the same recovery path that handles an NBD connection error.
+        bootstrap.Executor->Execute([&] {
+            auto errorHandler = bootstrap.NbdErrorHandlerMap->Get(socketPath);
+            UNIT_ASSERT(errorHandler);
+            errorHandler->ProcessException({});
+        }).GetValue(TDuration::Seconds(5));
+        auto restartFinished = bootstrap.Executor->Execute([&] {
+            bootstrap.Scheduler->RunAllScheduledTasks();
+        });
+        restartEntered.GetFuture().GetValue(TDuration::Seconds(5));
+
+        auto refreshRequest = std::make_shared<NProto::TRefreshEndpointRequest>();
+        refreshRequest->SetUnixSocketPath(socketPath);
+        refreshRequest->MutableHeaders()->CopyFrom(request.GetHeaders());
+        auto refreshResponse = manager->RefreshEndpoint(
+            MakeIntrusive<TCallContext>(),
+            std::move(refreshRequest)).GetValue(TDuration::Seconds(5));
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            refreshResponse.GetError().GetCode(),
+            refreshResponse.GetError());
+
+        finishRestart.SetValue(NProto::TError());
+        restartFinished.GetValue(TDuration::Seconds(5));
+    }
+
     Y_UNIT_TEST(ShouldRecreateSocketWhenRestartEndpoint)
     {
         TTempDir dir;

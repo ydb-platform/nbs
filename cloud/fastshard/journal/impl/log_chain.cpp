@@ -37,6 +37,8 @@ TResultOrError<TLogRecordPtr> TLogRecordChain::Insert(TLogRecordPtr record)
             return MakeError(E_INVALID_STATE);
         }
 
+        // TODO(#6956): check, that there is no record with the same Lsn
+
         // the boundaries of the chained run are all held, so a record
         // starting below LastChainedLsn starts inside another record
         if (record->PrevLsn < LastChainedLsn) {
