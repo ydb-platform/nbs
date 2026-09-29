@@ -6,15 +6,229 @@
 
 #include <util/generic/vector.h>
 
+#include <functional>
 #include <latch>
 #include <thread>
+#include <type_traits>
 
 namespace NCloud::NBlockStore::NStorage {
+
+namespace {
+
+using TStorageProto = NProto::TStorageServiceConfig;
+
+// Check selective override reset through typed getters, including removal to
+// the compiled fallback and preservation on repeated or unrelated updates.
+template <typename TValue, typename TSetter, typename TGetter>
+void CheckUpdateDefaults(
+    const TString& name,
+    TSetter setter,
+    TGetter getter,
+    TValue initialValue,
+    std::optional<TValue> updatedValue,
+    i64 overrideValue)
+{
+    // Retain the original raw value while sharing the registered controls.
+    NProto::TStorageServiceConfig proto;
+    std::invoke(setter, proto, initialValue);
+    auto controls = std::make_shared<TStorageConfigControls>(proto);
+    const TStorageConfig retained(proto, nullptr, controls);
+    NKikimr::TControlBoard board;
+    controls->Register(board);
+    const TString controlName = "BlockStore_" + name;
+    TAtomic previousValue = {};
+    board.SetValue(controlName, overrideValue, previousValue);
+    UNIT_ASSERT_VALUES_EQUAL(
+        overrideValue,
+        controls->GetOverride(name).value());
+
+    // Keep the override when this field's configured value does not change.
+    controls->UpdateDefaults(proto);
+    UNIT_ASSERT_VALUES_EQUAL(
+        overrideValue,
+        controls->GetOverride(name).value());
+    proto.SetMaxMigrationIoDepth(7);
+    controls->UpdateDefaults(proto);
+    UNIT_ASSERT_VALUES_EQUAL(
+        overrideValue,
+        controls->GetOverride(name).value());
+
+    // Replace or remove this field and expose each snapshot's own raw value.
+    NProto::TStorageServiceConfig nextProto;
+    if (updatedValue) {
+        std::invoke(setter, nextProto, *updatedValue);
+    }
+    const TStorageConfig defaults({}, nullptr);
+    const auto expectedValue = updatedValue.value_or((defaults.*getter)());
+    controls->UpdateDefaults(nextProto);
+    const TStorageConfig updated(nextProto, nullptr, controls);
+    if constexpr (std::is_enum_v<TValue>) {
+        UNIT_ASSERT_EQUAL(expectedValue, (updated.*getter)());
+    } else {
+        UNIT_ASSERT_VALUES_EQUAL(expectedValue, (updated.*getter)());
+    }
+    UNIT_ASSERT(!controls->GetOverride(name));
+    UNIT_ASSERT_EQUAL(initialValue, (retained.*getter)());
+
+    // Preserve a new override on repetition of the last accepted baseline.
+    // A bool has only two values, so override it with the original baseline.
+    i64 nextOverrideValue = overrideValue;
+    if constexpr (std::is_same_v<TValue, bool>) {
+        nextOverrideValue = initialValue;
+    }
+    board.SetValue(controlName, nextOverrideValue, previousValue);
+    const auto nextOverride = controls->GetOverride(name);
+    UNIT_ASSERT(nextOverride);
+    controls->UpdateDefaults(nextProto);
+    UNIT_ASSERT_VALUES_EQUAL(
+        *nextOverride,
+        controls->GetOverride(name).value());
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TConfigTest)
 {
+    // Check changed and unchanged ui32 defaults, including an explicit zero.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForUint32)
+    {
+        CheckUpdateDefaults<ui32>(
+            "WriteBlobThreshold",
+            &TStorageProto::SetWriteBlobThreshold,
+            &TStorageConfig::GetWriteBlobThreshold,
+            100,
+            0,
+            300);
+    }
+
+    // Check ui64 defaults above the range of ui32 without losing high bits.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForUint64)
+    {
+        CheckUpdateDefaults<ui64>(
+            "TargetCompactionBytesPerOp",
+            &TStorageProto::SetTargetCompactionBytesPerOp,
+            &TStorageConfig::GetTargetCompactionBytesPerOp,
+            1ULL << 33,
+            (1ULL << 33) + 1,
+            1LL << 34);
+    }
+
+    // Check that a changed bool clears an override equal to the new baseline.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForBool)
+    {
+        CheckUpdateDefaults<bool>(
+            "HiveProxyFallbackMode",
+            &TStorageProto::SetHiveProxyFallbackMode,
+            &TStorageConfig::GetHiveProxyFallbackMode,
+            true,
+            false,
+            0);
+    }
+
+    // Check duration defaults with millisecond precision and explicit zero.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForDuration)
+    {
+        CheckUpdateDefaults<TDuration>(
+            "HiveLockExpireTimeout",
+            [](auto& proto, TDuration value)
+            {
+                proto.SetHiveLockExpireTimeout(value.MilliSeconds());
+            },
+            &TStorageConfig::GetHiveLockExpireTimeout,
+            TDuration::MilliSeconds(4321),
+            TDuration::Zero(),
+            7654);
+    }
+
+    // Check enum defaults without treating an operator value as the baseline.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForEnum)
+    {
+        CheckUpdateDefaults<NProto::EVolumePreemptionType>(
+            "VolumePreemptionType",
+            &TStorageProto::SetVolumePreemptionType,
+            &TStorageConfig::GetVolumePreemptionType,
+            NProto::PREEMPTION_NONE,
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            NProto::PREEMPTION_MOVE_LEAST_HEAVY);
+    }
+
+    // Check double override reset on fractional changes and removal, and
+    // preservation when only the presence of the compiled default changes.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForDouble)
+    {
+        // Reset the override when only the fractional part changes.
+        CheckUpdateDefaults<double>(
+            "NonReplicatedAgentTimeoutGrowthFactor",
+            &TStorageProto::SetNonReplicatedAgentTimeoutGrowthFactor,
+            &TStorageConfig::GetNonReplicatedAgentTimeoutGrowthFactor,
+            2.5,
+            2.9,
+            10);
+
+        // Check negative values that share the same integer ICB default.
+        CheckUpdateDefaults<double>(
+            "NonReplicatedAgentTimeoutGrowthFactor",
+            &TStorageProto::SetNonReplicatedAgentTimeoutGrowthFactor,
+            &TStorageConfig::GetNonReplicatedAgentTimeoutGrowthFactor,
+            -2.5,
+            -2.9,
+            -10);
+
+        // Check the same fractional change with another double field.
+        CheckUpdateDefaults<double>(
+            "DiskRegistryInitialAgentRejectionThreshold",
+            &TStorageProto::SetDiskRegistryInitialAgentRejectionThreshold,
+            &TStorageConfig::GetDiskRegistryInitialAgentRejectionThreshold,
+            50.5,
+            50.9,
+            80);
+
+        // Reset overrides on removal even if the ICB default stays the same.
+        CheckUpdateDefaults<double>(
+            "NonReplicatedAgentTimeoutGrowthFactor",
+            &TStorageProto::SetNonReplicatedAgentTimeoutGrowthFactor,
+            &TStorageConfig::GetNonReplicatedAgentTimeoutGrowthFactor,
+            2.5,
+            std::nullopt,
+            10);
+        CheckUpdateDefaults<double>(
+            "DiskRegistryInitialAgentRejectionThreshold",
+            &TStorageProto::SetDiskRegistryInitialAgentRejectionThreshold,
+            &TStorageConfig::GetDiskRegistryInitialAgentRejectionThreshold,
+            50.5,
+            std::nullopt,
+            80);
+
+        // Start with an absent field and override its compiled default.
+        constexpr TStringBuf name = "NonReplicatedAgentTimeoutGrowthFactor";
+        auto controls = std::make_shared<TStorageConfigControls>();
+        NKikimr::TControlBoard board;
+        controls->Register(board);
+        const TStorageConfig defaults({}, nullptr);
+        TAtomic previousValue = {};
+        board.SetValue(
+            "BlockStore_NonReplicatedAgentTimeoutGrowthFactor",
+            10,
+            previousValue);
+
+        // Preserve the override when the same default becomes explicit.
+        NProto::TStorageServiceConfig proto;
+        proto.SetNonReplicatedAgentTimeoutGrowthFactor(
+            defaults.GetNonReplicatedAgentTimeoutGrowthFactor());
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            controls->GetOverride(name).value());
+
+        // Preserve it when removal returns to the same compiled fallback.
+        controls->UpdateDefaults({});
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            controls->GetOverride(name).value());
+    }
+
     // Check that shared controls expose compiled defaults on the native board
     // and treat an explicit equal-to-default value as no override.
     Y_UNIT_TEST(ShouldUseCompiledDefaultsForSharedControls)
