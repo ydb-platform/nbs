@@ -143,6 +143,8 @@ func (t *collectClusterCapacityTask) updateCellCapacity(
 		return err
 	}
 
+	createdAt := time.Now()
+
 	var capacities []storage.ClusterCapacity
 	for _, info := range capacityInfos {
 		capacities = append(capacities, storage.ClusterCapacity{
@@ -151,6 +153,7 @@ func (t *collectClusterCapacityTask) updateCellCapacity(
 			Kind:       info.DiskKind,
 			FreeBytes:  info.FreeBytes,
 			TotalBytes: info.TotalBytes,
+			CreatedAt:  createdAt,
 		})
 	}
 
