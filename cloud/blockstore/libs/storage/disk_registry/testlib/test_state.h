@@ -41,6 +41,13 @@ constexpr ui64 DefaultDeviceSize = 10_GB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    TDiskRegistryState& state,
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    const TString& sourceId);
+
 NProto::TError FinishDeviceMigration(
     TDiskRegistryState& state,
     TDiskRegistryDatabase& db,
