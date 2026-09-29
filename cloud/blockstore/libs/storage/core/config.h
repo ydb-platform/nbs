@@ -70,11 +70,6 @@ public:
     // value.
     std::optional<i64> GetOverride(TStringBuf name) const;
 
-    // Restore a registered field's ICB value to its current default without
-    // changing that default. Return false for an unknown or unregistered field.
-    // The registered board must remain alive during this call.
-    bool RestoreDefault(TStringBuf name);
-
 private:
     friend class TStorageConfig;
 
