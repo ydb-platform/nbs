@@ -19,7 +19,7 @@ inputs:
   s3_region:
     required: false
     description: "s3 region"
-    default: "eu-north1"
+    default: "eu-north2"
   folder_prefix:
     required: true
     description: "folder prefix"

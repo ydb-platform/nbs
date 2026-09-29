@@ -221,6 +221,8 @@ PoolsConfig: <
     MinOptimizedPoolAge: "1s"
     BaseDiskIdPrefix: "{base_disk_id_prefix}"
     BaseDiskIdleTTL: "1m"
+    # TODO: remove after deployment of this version is finished.
+    HoldBaseDisksWithInflightDependents: true
 >
 ImagesConfig: <
     DeletedImageExpirationTimeout: "1s"

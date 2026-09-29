@@ -179,7 +179,9 @@ bool TTabletBootInfoBackup::LoadFromTextFormat(
             << backupFilePath.GetPath().Quote());
     try {
         TInstant start = TInstant::Now();
-        MergeFromTextFormat(backupFilePath, backupProto);
+        NHiveProxy::NProto::TTabletBootInfoBackup parsedBackup;
+        MergeFromTextFormat(backupFilePath, parsedBackup);
+        backupProto = std::move(parsedBackup);
 
         LOG_INFO_S(
             ctx,
@@ -188,7 +190,6 @@ bool TTabletBootInfoBackup::LoadFromTextFormat(
                 << FormatDuration(TInstant::Now() - start));
         return true;
     } catch (...) {
-        backupProto = NHiveProxy::NProto::TTabletBootInfoBackup();
         LOG_WARN_S(
             ctx,
             LogComponent,
@@ -212,7 +213,11 @@ bool TTabletBootInfoBackup::LoadFromBinaryFormat(
         TInstant start = TInstant::Now();
         TFile file(backupFilePath, OpenExisting | RdOnly | Seq);
         TUnbufferedFileInput input(file);
-        const bool success = backupProto.MergeFromString(input.ReadAll());
+        NHiveProxy::NProto::TTabletBootInfoBackup parsedBackup;
+        const bool success = parsedBackup.MergeFromString(input.ReadAll());
+        if (success) {
+            backupProto = std::move(parsedBackup);
+        }
 
         LOG_WARN_S(
             ctx,
@@ -223,7 +228,6 @@ bool TTabletBootInfoBackup::LoadFromBinaryFormat(
 
         return success;
     } catch (...) {
-        backupProto = NHiveProxy::NProto::TTabletBootInfoBackup();
         LOG_WARN_S(
             ctx,
             LogComponent,
@@ -294,6 +298,18 @@ void TTabletBootInfoBackup::HandleUpdateTabletBootInfoBackup(
     auto* msg = ev->Get();
     Y_ABORT_UNLESS(msg->StorageInfo);
 
+    auto& data = *BackupProto.MutableData();
+    const auto it = data.find(msg->StorageInfo->TabletID);
+    if (it != data.end() &&
+        msg->SuggestedGeneration < it->second.GetSuggestedGeneration())
+    {
+        // External boot reports Hive's suggestion; activation reports the
+        // actual executor generation, which can be higher after boot retries.
+        // Neither a delayed suggestion nor an older activation may overwrite
+        // the generation and channel history of a newer boot.
+        return;
+    }
+
     NHiveProxy::NProto::TTabletBootInfo tabletBootInfo;
     NKikimr::TabletStorageInfoToProto(
         *msg->StorageInfo,
@@ -301,8 +317,9 @@ void TTabletBootInfoBackup::HandleUpdateTabletBootInfoBackup(
     tabletBootInfo.SetSuggestedGeneration(msg->SuggestedGeneration);
 
     BackupProtoHasChanged = true;
-    auto& data = *BackupProto.MutableData();
-    data[msg->StorageInfo->TabletID] = std::move(tabletBootInfo);
+    auto& entry =
+        it != data.end() ? it->second : data[msg->StorageInfo->TabletID];
+    entry = std::move(tabletBootInfo);
 
     LOG_DEBUG_S(
         ctx,
@@ -328,23 +345,29 @@ void TTabletBootInfoBackup::HandleBackupTabletBootInfos(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
-    const TEvHiveProxy::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
-    const TActorContext& ctx)
+TVector<TTabletBootInfo> TTabletBootInfoBackup::CollectTabletBootInfos() const
 {
-    TVector<TTabletBootInfo> tabletBootInfos;
     // Not using "value_or()" because it copies the value.
     const auto& backupProto =
         InitialBackupProto ? *InitialBackupProto : BackupProto;
+
+    TVector<TTabletBootInfo> tabletBootInfos;
+    tabletBootInfos.reserve(backupProto.GetData().size());
     for (const auto& [_, tabletBootInfo]: backupProto.GetData()) {
         tabletBootInfos.emplace_back(
             tabletBootInfo.GetStorageInfo(),
             tabletBootInfo.GetSuggestedGeneration());
     }
+    return tabletBootInfos;
+}
 
+void TTabletBootInfoBackup::HandleListTabletBootInfoBackups(
+    const TEvHiveProxy::TEvListTabletBootInfoBackupsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
     auto response =
         std::make_unique<TEvHiveProxy::TEvListTabletBootInfoBackupsResponse>(
-            std::move(tabletBootInfos));
+            CollectTabletBootInfos());
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
@@ -352,18 +375,9 @@ void TTabletBootInfoBackup::HandleGetTabletBootInfos(
     const TEvHiveProxy::TEvGetTabletBootInfosRequest::TPtr& ev,
     const TActorContext& ctx)
 {
-    TVector<TTabletBootInfo> tabletBootInfos;
-    const auto& backupProto =
-        InitialBackupProto ? *InitialBackupProto : BackupProto;
-    for (const auto& [_, tabletBootInfo]: backupProto.GetData()) {
-        tabletBootInfos.emplace_back(
-            tabletBootInfo.GetStorageInfo(),
-            tabletBootInfo.GetSuggestedGeneration());
-    }
-
     auto response =
         std::make_unique<TEvHiveProxy::TEvGetTabletBootInfosResponse>(
-            std::move(tabletBootInfos));
+            CollectTabletBootInfos());
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

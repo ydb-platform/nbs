@@ -196,6 +196,10 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
+    void HandleUpdateTabletBootInfoBackup(
+        const TEvHiveProxy::TEvUpdateTabletBootInfoBackup::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     STFUNC(StateWork);
     STFUNC(StateFallback);
 
