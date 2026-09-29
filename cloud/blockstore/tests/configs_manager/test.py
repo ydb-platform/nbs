@@ -154,12 +154,15 @@ def get_icb_values(nbs, name):
     page = requests.get(f"http://localhost:{nbs.mon_port}/actors/icb", timeout=10)
     page.raise_for_status()
     row = re.search(
-        rf"<td>BlockStore_{re.escape(name)}</td>(.*?)</tr>",
+        rf"<tr>\s*<td>BlockStore_{re.escape(name)}</td>(.*?)</tr>",
         page.text,
         re.DOTALL,
     )
     assert row is not None, f"Missing ICB control: {name}"
     cells = re.findall(r"<td>(.*?)</td>", row.group(1), re.DOTALL)
+    assert len(cells) == 5, (
+        f"Unexpected ICB row for {name}: {len(cells)} cells after name"
+    )
     return tuple(int(re.sub(r"<[^>]+>", "", cell)) for cell in cells[1:3])
 
 
