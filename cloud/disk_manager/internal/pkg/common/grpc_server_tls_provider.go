@@ -358,7 +358,7 @@ func validateCertificateChain(
 		Roots:         roots,
 		Intermediates: intermediates,
 		CurrentTime:   now,
-		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 	})
 	if err != nil {
 		return fmt.Errorf("failed to build certificate chain: %w", err)

@@ -240,6 +240,7 @@ func generateCertificateWithValidity(
 		key,
 		nil, // issuer
 		nil, // issuerKey
+		nil, // extKeyUsage
 	), keyPEM
 }
 
@@ -263,6 +264,7 @@ func generateCertificateForKey(
 		key,
 		nil, // issuer
 		nil, // issuerKey
+		nil, // extKeyUsage
 	)
 }
 
@@ -287,6 +289,30 @@ func generateSignedCertificate(
 		key,
 		parseCertificatePEM(t, issuerPEM),
 		parsePrivateKeyPEM(t, issuerKeyPEM),
+		nil, // extKeyUsage
+	), keyPEM
+}
+
+// Self-signed certificate with the given extended key usage.
+func generateCertificateWithExtKeyUsage(
+	t *testing.T,
+	commonName string,
+	notAfter time.Time,
+	extKeyUsage ...x509.ExtKeyUsage,
+) ([]byte, []byte) {
+
+	t.Helper()
+
+	key, keyPEM := generatePrivateKey(t)
+	return createCertificate(
+		t,
+		commonName,
+		time.Now().Add(-time.Hour),
+		notAfter,
+		key,
+		nil, // issuer
+		nil, // issuerKey
+		extKeyUsage,
 	), keyPEM
 }
 
@@ -329,6 +355,7 @@ func createCertificate(
 	key *ecdsa.PrivateKey,
 	issuer *x509.Certificate,
 	issuerKey *ecdsa.PrivateKey,
+	extKeyUsage []x509.ExtKeyUsage,
 ) []byte {
 
 	t.Helper()
@@ -340,6 +367,7 @@ func createCertificate(
 		NotBefore:             notBefore,
 		NotAfter:              notAfter,
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
+		ExtKeyUsage:           extKeyUsage,
 		BasicConstraintsValid: true,
 		IsCA:                  true,
 	}
@@ -1480,6 +1508,78 @@ func TestGrpcServerTlsProviderReadErrorResetsPendingFiles(t *testing.T) {
 	require.Equal(
 		t,
 		leafOf(t, secondPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+	require.True(t, registry.AssertAllExpectations(t))
+}
+
+func TestGrpcServerTlsProviderRefreshRejectsCertificateWithoutServerAuth(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	now := time.Now().Truncate(time.Second)
+	files := newServerCertificateFiles(t)
+	certPEM, keyPEM := generateCertificate(
+		t,
+		"server.example",
+		now.Add(30*24*time.Hour),
+	)
+	clientPEM, clientKeyPEM := generateCertificateWithExtKeyUsage(
+		t,
+		"server.example",
+		now.Add(60*24*time.Hour),
+		x509.ExtKeyUsageClientAuth,
+	)
+	serverPEM, serverKeyPEM := generateCertificateWithExtKeyUsage(
+		t,
+		"server.example",
+		now.Add(90*24*time.Hour),
+		x509.ExtKeyUsageServerAuth,
+	)
+	writeServerCertificate(t, files, certPEM, keyPEM)
+
+	registry := metrics_mocks.NewRegistryMock()
+	expectServerCertificateMetrics(
+		registry,
+		files.certPath,
+		now.Add(30*24*time.Hour),
+		1,
+	)
+	expectServerCertificateMetrics(
+		registry,
+		files.certPath,
+		now.Add(90*24*time.Hour),
+		1,
+	)
+
+	provider, err := NewGrpcServerTlsProvider(
+		ctx,
+		[]GrpcServerCertificateConfig{{
+			CertFile:       files.certPath,
+			PrivateKeyFile: files.keyPath,
+		}},
+		0, // refreshPeriod
+		registry,
+	)
+	require.NoError(t, err)
+
+	// Issued for clients only: TLS clients would reject it.
+	writeServerCertificate(t, files, clientPEM, clientKeyPEM)
+	refreshServerUntilStable(ctx, provider, now)
+	require.Equal(
+		t,
+		leafOf(t, certPEM),
+		selectedLeaf(t, provider, "server.example"),
+	)
+
+	writeServerCertificate(t, files, serverPEM, serverKeyPEM)
+	refreshServerUntilStable(ctx, provider, now)
+	require.Equal(
+		t,
+		leafOf(t, serverPEM),
 		selectedLeaf(t, provider, "server.example"),
 	)
 	require.True(t, registry.AssertAllExpectations(t))
