@@ -926,6 +926,20 @@ public:
         AccessStats().SetMergedBlocksCount(mergedChannel);
     }
 
+    void UpdateBlobsCountersAfterMetadataRebuild(
+        ui64 mixedIndex,
+        ui64 mergedIndex,
+        ui64 mixedChannel,
+        ui64 mergedChannel)
+    {
+        if (UseBlobChannelDataKindForCounters) {
+            AccessStats().SetMixedIndexBlobsCount(mixedIndex);
+            AccessStats().SetMergedIndexBlobsCount(mergedIndex);
+        }
+        AccessStats().SetMixedBlobsCount(mixedChannel);
+        AccessStats().SetMergedBlobsCount(mergedChannel);
+    }
+
     //
     // Scan Disk
     //
