@@ -52,9 +52,9 @@ private:
 public:
     /** Creates or opens an existing file ring buffer stored in the file.
     *
-    * Argument dataCapacity specifies the size of the data area in bytes, it
-    * has effect only when creating a new buffer. When opening an existing
-    * buffer, the argument is ignored and the existing data capacity is used.
+    * Argument dataCapacity specifies the size of the data area in bytes.
+    * When opening an existing buffer, and its capacity differs from the
+    * argument, buffer will be resized (see SetTargetDataCapacity for details).
     *
     * Argument metadataCapacity specifies the size of the metadata area in
     * bytes. If the existing buffer has different metadata capacity, the
@@ -281,6 +281,7 @@ public:
      * Gets metadata
      *
      * On success, TGetMetadataResult::Data contains the metadata.
+     * The returned memory range becomes invalid if the buffer is resized.
      *
      * On failure, TGetMetadataResult::Error is set.
      */
@@ -294,6 +295,22 @@ public:
      * Additionally, TSetMetadataResult::Error is set on corruption.
      */
     [[nodiscard]] TSetMetadataResult SetMetadata(TStringBuf data);
+
+    /**
+     * Sets the desired data capacity value.
+     *
+     * Resizing the file results in its remap and changing memory addresses for
+     * existing entries that can be referenced by an external code. Therefore,
+     * the buffer can be safely done only when it is empty.
+     *
+     * The buffer is resized immediately if it is empty, otherwise adding new
+     * entries will be blocked until the buffer is emptied and resize will take
+     * place.
+     *
+     * Note: while adding new entries is blocked, the buffer behaves like it is
+     * full.
+     */
+    [[nodiscard]] NProto::TError SetTargetDataCapacity(ui64 dataCapacity);
 };
 
 #undef FILE_RING_BUFFER_RESULT_STRUCT

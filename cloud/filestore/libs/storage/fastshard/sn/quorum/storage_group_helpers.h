@@ -10,9 +10,33 @@
 
 #include <util/datetime/base.h>
 #include <util/generic/vector.h>
+#include <util/stream/output.h>
 #include <util/string/builder.h>
 
+#include <type_traits>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Layout header for initialized groups. Pages 1-7 reserved for the future
+ */
+struct TStorageGroupHeader
+{
+    static constexpr ui64 Magic = 0x4653545348415244; // FSTSHARD
+    static constexpr ui32 CurrentVersion = 1;
+    static constexpr ui32 StorageGroupReservedPages = 8;
+
+    ui64 MagicNumber = Magic;
+    ui32 Version:8 = CurrentVersion;
+    ui32 GroupType:24 = 0;
+    ui32 PageSize = 0;
+    ui64 DeviceUUIDHash = 0;
+};
+
+static_assert(sizeof(TStorageGroupHeader) == 24);
+static_assert(std::is_trivially_copyable_v<TStorageGroupHeader>);
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -72,7 +96,7 @@ auto CallWithRetries(
 NProto::TWriteLogRecordRequest MakeWriteLogRecordRequest(
     NProto::TDeviceRequestHeaders headers,
     const TVector<TPageGroup>& pageGroups,
-    ui64 lsn);
+    TLsnLink link);
 
 NProto::TWriteLogRecordRequest MakeReplayRequest(
     NProto::TDeviceRequestHeaders headers,
@@ -118,7 +142,7 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept;
 /**
  * Sends @p request to every device and waits for all of them - an n/n fan-out
  * with no early return. Returns the first error observed, or an empty error if
- * every device acked.
+ * every device acked. The per-device responses go to @p responses if given.
  *
  * Everything the spawned fibers touch lives on this frame, which is safe
  * precisely because the call joins all of them before returning. A fan-out that
@@ -130,13 +154,18 @@ NProto::TError MirrorRequest(
     const TVector<TStorageDevice>& devices,
     ITimer& timer,
     int (*fiberMain)(TParams*) noexcept,
-    TRequest request)
+    TRequest request,
+    TVector<TResponse>* responses = nullptr)
 {
     FillHeaders(config, request.MutableHeaders());
 
     const ui32 count = devices.size();
     TVector<silk::FiberFuture> futures(count);
-    TVector<TResponse> responses(count);
+    TVector<TResponse> ownResponses;
+    if (!responses) {
+        responses = &ownResponses;
+    }
+    responses->assign(count, {});
 
     for (ui32 i = 0; i < count; ++i) {
         const int r = silk::FiberScheduler::run(
@@ -144,7 +173,7 @@ NProto::TError MirrorRequest(
             TParams{
                 .Device = devices[i],
                 .Request = &request,
-                .Response = &responses[i],
+                .Response = &(*responses)[i],
                 .RetryPolicy = &config.RetryPolicy,
                 .Timer = &timer},
             &futures[i]);
@@ -162,7 +191,7 @@ NProto::TError MirrorRequest(
             continue;
         }
 
-        auto& response = responses[i];
+        auto& response = (*responses)[i];
         if (HasError(response.GetError())) {
             SILK_ERROR(
                 "node error: %s",

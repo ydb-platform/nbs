@@ -139,6 +139,10 @@ protected:
     void InitLWTrace(const TString& serviceNameForExporter);
 
     virtual void SetupCellManager() = 0;
+    virtual void SetupCellMonitoringActor() = 0;
+    virtual IBlockStorePtr WrapServiceForInterCellForward(
+        IBlockStorePtr authorized,
+        IBlockStorePtr trusted) = 0;
 
     void InitProfileLog();
 

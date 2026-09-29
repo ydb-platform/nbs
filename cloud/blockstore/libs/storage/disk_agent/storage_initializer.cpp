@@ -134,6 +134,7 @@ private:
     TVector<TString> ConfigMismatchErrors;
     TVector<TString> DevicesWithSuspendedIO;
     TVector<TString> LostDevicesIds;
+    TVector<TString> JournalledDeviceIds;
     TMutex Lock;
 
     THashMap<TString, TString> PathToSerial;
@@ -667,6 +668,10 @@ TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
         Configs[i] = CreateConfig(device);
         Stats[i] = std::make_shared<TStorageIoStats>();
 
+        if (device.GetJournalled()) {
+            JournalledDeviceIds.push_back(device.GetDeviceId());
+        }
+
         auto onInitError = [i, this] () {
             OnError(i, CurrentExceptionMessage());
 
@@ -798,6 +803,7 @@ TInitializeStorageResult TInitializer::GetResult()
     r.ConfigMismatchErrors = std::move(ConfigMismatchErrors);
     r.DevicesWithSuspendedIO = std::move(DevicesWithSuspendedIO);
     r.LostDevicesIds = std::move(LostDevicesIds);
+    r.JournalledDeviceIds = std::move(JournalledDeviceIds);
     r.Guard = std::move(Guard);
 
     return r;

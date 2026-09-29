@@ -1,0 +1,51 @@
+name: Check PR source
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-pr-source:
+    if: github.event.pull_request.head.repo.full_name != github.event.pull_request.base.repo.full_name
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reject pull requests from forks
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const marker = '<!-- fork-pr-source-check -->';
+            const body = [
+              marker,
+              'This pull request was created from a fork, which is not supported by this repository.',
+              'Pull requests must be created from a branch in this repository. This is only available to contributors; to become one, please ask a member of the team.'
+            ].join('\n\n');
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              ...context.repo,
+              issue_number: context.issue.number,
+              per_page: 100
+            });
+
+            if (!comments.some(comment => comment.body?.includes(marker))) {
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: context.issue.number,
+                body
+              });
+            }
+
+            core.setFailed('Pull requests from forks are not supported.');

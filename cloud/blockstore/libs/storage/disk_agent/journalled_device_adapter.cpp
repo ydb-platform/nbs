@@ -3,9 +3,10 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
+#include <cloud/fastshard/journal/iface/device.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
-#include <cloud/storage/core/libs/journalled_device/device.h>
 
 #include <util/generic/hash_set.h>
 #include <util/string/builder.h>
@@ -15,11 +16,6 @@ namespace NCloud::NBlockStore::NStorage {
 using namespace NThreading;
 
 namespace {
-
-////////////////////////////////////////////////////////////////////////////////
-
-constexpr NProto::EVolumeAccessMode DefaultAccessMode =
-    NProto::VOLUME_ACCESS_READ_WRITE;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -118,7 +114,6 @@ class TDeviceAdapter final
 private:
     const ITimerPtr Timer;
     const TString DeviceUUID;
-    const TString ClientId;
     const ui32 BlockSize;
     const TDeviceClientPtr DeviceClient;
 
@@ -126,12 +121,10 @@ public:
     TDeviceAdapter(
             ITimerPtr timer,
             TString deviceUUID,
-            TString clientId,
             ui32 blockSize,
             TDeviceClientPtr deviceClient)
         : Timer(std::move(timer))
         , DeviceUUID(std::move(deviceUUID))
-        , ClientId(std::move(clientId))
         , BlockSize(blockSize)
         , DeviceClient(std::move(deviceClient))
     {}
@@ -148,11 +141,7 @@ public:
             return MakeFuture<TResult>(std::move(error));
         }
 
-        auto [storageAdapter, error] = DeviceClient->AccessDevice(
-            DeviceUUID,
-            ClientId,
-            DefaultAccessMode);
-
+        auto [storageAdapter, error] = DeviceClient->AccessDevice(DeviceUUID);
         if (HasError(error)) {
             return MakeFuture<TResult>(std::move(error));
         }
@@ -209,11 +198,7 @@ public:
             requestBlockSize = bs;
         }
 
-        auto [storageAdapter, error] = DeviceClient->AccessDevice(
-            DeviceUUID,
-            ClientId,
-            DefaultAccessMode);
-
+        auto [storageAdapter, error] = DeviceClient->AccessDevice(DeviceUUID);
         if (HasError(error)) {
             return MakeFuture(std::move(error));
         }
@@ -260,14 +245,12 @@ public:
 NJournalled::IDevicePtr CreateDeviceAdapter(
     ITimerPtr timer,
     TString deviceUUID,
-    TString clientId,
     ui32 blockSize,
     TDeviceClientPtr deviceClient)
 {
     return std::make_shared<TDeviceAdapter>(
         std::move(timer),
         std::move(deviceUUID),
-        std::move(clientId),
         blockSize,
         std::move(deviceClient));
 }

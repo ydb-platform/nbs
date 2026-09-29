@@ -8,47 +8,25 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
+#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/rdma/impl/client.h>
 #include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
-#include <library/cpp/monlib/service/pages/html_mon_page.h>
-#include <library/cpp/monlib/service/pages/index_mon_page.h>
-#include <library/cpp/monlib/service/pages/templates.h>
 
 #include <util/generic/hash_set.h>
 #include <util/random/random.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NCells {
-
-using namespace NMonitoring;
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TCellsMonPage final: public THtmlMonPage
-{
-private:
-    TCellManager& Manager;
-
-public:
-    TCellsMonPage(TCellManager& manager, const TString& componentName)
-        : THtmlMonPage(componentName, componentName, true)
-        , Manager(manager)
-    {}
-
-    void OutputContent(IMonHttpRequest& request) override
-    {
-        Manager.OutputHtml(request.Output(), request);
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -62,12 +40,12 @@ TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
             std::make_shared<TCellHostPool>(cell.second, Bootstrap));
     }
 
-    if (Bootstrap.Monitoring) {
-        auto rootPage =
-            Bootstrap.Monitoring->RegisterIndexPage("blockstore", "BlockStore");
-        static_cast<TIndexMonPage&>(*rootPage).Register(
-            new TCellsMonPage(*this, "Cells"));
-    }
+    InboundActivity = std::make_shared<TCellInboundActivity>();
+}
+
+std::shared_ptr<TCellInboundActivity> TCellManager::GetInboundActivity()
+{
+    return InboundActivity;
 }
 
 void TCellManager::Start()
@@ -90,6 +68,54 @@ void TCellManager::Stop()
 
     Bootstrap.GrpcClient->Stop();
     Bootstrap.CertProvider->Stop();
+}
+
+TCellsSnapshot TCellManager::GetSnapshot()
+{
+    TCellsSnapshot snapshot;
+    for (const auto& [cellId, pool]: Pools) {
+        auto& statuses = snapshot.HostStatuses[cellId];
+        for (const auto& status: pool->GetHostStatuses()) {
+            statuses.push_back({
+                .Fqdn = status.Fqdn,
+                .Alive = status.Alive,
+                .Warm = status.Warm,
+                .Connections = static_cast<ui32>(status.Connections)});
+        }
+    }
+    snapshot.InboundActivity = InboundActivity->Snapshot(Bootstrap.Timer->Now());
+    return snapshot;
+}
+
+NThreading::TFuture<TVector<TCellDescribeResult>> TCellManager::SearchVolume(
+    TString diskId,
+    TDuration timeout)
+{
+    NProto::TClientAppConfig clientAppConfig;
+    auto& clientConfig = *clientAppConfig.MutableClientConfig();
+    clientConfig = Config->GetGrpcClientConfig().GetClientConfig();
+    clientConfig.SetClientId(FQDNHostName());
+    auto appConfig =
+        std::make_shared<NClient::TClientAppConfig>(clientAppConfig);
+
+    NProto::TDescribeVolumeRequest request;
+    request.SetDiskId(diskId);
+    request.MutableHeaders()->SetClientId(FQDNHostName());
+
+    TVector<TString> cellIds;
+    cellIds.reserve(Config->GetCells().size());
+    for (const auto& [cellId, cellConfig]: Config->GetCells()) {
+        Y_UNUSED(cellConfig);
+        cellIds.push_back(cellId);
+    }
+
+    return SearchVolumeAcrossCells(
+        std::move(request),
+        cellIds,
+        GetCellsEndpoints(appConfig),
+        Bootstrap.LocalService,
+        timeout,
+        Bootstrap.Scheduler);
 }
 
 TCellConnectionFuture TCellManager::CreateConnection(
@@ -143,7 +169,6 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     TCallContextPtr callContext,
     const TString& diskId,
     const NProto::THeaders& headers,
-    IBlockStorePtr service,
     const NProto::TClientConfig& clientConfig)
 {
     NProto::TDescribeVolumeRequest request;
@@ -152,7 +177,7 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
 
     auto configuredCellCount = Config->GetCells().size();
     if (configuredCellCount == 0) {
-        return service->DescribeVolume(
+        return Bootstrap.LocalService->DescribeVolume(
             std::move(callContext),
             std::make_shared<NProto::TDescribeVolumeRequest>(
                 std::move(request)));
@@ -172,18 +197,10 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     return NCloud::NBlockStore::NCells::DescribeVolume(
         *Config,
         std::move(request),
-        std::move(service),
+        Bootstrap.LocalService,
         cellHostEndpoints,
         hasUnavailableCells,
         Bootstrap);
-}
-
-void TCellManager::OutputHtml(
-    IOutputStream& out,
-    const IMonHttpRequest& request)
-{
-    Y_UNUSED(out);
-    Y_UNUSED(request);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -197,7 +214,8 @@ ICellManagerPtr CreateCellManager(
     ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
     ICertificateProviderPtr certificateProvider,
-    NCloud::NStorage::NRdma::IClientPtr rdmaClient)
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+    IBlockStorePtr localService)
 {
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
         config->GetGrpcClientConfig());
@@ -231,6 +249,7 @@ ICellManagerPtr CreateCellManager(
         .CertProvider = std::move(certificateProvider),
         .GrpcClient = std::move(result.ExtractResult()),
         .RdmaClient = std::move(rdmaClient),
+        .LocalService = std::move(localService),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
         .EndpointsSetup = CreateCellHostEndpointBootstrap()};
 

@@ -125,6 +125,15 @@ struct ICompactionPolicy
     virtual TCompactionScore CalculateScore(const TRangeStat& stat) const = 0;
     virtual bool BackpressureEnabled() const = 0;
     virtual ui64 GetUsedBlocksThresholdForMixedBlocksCompaction() const = 0;
+
+    // When false, mixed blocks count compaction is never triggered and
+    // TCompactionMap does not track mixed block counts at all: they are
+    // forced to zero on every update, both in memory and in the persisted
+    // compaction map rows.
+    virtual bool IsMixedBlocksCountCompactionEnabled() const
+    {
+        return true;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -136,7 +145,8 @@ ui32 GetMaxBlobsPerRange(
 
 ICompactionPolicyPtr BuildDefaultCompactionPolicy(
     ui32 compactionThreshold,
-    ui64 usedBlocksThresholdForMixedBlocksCompaction);
+    ui64 usedBlocksThresholdForMixedBlocksCompaction,
+    bool mixedBlocksCountCompactionEnabled);
 
 struct TLoadOptimizationCompactionPolicyConfig
 {
@@ -151,7 +161,8 @@ struct TLoadOptimizationCompactionPolicyConfig
 
 ICompactionPolicyPtr BuildLoadOptimizationCompactionPolicy(
     const TLoadOptimizationCompactionPolicyConfig& config,
-    const ui64 usedBlocksThresholdForMixedBlocksCompaction);
+    const ui64 usedBlocksThresholdForMixedBlocksCompaction,
+    const bool mixedBlocksCountCompactionEnabled = true);
 
 TLoadOptimizationCompactionPolicyConfig
 BuildLoadOptimizationCompactionPolicyConfig(

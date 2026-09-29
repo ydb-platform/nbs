@@ -16,17 +16,11 @@
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
-#include <library/cpp/monlib/service/pages/html_mon_page.h>
-#include <library/cpp/monlib/service/pages/index_mon_page.h>
-#include <library/cpp/monlib/service/pages/templates.h>
-
 #include <util/generic/hash_set.h>
 #include <util/random/random.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NCells {
-
-using namespace NMonitoring;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -35,6 +29,7 @@ struct TCellManager: public ICellManager
     const TBootstrap Bootstrap;
 
     THashMap<TString, TCellHostPoolPtr> Pools;
+    std::shared_ptr<TCellInboundActivity> InboundActivity;
 
     TCellManager(TCellsConfigPtr config, TBootstrap bootstrap);
 
@@ -51,10 +46,15 @@ struct TCellManager: public ICellManager
         TCallContextPtr callContext,
         const TString& diskId,
         const NProto::THeaders& headers,
-        IBlockStorePtr service,
         const NProto::TClientConfig& clientConfig) override;
 
-    void OutputHtml(IOutputStream& out, const IMonHttpRequest& request);
+    [[nodiscard]] std::shared_ptr<TCellInboundActivity>
+        GetInboundActivity() override;
+
+    [[nodiscard]] TCellsSnapshot GetSnapshot() override;
+
+    [[nodiscard]] NThreading::TFuture<TVector<TCellDescribeResult>>
+        SearchVolume(TString diskId, TDuration timeout) override;
 
 private:
     [[nodiscard]] TCellHostEndpointsByCellId GetCellsEndpoints(

@@ -215,6 +215,16 @@ type PrivateClient interface {
 		req *api.ListSnapshotsRequest,
 	) (*api.ListSnapshotsResponse, error)
 
+	GetFilesystemSnapshot(
+		ctx context.Context,
+		req *api.GetFilesystemSnapshotRequest,
+	) (*api.GetFilesystemSnapshotResponse, error)
+
+	ListFilesystemSnapshots(
+		ctx context.Context,
+		req *api.ListFilesystemSnapshotsRequest,
+	) (*api.ListFilesystemSnapshotsResponse, error)
+
 	ListFilesystems(
 		ctx context.Context,
 		req *api.ListFilesystemsRequest,
@@ -374,6 +384,22 @@ func (c *privateClient) ListSnapshots(
 ) (*api.ListSnapshotsResponse, error) {
 
 	return c.privateServiceClient.ListSnapshots(ctx, req)
+}
+
+func (c *privateClient) GetFilesystemSnapshot(
+	ctx context.Context,
+	req *api.GetFilesystemSnapshotRequest,
+) (*api.GetFilesystemSnapshotResponse, error) {
+
+	return c.privateServiceClient.GetFilesystemSnapshot(ctx, req)
+}
+
+func (c *privateClient) ListFilesystemSnapshots(
+	ctx context.Context,
+	req *api.ListFilesystemSnapshotsRequest,
+) (*api.ListFilesystemSnapshotsResponse, error) {
+
+	return c.privateServiceClient.ListFilesystemSnapshots(ctx, req)
 }
 
 func (c *privateClient) ListFilesystems(

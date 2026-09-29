@@ -1021,6 +1021,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
              {
                  return val == 0;
              }},
+            {{{"sensor", "ShardsCount"}, {"filesystem", "test"}},
+             [](i64 val)
+             {
+                 return val == 0;
+             }},
         });
     }
 
@@ -1055,6 +1060,38 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
             registry->Visit(TInstant::Zero(), visitor);
             visitor.ValidateExpectedCounters({
                 {{{"sensor", "HasOverrides"}, {"filesystem", "test"}}, 1},
+            });
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportShardsCount)
+    {
+        TTestEnv env;
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "ShardsCount"}, {"filesystem", "test"}}, 0},
+            });
+        }
+
+        tablet.ConfigureShards(true, TVector<TString>{"shard1", "shard2"});
+        tablet.RebootTablet();
+
+        {
+            TTestRegistryVisitor visitor;
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters({
+                {{{"sensor", "ShardsCount"}, {"filesystem", "test"}}, 2},
             });
         }
     }
@@ -1247,6 +1284,62 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Counters)
 
         tablet.DestroyHandle(handle2);
         checkHandlesCounters(0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldReportWriteBackCacheConfig)
+    {
+        NProto::TStorageConfig config;
+        config.SetServerWriteBackCacheEnabled(false);
+        config.SetServerWriteBackCacheFlushWritesInParallelEnabled(false);
+
+        TTestEnv env({}, std::move(config));
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto checkWriteBackCacheConfig =
+            [&](i64 expectedEnabled, i64 expectedParallelWritesEnabled)
+        {
+            TTestRegistryVisitor visitor;
+            tablet.SendRequest(tablet.CreateUpdateCounters());
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+            registry->Visit(TInstant::Zero(), visitor);
+            visitor.ValidateExpectedCounters(
+                {{{{"sensor", "ServerWriteBackCacheEnabled"}}, expectedEnabled},
+                 {{{"sensor",
+                    "ServerWriteBackCacheFlushWritesInParallelEnabled"}},
+                  expectedParallelWritesEnabled}});
+        };
+
+        NProto::TStorageConfig config1;
+        config1.SetServerWriteBackCacheEnabled(true);
+
+        tablet.ChangeStorageConfig(std::move(config1));
+        tablet.RebootTablet();
+
+        checkWriteBackCacheConfig(1, 0);
+
+        NProto::TStorageConfig config2;
+        config2.SetServerWriteBackCacheEnabled(true);
+        config2.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
+
+        tablet.ChangeStorageConfig(std::move(config2));
+        tablet.RebootTablet();
+
+        checkWriteBackCacheConfig(1, 1);
+
+        NProto::TStorageConfig config3;
+        config3.SetServerWriteBackCacheEnabled(false);
+        config3.SetServerWriteBackCacheFlushWritesInParallelEnabled(false);
+
+        tablet.ChangeStorageConfig(std::move(config3));
+        tablet.RebootTablet();
+
+        checkWriteBackCacheConfig(0, 0);
     }
 }
 

@@ -1,6 +1,9 @@
 #include "cell_manager.h"
+#include "describe_volume.h"
+#include "mon.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/cells/iface/inbound_activity.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -21,6 +24,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>
+
+#include <util/stream/str.h>
 
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
@@ -62,7 +67,6 @@ void CheckDescribe(
         MakeIntrusive<TCallContext>(),
         "disk",
         std::move(headers),
-        CreateLocalService(),
         config);
 
     const auto& response = future.GetValue(TDuration::Seconds(5));
@@ -131,6 +135,7 @@ struct TTestContext
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
     IMonitoringServicePtr Monitoring;
+    TDiagnosticsConfigPtr DiagnosticsConfig;
     IProfileLogPtr ProfileLog;
     IRequestStatsPtr RequestStats;
     IVolumeStatsPtr VolumeStats;
@@ -143,6 +148,7 @@ struct TTestContext
         , Scheduler(CreateSchedulerStub())
         , Logging(CreateLoggingService("console"))
         , Monitoring(CreateMonitoringServiceStub())
+        , DiagnosticsConfig(std::make_shared<TDiagnosticsConfig>())
         , ProfileLog(CreateProfileLogStub())
         , RequestStats(CreateRequestStatsStub())
         , VolumeStats(CreateVolumeStatsStub())
@@ -323,7 +329,8 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
-            nullptr);
+            nullptr,
+            CreateLocalService());
 
         server->Start();
         cellManager->Start();
@@ -385,7 +392,8 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
-            nullptr);
+            nullptr,
+            CreateLocalService());
 
         server->Start();
         cellManager->Start();
@@ -399,6 +407,99 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         clientConfig.SetSecurePort(securePort);
 
         CheckDescribe(cellManager, std::move(clientConfig), S_OK);
+    }
+
+    Y_UNIT_TEST(ShouldRenderCellsPage)
+    {
+        TTestContext testContext;
+
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell("xyz", 9001, 0, 1, 1, {"host-alpha"})
+            .Build();
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+        Y_UNUSED(testContext);
+
+        TCellsSnapshot snapshot;
+        snapshot.HostStatuses["xyz"].push_back(
+            {.Fqdn = "host-alpha", .Alive = true, .Warm = false,
+             .Connections = 0});
+
+        TStringStream out;
+        RenderCellsPage(out, *config, snapshot);
+        const auto html = out.Str();
+
+        // one page: search form, config, outbound and inbound sections
+        UNIT_ASSERT_STRING_CONTAINS(html, "action");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Volume");
+        UNIT_ASSERT_STRING_CONTAINS(html, "xyz");
+        UNIT_ASSERT_STRING_CONTAINS(html, "host-alpha");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Cells config");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Outbound host status");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Inbound inter-cell connections");
+    }
+
+    Y_UNIT_TEST(ShouldRenderSearchResultLinks)
+    {
+        TVector<TCellDescribeResult> results;
+        results.push_back({
+            .CellId = "xyz",
+            .Status = ECellDescribeStatus::Found,
+            .Fqdn = "host-a"});
+        results.push_back({   // the local row: CellId left empty
+            .Status = ECellDescribeStatus::Found,
+            .Fqdn = "localhost"});
+        results.push_back({
+            .CellId = "abc",
+            .Status = ECellDescribeStatus::NotFound});
+        results.push_back({
+            .CellId = "def",
+            .Status = ECellDescribeStatus::Unavailable});
+        results.push_back({
+            .CellId = "ghi",
+            .Status = ECellDescribeStatus::MigrationDestination,
+            .Fqdn = "host-m"});
+
+        TStringStream out;
+        RenderCellsSearchResult(
+            out, results, TDiagnosticsConfig(), "disk-x");
+        const auto html = out.Str();
+
+        UNIT_ASSERT_STRING_CONTAINS(html, "disk-x");
+        // a remote hit links to the responding host's mon port, with the
+        // action that triggers the search on the target service page
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "http://host-a:8766/blockstore/service?action=search"
+            "&amp;Volume=disk-x");
+        // the local hit links relative to /blockstore/Cells so the Viewer node
+        // prefix survives; no leading slash, no http://host:port
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<a href='service?action=search&amp;Volume=disk-x'>"
+            "localhost</a>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "not found");
+        UNIT_ASSERT_STRING_CONTAINS(html, "unavailable");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html, "migration destination copy on host-m");
+    }
+
+    Y_UNIT_TEST(ShouldEncodeSpecialCharsInSearchLink)
+    {
+        TVector<TCellDescribeResult> results;
+        results.push_back({   // the local row: CellId left empty
+            .Status = ECellDescribeStatus::Found,
+            .Fqdn = "localhost"});
+
+        TStringStream out;
+        RenderCellsSearchResult(
+            out, results, TDiagnosticsConfig(), "disk#a&b");
+        const auto html = out.Str();
+
+        // the id is url-encoded before html-escaping, so '#'/'&' cannot
+        // truncate or split the Volume query parameter
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "service?action=search&amp;Volume=disk%23a%26b");
     }
 
     Y_UNIT_TEST(ShouldRejectConnectionToUnconfiguredCell)
@@ -426,7 +527,8 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             testContext.TraceSerializer,
             testContext.ServerStats,
             CreateClientCertificateProvider(config),
-            nullptr);
+            nullptr,
+            CreateLocalService());
 
         // A cell id we never configured can only come from broken internal
         // state, so it is reported as such rather than as a lookup miss.

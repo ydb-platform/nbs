@@ -20,7 +20,8 @@
 #include <cloud/filestore/libs/storage/api/components.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
-#include <cloud/filestore/libs/storage/fastshard/bootstrap/core.h>
+
+#include <cloud/fastshard/bootstrap/core.h>
 
 #include <cloud/storage/core/libs/common/hostname.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -73,7 +74,7 @@ void TBootstrapServer::StartComponents()
     if (FastShardServer
             || Configs->StorageConfig->GetFastShardRuntimeEnabled())
     {
-        NStorage::NFastShard::Init();
+        NCloud::NFastShard::Init();
         if (Configs->StorageConfig->GetFastShardExtendedVerificationEnabled())
         {
             // TODO(#5895): properly integrate fastshard with log settings.
@@ -81,7 +82,7 @@ void TBootstrapServer::StartComponents()
             // some internal consistency checks inside fastshard code, fastshard
             // loglevel should be configured in the same way as for the other
             // components.
-            NStorage::NFastShard::EnableDebugLogging();
+            NCloud::NFastShard::EnableDebugLogging();
         }
     }
     FILESTORE_LOG_START_COMPONENT(FastShardServer);
@@ -102,7 +103,7 @@ void TBootstrapServer::StopComponents()
     if (FastShardServer
             || Configs->StorageConfig->GetFastShardRuntimeEnabled())
     {
-        NStorage::NFastShard::Destroy();
+        NCloud::NFastShard::Destroy();
     }
 }
 

@@ -99,7 +99,7 @@ void TIOCompanion::HandleReadBlobCompleted(
 
     Actors.Erase(ev->Sender);
 
-    const auto& blobTabletId = msg->BlobId.TabletID();
+    const ui64 blobTabletId = msg->BlobId.TabletID();
 
     const ui32 channel = msg->BlobId.Channel();
     const ui32 groupId = msg->GroupId;

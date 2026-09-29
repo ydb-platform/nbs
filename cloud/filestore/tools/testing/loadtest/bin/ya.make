@@ -5,9 +5,10 @@ PEERDIR(
     cloud/filestore/public/api/protos
 
     cloud/filestore/libs/client
-    cloud/filestore/libs/storage/fastshard/bootstrap
     cloud/filestore/tools/testing/loadtest/lib
     cloud/filestore/tools/testing/loadtest/protos
+
+    cloud/fastshard/bootstrap
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics

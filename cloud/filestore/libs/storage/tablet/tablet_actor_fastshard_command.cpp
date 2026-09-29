@@ -61,20 +61,22 @@ void TIndexTabletActor::HandleFastShardCommand(
             //
 
             auto stats = std::make_shared<NFastShard::TFileSystemShardStats>();
-            auto* ass = ctx.ActorSystem();
+            auto* actorSystem = ctx.ActorSystem();
             const auto sender = ev->Sender;
             const ui64 cookie = ev->Cookie;
 
             //
-            // The shard is captured to pin its lifetime: the interface does
-            // not promise that the future may outlive the shard object, and
-            // the actor may die and drop its reference before the callback
-            // runs.
+            // The shard must not be captured here: the callback runs
+            // inside the shard's own fiber (during SetValue), so dropping
+            // the last shard reference there would run the shard
+            // destructor - which joins every inflight fiber, including
+            // the one executing the callback - inside that very fiber.
+            // The shard destructor waits for all of its fibers, so the
+            // callback outliving the actor's reference is safe.
             //
 
             FastShard->CollectStats(stats.get()).Subscribe(
-                [ass, sender, cookie, stats, shard = FastShard] (
-                    const auto& f) {
+                [actorSystem, sender, cookie, stats] (const auto& f) {
                     auto response = std::make_unique<TResponse>(f.GetValue());
                     if (!HasError(response->Record.GetError())) {
                         auto* s = response->Record.MutableStats();
@@ -87,7 +89,7 @@ void TIndexTabletActor::HandleFastShardCommand(
                         s->SetUsedPageCount(stats->UsedPageCount);
                         s->SetTotalPageCount(stats->TotalPageCount);
                     }
-                    ass->Send(
+                    actorSystem->Send(
                         sender,
                         response.release(),
                         0 /* flags */,
@@ -103,20 +105,23 @@ void TIndexTabletActor::HandleFastShardCommand(
             // system.
             //
 
-            auto* ass = ctx.ActorSystem();
+            auto* actorSystem = ctx.ActorSystem();
             const auto sender = ev->Sender;
             const ui64 cookie = ev->Cookie;
 
             //
-            // The shard is captured to pin its lifetime: the interface does
-            // not promise that the future may outlive the shard object, and
-            // the actor may die and drop its reference before the callback
-            // runs.
+            // The shard must not be captured here: the callback runs
+            // inside the shard's own fiber (during SetValue), so dropping
+            // the last shard reference there would run the shard
+            // destructor - which joins every inflight fiber, including
+            // the one executing the callback - inside that very fiber.
+            // The shard destructor waits for all of its fibers, so the
+            // callback outliving the actor's reference is safe.
             //
 
             FastShard->Format().Subscribe(
-                [ass, sender, cookie, shard = FastShard] (const auto& f) {
-                    ass->Send(
+                [actorSystem, sender, cookie] (const auto& f) {
+                    actorSystem->Send(
                         sender,
                         new TResponse(f.GetValue()),
                         0 /* flags */,

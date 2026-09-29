@@ -16,8 +16,14 @@ class IPageStore
 public:
     virtual ~IPageStore() = default;
 
-    virtual ui64 GetPageSize() const = 0;
+    // Initializes lsn counter
+    virtual void InitLastLsn(ui64 lsn) = 0;
+    // Allocates next write lsn
     virtual ui64 AllocateLsn() = 0;
+    // Exchanges w last successful write lsn
+    virtual ui64 LinkRecord(ui64 lsn) = 0;
+
+    virtual ui64 GetPageSize() const = 0;
     virtual void CommitPages(const TVector<ui64>& pages) = 0;
     virtual void RollbackPages(const TVector<ui64>& pages) = 0;
     [[nodiscard]] virtual NProto::TError WritePage(
@@ -44,7 +50,16 @@ struct TWriteContext
     NProto::TDeviceRequestHeaders Headers;
     TVector<TPageGroup> PageGroups;
     ui64 Lsn = 0;
+    ui64 PrevLsn = 0;
     bool PagesCollected = false;
+
+    TLsnLink GetLink() const
+    {
+        return {
+            .Lsn = Lsn,
+            .PrevLsn = PrevLsn,
+        };
+    }
 };
 
 inline TVector<ui64> CollectPages(TWriteContext& writeContext)
@@ -88,6 +103,13 @@ public:
     void Init()
     {
         Context.Lsn = Store.AllocateLsn();
+    }
+
+    // Must be called before releasing Init mutex in case of successful operation
+    // to chains it for write
+    void Link()
+    {
+        Context.PrevLsn = Store.LinkRecord(Context.Lsn);
     }
 };
 

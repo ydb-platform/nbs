@@ -87,6 +87,7 @@ func newStorage(
 		placementGroupsFolder,
 		db,
 		endedMigrationExpirationTimeout,
+		true, // backupEnabled
 	)
 	require.NoError(t, err)
 

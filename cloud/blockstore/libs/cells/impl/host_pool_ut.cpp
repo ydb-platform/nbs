@@ -775,6 +775,27 @@ Y_UNIT_TEST_SUITE(TCellHostPoolTest)
             env.EndpointsSetup->SetupCalls[spare]);
     }
 
+    Y_UNIT_TEST(ShouldCountConnectionsRegardlessOfMigration)
+    {
+        TPingEnv env;
+        // migration is off, so nobody watches the host - but connections
+        // still hold a reference to its channel, and that is what the count
+        // must reflect
+        auto pool = env.MakePool(false);
+
+        Y_UNUSED(pool->AcquireControlChannel("host-a"));
+        Y_UNUSED(pool->AcquireControlChannel("host-a"));
+
+        bool found = false;
+        for (const auto& status: pool->GetHostStatuses()) {
+            if (status.Fqdn == "host-a") {
+                UNIT_ASSERT_VALUES_EQUAL(2, status.Connections);
+                found = true;
+            }
+        }
+        UNIT_ASSERT(found);
+    }
+
     Y_UNIT_TEST(ShouldSurviveAChannelSetupThrowDuringASweep)
     {
         TPingEnv env;

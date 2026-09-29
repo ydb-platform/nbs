@@ -1,5 +1,7 @@
 #include "storage_group_helpers.h"
 
+#include <util/stream/format.h>
+
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -7,7 +9,7 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
 NProto::TWriteLogRecordRequest MakeWriteLogRecordRequest(
     NProto::TDeviceRequestHeaders headers,
     const TVector<TPageGroup>& pageGroups,
-    ui64 lsn)
+    TLsnLink link)
 {
     NProto::TWriteLogRecordRequest request;
     *request.MutableHeaders() = std::move(headers);
@@ -23,7 +25,8 @@ NProto::TWriteLogRecordRequest MakeWriteLogRecordRequest(
         }
     }
 
-    request.SetLogSequenceNumber(lsn);
+    request.SetLogSequenceNumber(link.Lsn);
+    request.SetPrevLogSequenceNumber(link.PrevLsn);
     return request;
 }
 
@@ -112,3 +115,19 @@ int ReleaseDevicesFiberMain(TReleaseDevicesParams* params) noexcept
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
+
+////////////////////////////////////////////////////////////////////////////////
+
+using NCloud::NFileStore::NStorage::NFastShard::TStorageGroupHeader;
+
+template <>
+void Out<TStorageGroupHeader>(
+    IOutputStream& out,
+    const TStorageGroupHeader& header)
+{
+    out << "{Magic: " << Hex(header.MagicNumber)
+        << ", Version: " << static_cast<ui32>(header.Version)
+        << ", GroupType: " << static_cast<ui32>(header.GroupType)
+        << ", PageSize: " << header.PageSize
+        << ", DeviceUUIDHash: " << Hex(header.DeviceUUIDHash) << "}";
+}

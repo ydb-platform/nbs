@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package snapshots;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message BackupSnapshotRequest {
+    string SnapshotId = 1;
+}
+
+message BackupSnapshotTaskState {
+    string DataplaneTaskID = 1;
+}

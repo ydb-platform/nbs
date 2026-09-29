@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/filestore/libs/storage/fastshard/sn/iface/storage_node.h>
+#include <cloud/fastshard/sn/iface/storage_node.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -12,6 +12,8 @@
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+using NCloud::NFastShard::IStorageNodePtr;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -27,6 +29,12 @@ struct TPageGroup
     TVector<TBuffer> Content;
 };
 
+struct TLsnLink
+{
+    ui64 Lsn = 0;
+    ui64 PrevLsn = 0;
+};
+
 /**
  * Storage group iface. Storage groups are supposed to provide some extra
  * non-functional features on top of multiple storage devices - like redundancy
@@ -40,14 +48,15 @@ struct IStorageGroup
 {
     virtual ~IStorageGroup() = default;
 
-    virtual NProto::TError Init() = 0;
+    // Returns highest lsn the group has discovered.
+    virtual TResultOrError<ui64> Init() = 0;
 
     virtual void TearDown() = 0;
 
     virtual NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
         TVector<TPageGroup> pageGroups,
-        ui64 lsn) = 0;
+        TLsnLink link) = 0;
     virtual NProto::TError ReadPages(
         NProto::TDeviceRequestHeaders headers,
         const TVector<TPageGroupRef>& pageGroupRefs,

@@ -21,6 +21,8 @@
 #include <util/generic/map.h>
 #include <util/generic/vector.h>
 
+#include <functional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -723,26 +725,35 @@ public:
 
     NProto::TDiskRegistryStateBackup BackupState() const;
 
-    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    struct TStartDeviceMigrationResult
+    {
+        TDiskId DiskId;
+        TDeviceId SourceDeviceId;
+        TResultOrError<NProto::TDeviceConfig> Target;
+    };
+
+    // Returns one result per migration, in the same order as the input.
+    TVector<TStartDeviceMigrationResult> StartDeviceMigrations(
         TInstant now,
         TDiskRegistryDatabase& db,
-        const TDiskId& sourceDiskId,
-        const TDeviceId& sourceDeviceId);
+        const TVector<TDeviceMigration>& migrations);
 
-    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    TResultOrError<NProto::TDeviceConfig> StartForceMigration(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
         const TDeviceId& sourceDeviceId,
         const TDeviceId& targetDeviceId);
 
-    NProto::TError FinishDeviceMigration(
+    using TFinishDeviceMigrationHandler = std::function<
+        void(const NProto::TDeviceMigrationIds& ids, const NProto::TError& error)>;
+
+    NProto::TError FinishDeviceMigrations(
         TDiskRegistryDatabase& db,
         const TDiskId& diskId,
-        const TDeviceId& sourceId,
-        const TDeviceId& targetId,
+        const TVector<NProto::TDeviceMigrationIds>& migrations,
         TInstant timestamp,
-        bool* diskStateUpdated);
+        TFinishDeviceMigrationHandler handler);
 
     TDiskId FindReplicaByMigration(
         const TDiskId& masterDiskId,
@@ -1063,6 +1074,13 @@ private:
         TDiskState& disk,
         TInstant timestamp);
 
+    NProto::TError FinishDeviceMigration(
+        const TDiskId& diskId,
+        TDiskState& disk,
+        const TDeviceId& sourceId,
+        const TDeviceId& targetId,
+        TInstant timestamp);
+
     NProto::TError TryToRemoveAgentDevices(
         TDiskRegistryDatabase& db,
         const TAgentId& agentId);
@@ -1094,6 +1112,15 @@ private:
         const TDiskId& diskId,
         const TDiskState& disk,
         TStringBuf callerName);
+
+    bool UpdatePlacementGroupInMemory(
+        const TDiskId& diskId,
+        const TDiskState& disk,
+        TStringBuf callerName);
+
+    void PersistPlacementGroup(
+        TDiskRegistryDatabase& db,
+        const TString& groupId);
 
     void UpdateDiskPlacementInfo(
         TDiskRegistryDatabase& db,
@@ -1319,19 +1346,31 @@ private:
         TDiskRegistryDatabase& db,
         const TVector<TDeviceId>& uuids);
 
-    TDeviceList::TAllocationQuery MakeMigrationQuery(
-        const TDiskId& sourceDiskId,
-        const NProto::TDeviceConfig& sourceDevice);
+    struct TMigrationSource
+    {
+        TDiskState* Disk = nullptr;
+        NProto::TDeviceConfig Device;
+        TDeviceList::TAllocationQuery Query;
+    };
 
-    NProto::TError ValidateStartDeviceMigration(
+    TResultOrError<TMigrationSource> PrepareDeviceMigration(
         const TDiskId& sourceDiskId,
-        const TString& sourceDeviceId);
+        const TDeviceId& sourceDeviceId);
 
-    NProto::TDeviceConfig StartDeviceMigrationImpl(
+    TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
         TInstant now,
         TDiskRegistryDatabase& db,
         const TDiskId& sourceDiskId,
-        const TDeviceId& sourceDeviceId,
+        const TDeviceId& sourceDeviceId);
+
+    // Does not persist the disk or its placement group; the caller must.
+    // Adjusting the target's block count may persist its agent configuration.
+    // The target must already be marked as allocated.
+    NProto::TDeviceConfig StartDeviceMigrationOnTarget(
+        TInstant now,
+        TDiskRegistryDatabase& db,
+        const TDiskId& sourceDiskId,
+        const TMigrationSource& source,
         NProto::TDeviceConfig targetDevice);
 
     void ChangeAgentState(

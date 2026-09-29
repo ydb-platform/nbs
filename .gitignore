@@ -4,6 +4,7 @@
 cloud/disk_manager/**
 cloud/tasks/**
 cloud/blockstore/**
+cloud/fastshard/**
 cloud/filestore/**
 cloud/storage/**
 

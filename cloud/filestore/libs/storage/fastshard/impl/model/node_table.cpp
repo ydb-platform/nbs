@@ -50,28 +50,47 @@ ui64 TNodeTable::Init(
     ui64 firstPageNo,
     IPageStorePtr pageStore)
 {
-    PageSize = pageStore->GetPageSize();
-    const ui64 slotsPerPage = PageSize / NodeSlotSize;
-    const ui64 pageCount =
-        Min(RoundUp(nodesPerGroup, slotsPerPage),
-            (NodeTableSize / PageSize) * slotsPerPage) /
-        slotsPerPage;
-    const TNodeTableSlot tombstone{.Id = Max<ui64>()};
-    Slots = std::make_unique<THt>(
-        firstPageNo,
-        pageCount,
-        PageSize,
-        NodeSlotSize,
-        tombstone,
-        std::move(pageStore),
-        [](const TNodeTableSlot& s) -> ui64 { return s.Id; },
-        [](const ui64& nodeId) -> ui64 {
-            return CityHash64(
-                reinterpret_cast<const char*>(&nodeId),
-                sizeof(nodeId));
-        });
+    TDescriptionBuilder debuilder("NodeTable");
 
-    return pageCount;
+    PageSize = pageStore->GetPageSize();
+    ui64 totalPageCount = 0;
+    {
+        const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
+
+        totalPageCount += pageCount;
+        firstPageNo += pageCount;
+    }
+
+    {
+        debuilder.RegisterOffset("Slots", firstPageNo);
+
+        const ui64 slotsPerPage = PageSize / NodeSlotSize;
+        const ui64 pageCount =
+            Min(RoundUp(nodesPerGroup, slotsPerPage),
+                (NodeTableSize / PageSize) * slotsPerPage) /
+            slotsPerPage;
+        const TNodeTableSlot tombstone{.Id = Max<ui64>()};
+        Slots = std::make_unique<THt>(
+            firstPageNo,
+            pageCount,
+            PageSize,
+            NodeSlotSize,
+            tombstone,
+            std::move(pageStore),
+            [](const TNodeTableSlot& s) -> ui64 { return s.Id; },
+            [](const ui64& nodeId) -> ui64 {
+                return CityHash64(
+                    reinterpret_cast<const char*>(&nodeId),
+                    sizeof(nodeId));
+            });
+
+        totalPageCount += pageCount;
+        firstPageNo += pageCount;
+    }
+
+    Description = debuilder.Build();
+
+    return totalPageCount;
 }
 
 NProto::TError TNodeTable::AllocateNodeId(ui64* nodeId) const

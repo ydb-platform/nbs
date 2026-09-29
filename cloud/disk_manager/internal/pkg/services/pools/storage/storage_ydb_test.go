@@ -24,11 +24,14 @@ func makeDefaultConfig() *pools_config.PoolsConfig {
 	maxActiveSlots := uint32(10)
 	maxBaseDisksInflight := uint32(5)
 	maxBaseDiskUnits := uint32(100)
+	// TODO: remove after deployment of this version is finished.
+	holdBaseDisksWithInflightDependents := true
 
 	return &pools_config.PoolsConfig{
-		MaxActiveSlots:       &maxActiveSlots,
-		MaxBaseDisksInflight: &maxBaseDisksInflight,
-		MaxBaseDiskUnits:     &maxBaseDiskUnits,
+		MaxActiveSlots:                      &maxActiveSlots,
+		MaxBaseDisksInflight:                &maxBaseDisksInflight,
+		MaxBaseDiskUnits:                    &maxBaseDiskUnits,
+		HoldBaseDisksWithInflightDependents: &holdBaseDisksWithInflightDependents,
 	}
 }
 
@@ -2839,4 +2842,422 @@ func TestStorageYDBGetIdleBaseDisksEmpty(t *testing.T) {
 	idleDisks, err := storage.GetIdleBaseDisks(ctx, "image", "zone", time.Hour, 100)
 	require.NoError(t, err)
 	require.Empty(t, idleDisks)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Creates pool with one ready base disk, acquires slot for |overlayDisk| on it
+// and retires it using itself as a source for the replacement base disk.
+// Returns retired base disk and replacement base disk (which is not scheduled
+// yet).
+func retireBaseDiskWithReplacement(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	overlayDisk *types.Disk,
+	deletePoolBeforeRetire bool,
+) (BaseDisk, BaseDisk) {
+
+	err := storage.ConfigurePool(ctx, "image", "zone", 1, 0)
+	require.NoError(t, err)
+
+	baseDisks, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(baseDisks))
+
+	source := baseDisks[0]
+	source.CreateTaskID = "create"
+	err = storage.BaseDisksScheduled(ctx, []BaseDisk{source})
+	require.NoError(t, err)
+	err = storage.BaseDiskCreated(ctx, source)
+	require.NoError(t, err)
+
+	acquired, err := storage.AcquireBaseDiskSlot(
+		ctx,
+		"image",
+		Slot{OverlayDisk: overlayDisk},
+	)
+	require.NoError(t, err)
+	require.Equal(t, source.ID, acquired.ID)
+
+	if deletePoolBeforeRetire {
+		err = storage.DeletePool(ctx, "image", "zone")
+		require.NoError(t, err)
+	}
+
+	rebaseInfos, err := storage.RetireBaseDisk(
+		ctx,
+		source.ID,
+		&types.Disk{
+			ZoneId: source.ZoneID,
+			DiskId: source.ID,
+		},
+		0, // useImageSize
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(rebaseInfos))
+	require.Equal(t, source.ID, rebaseInfos[0].BaseDiskID)
+	require.NotEqual(t, source.ID, rebaseInfos[0].TargetBaseDiskID)
+
+	scheduling, err := storage.TakeBaseDisksToSchedule(ctx)
+	require.NoError(t, err)
+
+	var replacement BaseDisk
+	for _, disk := range scheduling {
+		if disk.ID == rebaseInfos[0].TargetBaseDiskID {
+			replacement = disk
+			break
+		}
+	}
+	require.Equal(t, rebaseInfos[0].TargetBaseDiskID, replacement.ID)
+	require.NotNil(t, replacement.SrcDisk)
+	require.Equal(t, source.ID, replacement.SrcDisk.DiskId)
+
+	return source, replacement
+}
+
+func TestStorageYDBRetiredBaseDiskShouldNotBeDeletedWhileReplacementIsCreating(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	overlayDisk := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk",
+	}
+
+	source, replacement := retireBaseDiskWithReplacement(
+		t,
+		ctx,
+		storage,
+		overlayDisk,
+		false, // deletePoolBeforeRetire
+	)
+
+	// Overlay disk is deleted while replacement base disk is still being
+	// created from the retired base disk.
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	require.NoError(t, err)
+
+	// Retired base disk has neither active units nor pool, but it must stay
+	// alive until replacement is created, otherwise transfer to replacement
+	// would fail.
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	retired, err := storage.IsBaseDiskRetired(ctx, source.ID)
+	require.NoError(t, err)
+	require.False(t, retired)
+
+	replacement.CreateTaskID = "create_replacement"
+	err = storage.BaseDisksScheduled(ctx, []BaseDisk{replacement})
+	require.NoError(t, err)
+
+	// Still creating.
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	err = storage.BaseDiskCreated(ctx, replacement)
+	require.NoError(t, err)
+
+	// Replacement is ready, retired base disk is deletable now.
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
+
+	retired, err = storage.IsBaseDiskRetired(ctx, source.ID)
+	require.NoError(t, err)
+	require.True(t, retired)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+func TestStorageYDBRetiredBaseDiskShouldBeDeletedAfterReplacementCreationFailed(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	overlayDisk := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk",
+	}
+
+	source, replacement := retireBaseDiskWithReplacement(
+		t,
+		ctx,
+		storage,
+		overlayDisk,
+		false, // deletePoolBeforeRetire
+	)
+
+	replacement.CreateTaskID = "create_replacement"
+	err = storage.BaseDisksScheduled(ctx, []BaseDisk{replacement})
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	require.NoError(t, err)
+
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	err = storage.BaseDiskCreationFailed(ctx, replacement)
+	require.NoError(t, err)
+
+	// Hold is released on failure as well.
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+func TestStorageYDBRetiredBaseDiskShouldBeDeletedAfterReplacementDeletedBeforeCreation(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	overlayDisk := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk",
+	}
+
+	// Pool is deleted, so replacement base disk does not belong to pool and
+	// becomes deletable as soon as it has no active units, even if it has not
+	// been scheduled for creation yet.
+	source, replacement := retireBaseDiskWithReplacement(
+		t,
+		ctx,
+		storage,
+		overlayDisk,
+		true, // deletePoolBeforeRetire
+	)
+
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	require.NoError(t, err)
+
+	// Replacement is deleted before creation, so it releases hold on source
+	// within the same transition and both become deletable.
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	retired, err := storage.IsBaseDiskRetired(ctx, source.ID)
+	require.NoError(t, err)
+	require.True(t, retired)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+// Chains of holds are forbidden: base disk that is still being created from
+// |source| (and therefore holds it) can't be used as a source for its own
+// replacement.
+func TestStorageYDBShouldNotUseCreatingBaseDiskAsSource(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	overlayDisk := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk",
+	}
+
+	source, replacement := retireBaseDiskWithReplacement(
+		t,
+		ctx,
+		storage,
+		overlayDisk,
+		false, // deletePoolBeforeRetire
+	)
+
+	replacement.CreateTaskID = "create_replacement"
+	err = storage.BaseDisksScheduled(ctx, []BaseDisk{replacement})
+	require.NoError(t, err)
+
+	// Overlay disk can acquire slot on base disk that is still being created.
+	overlayDisk2 := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk2",
+	}
+
+	acquired, err := storage.AcquireBaseDiskSlot(
+		ctx,
+		"image",
+		Slot{OverlayDisk: overlayDisk2},
+	)
+	require.NoError(t, err)
+	require.Equal(t, replacement.ID, acquired.ID)
+
+	// Retiring |replacement| requires a replacement for |overlayDisk2|, and
+	// |replacement| is not ready, so it can't be used as a source for it.
+	_, err = storage.RetireBaseDisk(
+		ctx,
+		replacement.ID,
+		&types.Disk{
+			ZoneId: replacement.ZoneID,
+			DiskId: replacement.ID,
+		},
+		0, // useImageSize
+	)
+	require.Error(t, err)
+	require.False(t, errors.CanRetry(err))
+	require.ErrorContains(
+		t,
+		err,
+		"can't be used as a source for replacement base disks: it is not ready",
+	)
+	require.ErrorContains(t, err, replacement.ID)
+
+	// Nothing has changed: |source| is still held by |replacement|.
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
+
+	retired, err := storage.IsBaseDiskRetired(ctx, replacement.ID)
+	require.NoError(t, err)
+	require.False(t, retired)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk2)
+	require.NoError(t, err)
+
+	// |source| has no active units, but it is still held.
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	err = storage.BaseDiskCreated(ctx, replacement)
+	require.NoError(t, err)
+
+	// |replacement| is ready, so |source| is released.
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	// Ready base disk can be used as a source for its own replacement.
+	overlayDisk3 := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk3",
+	}
+
+	acquired, err = storage.AcquireBaseDiskSlot(
+		ctx,
+		"image",
+		Slot{OverlayDisk: overlayDisk3},
+	)
+	require.NoError(t, err)
+	require.Equal(t, replacement.ID, acquired.ID)
+
+	rebaseInfos, err := storage.RetireBaseDisk(
+		ctx,
+		replacement.ID,
+		&types.Disk{
+			ZoneId: replacement.ZoneID,
+			DiskId: replacement.ID,
+		},
+		0, // useImageSize
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, len(rebaseInfos))
+	require.Equal(t, replacement.ID, rebaseInfos[0].BaseDiskID)
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+}
+
+// TODO: remove after deployment of this version is finished.
+func TestStorageYDBRetiredBaseDiskShouldBeDeletedWhenHoldIsDisabled(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	// First stage of rollout: counters are only decremented, base disks are
+	// not held.
+	config := makeDefaultConfig()
+	holdBaseDisksWithInflightDependents := false
+	config.HoldBaseDisksWithInflightDependents = &holdBaseDisksWithInflightDependents
+
+	storage := newStorageWithConfig(
+		t,
+		ctx,
+		db,
+		config,
+		metrics.NewEmptyRegistry(),
+	)
+
+	overlayDisk := &types.Disk{
+		ZoneId: "zone",
+		DiskId: "disk",
+	}
+
+	source, replacement := retireBaseDiskWithReplacement(
+		t,
+		ctx,
+		storage,
+		overlayDisk,
+		false, // deletePoolBeforeRetire
+	)
+
+	replacement.CreateTaskID = "create_replacement"
+	err = storage.BaseDisksScheduled(ctx, []BaseDisk{replacement})
+	require.NoError(t, err)
+
+	_, err = storage.ReleaseBaseDiskSlot(ctx, overlayDisk)
+	require.NoError(t, err)
+
+	// Legacy behaviour: source is deleted as soon as its last slot is released.
+	require.True(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, source))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
+
+	// Decrement of never incremented counter is harmless.
+	err = storage.BaseDiskCreated(ctx, replacement)
+	require.NoError(t, err)
+
+	require.False(t, baseDiskShouldBeDeletedSoon(t, ctx, storage, replacement))
+
+	err = storage.CheckConsistency(ctx)
+	require.NoError(t, err)
 }

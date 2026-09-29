@@ -15,6 +15,11 @@ enum CellSelectionPolicy {
 
 message ZoneCells {
     repeated string Cells = 1;
+
+    // Defines the cell for disks of a particular kind. Disks of this kind can
+    // only be created in this cell. Disks of other kinds can't be created in
+    // this cell.
+    map<string, string> DiskKindToDedicatedCell = 2;
 }
 
 message CellsConfig {
@@ -36,6 +41,6 @@ message CellsConfig {
     // Default is 90 days. Can be set only in hours, because time.ParseDuration
     // can't parse days.
     optional string ClusterCapacityExpirationTimeout = 7 [default = "2160h"];
-    
+
     optional CellSelectionPolicy CellSelectionPolicy = 8 [default = FIRST_IN_CONFIG];
 }

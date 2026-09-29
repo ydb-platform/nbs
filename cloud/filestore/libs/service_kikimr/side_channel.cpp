@@ -498,30 +498,40 @@ public:
 
         // Iovec base addresses are pointers in this process and cannot be
         // sent over the wire. Strip them from the request and copy data
-        // from the response Buffer back into the original iovecs.
-        google::protobuf::RepeatedPtrField<NProto::TIovec> iovecs;
+        // from the response Buffer back into the original iovecs. The
+        // holder is shared so that the iovecs can be swapped back into the
+        // request if the dispatch is refused - the caller then forwards the
+        // request to the main channel and it must not arrive corrupted.
+        auto iovecs = std::make_shared<
+            google::protobuf::RepeatedPtrField<NProto::TIovec>>();
         if (request->IovecsSize() > 0) {
-            iovecs.Swap(request->MutableIovecs());
+            iovecs->Swap(request->MutableIovecs());
         }
 
         auto channel = AccessFileSystemChannel(*request);
 
-        return channel->Dispatch(
+        const bool dispatched = channel->Dispatch(
             *request,
             std::move(response),
             [](TRequest& req, const NProto::TReadDataRequest& body) {
                 *req.MutableReadData() = body;
             },
-            [iovecs = std::move(iovecs)](
+            [iovecs](
                 NProto::TReadDataResponse& resp,
                 TResponse& r) mutable
             {
                 resp = std::move(*r.MutableReadData());
-                MoveBufferToIovecs(resp, iovecs);
+                MoveBufferToIovecs(resp, *iovecs);
             },
             MakeProfileLogHook<NProto::TReadDataResponse>(
                 std::move(profileLogRequest),
                 request->GetFileSystemId()));
+
+        if (!dispatched && !iovecs->empty()) {
+            request->MutableIovecs()->Swap(iovecs.get());
+        }
+
+        return dispatched;
     }
 
     bool ExecuteRequest(

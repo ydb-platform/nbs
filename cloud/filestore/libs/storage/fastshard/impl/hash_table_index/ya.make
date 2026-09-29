@@ -9,9 +9,10 @@ IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
 
     PEERDIR(
         cloud/filestore/libs/storage/fastshard/impl/fiber_bridge
-        cloud/filestore/libs/storage/fastshard/impl/model
         cloud/filestore/libs/storage/fastshard/impl/hash_table_index/resources
-        cloud/filestore/libs/storage/fastshard/ipc
+        cloud/filestore/libs/storage/fastshard/impl/model
+
+        cloud/fastshard/ipc
 
         cloud/storage/core/libs/common
 
@@ -29,12 +30,13 @@ ENDIF()
 PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/fastshard/iface
-    cloud/filestore/libs/storage/fastshard/sn/client
     cloud/filestore/libs/storage/fastshard/sn/factory
     cloud/filestore/libs/storage/fastshard/sn/quorum
     cloud/filestore/libs/storage/model
 
     cloud/filestore/private/api/protos
+
+    cloud/fastshard/sn/client
 )
 
 END()

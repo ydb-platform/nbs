@@ -420,7 +420,7 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
     ui64 cur = commitIds.front();
     ui32 cnt = 0;
 
-    for (const auto commitId: commitIds) {
+    for (const ui64 commitId: commitIds) {
         if (commitId == cur) {
             ++cnt;
         } else {
@@ -446,10 +446,10 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
         return;
     }
 
-    const auto freshBlockByteCount =
+    const ui32 freshBlockByteCount =
         State->GetUnflushedFreshBlocksCount() * State->GetBlockSize();
-    const auto freshBlobCount = State->GetUnflushedFreshBlobCount();
-    const auto freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
+    const ui64 freshBlobCount = State->GetUnflushedFreshBlobCount();
+    const ui64 freshBlobByteCount = State->GetUnflushedFreshBlobByteCount();
 
     const bool shouldFlush =
         !State->IsLoadStateFinished() ||
@@ -593,7 +593,7 @@ void TPartitionActor::HandleResumeFlush(
 
 void TPartitionActor::StartFlush(const TActorContext& ctx)
 {
-    auto commitId = State->AccessFlushState().GetFlushCommitId();
+    ui64 commitId = State->AccessFlushState().GetFlushCommitId();
     auto requestInfo = State->AccessFlushState().GetRequestInfo();
 
     auto unflushedFreshBlobCommitIds =
@@ -601,7 +601,7 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
 
     TVector<TFlushBlocksVisitor::TBlob> blobs;
     {
-        auto flushBlobSizeThreshold = Config->GetFlushBlobSizeThreshold();
+        ui32 flushBlobSizeThreshold = Config->GetFlushBlobSizeThreshold();
         if (State->GetUnflushedFreshBlobCount() > 0) {
             // ignore flushBlobSizeThreshold when there are any fresh blobs
             // to prevent situation, when some blocks were not flushed
@@ -788,7 +788,7 @@ void TPartitionActor::HandleFlushCompleted(
 
         ui64 flushedFreshBlobByteCount = 0;
 
-        for (const auto& freshBlobCommitId: msg->FlushedFreshBlobCommitIds) {
+        for (const ui64& freshBlobCommitId: msg->FlushedFreshBlobCommitIds) {
             flushedFreshBlobByteCount +=
                 State->FlushFreshBlob(freshBlobCommitId);
         }

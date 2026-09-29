@@ -16,6 +16,7 @@
 
 #include <util/generic/guid.h>
 #include <util/generic/string.h>
+#include <util/generic/yexception.h>
 
 namespace NCloud::NBlockStore::NCells {
 
@@ -116,6 +117,30 @@ NProto::TDescribeVolumeRequest CreateDescribeRequest()
     request.MutableHeaders()->CopyFrom(NProto::THeaders());
     *request.MutableHeaders()->MutableInternal()->MutableAuthToken() = "auth";
     return request;
+}
+
+// Drives PrepareMonitoringDescribe synchronously the way the mon search actor
+// drives it asynchronously: fires each target, folds ready answers, and treats
+// a target whose promise is not set as a timeout.
+TVector<TCellDescribeResult> RunMonitoringDescribe(
+    const NProto::TDescribeVolumeRequest& request,
+    const TVector<TString>& cellIds,
+    const TCellHostEndpointsByCellId& endpoints,
+    const IBlockStorePtr& localService)
+{
+    auto plan = PrepareMonitoringDescribe(cellIds, endpoints, localService);
+    for (const auto& target: plan.Targets) {
+        auto future = target.Service->DescribeVolume(
+            MakeIntrusive<TCallContext>(),
+            PrepareCellDescribeRequest(request, target.CellId));
+        auto& result = plan.Results[target.ResultIndex];
+        if (future.HasValue()) {
+            ApplyDescribeResponse(result, target.Fqdn, future.GetValue());
+        } else {
+            ApplyDescribeTimeout(result);
+        }
+    }
+    return plan.Results;
 }
 
 }   // namespace
@@ -501,6 +526,290 @@ Y_UNIT_TEST_SUITE(TDescribeVolumeTest)
             *msg.MutableError() = std::move(MakeError(E_NOT_FOUND, "lost"));
             localService->DescribeVolumePromise.SetValue(std::move(msg));
         }
+    }
+
+    Y_UNIT_TEST(ShouldReportEveryCellInMonitoringDescribe)
+    {
+        TCellHostEndpointsByCellId endpoints;
+        auto found = CreateCellEndpoint("cell1", "s1h1", endpoints);
+        auto absent = CreateCellEndpoint("cell2", "s2h1", endpoints);
+        // cell3 is configured but has no connected endpoint
+
+        found->DescribeVolumePromise.SetValue(NProto::TDescribeVolumeResponse());
+        {
+            NProto::TDescribeVolumeResponse msg;
+            *msg.MutableError() = MakeError(E_NOT_FOUND, "lost");
+            absent->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("disk");
+
+        auto results = RunMonitoringDescribe(
+            request,
+            {"cell1", "cell2", "cell3"},
+            endpoints,
+            nullptr);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, results.size());
+
+        auto byId = [&] (const TString& id) -> const TCellDescribeResult& {
+            for (const auto& result: results) {
+                if (result.CellId.Defined() && *result.CellId == id) {
+                    return result;
+                }
+            }
+            UNIT_FAIL("no result for cell " << id);
+            return results[0];
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::Found),
+            static_cast<int>(byId("cell1").Status));
+        UNIT_ASSERT_VALUES_EQUAL("s1h1", byId("cell1").Fqdn);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::NotFound),
+            static_cast<int>(byId("cell2").Status));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::Unavailable),
+            static_cast<int>(byId("cell3").Status));
+    }
+
+    Y_UNIT_TEST(ShouldReportFailedCellWhenDescribeTimesOut)
+    {
+        TCellHostEndpointsByCellId endpoints;
+        auto pending = CreateCellEndpoint("cell1", "s1h1", endpoints);
+        // the promise is never set, so the describe stays in flight
+
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("disk");
+
+        auto results = RunMonitoringDescribe(
+            request,
+            {"cell1"},
+            endpoints,
+            nullptr);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, results.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::Failed),
+            static_cast<int>(results[0].Status));
+
+        pending->DescribeVolumePromise.SetValue(
+            NProto::TDescribeVolumeResponse());
+    }
+
+    Y_UNIT_TEST(ShouldReportMigrationDestinationDistinctly)
+    {
+        TCellHostEndpointsByCellId endpoints;
+        auto destination = CreateCellEndpoint("cell1", "s1h1", endpoints);
+
+        NProto::TDescribeVolumeResponse msg;
+        (*msg.MutableVolume()
+              ->MutableTags())[TString(SourceDiskIdTagName)] = "src";
+        destination->DescribeVolumePromise.SetValue(std::move(msg));
+
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("disk");
+
+        auto results = RunMonitoringDescribe(
+            request,
+            {"cell1"},
+            endpoints,
+            nullptr);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, results.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::MigrationDestination),
+            static_cast<int>(results[0].Status));
+        UNIT_ASSERT_VALUES_EQUAL("s1h1", results[0].Fqdn);
+    }
+
+    Y_UNIT_TEST(ShouldQueryLocalServiceInMonitoringDescribe)
+    {
+        TCellHostEndpointsByCellId endpoints;
+        auto cell = CreateCellEndpoint("cell1", "s1h1", endpoints);
+        {
+            NProto::TDescribeVolumeResponse msg;
+            *msg.MutableError() = MakeError(E_NOT_FOUND, "lost");
+            cell->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        auto local = std::make_shared<TTestServiceClient>();
+        local->DescribeVolumePromise.SetValue(NProto::TDescribeVolumeResponse());
+
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("disk");
+
+        auto results = RunMonitoringDescribe(
+            request,
+            {"cell1"},
+            endpoints,
+            local);
+
+        UNIT_ASSERT_VALUES_EQUAL(2, results.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, local->DescribeVolumeCalled);
+
+        const auto& localRow = results.back();
+        UNIT_ASSERT(!localRow.CellId.Defined());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::Found),
+            static_cast<int>(localRow.Status));
+    }
+
+    Y_UNIT_TEST(ShouldPreferConcreteAnswerOverFailureWithinCell)
+    {
+        TCellHostEndpointsByCellId endpoints;
+        // two hosts of the same cell: one answers "not found", the other never
+        // answers (times out)
+        auto answered = CreateCellEndpoint("cell1", "s1h1", endpoints);
+        auto timedOut = CreateCellEndpoint("cell1", "s1h2", endpoints);
+        {
+            NProto::TDescribeVolumeResponse msg;
+            *msg.MutableError() = MakeError(E_NOT_FOUND, "lost");
+            answered->DescribeVolumePromise.SetValue(std::move(msg));
+        }
+
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("disk");
+
+        auto results = RunMonitoringDescribe(
+            request,
+            {"cell1"},
+            endpoints,
+            nullptr);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, results.size());
+        // the definitive "not found" wins over the inconclusive timeout
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::NotFound),
+            static_cast<int>(results[0].Status));
+
+        timedOut->DescribeVolumePromise.SetValue(
+            NProto::TDescribeVolumeResponse());
+    }
+
+    Y_UNIT_TEST(ShouldSearchVolumeAcrossCells)
+    {
+        TCellHostEndpointsByCellId endpoints;
+        auto found = CreateCellEndpoint("cell1", "s1h1", endpoints);
+        // cell2 is configured but has no connected host
+
+        found->DescribeVolumePromise.SetValue(NProto::TDescribeVolumeResponse());
+
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("disk");
+
+        auto scheduler = CreateScheduler();
+        scheduler->Start();
+        Y_DEFER { scheduler->Stop(); };
+
+        auto results = SearchVolumeAcrossCells(
+                           request,
+                           {"cell1", "cell2"},
+                           endpoints,
+                           nullptr,
+                           TDuration::Seconds(5),
+                           scheduler)
+                           .GetValue(TDuration::Seconds(5));
+
+        UNIT_ASSERT_VALUES_EQUAL(2, results.size());
+
+        auto byId = [&] (const TString& id) -> const TCellDescribeResult& {
+            for (const auto& result: results) {
+                if (result.CellId.Defined() && *result.CellId == id) {
+                    return result;
+                }
+            }
+            UNIT_FAIL("no result for cell " << id);
+            return results[0];
+        };
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::Found),
+            static_cast<int>(byId("cell1").Status));
+        UNIT_ASSERT_VALUES_EQUAL("s1h1", byId("cell1").Fqdn);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::Unavailable),
+            static_cast<int>(byId("cell2").Status));
+    }
+
+    Y_UNIT_TEST(ShouldTimeOutSearchOnDeadline)
+    {
+        TCellHostEndpointsByCellId endpoints;
+        // cell-b never answers; cell-a has no endpoints
+        auto pending = CreateCellEndpoint("cell-b", "s1h1", endpoints);
+
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("disk");
+
+        auto scheduler = CreateScheduler();
+        scheduler->Start();
+        Y_DEFER { scheduler->Stop(); };
+
+        auto results = SearchVolumeAcrossCells(
+                           request,
+                           {"cell-a", "cell-b"},
+                           endpoints,
+                           nullptr,
+                           TDuration::MilliSeconds(200),
+                           scheduler)
+                           .GetValue(TDuration::Seconds(5));
+
+        auto byId = [&] (const TString& id) -> const TCellDescribeResult& {
+            for (const auto& result: results) {
+                if (result.CellId.Defined() && *result.CellId == id) {
+                    return result;
+                }
+            }
+            UNIT_FAIL("no result for cell " << id);
+            return results[0];
+        };
+
+        // the queried cell timed out; the unqueried one stays Unavailable
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::Failed),
+            static_cast<int>(byId("cell-b").Status));
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::Unavailable),
+            static_cast<int>(byId("cell-a").Status));
+
+        pending->DescribeVolumePromise.SetValue(
+            NProto::TDescribeVolumeResponse());
+    }
+
+    Y_UNIT_TEST(ShouldReportFailedWhenDescribeThrows)
+    {
+        TCellHostEndpointsByCellId endpoints;
+        auto throwing = CreateCellEndpoint("cell1", "s1h1", endpoints);
+        throwing->OnDescribeVolume =
+            [] (const NProto::TDescribeVolumeRequest&)
+            {
+                ythrow yexception() << "boom";
+            };
+
+        auto request = CreateDescribeRequest();
+        request.SetDiskId("disk");
+
+        auto scheduler = CreateScheduler();
+        scheduler->Start();
+        Y_DEFER { scheduler->Stop(); };
+
+        // a synchronous throw from a describe must not escape and must still let
+        // the search complete, marking just that target Failed
+        auto results = SearchVolumeAcrossCells(
+                           request,
+                           {"cell1"},
+                           endpoints,
+                           nullptr,
+                           TDuration::Seconds(5),
+                           scheduler)
+                           .GetValue(TDuration::Seconds(5));
+
+        UNIT_ASSERT_VALUES_EQUAL(1, results.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(ECellDescribeStatus::Failed),
+            static_cast<int>(results[0].Status));
     }
 }
 

@@ -13,6 +13,7 @@ class TCellHostEndpoint
 {
 private:
     const TString LogTag;
+    const TString Fqdn;
     const IBlockStorePtr Service;
     const IStoragePtr Storage;
 
@@ -27,6 +28,11 @@ public:
     const TString& GetLogTag() const
     {
         return LogTag;
+    }
+
+    const TString& GetFqdn() const
+    {
+        return Fqdn;
     }
 
     [[nodiscard]] IBlockStorePtr GetService() const

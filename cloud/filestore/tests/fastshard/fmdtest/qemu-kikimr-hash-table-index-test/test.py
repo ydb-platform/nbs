@@ -1,5 +1,6 @@
 import json
 import os
+import pytest
 
 import yatest.common as common
 
@@ -15,7 +16,14 @@ from cloud.storage.core.tools.testing.qemu.lib.common import (
 )
 
 
-def _build_persistent_config():
+# Storage group type -> device count.
+STORAGE_GROUPS = {
+    "mirror": ("E_SG_MIRROR", 1),
+    "quorum": ("E_SG_QUORUM_MIRROR", 3),
+}
+
+
+def _build_persistent_config(group_type, device_count):
     #
     # Values published by the blockstore-disk-agent recipe.
     #
@@ -24,18 +32,19 @@ def _build_persistent_config():
     port = int(os.environ["FASTSHARD_DA_PORT"])
     uuids = os.environ["FASTSHARD_DA_DEVICE_UUIDS"].split(",")
     device_size = int(os.environ["FASTSHARD_DA_DEVICE_SIZE"])
+    assert len(uuids) >= device_count, uuids
 
     return {
         "PersistentConfig": {
             "StorageGroups": [{
-                "Type": "E_SG_MIRROR",
+                "Type": group_type,
                 "Devices": [
                     {
                         "Host": host,
                         "Port": port,
                         "DeviceId": uuid,
                     }
-                    for uuid in uuids
+                    for uuid in uuids[:device_count]
                 ],
             }],
             "NodesPerGroup": 100000,
@@ -51,8 +60,8 @@ def _build_persistent_config():
     }
 
 
-def do_test(test_name, aux_params):
-    fast_shard_config = _build_persistent_config()
+def do_test(test_name, aux_params, group):
+    fast_shard_config = _build_persistent_config(*STORAGE_GROUPS[group])
 
     #
     # file_shard_count=1: every fast shard would otherwise get the same
@@ -131,7 +140,9 @@ def do_test(test_name, aux_params):
     return ret
 
 
-def test_create_unlink_steal():
+@pytest.mark.parametrize("group", STORAGE_GROUPS.keys())
+def test_create_unlink_steal(group):
     return do_test(
         "create_unlink_steal",
-        "--duration 60s --stealer-threads 1")
+        "--duration 60s --stealer-threads 1",
+        group)

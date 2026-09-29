@@ -51,9 +51,8 @@ ELogPriority LogSeverityToPriority(gpr_log_severity severity)
 
 void AddLog(gpr_log_func_args* args)
 {
-    auto file = ::NPrivate::StripRoot({
-        args->file,
-        static_cast<ui32>(strlen(args->file))});
+    auto file = ::NPrivate::StripRoot(
+        {args->file, static_cast<ui32>(strlen(args->file))});
 
     *GrpcLog.load(std::memory_order_acquire)
         << LogSeverityToPriority(args->severity)
@@ -102,6 +101,25 @@ TGrpcInitializer::~TGrpcInitializer()
         // Once GRPC is stopped, we can safely destroy the custom logger
         delete GrpcLog.exchange(nullptr);
     }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+bool WaitForGrpcShutdown(TDuration timeout)
+{
+    const auto deadline = timeout.ToDeadLine();
+    const auto delay = TDuration::MilliSeconds(10);
+
+    while (grpc_is_initialized()) {
+        const auto dt = deadline - Now();
+        if (!dt) {
+            return false;
+        }
+
+        Sleep(Min(delay, dt));
+    }
+
+    return true;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

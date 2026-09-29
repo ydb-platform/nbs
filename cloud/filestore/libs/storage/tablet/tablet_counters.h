@@ -155,6 +155,8 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
 
     std::atomic<i64> StrictFileSystemSizeEnforcementEnabled{0};
     std::atomic<i64> DirectoryCreationInShardsEnabled{0};
+    std::atomic<i64> ServerWriteBackCacheEnabled{0};
+    std::atomic<i64> ServerWriteBackCacheFlushWritesInParallelEnabled{0};
 
     // Session stats
     std::atomic<i64> StatefulSessionsCount{0};
@@ -248,6 +250,7 @@ struct TTabletMetrics: TAtomicRefCount<TTabletMetrics>
     std::atomic<i64> TabletId{0};
     std::atomic<i64> TabletGeneration{0};
     std::atomic<i64> HasOverrides{0};
+    std::atomic<i64> ShardsCount{0};
 
     // Blob compression stats
     std::atomic<i64> UncompressedBytesWritten{0};

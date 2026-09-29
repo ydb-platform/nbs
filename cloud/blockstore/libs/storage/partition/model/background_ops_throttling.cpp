@@ -19,7 +19,7 @@ TDuration CalculateBackgroundOpThrottleDelay(
 
     TDuration delay = TDuration::Zero();
     if (maxExecTimePerSecond) {
-        const auto permittedExecutionPart =
+        const double permittedExecutionPart =
             static_cast<double>(maxExecTimePerSecond.GetValue()) /
             TDuration::Seconds(1).GetValue();
         const auto permittedExecutionAndDelayInterval =

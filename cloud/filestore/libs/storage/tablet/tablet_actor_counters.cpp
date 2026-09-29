@@ -383,6 +383,12 @@ void TIndexTabletActor::UpdateMetrics(
     Store(
         Metrics->DirectoryCreationInShardsEnabled,
         fileSystem.GetDirectoryCreationInShardsEnabled());
+    Store(
+        Metrics->ServerWriteBackCacheEnabled,
+        Config->GetServerWriteBackCacheEnabled());
+    Store(
+        Metrics->ServerWriteBackCacheFlushWritesInParallelEnabled,
+        Config->GetServerWriteBackCacheFlushWritesInParallelEnabled());
 
     Store(Metrics->FreshBytesCount, stats.GetFreshBytesCount());
     Store(Metrics->FreshBytesItemCount, stats.GetFreshBytesItemCount());
@@ -628,6 +634,7 @@ void TIndexTabletActor::RegisterStatCounters(TInstant now)
     Metrics->TabletId.store(TabletID());
     Metrics->TabletGeneration.store(GetGeneration());
     Metrics->HasOverrides.store(StorageConfigOverride.ByteSize() ? 1 : 0);
+    Metrics->ShardsCount.store(fs.GetShardFileSystemIds().size());
 
     Metrics->Register(
         fsId,

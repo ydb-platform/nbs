@@ -220,8 +220,8 @@ void TReadBlobActor::HandleGetResult(
                     ++sglistIndex;
 
                     while (sglistIndex < sglist.size()) {
-                        const auto offset = Request->BlobOffsets[sglistIndex];
-                        const auto prevOffset = Request->BlobOffsets[sglistIndex - 1];
+                        const ui16 offset = Request->BlobOffsets[sglistIndex];
+                        const ui16 prevOffset = Request->BlobOffsets[sglistIndex - 1];
                         if (offset != prevOffset + 1) {
                             break;
                         }

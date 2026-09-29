@@ -85,6 +85,10 @@ ya_make_patches/
   mapping; the repo has 2.4 without that field. The computed expression is
   exactly the length 2.4 itself mmaps and munmaps for the sqes array.
 
+Dropped patches: **06-fiber-destroy-join-workers-first** (join worker
+threads before destroying the processors in `FiberScheduler::destroy`)
+was accepted upstream verbatim and removed from this set.
+
 If a future silk version is built against a newer liburing or librseq, the
 corresponding patch can be dropped. Patches 02 and 05 can be dropped
 together once the repo's liburing reaches 2.6+. Patch 03 can be dropped only once every

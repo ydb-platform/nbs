@@ -230,6 +230,29 @@ TString TCellHostPool::GetCellId() const
     return Config->GetCellId();
 }
 
+TVector<TCellHostPool::THostStatus> TCellHostPool::GetHostStatuses() const
+{
+    TVector<THostStatus> result;
+
+    with_lock (Lock) {
+        result.reserve(Channels.size());
+        for (const auto& [fqdn, channel]: Channels) {
+            // RefCount, not the watcher count: a connection holds a reference
+            // to its channel always, while it watches the host only when host
+            // migration is on. So watchers would read zero for real
+            // connections whenever migration is disabled
+            result.push_back(THostStatus{
+                .Fqdn = fqdn,
+                .Alive = channel.Alive,
+                .Warm = channel.Endpoint.Initialized(),
+                .Connections = channel.RefCount,
+            });
+        }
+    }
+
+    return result;
+}
+
 bool TCellHostPool::WatchHost(const TString& fqdn, ICellHostWatcherPtr watcher)
 {
     if (!watcher) {
@@ -415,20 +438,34 @@ TCellHostEndpoints TCellHostPool::GetDescribeEndpoints(
                     continue;
                 }
 
-                auto future = EnsureChannelLocked(fqdn);
-                if (!future.HasValue() || !future.GetValue()) {
-                    // still connecting - skip it rather than block a describe
+                try {
+                    auto future = EnsureChannelLocked(fqdn);
+                    if (!future.HasValue() || !future.GetValue()) {
+                        // still connecting - skip it rather than block a
+                        // describe
+                        continue;
+                    }
+
+                    auto endpoint = future.GetValue()->CreateClientEndpoint(
+                        clientConfig->GetClientId(),
+                        clientConfig->GetInstanceId());
+
+                    --count;
+                    result.emplace_back(
+                        clientConfig,
+                        fqdn,
+                        std::move(endpoint),
+                        nullptr);
+                } catch (...) {
+                    // building the endpoint can throw (a bad address or port,
+                    // the client shutting down); skip this host rather than
+                    // fail the whole describe or escape to the caller
+                    STORAGE_WARN(
+                        "[" << fqdn << "] could not build a describe endpoint "
+                            "in cell " << Config->GetCellId() << ": "
+                            << CurrentExceptionMessage());
                     continue;
                 }
-
-                --count;
-                result.emplace_back(
-                    clientConfig,
-                    fqdn,
-                    future.GetValue()->CreateClientEndpoint(
-                        clientConfig->GetClientId(),
-                        clientConfig->GetInstanceId()),
-                    nullptr);
             }
 
             if (!result.empty()) {

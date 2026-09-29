@@ -3,6 +3,8 @@ LIBRARY()
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/deny_ydb_dependency.inc)
 
 SRCS(
+    component.cpp
+    format_page.cpp
     handle_table.cpp
     helpers.cpp
     name_table.cpp
@@ -13,7 +15,7 @@ SRCS(
 )
 
 PEERDIR(
-    cloud/filestore/libs/storage/fastshard/ipc
+    cloud/fastshard/ipc
 
     cloud/storage/core/libs/common
 

@@ -4,6 +4,8 @@
 #include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/fiber_bridge/fiber_shard.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/component.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/format_page.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/handle_table.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/helpers.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/name_table.h>
@@ -11,11 +13,12 @@
 #include <cloud/filestore/libs/storage/fastshard/impl/model/page_store.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_bitmap.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_hash_table.h>
-#include <cloud/filestore/libs/storage/fastshard/sn/client/client.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/factory/group_factory.h>
 #include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+
+#include <cloud/fastshard/sn/client/client.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/simple_template.h>
@@ -42,8 +45,14 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 // page index layout
 
+constexpr ui32 PageIndexLayoutMinVersion = 1;
+constexpr ui32 PageIndexLayoutVersion = 1;
+
 constexpr ui64 PageClusterPageCount = 8;
 constexpr ui64 NodePageClusterSlotSize = 24;
+
+// Spare slots so the index is not full when the data area is.
+constexpr ui64 PageIndexSpareSlotShare = 16;
 constexpr ui64 MaxSpacePerStorageGroup = 100_GB;
 constexpr ui64 MaxNodePageClusterTableSlotCount =
     MaxSpacePerStorageGroup / (PageClusterPageCount * DefaultBlockSize);
@@ -84,7 +93,9 @@ ui64 CalcPageClusterCount(
     return RoundUp(dataPageCount, PageClusterPageCount) / PageClusterPageCount;
 }
 
-class TPageIndex
+using TPageIndexBase =
+    TComponentBase<PageIndexLayoutMinVersion, PageIndexLayoutVersion>;
+class TPageIndex: public TPageIndexBase
 {
 private:
     using THt = TPersistentHashTable<TNodePageClusterKey, TNodePageClusterSlot>;
@@ -96,30 +107,52 @@ public:
         ui64 firstPageNo,
         IPageStorePtr pageStore)
     {
-        const ui64 pageSize = pageStore->GetPageSize();
-        const ui64 slotsPerPage = pageSize / NodePageClusterSlotSize;
-        const ui64 pageClusterCount = CalcPageClusterCount(config, pageSize);
-        const ui64 indexPageCount =
-            RoundUp(pageClusterCount, slotsPerPage) / slotsPerPage;
-        TNodePageClusterSlot tombstone{};
-        tombstone.Key.NodeId = Max<ui64>();
-        Slots = std::make_unique<THt>(
-            firstPageNo,
-            indexPageCount,
-            pageSize,
-            NodePageClusterSlotSize,
-            tombstone,
-            std::move(pageStore),
-            [](const TNodePageClusterSlot& s) -> TNodePageClusterKey
-            { return s.Key; },
-            [](const TNodePageClusterKey& k) -> ui64
-            {
-                return CityHash64(
-                    reinterpret_cast<const char*>(&k),
-                    sizeof(TNodePageClusterKey));
-            });
+        TDescriptionBuilder debuilder("PageIndex");
 
-        return indexPageCount;
+        const ui64 pageSize = pageStore->GetPageSize();
+        ui64 totalPageCount = 0;
+        {
+            const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
+
+            totalPageCount += pageCount;
+            firstPageNo += pageCount;
+        }
+
+        {
+            debuilder.RegisterOffset("Slots", firstPageNo);
+
+            const ui64 slotsPerPage = pageSize / NodePageClusterSlotSize;
+            const ui64 pageClusterCount =
+                CalcPageClusterCount(config, pageSize);
+            const ui64 slotCount = pageClusterCount
+                + pageClusterCount / PageIndexSpareSlotShare;
+            const ui64 indexPageCount =
+                RoundUp(slotCount, slotsPerPage) / slotsPerPage;
+            TNodePageClusterSlot tombstone{};
+            tombstone.Key.NodeId = Max<ui64>();
+            Slots = std::make_unique<THt>(
+                firstPageNo,
+                indexPageCount,
+                pageSize,
+                NodePageClusterSlotSize,
+                tombstone,
+                std::move(pageStore),
+                [](const TNodePageClusterSlot& s) -> TNodePageClusterKey
+                { return s.Key; },
+                [](const TNodePageClusterKey& k) -> ui64
+                {
+                    return CityHash64(
+                        reinterpret_cast<const char*>(&k),
+                        sizeof(TNodePageClusterKey));
+                });
+
+            totalPageCount += indexPageCount;
+            firstPageNo += indexPageCount;
+        }
+
+        Description = debuilder.Build();
+
+        return totalPageCount;
     }
 
     [[nodiscard]] ui64 GetSlotCount() const
@@ -241,14 +274,21 @@ struct TLoggingContext
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TPageAllocator
+//
+// PageAllocator format heavily depends on PageIndex format so it reports the
+// same MinVersion and Version.
+//
+
+using TPageAllocatorBase =
+    TComponentBase<PageIndexLayoutMinVersion, PageIndexLayoutVersion>;
+class TPageAllocator: public TPageAllocatorBase
 {
 private:
     std::unique_ptr<TPersistentBitmap> Bitmap;
     ui64 PageClusterSize = 0;
     ui64 FirstStoragePageClusterId = 0;
     ui64 BitCount = 0;
-    ui64 BitmapSize = 0;
+    ui64 MetadataSize = 0;
 
 public:
     ui64 Init(
@@ -256,23 +296,51 @@ public:
         ui64 firstPageNo,
         IPageStorePtr pageStore)
     {
-        const ui64 pageSize = pageStore->GetPageSize();
-        PageClusterSize = PageClusterPageCount * pageSize;
-        const ui64 pageClusterCount = CalcPageClusterCount(config, pageSize);
-        BitCount = pageClusterCount;
-        Bitmap = std::make_unique<TPersistentBitmap>(
-            firstPageNo,
-            BitCount,
-            pageSize,
-            std::move(pageStore));
-        BitmapSize = Bitmap->GetPageCount() * pageSize;
-        firstPageNo += Bitmap->GetPageCount();
-        FirstStoragePageClusterId = RoundUp(firstPageNo, PageClusterPageCount)
-            / PageClusterPageCount;
+        MetadataSize = 0;
 
-        return Bitmap->GetPageCount()
-            + (FirstStoragePageClusterId * PageClusterPageCount - firstPageNo)
-            + pageClusterCount * PageClusterPageCount;
+        TDescriptionBuilder debuilder("PageAllocator");
+
+        const ui64 pageSize = pageStore->GetPageSize();
+        ui64 totalPageCount = 0;
+        {
+            const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
+
+            totalPageCount += pageCount;
+            firstPageNo += pageCount;
+            MetadataSize += pageCount * pageSize;
+        }
+
+        {
+            debuilder.RegisterOffset("Bitmap", firstPageNo);
+
+            PageClusterSize = PageClusterPageCount * pageSize;
+            const ui64 pageClusterCount =
+                CalcPageClusterCount(config, pageSize);
+            BitCount = pageClusterCount;
+            Bitmap = std::make_unique<TPersistentBitmap>(
+                firstPageNo,
+                BitCount,
+                pageSize,
+                std::move(pageStore));
+            MetadataSize += Bitmap->GetPageCount() * pageSize;
+            firstPageNo += Bitmap->GetPageCount();
+            FirstStoragePageClusterId =
+                RoundUp(firstPageNo, PageClusterPageCount)
+                / PageClusterPageCount;
+
+            const ui64 pageCount = Bitmap->GetPageCount()
+                + (FirstStoragePageClusterId * PageClusterPageCount
+                        - firstPageNo)
+                + pageClusterCount * PageClusterPageCount;
+
+            totalPageCount += pageCount;
+            firstPageNo += pageCount;
+        }
+
+        debuilder.RegisterOffset("Data", GetDataOffset());
+        Description = debuilder.Build();
+
+        return totalPageCount;
     }
 
     [[nodiscard]] ui64 GetBitCount() const
@@ -280,9 +348,9 @@ public:
         return BitCount;
     }
 
-    [[nodiscard]] ui64 GetBitmapSize() const
+    [[nodiscard]] ui64 GetMetadataSize() const
     {
-        return BitmapSize;
+        return MetadataSize;
     }
 
     [[nodiscard]] ui64 GetDataOffset() const
@@ -460,6 +528,8 @@ struct TComponentLayout
     // when not applicable (the allocator bitmap counts bits).
     ui64 SlotSize = 0;
     ui64 SlotCount = 0;
+
+    IComponent* Component = nullptr;
 };
 
 void DumpLayoutComponentsJson(
@@ -484,6 +554,10 @@ void DumpLayoutComponentsJson(
         writer.WriteULongLong(c.SlotSize);
         writer.WriteKey("slotCount");
         writer.WriteULongLong(c.SlotCount);
+        if (c.Component) {
+            writer.WriteKey("description");
+            writer.WriteString(c.Component->Describe());
+        }
         writer.EndObject();
     }
     writer.EndList();
@@ -529,6 +603,10 @@ void DumpLayoutComponentsHtml(
             {"SIZE_BYTES", ToString(c.SizeBytes)},
             {"SLOT_SIZE", ToString(c.SlotSize)},
             {"SLOT_COUNT", ToString(c.SlotCount)},
+            {
+                "DESCRIPTION",
+                c.Component ? ToString(c.Component->Describe()) : "none"
+            },
         });
     }
 
@@ -581,6 +659,7 @@ private:
     const ui64 PageClusterSize;
 
     IStorageGroupPtr Storage;
+    std::atomic<bool> Initialized = false;
     std::atomic<bool> Ready = false;
     IPageStorePtr PageStore;
     TNodeTable Nodes;
@@ -589,13 +668,10 @@ private:
     TPageIndex PageIndex;
     TPageAllocator PageAllocator;
 
-    // Written exactly once - upon the first InitDataStructures call.
-    // The layout dump reads it lock-free from non-fiber threads, so it
-    // must never be reassigned; Format-triggered re-inits recompute the
-    // same values and skip the write.
-    TVector<TComponentLayout> Layout;
-
     mutable silk::FiberMutex Mutex;
+
+    TVector<TComponentLayout> Layout;
+    mutable silk::FiberMutex LayoutMutex;
 
 public:
     TFiberShardImpl(
@@ -609,11 +685,14 @@ public:
         , Generation(generation)
         , StorageGroupFactory(std::move(storageGroupFactory))
         , Config(std::move(config))
-        , PageSize(Config.GetPageSize())
+        , PageSize(Config.GetPageSize() ? Config.GetPageSize() : DefaultBlockSize)
         , PageClusterSize(PageClusterPageCount * PageSize)
     {
-        // TODO(#5895): handle a bad config gracefully instead of aborting.
-        Y_ABORT_UNLESS(PageSize, "page size is not set");
+        // TODO(#5895): Remove fallback after proper shards configuration.
+        if (!Config.GetPageSize()) {
+            SILK_WARN("[%s] page size configuration is missing",
+                FileSystemId.c_str());
+        }
 
         //
         // Using only one storage group for now.
@@ -678,13 +757,16 @@ private:
         SILK_INFO("page index table slots=%lu", PageIndex.GetSlotCount());
         SILK_INFO("page allocator bits=%lu", PageAllocator.GetBitCount());
 
-        TVector<TComponentLayout> layout = {
+        std::lock_guard g(LayoutMutex);
+
+        Layout = {
             {
                 .Name = "NodeTable",
                 .OffsetBytes = nodeTableOffset,
                 .SizeBytes = nodeTablePageCount * PageSize,
                 .SlotSize = NodeSlotSize,
                 .SlotCount = Nodes.GetSlotCount(),
+                .Component = &Nodes,
             },
             {
                 .Name = "NameTable",
@@ -692,6 +774,7 @@ private:
                 .SizeBytes = nameTablePageCount * PageSize,
                 .SlotSize = NameSlotSize,
                 .SlotCount = Names.GetSlotCount(),
+                .Component = &Names,
             },
             {
                 .Name = "HandleTable",
@@ -699,6 +782,7 @@ private:
                 .SizeBytes = handleTablePageCount * PageSize,
                 .SlotSize = HandleSlotSize,
                 .SlotCount = Handles.GetSlotCount(),
+                .Component = &Handles,
             },
             {
                 .Name = "PageIndex",
@@ -706,13 +790,15 @@ private:
                 .SizeBytes = pageIndexPageCount * PageSize,
                 .SlotSize = NodePageClusterSlotSize,
                 .SlotCount = PageIndex.GetSlotCount(),
+                .Component = &PageIndex,
             },
             {
                 .Name = "PageAllocatorBitmap",
                 .OffsetBytes = pageAllocatorOffset,
-                .SizeBytes = PageAllocator.GetBitmapSize(),
+                .SizeBytes = PageAllocator.GetMetadataSize(),
                 .SlotSize = 0,
                 .SlotCount = PageAllocator.GetBitCount(),
+                .Component = &PageAllocator,
             },
             {
                 .Name = "DataPages",
@@ -720,12 +806,9 @@ private:
                 .SizeBytes = PageAllocator.GetDataSize(),
                 .SlotSize = PageClusterSize,
                 .SlotCount = PageAllocator.GetBitCount(),
+                .Component = nullptr,
             },
         };
-
-        if (Layout.empty()) {
-            Layout = std::move(layout);
-        }
     }
 
     TLoggingContext MakeLoggingContext() const
@@ -738,11 +821,13 @@ private:
 public:
     void DumpLayoutHtml(IOutputStream& out) const
     {
+        std::lock_guard g(LayoutMutex);
         DumpLayoutComponentsHtml(out, Layout, Config);
     }
 
     void DumpLayoutJson(IOutputStream& out) const
     {
+        std::lock_guard g(LayoutMutex);
         DumpLayoutComponentsJson(out, Layout, Config);
     }
 
@@ -938,6 +1023,10 @@ public:
                         FormatError(error).c_str());
                 }
             }
+
+            if (!HasError(error)) {
+                wcg.Link();
+            }
         }
 
         auto pages = CollectPages(writeContext);
@@ -945,7 +1034,7 @@ public:
             error = Storage->WriteLogRecord(
                 std::move(writeContext.Headers),
                 std::move(writeContext.PageGroups),
-                writeContext.Lsn);
+                writeContext.GetLink());
         }
 
         if (HasError(error)) {
@@ -1057,6 +1146,10 @@ public:
                 request.GetGid(),
                 writeContext,
                 &attr);
+
+            if (!HasError(error)) {
+                wcg.Link();
+            }
         }
 
         if (HasError(error)) {
@@ -1073,7 +1166,7 @@ public:
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1278,13 +1371,15 @@ public:
                 *response.MutableError() = std::move(error);
                 return response;
             }
+
+            wcg.Link();
         }
 
         auto pages = CollectPages(writeContext);
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1427,13 +1522,14 @@ public:
             return response;
         }
 
+        wcg.Link();
         l.unlock();
 
         auto pages = CollectPages(writeContext);
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1513,6 +1609,10 @@ public:
                     }
                 }
             }
+
+            if (!HasError(response.GetError())) {
+                wcg.Link();
+            }
         }
 
         if (HasError(response.GetError())) {
@@ -1528,7 +1628,7 @@ public:
         auto error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -1827,6 +1927,7 @@ public:
             return response;
         }
 
+        wcg.Link();
         l.unlock();
 
         //
@@ -1837,7 +1938,7 @@ public:
         error = Storage->WriteLogRecord(
             std::move(writeContext.Headers),
             std::move(writeContext.PageGroups),
-            writeContext.Lsn);
+            writeContext.GetLink());
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
@@ -2126,13 +2227,39 @@ private:
         return response;
     }
 
-    NProto::TError CheckReady() const
+    NProto::TError CheckInitialized() const
     {
-        if (Ready) {
+        if (Initialized) {
             return {};
         }
 
         return MakeError(E_REJECTED, "shard is not initialized yet");
+    }
+
+    template <typename TResponse>
+    bool CheckInitialized(TResponse& response) const
+    {
+        auto error = CheckInitialized();
+        if (HasError(error)) {
+            *response.MutableError() = std::move(error);
+            return false;
+        }
+
+        return true;
+    }
+
+    NProto::TError CheckReady() const
+    {
+        auto error = CheckInitialized();
+        if (HasError(error)) {
+            return error;
+        }
+
+        if (Ready) {
+            return {};
+        }
+
+        return MakeError(E_INVALID_STATE, "detected incompatible format");
     }
 
     template <typename TResponse>
@@ -2150,13 +2277,23 @@ private:
 public:
     NProto::TError Init()
     {
-        auto error = Storage->Init();
+        auto [lastLsn, error] = Storage->Init();
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
                 "Init::Storage.Init error=%s",
                 FormatError(error).c_str());
             return error;
+        }
+
+        PageStore->InitLastLsn(lastLsn);
+        Initialized = true;
+
+        error = CheckFormat();
+        if (HasError(error)) {
+            // TODO(#6958): return original error as soon as the client (tablet)
+            // is ready
+            return MakeError(S_FALSE);
         }
 
         Ready = true;
@@ -2169,9 +2306,60 @@ public:
         Storage->TearDown();
     }
 
+    NProto::TError CheckFormat()
+    {
+        auto lc = MakeLoggingContext();
+
+        TWriteContext writeContext;
+        TWriteContextGuard wcg(writeContext, *PageStore);
+        wcg.Init();
+
+        {
+            std::lock_guard g(LayoutMutex);
+
+            for (auto& c: Layout) {
+                if (!c.Component) {
+                    continue;
+                }
+
+                auto error = c.Component->CheckFormat(writeContext);
+                if (HasError(error)) {
+                    SILK_ERROR(
+                        "[%s] CheckFormat::{%s} error=%s",
+                        lc.Describe().c_str(),
+                        c.Component->Describe().c_str(),
+                        FormatError(error).c_str());
+                    return error;
+                }
+            }
+
+            wcg.Link();
+        }
+
+        auto pages = CollectPages(writeContext);
+        auto error = Storage->WriteLogRecord(
+            std::move(writeContext.Headers),
+            std::move(writeContext.PageGroups),
+            writeContext.GetLink());
+        if (HasError(error)) {
+            SILK_ERROR(
+                "[%s] CheckFormat::WriteLogRecord error=%s",
+                lc.Describe().c_str(),
+                FormatError(error).c_str());
+
+            PageStore->RollbackPages(pages);
+            return error;
+        }
+
+        SILK_INFO("[%s] CheckFormat complete", lc.Describe().c_str());
+
+        PageStore->CommitPages(pages);
+        return {};
+    }
+
     NProto::TError Format()
     {
-        auto error = CheckReady();
+        auto error = CheckInitialized();
         if (HasError(error)) {
             return error;
         }
@@ -2231,11 +2419,13 @@ public:
                 }
             }
 
+            wcg.Link();
+
             auto pages = CollectPages(writeContext);
             error = Storage->WriteLogRecord(
                 std::move(writeContext.Headers),
                 std::move(writeContext.PageGroups),
-                writeContext.Lsn);
+                writeContext.GetLink());
             if (HasError(error)) {
                 SILK_ERROR(
                     "[F=%s] Format::WriteLogRecord error=%s",
@@ -2262,6 +2452,17 @@ public:
         //
 
         InitDataStructures();
+
+        error = CheckFormat();
+        if (HasError(error)) {
+            SILK_ERROR(
+                "[F=%s] CheckFormat failed: %s",
+                FileSystemId.c_str(),
+                FormatError(error).c_str());
+            return error;
+        }
+
+        Ready = true;
 
         SILK_INFO("[F=%s] Format complete", FileSystemId.c_str());
         return {};

@@ -522,11 +522,17 @@ const char* GetEventName(rdma_cm_event_type event)
 
 TString PrintAddress(const sockaddr* addr)
 {
+    if (addr == nullptr) {
+        return "(empty)";
+    }
     return NAddr::PrintHost(NAddr::TOpaqueAddr(addr));
 }
 
 TString PrintAddressAndPort(const sockaddr* addr)
 {
+    if (addr == nullptr) {
+        return "(empty)";
+    }
     return NAddr::PrintHostAndPort(NAddr::TOpaqueAddr(addr));
 }
 

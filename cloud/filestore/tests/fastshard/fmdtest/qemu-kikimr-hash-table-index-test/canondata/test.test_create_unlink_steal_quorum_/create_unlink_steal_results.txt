@@ -1,0 +1,88 @@
+{
+    "create": true,
+    "create-lat-us": true,
+    "unlink": true,
+    "unlink-lat-us": true,
+    "rename": true,
+    "rename-lat-us": true,
+    "stat": true,
+    "stat-lat-us": true,
+    "list": true,
+    "list-lat-us": true,
+    "list-w": true,
+    "list-wlat-us": true,
+    "errors": false
+}
+{
+    "components": [
+        {
+            "name": "NodeTable",
+            "offsetBytes": 0,
+            "sizeBytes": 9756672,
+            "slotSize": 96,
+            "slotCount": 100002,
+            "description": "G=1 P=0 MV=1 V=1 D={C=NodeTable O[Slots]=1}"
+        },
+        {
+            "name": "NameTable",
+            "offsetBytes": 9756672,
+            "sizeBytes": 4825088,
+            "slotSize": 48,
+            "slotCount": 100045,
+            "description": "G=1 P=2382 MV=1 V=1 D={C=NameTable O[Slots]=2383}"
+        },
+        {
+            "name": "HandleTable",
+            "offsetBytes": 14581760,
+            "sizeBytes": 17608704,
+            "slotSize": 16,
+            "slotCount": 1100288,
+            "description": "G=1 P=3560 MV=1 V=1 D={C=HandleTable O[Handles]=3561 O[NodeId2HandleCount]=7468}"
+        },
+        {
+            "name": "PageIndex",
+            "offsetBytes": 32190464,
+            "sizeBytes": 761856,
+            "slotSize": 24,
+            "slotCount": 31450,
+            "description": "G=1 P=7859 MV=1 V=1 D={C=PageIndex O[Slots]=7860}"
+        },
+        {
+            "name": "PageAllocatorBitmap",
+            "offsetBytes": 32952320,
+            "sizeBytes": 8192,
+            "slotSize": 0,
+            "slotCount": 29492,
+            "description": "G=1 P=8045 MV=1 V=1 D={C=PageAllocator O[Bitmap]=8046 O[Data]=32964608}"
+        },
+        {
+            "name": "DataPages",
+            "offsetBytes": 32964608,
+            "sizeBytes": 966393856,
+            "slotSize": 32768,
+            "slotCount": 29492
+        }
+    ],
+    "storageGroups": [
+        {
+            "type": "E_SG_QUORUM_MIRROR",
+            "devices": [
+                {
+                    "host": "localhost",
+                    "port": true,
+                    "deviceId": true
+                },
+                {
+                    "host": "localhost",
+                    "port": true,
+                    "deviceId": true
+                },
+                {
+                    "host": "localhost",
+                    "port": true,
+                    "deviceId": true
+                }
+            ]
+        }
+    ]
+}

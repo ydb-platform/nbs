@@ -430,13 +430,22 @@ void TFileSystem::CompleteHandleOpsQueueBatch(ui32 batchSize)
         HandleOpsQueue->PopFront(batchSize);
     }
 
-    for (ui32 i = 0; i < batchSize; ++i) {
+    DrainDelayedReleaseQueue(batchSize);
+
+    ScheduleProcessHandleOpsQueue(
+        Config->GetAsyncHandleOperationDrainPeriod());
+}
+
+bool TFileSystem::DrainDelayedReleaseQueue(ui32 maxCount)
+{
+    bool drained = false;
+    for (ui32 i = 0; i < maxCount; ++i) {
         if (!ProcessDelayedRelease()) {
             break;
         }
+        drained = true;
     }
-    ScheduleProcessHandleOpsQueue(
-        Config->GetAsyncHandleOperationDrainPeriod());
+    return drained;
 }
 
 bool TFileSystem::ProcessDelayedRelease()
@@ -538,9 +547,9 @@ TFuture<void> TFileSystem::ProcessHandleOpsQueueEntry(
 void TFileSystem::ProcessHandleOpsQueue()
 {
     THandleOpsQueue::TFrontResult frontResult;
+    const ui32 batchSize =
+        Max<ui32>(1, Config->GetAsyncHandleOperationBatchSize());
     with_lock (HandleOpsQueueLock) {
-        const ui32 batchSize =
-            Max<ui32>(1, Config->GetAsyncHandleOperationBatchSize());
         frontResult = HandleOpsQueue->Front(batchSize);
     }
 
@@ -554,8 +563,16 @@ void TFileSystem::ProcessHandleOpsQueue()
 
     auto& entries = frontResult.Entries;
     if (entries.empty()) {
+        // HandleOpsQueue has nothing of its own to process right now, but a
+        // release postponed earlier (due to overflow) may still be waiting
+        // in DelayedReleaseQueue - this is normally drained as a side effect
+        // of completing a HandleOpsQueue batch, which does not happen while
+        // HandleOpsQueue stays empty. Retry it here too, so it is not stuck
+        // until unrelated queue activity happens to pick it up.
+        const bool drained = DrainDelayedReleaseQueue(batchSize);
         ScheduleProcessHandleOpsQueue(
-            Config->GetAsyncHandleOperationIdlePeriod());
+            drained ? Config->GetAsyncHandleOperationDrainPeriod()
+                    : Config->GetAsyncHandleOperationIdlePeriod());
         return;
     }
 

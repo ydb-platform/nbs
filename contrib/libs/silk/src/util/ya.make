@@ -31,6 +31,7 @@ SRCS(
     logger.cpp
     memory-pool.cpp
     perf.cpp
+    platform.cpp
     queue.cpp
     sharded-stack.cpp
     tsc.cpp

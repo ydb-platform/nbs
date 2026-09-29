@@ -321,7 +321,7 @@ void TPartitionActor::ReassignChannelsIfNeeded(const NActors::TActorContext& ctx
 
     TStringBuilder sb;
     {
-        for (const auto channel: channels) {
+        for (const ui32 channel: channels) {
             if (sb.size()) {
                 sb << ", ";
             }
@@ -1562,7 +1562,7 @@ void TPartitionActor::ProcessStorageStatusFlags(
     }
 
     const auto permissions = StorageStatusFlags2ChannelPermissions(flags);
-    auto channelPermissionsUpdated =
+    bool channelPermissionsUpdated =
         UpdateChannelPermissions(ctx, channel, permissions);
     State->UpdateChannelFreeSpaceShare(channel, approximateFreeSpaceShare);
 

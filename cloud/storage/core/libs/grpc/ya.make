@@ -11,6 +11,7 @@ SRCS(
     keepalive.cpp
     periodic_tls_certificate_provider.cpp
     request.cpp
+    stable_read.cpp
     threadpool.cpp
     time_point_specialization.cpp
     tls_certificate_provider.cpp

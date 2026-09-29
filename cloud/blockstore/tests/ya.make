@@ -27,6 +27,7 @@ RECURSE(
     local_ssd
     monitoring
     mount
+    nbd
     notify
     python
     python_client

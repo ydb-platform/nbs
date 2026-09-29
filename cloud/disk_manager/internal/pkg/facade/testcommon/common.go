@@ -658,6 +658,7 @@ func NewResourceStorage(
 		"placement_groups",
 		db,
 		endedMigrationExpirationTimeout,
+		false, // backupEnabled
 	)
 	require.NoError(t, err)
 

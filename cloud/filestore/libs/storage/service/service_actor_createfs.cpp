@@ -8,6 +8,8 @@
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
+#include <util/generic/bitops.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 using namespace NActors;
@@ -44,9 +46,10 @@ NProto::TError ValidateCreateFileSystemRequest(
             << "missing folder identifier");
     }
 
+    // The block arithmetic all over the tablet and the client masks by the
+    // block size, so it has to be a power of two.
     ui32 blockSize = request.GetBlockSize();
-    if (!blockSize
-            || !IsAligned(blockSize, 4_KB)
+    if (!IsPowerOf2(blockSize)
             || blockSize < 4_KB
             || blockSize > 128_KB)
     {

@@ -361,7 +361,10 @@ class Client(_SafeClient):
             timestamp: datetime | None = None,
             trace_id: str | None = None,
             request_timeout: int | None = None,
-            device_name: str | None = None) -> futures.Future:
+            device_name: str | None = None,
+            persistent: bool = False,
+            nbdDeviceFile: str | None = None,
+            useFreeNbdDeviceFile: bool | None = None) -> futures.Future:
 
         request = protos.TStartEndpointRequest(
             UnixSocketPath=unix_socket_path,
@@ -373,8 +376,15 @@ class Client(_SafeClient):
             MountFlags=mount_flags,
             UnalignedRequestsDisabled=unaligned_requests_disabled,
             MountSeqNumber=seq_number,
-            VhostQueuesCount=vhost_queues
+            VhostQueuesCount=vhost_queues,
+            Persistent=persistent
         )
+
+        if nbdDeviceFile is not None:
+            request.NbdDeviceFile = nbdDeviceFile
+
+        if useFreeNbdDeviceFile is not None:
+            request.UseFreeNbdDeviceFile = useFreeNbdDeviceFile
 
         if endpoint_request_timeout is not None:
             request.RequestTimeout = endpoint_request_timeout
@@ -430,7 +440,10 @@ class Client(_SafeClient):
             timestamp: datetime | None = None,
             trace_id: str | None = None,
             request_timeout: int | None = None,
-            device_name: str | None = None) -> dict:
+            device_name: str | None = None,
+            persistent: bool = False,
+            nbdDeviceFile: str | None = None,
+            useFreeNbdDeviceFile: bool | None = None) -> dict:
 
         request = protos.TStartEndpointRequest(
             UnixSocketPath=unix_socket_path,
@@ -442,8 +455,15 @@ class Client(_SafeClient):
             MountFlags=mount_flags,
             UnalignedRequestsDisabled=unaligned_requests_disabled,
             MountSeqNumber=seq_number,
-            VhostQueuesCount=vhost_queues
+            VhostQueuesCount=vhost_queues,
+            Persistent=persistent
         )
+
+        if nbdDeviceFile is not None:
+            request.NbdDeviceFile = nbdDeviceFile
+
+        if useFreeNbdDeviceFile is not None:
+            request.UseFreeNbdDeviceFile = useFreeNbdDeviceFile
 
         if endpoint_request_timeout is not None:
             request.RequestTimeout = endpoint_request_timeout

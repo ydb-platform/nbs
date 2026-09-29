@@ -22,10 +22,10 @@ public:
         , PageSize(pageSize)
     {}
 
-    NCloud::NProto::TError Init() override
+    TResultOrError<ui64> Init() override
     {
         Wait();
-        return {};
+        return {0};
     }
 
     void TearDown() override
@@ -36,9 +36,9 @@ public:
     NCloud::NProto::TError WriteLogRecord(
         NCloud::NProto::TDeviceRequestHeaders headers,
         TVector<TPageGroup> pageGroups,
-        ui64 lsn) override
+        TLsnLink link) override
     {
-        Y_UNUSED(headers, pageGroups, lsn);
+        Y_UNUSED(headers, pageGroups, link);
 
         Wait();
         return {};

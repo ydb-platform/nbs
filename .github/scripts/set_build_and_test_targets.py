@@ -27,7 +27,10 @@ from .helpers import (
 # Explicit join rules (priority order):
 # If ALL components in a group are present -> they will be emitted as ONE shard.
 JOIN_GROUPS: List[List[str]] = [
+    ["tasks", "storage", "fastshard"],
     ["tasks", "storage"],
+    # tasks is not san-eligible, so sanitizer runs only see storage + fastshard
+    ["storage", "fastshard"],
     # Add more rules if needed, e.g.:
     # ["disk_manager", "tasks"],
 ]

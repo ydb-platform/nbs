@@ -3,6 +3,7 @@ PROTO_LIBRARY()
 ONLY_TAGS(GO_PROTO)
 
 SRCS(
+    backup_image_task.proto
     create_image_from_disk_task.proto
     create_image_from_image_task.proto
     create_image_from_snapshot_task.proto

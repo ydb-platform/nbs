@@ -44,6 +44,7 @@ env:
 
 jobs:
   resolve-actions-checkout-ref:
+    if: github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name
     runs-on: [self-hosted, "self-hosted", "runner_light"]
     outputs:
       actions_checkout_ref: ${{ steps.resolve-ref.outputs.actions_checkout_ref }}
@@ -69,6 +70,7 @@ jobs:
       - resolve-actions-checkout-ref
     if: >-
       ${{
+        github.event.pull_request.head.repo.full_name == github.event.pull_request.base.repo.full_name &&
         (
           github.event.action != 'labeled' ||
           contains(

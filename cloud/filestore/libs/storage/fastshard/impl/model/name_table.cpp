@@ -11,28 +11,47 @@ ui64 TNameTable::Init(
     ui64 firstPageNo,
     IPageStorePtr pageStore)
 {
-    const ui64 pageSize = pageStore->GetPageSize();
-    const ui64 slotsPerPage = pageSize / NameSlotSize;
-    const ui64 pageCount =
-        Min(RoundUp(nodesPerGroup, slotsPerPage),
-            (NameTableSize / pageSize) * slotsPerPage) /
-        slotsPerPage;
-    // Tombstone key needs to be different from an empty slot key
-    memset(Tombstone.Name, 1, NameCapacity - 1);
-    Tombstone.NodeId = Max<ui64>();
-    Slots = std::make_unique<THt>(
-        firstPageNo,
-        pageCount,
-        pageSize,
-        NameSlotSize,
-        Tombstone,
-        std::move(pageStore),
-        [](const TNameTableSlot& s) -> TStringBuf
-        { return {s.Name, strlen(s.Name)}; },
-        [](const TStringBuf& name) -> ui64
-        { return CityHash64(name.data(), name.size()); });
+    TDescriptionBuilder debuilder("NameTable");
 
-    return pageCount;
+    const ui64 pageSize = pageStore->GetPageSize();
+    ui64 totalPageCount = 0;
+    {
+        const ui64 pageCount = FormatPage.Init(firstPageNo, pageStore);
+
+        totalPageCount += pageCount;
+        firstPageNo += pageCount;
+    }
+
+    {
+        debuilder.RegisterOffset("Slots", firstPageNo);
+
+        const ui64 slotsPerPage = pageSize / NameSlotSize;
+        const ui64 pageCount =
+            Min(RoundUp(nodesPerGroup, slotsPerPage),
+                (NameTableSize / pageSize) * slotsPerPage) /
+            slotsPerPage;
+        // Tombstone key needs to be different from an empty slot key
+        memset(Tombstone.Name, 1, NameCapacity - 1);
+        Tombstone.NodeId = Max<ui64>();
+        Slots = std::make_unique<THt>(
+            firstPageNo,
+            pageCount,
+            pageSize,
+            NameSlotSize,
+            Tombstone,
+            std::move(pageStore),
+            [](const TNameTableSlot& s) -> TStringBuf
+            { return {s.Name, strlen(s.Name)}; },
+            [](const TStringBuf& name) -> ui64
+            { return CityHash64(name.data(), name.size()); });
+
+        totalPageCount += pageCount;
+        firstPageNo += pageCount;
+    }
+
+    Description = debuilder.Build();
+
+    return totalPageCount;
 }
 
 NProto::TError TNameTable::Put(

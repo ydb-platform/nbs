@@ -2,6 +2,7 @@
 
 #include <contrib/libs/grpc/include/grpc/grpc.h>
 #include <contrib/libs/grpc/include/grpc/support/log.h>
+#include <contrib/libs/grpc/src/core/lib/iomgr/exec_ctx.h>
 
 #include <library/cpp/logger/backend.h>
 #include <library/cpp/logger/log.h>
@@ -76,6 +77,42 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TInitTest)
 {
+    Y_UNIT_TEST(ShouldObserveCompletedShutdown)
+    {
+        {
+            TGrpcInitializer init;
+        }
+
+        UNIT_ASSERT(WaitForGrpcShutdown(TDuration::Zero()));
+    }
+
+    Y_UNIT_TEST(ShouldTimeoutWhileGrpcIsInUse)
+    {
+        TGrpcInitializer init;
+
+        UNIT_ASSERT(!WaitForGrpcShutdown(TDuration::Zero()));
+        UNIT_ASSERT(!WaitForGrpcShutdown(TDuration::MilliSeconds(20)));
+        UNIT_ASSERT(grpc_is_initialized());
+    }
+
+    Y_UNIT_TEST(ShouldWaitForDelayedAsyncShutdown)
+    {
+        grpc_init();
+
+        std::thread shutdownThread([] {
+            Sleep(TDuration::MilliSeconds(20));
+            // Force cleanup onto a separate gRPC thread.
+            grpc_core::ExecCtx ctx;
+            grpc_shutdown();
+        });
+
+        const bool stopped = WaitForGrpcShutdown(TDuration::Seconds(10));
+        shutdownThread.join();
+
+        UNIT_ASSERT(stopped);
+        UNIT_ASSERT(!grpc_is_initialized());
+    }
+
     Y_UNIT_TEST_F(ShouldIgnoreSubsequentInitializations, TFixture)
     {
         std::optional<TGrpcInitializer> init{std::in_place};

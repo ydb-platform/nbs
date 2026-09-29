@@ -6,8 +6,8 @@ page-oriented protocol with a write-ahead journal.
 
 ## Interface
 
-The protocol is defined in `cloud/storage/core/protos/device.proto` and
-served over TCP by `cloud/storage/core/libs/journalled_device_tcp_server`.
+The protocol is defined in `cloud/fastshard/protos/device.proto` and
+served over TCP by `cloud/fastshard/journal/server`.
 Each message is a `TDeviceProtocolRequest` / `TDeviceProtocolResponse` pair
 matched by `RequestId`. Six methods:
 
@@ -17,8 +17,8 @@ matched by `RequestId`. Six methods:
 | `ReleaseDevices` | Release the writer's lock. |
 | `ReadPages` | Read page groups (`FirstPageNo`, `PageCount`, `PageSize`). |
 | `WriteLogRecord` | Write one log record: several page groups plus a `LogSequenceNumber`. |
-| `ReadJournalTail` | Read the log records still kept in the journal - needed for storage group recovery. *Not implemented yet.* |
-| `AdvanceLsnLowWatermark` | Move the LSN low watermark so that the storage node can apply and drop the journal records below it. *Not implemented yet.* |
+| `ReadJournalTail` | Read the log records still kept in the journal - needed for storage group recovery. |
+| `AdvanceLsnLowWatermark` | Move the LSN low watermark so that the storage node can apply and drop the journal records below it. |
 
 On the shard side the same six methods form the `IStorageNode` interface
 (`sn/iface/storage_node.h`); `sn/client` speaks the TCP protocol from silk
