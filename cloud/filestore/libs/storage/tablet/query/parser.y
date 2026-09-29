@@ -1,9 +1,9 @@
 %{
-#include "parser.h"
+#include <cloud/filestore/libs/storage/tablet/query/query.h>
 
 #include <memory>
 
-namespace NCloud::NFileStore::NClient::NQuery {
+namespace NCloud::NFileStore::NStorage::NQuery {
 
 struct TParseContext
 {
@@ -41,16 +41,15 @@ static void SetError(const char* message)
     }
 }
 
-}   // namespace NCloud::NFileStore::NClient::NQuery
+}   // namespace NCloud::NFileStore::NStorage::NQuery
 
-using namespace NCloud::NFileStore::NClient::NQuery;
+using namespace NCloud::NFileStore::NStorage::NQuery;
 %}
 
-%defines "parser_generated.h"
 %define parse.error verbose
 
 %code requires {
-#include "parser.h"
+#include <cloud/filestore/libs/storage/tablet/query/query.h>
 }
 
 %code provides {
@@ -61,11 +60,11 @@ void yyerror(const char* message);
 %union {
     TString* text;
     ui64 number;
-    NCloud::NFileStore::NClient::NQuery::TValue* value;
-    NCloud::NFileStore::NClient::NQuery::TCondition* condition;
-    NCloud::NFileStore::NClient::NQuery::TExpression* expression;
+    NCloud::NFileStore::NStorage::NQuery::TValue* value;
+    NCloud::NFileStore::NStorage::NQuery::TCondition* condition;
+    NCloud::NFileStore::NStorage::NQuery::TExpression* expression;
     TVector<TString>* columns;
-    TVector<NCloud::NFileStore::NClient::NQuery::TValue>* values;
+    TVector<NCloud::NFileStore::NStorage::NQuery::TValue>* values;
 }
 
 %token SELECT FROM WHERE AND OR IN SUBSTR LIMIT INVALID
@@ -242,5 +241,5 @@ value:
 
 void yyerror(const char* message)
 {
-    NCloud::NFileStore::NClient::NQuery::SetError(message);
+    NCloud::NFileStore::NStorage::NQuery::SetError(message);
 }

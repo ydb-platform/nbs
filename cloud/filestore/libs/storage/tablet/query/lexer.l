@@ -6,7 +6,7 @@
 #pragma clang diagnostic ignored "-Wunneeded-internal-declaration"
 #endif
 
-#include "parser_generated.h"
+#include "parser.h"
 
 #include <util/generic/string.h>
 #include <util/string/cast.h>
