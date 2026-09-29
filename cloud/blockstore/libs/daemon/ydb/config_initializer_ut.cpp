@@ -260,7 +260,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
             UNIT_ASSERT_EQUAL(
                 controls,
-                ci.StorageConfig->GetStorageConfigControls().get());
+                ci.StorageConfig->GetControls().get());
             UNIT_ASSERT_VALUES_EQUAL(
                 staticValue,
                 staticConfig.GetServer()
@@ -277,7 +277,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
             UNIT_ASSERT_EQUAL(
                 controls,
-                ci.StorageConfig->GetStorageConfigControls().get());
+                ci.StorageConfig->GetControls().get());
             UNIT_ASSERT_VALUES_EQUAL(
                 staticText,
                 staticConfig.SerializeAsString());
@@ -288,7 +288,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
             UNIT_ASSERT_EQUAL(
                 controls,
-                ci.StorageConfig->GetStorageConfigControls().get());
+                ci.StorageConfig->GetControls().get());
             NKikimr::TControlBoard board;
             controls->Register(board);
             NKikimr::TControlWrapper control;

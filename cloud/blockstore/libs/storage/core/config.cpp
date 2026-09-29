@@ -1343,8 +1343,7 @@ const TStorageConfigControls::TImpl* TStorageConfig::ControlsImpl() const
     return Impl->Controls->Impl.get();
 }
 
-TStorageConfigControlsPtr
-TStorageConfig::GetStorageConfigControls() const
+TStorageConfigControlsPtr TStorageConfig::GetControls() const
 {
     return Impl->Controls;
 }
@@ -1359,11 +1358,6 @@ void TStorageConfig::SetVolumePreemptionType(
     NProto::EVolumePreemptionType volumePreemptionType)
 {
     Impl->SetVolumePreemptionType(volumePreemptionType);
-}
-
-void TStorageConfig::Register(TControlBoard& controlBoard) const
-{
-    Impl->Controls->Register(controlBoard);
 }
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \

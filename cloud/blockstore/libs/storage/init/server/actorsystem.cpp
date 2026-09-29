@@ -140,7 +140,7 @@ public:
         const auto config = Args.StartupBlockstoreConfig;
         const auto storageConfig = config->GetStorageConfig();
 
-        storageConfig->Register(*appData->Icb);
+        storageConfig->GetControls()->Register(*appData->Icb);
         auto ConfigHolder = InitializeBlockstoreConfigProvider(
             Args.StartupBlockstoreConfig);
 
@@ -161,7 +161,7 @@ public:
                         .StaticConfig = Args.StaticBlockstoreConfigProto,
                         .InitialDynamicConfig = Args.CmsBlockstoreConfig,
                         .StorageConfigControls =
-                            storageConfig->GetStorageConfigControls(),
+                            storageConfig->GetControls(),
                     }),
                     TMailboxType::Revolving,
                     appData->UserPoolId));

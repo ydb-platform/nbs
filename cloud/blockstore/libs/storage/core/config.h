@@ -58,11 +58,14 @@ public:
     // Register every read-write field control. Repeated registration on the
     // same board is a no-op; a different board or another set under the same
     // names must not be used.
+    // The first registration must not overlap reads or UpdateDefaults().
     void Register(NKikimr::TControlBoard& controlBoard);
 
     // Update defaults from raw configuration values, resetting overrides only
     // for changed defaults. Calls for the same control set must not overlap.
     // Concurrent ICB value updates are allowed.
+    // Calls for the same set must not overlap each other or its first
+    // Register().
     void UpdateDefaults(const NProto::TStorageServiceConfig& config);
 
     // Return an explicit ICB override for a known read-write field. An empty
@@ -109,14 +112,12 @@ public:
     ~TStorageConfig();
 
     // Return the non-null controls shared by this configuration and its copies.
-    TStorageConfigControlsPtr GetStorageConfigControls() const;
+    TStorageConfigControlsPtr GetControls() const;
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig);
 
     void SetVolumePreemptionType(
         NProto::EVolumePreemptionType volumePreemptionType);
-
-    void Register(NKikimr::TControlBoard& controlBoard) const;
 
     // Apply a patch to the raw proto while retaining the same live ICB
     // controls without changing their defaults.

@@ -490,7 +490,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             NProto::TStorageServiceConfig{},
             std::make_shared<NFeatures::TFeaturesConfig>());
         NKikimr::TControlBoard controlBoard;
-        config->Register(controlBoard);
+        config->GetControls()->Register(controlBoard);
 
         UNIT_ASSERT(!config->GetHiveProxyFallbackMode());
 
@@ -514,7 +514,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         auto first = std::make_shared<TStorageConfig>(
             firstProto,
             std::make_shared<NFeatures::TFeaturesConfig>());
-        auto controls = first->GetStorageConfigControls();
+        auto controls = first->GetControls();
         UNIT_ASSERT(controls);
 
         NProto::TStorageServiceConfig secondProto;
@@ -523,7 +523,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             secondProto,
             std::make_shared<NFeatures::TFeaturesConfig>(),
             controls);
-        UNIT_ASSERT(second->GetStorageConfigControls() == controls);
+        UNIT_ASSERT(second->GetControls() == controls);
 
         NProto::TStorageServiceConfig thirdProto;
         thirdProto.SetWriteBlobThreshold(300);
@@ -531,12 +531,12 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             thirdProto,
             std::make_shared<NFeatures::TFeaturesConfig>(),
             controls);
-        UNIT_ASSERT(third->GetStorageConfigControls() == controls);
+        UNIT_ASSERT(third->GetControls() == controls);
 
         NKikimr::TControlBoard controlBoard;
-        first->Register(controlBoard);
-        second->Register(controlBoard);
-        third->Register(controlBoard);
+        controls->Register(controlBoard);
+        second->GetControls()->Register(controlBoard);
+        third->GetControls()->Register(controlBoard);
 
         TAtomic previousValue = {};
         UNIT_ASSERT(!controlBoard.SetValue(
@@ -572,7 +572,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             firstProto,
             std::make_shared<NFeatures::TFeaturesConfig>(),
             controls);
-        UNIT_ASSERT(first->GetStorageConfigControls() == controls);
+        UNIT_ASSERT(first->GetControls() == controls);
 
         NProto::TStorageServiceConfig secondProto;
         secondProto.SetWriteBlobThreshold(200);
@@ -580,7 +580,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             secondProto,
             std::make_shared<NFeatures::TFeaturesConfig>(),
             controls);
-        UNIT_ASSERT(second->GetStorageConfigControls() == controls);
+        UNIT_ASSERT(second->GetControls() == controls);
 
         NProto::TStorageServiceConfig thirdProto;
         thirdProto.SetWriteBlobThreshold(300);
@@ -588,7 +588,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             thirdProto,
             std::make_shared<NFeatures::TFeaturesConfig>(),
             controls);
-        UNIT_ASSERT(third->GetStorageConfigControls() == controls);
+        UNIT_ASSERT(third->GetControls() == controls);
 
         UNIT_ASSERT_VALUES_EQUAL(100, first->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
@@ -664,8 +664,8 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                     proto,
                     std::make_shared<NFeatures::TFeaturesConfig>(),
                     controls);
-                source->Register(controlBoard);
-                controls = source->GetStorageConfigControls();
+                controls = source->GetControls();
+                controls->Register(controlBoard);
 
                 TAtomic previousValue = {};
                 UNIT_ASSERT(!controlBoard.SetValue(
@@ -675,7 +675,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
 
                 copy = std::make_shared<TStorageConfig>(*source);
                 UNIT_ASSERT_VALUES_EQUAL(200, copy->GetWriteBlobThreshold());
-                UNIT_ASSERT(copy->GetStorageConfigControls() == controls);
+                UNIT_ASSERT(copy->GetControls() == controls);
 
                 source->SetVolumePreemptionType(
                     NProto::PREEMPTION_MOVE_MOST_HEAVY);
@@ -710,7 +710,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             std::make_shared<NFeatures::TFeaturesConfig>());
 
         NKikimr::TControlBoard controlBoard;
-        globalConfig->Register(controlBoard);
+        globalConfig->GetControls()->Register(controlBoard);
 
         TAtomic previousValue = {};
         UNIT_ASSERT(!controlBoard.SetValue(
@@ -724,10 +724,9 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         auto config = TStorageConfig::Merge(globalConfig, patch);
 
         UNIT_ASSERT_UNEQUAL(config, globalConfig);
-        UNIT_ASSERT(config->GetStorageConfigControls());
+        UNIT_ASSERT(config->GetControls());
         UNIT_ASSERT(
-            config->GetStorageConfigControls() ==
-            globalConfig->GetStorageConfigControls());
+            config->GetControls() == globalConfig->GetControls());
         UNIT_ASSERT_VALUES_EQUAL(8, config->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(
             8,
@@ -772,7 +771,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         auto config = TStorageConfig::Merge(globalConfig, patch);
 
         UNIT_ASSERT_UNEQUAL(config, globalConfig);
-        UNIT_ASSERT(config->GetStorageConfigControls() == controls);
+        UNIT_ASSERT(config->GetControls() == controls);
         UNIT_ASSERT_VALUES_EQUAL(8, config->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(
             8,
@@ -860,7 +859,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             globalConfigProto,
             std::make_shared<NFeatures::TFeaturesConfig>());
 
-        globalConfig->Register(controlBoard);
+        globalConfig->GetControls()->Register(controlBoard);
 
         UNIT_ASSERT_VALUES_EQUAL(
             globalConfigProto.GetMaxMigrationBandwidth(),
@@ -989,7 +988,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                 overriddenConfig->GetAuthorizationMode());
 
             NKikimr::TControlBoard controlBoard;
-            overriddenConfig->Register(controlBoard);
+            overriddenConfig->GetControls()->Register(controlBoard);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 400,
@@ -1057,7 +1056,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                 overriddenConfig->GetAuthorizationMode());
 
             NKikimr::TControlBoard controlBoard;
-            overriddenConfig->Register(controlBoard);
+            overriddenConfig->GetControls()->Register(controlBoard);
 
             TAtomic prevValue{};
 
@@ -1137,7 +1136,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             overriddenConfig->GetDiskRegistryInitialAgentRejectionThreshold());
 
         NKikimr::TControlBoard controlBoard;
-        overriddenConfig->Register(controlBoard);
+        overriddenConfig->GetControls()->Register(controlBoard);
 
         UNIT_ASSERT_VALUES_EQUAL(
             2.5,
@@ -1184,7 +1183,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             overriddenConfig->GetDiskRegistryInitialAgentRejectionThreshold());
 
         NKikimr::TControlBoard controlBoard;
-        overriddenConfig->Register(controlBoard);
+        overriddenConfig->GetControls()->Register(controlBoard);
 
         UNIT_ASSERT_VALUES_EQUAL(
             -2.5,

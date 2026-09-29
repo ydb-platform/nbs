@@ -301,7 +301,7 @@ void TConfigInitializerYdb::SetStorageConfig(
         config,
         FeaturesConfig,
         StorageConfigControls);
-    StorageConfigControls = storageConfig->GetStorageConfigControls();
+    StorageConfigControls = storageConfig->GetControls();
     StorageConfigControls->UpdateDefaults(config);
     StorageConfig = std::move(storageConfig);
 }
