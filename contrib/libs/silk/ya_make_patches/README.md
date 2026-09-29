@@ -39,7 +39,7 @@ ya_make_patches/
 │   ├── 03-rseq-register-per-thread.patch
 │   ├── 04-fiber-cxa-get-globals-arcadia-libcxxrt.patch
 │   ├── 05-fiber-uring24-sqes-sz.patch
-│   ├── 06-crash-dumper-env-overrides.patch
+│   ├── 06-crash-dumper-script-dir.patch
 │   └── 07-fiber-py-libcxx-atomics.patch
 └── overlay/                          # Files copied verbatim into silk tree
     ├── ya.make
@@ -86,20 +86,12 @@ ya_make_patches/
   Silk targets liburing 2.9 where `sqes_sz` records the length of the sqes
   mapping; the repo has 2.4 without that field. The computed expression is
   exactly the length 2.4 itself mmaps and munmaps for the sqes array.
-- **06-crash-dumper-env-overrides**: makes `installCrashDumper`
-  idempotent (a gtest environment re-runs its SetUp under
-  `--gtest_repeat`, and each install used to fork another dumper) and
-  adds two environment overrides read at install time:
-  `SILK_CRASH_DUMPER_SCRIPT_DIR` for the gdb script directory - under ya,
-  `/proc/self/exe` resolves through the build-cache symlink store, so
-  "next to the binary" does not find the scripts - and
-  `SILK_CRASH_DUMPER_GDB` for the gdb executable, for machines where gdb
-  is not on PATH (e.g. only `ya tool gdb` is available). The dumper's gdb
-  invocation also opens the auto-load safe path (`-iex "set auto-load
-  safe-path /"`): `-nx` skips every gdbinit, and without the safe path
-  gdb declines to load libthread_db, cannot read TLS, and the fiber list
-  misses RUNNING fibers (their only reference is the thread-local
-  `threadFiber`).
+- **06-crash-dumper-script-dir**: `installCrashDumper` takes the gdb
+  script directory from the `SILK_CRASH_DUMPER_SCRIPT_DIR` environment
+  variable when it is set. Upstream looks for `crash-dumper.py` next to
+  `/proc/self/exe`; `ya make -t` runs the test binary from its own build
+  root, where files the ut module copies with `COPY_FILE` are not
+  present, so the scripts are not found there.
 - **07-fiber-py-libcxx-atomics**: `_atomic_load` in `src/gdb/fiber.py`
   learns the libc++ field layout (`__a_.__a_value`), and its raw-memory
   fallback reads the atomic's own size instead of a fixed 8 bytes. The

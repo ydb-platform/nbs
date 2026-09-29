@@ -52,14 +52,8 @@ private:
      */
     int runDumper(int requestReadFd) noexcept;
 
-    /**
-     * Build "source <script-dir>/crash-dumper.py" into sourceCommand. The directory is
-     * SILK_CRASH_DUMPER_SCRIPT_DIR when set, the directory of our binary otherwise (no compile-time path).
-     */
+    /** Build "source <script-dir>/crash-dumper.py" into sourceCommand: SILK_CRASH_DUMPER_SCRIPT_DIR, else the binary's directory. */
     void buildSourceCommand() noexcept;
-
-    /** Resolve the gdb to exec into gdbCommand: SILK_CRASH_DUMPER_GDB when set, "gdb" (PATH lookup) otherwise. */
-    void buildGdbCommand() noexcept;
 
     int dumpSignalNumber = 0;
     int dumpExitCode = 0;
@@ -67,7 +61,6 @@ private:
     pid_t dumperPid = -1;
     volatile sig_atomic_t dumpInProgress = 0;
     char sourceCommand[SCRIPT_COMMAND_SIZE] = {};
-    char gdbCommand[SCRIPT_COMMAND_SIZE] = {};
 };
 
 // Singleton: a C signal handler can only reach the instance through file scope.
@@ -80,19 +73,10 @@ static void crashSignalTrampoline(int signalNumber) noexcept
 
 void CrashDumper::install(int dumpSignal, int exitCode) noexcept
 {
-    // Repeated installs are no-ops: a test harness may re-run its setup path
-    // (e.g. gtest re-creates global environments under --gtest_repeat), and a
-    // second install would fork another dumper and orphan the first pipe.
-    if (dumperPid > 0)
-    {
-        return;
-    }
-
     dumpSignalNumber = dumpSignal;
     dumpExitCode = exitCode;
 
     buildSourceCommand();
-    buildGdbCommand();
 
     // The pipe the crash handler signals the dumper through: the dumper blocks on the read end, the handler
     // writes one byte to the write end to request a dump.
@@ -207,9 +191,7 @@ void CrashDumper::handleSignal(int signalNumber) noexcept
 
 void CrashDumper::buildSourceCommand() noexcept
 {
-    // SILK_CRASH_DUMPER_SCRIPT_DIR overrides the script location for environments where the scripts
-    // cannot sit next to the binary - e.g. the binary is reached through a build-cache symlink that
-    // /proc/self/exe resolves past, or a test harness ships the scripts in a source checkout.
+    // A build system may run the binary from a directory the scripts are not copied to.
     const char * scriptDir = std::getenv("SILK_CRASH_DUMPER_SCRIPT_DIR");
     if (scriptDir && scriptDir[0])
     {
@@ -238,18 +220,6 @@ void CrashDumper::buildSourceCommand() noexcept
     {
         std::snprintf(sourceCommand, sizeof(sourceCommand), "source crash-dumper.py");
     }
-}
-
-void CrashDumper::buildGdbCommand() noexcept
-{
-    const char * gdbOverride = std::getenv("SILK_CRASH_DUMPER_GDB");
-    if (gdbOverride && gdbOverride[0])
-    {
-        std::snprintf(gdbCommand, sizeof(gdbCommand), "%s", gdbOverride);
-        return;
-    }
-
-    std::snprintf(gdbCommand, sizeof(gdbCommand), "gdb");
 }
 
 int CrashDumper::runDumper(int requestReadFd) noexcept
@@ -283,13 +253,8 @@ int CrashDumper::runDumper(int requestReadFd) noexcept
     char parentPidText[16];
     std::snprintf(parentPidText, sizeof(parentPidText), "%d", getppid());
 
-    // -nx skips every gdbinit, so the auto-load safe path must be opened here or gdb declines to load
-    // libthread_db and cannot read TLS - fiber-list then misses RUNNING fibers, whose only reference is
-    // the thread-local threadFiber. -iex runs before the attach.
     const char * argv[] = {
-        gdbCommand,
-        "-iex",
-        "set auto-load safe-path /",
+        "gdb",
         "-p",
         parentPidText,
         "-batch",
@@ -298,7 +263,7 @@ int CrashDumper::runDumper(int requestReadFd) noexcept
         sourceCommand,
         nullptr,
     };
-    execvp(gdbCommand, const_cast<char * const *>(argv));
+    execvp("gdb", const_cast<char * const *>(argv));
 
     // exec failed (gdb absent): nothing to dump, but never hang - return so the parent's waitpid returns.
     const char message[] = "crash-dumper: could not exec gdb\n";
