@@ -69,6 +69,7 @@ void TVolumeSessionActor::HandleChangeVolumeBindingRequest(
         if (VolumeInfo->BindingType == NProto::BINDING_LOCAL) {
             replyError(
                 MakeError(S_ALREADY, "Volume is already running at host"));
+            return;
         }
         bindingType = NProto::BINDING_LOCAL;
     }
