@@ -1,7 +1,6 @@
 package common
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -26,21 +25,6 @@ const certificateValidationThreshold = 7 * 24 * time.Hour
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Certificate files are rewritten by external tools, not necessarily
-// atomically, and a partially written file may be syntactically valid, e.g. a
-// chain without its intermediate certificate. Therefore new content is applied
-// only after it has been read unchanged twice in a row (stable-read). This is
-// a heuristic that reduces the chance of picking up an intermediate state of a
-// rewrite, not a guarantee: a writer that stalls for longer than the check
-// interval is indistinguishable from a finished one.
-type stableReadDecision int
-
-const (
-	stableReadUnchanged stableReadDecision = iota
-	stableReadWait
-	stableReadApply
-)
-
 type certificateExpiration struct {
 	path          string
 	after         time.Time
@@ -55,12 +39,8 @@ type GrpcServerCertificateConfig struct {
 
 // Raw file contents, kept to detect changes without parsing.
 type serverCertificatePEM struct {
-	cert []byte
-	key  []byte
-}
-
-func (p serverCertificatePEM) equal(other serverCertificatePEM) bool {
-	return bytes.Equal(p.cert, other.cert) && bytes.Equal(p.key, other.key)
+	cert string
+	key  string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -68,13 +48,13 @@ func (p serverCertificatePEM) equal(other serverCertificatePEM) bool {
 type GrpcServerTlsProvider struct {
 	configs []GrpcServerCertificateConfig
 
+	// Used by the refreshing goroutine only.
+	pems        []serverCertificatePEM
+	stableReads []stableRead[serverCertificatePEM]
+
 	mutex        sync.RWMutex
 	certificates []tls.Certificate
-	pems         []serverCertificatePEM
-	// Content that differs from pems and has been read once, nil otherwise.
-	// See stableReadDecision.
-	pendingPEMs []*serverCertificatePEM
-	expirations []certificateExpiration
+	expirations  []certificateExpiration
 }
 
 // Certificates are loaded once during construction. Unlike on refresh, chains
@@ -142,7 +122,7 @@ func NewGrpcServerTlsProvider(
 		configs:      append([]GrpcServerCertificateConfig(nil), certs...),
 		certificates: certificates,
 		pems:         pems,
-		pendingPEMs:  make([]*serverCertificatePEM, len(certs)),
+		stableReads:  make([]stableRead[serverCertificatePEM], len(certs)),
 		expirations:  expirations,
 	}
 
@@ -183,12 +163,9 @@ func (p *GrpcServerTlsProvider) monitorCertificates(
 	}
 }
 
-// Reloads certificates from disk. Every certificate is refreshed
-// independently. New content is applied only after it has been read unchanged
-// twice in a row, a read error restarts the count. The last successfully
-// loaded certificate is kept if its files cannot be read or parsed, or if its
-// chain is not valid at |now|; new content that fails these checks is reported
-// on every tick until the files change.
+// Periodic checks apply new content after two of them read it unchanged (see
+// stableRead), i.e. within two refresh periods. Content that fails to load or
+// validate is logged and the previous one is kept.
 func (p *GrpcServerTlsProvider) refresh(ctx context.Context, now time.Time) {
 	for i, config := range p.configs {
 		p.refreshCertificate(ctx, i, config, now)
@@ -204,12 +181,12 @@ func (p *GrpcServerTlsProvider) refreshCertificate(
 
 	pem, err := readServerCertificatePEM(config)
 	if err != nil {
-		p.clearPending(index)
+		p.stableReads[index].reset()
 		p.warnRefreshFailure(ctx, config, err)
 		return
 	}
 
-	switch p.decide(index, pem) {
+	switch p.stableReads[index].observe(p.pems[index], pem) {
 	case stableReadUnchanged:
 		return
 	case stableReadWait:
@@ -231,10 +208,9 @@ func (p *GrpcServerTlsProvider) refreshCertificate(
 		return
 	}
 
+	p.pems[index] = pem
 	p.mutex.Lock()
 	p.certificates[index] = certificate
-	p.pems[index] = pem
-	p.pendingPEMs[index] = nil
 	p.expirations[index].after = certificateChainExpiration(chain)
 	expiration := p.expirations[index]
 	p.mutex.Unlock()
@@ -248,36 +224,6 @@ func (p *GrpcServerTlsProvider) refreshCertificate(
 
 	expiration.expireTsGauge.Set(float64(expiration.after.Unix()))
 	expiration.validityGauge.Set(certificateValidity(expiration.after, now))
-	return
-}
-
-func (p *GrpcServerTlsProvider) decide(
-	index int,
-	pem serverCertificatePEM,
-) stableReadDecision {
-
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	if p.pems[index].equal(pem) {
-		p.pendingPEMs[index] = nil
-		return stableReadUnchanged
-	}
-
-	pending := p.pendingPEMs[index]
-	p.pendingPEMs[index] = &pem
-	if pending == nil || !pending.equal(pem) {
-		return stableReadWait
-	}
-
-	return stableReadApply
-}
-
-func (p *GrpcServerTlsProvider) clearPending(index int) {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	p.pendingPEMs[index] = nil
 }
 
 func (p *GrpcServerTlsProvider) warnRefreshFailure(
@@ -374,11 +320,9 @@ func certificateChainExpiration(chain []*x509.Certificate) time.Time {
 	return expiration
 }
 
-// Checks that every certificate in the chain is valid at |now| and that the
-// chain can be built from the leaf up to the last certificate the same way
-// clients do it: issuer names, signatures, CA and name constraints. The last
-// certificate serves as the trust anchor: the server has no trust store, and
-// whether the chain ends at a trusted root is the client's job anyway.
+// Checks that every certificate is valid at |now| and the chain can be built
+// up to its last certificate. Whether that certificate is trusted is not
+// checked: that is the client's job.
 func validateCertificateChain(
 	chain []*x509.Certificate,
 	now time.Time,
@@ -445,7 +389,7 @@ func readServerCertificatePEM(
 		)
 	}
 
-	return serverCertificatePEM{cert: certPEM, key: keyPEM}, nil
+	return serverCertificatePEM{cert: string(certPEM), key: string(keyPEM)}, nil
 }
 
 // Parses a certificate with its private key and the whole chain. The returned
@@ -455,7 +399,7 @@ func parseServerCertificate(
 	pem serverCertificatePEM,
 ) (tls.Certificate, []*x509.Certificate, error) {
 
-	certificate, err := tls.X509KeyPair(pem.cert, pem.key)
+	certificate, err := tls.X509KeyPair([]byte(pem.cert), []byte(pem.key))
 	if err != nil {
 		return tls.Certificate{}, nil, fmt.Errorf(
 			"failed to load cert file %v: %w",

@@ -1,7 +1,6 @@
 package common
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -29,13 +28,12 @@ type grpcClientTlsProvider struct {
 	rootCertsFile    string
 	fingerprintGauge metrics.Gauge
 
+	// Used by the refreshing goroutine only.
+	rootCerts  string
+	stableRead stableRead[string]
+
 	mutex     sync.RWMutex
-	rootCerts []byte
 	tlsConfig *tls.Config
-	// Content that differs from rootCerts and has been read once, see
-	// stableReadDecision.
-	pendingRootCerts    []byte
-	hasPendingRootCerts bool
 }
 
 // A provider is not created for insecure clients or when system roots are used.
@@ -77,7 +75,7 @@ func NewGrpcClientTlsProvider(
 		return nil, err
 	}
 
-	provider.rootCerts = rootCerts
+	provider.rootCerts = string(rootCerts)
 	provider.tlsConfig = tlsConfig
 	provider.fingerprintGauge.Set(float64(rootCertsFingerprint(rootCerts)))
 
@@ -115,20 +113,18 @@ func (p *grpcClientTlsProvider) refreshLoop(
 	}
 }
 
-// Reloads root certificates from disk. New content is applied only after it
-// has been read unchanged twice in a row, a read error restarts the count. The
-// last successfully loaded config is kept if the file cannot be read or
-// parsed; new content that fails to parse is reported on every tick until the
-// file changes.
+// Periodic checks apply new content after two of them read it unchanged (see
+// stableRead), i.e. within two refresh periods. Content that fails to load or
+// parse is logged and the previous one is kept.
 func (p *grpcClientTlsProvider) refresh(ctx context.Context) {
 	rootCerts, err := os.ReadFile(p.rootCertsFile)
 	if err != nil {
-		p.clearPending()
+		p.stableRead.reset()
 		p.warnRefreshFailure(ctx, err)
 		return
 	}
 
-	switch p.decide(rootCerts) {
+	switch p.stableRead.observe(p.rootCerts, string(rootCerts)) {
 	case stableReadUnchanged:
 		return
 	case stableReadWait:
@@ -146,11 +142,9 @@ func (p *grpcClientTlsProvider) refresh(ctx context.Context) {
 		return
 	}
 
+	p.rootCerts = string(rootCerts)
 	p.mutex.Lock()
-	p.rootCerts = rootCerts
 	p.tlsConfig = tlsConfig
-	p.pendingRootCerts = nil
-	p.hasPendingRootCerts = false
 	p.mutex.Unlock()
 
 	fingerprint := rootCertsFingerprint(rootCerts)
@@ -162,36 +156,6 @@ func (p *grpcClientTlsProvider) refresh(ctx context.Context) {
 	)
 
 	p.fingerprintGauge.Set(float64(fingerprint))
-	return
-}
-
-func (p *grpcClientTlsProvider) decide(rootCerts []byte) stableReadDecision {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	if bytes.Equal(p.rootCerts, rootCerts) {
-		p.pendingRootCerts = nil
-		p.hasPendingRootCerts = false
-		return stableReadUnchanged
-	}
-
-	stable := p.hasPendingRootCerts &&
-		bytes.Equal(p.pendingRootCerts, rootCerts)
-	p.pendingRootCerts = rootCerts
-	p.hasPendingRootCerts = true
-	if !stable {
-		return stableReadWait
-	}
-
-	return stableReadApply
-}
-
-func (p *grpcClientTlsProvider) clearPending() {
-	p.mutex.Lock()
-	defer p.mutex.Unlock()
-
-	p.pendingRootCerts = nil
-	p.hasPendingRootCerts = false
 }
 
 func (p *grpcClientTlsProvider) warnRefreshFailure(
