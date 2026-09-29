@@ -422,6 +422,8 @@ NProto::TError ToPartitionRequests<TEvVolume::TDescribeBlocksMethod>(
         (*requests)[i].Event->Record.SetBlocksCount(blocksCount);
         (*requests)[i].Event->Record.SetCheckpointId(proto.GetCheckpointId());
         (*requests)[i].Event->Record.SetIndexOnly(proto.GetIndexOnly());
+        (*requests)[i].Event->Record.SetSupportedBlobFormatVersion(
+            proto.GetSupportedBlobFormatVersion());
     }
 
     return MakeError(S_OK);

@@ -1,5 +1,8 @@
 #include "actor_describe_base_disk_blocks.h"
 
+#include <cloud/blockstore/libs/storage/partition/model/merged_blob_compression.h>
+#include <cloud/blockstore/libs/storage/partition/model/merged_blob_compression_policy.h>
+
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 
@@ -89,6 +92,8 @@ void TDescribeBaseDiskBlocksActor::DescribeBlocks(const TActorContext& ctx)
     request->Record.SetBlocksCount(BaseDiskBlocksRange.Size());
     request->Record.SetDiskId(BaseDiskId);
     request->Record.SetCheckpointId(BaseDiskCheckpointId);
+    request->Record.SetSupportedBlobFormatVersion(
+        LegacyOnly ? 0 : NPartition::MergedBlobCompressionVersion);
     request->Record.SetBlocksCountToRead(
         CountIf(BlockMarks, [](const auto& mark)
             { return std::holds_alternative<TEmptyMark>(mark); }));
@@ -133,7 +138,36 @@ NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
     }
 
     for (const auto& piece: record.GetBlobPieces()) {
+        const auto blobId = LogoBlobIDFromLogoBlobID(piece.GetBlobId());
+        if (piece.HasCompression()) {
+            if (LegacyOnly) {
+                NPartition::ReportMergedBlobCompatibilityRejection();
+                return MakeError(E_IO, "Compressed blob in legacy DescribeBlocks");
+            }
+            auto error = NPartition::ValidateMergedBlobCompression(
+                piece.GetCompression(), blobId.BlobSize(), BlockSize);
+            if (HasError(error)) {
+                return error;
+            }
+            if (ui64(piece.GetLogicalBlocks()) * BlockSize !=
+                piece.GetCompression().GetLogicalSize())
+            {
+                return MakeError(E_IO, "Invalid DescribeBlocks logical length");
+            }
+        } else if (piece.GetLogicalBlocks() &&
+                   ui64(piece.GetLogicalBlocks()) * BlockSize != blobId.BlobSize())
+        {
+            return MakeError(E_IO, "Missing DescribeBlocks compression metadata");
+        }
+        const ui64 logicalBlocks = piece.HasCompression()
+            ? piece.GetLogicalBlocks() : blobId.BlobSize() / BlockSize;
         for (const auto& range: piece.GetRanges()) {
+            if (!range.GetBlocksCount() ||
+                ui64(range.GetBlobOffset()) + range.GetBlocksCount() > logicalBlocks ||
+                ui64(range.GetBlobOffset()) + range.GetBlocksCount() > Max<ui16>())
+            {
+                return MakeError(E_IO, "Invalid DescribeBlocks logical offsets");
+            }
             const auto blockRange = TBlockRange64::WithLength(
                 range.GetBlockIndex(),
                 range.GetBlocksCount());
@@ -179,6 +213,12 @@ void TDescribeBaseDiskBlocksActor::ProcessDescribeBlocksResponse(
     for (const auto& piece: record.GetBlobPieces()) {
         const auto& blobId = LogoBlobIDFromLogoBlobID(piece.GetBlobId());
         const ui32 group = piece.GetBSGroupId();
+        TMergedBlobFormat format;
+        format.LogicalBlocks = piece.GetLogicalBlocks();
+        if (piece.HasCompression()) {
+            format.Compression = std::make_shared<NProto::TBlobCompression>(
+                piece.GetCompression());
+        }
 
         for (const auto& range: piece.GetRanges()) {
             for (size_t i = 0; i < range.GetBlocksCount(); ++i) {
@@ -191,7 +231,8 @@ void TDescribeBaseDiskBlocksActor::ProcessDescribeBlocksResponse(
                         blobId,
                         blockIndex,
                         group,
-                        blobOffset);
+                        blobOffset,
+                        format);
                 }
             }
         }
@@ -207,7 +248,21 @@ void TDescribeBaseDiskBlocksActor::HandleDescribeBlocksResponse(
     if (auto error = msg->GetError();
         FAILED(error.GetCode()))
     {
+        if (error.GetCode() == E_NOT_IMPLEMENTED) {
+            NPartition::ReportMergedBlobCompatibilityRejection();
+        }
         return ReplyAndDie(ctx, std::move(error));
+    }
+
+    if (!LegacyOnly &&
+        msg->Record.GetBlobFormatVersion() != NPartition::MergedBlobCompressionVersion)
+    {
+        // An old provider or intermediate merger can drop the format fields.
+        // Retry explicitly raw-only; upgraded providers then reject compressed
+        // pieces instead of allowing encoded bytes to be consumed as blocks.
+        LegacyOnly = true;
+        DescribeBlocks(ctx);
+        return;
     }
 
     if (auto error = ValidateDescribeBlocksResponse(msg->Record);

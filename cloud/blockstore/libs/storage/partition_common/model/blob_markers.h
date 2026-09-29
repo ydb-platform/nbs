@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/blockstore/libs/storage/model/merged_blob_format.h>
+
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 
@@ -40,15 +42,18 @@ struct TBlobMark
     TBlobMark(
             const NKikimr::TLogoBlobID& blobId,
             ui32 bSGroupId,
-            ui16 blobOffset)
+            ui16 blobOffset,
+            TMergedBlobFormat format = {})
         : BlobId(blobId)
         , BSGroupId(bSGroupId)
         , BlobOffset(blobOffset)
+        , Format(std::move(format))
     {}
 
     NKikimr::TLogoBlobID BlobId;
     ui32 BSGroupId;
     ui16 BlobOffset;
+    TMergedBlobFormat Format;
 };
 
 struct TBlobMarkOnBaseDisk {
@@ -56,16 +61,19 @@ struct TBlobMarkOnBaseDisk {
     ui64 BlockIndex;
     ui32 BSGroupId;
     ui16 BlobOffset;
+    TMergedBlobFormat Format;
 
     TBlobMarkOnBaseDisk(
             const NKikimr::TLogoBlobID& blobId,
             ui64 blockIndex,
             ui32 bSGroupId,
-            ui16 blobOffset)
+            ui16 blobOffset,
+            TMergedBlobFormat format = {})
         : BlobId(blobId)
         , BlockIndex(blockIndex)
         , BSGroupId(bSGroupId)
         , BlobOffset(blobOffset)
+        , Format(std::move(format))
     {}
 };
 

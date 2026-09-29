@@ -244,6 +244,7 @@ public:
         TVector<ui64> Requests; // block indices, ui64 needed for integration
                                 // with sglist-related code
         ui32 GroupId = 0;
+        TMergedBlobFormat Format;
 
         TBatchRequest() = default;
 
@@ -253,13 +254,15 @@ public:
                 TVector<ui16> blobOffsets,
                 TVector<ui32> checksums,
                 TVector<ui64> requests,
-                ui32 groupId)
+                ui32 groupId,
+                TMergedBlobFormat format)
             : BlobId(blobId)
             , Proxy(proxy)
             , BlobOffsets(std::move(blobOffsets))
             , Checksums(std::move(checksums))
             , Requests(std::move(requests))
             , GroupId(groupId)
+            , Format(std::move(format))
         {}
     };
 
@@ -432,11 +435,13 @@ void TReadBlocksActor::ReadBlocks(
                     std::move(current.BlobOffsets),
                     std::move(current.Checksums),
                     std::move(current.Requests),
-                    current.GroupId);
+                    current.GroupId,
+                    current.Format);
             }
             current.BlobId = r.BlobId;
             current.Proxy = r.BSProxy;
             current.GroupId = r.GroupId;
+            current.Format = r.Format;
         }
 
         current.BlobOffsets.push_back(r.BlobOffset);
@@ -451,7 +456,8 @@ void TReadBlocksActor::ReadBlocks(
             std::move(current.BlobOffsets),
             std::move(current.Checksums),
             std::move(current.Requests),
-            current.GroupId);
+            current.GroupId,
+            current.Format);
     }
 
     for (ui32 batchIndex = batchRequestsOldSize;
@@ -470,6 +476,7 @@ void TReadBlocksActor::ReadBlocks(
             false,           // async
             TInstant::Max(), // deadline
             ChecksumsEnabled);
+        request->Format = batch.Format;
 
         if (!RequestInfo->CallContext->LWOrbit.Fork(request->CallContext->LWOrbit)) {
             LWTRACK(
@@ -669,7 +676,8 @@ void TReadBlocksActor::HandleDescribeBlocksCompleted(
                 value.BlobOffset,
                 value.BlockIndex,
                 value.BSGroupId,
-                0 /* checksum */);
+                0 /* checksum */,
+                value.Format);
         }
     }
 
@@ -790,6 +798,16 @@ public:
         const TPartialBlobId& blobId,
         ui16 blobOffset) override
     {
+        return VisitMerged(blockIndex, commitId, blobId, blobOffset, {});
+    }
+
+    bool VisitMerged(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        const TMergedBlobFormat& format) override
+    {
         if (Args.Interrupted) {
             return false;
         }
@@ -800,7 +818,7 @@ public:
             const ui32 group = TabletInfo.GroupFor(
                 blobId.Channel(), blobId.Generation());
             const auto logoBlobId = MakeBlobId(TabletInfo.TabletID, blobId);
-            blockMark = TBlobMark(logoBlobId, group, blobOffset);
+            blockMark = TBlobMark(logoBlobId, group, blobOffset, format);
         }
 
         if (Args.MarkBlock(blockIndex, commitId, std::move(blockMark))) {
@@ -1247,7 +1265,8 @@ void TPartitionActor::CompleteReadBlocks(
                 value.BlobOffset,
                 blockIndex,
                 value.BSGroupId,
-                checksum);
+                checksum,
+                value.Format);
         }
         ++blockIndex;
     }

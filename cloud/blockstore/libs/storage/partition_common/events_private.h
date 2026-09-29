@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/blockstore/libs/storage/model/merged_blob_format.h>
+
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
@@ -95,6 +97,7 @@ struct TEvPartitionCommonPrivate
         bool Async = false;
         TInstant Deadline;
         bool ShouldCalculateChecksums = false;
+        TMergedBlobFormat Format;
 
         TReadBlobRequest() = default;
 
@@ -130,6 +133,7 @@ struct TEvPartitionCommonPrivate
     {
         NKikimr::TLogoBlobID BlobId;
         ui32 BytesCount = 0;
+        TMergedBlobCompressionStats CompressionStats;
         TDuration RequestTime;
         ui32 GroupId = 0;
         bool DeadlineSeen = false;
@@ -261,6 +265,8 @@ struct TEvPartitionCommonPrivate
         // BlockSize is used to calculate checksums. If it's 0, checksums won't
         // be calculated.
         const ui32 BlockSizeForChecksums;
+        bool IsCompressed = false;
+        TMergedBlobCompressionStats CompressionStats;
         const bool Async;
         const TInstant Deadline;
 

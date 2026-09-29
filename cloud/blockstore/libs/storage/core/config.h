@@ -752,6 +752,17 @@ public:
     bool GetAddingUnconfirmedBlobsEnabled() const;
 
     ui32 GetBlobCompressionRate() const;
+    ui32 GetCompactionMergedBlobCompressionPercentage() const;
+    ui32 GetDirectMergedBlobCompressionPercentage() const;
+    TString GetMergedBlobCompressionCodec() const;
+    ui32 GetMergedBlobCompressionChunkSize() const;
+    ui32 GetMergedBlobCompressionMinSavingsPercentage() const;
+
+    bool IsMergedBlobCompressionFeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TString GetBlobCompressionCodec() const;
 
     bool GetSerialNumberValidationEnabled() const;

@@ -129,26 +129,22 @@ public:
     void WriteMergedBlocks(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
-        const TBlockMask& skipMask);
+        const TBlockMask& skipMask,
+        const NProto::TBlobCompression* compression = nullptr);
 
     void DeleteMergedBlocks(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange);
 
     bool FindMergedBlocks(
-        IBlocksIndexVisitor& visitor,
-        IBlobsVisitor& blobsVisitor,
-        const TBlockRange32& readRange,
-        bool precharge,
-        ui32 maxBlocksInBlob,
-        ui64 maxCommitId = Max());
+        IBlocksIndexVisitor& visitor, IBlobsVisitor& blobsVisitor,
+        const TBlockRange32& readRange, bool precharge, ui32 maxBlocksInBlob,
+        ui64 maxCommitId = Max(), bool verifyRawBlobMeta = false);
 
-    bool FindMergedBlocks(
-        IBlocksIndexVisitor& visitor,
-        const TBlockRange32& readRange,
-        bool precharge,
-        ui32 maxBlocksInBlob,
-        ui64 maxCommitId = Max());
+    bool FindMergedBlocks(IBlocksIndexVisitor& visitor,
+                          const TBlockRange32& readRange, bool precharge,
+                          ui32 maxBlocksInBlob, ui64 maxCommitId = Max(),
+                          bool verifyRawBlobMeta = false);
 
     bool FindMergedBlocks(
         IBlocksIndexVisitor& visitor,
@@ -247,7 +243,8 @@ public:
     // CleanupQueue
     //
 
-    void WriteCleanupQueue(const TPartialBlobId& blobId, ui64 commitId);
+    void WriteCleanupQueue(
+        const TPartialBlobId& blobId, ui64 commitId, ui32 logicalBlocks = 0);
     void DeleteCleanupQueue(const TPartialBlobId& blobId, ui64 commitId);
 
     bool ReadCleanupQueue(TVector<TCleanupQueueItem>& items);

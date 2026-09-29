@@ -189,6 +189,20 @@ message TPartitionMeta
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Version 1: independent raw LZ4 chunks concatenated without framing.
+// Absence is legacy raw; a present empty message is invalid.
+message TBlobCompression
+{
+    uint32 Version = 1;
+    uint32 Codec = 2;
+    uint32 LogicalSize = 3;
+    uint32 ChunkSize = 4;
+    repeated uint32 ChunkSizes = 5;
+    // Integrity of encoded chunks, independent of optional block checksums.
+    repeated fixed32 ChunkChecksums = 6;
+    uint32 BlockSize = 7;
+}
+
 message TBlobMeta
 {
     message TMixedBlocks
@@ -216,6 +230,8 @@ message TBlobMeta
     // verification doesn't work for actual zero checksums.
     reserved 3;
     repeated uint32 BlockChecksums = 4;
+
+    TBlobCompression Compression = 5;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

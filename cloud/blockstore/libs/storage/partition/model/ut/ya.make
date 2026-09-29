@@ -16,6 +16,7 @@ SRCS(
     fresh_blob_ut.cpp
     garbage_queue_ut.cpp
     group_downtimes_ut.cpp
+    merged_blob_compression_ut.cpp
     mixed_blocks_filter_ut.cpp
     mixed_blocks_filter_load_state_ut.cpp
     mixed_index_cache_ut.cpp

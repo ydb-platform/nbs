@@ -1725,4 +1725,10 @@ message TStorageServiceConfig
 
     // Track concurrent writes when updating compaction range statistics.
     optional bool CompactionStatsTrackerEnabled = 537;
+    // Physical Merged compression. Writers are opt-in; readers are unconditional.
+    optional uint32 CompactionMergedBlobCompressionPercentage = 538;
+    optional uint32 DirectMergedBlobCompressionPercentage = 539;
+    optional string MergedBlobCompressionCodec = 540;
+    optional uint32 MergedBlobCompressionChunkSize = 541;
+    optional uint32 MergedBlobCompressionMinSavingsPercentage = 542;
 }

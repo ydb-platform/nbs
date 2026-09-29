@@ -46,7 +46,7 @@ struct TRangeCompactionInfo
 {
     const TBlockRange32 BlockRange;
     const TPartialBlobId OriginalBlobId;
-    const TPartialBlobId DataBlobId;
+    TPartialBlobId DataBlobId;
     const TBlockMask DataBlobSkipMask;
     const TPartialBlobId ZeroBlobId;
     const TBlockMask ZeroBlobSkipMask;
@@ -57,6 +57,11 @@ struct TRangeCompactionInfo
     TVector<std::optional<ui32>> BlockChecksums;
     const EChannelDataKind ChannelDataKind;
 
+    bool Compress = false;
+    TMergedBlobCompressionStats CompressionStats;
+    ui32 MinSavingsPercentage = 10;
+    std::shared_ptr<const NProto::TBlobCompression> Compression;
+    TGuardedBuffer<TString> Encoded;
     TGuardedBuffer<TBlockBuffer> BlobContent;
     TVector<ui32> ZeroBlocks;
     TAffectedBlobs AffectedBlobs;
@@ -162,6 +167,7 @@ void CompleteRangeCompaction(
     TTxPartition::TRangeCompaction& args,
     TVector<TBlobCompactionRequest>& requests,
     TVector<TRangeCompactionInfo>& rangeCompactionInfos,
-    ui32 maxDiffPercentageForBlobPatching);
+    ui32 maxDiffPercentageForBlobPatching,
+    bool compressionSelected = false);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

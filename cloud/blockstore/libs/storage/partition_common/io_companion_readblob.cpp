@@ -98,6 +98,9 @@ void TIOCompanion::HandleReadBlobCompleted(
         GetCycleCount());
 
     Actors.Erase(ev->Sender);
+    PartCounters->Access([&](auto& counters) {
+        msg->CompressionStats.Publish(counters->Cumulative);
+    });
 
     const ui64 blobTabletId = msg->BlobId.TabletID();
 
@@ -179,7 +182,13 @@ void TIOCompanion::HandleReadBlobCompleted(
                 { counters->Simple.ReadBlobDeadlineCount.Increment(1); });
         }
 
-        if (++ReadBlobErrorCount >= Config->GetMaxReadBlobErrorsBeforeSuicide())
+        // Admission pressure and released buffers are local to the request.
+        // BlobStorage failures also return E_REJECTED, so keep counting them.
+        const bool localFailure =
+            msg->GetStatus() == E_CANCELLED ||
+            msg->CompressionStats.ReadAdmissionRejected;
+        if (!localFailure &&
+            ++ReadBlobErrorCount >= Config->GetMaxReadBlobErrorsBeforeSuicide())
         {
             ReportTabletBSFailure(
                 PartitionConfig.GetDiskId(),

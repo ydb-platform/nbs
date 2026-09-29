@@ -110,6 +110,9 @@ message TDescribeBlocksRequest
 
     // If true, return only index information (no BlocksContent in FreshBlockRanges).
     bool IndexOnly = 8;
+
+    // Zero accepts legacy raw blobs only. Version 1 understands Compression.
+    uint32 SupportedBlobFormatVersion = 9;
 }
 
 // Represents blocks range with content.
@@ -142,6 +145,9 @@ message TBlobPiece
     // Ranges of consecutive blocks contained in this blob.
     // Required field.
     repeated TRangeInBlob Ranges = 3;
+
+    TBlobCompression Compression = 4;
+    uint32 LogicalBlocks = 5;
 }
 
 message TDescribeBlocksResponse
@@ -153,6 +159,9 @@ message TDescribeBlocksResponse
 
     repeated TFreshBlockRange FreshBlockRanges = 2;
     repeated TBlobPiece BlobPieces = 3;
+
+    // Presence permits a merger to accumulate the minimum of all responses.
+    optional uint32 BlobFormatVersion = 6;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

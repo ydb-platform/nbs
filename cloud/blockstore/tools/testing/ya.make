@@ -12,6 +12,7 @@ RECURSE(
     infra-client
     infra-device-provider
     loadtest
+    merged_blob_compression
     nbd-test
     notify-mock
     pd-metadata-bench

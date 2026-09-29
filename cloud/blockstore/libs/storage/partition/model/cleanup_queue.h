@@ -20,6 +20,7 @@ struct TCleanupQueueItem
     TPartialBlobId BlobId;
     ui64 CommitId = 0;
     NProto::TBlobMeta BlobMeta;
+    ui32 LogicalBlocks = 0; // Zero is legacy physical-size accounting.
 };
 
 ////////////////////////////////////////////////////////////////////////////////

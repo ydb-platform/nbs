@@ -27,6 +27,60 @@ ui32 SafeAdd(ui32 start, ui32 count)
     }
 }
 
+NProto::TBlobMeta ParseBlobMeta(TStringBuf data)
+{
+    NProto::TBlobMeta meta;
+    if (data.size() > Max<int>() ||
+        !meta.ParseFromArray(data.data(), data.size()) ||
+        (!meta.HasMixedBlocks() && !meta.HasMergedBlocks()))
+    {
+        // Discard partially parsed ranges/checksums. Preserve an invalid
+        // compression descriptor so consumers fail closed instead of
+        // interpreting the payload as legacy raw (also without checksums).
+        meta.Clear();
+        meta.MutableCompression();
+    }
+    return meta;
+}
+
+template <typename TRow, typename TDatabase>
+bool ReadMergedFormat(TRow& row, TDatabase& db, const TPartialBlobId& blobId,
+                      const TBlockRange32& range, const TBlockMask& skipMask,
+                      TMergedBlobFormat& format, bool verifyRawBlobMeta = false)
+{
+    using TTable = TPartitionSchema::MergedBlocksIndex;
+    format.Invalid = skipMask.Count() >= range.Size();
+    format.LogicalBlocks = format.Invalid ? 0 : range.Size() - skipMask.Count();
+    const bool hasCompression = row.template HaveValue<TTable::Compression>();
+
+    // Ordinary raw reads need no extra BlobMeta lookup. CheckIndex also checks
+    // the opposite mismatch: Compression present only in the BlobMeta copy.
+    if (!hasCompression && (!verifyRawBlobMeta || IsDeletionMarker(blobId))) {
+        return true;
+    }
+
+    if (hasCompression) {
+        auto compression = std::make_shared<NProto::TBlobCompression>();
+        format.Invalid |= !compression->ParseFromString(
+            row.template GetValue<TTable::Compression>());
+        format.Compression = std::move(compression);
+    }
+
+    TMaybe<NProto::TBlobMeta> meta;
+    if (!db.ReadBlobMeta(blobId, meta)) {
+        return false;
+    }
+    format.Invalid |=
+        !meta || !meta->HasMergedBlocks() ||
+        meta->HasCompression() != hasCompression ||
+        (hasCompression && meta->GetCompression().SerializeAsString() !=
+                               format.Compression->SerializeAsString()) ||
+        meta->GetMergedBlocks().GetStart() != range.Start ||
+        meta->GetMergedBlocks().GetEnd() != range.End ||
+        meta->GetMergedBlocks().GetSkipped() != skipMask.Count();
+    return true;
+}
+
 static constexpr ui32 ScanRangeSize = 100;
 
 TVector<TBlockRange32> SplitInRanges(
@@ -467,7 +521,8 @@ template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
     const TPartialBlobId& blobId,
     const TBlockRange32& blockRange,
-    const TBlockMask& skipMask)
+    const TBlockMask& skipMask,
+    const NProto::TBlobCompression* compression)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
@@ -477,6 +532,12 @@ void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
     value.Update(
         NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start),
         NIceDb::TUpdate<TTable::BlobId>(blobId.UniqueId()));
+    if (compression) {
+        value.Update(NIceDb::TUpdate<TTable::Compression>(
+            compression->SerializeAsString()));
+    } else {
+        value.Update(NIceDb::TNull<TTable::Compression>());
+    }
 
     if (!skipMask.Empty()) {
         value.Update(
@@ -498,12 +559,9 @@ void TPartitionDatabaseImpl<TCounters>::DeleteMergedBlocks(
 
 template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
-    IBlocksIndexVisitor& visitor,
-    IBlobsVisitor& blobsVisitor,
-    const TBlockRange32& readRange,
-    bool precharge,
-    ui32 maxBlocksInBlob,
-    ui64 maxCommitId)
+    IBlocksIndexVisitor& visitor, IBlobsVisitor& blobsVisitor,
+    const TBlockRange32& readRange, bool precharge, ui32 maxBlocksInBlob,
+    ui64 maxCommitId, bool verifyRawBlobMeta)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
@@ -553,7 +611,13 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                 const auto skipMask = BlockMaskFromString(
                     it.template GetValueOrDefault<TTable::SkipMask>());
 
-                if (!blobsVisitor.Visit(range, blobId, skipMask)) {
+                TMergedBlobFormat format;
+                if (!ReadMergedFormat(it, *this, blobId, range, skipMask,
+                                      format, verifyRawBlobMeta))
+                {
+                    return false;
+                }
+                if (!blobsVisitor.VisitMerged(range, blobId, skipMask, format)) {
                     return true;   // interrupted
                 }
 
@@ -580,7 +644,8 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                     }
 
                     if (!visitor
-                             .Visit(blockIndex, commitId, blobId, blobOffset))
+                             .VisitMerged(
+                                 blockIndex, commitId, blobId, blobOffset, format))
                     {
                         return true;   // interrupted
                     }
@@ -600,11 +665,9 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
 
 template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
-    IBlocksIndexVisitor& visitor,
-    const TBlockRange32& readRange,
-    bool precharge,
-    ui32 maxBlocksInBlob,
-    ui64 maxCommitId)
+    IBlocksIndexVisitor& visitor, const TBlockRange32& readRange,
+    bool precharge, ui32 maxBlocksInBlob, ui64 maxCommitId,
+    bool verifyRawBlobMeta)
 {
     struct TNoOpBlobsVisitor final: public IBlobsVisitor
     {
@@ -622,13 +685,8 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
 
     TNoOpBlobsVisitor noOpBlobsVisitor;
 
-    return FindMergedBlocks(
-        visitor,
-        noOpBlobsVisitor,
-        readRange,
-        precharge,
-        maxBlocksInBlob,
-        maxCommitId);
+    return FindMergedBlocks(visitor, noOpBlobsVisitor, readRange, precharge,
+                            maxBlocksInBlob, maxCommitId, verifyRawBlobMeta);
 }
 
 template <typename TCounters>
@@ -681,19 +739,22 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                     const auto skipMask = BlockMaskFromString(
                         it.template GetValueOrDefault<TTable::SkipMask>());
 
-                    ui32 skipped = 0;
-                    for (ui32 blockIndex = range.Start; blockIndex < *start;
-                         ++blockIndex)
+                    TMergedBlobFormat format;
+                    if (!ReadMergedFormat(
+                            it, *this, blobId, range, skipMask, format))
                     {
-                        ui16 pos = blockIndex - range.Start;
-                        skipped += skipMask.Get(pos);
+                        return false;
                     }
-
+                    ui32 skipped = 0;
+                    ui32 examined = 0;
                     for (auto it = start; it != end; ++it) {
                         ui16 pos = *it - range.Start;
-
+                        // Sparse requests still need skipped blocks in the gaps
+                        // when translating a logical index to a blob offset.
+                        while (examined <= pos) {
+                            skipped += skipMask.Get(examined++);
+                        }
                         if (skipMask.Get(pos)) {
-                            ++skipped;
                             continue;
                         }
 
@@ -703,7 +764,9 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                             continue;
                         }
 
-                        if (!visitor.Visit(*it, commitId, blobId, blobOffset)) {
+                        if (!visitor.VisitMerged(
+                                *it, commitId, blobId, blobOffset, format))
+                        {
                             return true;   // interrupted
                         }
                     }
@@ -746,7 +809,7 @@ void TPartitionDatabaseImpl<TCounters>::WriteBlobMeta(
 
     Table<TTable>()
         .Key(blobId.CommitId(), blobId.UniqueId())
-        .template Update<TTable::BlobMeta>(blobMeta);
+        .template Update<TTable::BlobMeta>(blobMeta.SerializeAsString());
 }
 
 template <typename TCounters>
@@ -773,7 +836,7 @@ bool TPartitionDatabaseImpl<TCounters>::ReadBlobMeta(
     }
 
     if (it.IsValid()) {
-        meta = it.template GetValue<TTable::BlobMeta>();
+        meta = ParseBlobMeta(it.template GetValue<TTable::BlobMeta>());
     }
 
     return true;
@@ -877,7 +940,7 @@ bool TPartitionDatabaseImpl<TCounters>::ReadBlobInfo(
 
     blockMask =
         BlockMaskFromString(it.template GetValueOrDefault<TTable::BlockMask>());
-    blobMeta = it.template GetValue<TTable::BlobMeta>();
+    blobMeta = ParseBlobMeta(it.template GetValue<TTable::BlobMeta>());
 
     return true;
 }
@@ -1045,7 +1108,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInBlobsIndex(
             it.template GetValue<TTable::CommitId>(),
             it.template GetValue<TTable::BlobId>());
 
-        auto blobMeta = it.template GetValue<TTable::BlobMeta>();
+        auto blobMeta = ParseBlobMeta(it.template GetValue<TTable::BlobMeta>());
 
         auto blockMask = BlockMaskFromString(
             it.template GetValueOrDefault<TTable::BlockMask>());
@@ -1092,7 +1155,7 @@ bool TPartitionDatabaseImpl<TCounters>::FindBlocksInBlobsIndex(
     }
 
     if (it.IsValid()) {
-        auto blobMeta = it.template GetValue<TTable::BlobMeta>();
+        auto blobMeta = ParseBlobMeta(it.template GetValue<TTable::BlobMeta>());
 
         auto blockMask = BlockMaskFromString(
             it.template GetValueOrDefault<TTable::BlockMask>());
@@ -1150,7 +1213,7 @@ TPartitionDatabaseImpl<TCounters>::FindBlocksInBlobsIndex(
         ui64 commitId = it.template GetValue<TTable::CommitId>();
         ui64 uniqId = it.template GetValue<TTable::BlobId>();
 
-        auto blobMeta = it.template GetValue<TTable::BlobMeta>();
+        auto blobMeta = ParseBlobMeta(it.template GetValue<TTable::BlobMeta>());
 
         auto blockMask = it.template GetValueOrDefault<TTable::BlockMask>();
 
@@ -1430,13 +1493,14 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCheckpoints(
 template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::WriteCleanupQueue(
     const TPartialBlobId& blobId,
-    ui64 commitId)
+    ui64 commitId,
+    ui32 logicalBlocks)
 {
     using TTable = TPartitionSchema::CleanupQueue;
 
     Table<TTable>()
         .Key(commitId, blobId.CommitId(), blobId.UniqueId())
-        .Update();
+        .Update(NIceDb::TUpdate<TTable::LogicalBlocks>(logicalBlocks));
 }
 
 template <typename TCounters>
@@ -1470,7 +1534,11 @@ bool TPartitionDatabaseImpl<TCounters>::ReadCleanupQueue(
             it.template GetValue<TTable::CommitId>(),
             it.template GetValue<TTable::BlobId>());
 
-        items.emplace_back(blobId, commitId);
+        items.push_back({
+            .BlobId = blobId,
+            .CommitId = commitId,
+            .BlobMeta = {},
+            .LogicalBlocks = it.template GetValueOrDefault<TTable::LogicalBlocks>()});
 
         if (!it.Next()) {
             return false;   // not ready
@@ -1536,12 +1604,19 @@ void TPartitionDatabaseImpl<TCounters>::WriteUnconfirmedBlob(
 {
     using TTable = TPartitionSchema::UnconfirmedBlobs;
 
-    // TODO: persist blob checksums (issue-122)
+    NProto::TBlobMeta metadata;
+    if (blob.Compression) {
+        *metadata.MutableCompression() = *blob.Compression;
+    }
+    for (ui32 checksum: blob.Checksums) {
+        metadata.AddBlockChecksums(checksum);
+    }
     Table<TTable>()
         .Key(blobId.CommitId(), blobId.UniqueId())
         .Update(
             NIceDb::TUpdate<TTable::RangeStart>(blob.BlockRange.Start),
-            NIceDb::TUpdate<TTable::RangeEnd>(blob.BlockRange.End));
+            NIceDb::TUpdate<TTable::RangeEnd>(blob.BlockRange.End),
+            NIceDb::TUpdate<TTable::Metadata>(metadata.SerializeAsString()));
 }
 
 template <typename TCounters>
@@ -1572,11 +1647,27 @@ bool TPartitionDatabaseImpl<TCounters>::ReadUnconfirmedBlobs(
             it.template GetValue<TTable::RangeStart>(),
             it.template GetValue<TTable::RangeEnd>());
 
+        NProto::TBlobMeta metadata;
+        std::shared_ptr<const NProto::TBlobCompression> compression;
+        if (it.template HaveValue<TTable::Metadata>()) {
+            if (!metadata.ParseFromString(
+                    it.template GetValue<TTable::Metadata>()))
+            {
+                // Fail closed after reboot: never reinterpret damaged metadata
+                // as an old raw blob.
+                metadata.Clear();
+                metadata.MutableCompression();
+            }
+            if (metadata.HasCompression()) {
+                compression = std::make_shared<NProto::TBlobCompression>(
+                    metadata.GetCompression());
+            }
+        }
+        TVector<ui32> checksums(
+            metadata.GetBlockChecksums().begin(),
+            metadata.GetBlockChecksums().end());
         blobs[commitId].emplace_back(
-            uniqueId,
-            blockRange,
-            TVector<ui32>() /* TODO: checksums */
-        );
+            uniqueId, blockRange, checksums, std::move(compression));
 
         if (!it.Next()) {
             return false;   // not ready

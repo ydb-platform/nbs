@@ -36,6 +36,7 @@ private:
     ui32 BlocksCount = 0;
     TString CheckpointId;
     bool IndexOnly = false;
+    ui32 SupportedBlobFormatVersion = 0;
 
 public:
     TDescribeBlocksActionActor(TRequestInfoPtr requestInfo, TString input);
@@ -103,6 +104,15 @@ void TDescribeBlocksActionActor::Bootstrap(const TActorContext& ctx)
         IndexOnly = input["IndexOnly"].GetBooleanRobust();
     }
 
+    if (input.Has("SupportedBlobFormatVersion")) {
+        const auto version = input["SupportedBlobFormatVersion"].GetUIntegerRobust();
+        if (version > 1) {
+            HandleError(ctx, MakeError(E_ARGUMENT, "Unsupported blob format version"));
+            return;
+        }
+        SupportedBlobFormatVersion = version;
+    }
+
     DescribeBlocks(ctx);
     Become(&TThis::StateWork);
 }
@@ -116,6 +126,7 @@ void TDescribeBlocksActionActor::DescribeBlocks(const TActorContext& ctx)
     request->Record.SetBlocksCount(BlocksCount);
     request->Record.SetCheckpointId(CheckpointId);
     request->Record.SetIndexOnly(IndexOnly);
+    request->Record.SetSupportedBlobFormatVersion(SupportedBlobFormatVersion);
 
     NCloud::Send(
         ctx,

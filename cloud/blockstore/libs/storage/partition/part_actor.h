@@ -329,7 +329,8 @@ private:
         TRequestInfoPtr requestInfo,
         ui64 commitId,
         const TBlockRange32& describeRange,
-        bool indexOnly);
+        bool indexOnly,
+        ui32 supportedBlobFormatVersion);
 
     void FillDescribeBlocksResponse(
         TTxPartition::TDescribeBlocks& args,

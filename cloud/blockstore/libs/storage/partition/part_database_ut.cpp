@@ -1,4 +1,6 @@
 #include "part_database.h"
+
+#include "model/merged_blob_compression.h"
 #include "part_schema.h"
 
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
@@ -469,6 +471,353 @@ Y_UNIT_TEST_SUITE(TPartitionDatabaseTest)
                 UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:2 #2:2 #2:4 #3:4 #4:4 #1:5 #2:5 #3:5 #4:5 #5:5 #4:3 #5:3");
             }
         });
+    }
+
+    Y_UNIT_TEST(ShouldKeepMalformedUnconfirmedMetadataDistinctFromLegacyRaw)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+        const auto range = TBlockRange32::WithLength(0, 8);
+        TPartialBlobId legacyId;
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                legacyId = executor.MakeBlobId(range.Size());
+                db.WriteUnconfirmedBlob(
+                    legacyId, TBlobToConfirm(legacyId.UniqueId(), range, {}));
+            });
+        for (const TString& damaged:
+             {TString("\x12\x80", 2), TString("\xff", 1), TString("\0", 1)})
+        {
+            NProto::TBlobMeta metadata;
+            UNIT_ASSERT(!metadata.ParseFromString(damaged));
+            TPartialBlobId id;
+            executor.WriteTx(
+                [&](TPartitionDatabase db)
+                {
+                    id = executor.MakeBlobId(range.Size());
+                    db.WriteUnconfirmedBlob(
+                        id, TBlobToConfirm(id.UniqueId(), range, {}));
+                    using TTable = TPartitionSchema::UnconfirmedBlobs;
+                    db.Table<TTable>()
+                        .Key(id.CommitId(), id.UniqueId())
+                        .Update(NKikimr::NIceDb::TUpdate<TTable::Metadata>(
+                            damaged));
+                });
+            // A fresh database wrapper/transaction must reconstruct presence
+            // of the invalid descriptor from bytes, not retain an in-memory
+            // one.
+            executor.ReadTx(
+                [&](TPartitionDatabase db)
+                {
+                    TCommitIdToBlobsToConfirm blobs;
+                    UNIT_ASSERT(db.ReadUnconfirmedBlobs(blobs));
+                    UNIT_ASSERT(
+                        !blobs.at(legacyId.CommitId()).at(0).Compression);
+                    const auto& restored = blobs.at(id.CommitId()).at(0);
+                    UNIT_ASSERT_VALUES_EQUAL(restored.UniqueId, id.UniqueId());
+                    UNIT_ASSERT_VALUES_EQUAL(restored.BlockRange, range);
+                    UNIT_ASSERT(restored.Compression);
+                    UNIT_ASSERT(restored.Checksums.empty());
+                    UNIT_ASSERT(HasError(ValidateMergedBlobCompression(
+                        *restored.Compression,
+                        id.BlobSize(), DefaultBlockSize)));
+                });
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPersistCompressedMetadataAndRejectCopyMismatch)
+    {
+        struct TVisitor: IBlocksIndexVisitor {
+            TMergedBlobFormat Format;
+            TVector<ui16> Offsets;
+            bool Visit(ui32, ui64, const TPartialBlobId&, ui16) override { return true; }
+            bool VisitMerged(ui32, ui64, const TPartialBlobId&, ui16 offset,
+                const TMergedBlobFormat& format) override
+            {
+                Format = format;
+                Offsets.push_back(offset);
+                return true;
+            }
+        };
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+        NProto::TBlobMeta meta;
+        meta.MutableMergedBlocks()->SetStart(0);
+        meta.MutableMergedBlocks()->SetEnd(4);
+        meta.MutableMergedBlocks()->SetSkipped(2);
+        TBlockMask skipped;
+        skipped.Set(1);
+        skipped.Set(3);
+        TCompressedMergedBlob compressed;
+        UNIT_ASSERT(!HasError(CompressMergedBlob(
+            TString(3 * DefaultBlockSize, 'x'), DefaultBlockSize, 10, meta, compressed)));
+        UNIT_ASSERT(!compressed.Payload.empty());
+        *meta.MutableCompression() = compressed.Compression;
+        TPartialBlobId id;
+        executor.WriteTx([&](TPartitionDatabase db) {
+            id = TPartialBlobId(0, executor.Step, 3, compressed.Payload.size(), 0, 0);
+            db.WriteMergedBlocks(id, TBlockRange32::WithLength(0, 5), skipped,
+                &compressed.Compression);
+            db.WriteBlobMeta(id, meta);
+            db.WriteUnconfirmedBlob(id, TBlobToConfirm(id.UniqueId(),
+                TBlockRange32::WithLength(0, 3), {11, 22, 33},
+                std::make_shared<NProto::TBlobCompression>(compressed.Compression)));
+            db.WriteCleanupQueue(id, id.CommitId() + 1, 3);
+        });
+        executor.ReadTx([&](TPartitionDatabase db) {
+            TVisitor visitor;
+            UNIT_ASSERT(db.FindMergedBlocks(visitor, TVector<ui32>{0, 4}, MaxBlocksCount));
+            UNIT_ASSERT_VALUES_EQUAL(visitor.Offsets.size(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(visitor.Offsets[0], 0);
+            UNIT_ASSERT_VALUES_EQUAL(visitor.Offsets[1], 2);
+            UNIT_ASSERT(!visitor.Format.Invalid);
+            UNIT_ASSERT(visitor.Format.Compression);
+            UNIT_ASSERT_VALUES_EQUAL(visitor.Format.LogicalBlocks, 3);
+            UNIT_ASSERT_VALUES_EQUAL(visitor.Format.Compression->SerializeAsString(),
+                compressed.Compression.SerializeAsString());
+            TCommitIdToBlobsToConfirm unconfirmed;
+            UNIT_ASSERT(db.ReadUnconfirmedBlobs(unconfirmed));
+            const auto& restored = unconfirmed.at(id.CommitId()).at(0);
+            UNIT_ASSERT_VALUES_EQUAL(restored.UniqueId, id.UniqueId());
+            UNIT_ASSERT_VALUES_EQUAL(restored.Checksums.size(), 3);
+            UNIT_ASSERT_VALUES_EQUAL(restored.Checksums[2], 33);
+            UNIT_ASSERT(restored.Compression);
+            UNIT_ASSERT_VALUES_EQUAL(restored.Compression->SerializeAsString(),
+                compressed.Compression.SerializeAsString());
+            TVector<TCleanupQueueItem> items;
+            UNIT_ASSERT(db.ReadCleanupQueue(items));
+            UNIT_ASSERT_VALUES_EQUAL(items.size(), 1);
+            TCleanupQueue queue(DefaultBlockSize);
+            UNIT_ASSERT(queue.Add(items));
+            UNIT_ASSERT_VALUES_EQUAL(queue.GetQueueBlocks(), 3);
+            UNIT_ASSERT_VALUES_EQUAL(queue.GetQueueBytes(), compressed.Payload.size());
+            UNIT_ASSERT(queue.Remove({id, id.CommitId() + 1, {}, 0}));
+            UNIT_ASSERT_VALUES_EQUAL(queue.GetQueueBlocks(), 0);
+        });
+        executor.WriteTx([&](TPartitionDatabase db) {
+            meta.MutableCompression()->SetCodec(99);
+            db.WriteBlobMeta(id, meta);
+        });
+        executor.ReadTx([&](TPartitionDatabase db) {
+            TVisitor visitor;
+            UNIT_ASSERT(db.FindMergedBlocks(visitor, TVector<ui32>{0, 4}, MaxBlocksCount));
+            UNIT_ASSERT(visitor.Format.Invalid);
+        });
+        executor.WriteTx([&](TPartitionDatabase db) {
+            NProto::TBlobCompression empty;
+            *meta.MutableCompression() = empty;
+            db.WriteBlobMeta(id, meta);
+            db.WriteMergedBlocks(id, TBlockRange32::WithLength(0, 5), skipped, &empty);
+        });
+        executor.ReadTx([&](TPartitionDatabase db) {
+            TVisitor visitor;
+            UNIT_ASSERT(db.FindMergedBlocks(visitor, TVector<ui32>{0}, MaxBlocksCount));
+            UNIT_ASSERT(visitor.Format.Compression);
+            UNIT_ASSERT(HasError(ValidateMergedBlobCompression(
+                *visitor.Format.Compression, id.BlobSize(), DefaultBlockSize)));
+        });
+    }
+
+    Y_UNIT_TEST(ShouldRejectMalformedDurableBlobMetadata)
+    {
+        struct TVisitor final: IBlocksIndexVisitor
+        {
+            ui32 Count = 0;
+
+            bool Visit(ui32, ui64, const TPartialBlobId&, ui16) override
+            {
+                UNIT_FAIL("Invalid metadata must retain merged format");
+                return false;
+            }
+
+            bool VisitMerged(
+                ui32,
+                ui64,
+                const TPartialBlobId&,
+                ui16, const TMergedBlobFormat& format) override
+            {
+                UNIT_ASSERT(format.Invalid);
+                UNIT_ASSERT(format.Compression);
+                ++Count;
+                return true;
+            }
+        };
+
+        struct TBlobVisitor final: IBlobsIndexVisitor
+        {
+            ui32 Count = 0;
+
+            bool Visit(
+                ui64, ui64, const NProto::TBlobMeta& meta, TStringBuf) override
+            {
+                UNIT_ASSERT(meta.HasCompression());
+                UNIT_ASSERT(!meta.HasMergedBlocks());
+                UNIT_ASSERT(!meta.HasMixedBlocks());
+                ++Count;
+                return true;
+            }
+        };
+
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+        const auto range = TBlockRange32::WithLength(0, 8);
+        NProto::TBlobMeta meta;
+        meta.MutableMergedBlocks()->SetStart(range.Start);
+        meta.MutableMergedBlocks()->SetEnd(range.End);
+        TCompressedMergedBlob compressed;
+        UNIT_ASSERT(!HasError(CompressMergedBlob(
+            TString(range.Size() * DefaultBlockSize, 'x'),
+            DefaultBlockSize, 10, meta, compressed)));
+        UNIT_ASSERT(!compressed.Payload.empty());
+        *meta.MutableCompression() = compressed.Compression;
+        TString truncated = meta.SerializeAsString();
+        truncated.pop_back();
+        NProto::TBlobMeta parsed;
+        UNIT_ASSERT(!parsed.ParseFromString(truncated));
+        for (const TString& damaged:
+             {truncated, TString("\xff", 1), TString("\0", 1), TString{}})
+        {
+            TPartialBlobId id;
+            executor.WriteTx(
+                [&](TPartitionDatabase db)
+                {
+                    id = TPartialBlobId(
+                        0, executor.Step, 3, compressed.Payload.size(), 0, 0);
+                    db.WriteMergedBlocks(
+                        id,
+                        range,
+                        {}, &compressed.Compression);
+                    db.WriteBlobMeta(id, meta);
+                    using TTable = TPartitionSchema::BlobsIndex;
+                    db.Table<TTable>()
+                        .Key(id.CommitId(), id.UniqueId())
+                        .Update(NKikimr::NIceDb::TUpdate<TTable::BlobMeta>(
+                            damaged));
+                });
+            executor.ReadTx(
+                [&](TPartitionDatabase db)
+                {
+                    TMaybe<NProto::TBlobMeta> restored;
+                    UNIT_ASSERT(db.ReadBlobMeta(id, restored));
+                    UNIT_ASSERT(restored);
+                    UNIT_ASSERT(restored->HasCompression());
+                    UNIT_ASSERT(!restored->HasMergedBlocks());
+                    UNIT_ASSERT(!restored->HasMixedBlocks());
+                    UNIT_ASSERT_VALUES_EQUAL(restored->BlockChecksumsSize(), 0);
+                    UNIT_ASSERT(HasError(ValidateMergedBlobCompression(
+                        restored->GetCompression(),
+                        id.BlobSize(), DefaultBlockSize)));
+                    TMaybe<TBlockMask> mask;
+                    restored.Clear();
+                    UNIT_ASSERT(db.ReadBlobInfo(id, mask, restored));
+                    UNIT_ASSERT(restored && restored->HasCompression());
+                    TVisitor visitor;
+                    UNIT_ASSERT(db.FindMergedBlocks(
+                        visitor,
+                        TVector<ui32>{0, 7}, MaxBlocksCount));
+                    UNIT_ASSERT(visitor.Count >= 2);
+                    TTestBlockVisitorWithBlobOffset blocks;
+                    UNIT_ASSERT(
+                        db.FindBlocksInBlobsIndex(blocks, MaxBlocksCount, id));
+                    UNIT_ASSERT(blocks.Result.empty());
+                    UNIT_ASSERT(db.FindBlocksInBlobsIndex(
+                        blocks, MaxBlocksCount, range));
+                    UNIT_ASSERT(blocks.Result.empty());
+                    TBlobVisitor blobs;
+                    db.FindBlocksInBlobsIndex(blobs, id, id, 1);
+                    UNIT_ASSERT_VALUES_EQUAL(blobs.Count, 1);
+                });
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCheckBothMergedCompressionCopies)
+    {
+        for (bool indexCompression: {false, true}) {
+            for (bool metaCompression: {false, true}) {
+                struct TVisitor final: IBlocksIndexVisitor
+                {
+                    TMergedBlobFormat Format;
+                    TVector<ui16> Offsets;
+
+                    bool Visit(ui32, ui64, const TPartialBlobId&, ui16) override
+                    {
+                        return true;
+                    }
+
+                    bool VisitMerged(ui32, ui64, const TPartialBlobId&,
+                                     ui16 offset,
+                                     const TMergedBlobFormat& format) override
+                    {
+                        Format = format;
+                        Offsets.push_back(offset);
+                        return true;
+                    }
+                };
+
+                TTestExecutor executor;
+                executor.WriteTx([](TPartitionDatabase db)
+                                 { db.InitSchema(); });
+                const auto range = TBlockRange32::WithLength(0, 5);
+                TBlockMask skipped;
+                skipped.Set(1);
+                skipped.Set(3);
+                NProto::TBlobMeta meta;
+                meta.MutableMergedBlocks()->SetStart(range.Start);
+                meta.MutableMergedBlocks()->SetEnd(range.End);
+                meta.MutableMergedBlocks()->SetSkipped(skipped.Count());
+                TCompressedMergedBlob compressed;
+                UNIT_ASSERT(!HasError(CompressMergedBlob(
+                    TString(3 * DefaultBlockSize, 'x'), DefaultBlockSize, 10,
+                    meta, compressed)));
+                UNIT_ASSERT(!compressed.Payload.empty());
+                if (metaCompression) {
+                    *meta.MutableCompression() = compressed.Compression;
+                }
+
+                executor.WriteTx(
+                    [&](TPartitionDatabase db)
+                    {
+                        const TPartialBlobId id(
+                            0,
+                            executor.Step,
+                            3,
+                            indexCompression && metaCompression
+                                ? compressed.Payload.size()
+                                : 3 * DefaultBlockSize, 0, 0);
+                        db.WriteMergedBlocks(
+                            id,
+                            range,
+                            skipped,
+                            indexCompression ? &compressed.Compression
+                                             : nullptr);
+                        db.WriteBlobMeta(id, meta);
+                    });
+
+                executor.ReadTx(
+                    [&](TPartitionDatabase db)
+                    {
+                        TVisitor visitor;
+                        UNIT_ASSERT(db.FindMergedBlocks(
+                            visitor,
+                            range,
+                            true,   // precharge
+                            MaxBlocksCount, Max<ui64>(),
+                            true));   // verifyRawBlobMeta
+                        UNIT_ASSERT_VALUES_EQUAL(visitor.Offsets.size(), 3);
+                        for (ui16 i = 0; i < visitor.Offsets.size(); ++i) {
+                            UNIT_ASSERT_VALUES_EQUAL(visitor.Offsets[i], i);
+                        }
+                        UNIT_ASSERT_VALUES_EQUAL(visitor.Format.LogicalBlocks,
+                                                 3);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            bool(visitor.Format.Compression), indexCompression);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            visitor.Format.Invalid,
+                            indexCompression != metaCompression);
+                    });
+            }
+        }
     }
 
     Y_UNIT_TEST(ShouldFindMergedBlocks)

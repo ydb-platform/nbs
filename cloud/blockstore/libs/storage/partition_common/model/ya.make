@@ -8,6 +8,7 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/blockstore/libs/storage/model
     cloud/blockstore/public/api/protos
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/protos_ydb

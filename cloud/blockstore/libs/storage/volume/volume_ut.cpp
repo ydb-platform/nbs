@@ -4962,6 +4962,63 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldPreserveCompressedFormatThroughStripedVolumeRequests)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetWriteBlobThreshold(1);
+        config.SetDirectMergedBlobCompressionPercentage(100);
+        config.SetCompactionMergedBlobCompressionPercentage(100);
+        config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(1_GB);
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        NProto::TFeaturesConfig features;
+        auto* feature = features.AddFeatures();
+        feature->SetName("MergedBlobCompression");
+        feature->MutableWhitelist()->AddEntityIds("vol0");
+        auto runtime = PrepareTestActorRuntime(config, {}, features);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0, 0, 0, 0, false, 1, NProto::STORAGE_MEDIA_HDD,
+            8192, "vol0", "cloud", "folder", 2, 2);
+        volume.WaitReady();
+        auto client = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE, NProto::VOLUME_MOUNT_LOCAL, 0);
+        volume.AddClient(client);
+        const auto range = TBlockRange64::WithLength(1, 2048);
+        volume.WriteBlocks(range, client.GetClientId(), 'X');
+        for (ui32 capability: {0u, 1u}) {
+            auto request = volume.CreateDescribeBlocksRequest(range, client.GetClientId());
+            request->Record.SetSupportedBlobFormatVersion(capability);
+            volume.SendToPipe(std::move(request));
+            auto response = volume.RecvResponse<TEvVolume::TEvDescribeBlocksResponse>();
+            if (!capability) {
+                UNIT_ASSERT_VALUES_EQUAL(response->GetStatus(), E_NOT_IMPLEMENTED);
+                continue;
+            }
+            UNIT_ASSERT_C(!HasError(response->GetError()), response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(response->Record.GetBlobFormatVersion(), 1);
+            UNIT_ASSERT(response->Record.BlobPiecesSize() >= 2);
+            ui64 described = 0;
+            for (const auto& piece: response->Record.GetBlobPieces()) {
+                UNIT_ASSERT(piece.HasCompression());
+                UNIT_ASSERT_VALUES_EQUAL(piece.GetCompression().GetVersion(), 1);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    piece.GetCompression().GetLogicalSize(),
+                    ui64(piece.GetLogicalBlocks()) * DefaultBlockSize);
+                for (const auto& part: piece.GetRanges()) {
+                    described += part.GetBlocksCount();
+                    UNIT_ASSERT(part.GetBlockIndex() >= range.Start);
+                    UNIT_ASSERT(ui64(part.GetBlockIndex()) + part.GetBlocksCount() <= range.End + 1);
+                }
+            }
+            UNIT_ASSERT_VALUES_EQUAL(described, range.Size());
+        }
+        auto response = volume.ReadBlocks(range, client.GetClientId());
+        UNIT_ASSERT_VALUES_EQUAL(response->Record.GetBlocks().BuffersSize(), range.Size());
+        for (const auto& block: response->Record.GetBlocks().GetBuffers()) {
+            UNIT_ASSERT_VALUES_EQUAL(block, TString(DefaultBlockSize, 'X'));
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleDescribeBlocksRequestForMultipartitionVolume)
     {
         auto runtime = PrepareTestActorRuntime();

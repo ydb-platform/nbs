@@ -1,0 +1,94 @@
+{
+  "series_id": "isolated-compression-series",
+  "repetition": 0,
+  "mode": "baseline",
+  "phase": "write-4k",
+  "disk_id": "REPLACE_ISOLATED_PREFILLED_DISK",
+  "endpoint": "localhost:9766",
+  "server_binary": "/absolute/path/to/nbsd",
+  "binary_sha256": "REPLACE_SHA256",
+  "source_fingerprint": "REPLACE_FINGERPRINT",
+  "pids": [
+    12345
+  ],
+  "corpus": "/absolute/path/to/repeated.bin",
+  "corpus_sha256": "REPLACE_SHA256",
+  "config_sha256": "REPLACE_CONFIG_EVIDENCE_SHA256",
+  "cache_policy": "REPLACE_EXPLICIT_CACHE_PREPARATION",
+  "hardware_identity": "REPLACE_CPU_CLASS_MEMORY_STORAGE_AND_PLACEMENT",
+  "block_size": 4096,
+  "working_set_bytes": 16777216,
+  "queue_depth": 16,
+  "target_iops": 1000,
+  "duration_seconds": 30,
+  "request_timeout_seconds": 10,
+  "idle_seconds": 10,
+  "sample_period_seconds": 1,
+  "metrics_url": "http://localhost:8766/counters/counters=blockstore/json",
+  "expected_live_config": {
+    "DirectMergedBlobCompressionPercentage": 0,
+    "CompactionMergedBlobCompressionPercentage": 0,
+    "MergedBlobCompressionChunkSize": 32768,
+    "MergedBlobCompressionCodec": "lz4"
+  },
+  "reads": [
+    {
+      "offset": 0,
+      "size": 4096
+    },
+    {
+      "offset": 28672,
+      "size": 4194304
+    }
+  ],
+  "write_percentage": 50,
+  "drain": {
+    "action": "compactrange",
+    "input": {
+      "DiskId": "REPLACE_ISOLATED_PREFILLED_DISK",
+      "StartIndex": 0,
+      "BlocksCount": 4096
+    },
+    "operation_id_field": "OperationId",
+    "status_operation_id_field": "OperationId",
+    "status_action": "getcompactionstatus",
+    "status_input": {
+      "DiskId": "REPLACE_ISOLATED_PREFILLED_DISK"
+    },
+    "completed_field": "IsCompleted",
+    "completed_value": true,
+    "timeout_seconds": 600
+  },
+  "counter_selectors": {
+    "compressed_foreground_logical_read_bytes": {
+      "labels": {
+        "sensor": "MergedBlobCompressionForegroundReadLogicalBytes",
+        "disk": "REPLACE_EXACT_SENSOR_DISK_LABEL"
+      }
+    },
+    "raw_merged_foreground_logical_read_bytes": {
+      "labels": {
+        "sensor": "MergedBlobCompressionForegroundRawMergedReadLogicalBytes",
+        "disk": "REPLACE_EXACT_SENSOR_DISK_LABEL"
+      }
+    },
+    "compressed_foreground_physical_read_bytes": {
+      "labels": {
+        "sensor": "MergedBlobCompressionForegroundReadPhysicalBytes",
+        "disk": "REPLACE_EXACT_SENSOR_DISK_LABEL"
+      }
+    },
+    "encode_cpu_micros": {
+      "labels": {
+        "sensor": "MergedBlobCompressionEncodeCpuMicros",
+        "disk": "REPLACE_EXACT_SENSOR_DISK_LABEL"
+      }
+    },
+    "background_encode_cpu_micros": {
+      "labels": {
+        "sensor": "MergedBlobCompressionBackgroundEncodeCpuMicros",
+        "disk": "REPLACE_EXACT_SENSOR_DISK_LABEL"
+      }
+    }
+  }
+}

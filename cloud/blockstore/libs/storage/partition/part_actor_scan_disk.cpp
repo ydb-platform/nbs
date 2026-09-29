@@ -57,7 +57,6 @@ public:
         const NProto::TBlobMeta& blobMeta,
         const TStringBuf blockMask) override
     {
-        Y_UNUSED(blobMeta);
         Y_UNUSED(blockMask);
 
         ++Args.VisitCount;
@@ -70,6 +69,21 @@ public:
             Args.BlobsToReadInCurrentBatch.emplace_back(
                 MakeBlobId(TabletInfo.TabletID, Args.LastVisitedBlobId),
                 group);
+            auto& format = Args.BlobsToReadInCurrentBatch.back().Format;
+            if (blobMeta.HasMergedBlocks()) {
+                const auto& merged = blobMeta.GetMergedBlocks();
+                const ui64 count = ui64(merged.GetEnd()) + 1 - merged.GetStart();
+                format.Invalid = merged.GetEnd() < merged.GetStart() ||
+                    merged.GetSkipped() >= count || count > Max<ui32>();
+                if (!format.Invalid) {
+                    format.LogicalBlocks = count - merged.GetSkipped();
+                }
+            }
+            if (blobMeta.HasCompression()) {
+                format.Invalid |= !blobMeta.HasMergedBlocks();
+                format.Compression = std::make_shared<NProto::TBlobCompression>(
+                    blobMeta.GetCompression());
+            }
         }
 
         return Args.VisitCount < Args.BlobCountToVisit;
@@ -197,10 +211,11 @@ void TScanDiskActor::SendReadBlobRequest(
         std::move(blobOffsets),
         std::move(subSgList),
         blobMark.BSGroupId,
-        false,           // async
+        true,            // async
         TInstant::Max(), // deadline
         false            // shouldCalculateChecksums
     );
+    request->Format = blobMark.Format;
 
     NCloud::Send(
         ctx,
@@ -281,9 +296,9 @@ void TScanDiskActor::HandleScanDiskBatchResponse(
     ReadBlobResponsesCounter = 0;
 
     RequestsInCurrentBatch = std::move(msg->BlobsInBatch);
-    for (ui32 requestIndex = 0; requestIndex < RequestsInCurrentBatch.size(); ++requestIndex) {
-        SendReadBlobRequest(ctx, requestIndex);
-    }
+    // Scan only availability of the first complete logical block per blob;
+    // compressed reads still validate the complete descriptor. Bound scan I/O.
+    SendReadBlobRequest(ctx, 0);
 }
 
 void TScanDiskActor::HandleReadBlobResponse(
@@ -294,6 +309,12 @@ void TScanDiskActor::HandleReadBlobResponse(
 
     ++ReadBlobResponsesCounter;
 
+    if (FAILED(msg->GetStatus()) &&
+        GetErrorKind(msg->GetError()) == EErrorKind::ErrorRetriable)
+    {
+        NotifyCompleted(ctx, msg->GetError());
+        return;
+    }
     if (FAILED(msg->GetStatus())) {
         const ui32 requestIndex = ev->Cookie;
         BrokenBlobs.push_back(RequestsInCurrentBatch[requestIndex].BlobId);
@@ -301,6 +322,8 @@ void TScanDiskActor::HandleReadBlobResponse(
 
     if (ReadBlobResponsesCounter == RequestsInCurrentBatch.size()) {
         SendScanDiskBatchRequest(ctx);
+    } else {
+        SendReadBlobRequest(ctx, ReadBlobResponsesCounter);
     }
 }
 

@@ -7,13 +7,15 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/volume_model.h>
-#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/disk_registry/disk_registry_private.h>
+#include <cloud/blockstore/libs/storage/model/volume_label.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/disk.pb.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
 #include <cloud/blockstore/private/api/protos/disk.pb.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
+
+#include <contrib/ydb/core/base/logoblob.h>
 
 #include <library/cpp/json/json_writer.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -47,6 +49,127 @@ using namespace std::string_literals;
 
 Y_UNIT_TEST_SUITE(TServiceActionsTest)
 {
+    void TestDescribeBlocksAction(int requestedVersion, bool indexOnly)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        const auto nodeIdx = SetupTestEnv(env, std::move(config));
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        NProto::TDescribeBlocksResponse described;
+        described.SetBlobFormatVersion(1);
+        auto* piece = described.AddBlobPieces();
+        piece->SetBSGroupId(42);
+        LogoBlobIDFromLogoBlobID(
+            TLogoBlobID(
+                1,
+                2, 3, 4, requestedVersion == 1 ? 90 : 9 * DefaultBlockSize, 6),
+            piece->MutableBlobId());
+        auto* range = piece->AddRanges();
+        range->SetBlobOffset(7);
+        range->SetBlockIndex(100);
+        range->SetBlocksCount(2);
+        if (requestedVersion == 1) {
+            piece->SetLogicalBlocks(9);
+            auto* compression = piece->MutableCompression();
+            compression->SetVersion(1);
+            compression->SetCodec(1);
+            compression->SetLogicalSize(9 * DefaultBlockSize);
+            compression->SetBlockSize(DefaultBlockSize);
+            compression->SetChunkSize(32_KB);
+            compression->AddChunkSizes(70);
+            compression->AddChunkSizes(20);
+            compression->AddChunkChecksums(0x12345678);
+            compression->AddChunkChecksums(0xabcdef01);
+        }
+
+        ui32 requests = 0;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() !=
+                    TEvVolume::EvDescribeBlocksRequest) {
+                    return false;
+                }
+
+                ++requests;
+                const auto& request =
+                    event->Get<TEvVolume::TEvDescribeBlocksRequest>()->Record;
+                UNIT_ASSERT_VALUES_EQUAL(DefaultDiskId, request.GetDiskId());
+                UNIT_ASSERT_VALUES_EQUAL(100, request.GetStartIndex());
+                UNIT_ASSERT_VALUES_EQUAL(2, request.GetBlocksCount());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "checkpoint", request.GetCheckpointId());
+                UNIT_ASSERT_VALUES_EQUAL(indexOnly, request.GetIndexOnly());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    requestedVersion < 0 ? 0 : requestedVersion,
+                    request.GetSupportedBlobFormatVersion());
+
+                auto response =
+                    std::make_unique<TEvVolume::TEvDescribeBlocksResponse>();
+                response->Record = described;
+                runtime.Send(new IEventHandle(
+                    event->Sender,
+                    event->Recipient, response.release(), 0, event->Cookie));
+                return true;
+            });
+
+        NJson::TJsonValue input;
+        input["DiskId"] = DefaultDiskId;
+        input["StartIndex"] = 100;
+        input["BlocksCount"] = 2;
+        input["CheckpointId"] = "checkpoint";
+        input["IndexOnly"] = indexOnly;
+        if (requestedVersion >= 0) {
+            input["SupportedBlobFormatVersion"] = requestedVersion;
+        }
+        service.SendExecuteActionRequest(
+            "describeblocks", NJson::WriteJson(input));
+        const auto response = service.RecvExecuteActionResponse();
+
+        if (requestedVersion > 1) {
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0, requests);
+            UNIT_ASSERT_VALUES_EQUAL("", response->Record.GetOutput());
+            return;
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(1, requests);
+        NProto::TDescribeBlocksResponse output;
+        UNIT_ASSERT(google::protobuf::util::JsonStringToMessage(
+                        response->Record.GetOutput(), &output)
+                        .ok());
+        UNIT_ASSERT(output.HasBlobFormatVersion());
+        UNIT_ASSERT_VALUES_EQUAL(1, output.GetBlobFormatVersion());
+        UNIT_ASSERT_VALUES_EQUAL(1, output.BlobPiecesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            described.GetBlobPieces(0).SerializeAsString(),
+            output.GetBlobPieces(0).SerializeAsString());
+        UNIT_ASSERT_VALUES_EQUAL(
+            requestedVersion == 1, output.GetBlobPieces(0).HasCompression());
+    }
+
+    Y_UNIT_TEST(ShouldForwardDescribeBlocksLegacyBlobFormat)
+    {
+        for (const int version: {-1, 0}) {
+            TestDescribeBlocksAction(version, false);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPreserveDescribeBlocksCompressionMetadata)
+    {
+        for (const bool indexOnly: {false, true}) {
+            TestDescribeBlocksAction(1, indexOnly);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnsupportedDescribeBlocksBlobFormat)
+    {
+        TestDescribeBlocksAction(2, false);
+    }
+
     Y_UNIT_TEST(ShouldForwardChangeStateRequestsToDiskRegistry)
     {
         auto drState = MakeIntrusive<TDiskRegistryState>();

@@ -33,7 +33,7 @@ struct TCleanupQueue::TImpl
         return result;
     }
 
-    bool Remove(const TCleanupQueueItem& item)
+    bool Remove(const TCleanupQueueItem& item, ui32& logicalBlocks)
     {
         auto itBlob = BlobIds.find(item.BlobId);
         if (itBlob == BlobIds.end()) {
@@ -46,6 +46,7 @@ struct TCleanupQueue::TImpl
             return false;
         }
 
+        logicalBlocks = itItem->LogicalBlocks;
         BlobIds.erase(itBlob);
         Items.erase(itItem);
         return true;
@@ -130,7 +131,8 @@ bool TCleanupQueue::Add(const TCleanupQueueItem& item)
     bool result = Impl->Add(item);
     if (result) {
         QueueBytes += item.BlobId.BlobSize();
-        QueueBlocks += item.BlobId.BlobSize() / BlockSize;
+        QueueBlocks += item.LogicalBlocks
+            ? item.LogicalBlocks : item.BlobId.BlobSize() / BlockSize;
     }
     return result;
 }
@@ -143,17 +145,20 @@ bool TCleanupQueue::Add(const TVector<TCleanupQueueItem>& items)
             return false;
         }
         QueueBytes += item.BlobId.BlobSize();
-        QueueBlocks += item.BlobId.BlobSize() / BlockSize;
+        QueueBlocks += item.LogicalBlocks
+            ? item.LogicalBlocks : item.BlobId.BlobSize() / BlockSize;
     }
     return true;
 }
 
 bool TCleanupQueue::Remove(const TCleanupQueueItem& item)
 {
-    bool result = Impl->Remove(item);
+    ui32 logicalBlocks = 0;
+    bool result = Impl->Remove(item, logicalBlocks);
     if (result) {
         QueueBytes -= item.BlobId.BlobSize();
-        QueueBlocks -= item.BlobId.BlobSize() / BlockSize;
+        QueueBlocks -= logicalBlocks
+            ? logicalBlocks : item.BlobId.BlobSize() / BlockSize;
     }
     return result;
 }

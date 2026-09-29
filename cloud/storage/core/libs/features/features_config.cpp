@@ -50,6 +50,18 @@ bool TFeaturesConfig::IsValid() const
     return true;
 }
 
+bool TFeaturesConfig::IsFeatureExplicitlyEnabled(
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& entityId,
+    const TString& featureName) const
+{
+    const auto it = Features.find(featureName);
+    return it != Features.end() &&
+        !it->second.Blacklist.Contains(cloudId, folderId, entityId) &&
+        it->second.Whitelist.Contains(cloudId, folderId, entityId);
+}
+
 bool TFeaturesConfig::IsFeatureEnabled(
     const TString& cloudId,
     const TString& folderId,

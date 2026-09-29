@@ -343,8 +343,13 @@ void TIOCompanion::HandleWriteBlob(
     const TActorContext& ctx)
 {
     auto msg = ev->Release();
+    PartCounters->Access([&](auto& counters) {
+        msg->CompressionStats.Publish(counters->Cumulative);
+    });
     const ui32 compRate = Config->GetBlobCompressionRate();
-    if (BlobCodec && compRate && msg->BlobId.GetHash() % compRate == 0) {
+    if (!msg->IsCompressed && BlobCodec && compRate &&
+        msg->BlobId.GetHash() % compRate == 0)
+    {
         TString blobContent;
 
         if (const auto* guardedSgList = std::get_if<TGuardedSgList>(&msg->Data)) {

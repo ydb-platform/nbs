@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cloud/blockstore/libs/storage/model/merged_blob_format.h>
+
 #include "public.h"
 
 #include "block_mask.h"
@@ -85,6 +87,16 @@ struct IBlobsVisitor
         TBlockRange32 blockRange,
         const TPartialBlobId& blobId,
         const TBlockMask& skipMask) = 0;
+
+    virtual bool VisitMerged(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        const TBlockMask& skipMask,
+        const TMergedBlobFormat& format)
+    {
+        Y_UNUSED(format);
+        return Visit(blockRange, blobId, skipMask);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -98,6 +110,17 @@ struct IBlocksIndexVisitor
         ui64 commitId,
         const TPartialBlobId& blobId,
         ui16 blobOffset) = 0;
+
+    virtual bool VisitMerged(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        const TMergedBlobFormat& format)
+    {
+        Y_UNUSED(format);
+        return Visit(blockIndex, commitId, blobId, blobOffset);
+    }
 };
 
 struct IMixedBlocksIndexVisitor

@@ -1,5 +1,7 @@
 #include "part_actor.h"
 
+#include "model/merged_blob_compression.h"
+
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -29,10 +31,12 @@ class TCheckIndexVisitor final
 {
 private:
     TTxPartition::TCheckIndex& Args;
+    const ui32 BlockSize;
 
 public:
-    TCheckIndexVisitor(TTxPartition::TCheckIndex& args)
+    TCheckIndexVisitor(TTxPartition::TCheckIndex& args, ui32 blockSize)
         : Args(args)
+        , BlockSize(blockSize)
     {}
 
     bool Visit(
@@ -62,6 +66,32 @@ public:
         return Visit(blockIndex, commitId, blobId, blobOffset);
     }
 
+    bool VisitMerged(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        const TMergedBlobFormat& format) override
+    {
+        Visit(blockIndex, commitId, blobId, blobOffset);
+        if constexpr (Index) {
+            bool invalid = format.Invalid;
+            if (!IsDeletionMarker(blobId)) {
+                if (format.Compression) {
+                    invalid |= HasError(ValidateMergedBlobCompression(
+                        *format.Compression, blobId.BlobSize(), BlockSize)) ||
+                        ui64(format.LogicalBlocks) * BlockSize !=
+                            format.Compression->GetLogicalSize();
+                } else {
+                    invalid |= ui64(format.LogicalBlocks) * BlockSize !=
+                        blobId.BlobSize();
+                }
+            }
+            Args.BlockMarks_Index.back().CompressionError = invalid;
+        }
+        return true;
+    }
+
     bool VisitBlock(
         ui32 blockIndex,
         ui64 commitId,
@@ -80,6 +110,12 @@ public:
 template <typename T>
 void CheckIndexIntegrity(TTxPartition::TCheckIndex& args, T&& errorHandler)
 {
+    for (const auto& mark: args.BlockMarks_Index) {
+        if (mark.CompressionError && !errorHandler(mark, "compression metadata mismatch")) {
+            return;
+        }
+    }
+
     auto comparer = [] (
         const TTxPartition::TCheckIndex::TBlockMark& l,
         const TTxPartition::TCheckIndex::TBlockMark& r)
@@ -177,7 +213,7 @@ bool TPartitionActor::PrepareCheckIndex(
     TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    TCheckIndexVisitor<true> visitorIndex(args);
+    TCheckIndexVisitor<true> visitorIndex(args, State->GetBlockSize());
     bool ready = db.FindMixedBlocks(
         visitorIndex,
         args.BlockRange,
@@ -186,11 +222,11 @@ bool TPartitionActor::PrepareCheckIndex(
     ready &= db.FindMergedBlocks(
         visitorIndex,
         args.BlockRange,
-        true,   // precharge
-        State->GetMaxBlocksInBlob()
+        true,                                            // precharge
+        State->GetMaxBlocksInBlob(), Max<ui64>(), true   // verifyRawBlobMeta
     );
 
-    TCheckIndexVisitor<false> visitorBlobs(args);
+    TCheckIndexVisitor<false> visitorBlobs(args, State->GetBlockSize());
     ready &= db.FindBlocksInBlobsIndex(
         visitorBlobs,
         State->GetMaxBlocksInBlob(),
@@ -271,7 +307,6 @@ void TPartitionActor::CompleteCheckIndex(
         args.RequestInfo->CallContext->RequestId);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-    RemoveTransaction(*args.RequestInfo);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

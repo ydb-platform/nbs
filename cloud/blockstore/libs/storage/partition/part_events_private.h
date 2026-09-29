@@ -75,16 +75,19 @@ struct TAddMergedBlob
     const TBlockRange32 BlockRange;
     const TBlockMask SkipMask;
     const TVector<ui32> Checksums;
+    const std::shared_ptr<const NProto::TBlobCompression> Compression;
 
     TAddMergedBlob(
             const TPartialBlobId& blobId,
             const TBlockRange32& blockRange,
             const TBlockMask& skipMask,
-            TVector<ui32> checksums)
+            TVector<ui32> checksums,
+            std::shared_ptr<const NProto::TBlobCompression> compression = {})
         : BlobId(blobId)
         , BlockRange(blockRange)
         , SkipMask(skipMask)
         , Checksums(std::move(checksums))
+        , Compression(std::move(compression))
     {}
 };
 
@@ -172,6 +175,7 @@ struct TAffectedBlob
     TMaybe<NProto::TBlobMeta> BlobMeta;
 
     TMaybe<NProto::TBlobMeta> RecreatedBlobMeta;
+    TMergedBlobFormat Format;
 };
 
 using TAffectedBlobs = THashMap<TPartialBlobId, TAffectedBlob, TPartialBlobIdHash>;
@@ -243,6 +247,7 @@ struct TReadBlocksRequest
     ui32 BlockIndex;
     ui32 GroupId;
     ui32 BlockChecksum;
+    TMergedBlobFormat Format;
 
     TReadBlocksRequest(
             const NKikimr::TLogoBlobID& blobId,
@@ -250,13 +255,15 @@ struct TReadBlocksRequest
             ui16 blobOffset,
             ui32 blockIndex,
             ui32 groupId,
-            ui32 blockChecksum)
+            ui32 blockChecksum,
+            TMergedBlobFormat format = {})
         : BlobId(blobId)
         , BSProxy(proxy)
         , BlobOffset(blobOffset)
         , BlockIndex(blockIndex)
         , GroupId(groupId)
         , BlockChecksum(blockChecksum)
+        , Format(std::move(format))
     {}
 };
 
@@ -528,6 +535,7 @@ struct TEvPartitionPrivate
         struct TBlobMark {
             NKikimr::TLogoBlobID BlobId;
             ui32 BSGroupId;
+            TMergedBlobFormat Format;
 
             TBlobMark(
                     const NKikimr::TLogoBlobID& blobId,

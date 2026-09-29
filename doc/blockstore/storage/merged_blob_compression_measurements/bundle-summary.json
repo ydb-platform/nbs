@@ -1,0 +1,59 @@
+{
+  "files": 3101,
+  "uncompressed_bytes": 568082801,
+  "compressed_bytes": 20306839,
+  "sha256": "13fd2554957686a45ff6cc995840b3915496cde06f9824cdf0a6ee60a5fc449b",
+  "micro_samples": 1728,
+  "functional_totals": {
+    "read-equal": 756,
+    "metadata-rejected": 12,
+    "check-index-rejected": 12,
+    "scan-rejected-metadata": 12,
+    "scan-passed": 19,
+    "exact-boundary-hit": 6,
+    "actions": 3850
+  },
+  "workers": {
+    "background": {
+      "success": 96,
+      "rejected": 0
+    },
+    "read": {
+      "success": 630,
+      "rejected": 138
+    },
+    "write": {
+      "success": 384,
+      "rejected": 0
+    }
+  },
+  "excluded_build_stats_files": 60,
+  "pruned_directories": [
+    ".git",
+    "__pycache__",
+    "action-debug",
+    "action-release",
+    "build",
+    "corpora",
+    "corpus",
+    "coverage-build",
+    "coverage-html",
+    "data",
+    "disk",
+    "disks",
+    "integration-debug",
+    "node_modules",
+    "partition-fixed",
+    "pdisk",
+    "pdisks",
+    "product",
+    "profiles",
+    "profraw",
+    "red-build",
+    "release",
+    "startup",
+    "startup-keys",
+    "startup-shared",
+    "ydb-data"
+  ]
+}

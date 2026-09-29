@@ -38,6 +38,7 @@ private:
     const NActors::TActorId NotifyActorId;
 
     NBlobMarkers::TBlockMarks BlockMarks;
+    bool LegacyOnly = false;
 
 public:
     TDescribeBaseDiskBlocksActor(

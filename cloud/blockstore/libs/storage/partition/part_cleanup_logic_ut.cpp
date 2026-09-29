@@ -1,6 +1,7 @@
 #include "part_cleanup_logic.h"
 
 #include "part_database.h"
+#include "part_schema.h"
 #include "part_state.h"
 
 #include <cloud/blockstore/libs/common/block_range.h>
@@ -721,6 +722,55 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                 TVector<TCleanupQueueItem> cleanupQueueItems;
                 UNIT_ASSERT(db.ReadCleanupQueue(cleanupQueueItems));
                 UNIT_ASSERT(cleanupQueueItems.empty());
+            });
+    }
+
+    Y_UNIT_TEST(ShouldRetainBlobWithMalformedMetadataDuringCleanup)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        TTestEnv env;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+        const ui64 cleanupCommitId = MakeCommitId(0, 100);
+        const auto setup =
+            SetupMixedAndMergedBlobs(executor, state, MakeCommitId(0, 50));
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                using TTable = TPartitionSchema::BlobsIndex;
+                db.Table<TTable>()
+                    .Key(
+                        setup.MergedBlobId.CommitId(),
+                        setup.MergedBlobId.UniqueId())
+                    .Update(NKikimr::NIceDb::TUpdate<TTable::BlobMeta>(
+                        TString("\xff", 1)));
+            });
+        auto args = MakeCleanupArgs(
+            state.GetCleanupQueue().GetItems(cleanupCommitId),
+            cleanupCommitId,
+            false,   // useRecreatedBlobMeta
+            false,   // verifyRecreatedBlobMetasOnCleanup
+            false,   // checkpointAware
+            InvalidCommitId, InvalidCommitId);
+        RunPrepareAndExecute(executor, env, state, args);
+        UNIT_ASSERT_VALUES_EQUAL(args.CleanupQueue.size(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            args.CleanupQueue[0].BlobId, setup.MixedBlobId);
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                UNIT_ASSERT(
+                    !HasMixedBlock(db, 0, setup.MixedBlobId.CommitId()));
+                UNIT_ASSERT(HasGarbageBlob(db, setup.MixedBlobId));
+                UNIT_ASSERT(HasMergedBlob(db, setup.MergedBlobId, 10, 13));
+                UNIT_ASSERT(!HasGarbageBlob(db, setup.MergedBlobId));
+                TMaybe<NProto::TBlobMeta> meta;
+                UNIT_ASSERT(db.ReadBlobMeta(setup.MergedBlobId, meta));
+                UNIT_ASSERT(meta && meta->HasCompression());
+                TVector<TCleanupQueueItem> queue;
+                UNIT_ASSERT(db.ReadCleanupQueue(queue));
+                UNIT_ASSERT_VALUES_EQUAL(queue.size(), 1);
+                UNIT_ASSERT_VALUES_EQUAL(queue[0].BlobId, setup.MergedBlobId);
             });
     }
 

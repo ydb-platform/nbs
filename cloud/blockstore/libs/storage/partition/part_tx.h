@@ -982,6 +982,7 @@ struct TTxPartition
             ui64 CommitId = 0;
             ui32 BlockIndex = 0;
             ui16 BlobOffset = 0;
+            bool CompressionError = false;
         };
 
         TVector<TBlockMark> BlockMarks_Index;
@@ -1086,6 +1087,7 @@ struct TTxPartition
         const ui64 CommitId;
         const TBlockRange32 DescribeRange;
         const bool IndexOnly;
+        const ui32 SupportedBlobFormatVersion;
 
         struct TEmptyMark
         {
@@ -1098,6 +1100,7 @@ struct TTxPartition
             ui64 CommitId = 0;
             TPartialBlobId BlobId;
             ui16 BlobOffset = 0;
+            TMergedBlobFormat Format;
         };
 
         struct TFreshMark
@@ -1117,11 +1120,13 @@ struct TTxPartition
             TRequestInfoPtr requestInfo,
             ui64 commitId,
             const TBlockRange32& describeRange,
-            bool indexOnly)
+            bool indexOnly,
+            ui32 supportedBlobFormatVersion)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , DescribeRange(describeRange)
             , IndexOnly(indexOnly)
+            , SupportedBlobFormatVersion(supportedBlobFormatVersion)
             , Marks(DescribeRange.Size(), TEmptyMark{})
         {}
 
@@ -1171,7 +1176,8 @@ struct TTxPartition
             ui32 blockIndex,
             ui64 commitId,
             TPartialBlobId blobId,
-            ui16 blobOffset)
+            ui16 blobOffset,
+            TMergedBlobFormat format = {})
         {
             auto& mark = Marks[GetBlockMarkIndex(blockIndex)];
             if (GetMarkCommitId(mark) < commitId) {
@@ -1179,7 +1185,8 @@ struct TTxPartition
                     .BlockIndex = blockIndex,
                     .CommitId = commitId,
                     .BlobId = blobId,
-                    .BlobOffset = blobOffset};
+                    .BlobOffset = blobOffset,
+                    .Format = std::move(format)};
             }
         }
     };

@@ -163,6 +163,17 @@ public:
         return true;
     }
 
+    bool VisitMerged(
+        ui32 blockIndex,
+        ui64 commitId,
+        const TPartialBlobId& blobId,
+        ui16 blobOffset,
+        const TMergedBlobFormat& format) override
+    {
+        Args.AffectedBlobs[blobId].Format = format;
+        return Visit(blockIndex, commitId, blobId, blobOffset);
+    }
+
     bool VisitBlock(
         ui32 blockIndex,
         ui64 commitId,
@@ -239,6 +250,16 @@ public:
 
         ab.IndexKind = EChannelDataKind::Merged;
         return true;
+    }
+
+    bool VisitMerged(
+        TBlockRange32 blockRange,
+        const TPartialBlobId& blobId,
+        const TBlockMask& skipMask,
+        const TMergedBlobFormat& format) override
+    {
+        Args.AffectedBlobs[blobId].Format = format;
+        return Visit(blockRange, blobId, skipMask);
     }
 
     // Returns blobs that do not have any blocks in the compaction range with
@@ -742,6 +763,9 @@ void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId, ui64
             mergedBlocks->SetStart(info.BlockRange.Start);
             mergedBlocks->SetEnd(info.BlockRange.End);
             mergedBlocks->SetSkipped(info.SkippedBlocksCount);
+            if (ab.Format.Compression) {
+                *meta.MutableCompression() = *ab.Format.Compression;
+            }
             continue;
         }
 
@@ -919,7 +943,8 @@ void CompleteRangeCompaction(
     TTxPartition::TRangeCompaction& args,
     TVector<TBlobCompactionRequest>& requests,
     TVector<TRangeCompactionInfo>& rangeCompactionInfos,
-    ui32 maxDiffPercentageForBlobPatching)
+    ui32 maxDiffPercentageForBlobPatching,
+    bool compressionSelected)
 {
     const EChannelPermissions compactionPermissions =
         EChannelPermission::SystemWritesAllowed;
@@ -951,7 +976,15 @@ void CompleteRangeCompaction(
         .DataBlobId = resultBlobIds.DataBlobId,
         .PatchingCandidate = {}};
 
-    if (blobPatchingEnabled) {
+    const bool compress = compressionSelected &&
+        resultBlobIds.ChannelDataKind == EChannelDataKind::Merged;
+    const bool compressedSource = AnyOf(args.AffectedBlobs, [&state](const auto& item) {
+        const auto& format = item.second.Format;
+        return format.Compression || format.Invalid ||
+            (format.LogicalBlocks && !IsDeletionMarker(item.first) &&
+             ui64(format.LogicalBlocks) * state.GetBlockSize() != item.first.BlobSize());
+    });
+    if (blobPatchingEnabled && !compress && !compressedSource) {
         patchingResult = ResolveBlobPatchingCandidate(
             resultBlobIds.DataBlobId,
             dataBlockCount,
@@ -983,6 +1016,8 @@ void CompleteRangeCompaction(
         std::move(args.AffectedBlobs),
         std::move(args.AffectedBlocks),
         std::move(buildBlobContentResult.ChecksumFixups));
+
+    rangeCompactionInfos.back().Compress = compress;
 
     if (!patchingResult.DataBlobId && !resultBlobIds.ZeroBlobId) {
         const auto rangeDescr = DescribeRange(args.BlockRange);

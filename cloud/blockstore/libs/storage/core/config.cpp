@@ -85,6 +85,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
 
 // clang-format off
 #define BLOCKSTORE_STORAGE_CONFIG_RO(xxx)                                      \
+    xxx(MergedBlobCompressionCodec, TString, "lz4")\
     xxx(SchemeShardDir,                TString,   "/Root"                     )\
     xxx(ListVolumesConcurrency,        ui32,      100                         )\
     xxx(DisableLocalService,           bool,      false                       )\
@@ -587,6 +588,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(AddingUnconfirmedBlobsEnabled,             bool,      false           )\
                                                                                \
     xxx(BlobCompressionRate,                       ui32,      0               )\
+    xxx(CompactionMergedBlobCompressionPercentage, ui32, 0)\
+    xxx(DirectMergedBlobCompressionPercentage, ui32, 0)\
+    xxx(MergedBlobCompressionChunkSize, ui32, 32768)\
+    xxx(MergedBlobCompressionMinSavingsPercentage, ui32, 10)\
     xxx(SerialNumberValidationEnabled,             bool,      false           )\
                                                                                \
     xxx(RejectLateRequestsAtDiskAgentEnabled,      bool,      false           )\
@@ -1370,6 +1375,15 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
     }
 
 #undef BLOCKSTORE_CONFIG_DUMP
+}
+
+bool TStorageConfig::IsMergedBlobCompressionFeatureEnabled(
+    const TString& cloudId,
+    const TString& folderId,
+    const TString& diskId) const
+{
+    return Impl->FeaturesConfig->IsFeatureExplicitlyEnabled(
+        cloudId, folderId, diskId, "MergedBlobCompression");
 }
 
 #define BLOCKSTORE_BINARY_FEATURE_GETTER(name)                                 \
