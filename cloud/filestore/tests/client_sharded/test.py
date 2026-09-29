@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 
 import pytest
 import yatest.common as common
@@ -128,6 +129,22 @@ def test_storage_config_all_shards():
 
     out += client.destroy("fs0")
     return __canonize(results_path, out)
+
+
+def test_storage_config_all_shards_delay():
+    client, _, _ = __init_test()
+    __create_fs_with_3_shards(client)
+
+    start = time.monotonic()
+    client.execute_action("changestorageconfig", {
+        "FileSystemId": "fs0",
+        "StorageConfig": {"ThrottlingEnabled": True},
+        "MergeWithStorageConfigFromTabletDB": True,
+    }, all_shards=True, all_shards_delay=1)
+    # 1s before each of the 3 shards
+    assert time.monotonic() - start >= 3
+
+    client.destroy("fs0")
 
 
 def test_storage_config_all_shards_invalid_input():

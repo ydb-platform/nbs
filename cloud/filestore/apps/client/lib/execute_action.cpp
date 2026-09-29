@@ -31,6 +31,7 @@ private:
     TString Input;
     TString InputFilePath;
     bool AllShards = false;
+    ui32 AllShardsDelaySec = 10;
 
 private:
     NProto::TExecuteActionResponse SendAction(
@@ -127,6 +128,12 @@ private:
         for (const auto& target: targets) {
             NJson::TJsonValue entry(NJson::JSON_MAP);
 
+            // do not change the config of all shards at once
+            if (&target != &targets.front() && action == "changestorageconfig")
+            {
+                InterruptibleSleep(TDuration::Seconds(AllShardsDelaySec));
+            }
+
             // WaitFor returns immediately once the program is stopped, so do
             // not send the remaining requests, but report them as skipped
             if (ProgramShouldContinue.PollState() !=
@@ -185,6 +192,13 @@ public:
                 "still be applied and the remaining filesystems are "
                 "reported as skipped")
             .StoreTrue(&AllShards);
+        Opts.AddLongOption(
+                "all-shards-delay",
+                "delay in seconds between changestorageconfig requests "
+                "with --all-shards")
+            .RequiredArgument("SEC")
+            .DefaultValue(AllShardsDelaySec)
+            .StoreResult(&AllShardsDelaySec);
     }
 
     bool Execute() override
