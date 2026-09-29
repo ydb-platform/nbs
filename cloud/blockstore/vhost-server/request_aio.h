@@ -153,7 +153,7 @@ void CompleteCompoundRequestImpl(
     TAioSubRequestHolder sub,
     vhd_bdev_io_result status,
     TAtomicStats& stats,
-    TCompleteBioFn completeBio = vhd_complete_bio);
+    TCompleteBioFn completeBio);
 
 // Copies the data, and if an encryptor is specified, encrypt it. Returns true
 // if successful.
