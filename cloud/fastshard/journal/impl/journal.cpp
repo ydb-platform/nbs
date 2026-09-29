@@ -9,6 +9,7 @@
 #include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/algorithm.h>
@@ -71,9 +72,9 @@ NCloud::NProto::TError ValidatePageRanges(
     const TRanges& ranges,
     ui64 devicePageCount)
 {
-    const int count = static_cast<int>(ranges.size());
+    const auto count = static_cast<ui64>(ranges.size());
 
-    for (int i = 0; i < count; ++i) {
+    for (ui64 i = 0; i < count; ++i) {
         const ui64 begin = FirstPageNoOf(ranges[i]);
         const ui64 pageCount = PageCountOf(ranges[i]);
 
@@ -103,7 +104,7 @@ NCloud::NProto::TError ValidatePageRanges(
         // Check that the range does not intersect the ones before it
         //
 
-        for (int j = 0; j < i; ++j) {
+        for (ui64 j = 0; j < i; ++j) {
             const ui64 otherPageCount = PageCountOf(ranges[j]);
             const ui64 otherBegin = FirstPageNoOf(ranges[j]);
             const ui64 otherEnd = otherBegin + otherPageCount;
@@ -547,9 +548,10 @@ TVector<TLogRecordPtr> TJournal::FilterStrandedRecords(
 
     for (auto& [prevLsn, record]: prevLsnToRecord) {
         if (prevLsn < tailLsn) {
-            STORAGE_WARN(
-                "dropping the stranded log record with lsn "
-                << record->Lsn << " chaining from lsn " << prevLsn);
+            ReportJournalStrandedRecordDetectedError(
+                TStringBuilder()
+                << "dropping the stranded log record with lsn " << record->Lsn
+                << " chaining from lsn " << prevLsn);
             continue;
         }
 
@@ -949,13 +951,21 @@ TFuture<NCloud::NProto::TError> TJournal::CleanupFlushedRecords()
 
     auto result = MakeError(S_OK);
     for (const auto& record: records) {
-        // a flushed record has its promise set, a ready record stranded
-        // below the erased watermark does not - its writer is still waiting
-        record->Promise.TrySetValue(TErrorResponse(
-            E_INVALID_STATE,
-            TStringBuilder()
-                << "record with lsn " << record->Lsn << " chaining from lsn "
-                << record->PrevLsn << " can no longer join the chain"));
+        //
+        // Fail the writer still waiting on a ready record stranded below the
+        // erased watermark - a flushed record has its promise set already
+        //
+
+        const TString message = TStringBuilder()
+            << "record with lsn " << record->Lsn << " chaining from lsn "
+            << record->PrevLsn << " can no longer join the chain";
+
+        const bool stranded = record->Promise.TrySetValue(
+            TErrorResponse(E_INVALID_STATE, message));
+
+        if (stranded) {
+            ReportJournalStrandedRecordDetectedError(message);
+        }
 
         auto error = DataStore->Free(GetLocations(record->PageMappings));
         if (HasError(error)) {

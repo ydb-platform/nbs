@@ -7,9 +7,11 @@
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
+#include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/fastshard/journal/iface/device.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/algorithm.h>
@@ -282,7 +284,6 @@ struct TTestKeyBufferStore final: public IKeyBufferStore
             std::move(buffers));
     }
 
-
     TFuture<NCloud::NProto::TError> Write(ui64 key, TBuffer buffer) override
     {
         if (FailWrites.load()) {
@@ -337,6 +338,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 {
     ILoggingServicePtr Logging;
     TExecutorPtr Executor;
+    NMonitoring::TDynamicCountersPtr Counters;
 
     std::shared_ptr<TTestDevice> Device;
     std::shared_ptr<TTestKeyBufferStore> MetaStore;
@@ -356,6 +358,9 @@ struct TFixture: public NUnitTest::TBaseFixture
 
         Executor = TExecutor::Create("TestExecutor");
         Executor->Start();
+
+        Counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(Counters);
 
         Device = std::make_shared<TTestDevice>();
         MetaStore = std::make_shared<TTestKeyBufferStore>();
@@ -381,6 +386,12 @@ struct TFixture: public NUnitTest::TBaseFixture
             MetaStore,
             DataStore,
             DevicePageCount);
+    }
+
+    // The number of times the journal has reported the given critical event
+    i64 CriticalEventCount(const TString& name) const
+    {
+        return Counters->GetCounter("AppCriticalEvents/" + name, true)->Val();
     }
 
     // Runs |func| on the executor thread - the journal waits on the futures
@@ -784,16 +795,23 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         // the restart drops the stranded record and restores the chain
         UNIT_ASSERT_VALUES_EQUAL(4, RestoreOrFail());
         UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CriticalEventCount("JournalStrandedRecordDetectedError"));
+        UNIT_ASSERT_VALUES_EQUAL(
             "10:[A010] 40:[D040]",
             DescribeGroups(ReadPages({{10, 1}, {30, 1}, {40, 1}})));
 
         // its page is free again - the journal fits one more record
         UNIT_ASSERT_VALUES_EQUAL(S_OK, WriteRecord(5, 4, 'E', {{50, 1}}));
 
-        // and its meta store entry goes with the first cleanup past its key
+        // and its meta store entry goes with the first cleanup past its key -
+        // the erased records are all flushed, none of them is stranded
         UNIT_ASSERT_VALUES_EQUAL(S_OK, AdvanceLsnLowWatermark(5));
         FlushUpTo(5);
         UNIT_ASSERT_VALUES_EQUAL("meta", StoredKeys());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CriticalEventCount("JournalStrandedRecordDetectedError"));
     }
 
     Y_UNIT_TEST_F(ShouldDropTheStrandedRecordsAroundTheWatermark, TFixture)
@@ -809,6 +827,9 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         PutRecord(3, 5, 3);
 
         UNIT_ASSERT_VALUES_EQUAL(6, RestoreOrFail());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            CriticalEventCount("JournalStrandedRecordDetectedError"));
 
         // the unacked tail is kept and can be continued
         UNIT_ASSERT_VALUES_EQUAL("6<-4", DescribeRecords(ReadTail(4)));
@@ -1004,6 +1025,9 @@ Y_UNIT_TEST_SUITE(TJournalTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
             third.GetValueSync().GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CriticalEventCount("JournalStrandedRecordDetectedError"));
         UNIT_ASSERT_VALUES_EQUAL("", DescribeGroups(ReadPages({{30, 1}})));
     }
 
