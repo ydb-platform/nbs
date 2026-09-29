@@ -14,6 +14,8 @@
 #include <google/protobuf/text_format.h>
 #include <google/protobuf/util/message_differencer.h>
 
+#include <type_traits>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NKikimr;
@@ -1016,6 +1018,47 @@ constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
     return value.MilliSeconds();
 }
 
+// ICB wrapper owned by a storage control set that retains the unconverted
+// double default. Initialize and update it through UpdateControlDefault().
+struct TDoubleControlWrapper: TControlWrapper
+{
+    using TControlWrapper::operator=;
+
+    // Last configuration value after compiled fallback and before ICB
+    // conversion. Only initialization and default updates access it.
+    double ConfigValue = 0;
+};
+
+template <typename TValue>
+using TStorageControlWrapper = std::conditional_t<
+    std::is_same_v<TValue, double>,
+    TDoubleControlWrapper,
+    TControlWrapper>;
+
+// Reset the override only when the configuration value changes. Compare double
+// values in their original type; other types use the native ICB default.
+// Serialize calls for each control; concurrent ICB value writes are allowed.
+template <typename TValue>
+void UpdateControlDefault(
+    TStorageControlWrapper<TValue>& control,
+    TValue configValue)
+{
+    const auto defaultValue = ConvertToAtomicBase(configValue);
+    if constexpr (std::is_same_v<TValue, double>) {
+        if (control.ConfigValue == configValue) {
+            return;
+        }
+        control.ConfigValue = configValue;
+    } else {
+        if (control.GetDefault() == defaultValue) {
+            return;
+        }
+    }
+
+    // Reset Value even when the changed double has the same integer default.
+    control = defaultValue;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1035,8 +1078,10 @@ struct TStorageConfigControls::TImpl
     TControlBoard* RegisteredBoard = nullptr;
 
     // One wrapper per BLOCKSTORE_STORAGE_CONFIG_RW field. Each wrapper stores
-    // the field's ICB default, allowed range, and current ICB value.
-#define BLOCKSTORE_CONFIG_CONTROL(name, ...) TControlWrapper Control##name;
+    // the field's ICB default, allowed range, and current ICB value. Double
+    // wrappers also retain the configuration value before integer conversion.
+#define BLOCKSTORE_CONFIG_CONTROL(name, type, ...)                             \
+    TStorageControlWrapper<type> Control##name;
 
     BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_CONTROL)
 
@@ -1045,14 +1090,13 @@ struct TStorageConfigControls::TImpl
     explicit TImpl(const NProto::TStorageServiceConfig& storageServiceConfig)
     {
 #define BLOCKSTORE_CONFIG_RESET(name, type, value)                             \
-    Control##name.Reset(                                                       \
-        ConvertToAtomicBase<type>(BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(          \
+    UpdateControlDefault<type>(                                                \
+        Control##name,                                                         \
+        BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(                                    \
             storageServiceConfig,                                              \
             name,                                                              \
             type,                                                              \
-            value)),                                                           \
-        Min<TAtomicBase>(),                                                    \
-        Max<TAtomicBase>());                                                   \
+            value));                                                           \
     // BLOCKSTORE_CONFIG_RESET
 
         BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_RESET)
@@ -1110,20 +1154,19 @@ void TStorageConfigControls::Register(TControlBoard& controlBoard)
 }
 
 // Update changed defaults from the raw configuration and compiled fallbacks.
-// Compare defaults rather than values to preserve overrides of unchanged
-// parameters. Write Value before Default for changed parameters; concurrent
-// ICB value writes may win or be overwritten.
+//  - compare defaults rather than values to preserve overrides of unchanged
+//    parameters
+//  - compare double defaults in their original type to detect fractional
+//    changes
+//  - write Value before Default for changed parameters; concurrent ICB value
+//    writes may win or be overwritten.
 void TStorageConfigControls::UpdateDefaults(
     const NProto::TStorageServiceConfig& config)
 {
 #define BLOCKSTORE_CONFIG_UPDATE_DEFAULT(name, type, value)                    \
-    {                                                                          \
-        const auto defaultValue = ConvertToAtomicBase<type>(                   \
-            BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value));    \
-        if (Impl->Control##name.GetDefault() != defaultValue) {                \
-            Impl->Control##name = defaultValue;                                \
-        }                                                                      \
-    }
+    UpdateControlDefault<type>(                                                \
+        Impl->Control##name,                                                   \
+        BLOCKSTORE_CONFIG_GET_CONFIG_VALUE(config, name, type, value));
 
     BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_UPDATE_DEFAULT)
 
