@@ -1,13 +1,7 @@
 #include "device_scanner.h"
 
-#include <cloud/blockstore/libs/storage/core/config.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
-#include <cloud/storage/core/libs/diagnostics/logging.h>
-
-#include <util/generic/algorithm.h>
 #include <util/string/builder.h>
 #include <util/system/file.h>
-#include <util/system/fs.h>
 
 #include <sys/stat.h>
 
@@ -85,8 +79,6 @@ NProto::TError FindDevices(
                 std::regex_constants::ECMAScript
             };
 
-            const ui32 defaultBlockSize = p.GetBlockSize();
-
             for (const auto& entry: NFs::directory_iterator {pathRegExp.parent_path()}) {
                 const auto& path = entry.path();
                 if (allowedPaths && !allowedPaths.contains(path.c_str())) {
@@ -116,43 +108,15 @@ NProto::TError FindDevices(
                         << path << ": the device number can't be zero");
                 }
 
-                const ui64 size = GetFileLength(path);
-                auto* pool = FindIfPtr(p.GetPoolConfigs(), [&] (const auto& pool) {
-                    ui64 minSize = pool.GetMinSize();
-
-                    if (!minSize && pool.HasLayout()) {
-                        minSize =
-                            pool.GetLayout().GetHeaderSize() +
-                            pool.GetLayout().GetDeviceSize();
-                    }
-
-                    const ui64 maxSize = pool.GetMaxSize()
-                        ? pool.GetMaxSize()
-                        : size;
-
-                    return minSize <= size && size <= maxSize;
-                });
-
-                if (!pool) {
-                    return MakeError(E_NOT_FOUND, TStringBuilder()
-                        << "unable to find the appropriate pool for " << path);
-                }
-
-                const ui32 blockSize = pool->GetBlockSize()
-                    ? pool->GetBlockSize()
-                    : defaultBlockSize
-                        ? defaultBlockSize
-                        : GetBlockSize(path);
+                const ui64 fileSize = GetFileLength(path);
+                const ui32 blockSize = GetBlockSize(path);
 
                 auto error = cb(
                     TString {path.string()},
-                    *pool,
+                    p,
                     deviceNumber,
-                    pool->GetMaxDeviceCount()
-                        ? pool->GetMaxDeviceCount()
-                        : p.GetMaxDeviceCount(),
                     blockSize,
-                    size);
+                    fileSize);
                 if (HasError(error)) {
                     return error;
                 }

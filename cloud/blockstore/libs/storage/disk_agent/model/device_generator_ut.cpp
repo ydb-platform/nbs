@@ -4,11 +4,24 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/size_literals.h>
+
 namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+NProto::TStorageDiscoveryConfig::TPathConfig MakePathConfig(
+    NProto::TStorageDiscoveryConfig::TPoolConfig pool,
+    ui32 maxDeviceCount = 0)
+{
+    NProto::TStorageDiscoveryConfig::TPathConfig path;
+    path.SetMaxDeviceCount(maxDeviceCount);
+    *path.AddPoolConfigs() = std::move(pool);
+
+    return path;
+}
 
 struct TFixture
     : public NUnitTest::TBaseFixture
@@ -61,7 +74,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         TDeviceGenerator gen { Log, AgentId };
 
         {
-            gen("/dev/disk/by-partlabel/NVMENBS01", def, 1, 63, 4_KB, 6401251344384);
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS01",
+                MakePathConfig(def, 63),
+                1,
+                4_KB,
+                6401251344384);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(63, r.size());
@@ -94,7 +112,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         }
 
         {
-            gen("/dev/disk/by-partlabel/ROTNBS01", rot, 1, 140, 4_KB, 16000898564096);
+            gen(
+                "/dev/disk/by-partlabel/ROTNBS01",
+                MakePathConfig(rot, 140),
+                1,
+                4_KB,
+                16000898564096);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(140, r.size());
@@ -123,7 +146,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         }
 
         {
-            gen("/dev/disk/by-partlabel/ROTNBS02", rot, 2, 140, 4_KB, 15999825870848);
+            gen(
+                "/dev/disk/by-partlabel/ROTNBS02",
+                MakePathConfig(rot, 140),
+                2,
+                4_KB,
+                15999825870848);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(140, r.size());
@@ -152,7 +180,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         }
 
         {
-            gen("/dev/disk/by-partlabel/NVMECOMPUTE01", local, 1, 1, local.GetBlockSize(), 367_GB);
+            gen(
+                "/dev/disk/by-partlabel/NVMECOMPUTE01",
+                MakePathConfig(local, 1),
+                1,
+                local.GetBlockSize(),
+                367_GB);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(1, r.size());
@@ -177,8 +210,18 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         {
             TDeviceGenerator gen { Log, AgentId };
 
-            gen("/dev/disk/by-partlabel/NVMENBS01", def, 1, 42, 4_KB, 93_GB);
-            gen("/dev/disk/by-partlabel/NVMENBS02", def, 2, 0, 4_KB, 93_GB);
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS01",
+                MakePathConfig(def, 42),
+                1,
+                4_KB,
+                93_GB);
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS02",
+                MakePathConfig(def, 0),
+                2,
+                4_KB,
+                93_GB);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(2, r.size());
@@ -188,7 +231,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         {
             TDeviceGenerator gen { Log, AgentId };
 
-            gen("/dev/disk/by-partlabel/NVMENBS02", def, 2, 0, 4_KB, 93_GB);
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS02",
+                MakePathConfig(def, 0),
+                2,
+                4_KB,
+                93_GB);
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(1, r.size());
             UNIT_ASSERT_VALUES_EQUAL(expectedId, r[0].GetDeviceId());
@@ -214,9 +262,8 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
 
         gen(
             "/dev/disk/by-partlabel/NVMENBS01",
-            compound,
+            MakePathConfig(compound),
             1,      // device number
-            0,      // max device count
             4_KB,   // block size
             headerSize + (deviceSize + padding) * deviceCount);
 
@@ -284,7 +331,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         TDeviceGenerator gen { Log, AgentId };
 
         {
-            gen("/dev/disk/by-partlabel/NVMENBS0110", def, 1, 63, 4_KB, 6401251344384);
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS0110",
+                MakePathConfig(def, 63),
+                1,
+                4_KB,
+                6401251344384);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(63, r.size());
@@ -317,7 +369,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         }
 
         {
-            gen("/dev/disk/by-partlabel/ROTNBS0110", rot, 1, 140, 4_KB, 16000898564096);
+            gen(
+                "/dev/disk/by-partlabel/ROTNBS0110",
+                MakePathConfig(rot, 140),
+                1,
+                4_KB,
+                16000898564096);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(140, r.size());
@@ -346,7 +403,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         }
 
         {
-            gen("/dev/disk/by-partlabel/ROTNBS0210", rot, 2, 140, 4_KB, 15999825870848);
+            gen(
+                "/dev/disk/by-partlabel/ROTNBS0210",
+                MakePathConfig(rot, 140),
+                2,
+                4_KB,
+                15999825870848);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(140, r.size());
@@ -375,7 +437,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         }
 
         {
-            gen("/dev/disk/by-partlabel/NVMECOMPUTE0110", local, 1, 1, local.GetBlockSize(), 367_GB);
+            gen(
+                "/dev/disk/by-partlabel/NVMECOMPUTE0110",
+                MakePathConfig(local, 1),
+                1,
+                local.GetBlockSize(),
+                367_GB);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(1, r.size());
@@ -401,8 +468,18 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         {
             TDeviceGenerator gen { Log, AgentId };
 
-            gen("/dev/disk/by-partlabel/NVMENBS0110", def, 1, 42, 4_KB, 93_GB);
-            gen("/dev/disk/by-partlabel/NVMENBS0210", def, 2, 0, 4_KB, 93_GB);
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS0110",
+                MakePathConfig(def, 42),
+                1,
+                4_KB,
+                93_GB);
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS0210",
+                MakePathConfig(def, 0),
+                2,
+                4_KB,
+                93_GB);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(2, r.size());
@@ -412,7 +489,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         {
             TDeviceGenerator gen { Log, AgentId };
 
-            gen("/dev/disk/by-partlabel/NVMENBS0210", def, 2, 0, 4_KB, 93_GB);
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS0210",
+                MakePathConfig(def, 0),
+                2,
+                4_KB,
+                93_GB);
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(1, r.size());
             UNIT_ASSERT_VALUES_EQUAL(expectedId, r[0].GetDeviceId());
@@ -440,9 +522,8 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
 
         gen(
             "/dev/disk/by-partlabel/NVMENBS0110",
-            compound,
+            MakePathConfig(compound),
             1,      // device number
-            0,      // max device count
             4_KB,   // block size
             headerSize + (deviceSize + padding) * deviceCount);
 
@@ -502,7 +583,12 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         TDeviceGenerator gen { Log, AgentId };
 
         {
-            gen("/dev/disk/by-partlabel/NVMENBS01", journalled, 1, 0, 4_KB, 93_GB);
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS01",
+                MakePathConfig(journalled, 0),
+                1,
+                4_KB,
+                93_GB);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(1, r.size());
@@ -520,9 +606,8 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         {
             gen(
                 "/dev/disk/by-partlabel/NVMENBS02",
-                journalledWithLayout,
+                MakePathConfig(journalledWithLayout),
                 2,
-                0,
                 4_KB,
                 1_GB + (93_GB + 32_MB) * 3);
 
@@ -538,12 +623,234 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         }
 
         {
-            gen("/dev/disk/by-partlabel/NVMENBS03", regular, 3, 0, 4_KB, 93_GB);
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS03",
+                MakePathConfig(regular, 0),
+                3,
+                4_KB,
+                93_GB);
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(1, r.size());
             UNIT_ASSERT_C(!r[0].GetJournalConfig().GetEnabled(), r[0]);
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldSelectPoolBySize, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPathConfig nvme;
+
+        auto& def = *nvme.AddPoolConfigs();
+        def.SetMinSize(1_KB);
+        def.SetMaxSize(1_KB + 1);
+
+        auto& v3 = *nvme.AddPoolConfigs();
+        v3.SetPoolName("v3");
+        v3.SetMinSize(10_KB);
+        v3.SetMaxSize(10_KB + 1);
+
+        auto& unbounded = *nvme.AddPoolConfigs();
+        unbounded.SetPoolName("unbounded");
+        unbounded.SetMinSize(20_KB);
+        // MaxSize is not specified
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        auto error = gen(
+            "/dev/disk/by-partlabel/NVMENBS01",
+            nvme,
+            1,
+            4_KB,
+            1_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        error = gen("/dev/disk/by-partlabel/NVMENBS02", nvme, 2, 4_KB, 10_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        error = gen("/dev/disk/by-partlabel/NVMENBS03", nvme, 3, 4_KB, 1_TB);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        // 5Kb doesn't fit into any pool
+        error = gen("/dev/disk/by-partlabel/NVMENBS04", nvme, 4, 4_KB, 5_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_NOT_FOUND,
+            error.GetCode(),
+            error.GetMessage());
+
+        auto r = gen.ExtractResult();
+        UNIT_ASSERT_VALUES_EQUAL(3, r.size());
+
+        UNIT_ASSERT_VALUES_EQUAL_C("", r[0].GetPoolName(), r[0]);
+        UNIT_ASSERT_VALUES_EQUAL_C("v3", r[1].GetPoolName(), r[1]);
+        UNIT_ASSERT_VALUES_EQUAL_C("unbounded", r[2].GetPoolName(), r[2]);
+    }
+
+    Y_UNIT_TEST_F(ShouldResolveBlockSize, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPoolConfig pool;
+        pool.SetPoolName("pool");
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        // Neither the pool nor the path specifies the block size: use the
+        // block size of the file.
+        {
+            auto error = gen(
+                "/dev/disk/by-partlabel/NVMENBS01",
+                MakePathConfig(pool),
+                1,
+                4_KB,
+                93_GB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(1, r.size());
+            UNIT_ASSERT_VALUES_EQUAL_C(4_KB, r[0].GetBlockSize(), r[0]);
+        }
+
+        // The path block size overrides the file block size.
+        {
+            auto path = MakePathConfig(pool);
+            path.SetBlockSize(512);
+
+            auto error = gen(
+                "/dev/disk/by-partlabel/NVMENBS02",
+                path,
+                2,
+                4_KB,
+                93_GB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(1, r.size());
+            UNIT_ASSERT_VALUES_EQUAL_C(512, r[0].GetBlockSize(), r[0]);
+        }
+
+        // The pool block size overrides the path block size.
+        {
+            auto path = MakePathConfig(pool);
+            path.SetBlockSize(512);
+            path.MutablePoolConfigs(0)->SetBlockSize(16_KB);
+
+            auto error = gen(
+                "/dev/disk/by-partlabel/NVMENBS03",
+                path,
+                3,
+                4_KB,
+                93_GB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(1, r.size());
+            UNIT_ASSERT_VALUES_EQUAL_C(16_KB, r[0].GetBlockSize(), r[0]);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldResolveMaxDeviceCount, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPoolConfig def;
+        def.MutableLayout()->SetDeviceSize(1_KB);
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        // Neither the pool nor the path limits the device count.
+        {
+            auto error = gen(
+                "/dev/disk/by-partlabel/NVMENBS01",
+                MakePathConfig(def),
+                1,
+                4_KB,
+                100_KB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(100, gen.ExtractResult().size());
+        }
+
+        // The path limits the device count.
+        {
+            auto error = gen(
+                "/dev/disk/by-partlabel/NVMENBS02",
+                MakePathConfig(def, 42),
+                2,
+                4_KB,
+                100_KB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(42, gen.ExtractResult().size());
+        }
+
+        // The pool limit overrides the path limit.
+        {
+            auto path = MakePathConfig(def, 42);
+            path.MutablePoolConfigs(0)->SetMaxDeviceCount(10);
+
+            auto error = gen(
+                "/dev/disk/by-partlabel/NVMENBS03",
+                path,
+                3,
+                4_KB,
+                100_KB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(10, gen.ExtractResult().size());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldInferMinSizeFromLayout, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPoolConfig def;
+        auto& layout = *def.MutableLayout();
+        // MinSize & MaxSize are not specified
+        layout.SetHeaderSize(8_KB);
+        layout.SetDeviceSize(2_KB);
+        layout.SetDevicePadding(1_KB);
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        // NVMENBS01 is accepted because of implicit MinSize = 10Kb and
+        // the unlimited MaxSize.
+        auto error = gen(
+            "/dev/disk/by-partlabel/NVMENBS01",
+            MakePathConfig(def),
+            1,
+            4_KB,
+            100_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        auto r = gen.ExtractResult();
+        UNIT_ASSERT_VALUES_EQUAL(31, r.size());  // (100 - 8) / (2 + 1)
+        for (const auto& d: r) {
+            UNIT_ASSERT_VALUES_EQUAL_C("", d.GetPoolName(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(2_KB, d.GetFileSize(), d);
+        }
+
+        // NVMENBS02 is rejected because of implicit MinSize = 10Kb
+        error = gen(
+            "/dev/disk/by-partlabel/NVMENBS02",
+            MakePathConfig(def),
+            2,
+            4_KB,
+            9_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_NOT_FOUND,
+            error.GetCode(),
+            error.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(0, gen.ExtractResult().size());
     }
 }
 
