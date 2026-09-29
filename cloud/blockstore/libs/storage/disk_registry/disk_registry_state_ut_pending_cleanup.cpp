@@ -93,7 +93,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStatePendingCleanupTest)
 
         TString target;
         executor.WriteTx([&] (TDiskRegistryDatabase db) {
-            auto&& [config, error] = state.StartDeviceMigration(
+            auto&& [config, error] = StartDeviceMigration(
+                state,
                 Now(),
                 db,
                 "vol0",
