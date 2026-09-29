@@ -1,3 +1,36 @@
+/*******************************************************************************
+
+Storage configuration wrappers keep raw protobuf values and share live ICB
+controls. Read-write getters use ICB Value when it differs from Default;
+otherwise they return their own raw value or the compiled fallback.
+
+
+DOUBLE VALUES PROCESSING
+
+Double defaults use a saturating integer representation in ICB. Finite values
+within range are truncated toward zero. Values outside the integer range and
+infinities map to the corresponding integer limit. NaN maps to zero.
+These rules affect only ICB: raw values, including infinities and NaN, remain
+unchanged and are returned by getters when there is no override.
+
+| Raw double | Native ICB default (64-bit) | Getter without override |
+|------------|-----------------------------|-------------------------|
+| 2.9        | 2                           | 2.9                     |
+| 1e100      | INT64_MAX                   | 1e100                   |
+| -1e100     | INT64_MIN                   | -1e100                  |
+| +infinity  | INT64_MAX                   | +infinity               |
+| -infinity  | INT64_MIN                   | -infinity               |
+| NaN        | 0                           | NaN                     |
+
+Original double defaults are compared to decide whether to reset overrides.
+Two NaNs count as unchanged for this comparison. Different raw values reset
+overrides even when their saturated ICB representations are equal.
+
+Setting ICB Value equal to Default means there is no override. Restore also
+resumes reading the raw value; it does not clamp the value returned by a getter.
+
+*******************************************************************************/
+
 #include "config.h"
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
@@ -14,6 +47,8 @@
 #include <google/protobuf/text_format.h>
 #include <google/protobuf/util/message_differencer.h>
 
+#include <cmath>
+#include <limits>
 #include <type_traits>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -1018,6 +1053,28 @@ constexpr TAtomicBase ConvertToAtomicBase(const TDuration& value)
     return value.MilliSeconds();
 }
 
+// Convert a double to the saturated ICB representation, see head comment.
+template <>
+TAtomicBase ConvertToAtomicBase(const double& value)
+{
+    // Handle unordered values before comparing against integer bounds.
+    if (std::isnan(value)) {
+        return 0;
+    }
+
+    // Use an exclusive upper bound: double(Max<TAtomicBase>()) may round up.
+    // Return integer limits directly, without converting them through double.
+    const double upper =
+        std::ldexp(1.0, std::numeric_limits<TAtomicBase>::digits);
+    if (value <= -upper) {
+        return Min<TAtomicBase>();
+    }
+    if (value >= upper) {
+        return Max<TAtomicBase>();
+    }
+    return static_cast<TAtomicBase>(value);
+}
+
 // ICB wrapper owned by a storage control set that retains the unconverted
 // double default. Initialize and update it through UpdateControlDefault().
 struct TDoubleControlWrapper: TControlWrapper
@@ -1045,7 +1102,10 @@ void UpdateControlDefault(
 {
     const auto defaultValue = ConvertToAtomicBase(configValue);
     if constexpr (std::is_same_v<TValue, double>) {
-        if (control.ConfigValue == configValue) {
+        // Compare raw values and treat all NaNs as equal, see head comment.
+        if (control.ConfigValue == configValue ||
+            (std::isnan(control.ConfigValue) && std::isnan(configValue)))
+        {
             return;
         }
         control.ConfigValue = configValue;
@@ -1345,6 +1405,8 @@ BLOCKSTORE_STORAGE_CONFIG_RO(BLOCKSTORE_CONFIG_GETTER)
 
 #undef BLOCKSTORE_CONFIG_GETTER
 
+// Return raw values (not ICB Default) when no ICB override exists, see head
+// comment.
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
     type TStorageConfig::Get##name() const                                     \
     {                                                                          \

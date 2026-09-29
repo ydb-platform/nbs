@@ -583,6 +583,46 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             config->GetStorageConfig()->GetWriteBlobThreshold());
     }
 
+    // Check that a large double from YAML is published and acknowledged with
+    // a saturated ICB default while the storage getter retains the raw value.
+    Y_UNIT_TEST_F(ShouldPublishDoubleWithSaturatedIcbDefault, TFixture)
+    {
+        // Observe the live control and notifications before applying YAML.
+        auto& board = *Runtime.GetAppData().Icb;
+        Controls->Register(board);
+        NKikimr::TControlWrapper control;
+        UNIT_ASSERT(!board.RegisterSharedControl(
+            control,
+            "BlockStore_DiskRegistryInitialAgentRejectionThreshold"));
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+        const auto previousConfig = ConfigHolder->Get();
+
+        // Accept a representable protobuf double beyond the integer ICB range.
+        const auto parser = CreateBlockstoreOpaqueConfigParser();
+        SendNotification(
+            parser(R"(
+storage_service:
+  disk_registry_initial_agent_rejection_threshold: 1.0e100
+)"),
+            75);
+        WaitForAck(75);
+        WaitForConfigChanged(subscriber);
+
+        // Publish the original double with the largest native integer default.
+        const auto config = ConfigHolder->Get();
+        UNIT_ASSERT_UNEQUAL(previousConfig.Get(), config.Get());
+        UNIT_ASSERT_VALUES_EQUAL(Max<TAtomicBase>(), control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(
+            Max<TAtomicBase>(),
+            static_cast<TAtomicBase>(control));
+        UNIT_ASSERT_VALUES_EQUAL(
+            1e100,
+            config->GetStorageConfig()
+                ->GetDiskRegistryInitialAgentRejectionThreshold());
+    }
+
     // Check that runtime updates preserve static-only fields and ignore changes
     // limited to those fields without publishing or notifying subscribers.
     Y_UNIT_TEST_F(ShouldIgnoreStaticOnlyOverrides, TFixture)
