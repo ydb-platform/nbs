@@ -448,7 +448,7 @@ root_kms: {address: kms}
             features,
             controls);
         NKikimr::TControlBoard controlBoard;
-        storage->Register(controlBoard);
+        controls->Register(controlBoard);
         NProto::TDiskAgentConfig diskAgentProto;
         diskAgentProto.SetAgentId("bootstrap-agent");
         NStorage::TDiskAgentConfig diskAgent(

@@ -1357,8 +1357,7 @@ const TStorageConfigControls::TImpl* TStorageConfig::ControlsImpl() const
     return Impl->Controls->Impl.get();
 }
 
-TStorageConfigControlsPtr
-TStorageConfig::GetStorageConfigControls() const
+TStorageConfigControlsPtr TStorageConfig::GetControls() const
 {
     return Impl->Controls;
 }
@@ -1367,11 +1366,6 @@ void TStorageConfig::SetFeaturesConfig(
     NFeatures::TFeaturesConfigConstPtr featuresConfig)
 {
     Impl->SetFeaturesConfig(std::move(featuresConfig));
-}
-
-void TStorageConfig::Register(TControlBoard& controlBoard) const
-{
-    Impl->Controls->Register(controlBoard);
 }
 
 #define BLOCKSTORE_CONFIG_GETTER(name, type, ...)                              \
