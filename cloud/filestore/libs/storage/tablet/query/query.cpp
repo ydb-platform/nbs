@@ -1,5 +1,5 @@
+#include "query.h"
 #include "parser.h"
-#include "parser_generated.h"
 
 #include <mutex>
 
@@ -8,7 +8,7 @@ struct yy_buffer_state;
 extern yy_buffer_state* yy_scan_bytes(const char*, int);
 extern void yy_delete_buffer(yy_buffer_state*);
 
-namespace NCloud::NFileStore::NClient::NQuery {
+namespace NCloud::NFileStore::NStorage::NQuery {
 
 struct TParseContext
 {
@@ -47,4 +47,4 @@ TMaybe<TSelect> Parse(TStringBuf input, TParseError* error)
     return std::move(context.Query);
 }
 
-}   // namespace NCloud::NFileStore::NClient::NQuery
+}   // namespace NCloud::NFileStore::NStorage::NQuery

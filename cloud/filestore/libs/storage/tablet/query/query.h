@@ -7,7 +7,7 @@
 #include <memory>
 #include <variant>
 
-namespace NCloud::NFileStore::NClient::NQuery {
+namespace NCloud::NFileStore::NStorage::NQuery {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -72,4 +72,4 @@ struct TParseError
 
 TMaybe<TSelect> Parse(TStringBuf input, TParseError* error = nullptr);
 
-}   // namespace NCloud::NFileStore::NClient::NQuery
+}   // namespace NCloud::NFileStore::NStorage::NQuery
