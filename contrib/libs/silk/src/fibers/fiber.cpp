@@ -23,7 +23,6 @@
 #include <atomic>
 #include <cerrno>
 #include <cstdint>
-#include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <mutex>
@@ -1032,46 +1031,6 @@ void FiberScheduler::buildStealCandidates() noexcept
     scheduler->prefixCount.store(orderIndex, std::memory_order_relaxed);
 }
 
-/** Human-readable name of a fiber lifecycle state, for the leak dump. */
-static const char * fiberStateName(FiberState state) noexcept
-{
-    switch (state)
-    {
-        case FiberState::SUSPENDED:
-            return "SUSPENDED";
-        case FiberState::READY:
-            return "READY";
-        case FiberState::RUNNING:
-            return "RUNNING";
-        case FiberState::SUSPEND_REQUESTED:
-            return "SUSPEND_REQUESTED";
-        case FiberState::STOPPED:
-            return "STOPPED";
-    }
-    return "INVALID";
-}
-
-// Print one leaked fiber to stderr before the destroy-time assert aborts.
-// The entry point locates the leaked code; the state separates a fiber still
-// waiting for its wakeup (SUSPENDED) from one that was woken but never
-// dispatched (READY). listCpu is the CPU whose list holds the fiber, or
-// kInvalidProcessorNumber for the global ready queue.
-static void dumpLeakedFiber(Fiber * fiber, const char * location, uint16_t listCpu) noexcept
-{
-    std::fprintf(
-        stderr,
-        "silk: leaked fiber %p: location=%s listCpu=%u state=%s entry=%p homeCpu=%u suspendedCpu=%u category=%u counter=%lu\n",
-        static_cast<void *>(fiber),
-        location,
-        static_cast<uint32_t>(listCpu),
-        fiberStateName(fiber->state.load(std::memory_order_relaxed)),
-        reinterpret_cast<void *>(fiber->fiberMain),
-        static_cast<uint32_t>(fiber->processorNumber),
-        static_cast<uint32_t>(fiber->suspendedProcessorNumber),
-        static_cast<uint32_t>(fiber->fiberId.category),
-        static_cast<unsigned long>(fiber->fiberId.counter));
-}
-
 void FiberScheduler::destroy() noexcept
 {
     SILK_ASSERT(scheduler);
@@ -1117,42 +1076,20 @@ void FiberScheduler::destroy() noexcept
     // A fiber still linked here suspended (or stayed scheduled) and never ran
     // to completion: the caller leaked it, violating the contract that no
     // fibers exist at destroy time. Fail here, where the leak is attributable,
-    // instead of corrupting teardown. Every leaked fiber is dumped first so a
-    // leak caught in CI is diagnosable from the log alone. A fiber woken but
-    // never dispatched sits in both a suspended list (removal is lazy) and a
-    // ready queue, and is dumped from each.
-    uint64_t leakedCount = 0;
-
-    while (Fiber * fiber = scheduler->readyQueue.dequeue())
-    {
-        ++leakedCount;
-        dumpLeakedFiber(fiber, "global-ready-queue", kInvalidProcessorNumber);
-    }
-
+    // instead of corrupting teardown.
+    SILK_ASSERT(scheduler->readyQueue.empty(), "fiber leaked: still in the global ready queue");
     for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
     {
         ProcessorState * processor = &scheduler->processorState[cpu];
+        SILK_ASSERT(processor->suspendedList.empty(), "fiber leaked: still suspended on cpu %u", cpu);
 
-        for (Fiber * fiber = processor->suspendedList.front(); fiber; fiber = processor->suspendedList.next(fiber))
-        {
-            ++leakedCount;
-            dumpLeakedFiber(fiber, "suspended-list", cpu);
-        }
-
-        // readyQueue.dequeue touches the slot array, which exists only for
+        // readyQueue.empty() touches the slot array, which exists only for
         // processors that were actually initialized.
         if (processor->number != kInvalidProcessorNumber)
         {
-            Fiber * fiber;
-            while (processor->readyQueue.dequeue(&fiber))
-            {
-                ++leakedCount;
-                dumpLeakedFiber(fiber, "ready-queue", cpu);
-            }
+            SILK_ASSERT(processor->readyQueue.empty(), "fiber leaked: still ready on cpu %u", cpu);
         }
     }
-
-    SILK_ASSERT(leakedCount == 0, "fiber leaked: %lu fibers still linked at destroy", static_cast<unsigned long>(leakedCount));
 
     delete scheduler;
 }
@@ -1936,9 +1873,10 @@ bool FiberScheduler::parkProcessor(ProcessorState * processor, uint64_t waitNs, 
         }
     }
 
-    // Double-check: work may have arrived between the last drain and here.
-    // If so, skip the park entirely so that work is not delayed by waitNs.
-    bool parking = !processor->hasWork();
+    // Double-check behind the fence: work may have arrived between the last drain and here, and a stop arrives
+    // as no work at all - destroy rings only a processor it already sees sleeping, so the stop is re-read here
+    // for the same reason the fence exists. Either this load sees it, or destroy's paired load sees the park.
+    bool parking = !processor->hasWork() && !scheduler->stopping.load(std::memory_order_relaxed);
 
     if (parking && (indefinitePark || standby))
     {
