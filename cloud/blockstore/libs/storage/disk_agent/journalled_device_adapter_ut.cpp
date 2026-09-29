@@ -81,7 +81,8 @@ struct TFixture: public NUnitTest::TBaseFixture
             Timer,
             DeviceUUID,
             DefaultBlockSize,
-            DeviceClient);
+            DeviceClient,
+            {});
     }
 
     static char BlockData(ui64 blockIndex)

@@ -587,7 +587,7 @@ TFuture<TInitializeResult> TDiskAgentState::InitAioStorage()
                     .DevicesWithSuspendedIO =
                         std::move(r.DevicesWithSuspendedIO),
                     .LostDevicesIds = std::move(r.LostDevicesIds),
-                    .JournalledDeviceIds = std::move(r.JournalledDeviceIds),
+                    .JournalledDevices = std::move(r.JournalledDevices),
                     .Guard = std::move(r.Guard)};
             });
 }

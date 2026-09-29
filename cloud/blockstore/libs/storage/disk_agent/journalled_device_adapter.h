@@ -35,6 +35,6 @@ NJournalled::IDevicePtr CreateDeviceAdapter(
     TString deviceUUID,
     ui32 blockSize,
     TDeviceClientPtr deviceClient,
-    TDeviceRegion region = {});
+    TDeviceRegion region);
 
 }   // namespace NCloud::NBlockStore::NStorage

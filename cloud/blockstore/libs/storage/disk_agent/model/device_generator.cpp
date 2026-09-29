@@ -30,7 +30,9 @@ NProto::TError TDeviceGenerator::operator () (
         file.SetPath(path);
         file.SetBlockSize(blockSize);
         file.SetPoolName(poolConfig.GetPoolName());
-        file.SetJournalled(poolConfig.GetJournalled());
+        if (poolConfig.HasJournalConfig()) {
+            *file.MutableJournalConfig() = poolConfig.GetJournalConfig();
+        }
         switch (poolConfig.GetHashScheme()) {
             case NProto::TStorageDiscoveryConfig::HS_LEGACY:
                 file.SetDeviceId(
@@ -63,7 +65,9 @@ NProto::TError TDeviceGenerator::operator () (
         file.SetPath(path);
         file.SetBlockSize(blockSize);
         file.SetPoolName(poolConfig.GetPoolName());
-        file.SetJournalled(poolConfig.GetJournalled());
+        if (poolConfig.HasJournalConfig()) {
+            *file.MutableJournalConfig() = poolConfig.GetJournalConfig();
+        }
         file.SetOffset(offset);
         file.SetFileSize(layout.GetDeviceSize());
 

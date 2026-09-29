@@ -77,7 +77,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             device.SetBlockSize(4_KB);
             device.SetDeviceId(uuid);
             device.SetPoolName("journalled");
-            device.SetJournalled(true);
+            device.MutableJournalConfig()->SetEnabled(true);
             // large enough for the journal parts to hold a few pages each
             device.SetFileSize(4_MB);
 

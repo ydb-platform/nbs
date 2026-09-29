@@ -1,5 +1,6 @@
 #include "disk_agent_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/disk_agent/journalled_device_adapter.h>
 
 #include <cloud/fastshard/journal/impl/device_page_store.h>
@@ -252,30 +253,41 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
     TExecutorPtr executor,
     TDeviceClientPtr deviceClient,
     const TDiskAgentConfig& agentConfig,
-    const NProto::TDeviceConfig& device)
+    const NProto::TDeviceConfig& device,
+    const NProto::TJournalConfig& journalConfig)
 {
-    if (!agentConfig.GetJournalEnabled()) {
-        // No journal: the whole device holds the data, writes go straight to it.
-        return NJournalled::CreateJournalledDeviceV1(
-            CreateDeviceAdapter(
-                std::move(timer),
-                device.GetDeviceUUID(),
-                device.GetBlockSize(),
-                std::move(deviceClient)));
-    }
-
     const ui32 blockSize = device.GetBlockSize();
     const ui64 blockCount = device.GetBlocksCount();
     if (!blockSize) {
         return MakeError(E_ARGUMENT, "the device block size is zero");
     }
 
+    if (!agentConfig.GetJournalEnabled()) {
+        // No journal: the whole device holds the data, writes go straight to it.
+        return NJournalled::CreateJournalledDeviceV1(CreateDeviceAdapter(
+            std::move(timer),
+            device.GetDeviceUUID(),
+            device.GetBlockSize(),
+            std::move(deviceClient),
+            {.FirstBlockIndex = 0, .BlockCount = blockCount}));
+    }
+
     // The device is split into three parts: the journal metadata, the journal
     // data and the data itself.
-    const ui64 logMetaBlockCount =
-        blockCount * agentConfig.GetLogMetaSizePercents() / 100;
-    const ui64 logDataBlockCount =
-        blockCount * agentConfig.GetLogDataSizePercents() / 100;
+    const ui64 logMetaSize = journalConfig.GetLogMetaSize();
+    const ui64 logDataSize = journalConfig.GetLogDataSize();
+
+    if (logMetaSize % blockSize || logDataSize % blockSize) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "the journal parts " << logMetaSize << " and "
+                << logDataSize << " bytes are not multiples of the block size "
+                << blockSize);
+    }
+
+    const ui64 logMetaBlockCount = logMetaSize / blockSize;
+    const ui64 logDataBlockCount = logDataSize / blockSize;
 
     // The key buffer store needs a couple of pages for its superblock and at
     // least one for the entries.
@@ -375,32 +387,57 @@ TNetworkAddress CreateNetworkAddress(TStringBuf s)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TDiskAgentActor::StartJournalledDeviceTcpServer(
+NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
     const NActors::TActorContext& ctx,
-    const TVector<TString>& journalledDeviceIds)
+    const THashMap<TString, NProto::TJournalConfig>& journalledDevices)
 {
-    if (!State || journalledDeviceIds.empty()) {
-        return;
+    if (journalledDevices.empty()) {
+        return {};
     }
 
     auto address = AgentConfig->GetJournalledDeviceTcpServerListenAddress();
     if (address.empty()) {
-        return;
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "the listen address is not configured, but there are "
+                << journalledDevices.size() << " journalled devices");
     }
 
-    const THashSet<TString> journalledIds(
-        journalledDeviceIds.begin(),
-        journalledDeviceIds.end());
+    if (!State) {
+        return MakeError(
+            E_INVALID_STATE,
+            "the disk agent state is not initialized");
+    }
+
+    THashSet<TString> journalledIds;
+    for (const auto& [id, journalConfig]: journalledDevices) {
+        journalledIds.insert(id);
+    }
 
     TVector<NProto::TDeviceConfig> configs;
     for (const auto& config: State->GetDevices()) {
         if (journalledIds.contains(config.GetDeviceUUID())) {
             configs.push_back(config);
+            journalledIds.erase(config.GetDeviceUUID());
         }
     }
 
+    if (!journalledIds.empty()) {
+        TStringBuilder missing;
+        for (const auto& id: journalledIds) {
+            missing << (missing.empty() ? "" : ", ") << id.Quote();
+        }
+
+        ReportDiskAgentJournalledDeviceCreationError(
+            "Journalled devices not found among the disk agent devices",
+            {{"devices", missing}});
+    }
+
     if (configs.empty()) {
-        return;
+        return MakeError(
+            E_NOT_FOUND,
+            "none of the journalled devices is among the disk agent devices");
     }
 
     Executor = TExecutor::Create("JD");
@@ -418,14 +455,13 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
             Executor,
             State->GetDeviceClient(),
             *AgentConfig,
-            config);
+            config,
+            journalledDevices.at(uuid));
 
         if (HasError(error)) {
-            LOG_ERROR_S(
-                ctx,
-                TBlockStoreComponents::DISK_AGENT,
-                "Can't create journalled device " << uuid.Quote() << ": "
-                    << FormatError(error));
+            ReportDiskAgentJournalledDeviceCreationError(
+                FormatError(error),
+                {{"device", uuid}});
             continue;
         }
 
@@ -433,13 +469,17 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
     }
 
     if (devices.empty()) {
-        return;
+        return MakeError(
+            E_NOT_FOUND,
+            TStringBuilder() << "none of the " << configs.size()
+                             << " journalled devices could be created");
     }
 
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "Starting journaled device TCP server on " << address.Quote() << "...");
+        "Starting journalled device TCP server on " << address.Quote()
+                                                    << "...");
 
     try {
         const TNetworkAddress listenAddress = CreateNetworkAddress(address);
@@ -463,12 +503,10 @@ void TDiskAgentActor::StartJournalledDeviceTcpServer(
             TBlockStoreComponents::DISK_AGENT,
             "Journalled device TCP server started on " << address.Quote());
 
+        return {};
+
     } catch (...) {
-        LOG_ERROR_S(
-            ctx,
-            TBlockStoreComponents::DISK_AGENT,
-            "Could not start journalled device TCP server"
-                << ": " << CurrentExceptionMessage());
+        return MakeError(E_FAIL, CurrentExceptionMessage());
     }
 }
 

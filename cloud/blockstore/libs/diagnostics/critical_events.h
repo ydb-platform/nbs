@@ -59,6 +59,8 @@ using TCritEventParams =
     xxx(DiskAgentSecureEraseDuringIo)                                          \
     xxx(DiskAgentSessionCacheRestoreError)                                     \
     xxx(DiskAgentSessionCacheUpdateError)                                      \
+    xxx(DiskAgentJournalledDeviceCreationError)                                \
+    xxx(DiskAgentJournalledDeviceTcpServerStartError)                          \
     xxx(UnexpectedIdentifierRepetition)                                        \
     xxx(ChaosGeneratedError)                                                   \
 // BLOCKSTORE_DISK_AGENT_CRITICAL_EVENTS
