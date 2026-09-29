@@ -1248,31 +1248,6 @@ std::optional<i64> TStorageConfigControls::GetOverride(TStringBuf name) const
     return std::nullopt;
 }
 
-bool TStorageConfigControls::RestoreDefault(TStringBuf name)
-{
-    TControlBoard* controlBoard;
-    {
-        TGuard<TMutex> guard(Impl->RegistrationLock);
-        controlBoard = Impl->RegisteredBoard;
-        if (!controlBoard) {
-            return false;
-        }
-    }
-
-#define BLOCKSTORE_CONFIG_RESTORE_DEFAULT(field, ...)                          \
-    if (name == #field) {                                                      \
-        controlBoard->RestoreDefault("BlockStore_" #field);                    \
-        return true;                                                           \
-    }                                                                          \
-    // BLOCKSTORE_CONFIG_RESTORE_DEFAULT
-
-    BLOCKSTORE_STORAGE_CONFIG_RW(BLOCKSTORE_CONFIG_RESTORE_DEFAULT)
-
-#undef BLOCKSTORE_CONFIG_RESTORE_DEFAULT
-
-    return false;
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TStorageConfig::TImpl

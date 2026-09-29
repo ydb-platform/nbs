@@ -353,7 +353,7 @@ root_kms: {address: kms}
                 ->GetEffectiveStorageConfigProto()
                 .GetWriteBlobThreshold());
 
-        UNIT_ASSERT(controls->RestoreDefault("WriteBlobThreshold"));
+        controlBoard.RestoreDefault("BlockStore_WriteBlobThreshold");
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             second->GetStorageConfig()->GetWriteBlobThreshold());
@@ -390,7 +390,7 @@ root_kms: {address: kms}
             150,
             currentConfig->GetStorageConfig()->GetWriteBlobThreshold());
 
-        UNIT_ASSERT(controls->RestoreDefault("WriteBlobThreshold"));
+        controlBoard.RestoreDefault("BlockStore_WriteBlobThreshold");
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             holder.Get()->GetStorageConfig()->GetWriteBlobThreshold());

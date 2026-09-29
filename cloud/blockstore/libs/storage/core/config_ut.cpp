@@ -357,7 +357,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                     UNIT_ASSERT_VALUES_EQUAL(123, (config.*getter)());
 
                     // Restore the native default and resume reading raw double.
-                    UNIT_ASSERT(controls->RestoreDefault(name));
+                    board.RestoreDefault(controlName);
                     UNIT_ASSERT_VALUES_EQUAL(
                         nativeDefault,
                         control.GetDefault());
@@ -458,7 +458,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         board.SetValue("BlockStore_WriteBlobThreshold", 300, previousValue);
         controls->UpdateDefaults(proto);
         UNIT_ASSERT_VALUES_EQUAL(300, retained.GetWriteBlobThreshold());
-        UNIT_ASSERT(controls->RestoreDefault("WriteBlobThreshold"));
+        board.RestoreDefault("BlockStore_WriteBlobThreshold");
         UNIT_ASSERT_VALUES_EQUAL(200, threshold.GetDefault());
         UNIT_ASSERT_VALUES_EQUAL(200, static_cast<i64>(threshold));
         UNIT_ASSERT_VALUES_EQUAL(100, retained.GetWriteBlobThreshold());
@@ -561,7 +561,6 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         // default equals the ICB value and the other two defaults differ.
         auto controls = std::make_shared<TStorageConfigControls>();
         UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
-        UNIT_ASSERT(!controls->RestoreDefault("WriteBlobThreshold"));
 
         NKikimr::TControlBoard controlBoard;
         controls->Register(controlBoard);
@@ -608,12 +607,11 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(200, third->GetWriteBlobThreshold());
 
-        UNIT_ASSERT(controls->RestoreDefault("WriteBlobThreshold"));
+        controlBoard.RestoreDefault("BlockStore_WriteBlobThreshold");
         UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
         UNIT_ASSERT_VALUES_EQUAL(100, first->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(300, third->GetWriteBlobThreshold());
-        UNIT_ASSERT(!controls->RestoreDefault("UnknownField"));
     }
 
     // Check that concurrent registration of the same controls is idempotent.
@@ -787,7 +785,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(16, globalConfig->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(16, config->GetMaxMigrationIoDepth());
 
-        UNIT_ASSERT(controls->RestoreDefault("MaxMigrationIoDepth"));
+        controlBoard.RestoreDefault("BlockStore_MaxMigrationIoDepth");
         UNIT_ASSERT_VALUES_EQUAL(4, globalConfig->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(
