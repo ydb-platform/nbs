@@ -77,6 +77,26 @@ func newBackupExecutionContext(
 	return execCtx
 }
 
+func enqueueBackupChunks(
+	ctx context.Context,
+	storage snapshot_storage.Storage,
+	entries []snapshot_storage.BackupChunkQueueEntry,
+) error {
+
+	for _, entry := range entries {
+		err := storage.EnqueueBackupChunks(
+			ctx,
+			entry.SnapshotID,
+			[]snapshot_storage.BackupChunkQueueEntry{entry},
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func createSnapshotWithChunk(
 	t *testing.T,
 	ctx context.Context,
@@ -209,6 +229,9 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 	cleared, err := storage.ClearCompletedBackupChunkQueueEntries(ctx, "snap1", 10)
 	require.NoError(t, err)
 	require.Zero(t, cleared)
+
+	err = task.Run(ctx, execCtx)
+	require.NoError(t, err)
 }
 
 func TestBackupSnapshotDataTaskEnqueuesOnlyOwnChunks(t *testing.T) {
@@ -378,7 +401,13 @@ func TestBackupSnapshotDataTaskEnqueuesInBatches(t *testing.T) {
 		queue,
 	)
 
-	err = storage.ChunksBackupCompleted(ctx, queue)
+	err = storage.ChunksBackupCompleted(ctx, queue[:1])
+	require.NoError(t, err)
+
+	err = task.Run(ctx, execCtx)
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	err = storage.ChunksBackupCompleted(ctx, queue[1:])
 	require.NoError(t, err)
 
 	resumed := newBackupSnapshotDataTask(storage, follower, "snap1")
@@ -387,18 +416,16 @@ func TestBackupSnapshotDataTaskEnqueuesInBatches(t *testing.T) {
 	resumed.state.EnqueuedChunkCount = 1
 
 	err = resumed.Run(ctx, execCtx)
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	require.NoError(t, err)
 	require.EqualValues(t, 2, resumed.state.EnqueuedChunkCount)
 
 	queue, err = storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
-	require.Equal(
-		t,
-		[]snapshot_storage.BackupChunkQueueEntry{
-			{SnapshotID: "snap1", ChunkID: chunk1, StoredInS3: true},
-		},
-		queue,
-	)
+	require.Empty(t, queue)
+
+	completed, err := storage.GetBackedUpChunkCount(ctx, "snap1")
+	require.NoError(t, err)
+	require.Zero(t, completed)
 }
 
 func TestBackupSnapshotDataTaskBacksUpChunkStoredInYDB(t *testing.T) {

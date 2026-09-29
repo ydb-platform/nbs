@@ -58,12 +58,7 @@ func (t *backupSnapshotDataTask) Run(
 		return err
 	}
 
-	err = t.waitForChunksBackupCompleted(ctx, snapshotID)
-	if err != nil {
-		return err
-	}
-
-	err = t.backupChunkMap(ctx, meta)
+	err = t.backupChunkMap(ctx, execCtx, meta)
 	if err != nil {
 		return err
 	}
@@ -121,7 +116,11 @@ func (t *backupSnapshotDataTask) enqueueBatch(
 ) error {
 
 	if len(batch) != 0 {
-		err := t.storage.EnqueueBackupChunks(ctx, batch)
+		err := t.storage.EnqueueBackupChunks(
+			ctx,
+			t.request.SnapshotId,
+			batch,
+		)
 		if err != nil {
 			return err
 		}
@@ -199,12 +198,12 @@ func (t *backupSnapshotDataTask) waitForChunksBackupCompleted(
 	snapshotID string,
 ) error {
 
-	hasEntries, err := t.storage.HasQueuedChunksToBackup(ctx, snapshotID)
+	completed, err := t.storage.GetBackedUpChunkCount(ctx, snapshotID)
 	if err != nil {
 		return err
 	}
 
-	if hasEntries {
+	if completed < uint64(t.state.EnqueuedChunkCount) {
 		logging.Debug(
 			ctx,
 			"Backup of snapshot with id %v is waiting for its chunks to finish backing up",
@@ -241,8 +240,18 @@ func (t *backupSnapshotDataTask) clearCompletedBackupChunkQueueEntries(
 
 func (t *backupSnapshotDataTask) backupChunkMap(
 	ctx context.Context,
+	execCtx tasks.ExecutionContext,
 	meta storage.SnapshotMeta,
 ) error {
+
+	if t.state.ChunkMapBackedUp {
+		return nil
+	}
+
+	err := t.waitForChunksBackupCompleted(ctx, meta.ID)
+	if err != nil {
+		return err
+	}
 
 	chunkMap := &protos.BackupChunkMap{
 		ChunkIds: make([]string, meta.ChunkCount),
@@ -265,7 +274,7 @@ func (t *backupSnapshotDataTask) backupChunkMap(
 		chunkMap.ChunkIds[entry.ChunkIndex] = entry.ChunkID
 	}
 
-	err := <-entriesErrors
+	err = <-entriesErrors
 	if err != nil {
 		return err
 	}
@@ -275,9 +284,15 @@ func (t *backupSnapshotDataTask) backupChunkMap(
 		return errors.NewNonRetriableError(err)
 	}
 
-	return t.backupS3.PutObject(
+	err = t.backupS3.PutObject(
 		ctx,
 		backup.ChunkMapKey(meta.ID),
 		persistence.S3Object{Data: data},
 	)
+	if err != nil {
+		return err
+	}
+
+	t.state.ChunkMapBackedUp = true
+	return execCtx.SaveState(ctx)
 }

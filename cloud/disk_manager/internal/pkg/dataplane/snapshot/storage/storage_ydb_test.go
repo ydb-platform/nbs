@@ -1732,10 +1732,13 @@ func TestBackupChunkQueue(t *testing.T) {
 		{SnapshotID: "snap1", ChunkID: "t.snap1.1"},
 		{SnapshotID: "snap2", ChunkID: "t.snap2.0"},
 	}
-	err := f.storage.EnqueueBackupChunks(f.ctx, entries)
+	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:2])
 	require.NoError(t, err)
 
-	err = f.storage.EnqueueBackupChunks(f.ctx, entries[:1])
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap2", entries[2:])
+	require.NoError(t, err)
+
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:1])
 	require.NoError(t, err)
 
 	length, err := f.storage.GetBackupChunkQueueLength(f.ctx)
@@ -1746,22 +1749,25 @@ func TestBackupChunkQueue(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
-	has, err := f.storage.HasQueuedChunksToBackup(f.ctx, "snap1")
+	completed, err := f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
 	require.NoError(t, err)
-	require.True(t, has)
+	require.Zero(t, completed)
 
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
 	require.NoError(t, err)
 
-	has, err = f.storage.HasQueuedChunksToBackup(f.ctx, "snap1")
+	completed, err = f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
 	require.NoError(t, err)
-	require.False(t, has)
+	require.EqualValues(t, 2, completed)
+
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:2])
+	require.NoError(t, err)
 
 	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:], got)
 
-	err = f.storage.ChunksBackupCompleted(f.ctx, got)
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[2:])
 	require.NoError(t, err)
 
 	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
@@ -1783,13 +1789,16 @@ func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
 		{SnapshotID: "snap1", ChunkID: "t.snap1.2"},
 		{SnapshotID: "snap2", ChunkID: "t.snap2.0"},
 	}
-	err := f.storage.EnqueueBackupChunks(f.ctx, entries)
+	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:3])
 	require.NoError(t, err)
 
-	err = f.storage.ChunksBackupCompleted(
-		f.ctx,
-		[]BackupChunkQueueEntry{entries[0], entries[1], entries[3]},
-	)
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap2", entries[3:])
+	require.NoError(t, err)
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
+	require.NoError(t, err)
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[3:])
 	require.NoError(t, err)
 
 	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 10)
@@ -1799,6 +1808,10 @@ func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
 	length, err := f.storage.GetBackupChunkQueueLength(f.ctx)
 	require.NoError(t, err)
 	require.EqualValues(t, 1, length)
+
+	completed, err := f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, completed)
 
 	for _, expected := range []int{1, 1, 0} {
 		cleared, err := f.storage.ClearCompletedBackupChunkQueueEntries(
@@ -1810,9 +1823,12 @@ func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
 		require.Equal(t, expected, cleared)
 	}
 
-	has, err := f.storage.HasQueuedChunksToBackup(f.ctx, "snap1")
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
 	require.NoError(t, err)
-	require.True(t, has)
+
+	completed, err = f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.Zero(t, completed)
 
 	cleared, err := f.storage.ClearCompletedBackupChunkQueueEntries(
 		f.ctx,

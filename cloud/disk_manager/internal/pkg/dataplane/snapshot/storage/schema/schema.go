@@ -124,12 +124,34 @@ func Create(
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
-		"backup_chunk_queue",
+		"backup_chunks",
 		persistence.NewCreateTableDescription(
+			persistence.WithColumn(
+				"snapshot_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"chunk_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
 			persistence.WithColumn(
 				"status",
 				persistence.Optional(persistence.TypeInt64),
 			),
+			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_chunks table")
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunk_queue",
+		persistence.NewCreateTableDescription(
 			persistence.WithColumn(
 				"snapshot_id",
 				persistence.Optional(persistence.TypeUTF8),
@@ -142,11 +164,7 @@ func Create(
 				"stored_in_s3",
 				persistence.Optional(persistence.TypeBool),
 			),
-			persistence.WithPrimaryKeyColumn(
-				"status",
-				"snapshot_id",
-				"chunk_id",
-			),
+			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
 		),
 		dropUnusedColumns,
 	)
@@ -226,6 +244,12 @@ func Drop(
 		return err
 	}
 	logging.Info(ctx, "Dropped chunk_map table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunks")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_chunks table")
 
 	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_queue")
 	if err != nil {

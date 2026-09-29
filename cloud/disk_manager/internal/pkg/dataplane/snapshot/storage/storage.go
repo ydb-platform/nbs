@@ -165,6 +165,7 @@ type Storage interface {
 
 	EnqueueBackupChunks(
 		ctx context.Context,
+		snapshotID string,
 		entries []BackupChunkQueueEntry,
 	) error
 
@@ -173,10 +174,10 @@ type Storage interface {
 		limit int,
 	) ([]BackupChunkQueueEntry, error)
 
-	HasQueuedChunksToBackup(
+	GetBackedUpChunkCount(
 		ctx context.Context,
 		snapshotID string,
-	) (bool, error)
+	) (uint64, error)
 
 	ChunksBackupCompleted(
 		ctx context.Context,

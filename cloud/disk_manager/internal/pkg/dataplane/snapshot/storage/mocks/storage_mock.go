@@ -271,10 +271,11 @@ func NewStorageMock() *StorageMock {
 
 func (s *StorageMock) EnqueueBackupChunks(
 	ctx context.Context,
+	snapshotID string,
 	entries []storage.BackupChunkQueueEntry,
 ) error {
 
-	args := s.Called(ctx, entries)
+	args := s.Called(ctx, snapshotID, entries)
 	return args.Error(0)
 }
 
@@ -287,13 +288,13 @@ func (s *StorageMock) GetQueuedChunksToBackup(
 	return args.Get(0).([]storage.BackupChunkQueueEntry), args.Error(1)
 }
 
-func (s *StorageMock) HasQueuedChunksToBackup(
+func (s *StorageMock) GetBackedUpChunkCount(
 	ctx context.Context,
 	snapshotID string,
-) (bool, error) {
+) (uint64, error) {
 
 	args := s.Called(ctx, snapshotID)
-	return args.Bool(0), args.Error(1)
+	return args.Get(0).(uint64), args.Error(1)
 }
 
 func (s *StorageMock) ChunksBackupCompleted(

@@ -44,7 +44,7 @@ func TestBackupChunksTask(t *testing.T) {
 	entries := []snapshot_storage.BackupChunkQueueEntry{
 		{SnapshotID: "snap1", ChunkID: chunkID, StoredInS3: true},
 	}
-	err := storage.EnqueueBackupChunks(ctx, entries)
+	err := enqueueBackupChunks(ctx, storage, entries)
 	require.NoError(t, err)
 
 	task := newBackupChunksTask(storage, follower)
@@ -84,7 +84,7 @@ func TestBackupChunksTaskCopiesSeveralBatches(t *testing.T) {
 		{SnapshotID: "snap1", ChunkID: chunk0, StoredInS3: true},
 		{SnapshotID: "snap2", ChunkID: chunk1, StoredInS3: true},
 	}
-	err := storage.EnqueueBackupChunks(ctx, entries)
+	err := enqueueBackupChunks(ctx, storage, entries)
 	require.NoError(t, err)
 
 	task := newBackupChunksTask(storage, follower)
@@ -122,7 +122,7 @@ func TestBackupChunksTaskGoesOnPastMissingChunk(t *testing.T) {
 		missing,
 		{SnapshotID: "snap2", ChunkID: chunkID, StoredInS3: true},
 	}
-	err := storage.EnqueueBackupChunks(ctx, entries)
+	err := enqueueBackupChunks(ctx, storage, entries)
 	require.NoError(t, err)
 
 	task := newBackupChunksTask(storage, follower)
