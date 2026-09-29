@@ -964,7 +964,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     auto config = CreateTestStorageConfig(
         std::move(storageServiceConfig),
         std::move(featuresConfig));
-    config->Register(*runtime->GetAppData().Icb);
+    config->GetControls()->Register(*runtime->GetAppData().Icb);
     auto diagConfig = CreateTestDiagnosticsConfig();
     auto partitionBudgetManager =
         std::make_shared<TPartitionBudgetManager>(config);
