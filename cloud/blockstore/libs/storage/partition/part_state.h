@@ -491,7 +491,7 @@ private:
             Blocks.GetCommitIds(blockIndex, existingCommitIds);
 
             NCloud::NStorage::FindGarbageVersions(checkpoints, existingCommitIds, garbage);
-            for (auto garbageCommitId: garbage) {
+            for (ui64 garbageCommitId: garbage) {
                 // This block is being flushed; we'll remove it on AddBlobs
                 // and we'll release barrier on FlushCompleted
                 if (GetFlushedCommitIdsInProgress().contains(garbageCommitId)) {
@@ -711,7 +711,7 @@ public:
 
     ui32 GetLegacyCompactionScore() const
     {
-        return CompactionMap.GetTop().Stat.BlobCount;
+        return CompactionMap.GetTopByBlobCount().Stat.BlobCount;
     }
 
     ui32 GetCompactionGarbageScore() const
@@ -1375,11 +1375,11 @@ public:
 
     double GetStoredBytesCountToDiskSizeRatio() const
     {
-        const auto mixedBytesCount = GetMixedBlocksCount() * GetBlockSize();
-        const auto freshBytesCount =
+        const ui64 mixedBytesCount = GetMixedBlocksCount() * GetBlockSize();
+        const ui64 freshBytesCount =
             static_cast<ui64>(GetUnflushedFreshBlocksCount()) * GetBlockSize();
-        const auto mergedBytesCount = GetMergedBlocksCount() * GetBlockSize();
-        const auto bytesCount = GetBlocksCount() * GetBlockSize();
+        const ui64 mergedBytesCount = GetMergedBlocksCount() * GetBlockSize();
+        const ui64 bytesCount = GetBlocksCount() * GetBlockSize();
 
         STORAGE_VERIFY_C(
             bytesCount != 0,

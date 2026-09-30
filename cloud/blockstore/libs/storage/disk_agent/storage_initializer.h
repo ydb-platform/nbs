@@ -31,6 +31,7 @@ struct TInitializeStorageResult
     TVector<TString> ConfigMismatchErrors;
     TVector<TString> DevicesWithSuspendedIO;
     TVector<TString> LostDevicesIds;
+    TVector<TString> JournalledDeviceIds;
     TDeviceGuard Guard;
 };
 

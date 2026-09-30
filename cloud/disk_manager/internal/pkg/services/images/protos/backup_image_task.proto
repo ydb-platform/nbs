@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package images;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message BackupImageRequest {
+    string ImageId = 1;
+}
+
+message BackupImageTaskState {
+    string DataplaneTaskID = 1;
+}

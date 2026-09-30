@@ -77,7 +77,7 @@ TVector<ui32> TCompactionStatsTracker::FinishCompaction()
     VerifyCompactionIsActive();
 
     for (auto& counter: CurrentCompaction->CountersForRangeIndices) {
-        const auto usedBlockCount = UsedBlocks.Count(
+        const ui64 usedBlockCount = UsedBlocks.Count(
             counter.BlockIndex,
             Min(static_cast<ui64>(counter.BlockIndex) +
                     static_cast<ui64>(CompactionMap.GetRangeSize()),

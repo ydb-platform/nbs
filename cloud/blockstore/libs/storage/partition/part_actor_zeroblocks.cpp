@@ -251,7 +251,7 @@ void TPartitionActor::HandleZeroBlocks(
 
     TBlockRange64 writeRange;
 
-    auto ok = InitReadWriteBlockRange(
+    bool ok = InitReadWriteBlockRange(
         msg->Record.GetStartIndex(),
         msg->Record.GetBlocksCount(),
         &writeRange
@@ -275,7 +275,7 @@ void TPartitionActor::HandleZeroBlocks(
         return;
     }
 
-    const auto requestSize = writeRange.Size() * State->GetBlockSize();
+    const ui64 requestSize = writeRange.Size() * State->GetBlockSize();
     const bool isFreshRequest = IsFreshRequest(
         *Config,
         PartitionConfig.GetStorageMediaKind(),
@@ -397,7 +397,7 @@ void TPartitionActor::HandleZeroBlocksCompletedImpl(
 
     UpdateCPUUsageStat(ctx.Now(), opCompleted.ExecCycles);
 
-    auto time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
+    ui64 time = CyclesToDurationSafe(opCompleted.TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
     if (freshBlocksRequest) {
@@ -495,7 +495,7 @@ void TPartitionActor::CompleteZeroBlocks(
 
     UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    ui64 time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.ZeroBlocks.AddRequest(time, requestBytes);
 
     State->AccessCommitQueue()->ReleaseBarrier(args.CommitId);

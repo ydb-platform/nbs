@@ -37,28 +37,10 @@ def default_storage_config():
     return storage
 
 
-def storage_config_with_incremental_compaction():
-    storage = default_storage_config()
-    storage.IncrementalCompactionEnabled = True
-
-    return storage
-
-
-def storage_config_with_incremental_batch_compaction():
-    storage = storage_config_with_incremental_compaction()
-    storage.BatchCompactionEnabled = True
-    storage.CompactionRangeCountPerRun = 5
-    storage.SSDMaxBlobsPerRange = 5
-    storage.HDDMaxBlobsPerRange = 5
-
-    return storage
-
-
 def storage_config_with_garbage_batch_compaction():
     storage = default_storage_config()
     storage.BatchCompactionEnabled = True
     storage.GarbageCompactionRangeCountPerRun = 20
-    storage.V1GarbageCompactionEnabled = True
     storage.CompactionGarbageThreshold = 20
     storage.CompactionRangeGarbageThreshold = 999999
     storage.SSDMaxBlobsPerRange = 5
@@ -68,7 +50,8 @@ def storage_config_with_garbage_batch_compaction():
 
 
 def storage_config_with_incremental_compaction_and_patching():
-    storage = storage_config_with_incremental_compaction()
+    storage = default_storage_config()
+    storage.IncrementalCompactionEnabled = True
     storage.BlobPatchingEnabled = True
     # checksums are currently not supported for patched blobs
     storage.DiskPrefixLengthWithBlockChecksumsInBlobs = 0
@@ -223,6 +206,39 @@ def storage_config_with_checkpoint_aware_cleanup_enabled(max_partitions):
     return storage
 
 
+def storage_config_with_blob_count_compaction():
+    storage = default_storage_config()
+    storage.CompactionGarbageThreshold = 20
+    storage.FreshChannelWriteRequestsEnabled = True
+    storage.BatchCompactionEnabled = True
+    storage.IncrementalCompactionEnabled = True
+    storage.MaxSkippedBlobsDuringCompactionHDD = 0
+    storage.MultipartitionVolumesEnabled = True
+    storage.WriteRequestBatchingEnabled = True
+    storage.FreshChannelZeroRequestsEnabled = True
+    storage.FreshChannelCountSSD = 2
+    storage.FreshBlocksWriterEnabled = True
+    storage.WriteBlobThresholdSSD = 262144
+    storage.WriteBlobThreshold = 2097152
+    storage.ReadBlockMaskOnCompactionOptimizationEnabled = True
+    storage.SSDMaxBlobsPerRange = 10
+    storage.MaxBlobsToCleanup = 3000
+    storage.CompactionMergedBlobThresholdHDD = 2097152
+    storage.MaxCompactionRangesLoadingPerTx = 100000
+    storage.TrimFreshLogTimeout = 3000
+    storage.CollectGarbageTimeoutSSD = 3000
+    storage.CollectGarbageTimeoutHDD = 3000
+    storage.SplitByCompactionRangeMaxBlobCount = 4
+    storage.MaxCompactionDelay = 1000
+    storage.CompactionScoreLimitForThrottling = 0
+    storage.IgnoringZeroedCompactionEnabled = True
+    storage.MaxCompactionExecTimePerSecondForZeroed = 100
+    storage.SSDMaxBlobsPerUnit = 40960   # 5 blobs per range on avg
+    storage.HDDMaxBlobsPerUnit = 327680  # 5 blobs per range on avg
+
+    return storage
+
+
 class TestCase(object):
 
     def __init__(
@@ -272,24 +288,6 @@ TESTS = [
             storage_config_with_checkpoint_aware_cleanup_enabled(2),
             default_storage_config(),
             storage_config_with_checkpoint_aware_cleanup_enabled(1),
-        ],
-        None,
-    ),
-    TestCase(
-        "version1-incremental-compaction",
-        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
-        [
-            storage_config_with_incremental_compaction(),
-            default_storage_config(),
-        ],
-        None,
-    ),
-    TestCase(
-        "version1-incremental-batch-compaction",
-        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-multiple-ranges.txt",
-        [
-            storage_config_with_incremental_batch_compaction(),
-            default_storage_config(),
         ],
         None,
     ),
@@ -429,6 +427,18 @@ TESTS = [
         [
             storage_config_with_new_features_enabled(),
         ],
+        None,
+    ),
+    TestCase(
+        "version1-blob-count-compaction-ssd",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-blob-count-compaction-ssd.txt",
+        [storage_config_with_blob_count_compaction()],
+        None,
+    ),
+    TestCase(
+        "version1-blob-count-compaction-hdd-bs8k",
+        "cloud/blockstore/tests/loadtest/local-newfeatures/local-tablet-version-1-blob-count-compaction-hdd-bs8k.txt",
+        [storage_config_with_blob_count_compaction()],
         None,
     ),
     TestCase(

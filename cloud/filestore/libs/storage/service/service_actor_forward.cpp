@@ -100,9 +100,11 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
         const int shardIdx = SafeIntegerCast<int>(shardNo - 1);
 
         if (shardIds.size() <= shardIdx) {
-            LOG_ERROR(ctx, TFileStoreComponents::SERVICE,
+            LOG_WARN(
+                ctx,
+                TFileStoreComponents::SERVICE,
                 "[%s][%lu] forward %s #%lu - invalid shardNo: %u/%d"
-                " (legacy handle?)",
+                " (legacy handle or a newly added shard?)",
                 sessionId.Quote().c_str(),
                 seqNo,
                 methodName.c_str(),
@@ -110,12 +112,12 @@ TResultOrError<TString> TStorageServiceActor::SelectShard(
                 shardNo,
                 shardIds.size());
 
-            auto message = ReportInvalidShardNo(TStringBuilder()
-                << "FileSystemId: " << filestore.GetFileSystemId()
-                << ", shardNo: "
-                << shardNo << ", shardCount: " << shardIds.size());
+            auto message = TStringBuilder()
+                           << "FileSystemId: " << filestore.GetFileSystemId()
+                           << ", shardNo: " << shardNo
+                           << ", shardCount: " << shardIds.size();
 
-            return MakeError(E_INVALID_STATE, std::move(message));
+            return MakeError(E_REJECTED, std::move(message));
         }
 
         const auto& shardId = shardIds[shardIdx];

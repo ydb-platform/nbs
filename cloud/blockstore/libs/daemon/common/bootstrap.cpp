@@ -737,7 +737,18 @@ void TBootstrapBase::Init()
         });
     }
 
+    IBlockStorePtr cellForwardTrusted;
+    if (Configs->CellsConfig->GetCellsEnabled()) {
+        cellForwardTrusted = Service;
+    }
+
     InitAuthService();
+
+    if (Configs->CellsConfig->GetCellsEnabled()) {
+        Service = WrapServiceForInterCellForward(
+            std::move(Service),
+            std::move(cellForwardTrusted));
+    }
 
     if (Configs->ServerConfig->GetStrictContractValidation()) {
         Service = CreateValidationService(
@@ -1066,6 +1077,10 @@ void TBootstrapBase::Start()
     // 2) we have loops in our dependencies, so there is no 'correct' starting
     // order
     START_COMMON_COMPONENT(Scheduler);
+
+    // register the cells mon page only now: its disk search needs the cell
+    // manager's gRPC client (started above) to have executors to run on
+    SetupCellMonitoringActor();
 
     if (!Configs->Options->TemporaryServer) {
         WarmupBSGroupConnections();

@@ -1384,7 +1384,9 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
             << "endpoint " << socketPath.Quote() << " not started");
     }
 
-    auto ipcType = it->second->Request->GetIpcType();
+    auto endpoint = it->second;
+
+    auto ipcType = endpoint->Request->GetIpcType();
     auto listenerIt = EndpointListeners.find(ipcType);
     STORAGE_VERIFY(
         listenerIt != EndpointListeners.end(),
@@ -1399,10 +1401,18 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         return TErrorResponse(getSessionError);
     }
 
-    it->second->Volume.SetBlocksCount(sessionInfo.Volume.GetBlocksCount());
-    it->second->Volume.SetBlockSize(sessionInfo.Volume.GetBlockSize());
+    // Device may be null while NBD recovery is in progress.
+    if (!endpoint->Device) {
+        return TErrorResponse(
+            E_REJECTED,
+            TStringBuilder() << "cannot refresh endpoint " << socketPath.Quote()
+                             << ": NBD device is not ready, retry later");
+    }
 
-    auto error = it->second->Device->Resize(
+    endpoint->Volume.SetBlocksCount(sessionInfo.Volume.GetBlocksCount());
+    endpoint->Volume.SetBlockSize(sessionInfo.Volume.GetBlockSize());
+
+    auto error = endpoint->Device->Resize(
         sessionInfo.Volume.GetBlocksCount() *
         sessionInfo.Volume.GetBlockSize()).GetValueSync();
     if (HasError(error)) {
@@ -1521,7 +1531,7 @@ void TEndpointManager::DoProcessException(
     }
 
     if (hasDevice) {
-        STORAGE_INFO(prefix << "start device");
+        STORAGE_INFO(prefix << " start device");
         auto device = NbdDeviceFactory->Create(
             TNetworkAddress(TUnixSocketPath(socketPath)),
             endpoint->Request->GetNbdDeviceFile(),
@@ -1530,7 +1540,7 @@ void TEndpointManager::DoProcessException(
         auto startDeviceFuture = device->Start();
         error = Executor->WaitFor(startDeviceFuture);
         if (HasError(error)) {
-            STORAGE_ERROR(prefix << "failed to start device: "
+            STORAGE_ERROR(prefix << " failed to start device: "
                 << FormatError(error));
             context->Generation++;
             ProcessException(std::move(context), std::move(prefix));

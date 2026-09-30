@@ -422,3 +422,84 @@ func TestImagesGetImage(t *testing.T) {
 	require.NoError(t, err)
 	checkImage()
 }
+
+func TestImagesBackup(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	image := ImageMeta{
+		ID:       "image",
+		FolderID: "folder",
+		CreateRequest: &wrappers.UInt64Value{
+			Value: 1,
+		},
+		CreateTaskID: "create",
+		CreatingAt:   time.Now(),
+		CreatedBy:    "user",
+	}
+
+	_, err = storage.CreateImage(ctx, image)
+	require.NoError(t, err)
+
+	ids, err := storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+
+	err = storage.ImageCreated(ctx, image.ID, "checkpoint", time.Now(), 0, 0)
+	require.NoError(t, err)
+
+	ids, err = storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{image.ID}, ids)
+
+	err = storage.ImageBackupScheduled(ctx, image.ID)
+	require.NoError(t, err)
+
+	ids, err = storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+
+	err = storage.ImageBackupCancelled(ctx, image.ID)
+	require.NoError(t, err)
+}
+
+func TestImagesDeletionStopsBackup(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	image := ImageMeta{
+		ID:       "image",
+		FolderID: "folder",
+		CreateRequest: &wrappers.UInt64Value{
+			Value: 1,
+		},
+		CreateTaskID: "create",
+		CreatingAt:   time.Now(),
+		CreatedBy:    "user",
+	}
+
+	_, err = storage.CreateImage(ctx, image)
+	require.NoError(t, err)
+
+	err = storage.ImageCreated(ctx, image.ID, "checkpoint", time.Now(), 0, 0)
+	require.NoError(t, err)
+
+	_, err = storage.DeleteImage(ctx, image.ID, "delete", time.Now())
+	require.NoError(t, err)
+
+	ids, err := storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+}

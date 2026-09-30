@@ -1,7 +1,4 @@
 RECURSE(
-    client
-    iface
-    impl
+    factory
     quorum
-    server
 )

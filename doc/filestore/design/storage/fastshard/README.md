@@ -154,7 +154,7 @@ coordinated by the shard.
 | `TIndexTabletActor` bootstrap, sessions, config pipeline | reused |
 | Interconnect between shards | reused |
 | blockstore-disk-agent | reused, extended with the journalled device layer |
-| `journalled_device_tcp_server` (`cloud/storage/core/libs`) | new |
+| journalled device TCP server (`cloud/fastshard/journal/server`) | new |
 | `IFileSystemShard` and its data structures | new |
 | `IPageStore` | new |
 | `IStorageGroup` | new |

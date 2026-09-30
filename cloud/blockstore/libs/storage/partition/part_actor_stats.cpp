@@ -20,7 +20,7 @@ void TPartitionActor::UpdateStats(const NProto::TPartitionStats& update)
         UpdatePartitionCounters(stats, update);
     });
 
-    auto blockSize = State->GetBlockSize();
+    ui32 blockSize = State->GetBlockSize();
     PartCounters->Cumulative.BytesWritten.Increment(
         update.GetUserWriteCounters().GetBlocksCount() * blockSize);
 

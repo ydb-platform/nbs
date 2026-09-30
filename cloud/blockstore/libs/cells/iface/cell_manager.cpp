@@ -10,8 +10,11 @@ namespace {
 
 struct TCellManagerStub: public ICellManager
 {
-    explicit TCellManagerStub()
+    const IBlockStorePtr LocalService;
+
+    explicit TCellManagerStub(IBlockStorePtr localService)
         : ICellManager(nullptr)
+        , LocalService(std::move(localService))
     {}
 
     [[nodiscard]] TCellConnectionFuture CreateConnection(
@@ -33,7 +36,6 @@ struct TCellManagerStub: public ICellManager
         TCallContextPtr callContext,
         const TString& diskId,
         const NProto::THeaders& headers,
-        IBlockStorePtr service,
         const NProto::TClientConfig& clientConfig) override
     {
         Y_UNUSED(clientConfig);
@@ -42,13 +44,28 @@ struct TCellManagerStub: public ICellManager
         req->MutableHeaders()->CopyFrom(headers);
         req->SetDiskId(diskId);
 
-        return service->DescribeVolume(std::move(callContext), std::move(req));
+        return LocalService->DescribeVolume(
+            std::move(callContext),
+            std::move(req));
     }
 
     [[nodiscard]] std::shared_ptr<TCellInboundActivity>
         GetInboundActivity() override
     {
         return nullptr;
+    }
+
+    [[nodiscard]] TCellsSnapshot GetSnapshot() override
+    {
+        return {};
+    }
+
+    [[nodiscard]] NThreading::TFuture<TVector<TCellDescribeResult>>
+        SearchVolume(TString diskId, TDuration timeout) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(timeout);
+        return NThreading::MakeFuture(TVector<TCellDescribeResult>());
     }
 
     void Start() override
@@ -62,9 +79,9 @@ struct TCellManagerStub: public ICellManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
-ICellManagerPtr CreateCellManagerStub()
+ICellManagerPtr CreateCellManagerStub(IBlockStorePtr localService)
 {
-    return std::make_shared<TCellManagerStub>();
+    return std::make_shared<TCellManagerStub>(std::move(localService));
 }
 
 }   // namespace NCloud::NBlockStore::NCells

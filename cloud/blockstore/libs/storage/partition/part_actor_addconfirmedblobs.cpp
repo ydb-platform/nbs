@@ -286,7 +286,7 @@ void TPartitionActor::HandleAddConfirmedBlobs(
 
     TRequests requests;
     for (const auto& entry: State->GetConfirmedBlobs()) {
-        auto commitId = entry.first;
+        ui64 commitId = entry.first;
         const auto& blobs = entry.second;
         TVector<TAddMergedBlob> mergedBlobs(Reserve(blobs.size()));
 
@@ -354,7 +354,7 @@ void TPartitionActor::HandleAddConfirmedBlobsCompleted(
     }
 
     UpdateCPUUsageStat(ctx.Now(), msg->ExecCycles);
-    auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
+    ui64 time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.AddConfirmedBlobs.AddRequest(time);
 
     EnqueueAddConfirmedBlobsIfNeeded(ctx);

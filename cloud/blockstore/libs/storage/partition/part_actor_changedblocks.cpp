@@ -30,7 +30,7 @@ IEventBasePtr CreateGetChangedBlocksResponse(const TVector<ui8>& changedBlocks)
 {
     auto response = std::make_unique<TEvService::TEvGetChangedBlocksResponse>();
 
-    for (const auto& b: changedBlocks) {
+    for (ui8 b: changedBlocks) {
         response->Record.MutableMask()->push_back(b);
     }
 
@@ -382,7 +382,7 @@ void TPartitionActor::HandleGetChangedBlocks(
 
     readRange = bounds.Intersect(readRange);
 
-    auto ok = InitChangedBlocksRange(
+    bool ok = InitChangedBlocksRange(
         readRange.Start,
         readRange.Size(),
         &readRange
@@ -494,7 +494,7 @@ bool TPartitionActor::PrepareGetChangedBlocks(
 
     TChangedBlocksVisitor visitor(args);
     State->FindFreshBlocks(visitor, args.ReadRange, args.HighCommitId);
-    auto ready = db.FindMixedBlocks(
+    bool ready = db.FindMixedBlocks(
         visitor,
         args.ReadRange,
         true,   // precharge

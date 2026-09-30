@@ -647,7 +647,6 @@ NProto::TDescribeVolumeResponse TSessionManager::DescribeVolume(
         std::move(callContext),
         diskId,
         headers,
-        Service,
         Options.DefaultClientConfig);
 
     return Executor->WaitFor(cellDescribeFuture);

@@ -16,7 +16,10 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
 {
     Y_UNIT_TEST(TestDefaultPolicy)
     {
-        auto policy = BuildDefaultCompactionPolicy(1, 0);
+        auto policy = BuildDefaultCompactionPolicy(
+            1,
+            /*usedBlocksThresholdForMixedBlocksCompaction=*/0,
+            /*mixedBlocksCountCompactionEnabled=*/false);
         UNIT_ASSERT_DOUBLES_EQUAL(-1, policy->CalculateScore({}).Score, 1e-4);
         UNIT_ASSERT(policy->CalculateScore({}).Score > -1);
         UNIT_ASSERT_DOUBLES_EQUAL(
@@ -85,6 +88,45 @@ Y_UNIT_TEST_SUITE(TCompactionPolicyTest)
             {20, 2048, 512, 30, 400, 7500, false, 0});
         UNIT_ASSERT_DOUBLES_EQUAL(0.64483, compactionScore.Score, 1e-5);
         UNIT_ASSERT_EQUAL(compactionScore.Type, TCompactionScore::EType::Read);
+    }
+
+    Y_UNIT_TEST(ShouldKeepConfiguredPolicyWithBlobBudget)
+    {
+        for (const auto mediaKind:
+             {NCloud::NProto::STORAGE_MEDIA_SSD,
+              NCloud::NProto::STORAGE_MEDIA_HDD})
+        {
+            for (const ui32 tabletVersion: {1, 2}) {
+                for (const auto type: {NProto::CT_DEFAULT, NProto::CT_LOAD}) {
+                    NProto::TPartitionConfig partitionConfig;
+                    partitionConfig.SetStorageMediaKind(mediaKind);
+                    partitionConfig.SetTabletVersion(tabletVersion);
+                    partitionConfig.SetBlockSize(4_KB);
+
+                    NProto::TStorageServiceConfig config;
+                    config.SetSSDCompactionType(type);
+                    config.SetHDDCompactionType(type);
+                    config.SetSSDMaxBlobsPerUnit(100);
+                    config.SetHDDMaxBlobsPerUnit(100);
+                    TStorageConfig storageConfig(
+                        config,
+                        std::make_shared<NFeatures::TFeaturesConfig>(
+                            NCloud::NProto::TFeaturesConfig()));
+                    const auto policy = BuildCompactionPolicy(
+                        partitionConfig,
+                        storageConfig,
+                        1);
+                    // Empty ranges score zero only under CT_LOAD.
+                    if (type == NProto::CT_LOAD) {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            0,
+                            policy->CalculateScore({}).Score);
+                    } else {
+                        UNIT_ASSERT(policy->CalculateScore({}).Score < 0);
+                    }
+                }
+            }
+        }
     }
 
     Y_UNIT_TEST(TestBuildLoadOptimizationPolicyConfig)

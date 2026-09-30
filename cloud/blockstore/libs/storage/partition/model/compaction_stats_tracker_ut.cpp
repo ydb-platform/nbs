@@ -13,7 +13,9 @@ constexpr ui64 TabletId = 42;
 
 struct TFixture
 {
-    TCompactionMap CompactionMap{RangeSize, BuildDefaultCompactionPolicy(5, 0)};
+    TCompactionMap CompactionMap{
+        RangeSize,
+        BuildDefaultCompactionPolicy(5, 0, true)};
     TCompressedBitmap UsedBlocks{4 * RangeSize};
     TCompactionStatsTracker Tracker{TabletId, CompactionMap, UsedBlocks};
 };

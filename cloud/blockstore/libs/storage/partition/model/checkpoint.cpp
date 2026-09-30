@@ -140,7 +140,7 @@ ui64 TCheckpointStore::GetMaxCommitId() const
 
 void TCheckpointStore::GetCommitIds(TVector<ui64>& result) const
 {
-    for (auto commitId: CommitIds) {
+    for (ui64 commitId: CommitIds) {
         result.push_back(commitId);
     }
 }
@@ -209,7 +209,7 @@ bool TCheckpointsInFlight::AddTx(
     TTxPtr transaction,
     ui64 commitId)
 {
-    auto inserted = PendingTransactions
+    bool inserted = PendingTransactions
                         .emplace(
                             checkpointId,
                             TCheckpointTransactionToCommitId{
@@ -281,7 +281,7 @@ void TCheckpointsInFlight::GetCommitIds(TVector<ui64>& commitIds) const
 
 ui64 TCheckpointsInFlight::GetMinCommitId() const
 {
-    auto minCommitId = Max<ui64>();
+    ui64 minCommitId = Max<ui64>();
     for (const auto& [_, txPair]: PendingTransactions) {
         const auto& txCommitId = txPair.CommitId;
         if (!txCommitId) {

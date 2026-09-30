@@ -25,9 +25,9 @@ public:
     NProto::TError WriteLogRecord(
         NProto::TDeviceRequestHeaders headers,
         TVector<TPageGroup> pageGroups,
-        ui64 lsn) override
+        TLsnLink link) override
     {
-        Y_UNUSED(headers, pageGroups, lsn);
+        Y_UNUSED(headers, pageGroups, link);
         return MakeError(E_NOT_IMPLEMENTED);
     }
 

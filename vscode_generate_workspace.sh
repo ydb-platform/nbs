@@ -1,6 +1,7 @@
 ./ya ide vscode-clangd --allow-project-inside-arc --setup-tidy -P=. \
    build                      \
    cloud/blockstore           \
+   cloud/fastshard            \
    cloud/filestore            \
    cloud/storage              \
    cloud/vm                   \

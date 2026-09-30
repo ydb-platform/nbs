@@ -46,7 +46,7 @@ ADAPTER_METRICS_REQUESTS_PUBLIC(DECLARE_UPDATE_ADAPTER_METRICS, TEvService)
 
 template <typename TMethod>
 void OnResponse(
-    TActorSystem* ass,
+    TActorSystem* actorSystem,
     const TStorageConfig& config,
     const ITraceSerializerPtr& traceSerializer,
     TSystemCounters& systemCounters,
@@ -75,26 +75,26 @@ void OnResponse(
         callContext,
         &builtTraceInfo);
 
-    LOG_DEBUG(*ass, TFileStoreComponents::TABLET,
+    LOG_DEBUG(*actorSystem, TFileStoreComponents::TABLET,
         "%s %s: #%lu completed (%s), trace-info: %d",
         logTag.c_str(),
         TMethod::Name,
         callContext->RequestId,
         FormatError(response->Record.GetError()).c_str(),
         builtTraceInfo);
-    LOG_TRACE(*ass, TFileStoreComponents::TABLET,
+    LOG_TRACE(*actorSystem, TFileStoreComponents::TABLET,
         "%s %s #%lu response: %s",
         logTag.c_str(),
         TMethod::Name,
         callContext->RequestId,
         TProtoMessagePrinter().ToString(response->Record).c_str());
 
-    ass->Send(sender, response.release(), 0 /* flags */, cookie);
+    actorSystem->Send(sender, response.release(), 0 /* flags */, cookie);
 
     UpdateAdapterMetrics<TMethod>(
         metrics,
         requestBytes,
-        ass->Timestamp() - startedTs);
+        actorSystem->Timestamp() - startedTs);
 }
 
 }   // namespace
@@ -122,7 +122,7 @@ void TIndexTabletActor::HandleAdapter##name(                                   \
         return;                                                                \
     }                                                                          \
                                                                                \
-    auto* ass = ctx.ActorSystem();                                             \
+    auto* actorSystem = ctx.ActorSystem();                                     \
     auto config = Config;                                                      \
     auto traceSerializer = TraceSerializer;                                    \
     auto systemCounters = SystemCounters;                                      \
@@ -135,14 +135,17 @@ void TIndexTabletActor::HandleAdapter##name(                                   \
     TInstant startedTs = ctx.Now();                                            \
     const ui64 requestBytes = CalculateByteCount(msg->Record);                 \
     /*                                                                         \
-     * The shard is captured to pin its lifetime: the interface does not      \
-     * promise that the future may outlive the shard object, and the actor    \
-     * may die and drop its reference before the callback runs.               \
-     */                                                                       \
+     * The shard must not be captured here: the callback runs inside the       \
+     * shard's own fiber (during SetValue), so dropping the last shard         \
+     * reference there would run the shard destructor - which joins every      \
+     * inflight fiber, including the one executing the callback - inside       \
+     * that very fiber. The shard destructor waits for all of its fibers,      \
+     * so the callback outliving the actor's reference is safe.                \
+     */                                                                        \
     FastShard->name(std::move(msg->Record)).Subscribe(                         \
-        [=, shard = FastShard] (const auto& f) {                               \
+        [=] (const auto& f) {                                                  \
             OnResponse<TMethod>(                                               \
-                ass,                                                           \
+                actorSystem,                                                   \
                 *config,                                                       \
                 traceSerializer,                                               \
                 *systemCounters,                                               \

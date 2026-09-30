@@ -113,7 +113,7 @@ void TPartitionActor::HandleTrimFreshLog(
 
     ui64 trimFreshLogToCommitId = State->GetTrimFreshLogToCommitId();
 
-    auto nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
+    ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
         RebootPartitionOnCollectCounterOverflow(ctx, "TrimFreshLog");
         return;
@@ -188,7 +188,7 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
 
     EnqueueTrimFreshLogIfNeeded(ctx);
 
-    auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
+    ui64 time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.TrimFreshLog.AddRequest(time);
 }
 

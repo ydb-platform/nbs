@@ -155,14 +155,14 @@ NProto::TError TDescribeBaseDiskBlocksActor::ValidateDescribeBlocksResponse(
 void TDescribeBaseDiskBlocksActor::ProcessDescribeBlocksResponse(
     TEvVolume::TEvDescribeBlocksResponse&& response)
 {
-    const auto startIndex = BlocksRange.Start;
+    const ui64 startIndex = BlocksRange.Start;
     auto& record = response.Record;
 
     for (auto&& range : std::move(*record.MutableFreshBlockRanges())) {
         auto sharedRange = std::make_shared<NProto::TFreshBlockRange>(std::move(range));
         for (size_t index = 0; index < sharedRange->GetBlocksCount(); ++index) {
-            const auto blockIndex = sharedRange->GetStartIndex() + index;
-            const auto blockMarkIndex = blockIndex - startIndex;
+            const size_t blockIndex = sharedRange->GetStartIndex() + index;
+            const size_t blockMarkIndex = blockIndex - startIndex;
 
             if (std::holds_alternative<TEmptyMark>(BlockMarks[blockMarkIndex])) {
                 const char* startingByte =
@@ -178,13 +178,13 @@ void TDescribeBaseDiskBlocksActor::ProcessDescribeBlocksResponse(
 
     for (const auto& piece: record.GetBlobPieces()) {
         const auto& blobId = LogoBlobIDFromLogoBlobID(piece.GetBlobId());
-        const auto group = piece.GetBSGroupId();
+        const ui32 group = piece.GetBSGroupId();
 
         for (const auto& range: piece.GetRanges()) {
             for (size_t i = 0; i < range.GetBlocksCount(); ++i) {
-                const auto blobOffset = range.GetBlobOffset() + i;
-                const auto blockIndex = range.GetBlockIndex() + i;
-                const auto blockMarkIndex = blockIndex - startIndex;
+                const size_t blobOffset = range.GetBlobOffset() + i;
+                const size_t blockIndex = range.GetBlockIndex() + i;
+                const size_t blockMarkIndex = blockIndex - startIndex;
 
                 if (std::holds_alternative<TEmptyMark>(BlockMarks[blockMarkIndex])) {
                     BlockMarks[blockMarkIndex] = TBlobMarkOnBaseDisk(

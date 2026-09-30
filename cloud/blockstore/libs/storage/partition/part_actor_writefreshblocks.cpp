@@ -398,8 +398,8 @@ void TPartitionActor::CompleteWriteBlocks(
         // all subrequests have the same exec and wait time since we
         // handle them together. So we only need to report times
         // for first subrequest.
-        auto cycles = GetCycleCount() - startCycles;
-        auto time =
+        ui64 cycles = GetCycleCount() - startCycles;
+        ui64 time =
             CyclesToDurationSafe(args.Requests[0].RequestInfo->GetTotalCycles()).MicroSeconds();
         PartCounters->RequestCounters.WriteBlocks.AddRequest(time, totalBytes, args.Requests.size());
 

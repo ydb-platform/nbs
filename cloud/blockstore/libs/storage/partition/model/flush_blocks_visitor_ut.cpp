@@ -54,7 +54,7 @@ TVector<TFlushBlocksVisitor::TBlob> BuildBlobs(
 {
     TCompactionMap compactionMap(
         CompactionRangeSize,
-        BuildDefaultCompactionPolicy(CompactionThreshold, 0));
+        BuildDefaultCompactionPolicy(CompactionThreshold, 0, false));
 
     TVector<TFlushBlocksVisitor::TBlob> blobs;
     TFlushBlocksVisitor visitor(

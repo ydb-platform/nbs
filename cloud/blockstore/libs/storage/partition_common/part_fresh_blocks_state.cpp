@@ -90,7 +90,7 @@ void TPartitionFreshBlobState::TrimFreshBlobs(ui64 commitId)
     auto& blobs = UntrimmedFreshBlobByteCountByCommitId;
 
     while (blobs && blobs.begin()->first <= commitId) {
-        auto blobSize = blobs.begin()->second;
+        ui64 blobSize = blobs.begin()->second;
         STORAGE_VERIFY_C(
             UntrimmedFreshBlobByteCount >= blobSize,
             TWellKnownEntityTypes::TABLET,
@@ -251,7 +251,7 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
             checkpoints,
             existingCommitIds,
             garbage);
-        for (auto garbageCommitId: garbage) {
+        for (ui64 garbageCommitId: garbage) {
             // This block is being flushed; we'll remove it on AddBlobs
             // and we'll release barrier on FlushCompleted
             if (FlushState.GetFlushedCommitIdsInProgress().contains(
@@ -263,7 +263,7 @@ void TPartitionFreshBlocksState::WriteFreshBlocksImpl(
             // Do not remove block if it is stored in db
             // to be able to remove it during flush, otherwise
             // we'll leave garbage in FreshBlocksTable
-            auto removed = Blocks.RemoveBlock(
+            bool removed = Blocks.RemoveBlock(
                 blockIndex,
                 garbageCommitId,
                 false);   // isStoredInDb

@@ -165,7 +165,6 @@ struct TClientRequestHandlerBase
 {
     const EBlockStoreRequest RequestType;
     ui64 RequestId = 0;
-    TString DiskId;
 
     enum {
         WaitingForRequest = 0,
@@ -184,57 +183,9 @@ struct TClientRequestHandlerBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestsInFlight
-{
-public:
-    using TRequestHandler = TClientRequestHandlerBase;
-
-private:
-    THashSet<TRequestHandler*> Requests;
-    TAdaptiveLock RequestsLock;
-    bool ShouldStop = false;
-
-public:
-    bool Register(TRequestHandler* handler)
-    {
-        with_lock (RequestsLock) {
-            if (ShouldStop) {
-                return false;
-            }
-
-            auto res = Requests.emplace(handler);
-            STORAGE_VERIFY(
-                res.second,
-                TWellKnownEntityTypes::DISK,
-                handler->DiskId);
-        }
-
-        return true;
-    }
-
-    void Unregister(TRequestHandler* handler)
-    {
-        with_lock (RequestsLock) {
-            auto it = Requests.find(handler);
-            STORAGE_VERIFY(
-                it != Requests.end(),
-                TWellKnownEntityTypes::DISK,
-                handler->DiskId);
-
-            Requests.erase(it);
-        }
-    }
-
-    void Shutdown()
-    {
-        with_lock (RequestsLock) {
-            ShouldStop = true;
-            for (auto* handler: Requests) {
-                handler->Cancel();
-            }
-        }
-    }
-};
+using TRequestsInFlight = NStorage::NGrpc::TRequestsInFlight<
+    TClientRequestHandlerBase,
+    TWellKnownEntityTypes::DISK>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -434,7 +385,7 @@ private:
 
         RequestId = EnsureRequestId(*Request);
 
-        DiskId = GetDiskId(*Request);
+        EntityId = GetDiskId(*Request);
 
         Context.set_deadline(now + requestTimeout);
         if (const auto& authToken = AppCtx.Config->GetAuthToken()) {
@@ -478,7 +429,7 @@ private:
                     AppCtx.Log,
                     RequestType,
                     RequestId,
-                    DiskId,
+                    EntityId,
                     AppCtx.Config->GetClientId(),
                     "ProcessResponse: value already set (request cancelled?)");
             }
@@ -487,7 +438,7 @@ private:
                 AppCtx.Log,
                 RequestType,
                 RequestId,
-                DiskId,
+                EntityId,
                 AppCtx.Config->GetClientId());
         }
     }
@@ -504,7 +455,7 @@ private:
                     AppCtx.Log,
                     RequestType,
                     RequestId,
-                    DiskId,
+                    EntityId,
                     AppCtx.Config->GetClientId(),
                     "ReportError: value already set (request completed?)");
             }
@@ -513,7 +464,7 @@ private:
                 AppCtx.Log,
                 RequestType,
                 RequestId,
-                DiskId,
+                EntityId,
                 AppCtx.Config->GetClientId());
         }
     }
@@ -538,7 +489,7 @@ private:
     {
         if (!HasError(response)) {
             AppCtx.ClientStats->UnmountVolume(
-                DiskId,
+                EntityId,
                 AppCtx.Config->GetClientId());
         }
     }

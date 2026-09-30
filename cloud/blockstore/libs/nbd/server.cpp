@@ -70,7 +70,13 @@ private:
     TContLockFreeQueue<TServerResponsePtr> ResponseQueue;
 
     size_t InFlightBytes = 0;
+
+    // Requests read from this connection that may still reach or be executing
+    // in the backend. Includes requests waiting in Limiter::Acquire.
+    std::atomic<size_t> ActiveRequests = 0;
+
     std::atomic_flag ShuttingDown = false;
+    TPromise<void> DrainResult = NewPromise<void>();
 
 public:
     TConnection(
@@ -102,6 +108,11 @@ public:
     void Stop() override
     {
         ShutDown();
+    }
+
+    TFuture<void> GetDrainResult() const
+    {
+        return DrainResult.GetFuture();
     }
 
     void Enqueue(ITaskPtr task) override
@@ -140,17 +151,34 @@ public:
     void SendResponse(TServerResponsePtr response) override
     {
         ResponseQueue.Enqueue(std::move(response));
+        CompleteRequest();
     }
 
     bool AcquireRequest(size_t requestBytes) override
     {
+        if (IsShuttingDown()) {
+            return false;
+        }
+
+        ActiveRequests.fetch_add(1, std::memory_order_acq_rel);
+
         if (Limiter) {
             if (!Limiter->Acquire(requestBytes)) {
+                CompleteRequest();
                 return false;
             }
 
             InFlightBytes += requestBytes;
         }
+
+        // Limiter::Acquire may yield, allowing the connection to start
+        // shutting down while this request is waiting for capacity.
+        if (IsShuttingDown()) {
+            ReleaseRequest(requestBytes);
+            CompleteRequest();
+            return false;
+        }
+
         return true;
     }
 
@@ -224,6 +252,7 @@ private:
 
         ShutDown();
         ReleaseRequest(InFlightBytes);
+        TryCompleteDrain();
     }
 
     void DoSendResponse(TCont* c, TServerResponse& response)
@@ -260,8 +289,27 @@ private:
         }
     }
 
-    bool IsShuttingDown() const {
+    bool IsShuttingDown() const
+    {
         return ShuttingDown.test(std::memory_order_acquire);
+    }
+
+    void CompleteRequest()
+    {
+        const auto previous =
+            ActiveRequests.fetch_sub(1, std::memory_order_acq_rel);
+        Y_ABORT_UNLESS(previous != 0);
+
+        if (previous == 1 && IsShuttingDown()) {
+            DrainResult.TrySetValue();
+        }
+    }
+
+    void TryCompleteDrain()
+    {
+        if (ActiveRequests.load(std::memory_order_acquire) == 0) {
+            DrainResult.TrySetValue();
+        }
     }
 };
 
@@ -330,12 +378,15 @@ public:
         });
     }
 
-    NProto::TError Stop(bool deleteSocket)
+    TFuture<NProto::TError> Stop(bool deleteSocket)
     {
-        return SafeExecute<NProto::TError>([&] {
+        TFuture<void> drainResult = MakeFuture();
+
+        auto error = SafeExecute<NProto::TError>([&] {
             if (Connection) {
+                drainResult = Connection->GetDrainResult();
                 Connection->Stop();
-            };
+            }
 
             if (Listener) {
                 Listener->Stop();
@@ -347,6 +398,13 @@ public:
 
             return NProto::TError();
         });
+
+        return drainResult.Apply(
+            [error = std::move(error)](const auto& future)
+            {
+                Y_UNUSED(future);
+                return error;
+            });
     }
 
     size_t CollectRequests(const TIncompleteRequestsCollector& collector)
@@ -363,15 +421,26 @@ private:
     {
         TSocketHolder socket(accept.S->Release());
 
+        const auto localAddress = PrintHostAndPort(ListenAddress);
         auto address = NAddr::GetPeerAddr(socket);
-        STORAGE_DEBUG("new connection from " << PrintHostAndPort(*address));
+        STORAGE_DEBUG("endpoint " << localAddress
+            << ": new connection from " << PrintHostAndPort(*address));
 
         if (IsTcpAddress(*address)) {
             SetNoDelay(socket, true);
         }
 
+        TFuture<void> drainResult = MakeFuture();
         if (Connection) {
+            drainResult = Connection->GetDrainResult();
             Connection->Stop();
+        }
+
+        CurrentThread().Executor->WaitFor(drainResult);
+        if (Executor->Running()->Cancelled()) {
+            STORAGE_INFO("endpoint " << localAddress
+                << ": new connection setup cancelled");
+            return;
         }
 
         Connection = MakeIntrusive<TConnection>(

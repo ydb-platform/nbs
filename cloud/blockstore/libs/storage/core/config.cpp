@@ -791,6 +791,8 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(MixedBlocksFilter)                                                     \
     xxx(CheckpointAwareCleanup)                                                \
     xxx(CompactionStatsTracker)                                                \
+    xxx(MixedBlocksCountCompactionSSD)                                         \
+    xxx(MixedBlocksCountCompactionHDD)                                         \
 
 // BLOCKSTORE_BINARY_FEATURES
 

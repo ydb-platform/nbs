@@ -178,7 +178,7 @@ bool TPartitionActor::PrepareCheckIndex(
     TPartitionDatabase db(tx.DB);
 
     TCheckIndexVisitor<true> visitorIndex(args);
-    auto ready = db.FindMixedBlocks(
+    bool ready = db.FindMixedBlocks(
         visitorIndex,
         args.BlockRange,
         true    // precharge

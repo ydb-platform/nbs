@@ -11,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nfs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/facade"
@@ -145,6 +146,7 @@ func registerControlplaneTasks(
 	cellStorage cells_storage.Storage,
 	cellSelector cells.CellSelector,
 	filestoreCellsSelector cells.CellSelector,
+	followerS3 *backup.FollowerS3,
 ) error {
 
 	logging.Info(ctx, "Registering pool tasks")
@@ -195,6 +197,7 @@ func registerControlplaneTasks(
 		nbsFactory,
 		poolService,
 		cellSelector,
+		followerS3,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register image tasks: %v", err)
@@ -210,6 +213,7 @@ func registerControlplaneTasks(
 		resourceStorage,
 		nbsFactory,
 		cellSelector,
+		followerS3,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)
@@ -299,6 +303,7 @@ func initControlplane(
 	nbsFactory nbs.Factory,
 	nfsClientMetricsRegistry metrics.Registry,
 	nfsTlsProvider nfs.TlsConfigProvider,
+	followerS3 *backup.FollowerS3,
 ) (serve func() error, err error) {
 
 	logging.Info(ctx, "Initializing pool storage")
@@ -351,6 +356,7 @@ func initControlplane(
 		config.GetPlacementGroupConfig().GetStorageFolder(),
 		db,
 		endedMigrationExpirationTimeout,
+		config.GetSnapshotStorageBackupConfig() != nil, // backupEnabled
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to initialize resource storage: %v", err)
@@ -404,6 +410,7 @@ func initControlplane(
 		cellStorage,
 		cellSelector,
 		filestoreCellsSelector,
+		followerS3,
 	)
 	if err != nil {
 		return nil, err

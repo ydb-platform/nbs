@@ -71,6 +71,8 @@ var (
 		{name: "PrivateService.ListImages", permission: "disk-manager.images.list"},
 		{name: "PrivateService.ListSnapshots", permission: "disk-manager.snapshots.list"},
 		{name: "PrivateService.ListFilesystems", permission: "disk-manager.filesystems.list"},
+		{name: "PrivateService.GetFilesystemSnapshot", permission: "disk-manager.filesystem_snapshots.get"},
+		{name: "PrivateService.ListFilesystemSnapshots", permission: "disk-manager.filesystem_snapshots.list"},
 		// TODO: Maybe we should have separate permissions for placement groups?
 		{name: "PrivateService.ListPlacementGroups", permission: "disk-manager.disks.list"},
 		// TODO: Find more suitable permission for this.

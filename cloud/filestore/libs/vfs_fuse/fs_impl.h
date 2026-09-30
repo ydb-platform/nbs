@@ -516,6 +516,7 @@ private:
         const NProto::TConfirmCreateHandleResponse& response);
     void CompleteHandleOpsQueueBatch(ui32 batchSize);
     bool ProcessDelayedRelease();
+    bool DrainDelayedReleaseQueue(ui32 maxCount);
 
     void ClearDirectoryCache();
 

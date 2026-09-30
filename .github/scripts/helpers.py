@@ -34,9 +34,10 @@ COMPONENTS: List[Tuple[str, str, str]] = [
     ("disk_manager", "cloud/disk_manager/", "cloud/disk_manager/"),
     ("tasks", "cloud/tasks/", "cloud/tasks/"),
     ("storage", "cloud/storage/", "cloud/storage/"),
+    ("fastshard", "cloud/fastshard/", "cloud/fastshard/"),
 ]
 
-SAN_COMPONENTS = {"blockstore", "filestore", "storage"}
+SAN_COMPONENTS = {"blockstore", "filestore", "storage", "fastshard"}
 SAN_TYPES = ("asan", "tsan", "msan", "ubsan")
 
 TEST_TYPE_REGULAR = "unittest,clang_tidy,gtest,py3test,py2test,pytest,flake8,black,py2_flake8,go_test,gofmt,govet"
@@ -170,9 +171,13 @@ def find_current_job_url(current_job_name: str, runner_name: str) -> str:
     return get_run_url()
 
 
-DEFAULT_BUILD_TARGET = "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+DEFAULT_BUILD_TARGET = (
+    "cloud/blockstore/apps/,cloud/filestore/apps/,cloud/disk_manager/,cloud/tasks/,cloud/storage/,"
+    "cloud/fastshard/"
+)
 DEFAULT_TEST_TARGET = (
-    "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/"
+    "cloud/blockstore/,cloud/filestore/,cloud/disk_manager/,cloud/tasks/,cloud/storage/,"
+    "cloud/fastshard/"
 )
 
 GITHUB_API_RETRY_ATTEMPTS = 3
@@ -551,7 +556,10 @@ TEST_TIMEOUT_COMPONENTS_BY_KEY = {
     "disk_manager": frozenset({"disk_manager"}),
     "tasks": frozenset({"tasks"}),
     "storage": frozenset({"storage"}),
+    "fastshard": frozenset({"fastshard"}),
     "tasks_storage": frozenset({"tasks", "storage"}),
+    "tasks_storage_fastshard": frozenset({"tasks", "storage", "fastshard"}),
+    "storage_fastshard": frozenset({"storage", "fastshard"}),
 }
 TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT = {
     "large": {
@@ -560,7 +568,10 @@ TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT = {
         "disk_manager": 120,
         "tasks": 60,
         "storage": 60,
+        "fastshard": 60,
         "tasks_storage": 60,
+        "tasks_storage_fastshard": 60,
+        "storage_fastshard": 60,
         TEST_TIMEOUT_COMPONENT_DEFAULT: 300,
     },
     "medium": {
@@ -569,7 +580,10 @@ TEST_TIMEOUT_MINUTES_BY_SIZE_AND_COMPONENT = {
         "disk_manager": 60,
         "tasks": 60,
         "storage": 60,
+        "fastshard": 60,
         "tasks_storage": 60,
+        "tasks_storage_fastshard": 60,
+        "storage_fastshard": 60,
         TEST_TIMEOUT_COMPONENT_DEFAULT: 120,
     },
     "small": {

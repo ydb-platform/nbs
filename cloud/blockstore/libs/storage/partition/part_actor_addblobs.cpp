@@ -133,7 +133,7 @@ public:
 
             if (Args.Mode == ADD_COMPACTION_RESULT) {
                 const auto& cm = State.GetCompactionMap();
-                const auto blockIndex = cm.GetRangeStart(BlockIndex(blob, 0));
+                const ui32 blockIndex = cm.GetRangeStart(BlockIndex(blob, 0));
                 auto& rangeInfo = CompactionCounters[blockIndex];
                 rangeInfo.BlobsSkippedByCompaction +=
                     Args.MixedBlobCompactionInfos[i].BlobsSkippedByCompaction;
@@ -164,7 +164,7 @@ public:
 
             if (Args.Mode == ADD_COMPACTION_RESULT) {
                 const auto& cm = State.GetCompactionMap();
-                const auto blockIndex = cm.GetRangeStart(blob.BlockRange.Start);
+                const ui32 blockIndex = cm.GetRangeStart(blob.BlockRange.Start);
                 Y_DEBUG_ABORT_UNLESS(
                     blockIndex == cm.GetRangeStart(blob.BlockRange.End));
                 auto& rangeInfo = CompactionCounters[blockIndex];
@@ -360,7 +360,7 @@ private:
             ToString(MakeBlobId(TabletId, blob.BlobId)).c_str(),
             DescribeRange(blob.BlockRange).c_str());
 
-        const auto skipped = blob.SkipMask.Count();
+        const size_t skipped = blob.SkipMask.Count();
         Y_ABORT_UNLESS(skipped < blob.BlockRange.Size());
 
         // write blob meta
@@ -545,14 +545,14 @@ private:
             cm.GetRangeStart(blob.BlockRange.End));
 
         for (const ui64 blockIndex: xrange(range, cm.GetRangeSize())) {
-            const auto firstBlock =
+            const ui64 firstBlock =
                 Max<ui64>(blockIndex, blob.BlockRange.Start);
-            const auto lastBlock = Min<ui64>(
+            const ui64 lastBlock = Min<ui64>(
                 blockIndex + cm.GetRangeSize() - 1,
                 blob.BlockRange.End);
             ui32 skipped = 0;
             for (ui64 b = firstBlock; b <= lastBlock; ++b) {
-                auto pos = b - blob.BlockRange.Start;
+                ui64 pos = b - blob.BlockRange.Start;
                 if (blob.SkipMask.Get(pos)) {
                     ++skipped;
                 }
@@ -644,7 +644,7 @@ private:
                     prevRangeStat.MixedBlockCount);
             }
 
-            const auto usedBlockCount = State.GetUsedBlocks().Count(
+            const ui64 usedBlockCount = State.GetUsedBlocks().Count(
                 kv.first,
                 Min(static_cast<ui64>(kv.first) +
                         static_cast<ui64>(
@@ -674,20 +674,24 @@ private:
                     TabletId);
             }
 
-            db.WriteCompactionMap(
-                kv.first,
-                rangeStat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                rangeStat.BlockCount +
-                    kv.second.BlocksSkippedByCompaction);
             State.GetCompactionMap().Update(
                 kv.first,
-                rangeStat.BlobCount + kv.second.BlobsSkippedByCompaction,
-                rangeStat.BlockCount + kv.second.BlocksSkippedByCompaction,
+                rangeStat.BlobCount,
+                rangeStat.BlockCount,
                 usedBlockCount,
                 newlyZeroedBlocks,
-                rangeStat.MixedBlockCount +
-                    kv.second.MixedBlockCountSkippedByCompaction,
+                rangeStat.MixedBlockCount,
                 Args.Mode == ADD_COMPACTION_RESULT);
+
+            // Persist what the map has stored, so that map-level policies
+            // (e.g. disabled mixed block count tracking) apply to the
+            // persisted values as well.
+            const auto storedStat = State.GetCompactionMap().Get(kv.first);
+            db.WriteCompactionMap(
+                kv.first,
+                storedStat.BlobCount,
+                storedStat.BlockCount,
+                storedStat.MixedBlockCount);
         }
     }
 
@@ -696,24 +700,39 @@ private:
         const auto& cm = State.GetCompactionMap();
 
         auto* compactionStatsTracker = State.AccessCompactionStatsTracker();
-        if (compactionStatsTracker && compactionStatsTracker->HasCompaction()) {
+        if (compactionStatsTracker && compactionStatsTracker->HasCompaction() &&
+            Args.Mode == ADD_COMPACTION_RESULT)
+        {
             // If no concurrent blobs were recorded for the range, mark the
             // range as compacted.
-            if (Args.Mode == ADD_COMPACTION_RESULT) {
-                compactionStatsTracker->MarkAllEmptyRangesAsCompacted();
+            compactionStatsTracker->MarkAllEmptyRangesAsCompacted();
+        }
+
+        for (auto& kv: CompactionCounters) {
+            // Add compaction stats if we have some skipped
+            // blocks/blobs/mixed blocks.
+            AddCompactionStats(
+                kv.second.Stat,
+                kv.second.BlocksSkippedByCompaction,
+                kv.second.BlobsSkippedByCompaction,
+                kv.second.MixedBlockCountSkippedByCompaction);
+
+            if (!compactionStatsTracker) {
+                continue;
             }
 
-            for (const auto& kv: CompactionCounters) {
-                auto* counter = compactionStatsTracker->AccessCompactionCounter(
-                    cm.GetRangeIndex(kv.first));
-                if (counter) {
-                    AddCompactionStats(
-                        counter->Stat,
-                        kv.second.Stat.BlockCount,
-                        kv.second.Stat.BlobCount,
-                        kv.second.Stat.MixedBlockCount);
-                }
+            auto* counter = compactionStatsTracker->AccessCompactionCounter(
+                cm.GetRangeIndex(kv.first));
+
+            if (!counter) {
+                continue;
             }
+
+            AddCompactionStats(
+                counter->Stat,
+                kv.second.Stat.BlockCount,
+                kv.second.Stat.BlobCount,
+                kv.second.Stat.MixedBlockCount);
         }
 
         if (Args.Mode != ADD_COMPACTION_RESULT || !compactionStatsTracker) {
@@ -723,18 +742,10 @@ private:
 
         i64 newlyZeroedBlocksToDecrement = 0;
 
-        // We should account for blocks and blobs skipped by compaction.
         for (const auto& kv: CompactionCounters) {
             auto* counter = compactionStatsTracker->AccessCompactionCounter(
                 cm.GetRangeIndex(kv.first));
-
             STORAGE_VERIFY(counter, TWellKnownEntityTypes::TABLET, TabletId);
-
-            AddCompactionStats(
-                counter->Stat,
-                kv.second.BlocksSkippedByCompaction,
-                kv.second.BlobsSkippedByCompaction,
-                kv.second.MixedBlockCountSkippedByCompaction);
 
             counter->Stat.Compacted &=
                 !kv.second.HasBlocksWithCommitIdGreaterThanCompactionCommitId;
@@ -751,13 +762,14 @@ private:
 
         auto rangeIndicesToPersist = compactionStatsTracker->FinishCompaction();
 
-        for (const auto& rangeIndex: rangeIndicesToPersist) {
+        for (ui32 rangeIndex: rangeIndicesToPersist) {
             const ui32 blockIndex = rangeIndex * cm.GetRangeSize();
             const auto& rangeStat = cm.Get(blockIndex);
             db.WriteCompactionMap(
                 blockIndex,
                 rangeStat.BlobCount,
-                rangeStat.BlockCount);
+                rangeStat.BlockCount,
+                rangeStat.MixedBlockCount);
         }
     }
 
@@ -1024,7 +1036,7 @@ void TPartitionActor::CompleteAddBlobs(
     EnqueueCompactionIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    ui64 time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.AddBlobs.AddRequest(time);
 }
 
@@ -1045,13 +1057,13 @@ THashSet<ui32> TPartitionActor::GetRangeIndices(
     }
 
     for (const auto& blob: mixedBlobs) {
-        for (const auto& block: blob.Blocks) {
+        for (ui32 block: blob.Blocks) {
             rangeIndices.emplace(compactionMap.GetRangeIndex(block));
         }
     }
 
     for (const auto& blob: mergedBlobs) {
-        const auto rangeStart =
+        const ui32 rangeStart =
             compactionMap.GetRangeStart(blob.BlockRange.Start);
         rangeIndices.emplace(compactionMap.GetRangeIndex(rangeStart));
     }

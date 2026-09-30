@@ -9,10 +9,11 @@ SRCS(
 PEERDIR(
     cloud/filestore/libs/storage/fastshard/impl/factory
     cloud/filestore/libs/storage/fastshard/impl/hash_table_index
-    cloud/filestore/libs/storage/fastshard/sn/impl
-    cloud/filestore/libs/storage/fastshard/sn/server
     cloud/filestore/libs/storage/fastshard/sn/quorum
-    cloud/filestore/libs/storage/fastshard/testlib
+
+    cloud/fastshard/sn/impl
+    cloud/fastshard/sn/server
+    cloud/fastshard/testlib
 
     cloud/storage/core/libs/common
     cloud/storage/core/protos
@@ -23,5 +24,9 @@ PEERDIR(
 
     library/cpp/json
 )
+
+# The silk crash dumper sources its gdb scripts from the source tree
+# (see SetUpCrashDumperScriptDir in cloud/fastshard/testlib).
+DATA(arcadia/contrib/libs/silk/src/gdb)
 
 END()

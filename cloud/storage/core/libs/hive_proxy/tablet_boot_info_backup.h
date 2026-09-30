@@ -66,6 +66,8 @@ private:
         const TFsPath& backupFilePath,
         NHiveProxy::NProto::TTabletBootInfoBackup& backupProto);
 
+    TVector<TTabletBootInfo> CollectTabletBootInfos() const;
+
     void HandleWakeup(
         const NActors::TEvents::TEvWakeup::TPtr& ev,
         const NActors::TActorContext& ctx);

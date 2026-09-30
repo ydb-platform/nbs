@@ -5,7 +5,7 @@ If PR is opened not by a team member they will receive a message that the team m
 There is also a list of labels that slightly alters how and which tests are run:
 
 1. `large-tests` to launch large tests in PR. By default, we launch small and medium.
-2. `blockstore`, `filestore`, `disk_manager`, `tasks`, `storage` to launch test ONLY for specified projects. You can specify more than one label.
+2. `blockstore`, `filestore`, `disk_manager`, `tasks`, `storage`, `fastshard` to launch test ONLY for specified projects. You can specify more than one label.
 3. `sleep` to add 7200s (2 hours) sleep to your run, if you want to debug it.
 4. `asan`, `tsan`, `msan`, `ubsan` to add address sanitizer, thread sanitizer, memory sanitizer or undefined behaviour sanitizer builds on top of the regular build.
 5. `recheck` trigger checks without commit. Removed automatically after launch.

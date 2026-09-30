@@ -40,29 +40,39 @@ def fill_fs(client, fs_id, items):
             client.ln(fs_id, item.path, "--symlink", item.data)
 
 
+def __is_transient_tablet_error(tablet_id, text):
+    # These are the replies of ydb's TTabletMonitoringProxy (see
+    # contrib/ydb/core/tablet/tablet_monitoring_proxy.cpp) for the cases when
+    # the tablet pipe couldn't be established or got destroyed before the
+    # tablet replied, e.g. when the tablet is being restarted after a config
+    # change. Both are transient - the request should simply be retried.
+    transient_errors = [
+        f"Tablet pipe with {tablet_id} is not connected",
+        "Tablet pipe is reset",
+    ]
+    return any(err in text for err in transient_errors)
+
+
 def request_tablet(tablet_id, params, attempt_count=10):
     mon_port = int(os.getenv("NFS_MON_PORT"))
-    ce = None
+    last_error = None
     for i in range(attempt_count):
         try:
             response = requests.get(
                 url=f"http://localhost:{mon_port}/tablets/app?"
                     f"TabletID={tablet_id}&{params}")
-            ce = None
             response.raise_for_status()
-            err_msg = f"Tablet pipe with {tablet_id} is not connected" \
-                " with status: ERROR"
-            if err_msg not in response.text:
+            if not __is_transient_tablet_error(tablet_id, response.text):
                 return response
+            last_error = f"transient tablet error: {response.text}"
         except requests.exceptions.ConnectionError as e:
-            ce = e
+            last_error = f"connection error: {e}"
 
         time.sleep(1)
 
-    if ce:
-        raise Exception(f"connection error: {ce}")
-
-    raise Exception("tablet %s unreachable" % tablet_id)
+    raise Exception(
+        f"tablet {tablet_id} unreachable after {attempt_count} attempts,"
+        f" last error: {last_error}")
 
 
 def fetch_dir_viewer_entries(tablet_id, node_id):

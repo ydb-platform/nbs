@@ -8,6 +8,7 @@
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
+#include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/server/config.h>
 #include <cloud/blockstore/libs/service/context.h>
 
@@ -20,38 +21,12 @@
 #include <cloud/storage/core/libs/rdma/impl/client.h>
 #include <cloud/storage/core/libs/rdma/impl/verbs.h>
 
-#include <library/cpp/monlib/service/pages/html_mon_page.h>
-#include <library/cpp/monlib/service/pages/index_mon_page.h>
-#include <library/cpp/monlib/service/pages/templates.h>
-
-#include <library/cpp/html/pcdata/pcdata.h>
 
 #include <util/generic/hash_set.h>
 #include <util/random/random.h>
 #include <util/system/hostname.h>
 
 namespace NCloud::NBlockStore::NCells {
-
-using namespace NMonitoring;
-
-////////////////////////////////////////////////////////////////////////////////
-
-class TCellsMonPage final: public THtmlMonPage
-{
-private:
-    TCellManager& Manager;
-
-public:
-    TCellsMonPage(TCellManager& manager, const TString& name)
-        : THtmlMonPage(name, name, true)
-        , Manager(manager)
-    {}
-
-    void OutputContent(IMonHttpRequest& request) override
-    {
-        Manager.OutputHtml(request.Output());
-    }
-};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -66,13 +41,6 @@ TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
     }
 
     InboundActivity = std::make_shared<TCellInboundActivity>();
-
-    if (Bootstrap.Monitoring) {
-        auto rootPage =
-            Bootstrap.Monitoring->RegisterIndexPage("blockstore", "BlockStore");
-        static_cast<TIndexMonPage&>(*rootPage).Register(
-            new TCellsMonPage(*this, "Cells"));
-    }
 }
 
 std::shared_ptr<TCellInboundActivity> TCellManager::GetInboundActivity()
@@ -100,6 +68,54 @@ void TCellManager::Stop()
 
     Bootstrap.GrpcClient->Stop();
     Bootstrap.CertProvider->Stop();
+}
+
+TCellsSnapshot TCellManager::GetSnapshot()
+{
+    TCellsSnapshot snapshot;
+    for (const auto& [cellId, pool]: Pools) {
+        auto& statuses = snapshot.HostStatuses[cellId];
+        for (const auto& status: pool->GetHostStatuses()) {
+            statuses.push_back({
+                .Fqdn = status.Fqdn,
+                .Alive = status.Alive,
+                .Warm = status.Warm,
+                .Connections = static_cast<ui32>(status.Connections)});
+        }
+    }
+    snapshot.InboundActivity = InboundActivity->Snapshot(Bootstrap.Timer->Now());
+    return snapshot;
+}
+
+NThreading::TFuture<TVector<TCellDescribeResult>> TCellManager::SearchVolume(
+    TString diskId,
+    TDuration timeout)
+{
+    NProto::TClientAppConfig clientAppConfig;
+    auto& clientConfig = *clientAppConfig.MutableClientConfig();
+    clientConfig = Config->GetGrpcClientConfig().GetClientConfig();
+    clientConfig.SetClientId(FQDNHostName());
+    auto appConfig =
+        std::make_shared<NClient::TClientAppConfig>(clientAppConfig);
+
+    NProto::TDescribeVolumeRequest request;
+    request.SetDiskId(diskId);
+    request.MutableHeaders()->SetClientId(FQDNHostName());
+
+    TVector<TString> cellIds;
+    cellIds.reserve(Config->GetCells().size());
+    for (const auto& [cellId, cellConfig]: Config->GetCells()) {
+        Y_UNUSED(cellConfig);
+        cellIds.push_back(cellId);
+    }
+
+    return SearchVolumeAcrossCells(
+        std::move(request),
+        cellIds,
+        GetCellsEndpoints(appConfig),
+        Bootstrap.LocalService,
+        timeout,
+        Bootstrap.Scheduler);
 }
 
 TCellConnectionFuture TCellManager::CreateConnection(
@@ -153,7 +169,6 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     TCallContextPtr callContext,
     const TString& diskId,
     const NProto::THeaders& headers,
-    IBlockStorePtr service,
     const NProto::TClientConfig& clientConfig)
 {
     NProto::TDescribeVolumeRequest request;
@@ -162,7 +177,7 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
 
     auto configuredCellCount = Config->GetCells().size();
     if (configuredCellCount == 0) {
-        return service->DescribeVolume(
+        return Bootstrap.LocalService->DescribeVolume(
             std::move(callContext),
             std::make_shared<NProto::TDescribeVolumeRequest>(
                 std::move(request)));
@@ -182,122 +197,10 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
     return NCloud::NBlockStore::NCells::DescribeVolume(
         *Config,
         std::move(request),
-        std::move(service),
+        Bootstrap.LocalService,
         cellHostEndpoints,
         hasUnavailableCells,
         Bootstrap);
-}
-
-void TCellManager::OutputHtml(IOutputStream& out)
-{
-    HTML(out) {
-        TAG(TH3) { out << "Cells config"; }
-    }
-    Config->DumpHtml(out);
-
-    for (const auto& [cellId, cellConfig]: Config->GetCells()) {
-        HTML(out) {
-            TAG(TH4) { out << "Cell " << cellId; }
-        }
-        cellConfig->DumpHtml(out);
-
-        HTML(out) {
-            TABLE_CLASS("table table-condensed") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Host"; }
-                        TABLEH() { out << "GrpcPort"; }
-                        TABLEH() { out << "SecureGrpcPort"; }
-                        TABLEH() { out << "RdmaPort"; }
-                    }
-                }
-                TABLEBODY() {
-                    for (const auto& [fqdn, host]: cellConfig->GetHosts()) {
-                        Y_UNUSED(fqdn);
-                        TABLER() {
-                            TABLED() {
-                                out << EncodeHtmlPcdata(host.GetFqdn());
-                            }
-                            TABLED() { out << host.GetGrpcPort(); }
-                            TABLED() { out << host.GetSecureGrpcPort(); }
-                            TABLED() { out << host.GetRdmaPort(); }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    HTML(out) {
-        TAG(TH3) { out << "Outbound host status"; }
-    }
-    for (const auto& [cellId, pool]: Pools) {
-        HTML(out) {
-            TAG(TH4) { out << "Cell " << cellId; }
-            TABLE_CLASS("table table-condensed") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Host"; }
-                        TABLEH() { out << "Alive"; }
-                        TABLEH() { out << "Warm"; }
-                        TABLEH() { out << "Connections"; }
-                    }
-                }
-                TABLEBODY() {
-                    for (const auto& status: pool->GetHostStatuses()) {
-                        TABLER() {
-                            TABLED() {
-                                out << EncodeHtmlPcdata(status.Fqdn);
-                            }
-                            TABLED() { out << (status.Alive ? "yes" : "no"); }
-                            TABLED() { out << (status.Warm ? "yes" : "no"); }
-                            TABLED() { out << status.Connections; }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    HTML(out) {
-        TAG(TH3) { out << "Inbound inter-cell connections"; }
-        TABLE_SORTABLE_CLASS("table table-condensed") {
-            TABLEHEAD() {
-                TABLER() {
-                    TABLEH() { out << "CellId"; }
-                    TABLEH() { out << "Peer"; }
-                    TABLEH() { out << "DiskId"; }
-                    TABLEH() { out << "ClientId"; }
-                    TABLEH() { out << "Mounts"; }
-                    TABLEH() { out << "Unmounts"; }
-                    TABLEH() { out << "Describes"; }
-                }
-            }
-            TABLEBODY() {
-                const auto rows =
-                    InboundActivity->Snapshot(Bootstrap.Timer->Now());
-                for (const auto& row: rows) {
-                    TABLER() {
-                        TABLED() {
-                            out << EncodeHtmlPcdata(row.CellId);
-                        }
-                        TABLED() {
-                            out << EncodeHtmlPcdata(row.Peer);
-                        }
-                        TABLED() {
-                            out << EncodeHtmlPcdata(row.DiskId);
-                        }
-                        TABLED() {
-                            out << EncodeHtmlPcdata(row.ClientId);
-                        }
-                        TABLED() { out << row.Mounts; }
-                        TABLED() { out << row.Unmounts; }
-                        TABLED() { out << row.Describes; }
-                    }
-                }
-            }
-        }
-    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -311,7 +214,8 @@ ICellManagerPtr CreateCellManager(
     ITraceSerializerPtr traceSerializer,
     IServerStatsPtr serverStats,
     ICertificateProviderPtr certificateProvider,
-    NCloud::NStorage::NRdma::IClientPtr rdmaClient)
+    NCloud::NStorage::NRdma::IClientPtr rdmaClient,
+    IBlockStorePtr localService)
 {
     auto appConfig = std::make_shared<NClient::TClientAppConfig>(
         config->GetGrpcClientConfig());
@@ -345,6 +249,7 @@ ICellManagerPtr CreateCellManager(
         .CertProvider = std::move(certificateProvider),
         .GrpcClient = std::move(result.ExtractResult()),
         .RdmaClient = std::move(rdmaClient),
+        .LocalService = std::move(localService),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
         .EndpointsSetup = CreateCellHostEndpointBootstrap()};
 

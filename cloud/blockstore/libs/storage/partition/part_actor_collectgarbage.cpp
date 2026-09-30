@@ -711,7 +711,7 @@ void TPartitionActor::HandleCollectGarbage(
         return;
     }
 
-    auto nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
+    ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
         RebootPartitionOnCollectCounterOverflow(ctx, "CollectGarbage");
         return;
@@ -805,7 +805,7 @@ void TPartitionActor::HandleCollectGarbageCompleted(
 
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    auto time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
+    ui64 time = CyclesToDurationSafe(msg->TotalCycles).MicroSeconds();
     PartCounters->RequestCounters.CollectGarbage.AddRequest(time);
 }
 
@@ -843,7 +843,7 @@ void TPartitionActor::CompleteCollectGarbage(
 
     RemoveTransaction(*args.RequestInfo);
 
-    auto nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
+    ui32 nextPerGenerationCounter = State->NextCollectPerGenerationCounter();
     if (nextPerGenerationCounter == InvalidCollectPerGenerationCounter) {
         RebootPartitionOnCollectCounterOverflow(ctx, "CollectGarbageHard");
         return;

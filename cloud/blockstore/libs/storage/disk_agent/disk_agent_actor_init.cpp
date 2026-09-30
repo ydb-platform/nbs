@@ -3,14 +3,11 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/io_request_parser.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
-#include <cloud/blockstore/libs/storage/disk_agent/journalled_device_adapter.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/future_helper.h>
-#include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/public.h>
-#include <cloud/storage/core/libs/journalled_device/journalled_device.h>
 
 #include <contrib/ydb/core/base/appdata.h>
 
@@ -73,7 +70,8 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
                     std::move(r.Configs),
                     std::move(r.Errors),
                     std::move(r.ConfigMismatchErrors),
-                    std::move(r.DevicesWithSuspendedIO));
+                    std::move(r.DevicesWithSuspendedIO),
+                    std::move(r.JournalledDeviceIds));
 
                 actorSystem->Send(
                     new IEventHandle(replyTo, replyTo, response.release()));
@@ -173,24 +171,7 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         }
     }
 
-    if (State) {
-        THashMap<TString, NJournalled::IJournalledDevicePtr> devices;
-
-        auto timer = CreateWallClockTimer();
-
-        for (const auto& config: State->GetDevices()) {
-            devices.emplace(
-                config.GetDeviceUUID(),
-                NJournalled::CreateJournalledDevice(CreateDeviceAdapter(
-                    timer,
-                    config.GetDeviceUUID(),
-                    TString{JournalledDeviceClientId},
-                    config.GetBlockSize(),
-                    State->GetDeviceClient())));
-        }
-
-        StartJournalledDeviceTcpServer(ctx, std::move(devices));
-    }
+    StartJournalledDeviceTcpServer(ctx, msg->JournalledDeviceIds);
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Ready to work");
 

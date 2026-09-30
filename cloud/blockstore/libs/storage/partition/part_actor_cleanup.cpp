@@ -64,7 +64,7 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
     auto request = std::make_unique<TEvPartitionPrivate::TEvCleanupRequest>(
         MakeIntrusive<TCallContext>(CreateRequestId()));
 
-    const auto throttlingAllowed = State->GetCleanupQueue().GetQueueBytes()
+    const bool throttlingAllowed = State->GetCleanupQueue().GetQueueBytes()
         < Config->GetCleanupQueueBytesLimitForThrottling();
 
     if (throttlingAllowed) {
@@ -279,7 +279,7 @@ void TPartitionActor::CompleteCleanup(
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
 
-    auto time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
+    ui64 time = CyclesToDurationSafe(args.RequestInfo->GetTotalCycles()).MicroSeconds();
     PartCounters->RequestCounters.Cleanup.AddRequest(time);
     PartCounters->Cumulative.CleanupBlobsSkipped.Increment(args.BlobsSkipped);
 }

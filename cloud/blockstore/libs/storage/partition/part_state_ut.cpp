@@ -99,7 +99,8 @@ struct TPartitionStateOptions
     bool CheckpointAwareCleanupEnabled = false;
     bool UseBlobChannelDataKindForCounters = false;
     bool CompactionStatsTrackerEnabled = false;
-    ICompactionPolicyPtr CompactionPolicy = BuildDefaultCompactionPolicy(5, 0);
+    ICompactionPolicyPtr CompactionPolicy =
+        BuildDefaultCompactionPolicy(5, 0, false);
     ui32 MixedIndexCacheSize = 0;
     ui64 AllocationUnit = 10000;
     ui32 MaxBlobsPerUnit = 100;
@@ -480,6 +481,72 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldTrackLegacyCompactionScoreByBlobCount)
+    {
+        auto state = MakeState(4096);
+        auto& map = state.GetCompactionMap();
+        const ui32 secondRange = map.GetRangeSize();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetLegacyCompactionScore());
+
+        // Blob counts matter even below the compaction policy threshold.
+        map.Update(0, 2, 100, 100, 0, 0, false);
+        map.Update(secondRange, 3, 100, 100, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetLegacyCompactionScore());
+
+        map.Update(0, 10, 100, 100, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(10, state.GetLegacyCompactionScore());
+
+        // Compacted ranges no longer contribute to the legacy score.
+        map.Update(0, 10, 100, 100, 0, 0, true);
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetLegacyCompactionScore());
+
+        map.Update(secondRange, 0, 0, 0, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetLegacyCompactionScore());
+    }
+
+    Y_UNIT_TEST(ShouldCalculateCompactionBackpressureByBlobCountWithLoadPolicy)
+    {
+        auto state = MakeState(
+            4096,
+            {.CompactionPolicy = BuildLoadOptimizationCompactionPolicy(
+                 {.MaxBlobSize = 4_MB,
+                  .BlockSize = DefaultBlockSize,
+                  .MaxReadIops = 400,
+                  .MaxReadBandwidth = 15_MB,
+                  .MaxWriteIops = 1000,
+                  .MaxWriteBandwidth = 15_MB,
+                  .MaxBlobsPerRange = 100},
+                 0)});
+        auto& map = state.GetCompactionMap();
+        const ui32 hotRange = map.GetRangeSize();
+
+        map.Update(0, 30, 1024, 1024, 0, 0, false);
+        map.Update(hotRange, 2, 1024, 1024, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(30, state.GetLegacyCompactionScore());
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            10,
+            state.CalculateCurrentBackpressure().CompactionScore,
+            1e-5);
+
+        // Reads make the range with fewer blobs the policy's top candidate.
+        map.RegisterRead(hotRange, 1000, 1024);
+        UNIT_ASSERT_VALUES_EQUAL(hotRange, map.GetTop().BlockIndex);
+        UNIT_ASSERT(state.GetCompactionScore() > 0);
+        UNIT_ASSERT_VALUES_EQUAL(30, state.GetLegacyCompactionScore());
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            10,
+            state.CalculateCurrentBackpressure().CompactionScore,
+            1e-5);
+
+        map.Update(0, 0, 0, 0, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetLegacyCompactionScore());
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            1,
+            state.CalculateCurrentBackpressure().CompactionScore,
+            1e-5);
+    }
+
     Y_UNIT_TEST(CalculateCurrentBackpressure)
     {
         auto state = MakeState(1000);
@@ -787,8 +854,49 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
     Y_UNIT_TEST(CheckMaxBlobsPerDisk)
     {
         CheckMaxBlobsPerDisk(320_GB, 32_GB, 100, 1000);
+        CheckMaxBlobsPerDisk(32_GB, 32_GB, 100, 100);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 100, 150);
+        CheckMaxBlobsPerDisk(16_GB, 32_GB, 100, 50);
+        CheckMaxBlobsPerDisk(10_GB, 32_GB, 100, 32);
+        CheckMaxBlobsPerDisk(32_GB, 256_GB, 800, 100);
+        CheckMaxBlobsPerDisk(48_GB, 256_GB, 800, 150);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 100, 150, 0, 0, 16_KB);
+    }
+
+    Y_UNIT_TEST(ShouldRoundMaxBlobsPerDiskUp)
+    {
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 1, 2);
+        CheckMaxBlobsPerDisk(DefaultBlockSize, 32_GB, 1, 1);
+    }
+
+    Y_UNIT_TEST(ShouldKeepMaxBlobsPerDiskDisabled)
+    {
         CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0);
-        CheckMaxBlobsPerDisk(10_GB, 32_GB, 100, 100);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 0, 0);
+        CheckMaxBlobsPerDisk(10_GB, 32_GB, 0, 0);
+    }
+
+    Y_UNIT_TEST(ShouldCalculateMaxBlobsPerDiskWithoutOverflow)
+    {
+        CheckMaxBlobsPerDisk(32_GB, 32_GB, 1'000'000'000, 1'000'000'000);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 1'000'000'000, 1'500'000'000);
+        CheckMaxBlobsPerDisk(32_GB, 32_GB, Max<ui32>(), Max<ui32>());
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, Max<ui32>(), Max<ui32>());
+    }
+
+    Y_UNIT_TEST(ShouldTreatAllocationUnitSmallerThanBlockAsOneBlock)
+    {
+        // 1_MB disk with 4_KB blocks has 256 blocks, each block is a unit.
+        CheckMaxBlobsPerDisk(1_MB, 0, 1, 256);
+        CheckMaxBlobsPerDisk(1_MB, 1, 2, 512);
+        CheckMaxBlobsPerDisk(1_MB, DefaultBlockSize - 1, 3, 768);
+        CheckMaxBlobsPerDisk(1_MB, 4_KB, 1, 64, 0, 0, 16_KB);
+        CheckMaxBlobsPerDisk(32_GB, 1, Max<ui32>(), Max<ui32>());
+
+        // Mixed bytes per unit are capped by the allocation unit.
+        CheckMaxBlobsPerDisk(1_MB, 0, 0, 0, 1_MB, 0);
+        CheckMaxBlobsPerDisk(1_MB, 1_KB, 0, 0, 1_MB, 256);
+        CheckMaxBlobsPerDisk(1_MB, 4_KB, 0, 0, 1_MB, 64, 16_KB);
     }
 
     Y_UNIT_TEST(CheckMaxMixedBlocksPerDisk)

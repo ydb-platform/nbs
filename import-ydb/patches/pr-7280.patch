@@ -1,0 +1,63 @@
+diff --git a/contrib/libs/openssl/include/internal/refcount.h b/contrib/libs/openssl/include/internal/refcount.h
+index 0bf984e15af..6fdab7b59ee 100644
+--- a/contrib/libs/openssl/include/internal/refcount.h
++++ b/contrib/libs/openssl/include/internal/refcount.h
+@@ -17,6 +17,14 @@
+ #  endif
+ # endif
+
++# if defined(__SANITIZE_THREAD__)
++#  define OSSL_TSAN_BUILD
++# elif defined(__has_feature)
++#  if __has_feature(thread_sanitizer)
++#   define OSSL_TSAN_BUILD
++#  endif
++# endif
++
+ # if defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L \
+      && !defined(__STDC_NO_ATOMICS__)
+ #  include <stdatomic.h>
+@@ -37,20 +45,20 @@ static inline int CRYPTO_UP_REF(_Atomic int *val, int *ret, void *lock)
+ }
+
+ /*
+- * Changes to shared structure other than reference counter have to be
+- * serialized. And any kind of serialization implies a release fence. This
+- * means that by the time reference counter is decremented all other
+- * changes are visible on all processors. Hence decrement itself can be
+- * relaxed. In case it hits zero, object will be destructed. Since it's
+- * last use of the object, destructor programmer might reason that access
+- * to mutable members doesn't have to be serialized anymore, which would
+- * otherwise imply an acquire fence. Hence conditional acquire fence...
++ * The decrement must release prior accesses to the object. When the count
++ * reaches zero, an acquire fence pairs with earlier releases before the
++ * object is destroyed. TSAN does not understand this fence, so use acq_rel
++ * for the decrement in TSAN builds.
+  */
+ static inline int CRYPTO_DOWN_REF(_Atomic int *val, int *ret, void *lock)
+ {
+-    *ret = atomic_fetch_sub_explicit(val, 1, memory_order_relaxed) - 1;
++#  ifdef OSSL_TSAN_BUILD
++    *ret = atomic_fetch_sub_explicit(val, 1, memory_order_acq_rel) - 1;
++#  else
++    *ret = atomic_fetch_sub_explicit(val, 1, memory_order_release) - 1;
+     if (*ret == 0)
+         atomic_thread_fence(memory_order_acquire);
++#  endif
+     return 1;
+ }
+
+@@ -68,9 +76,13 @@ static __inline__ int CRYPTO_UP_REF(int *val, int *ret, void * /*lock*/)
+
+ static __inline__ int CRYPTO_DOWN_REF(int *val, int *ret, void * /*lock*/)
+ {
+-    *ret = __atomic_fetch_sub(val, 1, __ATOMIC_RELAXED) - 1;
++#  ifdef OSSL_TSAN_BUILD
++    *ret = __atomic_fetch_sub(val, 1, __ATOMIC_ACQ_REL) - 1;
++#  else
++    *ret = __atomic_fetch_sub(val, 1, __ATOMIC_RELEASE) - 1;
+     if (*ret == 0)
+         __atomic_thread_fence(__ATOMIC_ACQUIRE);
++#  endif
+     return 1;
+ }

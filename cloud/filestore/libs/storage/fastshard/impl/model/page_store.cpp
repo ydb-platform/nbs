@@ -38,6 +38,7 @@ private:
     mutable silk::FiberMutex Mutex;
 
     ui64 Lsn = 0;
+    ui64 LastLinkedLsn = 0;
 
 public:
     TPageStore(IStorageGroupPtr storage, ui64 pageSize)
@@ -52,6 +53,7 @@ public:
     }
 
     ui64 AllocateLsn() override;
+    ui64 LinkRecord(ui64 lsn) override;
     void InitLastLsn(ui64 lsn) override;
     void CommitPages(const TVector<ui64>& pages) override;
     void RollbackPages(const TVector<ui64>& pages) override;
@@ -73,6 +75,20 @@ ui64 TPageStore::AllocateLsn()
     return ++Lsn;
 }
 
+ui64 TPageStore::LinkRecord(ui64 lsn)
+{
+    std::lock_guard g(Mutex);
+    Y_ABORT_UNLESS(
+        lsn > LastLinkedLsn,
+        "lsn %lu is not above the last linked one %lu",
+        lsn,
+        LastLinkedLsn);
+
+    const ui64 prevLsn = LastLinkedLsn;
+    LastLinkedLsn = lsn;
+    return prevLsn;
+}
+
 void TPageStore::InitLastLsn(ui64 lsn)
 {
     std::lock_guard g(Mutex);
@@ -82,6 +98,7 @@ void TPageStore::InitLastLsn(ui64 lsn)
         Lsn,
         lsn);
     Lsn = lsn;
+    LastLinkedLsn = lsn;
 }
 
 void TPageStore::CommitPages(const TVector<ui64>& pages)
@@ -143,8 +160,20 @@ NProto::TError TPageStore::WritePage(
     }
 
     if (!found) {
-        logRecord.push_back(
-            {.FirstPageNo = pageNo, .Content = TVector<TBuffer>({page})});
+        bool added = false;
+        if (logRecord.size()) {
+            const ui64 nextPageNo =
+                logRecord.back().FirstPageNo + logRecord.back().Content.size();
+            if (nextPageNo == pageNo) {
+                logRecord.back().Content.push_back(page);
+                added = true;
+            }
+        }
+
+        if (!added) {
+            logRecord.push_back(
+                {.FirstPageNo = pageNo, .Content = TVector<TBuffer>({page})});
+        }
     }
 
     //
@@ -240,21 +269,22 @@ NProto::TError TPageStore::ReadPage(ui64 lsn, ui64 pageNo, TBuffer* page) const
     if (pageGroups.size() != 1) {
         return MakeError(
             E_BADMSG,
-            TStringBuilder() << "unexpected pg count: " << pageGroups.size());
+            TStringBuilder() << "lsn=" << lsn << ", pageNo=" << pageNo
+                << ", unexpected pg count: " << pageGroups.size());
     }
 
     auto& rpg = pageGroups[0];
     if (rpg.Content.size() != 1) {
         return MakeError(
             E_BADMSG,
-            TStringBuilder()
+            TStringBuilder() << "lsn=" << lsn << ", pageNo=" << pageNo
                 << "unexpected page count: " << rpg.Content.size());
     }
 
     if (rpg.Content[0].Size() < PageSize) {
         return MakeError(
             E_BADMSG,
-            TStringBuilder()
+            TStringBuilder() << "lsn=" << lsn << ", pageNo=" << pageNo
                 << "unexpected page size: " << rpg.Content[0].Size());
     }
 

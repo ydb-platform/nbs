@@ -1874,6 +1874,199 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         }
     }
 
+    Y_UNIT_TEST(ShouldProcessDupCacheRequestIdCollision)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        using namespace NMonitoring;
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto duplicateRequestId = counters->GetCounter(
+            "AppCriticalEvents/DuplicateRequestId",
+            true);
+        auto dupCacheEntryRequestIdCollision = counters->GetCounter(
+            "AppCriticalEvents/DupCacheEntryRequestIdCollision",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, duplicateRequestId->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dupCacheEntryRequestIdCollision->Val());
+
+        auto createCreateHandleRequest = [&] (ui64 reqId, ui64 nodeId) {
+            auto request = tablet.CreateCreateHandleRequest(
+                nodeId, TCreateHandleArgs::RDWR);
+            request->Record.MutableHeaders()->SetRequestId(reqId);
+
+            return request;
+        };
+
+        const TString name1 = "file1";
+        const TString name2 = "file2";
+
+        const ui64 nodeId1 = tablet.CreateNode(TCreateNodeArgs::File(
+            RootNodeId,
+            name1))->Record.GetNode().GetId();
+
+        const ui64 nodeId2 = tablet.CreateNode(TCreateNodeArgs::File(
+            RootNodeId,
+            name2))->Record.GetNode().GetId();
+
+        const ui64 requestId = 100500;
+        ui64 handle = 0;
+
+        tablet.SendRequest(createCreateHandleRequest(requestId, nodeId1));
+        {
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeId1,
+                response->Record.GetNodeAttr().GetId());
+
+            handle = response->Record.GetHandle();
+            tablet.DescribeData(handle, 0, 1_KB);
+        }
+
+        // opening a different file using the same requestId
+        tablet.SendRequest(createCreateHandleRequest(requestId, nodeId2));
+        {
+            // DupCache shouldn't be used this time
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeId2,
+                response->Record.GetNodeAttr().GetId());
+
+            const ui64 handle2 = response->Record.GetHandle();
+            UNIT_ASSERT_VALUES_UNEQUAL(handle, handle2);
+
+            // DescribeData should succeed
+            tablet.DescribeData(handle2, 0, 1_KB);
+            tablet.DestroyHandle(handle2);
+        }
+
+        //
+        // Duplicate request id should be reported, DupCacheEntry should have
+        // been dropped from memory (but not from tablet LSM).
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(1, duplicateRequestId->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, dupCacheEntryRequestIdCollision->Val());
+
+        tablet.DestroyHandle(handle);
+
+        tablet.RebootTablet();
+        tablet.RecoverSession();
+
+        //
+        // Upon reboot the tablet should have detected and reported request id
+        // duplication.
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(1, duplicateRequestId->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, dupCacheEntryRequestIdCollision->Val());
+    }
+
+    Y_UNIT_TEST(ShouldNotCheckDupCacheEntryValidityForUncommittedEntries)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        using namespace NMonitoring;
+        TDynamicCountersPtr counters = new TDynamicCounters();
+        InitCriticalEventsCounter(counters);
+        auto duplicateRequestId = counters->GetCounter(
+            "AppCriticalEvents/DuplicateRequestId",
+            true);
+        UNIT_ASSERT_VALUES_EQUAL(0, duplicateRequestId->Val());
+
+        const TString name = "file";
+
+        const ui64 nodeId = tablet.CreateNode(TCreateNodeArgs::File(
+            RootNodeId,
+            name))->Record.GetNode().GetId();
+
+        TAutoPtr<IEventHandle> putEvent;
+        auto& runtime = env.GetRuntime();
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvBlobStorage::EvPut:
+                        if (!putEvent) {
+                            putEvent = std::move(event);
+                            return true;
+                        }
+                }
+                return false;
+            });
+
+        auto createCreateHandleRequest = [&] (ui64 reqId, ui64 nodeId) {
+            auto request = tablet.CreateCreateHandleRequest(
+                nodeId, TCreateHandleArgs::RDWR);
+            request->Record.MutableHeaders()->SetRequestId(reqId);
+
+            return request;
+        };
+
+        const ui64 requestId = 100500;
+
+        tablet.SendRequest(createCreateHandleRequest(requestId, nodeId));
+        // Execute stage of RW tx will produce a TEvPut request, which is
+        // dropped to postpone the completion of the transaction
+        runtime.DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&]()
+            {
+                return putEvent != nullptr;
+            }});
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+
+        // opening the file while prev open request is still in progress
+        tablet.SendRequest(createCreateHandleRequest(requestId, nodeId));
+        {
+            // should get E_REJECTED from DupCache
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->Record.GetError().GetCode(),
+                response->Record.GetError().GetMessage());
+        }
+
+        // no duplicate requests should be reported
+        UNIT_ASSERT_VALUES_EQUAL(0, duplicateRequestId->Val());
+
+        runtime.Send(putEvent.Release(), nodeIdx);
+        {
+            auto response = tablet.RecvCreateHandleResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(
+                nodeId,
+                response->Record.GetNodeAttr().GetId());
+            tablet.DestroyHandle(response->Record.GetHandle());
+        }
+    }
+
     // This test enforces the fact that if some data has been modified by a RW
     // transaction, but it has not been completed yet, that will not be visible
     // to other transactions.

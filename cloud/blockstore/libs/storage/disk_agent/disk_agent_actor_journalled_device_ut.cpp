@@ -6,8 +6,9 @@
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
+#include <cloud/fastshard/protos/device.pb.h>
+
 #include <cloud/storage/core/libs/common/proto_helpers.h>
-#include <cloud/storage/core/protos/device.pb.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -75,6 +76,7 @@ struct TFixture: public NUnitTest::TBaseFixture
             device.SetBlockSize(4_KB);
             device.SetDeviceId(uuid);
             device.SetPoolName("journalled");
+            device.SetJournalled(true);
             device.SetFileSize(1_MB);
 
             PrepareFile(device);
@@ -241,7 +243,7 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 
     Y_UNIT_TEST_F(ShouldRouteRequestsToDevices, TFixture)
     {
-        const TString clientId{JournalledDeviceClientId};
+        TString clientId = "client-id";
         const TString uuid = FileDevices[0].GetDeviceId();
         const TString unknownUuid = "unknown";
 
@@ -377,6 +379,29 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
             UNIT_ASSERT_STRING_CONTAINS(
                 error.GetMessage(),
                 "empty device UUID");
+        }
+
+        // a request without a client id is rejected as well
+
+        clientId = {};
+
+        for (const auto& error: {writeLogRecord(uuid), readPages(uuid)}) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "empty client id");
+        }
+
+        // and so is a client that has not acquired the device
+
+        clientId = "other-client-id";
+
+        for (const auto& error: {writeLogRecord(uuid), readPages(uuid)}) {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_BS_INVALID_SESSION,
+                error.GetCode(),
+                FormatError(error));
         }
     }
 }

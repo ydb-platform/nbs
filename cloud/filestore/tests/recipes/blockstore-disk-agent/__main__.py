@@ -131,6 +131,7 @@ def start(argv):
                 "PathRegExp": f"{data_dir}/NVMEFS([0-9]+)",
                 "PoolConfigs": [{
                     "PoolName": STORAGE_POOL_NAME,
+                    "Journalled": True,
                     "Layout": {
                         "DeviceSize": args.device_size,
                         "DevicePadding": DEVICE_PADDING,

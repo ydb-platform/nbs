@@ -169,7 +169,7 @@ TGuardedSgList TWriteMixedBlocksActor::BuildBlobContent(const TRequest& request)
                 for (size_t index = 0; index < sgList.size(); ++index) {
                     const auto& block = sgList[index];
 
-                    auto blockIndex = sr.WriteRange.Start + index;
+                    size_t blockIndex = sr.WriteRange.Start + index;
                     const auto digest = BlockDigestGenerator->ComputeDigest(
                         blockIndex,
                         block);
@@ -496,7 +496,7 @@ bool TPartitionActor::WriteMixedBlocks(
     TVector<std::pair<IWriteBlocksHandlerPtr, TBlockRange64>> parts;
     TVector<TWriteMixedBlocksActor::TRequest> requests(Reserve(groups.size()));
 
-    const auto commitId = State->GenerateCommitId();
+    const ui64 commitId = State->GenerateCommitId();
     if (commitId == InvalidCommitId) {
         return false;
     }

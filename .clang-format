@@ -180,12 +180,16 @@ IncludeCategories:
     Priority:        21
     SortPriority:    0
     CaseSensitive:   false
-  - Regex:           '^<cloud/storage.*\.h>'
+  - Regex:           '^<cloud/fastshard.*\.h>'
     Priority:        22
     SortPriority:    0
     CaseSensitive:   false
-  - Regex:           '^<cloud/contrib.*\.h>'
+  - Regex:           '^<cloud/storage.*\.h>'
     Priority:        23
+    SortPriority:    0
+    CaseSensitive:   false
+  - Regex:           '^<cloud/contrib.*\.h>'
+    Priority:        24
     SortPriority:    0
     CaseSensitive:   false
   - Regex:           '^<ydb/.*\.h>'

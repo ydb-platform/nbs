@@ -16,7 +16,7 @@ namespace silk
  * Call once, FIRST in main, BEFORE silk initialization: the dumper is forked here, while the process is
  * still single-threaded, so it is a clean child. Run under "timeout --signal=<dumpSignal>" so a wedged run
  * self-dumps. Requires crash-dumper.py and fiber.py installed next to the binary, which the build does
- * automatically.
+ * automatically, or in the directory named by the SILK_CRASH_DUMPER_SCRIPT_DIR environment variable.
  */
 void installCrashDumper(int dumpSignal = SIGQUIT, int exitCode = 124) noexcept;
 

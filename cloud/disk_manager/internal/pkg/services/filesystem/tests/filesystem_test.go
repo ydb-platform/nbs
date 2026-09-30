@@ -125,6 +125,7 @@ func newResourceStorage(
 		placementGroupsFolder,
 		db,
 		endedMigrationExpirationTimeout,
+		false, // backupEnabled
 	)
 }
 

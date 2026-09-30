@@ -29,6 +29,10 @@ NProto::TError CompareConfigs(
         return MakeError(E_ARGUMENT, "Unexpected offset");
     }
 
+    if (expected.GetJournalled() != current.GetJournalled()) {
+        return MakeError(E_ARGUMENT, "Unexpected journalled flag");
+    }
+
     if (expected.GetFileSize() && expected.GetFileSize() != current.GetFileSize()) {
         return MakeError(E_ARGUMENT, "Unexpected file size");
     }

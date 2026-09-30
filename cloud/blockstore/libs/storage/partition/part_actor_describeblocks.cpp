@@ -243,7 +243,7 @@ bool TPartitionActor::PrepareDescribeBlocks(
 
     TDescribeBlocksVisitor visitor(args);
     State->FindFreshBlocks(visitor, args.DescribeRange, commitId);
-    auto ready = db.FindMixedBlocks(
+    bool ready = db.FindMixedBlocks(
         visitor,
         args.DescribeRange,
         false,   // precharge
@@ -313,7 +313,7 @@ void TPartitionActor::CompleteDescribeBlocks(
 
     const auto duration =
         CyclesToDurationSafe(args.RequestInfo->GetTotalCycles());
-    const auto time = duration.MicroSeconds();
+    const ui64 time = duration.MicroSeconds();
     const ui64 requestBytes =
         static_cast<ui64>(State->GetBlockSize()) * args.DescribeRange.Size();
 
@@ -411,8 +411,8 @@ void TPartitionActor::FillDescribeBlocksResponse(
             Info()->GroupFor(blobId.Channel(), blobId.Generation()));
 
         do {
-            auto blobOffset = iter->BlobOffset;
-            auto blockIndex = iter->BlockIndex;
+            ui16 blobOffset = iter->BlobOffset;
+            ui32 blockIndex = iter->BlockIndex;
 
             auto* range = blobPiece->AddRanges();
             range->SetBlobOffset(blobOffset);

@@ -5,7 +5,7 @@ import socket
 import itertools
 import struct
 
-import cloud.storage.core.protos.device_pb2 as device_pb2
+import cloud.fastshard.protos.device_pb2 as device_pb2
 
 from cloud.blockstore.tests.python.lib.test_client import CreateTestClient
 
@@ -112,6 +112,7 @@ def start_disk_agent(ydb, nbs, agent_id, tcp_port, tmp_path):
                 "PathRegExp": f"{data_path}/NVMEJD([0-9]+)",
                 "PoolConfigs": [{
                     "PoolName": STORAGE_POOL_NAME,
+                    "Journalled": True,
                     "Layout": {
                         "DeviceSize": DEVICE_SIZE,
                         "DevicePadding": DEVICE_PADDING,

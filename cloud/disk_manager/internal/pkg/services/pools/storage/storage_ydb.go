@@ -27,6 +27,9 @@ type storageYDB struct {
 	adjustBaseDiskSizeToMinBaseDiskUnits bool
 
 	baseDiskOverSubscription uint64
+
+	// TODO: remove after deployment of this version is finished.
+	holdBaseDisksWithInflightDependents bool
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -559,5 +562,7 @@ func NewStorage(
 		adjustBaseDiskSizeToMinBaseDiskUnits: config.GetAdjustBaseDiskSizeToMinBaseDiskUnits(),
 
 		baseDiskOverSubscription: uint64(config.GetBaseDiskOverSubscription()),
+
+		holdBaseDisksWithInflightDependents: config.GetHoldBaseDisksWithInflightDependents(),
 	}, nil
 }

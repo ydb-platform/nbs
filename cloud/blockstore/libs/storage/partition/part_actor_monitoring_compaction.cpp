@@ -53,8 +53,8 @@ void TPartitionActor::HandleHttpInfo_ForceCompaction(
 
     TVector<ui32> rangesToCompact;
     if (blockIndex || blocksCount) {
-        auto startIndex = Min(State->GetBlocksCount(), blockIndex);
-        auto endIndex = Min(State->GetBlocksCount(), blockIndex + blocksCount);
+        ui64 startIndex = Min(State->GetBlocksCount(), blockIndex);
+        ui64 endIndex = Min(State->GetBlocksCount(), blockIndex + blocksCount);
 
         rangesToCompact = TVector<ui32>(
             ::xrange(

@@ -13,5 +13,17 @@
     },
     "test.test_shard_autoaddition": {
         "uri": "file://test.test_shard_autoaddition/results.txt"
+    },
+    "test.test_storage_config_all_shards": {
+        "uri": "file://test.test_storage_config_all_shards/results.txt"
+    },
+    "test.test_storage_config_all_shards_invalid_input": {
+        "uri": "file://test.test_storage_config_all_shards_invalid_input/results.txt"
+    },
+    "test.test_storage_config_all_shards_partial_failure": {
+        "uri": "file://test.test_storage_config_all_shards_partial_failure/results.txt"
+    },
+    "test.test_storage_config_all_shards_without_shards": {
+        "uri": "file://test.test_storage_config_all_shards_without_shards/results.txt"
     }
 }

@@ -1,8 +1,9 @@
 #include "server.h"
 
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
-#include <cloud/filestore/libs/storage/fastshard/ipc/ipc.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
+
+#include <cloud/fastshard/ipc/ipc.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -31,6 +32,9 @@
 #include <memory>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
+
+using NCloud::NFastShard::RecvAll;
+using NCloud::NFastShard::SendAll;
 
 using silk::FiberFuture;
 using silk::FiberScheduler;

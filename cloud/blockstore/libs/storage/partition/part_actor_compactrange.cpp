@@ -264,11 +264,11 @@ void TPartitionActor::HandleCompactRange(
 
     TVector<ui32> rangesToCompact;
     if (msg->Record.GetStartIndex() || msg->Record.GetBlocksCount()) {
-        auto startIndex = Min(
+        ui64 startIndex = Min(
             State->GetBlocksCount(),
             msg->Record.GetStartIndex());
 
-        auto endIndex = Min(
+        ui64 endIndex = Min(
             State->GetBlocksCount(),
             msg->Record.GetStartIndex() + msg->Record.GetBlocksCount());
 

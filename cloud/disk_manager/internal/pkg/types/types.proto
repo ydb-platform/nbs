@@ -17,6 +17,7 @@ enum DiskKind {
     DISK_KIND_SSD_MIRROR3 = 5;
     DISK_KIND_HDD_NONREPLICATED = 6;
     DISK_KIND_HDD_LOCAL = 7;
+    DISK_KIND_SSD_DIRECT_MIRROR3OF5_GROUP = 8;
 }
 
 // These values are stored in DB, do not shuffle them around.

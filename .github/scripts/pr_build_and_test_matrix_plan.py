@@ -43,6 +43,7 @@ class Inputs:
                 "disk_manager": truthy(env.get("CONTAINS_DISK_MANAGER")),
                 "tasks": truthy(env.get("CONTAINS_TASKS")),
                 "storage": truthy(env.get("CONTAINS_STORAGE")),
+                "fastshard": truthy(env.get("CONTAINS_FASTSHARD")),
             },
             has_san={
                 "asan": truthy(env.get("HAS_ASAN_LABEL")),

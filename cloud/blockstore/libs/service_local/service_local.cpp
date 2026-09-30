@@ -67,16 +67,17 @@ struct TMountSession
     const TString SessionId;
     const TString ClientId;
     const NProto::EVolumeAccessMode AccessMode;
-    IStoragePtr Storage;
-    std::unique_ptr<TStorageAdapter> StorageAdapter;
+    const IStoragePtr Storage;
+    const std::unique_ptr<TStorageAdapter> StorageAdapter;
 
     TMountSession(
+            TString sessionId,
             TString clientId,
             NProto::EVolumeAccessMode accessMode,
             IStoragePtr storage,
             ui32 blockSize,
             TDuration storageShutdownTimeout)
-        : SessionId(CreateGuidAsString())
+        : SessionId(std::move(sessionId))
         , ClientId(std::move(clientId))
         , AccessMode(accessMode)
         , Storage(storage)
@@ -87,24 +88,25 @@ struct TMountSession
               TDuration::Zero(),   // maxRequestDuration
               storageShutdownTimeout))
     {}
-
-    void UpdateStorage(
-        IStoragePtr storage,
-        ui32 blockSize,
-        TDuration storageShutdownTimeout)
-    {
-        Storage = std::move(storage);
-        StorageAdapter = std::make_unique<TStorageAdapter>(
-            Storage,
-            blockSize,
-            true,                // normalize,
-            TDuration::Zero(),   // maxRequestDuration
-            storageShutdownTimeout);
-    }
 };
 
 using TMountSessionPtr = std::shared_ptr<TMountSession>;
 using TMountSessionMap = THashMap<TString, TMountSessionPtr>;
+
+template <typename TResponse>
+TFuture<TResponse> KeepSessionAlive(
+    TMountSessionPtr session,
+    TFuture<TResponse> future)
+{
+    // Local I/O bypasses the adapter's in-flight tracking. Retain the whole
+    // session until completion so resize cannot destroy its storage early.
+    future.Subscribe(
+        [session = std::move(session)](const auto&)
+        {
+            Y_UNUSED(session);
+        });
+    return future;
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -128,6 +130,7 @@ struct TMountedVolume
     {
         with_lock (SessionLock) {
             auto session = std::make_shared<TMountSession>(
+                CreateGuidAsString(),
                 std::move(clientId),
                 accessMode,
                 std::move(storage),
@@ -182,7 +185,12 @@ struct TMountedVolume
                                        session->AccessMode)
                                    .GetValueSync();
                 if (storage) {
-                    session->UpdateStorage(
+                    // FindSession readers keep the old session alive while
+                    // subsequent requests acquire the replacement.
+                    session = std::make_shared<TMountSession>(
+                        session->SessionId,
+                        session->ClientId,
+                        session->AccessMode,
                         std::move(storage),
                         volume.GetBlockSize(),
                         StorageShutdownTimeout);
@@ -759,13 +767,14 @@ TFuture<NProto::TReadBlocksResponse> TLocalService::ReadBlocks(
                 << "Out of bounds read request";
         }
 
-        return session->StorageAdapter->ReadBlocks(
+        auto future = session->StorageAdapter->ReadBlocks(
             Now(),
             std::move(ctx),
             std::move(request),
             volume->Volume.GetBlockSize(),
             {} // no data buffer
         );
+        return KeepSessionAlive(std::move(session), std::move(future));
     });
 }
 
@@ -798,12 +807,11 @@ TFuture<NProto::TWriteBlocksResponse> TLocalService::WriteBlocks(
                 << "Volume not mounted";
         }
 
+        const ui32 blockSize = volume->Volume.GetBlockSize();
         const auto requestRange = TBlockRange64::WithLength(
             request->GetStartIndex(),
-            CalculateWriteRequestBlockCount(
-                *request,
-                volume->Volume.GetBlocksCount()));
-        bool rangeOk =
+            CalculateWriteRequestBlockCount(*request, blockSize));
+        const bool rangeOk =
             TBlockRange64::WithLength(0, volume->Volume.GetBlocksCount())
                 .Contains(requestRange);
 
@@ -812,13 +820,14 @@ TFuture<NProto::TWriteBlocksResponse> TLocalService::WriteBlocks(
                 << "Out of bounds write request";
         }
 
-        return session->StorageAdapter->WriteBlocks(
+        auto future = session->StorageAdapter->WriteBlocks(
             Now(),
             std::move(ctx),
             std::move(request),
-            volume->Volume.GetBlockSize(),
+            blockSize,
             {} // no data buffer
         );
+        return KeepSessionAlive(std::move(session), std::move(future));
     });
 }
 
@@ -863,11 +872,12 @@ TFuture<NProto::TZeroBlocksResponse> TLocalService::ZeroBlocks(
                 << "Out of bounds write request";
         }
 
-        return session->StorageAdapter->ZeroBlocks(
+        auto future = session->StorageAdapter->ZeroBlocks(
             Now(),
             std::move(ctx),
             std::move(request),
             volume->Volume.GetBlockSize());
+        return KeepSessionAlive(std::move(session), std::move(future));
     });
 }
 
@@ -912,9 +922,10 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalService::ReadBlocksLocal(
                 << "Out of bounds read request";
         }
 
-        return session->Storage->ReadBlocksLocal(
+        auto future = session->Storage->ReadBlocksLocal(
             std::move(ctx),
             std::move(request));
+        return KeepSessionAlive(std::move(session), std::move(future));
     });
 }
 
@@ -959,9 +970,10 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalService::WriteBlocksLocal(
                 << "Out of bounds write request";
         }
 
-        return session->Storage->WriteBlocksLocal(
+        auto future = session->Storage->WriteBlocksLocal(
             std::move(ctx),
             std::move(request));
+        return KeepSessionAlive(std::move(session), std::move(future));
     });
 }
 

@@ -157,8 +157,17 @@ bool THiveProxyFallbackActor::HandleRequests(STFUNC_SIG)
 
 STFUNC(THiveProxyFallbackActor::StateWork)
 {
-    if (!HandleRequests(ev)) {
-        LogUnexpectedEvent(ev, Config.LogComponent, __PRETTY_FUNCTION__);
+    switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvHiveProxy::TEvUpdateTabletBootInfoBackup);
+
+        default:
+            if (!HandleRequests(ev)) {
+                LogUnexpectedEvent(
+                    ev,
+                    Config.LogComponent,
+                    __PRETTY_FUNCTION__);
+            }
+            break;
     }
 }
 

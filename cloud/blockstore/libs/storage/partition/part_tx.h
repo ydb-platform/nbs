@@ -1066,7 +1066,7 @@ struct TTxPartition
 
         std::pair<ui32, ui32> GetBitPosition(ui32 blockIndex)
         {
-            auto blockOffset = blockIndex - ReadRange.Start;
+            ui32 blockOffset = blockIndex - ReadRange.Start;
             return {blockOffset / 8, blockOffset % 8};
         }
 

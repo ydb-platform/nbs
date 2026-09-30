@@ -476,6 +476,61 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             offset += padding + deviceSize;
         }
     }
+
+    Y_UNIT_TEST_F(ShouldPropagateJournalledFlag, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPoolConfig journalled;
+        journalled.SetPoolName("journalled");
+        journalled.SetJournalled(true);
+
+        NProto::TStorageDiscoveryConfig::TPoolConfig journalledWithLayout;
+        journalledWithLayout.SetPoolName("journalled");
+        journalledWithLayout.SetJournalled(true);
+
+        {
+            auto& layout = *journalledWithLayout.MutableLayout();
+            layout.SetHeaderSize(1_GB);
+            layout.SetDevicePadding(32_MB);
+            layout.SetDeviceSize(93_GB);
+        }
+
+        NProto::TStorageDiscoveryConfig::TPoolConfig regular;
+        regular.SetPoolName("regular");
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        {
+            gen("/dev/disk/by-partlabel/NVMENBS01", journalled, 1, 0, 4_KB, 93_GB);
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(1, r.size());
+            UNIT_ASSERT_C(r[0].GetJournalled(), r[0]);
+        }
+
+        {
+            gen(
+                "/dev/disk/by-partlabel/NVMENBS02",
+                journalledWithLayout,
+                2,
+                0,
+                4_KB,
+                1_GB + (93_GB + 32_MB) * 3);
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(3, r.size());
+            for (const auto& d: r) {
+                UNIT_ASSERT_C(d.GetJournalled(), d);
+            }
+        }
+
+        {
+            gen("/dev/disk/by-partlabel/NVMENBS03", regular, 3, 0, 4_KB, 93_GB);
+
+            auto r = gen.ExtractResult();
+            UNIT_ASSERT_VALUES_EQUAL(1, r.size());
+            UNIT_ASSERT_C(!r[0].GetJournalled(), r[0]);
+        }
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

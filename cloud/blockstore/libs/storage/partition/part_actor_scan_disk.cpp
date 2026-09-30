@@ -64,7 +64,7 @@ public:
         Args.LastVisitedBlobId = MakePartialBlobId(commitId, blobId);
 
         if (!IsDeletionMarker(Args.LastVisitedBlobId)) {
-            const auto group = TabletInfo.GroupFor(
+            const ui32 group = TabletInfo.GroupFor(
                 Args.LastVisitedBlobId.Channel(),
                 Args.LastVisitedBlobId.Generation());
             Args.BlobsToReadInCurrentBatch.emplace_back(
@@ -526,7 +526,7 @@ bool TPartitionActor::PrepareScanDiskBatch(
         args.StartBlobId,
         args.FinalBlobId,
         args.BlobCountToVisit);
-    const auto ready =
+    const bool ready =
         progress != TPartitionDatabase::EBlobIndexScanProgress::NotReady;
 
     if (ready) {
