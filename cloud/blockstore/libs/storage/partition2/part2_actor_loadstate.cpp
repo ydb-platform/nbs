@@ -546,6 +546,7 @@ void TPartitionActor::CompleteLoadCompactionMapChunk(
             LogTitle.GetWithTime().c_str());
 
         EnqueueCompactionIfNeeded(ctx);
+        EnqueueLevelCompactionIfNeeded(ctx);
         return;
     }
 

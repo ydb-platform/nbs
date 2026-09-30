@@ -90,16 +90,54 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
 {
     Y_UNIT_TEST(ShouldReturnNothingForEmptyVisitor)
     {
+        TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ 4,
             BlockSize,
             /*maxBlocksInBlob*/ 2,
-            /*allowBlockDuplicates*/ false);
+            /*allowBlockDuplicates*/ false,
+            cleanupQueue);
 
         auto blobs = visitor.Finish().ResultedBlobs;
         UNIT_ASSERT(blobs.empty());
         UNIT_ASSERT(
             TPromoteCompactionVisitor::CollectReadBlobRequests(blobs).empty());
+    }
+
+    Y_UNIT_TEST(ShouldExcludeBlobsAlreadyInCleanupQueue)
+    {
+        for (bool l0: {true, false}) {
+            const TPartialBlobId queuedBlobId(10, Max<ui64>());
+            const TPartialBlobId liveBlobId(20, Max<ui64>());
+
+            NProto::TBlobMeta2 blobMeta;
+            auto* blocks = l0 ? blobMeta.MutableL0Blocks()
+                              : blobMeta.MutableL1Blocks();
+            blocks->AddBlocks(0);
+            blocks->AddCommitIds(10);
+
+            TCleanupQueue cleanupQueue(BlockSize);
+            UNIT_ASSERT(cleanupQueue.Add({queuedBlobId, 30, blobMeta}));
+
+            TPromoteCompactionVisitor visitor(
+                /*targetRangeBlocksCount*/ 4,
+                BlockSize,
+                /*maxBlocksInBlob*/ 2,
+                /*allowBlockDuplicates*/ false,
+                cleanupQueue);
+
+            UNIT_ASSERT(visitor.Visit(queuedBlobId, blobMeta));
+            UNIT_ASSERT(visitor.Visit(liveBlobId, blobMeta));
+
+            auto result = visitor.Finish();
+            UNIT_ASSERT_VALUES_EQUAL(1, result.AffectedBlobs.size());
+            UNIT_ASSERT(!result.AffectedBlobs.contains(queuedBlobId));
+            const auto* affectedBlob = result.AffectedBlobs.FindPtr(liveBlobId);
+            UNIT_ASSERT(affectedBlob);
+            UNIT_ASSERT_VALUES_EQUAL(
+                blobMeta.SerializeAsString(),
+                affectedBlob->SerializeAsString());
+        }
     }
 
     Y_UNIT_TEST(ShouldOrderBlocksAndSplitBlobsAtRangeAndSizeBoundaries)
@@ -108,11 +146,13 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         const TPartialBlobId secondSourceBlobId(20, Max<ui64>());
         const TPartialBlobId freshBlobId(30, Max<ui64>());
 
+        TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ 4,
             BlockSize,
             /*maxBlocksInBlob*/ 2,
-            /*allowBlockDuplicates*/ false);
+            /*allowBlockDuplicates*/ false,
+            cleanupQueue);
 
         UNIT_ASSERT(VisitFreshBlock(visitor, 5, 50, "5555", freshBlobId));
         UNIT_ASSERT(VisitFreshBlock(visitor, 2, 20, "2222"));
@@ -153,11 +193,13 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         const TPartialBlobId blobId4(4, Max<ui64>());
         const TPartialBlobId blobId5(5, Max<ui64>());
 
+        TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ 100,
             BlockSize,
             /*maxBlocksInBlob*/ 10,
-            /*allowBlockDuplicates*/ false);
+            /*allowBlockDuplicates*/ false,
+            cleanupQueue);
 
         UNIT_ASSERT(VisitFreshBlock(visitor, 0, 10, "aaaa"));
         UNIT_ASSERT(visitor.Visit(0, 11, blobId1, 1));
@@ -198,11 +240,13 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         const TPartialBlobId blobId1(1, Max<ui64>());
         const TPartialBlobId blobId2(2, Max<ui64>());
 
+        TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ 100,
             BlockSize,
             /*maxBlocksInBlob*/ 10,
-            /*allowBlockDuplicates*/ true);
+            /*allowBlockDuplicates*/ true,
+            cleanupQueue);
 
         UNIT_ASSERT(visitor.Visit(0, 12, blobId2, 2));
         UNIT_ASSERT(VisitFreshBlock(visitor, 0, 10, "aaaa"));
@@ -225,11 +269,13 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         const TPartialBlobId firstSourceBlobId(10, Max<ui64>());
         const TPartialBlobId secondSourceBlobId(20, Max<ui64>());
 
+        TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ 3,
             BlockSize,
             /*maxBlocksInBlob*/ 2,
-            /*allowBlockDuplicates*/ false);
+            /*allowBlockDuplicates*/ false,
+            cleanupQueue);
 
         UNIT_ASSERT(visitor.Visit(4, 14, firstSourceBlobId, 9));
         UNIT_ASSERT(visitor.Visit(1, 11, secondSourceBlobId, 7));

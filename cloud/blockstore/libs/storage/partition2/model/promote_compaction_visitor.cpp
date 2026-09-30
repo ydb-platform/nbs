@@ -10,11 +10,13 @@ TPromoteCompactionVisitor::TPromoteCompactionVisitor(
     ui64 targetRangeBlocksCount,
     ui32 blockSize,
     ui32 maxBlocksInBlob,
-    bool allowBlockDuplicates)
+    bool allowBlockDuplicates,
+    const TCleanupQueue& cleanupQueue)
     : BlockSize(blockSize)
     , TargetRangeBlocksCount(targetRangeBlocksCount)
     , MaxBlocksInBlob(maxBlocksInBlob)
     , AllowBlockDuplicates(allowBlockDuplicates)
+    , CleanupQueue(cleanupQueue)
 {
     Y_ABORT_UNLESS(BlockSize);
     Y_ABORT_UNLESS(TargetRangeBlocksCount);
@@ -53,6 +55,10 @@ bool TPromoteCompactionVisitor::Visit(
     const TPartialBlobId& blobId,
     const NProto::TBlobMeta2& blobMeta)
 {
+    if (CleanupQueue.HasBlob(blobId)) {
+        return true;
+    }
+
     AffectedBlobs[blobId] = blobMeta;
     return true;
 }

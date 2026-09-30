@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cleanup_queue.h"
+
 #include "cloud/blockstore/libs/storage/protos/part.pb.h"
 #include <cloud/blockstore/libs/storage/partition_common/model/block.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/block_index.h>
@@ -57,6 +59,7 @@ private:
     const ui64 TargetRangeBlocksCount;
     const ui32 MaxBlocksInBlob;
     const bool AllowBlockDuplicates;
+    const TCleanupQueue& CleanupQueue;
 
     TMap<ui64, TMap<ui64, TVector<TBlockMark>>> BlocksPerRange;
     THashMap<TPartialBlobId, NProto::TBlobMeta2, TPartialBlobIdHash>
@@ -68,7 +71,8 @@ public:
         ui64 targetRangeBlocksCount,
         ui32 blockSize,
         ui32 maxBlocksInBlob,
-        bool allowBlockDuplicates);
+        bool allowBlockDuplicates,
+        const TCleanupQueue& cleanupQueue);
 
     bool Visit(const TFreshBlock& block) override;
 

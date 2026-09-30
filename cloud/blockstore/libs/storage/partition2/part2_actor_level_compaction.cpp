@@ -550,7 +550,8 @@ bool TPartitionActor::PreparePromoteCompaction(
         GetTargetRangeBlocksCount(*State, args.Source),
         State->GetBlockSize(),
         State->GetMaxBlocksInBlob(),
-        /*allowBlockDuplicates*/ false);
+        /*allowBlockDuplicates*/ false,
+        State->GetCleanupQueue());
 
     const ui64 minCommitId = GetBlocksFilter(*State, args.Source)
                                  .GetRangeBaselineCommitId(args.RangeIndex)
@@ -677,6 +678,7 @@ void TPartitionActor::HandlePromoteCompactionCompleted(
     EnqueueCleanupIfNeeded(ctx);
     EnqueueCollectGarbageIfNeeded(ctx);
     EnqueueLevelCompactionIfNeeded(ctx);
+    EnqueueCompactionIfNeeded(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

@@ -609,7 +609,8 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
             State->GetMeta().GetL0RangeSize(),
             State->GetBlockSize(),
             State->GetMaxBlocksInBlob(),
-            /*allowBlockDuplicates*/ true);
+            /*allowBlockDuplicates*/ true,
+            State->GetCleanupQueue());
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
