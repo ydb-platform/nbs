@@ -279,6 +279,7 @@ private:
     const bool ReplyLocal;
     const bool ChecksumsEnabled;
     const bool ReportBlobIdsOnFailure;
+    const bool AsyncRead;
 
     const ui64 CommitId;
 
@@ -308,6 +309,7 @@ public:
         bool replyLocal,
         bool checksumsEnabled,
         bool reportBlobIdsOnFailure,
+        bool asyncRead,
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
@@ -372,6 +374,7 @@ TReadBlocksActor::TReadBlocksActor(
         bool replyLocal,
         bool checksumsEnabled,
         bool reportBlobIdsOnFailure,
+        bool asyncRead,
         ui64 commitId,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos,
@@ -387,6 +390,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReplyLocal(replyLocal)
     , ChecksumsEnabled(checksumsEnabled)
     , ReportBlobIdsOnFailure(reportBlobIdsOnFailure)
+    , AsyncRead(asyncRead)
     , CommitId(commitId)
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
@@ -467,7 +471,7 @@ void TReadBlocksActor::ReadBlocks(
             batch.BlobOffsets,
             ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
             batch.GroupId,
-            false,           // async
+            AsyncRead,       // async
             TInstant::Max(), // deadline
             ChecksumsEnabled);
 
@@ -981,7 +985,8 @@ void TPartitionActor::HandleReadBlocksRequest(
         ConvertRangeSafe(readRange),
         std::move(readHandler),
         replyLocal,
-        shouldReportBlobIdsOnFailure);
+        shouldReportBlobIdsOnFailure,
+        msg->Record.GetSnapshotCreationRead());
 }
 
 TMaybe<ui64> TPartitionActor::VerifyReadBlocksCheckpoint(
@@ -1027,7 +1032,8 @@ void TPartitionActor::ReadBlocks(
     const TBlockRange32& readRange,
     IReadBlocksHandlerPtr readHandler,
     bool replyLocal,
-    bool shouldReportBlobIdsOnFailure)
+    bool shouldReportBlobIdsOnFailure,
+    bool asyncRead)
 {
     State->GetCleanupQueue().AcquireBarrier(commitId);
 
@@ -1049,7 +1055,8 @@ void TPartitionActor::ReadBlocks(
             readRange,
             std::move(readHandler),
             replyLocal,
-            shouldReportBlobIdsOnFailure));
+            shouldReportBlobIdsOnFailure,
+            asyncRead));
 }
 
 void TPartitionActor::HandleReadBlocksCompleted(
@@ -1273,6 +1280,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReplyLocal,
             args.ChecksumsEnabled,
             args.ShouldReportBlobIdsOnFailure,
+            args.AsyncRead,
             args.CommitId,
             std::move(requests),
             std::move(args.BlockInfos),

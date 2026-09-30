@@ -261,6 +261,7 @@ private:
     const TBlockRange32 ReadRange;
     const bool ReplyLocal;
     const bool ReportBlobIdsOnFailure;
+    const bool AsyncRead;
 
     TBlockMarks BlockMarks;
 
@@ -292,6 +293,7 @@ public:
         const TBlockRange32& readRange,
         bool replyLocal,
         bool reportBlobIdsOnFailure,
+        bool asyncRead,
         TBlockMarks blockMarks,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos);
@@ -355,6 +357,7 @@ TReadBlocksActor::TReadBlocksActor(
         const TBlockRange32& readRange,
         bool replyLocal,
         bool reportBlobIdsOnFailure,
+        bool asyncRead,
         TBlockMarks blockMarks,
         TReadBlocksRequests ownRequests,
         TVector<IProfileLog::TBlockInfo> blockInfos)
@@ -371,6 +374,7 @@ TReadBlocksActor::TReadBlocksActor(
     , ReadRange(readRange)
     , ReplyLocal(replyLocal)
     , ReportBlobIdsOnFailure(reportBlobIdsOnFailure)
+    , AsyncRead(asyncRead)
     , BlockMarks(std::move(blockMarks))
     , OwnRequests(std::move(ownRequests))
     , BlockInfos(std::move(blockInfos))
@@ -541,7 +545,7 @@ void TReadBlocksActor::ReadBlocks(
                 std::move(batch.BlobOffsets),
                 ReadHandler->GetGuardedSgList(batch.Requests, baseDisk),
                 batch.GroupId,
-                false,             // async
+                AsyncRead,         // async
                 TInstant::Max(),   // deadline
                 false              // shouldCalculateChecksums
             );
@@ -1000,7 +1004,8 @@ void TPartitionActor::HandleReadBlocksRequest(
         ConvertRangeSafe(readRange),
         std::move(readHandler),
         replyLocal,
-        shouldReportBlobIdsOnFailure);
+        shouldReportBlobIdsOnFailure,
+        msg->Record.GetSnapshotCreationRead());
 }
 
 void TPartitionActor::ReadBlocks(
@@ -1010,7 +1015,8 @@ void TPartitionActor::ReadBlocks(
     const TBlockRange32& readRange,
     IReadBlocksHandlerPtr readHandler,
     bool replyLocal,
-    bool shouldReportBlobIdsOnFailure)
+    bool shouldReportBlobIdsOnFailure,
+    bool asyncRead)
 {
     LOG_TRACE(ctx, TBlockStoreComponents::PARTITION,
         "[%lu] Start read blocks @%lu (range: %s)",
@@ -1028,7 +1034,8 @@ void TPartitionActor::ReadBlocks(
             readRange,
             std::move(readHandler),
             replyLocal,
-            shouldReportBlobIdsOnFailure));
+            shouldReportBlobIdsOnFailure,
+            asyncRead));
 }
 
 void TPartitionActor::HandleReadBlocksCompleted(
@@ -1134,6 +1141,7 @@ void TPartitionActor::CompleteReadBlocks(
             args.ReadRange,
             args.ReplyLocal,
             args.ShouldReportBlobIdsOnFailure,
+            args.AsyncRead,
             std::move(blocks),
             std::move(requests),
             std::move(args.BlockInfos));

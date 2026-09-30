@@ -155,6 +155,7 @@ struct TTxPartition
         const IReadBlocksHandlerPtr ReadHandler;
         const bool ReplyLocal;
         const bool ShouldReportBlobIdsOnFailure;
+        const bool AsyncRead;
 
         struct TBlockMark
         {
@@ -178,13 +179,15 @@ struct TTxPartition
                 const TBlockRange32& readRange,
                 IReadBlocksHandlerPtr readHandler,
                 bool replyLocal,
-                bool shouldReportBlobIdsOnFailure)
+                bool shouldReportBlobIdsOnFailure,
+                bool asyncRead)
             : RequestInfo(std::move(requestInfo))
             , CheckpointId(checkpointId)
             , ReadRange(readRange)
             , ReadHandler(std::move(readHandler))
             , ReplyLocal(replyLocal)
             , ShouldReportBlobIdsOnFailure(shouldReportBlobIdsOnFailure)
+            , AsyncRead(asyncRead)
             , Blocks(ReadRange.Size())
         {}
 
