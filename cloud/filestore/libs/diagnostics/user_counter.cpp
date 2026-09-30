@@ -216,7 +216,13 @@ void RegisterFilestore(
     for (auto& request: requestSnapshot) {
         if (request.first.LabelName == "request" &&
             request.first.LabelValue != "ReadData" &&
-            request.first.LabelValue != "WriteData")
+            request.first.LabelValue != "WriteData" &&
+            // Internal background dispatches of an already-counted
+            // client-facing request (CreateHandle/DestroyHandle) - counting
+            // them here would double the client-visible index_ops/errors
+            // totals.
+            request.first.LabelValue != "ConfirmCreateHandle" &&
+            request.first.LabelValue != "AsyncDestroyHandle")
         {
             const auto indexSubgroup =
                 src->FindSubgroup("request", request.first.LabelValue);

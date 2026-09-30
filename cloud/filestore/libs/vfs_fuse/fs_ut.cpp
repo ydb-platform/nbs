@@ -3333,7 +3333,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         std::atomic_bool releaseFinished = false;
         std::atomic_uint handlerCalled = 0;
         auto counters = bootstrap.Counters->FindSubgroup("component", "fs_ut")
-                            ->FindSubgroup("request", "DestroyHandle");
+                            ->FindSubgroup("request", "AsyncDestroyHandle");
         auto responsePromise1 = NewPromise<NProto::TDestroyHandleResponse>();
         auto responsePromise2 = NewPromise<NProto::TDestroyHandleResponse>();
         bootstrap.Service->SetHandlerDestroyHandle(
@@ -3653,7 +3653,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
 
         auto inProgress =
             bootstrap.Counters->FindSubgroup("component", "fs_ut")
-                ->FindSubgroup("request", "DestroyHandle")
+                ->FindSubgroup("request", "AsyncDestroyHandle")
                 ->GetCounter("InProgress");
 
         bootstrap.Start();
@@ -3744,8 +3744,16 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         std::atomic_bool readOnlyReleaseFinished = false;
         std::atomic_bool writeReleaseFinished = false;
         std::atomic_uint handlerCalled = 0;
-        auto counters = bootstrap.Counters->FindSubgroup("component", "fs_ut")
-                            ->FindSubgroup("request", "DestroyHandle");
+        // The read-only handle is destroyed asynchronously via the handle
+        // ops queue (AsyncDestroyHandle), while the write handle is
+        // destroyed synchronously as part of the client-facing Release
+        // call (DestroyHandle) - each path bumps a different counter.
+        auto asyncCounters =
+            bootstrap.Counters->FindSubgroup("component", "fs_ut")
+                ->FindSubgroup("request", "AsyncDestroyHandle");
+        auto syncCounters =
+            bootstrap.Counters->FindSubgroup("component", "fs_ut")
+                ->FindSubgroup("request", "DestroyHandle");
         auto readOnlyResponsePromise =
             NewPromise<NProto::TDestroyHandleResponse>();
         auto writeResponsePromise =
@@ -3755,6 +3763,9 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
              readOnlyResponsePromise,
              writeResponsePromise](auto callContext, auto request) mutable
             {
+                auto& counters = request->GetHandle() == readOnlyHandle
+                    ? asyncCounters
+                    : syncCounters;
                 UNIT_ASSERT_VALUES_EQUAL(
                     1,
                     AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
@@ -3796,13 +3807,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(0U, handlerCalled.load());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+            AtomicGet(asyncCounters->GetCounter("InProgress")->GetAtomic()));
 
         scheduler->RunAllScheduledTasks();
         UNIT_ASSERT_VALUES_EQUAL(1U, handlerCalled.load());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+            AtomicGet(asyncCounters->GetCounter("InProgress")->GetAtomic()));
         readOnlyResponsePromise.SetValue(NProto::TDestroyHandleResponse{});
 
         future = bootstrap.Fuse->SendRequest<TReleaseRequest>(
@@ -3815,14 +3826,14 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(2U, handlerCalled.load());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+            AtomicGet(syncCounters->GetCounter("InProgress")->GetAtomic()));
 
         writeResponsePromise.SetValue(NProto::TDestroyHandleResponse{});
         UNIT_ASSERT_NO_EXCEPTION(future.GetValue(WaitTimeout));
         writeReleaseFinished = true;
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            AtomicGet(counters->GetCounter("InProgress")->GetAtomic()));
+            AtomicGet(syncCounters->GetCounter("InProgress")->GetAtomic()));
     }
 
     Y_UNIT_TEST(ShouldNotSetAsyncCreateHandleIfFeatureDisabled)

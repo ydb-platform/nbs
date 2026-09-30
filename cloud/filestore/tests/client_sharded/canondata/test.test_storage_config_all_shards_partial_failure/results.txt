@@ -1,0 +1,24 @@
+{
+  "fs0":
+    {
+      "Response":
+        {
+        }
+    },
+  "fs0_s1":
+    {
+      "Response":
+        {
+        }
+    },
+  "fs0_s2":
+    {
+      "Error":"E_NOT_FOUND ss error: SEVERITY_ERROR | FACILITY_SCHEMESHARD | 2 Path not found, path=\"/Root/nfs/_385/fs0_s2\""
+    },
+  "fs0_s3":
+    {
+      "Response":
+        {
+        }
+    }
+}
