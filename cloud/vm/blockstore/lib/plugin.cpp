@@ -926,7 +926,9 @@ size_t TPlugin::CollectRequests(const TIncompleteRequestsCollector& collector)
                     request.MetricRequest.VolumeInfo,
                     request.MetricRequest.MediaKind,
                     request.MetricRequest.RequestType,
-                    requestTime);
+                    requestTime,
+                    request.MetricRequest.AccessMode,
+                    request.MetricRequest.MountMode);
             }
         }
     }

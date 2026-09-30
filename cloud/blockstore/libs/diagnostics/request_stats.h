@@ -48,7 +48,9 @@ struct IRequestStats
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
         TRequestTime requestTime,
-        ECalcMaxTime calcMaxTime) = 0;
+        ECalcMaxTime calcMaxTime,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) = 0;
 
     virtual void AddRetryStats(
         NCloud::NProto::EStorageMediaKind mediaKind,

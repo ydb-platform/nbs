@@ -5,6 +5,7 @@
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
+#include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 
@@ -1601,6 +1602,202 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT(controlPeer);
         UNIT_ASSERT(ioPeer);
         UNIT_ASSERT_VALUES_UNEQUAL(controlPeer, ioPeer);
+    }
+
+    Y_UNIT_TEST(ShouldTrackStartEndpointMountAndAccessModes)
+    {
+        struct TMode
+        {
+            NProto::EVolumeMountMode MountMode;
+            NProto::EVolumeAccessMode AccessMode;
+            TString MountLabel;
+            TString AccessLabel;
+        };
+
+        const TVector<TMode> modes = {
+            {NProto::VOLUME_MOUNT_LOCAL,
+             NProto::VOLUME_ACCESS_READ_WRITE,
+             "local",
+             "read_write"},
+            {NProto::VOLUME_MOUNT_LOCAL,
+             NProto::VOLUME_ACCESS_READ_ONLY,
+             "local",
+             "read_only"},
+            {NProto::VOLUME_MOUNT_REMOTE,
+             NProto::VOLUME_ACCESS_READ_WRITE,
+             "remote",
+             "read_write"},
+            {NProto::VOLUME_MOUNT_REMOTE,
+             NProto::VOLUME_ACCESS_READ_ONLY,
+             "remote",
+             "read_only"}};
+
+        const size_t requestCount = modes.size() * 2;
+        TVector<TPromise<void>> receivedPromises;
+        TVector<TPromise<NProto::TStartEndpointResponse>> responsePromises;
+        for (size_t i = 0; i < requestCount; ++i) {
+            receivedPromises.push_back(NewPromise<void>());
+            responsePromises.push_back(
+                NewPromise<NProto::TStartEndpointResponse>());
+        }
+
+        auto service = std::make_shared<TTestService>();
+        service->StartEndpointHandler =
+            [&](std::shared_ptr<NProto::TStartEndpointRequest> request)
+        {
+            const auto index = request->GetHeaders().GetRequestId() - 1;
+            receivedPromises.at(index).SetValue();
+            return responsePromises.at(index).GetFuture();
+        };
+
+        TTestFactory testFactory;
+        NMonitoring::TDynamicCountersPtr counters =
+            new NMonitoring::TDynamicCounters();
+        testFactory.RequestStats = CreateServerRequestStats(
+            counters,
+            testFactory.Timer,
+            EHistogramCounterOption::ReportMultipleCounters,
+            {});
+
+        TPortManager portManager;
+        const ui16 port = portManager.GetPort(9001);
+        const ui16 dataPort = portManager.GetPort(9002);
+        auto server = testFactory.CreateServerBuilder()
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildServer(service);
+
+        // Only server requests contribute to the counters under test.
+        testFactory.RequestStats = CreateRequestStatsStub();
+        auto client = testFactory.CreateClientBuilder()
+                          .SetPort(port)
+                          .SetDataPort(dataPort)
+                          .BuildClient();
+
+        server->Start();
+        client->Start();
+        Y_DEFER
+        {
+            client->Stop();
+            server->Stop();
+        };
+
+        auto endpoint = client->CreateEndpoint();
+        endpoint->Start();
+        Y_DEFER
+        {
+            endpoint->Stop();
+        };
+
+        TVector<NMonitoring::TDynamicCountersPtr> modeCounters;
+        for (const auto& mode: modes) {
+            auto mountCounters =
+                counters->FindSubgroup("mount_mode", mode.MountLabel);
+            UNIT_ASSERT(mountCounters);
+            auto accessCounters =
+                mountCounters->FindSubgroup("access_mode", mode.AccessLabel);
+            UNIT_ASSERT(accessCounters);
+            auto requestCounters =
+                accessCounters->FindSubgroup("request", "StartEndpoint");
+            UNIT_ASSERT(requestCounters);
+            modeCounters.push_back(std::move(requestCounters));
+        }
+
+        auto totalCounters = counters->FindSubgroup("request", "StartEndpoint");
+        UNIT_ASSERT(totalCounters);
+
+        TVector<TFuture<NProto::TStartEndpointResponse>> futures;
+        for (size_t i = 0; i < requestCount; ++i) {
+            const auto& mode = modes[i / 2];
+            auto request = std::make_shared<NProto::TStartEndpointRequest>();
+            request->MutableHeaders()->SetRequestId(i + 1);
+            request->SetVolumeMountMode(mode.MountMode);
+            request->SetVolumeAccessMode(mode.AccessMode);
+
+            futures.push_back(endpoint->StartEndpoint(
+                MakeIntrusive<TCallContext>(),
+                std::move(request)));
+            receivedPromises[i].GetFuture().GetValue(TDuration::Seconds(5));
+
+            for (size_t j = 0; j < modes.size(); ++j) {
+                const ui64 expectedInProgress =
+                    j < i / 2 ? 2 : (j == i / 2 ? i % 2 + 1 : 0);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedInProgress,
+                    modeCounters[j]->GetCounter("InProgress")->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    modeCounters[j]->GetCounter("Count")->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    modeCounters[j]->GetCounter("Errors")->Val());
+            }
+            UNIT_ASSERT_VALUES_EQUAL(
+                i + 1,
+                totalCounters->GetCounter("InProgress")->Val());
+        }
+
+        TVector<ui32> collected(requestCount, 0);
+        server->CollectRequests(
+            [&](TCallContext& callContext,
+                IVolumeInfoPtr,
+                NCloud::NProto::EStorageMediaKind,
+                EBlockStoreRequest requestType,
+                TRequestTime,
+                NProto::EVolumeAccessMode accessMode,
+                NProto::EVolumeMountMode mountMode)
+            {
+                UNIT_ASSERT_EQUAL(
+                    EBlockStoreRequest::StartEndpoint,
+                    requestType);
+                const auto index = callContext.RequestId - 1;
+                UNIT_ASSERT(index < requestCount);
+                const auto& mode = modes[index / 2];
+                UNIT_ASSERT_EQUAL(mode.AccessMode, accessMode);
+                UNIT_ASSERT_EQUAL(mode.MountMode, mountMode);
+                ++collected[index];
+            });
+        for (const auto count: collected) {
+            UNIT_ASSERT_VALUES_EQUAL(1, count);
+        }
+
+        for (size_t i = 0; i < requestCount; ++i) {
+            NProto::TStartEndpointResponse response;
+            if (i % 2) {
+                response.MutableError()->SetCode(E_FAIL);
+            }
+            responsePromises[i].SetValue(std::move(response));
+            UNIT_ASSERT_VALUES_EQUAL(
+                i % 2 ? E_FAIL : S_OK,
+                futures[i]
+                    .GetValue(TDuration::Seconds(5))
+                    .GetError()
+                    .GetCode());
+        }
+
+        // Drain gRPC completion events before checking completed counters.
+        server->Stop();
+
+        for (const auto& requestCounters: modeCounters) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                requestCounters->GetCounter("InProgress")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                requestCounters->GetCounter("Count")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                requestCounters->GetCounter("Errors")->Val());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            totalCounters->GetCounter("InProgress")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            modes.size(),
+            totalCounters->GetCounter("Count")->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            modes.size(),
+            totalCounters->GetCounter("Errors")->Val());
     }
 }
 

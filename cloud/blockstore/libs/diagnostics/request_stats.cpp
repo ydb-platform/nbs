@@ -259,11 +259,11 @@ constexpr TRequestCounters::EOptions StartEndpointOptions =
 // BLOCKSTORE_MEDIA_KIND
 
 #define BLOCKSTORE_MOUNT_ACCESS(xxx, ...)                                      \
-    xxx(LocalMount,        StartEndpointOptions,               __VA_ARGS__    )\
-    xxx(RemoteMount,       StartEndpointOptions,               __VA_ARGS__    )\
-    xxx(RWAccess,          StartEndpointOptions,               __VA_ARGS__    )\
-    xxx(ROAccess,          StartEndpointOptions,               __VA_ARGS__    )\
-// BLOCKSTORE_MEDIA_KIND
+    xxx(LocalRW,           StartEndpointOptions,               __VA_ARGS__    )\
+    xxx(LocalRO,           StartEndpointOptions,               __VA_ARGS__    )\
+    xxx(RemoteRW,          StartEndpointOptions,               __VA_ARGS__    )\
+    xxx(RemoteRO,          StartEndpointOptions,               __VA_ARGS__    )\
+// BLOCKSTORE_MOUNT_ACCESS
 
 class TRequestStats final
     : public IRequestStats
@@ -283,10 +283,10 @@ private:
     TRequestCounters TotalHDDLocal;
     TRequestCounters TotalHDDNonrepl;
 
-    TRequestCounters TotalLocalMount;
-    TRequestCounters TotalRemoteMount;
-    TRequestCounters TotalRWAccess;
-    TRequestCounters TotalROAccess;
+    TRequestCounters TotalLocalRW;
+    TRequestCounters TotalLocalRO;
+    TRequestCounters TotalRemoteRW;
+    TRequestCounters TotalRemoteRO;
 
     THdrPercentiles HdrTotal;
     THdrPercentiles HdrTotalSSD;
@@ -352,16 +352,16 @@ public:
         TotalHDDNonrepl.Register(*hddNonrepl);
 
         auto localMount = Counters->GetSubgroup("mount_mode", "local");
-        TotalLocalMount.Register(*localMount);
+        TotalLocalRW.Register(
+            *localMount->GetSubgroup("access_mode", "read_write"));
+        TotalLocalRO.Register(
+            *localMount->GetSubgroup("access_mode", "read_only"));
 
         auto remoteMount = Counters->GetSubgroup("mount_mode", "remote");
-        TotalRemoteMount.Register(*remoteMount);
-
-        auto rwAccess = Counters->GetSubgroup("access_mode", "read_write");
-        TotalRWAccess.Register(*rwAccess);
-
-        auto roAccess = Counters->GetSubgroup("access_mode", "read_only");
-        TotalROAccess.Register(*roAccess);
+        TotalRemoteRW.Register(
+            *remoteMount->GetSubgroup("access_mode", "read_write"));
+        TotalRemoteRO.Register(
+            *remoteMount->GetSubgroup("access_mode", "read_only"));
 
         if (IsServerSide) {
             HdrTotal.Register(*Counters);
@@ -400,11 +400,7 @@ public:
                 requestBytes);
         }
         if (requestType == EBlockStoreRequest::StartEndpoint) {
-            GetRequestCounters(mountMode)
-                .RequestStarted(
-                    static_cast<TRequestCounters::TRequestType>(requestType),
-                    requestBytes);
-            GetRequestCounters(accessMode)
+            GetRequestCounters(accessMode, mountMode)
                 .RequestStarted(
                     static_cast<TRequestCounters::TRequestType>(requestType),
                     requestBytes);
@@ -476,20 +472,7 @@ public:
         }
 
         if (requestType == EBlockStoreRequest::StartEndpoint) {
-            GetRequestCounters(mountMode)
-                .RequestCompleted(
-                    static_cast<TRequestCounters::TRequestType>(requestType),
-                    requestStarted,
-                    postponedTime,
-                    backoffTime,
-                    shapingTime,
-                    requestBytes,
-                    errorKind,
-                    errorFlags,
-                    unaligned,
-                    calcMaxTime,
-                    responseSent);
-            GetRequestCounters(accessMode)
+            GetRequestCounters(accessMode, mountMode)
                 .RequestCompleted(
                     static_cast<TRequestCounters::TRequestType>(requestType),
                     requestStarted,
@@ -511,7 +494,9 @@ public:
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
         TRequestTime requestTime,
-        ECalcMaxTime calcMaxTime) override
+        ECalcMaxTime calcMaxTime,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
     {
         Total.AddIncompleteStats(
             static_cast<TRequestCounters::TRequestType>(
@@ -529,6 +514,15 @@ public:
                 requestTime.ExecutionTime,
                 requestTime.TotalTime,
                 calcMaxTime);
+        }
+
+        if (requestType == EBlockStoreRequest::StartEndpoint) {
+            GetRequestCounters(accessMode, mountMode)
+                .AddIncompleteStats(
+                    static_cast<TRequestCounters::TRequestType>(requestType),
+                    requestTime.ExecutionTime,
+                    requestTime.TotalTime,
+                    calcMaxTime);
         }
     }
 
@@ -646,10 +640,10 @@ public:
         TotalHDDLocal.UpdateStats(updatePercentiles);
         TotalHDDNonrepl.UpdateStats(updatePercentiles);
 
-        TotalLocalMount.UpdateStats(updatePercentiles);
-        TotalRemoteMount.UpdateStats(updatePercentiles);
-        TotalRWAccess.UpdateStats(updatePercentiles);
-        TotalROAccess.UpdateStats(updatePercentiles);
+        TotalLocalRW.UpdateStats(updatePercentiles);
+        TotalLocalRO.UpdateStats(updatePercentiles);
+        TotalRemoteRW.UpdateStats(updatePercentiles);
+        TotalRemoteRO.UpdateStats(updatePercentiles);
 
         if (updatePercentiles && IsServerSide) {
             HdrTotal.UpdateStats();
@@ -711,18 +705,17 @@ private:
         }
     }
 
-    TRequestCounters& GetRequestCounters(NProto::EVolumeMountMode mountMode)
+    TRequestCounters& GetRequestCounters(
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode)
     {
-        return mountMode == NProto::EVolumeMountMode::VOLUME_MOUNT_REMOTE
-                   ? TotalRemoteMount
-                   : TotalLocalMount;
-    }
-
-    TRequestCounters& GetRequestCounters(NProto::EVolumeAccessMode accessMode)
-    {
-        return accessMode == NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_ONLY
-                   ? TotalROAccess
-                   : TotalRWAccess;
+        const bool readOnly =
+            accessMode == NProto::VOLUME_ACCESS_READ_ONLY ||
+            accessMode == NProto::VOLUME_ACCESS_USER_READ_ONLY;
+        if (mountMode == NProto::VOLUME_MOUNT_REMOTE) {
+            return readOnly ? TotalRemoteRO : TotalRemoteRW;
+        }
+        return readOnly ? TotalLocalRO : TotalLocalRW;
     }
 };
 
@@ -782,12 +775,16 @@ struct TRequestStatsStub final
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
         TRequestTime requestTime,
-        ECalcMaxTime calcMaxTime) override
+        ECalcMaxTime calcMaxTime,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
     {
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
         Y_UNUSED(requestTime);
         Y_UNUSED(calcMaxTime);
+        Y_UNUSED(accessMode);
+        Y_UNUSED(mountMode);
     }
 
     void AddRetryStats(

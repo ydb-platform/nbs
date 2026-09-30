@@ -131,7 +131,9 @@ struct IServerStats
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        TRequestTime time) = 0;
+        TRequestTime time,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) = 0;
 
     using TTimeBucket = std::pair<TDuration, ui64>;
     using TSizeBucket = std::pair<ui64, ui64>;

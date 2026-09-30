@@ -151,7 +151,9 @@ public:
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        TRequestTime time) override;
+        TRequestTime time,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override;
 
     void BatchCompleted(
         TMetricRequest& metricRequest,
@@ -657,7 +659,9 @@ void TServerStats::AddIncompleteRequest(
     IVolumeInfoPtr volumeInfo,
     NCloud::NProto::EStorageMediaKind mediaKind,
     EBlockStoreRequest requestType,
-    TRequestTime time)
+    TRequestTime time,
+    NProto::EVolumeAccessMode accessMode,
+    NProto::EVolumeMountMode mountMode)
 {
     auto calcMaxTime = callContext.GetHasUncountableRejects()
                            ? ECalcMaxTime::DISABLE
@@ -667,12 +671,12 @@ void TServerStats::AddIncompleteRequest(
         mediaKind,
         requestType,
         time,
-        calcMaxTime);
+        calcMaxTime,
+        accessMode,
+        mountMode);
 
     if (volumeInfo) {
-        volumeInfo->AddIncompleteStats(
-            requestType,
-            time);
+        volumeInfo->AddIncompleteStats(requestType, time);
     }
 }
 
@@ -903,13 +907,17 @@ public:
         IVolumeInfoPtr volumeInfo,
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
-        TRequestTime time) override
+        TRequestTime time,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
     {
         Y_UNUSED(callContext);
         Y_UNUSED(volumeInfo);
         Y_UNUSED(requestType);
         Y_UNUSED(mediaKind);
         Y_UNUSED(time);
+        Y_UNUSED(accessMode);
+        Y_UNUSED(mountMode);
     }
 
     void BatchCompleted(

@@ -238,12 +238,16 @@ struct TRequestStats final
         NCloud::NProto::EStorageMediaKind mediaKind,
         EBlockStoreRequest requestType,
         TRequestTime requestTime,
-        ECalcMaxTime calcMaxTime) override
+        ECalcMaxTime calcMaxTime,
+        NProto::EVolumeAccessMode accessMode,
+        NProto::EVolumeMountMode mountMode) override
     {
         Y_UNUSED(mediaKind);
         Y_UNUSED(requestType);
         Y_UNUSED(requestTime);
         Y_UNUSED(calcMaxTime);
+        Y_UNUSED(accessMode);
+        Y_UNUSED(mountMode);
     }
 
     void AddRetryStats(

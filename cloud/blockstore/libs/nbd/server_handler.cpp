@@ -869,7 +869,7 @@ size_t TServerHandler::CollectRequests(
 {
     ui64 now = GetCycleCount();
     size_t count = 0;
-    for (auto& request : RequestsInFlight) {
+    for (auto& request: RequestsInFlight) {
         ++count;
         auto requestTime = request.CallContext->CalcRequestTime(now);
         if (requestTime) {
@@ -878,7 +878,9 @@ size_t TServerHandler::CollectRequests(
                 request.MetricRequest.VolumeInfo,
                 request.MetricRequest.MediaKind,
                 request.MetricRequest.RequestType,
-                requestTime);
+                requestTime,
+                request.MetricRequest.AccessMode,
+                request.MetricRequest.MountMode);
         }
     }
     return count;

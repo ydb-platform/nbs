@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/protos/media.pb.h>
 
@@ -22,7 +23,9 @@ using TIncompleteRequestsCollector = std::function<void(
     IVolumeInfoPtr volumeInfo,
     NCloud::NProto::EStorageMediaKind mediaKind,
     EBlockStoreRequest requestType,
-    TRequestTime time)>;
+    TRequestTime time,
+    NProto::EVolumeAccessMode accessMode,
+    NProto::EVolumeMountMode mountMode)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 

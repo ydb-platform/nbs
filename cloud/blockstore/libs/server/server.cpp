@@ -663,6 +663,11 @@ private:
             }
         }
 
+        if constexpr (std::is_same<TMethod, TStartEndpointMethod>()) {
+            MetricRequest.AccessMode = Request->GetVolumeAccessMode();
+            MetricRequest.MountMode = Request->GetVolumeMountMode();
+        }
+
         AppCtx.ServerStats->PrepareMetricRequest(
             MetricRequest,
             std::move(clientId),
@@ -1263,7 +1268,9 @@ size_t TServer::CollectRequests(const TIncompleteRequestsCollector& collector)
                     handler->MetricRequest.VolumeInfo,
                     handler->MetricRequest.MediaKind,
                     handler->MetricRequest.RequestType,
-                    requestTime);
+                    requestTime,
+                    handler->MetricRequest.AccessMode,
+                    handler->MetricRequest.MountMode);
             }
             ++count;
         });

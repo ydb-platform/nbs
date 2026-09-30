@@ -96,7 +96,7 @@ IOutputStream& operator <<(
     }
 }
 
-IOutputStream& operator <<(
+IOutputStream& operator<<(
     IOutputStream& out,
     const NKikimrBlockStore::TEncryptionDesc& desc)
 {
