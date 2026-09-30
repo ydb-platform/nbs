@@ -380,6 +380,11 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FastShardRuntimeEnabled,                bool,   false                 )\
     xxx(FastShardExtendedVerificationEnabled,   bool,   false                 )\
                                                                                \
+    xxx(FastShardDRTabletId,                ui64,       0                     )\
+    xxx(FastShardDROwner,                   ui64,       0                     )\
+    xxx(FastShardDROwnerIdx,                ui64,       0                     )\
+    xxx(FastShardDRLookupTimeout,           TDuration,  TDuration::Minutes(1) )\
+                                                                               \
     xxx(EnableNodeRefCompression,               bool,   false                 )\
                                                                                \
     xxx(SoftBackpressureEnabled,                bool,   false                 )\

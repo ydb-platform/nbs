@@ -24,6 +24,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(TABLET_WORKER)                                                         \
     xxx(TABLET_PROXY)                                                          \
     xxx(SS_PROXY)                                                              \
+    xxx(DR_PROXY)                                                              \
 // FILESTORE_ACTORS
 
 #define FILESTORE_COMPONENTS(xxx)                                              \
