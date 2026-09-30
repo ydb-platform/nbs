@@ -2546,16 +2546,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TAutoPtr<IEventHandle> shardRequest;
 
         env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
 
-                if (event->GetTypeRewrite() == TEvService::EvGetNodeAttrRequest)
-                {
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvGetNodeAttrRequest) {
                     const auto* msg =
-                        event->template Get<TEvService::TEvGetNodeAttrRequest>();
+                        event
+                            ->template Get<TEvService::TEvGetNodeAttrRequest>();
 
-                    if (!shardRequest
-                            && msg->Record.GetFileSystemId() == fsConfig.Shard1Id)
+                    if (!shardRequest &&
+                        msg->Record.GetFileSystemId() == fsConfig.Shard1Id)
                     {
                         shardRequest = event.Release();
                         return true;
@@ -2581,13 +2583,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // file1 keeps existing at every moment - only the node behind it
         // changes
 
-        service.RenameNode(
-            headers,
-            RootNodeId,
-            "file2",
-            RootNodeId,
-            "file1",
-            0);
+        service
+            .RenameNode(headers, RootNodeId, "file2", RootNodeId, "file1", 0);
 
         env.GetRuntime().Send(shardRequest.Release(), nodeIdx);
 
@@ -2636,16 +2633,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         TAutoPtr<IEventHandle> shardRequest;
 
         env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
 
-                if (event->GetTypeRewrite() == TEvService::EvGetNodeAttrRequest)
-                {
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvGetNodeAttrRequest) {
                     const auto* msg =
-                        event->template Get<TEvService::TEvGetNodeAttrRequest>();
+                        event
+                            ->template Get<TEvService::TEvGetNodeAttrRequest>();
 
-                    if (!shardRequest
-                            && msg->Record.GetFileSystemId() == fsConfig.Shard1Id)
+                    if (!shardRequest &&
+                        msg->Record.GetFileSystemId() == fsConfig.Shard1Id)
                     {
                         shardRequest = event.Release();
                         return true;
@@ -2715,11 +2714,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         // should reach the client as is
 
         env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
-                if (event->GetTypeRewrite() == TEvService::EvGetNodeAttrRequest)
-                {
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvGetNodeAttrRequest) {
                     const auto* msg =
-                        event->template Get<TEvService::TEvGetNodeAttrRequest>();
+                        event
+                            ->template Get<TEvService::TEvGetNodeAttrRequest>();
 
                     if (msg->Record.GetFileSystemId() == fsConfig.Shard1Id) {
                         auto response = std::make_unique<
@@ -2730,7 +2731,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                                 event->Sender,
                                 event->Recipient,
                                 response.release(),
-                                0, // flags
+                                0,   // flags
                                 event->Cookie),
                             nodeIdx);
                         return true;
