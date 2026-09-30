@@ -548,7 +548,9 @@ root_kms: {address: kms}
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         auto initial = MakeBlockstoreConfig(MakeConfig(1), {}, controls);
         auto retained = IBlockstoreConfigConstPtr(initial);
-        TBlockstoreConfigHolder holder(std::move(initial));
+        auto holder =
+            std::make_shared<TBlockstoreConfigHolder>(std::move(initial));
+        const IBlockstoreConfigGetterPtr getter = holder;
 
         std::atomic<bool> stop = false;
         std::atomic<bool> consistent = true;
@@ -559,7 +561,7 @@ root_kms: {address: kms}
                 [&]
                 {
                     while (!stop.load()) {
-                        const auto config = holder.Get();
+                        const auto config = getter->Get();
                         if (config->GetServerConfig()->GetPort() !=
                             config->GetStorageConfig()->GetWriteBlobThreshold())
                         {
@@ -570,7 +572,7 @@ root_kms: {address: kms}
         }
 
         for (ui32 value = 2; value != 100; ++value) {
-            holder.Set(MakeBlockstoreConfig(MakeConfig(value), {}, controls));
+            holder->Set(MakeBlockstoreConfig(MakeConfig(value), {}, controls));
         }
 
         stop.store(true);
@@ -585,7 +587,50 @@ root_kms: {address: kms}
             retained->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(
             99,
-            holder.Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            getter->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+    }
+
+    // Check that local holders isolate publications and that a getter keeps its
+    // holder alive after the writer handle is released.
+    Y_UNIT_TEST(ShouldKeepLocalHoldersIndependent)
+    {
+        // Create independent publication points without binding the global
+        // provider or sharing controls.
+        auto firstControls =
+            std::make_shared<NStorage::TStorageConfigControls>();
+        auto secondControls =
+            std::make_shared<NStorage::TStorageConfigControls>();
+        auto firstHolder = std::make_shared<TBlockstoreConfigHolder>(
+            MakeBlockstoreConfig(MakeConfig(100), {}, firstControls));
+        auto secondHolder = std::make_shared<TBlockstoreConfigHolder>(
+            MakeBlockstoreConfig(MakeConfig(200), {}, secondControls));
+        IBlockstoreConfigGetterPtr firstGetter = firstHolder;
+        const IBlockstoreConfigGetterPtr secondGetter = secondHolder;
+        const auto retained = firstGetter->Get();
+
+        // Publish through one writer and preserve the other holder's configuration
+        // and the retained snapshot.
+        firstHolder->Set(
+            MakeBlockstoreConfig(MakeConfig(300), {}, firstControls));
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            firstGetter->Get()->GetServerConfig()->GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            secondGetter->Get()->GetServerConfig()->GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(100, retained->GetServerConfig()->GetPort());
+
+        // Release writer and getter handles separately to check both levels
+        // of ownership.
+        firstHolder.reset();
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            firstGetter->Get()->GetServerConfig()->GetPort());
+        firstGetter.reset();
+        UNIT_ASSERT_VALUES_EQUAL(100, retained->GetServerConfig()->GetPort());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            secondGetter->Get()->GetServerConfig()->GetPort());
     }
 
     // Initialize the process provider with value 100, then publish value 200
@@ -596,17 +641,20 @@ root_kms: {address: kms}
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
         auto holder = InitializeBlockstoreConfigProvider(
             MakeBlockstoreConfig(MakeConfig(100), {}, controls));
+        const IBlockstoreConfigGetterPtr getter = holder;
         Y_DEFER
         {
             ResetBlockstoreConfigProvider();
         };
 
         const auto initial = GetCurrentBlockstoreConfig();
+        UNIT_ASSERT_EQUAL(initial.Get(), getter->Get().Get());
         UNIT_ASSERT_VALUES_EQUAL(100, initial->GetServerConfig()->GetPort());
 
         holder->Set(MakeBlockstoreConfig(MakeConfig(200), {}, controls));
 
         const auto current = GetCurrentBlockstoreConfig();
+        UNIT_ASSERT_EQUAL(current.Get(), getter->Get().Get());
         UNIT_ASSERT_VALUES_EQUAL(200, current->GetServerConfig()->GetPort());
         UNIT_ASSERT_VALUES_EQUAL(100, initial->GetServerConfig()->GetPort());
     }

@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/cells/impl/mon.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
 #include <cloud/blockstore/libs/config/helpers.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
@@ -709,6 +710,10 @@ void TBootstrapYdb::InitKikimrService()
             *ConfigInitializer->DiskAgentConfig);
     }
 
+    auto configHolder =
+        InitializeBlockstoreConfigProvider(StartupBlockstoreConfig);
+    BlockstoreConfigGetter = configHolder;
+
     // Bind common consumers to the same snapshot as YDB services and actors.
     SetBootstrapConfig({
         .ServerConfig = StartupBlockstoreConfig->GetServerConfig(),
@@ -1000,6 +1005,7 @@ void TBootstrapYdb::InitKikimrService()
     args.CmsBlockstoreConfig = std::move(cmsBlockstoreConfig);
     args.StartupBlockstoreConfigProto = std::move(startupBlockstoreConfigProto);
     args.StartupBlockstoreConfig = StartupBlockstoreConfig;
+    args.ConfigHolder = std::move(configHolder);
     args.AsyncLogger = AsyncLogger;
     args.StatsAggregator = StatsAggregator;
     args.StatsUploader = StatsUploader;
