@@ -2,6 +2,7 @@
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
+#include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/fastshard/server/protos/fastshard.pb.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
@@ -637,9 +638,19 @@ private:
     template <typename T>
     TFileSystemTCPSideChannelPtr AccessFileSystemChannel(const T& request)
     {
+        //
+        // A handleless request carries no handle to infer the shard from -
+        // the shard is inferred from its NodeId, the same way the storage
+        // service routes such requests.
+        //
+
+        const ui64 shardedId = request.GetHandle() == InvalidHandle
+            ? request.GetNodeId()
+            : request.GetHandle();
+
         auto fileSystemId = MakeFileSystemId(
             request.GetFileSystemId(),
-            NStorage::ExtractShardNo(request.GetHandle()));
+            NStorage::ExtractShardNo(shardedId));
 
         return AccessFileSystemChannel(fileSystemId);
     }
