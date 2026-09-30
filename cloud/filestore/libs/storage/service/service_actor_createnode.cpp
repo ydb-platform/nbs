@@ -457,12 +457,28 @@ void TStorageServiceActor::HandleCreateNode(
         {
             // TODO(#5826): remove this check and support hard links from shards
             // directories to main filesystem
-            ReportHardLinkFromShardDirToMainTabletNode();
+            ReportHardLinkFromShardDirToMainTabletNode(TStringBuilder()
+                << "filesystem: " << filestore.GetFileSystemId()
+                << ", target node: " << msg->Record.GetLink().GetTargetNode()
+                << ", parent node: " << msg->Record.GetNodeId());
+
+            auto [cookie, inflight] = CreateInFlightRequest(
+                TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+                session->MediaKind,
+                session->RequestStats,
+                ctx.Now());
+
+            InitProfileLogRequestInfo(
+                inflight->AccessProfileLogRequest(),
+                msg->Record);
+            inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
+
             auto response = std::make_unique<TEvService::TEvCreateNodeResponse>(
                 ErrorNotSupported(
                     "hard links from shard directories to main filesystem nodes"
                     " are not supported"));
-            return NCloud::Reply(ctx, *ev, std::move(response));
+            ctx.Send(SelfId(), response.release(), 0, cookie);
+            return;
         }
         if (shardId) {
             // If the target node is located on a shard, start a worker actor
