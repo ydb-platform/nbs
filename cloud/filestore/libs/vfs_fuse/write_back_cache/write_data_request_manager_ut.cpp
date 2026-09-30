@@ -95,17 +95,30 @@ struct TBootstrap
     bool TryProcessPendingRequests()
     {
         while (RequestManager.HasPendingRequests()) {
-            auto res = RequestManager.TryProcessPendingRequest();
-            UNIT_ASSERT(!res.Failed);
-            auto request = std::move(res.CachedRequest);
-            if (!request) {
+            auto allocResult = RequestManager.TryAllocPendingRequest();
+            UNIT_ASSERT(!allocResult.Failed);
+
+            auto* pendingRequest = allocResult.Request;
+            if (!pendingRequest) {
                 return false;
             }
 
-            PendingRequests[request->GetSequenceId()]->AccessPromise().SetValue(
-                {});
-            PendingRequests.erase(request->GetSequenceId());
-            CachedRequests[request->GetSequenceId()] = std::move(request);
+            pendingRequest->SerializeToAllocation();
+
+            auto nextReadyCacheRequest =
+                RequestManager.GetNextReadyCachedRequest();
+
+            UNIT_ASSERT(!nextReadyCacheRequest.Failed);
+
+            auto cachedRequest = std::move(nextReadyCacheRequest.Request);
+            UNIT_ASSERT(cachedRequest);
+
+            PendingRequests[cachedRequest->GetSequenceId()]
+                ->AccessPromise()
+                .SetValue({});
+            PendingRequests.erase(cachedRequest->GetSequenceId());
+            CachedRequests[cachedRequest->GetSequenceId()] =
+                std::move(cachedRequest);
         }
         return true;
     }
