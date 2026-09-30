@@ -15,8 +15,8 @@ message TConfigNames
 message TConfigDispatcherSettings
 {
     message TLabel {
-        string Key = 1;
-        string Value = 2;
+        optional string Key = 1;
+        optional string Value = 2;
     }
 
     oneof AllowDenySettings {

@@ -39,7 +39,7 @@ struct ILocalNVMeService: public IStartable
 ILocalNVMeServicePtr CreateLocalNVMeServiceStub();
 
 ILocalNVMeServicePtr CreateLocalNVMeService(
-    TLocalNVMeConfigPtr config,
+    TLocalNVMeConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     ILocalNVMeDeviceProviderPtr deviceProvider,

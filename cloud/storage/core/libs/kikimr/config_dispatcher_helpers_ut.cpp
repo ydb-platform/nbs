@@ -36,6 +36,37 @@ auto SetupCriticalEvent()
 
 Y_UNIT_TEST_SUITE(TConfigDispatcherHelpersTest)
 {
+    // Verify that allowing the opaque kind preserves unrelated allow/deny
+    // rules and leaves unrestricted delivery unrestricted.
+    Y_UNIT_TEST(ShouldAllowOpaqueConfigItemInDispatcherRules)
+    {
+        constexpr ui32 kind =
+            NKikimrConsole::TConfigItem::PrivateDatabaseConfigItem;
+        constexpr ui32 otherKind = NKikimrConsole::TConfigItem::LogConfigItem;
+
+        // Add the required kind without discarding existing allowed kinds.
+        TConfigsDispatcherInitInfo allowInfo;
+        allowInfo.ItemsServeRules = TAllowList{{otherKind}};
+        AllowConfigItem(kind, &allowInfo);
+        const auto& allowed = std::get<TAllowList>(allowInfo.ItemsServeRules);
+        UNIT_ASSERT(allowed.Items.contains(kind));
+        UNIT_ASSERT(allowed.Items.contains(otherKind));
+
+        // Remove only the required kind from an explicit deny list.
+        TConfigsDispatcherInitInfo denyInfo;
+        denyInfo.ItemsServeRules = TDenyList{{kind, otherKind}};
+        AllowConfigItem(kind, &denyInfo);
+        const auto& denied = std::get<TDenyList>(denyInfo.ItemsServeRules);
+        UNIT_ASSERT(!denied.Items.contains(kind));
+        UNIT_ASSERT(denied.Items.contains(otherKind));
+
+        // Preserve the default policy that already serves every kind.
+        TConfigsDispatcherInitInfo unrestrictedInfo;
+        AllowConfigItem(kind, &unrestrictedInfo);
+        UNIT_ASSERT(std::holds_alternative<std::monostate>(
+            unrestrictedInfo.ItemsServeRules));
+    }
+
     Y_UNIT_TEST(ShouldRaiseCriticalEventIfCannotParseConfigDispatcherItem)
     {
         {

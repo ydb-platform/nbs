@@ -8,6 +8,6 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/pro
 
 message TRdmaEndpoint
 {
-    string Host = 1;
-    uint32 Port = 2;
+    optional string Host = 1;
+    optional uint32 Port = 2;
 }

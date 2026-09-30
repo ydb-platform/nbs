@@ -42,11 +42,11 @@ struct TServerModuleFactories
     TServerModuleFactories();
 
     std::function<NLogbroker::IServicePtr(
-        NLogbroker::TLogbrokerConfigPtr config,
+        NLogbroker::TLogbrokerConfigConstPtr config,
         ILoggingServicePtr logging)> LogbrokerServiceFactory;
 
     std::function<NIamClient::IIamTokenClientPtr(
-        NIamClient::TIamClientConfigPtr config,
+        NIamClient::TIamClientConfigConstPtr config,
         ILoggingServicePtr logging,
         ISchedulerPtr scheduler,
         ITimerPtr timer)> IamClientFactory;
@@ -68,7 +68,7 @@ struct TServerModuleFactories
         ILoggingServicePtr logging)>
         TraceServiceClientFactory;
 
-    std::function<TSpdkParts(NSpdk::TSpdkEnvConfigPtr config)> SpdkFactory;
+    std::function<TSpdkParts(NSpdk::TSpdkEnvConfigConstPtr config)> SpdkFactory;
 
     std::function<NCloud::NStorage::NRdma::IServerPtr(
         ILoggingServicePtr logging,
@@ -81,7 +81,7 @@ struct TServerModuleFactories
         NCloud::NStorage::NRdma::TClientConfigPtr config)> RdmaClientFactory;
 
     std::function<NNotify::IServicePtr(
-        NNotify::TNotifyConfigPtr config,
+        NNotify::TNotifyConfigConstPtr config,
         NIamClient::IIamTokenClientPtr iamTokenClient,
         ILoggingServicePtr logging)>
         NotifyServiceFactory;

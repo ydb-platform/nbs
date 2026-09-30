@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/blockstore/libs/cells/iface/public.h>
+#include <cloud/blockstore/libs/client/public.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/public.h>
@@ -12,10 +13,12 @@
 #include <cloud/blockstore/libs/local_nvme/public.h>
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
+#include <cloud/blockstore/libs/rdma/config.h>
 #include <cloud/blockstore/libs/server/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 #include <cloud/blockstore/libs/service_local/public.h>
 #include <cloud/blockstore/libs/spdk/iface/public.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/vhost/public.h>
 
 #include <cloud/storage/core/libs/common/public.h>
@@ -28,7 +31,34 @@
 
 #include <library/cpp/logger/log.h>
 
+#include <util/datetime/base.h>
+
+#include <memory>
+
 namespace NCloud::NBlockStore::NServer {
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Configuration inputs selected once before service initialization. Section
+// pointers must own non-null wrappers. Storage values are captured during
+// preparation of the bundle.
+// Prepare all inputs before installing the bundle.
+struct TBootstrapConfig
+{
+    TServerAppConfigConstPtr ServerConfig;
+    NClient::TClientAppConfigConstPtr EndpointConfig;
+    TDiagnosticsConfigConstPtr DiagnosticsConfig;
+    NStorage::TDiskAgentConfigConstPtr DiskAgentConfig;
+    NRdma::TRdmaConfigConstPtr RdmaConfig;
+    NCells::TCellsConfigConstPtr CellsConfig;
+    NSpdk::TSpdkEnvConfigConstPtr SpdkEnvConfig;
+    NDiscovery::TDiscoveryConfigConstPtr DiscoveryConfig;
+
+    // RDMA actor selection for service initialization.
+    bool UseNonreplicatedRdmaActor = false;
+    // Client expiration timeout selected at startup; Max in Local/Null.
+    TDuration InactiveClientsTimeout = TDuration::Max();
+};
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -38,6 +68,9 @@ private:
     TConfigInitializerCommonPtr Configs;
 
 protected:
+    // Prepared config inputs; owned by bootstrap and set once before use.
+    std::unique_ptr<const TBootstrapConfig> BootstrapConfig;
+
     IDeviceHandlerFactoryPtr DeviceHandlerFactory;
     ILoggingServicePtr BootstrapLogging;
     TLog Log;
@@ -110,6 +143,9 @@ public:
 
 protected:
     virtual TConfigInitializerCommonPtr InitConfigs(int argc, char** argv) = 0;
+
+    // Install complete inputs once before service configuration consumers run.
+    void SetBootstrapConfig(TBootstrapConfig config);
 
     virtual IStartable* GetActorSystem() = 0;
     virtual IStartable* GetAsyncLogger() = 0;

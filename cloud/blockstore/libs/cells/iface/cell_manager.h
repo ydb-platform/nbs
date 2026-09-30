@@ -66,9 +66,9 @@ struct TCellsSnapshot
 
 struct ICellManager: public IStartable
 {
-    TCellsConfigPtr Config;
+    TCellsConfigConstPtr Config;
 
-    explicit ICellManager(TCellsConfigPtr config)
+    explicit ICellManager(TCellsConfigConstPtr config)
         : Config(std::move(config))
     {}
 

@@ -73,7 +73,7 @@ class TDowntimeCalculator
 private:
     using TMaxTimeCalculator = TMaxCalculator<DEFAULT_BUCKET_COUNT>;
 
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const NProto::EStorageMediaKind MediaKind;
 
     TMaxTimeCalculator Read;
@@ -82,7 +82,7 @@ private:
 
 public:
     TDowntimeCalculator(
-            TDiagnosticsConfigPtr diagnosticsConfig,
+            TDiagnosticsConfigConstPtr diagnosticsConfig,
             const NProto::TVolume& volume,
             ITimerPtr timer)
         : DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -173,7 +173,7 @@ struct TVolumeInfoBase
 
     TVolumeInfoBase(
             NProto::TVolume volume,
-            TDiagnosticsConfigPtr diagnosticsConfig,
+            TDiagnosticsConfigConstPtr diagnosticsConfig,
             IPostponeTimePredictorPtr postponeTimePredictor,
             TDynamicCountersPtr volumeGroup,
             ITimerPtr timer)
@@ -534,7 +534,7 @@ class TVolumeStats final
 private:
     const IMonitoringServicePtr Monitoring;
     const TDuration InactiveClientsTimeout;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const EVolumeStatsType Type;
     const ITimerPtr Timer;
     const THashSet<TString> CloudIdsWithStrictSLA;
@@ -575,7 +575,7 @@ public:
     TVolumeStats(
             IMonitoringServicePtr monitoring,
             TDuration inactiveClientsTimeout,
-            TDiagnosticsConfigPtr diagnosticsConfig,
+            TDiagnosticsConfigConstPtr diagnosticsConfig,
             EVolumeStatsType type,
             ITimerPtr timer)
         : Monitoring(std::move(monitoring))
@@ -1407,7 +1407,7 @@ struct TVolumeStatsStub final
 
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
     ITimerPtr timer)

@@ -31,7 +31,7 @@ struct TCellManager: public ICellManager
     THashMap<TString, TCellHostPoolPtr> Pools;
     std::shared_ptr<TCellInboundActivity> InboundActivity;
 
-    TCellManager(TCellsConfigPtr config, TBootstrap bootstrap);
+    TCellManager(TCellsConfigConstPtr config, TBootstrap bootstrap);
 
     void Start() override;
     void Stop() override;

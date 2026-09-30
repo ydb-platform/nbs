@@ -27,14 +27,14 @@ struct IInstanceFetcher
 ////////////////////////////////////////////////////////////////////////////////
 
 IInstanceFetcherPtr CreateConductorInstanceFetcher(
-    TDiscoveryConfigPtr config,
+    TDiscoveryConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring,
     ITimerPtr timer,
     ISchedulerPtr scheduler);
 
 IInstanceFetcherPtr CreateStaticInstanceFetcher(
-    TDiscoveryConfigPtr config,
+    TDiscoveryConfigConstPtr config,
     ILoggingServicePtr logging,
     IMonitoringServicePtr monitoring);
 

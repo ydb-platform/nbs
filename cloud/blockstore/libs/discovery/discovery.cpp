@@ -70,7 +70,7 @@ class TDiscoveryService final
     , public std::enable_shared_from_this<TDiscoveryService>
 {
 private:
-    TDiscoveryConfigPtr Config;
+    TDiscoveryConfigConstPtr Config;
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ILoggingServicePtr Logging;
@@ -91,7 +91,7 @@ private:
 
 public:
     TDiscoveryService(
-            TDiscoveryConfigPtr config,
+            TDiscoveryConfigConstPtr config,
             ITimerPtr timer,
             ISchedulerPtr scheduler,
             ILoggingServicePtr logging,
@@ -410,7 +410,7 @@ public:
 ////////////////////////////////////////////////////////////////////////////////
 
 IDiscoveryServicePtr CreateDiscoveryService(
-    TDiscoveryConfigPtr config,
+    TDiscoveryConfigConstPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,

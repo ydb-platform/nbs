@@ -30,7 +30,7 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TCellManager::TCellManager(TCellsConfigPtr config, TBootstrap bootstrap)
+TCellManager::TCellManager(TCellsConfigConstPtr config, TBootstrap bootstrap)
     : ICellManager(std::move(config))
     , Bootstrap(std::move(bootstrap))
 {
@@ -206,7 +206,7 @@ TCellHostEndpointsByCellId TCellManager::GetCellsEndpoints(
 ////////////////////////////////////////////////////////////////////////////////
 
 ICellManagerPtr CreateCellManager(
-    TCellsConfigPtr config,
+    TCellsConfigConstPtr config,
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,

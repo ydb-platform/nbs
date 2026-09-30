@@ -225,6 +225,23 @@ void TBootstrapBase::ParseOptions(int argc, char** argv)
     Configs = InitConfigs(argc, argv);
 }
 
+// Install complete startup inputs without exposing a partially prepared bundle.
+void TBootstrapBase::SetBootstrapConfig(TBootstrapConfig config)
+{
+    // Detect incorrect initialization order before retaining any new inputs.
+    Y_ABORT_UNLESS(!BootstrapConfig, "Bootstrap configuration is already set");
+    Y_ABORT_UNLESS(
+        config.ServerConfig && config.EndpointConfig &&
+        config.DiagnosticsConfig && config.DiskAgentConfig &&
+        config.RdmaConfig && config.CellsConfig && config.SpdkEnvConfig &&
+        config.DiscoveryConfig,
+        "Bootstrap configuration is incomplete");
+
+    // Retain the selected wrappers and values for the bootstrap lifetime.
+    BootstrapConfig =
+        std::make_unique<const TBootstrapConfig>(std::move(config));
+}
+
 void TBootstrapBase::Init()
 {
     BootstrapLogging = CreateLoggingService("console", TLogSettings{});
@@ -260,20 +277,22 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("Service initialized");
 
-    if (Configs->ServerConfig->GetEnableRequestSplitter()) {
+    if (BootstrapConfig->ServerConfig->GetEnableRequestSplitter()) {
         Service = CreateSplitRequestService(std::move(Service));
     }
 
-    if (Configs->ServerConfig->GetEnableOverlappingRequestsGuard()) {
+    if (BootstrapConfig->ServerConfig->GetEnableOverlappingRequestsGuard())
+    {
         Service = CreateOverlappingRequestsGuardsService(std::move(Service));
     }
 
-    if (Configs->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
+    if (BootstrapConfig->RdmaConfig->GetBlockstoreServerTargetEnabled()) {
         InitRdmaRequestServer();
         if (RdmaRequestServer) {
             RdmaTarget = CreateBlockstoreServerRdmaTarget(
                 std::make_shared<TBlockstoreServerRdmaTargetConfig>(
-                    Configs->RdmaConfig->GetBlockstoreServerTarget()),
+                    BootstrapConfig->RdmaConfig
+                        ->GetBlockstoreServerTarget()),
                 Logging,
                 GetTraceSerializer(),
                 RdmaRequestServer,
@@ -287,7 +306,7 @@ void TBootstrapBase::Init()
         GrpcLog,
         Configs->Options->EnableGrpcTracing);
 
-    auto diagnosticsConfig = Configs->DiagnosticsConfig;
+    auto diagnosticsConfig = BootstrapConfig->DiagnosticsConfig;
     if (TraceReaders.size()) {
         TTraceProcessorConfig traceProcessorConfig;
         traceProcessorConfig.ComponentName = "BLOCKSTORE_TRACE";
@@ -304,7 +323,7 @@ void TBootstrapBase::Init()
         STORAGE_INFO("TraceProcessor initialized");
     }
 
-    auto inactiveClientsTimeout = Configs->GetInactiveClientsTimeout();
+    auto inactiveClientsTimeout = BootstrapConfig->InactiveClientsTimeout;
 
     auto rootGroup = Monitoring->GetCounters()
         ->GetSubgroup("counters", "blockstore");
@@ -320,7 +339,8 @@ void TBootstrapBase::Init()
     *versionCounter = 1;
 
     InitVolumeCriticalEventsReportingMode(
-        Configs->DiagnosticsConfig->GetVolumeCriticalEventsReportingMode());
+        BootstrapConfig->DiagnosticsConfig
+            ->GetVolumeCriticalEventsReportingMode());
     InitCriticalEventsCounter(serverGroup);
     InitVolumeCriticalEventsCounter(volumeCriticalEventsGroup);
 
@@ -334,7 +354,8 @@ void TBootstrapBase::Init()
     STORAGE_INFO("CriticalEventsStatsUpdater initialized");
 
     TVector<TCertificateFiles> certPathList;
-    for (const auto& cert: Configs->ServerConfig->GetCertsWithLegacyFallback())
+    for (const auto& cert:
+         BootstrapConfig->ServerConfig->GetCertsWithLegacyFallback())
     {
         certPathList.push_back({
             cert.CertPrivateKeyFile,
@@ -342,7 +363,7 @@ void TBootstrapBase::Init()
         });
     }
 
-    if (!Configs->ServerConfig->GetSecurePort()) {
+    if (!BootstrapConfig->ServerConfig->GetSecurePort()) {
         CertificateProvider = CreateCertificateProviderStub();
     } else {
         Y_ENSURE(
@@ -360,9 +381,9 @@ void TBootstrapBase::Init()
             Scheduler,
             LongRunningTaskExecutor,
             serverGroup,
-            Configs->ServerConfig->GetRootCertsFile(),
+            BootstrapConfig->ServerConfig->GetRootCertsFile(),
             std::move(certPathList),
-            Configs->ServerConfig->GetRefreshCertsPeriod());
+            BootstrapConfig->ServerConfig->GetRefreshCertsPeriod());
     }
 
     for (auto& event: PostponedCriticalEvents) {
@@ -376,21 +397,21 @@ void TBootstrapBase::Init()
     RequestStats = CreateServerRequestStats(
         serverGroup,
         Timer,
-        Configs->DiagnosticsConfig->GetHistogramCounterOptions(),
-        Configs->DiagnosticsConfig->GetExecutionTimeSizeClasses());
+        BootstrapConfig->DiagnosticsConfig->GetHistogramCounterOptions(),
+        BootstrapConfig->DiagnosticsConfig->GetExecutionTimeSizeClasses());
 
     if (!VolumeStats) {
         VolumeStats = CreateVolumeStats(
             Monitoring,
-            Configs->DiagnosticsConfig,
+            BootstrapConfig->DiagnosticsConfig,
             inactiveClientsTimeout,
             EVolumeStatsType::EServerStats,
             Timer);
     }
 
     ServerStats = CreateServerStats(
-        Configs->ServerConfig,
-        Configs->DiagnosticsConfig,
+        BootstrapConfig->ServerConfig,
+        BootstrapConfig->DiagnosticsConfig,
         Monitoring,
         ProfileLog,
         RequestStats,
@@ -400,10 +421,10 @@ void TBootstrapBase::Init()
 
     TVector<IStorageProviderPtr> storageProviders;
 
-    if (Configs->ServerConfig->GetNvmfInitiatorEnabled()) {
+    if (BootstrapConfig->ServerConfig->GetNvmfInitiatorEnabled()) {
         Y_ABORT_UNLESS(Spdk);
 
-        const auto& config = *Configs->DiskAgentConfig;
+        const auto& config = *BootstrapConfig->DiskAgentConfig;
 
         storageProviders.push_back(CreateSpdkStorageProvider(
             Spdk,
@@ -415,7 +436,7 @@ void TBootstrapBase::Init()
             ServerStats));
     }
 
-    if (!Configs->GetUseNonreplicatedRdmaActor() && RdmaClient) {
+    if (!BootstrapConfig->UseNonreplicatedRdmaActor && RdmaClient) {
         storageProviders.push_back(CreateRdmaStorageProvider(
             ServerStats,
             RdmaClient,
@@ -430,16 +451,16 @@ void TBootstrapBase::Init()
     STORAGE_INFO("StorageProvider initialized");
 
     const NProto::TChecksumFlags checksumFlags =
-        Configs->ServerConfig->GetChecksumFlags();
+        BootstrapConfig->ServerConfig->GetChecksumFlags();
     TSessionManagerOptions sessionManagerOptions;
     sessionManagerOptions.StrictContractValidation
-        = Configs->ServerConfig->GetStrictContractValidation();
+        = BootstrapConfig->ServerConfig->GetStrictContractValidation();
     sessionManagerOptions.DefaultClientConfig
-        = Configs->EndpointConfig->GetClientConfig();
+        = BootstrapConfig->EndpointConfig->GetClientConfig();
     sessionManagerOptions.HostProfile = Configs->HostPerformanceProfile;
     sessionManagerOptions.TemporaryServer = Configs->Options->TemporaryServer;
     sessionManagerOptions.DisableClientThrottler =
-        Configs->ServerConfig->GetDisableClientThrottlers();
+        BootstrapConfig->ServerConfig->GetDisableClientThrottlers();
     sessionManagerOptions.EnableDataIntegrityClient =
         checksumFlags.GetEnableDataIntegrityClient();
     for (auto mediaKind: checksumFlags.GetMediaKindsToValidateDataIntegrity()) {
@@ -458,7 +479,7 @@ void TBootstrapBase::Init()
     auto encryptionClientFactory = CreateEncryptionClientFactory(
         Logging,
         CreateEncryptionKeyProvider(KmsKeyProvider, RootKmsKeyProvider),
-        Configs->ServerConfig->GetEncryptZeroPolicy());
+        BootstrapConfig->ServerConfig->GetEncryptZeroPolicy());
 
     SetupCellManager();
 
@@ -483,22 +504,22 @@ void TBootstrapBase::Init()
 
     GrpcEndpointListener = CreateSocketEndpointListener(
         Logging,
-        Configs->ServerConfig->GetUnixSocketBacklog(),
-        Configs->ServerConfig->GetSocketAccessMode());
+        BootstrapConfig->ServerConfig->GetUnixSocketBacklog(),
+        BootstrapConfig->ServerConfig->GetSocketAccessMode());
     endpointListeners.emplace(NProto::IPC_GRPC, GrpcEndpointListener);
 
     STORAGE_INFO("SocketEndpointListener initialized");
 
     NbdErrorHandlerMap = NBD::CreateErrorHandlerMapStub();
 
-    if (Configs->ServerConfig->GetNbdEnabled()) {
+    if (BootstrapConfig->ServerConfig->GetNbdEnabled()) {
         NbdServer = NBD::CreateServer(
             Logging,
-            CreateNbdServerConfig(*Configs->ServerConfig));
+            CreateNbdServerConfig(*BootstrapConfig->ServerConfig));
 
         STORAGE_INFO("NBD Server initialized");
 
-        if (Configs->ServerConfig->GetNbdNetlink()) {
+        if (BootstrapConfig->ServerConfig->GetNbdNetlink()) {
             NbdErrorHandlerMap = NBD::CreateErrorHandlerMap();
         }
 
@@ -507,7 +528,7 @@ void TBootstrapBase::Init()
             Logging,
             ServerStats,
             checksumFlags,
-            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
+            BootstrapConfig->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
             NbdErrorHandlerMap);
 
         endpointListeners.emplace(
@@ -517,7 +538,7 @@ void TBootstrapBase::Init()
         STORAGE_INFO("NBD EndpointListener initialized");
     }
 
-    if (Configs->ServerConfig->GetVhostEnabled()) {
+    if (BootstrapConfig->ServerConfig->GetVhostEnabled()) {
         NVhost::InitVhostLog(Logging);
 
         if (!DeviceHandlerFactory) {
@@ -529,7 +550,7 @@ void TBootstrapBase::Init()
             ServerStats,
             NVhost::CreateVhostQueueFactory(),
             DeviceHandlerFactory,
-            CreateVhostServerConfig(*Configs->ServerConfig),
+            CreateVhostServerConfig(*BootstrapConfig->ServerConfig),
             VhostCallbacks);
 
         STORAGE_INFO("VHOST Server initialized");
@@ -537,20 +558,20 @@ void TBootstrapBase::Init()
         auto vhostEndpointListener = CreateVhostEndpointListener(
             VhostServer,
             checksumFlags,
-            CreateVhostEndpointThreadCounts(*Configs->ServerConfig),
-            Configs->ServerConfig->GetVhostDiscardEnabled() ||
-                Configs->ServerConfig->GetVhostDiscardOnlyEnabled(),
-            Configs->ServerConfig->GetVhostDiscardEnabled() ||
-                Configs->ServerConfig->GetVhostWriteZeroesEnabled(),
-            Configs->ServerConfig->GetDropDiscardRequests(),
-            Configs->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
-            Configs->ServerConfig->GetVhostOptimalIoSize());
+            CreateVhostEndpointThreadCounts(*BootstrapConfig->ServerConfig),
+            BootstrapConfig->ServerConfig->GetVhostDiscardEnabled() ||
+                BootstrapConfig->ServerConfig->GetVhostDiscardOnlyEnabled(),
+            BootstrapConfig->ServerConfig->GetVhostDiscardEnabled() ||
+                BootstrapConfig->ServerConfig->GetVhostWriteZeroesEnabled(),
+            BootstrapConfig->ServerConfig->GetDropDiscardRequests(),
+            BootstrapConfig->ServerConfig->GetMaxZeroBlocksSubRequestSize(),
+            BootstrapConfig->ServerConfig->GetVhostOptimalIoSize());
 
-        if (Configs->ServerConfig->GetVhostServerPath()
+        if (BootstrapConfig->ServerConfig->GetVhostServerPath()
                 && !Configs->Options->TemporaryServer)
         {
             vhostEndpointListener = CreateExternalVhostEndpointListener(
-                Configs->ServerConfig,
+                BootstrapConfig->ServerConfig,
                 Logging,
                 ServerStats,
                 Executor,
@@ -570,7 +591,7 @@ void TBootstrapBase::Init()
         STORAGE_INFO("VHOST EndpointListener initialized");
     }
 
-    if (Configs->ServerConfig->GetNVMeEndpointEnabled()) {
+    if (BootstrapConfig->ServerConfig->GetNVMeEndpointEnabled()) {
         Y_ABORT_UNLESS(Spdk);
 
         auto listener = CreateNVMeEndpointListener(
@@ -578,7 +599,7 @@ void TBootstrapBase::Init()
             Logging,
             ServerStats,
             Executor,
-            CreateNVMeEndpointConfig(*Configs->ServerConfig));
+            CreateNVMeEndpointConfig(*BootstrapConfig->ServerConfig));
 
         endpointListeners.emplace(
             NProto::IPC_NVME,
@@ -587,7 +608,7 @@ void TBootstrapBase::Init()
         STORAGE_INFO("NVMe EndpointListener initialized");
     }
 
-    if (Configs->ServerConfig->GetSCSIEndpointEnabled()) {
+    if (BootstrapConfig->ServerConfig->GetSCSIEndpointEnabled()) {
         Y_ABORT_UNLESS(Spdk);
 
         auto listener = CreateSCSIEndpointListener(
@@ -595,7 +616,7 @@ void TBootstrapBase::Init()
             Logging,
             ServerStats,
             Executor,
-            CreateSCSIEndpointConfig(*Configs->ServerConfig));
+            CreateSCSIEndpointConfig(*BootstrapConfig->ServerConfig));
 
         endpointListeners.emplace(
             NProto::IPC_SCSI,
@@ -604,7 +625,7 @@ void TBootstrapBase::Init()
         STORAGE_INFO("SCSI EndpointListener initialized");
     }
 
-    if (Configs->ServerConfig->GetRdmaEndpointEnabled()) {
+    if (BootstrapConfig->ServerConfig->GetRdmaEndpointEnabled()) {
         InitRdmaServer();
 
         STORAGE_INFO("RDMA Server initialized");
@@ -616,7 +637,7 @@ void TBootstrapBase::Init()
             ServerStats,
             Executor,
             RdmaThreadPool,
-            CreateRdmaEndpointConfig(*Configs->ServerConfig));
+            CreateRdmaEndpointConfig(*BootstrapConfig->ServerConfig));
 
         endpointListeners.emplace(
             NProto::IPC_RDMA,
@@ -626,50 +647,55 @@ void TBootstrapBase::Init()
     }
 
     IEndpointStoragePtr endpointStorage;
-    switch (Configs->ServerConfig->GetEndpointStorageType()) {
+    switch (BootstrapConfig->ServerConfig->GetEndpointStorageType()) {
         case NCloud::NProto::ENDPOINT_STORAGE_DEFAULT:
         case NCloud::NProto::ENDPOINT_STORAGE_KEYRING: {
-            const bool notImplementedErrorIsFatal = Configs->ServerConfig
-                ->GetEndpointStorageNotImplementedErrorIsFatal();
+            const bool notImplementedErrorIsFatal =
+                BootstrapConfig->ServerConfig
+                    ->GetEndpointStorageNotImplementedErrorIsFatal();
 
             endpointStorage = CreateKeyringEndpointStorage(
-                Configs->ServerConfig->GetRootKeyringName(),
-                Configs->ServerConfig->GetEndpointsKeyringName(),
+                BootstrapConfig->ServerConfig->GetRootKeyringName(),
+                BootstrapConfig->ServerConfig->GetEndpointsKeyringName(),
                 notImplementedErrorIsFatal);
             break;
         }
         case NCloud::NProto::ENDPOINT_STORAGE_FILE:
             endpointStorage = CreateFileEndpointStorage(
-                Configs->ServerConfig->GetEndpointStorageDir());
+                BootstrapConfig->ServerConfig->GetEndpointStorageDir());
             break;
         default:
             Y_ABORT(
                 "unsupported endpoint storage type %d",
-                Configs->ServerConfig->GetEndpointStorageType());
+                BootstrapConfig->ServerConfig->GetEndpointStorageType());
     }
     STORAGE_INFO("EndpointStorage initialized");
 
     TEndpointManagerOptions endpointManagerOptions = {
-        .ClientConfig = Configs->EndpointConfig->GetClientConfig(),
-        .NbdSocketSuffix = Configs->ServerConfig->GetNbdSocketSuffix(),
-        .NbdDevicePrefix = Configs->ServerConfig->GetNbdDevicePrefix(),
+        .ClientConfig = BootstrapConfig->EndpointConfig->GetClientConfig(),
+        .NbdSocketSuffix =
+            BootstrapConfig->ServerConfig->GetNbdSocketSuffix(),
+        .NbdDevicePrefix =
+            BootstrapConfig->ServerConfig->GetNbdDevicePrefix(),
         .AutomaticNbdDeviceManagement =
-            Configs->ServerConfig->GetAutomaticNbdDeviceManagement(),
+            BootstrapConfig->ServerConfig
+                ->GetAutomaticNbdDeviceManagement(),
     };
 
     NBD::IDeviceFactoryPtr nbdDeviceFactory;
 
-    if (Configs->ServerConfig->GetNbdNetlink()) {
+    if (BootstrapConfig->ServerConfig->GetNbdNetlink()) {
         nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
             Logging,
-            Configs->ServerConfig->GetNbdRequestTimeout(),
-            Configs->ServerConfig->GetNbdConnectionTimeout());
+            BootstrapConfig->ServerConfig->GetNbdRequestTimeout(),
+            BootstrapConfig->ServerConfig->GetNbdConnectionTimeout());
     }
 
     if (!nbdDeviceFactory) {
         nbdDeviceFactory = NBD::CreateDeviceFactory(
             Logging,
-            Configs->ServerConfig->GetNbdConnectionTimeout());  // timeout
+            BootstrapConfig->ServerConfig
+                ->GetNbdConnectionTimeout());  // timeout
     }
 
     EndpointManager = CreateEndpointManager(
@@ -706,7 +732,7 @@ void TBootstrapBase::Init()
 
     STORAGE_INFO("MultipleEncryptionService initialized");
 
-    if (Configs->ServerConfig->GetThrottlingEnabled()) {
+    if (BootstrapConfig->ServerConfig->GetThrottlingEnabled()) {
         Service = CreateThrottlingService(
             std::move(Service),
             CreateThrottler(
@@ -714,7 +740,7 @@ void TBootstrapBase::Init()
                 CreateThrottlerMetricsStub(),
                 CreateServiceThrottlerPolicy(
                     CreateThrottlingServicePolicyConfig(
-                        *Configs->ServerConfig)),
+                        *BootstrapConfig->ServerConfig)),
                 CreateServiceThrottlerTracker(),
                 Timer,
                 Scheduler,
@@ -724,7 +750,7 @@ void TBootstrapBase::Init()
     }
 
     auto udsService = Service;
-    if (!Configs->ServerConfig->GetAllowAllRequestsViaUDS()) {
+    if (!BootstrapConfig->ServerConfig->GetAllowAllRequestsViaUDS()) {
         udsService = CreateFilteredService(Service, {
             EBlockStoreRequest::Ping,
             EBlockStoreRequest::QueryAvailableStorage,
@@ -738,19 +764,19 @@ void TBootstrapBase::Init()
     }
 
     IBlockStorePtr cellForwardTrusted;
-    if (Configs->CellsConfig->GetCellsEnabled()) {
+    if (BootstrapConfig->CellsConfig->GetCellsEnabled()) {
         cellForwardTrusted = Service;
     }
 
     InitAuthService();
 
-    if (Configs->CellsConfig->GetCellsEnabled()) {
+    if (BootstrapConfig->CellsConfig->GetCellsEnabled()) {
         Service = WrapServiceForInterCellForward(
             std::move(Service),
             std::move(cellForwardTrusted));
     }
 
-    if (Configs->ServerConfig->GetStrictContractValidation()) {
+    if (BootstrapConfig->ServerConfig->GetStrictContractValidation()) {
         Service = CreateValidationService(
             Logging,
             Monitoring,
@@ -771,7 +797,7 @@ void TBootstrapBase::Init()
     }
 
     Server = CreateServer(
-        Configs->ServerConfig,
+        BootstrapConfig->ServerConfig,
         Logging,
         ServerStats,
         Service,
@@ -779,8 +805,8 @@ void TBootstrapBase::Init()
         TServerOptions {
             // Enables cell id checking in DescribeVolume requests
             // only if "cells" feature is on
-            .CellId = Configs->CellsConfig->GetCellsEnabled() ?
-                Configs->CellsConfig->GetCellId() :
+            .CellId = BootstrapConfig->CellsConfig->GetCellsEnabled() ?
+                BootstrapConfig->CellsConfig->GetCellId() :
                 ""
         },
         CertificateProvider);
@@ -819,7 +845,8 @@ void TBootstrapBase::InitProfileLog()
         ProfileLog = CreateProfileLog(
             {
                 Configs->Options->ProfileFile,
-                Configs->DiagnosticsConfig->GetProfileLogTimeThreshold(),
+                BootstrapConfig->DiagnosticsConfig
+                    ->GetProfileLogTimeThreshold(),
             },
             Timer,
             BackgroundScheduler
@@ -843,6 +870,20 @@ void TBootstrapBase::InitDbgConfigs()
     Configs->InitDiscoveryConfig();
     Configs->InitSpdkEnvConfig();
     Configs->InitCellsConfig();
+
+    // Select local inputs before tracing and transport initialization use them.
+    SetBootstrapConfig({
+        .ServerConfig = Configs->ServerConfig,
+        .EndpointConfig = Configs->EndpointConfig,
+        .DiagnosticsConfig = Configs->DiagnosticsConfig,
+        .DiskAgentConfig = Configs->DiskAgentConfig,
+        .RdmaConfig = Configs->RdmaConfig,
+        .CellsConfig = Configs->CellsConfig,
+        .SpdkEnvConfig = Configs->SpdkEnvConfig,
+        .DiscoveryConfig = Configs->DiscoveryConfig,
+        .UseNonreplicatedRdmaActor = Configs->GetUseNonreplicatedRdmaActor(),
+        .InactiveClientsTimeout = Configs->GetInactiveClientsTimeout(),
+    });
 
     TLogSettings logSettings;
     logSettings.FiltrationLevel =
@@ -871,21 +912,21 @@ void TBootstrapBase::InitLocalService()
 
     DiscoveryService = CreateDiscoveryServiceStub(
         FQDNHostName(),
-        Configs->DiscoveryConfig->GetConductorInstancePort(),
-        Configs->DiscoveryConfig->GetConductorSecureInstancePort()
-    );
+        BootstrapConfig->DiscoveryConfig->GetConductorInstancePort(),
+        BootstrapConfig->DiscoveryConfig->GetConductorSecureInstancePort());
 
-    const auto& config = Configs->ServerConfig->GetLocalServiceConfig()
-        ? *Configs->ServerConfig->GetLocalServiceConfig()
-        : NProto::TLocalServiceConfig();
+    const auto& config =
+        BootstrapConfig->ServerConfig->GetLocalServiceConfig()
+            ? *BootstrapConfig->ServerConfig->GetLocalServiceConfig()
+            : NProto::TLocalServiceConfig();
 
     FileIOServiceProvider =
         CreateSingleFileIOServiceProvider(CreateAIOService());
 
     NvmeManager = CreateNvmeManager(
         Logging,
-        Configs->DiskAgentConfig->GetSecureEraseTimeout(),
-        Configs->DiskAgentConfig->GetNVMeAdminCmdTimeout());
+        BootstrapConfig->DiskAgentConfig->GetSecureEraseTimeout(),
+        BootstrapConfig->DiskAgentConfig->GetNVMeAdminCmdTimeout());
 
     Service = CreateLocalService(
         config,
@@ -897,9 +938,10 @@ void TBootstrapBase::InitLocalService()
                 .DirectIO = false,
                 .UseSubmissionThread = false,
                 .ValidatedBlocksRatio =
-                    Configs->DiskAgentConfig->GetValidatedBlocksRatio(),
+                    BootstrapConfig->DiskAgentConfig
+                        ->GetValidatedBlocksRatio(),
                 .DataIntegrityValidationPolicy =
-                    Configs->DiskAgentConfig
+                    BootstrapConfig->DiskAgentConfig
                         ->GetDataIntegrityValidationPolicyForDrBasedDisks()}));
 }
 
@@ -910,9 +952,10 @@ void TBootstrapBase::InitNullService()
     InitSpdk();
     InitProfileLog();
 
-    const auto& config = Configs->ServerConfig->GetNullServiceConfig()
-        ? *Configs->ServerConfig->GetNullServiceConfig()
-        : NProto::TNullServiceConfig();
+    const auto& config =
+        BootstrapConfig->ServerConfig->GetNullServiceConfig()
+            ? *BootstrapConfig->ServerConfig->GetNullServiceConfig()
+            : NProto::TNullServiceConfig();
 
     Service = CreateNullService(config);
 }
@@ -923,11 +966,11 @@ void TBootstrapBase::InitLWTrace(const TString& serviceNameForExporter)
     probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_SERVER_PROVIDER));
     probes.AddProbesList(LWTRACE_GET_PROBES(LWTRACE_INTERNAL_PROVIDER));
 
-    if (Configs->DiskAgentConfig->GetEnabled()) {
+    if (BootstrapConfig->DiskAgentConfig->GetEnabled()) {
         probes.AddProbesList(LWTRACE_GET_PROBES(BLOCKSTORE_DISK_AGENT_PROVIDER));
     }
 
-    auto diagnosticsConfig = Configs->DiagnosticsConfig;
+    auto diagnosticsConfig = BootstrapConfig->DiagnosticsConfig;
     auto& lwManager = NLwTraceMonPage::TraceManager(diagnosticsConfig->GetUnsafeLWTrace());
 
     const TVector<std::tuple<TString, TString>> desc = {
