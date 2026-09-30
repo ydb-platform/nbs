@@ -14,6 +14,7 @@
 
 #include <util/folder/tempdir.h>
 #include <util/random/random.h>
+#include <util/system/hostname.h>
 
 #include <chrono>
 #include <optional>
@@ -156,6 +157,41 @@ public:
 
 Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
 {
+    Y_UNIT_TEST_F(ShouldPublishJournalledEndpoint, TFixture)
+    {
+        NProto::TAgentConfig registeredAgent;
+        Runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvDiskRegistry::EvRegisterAgentRequest)
+            {
+                registeredAgent = event
+                    ->Get<TEvDiskRegistry::TEvRegisterAgentRequest>()
+                    ->Record.GetAgentConfig();
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        auto env =
+            TTestEnvBuilder(*Runtime).With(CreateDiskAgentConfig()).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        // Registration follows readiness, so wait for it explicitly.
+        Runtime->DispatchEvents(TDispatchOptions{
+            .CustomFinalCondition = [&] { return registeredAgent.DevicesSize(); }});
+
+        // The disk registry hands the endpoint out with every device.
+        UNIT_ASSERT_VALUES_EQUAL(
+            FileDevices.size(),
+            registeredAgent.DevicesSize());
+        for (const auto& device: registeredAgent.GetDevices()) {
+            const auto& endpoint = device.GetJournalledEndpoint();
+            UNIT_ASSERT_VALUES_EQUAL_C(FQDNHostName(), endpoint.GetHost(), device);
+            UNIT_ASSERT_VALUES_EQUAL_C(Port, endpoint.GetPort(), device);
+        }
+    }
+
     Y_UNIT_TEST_F(ShouldAcquireDevices, TFixture)
     {
         const TString clientId = "client-id";
