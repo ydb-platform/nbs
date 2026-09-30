@@ -88,13 +88,10 @@ ui64 CopyBufferFromRope(
  *
  * @param request The write request containing iovecs used as the data source.
  * @param useExternalPayload If true, stores the data as an external payload.
- * @param writeDataActorOptimizationEnabled If true, preserves iovec chunks in
- * the external rope; otherwise, uses the legacy copied payload.
  */
 void PrepareWriteDataRequestPayload(
     TEvService::TEvWriteDataRequest& request,
-    bool useExternalPayload,
-    bool writeDataActorOptimizationEnabled)
+    bool useExternalPayload)
 {
     auto& record = request.Record;
     if (record.GetIovecs().empty()) {
@@ -107,12 +104,6 @@ void PrepareWriteDataRequestPayload(
     }
 
     auto rope = CreateRope(record.GetIovecs());
-    if (useExternalPayload && writeDataActorOptimizationEnabled) {
-        record.MutableIovecs()->Clear();
-        request.AddPayload(std::move(rope));
-        return;
-    }
-
     TString buffer;
     const auto bytesToCopy = NFileStore::CalculateByteCount(record);
     buffer.ReserveAndResize(bytesToCopy);
@@ -143,16 +134,11 @@ private:
     NProto::TWriteDataRequest WriteRequest;
     const TByteRange Range;
     const TByteRange BlobRange;
-    // Used only by the legacy path.
     const TRequestInfoPtr RequestInfo;
 
-    // Used only by the optimized path.
     // Keep this reference while the request is being processed.  The storage
     // service actor may go away before this worker completes.
     const TInFlightRequestStoragePtr InFlightRequests;
-    const TActorId Sender;
-    const ui64 Cookie;
-    TCallContextPtr CallContext; // invalid after Bootstrap()
     TChecksumCalcInfo ChecksumCalcInfo; // invalid after Bootstrap()
     const TInstant StartTime;
     const ui64 RequestCookie;
@@ -195,18 +181,13 @@ private:
 
     const bool UseThreeStageWrite = false;
     const bool ExternalWriteDataPayloadEnabled = false;
-    const bool WriteDataActorOptimizationEnabled = false;
 
 public:
     TWriteDataActor(
         NProto::TWriteDataRequest request,
         TByteRange range,
         TRequestInfoPtr requestInfo,
-        bool writeDataActorOptimizationEnabled,
         TInFlightRequestStoragePtr inFlightRequests,
-        TActorId sender,
-        ui64 cookie,
-        TCallContextPtr callContext,
         TChecksumCalcInfo checksumCalcInfo,
         TInstant startTime,
         ui64 requestCookie,
@@ -225,9 +206,6 @@ public:
         , BlobRange(Range.AlignedSubRange())
         , RequestInfo(std::move(requestInfo))
         , InFlightRequests(std::move(inFlightRequests))
-        , Sender(sender)
-        , Cookie(cookie)
-        , CallContext(std::move(callContext))
         , ChecksumCalcInfo(std::move(checksumCalcInfo))
         , StartTime(startTime)
         , RequestCookie(requestCookie)
@@ -241,22 +219,24 @@ public:
         , MediaKind(mediaKind)
         , UseThreeStageWrite(useThreeStageWrite)
         , ExternalWriteDataPayloadEnabled(externalWriteDataPayloadEnabled)
-        , WriteDataActorOptimizationEnabled(writeDataActorOptimizationEnabled)
     {}
 
     void Bootstrap(const TActorContext& ctx)
     {
-        if (WriteDataActorOptimizationEnabled) {
-            SERVICE_VERIFY(!RequestInfo);
+        if (InFlightRequests) {
+            SERVICE_VERIFY(RequestInfo);
             SERVICE_VERIFY(InFlightRequests);
-            SERVICE_VERIFY(CallContext);
+
+            const bool blockChecksumsEnabled =
+                ChecksumCalcInfo.BlockChecksumsEnabled;
+            const ui32 blockSize = ChecksumCalcInfo.BlockSize;
 
             // Registering the request is relatively expensive. Do it in the
             // worker's executor rather than in TStorageServiceActor's hot path.
             MainInFlightRequest = InFlightRequests->Register(
-                Sender,
-                Cookie,
-                std::move(CallContext),
+                RequestInfo->Sender,
+                RequestInfo->Cookie,
+                RequestInfo->CallContext,
                 MediaKind,
                 std::move(ChecksumCalcInfo),
                 RequestStats,
@@ -267,12 +247,10 @@ public:
                 WriteRequest);
             MainInFlightRequest->AccessProfileLogRequest().SetClientId(
                 std::move(ClientId));
-            const auto& checksumCalcInfo =
-                MainInFlightRequest->GetChecksumCalcInfo();
-            if (checksumCalcInfo.BlockChecksumsEnabled) {
+            if (blockChecksumsEnabled) {
                 CalculateWriteDataRequestChecksums(
                     WriteRequest,
-                    checksumCalcInfo.BlockSize,
+                    blockSize,
                     MainInFlightRequest->AccessProfileLogRequest());
             }
         } else {
@@ -299,7 +277,7 @@ public:
 
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            GetCallContext(),
+            RequestInfo->CallContext,
             "GenerateBlobIds");
 
         Rope = CreateRope(WriteRequest.GetIovecs());
@@ -344,23 +322,6 @@ public:
     }
 
 private:
-    const TCallContextPtr& GetCallContext() const
-    {
-        return WriteDataActorOptimizationEnabled
-            ? MainInFlightRequest->CallContext
-            : RequestInfo->CallContext;
-    }
-
-    const TActorId& GetSender() const
-    {
-        return WriteDataActorOptimizationEnabled ? Sender : RequestInfo->Sender;
-    }
-
-    ui64 GetCookie() const
-    {
-        return WriteDataActorOptimizationEnabled ? Cookie : RequestInfo->Cookie;
-    }
-
     STFUNC(StateWork)
     {
         switch (ev->GetTypeRewrite()) {
@@ -402,7 +363,7 @@ private:
 
         SERVICE_VERIFY(InFlightRequest);
 
-        GetCallContext()->LWOrbit.Join(
+        RequestInfo->CallContext->LWOrbit.Join(
             InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
@@ -419,11 +380,7 @@ private:
             return;
         }
 
-        if (WriteDataActorOptimizationEnabled) {
-            GenerateBlobIdsResponse.Swap(&msg->Record);
-        } else {
-            GenerateBlobIdsResponse.CopyFrom(msg->Record);
-        }
+        GenerateBlobIdsResponse.Swap(&msg->Record);
 
         LOG_DEBUG(
             ctx,
@@ -460,7 +417,7 @@ private:
     {
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            GetCallContext(),
+            RequestInfo->CallContext,
             "WriteBlobs");
 
         RemainingBlobsToWrite = GenerateBlobIdsResponse.BlobsSize();
@@ -480,14 +437,14 @@ private:
                 LogoBlobIDFromLogoBlobID(blob.GetBlobId());
 
             auto writeBlobCallContext = MakeIntrusive<TCallContext>(
-                GetCallContext()->FileSystemId,
-                GetCallContext()->RequestId);
+                RequestInfo->CallContext->FileSystemId,
+                RequestInfo->CallContext->RequestId);
             writeBlobCallContext->SetRequestStartedCycles(GetCycleCount());
             writeBlobCallContext->RequestType = EFileStoreRequest::WriteBlob;
             InFlightBSRequests.emplace_back(std::make_unique<TInFlightRequest>(
                 TRequestInfo(
-                    GetSender(),
-                    GetCookie(),
+                    RequestInfo->Sender,
+                    RequestInfo->Cookie,
                     std::move(writeBlobCallContext)),
                 ProfileLog,
                 MediaKind,
@@ -534,10 +491,10 @@ private:
                 offset += blobId.BlobSize();
             }
 
-            if (!GetCallContext()->LWOrbit.Fork(request->Orbit)) {
+            if (!RequestInfo->CallContext->LWOrbit.Fork(request->Orbit)) {
                 FILESTORE_TRACK(
                     ForkFailed,
-                    GetCallContext(),
+                    RequestInfo->CallContext,
                     "TEvBlobStorage::TEvPut");
             }
 
@@ -565,7 +522,7 @@ private:
         }
 
         const auto* msg = ev->Get();
-        GetCallContext()->LWOrbit.Join(msg->Orbit);
+        RequestInfo->CallContext->LWOrbit.Join(msg->Orbit);
 
         LOG_DEBUG(
             ctx,
@@ -648,20 +605,20 @@ private:
         bool addWriteRangeInfo)
     {
         auto callContext = MakeIntrusive<TCallContext>(
-            GetCallContext()->FileSystemId,
-            GetCallContext()->RequestId);
+            RequestInfo->CallContext->FileSystemId,
+            RequestInfo->CallContext->RequestId);
         callContext->SetRequestStartedCycles(GetCycleCount());
         callContext->RequestType = requestType;
-        if (!GetCallContext()->LWOrbit.Fork(callContext->LWOrbit)) {
+        if (!RequestInfo->CallContext->LWOrbit.Fork(callContext->LWOrbit)) {
             FILESTORE_TRACK(
                 ForkFailed,
-                GetCallContext(),
+                RequestInfo->CallContext,
                 GetFileStoreRequestName(requestType));
         }
         InFlightRequest.ConstructInPlace(
             TRequestInfo(
-                GetSender(),
-                GetCookie(),
+                RequestInfo->Sender,
+                RequestInfo->Cookie,
                 std::move(callContext)),
             ProfileLog,
             MediaKind,
@@ -684,14 +641,14 @@ private:
             record.MutableHeaders()->MutableInternal()->MutableTrace();
         TraceSerializer->BuildTraceRequest(
             *trace,
-            GetCallContext()->LWOrbit);
+            RequestInfo->CallContext->LWOrbit);
     }
 
     void AddData(const TActorContext& ctx)
     {
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            GetCallContext(),
+            RequestInfo->CallContext,
             "AddData");
 
         auto request = std::make_unique<TEvIndexTablet::TEvAddDataRequest>();
@@ -735,7 +692,7 @@ private:
         auto* msg = ev->Get();
 
         SERVICE_VERIFY(InFlightRequest);
-        GetCallContext()->LWOrbit.Join(
+        RequestInfo->CallContext->LWOrbit.Join(
             InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
@@ -755,7 +712,7 @@ private:
     {
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            GetCallContext(),
+            RequestInfo->CallContext,
             "ConfirmAddData");
 
         auto request =
@@ -789,7 +746,7 @@ private:
     {
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            GetCallContext(),
+            RequestInfo->CallContext,
             "CancelAddData");
 
         auto request =
@@ -823,7 +780,7 @@ private:
         auto* msg = ev->Get();
 
         SERVICE_VERIFY(InFlightRequest);
-        GetCallContext()->LWOrbit.Join(
+        RequestInfo->CallContext->LWOrbit.Join(
             InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
@@ -855,7 +812,7 @@ private:
         auto* msg = ev->Get();
 
         SERVICE_VERIFY(InFlightRequest);
-        GetCallContext()->LWOrbit.Join(
+        RequestInfo->CallContext->LWOrbit.Join(
             InFlightRequest->CallContext->LWOrbit);
         FinalizeProfileLogRequestInfo(
             InFlightRequest->AccessProfileLogRequest(),
@@ -964,24 +921,23 @@ private:
     {
         FILESTORE_TRACK(
             RequestReceived_ServiceWorker,
-            GetCallContext(),
+            RequestInfo->CallContext,
             "WriteData");
 
         auto request = std::make_unique<TEvService::TEvWriteDataRequest>();
         request->Record = std::move(WriteRequest);
         PrepareWriteDataRequestPayload(
             *request,
-            ExternalWriteDataPayloadEnabled,
-            WriteDataActorOptimizationEnabled);
+            ExternalWriteDataPayloadEnabled);
         if (isFallback) {
             request->Record.MutableHeaders()->SetThrottlingDisabled(true);
         }
-        request->CallContext = GetCallContext();
+        request->CallContext = RequestInfo->CallContext;
         auto* trace =
             request->Record.MutableHeaders()->MutableInternal()->MutableTrace();
         TraceSerializer->BuildTraceRequest(
             *trace,
-            GetCallContext()->LWOrbit);
+            RequestInfo->CallContext->LWOrbit);
 
         // forward request through tablet proxy
         ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
@@ -1013,7 +969,7 @@ private:
     {
         FILESTORE_TRACK(
             ResponseSent_ServiceWorker,
-            GetCallContext(),
+            RequestInfo->CallContext,
             "WriteData");
 
         auto response = std::make_unique<TEvService::TEvWriteDataResponse>();
@@ -1025,7 +981,7 @@ private:
     {
         FILESTORE_TRACK(
             ResponseSent_ServiceWorker,
-            GetCallContext(),
+            RequestInfo->CallContext,
             "WriteData");
 
         SendResponseAndDie(
@@ -1037,18 +993,15 @@ private:
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvWriteDataResponse> response)
     {
-        if (WriteDataActorOptimizationEnabled) {
+        if (InFlightRequests) {
             CompleteRequestImpl<TEvService::TWriteDataMethod>(
                 ctx,
                 response->Record,
                 MainInFlightRequest,
                 *InFlightRequests,
                 RequestCookie);
-
-            ctx.Send(Sender, response.release(), 0 /* flags */, Cookie);
-        } else {
-            NCloud::Reply(ctx, *RequestInfo, std::move(response));
         }
+        NCloud::Reply(ctx, *RequestInfo, std::move(response));
         Die(ctx);
     }
 
@@ -1184,22 +1137,20 @@ void TStorageServiceActor::HandleWriteData(
     auto logTag = filestore.GetFileSystemId();
     TRequestInfoPtr requestInfo;
     TChecksumCalcInfo checksumCalcInfo;
-    TCallContextPtr callContext;
     ui64 requestCookie = 0;
     TInFlightRequestStoragePtr inFlightRequests;
-    TActorId sender;
-    ui64 cookie = 0;
     TString clientId;
 
     if (writeDataActorOptimizationEnabled) {
+        requestInfo = CreateRequestInfo(
+            ev->Sender,
+            ev->Cookie,
+            msg->CallContext);
         if (blockChecksumsEnabled) {
             checksumCalcInfo = TChecksumCalcInfo(blockSize);
         }
-        callContext = std::move(msg->CallContext);
         requestCookie = GenerateRequestCookie();
         inFlightRequests = InFlightRequests;
-        sender = ev->Sender;
-        cookie = ev->Cookie;
         clientId = session->ClientId;
     } else {
         auto [legacyCookie, inflight] = CreateInFlightRequest(
@@ -1219,18 +1170,17 @@ void TStorageServiceActor::HandleWriteData(
                 inflight->AccessProfileLogRequest());
         }
 
-        requestInfo = CreateRequestInfo(SelfId(), legacyCookie, msg->CallContext);
+        requestInfo = CreateRequestInfo(
+            SelfId(),
+            legacyCookie,
+            msg->CallContext);
     }
 
     auto actor = std::make_unique<TWriteDataActor>(
         std::move(msg->Record),
         range,
         std::move(requestInfo),
-        writeDataActorOptimizationEnabled,
         std::move(inFlightRequests),
-        sender,
-        cookie,
-        std::move(callContext),
         std::move(checksumCalcInfo),
         startTime,
         requestCookie,
