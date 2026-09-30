@@ -108,7 +108,7 @@ protected:
     void Subscribe(TActorId requester, TActorId subscriber = {});
 
     // Verify that the manager sends a change notification to one subscriber.
-    void WaitForConfigChanged(TActorId subscriber);
+    IBlockstoreConfigProviderPtr WaitForConfigChanged(TActorId subscriber);
 
     // Check that a subscriber receives no change notification.
     void AssertNoConfigChanged(TActorId subscriber);
@@ -239,10 +239,14 @@ void TFixture::Subscribe(TActorId requester, TActorId subscriber)
         TDuration::Seconds(1));
     UNIT_ASSERT(response);
     UNIT_ASSERT_VALUES_EQUAL(41, response->Cookie);
+    const auto& provider = response->Get()->ConfigProvider;
+    UNIT_ASSERT(provider);
+    UNIT_ASSERT(provider == ConfigHolder);
+    UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), provider->Get().Get());
 }
 
 // Verify that the manager sends a change notification to one subscriber.
-void TFixture::WaitForConfigChanged(TActorId subscriber)
+IBlockstoreConfigProviderPtr TFixture::WaitForConfigChanged(TActorId subscriber)
 {
     auto event =
         Runtime.GrabEdgeEventRethrow<TEvConfigsManager::TEvConfigChanged>(
@@ -250,6 +254,11 @@ void TFixture::WaitForConfigChanged(TActorId subscriber)
             TDuration::Seconds(1));
     UNIT_ASSERT(event);
     UNIT_ASSERT_VALUES_EQUAL(Manager, event->Sender);
+    const auto& provider = event->Get()->ConfigProvider;
+    UNIT_ASSERT(provider);
+    UNIT_ASSERT(provider == ConfigHolder);
+    UNIT_ASSERT_EQUAL(ConfigHolder->Get().Get(), provider->Get().Get());
+    return provider;
 }
 
 // Check that a subscriber receives no change notification.
@@ -371,7 +380,11 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         const auto second = Runtime.AllocateEdgeActor();
         Subscribe(first);
         Subscribe(second);
-        WaitForConfigChanged(first);
+        const auto provider = WaitForConfigChanged(first);
+        const auto initial = provider->Get();
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            initial->GetStorageConfig()->GetWriteBlobThreshold());
         WaitForConfigChanged(second);
 
         // Publish and observe the new snapshot as soon as the notice arrives.
@@ -381,7 +394,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         WaitForConfigChanged(first);
         UNIT_ASSERT_VALUES_EQUAL(
             300,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            provider->Get()->GetStorageConfig()->GetWriteBlobThreshold());
         WaitForAck(31);
 
         // Let the second consumer lag; it must not block removal or upstream
@@ -391,9 +404,15 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         WaitForConfigChanged(first);
         UNIT_ASSERT_VALUES_EQUAL(
             100,
-            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            provider->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+        const auto delayedProvider = WaitForConfigChanged(second);
+        UNIT_ASSERT_VALUES_EQUAL(
+            100,
+            delayedProvider->Get()->GetStorageConfig()->GetWriteBlobThreshold());
         WaitForConfigChanged(second);
-        WaitForConfigChanged(second);
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            initial->GetStorageConfig()->GetWriteBlobThreshold());
     }
 
     // Check delegated registration, refresh, and removal without duplicate
