@@ -401,6 +401,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
                                                                                \
     xxx(ExternalWriteDataPayloadEnabled,               bool,    false         )\
     xxx(FakeTxPageFaultsProbability,                   double,   0            )\
+    xxx(FakeShardPhaseDelay,                      TDuration,   {}             )\
                                                                                \
     xxx(FanoutStatsCollectionInShardsDisabled,         bool,    false         )\
                                                                                \

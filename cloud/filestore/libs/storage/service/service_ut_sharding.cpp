@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 #include <cloud/filestore/private/api/protos/actions.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -2638,14 +2639,168 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         env.GetRuntime().Send(shardRequest.Release(), nodeIdx);
 
+        // the shard no longer has the node resolved by the leader - the
+        // request should be retried by the client instead of reporting
+        // a missing file
+
         auto getNodeAttrResponse = service.RecvGetNodeAttrResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
-            S_OK,
+            E_REJECTED,
+            getNodeAttrResponse->GetError().GetCode(),
+            getNodeAttrResponse->GetError().GetMessage());
+        UNIT_ASSERT(HasProtoFlag(
+            getNodeAttrResponse->GetError().GetFlags(),
+            NCloud::NProto::EF_INSTANT_RETRIABLE));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId2,
+            service.GetNodeAttr(headers, fsConfig.FsId, RootNodeId, "file1")
+                ->Record.GetNode()
+                .GetId());
+
+        auto headers1 = headers;
+        headers1.FileSystemId = fsConfig.Shard1Id;
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            service.ListNodes(headers1, fsConfig.Shard1Id, RootNodeId)
+                ->Record.NodesSize());
+    }
+
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldHandleGetNodeAttrByNameRacingWithUnlinkNode)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto nodeId1 =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        TAutoPtr<IEventHandle> shardRequest;
+
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                Y_UNUSED(runtime);
+
+                if (event->GetTypeRewrite() == TEvService::EvGetNodeAttrRequest)
+                {
+                    const auto* msg =
+                        event->template Get<TEvService::TEvGetNodeAttrRequest>();
+
+                    if (!shardRequest
+                            && msg->Record.GetFileSystemId() == fsConfig.Shard1Id)
+                    {
+                        shardRequest = event.Release();
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        service.SendGetNodeAttrRequest(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1");
+
+        for (ui32 attempt = 0; attempt < 100 && !shardRequest; ++attempt) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT(shardRequest);
+        env.GetRuntime().SetEventFilter(
+            TTestActorRuntimeBase::DefaultFilterFunc);
+
+        service.UnlinkNode(headers, RootNodeId, "file1");
+
+        env.GetRuntime().Send(shardRequest.Release(), nodeIdx);
+
+        // the service can't distinguish this case from a rename-over race -
+        // the retried request is the one that reports the missing file
+
+        auto getNodeAttrResponse = service.RecvGetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            getNodeAttrResponse->GetError().GetCode(),
+            getNodeAttrResponse->GetError().GetMessage());
+        UNIT_ASSERT(HasProtoFlag(
+            getNodeAttrResponse->GetError().GetFlags(),
+            NCloud::NProto::EF_INSTANT_RETRIABLE));
+
+        service.SendGetNodeAttrRequest(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1");
+        getNodeAttrResponse = service.RecvGetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            getNodeAttrResponse->GetError().GetCode(),
+            getNodeAttrResponse->GetError().GetMessage());
+    }
+
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldNotRejectGetNodeAttrByNameOnShardErrorsOtherThanNoEnt)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto nodeId1 =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        // shard errors other than E_FS_NOENT are not a sign of a race and
+        // should reach the client as is
+
+        env.GetRuntime().SetEventFilter(
+            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() == TEvService::EvGetNodeAttrRequest)
+                {
+                    const auto* msg =
+                        event->template Get<TEvService::TEvGetNodeAttrRequest>();
+
+                    if (msg->Record.GetFileSystemId() == fsConfig.Shard1Id) {
+                        auto response = std::make_unique<
+                            TEvService::TEvGetNodeAttrResponse>(
+                            MakeError(E_IO, "shard failure"));
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0, // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return true;
+                    }
+                }
+
+                return false;
+            });
+
+        service.SendGetNodeAttrRequest(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1");
+        auto getNodeAttrResponse = service.RecvGetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_IO,
             getNodeAttrResponse->GetError().GetCode(),
             getNodeAttrResponse->GetError().GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(
-            nodeId2,
-            getNodeAttrResponse->Record.GetNode().GetId());
+            "shard failure",
+            getNodeAttrResponse->GetError().GetMessage());
     }
 
     SERVICE_TEST(ShouldPerformLocksForExternalNodes)
