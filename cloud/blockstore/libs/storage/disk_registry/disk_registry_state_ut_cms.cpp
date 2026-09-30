@@ -279,7 +279,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateCMSTest)
                     deviceId,
                     migrations[0].SourceDeviceId);
 
-                auto [target, error] = state.StartDeviceMigration(
+                auto [target, error] = StartDeviceMigration(
+                    state,
                     Now(),
                     db,
                     migrations[0].DiskId,
