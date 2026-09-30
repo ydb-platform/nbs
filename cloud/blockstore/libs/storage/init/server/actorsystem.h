@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
+#include <cloud/blockstore/libs/config/blockstore_config_holder.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/libs/discovery/public.h>
 #include <cloud/blockstore/libs/encryption/public.h>
@@ -57,6 +58,10 @@ struct TServerActorSystemArgs
     // Effective startup snapshot in both YAML and PROTO modes.
     // In YAML mode, includes accepted PrivateDatabaseConfig overrides.
     IBlockstoreConfigPtr StartupBlockstoreConfig;
+
+    // Configuration publication point initialized by bootstrap; non-null and
+    // shared with its read-only provider and the process-wide getter.
+    TBlockstoreConfigHolderPtr ConfigHolder;
 
     ILoggingServicePtr Logging;
     IAsyncLoggerPtr AsyncLogger;
