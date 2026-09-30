@@ -167,12 +167,12 @@ void TConfigsManagerActor::Handle(
     // even when another actor requested the subscription on its behalf.
     ctx.Send(
         ev->Sender,
-        new TEvConfigsManager::TEvSetConfigSubscriptionResponse(),
+        new TEvConfigsManager::TEvSetConfigSubscriptionResponse(ConfigHolder),
         0,
         ev->Cookie);
     ctx.Send(
         subscriber,
-        new TEvConfigsManager::TEvConfigChanged(),
+        new TEvConfigsManager::TEvConfigChanged(ConfigHolder),
         IEventHandle::FlagTrackDelivery);
 }
 
@@ -282,7 +282,7 @@ void TConfigsManagerActor::Handle(
     for (const auto& subscriber: Subscribers) {
         ctx.Send(
             subscriber,
-            new TEvConfigsManager::TEvConfigChanged(),
+            new TEvConfigsManager::TEvConfigChanged(ConfigHolder),
             IEventHandle::FlagTrackDelivery);
     }
 

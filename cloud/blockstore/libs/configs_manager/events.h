@@ -12,10 +12,13 @@ actor.
 
 #pragma once
 
+#include <cloud/blockstore/libs/config/blockstore_config_provider.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 
 #include <contrib/ydb/library/actors/core/actorid.h>
 #include <contrib/ydb/library/actors/core/event_local.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore {
 
@@ -57,6 +60,12 @@ struct TEvConfigsManager
               TEvSetConfigSubscriptionResponse,
               EvSetConfigSubscriptionResponse>
     {
+        // Published configuration source owned by this response; non-null
+        // and shared with ConfigsManager for later reads.
+        const IBlockstoreConfigProviderPtr ConfigProvider;
+
+        explicit TEvSetConfigSubscriptionResponse(
+            IBlockstoreConfigProviderPtr configProvider);
     };
 
     // Removal request; consumers send it before stopping their actor.
@@ -86,6 +95,11 @@ struct TEvConfigsManager
     struct TEvConfigChanged final
         : NActors::TEventLocal<TEvConfigChanged, EvConfigChanged>
     {
+        // Published configuration source owned by this event; non-null and
+        // shared with ConfigsManager. Retain it to read later publications.
+        const IBlockstoreConfigProviderPtr ConfigProvider;
+
+        explicit TEvConfigChanged(IBlockstoreConfigProviderPtr configProvider);
     };
 };
 
@@ -94,9 +108,20 @@ inline TEvConfigsManager::TEvSetConfigSubscriptionRequest::
     : Subscriber(subscriber)
 {}
 
+inline TEvConfigsManager::TEvSetConfigSubscriptionResponse::
+    TEvSetConfigSubscriptionResponse(
+        IBlockstoreConfigProviderPtr configProvider)
+    : ConfigProvider(std::move(configProvider))
+{}
+
 inline TEvConfigsManager::TEvRemoveConfigSubscriptionRequest::
     TEvRemoveConfigSubscriptionRequest(NActors::TActorId subscriber)
     : Subscriber(subscriber)
+{}
+
+inline TEvConfigsManager::TEvConfigChanged::TEvConfigChanged(
+    IBlockstoreConfigProviderPtr configProvider)
+    : ConfigProvider(std::move(configProvider))
 {}
 
 }   // namespace NCloud::NBlockStore
