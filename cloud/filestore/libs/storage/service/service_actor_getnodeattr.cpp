@@ -6,6 +6,8 @@
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 
+#include <cloud/storage/core/libs/common/helpers.h>
+
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -40,6 +42,7 @@ private:
     ITraceSerializerPtr TraceSerializer;
 
     const bool DisableMultiTabletForwarding;
+    const TDuration ShardPhaseDelay;
 
 public:
     TGetNodeAttrActor(
@@ -48,7 +51,8 @@ public:
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        bool disableMultiTabletForwarding);
+        bool disableMultiTabletForwarding,
+        TDuration shardPhaseDelay);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -62,6 +66,10 @@ private:
         const TActorContext& ctx);
 
     void GetNodeAttrInShard(const TActorContext& ctx);
+
+    void HandleWakeup(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -81,7 +89,8 @@ TGetNodeAttrActor::TGetNodeAttrActor(
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        bool disableMultiTabletForwarding)
+        bool disableMultiTabletForwarding,
+        TDuration shardPhaseDelay)
     : RequestInfo(std::move(requestInfo))
     , GetNodeAttrRequest(std::move(getNodeAttrRequest))
     , LogTag(GetNodeAttrRequest.GetFileSystemId())
@@ -89,6 +98,7 @@ TGetNodeAttrActor::TGetNodeAttrActor(
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(std::move(traceSerializer))
     , DisableMultiTabletForwarding(disableMultiTabletForwarding)
+    , ShardPhaseDelay(shardPhaseDelay)
 {
 }
 
@@ -164,6 +174,33 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
+        if (LeaderResponded && msg->GetError().GetCode() == E_FS_NOENT) {
+            // the node resolved by the leader is already gone from the shard
+            // (e.g. renamed over between the two phases) - the client should
+            // retry the whole request
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "[%s] GetNodeAttr node not found in shard %s (%s) for %lu, %s",
+                LogTag.c_str(),
+                LeaderResponse.GetNode().GetShardFileSystemId().c_str(),
+                LeaderResponse.GetNode().GetShardNodeName().Quote().c_str(),
+                GetNodeAttrRequest.GetNodeId(),
+                GetNodeAttrRequest.GetName().Quote().c_str());
+
+            ui32 flags = 0;
+            SetProtoFlag(flags, NCloud::NProto::EF_INSTANT_RETRIABLE);
+            HandleError(
+                ctx,
+                MakeError(
+                    E_REJECTED,
+                    TStringBuilder()
+                        << "concurrent directory modifications for request: "
+                        << GetNodeAttrRequest.ShortDebugString().Quote(),
+                    flags));
+            return;
+        }
+
         HandleError(ctx, *msg->Record.MutableError());
         return;
     }
@@ -200,6 +237,18 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
 
     LeaderResponded = true;
     LeaderResponse = std::move(msg->Record);
+    if (Y_UNLIKELY(ShardPhaseDelay)) {
+        ctx.Schedule(ShardPhaseDelay, new TEvents::TEvWakeup());
+        return;
+    }
+    GetNodeAttrInShard(ctx);
+}
+
+void TGetNodeAttrActor::HandleWakeup(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
     GetNodeAttrInShard(ctx);
 }
 
@@ -247,6 +296,7 @@ STFUNC(TGetNodeAttrActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(
             TEvService::TEvGetNodeAttrResponse,
@@ -340,7 +390,8 @@ void TStorageServiceActor::HandleGetNodeAttr(
         session->RequestStats,
         ProfileLog,
         TraceSerializer,
-        disableMultiTabletForwarding);
+        disableMultiTabletForwarding,
+        StorageConfig->GetFakeShardPhaseDelay());
 
     NCloud::Register(ctx, std::move(actor));
 }
