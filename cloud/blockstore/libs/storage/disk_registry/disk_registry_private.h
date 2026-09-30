@@ -201,6 +201,7 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(InitiateDiskReallocation,                   __VA_ARGS__)               \
     xxx(ReplaceDiskDevice,                          __VA_ARGS__)               \
     xxx(UpdateCmsHostDeviceState,                   __VA_ARGS__)               \
+    xxx(PurgeDeviceCms,                             __VA_ARGS__)               \
     xxx(UpdateCmsHostState,                         __VA_ARGS__)               \
     xxx(PublishDiskStates,                          __VA_ARGS__)               \
     xxx(StartMigration,                             __VA_ARGS__)               \
@@ -549,6 +550,29 @@ struct TEvDiskRegistryPrivate
     };
 
     //
+    // PurgeDeviceCms
+    //
+
+    struct TPurgeDeviceCmsRequest
+    {
+        TString Host;
+        TString Path;
+        TString CustomMessage;
+        bool DryRun;
+
+        TPurgeDeviceCmsRequest(
+            TString host,
+            TString path,
+            TString customMessage,
+            bool dryRun)
+            : Host(std::move(host))
+            , Path(std::move(path))
+            , CustomMessage(std::move(customMessage))
+            , DryRun(dryRun)
+        {}
+    };
+
+    //
     // UpdateCmsHostState
     //
 
@@ -608,6 +632,7 @@ struct TEvDiskRegistryPrivate
     };
 
     using TUpdateCmsHostDeviceStateResponse = TCmsActionResponse;
+    using TPurgeDeviceCmsResponse = TCmsActionResponse;
     using TUpdateCmsHostStateResponse = TCmsActionResponse;
     using TPurgeHostCmsResponse = TCmsActionResponse;
 

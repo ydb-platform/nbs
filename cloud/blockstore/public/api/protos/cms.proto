@@ -19,6 +19,7 @@ message TAction {
         ADD_DEVICE = 4;
         ADD_HOST = 5;
         PURGE_HOST = 6;
+        PURGE_DEVICE = 7;
     }
 
     // Action type.
