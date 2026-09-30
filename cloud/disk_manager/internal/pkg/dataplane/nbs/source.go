@@ -29,7 +29,7 @@ type DiskSource interface {
 
 type diskSource struct {
 	client           nbs.Client
-	session          *nbs.Session
+	session          nbs.Session
 	diskID           string
 	baseCheckpointID string
 	checkpointID     string
@@ -310,7 +310,7 @@ func NewDiskSource(
 	dontReadFromCheckpoint bool,
 ) (DiskSource, error) {
 
-	var session *nbs.Session
+	var session nbs.Session
 	var err error
 	if len(proxyDiskID) != 0 {
 		session, err = client.MountLocalRO(ctx, proxyDiskID, encryption)
