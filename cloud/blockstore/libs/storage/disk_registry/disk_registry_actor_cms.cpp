@@ -254,6 +254,7 @@ void TCmsRequestActor::HandleCmsActionResponse(
             new TEvents::TEvWakeup(ECmsRequestActorWakeupTag::Retry));
         return;
     }
+    CmsSubrequestTimeout.Reset();
 
     auto& result = *Response->Record.MutableActionResults()->Add();
     *result.MutableResult() = error;
