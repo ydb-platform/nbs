@@ -430,6 +430,141 @@ public:
     {}
 };
 
+// Monitoring actor scenario owns a shared control and request across POST responses.
+// Run<TTestRestoreActionsAndCounters> creates it to check restore actions and gauges.
+class TTestRestoreActionsAndCounters : public TBaseTest {
+public:
+    // Create a test actor with one control and a reusable POST request.
+    TTestRestoreActionsAndCounters(TTestConfig* cfg);
+
+private:
+    // Shared control with default 200, registered for this test's lifetime.
+    TControlWrapper Control{200};
+
+    // POST request reused after each monitoring response.
+    TAutoPtr<THttpRequest> HttpRequest;
+
+    // Monitoring request view valid while HttpRequest exists.
+    NMonitoring::TMonService2HttpRequest MonService2HttpRequest;
+
+    // Exercise repeated assignments, named restore, bulk restore, and unknown names.
+    void TestFSM(const TActorContext& ctx) override;
+};
+
+// Create the request after the control so both remain valid for the actor lifetime.
+TTestRestoreActionsAndCounters::TTestRestoreActionsAndCounters(TTestConfig* cfg)
+    : TBaseTest(cfg)
+    , HttpRequest(new THttpRequest(HTTP_METHOD_POST))
+    , MonService2HttpRequest(nullptr, HttpRequest.Get(), nullptr, nullptr, "", nullptr)
+{}
+
+// Check that each completed POST reports current control state and records its action.
+// Use one control so repeated non-default assignments cannot increase the gauge.
+void TTestRestoreActionsAndCounters::TestFSM(const TActorContext& ctx) {
+    auto counters = GetServiceCounters(Counters, "utils");
+    if (TestStep) {
+        ASSERT_YTHROW(LastResponse.HttpResult && LastResponse.HttpResult->Type() == NActors::NMon::HttpInfoRes,
+            "Unexpected response message type, expected HttpInfoRes");
+    }
+
+    switch (TestStep) {
+        case 0:
+            // Register one control and submit its first non-default value.
+            Icb->RegisterSharedControl(Control, "control");
+            HttpRequest->CgiParameters.emplace("control", "500");
+            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
+            break;
+        case 10:
+            // Verify the first change, its button and history, then change it again.
+            ASSERT_YTHROW(static_cast<i64>(Control) == 500, "First POST did not change the control");
+            ASSERT_YTHROW(counters->GetCounter("Icb/ChangedControlsCount")->Val() == 1,
+                "First override was not counted");
+            ASSERT_YTHROW(counters->GetCounter("Icb/HasChangedContol")->Val() == 1,
+                "First override was not marked changed");
+            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("name='restoreDefault' value='control'") != TString::npos,
+                "Named restore button is missing");
+            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("<td>control</td><td>200</td><td>500</td><td>Set value</td>") != TString::npos,
+                "Value assignment was not recorded");
+            HttpRequest->CgiParameters.clear();
+            HttpRequest->CgiParameters.emplace("control", "600");
+            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
+            break;
+        case 20:
+            // Verify that a second override still counts one control.
+            ASSERT_YTHROW(static_cast<i64>(Control) == 600, "Second POST did not change the control");
+            ASSERT_YTHROW(counters->GetCounter("Icb/ChangedControlsCount")->Val() == 1,
+                "Repeated override increased the changed-control count");
+            HttpRequest->CgiParameters.clear();
+            HttpRequest->CgiParameters.emplace("control", "200");
+            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
+            break;
+        case 30:
+            // Verify that assigning the default clears both gauges.
+            ASSERT_YTHROW(static_cast<i64>(Control) == 200, "Third POST did not restore the default");
+            ASSERT_YTHROW(counters->GetCounter("Icb/ChangedControlsCount")->Val() == 0,
+                "Returning to default did not clear the count");
+            ASSERT_YTHROW(counters->GetCounter("Icb/HasChangedContol")->Val() == 0,
+                "Returning to default did not clear the indicator");
+            HttpRequest->CgiParameters.clear();
+            HttpRequest->CgiParameters.emplace("control", "500");
+            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
+            break;
+        case 40:
+            // Restore by name while ignoring the text input in the same form.
+            ASSERT_YTHROW(static_cast<i64>(Control) == 500, "Fourth POST did not change the control");
+            HttpRequest->CgiParameters.clear();
+            HttpRequest->CgiParameters.emplace("control", "600");
+            HttpRequest->CgiParameters.emplace("restoreDefault", "control");
+            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
+            break;
+        case 50:
+            // Verify that named restore clears the gauges and records its value transition.
+            ASSERT_YTHROW(static_cast<i64>(Control) == 200, "Named restore did not recover the default");
+            ASSERT_YTHROW(counters->GetCounter("Icb/ChangedControlsCount")->Val() == 0,
+                "Named restore did not clear the count");
+            ASSERT_YTHROW(counters->GetCounter("Icb/HasChangedContol")->Val() == 0,
+                "Named restore did not clear the indicator");
+            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("<td>control</td><td>500</td><td>200</td><td>Restore default</td>") != TString::npos,
+                "Named restore was not recorded");
+            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("name='restoreDefault' value='control'") == TString::npos,
+                "Named restore button remained after restoration");
+            HttpRequest->CgiParameters.clear();
+            HttpRequest->CgiParameters.emplace("control", "500");
+            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
+            break;
+        case 60:
+            // Submit bulk restore with a value that must not override it.
+            ASSERT_YTHROW(static_cast<i64>(Control) == 500, "Fifth POST did not change the control");
+            HttpRequest->CgiParameters.clear();
+            HttpRequest->CgiParameters.emplace("restoreDefaults", "");
+            HttpRequest->CgiParameters.emplace("control", "600");
+            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
+            break;
+        case 70:
+            // Verify bulk restoration and submit an unknown named restore.
+            ASSERT_YTHROW(static_cast<i64>(Control) == 200, "Bulk restore was overridden");
+            ASSERT_YTHROW(counters->GetCounter("Icb/ChangedControlsCount")->Val() == 0,
+                "Bulk restore did not clear the count");
+            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("<td>RestoreDefaults</td><td>0</td><td>0</td><td>Restore defaults</td>") != TString::npos,
+                "Bulk restore was not recorded");
+            HttpRequest->CgiParameters.clear();
+            HttpRequest->CgiParameters.emplace("restoreDefault", "unknown");
+            HttpRequest->CgiParameters.emplace("control", "600");
+            ctx.Send(IcbActor, new NMon::TEvHttpInfo(MonService2HttpRequest));
+            break;
+        case 80:
+            // Verify that an unknown name leaves controls and history intact.
+            ASSERT_YTHROW(static_cast<i64>(Control) == 200, "Unknown restore changed the control");
+            ASSERT_YTHROW(LastResponse.HttpResult->Answer.find("<td>unknown</td>") == TString::npos,
+                "Unknown restore was recorded in history");
+            SignalDoneEvent();
+            break;
+        default:
+            ythrow TWithBackTrace<yexception>() << "Unexpected TestStep " << TestStep << Endl;
+    }
+    TestStep += 10;
+}
+
 Y_UNIT_TEST_SUITE(IcbAsActorTests) {
     Y_UNIT_TEST(TestHttpGetResponse) {
         Run<TTestHttpGetResponse>();
@@ -437,6 +572,11 @@ Y_UNIT_TEST_SUITE(IcbAsActorTests) {
 
     Y_UNIT_TEST(TestHttpPostReaction) {
         Run<TTestHttpPostReaction>();
+    }
+
+    // Verify counters and restore actions through a sequence of HTTP POST requests.
+    Y_UNIT_TEST(TestRestoreActionsAndCounters) {
+        Run<TTestRestoreActionsAndCounters>();
     }
 };
 
