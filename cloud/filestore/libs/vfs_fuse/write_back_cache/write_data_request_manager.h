@@ -33,13 +33,6 @@ private:
     THashSet<ui64> NodesWithBackpressure;
 
 public:
-    struct TAddRequestResult
-    {
-        std::unique_ptr<TPendingWriteDataRequest> PendingRequest = nullptr;
-        std::unique_ptr<TCachedWriteDataRequest> CachedRequest = nullptr;
-        bool Failed = false;
-    };
-
     struct TProcessPendingRequestResult
     {
         std::unique_ptr<TCachedWriteDataRequest> CachedRequest = nullptr;
@@ -74,20 +67,8 @@ public:
     // Returns 0 when there are no unflushed requests
     ui64 GetMaxUnflushedSequenceId() const;
 
-    /**
-     * Adds a WriteData request to the persistent storage.
-     *
-     * Returns result with non-empty TAddRequestResult::CachedRequest if the
-     * request has been successfully stored in the storage.
-     *
-     * Returns result with non-empty TAddRequestResult::PendingRequest if the
-     * the storage is full or backpressure is in effect, and the request has
-     * been added to the pending queue.
-     *
-     * Returns result with TAddRequestResult::Failed == true if the storage is
-     * in failed state.
-     */
-    [[nodiscard]] TAddRequestResult AddRequest(
+    // Creates a pending WriteData request and adds it to the pending queue.
+    [[nodiscard]] std::unique_ptr<TPendingWriteDataRequest> AddRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     /**
@@ -98,11 +79,12 @@ public:
      * if the front request has been successfully stored in the storage.
      *
      * Returns result with empty TProcessPendingRequestResult::CachedRequest and
-     * TAddRequestResult::Failed == false if the storage is full, backpressure
-     * is in effect or the pending queue is empty.
+     * TProcessPendingRequestResult::Failed == false if the storage is full,
+     * backpressure is in effect or the pending queue is empty.
      *
      * Returns result with empty TProcessPendingRequestResult::CachedRequest and
-     * TAddRequestResult::Failed == true if the storage is in failed state.
+     * TProcessPendingRequestResult::Failed == true if the storage is in failed
+     * state.
      */
     [[nodiscard]] TProcessPendingRequestResult TryProcessPendingRequest();
 

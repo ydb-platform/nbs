@@ -246,25 +246,11 @@ ui64 TWriteDataRequestManager::GetMaxUnflushedSequenceId() const
                : UnflushedRequests.Back()->GetSequenceId();
 }
 
-auto TWriteDataRequestManager::AddRequest(
-    std::shared_ptr<NProto::TWriteDataRequest> request) -> TAddRequestResult
+std::unique_ptr<TPendingWriteDataRequest> TWriteDataRequestManager::AddRequest(
+    std::shared_ptr<NProto::TWriteDataRequest> request)
 {
     const ui64 sequenceId = SequenceIdGenerator->GenerateId();
     const auto now = Timer->Now();
-
-    if (PendingRequests.Empty()) {
-        auto res =
-            TryStoreRequestInPersistentStorage(sequenceId, now, *request);
-
-        if (res.Failed) {
-            return {.Failed = true};
-        }
-
-        if (res.CachedRequest) {
-            UnflushedRequestsPushBack(res.CachedRequest.get());
-            return {.CachedRequest = std::move(res.CachedRequest)};
-        }
-    }
 
     auto pendingRequest = std::make_unique<TPendingWriteDataRequest>(
         sequenceId,
@@ -272,7 +258,7 @@ auto TWriteDataRequestManager::AddRequest(
         std::move(request));
 
     PendingRequestsPushBack(pendingRequest.get());
-    return {.PendingRequest = std::move(pendingRequest)};
+    return pendingRequest;
 }
 
 auto TWriteDataRequestManager::TryProcessPendingRequest()
