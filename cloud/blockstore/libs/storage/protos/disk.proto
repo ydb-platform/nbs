@@ -8,7 +8,7 @@ import "cloud/blockstore/public/api/protos/disk.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/io.proto";
 import "cloud/blockstore/public/api/protos/placement.proto";
-import "cloud/blockstore/public/api/protos/rdma.proto";
+import "cloud/blockstore/public/api/protos/endpoint.proto";
 import "cloud/blockstore/public/api/protos/volume.proto";
 import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/media.proto";
@@ -182,7 +182,7 @@ message TDeviceConfig
     uint64 UnadjustedBlockCount = 14;
 
     // Rdma target endpoint.
-    TRdmaEndpoint RdmaEndpoint = 15;
+    TEndpoint RdmaEndpoint = 15;
 
     // Device pool name.
     string PoolName = 16;
@@ -198,6 +198,9 @@ message TDeviceConfig
 
     // Device model.
     string DeviceModel = 20;
+
+    // Journalled device agent endpoint.
+    TEndpoint JournalledEndpoint = 21;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

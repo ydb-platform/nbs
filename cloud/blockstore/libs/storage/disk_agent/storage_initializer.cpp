@@ -9,9 +9,9 @@
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/service_local/broken_storage.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/service_local/broken_storage.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/compare_configs.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -22,12 +22,15 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/string/builder.h>
+#include <util/string/cast.h>
 #include <util/string/printf.h>
 #include <util/system/file.h>
 #include <util/system/fs.h>
+#include <util/system/hostname.h>
 #include <util/system/mutex.h>
 
 #include <cstring>
+#include <optional>
 #include <tuple>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -110,6 +113,25 @@ TVector<TString> GetLostDevicesIds(
     }
 
     return result;
+}
+
+std::optional<NProto::TEndpoint> GetJournalledEndpoint(
+    const TDiskAgentConfig& config)
+{
+    TStringBuf host;
+    TStringBuf port;
+    TStringBuf(config.GetJournalledDeviceTcpServerListenAddress())
+        .RSplit(':', host, port);
+
+    if (ui32 value = FromStringWithDefault<ui32>(port, 0)) {
+        NProto::TEndpoint endpoint;
+        endpoint.SetHost(FQDNHostName());
+        endpoint.SetPort(value);
+
+        return endpoint;
+    }
+
+    return std::nullopt;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -659,6 +681,7 @@ TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
     Devices.resize(deviceCount);
     Stats.resize(deviceCount);
 
+    const auto journalledEndpoint = GetJournalledEndpoint(*AgentConfig);
     TVector<TFuture<IStoragePtr>> futures;
 
     int i = 0;
@@ -670,6 +693,9 @@ TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
 
         if (device.GetJournalled()) {
             JournalledDeviceIds.push_back(device.GetDeviceId());
+            if (journalledEndpoint) {
+                *Configs[i].MutableJournalledEndpoint() = *journalledEndpoint;
+            }
         }
 
         auto onInitError = [i, this] () {

@@ -6,7 +6,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/pro
 
 ////////////////////////////////////////////////////////////////////////////////
 
-message TRdmaEndpoint
+message TEndpoint
 {
     string Host = 1;
     uint32 Port = 2;

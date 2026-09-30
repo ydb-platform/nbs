@@ -11,6 +11,7 @@ SRCS(
     discovery.proto
     disk.proto
     encryption.proto
+    endpoint.proto
     endpoints.proto
     headers.proto
     io.proto
@@ -20,7 +21,6 @@ SRCS(
     mount.proto
     ping.proto
     placement.proto
-    rdma.proto
     volume_throttling.proto
     volume.proto
 )
