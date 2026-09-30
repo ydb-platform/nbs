@@ -384,7 +384,7 @@ func (t *createSnapshotFromDiskTask) run(
 	}
 
 	transferredChunkCount, err := transferer.Transfer(
-		ctx,
+		blockstore_client.WithSnapshotCreationRead(ctx),
 		source,
 		target,
 		common.Milestone{

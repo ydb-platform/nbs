@@ -59,6 +59,10 @@ message TReadBlocksRequest
 
     // Size of the block in bytes.
     uint32 BlockSize = 8;
+
+    // True for reads performed while creating a snapshot.
+    // Use the asynchronous blob-storage read class for these requests.
+    bool SnapshotCreationRead = 9;
 }
 
 message TReadBlocksResponse
