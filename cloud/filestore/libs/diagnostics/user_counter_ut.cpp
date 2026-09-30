@@ -354,6 +354,8 @@ Y_UNIT_TEST_SUITE(TUserWrapperTest)
             "RenameNode",    "SetNodeAttr",  "SetNodeXAttr",  "UnlinkNode",
             "StatFileStore", "ReadLink",     "AccessNode",    "RemoveNodeXAttr",
             "ReleaseLock",   "AcquireLock",  "WriteData",     "ReadData",
+            // must stay excluded from index_ops/index_errors, see user_counter.cpp
+            "ConfirmCreateHandle", "AsyncDestroyHandle",
         };
 
         for (const auto& request: requests) {

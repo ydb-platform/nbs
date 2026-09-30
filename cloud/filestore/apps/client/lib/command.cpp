@@ -144,6 +144,20 @@ void TCommand::Stop(int exitCode)
     WaitCondVar.Signal();
 }
 
+void TCommand::InterruptibleSleep(TDuration timeout)
+{
+    with_lock (WaitMutex) {
+        WaitCondVar.WaitT(
+            WaitMutex,
+            timeout,
+            [this]
+            {
+                return ProgramShouldContinue.PollState() !=
+                       TProgramShouldContinue::Continue;
+            });
+    }
+}
+
 bool TCommand::WaitForI(const TFuture<void>& future)
 {
     while (ProgramShouldContinue.PollState() == TProgramShouldContinue::Continue) {

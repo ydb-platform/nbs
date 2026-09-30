@@ -4,6 +4,7 @@
 
 #include <cerrno>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include <fcntl.h>
@@ -51,7 +52,7 @@ private:
      */
     int runDumper(int requestReadFd) noexcept;
 
-    /** Build "source <dir-of-our-binary>/crash-dumper.py" into sourceCommand (no compile-time path). */
+    /** Build "source <script-dir>/crash-dumper.py" into sourceCommand: SILK_CRASH_DUMPER_SCRIPT_DIR, else the binary's directory. */
     void buildSourceCommand() noexcept;
 
     int dumpSignalNumber = 0;
@@ -190,6 +191,14 @@ void CrashDumper::handleSignal(int signalNumber) noexcept
 
 void CrashDumper::buildSourceCommand() noexcept
 {
+    // A build system may run the binary from a directory the scripts are not copied to.
+    const char * scriptDir = std::getenv("SILK_CRASH_DUMPER_SCRIPT_DIR");
+    if (scriptDir && scriptDir[0])
+    {
+        std::snprintf(sourceCommand, sizeof(sourceCommand), "source %s/crash-dumper.py", scriptDir);
+        return;
+    }
+
     // crash-dumper.py is installed next to our binary; resolve it from /proc/self/exe rather than a
     // compile-time absolute path.
     char exePath[4096];
