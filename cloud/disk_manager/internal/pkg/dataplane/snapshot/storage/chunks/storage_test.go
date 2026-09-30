@@ -342,12 +342,12 @@ func TestShadowTableRepeatsWrites(t *testing.T) {
 			require.NoError(t, err)
 			requireSameRefCount(t, ctx, db, config, chunkID, 2)
 
-			err = storage.UnrefChunk(ctx, firstReferer, chunkID)
+			_, err = storage.UnrefChunk(ctx, firstReferer, chunkID)
 			require.NoError(t, err)
 			requireSameRefCount(t, ctx, db, config, chunkID, 1)
 
 			// The last unref deletes the chunk from both tables.
-			err = storage.UnrefChunk(ctx, secondReferer, chunkID)
+			_, err = storage.UnrefChunk(ctx, secondReferer, chunkID)
 			require.NoError(t, err)
 			requireSameRefCount(t, ctx, db, config, chunkID, 0)
 		})
@@ -387,13 +387,13 @@ func TestUnrefIdempotency(t *testing.T) {
 			require.True(t, chunkDataExists(t, ctx, s3, db, config, chunkID, testCase.useS3))
 
 			for i := 0; i < 2; i++ {
-				err = storage.UnrefChunk(ctx, firstReferer, chunkID)
+				_, err = storage.UnrefChunk(ctx, firstReferer, chunkID)
 				require.NoError(t, err)
 				require.True(t, chunkDataExists(t, ctx, s3, db, config, chunkID, testCase.useS3))
 			}
 
 			for i := 0; i < 2; i++ {
-				err = storage.UnrefChunk(ctx, secondReferer, chunkID)
+				_, err = storage.UnrefChunk(ctx, secondReferer, chunkID)
 				require.NoError(t, err)
 				require.False(t, chunkDataExists(t, ctx, s3, db, config, chunkID, testCase.useS3))
 			}
@@ -412,7 +412,7 @@ func TestLastUnrefShouldDeleteDataEvenIfMetadataIsAbsent(t *testing.T) {
 	deleteMetadata(t, ctx, db, config, chunkID)
 	require.True(t, chunkDataExists(t, ctx, s3, db, config, chunkID, true))
 
-	err = storage.UnrefChunk(ctx, referer, chunkID)
+	_, err = storage.UnrefChunk(ctx, referer, chunkID)
 	require.NoError(t, err)
 	require.False(t, chunkDataExists(t, ctx, s3, db, config, chunkID, true))
 }

@@ -17,6 +17,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
@@ -316,7 +317,7 @@ func newStorage(
 	err := schema.Create(ctx, config, db, s3, false /* dropUnusedColumns */)
 	require.NoError(t, err)
 
-	storage, err := NewStorage(config, registry, db, s3)
+	storage, err := NewStorage(config, registry, db, s3, true)
 	require.NoError(t, err)
 
 	return storage
@@ -1181,7 +1182,12 @@ func TestWriteChunk(t *testing.T) {
 			chunkID, err := f.storage.WriteChunk(f.ctx, "", "snapshot", chunk, testCase.useS3)
 			require.NoError(t, err)
 
-			entries, errors := f.storage.ReadChunkMap(f.ctx, "snapshot", 0)
+			entries, errors := f.storage.ReadChunkMap(
+				f.ctx,
+				"snapshot",
+				0,    // milestoneChunkIndex
+				true, // includeShallowCopied
+			)
 
 			actual := make([]ChunkMapEntry, 0)
 			for a := range entries {
@@ -1449,7 +1455,12 @@ func TestReadChunkMapReturnsErrorWhenContextIsAlreadyCancelled(t *testing.T) {
 			ctx, cancel := context.WithCancel(f.ctx)
 			cancel()
 
-			entries, errors := f.storage.ReadChunkMap(ctx, "snapshot", 0)
+			entries, errors := f.storage.ReadChunkMap(
+				ctx,
+				"snapshot",
+				0,    // milestoneChunkIndex
+				true, // includeShallowCopied
+			)
 			require.NotNil(t, entries, errors)
 
 			err := <-errors
@@ -1719,4 +1730,155 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 			require.NoError(f.t, errGrp.Wait())
 		}()
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestBackupChunkQueue(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	entries := []BackupChunkQueueEntry{
+		{SnapshotID: "snap1", ChunkID: "t.snap1.0"},
+		{SnapshotID: "snap1", ChunkID: "t.snap1.1"},
+		{SnapshotID: "snap2", ChunkID: "t.snap2.0"},
+	}
+	err := f.storage.EnqueueBackupChunks(f.ctx, entries)
+	require.NoError(t, err)
+
+	err = f.storage.EnqueueBackupChunks(f.ctx, entries[:1])
+	require.NoError(t, err)
+
+	length, err := f.storage.GetBackupChunkQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, length)
+
+	got, err := f.storage.GetBackupChunkQueue(f.ctx, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	has, err := f.storage.HasBackupChunkQueueEntries(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.True(t, has)
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
+	require.NoError(t, err)
+
+	has, err = f.storage.HasBackupChunkQueueEntries(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.False(t, has)
+
+	got, err = f.storage.GetBackupChunkQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, entries[2:], got)
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, got)
+	require.NoError(t, err)
+
+	got, err = f.storage.GetBackupChunkQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	length, err = f.storage.GetBackupChunkQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, length)
+}
+
+func TestReadChunkBlob(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunk := makeChunk(0, "abc")
+	chunkID, err := f.storage.WriteChunk(
+		f.ctx,
+		"",
+		"snapshot",
+		chunk,
+		true, // useS3
+	)
+	require.NoError(t, err)
+
+	object, err := f.storage.ReadChunkBlob(f.ctx, chunkID)
+	require.NoError(t, err)
+	require.Equal(t, getS3Object(f, chunkID), object)
+
+	_, err = f.storage.ReadChunkBlob(f.ctx, "missing")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+}
+
+func TestGetSnapshotIDFromChunkID(t *testing.T) {
+	require.Equal(t, "snap1", getSnapshotIDFromChunkID("task1.snap1.7"))
+	require.Equal(t, "snap.1", getSnapshotIDFromChunkID("task1.snap.1.7"))
+	require.Empty(t, getSnapshotIDFromChunkID("task1.snap1"))
+	require.Empty(t, getSnapshotIDFromChunkID(""))
+}
+
+func TestBackupDeleteQueue(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunkID, err := f.storage.WriteChunk(
+		f.ctx,
+		"",
+		"src",
+		makeChunk(0, "abc"),
+		true, // useS3
+	)
+	require.NoError(t, err)
+
+	err = f.storage.ShallowCopySnapshot(f.ctx, "src", "dst", 0, nil)
+	require.NoError(t, err)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "src")
+	require.NoError(t, err)
+
+	objectKeys, err := f.storage.GetBackupDeleteQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{backup.ChunkMapKey("src")}, objectKeys)
+
+	err = f.storage.BackupDeletionsCompleted(f.ctx, objectKeys)
+	require.NoError(t, err)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "dst")
+	require.NoError(t, err)
+
+	objectKeys, err = f.storage.GetBackupDeleteQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.ElementsMatch(
+		t,
+		[]string{backup.ChunkKey(chunkID), backup.ChunkMapKey("dst")},
+		objectKeys,
+	)
+
+	length, err := f.storage.GetBackupDeleteQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 2, length)
+
+	err = f.storage.BackupDeletionsCompleted(f.ctx, objectKeys)
+	require.NoError(t, err)
+
+	objectKeys, err = f.storage.GetBackupDeleteQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, objectKeys)
+}
+
+func TestBackupDeleteQueueIsEmptyForYDBChunks(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	_, err := f.storage.WriteChunk(
+		f.ctx,
+		"",
+		"snapshot",
+		makeChunk(0, "abc"),
+		false, // useS3
+	)
+	require.NoError(t, err)
+
+	err = f.storage.DeleteSnapshotData(f.ctx, "snapshot")
+	require.NoError(t, err)
+
+	objectKeys, err := f.storage.GetBackupDeleteQueue(f.ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{backup.ChunkMapKey("snapshot")}, objectKeys)
 }

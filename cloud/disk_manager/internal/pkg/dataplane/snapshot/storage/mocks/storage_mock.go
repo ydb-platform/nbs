@@ -10,6 +10,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -134,10 +135,20 @@ func (s *StorageMock) ReadChunkMap(
 	ctx context.Context,
 	snapshotID string,
 	milestoneChunkIndex uint32,
+	includeShallowCopied bool,
 ) (<-chan storage.ChunkMapEntry, <-chan error) {
 
-	args := s.Called(ctx, snapshotID, milestoneChunkIndex)
+	args := s.Called(ctx, snapshotID, milestoneChunkIndex, includeShallowCopied)
 	return args.Get(0).(<-chan storage.ChunkMapEntry), args.Get(1).(<-chan error)
+}
+
+func (s *StorageMock) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+) (persistence.S3Object, error) {
+
+	args := s.Called(ctx, chunkID)
+	return args.Get(0).(persistence.S3Object), args.Error(1)
 }
 
 func (s *StorageMock) ReadChunk(
@@ -256,6 +267,85 @@ func (s *StorageMock) ListSnapshots(
 
 func NewStorageMock() *StorageMock {
 	return &StorageMock{}
+}
+
+func (s *StorageMock) EnqueueBackupChunks(
+	ctx context.Context,
+	entries []storage.BackupChunkQueueEntry,
+) error {
+
+	args := s.Called(ctx, entries)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetBackupChunkQueue(
+	ctx context.Context,
+	limit int,
+) ([]storage.BackupChunkQueueEntry, error) {
+
+	args := s.Called(ctx, limit)
+	return args.Get(0).([]storage.BackupChunkQueueEntry), args.Error(1)
+}
+
+func (s *StorageMock) HasBackupChunkQueueEntries(
+	ctx context.Context,
+	snapshotID string,
+) (bool, error) {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Bool(0), args.Error(1)
+}
+
+func (s *StorageMock) ChunksBackupCompleted(
+	ctx context.Context,
+	entries []storage.BackupChunkQueueEntry,
+) error {
+
+	args := s.Called(ctx, entries)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetBackupChunkQueueLength(
+	ctx context.Context,
+) (uint64, error) {
+
+	args := s.Called(ctx)
+	return args.Get(0).(uint64), args.Error(1)
+}
+
+func (s *StorageMock) ClearBackupChunkQueue(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetBackupDeleteQueue(
+	ctx context.Context,
+	limit int,
+) ([]string, error) {
+
+	args := s.Called(ctx, limit)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func (s *StorageMock) BackupDeletionsCompleted(
+	ctx context.Context,
+	objectKeys []string,
+) error {
+
+	args := s.Called(ctx, objectKeys)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetBackupDeleteQueueLength(
+	ctx context.Context,
+) (uint64, error) {
+
+	args := s.Called(ctx)
+	return args.Get(0).(uint64), args.Error(1)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

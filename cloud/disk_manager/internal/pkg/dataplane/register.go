@@ -191,6 +191,13 @@ func RegisterForExecution(
 		return err
 	}
 
+	deleteBackupObjectsTaskScheduleInterval, err := time.ParseDuration(
+		config.GetDeleteBackupObjectsTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
 	err = taskRegistry.RegisterForExecution(
 		"dataplane.CollectSnapshots",
 		func() tasks.Task {
@@ -230,6 +237,7 @@ func RegisterForExecution(
 				storage:                   storage,
 				storageQuotaReporter:      snapshotStorageQuotaReporter,
 				metricsCollectionInterval: snapshotMetricsCollectionInterval,
+				backupEnabled:             followerS3 != nil,
 			}
 		},
 	)
@@ -281,9 +289,15 @@ func RegisterForExecution(
 
 	if followerS3 != nil {
 		err = taskRegistry.RegisterForExecution(
-			"dataplane.ScheduleBackupChunksTasks",
+			"dataplane.BackupSnapshotChunks",
 			func() tasks.Task {
-				return &scheduleBackupChunksTasks{}
+				return &backupSnapshotChunksTask{
+					storage:    storage,
+					followerS3: followerS3,
+					batchSize: int(
+						config.GetBackupSnapshotChunksBatchSize(),
+					),
+				}
 			},
 		)
 		if err != nil {
@@ -293,7 +307,13 @@ func RegisterForExecution(
 		err = taskRegistry.RegisterForExecution(
 			"dataplane.BackupChunks",
 			func() tasks.Task {
-				return &backupChunksTask{}
+				return &backupChunksTask{
+					storage:     storage,
+					followerS3:  followerS3,
+					batchSize:   int(config.GetBackupChunksTaskBatchSize()),
+					workerCount: int(config.GetBackupChunksTaskWorkerCount()),
+					registry:    metricsRegistry,
+				}
 			},
 		)
 		if err != nil {
@@ -305,6 +325,31 @@ func RegisterForExecution(
 			"dataplane.BackupChunks",
 			tasks.TaskSchedule{
 				ScheduleInterval: backupChunksTaskScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
+
+		err = taskRegistry.RegisterForExecution(
+			"dataplane.DeleteBackupObjects",
+			func() tasks.Task {
+				return &deleteBackupObjectsTask{
+					storage:    storage,
+					followerS3: followerS3,
+					batchSize: int(
+						config.GetDeleteBackupObjectsTaskBatchSize(),
+					),
+				}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"dataplane.DeleteBackupObjects",
+			tasks.TaskSchedule{
+				ScheduleInterval: deleteBackupObjectsTaskScheduleInterval,
 				MaxTasksInflight: 1,
 			},
 		)
@@ -339,6 +384,7 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.DeleteSnapshotData":          func() tasks.Task { return &deleteSnapshotDataTask{} },
 	"dataplane.DeleteDiskFromIncremental":   func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
 	"dataplane.CreateDRBasedDiskCheckpoint": func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
-	"dataplane.ScheduleBackupChunksTasks":   func() tasks.Task { return &scheduleBackupChunksTasks{} },
+	"dataplane.BackupSnapshotChunks":        func() tasks.Task { return &backupSnapshotChunksTask{} },
 	"dataplane.BackupChunks":                func() tasks.Task { return &backupChunksTask{} },
+	"dataplane.DeleteBackupObjects":         func() tasks.Task { return &deleteBackupObjectsTask{} },
 }
