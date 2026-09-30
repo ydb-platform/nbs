@@ -25,6 +25,7 @@ QEMU_HOST = "10.0.2.2"
 
 
 def daemon_log_files(prefix, id, cwd):
+    timestamp = time.time_ns() // 1_000
     files = [
         ("stdout_file", ".out"),
         ("stderr_file", ".err"),
@@ -32,7 +33,8 @@ def daemon_log_files(prefix, id, cwd):
 
     ret = {}
     for tag, suffix in files:
-        name = os.path.abspath(os.path.join(cwd, prefix + '.' + str(id) + suffix))
+        name = os.path.abspath(os.path.join(
+            cwd, f"{prefix}.{id}.{timestamp}{suffix}"))
         with open(name, mode='w'):
             pass
 
@@ -245,8 +247,10 @@ class Qemu:
         self.seqno += 1
 
     def _create_cmd(self):
+        timestamp = time.time_ns() // 1_000
         qemu_serial_log = yatest.common.output_path(
-            os.path.basename(self.rootfs) + "_{}_serial.out".format(self.inst_index))
+            os.path.basename(self.rootfs)
+            + f"_{self.inst_index}_serial.{timestamp}.out")
 
         self.qmp_socket = create_qmp_socket()
 
