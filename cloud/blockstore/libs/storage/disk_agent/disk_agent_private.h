@@ -12,6 +12,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/storage_with_stats.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
@@ -58,7 +59,7 @@ struct TEvDiskAgentPrivate
         TVector<TString> Errors;
         TVector<TString> ConfigMismatchErrors;
         TVector<TString> DevicesWithSuspendedIO;
-        TVector<TString> JournalledDeviceIds;
+        THashMap<TString, NProto::TJournalConfig> JournalledDevices;
 
         TInitAgentCompleted() = default;
 
@@ -67,12 +68,12 @@ struct TEvDiskAgentPrivate
                 TVector<TString> errors,
                 TVector<TString> configMismatchErrors,
                 TVector<TString> devicesWithSuspendedIO,
-                TVector<TString> journalledDeviceIds)
+                THashMap<TString, NProto::TJournalConfig> journalledDevices)
             : Configs(std::move(configs))
             , Errors(std::move(errors))
             , ConfigMismatchErrors(std::move(configMismatchErrors))
             , DevicesWithSuspendedIO(std::move(devicesWithSuspendedIO))
-            , JournalledDeviceIds(std::move(journalledDeviceIds))
+            , JournalledDevices(std::move(journalledDevices))
         {}
     };
 

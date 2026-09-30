@@ -21,11 +21,12 @@ namespace {
 
 auto CreateWriteBlocksRequest(
     const NJournalled::TPageRange& range,
-    ui32 blockSize) -> std::shared_ptr<NProto::TWriteBlocksRequest>
+    ui32 blockSize,
+    ui64 firstBlockIndex) -> std::shared_ptr<NProto::TWriteBlocksRequest>
 {
     auto request = std::make_shared<NProto::TWriteBlocksRequest>();
 
-    request->SetStartIndex(range.FirstPageNo);
+    request->SetStartIndex(firstBlockIndex + range.FirstPageNo);
     request->SetBlockSize(blockSize);
 
     auto& buffers = *request->MutableBlocks()->MutableBuffers();
@@ -40,19 +41,46 @@ auto CreateWriteBlocksRequest(
 
 auto CreateReadBlocksRequest(
     const NJournalled::TPageRangeRef& rangeRef,
-    ui32 blockSize) -> std::shared_ptr<NProto::TReadBlocksRequest>
+    ui32 blockSize,
+    ui64 firstBlockIndex) -> std::shared_ptr<NProto::TReadBlocksRequest>
 {
     auto request = std::make_shared<NProto::TReadBlocksRequest>();
 
-    request->SetStartIndex(rangeRef.FirstPageNo);
+    request->SetStartIndex(firstBlockIndex + rangeRef.FirstPageNo);
     request->SetBlocksCount(rangeRef.PageCount);
     request->SetBlockSize(blockSize);
 
     return request;
 }
 
+// Checks that the pages fit in the region. An unbounded region leaves the
+// bounds to the device itself.
+NProto::TError ValidatePagesInRegion(
+    const TDeviceRegion& region,
+    ui64 firstPageNo,
+    ui64 pageCount)
+{
+    if (region.BlockCount == TDeviceRegion::WholeDevice) {
+        return {};
+    }
+
+    if (firstPageNo >= region.BlockCount ||
+        pageCount > region.BlockCount - firstPageNo)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "pages " << firstPageNo << "x" << pageCount
+                << " are beyond the device: " << region.BlockCount
+                << " pages");
+    }
+
+    return {};
+}
+
 TResultOrError<ui32> ValidateWritePagesRequest(
-    const TVector<NJournalled::TPageRange>& ranges)
+    const TVector<NJournalled::TPageRange>& ranges,
+    const TDeviceRegion& region)
 {
     ui32 blockSize = 0;
 
@@ -83,13 +111,23 @@ TResultOrError<ui32> ValidateWritePagesRequest(
                     << blockSize << ", got " << block.Size());
             }
         }
+
+        if (auto error = ValidatePagesInRegion(
+                region,
+                range.FirstPageNo,
+                range.Pages.size());
+            HasError(error))
+        {
+            return error;
+        }
     }
 
     return blockSize;
 }
 
 NProto::TError ValidateReadPagesRequest(
-    const TVector<NJournalled::TPageRangeRef>& rangeRefs)
+    const TVector<NJournalled::TPageRangeRef>& rangeRefs,
+    const TDeviceRegion& region)
 {
     if (rangeRefs.empty()) {
         return MakeError(E_ARGUMENT, "nothing to read");
@@ -100,6 +138,15 @@ NProto::TError ValidateReadPagesRequest(
             return MakeError(
                 E_ARGUMENT,
                 "page group ref must contain at least one page");
+        }
+
+        if (auto error = ValidatePagesInRegion(
+                region,
+                rangeRef.FirstPageNo,
+                rangeRef.PageCount);
+            HasError(error))
+        {
+            return error;
         }
     }
 
@@ -116,17 +163,20 @@ private:
     const TString DeviceUUID;
     const ui32 BlockSize;
     const TDeviceClientPtr DeviceClient;
+    const TDeviceRegion Region;
 
 public:
     TDeviceAdapter(
             ITimerPtr timer,
             TString deviceUUID,
             ui32 blockSize,
-            TDeviceClientPtr deviceClient)
+            TDeviceClientPtr deviceClient,
+            TDeviceRegion region)
         : Timer(std::move(timer))
         , DeviceUUID(std::move(deviceUUID))
         , BlockSize(blockSize)
         , DeviceClient(std::move(deviceClient))
+        , Region(region)
     {}
 
     // NJournalled::IDevice
@@ -137,7 +187,9 @@ public:
     {
         using TResult = TResultOrError<TVector<TBuffer>>;
 
-        if (auto error = ValidateReadPagesRequest(rangeRefs); HasError(error)) {
+        if (auto error = ValidateReadPagesRequest(rangeRefs, Region);
+            HasError(error))
+        {
             return MakeFuture<TResult>(std::move(error));
         }
 
@@ -154,7 +206,10 @@ public:
             futures.push_back(storageAdapter->ReadBlocks(
                 now,
                 CreateCallContext(),
-                CreateReadBlocksRequest(rangeRef, BlockSize),
+                CreateReadBlocksRequest(
+                    rangeRef,
+                    BlockSize,
+                    Region.FirstBlockIndex),
                 BlockSize,
                 TStringBuf()   // dataBuffer
                 ));
@@ -190,7 +245,7 @@ public:
         -> TFuture<NProto::TError> final
     {
         ui32 requestBlockSize = 0;
-        if (auto [bs, error] = ValidateWritePagesRequest(ranges);
+        if (auto [bs, error] = ValidateWritePagesRequest(ranges, Region);
             HasError(error))
         {
             return MakeFuture(std::move(error));
@@ -211,7 +266,10 @@ public:
             futures.push_back(storageAdapter->WriteBlocks(
                 now,
                 CreateCallContext(),
-                CreateWriteBlocksRequest(range, requestBlockSize),
+                CreateWriteBlocksRequest(
+                    range,
+                    requestBlockSize,
+                    Region.FirstBlockIndex),
                 requestBlockSize,
                 TStringBuf()   // dataBuffer
                 ));
@@ -246,13 +304,15 @@ NJournalled::IDevicePtr CreateDeviceAdapter(
     ITimerPtr timer,
     TString deviceUUID,
     ui32 blockSize,
-    TDeviceClientPtr deviceClient)
+    TDeviceClientPtr deviceClient,
+    TDeviceRegion region)
 {
     return std::make_shared<TDeviceAdapter>(
         std::move(timer),
         std::move(deviceUUID),
         blockSize,
-        std::move(deviceClient));
+        std::move(deviceClient),
+        region);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

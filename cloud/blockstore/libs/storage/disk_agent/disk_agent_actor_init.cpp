@@ -1,5 +1,6 @@
 #include "disk_agent_actor.h"
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/io_request_parser.h>
 #include <cloud/blockstore/libs/storage/disk_agent/actors/multi_agent_write_handler.h>
@@ -71,7 +72,7 @@ void TDiskAgentActor::InitAgent(const TActorContext& ctx)
                     std::move(r.Errors),
                     std::move(r.ConfigMismatchErrors),
                     std::move(r.DevicesWithSuspendedIO),
-                    std::move(r.JournalledDeviceIds));
+                    std::move(r.JournalledDevices));
 
                 actorSystem->Send(
                     new IEventHandle(replyTo, replyTo, response.release()));
@@ -171,7 +172,10 @@ void TDiskAgentActor::HandleInitAgentCompleted(
         }
     }
 
-    StartJournalledDeviceTcpServer(ctx, msg->JournalledDeviceIds);
+    auto error = StartJournalledDeviceTcpServer(ctx, msg->JournalledDevices);
+    if (HasError(error)) {
+        ReportDiskAgentJournalledDeviceTcpServerStartError(FormatError(error));
+    }
 
     LOG_INFO(ctx, TBlockStoreComponents::DISK_AGENT, "Ready to work");
 

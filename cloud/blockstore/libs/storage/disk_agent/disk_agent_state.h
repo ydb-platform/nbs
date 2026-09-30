@@ -23,6 +23,7 @@
 
 #include <library/cpp/threading/future/future.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
 
@@ -94,7 +95,7 @@ public:
         TVector<TString> ConfigMismatchErrors;
         TVector<TString> DevicesWithSuspendedIO;
         TVector<TString> LostDevicesIds;
-        TVector<TString> JournalledDeviceIds;
+        THashMap<TString, NProto::TJournalConfig> JournalledDevices;
 
         TDeviceGuard Guard;
     };
