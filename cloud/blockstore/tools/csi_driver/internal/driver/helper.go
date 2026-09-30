@@ -1,9 +1,15 @@
 package driver
 
 import (
+	"errors"
+
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
+	nbsclient "github.com/ydb-platform/nbs/cloud/blockstore/public/sdk/go/client"
+	nfsclient "github.com/ydb-platform/nbs/cloud/filestore/public/sdk/go/client"
 	storagecoreapi "github.com/ydb-platform/nbs/cloud/storage/core/protos"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func getStorageMediaKind(parameters map[string]string) storagecoreapi.EStorageMediaKind {
@@ -85,4 +91,51 @@ func getNbsVolumeMountMode(
 	}
 
 	return nbsapi.EVolumeMountMode_VOLUME_MOUNT_LOCAL
+}
+
+func getNbsErrorCode(err error) (uint32, bool) {
+	if err == nil {
+		return 0, false
+	}
+
+	var nbsClientErr *nbsclient.ClientError
+	if errors.As(err, &nbsClientErr) {
+		return nbsClientErr.Code, true
+	}
+
+	var nfsClientErr *nfsclient.ClientError
+	if errors.As(err, &nfsClientErr) {
+		return nfsClientErr.Code, true
+	}
+
+	return 0, false
+}
+
+func getGrpcErrorCode(err error) codes.Code {
+	if err == nil {
+		return codes.OK
+	}
+
+	errorCode, ok := getNbsErrorCode(err)
+	if ok {
+		switch errorCode {
+		case nbsclient.E_INVALID_SESSION, nbsclient.E_MOUNT_CONFLICT:
+			return codes.Unavailable
+		case nbsclient.E_GRPC_CANCELLED, nfsclient.E_GRPC_CANCELLED:
+			return codes.Canceled
+		case nbsclient.E_GRPC_UNAVAILABLE, nfsclient.E_GRPC_UNAVAILABLE:
+			return codes.Unavailable
+		case nbsclient.E_GRPC_DEADLINE_EXCEEDED, nfsclient.E_GRPC_DEADLINE_EXCEEDED:
+			return codes.DeadlineExceeded
+		case nbsclient.E_REJECTED, nfsclient.E_REJECTED:
+			return codes.Unavailable
+		}
+	}
+
+	status, ok := status.FromError(err)
+	if !ok {
+		return codes.Internal
+	}
+
+	return status.Code()
 }
