@@ -8,7 +8,7 @@ replacements; readers load once per logical operation and retain the result.
 
 #pragma once
 
-#include "blockstore_config.h"
+#include "blockstore_config_provider.h"
 
 #include <library/cpp/threading/hot_swap/hot_swap.h>
 
@@ -20,6 +20,7 @@ namespace NCloud::NBlockStore {
 
 // The owner of the current Blockstore configuration publication point.
 class TBlockstoreConfigHolder final
+    : public IBlockstoreConfigProvider
 {
 public:
     explicit TBlockstoreConfigHolder(IBlockstoreConfigPtr initialConfig);
@@ -27,7 +28,7 @@ public:
     TBlockstoreConfigHolder(const TBlockstoreConfigHolder&) = delete;
     TBlockstoreConfigHolder& operator=(const TBlockstoreConfigHolder&) = delete;
 
-    [[nodiscard]] IBlockstoreConfigConstPtr Get() const;
+    [[nodiscard]] IBlockstoreConfigConstPtr Get() const override;
 
     // Publish a non-null configuration atomically. Only one writer may call
     // Set().
