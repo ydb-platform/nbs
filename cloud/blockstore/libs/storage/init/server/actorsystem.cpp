@@ -140,7 +140,7 @@ public:
         const auto config = Args.StartupBlockstoreConfig;
         const auto storageConfig = config->GetStorageConfig();
 
-        storageConfig->Register(*appData->Icb);
+        storageConfig->GetControls()->Register(*appData->Icb);
         auto ConfigHolder = InitializeBlockstoreConfigProvider(
             Args.StartupBlockstoreConfig);
 
@@ -161,7 +161,7 @@ public:
                         .StaticConfig = Args.StaticBlockstoreConfigProto,
                         .InitialDynamicConfig = Args.CmsBlockstoreConfig,
                         .StorageConfigControls =
-                            storageConfig->GetStorageConfigControls(),
+                            storageConfig->GetControls(),
                     }),
                     TMailboxType::Revolving,
                     appData->UserPoolId));
@@ -623,10 +623,6 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
 
     const NServer::TServerAppConfig staticServerConfig(
         sArgs.StaticBlockstoreConfigProto.GetServer());
-    Y_ABORT_UNLESS(
-        !staticServerConfig.GetDynamicYamlConfigurationEnabled() ||
-        startupStorageConfig->GetStorageConfigControls());
-
     const bool enableConfigsDispatcher = ShouldEnableConfigsDispatcher(
         staticServerConfig,
         *startupStorageConfig);

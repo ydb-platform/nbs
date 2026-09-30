@@ -1,27 +1,496 @@
 #include "config.h"
 
-#include <library/cpp/testing/unittest/registar.h>
-
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/vector.h>
 
+#include <cmath>
+#include <functional>
 #include <latch>
+#include <limits>
 #include <thread>
+#include <type_traits>
+#include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
+
+namespace {
+
+using TStorageProto = NProto::TStorageServiceConfig;
+
+// Check selective override reset through typed getters, including removal to
+// the compiled fallback and preservation on repeated or unrelated updates.
+template <typename TValue, typename TSetter, typename TGetter>
+void CheckUpdateDefaults(
+    const TString& name,
+    TSetter setter,
+    TGetter getter,
+    TValue initialValue,
+    std::optional<TValue> updatedValue,
+    i64 overrideValue)
+{
+    // Retain the original raw value while sharing the registered controls.
+    NProto::TStorageServiceConfig proto;
+    std::invoke(setter, proto, initialValue);
+    auto controls = std::make_shared<TStorageConfigControls>(proto);
+    const TStorageConfig retained(proto, nullptr, controls);
+    NKikimr::TControlBoard board;
+    controls->Register(board);
+    const TString controlName = "BlockStore_" + name;
+    TAtomic previousValue = {};
+    board.SetValue(controlName, overrideValue, previousValue);
+    UNIT_ASSERT_VALUES_EQUAL(
+        overrideValue,
+        controls->GetOverride(name).value());
+
+    // Keep the override when this field's configured value does not change.
+    controls->UpdateDefaults(proto);
+    UNIT_ASSERT_VALUES_EQUAL(
+        overrideValue,
+        controls->GetOverride(name).value());
+    proto.SetMaxMigrationIoDepth(7);
+    controls->UpdateDefaults(proto);
+    UNIT_ASSERT_VALUES_EQUAL(
+        overrideValue,
+        controls->GetOverride(name).value());
+
+    // Replace or remove this field and expose each snapshot's own raw value.
+    NProto::TStorageServiceConfig nextProto;
+    if (updatedValue) {
+        std::invoke(setter, nextProto, *updatedValue);
+    }
+    const TStorageConfig defaults({}, nullptr);
+    const auto expectedValue = updatedValue.value_or((defaults.*getter)());
+    controls->UpdateDefaults(nextProto);
+    const TStorageConfig updated(nextProto, nullptr, controls);
+    if constexpr (std::is_enum_v<TValue>) {
+        UNIT_ASSERT_EQUAL(expectedValue, (updated.*getter)());
+    } else {
+        UNIT_ASSERT_VALUES_EQUAL(expectedValue, (updated.*getter)());
+    }
+    UNIT_ASSERT(!controls->GetOverride(name));
+    UNIT_ASSERT_EQUAL(initialValue, (retained.*getter)());
+
+    // Preserve a new override on repetition of the last accepted baseline.
+    // A bool has only two values, so override it with the original baseline.
+    i64 nextOverrideValue = overrideValue;
+    if constexpr (std::is_same_v<TValue, bool>) {
+        nextOverrideValue = initialValue;
+    }
+    board.SetValue(controlName, nextOverrideValue, previousValue);
+    const auto nextOverride = controls->GetOverride(name);
+    UNIT_ASSERT(nextOverride);
+    controls->UpdateDefaults(nextProto);
+    UNIT_ASSERT_VALUES_EQUAL(
+        *nextOverride,
+        controls->GetOverride(name).value());
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TConfigTest)
 {
+    // Check changed and unchanged ui32 defaults, including an explicit zero.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForUint32)
+    {
+        CheckUpdateDefaults<ui32>(
+            "WriteBlobThreshold",
+            &TStorageProto::SetWriteBlobThreshold,
+            &TStorageConfig::GetWriteBlobThreshold,
+            100,
+            0,
+            300);
+    }
+
+    // Check ui64 defaults above the range of ui32 without losing high bits.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForUint64)
+    {
+        CheckUpdateDefaults<ui64>(
+            "TargetCompactionBytesPerOp",
+            &TStorageProto::SetTargetCompactionBytesPerOp,
+            &TStorageConfig::GetTargetCompactionBytesPerOp,
+            1ULL << 33,
+            (1ULL << 33) + 1,
+            1LL << 34);
+    }
+
+    // Check that a changed bool clears an override equal to the new baseline.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForBool)
+    {
+        CheckUpdateDefaults<bool>(
+            "HiveProxyFallbackMode",
+            &TStorageProto::SetHiveProxyFallbackMode,
+            &TStorageConfig::GetHiveProxyFallbackMode,
+            true,
+            false,
+            0);
+    }
+
+    // Check duration defaults with millisecond precision and explicit zero.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForDuration)
+    {
+        CheckUpdateDefaults<TDuration>(
+            "HiveLockExpireTimeout",
+            [](auto& proto, TDuration value)
+            {
+                proto.SetHiveLockExpireTimeout(value.MilliSeconds());
+            },
+            &TStorageConfig::GetHiveLockExpireTimeout,
+            TDuration::MilliSeconds(4321),
+            TDuration::Zero(),
+            7654);
+    }
+
+    // Check enum defaults without treating an operator value as the baseline.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForEnum)
+    {
+        CheckUpdateDefaults<NProto::EVolumePreemptionType>(
+            "VolumePreemptionType",
+            &TStorageProto::SetVolumePreemptionType,
+            &TStorageConfig::GetVolumePreemptionType,
+            NProto::PREEMPTION_NONE,
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            NProto::PREEMPTION_MOVE_LEAST_HEAVY);
+    }
+
+    // Check selective override reset for raw double defaults, including
+    // fractional changes, saturation, NaN and compiled fallback.
+    Y_UNIT_TEST(ShouldUpdateDefaultsForDouble)
+    {
+        // Reset the override when only the fractional part changes.
+        CheckUpdateDefaults<double>(
+            "NonReplicatedAgentTimeoutGrowthFactor",
+            &TStorageProto::SetNonReplicatedAgentTimeoutGrowthFactor,
+            &TStorageConfig::GetNonReplicatedAgentTimeoutGrowthFactor,
+            2.5,
+            2.9,
+            10);
+
+        // Check negative values that share the same integer ICB default.
+        CheckUpdateDefaults<double>(
+            "NonReplicatedAgentTimeoutGrowthFactor",
+            &TStorageProto::SetNonReplicatedAgentTimeoutGrowthFactor,
+            &TStorageConfig::GetNonReplicatedAgentTimeoutGrowthFactor,
+            -2.5,
+            -2.9,
+            -10);
+
+        // Check the same fractional change with another double field.
+        CheckUpdateDefaults<double>(
+            "DiskRegistryInitialAgentRejectionThreshold",
+            &TStorageProto::SetDiskRegistryInitialAgentRejectionThreshold,
+            &TStorageConfig::GetDiskRegistryInitialAgentRejectionThreshold,
+            50.5,
+            50.9,
+            80);
+
+        // Reset overrides on removal even if the ICB default stays the same.
+        CheckUpdateDefaults<double>(
+            "NonReplicatedAgentTimeoutGrowthFactor",
+            &TStorageProto::SetNonReplicatedAgentTimeoutGrowthFactor,
+            &TStorageConfig::GetNonReplicatedAgentTimeoutGrowthFactor,
+            2.5,
+            std::nullopt,
+            10);
+        CheckUpdateDefaults<double>(
+            "DiskRegistryInitialAgentRejectionThreshold",
+            &TStorageProto::SetDiskRegistryInitialAgentRejectionThreshold,
+            &TStorageConfig::GetDiskRegistryInitialAgentRejectionThreshold,
+            50.5,
+            std::nullopt,
+            80);
+
+        // Start with an absent field and override its compiled default.
+        constexpr TStringBuf name = "NonReplicatedAgentTimeoutGrowthFactor";
+        auto controls = std::make_shared<TStorageConfigControls>();
+        NKikimr::TControlBoard board;
+        controls->Register(board);
+        const TStorageConfig defaults({}, nullptr);
+        TAtomic previousValue = {};
+        board.SetValue(
+            "BlockStore_NonReplicatedAgentTimeoutGrowthFactor",
+            10,
+            previousValue);
+
+        // Preserve the override when the same default becomes explicit.
+        NProto::TStorageServiceConfig proto;
+        proto.SetNonReplicatedAgentTimeoutGrowthFactor(
+            defaults.GetNonReplicatedAgentTimeoutGrowthFactor());
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            controls->GetOverride(name).value());
+
+        // Preserve it when removal returns to the same compiled fallback.
+        controls->UpdateDefaults({});
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            controls->GetOverride(name).value());
+
+        // Preserve an override on repeated NaN defaults, including a sign
+        // change.
+        proto.SetNonReplicatedAgentTimeoutGrowthFactor(
+            std::numeric_limits<double>::quiet_NaN());
+        controls->UpdateDefaults(proto);
+        board.SetValue(
+            "BlockStore_NonReplicatedAgentTimeoutGrowthFactor",
+            10,
+            previousValue);
+        proto.SetNonReplicatedAgentTimeoutGrowthFactor(
+            -std::numeric_limits<double>::quiet_NaN());
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT(controls->GetOverride(name));
+        UNIT_ASSERT_VALUES_EQUAL(10, controls->GetOverride(name).value());
+
+        // Reset overrides on NaN-to-zero and zero-to-NaN transitions even
+        // though both defaults have the same integer representation.
+        proto.SetNonReplicatedAgentTimeoutGrowthFactor(0);
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT(!controls->GetOverride(name));
+        board.SetValue(
+            "BlockStore_NonReplicatedAgentTimeoutGrowthFactor",
+            10,
+            previousValue);
+        proto.SetNonReplicatedAgentTimeoutGrowthFactor(
+            std::numeric_limits<double>::quiet_NaN());
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT(!controls->GetOverride(name));
+
+        // Reset overrides for distinct raw values that saturate to one limit.
+        CheckUpdateDefaults<double>(
+            "NonReplicatedAgentTimeoutGrowthFactor",
+            &TStorageProto::SetNonReplicatedAgentTimeoutGrowthFactor,
+            &TStorageConfig::GetNonReplicatedAgentTimeoutGrowthFactor,
+            1e100,
+            2e100,
+            10);
+        CheckUpdateDefaults<double>(
+            "DiskRegistryInitialAgentRejectionThreshold",
+            &TStorageProto::SetDiskRegistryInitialAgentRejectionThreshold,
+            &TStorageConfig::GetDiskRegistryInitialAgentRejectionThreshold,
+            -1e100,
+            -2e100,
+            -10);
+    }
+
+    // Check saturated native defaults and raw getters for both double fields
+    // on construction and update, including operator writes and Restore.
+    Y_UNIT_TEST(ShouldSaturateDoubleControls)
+    {
+        // Cover integer boundaries, adjacent doubles, infinities and NaN.
+        const auto min = Min<TAtomicBase>();
+        const auto max = Max<TAtomicBase>();
+        const double infinity = std::numeric_limits<double>::infinity();
+        const double upper =
+            std::ldexp(1.0, std::numeric_limits<TAtomicBase>::digits);
+        const double belowUpper = std::nextafter(upper, 0.0);
+        const double aboveLower = std::nextafter(-upper, 0.0);
+        const std::pair<double, TAtomicBase> cases[] = {
+            {2.9, 2},
+            {-2.9, -2},
+            {0.0, 0},
+            {-0.0, 0},
+            {1e100, max},
+            {-1e100, min},
+            {std::numeric_limits<double>::max(), max},
+            {std::numeric_limits<double>::lowest(), min},
+            {infinity, max},
+            {-infinity, min},
+            {std::numeric_limits<double>::quiet_NaN(), 0},
+            {upper, max},
+            {belowUpper, static_cast<TAtomicBase>(belowUpper)},
+            {std::nextafter(upper, infinity), max},
+            {-upper, min},
+            {aboveLower, static_cast<TAtomicBase>(aboveLower)},
+            {std::nextafter(-upper, -infinity), min},
+        };
+
+        // Exercise each entry point with fresh controls and an independent
+        // board.
+        const auto checkField =
+            [&](const TString& name, auto setter, auto getter)
+        {
+            for (const auto& [rawValue, nativeDefault]: cases) {
+                for (const bool initializeFromProto: {true, false}) {
+                    TStorageProto proto;
+                    std::invoke(setter, proto, rawValue);
+                    auto controls = std::make_shared<TStorageConfigControls>(
+                        initializeFromProto ? proto : TStorageProto());
+                    NKikimr::TControlBoard board;
+                    controls->Register(board);
+                    const TString controlName = "BlockStore_" + name;
+                    NKikimr::TControlWrapper control;
+                    UNIT_ASSERT(
+                        !board.RegisterSharedControl(control, controlName));
+                    if (!initializeFromProto) {
+                        controls->UpdateDefaults(proto);
+                    }
+                    const TStorageConfig config(proto, nullptr, controls);
+
+                    // Expose the integer representation while retaining the raw
+                    // double, including NaN and the sign of zero.
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        nativeDefault,
+                        control.GetDefault());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        nativeDefault,
+                        static_cast<TAtomicBase>(control));
+                    UNIT_ASSERT(!controls->GetOverride(name));
+                    const double actual = (config.*getter)();
+                    if (std::isnan(rawValue)) {
+                        UNIT_ASSERT(std::isnan(actual));
+                    } else {
+                        UNIT_ASSERT_VALUES_EQUAL(rawValue, actual);
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            std::signbit(rawValue),
+                            std::signbit(actual));
+                    }
+
+                    // Preserve an operator override on the same raw default.
+                    TAtomic previousValue = {};
+                    board.SetValue(controlName, 123, previousValue);
+                    controls->UpdateDefaults(proto);
+                    UNIT_ASSERT_VALUES_EQUAL(123, (config.*getter)());
+
+                    // Restore the native default and resume reading raw double.
+                    board.RestoreDefault(controlName);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        nativeDefault,
+                        control.GetDefault());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        nativeDefault,
+                        static_cast<TAtomicBase>(control));
+                    UNIT_ASSERT(!controls->GetOverride(name));
+                    if (std::isnan(rawValue)) {
+                        UNIT_ASSERT(std::isnan((config.*getter)()));
+                    } else {
+                        UNIT_ASSERT_VALUES_EQUAL(rawValue, (config.*getter)());
+                    }
+                }
+            }
+        };
+        checkField(
+            "NonReplicatedAgentTimeoutGrowthFactor",
+            &TStorageProto::SetNonReplicatedAgentTimeoutGrowthFactor,
+            &TStorageConfig::GetNonReplicatedAgentTimeoutGrowthFactor);
+        checkField(
+            "DiskRegistryInitialAgentRejectionThreshold",
+            &TStorageProto::SetDiskRegistryInitialAgentRejectionThreshold,
+            &TStorageConfig::GetDiskRegistryInitialAgentRejectionThreshold);
+    }
+
+    // Check that shared controls expose compiled defaults on the native board
+    // and treat an explicit equal-to-default value as no override.
+    Y_UNIT_TEST(ShouldUseCompiledDefaultsForSharedControls)
+    {
+        // Observe the registered control through another wrapper on the board.
+        auto controls = std::make_shared<TStorageConfigControls>();
+        NKikimr::TControlBoard controlBoard;
+        controls->Register(controlBoard);
+        NKikimr::TControlWrapper control;
+        UNIT_ASSERT(!controlBoard.RegisterSharedControl(
+            control,
+            "BlockStore_WriteBlobThreshold"));
+        const TStorageConfig defaultConfig({}, nullptr);
+        const auto defaultValue = defaultConfig.GetWriteBlobThreshold();
+        UNIT_ASSERT_VALUES_EQUAL(defaultValue, control.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(defaultValue, static_cast<i64>(control));
+
+        // Keep a distinct raw value to expose the equal-to-default limitation.
+        NProto::TStorageServiceConfig proto;
+        proto.SetWriteBlobThreshold(defaultValue + 1);
+        const TStorageConfig config(proto, nullptr, controls);
+        TAtomic previousValue = {};
+        controlBoard.SetValue(
+            "BlockStore_WriteBlobThreshold",
+            defaultValue,
+            previousValue);
+        UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            defaultValue + 1,
+            config.GetWriteBlobThreshold());
+    }
+
+    // Check native defaults, explicit zero and false, compiled fallback, and
+    // Restore while retaining a snapshot with its own raw values.
+    Y_UNIT_TEST(ShouldUpdateDefaultsWithoutChangingRetainedProto)
+    {
+        // Initialize the shared controls from a startup configuration.
+        auto controls = std::make_shared<TStorageConfigControls>();
+        NProto::TStorageServiceConfig proto;
+        proto.SetWriteBlobThreshold(100);
+        proto.SetHiveLockExpireTimeout(4321);
+        proto.SetHiveProxyFallbackMode(true);
+        controls->UpdateDefaults(proto);
+        const TStorageConfig retained(proto, nullptr, controls);
+        NKikimr::TControlBoard board;
+        controls->Register(board);
+        NKikimr::TControlWrapper threshold;
+        NKikimr::TControlWrapper timeout;
+        NKikimr::TControlWrapper fallbackMode;
+        UNIT_ASSERT(!board.RegisterSharedControl(
+            threshold,
+            "BlockStore_WriteBlobThreshold"));
+        UNIT_ASSERT(!board.RegisterSharedControl(
+            timeout,
+            "BlockStore_HiveLockExpireTimeout"));
+        UNIT_ASSERT(!board.RegisterSharedControl(
+            fallbackMode,
+            "BlockStore_HiveProxyFallbackMode"));
+        UNIT_ASSERT_VALUES_EQUAL(100, threshold.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(4321, timeout.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(1, fallbackMode.GetDefault());
+
+        // Update Default even when the operator already selected the new base.
+        TAtomic previousValue = {};
+        board.SetValue("BlockStore_WriteBlobThreshold", 200, previousValue);
+        proto.SetWriteBlobThreshold(200);
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT_VALUES_EQUAL(200, threshold.GetDefault());
+        UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
+        UNIT_ASSERT_VALUES_EQUAL(100, retained.GetWriteBlobThreshold());
+
+        // Preserve an override on an unchanged base, then restore only Value.
+        board.SetValue("BlockStore_WriteBlobThreshold", 300, previousValue);
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT_VALUES_EQUAL(300, retained.GetWriteBlobThreshold());
+        board.RestoreDefault("BlockStore_WriteBlobThreshold");
+        UNIT_ASSERT_VALUES_EQUAL(200, threshold.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(200, static_cast<i64>(threshold));
+        UNIT_ASSERT_VALUES_EQUAL(100, retained.GetWriteBlobThreshold());
+
+        // Honor explicit zero and false instead of compiled defaults.
+        proto.SetWriteBlobThreshold(0);
+        proto.SetHiveLockExpireTimeout(0);
+        proto.SetHiveProxyFallbackMode(false);
+        controls->UpdateDefaults(proto);
+        UNIT_ASSERT_VALUES_EQUAL(0, threshold.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(0, timeout.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(0, fallbackMode.GetDefault());
+
+        // Recover compiled defaults when the raw configuration omits fields.
+        controls->UpdateDefaults({});
+        const TStorageConfig defaults({}, nullptr);
+        UNIT_ASSERT_VALUES_EQUAL(
+            defaults.GetWriteBlobThreshold(),
+            threshold.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(
+            defaults.GetHiveLockExpireTimeout().MilliSeconds(),
+            timeout.GetDefault());
+        UNIT_ASSERT_VALUES_EQUAL(100, retained.GetWriteBlobThreshold());
+    }
+
     Y_UNIT_TEST(ShouldUpdateHiveProxyFallbackModeViaImmediateControlBoard)
     {
         auto config = std::make_shared<TStorageConfig>(
             NProto::TStorageServiceConfig{},
             std::make_shared<NFeatures::TFeaturesConfig>());
         NKikimr::TControlBoard controlBoard;
-        config->Register(controlBoard);
+        config->GetControls()->Register(controlBoard);
 
         UNIT_ASSERT(!config->GetHiveProxyFallbackMode());
 
@@ -34,7 +503,9 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT(config->GetHiveProxyFallbackMode());
     }
 
-    Y_UNIT_TEST(ShouldSetAndRestoreConfigBoundControlsViaIcb)
+    // Check that controls created by a config can be reused with other protos,
+    // while Restore exposes each config's own raw value.
+    Y_UNIT_TEST(ShouldReuseAutomaticallyCreatedControlsViaIcb)
     {
         // Verify that ICB overrides all configurations when one configuration
         // default equals the ICB value and the other two defaults differ.
@@ -43,27 +514,29 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         auto first = std::make_shared<TStorageConfig>(
             firstProto,
             std::make_shared<NFeatures::TFeaturesConfig>());
-        UNIT_ASSERT(!first->GetStorageConfigControls());
+        auto controls = first->GetControls();
+        UNIT_ASSERT(controls);
 
         NProto::TStorageServiceConfig secondProto;
         secondProto.SetWriteBlobThreshold(200);
         auto second = std::make_shared<TStorageConfig>(
             secondProto,
             std::make_shared<NFeatures::TFeaturesConfig>(),
-            nullptr);
-        UNIT_ASSERT(!second->GetStorageConfigControls());
+            controls);
+        UNIT_ASSERT(second->GetControls() == controls);
 
         NProto::TStorageServiceConfig thirdProto;
         thirdProto.SetWriteBlobThreshold(300);
         auto third = std::make_shared<TStorageConfig>(
             thirdProto,
-            std::make_shared<NFeatures::TFeaturesConfig>());
-        UNIT_ASSERT(!third->GetStorageConfigControls());
+            std::make_shared<NFeatures::TFeaturesConfig>(),
+            controls);
+        UNIT_ASSERT(third->GetControls() == controls);
 
         NKikimr::TControlBoard controlBoard;
-        first->Register(controlBoard);
-        second->Register(controlBoard);
-        third->Register(controlBoard);
+        controls->Register(controlBoard);
+        second->GetControls()->Register(controlBoard);
+        third->GetControls()->Register(controlBoard);
 
         TAtomic previousValue = {};
         UNIT_ASSERT(!controlBoard.SetValue(
@@ -81,13 +554,13 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(300, third->GetWriteBlobThreshold());
     }
 
-    Y_UNIT_TEST(ShouldSetAndRestoreConfigIndependentControlsViaIcb)
+    // Check explicit control sharing and per-config raw fallback after Restore.
+    Y_UNIT_TEST(ShouldSetAndRestoreSharedControlsViaIcb)
     {
         // Verify that ICB overrides all configurations when one configuration
         // default equals the ICB value and the other two defaults differ.
         auto controls = std::make_shared<TStorageConfigControls>();
         UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
-        UNIT_ASSERT(!controls->RestoreDefault("WriteBlobThreshold"));
 
         NKikimr::TControlBoard controlBoard;
         controls->Register(controlBoard);
@@ -99,7 +572,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             firstProto,
             std::make_shared<NFeatures::TFeaturesConfig>(),
             controls);
-        UNIT_ASSERT(first->GetStorageConfigControls() == controls);
+        UNIT_ASSERT(first->GetControls() == controls);
 
         NProto::TStorageServiceConfig secondProto;
         secondProto.SetWriteBlobThreshold(200);
@@ -107,7 +580,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             secondProto,
             std::make_shared<NFeatures::TFeaturesConfig>(),
             controls);
-        UNIT_ASSERT(second->GetStorageConfigControls() == controls);
+        UNIT_ASSERT(second->GetControls() == controls);
 
         NProto::TStorageServiceConfig thirdProto;
         thirdProto.SetWriteBlobThreshold(300);
@@ -115,7 +588,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             thirdProto,
             std::make_shared<NFeatures::TFeaturesConfig>(),
             controls);
-        UNIT_ASSERT(third->GetStorageConfigControls() == controls);
+        UNIT_ASSERT(third->GetControls() == controls);
 
         UNIT_ASSERT_VALUES_EQUAL(100, first->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
@@ -134,15 +607,15 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(200, third->GetWriteBlobThreshold());
 
-        UNIT_ASSERT(controls->RestoreDefault("WriteBlobThreshold"));
+        controlBoard.RestoreDefault("BlockStore_WriteBlobThreshold");
         UNIT_ASSERT(!controls->GetOverride("WriteBlobThreshold"));
         UNIT_ASSERT_VALUES_EQUAL(100, first->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(200, second->GetWriteBlobThreshold());
         UNIT_ASSERT_VALUES_EQUAL(300, third->GetWriteBlobThreshold());
-        UNIT_ASSERT(!controls->RestoreDefault("UnknownField"));
     }
 
-    Y_UNIT_TEST(ShouldRegisterConfigIndependentControlsConcurrently)
+    // Check that concurrent registration of the same controls is idempotent.
+    Y_UNIT_TEST(ShouldRegisterSharedControlsConcurrently)
     {
         auto controls = std::make_shared<TStorageConfigControls>();
         NKikimr::TControlBoard controlBoard;
@@ -175,6 +648,8 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(100, *override);
     }
 
+    // Check that copies keep live controls and independent raw protos after
+    // destroying the original config, with explicit or automatic controls.
     Y_UNIT_TEST(ShouldCopyConfigAndShareControlsViaIcb)
     {
         const auto test = [](TStorageConfigControlsPtr controls) {
@@ -189,7 +664,8 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                     proto,
                     std::make_shared<NFeatures::TFeaturesConfig>(),
                     controls);
-                source->Register(controlBoard);
+                controls = source->GetControls();
+                controls->Register(controlBoard);
 
                 TAtomic previousValue = {};
                 UNIT_ASSERT(!controlBoard.SetValue(
@@ -199,7 +675,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
 
                 copy = std::make_shared<TStorageConfig>(*source);
                 UNIT_ASSERT_VALUES_EQUAL(200, copy->GetWriteBlobThreshold());
-                UNIT_ASSERT(copy->GetStorageConfigControls() == controls);
+                UNIT_ASSERT(copy->GetControls() == controls);
 
                 source->SetVolumePreemptionType(
                     NProto::PREEMPTION_MOVE_MOST_HEAVY);
@@ -223,7 +699,9 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         test(nullptr);
     }
 
-    Y_UNIT_TEST(ShouldMergeConfigBoundControlsViaIcb)
+    // Check that patching a config with automatically created controls keeps
+    // live ICB overrides and restores patched raw values.
+    Y_UNIT_TEST(ShouldMergeAutomaticallyCreatedControlsViaIcb)
     {
         NProto::TStorageServiceConfig globalConfigProto;
         globalConfigProto.SetMaxMigrationIoDepth(4);
@@ -232,7 +710,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             std::make_shared<NFeatures::TFeaturesConfig>());
 
         NKikimr::TControlBoard controlBoard;
-        globalConfig->Register(controlBoard);
+        globalConfig->GetControls()->Register(controlBoard);
 
         TAtomic previousValue = {};
         UNIT_ASSERT(!controlBoard.SetValue(
@@ -240,30 +718,36 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             8,
             previousValue));
 
+        // Keep ICB above the patch without copying the override into its proto.
         NProto::TStorageServiceConfig patch;
         patch.SetMaxMigrationIoDepth(1);
         auto config = TStorageConfig::Merge(globalConfig, patch);
 
         UNIT_ASSERT_UNEQUAL(config, globalConfig);
-        UNIT_ASSERT(!config->GetStorageConfigControls());
-        UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
+        UNIT_ASSERT(config->GetControls());
+        UNIT_ASSERT(
+            config->GetControls() == globalConfig->GetControls());
+        UNIT_ASSERT_VALUES_EQUAL(8, config->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(
-            1,
+            8,
             config->GetEffectiveStorageConfigProto().GetMaxMigrationIoDepth());
 
+        // Observe later operator writes through both configurations.
         UNIT_ASSERT(!controlBoard.SetValue(
             "BlockStore_MaxMigrationIoDepth",
             16,
             previousValue));
         UNIT_ASSERT_VALUES_EQUAL(16, globalConfig->GetMaxMigrationIoDepth());
-        UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
+        UNIT_ASSERT_VALUES_EQUAL(16, config->GetMaxMigrationIoDepth());
 
+        // Restore each configuration's own raw value.
         controlBoard.RestoreDefault("BlockStore_MaxMigrationIoDepth");
         UNIT_ASSERT_VALUES_EQUAL(4, globalConfig->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
     }
 
-    Y_UNIT_TEST(ShouldMergeConfigIndependentControlsViaIcb)
+    // Check that Merge retains supplied controls and applies ICB above a patch.
+    Y_UNIT_TEST(ShouldMergeSuppliedControlsViaIcb)
     {
         auto controls = std::make_shared<TStorageConfigControls>();
         NKikimr::TControlBoard controlBoard;
@@ -287,7 +771,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         auto config = TStorageConfig::Merge(globalConfig, patch);
 
         UNIT_ASSERT_UNEQUAL(config, globalConfig);
-        UNIT_ASSERT(config->GetStorageConfigControls() == controls);
+        UNIT_ASSERT(config->GetControls() == controls);
         UNIT_ASSERT_VALUES_EQUAL(8, config->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(
             8,
@@ -300,7 +784,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
         UNIT_ASSERT_VALUES_EQUAL(16, globalConfig->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(16, config->GetMaxMigrationIoDepth());
 
-        UNIT_ASSERT(controls->RestoreDefault("MaxMigrationIoDepth"));
+        controlBoard.RestoreDefault("BlockStore_MaxMigrationIoDepth");
         UNIT_ASSERT_VALUES_EQUAL(4, globalConfig->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(1, config->GetMaxMigrationIoDepth());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -375,7 +859,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             globalConfigProto,
             std::make_shared<NFeatures::TFeaturesConfig>());
 
-        globalConfig->Register(controlBoard);
+        globalConfig->GetControls()->Register(controlBoard);
 
         UNIT_ASSERT_VALUES_EQUAL(
             globalConfigProto.GetMaxMigrationBandwidth(),
@@ -459,7 +943,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             config->GetMaxMigrationBandwidth());
 
         UNIT_ASSERT_VALUES_EQUAL(
-            maxMigrationIoDepthPatch,
+            maxMigrationIoDepthICB,
             config->GetMaxMigrationIoDepth());
 
         UNIT_ASSERT_VALUES_EQUAL(
@@ -504,7 +988,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                 overriddenConfig->GetAuthorizationMode());
 
             NKikimr::TControlBoard controlBoard;
-            overriddenConfig->Register(controlBoard);
+            overriddenConfig->GetControls()->Register(controlBoard);
 
             UNIT_ASSERT_VALUES_EQUAL(
                 400,
@@ -572,7 +1056,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
                 overriddenConfig->GetAuthorizationMode());
 
             NKikimr::TControlBoard controlBoard;
-            overriddenConfig->Register(controlBoard);
+            overriddenConfig->GetControls()->Register(controlBoard);
 
             TAtomic prevValue{};
 
@@ -652,7 +1136,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             overriddenConfig->GetDiskRegistryInitialAgentRejectionThreshold());
 
         NKikimr::TControlBoard controlBoard;
-        overriddenConfig->Register(controlBoard);
+        overriddenConfig->GetControls()->Register(controlBoard);
 
         UNIT_ASSERT_VALUES_EQUAL(
             2.5,
@@ -699,7 +1183,7 @@ Y_UNIT_TEST_SUITE(TConfigTest)
             overriddenConfig->GetDiskRegistryInitialAgentRejectionThreshold());
 
         NKikimr::TControlBoard controlBoard;
-        overriddenConfig->Register(controlBoard);
+        overriddenConfig->GetControls()->Register(controlBoard);
 
         UNIT_ASSERT_VALUES_EQUAL(
             -2.5,

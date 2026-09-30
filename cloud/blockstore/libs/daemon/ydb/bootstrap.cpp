@@ -667,11 +667,16 @@ void TBootstrapYdb::InitKikimrService()
         extraParameters.DiskAgent.NetworkMbitThroughput =
             Configs->DiskAgentConfig->GetNetworkMbitThroughput();
 
-        StartupBlockstoreConfig = MakeBlockstoreConfig(
+        const auto mergedConfig = MergeBlockstoreConfig(
             startupBlockstoreConfigProto,
-            cmsBlockstoreConfig,
+            cmsBlockstoreConfig);
+        StartupBlockstoreConfig = MakeBlockstoreConfig(
+            mergedConfig,
+            {},
             Configs->StorageConfigControls,
             std::move(extraParameters));
+        Configs->StorageConfigControls->UpdateDefaults(
+            mergedConfig.GetStorageService());
 
         STORAGE_INFO(
             (cmsBlockstoreConfig.ByteSizeLong()

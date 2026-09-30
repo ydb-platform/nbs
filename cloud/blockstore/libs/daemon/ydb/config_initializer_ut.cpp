@@ -19,6 +19,7 @@
 #include <cloud/storage/core/libs/kikimr/actorsystem.h>
 #include <cloud/storage/core/libs/version/version.h>
 
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/protos/blobstorage.pb.h>
 #include <contrib/ydb/core/protos/feature_flags.pb.h>
 
@@ -240,7 +241,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 staticValue,
                 ci.GetDynamicYamlConfigurationStaticallyEnabled());
-            UNIT_ASSERT_VALUES_EQUAL(staticValue, controls != nullptr);
+            UNIT_ASSERT(controls);
 
             // Apply CMS with the opposite DynamicYamlConfigurationEnabled
             // value.
@@ -259,7 +260,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
             UNIT_ASSERT_EQUAL(
                 controls,
-                ci.StorageConfig->GetStorageConfigControls().get());
+                ci.StorageConfig->GetControls().get());
             UNIT_ASSERT_VALUES_EQUAL(
                 staticValue,
                 staticConfig.GetServer()
@@ -276,10 +277,25 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
             UNIT_ASSERT_EQUAL(
                 controls,
-                ci.StorageConfig->GetStorageConfigControls().get());
+                ci.StorageConfig->GetControls().get());
             UNIT_ASSERT_VALUES_EQUAL(
                 staticText,
                 staticConfig.SerializeAsString());
+
+            // Reuse controls and update their defaults for startup CMS changes
+            // regardless of whether runtime dynamic configuration is enabled.
+            ci.ApplyStorageServiceConfig("WriteBlobThreshold: 123");
+            UNIT_ASSERT_EQUAL(controls, ci.StorageConfigControls.get());
+            UNIT_ASSERT_EQUAL(
+                controls,
+                ci.StorageConfig->GetControls().get());
+            NKikimr::TControlBoard board;
+            controls->Register(board);
+            NKikimr::TControlWrapper control;
+            UNIT_ASSERT(!board.RegisterSharedControl(
+                control,
+                "BlockStore_WriteBlobThreshold"));
+            UNIT_ASSERT_VALUES_EQUAL(123, control.GetDefault());
         }
     }
 
@@ -432,8 +448,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             fields.size());
     }
 
-    // Verify that the Server flag selects shared controls before other sections
-    // are initialized.
+    // Verify that storage initialization creates shared controls before the
+    // remaining sections are initialized.
     Y_UNIT_TEST(ShouldInitializeSharedControlsFromServerConfig)
     {
         // Initialize ServerConfig with dynamic YAML enabled.
