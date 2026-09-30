@@ -61,6 +61,7 @@ private:
     ITimerPtr Timer;
     ISchedulerPtr Scheduler;
     ITaskQueuePtr BackgroundThreadPool;
+    ITaskQueuePtr LongRunningTaskExecutor;
     IActorSystemPtr ActorSystem;
     IAsyncLoggerPtr AsyncLogger;
     ILoggingServicePtr Logging;

@@ -3,6 +3,9 @@
 #include "message.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/task_queue.h>
+
+#include <utility>
 
 #include <util/generic/string.h>
 #include <util/generic/yexception.h>
@@ -11,71 +14,68 @@
 
 namespace NCloud::NNetlink {
 
-class TNetlinkSocket
+template <typename TResponse = TNetlinkMessage, typename TRequest>
+NThreading::TFuture<TNetlinkResponse<TResponse>> Send(
+    ITaskQueuePtr executor,
+    TRequest msg,
+    ui32 socketTimeoutMs = 100)
 {
-private:
-    TSocket Socket;
-    ui32 SocketTimeoutMs;
-
-public:
-    TNetlinkSocket(ui32 socketTimeoutMs = 100)
-        : Socket(::socket(PF_NETLINK, SOCK_RAW, NETLINK_GENERIC))
-        , SocketTimeoutMs(socketTimeoutMs)
-    {
-        if (Socket < 0) {
-            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(LastSystemError()))
-                << "Failed to create netlink socket";
-        }
-        Socket.SetSocketTimeout(0, SocketTimeoutMs);
-    }
-
-    template <typename TNetlinkMessage>
-    void Send(const TNetlinkMessage& msg)
-    {
-        auto ret = Socket.Send(&msg, sizeof(msg));
-        if (ret == -1) {
-            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(LastSystemError()))
-                << "Failed to send netlink message";
-        }
-    }
-
-    template <typename T>
-    void Receive(TNetlinkResponse<T>& response)
-    {
-        auto ret = Socket.Recv(&response, sizeof(response));
-        if (ret < 0) {
-            STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(LastSystemError()))
-                << "Failed to receive netlink message";
-        }
-
-        if (response.NetlinkError.MessageHeader.nlmsg_type == NLMSG_ERROR) {
-            if (response.NetlinkError.MessageError.error != 0) {
+    auto sent = executor->Execute(
+        [msg = std::move(msg), socketTimeoutMs]() mutable {
+            TSocket socket(::socket(PF_NETLINK, SOCK_RAW, NETLINK_GENERIC));
+            if (socket < 0) {
                 STORAGE_THROW_SERVICE_ERROR(
-                    MAKE_SYSTEM_ERROR(response.NetlinkError.MessageError.error))
-                    << "Netlink error";
+                    MAKE_SYSTEM_ERROR(LastSystemError()))
+                    << "Failed to create netlink socket";
             }
-        }
+            socket.SetSocketTimeout(0, socketTimeoutMs);
 
-        if (!NLMSG_OK(&response.NetlinkError.MessageHeader, ret)) {
-            STORAGE_THROW_SERVICE_ERROR(MAKE_ERROR(E_FAIL))
-                << "Netlink message has incorrect format";
-        }
+            auto ret = socket.Send(&msg, sizeof(msg));
+            if (ret == -1) {
+                STORAGE_THROW_SERVICE_ERROR(
+                    MAKE_SYSTEM_ERROR(LastSystemError()))
+                    << "Failed to send netlink message";
+            }
+            return socket;
+        });
 
-        response.Msg.Validate();
-        return;
-    }
-};
+    return sent.Apply([executor = std::move(executor)](const auto& result) {
+        return executor->Execute([socket = result.GetValue()]() mutable {
+            TNetlinkResponse<TResponse> response;
+            auto ret = socket.Recv(&response, sizeof(response));
+            if (ret < 0) {
+                STORAGE_THROW_SERVICE_ERROR(
+                    MAKE_SYSTEM_ERROR(LastSystemError()))
+                    << "Failed to receive netlink message";
+            }
+            if (response.NetlinkError.MessageHeader.nlmsg_type == NLMSG_ERROR) {
+                if (response.NetlinkError.MessageError.error != 0) {
+                    STORAGE_THROW_SERVICE_ERROR(MAKE_SYSTEM_ERROR(
+                        response.NetlinkError.MessageError.error))
+                        << "Netlink error";
+                }
+            }
+            if (!NLMSG_OK(&response.NetlinkError.MessageHeader, ret)) {
+                STORAGE_THROW_SERVICE_ERROR(MAKE_ERROR(E_FAIL))
+                    << "Netlink message has incorrect format";
+            }
+            response.Msg.Validate();
+            return response;
+        });
+    });
+}
 
 template <size_t FamilyNameLength>
-ui16 GetFamilyId(const char (&familyName)[FamilyNameLength])
+NThreading::TFuture<ui16> GetFamilyId(
+    ITaskQueuePtr executor,
+    const char (&familyName)[FamilyNameLength])
 {
-    NNetlink::TNetlinkSocket socket;
-    socket.Send(NNetlink::TNetlinkFamilyIdRequest(familyName));
-    NNetlink::TNetlinkResponse<
-        NNetlink::TNetlinkFamilyIdResponse<FamilyNameLength>>
-        response;
-    socket.Receive(response);
-    return response.Msg.FamilyId;
+    return Send<TNetlinkFamilyIdResponse<FamilyNameLength>>(
+        std::move(executor),
+        TNetlinkFamilyIdRequest(familyName))
+        .Apply([](const auto& result) {
+            return result.GetValue().Msg.FamilyId;
+        });
 }
 
 }   // namespace NCloud::NNetlink

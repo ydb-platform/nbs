@@ -1412,9 +1412,10 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
     endpoint->Volume.SetBlocksCount(sessionInfo.Volume.GetBlocksCount());
     endpoint->Volume.SetBlockSize(sessionInfo.Volume.GetBlockSize());
 
-    auto error = endpoint->Device->Resize(
+    auto resize = it->second->Device->Resize(
         sessionInfo.Volume.GetBlocksCount() *
-        sessionInfo.Volume.GetBlockSize()).GetValueSync();
+        sessionInfo.Volume.GetBlockSize());
+    auto error = Executor->WaitFor(resize);
     if (HasError(error)) {
         return TErrorResponse(error);
     }

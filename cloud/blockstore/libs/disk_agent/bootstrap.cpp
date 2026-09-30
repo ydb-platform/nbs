@@ -276,6 +276,7 @@ void TBootstrap::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
     BackgroundThreadPool = CreateThreadPool("Background", 1);
+    LongRunningTaskExecutor = CreateLongRunningTaskExecutor("Netlink");
 
     if (!InitKikimrService()) {
         InitHTTPServer();
@@ -529,7 +530,8 @@ bool TBootstrap::InitKikimrService()
     StatsFetcher = NCloud::NStorage::BuildStatsFetcher(
         Configs->DiagnosticsConfig->GetStatsFetcherType(),
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
-        Log);
+        Log,
+        LongRunningTaskExecutor);
 
     STORAGE_INFO("StatsFetcher initialized");
 
