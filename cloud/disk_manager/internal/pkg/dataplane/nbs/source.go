@@ -29,7 +29,7 @@ type DiskSource interface {
 
 type diskSource struct {
 	client           nbs.Client
-	session          *nbs.Session
+	session          nbs.Session
 	diskID           string
 	baseCheckpointID string
 	checkpointID     string
@@ -325,7 +325,7 @@ func NewDiskSource(
 		dataDiskID = proxyDiskID
 	}
 
-	var session *nbs.Session
+	var session nbs.Session
 	var err error
 	if mountLocally {
 		session, err = client.MountLocalRO(ctx, dataDiskID, encryption)

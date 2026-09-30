@@ -21,7 +21,7 @@ type DiskTarget interface {
 
 type diskTarget struct {
 	client           nbs.Client
-	session          *nbs.Session
+	session          nbs.Session
 	blockSize        uint32
 	blockCount       uint64
 	blocksInChunk    uint64
