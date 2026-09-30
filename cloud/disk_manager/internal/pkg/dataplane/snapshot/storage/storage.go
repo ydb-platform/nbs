@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,6 +34,14 @@ type SnapshotMeta struct {
 
 type ChunkMapEntry struct {
 	ChunkIndex uint32
+	ChunkID    string
+	StoredInS3 bool
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type BackupChunkQueueEntry struct {
+	SnapshotID string
 	ChunkID    string
 	StoredInS3 bool
 }
@@ -103,6 +112,13 @@ type Storage interface {
 
 	ReadChunk(ctx context.Context, chunk *common.Chunk) error
 
+	// Returns the chunk as an s3 chunk object, also for chunks stored in ydb.
+	ReadChunkBlob(
+		ctx context.Context,
+		chunkID string,
+		storedInS3 bool,
+	) (persistence.S3Object, error)
+
 	CheckSnapshotReady(
 		ctx context.Context,
 		snapshotID string,
@@ -146,4 +162,43 @@ type Storage interface {
 	) (snapshotID string, checkpointID string, err error)
 
 	ListSnapshots(ctx context.Context) (tasks_common.StringSet, error)
+
+	EnqueueBackupChunks(
+		ctx context.Context,
+		snapshotID string,
+		entries []BackupChunkQueueEntry,
+	) error
+
+	GetQueuedChunksToBackup(
+		ctx context.Context,
+		limit int,
+	) ([]BackupChunkQueueEntry, error)
+
+	GetBackedUpChunkCount(
+		ctx context.Context,
+		snapshotID string,
+	) (uint64, error)
+
+	ChunksBackupCompleted(
+		ctx context.Context,
+		entries []BackupChunkQueueEntry,
+	) error
+
+	// Returns the number of cleared entries: limit, or fewer if there are no
+	// more completed entries of the snapshot.
+	ClearCompletedBackupChunkQueueEntries(
+		ctx context.Context,
+		snapshotID string,
+		limit int,
+	) (int, error)
+
+	// Used for monitoring only.
+	GetBackupChunkQueueLength(ctx context.Context) (uint64, error)
+
+	GetBackupDeleteQueue(ctx context.Context, limit int) ([]string, error)
+
+	BackupDeletionsCompleted(ctx context.Context, objectKeys []string) error
+
+	// Used for monitoring only.
+	GetBackupDeleteQueueLength(ctx context.Context) (uint64, error)
 }

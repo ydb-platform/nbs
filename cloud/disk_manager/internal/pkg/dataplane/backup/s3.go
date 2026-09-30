@@ -9,40 +9,39 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type FollowerS3 struct {
+type S3 struct {
 	s3        *persistence.S3Client
 	bucket    string
 	keyPrefix string
 }
 
-func NewFollowerS3(
+func NewS3(
 	s3 *persistence.S3Client,
 	bucket string,
 	keyPrefix string,
-) *FollowerS3 {
+) *S3 {
 
-	return &FollowerS3{
+	return &S3{
 		s3:        s3,
 		bucket:    bucket,
 		keyPrefix: keyPrefix,
 	}
 }
 
-func (s *FollowerS3) PutObject(
+func (s *S3) PutObject(
 	ctx context.Context,
 	key string,
-	data []byte,
+	object persistence.S3Object,
 ) error {
 
-	return s.s3.PutObject(
-		ctx,
-		s.bucket,
-		s.Key(key),
-		persistence.S3Object{Data: data},
-	)
+	return s.s3.PutObject(ctx, s.bucket, s.Key(key), object)
 }
 
-func (s *FollowerS3) Key(key string) string {
+func (s *S3) DeleteObject(ctx context.Context, key string) error {
+	return s.s3.DeleteObject(ctx, s.bucket, s.Key(key))
+}
+
+func (s *S3) Key(key string) string {
 	if len(s.keyPrefix) == 0 {
 		return key
 	}

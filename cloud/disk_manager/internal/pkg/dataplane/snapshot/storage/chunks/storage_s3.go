@@ -97,6 +97,16 @@ func (s *StorageS3) ReadChunk(
 	return nil
 }
 
+func (s *StorageS3) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+) (object persistence.S3Object, err error) {
+
+	defer s.metrics.StatOperation(metrics.OperationReadChunkBlob)(&err)
+
+	return s.s3.GetObject(ctx, s.bucket, s.newS3Key(chunkID))
+}
+
 func (s *StorageS3) WriteChunk(
 	ctx context.Context,
 	referer string,
@@ -132,21 +142,21 @@ func (s *StorageS3) UnrefChunk(
 	ctx context.Context,
 	referer string,
 	chunkID string,
-) (err error) {
+) (deleted bool, err error) {
 
 	defer s.metrics.StatOperation(metrics.OperationUnrefChunkBlob)(&err)
 
 	var refCount uint32
 	refCount, err = s.unrefChunkMetadata(ctx, referer, chunkID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if refCount == 0 {
-		return s.deleteChunkData(ctx, chunkID)
+		return true, s.deleteChunkData(ctx, chunkID)
 	}
 
-	return nil
+	return false, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
@@ -30,6 +32,26 @@ func makeChunkID(
 ) string {
 
 	return fmt.Sprintf("%v.%v.%v", uniqueID, snapshotID, chunk.Index)
+}
+
+func getSnapshotIDFromChunkID(chunkID string) string {
+	_, after, ok := strings.Cut(chunkID, ".")
+	if !ok {
+		return ""
+	}
+
+	index := strings.LastIndex(after, ".")
+	if index < 0 {
+		return ""
+	}
+
+	return after[:index]
+}
+
+// Zero chunks and the chunks shallow copied from another snapshot (the
+// snapshot only references them) are not created by the snapshot.
+func IsChunkCreatedBySnapshot(chunkID string, snapshotID string) bool {
+	return len(chunkID) != 0 && getSnapshotIDFromChunkID(chunkID) == snapshotID
 }
 
 func makeShardID(s string) uint64 {
@@ -597,7 +619,15 @@ func (s *storageYDB) deleteSnapshotData(
 		return err
 	}
 
-	return <-errors
+	err = <-errors
+	if err != nil {
+		return err
+	}
+
+	return s.enqueueBackupDeletions(
+		ctx,
+		[]string{backup.ChunkMapKey(snapshotID)},
+	)
 }
 
 func (s *storageYDB) deleteChunk(
@@ -612,9 +642,19 @@ func (s *storageYDB) deleteChunk(
 	// map entry to avoid orphaning blobs.
 	if len(entry.ChunkID) != 0 {
 		chunkStorage := s.getChunkStorage(entry.StoredInS3)
-		err := chunkStorage.UnrefChunk(ctx, snapshotID, entry.ChunkID)
+		deleted, err := chunkStorage.UnrefChunk(ctx, snapshotID, entry.ChunkID)
 		if err != nil {
 			return err
+		}
+
+		if deleted {
+			err = s.enqueueBackupDeletions(
+				ctx,
+				[]string{backup.ChunkKey(entry.ChunkID)},
+			)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1009,6 +1049,18 @@ func (s *storageYDB) ReadChunk(
 
 	chunkStorage := s.getChunkStorage(chunk.StoredInS3)
 	return chunkStorage.ReadChunk(ctx, chunk)
+}
+
+func (s *storageYDB) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+	storedInS3 bool,
+) (object persistence.S3Object, err error) {
+
+	defer s.metrics.StatOperation("ReadChunkBlob")(&err)
+
+	chunkStorage := s.getChunkStorage(storedInS3)
+	return chunkStorage.ReadChunkBlob(ctx, chunkID)
 }
 
 func (s *storageYDB) CheckSnapshotReady(

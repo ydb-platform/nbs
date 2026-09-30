@@ -5,6 +5,7 @@ SRCS(
     factory.go
     storage.go
     storage_ydb.go
+    storage_ydb_backup.go
     storage_ydb_impl.go
     storage_ydb_metrics.go
 )

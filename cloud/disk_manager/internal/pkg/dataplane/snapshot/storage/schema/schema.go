@@ -121,6 +121,76 @@ func Create(
 	}
 	logging.Info(ctx, "Created chunk_map table")
 
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunks",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn(
+				"snapshot_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"chunk_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"status",
+				persistence.Optional(persistence.TypeInt64),
+			),
+			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_chunks table")
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunk_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn(
+				"snapshot_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"chunk_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"stored_in_s3",
+				persistence.Optional(persistence.TypeBool),
+			),
+			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_chunk_queue table")
+
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_delete_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn(
+				"object_key",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithPrimaryKeyColumn("object_key"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_delete_queue table")
+
 	if s3 != nil && len(config.GetS3Bucket()) != 0 {
 		exists, err := s3.BucketExists(ctx, config.GetS3Bucket())
 		if err != nil {
@@ -192,6 +262,24 @@ func Drop(
 		return err
 	}
 	logging.Info(ctx, "Dropped chunk_map table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunks")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_chunks table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_chunk_queue table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_delete_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_delete_queue table")
 
 	logging.Info(ctx, "Dropped schema for dataplane snapshot storage")
 
