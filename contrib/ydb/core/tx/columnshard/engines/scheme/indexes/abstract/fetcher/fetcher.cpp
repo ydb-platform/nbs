@@ -1,4 +1,4 @@
-#include "fetcher.h"
+#include <contrib/ydb/core/tx/columnshard/engines/scheme/indexes/abstract/fetcher.h>
 
 namespace NKikimr::NOlap::NIndexes {
 
