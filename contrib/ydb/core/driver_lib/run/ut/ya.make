@@ -11,6 +11,8 @@ PEERDIR(
 YQL_LAST_ABI_VERSION()
 
 SRCS(
+    columnshard_services_ut.cpp
+    local_services_ut.cpp
     auto_config_initializer_ut.cpp
     config_helpers_ut.cpp
 )

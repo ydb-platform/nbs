@@ -119,7 +119,7 @@ TCompositeConveyorInitializer::TCompositeConveyorInitializer(const TKikimrRunCon
 	: IKikimrServicesInitializer(runConfig) {
 }
 
-void TCompositeConveyorInitializer::InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) {
+NConveyorComposite::NConfig::TConfig TCompositeConveyorInitializer::BuildServiceConfig() const {
     const NKikimrConfig::TCompositeConveyorConfig protoConfig = [&]() {
         if (Config.HasCompositeConveyorConfig()) {
             return Config.GetCompositeConveyorConfig();
@@ -214,11 +214,17 @@ void TCompositeConveyorInitializer::InitializeServices(NActors::TActorSystemSetu
     }
     AFL_VERIFY(!serviceConfig.IsFail());
 
-    if (serviceConfig->IsEnabled()) {
+    return serviceConfig.DetachResult();
+}
+
+void TCompositeConveyorInitializer::InitializeServices(NActors::TActorSystemSetup* setup, const NKikimr::TAppData* appData) {
+    auto serviceConfig = BuildServiceConfig();
+
+    if (serviceConfig.IsEnabled()) {
         TIntrusivePtr<::NMonitoring::TDynamicCounters> tabletGroup = GetServiceCounters(appData->Counters, "tablets");
         TIntrusivePtr<::NMonitoring::TDynamicCounters> conveyorGroup = tabletGroup->GetSubgroup("type", "TX_COMPOSITE_CONVEYOR");
 
-        auto service = NConveyorComposite::TServiceOperator::CreateService(*serviceConfig, conveyorGroup);
+        auto service = NConveyorComposite::TServiceOperator::CreateService(serviceConfig, conveyorGroup);
 
         setup->LocalServices.push_back(std::make_pair(
             NConveyorComposite::TServiceOperator::MakeServiceId(NodeId), TActorSetupCmd(service, TMailboxType::HTSwap, appData->UserPoolId)));

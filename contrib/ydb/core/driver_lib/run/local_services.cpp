@@ -26,9 +26,7 @@ TLocalServiceInitializer::TLocalServiceInitializer(const TKikimrRunConfig& runCo
     : IKikimrServicesInitializer(runConfig)
 {}
 
-void TLocalServiceInitializer::InitializeServices(
-        NActors::TActorSystemSetup* setup,
-        const NKikimr::TAppData* appData) {
+TIntrusivePtr<TLocalConfig> TLocalServiceInitializer::BuildLocalConfig(const NKikimr::TAppData* appData) const {
     // choose pool id for important tablets
     ui32 importantPoolId = appData->UserPoolId;
     if (Config.GetFeatureFlags().GetImportantTabletsUseSystemPool()) {
@@ -73,6 +71,14 @@ void TLocalServiceInitializer::InitializeServices(
     addToLocalConfig(TTabletTypes::StatisticsAggregator, &NStat::CreateStatisticsAggregator, TMailboxType::ReadAsFilled, appData->UserPoolId);
     addToLocalConfig(TTabletTypes::GraphShard, &NGraph::CreateGraphShard, TMailboxType::ReadAsFilled, appData->UserPoolId);
     addToLocalConfig(TTabletTypes::BackupController, &NBackup::CreateBackupController, TMailboxType::ReadAsFilled, appData->UserPoolId);
+
+    return localConfig;
+}
+
+void TLocalServiceInitializer::InitializeServices(
+        NActors::TActorSystemSetup* setup,
+        const NKikimr::TAppData* appData) {
+    auto localConfig = BuildLocalConfig(appData);
 
     TTenantPoolConfig::TPtr tenantPoolConfig = new TTenantPoolConfig(Config.GetTenantPoolConfig(), localConfig);
     if (!tenantPoolConfig->IsEnabled && !tenantPoolConfig->StaticSlots.empty())
