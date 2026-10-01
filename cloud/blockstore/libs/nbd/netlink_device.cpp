@@ -112,6 +112,7 @@ private:
 
     TFuture<NProto::TError> StartResult;
     TFuture<NProto::TError> StopResult;
+    bool Disconnected = false;
 
 public:
     TNetlinkDevice(
@@ -201,15 +202,16 @@ TFuture<NProto::TError> TNetlinkDevice::Start()
 
 TFuture<NProto::TError> TNetlinkDevice::Stop(bool deleteDevice)
 {
-    if (StopResult.Initialized()) {
-        return StopResult;
+    if (!StopResult.Initialized()) {
+        DisconnectSocket();
+        StopResult = MakeFuture(MakeError(S_OK));
     }
 
-    DisconnectSocket();
-
-    StopResult = deleteDevice && DeviceIndex
-        ? Disconnect()
-        : MakeFuture(MakeError(S_OK));
+    if (deleteDevice && DeviceIndex && !Disconnected) {
+        auto disconnect = Disconnect();
+        Disconnected = true;
+        StopResult = std::move(disconnect);
+    }
 
     return StopResult;
 }

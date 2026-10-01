@@ -34,6 +34,7 @@
 #include <util/generic/guid.h>
 #include <util/generic/hash.h>
 #include <util/generic/overloaded.h>
+#include <util/generic/scope.h>
 #include <util/generic/set.h>
 #include <util/string/builder.h>
 #include <util/system/fs.h>
@@ -417,6 +418,7 @@ struct TEndpoint
     NProto::TVolume Volume;
     std::weak_ptr<NClient::ISession> Session;
     ui64 Generation = 0;
+    TFuture<void> Restart;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1206,7 +1208,16 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
                              << " hasn't been started yet");
     }
 
-    auto endpoint = std::move(it->second);
+    auto endpoint = it->second;
+    if (endpoint->Restart.Initialized()) {
+        Executor->WaitFor(endpoint->Restart);
+    }
+
+    it = Endpoints.find(socketPath);
+    if (it == Endpoints.end() || it->second != endpoint) {
+        return TErrorResponse(E_REJECTED, "endpoint changed while stopping");
+    }
+
     Endpoints.erase(it);
     if (auto c =
             ServerStats->GetEndpointCounter(endpoint->Request->GetIpcType()))
@@ -1489,6 +1500,13 @@ void TEndpointManager::DoProcessException(
             << " != " << context->Generation << "), cancel restart");
         return;
     }
+
+    auto restart = NewPromise<void>();
+    endpoint->Restart = restart.GetFuture();
+    Y_DEFER {
+        restart.TrySetValue();
+    };
+
     endpoint->Generation++;
 
     STORAGE_INFO(prefix << " restart endpoint");
@@ -1506,7 +1524,6 @@ void TEndpointManager::DoProcessException(
             STORAGE_ERROR(prefix << " failed to stop device: "
                                  << FormatError(error));
         }
-        endpoint->Device.reset();
     }
 
     STORAGE_INFO(prefix << " close socket");
@@ -1533,13 +1550,13 @@ void TEndpointManager::DoProcessException(
 
     if (hasDevice) {
         STORAGE_INFO(prefix << " start device");
-        auto device = NbdDeviceFactory->Create(
+        endpoint->Device = NbdDeviceFactory->Create(
             TNetworkAddress(TUnixSocketPath(socketPath)),
             endpoint->Request->GetNbdDeviceFile(),
             endpoint->Volume.GetBlocksCount(),
             endpoint->Volume.GetBlockSize());
-        auto startDeviceFuture = device->Start();
-        error = Executor->WaitFor(startDeviceFuture);
+        auto future = endpoint->Device->Start();
+        auto error = Executor->WaitFor(future);
         if (HasError(error)) {
             STORAGE_ERROR(prefix << " failed to start device: "
                 << FormatError(error));
@@ -1547,7 +1564,6 @@ void TEndpointManager::DoProcessException(
             ProcessException(std::move(context), std::move(prefix));
             return;
         }
-        endpoint->Device.swap(device);
     }
 }
 
@@ -1805,6 +1821,7 @@ TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
         auto startFuture = device->Start();
         const auto& startError = Executor->WaitFor(startFuture);
         if (HasError(startError)) {
+            ReleaseNbdDevice(request->GetNbdDeviceFile(), restoring);
             return startError;
         }
 
