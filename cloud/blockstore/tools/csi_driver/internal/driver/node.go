@@ -83,6 +83,7 @@ var vmModeCapabilities = []*csi.NodeServiceCapability{
 
 // CSI driver provides RPC_GET_VOLUME_STATS capability only in podMode
 // when volume is mounted to the pod as a local directory.
+// EXPAND_VOLUME is added by NodeGetCapabilities when online expansion is enabled.
 var podModeCapabilities = []*csi.NodeServiceCapability{
 	{
 		Type: &csi.NodeServiceCapability_Rpc{
@@ -102,13 +103,6 @@ var podModeCapabilities = []*csi.NodeServiceCapability{
 		Type: &csi.NodeServiceCapability_Rpc{
 			Rpc: &csi.NodeServiceCapability_RPC{
 				Type: csi.NodeServiceCapability_RPC_GET_VOLUME_STATS,
-			},
-		},
-	},
-	{
-		Type: &csi.NodeServiceCapability_Rpc{
-			Rpc: &csi.NodeServiceCapability_RPC{
-				Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
 			},
 		},
 	},
@@ -200,6 +194,7 @@ type nodeService struct {
 	startEndpointRequestTimeout time.Duration
 	nfsVhostReplicaCount        uint
 	nbsServerReplicaCount       uint
+	offlineResize               bool
 }
 
 func newNodeService(
@@ -219,7 +214,8 @@ func newNodeService(
 	useDiscardForYDBBasedDisks bool,
 	startEndpointRequestTimeout time.Duration,
 	nfsVhostReplicaCount uint,
-	nbsServerReplicaCount uint) csi.NodeServer {
+	nbsServerReplicaCount uint,
+	offlineResize bool) csi.NodeServer {
 
 	return &nodeService{
 		nodeId:                      nodeId,
@@ -240,6 +236,7 @@ func newNodeService(
 		startEndpointRequestTimeout: startEndpointRequestTimeout,
 		nfsVhostReplicaCount:        nfsVhostReplicaCount,
 		nbsServerReplicaCount:       nbsServerReplicaCount,
+		offlineResize:               offlineResize,
 	}
 }
 
@@ -369,7 +366,7 @@ func (s *nodeService) NodeStageVolume(
 	}
 
 	if err != nil {
-		return nil, s.statusErrorf(s.GetGrpcErrorCode(err), "Failed to stage volume: %v", err)
+		return nil, s.statusErrorf(getGrpcErrorCode(err), "Failed to stage volume: %v", err)
 	}
 
 	return &csi.NodeStageVolumeResponse{}, nil
@@ -410,7 +407,7 @@ func (s *nodeService) NodeUnstageVolume(
 		} else {
 			if err := s.nodeUnstageVhostSocket(ctx, nbsId, stageData); err != nil {
 				return nil, s.statusErrorf(
-					s.GetGrpcErrorCode(err),
+					getGrpcErrorCode(err),
 					"Failed to unstage volume: %v", err)
 			}
 			if err := os.Remove(stageRecordPath); err != nil {
@@ -420,7 +417,7 @@ func (s *nodeService) NodeUnstageVolume(
 	} else {
 		if err := s.nodeUnstageVolume(ctx, req); err != nil {
 			return nil, s.statusErrorf(
-				s.GetGrpcErrorCode(err),
+				getGrpcErrorCode(err),
 				"Failed to unstage volume: %v", err)
 		}
 	}
@@ -572,7 +569,7 @@ func (s *nodeService) NodePublishVolume(
 	}
 
 	if err != nil {
-		return nil, s.statusErrorf(s.GetGrpcErrorCode(err),
+		return nil, s.statusErrorf(getGrpcErrorCode(err),
 			"Failed to publish volume: %v", err)
 	}
 
@@ -604,7 +601,7 @@ func (s *nodeService) NodeUnpublishVolume(
 
 	if err := s.nodeUnpublishVolume(ctx, req); err != nil {
 		return nil, s.statusErrorf(
-			s.GetGrpcErrorCode(err),
+			getGrpcErrorCode(err),
 			"Failed to unpublish volume: %v", err)
 	}
 
@@ -622,9 +619,17 @@ func (s *nodeService) NodeGetCapabilities(
 		}, nil
 	}
 
-	return &csi.NodeGetCapabilitiesResponse{
-		Capabilities: podModeCapabilities,
-	}, nil
+	capabilities := append([]*csi.NodeServiceCapability{}, podModeCapabilities...)
+	if !s.offlineResize {
+		capabilities = append(capabilities, &csi.NodeServiceCapability{
+			Type: &csi.NodeServiceCapability_Rpc{
+				Rpc: &csi.NodeServiceCapability_RPC{
+					Type: csi.NodeServiceCapability_RPC_EXPAND_VOLUME,
+				},
+			},
+		})
+	}
+	return &csi.NodeGetCapabilitiesResponse{Capabilities: capabilities}, nil
 }
 
 func (s *nodeService) NodeGetInfo(
@@ -877,55 +882,8 @@ func (s *nodeService) nodePublishDiskAsFilesystem(
 	return nil
 }
 
-func (s *nodeService) GetNbsErrorCode(err error) (uint32, bool) {
-	if err == nil {
-		return 0, false
-	}
-
-	var nbsClientErr *nbsclient.ClientError
-	if errors.As(err, &nbsClientErr) {
-		return nbsClientErr.Code, true
-	}
-
-	var nfsClientErr *nfsclient.ClientError
-	if errors.As(err, &nfsClientErr) {
-		return nfsClientErr.Code, true
-	}
-
-	return 0, false
-}
-
-func (s *nodeService) GetGrpcErrorCode(err error) codes.Code {
-	if err == nil {
-		return codes.OK
-	}
-
-	errorCode, ok := s.GetNbsErrorCode(err)
-	if ok {
-		switch errorCode {
-		case nbsclient.E_INVALID_SESSION, nbsclient.E_MOUNT_CONFLICT:
-			return codes.Unavailable
-		case nbsclient.E_GRPC_CANCELLED, nfsclient.E_GRPC_CANCELLED:
-			return codes.Canceled
-		case nbsclient.E_GRPC_UNAVAILABLE, nfsclient.E_GRPC_UNAVAILABLE:
-			return codes.Unavailable
-		case nbsclient.E_GRPC_DEADLINE_EXCEEDED, nfsclient.E_GRPC_DEADLINE_EXCEEDED:
-			return codes.DeadlineExceeded
-		case nbsclient.E_REJECTED, nfsclient.E_REJECTED:
-			return codes.Unavailable
-		}
-	}
-
-	status, ok := status.FromError(err)
-	if !ok {
-		return codes.Internal
-	}
-
-	return status.Code()
-}
-
 func (s *nodeService) IsGrpcTimeoutError(err error) bool {
-	code, ok := s.GetNbsErrorCode(err)
+	code, ok := getNbsErrorCode(err)
 	return ok && (code == nbsclient.E_GRPC_DEADLINE_EXCEEDED ||
 		(code == nfsclient.E_GRPC_DEADLINE_EXCEEDED))
 }
@@ -1006,6 +964,11 @@ func (s *nodeService) nodeStageDiskAsFilesystem(
 		return fmt.Errorf("failed to format or mount filesystem: %w", err)
 	}
 
+	if s.offlineResize {
+		// Keep the mounted device and endpoint available on failure so that
+		// NodeStageVolume can retry resizing, or NodeUnstageVolume can clean up.
+		return s.resizeFilesystem(resp.NbdDeviceFile, req.StagingTargetPath)
+	}
 	return nil
 }
 
@@ -1469,7 +1432,7 @@ func (s *nodeService) nodeUnstageVolume(
 			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 		})
 		if err != nil {
-			return s.statusError(s.GetGrpcErrorCode(err), "failed to stop nbs endpoint")
+			return s.statusError(getGrpcErrorCode(err), "failed to stop nbs endpoint")
 		}
 	}
 
@@ -1524,7 +1487,7 @@ func (s *nodeService) nodeUnpublishVolume(
 			UnixSocketPath: filepath.Join(endpointDir, nbsSocketName),
 		})
 		if err != nil {
-			return s.statusError(s.GetGrpcErrorCode(err), "failed to stop nbs endpoint")
+			return s.statusError(getGrpcErrorCode(err), "failed to stop nbs endpoint")
 		}
 	}
 
@@ -1537,7 +1500,7 @@ func (s *nodeService) nodeUnpublishVolume(
 				SocketPath: filepath.Join(endpointDir, nfsSocketName),
 			})
 			if err != nil {
-				return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to stop nfs endpoint (%T)", nfsClient)
+				return s.statusErrorf(getGrpcErrorCode(err), "failed to stop nfs endpoint (%T)", nfsClient)
 			}
 		}
 	}
@@ -1609,7 +1572,7 @@ func (s *nodeService) nodeUnstageFileStoreStopEndpoint(
 	})
 
 	if err != nil {
-		return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to stop nfs endpoint (%T)", nfsClient)
+		return s.statusErrorf(getGrpcErrorCode(err), "failed to stop nfs endpoint (%T)", nfsClient)
 	}
 
 	return nil
@@ -1656,7 +1619,7 @@ func (s *nodeService) nodeUnstageLocalFileStoreStopEndpoint(
 		FileSystemId: localFsId,
 	})
 	if err != nil {
-		return s.statusErrorf(s.GetGrpcErrorCode(err), "failed to destroy local nfs (%T)", s.nfsLocalFilestoreClient)
+		return s.statusErrorf(getGrpcErrorCode(err), "failed to destroy local nfs (%T)", s.nfsLocalFilestoreClient)
 	}
 
 	return nil
@@ -1680,7 +1643,7 @@ func (s *nodeService) nodeUnstageVhostSocket(
 		log.Printf("csi.StopEndpoint[%s]: %v", unixSocketPath, err)
 
 		if err != nil {
-			return s.statusError(s.GetGrpcErrorCode(err), "failed to stop nbs endpoint")
+			return s.statusError(getGrpcErrorCode(err), "failed to stop nbs endpoint")
 		}
 	} else if stageData.Backend == "nfs" {
 		var err error
@@ -1966,6 +1929,12 @@ func (s *nodeService) nodeExpandVolumeVmMode(
 			"NodeExpandVolume is not supported for volumes without instance id")
 	}
 
+	if req.CapacityRange == nil {
+		return nil, status.Error(
+			codes.InvalidArgument,
+			"CapacityRange is missing in NodeExpandVolumeRequest")
+	}
+
 	if stageData.Backend == "nfs" {
 		// expanding volumes with nfs backend works without refresh endpoint
 		return &csi.NodeExpandVolumeResponse{
@@ -2027,6 +1996,10 @@ func (s *nodeService) NodeExpandVolume(
 
 	log.Printf("csi.NodeExpandVolume: %+v", req)
 
+	if !s.vmMode && s.offlineResize {
+		return nil, status.Error(codes.Unimplemented, "Offline volume expansion is completed during staging")
+	}
+
 	if req.VolumeId == "" {
 		return nil, status.Error(
 			codes.InvalidArgument,
@@ -2068,7 +2041,7 @@ func (s *nodeService) NodeExpandVolume(
 				"Volume is not found")
 		}
 		return nil, s.statusErrorf(
-			s.GetGrpcErrorCode(err),
+			getGrpcErrorCode(err),
 			"Failed to expand volume: %v", err)
 	}
 
@@ -2101,7 +2074,7 @@ func (s *nodeService) NodeExpandVolume(
 	)
 	if err != nil {
 		return nil, s.statusErrorf(
-			s.GetGrpcErrorCode(err),
+			getGrpcErrorCode(err),
 			"List endpoints failed: %v", err)
 	}
 
@@ -2125,11 +2098,8 @@ func (s *nodeService) NodeExpandVolume(
 		BlocksCount:   newBlocksCount,
 		ConfigVersion: resp.Volume.ConfigVersion,
 	})
-
 	if err != nil {
-		return nil, s.statusErrorf(
-			s.GetGrpcErrorCode(err),
-			"Resize volume failed %v", err)
+		return nil, s.statusErrorf(getGrpcErrorCode(err), "Resize volume failed %v", err)
 	}
 
 	_, err = nbsClient.RefreshEndpoint(ctx, &nbsapi.TRefreshEndpointRequest{
@@ -2138,31 +2108,32 @@ func (s *nodeService) NodeExpandVolume(
 
 	if err != nil {
 		return nil, s.statusErrorf(
-			s.GetGrpcErrorCode(err),
+			getGrpcErrorCode(err),
 			"Failed to resize device %v", err)
 	}
 
 	if s.isMountAccessType(req.VolumePath) {
-		needResize, err := s.mounter.NeedResize(nbdDevicePath, req.VolumePath)
-		if err != nil {
-			return nil, s.statusErrorf(
-				codes.Internal,
-				"NeedResize failed %v", err)
-		}
-
-		if needResize {
-			_, err := s.mounter.Resize(nbdDevicePath, req.VolumePath)
-			if err != nil {
-				return nil, s.statusErrorf(
-					codes.FailedPrecondition,
-					"Failed to resize filesystem %v", err)
-			}
+		if err := s.resizeFilesystem(nbdDevicePath, req.VolumePath); err != nil {
+			return nil, err
 		}
 	}
 
 	return &csi.NodeExpandVolumeResponse{
 		CapacityBytes: int64(newBlocksCount * uint64(resp.Volume.BlockSize)),
 	}, nil
+}
+
+func (s *nodeService) resizeFilesystem(devicePath, mountPath string) error {
+	needResize, err := s.mounter.NeedResize(devicePath, mountPath)
+	if err != nil {
+		return s.statusErrorf(codes.Internal, "NeedResize failed %v", err)
+	}
+	if needResize {
+		if _, err := s.mounter.Resize(devicePath, mountPath); err != nil {
+			return s.statusErrorf(codes.FailedPrecondition, "Failed to resize filesystem %v", err)
+		}
+	}
+	return nil
 }
 
 func ignoreError(_ error) {}

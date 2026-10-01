@@ -1,3 +1,41 @@
+# Volume expansion
+
+In pod mode, online expansion is enabled by default. The driver advertises
+node expansion only: `NodeExpandVolume` grows the NBS disk, refreshes the NBD
+endpoint, and expands the filesystem.
+
+To require offline expansion, pass `--offline-resize` to the
+CSI driver in the controller Deployment and node DaemonSet. The driver
+advertises `VolumeExpansion.OFFLINE` and rejects controller expansion with
+`FailedPrecondition` while `StatVolume` reports clients. A failed `StatVolume`
+also prevents expansion. Requests already satisfied by the disk's current
+capacity reported by `StatVolume` succeed even with clients, without resizing
+the disk again.
+
+In offline mode, the driver advertises controller expansion only and returns
+`NodeExpansionRequired: false`. `NodeStageVolume` creates the endpoint with the
+new disk capacity, then checks and expands the filesystem after mounting it.
+If filesystem expansion fails, staging fails and can be retried. Raw block
+volumes only need the endpoint and device to be staged; no filesystem resize
+or endpoint refresh is needed.
+
+Keep `allowVolumeExpansion: true` in the StorageClass and the external-resizer's
+`--handle-volume-inuse-error=true` (the default). To expand an in-use volume:
+
+1. Increase the PVC's requested storage.
+2. Stop all pods using it (for example, scale the workload to zero) and wait
+   for the volume to be unstaged and its NBS clients disconnected.
+3. Wait for controller expansion to complete (the PV reports the new capacity),
+   then restore the workload. Filesystem expansion completes during staging.
+
+Kubernetes does not stop or restart pods automatically for offline expansion.
+The client check is not atomic with `ResizeVolume`; it does not prevent a
+concurrent client connection outside this workflow.
+
+The flag only applies to pod mode. VM mode keeps its external backend resize
+workflow: node expansion refreshes the NBS endpoint, and NFS expansion remains
+unchanged.
+
 # Setup VSCode
 
 ./ya ide vscode-go -P workspace/csi-driver --no-gopls-fix cloud/blockstore/tools/csi_driver
