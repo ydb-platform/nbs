@@ -2813,6 +2813,69 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldNotWriteBeyondMaxUsedDataChannelCount)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetWriteBlobThreshold(4 * block);
+        storageConfig.SetMaxUsedDataChannelCount(3);
+
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        tabletConfig.ChannelCount = 10;
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        TVector<ui32> channels;
+
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                using namespace NKikimr;
+
+                case TEvBlobStorage::EvPut: {
+                    auto* msg = event->template Get<TEvBlobStorage::TEvPut>();
+                    if (msg->Id.Channel() > 2) {
+                        channels.push_back(msg->Id.Channel());
+                    }
+
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+        for (ui32 i = 0; i < 10; ++i) {
+            tablet.WriteData(handle, 0, 4 * block, 'a');
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(10, channels.size());
+
+        for (const ui32 c: channels) {
+            UNIT_ASSERT_LT(c, 6);
+        }
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST(ShouldProperlyReadBlobsWithHoles)
     {
         const auto block = tabletConfig.BlockSize;
