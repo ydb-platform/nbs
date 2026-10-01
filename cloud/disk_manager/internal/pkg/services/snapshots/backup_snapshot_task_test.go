@@ -64,9 +64,9 @@ func TestBackupSnapshotTask(t *testing.T) {
 	scheduler.On(
 		"ScheduleTask",
 		mock.Anything,
-		"dataplane.ScheduleBackupChunksTasks",
+		"dataplane.BackupSnapshotData",
 		"",
-		mock.MatchedBy(func(request *dataplane_protos.ScheduleBackupChunksTasksRequest) bool {
+		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotDataRequest) bool {
 			return request.SnapshotId == "snap1"
 		}),
 	).Return("dataplane1", nil)
@@ -77,14 +77,14 @@ func TestBackupSnapshotTask(t *testing.T) {
 		"dataplane1",
 	).Return(&empty.Empty{}, nil)
 
-	followerS3 := backup.NewFollowerS3(s3, backupTestBucket, t.Name())
+	backupS3 := backup.NewS3(s3, backupTestBucket, t.Name())
 
 	task := &backupSnapshotTask{
-		scheduler:  scheduler,
-		storage:    storage,
-		followerS3: followerS3,
-		request:    &protos.BackupSnapshotRequest{SnapshotId: "snap1"},
-		state:      &protos.BackupSnapshotTaskState{},
+		scheduler: scheduler,
+		storage:   storage,
+		backupS3:  backupS3,
+		request:   &protos.BackupSnapshotRequest{SnapshotId: "snap1"},
+		state:     &protos.BackupSnapshotTaskState{},
 	}
 
 	err = task.Run(ctx, execCtx)
@@ -95,7 +95,7 @@ func TestBackupSnapshotTask(t *testing.T) {
 	object, err := s3.GetObject(
 		ctx,
 		backupTestBucket,
-		followerS3.Key(backup.SnapshotMetaKey("disk1", "snap1")),
+		backupS3.Key(backup.SnapshotMetaKey("disk1", "snap1")),
 	)
 	require.NoError(t, err)
 

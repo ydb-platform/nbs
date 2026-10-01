@@ -146,7 +146,7 @@ func registerControlplaneTasks(
 	cellStorage cells_storage.Storage,
 	cellSelector cells.CellSelector,
 	filestoreCellsSelector cells.CellSelector,
-	followerS3 *backup.FollowerS3,
+	backupS3 *backup.S3,
 ) error {
 
 	logging.Info(ctx, "Registering pool tasks")
@@ -197,7 +197,7 @@ func registerControlplaneTasks(
 		nbsFactory,
 		poolService,
 		cellSelector,
-		followerS3,
+		backupS3,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register image tasks: %v", err)
@@ -213,7 +213,7 @@ func registerControlplaneTasks(
 		resourceStorage,
 		nbsFactory,
 		cellSelector,
-		followerS3,
+		backupS3,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)
@@ -303,7 +303,7 @@ func initControlplane(
 	nbsFactory nbs.Factory,
 	nfsClientMetricsRegistry metrics.Registry,
 	nfsTlsProvider nfs.TlsConfigProvider,
-	followerS3 *backup.FollowerS3,
+	backupS3 *backup.S3,
 ) (serve func() error, err error) {
 
 	logging.Info(ctx, "Initializing pool storage")
@@ -410,7 +410,7 @@ func initControlplane(
 		cellStorage,
 		cellSelector,
 		filestoreCellsSelector,
-		followerS3,
+		backupS3,
 	)
 	if err != nil {
 		return nil, err
