@@ -257,6 +257,12 @@ private:
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
+    // the per-instance group; the serving cell host hangs off it
+    TDynamicCountersPtr CountersGroup;
+    TAdaptiveLock ServingCellLock;
+    TString ServingCellId;
+    TString ServingCellHost;
+
     // Cumulative per-volume availability counters (derivative/RATE, seconds).
     // Nested: ObservedSeconds >= AvailableSeconds >= HealthySeconds. Consumers
     // compute availability = Available/Observed and quality = Healthy/Observed
@@ -323,6 +329,42 @@ public:
     TDuration GetPossiblePostponeDuration() const override
     {
         return VolumeBase->PostponeTimePredictor->GetPossiblePostponeDuration();
+    }
+
+    void SetServingCellHost(const TString& cellId, const TString& fqdn)
+    {
+        with_lock (ServingCellLock) {
+            if (!CountersGroup) {
+                return;
+            }
+
+            if (ServingCellId) {
+                CountersGroup->RemoveSubgroup("cell", ServingCellId);
+            }
+            ServingCellId.clear();
+            ServingCellHost.clear();
+
+            if (!fqdn) {
+                return;
+            }
+
+            *CountersGroup->GetSubgroup("cell", cellId)
+                 ->GetSubgroup("cell_host", fqdn)
+                 ->GetCounter("CellMount") = 1;
+            ServingCellId = cellId;
+            ServingCellHost = fqdn;
+        }
+    }
+
+    void CarryServingCellHostFrom(TVolumeInfo& other)
+    {
+        TString cellId;
+        TString fqdn;
+        with_lock (other.ServingCellLock) {
+            cellId = other.ServingCellId;
+            fqdn = other.ServingCellHost;
+        }
+        SetServingCellHost(cellId, fqdn);
     }
 
     ui64 RequestStarted(
@@ -699,8 +741,12 @@ public:
         UnregisterVolume(holder.VolumeBase);
 
         for (const auto& item: holder.VolumeInfos) {
-            const TVolumeInfo& info = *item.second;
+            TVolumeInfo& info = *item.second;
             MountVolumeImpl(volumeConfig, info.RealInstanceId, info.PinCount);
+
+            Volumes.at(volumeConfig.GetDiskId())
+                .VolumeInfos.at(info.RealInstanceId)
+                ->CarryServingCellHostFrom(info);
         }
     }
 
@@ -1109,6 +1155,19 @@ public:
         return volumeIt->second.VolumeBase->HasStorageConfigPatchCounter->Val();
     }
 
+    void SetServingCellHost(
+        const TString& diskId,
+        const TString& clientId,
+        const TString& cellId,
+        const TString& fqdn) override
+    {
+        TReadGuard guard(Lock);
+
+        if (auto info = GetVolumeInfoImpl(diskId, clientId)) {
+            info->SetServingCellHost(cellId, fqdn);
+        }
+    }
+
 private:
     TVolumeInfoHolder RegisterVolume(NProto::TVolume volume)
     {
@@ -1165,6 +1224,7 @@ private:
                         volumeConfig.GetStorageMediaKind()));
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
+        info->CountersGroup = countersGroup;
 
         // Register the cumulative counters in the narrow component=sli_volume
         // tree (see AvailabilityCounters comment).
@@ -1397,6 +1457,18 @@ struct TVolumeStatsStub final
     {
         Y_UNUSED(diskId);
         return {};
+    }
+
+    void SetServingCellHost(
+        const TString& diskId,
+        const TString& clientId,
+        const TString& cellId,
+        const TString& fqdn) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
+        Y_UNUSED(cellId);
+        Y_UNUSED(fqdn);
     }
 
 };
