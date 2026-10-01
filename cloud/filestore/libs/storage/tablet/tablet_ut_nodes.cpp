@@ -833,6 +833,100 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Nodes)
         tablet.AssertSetNodeAttrFailed(arg);
     }
 
+    Y_UNIT_TEST(ShouldOnlyUpdateCTimeUponSetNodeAttrWithoutFlags)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        TSetNodeAttrArgs arg(id);
+        arg.SetMode(777);
+        arg.SetUid(100500);
+        arg.SetGid(500100);
+        arg.SetATime(111111);
+        arg.SetMTime(222222);
+        arg.SetCTime(333333);
+        arg.SetSize(77);
+        tablet.SetNodeAttr(arg);
+
+        // chown(-1, -1) arrives as SetNodeAttr with no flags - it should
+        // succeed and bump ctime only
+        auto node = tablet.SetNodeAttr(TSetNodeAttrArgs(id))->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(node.GetId(), id);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetMode(), 777);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetUid(), 100500);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetGid(), 500100);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetATime(), 111111);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetMTime(), 222222);
+        UNIT_ASSERT_GT(node.GetCTime(), 333333);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetSize(), 77);
+
+        node = tablet.GetNodeAttr(id)->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(node.GetMode(), 777);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetUid(), 100500);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetGid(), 500100);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetATime(), 111111);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetMTime(), 222222);
+        UNIT_ASSERT_GT(node.GetCTime(), 333333);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetSize(), 77);
+
+        tablet.AssertSetNodeAttrFailed(TSetNodeAttrArgs(100500));
+    }
+
+    Y_UNIT_TEST(ShouldUpdateParentCMTimeUponUnlinkNode)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto dirId =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        CreateNode(tablet, TCreateNodeArgs::File(dirId, "file"));
+        CreateNode(tablet, TCreateNodeArgs::Directory(dirId, "subdir"));
+
+        auto resetTimes = [&] {
+            TSetNodeAttrArgs arg(dirId);
+            arg.SetATime(111111);
+            arg.SetMTime(222222);
+            arg.SetCTime(333333);
+            tablet.SetNodeAttr(arg);
+        };
+
+        auto checkTimesUpdated = [&] {
+            auto node = tablet.GetNodeAttr(dirId)->Record.GetNode();
+            UNIT_ASSERT_VALUES_EQUAL(node.GetATime(), 111111);
+            UNIT_ASSERT_GT(node.GetMTime(), 222222);
+            UNIT_ASSERT_GT(node.GetCTime(), 333333);
+        };
+
+        // unlink
+        resetTimes();
+        tablet.UnlinkNode(dirId, "file", false);
+        checkTimesUpdated();
+
+        // rmdir
+        resetTimes();
+        tablet.UnlinkNode(dirId, "subdir", true);
+        checkTimesUpdated();
+
+        // failed unlink should not touch the parent
+        resetTimes();
+        tablet.AssertUnlinkNodeFailed(dirId, "file", false);
+        auto node = tablet.GetNodeAttr(dirId)->Record.GetNode();
+        UNIT_ASSERT_VALUES_EQUAL(node.GetATime(), 111111);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetMTime(), 222222);
+        UNIT_ASSERT_VALUES_EQUAL(node.GetCTime(), 333333);
+    }
+
     Y_UNIT_TEST(ShouldNotStoreNodeAttrsForInvalidNodes)
     {
         TTestEnv env;
