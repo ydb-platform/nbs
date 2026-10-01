@@ -458,6 +458,19 @@ void TStorageServiceActor::HandleCreateNode(
             // TODO(#5826): remove this check and support hard links from shards
             // directories to main filesystem
             HardLinkFromShardDirToMainTabletNodeCount->Inc();
+            LOG_INFO(
+                ctx,
+                TFileStoreComponents::SERVICE,
+                "%s Rejecting hard link from shard directory to main "
+                "filesystem node: parent %lu, name %s, target %lu",
+                LogTag(
+                    msg->Record.GetFileSystemId(),
+                    session->ClientId,
+                    sessionId,
+                    seqNo).c_str(),
+                msg->Record.GetNodeId(),
+                msg->Record.GetName().Quote().c_str(),
+                msg->Record.GetLink().GetTargetNode());
 
             auto [cookie, inflight] = CreateInFlightRequest(
                 TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
