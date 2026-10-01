@@ -84,6 +84,9 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     CompletedRequestCountWithoutErrorOrLogData = serviceCounters->GetCounter(
         "CompletedRequestCountWithoutErrorOrLogData",
         true);
+    HardLinkFromShardDirToMainTabletNodeCount = serviceCounters->GetCounter(
+        "HardLinkFromShardDirToMainTabletNodeCount",
+        true);
 
     auto hddCounters = serviceCounters->GetSubgroup("type", "hdd");
     HddFileSystemCount = hddCounters->GetCounter("FileSystemCount", false);

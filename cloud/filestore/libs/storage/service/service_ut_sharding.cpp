@@ -7034,11 +7034,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         const auto counters =
             env.GetCounters()->FindSubgroup("component", "service");
         UNIT_ASSERT(counters);
-        const auto critEvents = counters->GetCounter(
-            "AppCriticalEvents/HardLinkFromShardDirToMainTabletNode");
-        const auto requestErrors = counters->FindSubgroup("request", "CreateNode")
-            ->GetCounter("Errors");
-        UNIT_ASSERT_VALUES_EQUAL(0, critEvents->GetAtomic());
+        const auto rejectedLinks =
+            env.GetRuntime()
+                .GetAppData(nodeIdx)
+                .Counters->FindSubgroup("counters", "filestore")
+                ->FindSubgroup("component", "service")
+                ->GetCounter("HardLinkFromShardDirToMainTabletNodeCount", true);
+        const auto requestErrors =
+            counters->FindSubgroup("request", "CreateNode")
+                ->GetCounter("Errors");
+        UNIT_ASSERT_VALUES_EQUAL(0, rejectedLinks->GetAtomic());
         UNIT_ASSERT_VALUES_EQUAL(0, requestErrors->GetAtomic());
 
         // Linking a main-tablet node into a shard directory is not yet
@@ -7051,7 +7056,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             response->GetError().GetCode(),
             response->GetError().GetMessage());
 
-        UNIT_ASSERT_VALUES_EQUAL(1, critEvents->GetAtomic());
+        UNIT_ASSERT_VALUES_EQUAL(1, rejectedLinks->GetAtomic());
         // The rejected request should be accounted in request stats
         UNIT_ASSERT_VALUES_EQUAL(1, requestErrors->GetAtomic());
     }
