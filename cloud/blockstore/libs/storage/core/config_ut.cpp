@@ -94,6 +94,13 @@ void CheckUpdateDefaults(
 
 Y_UNIT_TEST_SUITE(TConfigTest)
 {
+    // Verify that every RW parameter in the schema allows runtime updates.
+    // Check that RO parameters have no AllowRuntimeUpdate=true marker.
+    Y_UNIT_TEST(ShouldVerifyParameterMarkers)
+    {
+        TStorageConfig::VerifyParameterMarkers();
+    }
+
     // Check changed and unchanged ui32 defaults, including an explicit zero.
     Y_UNIT_TEST(ShouldUpdateDefaultsForUint32)
     {

@@ -404,13 +404,70 @@ def test_dynamic_blockstore_config_lifecycle():
         ydb.stop()
 
 
+# Verify that runtime RO changes require a node restart while RW changes and
+# source removal are applied immediately through the shared controls.
+def test_runtime_markers_and_node_restart():
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    try:
+        # Start with different static and private values for one RO/RW pair.
+        replace_config(ydb, make_main_config(ydb))
+        replace_database_config(
+            ydb, 0,
+            "storage_service: {list_volumes_concurrency: 20, write_blob_threshold: 200}",
+        )
+        config = make_nbs_config(ydb, True)
+        config.files["storage"].ListVolumesConcurrency = 10
+        config.files["storage"].WriteBlobThreshold = 100
+        nbs = start_nbs(config)
+        updates = wait_config_delivery(nbs)
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>ListVolumesConcurrency</td>\s*<td>20</td>", page.text)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (200, 200)
+
+        # Accept the RW change while the running consumer retains startup RO.
+        replace_database_config(
+            ydb, 1,
+            "storage_service: {list_volumes_concurrency: 30, write_blob_threshold: 300}",
+        )
+        updates = wait_config_delivery(nbs, updates)
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>ListVolumesConcurrency</td>\s*<td>20</td>", page.text)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (300, 300)
+
+        # Start a new process from the current cluster source and accept new RO.
+        nbs.stop()
+        nbs = start_nbs(config)
+        updates = wait_config_delivery(nbs)
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>ListVolumesConcurrency</td>\s*<td>30</td>", page.text)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (300, 300)
+
+        # Remove the source and restore RW static fallback without changing RO.
+        replace_database_config(ydb, 2, "")
+        wait_config_delivery(nbs, updates)
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>ListVolumesConcurrency</td>\s*<td>30</td>", page.text)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (100, 100)
+    finally:
+        if nbs:
+            nbs.kill()
+        ydb.stop()
+
+
 # Verify that startup filters static-only overrides while applying mutable settings.
 def test_static_only_fields_are_ignored_at_startup():
     ydb = start_dynamic_config_ydb()
     nbs = None
     try:
         # Mix a mutable setting with overrides of node identity and dispatcher settings.
-        replace_config(ydb, make_main_config(ydb))
+        main_config = yaml.safe_load(make_main_config(ydb))
+        main_config["config"]["log_config"]["default_level"] = 6
+        replace_config(ydb, yaml.safe_dump(main_config))
         replace_database_config(
             ydb,
             0,
@@ -431,10 +488,16 @@ def test_static_only_fields_are_ignored_at_startup():
             Key="zone",
             Value="local",
         )
+        config.files["log"].Entry.add(
+            Component=b"BLOCKSTORE_CONFIGS_MANAGER",
+            Level=6,
+        )
 
         # Publish the startup PrivateDatabaseConfig and complete its first runtime delivery.
         nbs = start_nbs(config)
         wait_config_delivery(nbs)
+        log = Path(nbs.stderr_file_name).read_text()
+        assert "PrivateDatabaseConfig is unchanged; skipping publication" in log
 
         # Keep static node identity while applying the mutable value to a startup consumer.
         page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
