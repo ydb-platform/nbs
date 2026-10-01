@@ -3067,8 +3067,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
     void CheckThreeStageWrites(
         NProto::EStorageMediaKind kind,
-        bool disableForHdd,
-        bool writeDataActorOptimizationEnabled = false)
+        bool disableForHdd)
     {
         TTestEnv env;
 
@@ -3083,9 +3082,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             newConfig.SetThreeStageWriteEnabled(true);
             newConfig.SetThreeStageWriteThreshold(1);
             newConfig.SetThreeStageWriteDisabledForHDD(disableForHdd);
-            if (writeDataActorOptimizationEnabled) {
-                newConfig.SetWriteDataActorOptimizationEnabled(true);
-            }
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -3097,10 +3093,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 disableForHdd,
                 response.GetStorageConfig().GetThreeStageWriteDisabledForHDD());
-            UNIT_ASSERT_VALUES_EQUAL(
-                writeDataActorOptimizationEnabled,
-                response.GetStorageConfig()
-                    .GetWriteDataActorOptimizationEnabled());
 
             TDispatchOptions options;
             env.GetRuntime().DispatchEvents(options, TDuration::Seconds(1));
@@ -3163,10 +3155,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvAddDataRequest));
             UNIT_ASSERT_VALUES_EQUAL(1, runtime.GetCounter(TEvIndexTabletPrivate::EvAddBlobRequest));
             UNIT_ASSERT_VALUES_EQUAL(0, runtime.GetCounter(TEvIndexTabletPrivate::EvWriteBlobRequest));
-            // The optimized actor responds directly to TServiceClient. The
-            // legacy path sends one internal response via TStorageServiceActor.
             UNIT_ASSERT_VALUES_EQUAL(
-                writeDataActorOptimizationEnabled ? 0 : 1,
+                0,
                 runtime.GetCounter(TEvService::EvWriteDataResponse));
             UNIT_ASSERT_VALUES_EQUAL(expectedPutCount, putRequestCount);
             // clang-format on
@@ -3241,19 +3231,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldPerformThreeStageWritesSsdWithOptimization)
-    {
-        CheckThreeStageWrites(NProto::STORAGE_MEDIA_SSD, false, true);
-    }
-
-    Y_UNIT_TEST(ShouldUseLegacyWriteDataPathByDefault)
-    {
-        CheckThreeStageWrites(
-            NProto::STORAGE_MEDIA_SSD,
-            false,
-            false /* writeDataActorOptimizationEnabled */);
-    }
-  
     Y_UNIT_TEST(ShouldUpdateTimestampsUponThreeStageWrite)
     {
         NProto::TStorageConfig config;
@@ -3340,7 +3317,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         {
             NProto::TStorageConfig newConfig;
             newConfig.SetThreeStageWriteEnabled(true);
-            newConfig.SetWriteDataActorOptimizationEnabled(true);
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -3521,8 +3497,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         runtime.ClearCounters();
     }
 
-    void CheckFallbackThreeStageWriteToSimpleWrite(
-        bool writeDataActorOptimizationEnabled)
+    void CheckFallbackThreeStageWriteToSimpleWrite()
     {
         TTestEnv env;
 
@@ -3554,8 +3529,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         {
             NProto::TStorageConfig newConfig;
             newConfig.SetThreeStageWriteEnabled(true);
-            newConfig.SetWriteDataActorOptimizationEnabled(
-                writeDataActorOptimizationEnabled);
             const auto response =
                 ExecuteChangeStorageConfig(std::move(newConfig), service);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -3583,9 +3556,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         // clang-format off
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsResponse));
         // The event counter includes internal responses but not the edge
-        // actor response. The legacy path adds worker -> service.
+        // actor response.
         UNIT_ASSERT_VALUES_EQUAL(
-            writeDataActorOptimizationEnabled ? 2 : 3,
+            2,
             runtime.GetCounter(TEvService::EvWriteDataResponse));
         // clang-format on
         runtime.ClearCounters();
@@ -3615,7 +3588,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvAddDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsResponse));
         UNIT_ASSERT_VALUES_EQUAL(
-            writeDataActorOptimizationEnabled ? 2 : 3,
+            2,
             runtime.GetCounter(TEvService::EvWriteDataResponse));
         // clang-format on
 
@@ -3663,7 +3636,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(0, runtime.GetCounter(TEvIndexTablet::EvAddDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsResponse));
         UNIT_ASSERT_VALUES_EQUAL(
-            writeDataActorOptimizationEnabled ? 2 : 3,
+            2,
             runtime.GetCounter(TEvService::EvWriteDataResponse));
         UNIT_ASSERT_VALUES_EQUAL(1, evPuts);
         // clang-format on
@@ -3682,12 +3655,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
     Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
     {
-        CheckFallbackThreeStageWriteToSimpleWrite(false);
-    }
-
-    Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWriteWithOptimization)
-    {
-        CheckFallbackThreeStageWriteToSimpleWrite(true);
+        CheckFallbackThreeStageWriteToSimpleWrite();
     }
 
     Y_UNIT_TEST(ShouldWriteDataWhenWriteBlobDisabled)
@@ -3768,7 +3736,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetThreeStageWriteEnabled(true);
         config.SetThreeStageWriteThreshold(1);
         config.SetBlockChecksumsInProfileLogEnabled(true);
-        config.SetWriteDataActorOptimizationEnabled(true);
 
         const auto profileLog = std::make_shared<TTestProfileLog>();
         TTestEnv env({}, config, {}, profileLog);
@@ -3805,7 +3772,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             }
         };
 
-        // The optimized path: GenerateBlobIds -> BlobStorage -> AddData.
+        // Three-stage path: GenerateBlobIds -> BlobStorage -> AddData.
         const auto data = GenerateValidateData(DefaultBlockSize);
         service.WriteData(headers, fs, nodeId, handle, 0, data);
         auto readDataResult =
@@ -5252,7 +5219,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
         config.SetExternalWriteDataPayloadEnabled(true);
-        config.SetWriteDataActorOptimizationEnabled(true);
         config.SetExternalReadDataPayload(true);
         TestZeroCopyWrite(
             config,
@@ -5268,7 +5234,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetUnalignedThreeStageWriteEnabled(false);
         config.SetZeroCopyWriteEnabled(true);
         config.SetExternalWriteDataPayloadEnabled(true);
-        config.SetWriteDataActorOptimizationEnabled(true);
         config.SetExternalReadDataPayload(true);
         TestZeroCopyWrite(
             config,
@@ -5284,7 +5249,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         config.SetUnalignedThreeStageWriteEnabled(true);
         config.SetZeroCopyWriteEnabled(true);
         config.SetExternalWriteDataPayloadEnabled(true);
-        config.SetWriteDataActorOptimizationEnabled(true);
         config.SetExternalReadDataPayload(true);
         TestZeroCopyWrite(
             config,

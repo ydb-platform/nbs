@@ -223,38 +223,34 @@ public:
 
     void Bootstrap(const TActorContext& ctx)
     {
-        if (InFlightRequests) {
-            SERVICE_VERIFY(RequestInfo);
-            SERVICE_VERIFY(InFlightRequests);
+        SERVICE_VERIFY(RequestInfo);
+        SERVICE_VERIFY(InFlightRequests);
 
-            const bool blockChecksumsEnabled =
-                ChecksumCalcInfo.BlockChecksumsEnabled;
-            const ui32 blockSize = ChecksumCalcInfo.BlockSize;
+        const bool blockChecksumsEnabled =
+            ChecksumCalcInfo.BlockChecksumsEnabled;
+        const ui32 blockSize = ChecksumCalcInfo.BlockSize;
 
-            // Registering the request is relatively expensive. Do it in the
-            // worker's executor rather than in TStorageServiceActor's hot path.
-            MainInFlightRequest = InFlightRequests->Register(
-                RequestInfo->Sender,
-                RequestInfo->Cookie,
-                RequestInfo->CallContext,
-                MediaKind,
-                std::move(ChecksumCalcInfo),
-                RequestStats,
-                StartTime,
-                RequestCookie);
-            InitProfileLogRequestInfo(
-                MainInFlightRequest->AccessProfileLogRequest(),
-                WriteRequest);
-            MainInFlightRequest->AccessProfileLogRequest().SetClientId(
-                std::move(ClientId));
-            if (blockChecksumsEnabled) {
-                CalculateWriteDataRequestChecksums(
-                    WriteRequest,
-                    blockSize,
-                    MainInFlightRequest->AccessProfileLogRequest());
-            }
-        } else {
-            SERVICE_VERIFY(RequestInfo);
+        // Registering the request is relatively expensive. Do it in the
+        // worker's executor rather than in TStorageServiceActor's hot path.
+        MainInFlightRequest = InFlightRequests->Register(
+            RequestInfo->Sender,
+            RequestInfo->Cookie,
+            RequestInfo->CallContext,
+            MediaKind,
+            std::move(ChecksumCalcInfo),
+            RequestStats,
+            StartTime,
+            RequestCookie);
+        InitProfileLogRequestInfo(
+            MainInFlightRequest->AccessProfileLogRequest(),
+            WriteRequest);
+        MainInFlightRequest->AccessProfileLogRequest().SetClientId(
+            std::move(ClientId));
+        if (blockChecksumsEnabled) {
+            CalculateWriteDataRequestChecksums(
+                WriteRequest,
+                blockSize,
+                MainInFlightRequest->AccessProfileLogRequest());
         }
 
         if (!UseThreeStageWrite) {
@@ -993,14 +989,12 @@ private:
         const TActorContext& ctx,
         std::unique_ptr<TEvService::TEvWriteDataResponse> response)
     {
-        if (InFlightRequests) {
-            CompleteRequestImpl<TEvService::TWriteDataMethod>(
-                ctx,
-                response->Record,
-                MainInFlightRequest,
-                *InFlightRequests,
-                RequestCookie);
-        }
+        CompleteRequestImpl<TEvService::TWriteDataMethod>(
+            ctx,
+            response->Record,
+            MainInFlightRequest,
+            *InFlightRequests,
+            RequestCookie);
         NCloud::Reply(ctx, *RequestInfo, std::move(response));
         Die(ctx);
     }
@@ -1131,60 +1125,25 @@ void TStorageServiceActor::HandleWriteData(
         filestore.GetFeatures().GetBlockChecksumsInProfileLogEnabled() ||
         StorageConfig->GetBlockChecksumsInProfileLogEnabled();
 
-    const bool writeDataActorOptimizationEnabled =
-        filestore.GetFeatures().GetWriteDataActorOptimizationEnabled();
-
     auto logTag = filestore.GetFileSystemId();
-    TRequestInfoPtr requestInfo;
+    auto requestInfo = CreateRequestInfo(
+        ev->Sender,
+        ev->Cookie,
+        msg->CallContext);
     TChecksumCalcInfo checksumCalcInfo;
-    ui64 requestCookie = 0;
-    TInFlightRequestStoragePtr inFlightRequests;
-    TString clientId;
-
-    if (writeDataActorOptimizationEnabled) {
-        requestInfo = CreateRequestInfo(
-            ev->Sender,
-            ev->Cookie,
-            msg->CallContext);
-        if (blockChecksumsEnabled) {
-            checksumCalcInfo = TChecksumCalcInfo(blockSize);
-        }
-        requestCookie = GenerateRequestCookie();
-        inFlightRequests = InFlightRequests;
-        clientId = session->ClientId;
-    } else {
-        auto [legacyCookie, inflight] = CreateInFlightRequest(
-            TRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-            session->MediaKind,
-            session->RequestStats,
-            startTime);
-
-        InitProfileLogRequestInfo(
-            inflight->AccessProfileLogRequest(),
-            msg->Record);
-        inflight->AccessProfileLogRequest().SetClientId(session->ClientId);
-        if (blockChecksumsEnabled) {
-            CalculateWriteDataRequestChecksums(
-                msg->Record,
-                blockSize,
-                inflight->AccessProfileLogRequest());
-        }
-
-        requestInfo = CreateRequestInfo(
-            SelfId(),
-            legacyCookie,
-            msg->CallContext);
+    if (blockChecksumsEnabled) {
+        checksumCalcInfo = TChecksumCalcInfo(blockSize);
     }
 
     auto actor = std::make_unique<TWriteDataActor>(
         std::move(msg->Record),
         range,
         std::move(requestInfo),
-        std::move(inFlightRequests),
+        InFlightRequests,
         std::move(checksumCalcInfo),
         startTime,
-        requestCookie,
-        std::move(clientId),
+        GenerateRequestCookie(),
+        session->ClientId,
         std::move(logTag),
         filestore.GetFeatures().GetWriteBlobDisabled(),
         filestore.GetFeatures().GetUnconfirmedFlowEnabled(),

@@ -72,8 +72,7 @@ message TFileStoreFeatures
     uint32 AsyncHandleOperationDrainPeriod = 54;
     uint32 AsyncHandleOperationBatchSize = 55;
 
-    // Enables WriteData lifecycle and payload handling optimizations.
-    bool WriteDataActorOptimizationEnabled = 56;
+    reserved 56;
 }
 
 message TFileStore
