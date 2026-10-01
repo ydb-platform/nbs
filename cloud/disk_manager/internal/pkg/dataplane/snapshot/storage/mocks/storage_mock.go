@@ -7,10 +7,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -145,10 +145,10 @@ func (s *StorageMock) ReadChunkBlob(
 	ctx context.Context,
 	chunkID string,
 	storedInS3 bool,
-) (persistence.S3Object, error) {
+) (chunks.ChunkBlob, error) {
 
 	args := s.Called(ctx, chunkID, storedInS3)
-	return args.Get(0).(persistence.S3Object), args.Error(1)
+	return args.Get(0).(chunks.ChunkBlob), args.Error(1)
 }
 
 func (s *StorageMock) ReadChunk(

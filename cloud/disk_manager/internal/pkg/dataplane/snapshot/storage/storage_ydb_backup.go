@@ -62,14 +62,19 @@ func (s *storageYDB) findBackupChunkIDsTx(
 				persistence.OptionalWithDefault("chunk_id", &chunkID),
 			)
 			if err != nil {
-				return chunkIDs, err
+				return tasks_common.StringSet{}, err
 			}
 
 			chunkIDs.Add(chunkID)
 		}
 	}
 
-	return chunkIDs, res.Err()
+	err = res.Err()
+	if err != nil {
+		return tasks_common.StringSet{}, err
+	}
+
+	return chunkIDs, nil
 }
 
 func (s *storageYDB) enqueueBackupChunks(
@@ -255,7 +260,12 @@ func (s *storageYDB) GetBackedUpChunkCount(
 		return 0, err
 	}
 
-	return count, res.Err()
+	err = res.Err()
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }
 
 func (s *storageYDB) ChunksBackupCompleted(
@@ -344,7 +354,12 @@ func (s *storageYDB) ClearCompletedBackupChunkQueueEntries(
 		return 0, err
 	}
 
-	return int(count), res.Err()
+	err = res.Err()
+	if err != nil {
+		return 0, err
+	}
+
+	return int(count), nil
 }
 
 func (s *storageYDB) GetBackupChunkQueueLength(
@@ -374,7 +389,12 @@ func (s *storageYDB) GetBackupChunkQueueLength(
 		return 0, err
 	}
 
-	return count, res.Err()
+	err = res.Err()
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////

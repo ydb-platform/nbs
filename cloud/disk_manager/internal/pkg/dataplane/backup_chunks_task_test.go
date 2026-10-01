@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
@@ -53,7 +54,7 @@ func TestBackupChunksTask(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	src, err := storage.ReadChunkBlob(
+	chunkBlob, err := storage.ReadChunkBlob(
 		ctx,
 		chunkID,
 		true, // storedInS3
@@ -62,8 +63,12 @@ func TestBackupChunksTask(t *testing.T) {
 
 	object, err := follower.getObject(ctx, backup.ChunkKey(chunkID))
 	require.NoError(t, err)
-	require.Equal(t, src.Data, object.Data)
-	require.Equal(t, *src.Metadata["Checksum"], *object.Metadata["Checksum"])
+	require.Equal(t, chunkBlob.Data, object.Data)
+	require.Equal(
+		t,
+		*chunks.NewS3Object(chunkBlob).Metadata["Checksum"],
+		*object.Metadata["Checksum"],
+	)
 
 	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)

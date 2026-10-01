@@ -1853,13 +1853,20 @@ func TestReadChunkBlob(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	object, err := f.storage.ReadChunkBlob(
+	chunkBlob, err := f.storage.ReadChunkBlob(
 		f.ctx,
 		chunkID,
 		true, // storedInS3
 	)
 	require.NoError(t, err)
-	require.Equal(t, getS3Object(f, chunkID), object)
+	stored := getS3Object(f, chunkID)
+	require.Equal(t, stored.Data, chunkBlob.Data)
+	require.Equal(
+		t,
+		*stored.Metadata["Checksum"],
+		strconv.FormatUint(uint64(chunkBlob.Checksum), 10),
+	)
+	require.Empty(t, chunkBlob.Compression)
 
 	_, err = f.storage.ReadChunkBlob(
 		f.ctx,
@@ -1883,18 +1890,15 @@ func TestReadChunkBlobStoredInYDB(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	object, err := f.storage.ReadChunkBlob(
+	chunkBlob, err := f.storage.ReadChunkBlob(
 		f.ctx,
 		chunkID,
 		false, // storedInS3
 	)
 	require.NoError(t, err)
-	require.Equal(t, chunk.Data, object.Data)
-	require.Equal(
-		t,
-		strconv.FormatUint(uint64(chunk.Checksum()), 10),
-		*object.Metadata["Checksum"],
-	)
+	require.Equal(t, chunk.Data, chunkBlob.Data)
+	require.Equal(t, chunk.Checksum(), chunkBlob.Checksum)
+	require.Empty(t, chunkBlob.Compression)
 
 	_, err = f.storage.ReadChunkBlob(
 		f.ctx,

@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -112,12 +112,11 @@ type Storage interface {
 
 	ReadChunk(ctx context.Context, chunk *common.Chunk) error
 
-	// Returns the chunk as an s3 chunk object, also for chunks stored in ydb.
 	ReadChunkBlob(
 		ctx context.Context,
 		chunkID string,
 		storedInS3 bool,
-	) (persistence.S3Object, error)
+	) (chunks.ChunkBlob, error)
 
 	CheckSnapshotReady(
 		ctx context.Context,

@@ -4,8 +4,15 @@ import (
 	"context"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+type ChunkBlob struct {
+	Data        []byte
+	Checksum    uint32
+	Compression string
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -16,7 +23,7 @@ type Storage interface {
 	ReadChunkBlob(
 		ctx context.Context,
 		chunkID string,
-	) (object persistence.S3Object, err error)
+	) (chunkBlob ChunkBlob, err error)
 
 	WriteChunk(
 		ctx context.Context,

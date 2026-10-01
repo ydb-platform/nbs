@@ -112,7 +112,7 @@ func (s *StorageYDB) ReadChunk(
 func (s *StorageYDB) ReadChunkBlob(
 	ctx context.Context,
 	chunkID string,
-) (object persistence.S3Object, err error) {
+) (chunkBlob ChunkBlob, err error) {
 
 	defer s.metrics.StatOperation(metrics.OperationReadChunkBlob)(&err)
 
@@ -134,29 +134,27 @@ func (s *StorageYDB) ReadChunkBlob(
 		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
 	)
 	if err != nil {
-		return persistence.S3Object{}, err
+		return ChunkBlob{}, err
 	}
 	defer res.Close()
 
 	if !res.NextResultSet(ctx) || !res.NextRow() {
-		return persistence.S3Object{}, errors.NewNonRetriableErrorf(
+		return ChunkBlob{}, errors.NewNonRetriableErrorf(
 			"chunk not found: %v",
 			chunkID,
 		)
 	}
 
-	var metadata s3Metadata
 	err = res.ScanNamed(
-		persistence.OptionalWithDefault("data", &object.Data),
-		persistence.OptionalWithDefault("checksum", &metadata.checksum),
-		persistence.OptionalWithDefault("compression", &metadata.compression),
+		persistence.OptionalWithDefault("data", &chunkBlob.Data),
+		persistence.OptionalWithDefault("checksum", &chunkBlob.Checksum),
+		persistence.OptionalWithDefault("compression", &chunkBlob.Compression),
 	)
 	if err != nil {
-		return persistence.S3Object{}, err
+		return ChunkBlob{}, err
 	}
 
-	object.Metadata = metadata.toMap()
-	return object, nil
+	return chunkBlob, nil
 }
 
 func (s *StorageYDB) WriteChunk(

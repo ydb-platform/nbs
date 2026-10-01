@@ -1036,12 +1036,13 @@ func (s *storageYDB) ReadChunkBlob(
 	ctx context.Context,
 	chunkID string,
 	storedInS3 bool,
-) (object persistence.S3Object, err error) {
+) (chunkBlob chunks.ChunkBlob, err error) {
 
 	defer s.metrics.StatOperation("ReadChunkBlob")(&err)
 
 	chunkStorage := s.getChunkStorage(storedInS3)
-	return chunkStorage.ReadChunkBlob(ctx, chunkID)
+	chunkBlob, err = chunkStorage.ReadChunkBlob(ctx, chunkID)
+	return chunkBlob, err
 }
 
 func (s *storageYDB) CheckSnapshotReady(

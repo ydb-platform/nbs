@@ -9,11 +9,11 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -102,7 +102,7 @@ func (t *backupChunksTask) copyChunk(
 	entry storage.BackupChunkQueueEntry,
 ) error {
 
-	object, err := t.storage.ReadChunkBlob(
+	chunkBlob, err := t.storage.ReadChunkBlob(
 		ctx,
 		entry.ChunkID,
 		entry.StoredInS3,
@@ -114,17 +114,14 @@ func (t *backupChunksTask) copyChunk(
 	err = t.backupS3.PutObject(
 		ctx,
 		backup.ChunkKey(entry.ChunkID),
-		persistence.S3Object{
-			Data:     object.Data,
-			Metadata: object.Metadata,
-		},
+		chunks.NewS3Object(chunkBlob),
 	)
 	if err != nil {
 		return err
 	}
 
 	t.registry.Counter("backup/copiedChunks").Inc()
-	t.registry.Counter("backup/copiedBytes").Add(int64(len(object.Data)))
+	t.registry.Counter("backup/copiedBytes").Add(int64(len(chunkBlob.Data)))
 	return nil
 }
 
