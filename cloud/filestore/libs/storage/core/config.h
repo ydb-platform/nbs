@@ -456,6 +456,7 @@ public:
     [[nodiscard]] bool GetExternalWriteDataPayloadEnabled() const;
 
     [[nodiscard]] double GetFakeTxPageFaultsProbability() const;
+    [[nodiscard]] TDuration GetFakeShardPhaseDelay() const;
 
     [[nodiscard]] bool GetFanoutStatsCollectionInShardsDisabled() const;
 

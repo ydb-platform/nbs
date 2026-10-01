@@ -22,7 +22,10 @@ PEERDIR(
 SET(
     NFS_STORAGE_CONFIG_PATCH
     cloud/filestore/tests/common_configs/nfs-storage-newfeatures-patch.txt
+    cloud/filestore/tests/cross_client_atomic_replace/nfs-storage-patch.txt
 )
+
+SET(FILESTORE_SHARD_COUNT 2)
 
 SET(QEMU_VIRTIO fs)
 SET(QEMU_INSTANCE_COUNT 2)
