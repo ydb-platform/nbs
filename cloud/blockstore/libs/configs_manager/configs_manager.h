@@ -32,6 +32,10 @@ struct TConfigsManagerArgs
     // accepted PrivateDatabaseConfig is applied to these unchanged values.
     NProto::TBlockstoreConfig StaticConfig;
 
+    // Complete raw configuration applied at node startup, including CMS and
+    // private YAML. Preserve this value when recreating the manager actor.
+    NProto::TBlockstoreConfig StartupConfig;
+
     // Normalized PrivateDatabaseConfig applied at startup; empty without
     // overrides.
     NProto::TBlockstoreConfig InitialDynamicConfig;

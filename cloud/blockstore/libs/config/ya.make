@@ -28,6 +28,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_registry_proxy/model
     cloud/blockstore/libs/ydbstats
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/config
     cloud/storage/core/libs/features
     cloud/storage/core/libs/iam/iface
 

@@ -516,6 +516,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             current.GetServer().GetServerConfig()
                 .GetDynamicYamlConfigurationEnabled());
         const auto aggregate = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
             current,
             {},
             *ci.StorageConfig,
@@ -597,6 +598,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 dynamicConfig.MutableStorageService()->SetWriteBlobThreshold(
                     300);
                 const auto config = MakeBlockstoreConfig(
+                    EBlockstoreConfigMergeMode::Startup,
                     staticConfig,
                     dynamicConfig,
                     ci.StorageConfigControls);
@@ -617,6 +619,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 rdma->MutableClient()->SetQueueSize(512);
                 rdma->MutableServer()->SetQueueSize(384);
                 const auto config = MakeBlockstoreConfig(
+                    EBlockstoreConfigMergeMode::Startup,
                     staticConfig,
                     dynamicConfig,
                     ci.StorageConfigControls);
@@ -632,6 +635,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             {
                 dynamicConfig.Clear();
                 const auto config = MakeBlockstoreConfig(
+                    EBlockstoreConfigMergeMode::Startup,
                     staticConfig,
                     dynamicConfig,
                     ci.StorageConfigControls);

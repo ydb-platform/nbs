@@ -25,10 +25,11 @@ section clears dynamic overrides; equivalent inputs do not republish.
 #include <contrib/ydb/library/actors/core/events.h>
 #include <contrib/ydb/library/actors/core/log.h>
 
-#include <google/protobuf/util/message_differencer.h>
-
 #include <util/generic/hash_set.h>
+#include <util/generic/yexception.h>
 #include <util/string/builder.h>
+
+#include <google/protobuf/util/message_differencer.h>
 
 namespace NCloud::NBlockStore {
 
@@ -45,7 +46,7 @@ constexpr ui32 PrivateDatabaseConfigKind =
 // Report a rejected runtime update with its reason and the restart risk.
 void ReportConfigUpdateError(const TString& reason, bool rollbackShallHelp)
 {
-    ReportGetConfigsFromCmsYamlParseError(
+    ReportDynamicConfigError(
         TStringBuilder()
         << reason
         << ". Keeping the last successfully applied configuration. "
@@ -75,6 +76,14 @@ private:
     // Every update is applied to this unchanged configuration.
     const NProto::TBlockstoreConfig StaticConfig;
 
+    // Raw values fixed at node startup; owned independently of publications
+    // and shared ICB controls, and never replaced by a runtime notification.
+    const NProto::TBlockstoreConfig StartupConfig;
+
+    // All rejected schema paths and reasons from the last accepted runtime
+    // merge; parameter values and collection keys are excluded.
+    NConfig::TRuntimeConfigDiagnostics RuntimeDiagnostics;
+
     // Last accepted PrivateDatabaseConfig; empty without dynamic overrides.
     NProto::TBlockstoreConfig DynamicConfig;
 
@@ -100,7 +109,8 @@ private:
         const TEvConfigsManager::TEvRemoveConfigSubscriptionRequest::TPtr& ev,
         const TActorContext& ctx);
 
-    // Remove a subscriber when delivery confirms that its actor no longer exists.
+    // Remove a subscriber when delivery confirms that its actor no longer
+    // exists.
     void Handle(const TEvents::TEvUndelivered::TPtr& ev);
 
     // Process new config from ConfigsDispatcher
@@ -119,6 +129,7 @@ private:
 TConfigsManagerActor::TConfigsManagerActor(TConfigsManagerArgs args)
     : ConfigHolder(std::move(args.ConfigHolder))
     , StaticConfig(std::move(args.StaticConfig))
+    , StartupConfig(std::move(args.StartupConfig))
     , DynamicConfig(std::move(args.InitialDynamicConfig))
     , StorageConfigControls(std::move(args.StorageConfigControls))
     , ConfigsDispatcherId(args.ConfigsDispatcherId)
@@ -216,52 +227,69 @@ void TConfigsManagerActor::Handle(
 
     const auto* message = ev->Get();
     NProto::TBlockstoreConfig dynamicConfig;
+    NProto::TBlockstoreConfig mergedConfig;
+    NConfig::TRuntimeConfigDiagnostics diagnostics;
+    IBlockstoreConfigPtr newConfig;
 
-    if (auto it = message->OpaqueConfigs.find(PrivateDatabaseConfigKind);
-        it != message->OpaqueConfigs.end())
-    {
-        const auto payload = it->second;
-        if (!payload) {
-            ReportConfigUpdateError(
-                "Internal error: received a null PrivateDatabaseConfig "
-                "payload from ConfigsDispatcher",
-                /*rollbackShallHelp=*/false);
+    // Prepare the complete update before changing the publication or live
+    // controls, so an exception leaves the last accepted state intact.
+    try {
+        if (auto it = message->OpaqueConfigs.find(PrivateDatabaseConfigKind);
+            it != message->OpaqueConfigs.end())
+        {
+            const auto payload = it->second;
+            if (!payload) {
+                ReportConfigUpdateError(
+                    "Internal error: received a null PrivateDatabaseConfig "
+                    "payload from ConfigsDispatcher",
+                    /*rollbackShallHelp=*/false);
+                return;
+            }
+
+            auto [config, error] = ExtractBlockstoreConfig(*payload);
+            if (HasError(error)) {
+                ReportConfigUpdateError(
+                    error.GetMessage(),
+                    /*rollbackShallHelp=*/error.GetCode() == E_ARGUMENT);
+                return;
+            }
+
+            dynamicConfig = std::move(config);
+        }
+
+        NormalizeDynamicBlockstoreConfig(StaticConfig, dynamicConfig);
+
+        if (google::protobuf::util::MessageDifferencer::Equals(
+                dynamicConfig,
+                DynamicConfig))
+        {
+            LOG_INFO_S(
+                ctx,
+                TBlockStoreComponents::CONFIGS_MANAGER,
+                "PrivateDatabaseConfig is unchanged; skipping publication");
+            ReplyConfigNotificationResponse(ev, ctx);
             return;
         }
 
-        auto [config, error] = ExtractBlockstoreConfig(*payload);
-        if (HasError(error)) {
-            ReportConfigUpdateError(
-                error.GetMessage(),
-                /*rollbackShallHelp=*/error.GetCode() == E_ARGUMENT);
-            return;
-        }
-
-        dynamicConfig = std::move(config);
-    }
-
-    NormalizeDynamicBlockstoreConfig(StaticConfig, dynamicConfig);
-
-    if (google::protobuf::util::MessageDifferencer::Equals(
+        const auto currentConfig = ConfigHolder->Get();
+        mergedConfig = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Runtime,
+            StaticConfig,
             dynamicConfig,
-            DynamicConfig))
-    {
-        LOG_INFO_S(
-            ctx,
-            TBlockStoreComponents::CONFIGS_MANAGER,
-            "PrivateDatabaseConfig is unchanged; skipping publication");
-        ReplyConfigNotificationResponse(ev, ctx);
+            &StartupConfig,
+            &diagnostics);
+        newConfig = MakeBlockstoreConfig(
+            mergedConfig,
+            StorageConfigControls,
+            GetBlockstoreConfigExtraParameters(*currentConfig));
+    } catch (...) {
+        ReportConfigUpdateError(
+            TStringBuilder()
+                << "Failed to apply PrivateDatabaseConfig from CMS: "
+                << CurrentExceptionMessage(),
+            /*rollbackShallHelp=*/true);
         return;
     }
-
-    const auto currentConfig = ConfigHolder->Get();
-    const auto mergedConfig =
-        MergeBlockstoreConfig(StaticConfig, dynamicConfig);
-    auto newConfig = MakeBlockstoreConfig(
-        mergedConfig,
-        {},
-        StorageConfigControls,
-        GetBlockstoreConfigExtraParameters(*currentConfig));
 
     StorageConfigControls->UpdateDefaults(mergedConfig.GetStorageService());
 
@@ -269,6 +297,8 @@ void TConfigsManagerActor::Handle(
     // so the new configuration is already available to readers.
     ConfigHolder->Set(std::move(newConfig));
     DynamicConfig = std::move(dynamicConfig);
+    // TODO: to be used for mon page
+    RuntimeDiagnostics = std::move(diagnostics);
 
     LOG_INFO_S(
         ctx,

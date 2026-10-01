@@ -94,6 +94,10 @@ private:
     const TStorageConfigControls::TImpl* ControlsImpl() const;
 
 public:
+    // Verify in tests that every RW parameter has AllowRuntimeUpdate=true.
+    // RO parameter markers are unrestricted.
+    static void VerifyRwParameterMarkers();
+
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
         NFeatures::TFeaturesConfigConstPtr featuresConfig);

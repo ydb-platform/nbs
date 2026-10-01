@@ -8,6 +8,8 @@ the features wrapper created from the merged protobuf configuration.
 
 #include "blockstore_config.h"
 
+#include "helpers.h"
+
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/generic/vector.h>
@@ -308,11 +310,24 @@ void MergeFeatures(
 }   // namespace
 
 NProto::TBlockstoreConfig MergeBlockstoreConfig(
+    EBlockstoreConfigMergeMode mode,
     const NProto::TBlockstoreConfig& staticConfig,
-    const NProto::TBlockstoreConfig& dynamicConfig)
+    const NProto::TBlockstoreConfig& dynamicConfig,
+    const NProto::TBlockstoreConfig* startupConfig,
+    NConfig::TRuntimeConfigDiagnostics* diagnostics)
 {
+    Y_ABORT_UNLESS(
+        mode != EBlockstoreConfigMergeMode::Runtime || startupConfig,
+        "Runtime merge of '%s' requires the startup config to restore "
+        "fields that cannot change at runtime",
+        staticConfig.GetDescriptor()->full_name().c_str());
+    if (diagnostics) {
+        *diagnostics = {};
+    }
+    auto normalizedConfig = dynamicConfig;
+    RemoveStaticOnlyBlockstoreFields(normalizedConfig);
     auto result = staticConfig;
-    result.MergeFrom(dynamicConfig);
+    result.MergeFrom(normalizedConfig);
     if (staticConfig.GetFeatures().FeaturesSize() ||
         dynamicConfig.GetFeatures().FeaturesSize())
     {
@@ -320,6 +335,13 @@ NProto::TBlockstoreConfig MergeBlockstoreConfig(
             staticConfig.GetFeatures(),
             dynamicConfig.GetFeatures(),
             result.MutableFeatures());
+    }
+    if (mode == EBlockstoreConfigMergeMode::Runtime) {
+        auto changes =
+            NConfig::FilterRuntimeConfig(staticConfig, *startupConfig, result);
+        if (diagnostics) {
+            *diagnostics = std::move(changes);
+        }
     }
     return result;
 }
@@ -330,22 +352,37 @@ TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
 {
     const auto& diskAgentConfig = currentConfig.GetDiskAgentConfig();
     return {
-        .DiskAgent = {
-            .Rack = diskAgentConfig->GetRack(),
-            .NetworkMbitThroughput = diskAgentConfig->GetNetworkMbitThroughput(),
-        },
+        .DiskAgent =
+            {
+                .Rack = diskAgentConfig->GetRack(),
+                .NetworkMbitThroughput =
+                    diskAgentConfig->GetNetworkMbitThroughput(),
+            },
     };
 }
 
 IBlockstoreConfigPtr MakeBlockstoreConfig(
+    EBlockstoreConfigMergeMode mode,
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
+    NStorage::TStorageConfigControlsPtr controls,
+    TBlockstoreConfigExtraParameters extraParameters,
+    const NProto::TBlockstoreConfig* startupConfig)
+{
+    return MakeBlockstoreConfig(
+        MergeBlockstoreConfig(mode, staticConfig, dynamicConfig, startupConfig),
+        std::move(controls),
+        std::move(extraParameters));
+}
+
+// Build each adapter from the final proto; shared controls remain independent
+// of construction so rejected candidates cannot change live ICB defaults.
+IBlockstoreConfigPtr MakeBlockstoreConfig(
+    const NProto::TBlockstoreConfig& config,
     NStorage::TStorageConfigControlsPtr controls,
     TBlockstoreConfigExtraParameters extraParameters)
 {
     Y_ABORT_UNLESS(controls);
-
-    auto config = MergeBlockstoreConfig(staticConfig, dynamicConfig);
     auto featuresConfig =
         std::make_shared<NFeatures::TFeaturesConfig>(config.GetFeatures());
     auto storageConfig = std::make_shared<NStorage::TStorageConfig>(
@@ -365,12 +402,20 @@ IBlockstoreConfigPtr MakeBlockstoreConfig(
 }
 
 IBlockstoreConfigPtr MakeBlockstoreConfig(
+    EBlockstoreConfigMergeMode mode,
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     const NStorage::TStorageConfig& storageConfig,
     const NStorage::TDiskAgentConfig& diskAgentConfig)
 {
-    const auto config = MergeBlockstoreConfig(staticConfig, dynamicConfig);
+    Y_ABORT_UNLESS(
+        mode == EBlockstoreConfigMergeMode::Startup,
+        "Config factory using existing StorageConfig and DiskAgentConfig "
+        "requires Startup mode (got mode %d); for Runtime mode, use the "
+        "factory taking a filtered protobuf config",
+        static_cast<int>(mode));
+    const auto config =
+        MergeBlockstoreConfig(mode, staticConfig, dynamicConfig);
     auto featuresConfig =
         std::make_shared<NFeatures::TFeaturesConfig>(config.GetFeatures());
     auto storageConfigCopy =

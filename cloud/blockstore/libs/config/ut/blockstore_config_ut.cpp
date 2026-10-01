@@ -4,6 +4,8 @@
 #include <cloud/blockstore/libs/config/blockstore_config_provider_private.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 
+#include <cloud/storage/core/libs/config/runtime_config.h>
+
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -51,6 +53,162 @@ NCloud::NProto::TFeatureConfig* AddFeature(
 // publication, and explicit ICB override coverage.
 Y_UNIT_TEST_SUITE(TBlockstoreConfigTest)
 {
+    // Verify runtime marker consistency across the complete BlockStore schema.
+    Y_UNIT_TEST(ShouldValidateRuntimeConfigSchema)
+    {
+        NConfig::ValidateRuntimeConfigSchema(
+            *NProto::TBlockstoreConfig::descriptor());
+    }
+
+    // Verify startup acceptance, runtime RO preservation, RW fallback on
+    // removal, and adoption of a changed RO value at the next node startup.
+    Y_UNIT_TEST(ShouldSeparateStartupAndRuntimeMerge)
+    {
+        // Distinguish the static fallback from accepted startup overrides.
+        NProto::TBlockstoreConfig staticConfig;
+        staticConfig.MutableStorageService()->SetWriteBlobThreshold(100);
+        staticConfig.MutableStorageService()->SetListVolumesConcurrency(10);
+        staticConfig.MutableStorageService()->SetSchemeShardDir("/static");
+        auto dynamicConfig = staticConfig;
+        dynamicConfig.MutableStorageService()->SetWriteBlobThreshold(200);
+        dynamicConfig.MutableStorageService()->SetListVolumesConcurrency(20);
+        dynamicConfig.MutableStorageService()->SetSchemeShardDir("/forbidden");
+        const auto startup = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            staticConfig,
+            dynamicConfig);
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            startup.GetStorageService().GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            startup.GetStorageService().GetListVolumesConcurrency());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/static",
+            startup.GetStorageService().GetSchemeShardDir());
+
+        // Apply a mixed update and report the startup-only parameter path.
+        dynamicConfig.MutableStorageService()->SetWriteBlobThreshold(300);
+        dynamicConfig.MutableStorageService()->SetListVolumesConcurrency(30);
+        NConfig::TRuntimeConfigDiagnostics diagnostics;
+        const auto runtime = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Runtime,
+            staticConfig,
+            dynamicConfig,
+            &startup,
+            &diagnostics);
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            runtime.GetStorageService().GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            runtime.GetStorageService().GetListVolumesConcurrency());
+        UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
+        UNIT_ASSERT(
+            diagnostics.IgnoredPaths.at(
+                "StorageService.ListVolumesConcurrency") ==
+            NConfig::ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+
+        // Remove the dynamic source without pinning the startup RW override.
+        const auto removed = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Runtime,
+            staticConfig,
+            {},
+            &startup,
+            &diagnostics);
+        UNIT_ASSERT_VALUES_EQUAL(
+            100,
+            removed.GetStorageService().GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            removed.GetStorageService().GetListVolumesConcurrency());
+        UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
+
+        // Start a new node from the current source and accept its new RO value.
+        const auto restarted = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            staticConfig,
+            dynamicConfig,
+            nullptr,
+            &diagnostics);
+        UNIT_ASSERT_VALUES_EQUAL(
+            30,
+            restarted.GetStorageService().GetListVolumesConcurrency());
+        UNIT_ASSERT_VALUES_EQUAL(0, diagnostics.IgnoredPaths.size());
+    }
+
+    // Verify replay comparison after repeated merge, runtime Features keyed
+    // replacement, and restoration of static Features on source removal.
+    Y_UNIT_TEST(ShouldUpdateFeaturesAndPreserveStartupCollections)
+    {
+        // Accept a startup collection appended to static and a feature
+        // override.
+        NProto::TBlockstoreConfig staticConfig;
+        staticConfig.MutableStorageService()->AddKnownSpareNodes("static-node");
+        AddFeature(staticConfig, "A", "static", "static-cloud");
+        NProto::TBlockstoreConfig dynamicConfig;
+        dynamicConfig.MutableStorageService()->AddKnownSpareNodes(
+            "startup-node");
+        AddFeature(dynamicConfig, "A", "startup", "startup-cloud");
+        const auto startup = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            staticConfig,
+            dynamicConfig);
+
+        // Compare the merged replay, not the raw source, to the startup list.
+        NConfig::TRuntimeConfigDiagnostics diagnostics;
+        const auto replay = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Runtime,
+            staticConfig,
+            dynamicConfig,
+            &startup,
+            &diagnostics);
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            replay.GetStorageService().KnownSpareNodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(0, diagnostics.IgnoredPaths.size());
+
+        // Replace a complete feature record and keep the startup-only list.
+        dynamicConfig.MutableStorageService()->ClearKnownSpareNodes();
+        dynamicConfig.MutableFeatures()->ClearFeatures();
+        dynamicConfig.MutableFeatures()->AddFeatures()->SetName("A");
+        AddFeature(dynamicConfig, "A", "ignored-duplicate", "ignored-cloud");
+        AddFeature(dynamicConfig, "B", "runtime", "runtime-cloud");
+        const auto runtime = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Runtime,
+            staticConfig,
+            dynamicConfig,
+            &startup,
+            &diagnostics);
+        UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetFeatures().FeaturesSize());
+        UNIT_ASSERT(!runtime.GetFeatures().GetFeatures(0).HasValue());
+        UNIT_ASSERT(!runtime.GetFeatures().GetFeatures(0).HasWhitelist());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "runtime",
+            runtime.GetFeatures().GetFeatures(1).GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            runtime.GetStorageService().KnownSpareNodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, diagnostics.IgnoredPaths.size());
+        UNIT_ASSERT(
+            diagnostics.IgnoredPaths.at("StorageService.KnownSpareNodes[]") ==
+            NConfig::ERuntimeConfigIgnoreReason::RuntimeUpdateForbidden);
+
+        // Remove runtime Features and recover the static keyed record.
+        const auto removed = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Runtime,
+            staticConfig,
+            {},
+            &startup);
+        UNIT_ASSERT_VALUES_EQUAL(1, removed.GetFeatures().FeaturesSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "static",
+            removed.GetFeatures().GetFeatures(0).GetValue());
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            removed.GetStorageService().KnownSpareNodesSize());
+    }
+
     // Check that the aggregate proto contains 19 top-level configuration
     // sections, including the representative sections below.
     Y_UNIT_TEST(ShouldExposeCompleteAggregateSchema)
@@ -139,7 +297,8 @@ kms_client: {request_timeout: 42}
 root_kms: {address: kms}
 )"};
         const auto parser = CreateBlockstoreOpaqueConfigParser();
-        const auto parse = [&] (const TString& yaml) {
+        const auto parse = [&](const TString& yaml)
+        {
             const auto message = parser(yaml);
             UNIT_ASSERT(message);
             UNIT_ASSERT_VALUES_EQUAL(
@@ -156,6 +315,7 @@ root_kms: {address: kms}
             staticConfig.MutableRdma()->MutableClient()->SetPollerThreads(7);
             for (const bool applyOverride: {false, true}) {
                 const auto config = MakeBlockstoreConfig(
+                    EBlockstoreConfigMergeMode::Startup,
                     staticConfig,
                     parse(applyOverride ? yamlConfigs[dynamicValue] : "{}"),
                     std::make_shared<NStorage::TStorageConfigControls>());
@@ -216,7 +376,10 @@ root_kms: {address: kms}
         auto* dynamicFeature = dynamicConfig.MutableFeatures()->AddFeatures();
         dynamicFeature->SetName("dynamic");
 
-        const auto result = MergeBlockstoreConfig(staticConfig, dynamicConfig);
+        const auto result = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            staticConfig,
+            dynamicConfig);
 
         UNIT_ASSERT_VALUES_EQUAL(
             30,
@@ -258,7 +421,10 @@ root_kms: {address: kms}
             "duplicate-dynamic-C",
             "duplicate-dynamic-C-cloud");
 
-        const auto result = MergeBlockstoreConfig(staticConfig, dynamicConfig);
+        const auto result = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            staticConfig,
+            dynamicConfig);
 
         UNIT_ASSERT_VALUES_EQUAL(3, result.GetFeatures().FeaturesSize());
 
@@ -280,6 +446,7 @@ root_kms: {address: kms}
         UNIT_ASSERT_VALUES_EQUAL("dynamic-C", mergedC.GetValue());
 
         const auto config = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
             staticConfig,
             dynamicConfig,
             std::make_shared<NStorage::TStorageConfigControls>());
@@ -320,8 +487,11 @@ root_kms: {address: kms}
         NKikimr::TControlBoard controlBoard;
         controls->Register(controlBoard);
 
-        auto first =
-            MakeBlockstoreConfig(MakeConfig(100), MakeConfig(200), controls);
+        auto first = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            MakeConfig(100),
+            MakeConfig(200),
+            controls);
 
         UNIT_ASSERT_VALUES_EQUAL(
             200,
@@ -341,8 +511,11 @@ root_kms: {address: kms}
                 ->GetEffectiveStorageConfigProto()
                 .GetWriteBlobThreshold());
 
-        auto second =
-            MakeBlockstoreConfig(MakeConfig(100), MakeConfig(300), controls);
+        auto second = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            MakeConfig(100),
+            MakeConfig(300),
+            controls);
 
         UNIT_ASSERT_VALUES_EQUAL(
             100,
@@ -358,7 +531,11 @@ root_kms: {address: kms}
             300,
             second->GetStorageConfig()->GetWriteBlobThreshold());
 
-        auto third = MakeBlockstoreConfig(MakeConfig(100), {}, controls);
+        auto third = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            MakeConfig(100),
+            {},
+            controls);
 
         UNIT_ASSERT_VALUES_EQUAL(
             100,
@@ -373,8 +550,11 @@ root_kms: {address: kms}
         NKikimr::TControlBoard controlBoard;
         controls->Register(controlBoard);
 
-        TBlockstoreConfigHolder holder(
-            MakeBlockstoreConfig(MakeConfig(100), MakeConfig(200), controls));
+        TBlockstoreConfigHolder holder(MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            MakeConfig(100),
+            MakeConfig(200),
+            controls));
 
         TAtomic previous = 0;
         UNIT_ASSERT(!controlBoard.SetValue(
@@ -382,8 +562,11 @@ root_kms: {address: kms}
             150,
             previous));
 
-        holder.Set(
-            MakeBlockstoreConfig(MakeConfig(100), MakeConfig(300), controls));
+        holder.Set(MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            MakeConfig(100),
+            MakeConfig(300),
+            controls));
 
         const auto currentConfig = holder.Get();
         UNIT_ASSERT_VALUES_EQUAL(
@@ -409,6 +592,7 @@ root_kms: {address: kms}
         dynamicConfig.MutableDiagnostics()->SetUseAsyncLogger(true);
 
         auto blockstoreConfig = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
             staticConfig,
             dynamicConfig,
             std::make_shared<NStorage::TStorageConfigControls>());
@@ -456,8 +640,12 @@ root_kms: {address: kms}
             "rack",
             10'000);
 
-        auto blockstoreConfig =
-            MakeBlockstoreConfig(config, {}, *storage, diskAgent);
+        auto blockstoreConfig = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            config,
+            {},
+            *storage,
+            diskAgent);
 
         UNIT_ASSERT_UNEQUAL(
             features.get(),
@@ -502,6 +690,7 @@ root_kms: {address: kms}
         NServer::TServerAppConfigConstPtr serverConfig;
         {
             const auto config = MakeBlockstoreConfig(
+                EBlockstoreConfigMergeMode::Startup,
                 MakeConfig(100),
                 {},
                 std::make_shared<NStorage::TStorageConfigControls>());
@@ -516,6 +705,7 @@ root_kms: {address: kms}
     Y_UNIT_TEST(ShouldPreserveDiskAgentHostContext)
     {
         const auto currentConfig = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
             {},
             {},
             NStorage::TStorageConfig({}, nullptr),
@@ -524,6 +714,7 @@ root_kms: {address: kms}
         dynamicConfig.MutableDiskAgent()->SetAgentId("updated-agent");
 
         const auto config = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
             {},
             dynamicConfig,
             std::make_shared<NStorage::TStorageConfigControls>(),
@@ -546,7 +737,11 @@ root_kms: {address: kms}
     Y_UNIT_TEST(ShouldPublishConfigsAtomically)
     {
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
-        auto initial = MakeBlockstoreConfig(MakeConfig(1), {}, controls);
+        auto initial = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            MakeConfig(1),
+            {},
+            controls);
         auto retained = IBlockstoreConfigConstPtr(initial);
         auto holder =
             std::make_shared<TBlockstoreConfigHolder>(std::move(initial));
@@ -572,7 +767,11 @@ root_kms: {address: kms}
         }
 
         for (ui32 value = 2; value != 100; ++value) {
-            holder->Set(MakeBlockstoreConfig(MakeConfig(value), {}, controls));
+            holder->Set(MakeBlockstoreConfig(
+                EBlockstoreConfigMergeMode::Startup,
+                MakeConfig(value),
+                {},
+                controls));
         }
 
         stop.store(true);
@@ -600,18 +799,29 @@ root_kms: {address: kms}
             std::make_shared<NStorage::TStorageConfigControls>();
         auto secondControls =
             std::make_shared<NStorage::TStorageConfigControls>();
-        auto firstHolder = std::make_shared<TBlockstoreConfigHolder>(
-            MakeBlockstoreConfig(MakeConfig(100), {}, firstControls));
-        auto secondHolder = std::make_shared<TBlockstoreConfigHolder>(
-            MakeBlockstoreConfig(MakeConfig(200), {}, secondControls));
+        auto firstHolder =
+            std::make_shared<TBlockstoreConfigHolder>(MakeBlockstoreConfig(
+                EBlockstoreConfigMergeMode::Startup,
+                MakeConfig(100),
+                {},
+                firstControls));
+        auto secondHolder =
+            std::make_shared<TBlockstoreConfigHolder>(MakeBlockstoreConfig(
+                EBlockstoreConfigMergeMode::Startup,
+                MakeConfig(200),
+                {},
+                secondControls));
         IBlockstoreConfigProviderPtr firstProvider = firstHolder;
         const IBlockstoreConfigProviderPtr secondProvider = secondHolder;
         const auto retained = firstProvider->Get();
 
         // Publish through one writer and preserve the other provider and the
         // retained snapshot.
-        firstHolder->Set(
-            MakeBlockstoreConfig(MakeConfig(300), {}, firstControls));
+        firstHolder->Set(MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            MakeConfig(300),
+            {},
+            firstControls));
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             firstProvider->Get()->GetServerConfig()->GetPort());
@@ -639,8 +849,11 @@ root_kms: {address: kms}
     Y_UNIT_TEST(ShouldExposeCurrentBlockstoreConfig)
     {
         auto controls = std::make_shared<NStorage::TStorageConfigControls>();
-        auto holder = InitializeBlockstoreConfigProvider(
-            MakeBlockstoreConfig(MakeConfig(100), {}, controls));
+        auto holder = InitializeBlockstoreConfigProvider(MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            MakeConfig(100),
+            {},
+            controls));
         const IBlockstoreConfigProviderPtr provider = holder;
         Y_DEFER
         {
@@ -651,7 +864,11 @@ root_kms: {address: kms}
         UNIT_ASSERT_EQUAL(initial.Get(), provider->Get().Get());
         UNIT_ASSERT_VALUES_EQUAL(100, initial->GetServerConfig()->GetPort());
 
-        holder->Set(MakeBlockstoreConfig(MakeConfig(200), {}, controls));
+        holder->Set(MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
+            MakeConfig(200),
+            {},
+            controls));
 
         const auto current = GetCurrentBlockstoreConfig();
         UNIT_ASSERT_EQUAL(current.Get(), provider->Get().Get());
