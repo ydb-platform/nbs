@@ -665,6 +665,112 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(0, described.size());
     }
 
+    Y_UNIT_TEST(ShouldNotEraseAnotherConnectionTabletMapping)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(100);
+        config.SetVolumeProxyPipeInactivityTimeout(
+            TDuration::Seconds(10).MilliSeconds());
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume(
+            DefaultDiskId,
+            100_GB / DefaultBlockSize,
+            DefaultBlockSize,
+            "",   // folderId
+            "",   // cloudId
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+
+        ui64 volumeTabletId = 0;
+        TActorId volumeActorId;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        auto* msg =
+                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+                        const auto& volumeDescription =
+                            msg->PathDescription
+                                .GetBlockStoreVolumeDescription();
+                        volumeTabletId = volumeDescription.GetVolumeTabletId();
+                        break;
+                    }
+                    case TEvVolume::EvWaitReadyResponse: {
+                        volumeActorId = event->Sender;
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        service.DescribeVolume();
+        service.WaitForVolume();
+        UNIT_ASSERT(volumeTabletId);
+        UNIT_ASSERT(volumeActorId);
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(5));
+
+        auto request = std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
+        request->Record.SetDiskId("external-disk");
+        request->Record.SetOwnerVolumeTabletId(volumeTabletId);
+        service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+
+        auto response =
+            service.RecvResponse<TEvVolume::TEvReallocateDiskResponse>();
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+
+        // Expire the first connection. The second connection must remain
+        // registered in ConnectionByTablet.
+        runtime.AdvanceCurrentTime(TDuration::Seconds(6));
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        bool requestDropped = false;
+        bool responseReceived = false;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                switch (event->GetTypeRewrite()) {
+                    case TEvVolume::EvReallocateDiskRequest: {
+                        if (event->GetRecipientRewrite() == volumeActorId) {
+                            requestDropped = true;
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvVolume::EvReallocateDiskResponse: {
+                        if (event->GetRecipientRewrite() ==
+                            service.GetSender())
+                        {
+                            auto* msg = event->Get<
+                                TEvVolume::TEvReallocateDiskResponse>();
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                E_REJECTED,
+                                msg->GetStatus());
+                            responseReceived = true;
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        request = std::make_unique<TEvVolume::TEvReallocateDiskRequest>();
+        request->Record.SetDiskId("external-disk");
+        request->Record.SetOwnerVolumeTabletId(volumeTabletId);
+        service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(requestDropped);
+
+        RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(responseReceived);
+    }
+
     Y_UNIT_TEST(ShouldMapBaseDiskIfSchemeShardIsNotAvailable)
     {
         TTestEnv env;
