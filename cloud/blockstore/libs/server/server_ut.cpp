@@ -1532,6 +1532,60 @@ Y_UNIT_TEST_SUITE(TServerTest)
         CheckDescribe(endpoint, "xyz", E_REJECTED);
         CheckDescribe(endpoint, "", S_OK);
     }
+
+    Y_UNIT_TEST(ShouldServeIOEndpointOnControlPort)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+        ui16 dataPort = portManager.GetPort(9002);
+
+        auto service = std::make_shared<TTestService>();
+        service->ZeroBlocksHandler =
+            [&] (std::shared_ptr<NProto::TZeroBlocksRequest> request) {
+                Y_UNUSED(request);
+                return MakeFuture<NProto::TZeroBlocksResponse>();
+            };
+
+        TTestFactory testFactory;
+
+        auto server = testFactory.CreateServerBuilder()
+            .SetPort(port)
+            .SetDataPort(dataPort)
+            .BuildServer(service);
+
+        auto client = testFactory.CreateClientBuilder().BuildMultiHostClient();
+
+        server->Start();
+        client->Start();
+        Y_DEFER {
+            client->Stop();
+            server->Stop();
+        };
+
+        auto zeroBlocks = [] (const IBlockStorePtr& endpoint) {
+            auto future = endpoint->ZeroBlocks(
+                MakeIntrusive<TCallContext>(),
+                std::make_shared<NProto::TZeroBlocksRequest>());
+            return future.GetValue(TDuration::Seconds(5)).GetError();
+        };
+
+        // the data service is refused on a control port
+        auto error =
+            zeroBlocks(client->CreateDataEndpoint("localhost", port, false));
+        UNIT_ASSERT_VALUES_EQUAL_C(E_GRPC_UNIMPLEMENTED, error.GetCode(), error);
+
+        auto ioEndpoint = client->CreateIOEndpoint("localhost", port, false);
+        error = zeroBlocks(ioEndpoint);
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        // shared by everyone using the host, but apart from the control one
+        UNIT_ASSERT_EQUAL(
+            ioEndpoint,
+            client->CreateIOEndpoint("localhost", port, false));
+        UNIT_ASSERT_UNEQUAL(
+            ioEndpoint,
+            client->CreateEndpoint("localhost", port, false));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NServer
