@@ -2,6 +2,7 @@ import collections
 import errno
 import json
 import os
+import stat
 import sys
 import tempfile
 import time
@@ -9,7 +10,10 @@ import time
 TARGET = "value.json"
 READER_READY = "reader-ready"
 WRITER_DONE = "writer-done"
+TOGGLER_READY = "toggler-ready"
+CREATOR_DONE = "creator-done"
 PUBLISH_COUNT = 200
+CREATE_COUNT = 500
 PUBLISH_PERIOD_SECONDS = 0.01
 READ_PERIOD_SECONDS = 0.005
 SETUP_TIMEOUT_SECONDS = 60
@@ -63,6 +67,51 @@ def reader(root):
             errors[result["error"]] += 1
         time.sleep(READ_PERIOD_SECONDS)
     print(json.dumps({"samples": samples, "errors": errors}))
+
+
+def toggler(root):
+    os.makedirs(root, exist_ok=True)
+    touch(os.path.join(root, TOGGLER_READY))
+    target = os.path.join(root, TARGET)
+    # mknod and unlink are single-phase leader operations, so the name
+    # flips every few ms while the creator's shard phase is delayed
+    while not os.path.exists(os.path.join(root, CREATOR_DONE)):
+        try:
+            os.mknod(target, stat.S_IFREG | 0o644)
+        except FileExistsError:
+            pass
+        try:
+            os.unlink(target)
+        except FileNotFoundError:
+            pass
+
+
+def creator(root):
+    wait_for(os.path.join(root, TOGGLER_READY))
+    target = os.path.join(root, TARGET)
+    created = 0
+    errors = collections.Counter()
+    for seq in range(CREATE_COUNT):
+        try:
+            fd = os.open(target, os.O_WRONLY | os.O_CREAT, 0o644)
+        except OSError as e:
+            errors[errno.errorcode[e.errno]] += 1
+            continue
+        try:
+            os.write(fd, json.dumps({"seq": seq}).encode())
+            created += 1
+        except OSError as e:
+            errors[errno.errorcode[e.errno]] += 1
+        finally:
+            os.close(fd)
+        # a negative dentry is never trusted by the kernel, so the next open
+        # goes through LOOKUP + CREATE instead of OPEN by the cached ino
+        try:
+            os.unlink(target)
+        except FileNotFoundError:
+            pass
+    touch(os.path.join(root, CREATOR_DONE))
+    print(json.dumps({"created": created, "errors": errors}))
 
 
 if __name__ == "__main__":
