@@ -4,6 +4,8 @@
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <util/generic/algorithm.h>
+#include <util/string/builder.h>
 #include <util/string/printf.h>
 
 #include <library/cpp/digest/md5/md5.h>
@@ -19,12 +21,44 @@ TDeviceGenerator::TDeviceGenerator(TLog log, TString agentId)
 
 NProto::TError TDeviceGenerator::operator () (
     const TString& path,
-    const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
+    const NProto::TStorageDiscoveryConfig::TPathConfig& pathConfig,
     ui32 deviceNumber,
-    ui32 maxDeviceCount,
-    ui32 blockSize,
+    ui32 fileBlockSize,
     ui64 fileSize)
 {
+    auto* pool = FindIfPtr(pathConfig.GetPoolConfigs(), [&] (const auto& pool) {
+        ui64 minSize = pool.GetMinSize();
+
+        if (!minSize && pool.HasLayout()) {
+            minSize =
+                pool.GetLayout().GetHeaderSize() +
+                pool.GetLayout().GetDeviceSize();
+        }
+
+        const ui64 maxSize = pool.GetMaxSize()
+            ? pool.GetMaxSize()
+            : fileSize;
+
+        return minSize <= fileSize && fileSize <= maxSize;
+    });
+
+    if (!pool) {
+        return MakeError(E_NOT_FOUND, TStringBuilder()
+            << "unable to find the appropriate pool for " << path);
+    }
+
+    const auto& poolConfig = *pool;
+
+    const ui32 blockSize = poolConfig.GetBlockSize()
+        ? poolConfig.GetBlockSize()
+        : pathConfig.GetBlockSize()
+            ? pathConfig.GetBlockSize()
+            : fileBlockSize;
+
+    const ui32 maxDeviceCount = poolConfig.GetMaxDeviceCount()
+        ? poolConfig.GetMaxDeviceCount()
+        : pathConfig.GetMaxDeviceCount();
+
     if (!poolConfig.HasLayout()) {
         auto& file = Result.emplace_back();
         file.SetPath(path);
