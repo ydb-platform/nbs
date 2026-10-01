@@ -118,10 +118,31 @@ void TQueuedOperations::Acquire()
 
 void TQueuedOperations::Release()
 {
-    auto events = std::exchange(Events, {});
-    Lock.Release();
-    for (auto& event: events) {
-        std::visit([](auto& ev) { ev.Invoke(); }, event);
+    while (true) {
+        auto events = std::exchange(Events, {});
+        auto requestsToSerialize = std::exchange(RequestsToSerialize, {});
+
+        Lock.Release();
+
+        for (auto& event: events) {
+            std::visit([](auto& ev) { ev.Invoke(); }, event);
+        }
+
+        if (requestsToSerialize.empty()) {
+            break;
+        }
+
+        // Process events first because they may complete futures and unblock
+        // requests. Serialization is CPU-intensive, so postponing it minimizes
+        // completion latency and lets us respond quickly.
+        for (auto& request: requestsToSerialize) {
+            request->SerializeToAllocation();
+        }
+
+        Lock.Acquire();
+
+        // This call may enqueue new events
+        Processor.OnRequestsSerialized();
     }
 }
 
@@ -171,6 +192,12 @@ void TQueuedOperations::FailAcquireBarrierPromise(
 {
     Events.push_back(
         TAcquireBarrierPromiseFailedEvent{std::move(promise), error});
+}
+
+void TQueuedOperations::SerializeWriteDataRequest(
+    TPendingWriteDataRequest* request)
+{
+    RequestsToSerialize.push_back(request);
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

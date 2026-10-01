@@ -1,5 +1,7 @@
 #pragma once
 
+#include "write_data_request.h"
+
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -18,6 +20,9 @@ struct IQueuedOperationsProcessor
     virtual ~IQueuedOperationsProcessor() = default;
 
     virtual void ScheduleFlushNode(ui64 nodeId) = 0;
+
+    // This method is called under lock
+    virtual void OnRequestsSerialized() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +35,7 @@ private:
 
     TAdaptiveLock Lock;
     TVector<TEvent> Events;
+    TVector<TPendingWriteDataRequest*> RequestsToSerialize;
     IQueuedOperationsProcessor& Processor;
 
 public:
@@ -62,6 +68,8 @@ public:
     void FailAcquireBarrierPromise(
         NThreading::TPromise<TResultOrError<ui64>> promise,
         const NCloud::NProto::TError& error);
+
+    void SerializeWriteDataRequest(TPendingWriteDataRequest* request);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache

@@ -56,7 +56,8 @@ private:
     // Private fields accessed directly by TWriteDataRequestManager
     char* AllocationPtr = nullptr;
     size_t AllocationByteCount = 0;
-    bool Serialized = false;
+    ui32 Checksum = 0;
+    std::atomic<bool> Serialized = false;
 
 public:
     TPendingWriteDataRequest(

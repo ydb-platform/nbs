@@ -26,7 +26,8 @@ private:
     ITimerPtr Timer;
     IWriteDataRequestManagerStatsPtr Stats;
 
-    TIntrusiveList<TPendingWriteDataRequest> PendingRequests;
+    TIntrusiveList<TPendingWriteDataRequest> UnallocatedPendingRequests;
+    TIntrusiveList<TPendingWriteDataRequest> AllocatedPendingRequests;
     TIntrusiveList<TCachedWriteDataRequest> UnflushedRequests;
     TIntrusiveList<TCachedWriteDataRequest> FlushedRequests;
 
@@ -104,12 +105,13 @@ public:
      */
     [[nodiscard]] TGetNextReadyCachedRequestResult GetNextReadyCachedRequest();
 
-    // Takes and removes front request from the pending queue.
-    // Returns the removed request or nullptr if there are no pending requests.
-    [[nodiscard]] TPendingWriteDataRequest* TryPopFrontPendingRequest();
+    // Returns the highest-sequence unallocated pending request, or nullptr if
+    // there are no unallocated pending requests.
+    [[nodiscard]] const TPendingWriteDataRequest*
+    GetBackUnallocatedPendingRequest() const;
 
-    // Removes the request from the pending queue
-    void Remove(std::unique_ptr<TPendingWriteDataRequest> request);
+    // Removes an unallocated request from the pending queue.
+    void RemoveUnallocated(std::unique_ptr<TPendingWriteDataRequest> request);
 
     /**
      * Marks the request as flushed
@@ -149,10 +151,13 @@ public:
     void UpdateStats() const;
 
 private:
-    // Access methods that triggers stats update
-    void PendingRequestsPushBack(TPendingWriteDataRequest* request);
-    void PendingRequestsRemove(TPendingWriteDataRequest* request);
-    void PendingRequestsPopFront();
+    bool HasUnallocatedPendingRequests() const;
+    bool HasAllocatedPendingRequests() const;
+
+    // Access methods that trigger stats update
+    void UnallocatedPendingRequestsPushBack(TPendingWriteDataRequest* request);
+    void UnallocatedPendingRequestsRemove(TPendingWriteDataRequest* request);
+    void AllocatedPendingRequestsRemove(TPendingWriteDataRequest* request);
     void UnflushedRequestsPushBack(TCachedWriteDataRequest* request);
     void UnflushedRequestsRemove(TCachedWriteDataRequest* request);
     void FlushedRequestsPushBack(TCachedWriteDataRequest* request);
