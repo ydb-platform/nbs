@@ -2569,6 +2569,70 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 "compute.cloud_id.folder_id.test2.instance2.disk.write_ops"),
             "2");
     }
+
+    Y_UNIT_TEST(ShouldReportServingCellHostPerInstance)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume");
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto findCell = [&] (const TString& type, const TString& cellId) {
+            auto group = counters
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test")
+                ->GetSubgroup("instance", "instance-1")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->FindSubgroup("type", type);
+            return group ? group->FindSubgroup("cell", cellId) : nullptr;
+        };
+
+        auto cellMount = [&] (
+            const TString& type,
+            const TString& cellId,
+            const TString& fqdn) -> i64
+        {
+            auto cell = findCell(type, cellId);
+            auto host = cell ? cell->FindSubgroup("cell_host", fqdn) : nullptr;
+            auto counter = host ? host->FindCounter("CellMount") : nullptr;
+            return counter ? counter->Val() : 0;
+        };
+
+        Mount(
+            volumeStats,
+            "test",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+
+        volumeStats->SetServingCellHost("test", "client-1", "cell-a", "host-1");
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("hdd", "cell-a", "host-1"));
+
+        // a move to another host of the cell drops the old one
+        volumeStats->SetServingCellHost("test", "client-1", "cell-a", "host-2");
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("hdd", "cell-a", "host-1"));
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("hdd", "cell-a", "host-2"));
+
+        // a relabel rebuilds the instance tree - the serving host carries over
+        Mount(
+            volumeStats,
+            "test",
+            "client-2",
+            "instance-2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("ssd", "cell-a", "host-2"));
+
+        volumeStats->SetServingCellHost("test", "client-1", {}, {});
+        UNIT_ASSERT(!findCell("ssd", "cell-a"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore

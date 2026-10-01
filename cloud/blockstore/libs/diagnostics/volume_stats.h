@@ -152,6 +152,12 @@ struct IVolumeStats
     virtual TDowntimeHistory GetDowntimeHistory(const TString& diskId) const = 0;
 
     virtual bool HasStorageConfigPatch(const TString& diskId) const = 0;
+
+    virtual void SetServingCellHost(
+        const TString& diskId,
+        const TString& clientId,
+        const TString& cellId,
+        const TString& fqdn) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

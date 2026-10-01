@@ -288,6 +288,18 @@ public:
         Y_UNUSED(diskId);
         return {};
     }
+
+    void SetServingCellHost(
+        const TString& diskId,
+        const TString& clientId,
+        const TString& cellId,
+        const TString& fqdn) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
+        Y_UNUSED(cellId);
+        Y_UNUSED(fqdn);
+    }
 };
 
 }   // namespace NCloud::NBlockStore
