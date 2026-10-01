@@ -8798,8 +8798,11 @@ void TDiskRegistryState::ReplaceBrokenDevices(
             return;
         }
 
+        // Iterate over a copy: replacement overwrites entries of
+        // replicaState->Devices.
+        const TVector<TDeviceId> devicesCopy = replicaState->Devices;
         bool replaced = false;
-        for (const auto& deviceId: replicaState->Devices) {
+        for (const auto& deviceId: devicesCopy) {
             if (IsUnavailableOrBroken(deviceId)) {
                 replaced = true;
                 TryToReplaceDeviceIfAllowedWithoutDiskStateUpdate(
