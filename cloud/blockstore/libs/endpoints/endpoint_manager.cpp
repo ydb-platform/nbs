@@ -1412,8 +1412,8 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         return TErrorResponse(getSessionError);
     }
 
-    // Device may be null while NBD recovery is in progress.
-    if (!endpoint->Device) {
+    // reject refresh restart is in progress
+    if (endpoint->Restart.Initialized() && !endpoint->Restart.IsReady()) {
         return TErrorResponse(
             E_REJECTED,
             TStringBuilder() << "cannot refresh endpoint " << socketPath.Quote()
@@ -1550,13 +1550,13 @@ void TEndpointManager::DoProcessException(
 
     if (hasDevice) {
         STORAGE_INFO(prefix << " start device");
-        endpoint->Device = NbdDeviceFactory->Create(
+        auto device = NbdDeviceFactory->Create(
             TNetworkAddress(TUnixSocketPath(socketPath)),
             endpoint->Request->GetNbdDeviceFile(),
             endpoint->Volume.GetBlocksCount(),
             endpoint->Volume.GetBlockSize());
-        auto future = endpoint->Device->Start();
-        auto error = Executor->WaitFor(future);
+        auto startDeviceFuture = device->Start();
+        error = Executor->WaitFor(startDeviceFuture);
         if (HasError(error)) {
             STORAGE_ERROR(prefix << " failed to start device: "
                 << FormatError(error));
@@ -1564,6 +1564,7 @@ void TEndpointManager::DoProcessException(
             ProcessException(std::move(context), std::move(prefix));
             return;
         }
+        endpoint->Device.swap(device);
     }
 }
 
