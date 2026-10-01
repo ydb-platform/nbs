@@ -4,6 +4,7 @@ package NCloud.NBlockStore.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/libs/storage/protos";
 
+import "cloud/blockstore/config/disk.proto";
 import "cloud/blockstore/public/api/protos/disk.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
 import "cloud/blockstore/public/api/protos/io.proto";
@@ -319,6 +320,16 @@ message TDiskConfig
 
     // Last applied SeqNo from TVolumeActor health notification.
     uint64 VolumeHealthSeqNo = 20;
+
+    // Devices allocated for the disk whose agents have not acknowledged the
+    // AllocateDevice request yet. The disk allocation response is held back
+    // until this list is empty.
+    repeated string UnconfirmedDeviceUUIDs = 21;
+
+    // The journal layout of the disk devices. If the journal is enabled, the
+    // agents are told about the allocation of the devices (see AllocateDevice
+    // request).
+    TJournalConfig JournalConfig = 22;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -715,6 +726,10 @@ message TAllocateDiskRequest
 
     // Placement partition index.
     uint32 PlacementPartitionIndex = 12;
+
+    // The journal layout of the disk devices. Used only when the disk is
+    // created: an existing disk keeps the config it was created with.
+    TJournalConfig JournalConfig = 13;
 }
 
 message TReplica
@@ -1181,6 +1196,28 @@ message TSecureEraseDeviceRequest
 }
 
 message TSecureEraseDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Allocate device. Sent by Disk Registry when a device is allocated for a disk
+// with the journal enabled, before the disk gets the device.
+
+message TAllocateDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // UUID of the allocated device.
+    string DeviceUUID = 2;
+
+    // The journal layout of the device.
+    TJournalConfig JournalConfig = 3;
+}
+
+message TAllocateDeviceResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

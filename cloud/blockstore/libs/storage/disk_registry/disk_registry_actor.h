@@ -193,6 +193,14 @@ private:
     void ScheduleCleanup(const NActors::TActorContext& ctx);
     void SecureErase(const NActors::TActorContext& ctx);
 
+    void SendAllocateDeviceRequests(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        const TString& diskId,
+        const NProto::TJournalConfig& journalConfig,
+        TVector<NProto::TDeviceConfig> devices,
+        std::unique_ptr<TEvDiskRegistry::TEvAllocateDiskResponse> response);
+
     void DestroyBrokenDisks(const NActors::TActorContext& ctx);
 
     void ReallocateDisks(const NActors::TActorContext& ctx);
