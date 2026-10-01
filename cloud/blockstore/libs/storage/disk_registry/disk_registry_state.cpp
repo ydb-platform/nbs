@@ -443,7 +443,10 @@ TDiskRegistryState::TDiskRegistryState(
 {
     for (const auto& x: AutomaticallyReplacedDevices) {
         AutomaticallyReplacedDeviceIds.insert(x.DeviceId);
+        AutomaticReplacementTimestamps.push_back(x.ReplacementTs);
     }
+    // CheckIfDeviceReplacementIsAllowed() expects the timestamps to be sorted.
+    Sort(AutomaticReplacementTimestamps);
 
     // Config doesn't depend on anything
     ProcessConfig(CurrentConfig);
