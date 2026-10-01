@@ -287,6 +287,19 @@ runs:
         echo "TEST_BUDGET_RESERVE_MINUTES=${TEST_BUDGET_RESERVE_MINUTES}" | tee -a "$GITHUB_ENV"
         echo "BUILD_DURATION_SECONDS=${BUILD_DURATION_SECONDS}" | tee -a "$GITHUB_ENV"
 
+        ENABLE_CORE_DUMPS=no
+        if [ "$BUILD_PRESET" = "debug" ] || [ "$BUILD_PRESET" = "relwithdebinfo" ] || [ "$BUILD_PRESET" = "release-ubsan" ]; then
+            ENABLE_CORE_DUMPS=yes
+        fi
+
+        if [ "$ENABLE_CORE_DUMPS" = "yes" ]; then
+            # Bash expresses RLIMIT_CORE in KiB. Keep the runner's 8 GiB hard
+            # ceiling, but opt this job into a smaller per-process limit.
+            CORE_DUMP_LIMIT_KIB=$((2 * 1024 * 1024))
+            find /coredumps -maxdepth 1 -type f -uid "$(id -u)" -delete 2>/dev/null || true
+            ulimit -S -c "$CORE_DUMP_LIMIT_KIB"
+        fi
+
         RETRIES="${NUMBER_OF_RETRIES}"
         OOM_CAN_BE_RETRIED=1
         BUILD_FAILED=0
@@ -308,6 +321,16 @@ runs:
             echo "report_generated=no" >> "$GITHUB_OUTPUT"
             RETRY_LOG_DIR="$LOG_DIR/$i"
             mkdir -p "$RETRY_LOG_DIR"
+            if [ "$ENABLE_CORE_DUMPS" = "yes" ]; then
+                {
+                    printf 'core limit (KiB): soft=%s hard=%s\n' "$(ulimit -S -c)" "$(ulimit -H -c)"
+                    printf 'core_pattern='
+                    cat /proc/sys/kernel/core_pattern
+                    printf 'coredump_filter='
+                    cat /proc/self/coredump_filter
+                    cat /proc/self/limits
+                } | tee "$RETRY_LOG_DIR/core_dump_config.txt"
+            fi
             echo "LAST_STEP=${i}" | tee -a "$GITHUB_ENV"
             echo "::group::ya-make-test-${i}"
             REMAINING_TEST_BUDGET_SECONDS=$(remaining_test_budget_seconds)
@@ -334,7 +357,17 @@ runs:
                     --log-file "$RETRY_LOG_DIR/ya_log.txt" \
                     --evlog-file "$RETRY_LOG_DIR/ya_evlog.jsonl" \
                     "$RETRY_FLAG"
-                echo $? > "$EXIT_CODE_FILE"
+                YA_MAKE_RC=$?
+                if [ "$ENABLE_CORE_DUMPS" = "yes" ]; then
+                    {
+                        echo "Core files remaining after YA post-processing:"
+                        find /coredumps -maxdepth 1 -type f -uid "$(id -u)" \
+                            -printf '%p size=%s bytes blocks=%b\n' 2>/dev/null || true
+                    } | tee -a "$RETRY_LOG_DIR/core_dump_config.txt"
+                    # YA has already generated .backtrace and .backtrace.html.
+                    find /coredumps -maxdepth 1 -type f -uid "$(id -u)" -delete 2>/dev/null || true
+                fi
+                echo "$YA_MAKE_RC" > "$EXIT_CODE_FILE"
             } |& tee "$RETRY_LOG_DIR/ya_make_output.txt"
             set -e
             YA_MAKE_ATTEMPT_FINISHED_AT=$(date +%s)
@@ -813,6 +846,7 @@ runs:
       shell: bash
       run: |
         echo "::group::clean-up"
+        find /coredumps -maxdepth 1 -type f -uid "$(id -u)" -delete 2>/dev/null || true
         rm -rf $TMP_DIR $SUMMARY_LINKS $BAZEL_REMOTE_PASSWORD_FILE \
                $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS $GITHUB_TOKEN_FILE
         echo "::endgroup::"

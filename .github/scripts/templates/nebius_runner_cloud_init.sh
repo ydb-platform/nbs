@@ -205,6 +205,7 @@ OOMScoreAdjust=-900 \
 Delegate=yes \
 TasksMax=infinity \
 LimitMEMLOCK=infinity \
+LimitCORE=0:8G \
 Restart=on-failure \
 RestartSec=5s \
 Slice=actions-runner.slice' \

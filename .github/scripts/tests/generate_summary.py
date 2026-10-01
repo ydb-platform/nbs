@@ -260,6 +260,7 @@ class TestResult:
             "stdout": get_property_value(testcase, "url:stdout"),
             "stderr": get_property_value(testcase, "url:stderr"),
             "backtrace": get_property_value(testcase, "url:backtrace"),
+            "backtrace html": get_property_value(testcase, "url:backtrace html"),
             "recipe_stderr": get_property_value(testcase, "url:recipe stderr"),
             "recipe_stdout": get_property_value(testcase, "url:recipe stdout"),
         }

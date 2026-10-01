@@ -12,6 +12,8 @@ def test_from_junit_marks_fail_build_timeout_and_logs_directory(mk_testcase) -> 
         props={
             "url:logs_directory": "https://logs/path",
             "url:stdout": "https://stdout",
+            "url:backtrace": "https://logs/backtrace",
+            "url:backtrace html": "https://logs/backtrace.html",
         },
     )
 
@@ -21,6 +23,8 @@ def test_from_junit_marks_fail_build_timeout_and_logs_directory(mk_testcase) -> 
     assert result.is_timed_out is True
     assert result.log_urls["DIR"] == "https://logs/path/index.html"
     assert result.log_urls["stdout"] == "https://stdout"
+    assert result.log_urls["backtrace"] == "https://logs/backtrace"
+    assert result.log_urls["backtrace html"] == "https://logs/backtrace.html"
 
 
 def test_from_junit_normalizes_non_finite_elapsed(mk_testcase) -> None:
