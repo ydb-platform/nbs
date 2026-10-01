@@ -803,7 +803,8 @@ void TBootstrapYdb::InitKikimrService()
     StatsFetcher = NCloud::NStorage::BuildStatsFetcher(
         Configs->DiagnosticsConfig->GetStatsFetcherType(),
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
-        Log);
+        Log,
+        LongRunningTaskExecutor);
 
     STORAGE_INFO("StatsFetcher initialized");
 

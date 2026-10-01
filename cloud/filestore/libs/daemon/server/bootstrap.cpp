@@ -167,10 +167,6 @@ void TBootstrapServer::InitComponents()
         });
     }
 
-    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
-        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
-    }
-
     if (!Configs->ServerConfig->GetSecurePort()) {
         CertificateProvider = CreateCertificateProviderStub();
     } else {
