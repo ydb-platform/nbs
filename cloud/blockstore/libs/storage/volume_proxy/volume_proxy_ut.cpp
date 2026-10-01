@@ -16,6 +16,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <unordered_set>
+#include <vector>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -414,6 +415,31 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         UNIT_ASSERT(describe);
     }
 
+    Y_UNIT_TEST(ShouldRejectBaseDiskWithoutTabletId)
+    {
+        TTestEnv env;
+        const ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        const TString baseDiskId = "base-disk";
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolume::TEvMapBaseDiskIdToTabletId>(
+                baseDiskId,
+                0));
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            service.CreateStatVolumeRequest(baseDiskId));
+        auto response = service.RecvStatVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, response->GetStatus());
+
+        UNIT_ASSERT(SUCCEEDED(service.StatVolume()->GetStatus()));
+    }
+
     Y_UNIT_TEST(ShouldDetectRemoteTabletDeath)
     {
         TTestEnv env(1, 2);
@@ -597,6 +623,759 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         service.StatVolume();
         service.StatVolume();
+    }
+
+    Y_UNIT_TEST(ShouldRemoveOldRealDiskIdMappingsAfterRedescribe)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeProxyPipeInactivityTimeout(
+            TDuration::Seconds(1).MilliSeconds());
+        const ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(1100));
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvTabletPipe::EvClientDestroyed);
+        UNIT_ASSERT(runtime.DispatchEvents(options, TDuration::Seconds(5)));
+
+        const TString oldRealDiskId = "old-real-disk";
+        const TString newRealDiskId = "new-real-disk";
+        ui32 describeCount = 0;
+        ui64 tabletId = 0;
+        TActorId clientId;
+        IEventHandlePtr heldDescribeResponse;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvDescribeVolumeResponse) {
+                    const auto* msg = event->template Get<
+                        TEvSSProxy::TEvDescribeVolumeResponse>();
+                    tabletId =
+                        msg->PathDescription.GetBlockStoreVolumeDescription()
+                            .GetVolumeTabletId();
+                    ++describeCount;
+                    if (describeCount <= 2) {
+                        heldDescribeResponse.reset(event.Release());
+                        return true;
+                    }
+                } else if (
+                    event->GetTypeRewrite() == TEvTabletPipe::EvClientConnected)
+                {
+                    const auto* msg =
+                        event
+                            ->template Get<TEvTabletPipe::TEvClientConnected>();
+                    if (msg->TabletId == tabletId) {
+                        clientId = msg->ClientId;
+                    }
+                }
+                return false;
+            });
+
+        auto resolveWithRealDiskId = [&](const TString& realDiskId)
+        {
+            service.SendStatVolumeRequest();
+            UNIT_ASSERT(runtime.DispatchEvents(
+                TDispatchOptions{
+                    .CustomFinalCondition =
+                        [&]
+                    {
+                        return bool(heldDescribeResponse);
+                    }},
+                TDuration::Seconds(5)));
+
+            const auto* msg =
+                heldDescribeResponse
+                    ->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
+            auto description = msg->PathDescription;
+            description.MutableBlockStoreVolumeDescription()->SetName(
+                realDiskId);
+            runtime.Send(
+                new IEventHandle(
+                    heldDescribeResponse->Recipient,
+                    heldDescribeResponse->Sender,
+                    new TEvSSProxy::TEvDescribeVolumeResponse(
+                        msg->Path,
+                        std::move(description)),
+                    0,
+                    heldDescribeResponse->Cookie),
+                nodeIdx);
+            heldDescribeResponse.reset();
+
+            UNIT_ASSERT(
+                SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()));
+        };
+
+        resolveWithRealDiskId(oldRealDiskId);
+        UNIT_ASSERT_VALUES_EQUAL(1, describeCount);
+        UNIT_ASSERT(tabletId);
+        UNIT_ASSERT(clientId);
+
+        runtime.Send(
+            new IEventHandle(
+                MakeVolumeProxyServiceId(),
+                service.GetSender(),
+                new TEvTabletPipe::TEvClientDestroyed(tabletId, clientId, {})),
+            nodeIdx);
+
+        resolveWithRealDiskId(newRealDiskId);
+        UNIT_ASSERT_VALUES_EQUAL(2, describeCount);
+
+        auto request = service.CreateStatVolumeRequest(oldRealDiskId);
+        request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+        service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+        auto response = service.RecvStatVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(3, describeCount);
+        UNIT_ASSERT(FAILED(response->GetStatus()));
+    }
+
+    Y_UNIT_TEST(ShouldKeepResolvingConnectionOnSharedPipeEvents)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeProxyPipeInactivityTimeout(
+            TDuration::Seconds(1).MilliSeconds());
+        const ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(1100));
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvTabletPipe::EvClientDestroyed);
+        UNIT_ASSERT(runtime.DispatchEvents(options, TDuration::Seconds(5)));
+
+        auto sendStatRequest = [&](bool exactDiskIdMatch)
+        {
+            auto request = service.CreateStatVolumeRequest();
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(
+                exactDiskIdMatch);
+            service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+        };
+
+        TVector<IEventHandlePtr> initialDescribeResponses;
+        IEventHandlePtr pendingDescribeResponse;
+        ui64 tabletId = 0;
+        ui64 firstConnectionId = 0;
+        ui32 firstDescribeCount = 0;
+        TActorId clientId;
+        bool holdInitialResponses = true;
+        bool holdFirstRedescribe = false;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvSSProxy::EvDescribeVolumeRequest &&
+                    event->Cookie == firstConnectionId)
+                {
+                    ++firstDescribeCount;
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvDescribeVolumeResponse) {
+                    if (holdInitialResponses) {
+                        const auto* msg = event->template Get<
+                            TEvSSProxy::TEvDescribeVolumeResponse>();
+                        tabletId = msg->PathDescription
+                                       .GetBlockStoreVolumeDescription()
+                                       .GetVolumeTabletId();
+                        initialDescribeResponses.emplace_back(event.Release());
+                        return true;
+                    }
+                    if (holdFirstRedescribe &&
+                        event->Cookie == firstConnectionId) {
+                        UNIT_ASSERT(!pendingDescribeResponse);
+                        pendingDescribeResponse.reset(event.Release());
+                        return true;
+                    }
+                }
+                if (event->GetTypeRewrite() == TEvTabletPipe::EvClientConnected)
+                {
+                    const auto* msg =
+                        event
+                            ->template Get<TEvTabletPipe::TEvClientConnected>();
+                    if (msg->TabletId == tabletId &&
+                        msg->Status == NKikimrProto::OK)
+                    {
+                        clientId = msg->ClientId;
+                    }
+                }
+                return false;
+            });
+
+        sendStatRequest(false);
+        UNIT_ASSERT(runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition =
+                    [&]
+                {
+                    return initialDescribeResponses.size() == 1;
+                }},
+            TDuration::Seconds(5)));
+        sendStatRequest(true);
+        UNIT_ASSERT(runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition =
+                    [&]
+                {
+                    return initialDescribeResponses.size() == 2;
+                }},
+            TDuration::Seconds(5)));
+        UNIT_ASSERT(tabletId);
+        firstConnectionId = initialDescribeResponses[0]->Cookie;
+        UNIT_ASSERT(firstConnectionId != initialDescribeResponses[1]->Cookie);
+
+        holdInitialResponses = false;
+        for (auto& response: initialDescribeResponses) {
+            runtime.Send(response.release(), nodeIdx);
+            UNIT_ASSERT(
+                SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()));
+        }
+        UNIT_ASSERT(clientId);
+
+        auto assertConnectionNotStarted = [&]
+        {
+            service.SendRequest(
+                MakeVolumeProxyServiceId(),
+                std::make_unique<TEvVolumeProxy::TEvKeepAliveRequest>(
+                    DefaultDiskId));
+            auto response =
+                runtime.GrabEdgeEvent<TEvVolumeProxy::TEvKeepAliveResponse>(
+                    service.GetSender(),
+                    TDuration::Seconds(5));
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(
+                E_INVALID_STATE,
+                response->Get()->GetStatus());
+        };
+
+        auto sendPipeDestroyed = [&]
+        {
+            runtime.Send(
+                new IEventHandle(
+                    MakeVolumeProxyServiceId(),
+                    service.GetSender(),
+                    new TEvTabletPipe::TEvClientDestroyed(
+                        tabletId,
+                        clientId,
+                        {})),
+                nodeIdx);
+            assertConnectionNotStarted();
+        };
+
+        sendPipeDestroyed();
+
+        holdFirstRedescribe = true;
+        sendStatRequest(false);
+        UNIT_ASSERT(runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition =
+                    [&]
+                {
+                    return bool(pendingDescribeResponse);
+                }},
+            TDuration::Seconds(5)));
+        UNIT_ASSERT_VALUES_EQUAL(1, firstDescribeCount);
+
+        sendStatRequest(true);
+        UNIT_ASSERT(SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()));
+        UNIT_ASSERT(clientId);
+
+        sendPipeDestroyed();
+        UNIT_ASSERT_VALUES_EQUAL(1, firstDescribeCount);
+
+        sendStatRequest(true);
+        UNIT_ASSERT(SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(1, firstDescribeCount);
+
+        runtime.Send(
+            new IEventHandle(
+                MakeVolumeProxyServiceId(),
+                service.GetSender(),
+                new TEvTabletPipe::TEvClientConnected(
+                    tabletId,
+                    NKikimrProto::ERROR,
+                    clientId,
+                    {},
+                    true,
+                    false,
+                    0)),
+            nodeIdx);
+        assertConnectionNotStarted();
+        UNIT_ASSERT_VALUES_EQUAL(1, firstDescribeCount);
+
+        holdFirstRedescribe = false;
+        runtime.Send(pendingDescribeResponse.release(), nodeIdx);
+        UNIT_ASSERT(SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()));
+    }
+
+    Y_UNIT_TEST(ShouldKeepSharedPipeWhenFirstConnectionExpires)
+    {
+        const auto inactivityTimeout = TDuration::Seconds(1);
+        const auto timeoutMargin = TDuration::MilliSeconds(100);
+        const auto connectionStartDelay = inactivityTimeout / 2;
+
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeProxyPipeInactivityTimeout(
+            inactivityTimeout.MilliSeconds());
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+
+        // CreateVolume sends WaitReady through VolumeProxy. Expire the
+        // connection created by that request so the two requests below create
+        // separate connections.
+        runtime.AdvanceCurrentTime(inactivityTimeout + timeoutMargin);
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvTabletPipe::EvClientDestroyed);
+        UNIT_ASSERT(runtime.DispatchEvents(options, TDuration::Seconds(5)));
+
+        auto sendStatRequest = [&](bool exactDiskIdMatch, ui64 cookie)
+        {
+            auto request = service.CreateStatVolumeRequest();
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(
+                exactDiskIdMatch);
+            runtime.Send(
+                new IEventHandle(
+                    MakeVolumeProxyServiceId(),
+                    service.GetSender(),
+                    request.release(),
+                    0,
+                    cookie),
+                nodeIdx);
+        };
+
+        std::vector<std::unique_ptr<IEventHandle>> describeResponses;
+        ui64 volumeTabletId = 0;
+        TActorId volumeActorId;
+        bool holdDescribeResponses = true;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvStatVolumeRequest: {
+                        if (event->GetRecipientRewrite() !=
+                            MakeVolumeProxyServiceId()) {
+                            volumeActorId = event->GetRecipientRewrite();
+                        }
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        if (holdDescribeResponses) {
+                            auto* msg = event->template Get<
+                                TEvSSProxy::TEvDescribeVolumeResponse>();
+                            const auto& volumeDescription =
+                                msg->PathDescription
+                                    .GetBlockStoreVolumeDescription();
+                            volumeTabletId =
+                                volumeDescription.GetVolumeTabletId();
+                            describeResponses.emplace_back(event.Release());
+                            return true;
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        auto waitForDescribeResponses = [&](size_t count)
+        {
+            UNIT_ASSERT(runtime.DispatchEvents(
+                TDispatchOptions{
+                    .CustomFinalCondition = [&]
+                    {
+                        return describeResponses.size() == count;
+                    }},
+                TDuration::Seconds(5)));
+        };
+
+        sendStatRequest(false, 1);
+        waitForDescribeResponses(1);
+
+        sendStatRequest(true, 2);
+        waitForDescribeResponses(2);
+        UNIT_ASSERT(
+            describeResponses[0]->Cookie != describeResponses[1]->Cookie);
+        UNIT_ASSERT(volumeTabletId);
+
+        holdDescribeResponses = false;
+        const ui64 firstConnectionId = describeResponses[0]->Cookie;
+        runtime.Send(describeResponses[0].release(), nodeIdx);
+        auto response = service.RecvStatVolumeResponse();
+        UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
+        UNIT_ASSERT(volumeActorId);
+
+        runtime.AdvanceCurrentTime(connectionStartDelay);
+
+        runtime.Send(describeResponses[1].release(), nodeIdx);
+        response = service.RecvStatVolumeResponse();
+        UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()), response->GetErrorReason());
+
+        // Expire the first connection while the second one shares its pipe.
+        runtime.AdvanceCurrentTime(
+            inactivityTimeout - connectionStartDelay + timeoutMargin);
+        options.FinalEvents.clear();
+        options.FinalEvents.emplace_back(
+            [firstConnectionId](IEventHandle& event)
+            {
+                if (event.GetTypeRewrite() != TEvents::TSystem::Wakeup) {
+                    return false;
+                }
+                return event.Get<TEvents::TEvWakeup>()->Tag ==
+                    firstConnectionId;
+            });
+        UNIT_ASSERT(runtime.DispatchEvents(options, TDuration::Seconds(5)));
+
+        bool requestDropped = false;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvStatVolumeRequest &&
+                    event->GetRecipientRewrite() == volumeActorId)
+                {
+                    requestDropped = true;
+                    return true;
+                }
+                return false;
+            });
+
+        sendStatRequest(true, 3);
+        UNIT_ASSERT(runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]
+                {
+                    return requestDropped;
+                }},
+            TDuration::Seconds(5)));
+
+        RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
+        response = service.RecvStatVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+    }
+
+    void CheckSharedPipeWhenSecondConnectionExpires(bool checkFinalExpiry)
+    {
+        const auto inactivityTimeout = TDuration::Seconds(1);
+        const auto timeoutMargin = TDuration::MilliSeconds(100);
+
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeProxyPipeInactivityTimeout(
+            inactivityTimeout.MilliSeconds());
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        runtime.AdvanceCurrentTime(inactivityTimeout + timeoutMargin);
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvTabletPipe::EvClientDestroyed);
+        UNIT_ASSERT(runtime.DispatchEvents(options, TDuration::Seconds(5)));
+
+        auto sendStatRequest = [&](bool exactDiskIdMatch)
+        {
+            auto request = service.CreateStatVolumeRequest();
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(
+                exactDiskIdMatch);
+            service.SendRequest(
+                MakeVolumeProxyServiceId(),
+                std::move(request));
+        };
+
+        TVector<IEventHandlePtr> describeResponses;
+        ui64 volumeTabletId = 0;
+        TActorId volumeActorId;
+        bool holdDescribeResponses = true;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvStatVolumeRequest &&
+                    event->GetRecipientRewrite() !=
+                        MakeVolumeProxyServiceId())
+                {
+                    volumeActorId = event->GetRecipientRewrite();
+                }
+                if (holdDescribeResponses &&
+                    event->GetTypeRewrite() ==
+                        TEvSSProxy::EvDescribeVolumeResponse)
+                {
+                    const auto& volumeDescription = event->template Get<
+                        TEvSSProxy::TEvDescribeVolumeResponse>()
+                        ->PathDescription.GetBlockStoreVolumeDescription();
+                    volumeTabletId = volumeDescription.GetVolumeTabletId();
+                    describeResponses.emplace_back(event.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        sendStatRequest(false);
+        UNIT_ASSERT(runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]
+                {
+                    return describeResponses.size() == 1;
+                }},
+            TDuration::Seconds(5)));
+
+        sendStatRequest(true);
+        UNIT_ASSERT(runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]
+                {
+                    return describeResponses.size() == 2;
+                }},
+            TDuration::Seconds(5)));
+        UNIT_ASSERT(volumeTabletId);
+        const ui64 firstConnectionId = describeResponses[0]->Cookie;
+        const ui64 secondConnectionId = describeResponses[1]->Cookie;
+
+        holdDescribeResponses = false;
+        runtime.Send(describeResponses[0].release(), nodeIdx);
+        UNIT_ASSERT_C(
+            SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()),
+            "first connection failed");
+
+        runtime.AdvanceCurrentTime(inactivityTimeout / 2);
+        runtime.Send(describeResponses[1].release(), nodeIdx);
+        UNIT_ASSERT_C(
+            SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()),
+            "second connection failed");
+        UNIT_ASSERT(volumeActorId);
+
+        // Refresh the first connection so the second one expires first.
+        sendStatRequest(false);
+        UNIT_ASSERT_C(
+            SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()),
+            "first connection refresh failed");
+
+        bool requestDropped = false;
+        runtime.AdvanceCurrentTime(inactivityTimeout / 2 + timeoutMargin);
+        if (checkFinalExpiry) {
+            // Keep the first connection alive without an in-flight request.
+            sendStatRequest(false);
+            UNIT_ASSERT_C(
+                SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()),
+                "first connection refresh failed");
+        } else {
+            runtime.SetEventFilter(
+                [&](auto&, auto& event)
+                {
+                    if (event->GetTypeRewrite() ==
+                            TEvService::EvStatVolumeRequest &&
+                        event->GetRecipientRewrite() == volumeActorId)
+                    {
+                        requestDropped = true;
+                        return true;
+                    }
+                    return false;
+                });
+
+            sendStatRequest(false);
+            UNIT_ASSERT(runtime.DispatchEvents(
+                TDispatchOptions{
+                    .CustomFinalCondition = [&]
+                    {
+                        return requestDropped;
+                    }},
+                TDuration::Seconds(5)));
+        }
+
+        runtime.AdvanceCurrentTime(inactivityTimeout / 2);
+        options.FinalEvents.clear();
+        options.FinalEvents.emplace_back(
+            [secondConnectionId](IEventHandle& event)
+            {
+                return event.GetTypeRewrite() == TEvents::TSystem::Wakeup &&
+                    event.Get<TEvents::TEvWakeup>()->Tag == secondConnectionId;
+            });
+        UNIT_ASSERT(runtime.DispatchEvents(options, TDuration::Seconds(5)));
+
+        if (checkFinalExpiry) {
+            TActorId pipeClientId;
+            runtime.SetEventFilter(
+                [&](auto&, auto& event)
+                {
+                    if (event->GetTypeRewrite() == TEvTabletPipe::EvSend &&
+                        event->Type == TEvService::EvStatVolumeRequest)
+                    {
+                        pipeClientId = event->GetRecipientRewrite();
+                    }
+                    return false;
+                });
+
+            sendStatRequest(false);
+            UNIT_ASSERT_C(
+                SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()),
+                "surviving connection failed");
+            UNIT_ASSERT(pipeClientId);
+            const TActorId previousPipeClientId = pipeClientId;
+
+            runtime.AdvanceCurrentTime(
+                inactivityTimeout + timeoutMargin * 2);
+            options.FinalEvents.clear();
+            options.FinalEvents.emplace_back(
+                [firstConnectionId](IEventHandle& event)
+                {
+                    return event.GetTypeRewrite() ==
+                            TEvents::TSystem::Wakeup &&
+                        event.Get<TEvents::TEvWakeup>()->Tag ==
+                            firstConnectionId;
+                });
+            UNIT_ASSERT(runtime.DispatchEvents(options, TDuration::Seconds(5)));
+
+            sendStatRequest(false);
+            UNIT_ASSERT_C(
+                SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()),
+                "new connection failed");
+            UNIT_ASSERT(pipeClientId != previousPipeClientId);
+        } else {
+            RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
+            auto response = runtime.GrabEdgeEvent<
+                TEvService::TEvStatVolumeResponse>(
+                service.GetSender(),
+                TDuration::Seconds(5));
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->Get()->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepSharedPipeWhenSecondConnectionExpires)
+    {
+        CheckSharedPipeWhenSecondConnectionExpires(false);
+    }
+
+    Y_UNIT_TEST(ShouldShutdownPipeWhenLastConnectionExpires)
+    {
+        CheckSharedPipeWhenSecondConnectionExpires(true);
+    }
+
+    Y_UNIT_TEST(ShouldCancelRequestsForAllConnectionsSharingTablet)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeProxyPipeInactivityTimeout(
+            TDuration::Seconds(1).MilliSeconds());
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume();
+
+        runtime.AdvanceCurrentTime(TDuration::MilliSeconds(1100));
+        TDispatchOptions options;
+        options.FinalEvents.emplace_back(TEvTabletPipe::EvClientDestroyed);
+        UNIT_ASSERT(runtime.DispatchEvents(options, TDuration::Seconds(5)));
+
+        auto sendStatRequest = [&](bool exactDiskIdMatch)
+        {
+            auto request = service.CreateStatVolumeRequest();
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(
+                exactDiskIdMatch);
+            service.SendRequest(
+                MakeVolumeProxyServiceId(),
+                std::move(request));
+        };
+
+        TVector<IEventHandlePtr> describeResponses;
+        ui64 volumeTabletId = 0;
+        TActorId volumeActorId;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvStatVolumeRequest &&
+                    event->GetRecipientRewrite() !=
+                        MakeVolumeProxyServiceId())
+                {
+                    volumeActorId = event->GetRecipientRewrite();
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvDescribeVolumeResponse)
+                {
+                    const auto& volumeDescription = event->template Get<
+                        TEvSSProxy::TEvDescribeVolumeResponse>()
+                        ->PathDescription.GetBlockStoreVolumeDescription();
+                    volumeTabletId = volumeDescription.GetVolumeTabletId();
+                    describeResponses.emplace_back(event.Release());
+                    return true;
+                }
+                return false;
+            });
+
+        sendStatRequest(false);
+        UNIT_ASSERT(runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]
+                {
+                    return describeResponses.size() == 1;
+                }},
+            TDuration::Seconds(5)));
+
+        sendStatRequest(true);
+        UNIT_ASSERT(runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]
+                {
+                    return describeResponses.size() == 2;
+                }},
+            TDuration::Seconds(5)));
+        UNIT_ASSERT(volumeTabletId);
+
+        runtime.Send(describeResponses[0].release(), nodeIdx);
+        UNIT_ASSERT_C(
+            SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()),
+            "first connection failed");
+        runtime.Send(describeResponses[1].release(), nodeIdx);
+        UNIT_ASSERT_C(
+            SUCCEEDED(service.RecvStatVolumeResponse()->GetStatus()),
+            "second connection failed");
+        UNIT_ASSERT(volumeActorId);
+
+        ui32 droppedRequests = 0;
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvStatVolumeRequest &&
+                    event->GetRecipientRewrite() == volumeActorId)
+                {
+                    ++droppedRequests;
+                    return true;
+                }
+                return false;
+            });
+
+        sendStatRequest(false);
+        sendStatRequest(true);
+        UNIT_ASSERT(runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]
+                {
+                    return droppedRequests == 2;
+                }},
+            TDuration::Seconds(5)));
+
+        RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
+        for (int i = 0; i < 2; ++i) {
+            auto response = runtime.GrabEdgeEvent<
+                TEvService::TEvStatVolumeResponse>(
+                service.GetSender(),
+                TDuration::Seconds(5));
+            UNIT_ASSERT(response);
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->Get()->GetStatus());
+        }
     }
 
     Y_UNIT_TEST(ShouldMapBaseDiskIfSchemeShardIsNotAvailable)
