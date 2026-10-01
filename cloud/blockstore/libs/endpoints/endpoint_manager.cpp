@@ -1412,7 +1412,7 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         return TErrorResponse(getSessionError);
     }
 
-    // reject refresh restart is in progress
+    // reject refresh while restart attempt is in progress
     if (endpoint->Restart.Initialized() && !endpoint->Restart.IsReady()) {
         return TErrorResponse(
             E_REJECTED,
