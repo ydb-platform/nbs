@@ -5,6 +5,7 @@ RECURSE(
     auth
     common
     compression
+    config
     coroutine
     daemon
     diagnostics
