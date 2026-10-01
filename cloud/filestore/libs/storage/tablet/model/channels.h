@@ -34,6 +34,7 @@ public:
     ~TChannels();
 
     void AddChannel(ui32 channel, EChannelDataKind dataKind, TString poolKind);
+    void SetMaxUsedDataChannelCount(ui32 maxUsedDataChannelCount);
     void UpdateChannelStats(
         ui32 channel,
         bool writable,

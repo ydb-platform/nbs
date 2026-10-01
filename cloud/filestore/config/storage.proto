@@ -927,4 +927,7 @@ message TStorageConfig
 
     // Maximum number of queued handle operations processed concurrently.
     optional uint32 AsyncHandleOperationBatchSize = 546;
+
+    // Limits the number of tablet data channels used for writes.
+    optional uint32 MaxUsedDataChannelCount = 547;
 }

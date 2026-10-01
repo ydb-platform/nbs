@@ -556,7 +556,6 @@ public:
     ui64 GetConfigChannelCount() const;
 
     TVector<ui32> GetChannels(EChannelDataKind kind) const;
-    TVector<ui32> GetUnwritableChannels() const;
     TVector<ui32> GetChannelsToMove(ui32 percentageThreshold) const;
     TVector<NCloud::NStorage::TChannelMonInfo> MakeChannelMonInfos() const;
 

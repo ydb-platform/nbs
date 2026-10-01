@@ -179,6 +179,7 @@ public:
 
     ui32 GetHDDMediaKindOverride() const;
     ui32 GetMinChannelCount() const;
+    ui32 GetMaxUsedDataChannelCount() const;
 
     ui32 GetMaxResponseBytes() const;
     ui32 GetMaxResponseEntries() const;
