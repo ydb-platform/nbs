@@ -1,0 +1,81 @@
+syntax = "proto2";
+
+package NCloud.NConfig.NProto.NTest;
+
+import "cloud/storage/core/config/markers.proto";
+
+// A message with both runtime and startup-only parameters for path tests.
+message TParameters
+{
+    optional uint32 Mutable = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Frozen = 2;
+}
+
+// A message with independently classified fields inside a fixed oneof.
+message TMutableParameters
+{
+    optional uint32 Value = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Frozen = 2;
+}
+
+// A compound value whose inner annotations must not constrain its owner.
+message TCompoundValue
+{
+    optional uint32 Value = 1;
+    optional TParameters Nested = 2;
+
+    oneof InnerChoice
+    {
+        uint32 First = 3;
+        string Second = 4;
+    }
+
+    oneof IgnoredAnnotations
+    {
+        option (NMarkers.AllowRuntimeSwitch) = true;
+        uint32 Unmarked = 5;
+        uint32 ExplicitFalse = 6 [(NMarkers.AllowRuntimeUpdate) = false];
+    }
+}
+
+// A schema covering ancestor permissions, compound collections, and oneofs.
+message TRuntimeConfig
+{
+    optional TParameters Allowed = 1 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TParameters Frozen = 2;
+    optional TParameters ExplicitFalse = 3 [(NMarkers.AllowRuntimeUpdate) = false];
+    repeated TParameters Records = 4 [(NMarkers.AllowRuntimeUpdate) = true];
+    repeated string FrozenValues = 5;
+    repeated uint32 Values = 6 [(NMarkers.AllowRuntimeUpdate) = true];
+    map<string, uint32> MutableMap = 7 [(NMarkers.AllowRuntimeUpdate) = true];
+    map<string, uint32> FrozenMap = 8;
+    optional bool Flag = 9 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional string Text = 10 [(NMarkers.AllowRuntimeUpdate) = true];
+
+    oneof MutableChoice
+    {
+        option (NMarkers.AllowRuntimeSwitch) = true;
+        uint32 MutableNumber = 11 [(NMarkers.AllowRuntimeUpdate) = true];
+        TCompoundValue MutableMessage = 12 [(NMarkers.AllowRuntimeUpdate) = true];
+    }
+
+    oneof FrozenChoice
+    {
+        uint32 FrozenNumber = 13;
+        TMutableParameters FrozenMessage = 14;
+    }
+
+    oneof FixedChoice
+    {
+        uint32 FixedNumber = 15 [(NMarkers.AllowRuntimeUpdate) = true];
+        TMutableParameters FixedMessage = 16 [(NMarkers.AllowRuntimeUpdate) = true];
+        TMutableParameters ReadOnlyMessage = 17;
+    }
+
+    optional TRuntimeConfig AllowedChild = 18 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional TRuntimeConfig FrozenChild = 19;
+    repeated TCompoundValue AtomicRecords = 20 [(NMarkers.AllowRuntimeUpdate) = true];
+    map<string, TParameters> MessageMap = 21 [(NMarkers.AllowRuntimeUpdate) = true];
+    map<string, TParameters> FrozenMessageMap = 22;
+    repeated TParameters FrozenRecords = 23;
+}

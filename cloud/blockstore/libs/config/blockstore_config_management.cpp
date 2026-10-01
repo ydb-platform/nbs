@@ -20,8 +20,8 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 // The private IBlockstoreConfig implementation and owner of its runtime
-// wrappers and protobuf sections. Only MakeBlockstoreConfig() creates
-// instances.
+// wrappers and protobuf sections. Only MakeBlockstoreConfig() and
+// MakeStartupBlockstoreConfig() create instances.
 class TBlockstoreConfigImpl final: public IBlockstoreConfig
 {
 public:
@@ -257,6 +257,15 @@ TBlockstoreConfigImpl::GetLocalNVMeConfig() const
 
 // Merge feature definitions by name so an overridden feature has one runtime
 // record. Preserve the existing first-wins behavior within each source layer.
+//
+// staticFeatures - Feature definitions used as the merge base.
+// dynamicFeatures - Overrides that replace complete static records with the
+//      same names.
+// result - Non-null output message. Replace its repeated Features field;
+//      preserve all other fields. Discard its contents if the operation throws.
+//
+// Result - Keep each static feature's position and append dynamic-only
+//      features in source order.
 void MergeFeatures(
     const NCloud::NProto::TFeaturesConfig& staticFeatures,
     const NCloud::NProto::TFeaturesConfig& dynamicFeatures,
@@ -340,8 +349,6 @@ void RemoveStaticOnlyBlockstoreFields(NProto::TBlockstoreConfig& config)
     }
 }
 
-// Normalize overrides while preserving the static agent role and linked
-// discovery ports; remove empty sections so ignored overrides do not publish.
 void NormalizeDynamicBlockstoreConfig(
     const NProto::TBlockstoreConfig& staticConfig,
     NProto::TBlockstoreConfig& dynamicConfig)
@@ -395,7 +402,7 @@ bool IsPrivateDatabaseConfigEnabled(
     return dynamicYamlConfigurationEnabled && !temporaryServer;
 }
 
-NProto::TBlockstoreConfig MergeBlockstoreConfig(
+NProto::TBlockstoreConfig MergeBlockstoreConfigSources(
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig)
 {
@@ -412,28 +419,26 @@ NProto::TBlockstoreConfig MergeBlockstoreConfig(
     return result;
 }
 
-// Preserve non-protobuf parameters when rebuilding the configuration.
 TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
     const IBlockstoreConfig& currentConfig)
 {
     const auto& diskAgentConfig = currentConfig.GetDiskAgentConfig();
     return {
-        .DiskAgent = {
-            .Rack = diskAgentConfig->GetRack(),
-            .NetworkMbitThroughput = diskAgentConfig->GetNetworkMbitThroughput(),
-        },
+        .DiskAgent =
+            {
+                .Rack = diskAgentConfig->GetRack(),
+                .NetworkMbitThroughput =
+                    diskAgentConfig->GetNetworkMbitThroughput(),
+            },
     };
 }
 
 IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
-    const NProto::TBlockstoreConfig& staticConfig,
-    const NProto::TBlockstoreConfig& dynamicConfig,
+    const NProto::TBlockstoreConfig& config,
     NStorage::TStorageConfigControlsPtr controls,
     TBlockstoreConfigExtraParameters extraParameters)
 {
     Y_ABORT_UNLESS(controls);
-
-    auto config = MergeBlockstoreConfig(staticConfig, dynamicConfig);
     auto featuresConfig =
         std::make_shared<NFeatures::TFeaturesConfig>(config.GetFeatures());
     auto storageConfig = std::make_shared<NStorage::TStorageConfig>(
@@ -453,12 +458,10 @@ IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
 }
 
 IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
-    const NProto::TBlockstoreConfig& staticConfig,
-    const NProto::TBlockstoreConfig& dynamicConfig,
+    const NProto::TBlockstoreConfig& config,
     const NStorage::TStorageConfig& storageConfig,
     const NStorage::TDiskAgentConfig& diskAgentConfig)
 {
-    const auto config = MergeBlockstoreConfig(staticConfig, dynamicConfig);
     auto featuresConfig =
         std::make_shared<NFeatures::TFeaturesConfig>(config.GetFeatures());
     auto storageConfigCopy =
@@ -472,6 +475,62 @@ IBlockstoreConfigMutablePtr MakeBlockstoreConfig(
         std::move(featuresConfig),
         std::move(storageConfigCopy),
         std::move(diskAgentConfigCopy));
+}
+
+IBlockstoreConfigMutablePtr MakeStartupBlockstoreConfig(
+    const NProto::TBlockstoreConfig& staticConfig,
+    const NProto::TBlockstoreConfig& dynamicConfig,
+    NStorage::TStorageConfigControlsPtr controls,
+    TBlockstoreConfigExtraParameters extraParameters)
+{
+    auto dynamicConfigCopy = dynamicConfig;
+    NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfigCopy);
+
+    return MakeBlockstoreConfig(
+        MergeBlockstoreConfigSources(staticConfig, dynamicConfigCopy),
+        std::move(controls),
+        std::move(extraParameters));
+}
+
+NConfig::TRuntimeConfigDiagnostics PrepareRuntimeBlockstoreConfig(
+    const NProto::TBlockstoreConfig& staticConfig,
+    const NProto::TBlockstoreConfig& startupConfig,
+    const NProto::TBlockstoreConfig& dynamicConfig,
+    NProto::TBlockstoreConfig& runtimeConfig)
+{
+    auto config = MergeBlockstoreConfigSources(staticConfig, dynamicConfig);
+    auto diagnostics =
+        NConfig::FilterRuntimeConfig(staticConfig, startupConfig, config);
+    runtimeConfig = std::move(config);
+    return diagnostics;
+}
+
+IBlockstoreConfigMutablePtr MakeRuntimeBlockstoreConfig(
+    const NProto::TBlockstoreConfig& staticConfig,
+    const NProto::TBlockstoreConfig& startupConfig,
+    const NProto::TBlockstoreConfig& dynamicConfig,
+    NStorage::TStorageConfigControlsPtr controls,
+    NConfig::TRuntimeConfigDiagnostics& diagnostics,
+    TBlockstoreConfigExtraParameters extraParameters)
+{
+    // Preserve the received CMS proto for comparison with later notifications.
+    auto dynamicConfigCopy = dynamicConfig;
+    NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfigCopy);
+    NProto::TBlockstoreConfig runtimeConfig;
+    auto runtimeDiagnostics = PrepareRuntimeBlockstoreConfig(
+        staticConfig,
+        startupConfig,
+        dynamicConfigCopy,
+        runtimeConfig);
+
+    // Keep the caller's previous report if preparation or adapter construction
+    // throws; replace it only for a completed configuration.
+    auto config = MakeBlockstoreConfig(
+        runtimeConfig,
+        std::move(controls),
+        std::move(extraParameters));
+    diagnostics = std::move(runtimeDiagnostics);
+    return config;
 }
 
 }   // namespace NCloud::NBlockStore
