@@ -51,8 +51,9 @@ struct TServerActorSystemArgs
     // PrivateDatabaseConfig overrides.
     NProto::TBlockstoreConfig CmsBlockstoreConfig;
 
-    // Startup base after CMS application and RDMA initialization in both YAML
-    // and PROTO modes, before applying PrivateDatabaseConfig in YAML mode.
+    // Complete startup proto after CMS and PrivateDatabaseConfig YAML
+    // application. Retained unchanged as the source of startup-only runtime
+    // parameters.
     NProto::TBlockstoreConfig StartupBlockstoreConfigProto;
 
     // Effective startup snapshot in both YAML and PROTO modes.

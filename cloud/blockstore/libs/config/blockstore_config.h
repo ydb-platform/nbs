@@ -24,6 +24,7 @@ configuration for a logical operation.
 #include <cloud/blockstore/libs/storage/disk_registry_proxy/model/config.h>
 #include <cloud/blockstore/libs/ydbstats/config.h>
 
+#include <cloud/storage/core/libs/config/runtime_config.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/libs/iam/iface/config.h>
 
@@ -127,13 +128,24 @@ using IBlockstoreConfigConstPtr = TIntrusiveConstPtr<IBlockstoreConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Startup accepts every normalized source field. Runtime restores unmarked
+// parameters from the immutable startup proto before building adapters.
+enum class EBlockstoreConfigMergeMode
+{
+    Startup,
+    Runtime,
+};
+
 // Merge dynamicConfig into a copy of staticConfig according to protobuf rules,
 // except for Features. Keep the first feature with each name within a source;
 // replace a matching static feature with the complete dynamic record at its
 // position, and append dynamic-only features in their source order.
 NProto::TBlockstoreConfig MergeBlockstoreConfig(
+    EBlockstoreConfigMergeMode mode,
     const NProto::TBlockstoreConfig& staticConfig,
-    const NProto::TBlockstoreConfig& dynamicConfig);
+    const NProto::TBlockstoreConfig& dynamicConfig,
+    const NProto::TBlockstoreConfig* startupConfig = nullptr,
+    NConfig::TRuntimeConfigDiagnostics* diagnostics = nullptr);
 
 // Copy non-protobuf parameters from the current Blockstore configuration.
 TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
@@ -143,8 +155,17 @@ TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
 // controls pointer must be non-null and becomes the live ICB overlay of the
 // Storage wrapper. Extra parameters supply host-specific DiskAgent values.
 IBlockstoreConfigPtr MakeBlockstoreConfig(
+    EBlockstoreConfigMergeMode mode,
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
+    NStorage::TStorageConfigControlsPtr controls,
+    TBlockstoreConfigExtraParameters extraParameters = {},
+    const NProto::TBlockstoreConfig* startupConfig = nullptr);
+
+// Build adapters from an already merged and filtered proto without merging
+// sources again; require non-null controls and leave their defaults unchanged.
+IBlockstoreConfigPtr MakeBlockstoreConfig(
+    const NProto::TBlockstoreConfig& config,
     NStorage::TStorageConfigControlsPtr controls,
     TBlockstoreConfigExtraParameters extraParameters = {});
 
@@ -153,6 +174,7 @@ IBlockstoreConfigPtr MakeBlockstoreConfig(
 // live ICB controls in either mode and uses Features from the merged sources.
 // Build every other section from the merged sources.
 IBlockstoreConfigPtr MakeBlockstoreConfig(
+    EBlockstoreConfigMergeMode mode,
     const NProto::TBlockstoreConfig& staticConfig,
     const NProto::TBlockstoreConfig& dynamicConfig,
     const NStorage::TStorageConfig& storageConfig,

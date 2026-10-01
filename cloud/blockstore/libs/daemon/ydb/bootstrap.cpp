@@ -668,16 +668,16 @@ void TBootstrapYdb::InitKikimrService()
         extraParameters.DiskAgent.NetworkMbitThroughput =
             Configs->DiskAgentConfig->GetNetworkMbitThroughput();
 
-        const auto mergedConfig = MergeBlockstoreConfig(
+        startupBlockstoreConfigProto = MergeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
             startupBlockstoreConfigProto,
             cmsBlockstoreConfig);
         StartupBlockstoreConfig = MakeBlockstoreConfig(
-            mergedConfig,
-            {},
+            startupBlockstoreConfigProto,
             Configs->StorageConfigControls,
             std::move(extraParameters));
         Configs->StorageConfigControls->UpdateDefaults(
-            mergedConfig.GetStorageService());
+            startupBlockstoreConfigProto.GetStorageService());
 
         STORAGE_INFO(
             (cmsBlockstoreConfig.ByteSizeLong()
@@ -686,6 +686,7 @@ void TBootstrapYdb::InitKikimrService()
                    "using configuration after CMS"));
     } else {
         StartupBlockstoreConfig = MakeBlockstoreConfig(
+            EBlockstoreConfigMergeMode::Startup,
             startupBlockstoreConfigProto,
             {},
             *Configs->StorageConfig,

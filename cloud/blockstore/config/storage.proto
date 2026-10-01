@@ -1,5 +1,7 @@
 syntax = "proto2";
 
+import "cloud/storage/core/config/markers.proto";
+
 package NCloud.NBlockStore.NProto;
 
 import "cloud/storage/core/protos/authorization_mode.proto";
@@ -205,10 +207,10 @@ message TStorageServiceConfig
 
     // Minimum write request size (in bytes) that lets us write the data directly
     // to blobstorage (as a merged blob).
-    optional uint32 WriteBlobThreshold = 6;
+    optional uint32 WriteBlobThreshold = 6 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // The size of data (in bytes) in the fresh blocks table that triggers flushing.
-    optional uint32 FlushThreshold = 7;
+    optional uint32 FlushThreshold = 7 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum number of fresh blocks to keep.
     // optional uint32 MaxFreshBlocks = 8; // obsolete
@@ -217,56 +219,56 @@ message TStorageServiceConfig
     // optional uint32 CompactionThreshold = 9; // obsolete
 
     // Number of blobs queued for cleanup.
-    optional uint32 CleanupThreshold = 10;
+    optional uint32 CleanupThreshold = 10 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of blobs queued for collect.
-    optional uint32 CollectGarbageThreshold = 11;
+    optional uint32 CollectGarbageThreshold = 11 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for hive locks (in milliseconds).
-    optional uint32 HiveLockExpireTimeout = 12;
+    optional uint32 HiveLockExpireTimeout = 12 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Cooldown time between tablet reboots (in milliseconds).
-    optional uint32 TabletRebootCoolDownIncrement = 13;
-    optional uint32 TabletRebootCoolDownMax = 14;
+    optional uint32 TabletRebootCoolDownIncrement = 13 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 TabletRebootCoolDownMax = 14 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Should local service be started or not.
     optional bool DisableLocalService = 15;
 
     // Number of reties before pipe client reports failure.
-    optional uint32 PipeClientRetryCount = 16;
+    optional uint32 PipeClientRetryCount = 16 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Mimimum timeout before pipe client reconnect attempt.
-    optional uint32 PipeClientMinRetryTime = 17;
+    optional uint32 PipeClientMinRetryTime = 17 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum timeout before pipe client reconnect attempt.
-    optional uint32 PipeClientMaxRetryTime = 18;
+    optional uint32 PipeClientMaxRetryTime = 18 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Fresh data will be chunked into blobs of such size (in bytes) during flushing.
-    optional uint32 FlushBlobSizeThreshold = 19;
+    optional uint32 FlushBlobSizeThreshold = 19 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Period to write usage stats to log (in milliseconds).
     // optional uint32 UsageStatsLogPeriod = 20;  // obsolete
 
     // Retry timeout for compaction started from monitoring (in milliseconds).
-    optional uint32 CompactionRetryTimeout = 21;
+    optional uint32 CompactionRetryTimeout = 21 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of deletions before starting an update process.
-    optional uint32 UpdateBlobsThreshold = 22;
+    optional uint32 UpdateBlobsThreshold = 22 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // File to write metering data.
     // optional string MeteringFilename = 23;  // obsolete
 
     // Number of garbage blocks before start compaction.
-    optional uint32 CompactionGarbageThreshold = 24;
+    optional uint32 CompactionGarbageThreshold = 24 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum request size in bytes.
-    optional uint64 MaxReadWriteRangeSize = 25;
+    optional uint64 MaxReadWriteRangeSize = 25 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum blob range size (in bytes).
-    optional uint32 MaxBlobRangeSize = 26;
+    optional uint32 MaxBlobRangeSize = 26 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for considering client inactive after mounting (in milliseconds).
-    optional uint32 InactiveClientsTimeout = 27;
+    optional uint32 InactiveClientsTimeout = 27 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Allow the service to unmount inactive clients.
     // optional bool UnmountInactiveClients = 28;  // obsolete
@@ -275,11 +277,11 @@ message TStorageServiceConfig
     // optional bool MultipleMountAllowed = 29;    // obsolete
 
     // Maximum allowed requests in-progress.
-    optional uint32 MaxIORequestsInFlight = 30;
-    optional uint32 MaxIORequestsInFlightSSD = 31;
+    optional uint32 MaxIORequestsInFlight = 30 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 MaxIORequestsInFlightSSD = 31 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Allow setting Version field in ModifyScheme request.
-    optional bool AllowVersionInModifyScheme = 32;
+    optional bool AllowVersionInModifyScheme = 32 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Require mounting volume by any client willing to submit read/write/zero blocks requests.
     // optional bool MountRequired = 33;   // obsolete
@@ -288,72 +290,72 @@ message TStorageServiceConfig
     optional string ServiceVersionInfo = 34;
 
     // Size of allocation unit for SSD drives (in GiB).
-    optional uint32 AllocationUnitSSD = 35;
+    optional uint32 AllocationUnitSSD = 35 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Size of allocation unit for HDD drives (in GiB).
-    optional uint32 AllocationUnitHDD = 36;
+    optional uint32 AllocationUnitHDD = 36 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Throttling feature flags.
-    optional bool ThrottlingEnabled = 37;
-    optional bool ThrottlingEnabledSSD = 38;
+    optional bool ThrottlingEnabled = 37 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional bool ThrottlingEnabledSSD = 38 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Volumes stats upload to db period.
-    optional uint32 StatsUploadInterval = 39;
+    optional uint32 StatsUploadInterval = 39 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Default throttling settings.
-    optional uint32 ThrottlingBurstPercentage = 40;
-    optional uint64 ThrottlingMaxPostponedWeight = 41;   // in bytes
-    optional uint32 ThrottlingBoostTime = 42;            // in milliseconds
-    optional uint32 ThrottlingBoostRefillTime = 43;      // in milliseconds
+    optional uint32 ThrottlingBurstPercentage = 40 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint64 ThrottlingMaxPostponedWeight = 41 [(NMarkers.AllowRuntimeUpdate) = true];   // in bytes
+    optional uint32 ThrottlingBoostTime = 42 [(NMarkers.AllowRuntimeUpdate) = true];            // in milliseconds
+    optional uint32 ThrottlingBoostRefillTime = 43 [(NMarkers.AllowRuntimeUpdate) = true];      // in milliseconds
 
     // Disk boost rate corresponds to the following unit count.
-    optional uint32 ThrottlingSSDBoostUnits = 44;
-    optional uint32 ThrottlingHDDBoostUnits = 45;
+    optional uint32 ThrottlingSSDBoostUnits = 44 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 ThrottlingHDDBoostUnits = 45 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Performance per allocation unit.
-    optional uint32 SSDUnitReadBandwidth = 46;   // in MiB/s
-    optional uint32 SSDUnitWriteBandwidth = 47;  // in MiB/s
-    optional uint32 SSDMaxReadBandwidth = 48;    // in MiB/s
-    optional uint32 SSDMaxWriteBandwidth = 49;   // in MiB/s
-    optional uint32 SSDUnitReadIops = 50;
-    optional uint32 SSDUnitWriteIops = 51;
-    optional uint32 SSDMaxReadIops = 52;
-    optional uint32 SSDMaxWriteIops = 53;
-    optional uint32 HDDUnitReadBandwidth = 54;   // in MiB/s
-    optional uint32 HDDUnitWriteBandwidth = 55;  // in MiB/s
-    optional uint32 HDDMaxReadBandwidth = 56;    // in MiB/s
-    optional uint32 HDDMaxWriteBandwidth = 57;   // in MiB/s
-    optional uint32 HDDUnitReadIops = 58;
-    optional uint32 HDDUnitWriteIops = 59;
-    optional uint32 HDDMaxReadIops = 60;
-    optional uint32 HDDMaxWriteIops = 61;
+    optional uint32 SSDUnitReadBandwidth = 46 [(NMarkers.AllowRuntimeUpdate) = true];   // in MiB/s
+    optional uint32 SSDUnitWriteBandwidth = 47 [(NMarkers.AllowRuntimeUpdate) = true];  // in MiB/s
+    optional uint32 SSDMaxReadBandwidth = 48 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 SSDMaxWriteBandwidth = 49 [(NMarkers.AllowRuntimeUpdate) = true];   // in MiB/s
+    optional uint32 SSDUnitReadIops = 50 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 SSDUnitWriteIops = 51 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 SSDMaxReadIops = 52 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 SSDMaxWriteIops = 53 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 HDDUnitReadBandwidth = 54 [(NMarkers.AllowRuntimeUpdate) = true];   // in MiB/s
+    optional uint32 HDDUnitWriteBandwidth = 55 [(NMarkers.AllowRuntimeUpdate) = true];  // in MiB/s
+    optional uint32 HDDMaxReadBandwidth = 56 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 HDDMaxWriteBandwidth = 57 [(NMarkers.AllowRuntimeUpdate) = true];   // in MiB/s
+    optional uint32 HDDUnitReadIops = 58 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 HDDUnitWriteIops = 59 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 HDDMaxReadIops = 60 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 HDDMaxWriteIops = 61 [(NMarkers.AllowRuntimeUpdate) = true];
 
-    optional NCloud.NProto.EAuthorizationMode AuthorizationMode = 62;
+    optional NCloud.NProto.EAuthorizationMode AuthorizationMode = 62 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Throttler postpone/reject threshold in milliseconds.
-    optional uint32 MaxThrottlerDelay = 63;
+    optional uint32 MaxThrottlerDelay = 63 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Partition backpressure feature calculation settings.
-    optional uint32 CompactionScoreLimitForBackpressure = 64;
-    optional uint32 CompactionScoreThresholdForBackpressure = 65;
-    optional uint32 CompactionScoreFeatureMaxValue = 66;
-    optional uint32 FreshByteCountLimitForBackpressure = 67;
-    optional uint32 FreshByteCountThresholdForBackpressure = 68;
-    optional uint32 FreshByteCountFeatureMaxValue = 69;
-    optional uint64 CleanupQueueBytesLimitForBackpressure = 311;
-    optional uint64 CleanupQueueBytesThresholdForBackpressure = 312;
-    optional uint32 CleanupQueueBytesFeatureMaxValue = 313;
+    optional uint32 CompactionScoreLimitForBackpressure = 64 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 CompactionScoreThresholdForBackpressure = 65 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 CompactionScoreFeatureMaxValue = 66 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 FreshByteCountLimitForBackpressure = 67 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 FreshByteCountThresholdForBackpressure = 68 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 FreshByteCountFeatureMaxValue = 69 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint64 CleanupQueueBytesLimitForBackpressure = 311 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint64 CleanupQueueBytesThresholdForBackpressure = 312 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 CleanupQueueBytesFeatureMaxValue = 313 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max write request cost multiplier due to backpressure.
-    optional uint32 MaxWriteCostMultiplier = 70;
+    optional uint32 MaxWriteCostMultiplier = 70 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout to register client at volume.
     // InitialAddClientTimeout should include the time required to release
     // the volume lock and to bring the volume back up.
-    optional uint32 InitialAddClientTimeout = 71;
+    optional uint32 InitialAddClientTimeout = 71 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout to register client after tablet local start.
-    optional uint32 LocalStartAddClientTimeout = 72;
+    optional uint32 LocalStartAddClientTimeout = 72 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Channel configuration.
     optional string HDDSystemChannelPoolKind = 73;
@@ -383,217 +385,217 @@ message TStorageServiceConfig
     optional string FolderId = 90;
 
     // Enables allocation of special channels for Mixed blobs.
-    optional bool AllocateSeparateMixedChannels = 91;
+    optional bool AllocateSeparateMixedChannels = 91 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Retry timeout for cleanup started from monitoring (in milliseconds).
-    optional uint32 CleanupRetryTimeout = 92;
+    optional uint32 CleanupRetryTimeout = 92 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Channel free space threshold - used for write request balancing.
-    optional uint32 ChannelFreeSpaceThreshold = 93;
+    optional uint32 ChannelFreeSpaceThreshold = 93 [(NMarkers.AllowRuntimeUpdate) = true];
     // Channel min free space - used for write request balancing.
-    optional uint32 ChannelMinFreeSpace = 94;
+    optional uint32 ChannelMinFreeSpace = 94 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Minimum number of channels per partition.
-    optional uint32 MinChannelCount = 95;
+    optional uint32 MinChannelCount = 95 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Weight of read/zero/describe requests in throttler's postponed request
     // queue, bytes.
-    optional uint32 DefaultPostponedRequestWeight = 96;
+    optional uint32 DefaultPostponedRequestWeight = 96 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for client to send ping (in milliseconds).
-    optional uint32 ClientRemountPeriod = 97;
+    optional uint32 ClientRemountPeriod = 97 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Index caching parameters (only for partition2).
-    optional uint32 ZoneBlockCount = 98;
-    optional uint32 HotZoneRequestCountFactor = 99;
-    optional uint32 ColdZoneRequestCountFactor = 100;
+    optional uint32 ZoneBlockCount = 98 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 HotZoneRequestCountFactor = 99 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 ColdZoneRequestCountFactor = 100 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables/disables write request batching.
-    optional bool WriteRequestBatchingEnabled = 101;
+    optional bool WriteRequestBatchingEnabled = 101 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // BlockList cache size (only for partition2).
-    optional uint32 BlockListCacheSizePercentage = 102;
+    optional uint32 BlockListCacheSizePercentage = 102 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max blobs to process in a single Cleanup op run.
-    optional uint32 MaxBlobsToCleanup = 103;
+    optional uint32 MaxBlobsToCleanup = 103 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Blob size limit in bytes.
-    optional uint32 MaxBlobSize = 104;
+    optional uint32 MaxBlobSize = 104 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Size of allocation unit for non-replicated SSD drives (in GiB).
-    optional uint32 AllocationUnitNonReplicatedSSD = 105;
+    optional uint32 AllocationUnitNonReplicatedSSD = 105 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Performance per allocation unit for nonreplicated volumes.
-    optional uint32 NonReplicatedSSDUnitReadBandwidth = 106;    // in MiB/s
-    optional uint32 NonReplicatedSSDUnitWriteBandwidth = 107;   // in MiB/s
-    optional uint32 NonReplicatedSSDMaxReadBandwidth = 108;     // in MiB/s
-    optional uint32 NonReplicatedSSDMaxWriteBandwidth = 109;    // in MiB/s
-    optional uint32 NonReplicatedSSDUnitReadIops = 110;
-    optional uint32 NonReplicatedSSDUnitWriteIops = 111;
-    optional uint32 NonReplicatedSSDMaxReadIops = 112;
-    optional uint32 NonReplicatedSSDMaxWriteIops = 113;
+    optional uint32 NonReplicatedSSDUnitReadBandwidth = 106 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 NonReplicatedSSDUnitWriteBandwidth = 107 [(NMarkers.AllowRuntimeUpdate) = true];   // in MiB/s
+    optional uint32 NonReplicatedSSDMaxReadBandwidth = 108 [(NMarkers.AllowRuntimeUpdate) = true];     // in MiB/s
+    optional uint32 NonReplicatedSSDMaxWriteBandwidth = 109 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 NonReplicatedSSDUnitReadIops = 110 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 NonReplicatedSSDUnitWriteIops = 111 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 NonReplicatedSSDMaxReadIops = 112 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 NonReplicatedSSDMaxWriteIops = 113 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Compaction type.
-    optional ECompactionType SSDCompactionType = 114;
-    optional ECompactionType HDDCompactionType = 115;
+    optional ECompactionType SSDCompactionType = 114 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional ECompactionType HDDCompactionType = 115 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables approximate garbage compaction for partition v1.
-    optional bool V1GarbageCompactionEnabled = 116;
+    optional bool V1GarbageCompactionEnabled = 116 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables digest calculation & logging for some blocks.
-    optional bool BlockDigestsEnabled = 117;
+    optional bool BlockDigestsEnabled = 117 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Partition2 index structures conversion attempt time interval (in ms).
-    optional uint32 IndexStructuresConversionAttemptInterval = 118;
+    optional uint32 IndexStructuresConversionAttemptInterval = 118 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Calculate block digests for the following percentage of blocks in each
     // block group.
-    optional uint32 DigestedBlocksPercentage = 119;
+    optional uint32 DigestedBlocksPercentage = 119 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If there is more garbage in some range than this limit, compact it.
     // Measured in percents (similar to CompactionGarbageThreshold).
-    optional uint32 CompactionRangeGarbageThreshold = 120;
+    optional uint32 CompactionRangeGarbageThreshold = 120 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Limits the number of affected blocks sent from compaction to addblobs.
-    optional uint32 MaxAffectedBlocksPerCompaction = 121;
+    optional uint32 MaxAffectedBlocksPerCompaction = 121 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Real performance per allocation unit.
-    optional uint32 RealSSDUnitReadBandwidth = 122;     // in MiB/s
-    optional uint32 RealSSDUnitWriteBandwidth = 123;    // in MiB/s
-    optional uint32 RealSSDUnitReadIops = 124;
-    optional uint32 RealSSDUnitWriteIops = 125;
-    optional uint32 RealHDDUnitReadBandwidth = 126;     // in MiB/s
-    optional uint32 RealHDDUnitWriteBandwidth = 127;    // in MiB/s
-    optional uint32 RealHDDUnitReadIops = 128;
-    optional uint32 RealHDDUnitWriteIops = 129;
+    optional uint32 RealSSDUnitReadBandwidth = 122 [(NMarkers.AllowRuntimeUpdate) = true];     // in MiB/s
+    optional uint32 RealSSDUnitWriteBandwidth = 123 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 RealSSDUnitReadIops = 124 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 RealSSDUnitWriteIops = 125 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 RealHDDUnitReadBandwidth = 126 [(NMarkers.AllowRuntimeUpdate) = true];     // in MiB/s
+    optional uint32 RealHDDUnitWriteBandwidth = 127 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 RealHDDUnitReadIops = 128 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 RealHDDUnitWriteIops = 129 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Period (in milliseconds) between recycling retired nonreplicated disks.
-    optional uint32 NonReplicatedDiskRecyclingPeriod = 130;
+    optional uint32 NonReplicatedDiskRecyclingPeriod = 130 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Compaction delay settings.
-    optional uint32 MaxCompactionDelay = 131;   // in ms
-    optional uint32 MinCompactionDelay = 132;   // in ms
-    optional uint32 CompactionScoreHistorySize = 133;
+    optional uint32 MaxCompactionDelay = 131 [(NMarkers.AllowRuntimeUpdate) = true];   // in ms
+    optional uint32 MinCompactionDelay = 132 [(NMarkers.AllowRuntimeUpdate) = true];   // in ms
+    optional uint32 CompactionScoreHistorySize = 133 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Volume preemption strategy.
-    optional EVolumePreemptionType VolumePreemptionType = 134;
+    optional EVolumePreemptionType VolumePreemptionType = 134 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // CPU load percentage to move volumes from host.
-    optional uint32 PreemptionPushPercentage = 135;
+    optional uint32 PreemptionPushPercentage = 135 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // CPU load percentage to move volumes to host.
-    optional uint32 PreemptionPullPercentage = 136;
+    optional uint32 PreemptionPullPercentage = 136 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Partition tablet version to be used for new volumes.
-    optional uint32 DefaultTabletVersion = 137;
+    optional uint32 DefaultTabletVersion = 137 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max number of intervals stored in RangeMap for each blob (v2 only).
-    optional uint32 MaxRangesPerBlob = 138;
+    optional uint32 MaxRangesPerBlob = 138 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Cleanup delay settings.
-    optional uint32 MaxCleanupDelay = 139;  // in ms
-    optional uint32 MinCleanupDelay = 140;  // in ms
-    optional uint32 CleanupScoreHistorySize = 141;
+    optional uint32 MaxCleanupDelay = 139 [(NMarkers.AllowRuntimeUpdate) = true];  // in ms
+    optional uint32 MinCleanupDelay = 140 [(NMarkers.AllowRuntimeUpdate) = true];  // in ms
+    optional uint32 CleanupScoreHistorySize = 141 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Allow to change channel pool kinds upon volume resizing.
-    optional bool PoolKindChangeAllowed = 142;
+    optional bool PoolKindChangeAllowed = 142 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If set, service/volume will acquire devices for mounted volumes.
     optional bool AcquireNonReplicatedDevices = 143;
 
     // Inflight limit for IO requests.
-    optional uint32 NonReplicatedInflightLimit = 144;
+    optional uint32 NonReplicatedInflightLimit = 144 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max disks per placement group.
-    optional uint32 MaxDisksInPlacementGroup = 145;
+    optional uint32 MaxDisksInPlacementGroup = 145 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max placement partitions per group.
-    optional uint32 MaxPlacementPartitionCount = 295;
+    optional uint32 MaxPlacementPartitionCount = 295 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max disks per placement group with partition placement strategy.
-    optional uint32 MaxDisksInPartitionPlacementGroup = 296;
+    optional uint32 MaxDisksInPartitionPlacementGroup = 296 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Overrides WriteBlobThreshold for SSD volumes.
-    optional uint32 WriteBlobThresholdSSD = 146;
+    optional uint32 WriteBlobThresholdSSD = 146 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // DiskRegistry destroys broken disks after this period of time.
-    optional uint32 BrokenDiskDestructionDelay = 147;   // in ms
+    optional uint32 BrokenDiskDestructionDelay = 147 [(NMarkers.AllowRuntimeUpdate) = true];   // in ms
 
     // Volume mount history duration.
-    optional uint32 VolumeHistoryDuration = 148;    // in ms
+    optional uint32 VolumeHistoryDuration = 148 [(NMarkers.AllowRuntimeUpdate) = true];    // in ms
 
     // Number of maximum blob count per range.
-    optional uint32 SSDMaxBlobsPerRange = 149;
-    optional uint32 HDDMaxBlobsPerRange = 150;
+    optional uint32 SSDMaxBlobsPerRange = 149 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 HDDMaxBlobsPerRange = 150 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Just drop fresh blocks upon Flush, don't save them as blobs (debug flag).
     optional bool FlushToDevNull = 151;
 
     // Max Compaction/Cleanup exec time per second.
-    optional uint32 MaxCompactionExecTimePerSecond = 152;   // in ms
-    optional uint32 MaxCleanupExecTimePerSecond = 153;  // in ms
+    optional uint32 MaxCompactionExecTimePerSecond = 152 [(NMarkers.AllowRuntimeUpdate) = true];   // in ms
+    optional uint32 MaxCleanupExecTimePerSecond = 153 [(NMarkers.AllowRuntimeUpdate) = true];  // in ms
 
     // Don't automatically enqueue garbage collection upon partition startup.
-    optional bool DontEnqueueCollectGarbageUponPartitionStartup = 154;
+    optional bool DontEnqueueCollectGarbageUponPartitionStartup = 154 [(NMarkers.AllowRuntimeUpdate) = true];
 
-    optional uint32 NonReplicatedDiskRepairTimeout = 155;
+    optional uint32 NonReplicatedDiskRepairTimeout = 155 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // New volumes will be created with partition count proportional to their size.
-    optional uint64 BytesPerPartition = 156;
+    optional uint64 BytesPerPartition = 156 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Bytes per stripe (applicable for multipartition volumes).
-    optional uint32 BytesPerStripe = 157;
+    optional uint32 BytesPerStripe = 157 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max partitions per volume.
-    optional uint32 MaxPartitionsPerVolume = 158;
+    optional uint32 MaxPartitionsPerVolume = 158 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Min timeout for agent to restore connection (in milliseconds).
-    optional uint32 NonReplicatedAgentMinTimeout = 159;
+    optional uint32 NonReplicatedAgentMinTimeout = 159 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for DR -> DA requests (in milliseconds).
-    optional uint32 AgentRequestTimeout = 160;
+    optional uint32 AgentRequestTimeout = 160 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout before allowing infra to withdraw our agents/devices.
-    optional uint32 NonReplicatedInfraTimeout = 161;
+    optional uint32 NonReplicatedInfraTimeout = 161 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for nonrepl partition -> DA requests.
     // optional uint32 NonReplicatedRequestTimeout = 162; // obsolete
 
     // CompactionScore limit after which compaction throttling is disabled.
-    optional uint32 CompactionScoreLimitForThrottling = 163;
+    optional uint32 CompactionScoreLimitForThrottling = 163 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // CleanupQueueBytes limit after which cleanup throttling is disabled.
-    optional uint64 CleanupQueueBytesLimitForThrottling = 164;
+    optional uint64 CleanupQueueBytesLimitForThrottling = 164 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // The desired byte count read/written by a compaction run.
-    optional uint64 TargetCompactionBytesPerOp = 165;
+    optional uint64 TargetCompactionBytesPerOp = 165 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max skipped blobs during range compaction for SSD disks.
-    optional uint32 MaxSkippedBlobsDuringCompaction = 166;
+    optional uint32 MaxSkippedBlobsDuringCompaction = 166 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // MaxBlobsPerRange overrides for partition v2.
-    optional uint32 SSDV2MaxBlobsPerRange = 167;
-    optional uint32 HDDV2MaxBlobsPerRange = 168;
+    optional uint32 SSDV2MaxBlobsPerRange = 167 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 HDDV2MaxBlobsPerRange = 168 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables incremental compaction for v1 tablets.
-    optional bool IncrementalCompactionEnabled = 169;
+    optional bool IncrementalCompactionEnabled = 169 [(NMarkers.AllowRuntimeUpdate) = true];
     // Compaction in partition v1 will generate sparse merged blobs instead of
     // mixed blobs if this flag is set.
     // optional bool UseSparseMergedBlobs = 170; // obsolete
 
     // Enables some optimizations for small requests (affects partition v2 only).
-    optional bool OptimizeForShortRanges = 171;
+    optional bool OptimizeForShortRanges = 171 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Consecutive timeout limit after which nr device is considered unavailable.
     // optional uint32 MaxConsecutiveDeviceTimeouts = 172; // obsolete
 
     // Max blobs and blocks processed by a single v2 garbage compaction iteration.
-    optional uint32 CompactionGarbageBlobLimit = 173;
-    optional uint32 CompactionGarbageBlockLimit = 174;
+    optional uint32 CompactionGarbageBlobLimit = 173 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 CompactionGarbageBlockLimit = 174 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // User data may be dumped on some monitoring pages if this flag is set.
     // See NBS-1726
-    optional bool UserDataDebugDumpAllowed = 175;
+    optional bool UserDataDebugDumpAllowed = 175 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Fresh channels configuration.
     optional string HDDFreshChannelPoolKind = 176;
@@ -601,58 +603,58 @@ message TStorageServiceConfig
     optional string HybridFreshChannelPoolKind = 178;
 
     // Number of fresh channels per partition for SSD disks.
-    optional uint32 FreshChannelCountSSD = 179;
+    optional uint32 FreshChannelCountSSD = 179 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables fresh channel write requests.
-    optional bool FreshChannelWriteRequestsEnabled = 180;
+    optional bool FreshChannelWriteRequestsEnabled = 180 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Min timeout for nonrepl partition -> DA SSD requests.
-    optional uint32 NonReplicatedMinRequestTimeoutSSD = 181;
+    optional uint32 NonReplicatedMinRequestTimeoutSSD = 181 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max timeout for nonrepl partition -> DA SSD requests.
-    optional uint32 NonReplicatedMaxRequestTimeoutSSD = 182;
+    optional uint32 NonReplicatedMaxRequestTimeoutSSD = 182 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max timed out state duration after which nr device is considered unavailable.
-    optional uint32 MaxTimedOutDeviceStateDuration = 183;
+    optional uint32 MaxTimedOutDeviceStateDuration = 183 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Run GC barriers for all channels in tablet history.
     // optional bool CleanupPartitionChannelsAtStartup = 184; // obsolete
 
     // Run GC soft barriers for all channels in tablet history (v2 only).
-    optional bool RunV2SoftGcAtStartup = 185;
+    optional bool RunV2SoftGcAtStartup = 185 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Lifetime of deleted checkpoint in checkpoints history.
-    optional uint32 DeletedCheckpointHistoryLifetime = 186;
+    optional uint32 DeletedCheckpointHistoryLifetime = 186 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables creation of multipartition volumes.
-    optional bool MultipartitionVolumesEnabled = 187;
+    optional bool MultipartitionVolumesEnabled = 187 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Allow to start migration for non-replicated SSD drives.
-    optional bool NonReplicatedMigrationStartAllowed = 188;
+    optional bool NonReplicatedMigrationStartAllowed = 188 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Current migration index will be saved every N blocks.
     // Affects only nonrepl volumes.
-    optional uint32 MigrationIndexCachingInterval = 189;
+    optional uint32 MigrationIndexCachingInterval = 189 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Flush threshold for fresh blobs count in fresh channel.
-    optional uint32 FreshBlobCountFlushThreshold = 190;
+    optional uint32 FreshBlobCountFlushThreshold = 190 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max bandwidth used by migration in MiB/s (actual bandwidth is x2 due to
     // the need to read and write).
-    optional uint32 MaxMigrationBandwidth = 191;
+    optional uint32 MaxMigrationBandwidth = 191 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Expected DiskAgent size in AUs. Used to throttle migration proportionally
     // to the agent share allocated to the volume that's being migrated.
-    optional uint32 ExpectedDiskAgentSize = 192;
+    optional uint32 ExpectedDiskAgentSize = 192 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Overrides BytesPerPartition for network-ssd volumes.
-    optional uint64 BytesPerPartitionSSD = 193;
+    optional uint64 BytesPerPartitionSSD = 193 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Period after which E_IO becomes silent.
     // optional uint32 NonReplicatedIOFadingDuration = 194; // obsolete
 
     // Placement group alert period.
-    optional uint32 PlacementGroupAlertPeriod = 195;
+    optional uint32 PlacementGroupAlertPeriod = 195 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Sets initial binding to REMOTE to avoid starting all volumes at once
     // upon server restart. Local volumes will be restarted locally one by one
@@ -660,63 +662,63 @@ message TStorageServiceConfig
     // optional bool TwoStageLocalMountEnabled = 196; // obsolete
 
     // Allow to create load actor.
-    optional bool EnableLoadActor = 197;
+    optional bool EnableLoadActor = 197 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // CpuMatBenchNs system pool threshold for volume balancer.
-    optional uint64 CpuMatBenchNsSystemThreshold = 198;
+    optional uint64 CpuMatBenchNsSystemThreshold = 198 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // CpuMatBenchNs user pool threshold for volume balancer.
-    optional uint64 CpuMatBenchNsUserThreshold = 199;
+    optional uint64 CpuMatBenchNsUserThreshold = 199 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Disables NRD migration in volume actor.
-    optional bool NonReplicatedVolumeMigrationDisabled = 200;
+    optional bool NonReplicatedVolumeMigrationDisabled = 200 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum number of migrations running in parallel.
     // Max value is selected between this limit and
     // MaxNonReplicatedDeviceMigrationPercentageInProgress * deviceCount.
-    optional uint32 MaxNonReplicatedDeviceMigrationsInProgress = 201;
+    optional uint32 MaxNonReplicatedDeviceMigrationsInProgress = 201 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables extra diagnostics by dumping block commitIds.
-    optional bool DumpBlockCommitIdsIntoProfileLog = 203;
+    optional bool DumpBlockCommitIdsIntoProfileLog = 203 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Uses the first 4 bytes of the block as its digest.
-    optional bool UseTestBlockDigestGenerator = 204;
+    optional bool UseTestBlockDigestGenerator = 204 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables conversion of rangeMap into mixedIndex for partition v2.
-    optional bool EnableConversionIntoMixedIndexV2 = 205;
+    optional bool EnableConversionIntoMixedIndexV2 = 205 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of disks to be reported to YDB in a single request.
-    optional uint32 StatsUploadDiskCount = 206;
+    optional uint32 StatsUploadDiskCount = 206 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Retry timeout for YDB stats.
-    optional uint32 StatsUploadRetryTimeout = 207;
+    optional uint32 StatsUploadRetryTimeout = 207 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of volume history records per monitoring page.
-    optional uint32 VolumeHistoryCacheSize = 208;
+    optional uint32 VolumeHistoryCacheSize = 208 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Duration of two stage local mount after start.
     // optional uint32 TwoStageLocalMountDuration = 209; // obsolete
 
     // Start all mounted volumes remotely.
-    optional bool RemoteMountOnly = 210;
+    optional bool RemoteMountOnly = 210 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max number of volumes started locally.
-    optional uint32 MaxLocalVolumes = 211;
+    optional uint32 MaxLocalVolumes = 211 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Flush threshold for fresh blob byte count.
-    optional uint32 FreshBlobByteCountFlushThreshold = 212;
+    optional uint32 FreshBlobByteCountFlushThreshold = 212 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max block count in one transaction for updating logicalUsedBlocks.
-    optional uint32 LogicalUsedBlocksUpdateBlockCount = 213;
+    optional uint32 LogicalUsedBlocksUpdateBlockCount = 213 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Grace period before making next attempt to update volume config
-    optional uint32 DiskRegistryVolumeConfigUpdatePeriod = 214;
+    optional uint32 DiskRegistryVolumeConfigUpdatePeriod = 214 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables extra diagnostics by dumping blob updates.
-    optional bool DumpBlobUpdatesIntoProfileLog = 215;
+    optional bool DumpBlobUpdatesIntoProfileLog = 215 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Reassign request retry timeout in milliseconds.
-    optional uint32 ReassignRequestRetryTimeout = 216;
+    optional uint32 ReassignRequestRetryTimeout = 216 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Parameters used for calculating the metrics
     // Maximum bandwidth on group
@@ -736,126 +738,126 @@ message TStorageServiceConfig
     optional string CommonOverlayPrefixPoolKind = 227;
 
     // Enables mixed index cache for partition v1.
-    optional bool MixedIndexCacheV1Enabled = 228;
+    optional bool MixedIndexCacheV1Enabled = 228 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum number of compaction ranges to cache for partition v1 network-ssd.
-    optional uint32 MixedIndexCacheV1SizeSSD = 229;
+    optional uint32 MixedIndexCacheV1SizeSSD = 229 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Size of allocation unit for mirror2 SSD drives (in GiB).
-    optional uint32 AllocationUnitMirror2SSD = 230;
+    optional uint32 AllocationUnitMirror2SSD = 230 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Performance per allocation unit for mirror2 volumes.
-    optional uint32 Mirror2SSDUnitReadBandwidth = 231;    // in MiB/s
-    optional uint32 Mirror2SSDUnitWriteBandwidth = 232;   // in MiB/s
-    optional uint32 Mirror2SSDMaxReadBandwidth = 233;     // in MiB/s
-    optional uint32 Mirror2SSDMaxWriteBandwidth = 234;    // in MiB/s
-    optional uint32 Mirror2SSDUnitReadIops = 235;
-    optional uint32 Mirror2SSDUnitWriteIops = 236;
-    optional uint32 Mirror2SSDMaxReadIops = 237;
-    optional uint32 Mirror2SSDMaxWriteIops = 238;
+    optional uint32 Mirror2SSDUnitReadBandwidth = 231 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 Mirror2SSDUnitWriteBandwidth = 232 [(NMarkers.AllowRuntimeUpdate) = true];   // in MiB/s
+    optional uint32 Mirror2SSDMaxReadBandwidth = 233 [(NMarkers.AllowRuntimeUpdate) = true];     // in MiB/s
+    optional uint32 Mirror2SSDMaxWriteBandwidth = 234 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 Mirror2SSDUnitReadIops = 235 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Mirror2SSDUnitWriteIops = 236 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Mirror2SSDMaxReadIops = 237 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Mirror2SSDMaxWriteIops = 238 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of replicas for mirror2 disks.
-    optional uint32 Mirror2DiskReplicaCount = 239;
+    optional uint32 Mirror2DiskReplicaCount = 239 [(NMarkers.AllowRuntimeUpdate) = true];
 
-    optional uint32 MaxReadBlobErrorsBeforeSuicide = 240;
+    optional uint32 MaxReadBlobErrorsBeforeSuicide = 240 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Interval between throttler state updates in local db (in milliseconds).
-    optional uint32 ThrottlerStateWriteInterval = 241;
+    optional uint32 ThrottlerStateWriteInterval = 241 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Reject mount instead of trying to start volume locally
     // when AddClient request times out.
-    optional bool RejectMountOnAddClientTimeout = 242;
+    optional bool RejectMountOnAddClientTimeout = 242 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for notify disks request (in milliseconds).
-    optional uint32 NonReplicatedVolumeNotificationTimeout = 243;
+    optional uint32 NonReplicatedVolumeNotificationTimeout = 243 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables persistent backup for tablet boot infos.
     optional string TabletBootInfoBackupFilePath = 244;
     // In fallback mode, all requests to Hive are served from backup.
-    optional bool HiveProxyFallbackMode = 245;
+    optional bool HiveProxyFallbackMode = 245 [(NMarkers.AllowRuntimeUpdate) = true];
     // Enables persistent backup for tablet path descriptions.
     optional string PathDescriptionBackupFilePath = 246;
     // In fallback mode, all requests to SchemeShard are served from backup.
-    optional bool SSProxyFallbackMode = 247;
+    optional bool SSProxyFallbackMode = 247 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max acceptable number of cpus we are waiting for (measured in %).
     // If excceeded. balancer starts pushing volumes to svms.
-    optional uint32 CpuLackThreshold = 248;
+    optional uint32 CpuLackThreshold = 248 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Initial pull timeout for preempted volumes.
-    optional uint32 InitialPullDelay = 249;
+    optional uint32 InitialPullDelay = 249 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Size of allocation unit for local SSD (in GiB).
     // optional uint32 AllocationUnitLocalSSD = 250; // obsolete
 
     // Rdma port @ DiskAgent.
-    optional uint32 RdmaTargetPort = 251;
+    optional uint32 RdmaTargetPort = 251 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Use rdma for main NRD datapath.
-    optional bool UseNonreplicatedRdmaActor = 252;
+    optional bool UseNonreplicatedRdmaActor = 252 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Size of allocation unit for mirror3 SSD drives (in GiB).
-    optional uint32 AllocationUnitMirror3SSD = 253;
+    optional uint32 AllocationUnitMirror3SSD = 253 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Performance per allocation unit for mirror3 volumes.
-    optional uint32 Mirror3SSDUnitReadBandwidth = 254;    // in MiB/s
-    optional uint32 Mirror3SSDUnitWriteBandwidth = 255;   // in MiB/s
-    optional uint32 Mirror3SSDMaxReadBandwidth = 256;     // in MiB/s
-    optional uint32 Mirror3SSDMaxWriteBandwidth = 257;    // in MiB/s
-    optional uint32 Mirror3SSDUnitReadIops = 258;
-    optional uint32 Mirror3SSDUnitWriteIops = 259;
-    optional uint32 Mirror3SSDMaxReadIops = 260;
-    optional uint32 Mirror3SSDMaxWriteIops = 261;
+    optional uint32 Mirror3SSDUnitReadBandwidth = 254 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 Mirror3SSDUnitWriteBandwidth = 255 [(NMarkers.AllowRuntimeUpdate) = true];   // in MiB/s
+    optional uint32 Mirror3SSDMaxReadBandwidth = 256 [(NMarkers.AllowRuntimeUpdate) = true];     // in MiB/s
+    optional uint32 Mirror3SSDMaxWriteBandwidth = 257 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 Mirror3SSDUnitReadIops = 258 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Mirror3SSDUnitWriteIops = 259 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Mirror3SSDMaxReadIops = 260 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 Mirror3SSDMaxWriteIops = 261 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of replicas for mirror3 disks.
-    optional uint32 Mirror3DiskReplicaCount = 262;
+    optional uint32 Mirror3DiskReplicaCount = 262 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for secure erase (in milliseconds).
-    optional uint32 NonReplicatedSecureEraseTimeout = 263;
+    optional uint32 NonReplicatedSecureEraseTimeout = 263 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of ranges to process in a single Compaction run.
-    optional uint32 CompactionRangeCountPerRun = 264;
+    optional uint32 CompactionRangeCountPerRun = 264 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Specifies whether to use CompactionRangeCountPerRun,
     // GarbageCompactionRangeCountPerRun,
     // MixedBlocksCountCompactionRangeCountPerRun and
     // ForcedCompactionRangeCountPerRun.
-    optional bool BatchCompactionEnabled = 265;
+    optional bool BatchCompactionEnabled = 265 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout before allowing infra to withdraw our unavailable agents.
-    optional uint32 NonReplicatedInfraUnavailableAgentTimeout = 266;
+    optional uint32 NonReplicatedInfraUnavailableAgentTimeout = 266 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Use rdma in volumes by default.
-    optional bool UseRdma = 267;
+    optional bool UseRdma = 267 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Hive min timeout for tablet boot requests.
-    optional uint32 MinExternalBootRequestTimeout = 268;
+    optional uint32 MinExternalBootRequestTimeout = 268 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Hive timeout increment for tablet boot requests.
-    optional uint32 ExternalBootRequestTimeoutIncrement = 269;
+    optional uint32 ExternalBootRequestTimeoutIncrement = 269 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Hive max timeout for tablet boot requests.
-    optional uint32 MaxExternalBootRequestTimeout = 270;
+    optional uint32 MaxExternalBootRequestTimeout = 270 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max timeout for agent to restore connection (in milliseconds).
-    optional uint32 NonReplicatedAgentMaxTimeout = 271;
+    optional uint32 NonReplicatedAgentMaxTimeout = 271 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // The time interval after which one agent disconnect is completely
     // recovered in the dynamic reject timeout multiplier.
-    optional uint32 NonReplicatedAgentDisconnectRecoveryInterval = 272;
+    optional uint32 NonReplicatedAgentDisconnectRecoveryInterval = 272 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // The multiplier that controls the growth rate of the dynamic agent reject
     // timeout.
-    optional double NonReplicatedAgentTimeoutGrowthFactor = 273;
+    optional double NonReplicatedAgentTimeoutGrowthFactor = 273 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Do not suspend new non default (local ssd etc) devices.
     optional bool NonReplicatedDontSuspendDevices = 274;
 
     // Timeout increment for resending AddClient during mount.
-    optional uint32 AddClientRetryTimeoutIncrement = 275;
+    optional uint32 AddClientRetryTimeoutIncrement = 275 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables blob patching during compaction.
-    optional bool BlobPatchingEnabled = 276;
+    optional bool BlobPatchingEnabled = 276 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // The number of operations into which the DR
     // will split the restore transaction.
@@ -872,7 +874,7 @@ message TStorageServiceConfig
     // optional uint32 ExpectedClientBackoffIncrement = 280; // obsolete
 
     // Maximum number of pending deallocation requests per one disk.
-    optional uint32 MaxNonReplicatedDiskDeallocationRequests = 281;
+    optional uint32 MaxNonReplicatedDiskDeallocationRequests = 281 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Lifetime of objects in nonrepl metrics cache in milliseconds.
     optional uint64 DiskRegistryMetricsCachePeriod = 282; // deprecated
@@ -881,25 +883,25 @@ message TStorageServiceConfig
     optional string DiskRegistryCountersHost = 283;
 
     // Maximum allowed fresh byte count after which we start to reject writes.
-    optional uint32 FreshByteCountHardLimit = 284;
+    optional uint32 FreshByteCountHardLimit = 284 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Interval to postpone volume push/pull.
-    optional uint32 BalancerActionDelayInterval = 285;
+    optional uint32 BalancerActionDelayInterval = 285 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enable resync feature for mirrored partitions.
-    optional bool UseMirrorResync = 286;
+    optional bool UseMirrorResync = 286 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Force resync start for mirrored partitions.
-    optional bool ForceMirrorResync = 287;
+    optional bool ForceMirrorResync = 287 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Current resync index will be saved every N blocks.
     // Affects only mirror volumes.
-    optional uint32 ResyncIndexCachingInterval = 288;
+    optional uint32 ResyncIndexCachingInterval = 288 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Resync will start upon AddClient / volume reboot after the specified
     // period of client inactivity in milliseconds.
     // Affects only mirror volumes.
-    optional uint32 ResyncAfterClientInactivityInterval = 289;
+    optional uint32 ResyncAfterClientInactivityInterval = 289 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // File to store the list of volumes preempted from monitoring.
     optional string ManuallyPreemptedVolumesFile = 290;
@@ -910,31 +912,31 @@ message TStorageServiceConfig
 
     // Half-decay interval for cumulative load counters used for balancing in
     // the discovery component (in milliseconds).
-    optional uint32 PingMetricsHalfDecayInterval = 292;
+    optional uint32 PingMetricsHalfDecayInterval = 292 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Disable manually preempted volumes tracking. Used during
     // nbs restart for NBS2.
-    optional bool DisableManuallyPreemptedVolumesTracking = 293;
+    optional bool DisableManuallyPreemptedVolumesTracking = 293 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Disable starting partitions for gc at volume start
-    optional bool DisableStartPartitionsForGc = 294;
+    optional bool DisableStartPartitionsForGc = 294 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables adding of unconfirmed blobs to speed up writing.
-    optional bool AddingUnconfirmedBlobsEnabled = 297;
+    optional bool AddingUnconfirmedBlobsEnabled = 297 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Blob compression experiment params. See NBS-3949.
-    optional uint32 BlobCompressionRate = 298;
+    optional uint32 BlobCompressionRate = 298 [(NMarkers.AllowRuntimeUpdate) = true];
     optional string BlobCompressionCodec = 299;
 
     // If set, writes will be additionally throttled by disk space score
     // backpressure feature.
-    optional bool DiskSpaceScoreThrottlingEnabled = 300;
+    optional bool DiskSpaceScoreThrottlingEnabled = 300 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Allow to start migration for mirrored SSD drives.
-    optional bool MirroredMigrationStartAllowed = 301;
+    optional bool MirroredMigrationStartAllowed = 301 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Validate S/N
-    optional bool SerialNumberValidationEnabled = 302;
+    optional bool SerialNumberValidationEnabled = 302 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // List of FQDNs of known spare nodes.
     repeated string KnownSpareNodes = 303;
@@ -945,57 +947,57 @@ message TStorageServiceConfig
     // Min percentage of reassignable channels after which reassign requests
     // are sent. Does not apply if writes are not allowed because of channel
     // flags.
-    optional uint32 ReassignChannelsPercentageThreshold = 305;
+    optional uint32 ReassignChannelsPercentageThreshold = 305 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max diff percentage for blob patching
-    optional uint32 MaxDiffPercentageForBlobPatching = 306;
+    optional uint32 MaxDiffPercentageForBlobPatching = 306 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // DiskRegistry allows usage of automatically replaced devices after this
     // period of time.
-    optional uint32 AutomaticallyReplacedDevicesFreezePeriod = 307; // in ms
+    optional uint32 AutomaticallyReplacedDevicesFreezePeriod = 307 [(NMarkers.AllowRuntimeUpdate) = true]; // in ms
 
     // Defines the rejection behavior for overlapped requests from the past.
-    optional bool RejectLateRequestsAtDiskAgentEnabled = 308;
+    optional bool RejectLateRequestsAtDiskAgentEnabled = 308 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Attached disk destruction is allowed after this period of client inactivity (ms).
-    optional uint32 AttachedDiskDestructionTimeout = 309;
+    optional uint32 AttachedDiskDestructionTimeout = 309 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Assign unique identifiers to all zero and write requests in TVolumeActor.
-    optional bool AssignIdToWriteAndZeroRequestsEnabled = 310;
+    optional bool AssignIdToWriteAndZeroRequestsEnabled = 310 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // MaxBlobsPerDisk will be proportional to the disk size.
-    optional uint32 SSDMaxBlobsPerUnit = 314;
-    optional uint32 HDDMaxBlobsPerUnit = 315;
+    optional uint32 SSDMaxBlobsPerUnit = 314 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 HDDMaxBlobsPerUnit = 315 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Cleanup interval for disk registry param overrides for agents.
-    optional uint32 AgentListExpiredParamsCleanupInterval = 316;
+    optional uint32 AgentListExpiredParamsCleanupInterval = 316 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Size of allocation unit for non-replicated HDD drives (in GiB).
-    optional uint32 AllocationUnitNonReplicatedHDD = 317;
+    optional uint32 AllocationUnitNonReplicatedHDD = 317 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Performance per allocation unit for nonreplicated volumes.
-    optional uint32 NonReplicatedHDDUnitReadBandwidth = 318;    // in MiB/s
-    optional uint32 NonReplicatedHDDUnitWriteBandwidth = 319;   // in MiB/s
-    optional uint32 NonReplicatedHDDMaxReadBandwidth = 320;     // in MiB/s
-    optional uint32 NonReplicatedHDDMaxWriteBandwidth = 321;    // in MiB/s
-    optional uint32 NonReplicatedHDDUnitReadIops = 322;
-    optional uint32 NonReplicatedHDDUnitWriteIops = 323;
-    optional uint32 NonReplicatedHDDMaxReadIops = 324;
-    optional uint32 NonReplicatedHDDMaxWriteIops = 325;
+    optional uint32 NonReplicatedHDDUnitReadBandwidth = 318 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 NonReplicatedHDDUnitWriteBandwidth = 319 [(NMarkers.AllowRuntimeUpdate) = true];   // in MiB/s
+    optional uint32 NonReplicatedHDDMaxReadBandwidth = 320 [(NMarkers.AllowRuntimeUpdate) = true];     // in MiB/s
+    optional uint32 NonReplicatedHDDMaxWriteBandwidth = 321 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 NonReplicatedHDDUnitReadIops = 322 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 NonReplicatedHDDUnitWriteIops = 323 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 NonReplicatedHDDMaxReadIops = 324 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 NonReplicatedHDDMaxWriteIops = 325 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // DiskRegistry/Agent pool name to use for nonreplicated hdd disks.
     optional string NonReplicatedHDDPoolName = 326;
 
     // We will allow agent/device maintenance if it breaks no more than this
     // number of placement group partitions in each group.
-    optional uint32 MaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval = 327;
+    optional uint32 MaxBrokenHddPlacementGroupPartitionsAfterDeviceRemoval = 327 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Sets maximum number of automatic device replacements per hour. If this
     // limit is reached no more automatic replacements are going to happen -
     // instead the diskId + deviceId pairs will be logged and a critical event
     // will be reported. Current replacement rate is reset upon DiskRegistry
     // tablet restart.
-    optional uint32 MaxAutomaticDeviceReplacementsPerHour = 328;
+    optional uint32 MaxAutomaticDeviceReplacementsPerHour = 328 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Tenant hive tablet id different from root to be used by hive proxy.
     // Should be configured once and for the lifetime of the cluster.
@@ -1003,31 +1005,31 @@ message TStorageServiceConfig
 
     // Limits the number of dirty devices per DeviceName that are erased in
     // parallel.
-    optional uint32 MaxDevicesToErasePerDeviceNameForDefaultPoolKind = 330;
-    optional uint32 MaxDevicesToErasePerDeviceNameForLocalPoolKind = 331;
-    optional uint32 MaxDevicesToErasePerDeviceNameForGlobalPoolKind = 332;
+    optional uint32 MaxDevicesToErasePerDeviceNameForDefaultPoolKind = 330 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 MaxDevicesToErasePerDeviceNameForLocalPoolKind = 331 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 MaxDevicesToErasePerDeviceNameForGlobalPoolKind = 332 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Percentage for batch compaction size increasing
-    optional uint32 CompactionCountPerRunIncreasingThreshold = 333;
+    optional uint32 CompactionCountPerRunIncreasingThreshold = 333 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Percentage for batch compaction size decreasing
-    optional uint32 CompactionCountPerRunDecreasingThreshold = 334;
+    optional uint32 CompactionCountPerRunDecreasingThreshold = 334 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max number of ranges to process in a single Compaction run
-    optional uint32 MaxCompactionRangeCountPerRun = 335;
+    optional uint32 MaxCompactionRangeCountPerRun = 335 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Period of compaction changing (in ms)
-    optional uint32 CompactionCountPerRunChangingPeriod = 336;
+    optional uint32 CompactionCountPerRunChangingPeriod = 336 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout in milliseconds before switching all disks associated
     // with the disconnected agent to read only mode
-    optional uint32 NonReplicatedDiskSwitchToReadOnlyTimeout = 337;
+    optional uint32 NonReplicatedDiskSwitchToReadOnlyTimeout = 337 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Min timeout for nonrepl partition -> DA HDD requests.
-    optional uint32 NonReplicatedMinRequestTimeoutHDD = 338;
+    optional uint32 NonReplicatedMinRequestTimeoutHDD = 338 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max timeout for nonrepl partition -> DA HDD requests.
-    optional uint32 NonReplicatedMaxRequestTimeoutHDD = 339;
+    optional uint32 NonReplicatedMaxRequestTimeoutHDD = 339 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Placeholders for legacy params that are still used in configs.
     optional uint32 NonReplicatedMinRequestTimeout = 340;
@@ -1039,22 +1041,22 @@ message TStorageServiceConfig
     // devices belonging to the same pool as the source device.
     // Max value is selected between this limit and
     // MaxNonReplicatedDeviceMigrationsInProgress.
-    optional uint32 MaxNonReplicatedDeviceMigrationPercentageInProgress = 343;
+    optional uint32 MaxNonReplicatedDeviceMigrationPercentageInProgress = 343 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Create shadow disks for checkpoints for DiskRegistry-based disks.
-    optional bool UseShadowDisksForNonreplDiskCheckpoints = 344;
+    optional bool UseShadowDisksForNonreplDiskCheckpoints = 344 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Calculate crc32c checksums for blocks in the half-interval [0, X) upon
     // write and store these checksums in local db.
     // Affects only blobstorage-based disks.
-    optional uint64 DiskPrefixLengthWithBlockChecksumsInBlobs = 345;
+    optional uint64 DiskPrefixLengthWithBlockChecksumsInBlobs = 345 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Read BlobMeta upon ReadBlocks, calculate crc32c checksums for the fetched
     // blocks and compare these checksums to the checksums from BlobMeta.
     //
     // IMPORTANT: Compaction verifies block checksums for the blocks affected by
     // it regardless of this flag!
-    optional bool CheckBlockChecksumsInBlobsUponRead = 346;
+    optional bool CheckBlockChecksumsInBlobsUponRead = 346 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables runtime config update tool.
     optional bool ConfigsDispatcherServiceEnabled = 347;
@@ -1063,10 +1065,10 @@ message TStorageServiceConfig
     // acquire request on the disk agent restart (ms).
     // Note: it should be larger than ClientRemountPeriod, otherwise it's
     // useless.
-    optional uint32 CachedAcquireRequestLifetime = 348;
+    optional uint32 CachedAcquireRequestLifetime = 348 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Limits unconfirmed (and confirmed but not added to the index) blob count.
-    optional uint32 UnconfirmedBlobCountHardLimit = 349;
+    optional uint32 UnconfirmedBlobCountHardLimit = 349 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // These are duplicates of "CachedConfigPath" and "CachedSessionsPath"
     // fields in the "TDiskAgentConfig" and here just to ease deployment of the
@@ -1076,28 +1078,28 @@ message TStorageServiceConfig
 
     // Max bandwidth used for shadow disk fill in MiB/s (actual bandwidth is x2
     // due to the need to read and write).
-    optional uint32 MaxShadowDiskFillBandwidth = 352;
+    optional uint32 MaxShadowDiskFillBandwidth = 352 [(NMarkers.AllowRuntimeUpdate) = true];
     // Minimum delay between shadow disk acquire attempts when writes to the
     // source disk are blocked (in ms).
-    optional uint32 MinAcquireShadowDiskRetryDelayWhenBlocked = 353;
+    optional uint32 MinAcquireShadowDiskRetryDelayWhenBlocked = 353 [(NMarkers.AllowRuntimeUpdate) = true];
     // Maximum delay between shadow disk acquire attempts when writes to the
     // source disk are blocked (in ms).
-    optional uint32 MaxAcquireShadowDiskRetryDelayWhenBlocked = 354;
+    optional uint32 MaxAcquireShadowDiskRetryDelayWhenBlocked = 354 [(NMarkers.AllowRuntimeUpdate) = true];
     // Minimum delay between shadow disk acquire attempts when writes to the
     // source disk are not blocked (in ms).
-    optional uint32 MinAcquireShadowDiskRetryDelayWhenNonBlocked = 355;
+    optional uint32 MinAcquireShadowDiskRetryDelayWhenNonBlocked = 355 [(NMarkers.AllowRuntimeUpdate) = true];
     // Maximum delay between shadow disk acquire attempts when writes to the
     // source disk are not blocked (in ms).
-    optional uint32 MaxAcquireShadowDiskRetryDelayWhenNonBlocked = 356;
+    optional uint32 MaxAcquireShadowDiskRetryDelayWhenNonBlocked = 356 [(NMarkers.AllowRuntimeUpdate) = true];
     // Timeout for attempts to acquire the shadow disk when writes to the source
     // disk are blocked (in ms).
-    optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenBlocked = 357;
+    optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenBlocked = 357 [(NMarkers.AllowRuntimeUpdate) = true];
     // Timeout for attempts to acquire the shadow disk when writes to the source
     // disk are not blocked (in ms).
-    optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked = 358;
+    optional uint32 MaxAcquireShadowDiskTotalTimeoutWhenNonBlocked = 358 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max number of volume MetaHistory records displayed on volume monpage.
-    optional uint32 VolumeMetaHistoryDisplayedRecordLimit = 359;
+    optional uint32 VolumeMetaHistoryDisplayedRecordLimit = 359 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Duration of attempts to connect to tablet for cached tablets before
     // switching to describe volume (in ms).
@@ -1108,42 +1110,42 @@ message TStorageServiceConfig
     optional uint32 ServiceSelfPingInterval = 361;
 
     // Max migration io depth.
-    optional uint32 MaxMigrationIoDepth = 362;
+    optional uint32 MaxMigrationIoDepth = 362 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max shadow disk fill io depth.
-    optional uint32 MaxShadowDiskFillIoDepth = 363;
+    optional uint32 MaxShadowDiskFillIoDepth = 363 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enable data scrubbing for mirrored disks.
-    optional bool DataScrubbingEnabled = 364;
+    optional bool DataScrubbingEnabled = 364 [(NMarkers.AllowRuntimeUpdate) = true];
     // Interval between scrubbing ranges in milliseconds.
-    optional uint32 ScrubbingInterval = 365;
+    optional uint32 ScrubbingInterval = 365 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Optimize all-zeros blocks transmission over the network.
-    optional bool OptimizeVoidBuffersTransferForReadsEnabled = 366;
+    optional bool OptimizeVoidBuffersTransferForReadsEnabled = 366 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of volume history entries to cleanup per run.
-    optional uint32 VolumeHistoryCleanupItemCount = 367;
+    optional uint32 VolumeHistoryCleanupItemCount = 367 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // The full bandwidth of the server for background operations,
     // which is used for migration and filling of shadow disks.
     // (actual bandwidth is x2 due to the need to read and write).
-    optional uint32 BackgroundOperationsTotalBandwidth = 368;
+    optional uint32 BackgroundOperationsTotalBandwidth = 368 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Used inside TWaitDependentDisksToSwitchNodeActor to schedule retries.
     // Set in ms.
-    optional uint32 WaitDependentDisksRetryRequestDelay = 369;
+    optional uint32 WaitDependentDisksRetryRequestDelay = 369 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout attempts of scrubbing range, if checksum mismatch was found.
-    optional uint32 ScrubbingChecksumMismatchTimeout = 370;
+    optional uint32 ScrubbingChecksumMismatchTimeout = 370 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Scrubbing bandwidth per 1 TiB in MiB/s.
-    optional uint64 ScrubbingBandwidth = 371;
+    optional uint64 ScrubbingBandwidth = 371 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max scrubbing bandwidth in MiB/s.
-    optional uint64 MaxScrubbingBandwidth = 372;
+    optional uint64 MaxScrubbingBandwidth = 372 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Min scrubbing bandwidth in MiB/s.
-    optional uint64 MinScrubbingBandwidth = 373;
+    optional uint64 MinScrubbingBandwidth = 373 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Allow destruction only for those disks whose id matches one of the given prefixes.
     repeated string DestructionAllowedOnlyForDisksWithIdPrefixes = 374;
@@ -1153,11 +1155,11 @@ message TStorageServiceConfig
     // optional bool CleanupDRConfigOnCMSActions = 375;  // obsolete
 
     // Resync range, if scrubbing found a mismatch.
-    optional bool ResyncRangeAfterScrubbing = 376;
+    optional bool ResyncRangeAfterScrubbing = 376 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Delay that DR uses to wait unavailable agents to register before allowing
     // infra to deploy a host.
-    optional uint32 IdleAgentDeployByCmsDelay = 377;
+    optional uint32 IdleAgentDeployByCmsDelay = 377 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Dynamic node registration params.
     optional uint32 NodeRegistrationMaxAttempts = 378;
@@ -1179,10 +1181,10 @@ message TStorageServiceConfig
 
     // The volume actor will compare meta before and after reallocation and
     // decide whether a lite reallocation is possible.
-    optional bool AllowLiteDiskReallocations = 386;
+    optional bool AllowLiteDiskReallocations = 386 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout between disks reallocations.
-    optional uint32 DiskRegistryDisksNotificationTimeout = 387;
+    optional uint32 DiskRegistryDisksNotificationTimeout = 387 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Whether the disk registry is allowed to allocate local disks while agent
     // is in warning state.
@@ -1190,118 +1192,118 @@ message TStorageServiceConfig
     // agents devices and will not suspend local devices. Instead, PURGE_HOST
     // should be used for these purposes. To override this see
     // "DiskRegistryCleanupConfigOnRemoveHost"
-    optional bool DiskRegistryAlwaysAllocatesLocalDisks = 388;
+    optional bool DiskRegistryAlwaysAllocatesLocalDisks = 388 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for asynchronous TEvPut, TEvPatch, TEvGet requests to blob storage
     // for HDD disks (in milliseconds)
-    optional uint32 BlobStorageAsyncRequestTimeoutHDD = 389;
+    optional uint32 BlobStorageAsyncRequestTimeoutHDD = 389 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for asynchronous TEvPut, TEvPatch, TEvGet requests to blob storage
     // for SSD disks (in milliseconds)
-    optional uint32 BlobStorageAsyncRequestTimeoutSSD = 390;
+    optional uint32 BlobStorageAsyncRequestTimeoutSSD = 390 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Specifies the minimum number of replicas to read from in a mirrored disk
     // for every read request.
     // Values 0 and 1 mean the same thing - read from 1 replica.
     // Values greater than disk replica count also mean the same thing - read
     // from all replicas.
-    optional uint32 MirrorReadReplicaCount = 391;
+    optional uint32 MirrorReadReplicaCount = 391 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // When enabled, the Disk Registry REMOVE_HOST CMS action will "forget"
     // agents devices and suspend local devices.
-    optional bool DiskRegistryCleanupConfigOnRemoveHost = 392;
+    optional bool DiskRegistryCleanupConfigOnRemoveHost = 392 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables the encryption at rest for Disk Registry based disks. Currently not implemented.
-    optional bool EncryptionAtRestForDiskRegistryBasedDisksEnabled = 393;
+    optional bool EncryptionAtRestForDiskRegistryBasedDisksEnabled = 393 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enabling direct copying of data between disk agents.
-    optional bool UseDirectCopyRange = 394;
+    optional bool UseDirectCopyRange = 394 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Disables the calculation of the FullPlacementGroups counter.
-    optional bool DisableFullPlacementGroupCountCalculation = 395;
+    optional bool DisableFullPlacementGroupCountCalculation = 395 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // The percentage of agents that is acceptable to reject at the start.
     // If the number of agents that did not reconnect is higher than this
     // percentage, then the rejection of such agents does not occur - we assume
     // a connectivity failure in the cluster.
-    optional double DiskRegistryInitialAgentRejectionThreshold = 396;
+    optional double DiskRegistryInitialAgentRejectionThreshold = 396 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enable buttons for agent/device state changing.
-    optional bool EnableToChangeStatesFromDiskRegistryMonpage = 397;
+    optional bool EnableToChangeStatesFromDiskRegistryMonpage = 397 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enable buttons for device state changing, when they in error state.
-    optional bool EnableToChangeErrorStatesFromDiskRegistryMonpage = 398;
+    optional bool EnableToChangeErrorStatesFromDiskRegistryMonpage = 398 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enabling UsedQuota calculation as UsedIopsQuota + UsedBandwidthQuota
-    optional bool CalculateSplittedUsedQuotaMetric = 399;
+    optional bool CalculateSplittedUsedQuotaMetric = 399 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of ranges to process in a single Compaction run
     // in the garbage mode if batch compaction enabled.
-    optional uint32 GarbageCompactionRangeCountPerRun = 400;
+    optional uint32 GarbageCompactionRangeCountPerRun = 400 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of ranges to process in a single Compaction run
     // in the range mode if batch compaction enabled.
-    optional uint32 ForcedCompactionRangeCountPerRun = 401;
+    optional uint32 ForcedCompactionRangeCountPerRun = 401 [(NMarkers.AllowRuntimeUpdate) = true];
 
     optional bool YdbViewerServiceEnabled = 402;
 
     // When enabled, tag "use-intermediate-write-buffer" will be added
     // after scrubbing finds a mismatch
-    optional bool AutomaticallyEnableBufferCopyingAfterChecksumMismatch = 403;
+    optional bool AutomaticallyEnableBufferCopyingAfterChecksumMismatch = 403 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enabling direct sending AcquireDevices to disk agent.
     optional bool NonReplicatedVolumeDirectAcquireEnabled = 404;
 
     // Timeout for TDestroyVolumeActor (in milliseconds)
-    optional uint32 DestroyVolumeTimeout = 405;
+    optional uint32 DestroyVolumeTimeout = 405 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Minimum compacted blob size (in bytes) that lets us write the data as
     // a merged blob, otherwise it is written as a mixed blob.
-    optional uint32 CompactionMergedBlobThresholdHDD = 406;
+    optional uint32 CompactionMergedBlobThresholdHDD = 406 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // The maximum number of BS groups that we can warm up for each channel at the bootstrap.
-    optional uint32 BSGroupsPerChannelToWarmup = 407;
+    optional uint32 BSGroupsPerChannelToWarmup = 407 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout to warm up connections to BS groups at the bootstrap.
-    optional uint32 WarmupBSGroupConnectionsTimeout = 408;
+    optional uint32 WarmupBSGroupConnectionsTimeout = 408 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Allow SysViewProcessor and StatisticsAggregator tablets for compatibility
     // with newer versions of ydb (24-2 and older)
-    optional bool AllowAdditionalSystemTablets = 409;
+    optional bool AllowAdditionalSystemTablets = 409 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum size of CheckRange request
-    optional uint32 CheckRangeMaxRangeSize = 410;
+    optional uint32 CheckRangeMaxRangeSize = 410 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables lagging devices feature for mirror2 disks.
-    optional bool LaggingDevicesForMirror2DisksEnabled = 411;
+    optional bool LaggingDevicesForMirror2DisksEnabled = 411 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables lagging devices feature for mirror3 disks.
-    optional bool LaggingDevicesForMirror3DisksEnabled = 412;
+    optional bool LaggingDevicesForMirror3DisksEnabled = 412 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Devices that are not responding for more than this value considered as
     // candidates to become lagging.
     // See doc/blockstore/storage/dynamic_io_mirroring_proposal.md
-    optional uint32 LaggingDeviceTimeoutThreshold = 413;
+    optional uint32 LaggingDeviceTimeoutThreshold = 413 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Lagging devices are monitored by periodic requests at this interval.
-    optional uint32 LaggingDevicePingInterval = 414;
+    optional uint32 LaggingDevicePingInterval = 414 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Disable throttling of ZeroBlocks requests for
     // YDB-based ('network-ssd', 'network-hdd') disks.
-    optional bool DisableZeroBlocksThrottlingForYDBBasedDisks = 415;
+    optional bool DisableZeroBlocksThrottlingForYDBBasedDisks = 415 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Local disk async deallocation and sync allocation
-    optional bool LocalDiskAsyncDeallocationEnabled = 416;
+    optional bool LocalDiskAsyncDeallocationEnabled = 416 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Use SSL for dynamic node registration.
     optional bool NodeRegistrationUseSsl = 417;
 
     // Scrubber policy for resync.
-    optional EResyncPolicy ScrubbingResyncPolicy = 418;
+    optional EResyncPolicy ScrubbingResyncPolicy = 418 [(NMarkers.AllowRuntimeUpdate) = true];
     // Resync policy for auto-resync.
-    optional EResyncPolicy AutoResyncPolicy = 419;
+    optional EResyncPolicy AutoResyncPolicy = 419 [(NMarkers.AllowRuntimeUpdate) = true];
     // Resync policy for force-resync.
-    optional EResyncPolicy ForceResyncPolicy = 420;
+    optional EResyncPolicy ForceResyncPolicy = 420 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Linked disk fill bandwidth settings.
     repeated TLinkedDiskFillBandwidth LinkedDiskFillBandwidth = 421;
@@ -1309,99 +1311,99 @@ message TStorageServiceConfig
     // Whether the volume should start resync after a successful lagging agent
     // migration. Resync is started with a special flag and will emit critical
     // events for any mismatch it finds.
-    optional bool ResyncAfterLaggingAgentMigration = 422;
+    optional bool ResyncAfterLaggingAgentMigration = 422 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Hive sends notifications when locks are lost. If the flag is set, then
     // the volume will not be stopped.
-    optional bool DoNotStopVolumeTabletOnLockLost = 423;
+    optional bool DoNotStopVolumeTabletOnLockLost = 423 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Percentage of mixed channels from the merged total
-    optional uint32 MixedChannelsPercentageFromMerged = 424;
+    optional uint32 MixedChannelsPercentageFromMerged = 424 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // For mirror-disk write requests sends to only one disk-agent, and he
     // propagate write requests to the rest disk-agents.
-    optional bool MultiAgentWriteEnabled = 425;
+    optional bool MultiAgentWriteEnabled = 425 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // The minimum size of the request starting from which the MultiAgentWrite
     // is enabled.
-    optional uint32 MultiAgentWriteRequestSizeThreshold = 426;
+    optional uint32 MultiAgentWriteRequestSizeThreshold = 426 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Minimum write request size (in bytes) that lets us write the data directly
     // to the mixed channel.
     // It'll be ignored if 0 or more than (equal to) WriteBlobThreshold.
-    optional uint32 WriteMixedBlobThresholdHDD = 427;
+    optional uint32 WriteMixedBlobThresholdHDD = 427 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max bandwidth (in MiB/s) used during the lagging migration after the
     // replica becomes online.
-    optional uint32 LaggingDeviceMaxMigrationBandwidth = 428;
+    optional uint32 LaggingDeviceMaxMigrationBandwidth = 428 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max migration io depth used during the lagging migration after the
     // replica becomes online
-    optional uint32 LaggingDeviceMaxMigrationIoDepth = 429;
+    optional uint32 LaggingDeviceMaxMigrationIoDepth = 429 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Additional time to receive a response from the DiskAgent through which
     // the MultiAgentWrite request was executed.
-    optional uint32 NetworkForwardingTimeout = 430;
+    optional uint32 NetworkForwardingTimeout = 430 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum number of rows to be written to YDB in a single request.
-    optional uint32 StatsUploadMaxRowsPerTx = 431;
+    optional uint32 StatsUploadMaxRowsPerTx = 431 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Retry policy when unable to get configs from CMS, in ms
-    optional uint32 LoadConfigsFromCmsRetryMinDelay = 432;
-    optional uint32 LoadConfigsFromCmsRetryMaxDelay = 433;
-    optional uint32 LoadConfigsFromCmsTotalTimeout = 434;
+    optional uint32 LoadConfigsFromCmsRetryMinDelay = 432 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 LoadConfigsFromCmsRetryMaxDelay = 433 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 LoadConfigsFromCmsTotalTimeout = 434 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum number of errors on WriteBlob without tablet restart.
-    optional uint32 MaxWriteBlobErrorsBeforeSuicide = 435;
+    optional uint32 MaxWriteBlobErrorsBeforeSuicide = 435 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum range count to load per 1 iteration (transaction).
-    optional uint32 MaxCompactionRangesLoadingPerTx = 436;
+    optional uint32 MaxCompactionRangesLoadingPerTx = 436 [(NMarkers.AllowRuntimeUpdate) = true];
     // Max inflight for out of order compaction map load requests.
-    optional uint32 MaxOutOfOrderCompactionMapChunksInflight = 437;
+    optional uint32 MaxOutOfOrderCompactionMapChunksInflight = 437 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Time to wait for a partition tablet to boot (in milliseconds).
-    optional uint32 PartitionBootTimeout = 438;
+    optional uint32 PartitionBootTimeout = 438 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // In emergency (SSProxy/HiveProxy fallback mode), don't pass SchemeShardDir
     // when registering node in Node Broker
-    optional bool DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = 439;
+    optional bool DontPassSchemeShardDirWhenRegisteringNodeInEmergencyMode = 439 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Bandwidth quota for direct write requests to mirror disks.
     // If a disk starts sending more than the DirectWriteBandwidthQuota bytes per second,
     // we start using MultiAgent write requests.
-    optional uint64 DirectWriteBandwidthQuota = 440;
+    optional uint64 DirectWriteBandwidthQuota = 440 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max number of devices in a TStartMigration transaction.
-    optional uint32 MaxNonReplicatedDeviceMigrationBatchSize = 441;
+    optional uint32 MaxNonReplicatedDeviceMigrationBatchSize = 441 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Min percentage of reassignable mixed channels after which reassign requests
     // are sent.
-    optional uint32 ReassignMixedChannelsPercentageThreshold = 442;
+    optional uint32 ReassignMixedChannelsPercentageThreshold = 442 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If true, describes will be done using SchemeCache instead of TxProxy.
-    optional bool UseSchemeCache = 443;
+    optional bool UseSchemeCache = 443 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // The volume pulls statistics from the partitions,
     // instead of the partitions pushing statistics to the volume themselves.
-    optional bool UsePullSchemeForVolumeStatistics  = 444;
+    optional bool UsePullSchemeForVolumeStatistics  = 444 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Initial retry delay for scheduling next resync and migration
     // ranges (in milliseconds).
-    optional uint32 InitialRetryDelayForServiceRequests = 445;
+    optional uint32 InitialRetryDelayForServiceRequests = 445 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max retry delay for scheduling next resync and migration
     // ranges (in milliseconds).
-    optional uint32 MaxRetryDelayForServiceRequests = 446;
+    optional uint32 MaxRetryDelayForServiceRequests = 446 [(NMarkers.AllowRuntimeUpdate) = true];
 
-    optional bool VolumeThrottlingManagerEnabled = 447;
+    optional bool VolumeThrottlingManagerEnabled = 447 [(NMarkers.AllowRuntimeUpdate) = true];
     // Duration between VolumeThrottlingManager notifications to volumes
-    optional uint32 VolumeThrottlingManagerNotificationPeriodSeconds = 448;
+    optional uint32 VolumeThrottlingManagerNotificationPeriodSeconds = 448 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Initial delay to retry acquire request (in milliseconds).
-    optional uint32 RetryAcquireReleaseDiskInitialDelay = 449;
+    optional uint32 RetryAcquireReleaseDiskInitialDelay = 449 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max delay to retry acquire request (in milliseconds).
-    optional uint32 RetryAcquireReleaseDiskMaxDelay = 450;
+    optional uint32 RetryAcquireReleaseDiskMaxDelay = 450 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Do AddClient/RemoveClient transaction
     // and then do right Acquire/Release devices requests.
@@ -1409,34 +1411,34 @@ message TStorageServiceConfig
 
     // If true then reassign requests will be sent immediately when received
     // YellowMove flag from BlobStorage.
-    optional bool ReassignSystemChannelsImmediately = 452;
+    optional bool ReassignSystemChannelsImmediately = 452 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Min percentage of reassignable fresh channels after which reassign requests
     // are sent.
-    optional uint32 ReassignFreshChannelsPercentageThreshold = 453;
+    optional uint32 ReassignFreshChannelsPercentageThreshold = 453 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for trim fresh log (in milliseconds).
-    optional uint32 TrimFreshLogTimeout = 454;
+    optional uint32 TrimFreshLogTimeout = 454 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables data integrity validation for the YDB-based disks.
     // See "EnableDataIntegrityClient" in server.proto for more details.
-    optional bool EnableDataIntegrityValidationForYdbBasedDisks = 455;
+    optional bool EnableDataIntegrityValidationForYdbBasedDisks = 455 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // These parameters are used to configure resource limits (CPU, RAM, network)
     // for the local service in the tenant pool.
-    optional uint64 HiveLocalServiceCpuResourceLimit = 456;
-    optional uint64 HiveLocalServiceMemoryResourceLimit = 457;
-    optional uint64 HiveLocalServiceNetworkResourceLimit = 458;
+    optional uint64 HiveLocalServiceCpuResourceLimit = 456 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint64 HiveLocalServiceMemoryResourceLimit = 457 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint64 HiveLocalServiceNetworkResourceLimit = 458 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for dynamic node registration via discovery service
     // (in milliseconds).
-    optional uint32 DynamicNodeRegistrationTimeout = 459;
+    optional uint32 DynamicNodeRegistrationTimeout = 459 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for collect garbage on SSD (in milliseconds).
-    optional uint32 CollectGarbageTimeoutSSD = 460;
+    optional uint32 CollectGarbageTimeoutSSD = 460 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for collect garbage on HDD (in milliseconds).
-    optional uint32 CollectGarbageTimeoutHDD = 461;
+    optional uint32 CollectGarbageTimeoutHDD = 461 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // When enabled, the backups are stored in binary proto format instead of
     // prototxt.
@@ -1463,67 +1465,67 @@ message TStorageServiceConfig
     optional uint32 DeviceOperationTrackingFrequency = 467;
 
     // Enable to attach or detach hardware devices in runtime in Disk Agent.
-    optional bool AttachDetachPathsEnabled = 468;
+    optional bool AttachDetachPathsEnabled = 468 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Policy for allocating nonreplicated disks.
-    optional ENonreplAllocationPolicy NonreplAllocationPolicy = 469;
+    optional ENonreplAllocationPolicy NonreplAllocationPolicy = 469 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enable to send metrics from local tablets to hive.
-    optional bool SendLocalTabletMetricsToHiveEnabled = 470;
+    optional bool SendLocalTabletMetricsToHiveEnabled = 470 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables encryption with DEK provided by the Root KMS for Disk Registry based disks.
-    optional bool RootKmsEncryptionForDiskRegistryBasedDisksEnabled = 471;
+    optional bool RootKmsEncryptionForDiskRegistryBasedDisksEnabled = 471 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Sets the VhostDiscardEnabled flag in VolumeConfig when creating a volume.
     // Applies to network-ssd and network-hdd disks.
-    optional bool EnableVhostDiscardForNewVolumes = 472;
+    optional bool EnableVhostDiscardForNewVolumes = 472 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of fresh channels per partition for HDD disks.
-    optional uint32 FreshChannelCountHDD = 473;
+    optional uint32 FreshChannelCountHDD = 473 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Reject request if GetRejectProbability()*100 is greater than this value
-    optional uint32 TabletExecutorRejectionThreshold = 474;
+    optional uint32 TabletExecutorRejectionThreshold = 474 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Interval between resync range requests (in milliseconds).
-    optional uint32 ResyncNextRangeInterval = 475;
+    optional uint32 ResyncNextRangeInterval = 475 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Allows to reply to the client after reading data and 1 checksum.
     // 3 checksums comparison (for mirror-3 disks) is still performed after the
     // 2nd checksum is read.
     // When disabled, fast path waits for data and 2 checksums before replying
     // to the client.
-    optional bool OptimizeFastPathReadsOnResync = 476;
+    optional bool OptimizeFastPathReadsOnResync = 476 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // VolumeProxy to Volume inactive (with no requests from client) connection
     // reset timeout (in milliseconds).
-    optional uint32 VolumeProxyPipeInactivityTimeout = 477;
+    optional uint32 VolumeProxyPipeInactivityTimeout = 477 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables fresh channel zero requests.
-    optional bool FreshChannelZeroRequestsEnabled = 478;
+    optional bool FreshChannelZeroRequestsEnabled = 478 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If true, disk registry doesn't replace devices of mirrored disks in one
     // row per reallocation.
-    optional bool LimitMirrorDisksDeviceReplacementsPerRowEnabled = 479;
+    optional bool LimitMirrorDisksDeviceReplacementsPerRowEnabled = 479 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for attach/detach path requests (in milliseconds).
-    optional uint32 AttachDetachPathRequestTimeout = 480;
+    optional uint32 AttachDetachPathRequestTimeout = 480 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Interval for updating resource metrics (in milliseconds).
-    optional uint32 ResourceMetricsUpdateInterval = 481;
+    optional uint32 ResourceMetricsUpdateInterval = 481 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Periodically checks disk registry state consistency with local db.
     // If equals zero check is disabled.
-    optional uint32 EnsureDiskRegistryStateIntegrityInterval = 482;
+    optional uint32 EnsureDiskRegistryStateIntegrityInterval = 482 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If true, throw error when adding read-only client if a read-write one
     // already exists
-    optional bool SendErrorOnAddClientConflict = 483;
+    optional bool SendErrorOnAddClientConflict = 483 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables separate fresh blocks writer.
-    optional bool FreshBlocksWriterEnabled = 484;
+    optional bool FreshBlocksWriterEnabled = 484 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum number of inflight attach/detach path requests.
-    optional uint64 MaxInflightAttachDetachPathRequestsProcessing = 485;
+    optional uint64 MaxInflightAttachDetachPathRequestsProcessing = 485 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Policy for overlapping requests handling in TVolumeActor.
     // It is preferable to enable handling overlapping requests via
@@ -1536,18 +1538,18 @@ message TStorageServiceConfig
 
     // Maximum number of inflight attach/detach path requests.
     // VolumeBalancerMaxInProgress == 0 means no limit
-    optional uint64 VolumeBalancerMaxInProgress = 488;
+    optional uint64 VolumeBalancerMaxInProgress = 488 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If true, the VhostDiscardEnabled flag is enabled on volume restart.
     // Applies to network-ssd and network-hdd disks.
-    optional bool EnableVhostDiscardOnVolumeRestart = 489;
+    optional bool EnableVhostDiscardOnVolumeRestart = 489 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Shaping throttler configuration.
     optional TShapingThrottlerConfig ShapingThrottlerConfig = 490;
 
     // Don't read block masks on compaction if blob is entirely contained
     // in one compaction range.
-    optional bool ReadBlockMaskOnCompactionOptimizationEnabled = 491;
+    optional bool ReadBlockMaskOnCompactionOptimizationEnabled = 491 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Policy for splitting read/write/zero requests in TVolumeActor.
     // It is preferable to enable splitting via EnableRequestSplitter in the
@@ -1555,33 +1557,33 @@ message TStorageServiceConfig
     optional ERequestSplitterPolicy RequestSplitterPolicy = 492;
 
     // Max skipped blobs during range compaction for HDD disks.
-    optional uint32 MaxSkippedBlobsDuringCompactionHDD = 493;
+    optional uint32 MaxSkippedBlobsDuringCompactionHDD = 493 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Cool down timeout before secure erase devices (in milliseconds).
-    optional uint32 CoolDownTimeoutBeforeSecureErase = 494;
+    optional uint32 CoolDownTimeoutBeforeSecureErase = 494 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If true, preemption with source == balancer will
     // use gentle remount mechanism, avoiding direct tablet killing.
-    optional bool VolumeBalancerGentlePreemptionEnabled = 495;
+    optional bool VolumeBalancerGentlePreemptionEnabled = 495 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Timeout for gentle preemption (ms).
-    optional uint32 VolumeBalancerGentlePreemptionTimeout = 496;
+    optional uint32 VolumeBalancerGentlePreemptionTimeout = 496 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // When flushing fresh blocks into mixed blobs, if the number of distinct
     // compaction ranges in a candidate blob does not exceed this value,
     // the blob may be split at compaction range
     // borders to eliminate reading block masks. Zero disables splitting.
-    optional uint64 SplitByCompactionRangeMaxBlobCount = 497;
+    optional uint64 SplitByCompactionRangeMaxBlobCount = 497 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum number of inflight DR transactions after which CMS host
     // modification requests (AddHost, AddDevice, RemoveHost, RemoveDevice,
     // PurgeHost) are rejected with E_REJECTED. 0 means no limit.
-    optional uint32 MaxInFlightCmsRequests = 498;
+    optional uint32 MaxInFlightCmsRequests = 498 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If true, TVolumeActor notifies DiskRegistry about volume health changes
     // (VOLUME_HEALTH_UNHEALTHY when the first device breaks, VOLUME_HEALTH_HEALTHY
     // when all recovered) for non-replicated disks.
-    optional bool VolumeHealthNotificationEnabled = 499;
+    optional bool VolumeHealthNotificationEnabled = 499 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables periodic keep-alive pings sent from overlay-disk partitions to
     // their base-disk volume via VolumeProxy. Keeps the base-disk pipe warm so
@@ -1589,44 +1591,44 @@ message TStorageServiceConfig
     // pipe re-establishment latency. The ping interval is derived from
     // VolumeProxyPipeInactivityTimeout (half of it), so it is always strictly
     // smaller than the timeout and needs no separate tuning.
-    optional bool BaseDiskPipeKeepAliveEnabled = 500;
+    optional bool BaseDiskPipeKeepAliveEnabled = 500 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables compaction by garbage ignoring zeroed blocks.
     // Should be used only with FreshChannelWriteRequestsEnabled and
     // FreshChannelZeroRequestsEnabled.
-    optional bool IgnoringZeroedCompactionEnabled = 501;
+    optional bool IgnoringZeroedCompactionEnabled = 501 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Max Compaction per second (in ms). Should be less than
     // MaxCompactionExecTimePerSecond. Used for GarbageCompaction in case when
     // IgnoringZeroedCompactionEnabled is on.
-    optional uint32 MaxCompactionExecTimePerSecondForZeroed = 502;
+    optional uint32 MaxCompactionExecTimePerSecondForZeroed = 502 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Performance per allocation unit for system SSD volumes (IsSystem flag).
     // Defaults match the corresponding SSD* parameters.
-    optional uint32 SystemSSDUnitReadBandwidth = 503;   // in MiB/s
-    optional uint32 SystemSSDUnitWriteBandwidth = 504;  // in MiB/s
-    optional uint32 SystemSSDMaxReadBandwidth = 505;    // in MiB/s
-    optional uint32 SystemSSDMaxWriteBandwidth = 506;   // in MiB/s
-    optional uint32 SystemSSDUnitReadIops = 507;
-    optional uint32 SystemSSDUnitWriteIops = 508;
-    optional uint32 SystemSSDMaxReadIops = 509;
-    optional uint32 SystemSSDMaxWriteIops = 510;
+    optional uint32 SystemSSDUnitReadBandwidth = 503 [(NMarkers.AllowRuntimeUpdate) = true];   // in MiB/s
+    optional uint32 SystemSSDUnitWriteBandwidth = 504 [(NMarkers.AllowRuntimeUpdate) = true];  // in MiB/s
+    optional uint32 SystemSSDMaxReadBandwidth = 505 [(NMarkers.AllowRuntimeUpdate) = true];    // in MiB/s
+    optional uint32 SystemSSDMaxWriteBandwidth = 506 [(NMarkers.AllowRuntimeUpdate) = true];   // in MiB/s
+    optional uint32 SystemSSDUnitReadIops = 507 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 SystemSSDUnitWriteIops = 508 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 SystemSSDMaxReadIops = 509 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint32 SystemSSDMaxWriteIops = 510 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If true, partition compaction splits the per-blob BlockMask / BlobMeta
     // read into a separate transaction issued by TCompactionActor instead of
     // doing it inside the main TCompaction prepare phase.
-    optional bool SplitCompactionTxEnabled = 511;
+    optional bool SplitCompactionTxEnabled = 511 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If true, the recreated blob metas are verified on cleanup.
     // We check that there is no leaked blocks in the mixed index.
-    optional bool VerifyRecreatedBlobMetasOnCleanup = 512;
+    optional bool VerifyRecreatedBlobMetasOnCleanup = 512 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Use read or recreated compaction blob metas during cleanup.
     optional bool UseRecreatedBlobMetasOnCleanup = 513;
 
     // If false (default), UseGentlePreemption param
     // for RebindVolumes action is ignored
-    optional bool AllowGentlePreemptionForRebindVolumesAction = 514;
+    optional bool AllowGentlePreemptionForRebindVolumesAction = 514 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum number of concurrent DescribeScheme requests during ListVolumes
     // traversal. 0 means use this default.
@@ -1635,39 +1637,39 @@ message TStorageServiceConfig
     // Enables dynamic garbage compaction throttling based on disk fill
     // percentage. Should not be used together with
     // IgnoringZeroedCompactionEnabled.
-    optional bool EnableDynamicGarbageCompactionThrottling = 516;
+    optional bool EnableDynamicGarbageCompactionThrottling = 516 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Disk fill percentage below which garbage compaction throttling is fully
     // enabled. Measured in percents of the disk size.
     // Applies when EnableDynamicGarbageCompactionThrottling is on.
-    optional uint32 ThrottleGarbageCompactionBelowFillPercentage = 517;
+    optional uint32 ThrottleGarbageCompactionBelowFillPercentage = 517 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Disk fill percentage above which garbage compaction throttling is
     // disabled. Measured in percents of the disk size.
     // Applies when EnableDynamicGarbageCompactionThrottling is on.
-    optional uint32 StopGarbageCompactionThrottlingAboveFillPercentage = 518;
+    optional uint32 StopGarbageCompactionThrottlingAboveFillPercentage = 518 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Minimal value of the limit on garbage compaction execution time (in ms).
     // That is, when garbage compaction throttling is at its strongest, the
     // garbage compaction execution time per second does not exceed this value.
     // Applies when EnableDynamicGarbageCompactionThrottling is enabled and disk
     // usage is below ThrottleGarbageCompactionBelowFillPercentage.
-    optional uint32 MinGarbageCompactionExecTimePerSecond = 519;
+    optional uint32 MinGarbageCompactionExecTimePerSecond = 519 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables filter for mixed blocks. For read requests we check with filter
     // if block is present in mixed index. If filter says that block is not present
     // in mixed index, we skip reading mixed index.
-    optional bool MixedBlocksFilterEnabled = 520;
+    optional bool MixedBlocksFilterEnabled = 520 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Wait for all in-flight fresh writes started before a flush to complete
     // before building flush blobs.
     optional bool WaitForFreshWritesBeforeFlushEnabled = 521;
 
     // Maximum number of compaction ranges to load per 1 transaction.
-    optional uint64 MixedBlocksFilterRangesToLoadPerTx = 522;
+    optional uint64 MixedBlocksFilterRangesToLoadPerTx = 522 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Allowed CPU time spent on loading filter per second (in ms).
-    optional uint64 MixedBlocksFilterAllowedCpuTimePerSecond = 523;
+    optional uint64 MixedBlocksFilterAllowedCpuTimePerSecond = 523 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // When enabled, HiveProxyFallbackMode can switch HiveProxy to fallback at
     // runtime. Switching back to normal mode requires a service restart.
@@ -1681,48 +1683,48 @@ message TStorageServiceConfig
     // after a checkpoint but are not actually needed by any checkpoint.
     // If false (default), cleanup removes only blobs that were added to the
     // cleanup queue before all checkpoints.
-    optional bool CheckpointAwareCleanupEnabled = 526;
+    optional bool CheckpointAwareCleanupEnabled = 526 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If true, the legacy mixed/merged blob and block counters are classified
     // by the data kind of the channel where a blob is stored, and index counters
     // are maintained separately by index kind. If false, legacy counters are
     // classified by index kind and index counters are cleared on partition load.
-    optional bool UseBlobChannelDataKindForCounters = 527;
+    optional bool UseBlobChannelDataKindForCounters = 527 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // If true, QueryAvailableStorage includes suspended devices that are
     // resuming after secure erase.
-    optional bool QueryAvailableStorageForResumingDevicesEnabled = 528;
+    optional bool QueryAvailableStorageForResumingDevicesEnabled = 528 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum allowed logical size of all blocks (block count * block size) in
     // fresh after which we start to reject write and zero requests.
-    optional uint64 FreshLogicalBlocksByteCountHardLimit = 529;
+    optional uint64 FreshLogicalBlocksByteCountHardLimit = 529 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables compaction triggered by the number of mixed blocks for HDD
     // volumes.
-    optional bool MixedBlocksCountCompactionEnabledHDD = 530;
+    optional bool MixedBlocksCountCompactionEnabledHDD = 530 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Enables compaction triggered by the number of mixed blocks for SSD
     // volumes.
-    optional bool MixedBlocksCountCompactionEnabledSSD = 531;
+    optional bool MixedBlocksCountCompactionEnabledSSD = 531 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of mixed bytes in a compaction range that triggers compaction for
     // HDD volumes. Zero means using WriteBlobThreshold.
-    optional uint32 MixedBytesCountCompactionThresholdHDD = 532;
+    optional uint32 MixedBytesCountCompactionThresholdHDD = 532 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of mixed bytes in a compaction range that triggers compaction for
     // SSD volumes. Zero means using WriteBlobThresholdSSD.
-    optional uint32 MixedBytesCountCompactionThresholdSSD = 533;
+    optional uint32 MixedBytesCountCompactionThresholdSSD = 533 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Number of ranges to process in a single mixed-block-count compaction run.
-    optional uint32 MixedBlocksCountCompactionRangeCountPerRun = 534;
+    optional uint32 MixedBlocksCountCompactionRangeCountPerRun = 534 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Maximum mixed bytes per allocation unit for SSD/HDD volumes.
     // The disk-wide limit scales proportionally with disk size, including disks
     // smaller than one allocation unit. Zero disables the per-disk
     // mixed-block-count compaction trigger.
-    optional uint64 SSDMaxMixedBytesPerUnit = 535;
-    optional uint64 HDDMaxMixedBytesPerUnit = 536;
+    optional uint64 SSDMaxMixedBytesPerUnit = 535 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional uint64 HDDMaxMixedBytesPerUnit = 536 [(NMarkers.AllowRuntimeUpdate) = true];
 
     // Track concurrent writes when updating compaction range statistics.
-    optional bool CompactionStatsTrackerEnabled = 537;
+    optional bool CompactionStatsTrackerEnabled = 537 [(NMarkers.AllowRuntimeUpdate) = true];
 }

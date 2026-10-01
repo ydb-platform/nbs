@@ -33,6 +33,7 @@ resumes reading the raw value; it does not clamp the value returned by a getter.
 
 #include "config.h"
 
+#include <cloud/storage/core/config/markers.pb.h>
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 #include <cloud/storage/core/protos/certificate.pb.h>
@@ -203,6 +204,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(ConfigDispatcherSettings,                                              \
         NCloud::NProto::TConfigDispatcherSettings,                             \
         {}                                                                    )\
+    xxx(ConfigsDispatcherServiceEnabled,           bool,      false           )\
     xxx(YdbViewerServiceEnabled,              bool,                  false    )\
     xxx(LinkedDiskFillBandwidth,                                               \
         TVector<NProto::TLinkedDiskFillBandwidth>,                             \
@@ -635,7 +637,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
                                                                                \
     xxx(DiskPrefixLengthWithBlockChecksumsInBlobs, ui64,      0               )\
     xxx(CheckBlockChecksumsInBlobsUponRead,        bool,      false           )\
-    xxx(ConfigsDispatcherServiceEnabled,           bool,      false           )\
     xxx(CachedAcquireRequestLifetime,              TDuration, Seconds(40)     )\
                                                                                \
     xxx(UnconfirmedBlobCountHardLimit,             ui32,      1000            )\
@@ -1303,6 +1304,32 @@ struct TStorageConfig::TImpl
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+// Verify in tests that every RW parameter allows runtime updates.
+// Use the RW getter list and leave RO parameter markers unrestricted.
+void TStorageConfig::VerifyRwParameterMarkers()
+{
+    const auto* descriptor = NProto::TStorageServiceConfig::descriptor();
+    const auto check = [descriptor](const char* name)
+    {
+        const auto* field = descriptor->FindFieldByName(name);
+        Y_ABORT_UNLESS(
+            field,
+            "Storage parameter '%s' has no field in protobuf type '%s'",
+            name,
+            descriptor->full_name().c_str());
+        Y_ABORT_UNLESS(
+            field->options().GetExtension(NCloud::NMarkers::AllowRuntimeUpdate),
+            "RW storage parameter '%s' requires "
+            "NMarker.AllowRuntimeUpdate=true, "
+            "but the marker is false or absent",
+            field->full_name().c_str());
+    };
+
+#define CHECK_RW(name, type, value) check(#name);
+    BLOCKSTORE_STORAGE_CONFIG_RW(CHECK_RW)
+#undef CHECK_RW
+}
 
 TStorageConfig::TStorageConfig(
     NProto::TStorageServiceConfig storageServiceConfig,

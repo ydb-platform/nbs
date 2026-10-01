@@ -4,6 +4,7 @@ RECURSE(
     api
     auth
     common
+    config
     coroutine
     daemon
     diagnostics
