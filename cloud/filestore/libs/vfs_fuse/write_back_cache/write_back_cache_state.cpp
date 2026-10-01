@@ -860,10 +860,9 @@ void TWriteBackCacheState::ProcessPendingRequests()
 {
     while (auto* pendingRequest = TryAllocNextPendingRequest()) {
         pendingRequest->SerializeToAllocation();
-
-        while (auto cachedRequest = GetNextReadyCachedRequest()) {
-            ProcessReadyCachedRequest(std::move(cachedRequest));
-        }
+        auto cachedRequest = GetNextReadyCachedRequest();
+        Y_ABORT_UNLESS(cachedRequest);
+        ProcessReadyCachedRequest(std::move(cachedRequest));
     }
 }
 

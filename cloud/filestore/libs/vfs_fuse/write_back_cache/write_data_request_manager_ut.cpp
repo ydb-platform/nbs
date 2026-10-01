@@ -231,6 +231,95 @@ struct TBootstrap
 
 Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
 {
+    Y_UNIT_TEST(ShouldDistinguishUnavailablePendingRequestStates)
+    {
+        TBootstrap b;
+
+        {
+            auto allocResult = b.RequestManager.TryAllocPendingRequest();
+            UNIT_ASSERT(!allocResult.Request);
+            UNIT_ASSERT(!allocResult.Failed);
+            UNIT_ASSERT(!allocResult.StorageIsFull);
+
+            auto readyResult = b.RequestManager.GetNextReadyCachedRequest();
+            UNIT_ASSERT(!readyResult.Request);
+            UNIT_ASSERT(!readyResult.Failed);
+        }
+
+        auto* pendingRequest = b.AddWithoutProcessing(1, 101, 0, "a");
+        UNIT_ASSERT(b.RequestManager.SetBackpressureStatusForNode(1));
+
+        {
+            auto allocResult = b.RequestManager.TryAllocPendingRequest();
+            UNIT_ASSERT(!allocResult.Request);
+            UNIT_ASSERT(!allocResult.Failed);
+            UNIT_ASSERT(!allocResult.StorageIsFull);
+            UNIT_ASSERT(!pendingRequest->HasAllocation());
+        }
+
+        UNIT_ASSERT(b.RequestManager.ClearBackpressureStatusForNode(1));
+
+        {
+            auto allocResult = b.RequestManager.TryAllocPendingRequest();
+            UNIT_ASSERT_VALUES_EQUAL(pendingRequest, allocResult.Request);
+            UNIT_ASSERT(!allocResult.Failed);
+            UNIT_ASSERT(!allocResult.StorageIsFull);
+            UNIT_ASSERT(pendingRequest->HasAllocation());
+
+            auto secondAllocResult = b.RequestManager.TryAllocPendingRequest();
+            UNIT_ASSERT(!secondAllocResult.Request);
+            UNIT_ASSERT(!secondAllocResult.Failed);
+            UNIT_ASSERT(!secondAllocResult.StorageIsFull);
+
+            auto readyResult = b.RequestManager.GetNextReadyCachedRequest();
+            UNIT_ASSERT(!readyResult.Request);
+            UNIT_ASSERT(!readyResult.Failed);
+        }
+
+        pendingRequest->SerializeToAllocation();
+
+        {
+            auto readyResult = b.RequestManager.GetNextReadyCachedRequest();
+            UNIT_ASSERT(readyResult.Request);
+            UNIT_ASSERT(!readyResult.Failed);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReportStorageFullSeparately)
+    {
+        TBootstrap b;
+        b.Storage->SetCapacity(1);
+
+        UNIT_ASSERT(b.Add(1, 101, 0, "a").HasValue());
+        b.AddWithoutProcessing(2, 202, 0, "b");
+
+        const auto allocResult = b.RequestManager.TryAllocPendingRequest();
+        UNIT_ASSERT(!allocResult.Request);
+        UNIT_ASSERT(!allocResult.Failed);
+        UNIT_ASSERT(allocResult.StorageIsFull);
+    }
+
+    Y_UNIT_TEST(ShouldAbortOnSerializationFailure)
+    {
+        TBootstrap b;
+
+        auto request = std::make_shared<NProto::TWriteDataRequest>();
+        request->SetNodeId(1);
+        request->SetHandle(101);
+        request->SetBuffer("a");
+
+        auto pendingRequest = b.RequestManager.AddRequest(request);
+        const auto allocResult = b.RequestManager.TryAllocPendingRequest();
+        UNIT_ASSERT_VALUES_EQUAL(pendingRequest.get(), allocResult.Request);
+
+        // Break the invariant by modifying the request buffer length
+        request->SetBuffer("ab");
+        UNIT_ASSERT_EXCEPTION_CONTAINS(
+            pendingRequest->SerializeToAllocation(),
+            yexception,
+            "memory output stream exhausted");
+    }
+
     Y_UNIT_TEST(RequestShouldPassThroughPendingQueue)
     {
         TBootstrap b;

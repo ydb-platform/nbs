@@ -1,9 +1,6 @@
 #include "write_data_request.h"
 
-#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/service/request.h>
-
-#include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/stream/mem.h>
 
@@ -21,52 +18,48 @@ TPendingWriteDataRequest::TPendingWriteDataRequest(
     const ui64 byteCount = NCloud::NFileStore::CalculateByteCount(*Request) -
                            Request->GetBufferOffset();
 
+    // WriteData request should have been previously validated by
+    // TUtils::ValidateWriteDataRequest - any serialization failure is a result
+    // of invariant violation and is fatal
+    Y_ABORT_UNLESS(
+        byteCount > 0,
+        "WriteData request payload must not be empty");
+
     AllocationByteCount = sizeof(TSerializedWriteDataRequestHeader) + byteCount;
 }
 
 void TPendingWriteDataRequest::SerializeToAllocation()
 {
-    try {
-        if (!AllocationPtr) {
-            ReportWriteBackCacheRequestSerializationError(
-                "TPendingWriteDataRequest::SerializeToAllocation was called "
-                "for a request with an empty AllocationPtr");
-            return;
+    Y_ABORT_UNLESS(
+        AllocationPtr,
+        "TPendingWriteDataRequest::SerializeToAllocation was called for a "
+        "request with an empty AllocationPtr");
+
+    TMemoryOutput memoryOutput(AllocationPtr, AllocationByteCount);
+
+    TSerializedWriteDataRequestHeader header{
+        .NodeId = Request->GetNodeId(),
+        .Handle = Request->GetHandle(),
+        .Offset = Request->GetOffset()};
+
+    memoryOutput.Write(&header, sizeof(header));
+
+    if (Request->GetIovecs().empty()) {
+        memoryOutput.Write(
+            TStringBuf(Request->GetBuffer()).Skip(Request->GetBufferOffset()));
+    } else {
+        for (const auto& iovec: Request->GetIovecs()) {
+            memoryOutput.Write(TStringBuf(
+                reinterpret_cast<const char*>(iovec.GetBase()),
+                iovec.GetLength()));
         }
-
-        TMemoryOutput memoryOutput(AllocationPtr, AllocationByteCount);
-
-        TSerializedWriteDataRequestHeader header{
-            .NodeId = Request->GetNodeId(),
-            .Handle = Request->GetHandle(),
-            .Offset = Request->GetOffset()};
-
-        memoryOutput.Write(&header, sizeof(header));
-
-        if (Request->GetIovecs().empty()) {
-            memoryOutput.Write(TStringBuf(Request->GetBuffer())
-                                   .Skip(Request->GetBufferOffset()));
-        } else {
-            for (const auto& iovec: Request->GetIovecs()) {
-                memoryOutput.Write(TStringBuf(
-                    reinterpret_cast<const char*>(iovec.GetBase()),
-                    iovec.GetLength()));
-            }
-        }
-
-        if (!memoryOutput.Exhausted()) {
-            ReportWriteBackCacheRequestSerializationError(
-                "TPendingWriteDataRequest::SerializeToAllocation failed: "
-                "buffer is not exhausted after writing the payload");
-            return;
-        }
-
-        Serialized = true;
-    } catch (...) {
-        ReportWriteBackCacheRequestSerializationError(
-            "TPendingWriteDataRequest::SerializeToAllocation failed: " +
-            CurrentExceptionMessage());
     }
+
+    Y_ABORT_UNLESS(
+        memoryOutput.Exhausted(),
+        "Buffer is expected to be written completely");
+
+    Serialized = true;
 }
 
 std::unique_ptr<TCachedWriteDataRequest>

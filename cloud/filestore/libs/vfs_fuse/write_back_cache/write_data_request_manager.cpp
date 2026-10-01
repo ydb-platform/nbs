@@ -291,6 +291,7 @@ TPendingWriteDataRequest* TWriteDataRequestManager::TryPopFrontPendingRequest()
     }
 
     auto* pendingRequest = PendingRequests.Front();
+    Y_ABORT_UNLESS(!pendingRequest->HasAllocation());
     PendingRequestsPopFront();
     return pendingRequest;
 }
@@ -298,6 +299,7 @@ TPendingWriteDataRequest* TWriteDataRequestManager::TryPopFrontPendingRequest()
 void TWriteDataRequestManager::Remove(
     std::unique_ptr<TPendingWriteDataRequest> request)
 {
+    Y_ABORT_UNLESS(!request->HasAllocation());
     PendingRequestsRemove(request.get());
 }
 
