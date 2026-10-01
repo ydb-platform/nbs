@@ -50,6 +50,7 @@ SRCS(
     tablet_actor_getnodeattr.cpp
     tablet_actor_getnodexattr.cpp
     tablet_actor_initschema.cpp
+    tablet_actor_invalidatenoderef.cpp
     tablet_actor_listnodes.cpp
     tablet_actor_linknode.cpp
     tablet_actor_listnodexattr.cpp

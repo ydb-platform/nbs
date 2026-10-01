@@ -451,7 +451,7 @@ private:
         }
     }
 
-    void NotifySessionEvent(
+    ui32 NotifySessionEvent(
         const NActors::TActorContext& ctx,
         const NProto::TSessionEvent& event);
 

@@ -74,6 +74,9 @@ struct TFileStoreTest
         std::shared_ptr<NProto::T##name##Request> request,                     \
     IResponseHandlerPtr<NProto::T##name##Response> responseHandler) override   \
     {                                                                          \
+        if (!name##StreamHandler) {                                            \
+            return;                                                            \
+        }                                                                      \
         return name##StreamHandler(                                            \
             std::move(callContext),                                            \
             std::move(request),                                                \

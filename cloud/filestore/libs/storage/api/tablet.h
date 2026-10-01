@@ -73,6 +73,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(FastShardCommand,           __VA_ARGS__)                               \
                                                                                \
+    xxx(InvalidateNodeRef,          __VA_ARGS__)                               \
+                                                                               \
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
 
@@ -92,6 +94,7 @@ namespace NCloud::NFileStore::NStorage {
     xxx(GetFileSystemTopology,      __VA_ARGS__)                               \
     xxx(RestartTablet,              __VA_ARGS__)                               \
     xxx(FastShardCommand,           __VA_ARGS__)                               \
+    xxx(InvalidateNodeRef,          __VA_ARGS__)                               \
 // FILESTORE_TABLET_ADAPTER_REQUESTS_PLAIN
 
 #define FILESTORE_TABLET_ADAPTER_REQUESTS(xxx, ...)                            \
@@ -253,6 +256,9 @@ struct TEvIndexTablet
 
         EvFastShardCommandRequest = EvBegin + 95,
         EvFastShardCommandResponse,
+
+        EvInvalidateNodeRefRequest = EvBegin + 97,
+        EvInvalidateNodeRefResponse,
 
         // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
         // sub-namespaces which don't have any non-local events so if we run out

@@ -435,12 +435,16 @@ TVector<TSession*> TIndexTabletState::GetTimedOutSessions(TInstant now) const
 TVector<TSession*> TIndexTabletState::GetSessionsToNotify(
     const NProto::TSessionEvent& event) const
 {
-    // TODO
-    Y_UNUSED(event);
+    //
+    // Cache invalidations must reach every client that may cache the node
+    // ref, not only the clients that subscribed to node change events.
+    //
+
+    const bool notifyAll = event.InvalidateNodeRefSize() > 0;
 
     TVector<TSession*> result;
     for (auto& session: Impl->Sessions) {
-        if (session.NotifyEvents) {
+        if (notifyAll || session.NotifyEvents) {
             result.push_back(&session);
         }
     }

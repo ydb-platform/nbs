@@ -485,6 +485,104 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldOpenSessionEventStream)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Start();
+
+        bootstrap.FileStore->CreateSessionHandler = [&] (
+            auto callContext,
+            auto request)
+        {
+            Y_UNUSED(callContext);
+
+            NProto::TCreateSessionResponse response;
+            auto* session = response.MutableSession();
+            session->SetSessionId(SessionId);
+            session->SetSessionSeqNo(request->GetMountSeqNumber());
+            return MakeFuture(response);
+        };
+
+        TVector<std::shared_ptr<NProto::TGetSessionEventsRequest>> requests;
+        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> handler;
+        bootstrap.FileStore->GetSessionEventsStreamHandler = [&] (
+            auto callContext,
+            auto request,
+            auto responseHandler)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(callContext->FileSystemId, FileSystemId);
+            requests.push_back(std::move(request));
+            handler = std::move(responseHandler);
+        };
+
+        {
+            auto future = bootstrap.Session->CreateSession();
+            UNIT_ASSERT(!HasError(future.GetValue(WaitTimeout)));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            FileSystemId,
+            requests[0]->GetFileSystemId());
+        UNIT_ASSERT_VALUES_EQUAL(ClientId, GetClientId(*requests[0]));
+        UNIT_ASSERT_VALUES_EQUAL(SessionId, GetSessionId(*requests[0]));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            requests[0]->GetHeaders().GetSessionSeqNo());
+
+        //
+        // The handler only logs the events for now.
+        //
+
+        NProto::TGetSessionEventsResponse events;
+        auto* event = events.AddEvents();
+        event->SetSeqNo(1);
+        auto* invalidate = event->AddInvalidateNodeRef();
+        invalidate->SetNodeId(1);
+        invalidate->SetName("file");
+        handler->HandleResponse(events);
+
+        //
+        // Re-establishing the same session keeps the open stream.
+        //
+
+        {
+            auto future = bootstrap.Session->AlterSession(false, 0);
+            UNIT_ASSERT(!HasError(future.GetValue(WaitTimeout)));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, requests.size());
+
+        //
+        // Another subsession (mount seq number) gets its own stream.
+        //
+
+        {
+            auto future = bootstrap.Session->AlterSession(false, 10);
+            UNIT_ASSERT(!HasError(future.GetValue(WaitTimeout)));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(2, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            requests[1]->GetHeaders().GetSessionSeqNo());
+
+        //
+        // A completed stream is reopened when the session is established
+        // again.
+        //
+
+        handler->HandleCompletion(MakeError(E_REJECTED, "stream broken"));
+        {
+            auto future = bootstrap.Session->AlterSession(false, 10);
+            UNIT_ASSERT(!HasError(future.GetValue(WaitTimeout)));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(3, requests.size());
+
+        {
+            auto future = bootstrap.Session->DestroySession();
+            UNIT_ASSERT(!HasError(future.GetValue(WaitTimeout)));
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleDestroySessionAfterFailedSessionRestore)
     {
         TBootstrap bootstrap;

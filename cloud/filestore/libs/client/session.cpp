@@ -16,6 +16,7 @@
 #include <util/system/hostname.h>
 #include <util/system/spinlock.h>
 
+#include <atomic>
 #include <mutex>
 
 namespace NCloud::NFileStore::NClient {
@@ -180,6 +181,70 @@ std::tuple<TString, ui64, bool> GetSessionParams(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+//
+// Receives the events the filestore sends to the session. For now the
+// events are only logged.
+//
+
+class TSessionEventsHandler final
+    : public IResponseHandler<NProto::TGetSessionEventsResponse>
+{
+private:
+    TLog Log;
+    const TString LogTag;
+    const TString SessionId;
+    const ui64 SessionSeqNo;
+    std::atomic<bool> Completed = false;
+
+public:
+    TSessionEventsHandler(
+            TLog log,
+            TString logTag,
+            TString sessionId,
+            ui64 sessionSeqNo)
+        : Log(std::move(log))
+        , LogTag(std::move(logTag))
+        , SessionId(std::move(sessionId))
+        , SessionSeqNo(sessionSeqNo)
+    {}
+
+    void HandleResponse(
+        const NProto::TGetSessionEventsResponse& response) override
+    {
+        if (HasError(response)) {
+            STORAGE_WARN(LogTag << " session event stream error: "
+                << FormatError(response.GetError()));
+            return;
+        }
+
+        for (const auto& event: response.GetEvents()) {
+            for (const auto& invalidate: event.GetInvalidateNodeRef()) {
+                STORAGE_INFO(LogTag << " session event #" << event.GetSeqNo()
+                    << ": InvalidateNodeRef NodeId=" << invalidate.GetNodeId()
+                    << " Name=" << invalidate.GetName().Quote());
+            }
+        }
+    }
+
+    void HandleCompletion(const NProto::TError& error) override
+    {
+        Completed = true;
+        STORAGE_INFO(LogTag << " session event stream completed: "
+            << FormatError(error));
+    }
+
+    // Whether this handler still serves the given session.
+    bool IsServing(const TString& sessionId, ui64 sessionSeqNo) const
+    {
+        return !Completed && SessionId == sessionId
+            && SessionSeqNo == sessionSeqNo;
+    }
+};
+
+using TSessionEventsHandlerPtr = std::shared_ptr<TSessionEventsHandler>;
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TSession
     : public ISession
     , public std::enable_shared_from_this<TSession>
@@ -222,6 +287,9 @@ private:
     TString SessionId;
     ui64 SessionSeqNo = 0;
     bool ReadOnly = 0;
+
+    // Handler of the session event stream opened for the current session.
+    TSessionEventsHandlerPtr EventsHandler;
 
     std::atomic_flag PingScheduled = false;
 
@@ -472,6 +540,7 @@ private:
             }
         }
 
+        TSessionEventsHandlerPtr newEventsHandler;
         with_lock (SessionLock) {
             if (!HasError(response)) {
                 STORAGE_INFO(LogTag(GetSessionId(response), GetSessionSeqNo(response))
@@ -482,12 +551,55 @@ private:
                 std::tie(SessionId, SessionSeqNo, ReadOnly) =
                     GetSessionParams(response);
 
+                //
+                // AlterSession re-establishes the same session: the stream
+                // opened for it keeps working and must not be replaced.
+                //
+
+                if (!EventsHandler ||
+                    !EventsHandler->IsServing(SessionId, SessionSeqNo))
+                {
+                    EventsHandler = std::make_shared<TSessionEventsHandler>(
+                        Log,
+                        LogTag(SessionId, SessionSeqNo),
+                        SessionId,
+                        SessionSeqNo);
+                    newEventsHandler = EventsHandler;
+                }
+
                 SchedulePingSession();
             } else {
                 SessionState = SessionBroken;
             }
         }
+
+        if (newEventsHandler) {
+            OpenSessionEventStream(
+                GetSessionId(response),
+                GetSessionSeqNo(response),
+                std::move(newEventsHandler));
+        }
+
         state->Response.SetValue(std::move(response));
+    }
+
+    void OpenSessionEventStream(
+        const TString& sessionId,
+        ui64 sessionSeqNo,
+        TSessionEventsHandlerPtr handler)
+    {
+        auto request = std::make_shared<NProto::TGetSessionEventsRequest>();
+        request->SetFileSystemId(Config->GetFileSystemId());
+
+        auto* headers = request->MutableHeaders();
+        headers->SetClientId(Config->GetClientId());
+        headers->SetSessionId(sessionId);
+        headers->SetSessionSeqNo(sessionSeqNo);
+
+        Client->GetSessionEventsStream(
+            MakeIntrusive<TCallContext>(Config->GetFileSystemId()),
+            std::move(request),
+            std::move(handler));
     }
 
     //

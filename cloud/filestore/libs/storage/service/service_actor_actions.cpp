@@ -137,6 +137,10 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateFastShardCommandActionActor
         },
         {
+            "invalidatenoderef",
+            &TStorageServiceActor::CreateInvalidateNodeRefActionActor
+        },
+        {
             "getfilesystemtopology",
             &TStorageServiceActor::CreateGetFileSystemTopologyActionActor
         },

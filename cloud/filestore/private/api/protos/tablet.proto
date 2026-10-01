@@ -1618,3 +1618,28 @@ message TListQuotasResponse
     // Usage of each quota that has any recorded usage on this filesystem.
     repeated TQuotaUsage Usages = 3;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// InvalidateNodeRef request/response.
+
+message TInvalidateNodeRefRequest
+{
+    // Optional request headers.
+    NProto.THeaders Headers = 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+
+    // The node ref to invalidate: parent node and name.
+    uint64 NodeId = 3;
+    bytes Name = 4;
+}
+
+message TInvalidateNodeRefResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+
+    // The number of sessions the event was sent to.
+    uint32 NotifiedSessionCount = 2;
+}

@@ -51,6 +51,18 @@ IActorPtr TStorageServiceActor::CreateFastShardCommandActionActor(
         std::move(input));
 }
 
+IActorPtr TStorageServiceActor::CreateInvalidateNodeRefActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TInvalidateNodeRefActor = TTabletActionActor<
+        TEvIndexTablet::TEvInvalidateNodeRefRequest,
+        TEvIndexTablet::TEvInvalidateNodeRefResponse>;
+    return std::make_unique<TInvalidateNodeRefActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // Stats
 

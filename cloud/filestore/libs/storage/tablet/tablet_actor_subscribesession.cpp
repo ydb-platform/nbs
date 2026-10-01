@@ -35,7 +35,7 @@ void TIndexTabletActor::HandleSubscribeSession(
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 
-void TIndexTabletActor::NotifySessionEvent(
+ui32 TIndexTabletActor::NotifySessionEvent(
     const TActorContext& ctx,
     const NProto::TSessionEvent& event)
 {
@@ -62,6 +62,8 @@ void TIndexTabletActor::NotifySessionEvent(
             }
         }
     }
+
+    return sessionsToNotify.size();
 }
 
 }   // namespace NCloud::NFileStore::NStorage

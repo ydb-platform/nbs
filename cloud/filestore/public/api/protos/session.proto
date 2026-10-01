@@ -57,6 +57,14 @@ message TSessionEvent
         uint32 Kind = 2;
     }
 
+    // The client should drop whatever it caches for the node ref
+    // (NodeId, Name): the ref may have changed without the client knowing.
+    message TInvalidateNodeRef
+    {
+        uint64 NodeId = 1;
+        bytes Name = 2;
+    }
+
     // Event sequence number.
     uint64 SeqNo = 1;
 
@@ -64,6 +72,7 @@ message TSessionEvent
     repeated TNodeLinked NodeLinked = 100;
     repeated TNodeUnlinked NodeUnlinked = 101;
     repeated TNodeChanged NodeChanged = 102;
+    repeated TInvalidateNodeRef InvalidateNodeRef = 103;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

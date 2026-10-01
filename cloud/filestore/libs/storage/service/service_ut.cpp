@@ -85,6 +85,31 @@ NProtoPrivate::TSetHasXAttrsResponse ExecuteSetHasXAttrs(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+NProtoPrivate::TInvalidateNodeRefResponse ExecuteInvalidateNodeRef(
+    TServiceClient& service,
+    ui64 nodeId,
+    const TString& name)
+{
+    NProtoPrivate::TInvalidateNodeRefRequest request;
+    request.SetFileSystemId("test");
+    request.SetNodeId(nodeId);
+    request.SetName(name);
+
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+
+    auto jsonResponse = service.ExecuteAction("invalidatenoderef", buf);
+    NProtoPrivate::TInvalidateNodeRefResponse response;
+    UNIT_ASSERT(
+        google::protobuf::util::JsonStringToMessage(
+            jsonResponse->Record.GetOutput(),
+            &response)
+            .ok());
+    return response;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TVector<TString> CreateIovecs(size_t totalSize, size_t iovecSize)
 {
     TVector<TString> iovecs;
@@ -1245,6 +1270,76 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             const auto& events = response->Record.GetEvents();
             UNIT_ASSERT_VALUES_EQUAL(events.size(), 1);
         }
+    }
+
+    Y_UNIT_TEST(ShouldDeliverInvalidateNodeRefToAllSessions)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        auto headers = service.InitSession("test", "client");
+
+        //
+        // No SubscribeSession: invalidations reach every session, not only
+        // the subscribed ones.
+        //
+
+        {
+            auto response = service.GetSessionEventsStream(headers);
+            UNIT_ASSERT_VALUES_EQUAL(0, response->Record.EventsSize());
+        }
+
+        auto actionResponse =
+            ExecuteInvalidateNodeRef(service, RootNodeId, "file");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            actionResponse.GetError().GetCode(),
+            FormatError(actionResponse.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(1, actionResponse.GetNotifiedSessionCount());
+
+        auto response =
+            service.RecvResponse<TEvService::TEvGetSessionEventsResponse>();
+        UNIT_ASSERT_C(
+            SUCCEEDED(response->GetStatus()),
+            response->GetErrorReason());
+
+        const auto& events = response->Record.GetEvents();
+        UNIT_ASSERT_VALUES_EQUAL(1, events.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, events[0].InvalidateNodeRefSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            RootNodeId,
+            events[0].GetInvalidateNodeRef(0).GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "file",
+            events[0].GetInvalidateNodeRef(0).GetName());
+    }
+
+    Y_UNIT_TEST(ShouldRejectInvalidateNodeRefWithoutNodeRef)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        NProtoPrivate::TInvalidateNodeRefRequest request;
+        request.SetFileSystemId("test");
+        request.SetNodeId(RootNodeId);
+
+        TString buf;
+        google::protobuf::util::MessageToJsonString(request, &buf);
+
+        auto response =
+            service.AssertExecuteActionFailed("invalidatenoderef", buf);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetStatus(),
+            response->GetErrorReason());
     }
 
     Y_UNIT_TEST(ShouldListFileStores)
