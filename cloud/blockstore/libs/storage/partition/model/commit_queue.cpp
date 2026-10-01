@@ -16,12 +16,11 @@ void TCommitQueueImpl<TItem>::Enqueue(TItem item, ui64 commitId)
 template <typename TItem>
 TItem TCommitQueueImpl<TItem>::Dequeue()
 {
-    TItem item;
-    if (Items) {
-        auto& entry = Items.front();
-        item = std::move(entry.Item);
-        Items.pop_front();
-    }
+    Y_ABORT_UNLESS(!Items.empty());
+
+    TItem item = std::move(Items.front().Item);
+    Items.pop_front();
+
     return item;
 }
 
