@@ -49,10 +49,33 @@ TFsPath TryGetRamDrivePath()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Keep the caller's affinity intact even when SetUp or the test throws.
+struct TAffinityGuard
+{
+    cpu_set_t Original;
+
+    TAffinityGuard()
+    {
+        CPU_ZERO(&Original);
+        UNIT_ASSERT_VALUES_EQUAL(
+            sched_getaffinity(0, sizeof(Original), &Original),
+            0);
+    }
+
+    ~TAffinityGuard()
+    {
+        Y_ABORT_UNLESS(
+            sched_setaffinity(0, sizeof(Original), &Original) == 0,
+            "Failed to restore test thread affinity");
+    }
+};
+
 struct TFixture: public NUnitTest::TBaseFixture
 {
     static constexpr ui32 ServicesCount = 2;
 
+    TAffinityGuard AffinityGuard;
+    TTempDir TempDir = TTempDir::NewTempDir(TryGetRamDrivePath().GetPath());
     TFileHandle FileData;
     TVector<IFileIOServicePtr> Services;
     cpu_set_t IoWqThreadCpuset;
@@ -61,7 +84,7 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         Y_UNUSED(context);
 
-        const TFsPath filePath = TryGetRamDrivePath() / "test";
+        const TFsPath filePath = TempDir.Path() / "test";
 
         FileData = TFileHandle(
             filePath,
@@ -101,8 +124,15 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void SelectIoWqThreadAffinity()
     {
-        auto coresNum = sysconf(_SC_NPROCESSORS_ONLN);
-        auto selectedCore = RandomNumber<ui32>(coresNum);
+        TVector<int> allowedCores;
+        for (int cpu = 0; cpu != CPU_SETSIZE; ++cpu) {
+            if (CPU_ISSET(cpu, &AffinityGuard.Original)) {
+                allowedCores.push_back(cpu);
+            }
+        }
+        UNIT_ASSERT(!allowedCores.empty());
+        const int selectedCore =
+            allowedCores[RandomNumber<ui32>(allowedCores.size())];
 
         CPU_ZERO(&IoWqThreadCpuset);
         CPU_SET(selectedCore, &IoWqThreadCpuset);
@@ -285,7 +315,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
 
     Y_UNIT_TEST_F(ShouldReadWriteWithSyncFlags, TFixture)
     {
-        const TFsPath filePath = TryGetRamDrivePath() / "test_sync_flags";
+        const TFsPath filePath = TempDir.Path() / "test_sync_flags";
         TFileHandle fileData(filePath, OpenAlways | RdWr | DirectAligned);
         fileData.Resize(BlockCount * BlockSize);
 
@@ -338,7 +368,7 @@ Y_UNIT_TEST_SUITE(TIoUringTest)
 
     Y_UNIT_TEST_F(ShouldReadWriteVWithSyncFlags, TFixture)
     {
-        const TFsPath filePath = TryGetRamDrivePath() / "test_sync_flags_v";
+        const TFsPath filePath = TempDir.Path() / "test_sync_flags_v";
         TFileHandle fileData(filePath, OpenAlways | RdWr | DirectAligned);
         fileData.Resize(BlockCount * BlockSize);
 
