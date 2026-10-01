@@ -50,7 +50,7 @@ void TIndexTabletActor::HandleFastShardInitCompleted(
             LogTag << " Switching tablet to BROKEN state due to the failed"
             << " FastShard init: " << FormatError(error));
 
-        BecomeAux(ctx, STATE_BROKEN);
+        BecomeAux(ctx, STATE_ADAPTER_BROKEN);
 
         // allow pipes to connect
         SignalTabletActive(ctx);

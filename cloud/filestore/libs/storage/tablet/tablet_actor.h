@@ -155,6 +155,7 @@ class TIndexTabletActor final
         STATE_ADAPTER,
         STATE_ZOMBIE,
         STATE_BROKEN,
+        STATE_ADAPTER_BROKEN,
         STATE_MAX,
     };
 
@@ -947,6 +948,7 @@ private:
     STFUNC(StateAdapterInit);
     STFUNC(StateZombie);
     STFUNC(StateBroken);
+    STFUNC(StateAdapterBroken);
 
     void RegisterFileStore(const NActors::TActorContext& ctx);
     void UnregisterFileStore(const NActors::TActorContext& ctx);

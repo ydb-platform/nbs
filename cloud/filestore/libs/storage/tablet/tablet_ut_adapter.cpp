@@ -155,6 +155,87 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Adapter)
         UNIT_ASSERT(!shards->Created[0]->TornDown);
     }
 
+    TABLET_TEST_4K_ONLY(ShouldRepairShardConfigInBrokenState)
+    {
+        auto shards = std::make_shared<TTestFastShards>();
+        testEnvConfig.FastShardFactory = shards;
+        TTestEnv env(testEnvConfig);
+        auto& runtime = env.GetRuntime();
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        auto makeConfig = [] (const TString& host) {
+            auto config = PersistentConfig();
+            auto* device = config.MutablePersistentConfig()
+                ->AddStorageGroups()
+                ->AddDevices();
+            device->SetHost(host);
+            device->SetPort(1);
+            device->SetDeviceId("device");
+            return config;
+        };
+
+        auto configure = [&] (TIndexTabletClient& tablet, const TString& host)
+        {
+            tablet.ConfigureAsShard(
+                1 /* shardNo */,
+                "main_fs",
+                "main_fs_s1",
+                true /* directoryCreationInShardsEnabled */,
+                TVector<TString>() /* shardIds */,
+                makeConfig(host),
+                true /* isFastShard */);
+        };
+
+        TIndexTabletClient tablet(runtime, nodeIdx, tabletId, tabletConfig);
+        configure(tablet, "dead-host");
+        tablet.ReconnectPipe();
+
+        //
+        // The shard cannot reach its device: the tablet becomes broken.
+        //
+
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 1; });
+        shards->Created[0]->InitResult.SetValue(
+            MakeError(E_FAIL, "dead-host is unreachable"));
+
+        tablet.SendRequest(tablet.CreateWaitReadyRequest());
+        auto waitReady =
+            tablet.RecvResponse<TEvIndexTablet::TEvWaitReadyResponse>();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            waitReady->GetStatus(),
+            waitReady->GetErrorReason());
+
+        //
+        // The broken tablet accepts the repaired config and restarts with
+        // it.
+        //
+
+        configure(tablet, "live-host");
+
+        DispatchUntil(runtime, [&] { return shards->Created.size() == 2; });
+        UNIT_ASSERT(shards->Created[0]->TornDown);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "live-host",
+            shards->Created[1]->Config.GetPersistentConfig()
+                .GetStorageGroups(0)
+                .GetDevices(0)
+                .GetHost());
+
+        shards->Created[1]->InitResult.SetValue({});
+
+        tablet.ReconnectPipe();
+        tablet.SendRequest(tablet.CreateWaitReadyRequest());
+        waitReady =
+            tablet.RecvResponse<TEvIndexTablet::TEvWaitReadyResponse>();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            waitReady->GetStatus(),
+            waitReady->GetErrorReason());
+    }
+
     TABLET_TEST_4K_ONLY(ShouldUseAdapter)
     {
         NProto::TStorageConfig storageConfig;
