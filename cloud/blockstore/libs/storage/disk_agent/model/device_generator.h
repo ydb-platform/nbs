@@ -34,6 +34,19 @@ public:
     TVector<NProto::TFileDeviceArgs> ExtractResult();
 
 private:
+    // Lays out the devices of the pool starting from the offset. Advances the
+    // offset to the end of the last device and the sub device index by the
+    // number of generated devices.
+    void GenerateDevices(
+        const TString& path,
+        const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
+        ui32 deviceNumber,
+        ui32 blockSize,
+        ui32 maxDeviceCount,
+        ui64 fileSize,
+        ui64& offset,
+        ui32& subDeviceIndex);
+
     TString CreateDeviceId(ui32 deviceNumber, const TString& suffix) const;
     TString CreateDeviceId(
         ui32 deviceNumber,
