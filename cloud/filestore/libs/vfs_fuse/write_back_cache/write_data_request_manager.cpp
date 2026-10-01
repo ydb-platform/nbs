@@ -270,10 +270,7 @@ auto TWriteDataRequestManager::TryProcessPendingRequest()
 
     auto* pendingRequest = PendingRequests.Front();
 
-    auto res = TryStoreRequestInPersistentStorage(
-        pendingRequest->GetSequenceId(),
-        Timer->Now(),
-        pendingRequest->GetRequest());
+    auto res = TryStoreRequestInPersistentStorage(*pendingRequest);
 
     if (!res.CachedRequest) {
         return {.Failed = res.Failed};
@@ -379,10 +376,11 @@ void TWriteDataRequestManager::UpdateStats() const
 // Private methods
 
 auto TWriteDataRequestManager::TryStoreRequestInPersistentStorage(
-    ui64 sequenceId,
-    TInstant time,
-    const NProto::TWriteDataRequest& request) -> TProcessPendingRequestResult
+    const TPendingWriteDataRequest& pendingRequest)
+    -> TProcessPendingRequestResult
 {
+    const auto& request = pendingRequest.GetRequest();
+
     if (NodesWithBackpressure.contains(request.GetNodeId())) {
         // Known limitation: pending requests are global FIFO.
         // Although backpressure is tracked per node, the pending queue is not
@@ -424,8 +422,8 @@ auto TWriteDataRequestManager::TryStoreRequestInPersistentStorage(
     }
 
     auto res = std::make_unique<TCachedWriteDataRequest>(
-        sequenceId,
-        time,
+        pendingRequest.GetSequenceId(),
+        Timer->Now(),
         allocationPtr,
         data);
 

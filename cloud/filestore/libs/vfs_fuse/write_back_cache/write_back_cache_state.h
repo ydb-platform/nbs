@@ -210,9 +210,6 @@ private:
     TGuard<TQueuedOperations> LockStateAndPostponeQueuedOperations() const;
 
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
-        std::unique_ptr<TPendingWriteDataRequest> request);
-
-    NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TCachedWriteDataRequest> request,
         bool handleReleased);
 

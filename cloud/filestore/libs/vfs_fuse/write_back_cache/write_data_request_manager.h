@@ -67,7 +67,12 @@ public:
     // Returns 0 when there are no unflushed requests
     ui64 GetMaxUnflushedSequenceId() const;
 
-    // Creates a pending WriteData request and adds it to the pending queue.
+    /**
+     * Creates a pending WriteData request and adds it to the pending queue.
+     * The returned object must outlive its presence in the queue and must
+     * leave via TryProcessPendingRequest/TryPopFrontPendingRequest/Remove;
+     * destroying it while queued unlinks silently but leaks metrics.
+     */
     [[nodiscard]] std::unique_ptr<TPendingWriteDataRequest> AddRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
@@ -134,9 +139,7 @@ public:
 
 private:
     TProcessPendingRequestResult TryStoreRequestInPersistentStorage(
-        ui64 sequenceId,
-        TInstant time,
-        const NProto::TWriteDataRequest& request);
+        const TPendingWriteDataRequest& pendingRequest);
 
     // Access methods that triggers stats update
     void PendingRequestsPushBack(TPendingWriteDataRequest* request);

@@ -98,7 +98,13 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
     }
 
     auto pendingRequest = RequestManager.AddRequest(std::move(request));
-    auto future = AddRequest(std::move(pendingRequest));
+
+    auto future = pendingRequest->AccessPromise().GetFuture();
+
+    auto& nodeState = Nodes.GetOrCreateNodeState(pendingRequest->GetNodeId());
+    auto& handleState = nodeState.Handles[pendingRequest->GetHandle()];
+    handleState.PendingRequests.PushBack(pendingRequest.get());
+    nodeState.Cache.EnqueuePendingRequest(std::move(pendingRequest));
 
     ProcessPendingRequests();
 
@@ -617,22 +623,6 @@ TGuard<TQueuedOperations>
 TWriteBackCacheState::LockStateAndPostponeQueuedOperations() const
 {
     return Guard(QueuedOperations);
-}
-
-TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
-    std::unique_ptr<TPendingWriteDataRequest> request)
-{
-    auto future = request->AccessPromise().GetFuture();
-
-    auto& nodeState =
-        Nodes.GetOrCreateNodeState(request->GetRequest().GetNodeId());
-
-    auto& handleState = nodeState.Handles[request->GetRequest().GetHandle()];
-    handleState.PendingRequests.PushBack(request.get());
-
-    nodeState.Cache.EnqueuePendingRequest(std::move(request));
-
-    return future;
 }
 
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(

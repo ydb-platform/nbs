@@ -218,7 +218,7 @@ struct TBootstrap
 
 Y_UNIT_TEST_SUITE(TPersistentRequestStorageTest)
 {
-    Y_UNIT_TEST(ShouldProcessAllRequestsViaPendingQueue)
+    Y_UNIT_TEST(RequestShouldPassThroughPendingQueue)
     {
         TBootstrap b;
 

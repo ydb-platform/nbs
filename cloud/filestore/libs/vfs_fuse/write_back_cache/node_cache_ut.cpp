@@ -177,8 +177,8 @@ struct TBootstrap
 
         UNIT_ASSERT(!res.Failed);
         UNIT_ASSERT(res.CachedRequest);
-        UNIT_ASSERT(
-            pendingRequest->GetSequenceId() ==
+        UNIT_ASSERT_VALUES_EQUAL(
+            pendingRequest->GetSequenceId(),
             res.CachedRequest->GetSequenceId());
 
         return std::move(res.CachedRequest);
