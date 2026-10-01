@@ -599,6 +599,152 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         service.StatVolume();
     }
 
+    Y_UNIT_TEST(ShouldNotEraseAnotherConnectionTabletMapping)
+    {
+        TTestEnv env;
+        NProto::TStorageServiceConfig config;
+        config.SetVolumeProxyPipeInactivityTimeout(
+            TDuration::Seconds(10).MilliSeconds());
+        ui32 nodeIdx = SetupTestEnv(env, config);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+
+        service.CreateVolume();
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(11));
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        auto sendStatRequest = [&](bool exactDiskIdMatch, ui64 cookie)
+        {
+            auto request = service.CreateStatVolumeRequest();
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(
+                exactDiskIdMatch);
+            runtime.Send(
+                new IEventHandle(
+                    MakeVolumeProxyServiceId(),
+                    service.GetSender(),
+                    request.release(),
+                    0,
+                    cookie),
+                nodeIdx);
+        };
+
+        TVector<TAutoPtr<IEventHandle>> describeResponses;
+        ui64 volumeTabletId = 0;
+        TActorId volumeActorId;
+        bool holdDescribeResponses = true;
+        bool observeStatResponses = false;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvStatVolumeRequest: {
+                        if (observeStatResponses &&
+                            event->GetRecipientRewrite() !=
+                                MakeVolumeProxyServiceId()) {
+                            volumeActorId = event->GetRecipientRewrite();
+                        }
+                        break;
+                    }
+                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                        if (holdDescribeResponses) {
+                            auto* msg = event->Get<
+                                TEvSSProxy::TEvDescribeVolumeResponse>();
+                            const auto& volumeDescription =
+                                msg->PathDescription
+                                    .GetBlockStoreVolumeDescription();
+                            volumeTabletId =
+                                volumeDescription.GetVolumeTabletId();
+                            describeResponses.emplace_back(event.Release());
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvService::EvStatVolumeResponse: {
+                        if (observeStatResponses &&
+                            event->GetRecipientRewrite() ==
+                            service.GetSender()) {
+                            auto* msg =
+                                event->Get<TEvService::TEvStatVolumeResponse>();
+                            UNIT_ASSERT_C(
+                                SUCCEEDED(msg->GetStatus()),
+                                msg->GetErrorReason());
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        sendStatRequest(false, 1);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(1, describeResponses.size());
+
+        sendStatRequest(true, 2);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(2, describeResponses.size());
+        UNIT_ASSERT(
+            describeResponses[0]->Cookie != describeResponses[1]->Cookie);
+        UNIT_ASSERT(volumeTabletId);
+
+        holdDescribeResponses = false;
+        observeStatResponses = true;
+        runtime.Send(describeResponses[0].Release(), nodeIdx);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(volumeActorId);
+
+        runtime.AdvanceCurrentTime(TDuration::Seconds(5));
+
+        runtime.Send(describeResponses[1].Release(), nodeIdx);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(volumeActorId);
+
+        // Expire the first connection. The second connection must remain
+        // registered in ConnectionByTablet.
+        runtime.AdvanceCurrentTime(TDuration::Seconds(6));
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        bool requestDropped = false;
+        bool responseReceived = false;
+        constexpr ui64 FinalRequestCookie = 3;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                switch (event->GetTypeRewrite()) {
+                    case TEvService::EvStatVolumeRequest: {
+                        if (event->GetRecipientRewrite() == volumeActorId) {
+                            requestDropped = true;
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        break;
+                    }
+                    case TEvService::EvStatVolumeResponse: {
+                        if (event->Cookie == FinalRequestCookie &&
+                            event->GetRecipientRewrite() ==
+                                service.GetSender()) {
+                            auto* msg =
+                                event->Get<TEvService::TEvStatVolumeResponse>();
+                            UNIT_ASSERT_VALUES_EQUAL(
+                                E_REJECTED,
+                                msg->GetStatus());
+                            responseReceived = true;
+                        }
+                        break;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        sendStatRequest(true, FinalRequestCookie);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(requestDropped);
+
+        RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(responseReceived);
+    }
+
     Y_UNIT_TEST(ShouldMapBaseDiskIfSchemeShardIsNotAvailable)
     {
         TTestEnv env;
