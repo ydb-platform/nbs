@@ -2015,6 +2015,39 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         }
     }
 
+    Y_UNIT_TEST(ShouldAdvanceNodeCommitIdUponModification)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        auto commitId = [&]
+        {
+            return tablet.UnsafeGetNode(id)->Record.GetCommitId();
+        };
+
+        auto prev = commitId();
+        auto expectAdvanced = [&]
+        {
+            auto cur = commitId();
+            UNIT_ASSERT_GT(cur, prev);
+            prev = cur;
+        };
+
+        tablet.WriteData(handle, 0, 4_KB, 'a');
+        expectAdvanced();
+
+        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetMode(0644));
+        expectAdvanced();
+    }
+
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInUnsafeNodeOperations)
     {
         const ui32 maxTabletStep = 4;

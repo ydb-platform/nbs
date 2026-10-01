@@ -101,13 +101,11 @@ void TIndexTabletState::UpdateNode(
             1);
     }
 
+    db.WriteNode(nodeId, maxCommitId, attrs);
+
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, minCommitId);
-    if (checkpointId == InvalidCommitId) {
-        // simple in-place update
-        db.WriteNode(nodeId, minCommitId, attrs);
-    } else {
-        // copy-on-write update
-        db.WriteNode(nodeId, maxCommitId, attrs);
+    if (checkpointId != InvalidCommitId) {
+        // keep history version
         db.WriteNodeVer(nodeId, checkpointId, maxCommitId, prevAttrs);
 
         AddCheckpointNode(db, checkpointId, nodeId);

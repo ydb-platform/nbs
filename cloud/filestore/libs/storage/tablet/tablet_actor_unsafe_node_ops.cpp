@@ -354,6 +354,7 @@ void TIndexTabletActor::CompleteTx_UnsafeGetNode(
     if (args.Node) {
         auto& attrs = *response->Record.MutableNode();
         ConvertNodeFromAttrs(attrs, args.Node->NodeId, args.Node->Attrs);
+        response->Record.SetCommitId(args.Node->MinCommitId);
     } else {
         *response->Record.MutableError() =
             ErrorInvalidTarget(args.Request.GetId());
