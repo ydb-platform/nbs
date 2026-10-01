@@ -276,7 +276,7 @@ void TBootstrap::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
     BackgroundThreadPool = CreateThreadPool("Background", 1);
-    LongRunningTaskExecutor = CreateLongRunningTaskExecutor("Netlink");
+    LongRunningTaskExecutor = CreateLongRunningTaskExecutor("LongRunning");
 
     if (!InitKikimrService()) {
         InitHTTPServer();

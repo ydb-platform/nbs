@@ -7,6 +7,8 @@
 
 #include <linux/nbd-netlink.h>
 
+#include <exception>
+
 #include <util/generic/scope.h>
 #include <util/stream/mem.h>
 
@@ -55,6 +57,11 @@ using TNbdConfigureRequest = TNetlinkRequest<
     TNetlinkAttribute<NBD_ATTR_SOCKETS,
         TNetlinkAttribute<NBD_SOCK_ITEM,
             TNetlinkAttribute<NBD_SOCK_FD, ui32>>>>;
+
+using TNbdResizeRequest = TNetlinkRequest<
+    TNetlinkAttribute<NBD_ATTR_INDEX, ui32>,
+    TNetlinkAttribute<NBD_ATTR_SIZE_BYTES, ui64>,
+    TNetlinkAttribute<NBD_ATTR_BLOCK_SIZE_BYTES, ui64>>;
 
 using TNbdConfigureFreeRequest = TNetlinkRequest<
     TNetlinkAttribute<NBD_ATTR_SIZE_BYTES, ui64>,
@@ -137,7 +144,7 @@ private:
 
     NProto::TError MakeNetlinkError(
         TStringBuf operation,
-        const TServiceError& e) const;
+        const std::exception& e) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -184,7 +191,7 @@ TFuture<NProto::TError> TNetlinkDevice::Start()
         }).Apply([self = shared_from_this()](const auto& result) {
             try {
                 return result.GetValue();
-            } catch (const TServiceError& e) {
+            } catch (const std::exception& e) {
                 return self->MakeNetlinkError("configure", e);
             }
         });
@@ -302,19 +309,12 @@ TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
     return
         NNetlink::Send(
             Executor,
-            TNbdConfigureRequest(
+            TNbdResizeRequest(
                 FamilyId,
                 NBD_CMD_RECONFIGURE,
                 *DeviceIndex,
                 deviceSizeInBytes,
-                static_cast<ui64>(info.MinBlockSize),
-                static_cast<ui64>(info.Flags),
-                RequestTimeout.Seconds(),
-                ConnectionTimeout.Seconds(),
-                TNetlinkAttribute<
-                    NBD_SOCK_ITEM,
-                    TNetlinkAttribute<NBD_SOCK_FD, ui32>>(
-                    static_cast<ui32>(Socket))))
+                static_cast<ui64>(info.MinBlockSize)))
         .Apply([self = shared_from_this()](const auto& result) {
             try {
                 result.TryRethrow();
@@ -387,10 +387,11 @@ void TNetlinkDevice::DisconnectSocket()
 
 NProto::TError TNetlinkDevice::MakeNetlinkError(
     TStringBuf operation,
-    const TServiceError& e) const
+    const std::exception& e) const
 {
+    const auto* serviceError = dynamic_cast<const TServiceError*>(&e);
     return MakeError(
-        e.GetCode(),
+        serviceError ? serviceError->GetCode() : E_FAIL,
         TStringBuilder()
             << "unable to " << operation << " " << GetDevice()
             << ": " << e.what());

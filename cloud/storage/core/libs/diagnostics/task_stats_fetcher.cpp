@@ -72,7 +72,14 @@ private:
     const TDuration NetlinkSocketTimeout = TDuration::Seconds(1);
     TDuration Last;
     const ITaskQueuePtr NetlinkExecutor;
-    const ui16 FamilyId;
+
+    ui16 GetFamilyId()
+    {
+        static ui16 familyId =
+            NNetlink::GetFamilyId(NetlinkExecutor, TASKSTATS_GENL_NAME)
+                .GetValueSync();
+        return familyId;
+    }
 
 public:
     TTaskStatsFetcher(
@@ -82,9 +89,6 @@ public:
         : ComponentName(std::move(componentName))
         , Pid(pid)
         , NetlinkExecutor(std::move(netlinkExecutor))
-        , FamilyId(
-              NNetlink::GetFamilyId(NetlinkExecutor, TASKSTATS_GENL_NAME)
-                  .GetValueSync())
     {
     }
 
@@ -97,7 +101,7 @@ public:
         try {
             auto response = NNetlink::Send<TTaskStatsResponse>(
                 NetlinkExecutor,
-                TTaskStatsRequest(FamilyId, Pid)).GetValueSync();
+                TTaskStatsRequest(GetFamilyId(), Pid)).GetValueSync();
             auto cpuLack = TDuration::MicroSeconds(
                 response.Msg.TaskStats.cpu_delay_total / 1000);
             auto retval = cpuLack - Last;

@@ -111,7 +111,7 @@ void TBootstrap::Init()
 
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
-    LongRunningTaskExecutor = CreateLongRunningTaskExecutor("Netlink");
+    LongRunningTaskExecutor = CreateLongRunningTaskExecutor("LongRunning");
 
     const auto& logConfig = ClientConfig->GetLogConfig();
     const auto& monConfig = ClientConfig->GetMonitoringConfig();
