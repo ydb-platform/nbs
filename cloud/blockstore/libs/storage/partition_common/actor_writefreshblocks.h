@@ -42,10 +42,11 @@ inline NProto::TError CheckFreshHardLimits(
     ui64 freshLogicalBlocksByteCountHardLimit)
 {
     TString message;
-    if (freshByteCount >= freshByteCountHardLimit) {
+    if (freshByteCountHardLimit && freshByteCount >= freshByteCountHardLimit) {
         message = TStringBuilder()
                   << "FreshByteCountHardLimit exceeded: " << freshByteCount;
     } else if (
+        freshLogicalBlocksByteCountHardLimit &&
         freshLogicalBlocksByteCount >= freshLogicalBlocksByteCountHardLimit)
     {
         message = TStringBuilder()
