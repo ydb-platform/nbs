@@ -113,6 +113,11 @@ private:
         Y_UNUSED(nodeId);
     }
 
+    void OnRequestsSerialized() override
+    {
+        State.OnRequestsSerialized();
+    }
+
     void Write(ui64 offset, TString data)
     {
         auto request = std::make_shared<NProto::TWriteDataRequest>();

@@ -540,6 +540,12 @@ private:
         ExecuteFlush(flushState);
     }
 
+    // Implementation of IQueuedOperationsProcessor
+    void OnRequestsSerialized() override
+    {
+        State.OnRequestsSerialized();
+    }
+
     void ExecuteFlush(std::shared_ptr<TNodeFlushState> flushState)
     {
         // TODO(#6201): until handleless IO is implemented, flush needs a live
