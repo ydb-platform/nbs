@@ -403,11 +403,7 @@ void TReadDataActor::HandleDescribeDataResponse(
     InFlightRequest->Complete(ctx.Now(), error);
 
     if (FAILED(msg->GetStatus())) {
-        if (error.GetCode() != E_FS_THROTTLED) {
-            ReadData(ctx, FormatError(error));
-        } else {
-            HandleError(ctx, error);
-        }
+        HandleError(ctx, error);
         return;
     }
 
