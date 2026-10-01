@@ -663,7 +663,8 @@ void TBootstrapBase::Init()
         nbdDeviceFactory = NBD::CreateNetlinkDeviceFactory(
             Logging,
             Configs->ServerConfig->GetNbdRequestTimeout(),
-            Configs->ServerConfig->GetNbdConnectionTimeout());
+            Configs->ServerConfig->GetNbdConnectionTimeout(),
+            LongRunningTaskExecutor);
     }
 
     if (!nbdDeviceFactory) {

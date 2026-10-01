@@ -42,7 +42,8 @@ TString BuildCpuWaitStatsFilename(const TString& serviceName)
 IStatsFetcherPtr BuildStatsFetcher(
     NProto::EStatsFetcherType statsFetcherType,
     const TString& cpuWaitFilename,
-    const TLog& log)
+    const TLog& log,
+    ITaskQueuePtr netlinkExecutor)
 {
     switch (statsFetcherType) {
         case NCloud::NProto::CGROUP: {
@@ -61,7 +62,8 @@ IStatsFetcherPtr BuildStatsFetcher(
         case NCloud::NProto::TASKSTATS:
             return CreateTaskStatsFetcher(
                 "STORAGE_STATS",
-                getpid());
+                getpid(),
+                std::move(netlinkExecutor));
     }
 }
 
