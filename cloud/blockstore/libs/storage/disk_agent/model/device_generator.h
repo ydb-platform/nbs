@@ -26,10 +26,9 @@ public:
 
     NProto::TError operator () (
         const TString& path,
-        const NProto::TStorageDiscoveryConfig::TPoolConfig& poolConfig,
+        const NProto::TStorageDiscoveryConfig::TPathConfig& pathConfig,
         ui32 deviceNumber,
-        ui32 maxDeviceCount,
-        ui32 blockSize,
+        ui32 fileBlockSize,
         ui64 fileSize);
 
     TVector<NProto::TFileDeviceArgs> ExtractResult();
