@@ -84,6 +84,29 @@ IBlockStorePtr CreateGrpcDataEndpoint(
     const TCellHostConfig& hostConfig,
     const IBlockStorePtr& controlService);
 
+void NoteMount(
+    TCellConnection& connection,
+    const TString& diskId,
+    const TString& clientId);
+
+void NoteUnmount(TCellConnection& connection, const TString& diskId);
+
+// what carries a binding's data right now
+TString DescribeDataTransport(const THostBinding& binding)
+{
+    switch (binding.HostConfig.GetTransport()) {
+        case NProto::CELL_DATA_TRANSPORT_GRPC:
+            return "grpc";
+        case NProto::CELL_DATA_TRANSPORT_RDMA:
+            if (binding.Switcher && !binding.Switcher->IsPreferredActive()) {
+                return "grpc fallback";
+            }
+            return "rdma";
+        default:
+            return "unknown";
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Handed out by GetService(). Holds the connection alive - the caller above
@@ -134,10 +157,54 @@ public:
             request->MutableHeaders()->SetCellId(CellId);
         }
 
-        return TMethod::Execute(
-            Impl.get(),
-            std::move(callContext),
-            std::move(request));
+        // the mounted disk is noted on the answer, not on the request: a
+        // mount that fails, or one that has since been unmounted, is not ours
+        if constexpr (std::is_same_v<TMethod, TBlockStoreMountVolumeMethod>) {
+            auto diskId = request->GetDiskId();
+            auto clientId = request->GetHeaders().GetClientId();
+            return TMethod::Execute(
+                       Impl.get(),
+                       std::move(callContext),
+                       std::move(request))
+                .Apply(
+                    [connection = std::weak_ptr<TCellConnection>(Connection),
+                     diskId = std::move(diskId),
+                     clientId = std::move(clientId)](const auto& f)
+                    {
+                        const auto& response = f.GetValue();
+                        if (!HasError(response)) {
+                            if (auto self = connection.lock()) {
+                                NoteMount(*self, diskId, clientId);
+                            }
+                        }
+                        return response;
+                    });
+        } else if constexpr (
+            std::is_same_v<TMethod, TBlockStoreUnmountVolumeMethod>)
+        {
+            auto diskId = request->GetDiskId();
+            return TMethod::Execute(
+                       Impl.get(),
+                       std::move(callContext),
+                       std::move(request))
+                .Apply(
+                    [connection = std::weak_ptr<TCellConnection>(Connection),
+                     diskId = std::move(diskId)](const auto& f)
+                    {
+                        const auto& response = f.GetValue();
+                        if (!HasError(response)) {
+                            if (auto self = connection.lock()) {
+                                NoteUnmount(*self, diskId);
+                            }
+                        }
+                        return response;
+                    });
+        } else {
+            return TMethod::Execute(
+                Impl.get(),
+                std::move(callContext),
+                std::move(request));
+        }
     }
 };
 
@@ -188,6 +255,10 @@ private:
     mutable TAdaptiveLock Lock;
     THostBindingPtr Binding;
     ui64 LastGeneration = 0;
+
+    // the disk mounted through this connection
+    TString MountedDiskId;
+    TString MountedClientId;
 
     // Why a host is no good for this connection. Kept apart because each
     // is taken back by its own kind of news: rdma coming up says nothing
@@ -270,6 +341,42 @@ public:
         with_lock (Lock) {
             return Binding->HostConfig.GetFqdn();
         }
+    }
+
+    void NoteMount(const TString& diskId, const TString& clientId)
+    {
+        with_lock (Lock) {
+            MountedDiskId = diskId;
+            MountedClientId = clientId;
+        }
+    }
+
+    void NoteUnmount(const TString& diskId)
+    {
+        with_lock (Lock) {
+            if (MountedDiskId == diskId) {
+                MountedDiskId.clear();
+                MountedClientId.clear();
+            }
+        }
+    }
+
+    TCellMountStatus GetMountStatus() const
+    {
+        THostBindingPtr binding;
+        TCellMountStatus status;
+        with_lock (Lock) {
+            binding = Binding;
+            status.DiskId = MountedDiskId;
+            status.ClientId = MountedClientId;
+        }
+
+        // the switcher is asked outside the lock, so its lock and ours are
+        // never held together
+        status.CellId = Pool->GetCellId();
+        status.Host = binding->HostConfig.GetFqdn();
+        status.DataTransport = DescribeDataTransport(*binding);
+        return status;
     }
 
     IBlockStorePtr GetService() override
@@ -814,6 +921,19 @@ private:
     }
 };
 
+void NoteMount(
+    TCellConnection& connection,
+    const TString& diskId,
+    const TString& clientId)
+{
+    connection.NoteMount(diskId, clientId);
+}
+
+void NoteUnmount(TCellConnection& connection, const TString& diskId)
+{
+    connection.NoteUnmount(diskId);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // One host's control service, tied to the binding it belongs to. What comes
@@ -1076,6 +1196,58 @@ TResultOrError<THostBindingPtr> BuildHostBinding(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TCellConnectionRegistry
+{
+private:
+    TAdaptiveLock Lock;
+    TVector<std::weak_ptr<TCellConnection>> Connections;
+
+public:
+    void Add(const TCellConnectionPtr& connection)
+    {
+        with_lock (Lock) {
+            // dropped here as well, so the list stays bounded even if the
+            // mon page is never opened
+            EraseIf(Connections, [] (const auto& c) { return c.expired(); });
+            Connections.push_back(connection);
+        }
+    }
+
+    TVector<TCellMountStatus> GetMounts()
+    {
+        TVector<TCellConnectionPtr> live;
+        with_lock (Lock) {
+            EraseIf(Connections, [] (const auto& c) { return c.expired(); });
+            for (const auto& weak: Connections) {
+                if (auto connection = weak.lock()) {
+                    live.push_back(std::move(connection));
+                }
+            }
+        }
+
+        TVector<TCellMountStatus> mounts;
+        for (const auto& connection: live) {
+            auto status = connection->GetMountStatus();
+            if (status.DiskId) {
+                mounts.push_back(std::move(status));
+            }
+        }
+        return mounts;
+    }
+};
+
+TCellConnectionRegistryPtr CreateCellConnectionRegistry()
+{
+    return std::make_shared<TCellConnectionRegistry>();
+}
+
+TVector<TCellMountStatus> GetCellMounts(TCellConnectionRegistry& registry)
+{
+    return registry.GetMounts();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TCellConnectionFuture CreateCellConnection(
     TCellHostPoolPtr pool,
     TCellHostConfig hostConfig,
@@ -1119,6 +1291,7 @@ TCellConnectionFuture CreateCellConnection(
             }
             built.GetResult()->ChannelEpoch = pool->GetChannelEpoch(fqdn);
 
+            auto registry = bootstrap.Connections;
             auto connection = std::make_shared<TCellConnection>(
                 pool,
                 std::move(bootstrap),
@@ -1152,6 +1325,10 @@ TCellConnectionFuture CreateCellConnection(
 
             // last: from here on callbacks may act on their own
             connection->CompleteSetup();
+
+            if (registry) {
+                registry->Add(connection);
+            }
 
             return MakeFuture(
                 TResultOrError<ICellConnectionPtr>(std::move(connection)));

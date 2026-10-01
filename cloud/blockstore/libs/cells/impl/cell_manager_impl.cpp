@@ -84,6 +84,9 @@ TCellsSnapshot TCellManager::GetSnapshot()
         }
     }
     snapshot.InboundActivity = InboundActivity->Snapshot(Bootstrap.Timer->Now());
+    if (Bootstrap.Connections) {
+        snapshot.Mounts = GetCellMounts(*Bootstrap.Connections);
+    }
     return snapshot;
 }
 
@@ -251,7 +254,8 @@ ICellManagerPtr CreateCellManager(
         .RdmaClient = std::move(rdmaClient),
         .LocalService = std::move(localService),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
-        .EndpointsSetup = CreateCellHostEndpointBootstrap()};
+        .EndpointsSetup = CreateCellHostEndpointBootstrap(),
+        .Connections = CreateCellConnectionRegistry()};
 
     return std::make_shared<TCellManager>(std::move(config), bootstrap);
 }

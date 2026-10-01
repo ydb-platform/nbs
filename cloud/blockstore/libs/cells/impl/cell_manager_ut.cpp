@@ -424,19 +424,42 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         snapshot.HostStatuses["xyz"].push_back(
             {.Fqdn = "host-alpha", .Alive = true, .Warm = false,
              .Connections = 0});
+        snapshot.Mounts.push_back(
+            {.DiskId = "disk-1",
+             .ClientId = "client-1",
+             .CellId = "xyz",
+             .Host = "host-alpha",
+             .DataTransport = "grpc fallback"});
 
         TStringStream out;
-        RenderCellsPage(out, *config, snapshot);
+        RenderCellsPage(out, *config, snapshot, TDiagnosticsConfig());
         const auto html = out.Str();
 
-        // one page: search form, config, outbound and inbound sections
+        // one page: search form, remote mounts, config, outbound and inbound
+        // sections
         UNIT_ASSERT_STRING_CONTAINS(html, "action");
         UNIT_ASSERT_STRING_CONTAINS(html, "Volume");
         UNIT_ASSERT_STRING_CONTAINS(html, "xyz");
         UNIT_ASSERT_STRING_CONTAINS(html, "host-alpha");
         UNIT_ASSERT_STRING_CONTAINS(html, "Cells config");
+        // each cell's config folds away under its own button
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "data-target='#cell-config-0'>Cell xyz</button>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "data-target='#cell-outbound-0'>Cell xyz</button>");
         UNIT_ASSERT_STRING_CONTAINS(html, "Outbound host status");
         UNIT_ASSERT_STRING_CONTAINS(html, "Inbound inter-cell connections");
+
+        // a remote mount names the host it goes through, linked to the disk
+        // there, and what carries its data now
+        UNIT_ASSERT_STRING_CONTAINS(html, "Remote mounts");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<a href='http://host-alpha:8766/blockstore/service?action=search"
+            "&amp;Volume=disk-1'>host-alpha</a>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "grpc fallback");
     }
 
     Y_UNIT_TEST(ShouldRenderSearchResultLinks)
@@ -659,6 +682,126 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
                 .GetValue(TDuration::Seconds(5));
         UNIT_ASSERT_C(!HasError(writeResponse), writeResponse.GetError());
         UNIT_ASSERT_VALUES_EQUAL(data, written);
+    }
+
+    Y_UNIT_TEST(ShouldListRemoteMounts)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+
+        auto service = std::make_shared<TTestService>();
+        service->MountVolumeHandler =
+            [&] (auto request) {
+                NProto::TMountVolumeResponse response;
+                if (request->GetDiskId() == "bad-disk") {
+                    *response.MutableError() = MakeError(E_NOT_FOUND);
+                }
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                return MakeFuture(std::move(response));
+            };
+        service->UnmountVolumeHandler =
+            [&] (auto request) {
+                Y_UNUSED(request);
+                return MakeFuture(NProto::TUnmountVolumeResponse());
+            };
+
+        TTestContext testContext;
+
+        auto server = TTestServerBuilder(testContext)
+            .SetPort(port)
+            .SetCellId("xyz")
+            .BuildServer(service);
+
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell(
+                "xyz",  // cellid
+                port,   // port
+                0,      // secure port
+                1,      // describe volume host count
+                1,      // min cell connections
+                {"localhost"})
+            .Build();
+        cfg.MutableCells(0)->SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
+
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        auto cellManager = CreateCellManager(
+            config,
+            testContext.Timer,
+            testContext.Scheduler,
+            testContext.Logging,
+            testContext.Monitoring,
+            testContext.TraceSerializer,
+            testContext.ServerStats,
+            CreateClientCertificateProvider(config),
+            nullptr,
+            CreateLocalService());
+
+        server->Start();
+        cellManager->Start();
+        Y_DEFER {
+            cellManager->Stop();
+            server->Stop();
+        };
+
+        auto connectionOrError = cellManager
+            ->CreateConnection(
+                "xyz",
+                {},
+                std::make_shared<TClientAppConfig>(),
+                nullptr)
+            .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(
+            !HasError(connectionOrError),
+            connectionOrError.GetError());
+        auto connection = connectionOrError.ExtractResult();
+
+        // nothing mounted through it yet
+        UNIT_ASSERT_VALUES_EQUAL(0, cellManager->GetSnapshot().Mounts.size());
+
+        auto mount = [&] (const TString& diskId)
+        {
+            auto request = std::make_shared<NProto::TMountVolumeRequest>();
+            request->SetDiskId(diskId);
+            request->MutableHeaders()->SetClientId("client-1");
+            return connection->GetService()
+                ->MountVolume(MakeIntrusive<TCallContext>(), request)
+                .GetValue(TDuration::Seconds(5));
+        };
+
+        // a failed mount is not listed
+        UNIT_ASSERT(HasError(mount("bad-disk")));
+        UNIT_ASSERT_VALUES_EQUAL(0, cellManager->GetSnapshot().Mounts.size());
+
+        auto response = mount("disk-1");
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
+
+        auto mounts = cellManager->GetSnapshot().Mounts;
+        UNIT_ASSERT_VALUES_EQUAL(1, mounts.size());
+        UNIT_ASSERT_VALUES_EQUAL("disk-1", mounts[0].DiskId);
+        UNIT_ASSERT_VALUES_EQUAL("client-1", mounts[0].ClientId);
+        UNIT_ASSERT_VALUES_EQUAL("xyz", mounts[0].CellId);
+        UNIT_ASSERT_VALUES_EQUAL("localhost", mounts[0].Host);
+        UNIT_ASSERT_VALUES_EQUAL("grpc", mounts[0].DataTransport);
+
+        auto request = std::make_shared<NProto::TUnmountVolumeRequest>();
+        request->SetDiskId("disk-1");
+        request->MutableHeaders()->SetClientId("client-1");
+        auto unmountResponse =
+            connection->GetService()
+                ->UnmountVolume(MakeIntrusive<TCallContext>(), request)
+                .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(
+            !HasError(unmountResponse),
+            unmountResponse.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(0, cellManager->GetSnapshot().Mounts.size());
+
+        UNIT_ASSERT(!HasError(mount("disk-1")));
+        UNIT_ASSERT_VALUES_EQUAL(1, cellManager->GetSnapshot().Mounts.size());
+
+        // the mount is gone with its connection
+        connection.reset();
+        UNIT_ASSERT_VALUES_EQUAL(0, cellManager->GetSnapshot().Mounts.size());
     }
 }
 

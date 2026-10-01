@@ -56,12 +56,23 @@ struct TCellHostStatus
     ui32 Connections = 0;
 };
 
+// A disk this node has mounted through a cell connection.
+struct TCellMountStatus
+{
+    TString DiskId;
+    TString ClientId;
+    TString CellId;
+    TString Host;            // the cell host the connection is on now
+    TString DataTransport;   // what carries the data now
+};
+
 // A plain snapshot of the cell manager's live state for the mon page - no
 // pools, actors or html.
 struct TCellsSnapshot
 {
     THashMap<TString, TVector<TCellHostStatus>> HostStatuses;   // by cell id
     TVector<TCellInboundActivity::TRow> InboundActivity;
+    TVector<TCellMountStatus> Mounts;
 };
 
 struct ICellManager: public IStartable
