@@ -64,6 +64,7 @@ struct TCellMountStatus
     TString CellId;
     TString Host;            // the cell host the connection is on now
     TString DataTransport;   // what carries the data now
+    TString TabletHost;      // where the mount found the volume tablet
 };
 
 // A plain snapshot of the cell manager's live state for the mon page - no

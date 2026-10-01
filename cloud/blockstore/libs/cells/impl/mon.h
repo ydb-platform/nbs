@@ -19,8 +19,8 @@ NActors::IActorPtr CreateCellsMonActor(
     ICellManagerPtr cellManager,
     TDiagnosticsConfigPtr diagnosticsConfig);
 
-// Renders the plain page: search form, remote mounts, config, outbound and
-// inbound tables.
+// Renders the plain page: search form, remote mounts, outbound and inbound
+// tables, config.
 void RenderCellsPage(
     IOutputStream& out,
     const TCellsConfig& config,

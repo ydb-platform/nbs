@@ -429,14 +429,15 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
              .ClientId = "client-1",
              .CellId = "xyz",
              .Host = "host-alpha",
-             .DataTransport = "grpc fallback"});
+             .DataTransport = "grpc fallback",
+             .TabletHost = "host-beta"});
 
         TStringStream out;
         RenderCellsPage(out, *config, snapshot, TDiagnosticsConfig());
         const auto html = out.Str();
 
-        // one page: search form, remote mounts, config, outbound and inbound
-        // sections
+        // one page: search form, remote mounts, outbound and inbound sections,
+        // config
         UNIT_ASSERT_STRING_CONTAINS(html, "action");
         UNIT_ASSERT_STRING_CONTAINS(html, "Volume");
         UNIT_ASSERT_STRING_CONTAINS(html, "xyz");
@@ -460,6 +461,10 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             "<a href='http://host-alpha:8766/blockstore/service?action=search"
             "&amp;Volume=disk-1'>host-alpha</a>");
         UNIT_ASSERT_STRING_CONTAINS(html, "grpc fallback");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<a href='http://host-beta:8766/blockstore/service?action=search"
+            "&amp;Volume=disk-1'>host-beta</a>");
     }
 
     Y_UNIT_TEST(ShouldRenderSearchResultLinks)
@@ -696,6 +701,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
                 if (request->GetDiskId() == "bad-disk") {
                     *response.MutableError() = MakeError(E_NOT_FOUND);
                 }
+                response.SetTabletHost("localhost");
                 response.MutableVolume()->SetDiskId(request->GetDiskId());
                 return MakeFuture(std::move(response));
             };
@@ -783,6 +789,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT_VALUES_EQUAL("xyz", mounts[0].CellId);
         UNIT_ASSERT_VALUES_EQUAL("localhost", mounts[0].Host);
         UNIT_ASSERT_VALUES_EQUAL("grpc", mounts[0].DataTransport);
+        UNIT_ASSERT_VALUES_EQUAL("localhost", mounts[0].TabletHost);
 
         auto request = std::make_shared<NProto::TUnmountVolumeRequest>();
         request->SetDiskId("disk-1");

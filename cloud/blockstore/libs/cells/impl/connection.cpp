@@ -87,7 +87,8 @@ IBlockStorePtr CreateGrpcDataEndpoint(
 void NoteMount(
     TCellConnection& connection,
     const TString& diskId,
-    const TString& clientId);
+    const TString& clientId,
+    const TString& tabletHost);
 
 void NoteUnmount(TCellConnection& connection, const TString& diskId);
 
@@ -174,7 +175,11 @@ public:
                         const auto& response = f.GetValue();
                         if (!HasError(response)) {
                             if (auto self = connection.lock()) {
-                                NoteMount(*self, diskId, clientId);
+                                NoteMount(
+                                    *self,
+                                    diskId,
+                                    clientId,
+                                    response.GetTabletHost());
                             }
                         }
                         return response;
@@ -259,6 +264,7 @@ private:
     // the disk mounted through this connection
     TString MountedDiskId;
     TString MountedClientId;
+    TString MountedTabletHost;
 
     // Why a host is no good for this connection. Kept apart because each
     // is taken back by its own kind of news: rdma coming up says nothing
@@ -343,11 +349,15 @@ public:
         }
     }
 
-    void NoteMount(const TString& diskId, const TString& clientId)
+    void NoteMount(
+        const TString& diskId,
+        const TString& clientId,
+        const TString& tabletHost)
     {
         with_lock (Lock) {
             MountedDiskId = diskId;
             MountedClientId = clientId;
+            MountedTabletHost = tabletHost;
         }
     }
 
@@ -357,6 +367,7 @@ public:
             if (MountedDiskId == diskId) {
                 MountedDiskId.clear();
                 MountedClientId.clear();
+                MountedTabletHost.clear();
             }
         }
     }
@@ -369,6 +380,7 @@ public:
             binding = Binding;
             status.DiskId = MountedDiskId;
             status.ClientId = MountedClientId;
+            status.TabletHost = MountedTabletHost;
         }
 
         // the switcher is asked outside the lock, so its lock and ours are
@@ -924,9 +936,10 @@ private:
 void NoteMount(
     TCellConnection& connection,
     const TString& diskId,
-    const TString& clientId)
+    const TString& clientId,
+    const TString& tabletHost)
 {
-    connection.NoteMount(diskId, clientId);
+    connection.NoteMount(diskId, clientId, tabletHost);
 }
 
 void NoteUnmount(TCellConnection& connection, const TString& diskId)

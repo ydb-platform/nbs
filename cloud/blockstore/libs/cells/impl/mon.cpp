@@ -187,6 +187,7 @@ void RenderMounts(
                     TABLEH() { out << "Cell"; }
                     TABLEH() { out << "Host"; }
                     TABLEH() { out << "Data transport"; }
+                    TABLEH() { out << "Tablet host"; }
                 }
             }
             TABLEBODY() {
@@ -203,6 +204,16 @@ void RenderMounts(
                                 diagnosticsConfig);
                         }
                         TABLED() { out << mount.DataTransport; }
+                        TABLED() {
+                            // empty when the cell is older than the field
+                            if (mount.TabletHost) {
+                                RenderRemoteVolumeLink(
+                                    out,
+                                    mount.TabletHost,
+                                    mount.DiskId,
+                                    diagnosticsConfig);
+                            }
+                        }
                     }
                 }
             }
@@ -461,9 +472,9 @@ void RenderCellsPage(
 {
     RenderSearchForm(out);
     RenderMounts(out, snapshot.Mounts, diagnosticsConfig);
-    RenderConfig(out, config);
     RenderOutbound(out, snapshot.HostStatuses);
     RenderInbound(out, snapshot.InboundActivity);
+    RenderConfig(out, config);
 }
 
 void RenderCellsSearchResult(
