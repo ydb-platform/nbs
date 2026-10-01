@@ -608,9 +608,8 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(
     if (!GetDynamicYamlConfigurationStaticallyEnabled()) {
         ApplyNamedConfigs(config);
         ApplyAllowedKikimrFeatureFlags(config);
+        ApplyBlockstoreConfig(config);
     }
-
-    ApplyBlockstoreConfig(config);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

@@ -339,8 +339,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT(ci.ServerConfig->GetDynamicYamlConfigurationEnabled());
     }
 
-    // Verify that only PROTO configuration applies NamedConfigs and allowed
-    // feature flags, while both modes apply the same direct config sections.
+    // Verify that only PROTO configuration applies NamedConfigs, allowed
+    // feature flags and BlockstoreConfig; both modes apply common YDB sections.
     Y_UNIT_TEST(ShouldApplyNamedConfigsOnlyWhenDynamicYamlIsDisabled)
     {
         for (const bool useYamlConfig: {false, true}) {
@@ -357,6 +357,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             auto ci = TConfigInitializerYdb(std::move(options));
             ci.InitKikimrConfig();
             InitStaticConfigs(ci);
+            ci.StorageConfig->SetVolumePreemptionType(
+                NProto::PREEMPTION_MOVE_MOST_HEAVY);
             ci.KikimrConfig->MutableLogConfig()->SetDefaultLevel(3);
             ci.KikimrConfig->MutableFeatureFlags()
                 ->SetEnableNodeBrokerDeltaProtocol(true);
@@ -418,7 +420,8 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 useYamlConfig ? localThreshold : 42,
                 ci.StorageConfig->GetWriteBlobThreshold());
             UNIT_ASSERT_EQUAL(
-                NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+                useYamlConfig ? NProto::PREEMPTION_MOVE_MOST_HEAVY
+                              : NProto::PREEMPTION_MOVE_LEAST_HEAVY,
                 ci.StorageConfig->GetVolumePreemptionType());
             UNIT_ASSERT_VALUES_EQUAL(
                 useYamlConfig,
@@ -515,7 +518,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
         UNIT_ASSERT(
             current.GetServer().GetServerConfig()
                 .GetDynamicYamlConfigurationEnabled());
-        const auto aggregate = MakeBlockstoreConfig(
+        const auto aggregate = MakeStartupBlockstoreConfig(
             current,
             {},
             *ci.StorageConfig,
@@ -596,7 +599,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             {
                 dynamicConfig.MutableStorageService()->SetWriteBlobThreshold(
                     300);
-                const auto config = MakeBlockstoreConfig(
+                const auto config = MakeStartupBlockstoreConfig(
                     staticConfig,
                     dynamicConfig,
                     ci.StorageConfigControls);
@@ -616,7 +619,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                 rdma->SetServerEnabled(useRdmaFile);
                 rdma->MutableClient()->SetQueueSize(512);
                 rdma->MutableServer()->SetQueueSize(384);
-                const auto config = MakeBlockstoreConfig(
+                const auto config = MakeStartupBlockstoreConfig(
                     staticConfig,
                     dynamicConfig,
                     ci.StorageConfigControls);
@@ -631,7 +634,7 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             // Restore local settings after removing the entire dynamic source.
             {
                 dynamicConfig.Clear();
-                const auto config = MakeBlockstoreConfig(
+                const auto config = MakeStartupBlockstoreConfig(
                     staticConfig,
                     dynamicConfig,
                     ci.StorageConfigControls);

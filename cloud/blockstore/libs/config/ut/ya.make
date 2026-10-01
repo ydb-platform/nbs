@@ -9,6 +9,8 @@ SRCS(
 )
 
 PEERDIR(
+    cloud/storage/core/libs/config
+
     contrib/ydb/core/control
 )
 

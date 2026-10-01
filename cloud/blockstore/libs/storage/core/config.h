@@ -94,6 +94,10 @@ private:
     const TStorageConfigControls::TImpl* ControlsImpl() const;
 
 public:
+    // Verify in tests that every RW parameter has AllowRuntimeUpdate=true.
+    // RO parameters must not have an AllowRuntimeUpdate=true marker.
+    static void VerifyParameterMarkers();
+
     TStorageConfig(
         NProto::TStorageServiceConfig storageServiceConfig,
         NFeatures::TFeaturesConfigConstPtr featuresConfig);
@@ -145,6 +149,10 @@ public:
     };
 
     TValueByName GetValueByName(const TString& name) const;
+
+    // Return the stored proto without ICB overrides; valid while this adapter
+    // lives and suitable for updating control defaults.
+    [[nodiscard]] const NProto::TStorageServiceConfig& GetConfigProto() const;
 
     // Return a proto copy with current ICB overrides applied.
     [[nodiscard]] NProto::TStorageServiceConfig

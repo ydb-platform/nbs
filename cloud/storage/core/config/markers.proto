@@ -1,0 +1,98 @@
+syntax = "proto2";
+
+package NCloud.NMarkers;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/storage/core/config";
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.FieldOptions
+{
+    /*
+        Runtime update permission for a configuration parameters.
+        Missing means false. Apply these rules for dynamic configuration.
+
+        Startup and runtime
+        - Startup: apply all valid fields, including unmarked fields. Save the
+          result as StartupConfig and retain it across actor restarts.
+        - Runtime: merge the static host/CLI configuration (StaticConfig) with
+          the latest complete dynamic source. Restore forbidden values and their
+          presence from StartupConfig. Removing an allowed override returns its
+          value to StaticConfig.
+        - Service-specific static-only overrides are forbidden in both phases.
+
+        Permission requires AllowRuntimeUpdate=true on EVERY field from the root
+        to the parameter:
+
+        | All ancestors | Parameter    | Runtime result      |
+        |---------------|--------------|---------------------|
+        | all true      | true         | Apply merged value  |
+        | all true      | false/absent | Keep StartupConfig  |
+        | any false     | true         | Keep StartupConfig  |
+        | any false     | false/absent | Keep StartupConfig  |
+
+        Singular messages
+        - A marked container allows traversal, not updates to all descendants.
+          Mark both the container and each parameter inside that may change.
+
+        Repeated and map fields
+        - The whole collection is one parameter. Check the marker on the
+          collection field and all ancestors; ignore markers inside elements.
+        - Repeated: permission covers adding, replacing and removing elements
+          according to the merge rules of the configuration implementation.
+        - Map: permission covers adding and removing entries and changing their
+          values according to the merge rules of the configuration
+          implementation.
+        - The marker grants runtime permission. The configuration implementation
+          defines how sources are merged and how replacing and/or removal
+          is requested.
+        - Rebuild from StaticConfig to avoid accumulation. Frozen collections
+          keep their complete startup value.
+        - Protobuf stores both an omitted collection and an explicitly empty
+          collection as zero elements. To distinguish "clear all elements" from
+          omission, the configuration needs a separate signal and explicit
+          support for that signal in its merge implementation if "clear all
+          elements" operation is required.
+
+        Oneof
+        - A forbidden ancestor freezes the entire oneof at its startup value.
+        - AllowRuntimeSwitch=false or absent:
+          - Keep the startup selection, including no selected member.
+          - Apply ordinary AllowRuntimeUpdate field-marker rules to the selected
+            member and its contents. Different members may have different
+            permissions.
+          - Use static and dynamic values only for the startup member.
+            If the dynamic source omits the oneof or selects another member,
+            allowed fields fall back to the matching StaticConfig member,
+            or defaults if StaticConfig does not select the startup member.
+            Retain forbidden fields from StartupConfig.
+        - AllowRuntimeSwitch=true:
+          - Require AllowRuntimeUpdate=true on every direct member.
+            Missing or false member markers are schema errors.
+          - Allow the selection and all known contents to change.
+            Ignore descendant markers, including nested oneof options,
+            as inside collections.
+          - Apply normal merge rules. Removing the dynamic override restores
+            the StaticConfig selection.
+          - Normal protobuf merge preserves the static selection when the
+            dynamic source omits the oneof. An explicit reset to no selected
+            member requires a separate signal and explicit support in the
+            configuration's merge implementation.
+        - Proto3 optional synthetic oneofs follow ordinary singular-field rules.
+    */
+    optional bool AllowRuntimeUpdate = 83001 [default = false];
+}
+
+extend google.protobuf.OneofOptions
+{
+    /*
+        Runtime permission to change a real oneof's selection and contents.
+        - False or absent: keep the startup selection; apply field markers
+          inside the selected member.
+        - True: require AllowRuntimeUpdate=true on every direct member and all
+          ancestors. Treat known contents as one value, ignoring inner markers.
+        - Preserve separate rules for unknown fields and static-only settings.
+          Permission does not add a merge or explicit-clear operation.
+    */
+    optional bool AllowRuntimeSwitch = 83002 [default = false];
+}

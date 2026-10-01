@@ -404,13 +404,70 @@ def test_dynamic_blockstore_config_lifecycle():
         ydb.stop()
 
 
+# Verify that runtime RO changes require a node restart while RW changes and
+# source removal are applied immediately through the shared controls.
+def test_runtime_markers_and_node_restart():
+    ydb = start_dynamic_config_ydb()
+    nbs = None
+    try:
+        # Start with different static and private values for one RO/RW pair.
+        replace_config(ydb, make_main_config(ydb))
+        replace_database_config(
+            ydb, 0,
+            "storage_service: {list_volumes_concurrency: 20, write_blob_threshold: 200}",
+        )
+        config = make_nbs_config(ydb, True)
+        config.files["storage"].ListVolumesConcurrency = 10
+        config.files["storage"].WriteBlobThreshold = 100
+        nbs = start_nbs(config)
+        updates = wait_config_delivery(nbs)
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>ListVolumesConcurrency</td>\s*<td>20</td>", page.text)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (200, 200)
+
+        # Accept the RW change while the running consumer retains startup RO.
+        replace_database_config(
+            ydb, 1,
+            "storage_service: {list_volumes_concurrency: 30, write_blob_threshold: 300}",
+        )
+        updates = wait_config_delivery(nbs, updates)
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>ListVolumesConcurrency</td>\s*<td>20</td>", page.text)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (300, 300)
+
+        # Start a new process from the current cluster source and accept new RO.
+        nbs.stop()
+        nbs = start_nbs(config)
+        updates = wait_config_delivery(nbs)
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>ListVolumesConcurrency</td>\s*<td>30</td>", page.text)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (300, 300)
+
+        # Remove the source and restore RW static fallback without changing RO.
+        replace_database_config(ydb, 2, "")
+        wait_config_delivery(nbs, updates)
+        page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
+        page.raise_for_status()
+        assert re.search(r"<td>ListVolumesConcurrency</td>\s*<td>30</td>", page.text)
+        assert get_icb_values(nbs, "WriteBlobThreshold") == (100, 100)
+    finally:
+        if nbs:
+            nbs.kill()
+        ydb.stop()
+
+
 # Verify that startup filters static-only overrides while applying mutable settings.
 def test_static_only_fields_are_ignored_at_startup():
     ydb = start_dynamic_config_ydb()
     nbs = None
     try:
         # Mix a mutable setting with overrides of node identity and dispatcher settings.
-        replace_config(ydb, make_main_config(ydb))
+        main_config = yaml.safe_load(make_main_config(ydb))
+        main_config["config"]["log_config"]["default_level"] = 6
+        replace_config(ydb, yaml.safe_dump(main_config))
         replace_database_config(
             ydb,
             0,
@@ -431,10 +488,16 @@ def test_static_only_fields_are_ignored_at_startup():
             Key="zone",
             Value="local",
         )
+        config.files["log"].Entry.add(
+            Component=b"BLOCKSTORE_CONFIGS_MANAGER",
+            Level=6,
+        )
 
         # Publish the startup PrivateDatabaseConfig and complete its first runtime delivery.
         nbs = start_nbs(config)
         wait_config_delivery(nbs)
+        log = Path(nbs.stderr_file_name).read_text()
+        assert "PrivateDatabaseConfig is unchanged; skipping publication" in log
 
         # Keep static node identity while applying the mutable value to a startup consumer.
         page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
@@ -498,7 +561,7 @@ def test_invalid_config_is_skipped_at_startup():
     ydb = start_dynamic_config_ydb()
     nbs = None
     try:
-        # Distinguish the accepted CMS value from the static configuration.
+        # Give CMS BlockstoreConfig a value different from the static config.
         main_config = yaml.safe_load(make_main_config(ydb))
         main_config["config"]["blockstore_config"] = {"volume_preemption_type": 2}
         replace_config(ydb, yaml.safe_dump(main_config))
@@ -512,14 +575,14 @@ def test_invalid_config_is_skipped_at_startup():
         config.files["storage"].WriteBlobThreshold = 100
         config.files["storage"].VolumePreemptionType = 1
 
-        # Start without any PrivateDatabaseConfig values, retaining the supported CMS setting.
+        # Start without PrivateDatabaseConfig and keep the static NBS settings.
         nbs = start_nbs(config)
         initial_pid = nbs.pid
         page = requests.get(f"http://localhost:{nbs.mon_port}/blockstore/service", timeout=10)
         page.raise_for_status()
         assert re.search(r"<td>WriteBlobThreshold</td>\s*<td>100</td>", page.text)
         assert re.search(
-            r"<td>VolumePreemptionType</td>\s*<td>(2|PREEMPTION_MOVE_LEAST_HEAVY)</td>",
+            r"<td>VolumePreemptionType</td>\s*<td>(1|PREEMPTION_MOVE_MOST_HEAVY)</td>",
             page.text,
         )
         log = Path(nbs.stderr_file_name).read_text()
@@ -584,7 +647,7 @@ def test_disabled_feature_does_not_start_configs_manager(remove_rdma_config):
         ydb.stop()
 
 
-# Verify that temporary startup retains CMS while ignoring private YAML and updates.
+# Verify that temporary startup applies common YDB sections but ignores NBS CMS.
 @pytest.mark.parametrize("invalid_private_config", [False, True], ids=["valid", "invalid"])
 def test_temporary_server_skips_private_config(tmp_path, invalid_private_config):
     ydb = start_dynamic_config_ydb()
@@ -641,7 +704,7 @@ def test_temporary_server_skips_private_config(tmp_path, invalid_private_config)
             page.text,
         )
         assert re.search(
-            r"<td>VolumePreemptionType</td>\s*<td>(2|PREEMPTION_MOVE_LEAST_HEAVY)</td>",
+            r"<td>VolumePreemptionType</td>\s*<td>(1|PREEMPTION_MOVE_MOST_HEAVY)</td>",
             page.text,
         )
         yatest_common.execute([

@@ -16,7 +16,10 @@
 #include <library/cpp/logger/stream.h>
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/yexception.h>
 #include <util/stream/str.h>
+
+#include <utility>
 
 namespace NCloud::NBlockStore {
 
@@ -60,6 +63,76 @@ STFUNC(TSubscriberActor::StateWork)
         IgnoreFunc(TEvConfigsManager::TEvConfigChanged);
         cFunc(TEvents::TSystem::PoisonPill, PassAway);
     }
+}
+
+#define FORWARDED_CONFIG_GETTERS(xxx)                                          \
+    xxx(GetServerConfig)                                                       \
+    xxx(GetFeaturesConfig)                                                     \
+    xxx(GetStorageConfig)                                                      \
+    xxx(GetDiagnosticsConfig)                                                  \
+    xxx(GetDiscoveryServiceConfig)                                             \
+    xxx(GetEndpointConfig)                                                     \
+    xxx(GetDiskRegistryProxyConfig)                                            \
+    xxx(GetSpdkEnvConfig)                                                      \
+    xxx(GetRdmaConfig)                                                         \
+    xxx(GetYdbStatsConfig)                                                     \
+    xxx(GetLogbrokerConfig)                                                    \
+    xxx(GetNotifyConfig)                                                       \
+    xxx(GetIamClientConfig)                                                    \
+    xxx(GetKmsClientConfig)                                                    \
+    xxx(GetComputeClientConfig)                                                \
+    xxx(GetRootKmsConfig)                                                      \
+    xxx(GetCellsConfig)                                                        \
+    xxx(GetLocalNVMeConfig)
+
+// A configuration wrapper that fails once while the manager reads adapter
+// inputs. Publish it through the holder to exercise recovery without changing
+// the actor API. All other reads delegate to the owned configuration.
+class TFailingBlockstoreConfig final: public IBlockstoreConfig
+{
+public:
+    explicit TFailingBlockstoreConfig(IBlockstoreConfigConstPtr config);
+
+#define DECLARE_GETTER(name)                                                   \
+    decltype(std::declval<IBlockstoreConfig>().name()) name() const override;
+    FORWARDED_CONFIG_GETTERS(DECLARE_GETTER)
+#undef DECLARE_GETTER
+
+    // Fail on the first read, then allow the same update to be retried.
+    const NStorage::TDiskAgentConfigConstPtr&
+    GetDiskAgentConfig() const override;
+
+private:
+    // The retained configuration supplying every section and shared controls.
+    const IBlockstoreConfigConstPtr Config;
+
+    // A pending injected failure, consumed by the first DiskAgent getter call.
+    mutable bool FailNextRead = true;
+};
+
+TFailingBlockstoreConfig::TFailingBlockstoreConfig(
+    IBlockstoreConfigConstPtr config)
+    : Config(std::move(config))
+{}
+
+#define DEFINE_GETTER(name)                                                    \
+    decltype(std::declval<IBlockstoreConfig>().name())                         \
+    TFailingBlockstoreConfig::name() const                                     \
+    {                                                                          \
+        return Config->name();                                                 \
+    }
+FORWARDED_CONFIG_GETTERS(DEFINE_GETTER)
+#undef DEFINE_GETTER
+#undef FORWARDED_CONFIG_GETTERS
+
+// Throw once before adapter construction, leaving the retained data unchanged.
+const NStorage::TDiskAgentConfigConstPtr&
+TFailingBlockstoreConfig::GetDiskAgentConfig() const
+{
+    if (std::exchange(FailNextRead, false)) {
+        ythrow yexception() << "test configuration preparation failure";
+    }
+    return Config->GetDiskAgentConfig();
 }
 
 // A ConfigsManager fixture with an edge actor representing ConfigsDispatcher.
@@ -138,6 +211,7 @@ void TFixture::SetUp(NUnitTest::TTestContext&)
 
     Controls = std::make_shared<NStorage::TStorageConfigControls>();
     auto staticConfig = MakeConfig(100);
+    staticConfig.MutableStorageService()->SetListVolumesConcurrency(10);
     staticConfig.MutableDiskAgent()->SetDedicatedDiskAgent(true);
     staticConfig.MutableDiskAgent()->SetEnabled(false);
     staticConfig.MutableStorageService()->SetVolumePreemptionType(
@@ -155,16 +229,21 @@ void TFixture::SetUp(NUnitTest::TTestContext&)
     // Keep a CMS value outside PrivateDatabaseConfig to distinguish startup
     // configuration from the static configuration used for later updates.
     auto startupConfig = staticConfig;
+    startupConfig.MutableStorageService()->SetListVolumesConcurrency(20);
     startupConfig.MutableStorageService()->SetVolumePreemptionType(
         NProto::PREEMPTION_MOVE_LEAST_HEAVY);
+    NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfig);
+    startupConfig = MergeBlockstoreConfigSources(
+        startupConfig,
+        dynamicConfig);
     ConfigHolder = std::make_shared<TBlockstoreConfigHolder>(
-        MakeBlockstoreConfig(startupConfig, dynamicConfig, Controls));
-    Controls->UpdateDefaults(
-        MergeBlockstoreConfig(startupConfig, dynamicConfig).GetStorageService());
+        MakeBlockstoreConfig(startupConfig, Controls));
+    Controls->UpdateDefaults(startupConfig.GetStorageService());
 
     Manager = Runtime.Register(CreateConfigsManager({
         .ConfigHolder = ConfigHolder,
         .StaticConfig = std::move(staticConfig),
+        .StartupConfig = std::move(startupConfig),
         .InitialDynamicConfig = std::move(dynamicConfig),
         .StorageConfigControls = Controls,
         .ConfigsDispatcherId = Dispatcher,
@@ -294,6 +373,45 @@ void TFixture::Unsubscribe(TActorId requester, TActorId subscriber)
 
 Y_UNIT_TEST_SUITE(TConfigsManagerTest)
 {
+    // Verify that runtime changes and removal preserve the startup RO value
+    // while updating RW values and acknowledging the complete source.
+    Y_UNIT_TEST_F(ShouldPreserveStartupOnlyParameters, TFixture)
+    {
+        // Retain the accepted startup RO value before a mixed update.
+        const auto initialConfig = ConfigHolder->Get();
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            initialConfig->GetStorageConfig()->GetListVolumesConcurrency());
+
+        // Accept the RW change while keeping the startup RO value.
+        auto dynamicConfig =
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300));
+        dynamicConfig->MutableStorageService()->SetListVolumesConcurrency(30);
+        SendNotification(dynamicConfig, 101);
+        WaitForAck(101);
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            ConfigHolder->Get()
+                ->GetStorageConfig()
+                ->GetListVolumesConcurrency());
+        UNIT_ASSERT(CriticalEventsLog.Str().empty());
+
+        // Remove the source and restore only the RW static fallback.
+        SendNotification(nullptr, 102);
+        WaitForAck(102);
+        UNIT_ASSERT_VALUES_EQUAL(
+            100,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+        UNIT_ASSERT_VALUES_EQUAL(
+            20,
+            ConfigHolder->Get()
+                ->GetStorageConfig()
+                ->GetListVolumesConcurrency());
+    }
+
     // Check that publication resets only changed ICB defaults and that removal
     // restores the static base without changing retained snapshot protos.
     Y_UNIT_TEST_F(ShouldUpdateOnlyChangedIcbDefaults, TFixture)
@@ -409,7 +527,9 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         const auto delayedProvider = WaitForConfigChanged(second);
         UNIT_ASSERT_VALUES_EQUAL(
             100,
-            delayedProvider->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+            delayedProvider->Get()
+                ->GetStorageConfig()
+                ->GetWriteBlobThreshold());
         WaitForConfigChanged(second);
         UNIT_ASSERT_VALUES_EQUAL(
             200,
@@ -496,10 +616,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         };
         Runtime.DispatchEvents(options, TDuration::Seconds(1));
         UNIT_ASSERT_VALUES_EQUAL(1, notifications);
-        Runtime.Send(new IEventHandle(
-            subscriber,
-            live,
-            new TEvents::TEvPoisonPill()));
+        Runtime.Send(
+            new IEventHandle(subscriber, live, new TEvents::TEvPoisonPill()));
         UNIT_ASSERT(!Runtime.FindActor(subscriber));
 
         // Remove the dead recipient without blocking updates to the live one.
@@ -519,7 +637,8 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
         waitForUndelivered(2);
         UNIT_ASSERT_VALUES_EQUAL(3, notifications);
 
-        // Publish again without retrying the dead recipient or reporting errors.
+        // Publish again without retrying the dead recipient or reporting
+        // errors.
         SendNotification(
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(400)),
             71);
@@ -591,7 +710,7 @@ Y_UNIT_TEST_SUITE(TConfigsManagerTest)
             std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300)),
             17);
         WaitForAck(17);
-        WaitForConfigLog("Applied PrivateDatabaseConfig");
+        WaitForConfigLog("Accepted PrivateDatabaseConfig");
         UNIT_ASSERT_STRING_CONTAINS(
             ConfigLog.Str(),
             "Received YAML configuration from ConfigsDispatcher");
@@ -643,8 +762,8 @@ storage_service:
                 ->GetDiskRegistryInitialAgentRejectionThreshold());
     }
 
-    // Check that runtime updates preserve static-only fields and ignore changes
-    // limited to those fields without publishing or notifying subscribers.
+    // Check that changes to static-only overrides publish once while retaining
+    // the static values, and identical sources do not publish again.
     Y_UNIT_TEST_F(ShouldIgnoreStaticOnlyOverrides, TFixture)
     {
         // Observe publications and retain the original dispatcher settings.
@@ -687,20 +806,32 @@ storage_service:
             publishedStorage->GetConfigDispatcherSettings()
                 .SerializeAsString());
 
-        // Acknowledge an update that changes only ignored fields as a
-        // duplicate.
+        // Accept a changed source even when only ignored fields differ.
         storageConfig->SetNodeType("another");
         storageConfig->SetSchemeShardDir("/Root/another");
         settings->MutableAllowList()->AddNames("LogConfigItem");
         label->SetValue("another");
         SendNotification(dynamicConfig, 61);
         WaitForAck(61);
-        UNIT_ASSERT_EQUAL(publishedConfig.Get(), ConfigHolder->Get().Get());
+        UNIT_ASSERT_UNEQUAL(publishedConfig.Get(), ConfigHolder->Get().Get());
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "nbs",
+            ConfigHolder->Get()->GetStorageConfig()->GetNodeType());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/Root/nbs",
+            ConfigHolder->Get()->GetStorageConfig()->GetSchemeShardDir());
+
+        // Remember the original source, including all ignored fields.
+        const auto updatedConfig = ConfigHolder->Get();
+        SendNotification(dynamicConfig, 62);
+        WaitForAck(62);
+        UNIT_ASSERT_EQUAL(updatedConfig.Get(), ConfigHolder->Get().Get());
         AssertNoConfigChanged(subscriber);
     }
 
-    // Check that empty sections left by filtering do not publish changes, while
-    // removing a dynamic value still restores the static configuration.
+    // Check that changed sources publish even when filtering removes their
+    // empty sections, and removing a dynamic value restores the static value.
     Y_UNIT_TEST_F(ShouldIgnoreSectionsContainingOnlyStaticFields, TFixture)
     {
         // Observe the startup snapshot, including its value received from CMS.
@@ -711,28 +842,35 @@ storage_service:
         const auto parser = CreateBlockstoreOpaqueConfigParser();
         ui64 cookie = 70;
 
-        // Add and remove ignored Server fields without changing the dynamic
-        // storage value or discarding the startup CMS value.
-        for (const TString yaml: {
-                 "storage_service: {write_blob_threshold: 200}\n"
-                 "server: {server_config: "
-                 "{dynamic_yaml_configuration_enabled: false}}",
-                 "storage_service: {write_blob_threshold: 200}",
-                 "storage_service: {write_blob_threshold: 200}\n"
-                 "server: {server_config: {}}",
-                 "storage_service: {write_blob_threshold: 200}\n"
-                 "server: {}",
-                 "storage_service: {write_blob_threshold: 200}"})
+        // Publish each change to ignored Server fields or section presence.
+        for (const TString yaml:
+             {"storage_service: {write_blob_threshold: 200}\n"
+              "server: {server_config: "
+              "{dynamic_yaml_configuration_enabled: false}}",
+              "storage_service: {write_blob_threshold: 200}",
+              "storage_service: {write_blob_threshold: 200}\n"
+              "server: {server_config: {}}",
+              "storage_service: {write_blob_threshold: 200}\n"
+              "server: {}",
+              "storage_service: {write_blob_threshold: 200}"})
         {
+            const auto previousConfig = ConfigHolder->Get();
             SendNotification(parser(yaml), cookie);
             WaitForAck(cookie++);
+            WaitForConfigChanged(subscriber);
             UNIT_ASSERT_EQUAL(
-                NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+                NProto::PREEMPTION_MOVE_MOST_HEAVY,
                 ConfigHolder->Get()
                     ->GetStorageConfig()
                     ->GetVolumePreemptionType());
-            UNIT_ASSERT_EQUAL(startupConfig.Get(), ConfigHolder->Get().Get());
-            AssertNoConfigChanged(subscriber);
+            UNIT_ASSERT_VALUES_EQUAL(
+                200,
+                ConfigHolder->Get()
+                    ->GetStorageConfig()
+                    ->GetWriteBlobThreshold());
+            UNIT_ASSERT_UNEQUAL(
+                previousConfig.Get(),
+                ConfigHolder->Get().Get());
         }
 
         // Publish a real removal even when ignored fields remain in its source.
@@ -748,28 +886,43 @@ storage_service:
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
             emptyConfig->GetStorageConfig()->GetVolumePreemptionType());
 
-        // Treat absent, empty and static-only sections as the same empty source.
-        for (const TString yaml: {
-                 "{}",
-                 "storage_service: {node_type: other, "
-                 "scheme_shard_dir: /Root/other, "
-                 "config_dispatcher_settings: {}}",
-                 "{}",
-                 "storage_service: {}",
-                 "{}",
-                 "server: {server_config: "
-                 "{dynamic_yaml_configuration_enabled: true}}",
-                 "{}"})
+        // Distinguish absent, empty and static-only sections in the source.
+        for (const TString yaml:
+             {"{}",
+              "storage_service: {node_type: other, "
+              "scheme_shard_dir: /Root/other, "
+              "config_dispatcher_settings: {}}",
+              "{}",
+              "storage_service: {}",
+              "{}",
+              "server: {server_config: "
+              "{dynamic_yaml_configuration_enabled: true}}",
+              "{}"})
         {
+            const auto previousConfig = ConfigHolder->Get();
             SendNotification(parser(yaml), cookie);
             WaitForAck(cookie++);
-            UNIT_ASSERT_EQUAL(emptyConfig.Get(), ConfigHolder->Get().Get());
+            WaitForConfigChanged(subscriber);
+            UNIT_ASSERT_UNEQUAL(
+                previousConfig.Get(),
+                ConfigHolder->Get().Get());
+            UNIT_ASSERT_VALUES_EQUAL(
+                100,
+                ConfigHolder->Get()
+                    ->GetStorageConfig()
+                    ->GetWriteBlobThreshold());
+
+            // Suppress a repeat of exactly the same received proto.
+            const auto publishedConfig = ConfigHolder->Get();
+            SendNotification(parser(yaml), cookie);
+            WaitForAck(cookie++);
+            UNIT_ASSERT_EQUAL(publishedConfig.Get(), ConfigHolder->Get().Get());
             AssertNoConfigChanged(subscriber);
         }
     }
 
-    // Check that forbidden DiskAgent overrides preserve the startup snapshot
-    // and CMS values while receiving an ACK without notifying subscribers.
+    // Check that forbidden DiskAgent overrides publish the accepted source
+    // while preserving the static agent role and enabled state.
     Y_UNIT_TEST_F(ShouldIgnoreDedicatedDiskAgentOverrides, TFixture)
     {
         // Retain the startup snapshot and observe subsequent publications.
@@ -781,25 +934,27 @@ storage_service:
 
         // Try to enable the embedded agent and override its static role.
         SendNotification(
-            parser("storage_service: {write_blob_threshold: 200}\n"
-                   "disk_agent: {enabled: true, dedicated_disk_agent: false}"),
+            parser(
+                "storage_service: {write_blob_threshold: 200}\n"
+                "disk_agent: {enabled: true, dedicated_disk_agent: false}"),
             80);
         WaitForAck(80);
 
-        // Keep the complete snapshot, including the value received from CMS.
+        // Publish with the forbidden overrides removed.
         UNIT_ASSERT(!ConfigHolder->Get()->GetDiskAgentConfig()->GetEnabled());
         UNIT_ASSERT(
             ConfigHolder->Get()->GetDiskAgentConfig()->GetDedicatedDiskAgent());
-        UNIT_ASSERT_EQUAL(startupConfig.Get(), ConfigHolder->Get().Get());
+        UNIT_ASSERT_UNEQUAL(startupConfig.Get(), ConfigHolder->Get().Get());
         UNIT_ASSERT_EQUAL(
-            NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
             ConfigHolder->Get()->GetStorageConfig()->GetVolumePreemptionType());
-        AssertNoConfigChanged(subscriber);
+        WaitForConfigChanged(subscriber);
 
         // Apply an independent setting without enabling the embedded agent.
         SendNotification(
-            parser("storage_service: {write_blob_threshold: 300}\n"
-                   "disk_agent: {enabled: true, dedicated_disk_agent: false}"),
+            parser(
+                "storage_service: {write_blob_threshold: 300}\n"
+                "disk_agent: {enabled: true, dedicated_disk_agent: false}"),
             81);
         WaitForAck(81);
         WaitForConfigChanged(subscriber);
@@ -811,9 +966,9 @@ storage_service:
             ConfigHolder->Get()->GetDiskAgentConfig()->GetDedicatedDiskAgent());
     }
 
-    // Verify that linked discovery ports follow updates, normalized duplicates
-    // do not publish, and removing the source restores the static ports.
-    Y_UNIT_TEST_F(ShouldNormalizeDiscoveryPortsAcrossUpdates, TFixture)
+    // Verify that runtime updates preserve startup discovery ports while
+    // changed sources publish even when normalization makes them equivalent.
+    Y_UNIT_TEST_F(ShouldPreserveStartupDiscoveryPortsAcrossUpdates, TFixture)
     {
         // Retain the static ports and subscribe to configuration publications.
         const auto startupConfig = ConfigHolder->Get();
@@ -822,31 +977,35 @@ storage_service:
         WaitForConfigChanged(subscriber);
         const auto parser = CreateBlockstoreOpaqueConfigParser();
 
-        // Derive both discovery ports from the new server ports.
+        // Normalize the requested ports, then preserve their startup values.
         SendNotification(
-            parser("server: {server_config: {port: 12000, secure_port: 12001}}"),
+            parser(
+                "server: {server_config: {port: 12000, secure_port: 12001}}"),
             90);
         WaitForAck(90);
         WaitForConfigChanged(subscriber);
         const auto publishedConfig = ConfigHolder->Get();
         UNIT_ASSERT_VALUES_EQUAL(
-            12000,
+            startupConfig->GetDiscoveryServiceConfig()
+                ->GetConductorInstancePort(),
             publishedConfig->GetDiscoveryServiceConfig()
                 ->GetConductorInstancePort());
         UNIT_ASSERT_VALUES_EQUAL(
-            12001,
+            startupConfig->GetDiscoveryServiceConfig()
+                ->GetConductorSecureInstancePort(),
             publishedConfig->GetDiscoveryServiceConfig()
                 ->GetConductorSecureInstancePort());
 
-        // Treat the same explicitly specified ports as a normalized duplicate.
+        // Accept explicitly specified ports as a change to the received source.
         SendNotification(
-            parser("server: {server_config: {port: 12000, secure_port: 12001}}\n"
-                   "discovery_service: {conductor_instance_port: 12000, "
-                   "conductor_secure_instance_port: 12001}"),
+            parser(
+                "server: {server_config: {port: 12000, secure_port: 12001}}\n"
+                "discovery_service: {conductor_instance_port: 12000, "
+                "conductor_secure_instance_port: 12001}"),
             91);
         WaitForAck(91);
-        UNIT_ASSERT_EQUAL(publishedConfig.Get(), ConfigHolder->Get().Get());
-        AssertNoConfigChanged(subscriber);
+        UNIT_ASSERT_UNEQUAL(publishedConfig.Get(), ConfigHolder->Get().Get());
+        WaitForConfigChanged(subscriber);
 
         // Remove both supplied and derived overrides by removing the source.
         SendNotification(parser("{}"), 92);
@@ -867,6 +1026,127 @@ storage_service:
             ConfigHolder->Get()
                 ->GetDiscoveryServiceConfig()
                 ->GetConductorSecureInstancePort());
+    }
+
+    // Verify that the first delivery is compared with the original startup CMS
+    // source, including fields removed by normalization.
+    Y_UNIT_TEST_F(ShouldCompareOriginalStartupCmsConfig, TFixture)
+    {
+        // Start a manager with ignored fields present in its received source.
+        auto staticConfig = MakeConfig(100);
+        staticConfig.MutableStorageService()->SetSchemeShardDir("/static");
+        auto dynamicConfig = MakeConfig(200);
+        dynamicConfig.MutableStorageService()->SetSchemeShardDir("/cms");
+        dynamicConfig.MutableServer()
+            ->MutableServerConfig()
+            ->SetDynamicYamlConfigurationEnabled(false);
+        auto startupConfig = MakeConfig(200);
+        startupConfig.MutableStorageService()->SetSchemeShardDir("/static");
+        ConfigHolder = std::make_shared<TBlockstoreConfigHolder>(
+            MakeStartupBlockstoreConfig(staticConfig, dynamicConfig, Controls));
+        Controls->UpdateDefaults(startupConfig.GetStorageService());
+        Manager = Runtime.Register(CreateConfigsManager({
+            .ConfigHolder = ConfigHolder,
+            .StaticConfig = std::move(staticConfig),
+            .StartupConfig = std::move(startupConfig),
+            .InitialDynamicConfig = dynamicConfig,
+            .StorageConfigControls = Controls,
+            .ConfigsDispatcherId = Dispatcher,
+        }));
+        TAutoPtr<IEventHandle> handle;
+        UNIT_ASSERT(Runtime.GrabEdgeEventRethrow<
+                    TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest>(
+            handle));
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+
+        // Acknowledge the unmodified startup source without rebuilding it.
+        const auto initialConfig = ConfigHolder->Get();
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(dynamicConfig),
+            120);
+        WaitForAck(120);
+        UNIT_ASSERT_EQUAL(initialConfig.Get(), ConfigHolder->Get().Get());
+        AssertNoConfigChanged(subscriber);
+
+        // Treat removal of ignored fields as a change to the original source.
+        SendNotification(
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(200)),
+            121);
+        WaitForAck(121);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_UNEQUAL(initialConfig.Get(), ConfigHolder->Get().Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "/static",
+            ConfigHolder->Get()->GetStorageConfig()->GetSchemeShardDir());
+    }
+
+    // Verify that reordered map entries are duplicates while a changed map
+    // value is accepted even when its runtime override is forbidden.
+    Y_UNIT_TEST_F(ShouldCompareCmsMapsWithoutEntryOrder, TFixture)
+    {
+        // Publish a source with map entries in a known reflection order.
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+        const auto makeConfig = [](bool reverse, ui32 writeThreshold)
+        {
+            auto config = std::make_shared<NProto::TBlockstoreConfig>(
+                MakeConfig(300));
+            auto* threshold =
+                config->MutableDiagnostics()->AddRequestThresholds();
+            const auto* field =
+                threshold->GetDescriptor()->FindFieldByName("ByRequestType");
+            for (const TString name: {"ReadBlocks", "WriteBlocks"}) {
+                auto* entry = threshold->GetReflection()->AddMessage(
+                    threshold,
+                    field);
+                entry->GetReflection()->SetString(
+                    entry,
+                    entry->GetDescriptor()->FindFieldByName("key"),
+                    name);
+                entry->GetReflection()->SetUInt32(
+                    entry,
+                    entry->GetDescriptor()->FindFieldByName("value"),
+                    name == "ReadBlocks" ? 10 : writeThreshold);
+            }
+            if (reverse) {
+                threshold->GetReflection()->SwapElements(
+                    threshold,
+                    field,
+                    0,
+                    1);
+            }
+            const auto& entry = threshold->GetReflection()->GetRepeatedMessage(
+                *threshold,
+                field,
+                0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                reverse ? "WriteBlocks" : "ReadBlocks",
+                entry.GetReflection()->GetString(
+                    entry,
+                    entry.GetDescriptor()->FindFieldByName("key")));
+            return config;
+        };
+        const auto first = makeConfig(false, 20);
+        const auto reordered = makeConfig(true, 20);
+        SendNotification(first, 130);
+        WaitForAck(130);
+        WaitForConfigChanged(subscriber);
+
+        // Compare map values by key, independently of their entry order.
+        const auto publishedConfig = ConfigHolder->Get();
+        SendNotification(reordered, 131);
+        WaitForAck(131);
+        UNIT_ASSERT_EQUAL(publishedConfig.Get(), ConfigHolder->Get().Get());
+        AssertNoConfigChanged(subscriber);
+
+        // Detect a changed map value in the next received source.
+        SendNotification(makeConfig(true, 30), 132);
+        WaitForAck(132);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT_UNEQUAL(publishedConfig.Get(), ConfigHolder->Get().Get());
     }
 
     // Check that a duplicate is acknowledged without replacing the config.
@@ -912,7 +1192,7 @@ storage_service:
             UNIT_ASSERT_EQUAL(emptyConfig.Get(), ConfigHolder->Get().Get());
             AssertNoConfigChanged(subscriber);
         }
-        WaitForConfigLog("Reset PrivateDatabaseConfig; restored static config");
+        WaitForConfigLog("Reset PrivateDatabaseConfig");
     }
 
     // Check that a parser failure preserves the config and receives no ACK.
@@ -933,7 +1213,7 @@ storage_service:
             ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
         UNIT_ASSERT_STRING_CONTAINS(
             CriticalEventsLog.Str(),
-            "CRITICAL_EVENT:AppCriticalEvents/GetConfigsFromCmsYamlParseError");
+            "CRITICAL_EVENT:AppCriticalEvents/DynamicConfigError");
         UNIT_ASSERT_STRING_CONTAINS(
             CriticalEventsLog.Str(),
             "Failed to parse PrivateDatabaseConfig from CMS");
@@ -956,6 +1236,53 @@ storage_service:
             22);
         WaitForAck(22);
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            300,
+            ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
+    }
+
+    // Verify that preparation exceptions preserve the publication and controls,
+    // emit a critical event, withhold ACK, and allow retrying the same update.
+    Y_UNIT_TEST_F(ShouldRetainConfigOnPreparationException, TFixture)
+    {
+        // Inject one failure before construction and observe publications.
+        ConfigHolder->Set(
+            MakeIntrusive<TFailingBlockstoreConfig>(ConfigHolder->Get()));
+        const auto previousConfig = ConfigHolder->Get();
+        const auto subscriber = Runtime.AllocateEdgeActor();
+        Subscribe(subscriber);
+        WaitForConfigChanged(subscriber);
+        const auto update =
+            std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300));
+        SendNotification(update, 19);
+        TAutoPtr<IEventHandle> handle;
+        UNIT_ASSERT(!Runtime.GrabEdgeEventRethrow<
+                     TEvConsole::TEvConfigNotificationResponse>(
+            handle,
+            TDuration::MilliSeconds(10)));
+
+        // Keep the same publication and its live control values on failure.
+        UNIT_ASSERT_EQUAL(previousConfig.Get(), ConfigHolder->Get().Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            200,
+            previousConfig->GetStorageConfig()->GetWriteBlobThreshold());
+        AssertNoConfigChanged(subscriber);
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(),
+            "CRITICAL_EVENT:AppCriticalEvents/DynamicConfigError");
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(),
+            "test configuration preparation failure");
+        UNIT_ASSERT_STRING_CONTAINS(
+            CriticalEventsLog.Str(),
+            "Keeping the last successfully applied configuration");
+
+        // Retry the identical source: the failed attempt must not become the
+        // remembered dynamic configuration or suppress a retry as a duplicate.
+        SendNotification(update, 22);
+        WaitForAck(22);
+        WaitForConfigChanged(subscriber);
+        UNIT_ASSERT(previousConfig.Get() != ConfigHolder->Get().Get());
         UNIT_ASSERT_VALUES_EQUAL(
             300,
             ConfigHolder->Get()->GetStorageConfig()->GetWriteBlobThreshold());
@@ -987,7 +1314,7 @@ storage_service:
         AssertNoConfigChanged(subscriber);
         UNIT_ASSERT_STRING_CONTAINS(
             CriticalEventsLog.Str(),
-            "CRITICAL_EVENT:AppCriticalEvents/GetConfigsFromCmsYamlParseError");
+            "CRITICAL_EVENT:AppCriticalEvents/DynamicConfigError");
         UNIT_ASSERT_STRING_CONTAINS(
             CriticalEventsLog.Str(),
             "Diagnostics.ExecutionTimeSizeClasses[0].Start");
@@ -1017,7 +1344,7 @@ storage_service:
 
         SendNotification({}, 20);
         WaitForAck(20);
-        WaitForConfigLog("Reset PrivateDatabaseConfig; restored static config");
+        WaitForConfigLog("Reset PrivateDatabaseConfig");
 
         // Restore both the overridden YAML field and the startup CMS field
         // from the static snapshot.
@@ -1052,7 +1379,7 @@ storage_service:
         // contents.
         UNIT_ASSERT_STRING_CONTAINS(
             CriticalEventsLog.Str(),
-            "CRITICAL_EVENT:AppCriticalEvents/GetConfigsFromCmsYamlParseError");
+            "CRITICAL_EVENT:AppCriticalEvents/DynamicConfigError");
         UNIT_ASSERT_STRING_CONTAINS(
             CriticalEventsLog.Str(),
             "unexpected PrivateDatabaseConfig payload type");
@@ -1091,7 +1418,7 @@ storage_service:
         // Report the internal failure without suggesting a rollback.
         UNIT_ASSERT_STRING_CONTAINS(
             CriticalEventsLog.Str(),
-            "CRITICAL_EVENT:AppCriticalEvents/GetConfigsFromCmsYamlParseError");
+            "CRITICAL_EVENT:AppCriticalEvents/DynamicConfigError");
         UNIT_ASSERT_STRING_CONTAINS(
             CriticalEventsLog.Str(),
             "null PrivateDatabaseConfig payload from ConfigsDispatcher");
