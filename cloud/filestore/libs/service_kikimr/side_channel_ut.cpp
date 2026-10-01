@@ -1,6 +1,7 @@
 #include "side_channel.h"
 
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
+#include <cloud/filestore/libs/service/filestore.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/storage/fastshard/client/async_client.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
@@ -721,6 +722,82 @@ Y_UNIT_TEST_SUITE(TSideChannelTest)
         UNIT_ASSERT(e22->Reply(WriteResp(MakeError(E_IO))));
         UNIT_ASSERT(w2.HasValue());
         UNIT_ASSERT_VALUES_EQUAL(E_IO, w2.GetValue().GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldRouteHandlelessRequestsByNodeId)
+    {
+        auto logging = CreateLoggingService("console", { TLOG_RESOURCES });
+        auto client = std::make_shared<TTestAsyncClient>();
+        auto profileLog = std::make_shared<TTestProfileLog>();
+        auto timer = std::make_shared<TTestTimer>();
+        auto sideChannel =
+            CreateTCPSideChannel(*logging, profileLog, timer, client);
+
+        //
+        // Both the main filesystem and shard 10 have an endpoint.
+        //
+
+        sideChannel->Update(BackendInfo());
+
+        TConnInfo connInfo;
+        auto mainEndpoint = client->CompleteConnection(&connInfo);
+        UNIT_ASSERT(mainEndpoint);
+        UNIT_ASSERT_VALUES_EQUAL("h1", connInfo.Host);
+
+        constexpr ui32 ShardNo = 10;
+        auto shardBackendInfo = BackendInfo();
+        shardBackendInfo.SetFastShardHost("h2");
+        shardBackendInfo.SetActualFileSystemId(
+            TStringBuilder() << FileSystemId << "_s" << ShardNo);
+        sideChannel->Update(shardBackendInfo);
+
+        auto shardEndpoint = client->CompleteConnection(&connInfo);
+        UNIT_ASSERT(shardEndpoint);
+        UNIT_ASSERT_VALUES_EQUAL("h2", connInfo.Host);
+
+        //
+        // A handleless request carries no handle to infer the shard from -
+        // it must be routed by its NodeId, like the storage service does.
+        //
+
+        const ui64 nodeId = NStorage::ShardedId(1, ShardNo);
+
+        auto writeRequest = WriteReq(InvalidHandle, 0, TString(1_KB, 'a'));
+        writeRequest->SetNodeId(nodeId);
+        auto writeResponse = NewPromise<NProto::TWriteDataResponse>();
+        UNIT_ASSERT(sideChannel->ExecuteRequest(
+            CC(),
+            writeRequest,
+            writeResponse));
+
+        UNIT_ASSERT(!mainEndpoint->RequestReceived);
+        UNIT_ASSERT(shardEndpoint->RequestReceived);
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId,
+            shardEndpoint->Req.GetWriteData().GetNodeId());
+        UNIT_ASSERT(shardEndpoint->Reply(WriteResp(MakeError(S_OK))));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            writeResponse.GetValue().GetError().GetCode());
+
+        auto readRequest = ReadReq(InvalidHandle, 0, 1_KB);
+        readRequest->SetNodeId(nodeId);
+        auto readResponse = NewPromise<NProto::TReadDataResponse>();
+        UNIT_ASSERT(sideChannel->ExecuteRequest(
+            CC(),
+            readRequest,
+            readResponse));
+
+        UNIT_ASSERT(!mainEndpoint->RequestReceived);
+        UNIT_ASSERT(shardEndpoint->RequestReceived);
+        UNIT_ASSERT_VALUES_EQUAL(
+            nodeId,
+            shardEndpoint->Req.GetReadData().GetNodeId());
+        UNIT_ASSERT(shardEndpoint->Reply(
+            ReadResp(MakeError(S_OK), TString(1_KB, 'a'))));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(1_KB, 'a'),
+            readResponse.GetValue().GetBuffer());
     }
 
     Y_UNIT_TEST(ShouldHandleZeroCopyReadWrite)

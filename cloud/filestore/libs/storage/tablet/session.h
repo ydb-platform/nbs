@@ -43,34 +43,22 @@ using TSessionHandleMap = THashMap<ui64, TSessionHandle*>;
 struct TPerNodeHandleStats
 {
 private:
-    // Number of all handles to this node open in this session
     i64 OpenHandles = 0;
-    // Number of write (both O_RDWR and O_WRONLY) handles to this node open in
-    // this session
-    i64 OpenWriteHandles = 0;
-    // Among all opens, what was the last visible mtime of the node when the
-    // guest-side invalidation occurred
-    ui64 LastGuestCacheInvalidationMtime = 0;
+    ui64 MTimeAtLastCacheInvalidation = 0;
 
-    void RegisterHandle(const NProto::TSessionHandle& handle)
+    void RegisterHandle()
     {
         ++OpenHandles;
-        if (HasFlag(handle.GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
-            ++OpenWriteHandles;
-        }
     }
 
-    void UnregisterHandle(const NProto::TSessionHandle& handle)
+    void UnregisterHandle()
     {
         --OpenHandles;
-        if (HasFlag(handle.GetFlags(), NProto::TCreateHandleRequest::E_WRITE)) {
-            --OpenWriteHandles;
-        }
     }
 
     void OnGuestCacheInvalidated(ui64 mtime)
     {
-        LastGuestCacheInvalidationMtime = mtime;
+        MTimeAtLastCacheInvalidation = mtime;
     }
 
     [[nodiscard]] bool Empty() const
@@ -99,15 +87,14 @@ public:
             Stats[handle.GetNodeId()] = *it;
             OffloadedStats.Erase(it);
         }
-        auto& nodeStats = Stats[handle.GetNodeId()];
-        nodeStats.RegisterHandle(handle);
+        Stats[handle.GetNodeId()].RegisterHandle();
     }
 
     void UnregisterHandle(const NProto::TSessionHandle& handle)
     {
         auto it = Stats.find(handle.GetNodeId());
         if (it != Stats.end()) {
-            it->second.UnregisterHandle(handle);
+            it->second.UnregisterHandle();
             if (it->second.Empty()) {
                 OffloadedStats.Insert(it->first, it->second);
                 Stats.erase(it);
@@ -128,25 +115,13 @@ public:
         }
     }
 
-    [[nodiscard]] bool IsAllowedToKeepCache(
-        const NProto::TNodeAttr& node,
-        bool isFirstReadAllowed) const
+    // The cache can be kept if the node was not modified since the last time
+    // the cache was invalidated
+    [[nodiscard]] bool IsAllowedToKeepCache(const NProto::TNodeAttr& node) const
     {
         auto it = Stats.find(node.GetId());
-        if (it != Stats.end()) {
-            // We can allow ourselves not to invalidate the cache if it is not
-            // opened for writing and the last time that the cache was
-            // invalidated was after the node was modified. Also sometimes we
-            // can require this read handle to be not the first one opened, see
-            // isFirstReadAllowed variable
-            if (it->second.OpenWriteHandles == 0 &&
-                it->second.OpenHandles > (isFirstReadAllowed ? 0 : 1) &&
-                it->second.LastGuestCacheInvalidationMtime >= node.GetMTime())
-            {
-                return true;
-            }
-        }
-        return false;
+        return it != Stats.end() &&
+               it->second.MTimeAtLastCacheInvalidation >= node.GetMTime();
     }
 
     [[nodiscard]] size_t StatsSize() const

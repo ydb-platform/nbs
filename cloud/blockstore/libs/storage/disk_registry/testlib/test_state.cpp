@@ -49,7 +49,7 @@ TDeviceConfig Device(
     ui64 totalSize,
     TString transportId,
     NProto::EDeviceState state,
-    NProto::TRdmaEndpoint rdmaEndpoint)
+    NProto::TEndpoint rdmaEndpoint)
 {
     TDeviceConfig device;
 

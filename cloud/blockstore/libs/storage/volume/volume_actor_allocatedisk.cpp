@@ -170,7 +170,7 @@ std::unique_ptr<MessageDifferencer> CreateLiteReallocationDifferencer(
         // These are two fields that will change during disk agent blue-green
         // deploy.
         NProto::TDeviceConfig::GetDescriptor()->FindFieldByName("NodeId"),
-        NProto::TRdmaEndpoint::GetDescriptor()->FindFieldByName("Port")};
+        NProto::TEndpoint::GetDescriptor()->FindFieldByName("Port")};
 
     if (size_t index = FindIndex(descriptors, nullptr); index != NPOS) {
         ReportFieldDescriptorNotFound(

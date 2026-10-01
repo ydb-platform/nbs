@@ -477,15 +477,17 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
         }
     }
 
-    Y_UNIT_TEST_F(ShouldPropagateJournalledFlag, TFixture)
+    Y_UNIT_TEST_F(ShouldPropagateJournalConfig, TFixture)
     {
         NProto::TStorageDiscoveryConfig::TPoolConfig journalled;
         journalled.SetPoolName("journalled");
-        journalled.SetJournalled(true);
+        journalled.MutableJournalConfig()->SetEnabled(true);
+        journalled.MutableJournalConfig()->SetLogMetaSize(1_GB);
+        journalled.MutableJournalConfig()->SetLogDataSize(10_GB);
 
         NProto::TStorageDiscoveryConfig::TPoolConfig journalledWithLayout;
         journalledWithLayout.SetPoolName("journalled");
-        journalledWithLayout.SetJournalled(true);
+        journalledWithLayout.MutableJournalConfig()->SetEnabled(true);
 
         {
             auto& layout = *journalledWithLayout.MutableLayout();
@@ -504,7 +506,15 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(1, r.size());
-            UNIT_ASSERT_C(r[0].GetJournalled(), r[0]);
+            UNIT_ASSERT_C(r[0].GetJournalConfig().GetEnabled(), r[0]);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1_GB,
+                r[0].GetJournalConfig().GetLogMetaSize(),
+                r[0]);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                10_GB,
+                r[0].GetJournalConfig().GetLogDataSize(),
+                r[0]);
         }
 
         {
@@ -519,7 +529,11 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(3, r.size());
             for (const auto& d: r) {
-                UNIT_ASSERT_C(d.GetJournalled(), d);
+                UNIT_ASSERT_C(d.GetJournalConfig().GetEnabled(), d);
+                UNIT_ASSERT_VALUES_EQUAL_C(
+                    0,
+                    d.GetJournalConfig().GetLogMetaSize(),
+                    d);
             }
         }
 
@@ -528,7 +542,7 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
 
             auto r = gen.ExtractResult();
             UNIT_ASSERT_VALUES_EQUAL(1, r.size());
-            UNIT_ASSERT_C(!r[0].GetJournalled(), r[0]);
+            UNIT_ASSERT_C(!r[0].GetJournalConfig().GetEnabled(), r[0]);
         }
     }
 }
