@@ -10,6 +10,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/core
     cloud/storage/core/libs/actors
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/config
     cloud/storage/core/libs/diagnostics
 
     contrib/ydb/core/cms/console

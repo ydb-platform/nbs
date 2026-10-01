@@ -21,14 +21,15 @@ import "cloud/blockstore/config/storage.proto";
 import "cloud/blockstore/config/ydbstats.proto";
 import "cloud/storage/core/config/features.proto";
 import "cloud/storage/core/config/iam.proto";
+import "cloud/storage/core/config/markers.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 
 message TBlockstoreConfig
 {
     optional TServerAppConfig Server = 1;
-    optional TStorageServiceConfig StorageService = 2;
-    optional .NCloud.NProto.TFeaturesConfig Features = 3;
+    optional TStorageServiceConfig StorageService = 2 [(NMarkers.AllowRuntimeUpdate) = true];
+    optional .NCloud.NProto.TFeaturesConfig Features = 3 [(NMarkers.AllowRuntimeUpdate) = true];
     optional TDiagnosticsConfig Diagnostics = 4;
     optional TDiscoveryServiceConfig DiscoveryService = 5;
     optional TClientAppConfig Endpoint = 6;

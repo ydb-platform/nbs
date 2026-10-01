@@ -158,6 +158,7 @@ public:
                     CreateConfigsManager({
                         .ConfigHolder = Args.ConfigHolder,
                         .StaticConfig = Args.StaticBlockstoreConfigProto,
+                        .StartupConfig = Args.StartupBlockstoreConfigProto,
                         .InitialDynamicConfig = Args.CmsBlockstoreConfig,
                         .StorageConfigControls =
                             storageConfig->GetControls(),

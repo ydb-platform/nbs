@@ -7,6 +7,7 @@ SRCS(
     features.proto
     grpc_client.proto
     iam.proto
+    markers.proto
     opentelemetry_client.proto
 )
 
