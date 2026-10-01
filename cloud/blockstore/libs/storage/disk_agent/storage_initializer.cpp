@@ -313,6 +313,15 @@ bool TInitializer::ValidateStorageDiscoveryConfig() const
 
     for (const auto& path: config.GetPathConfigs()) {
         for (const auto& pool: path.GetPoolConfigs()) {
+            if (path.GetSequentialLayout() && !pool.HasLayout()) {
+                STORAGE_WARN(
+                    "Bad pool configuration: the sequential layout requires "
+                    "a layout for each pool. "
+                    "Config: " << pool);
+
+                return false;
+            }
+
             if (pool.HasLayout()) {
                 const auto& layout = pool.GetLayout();
 

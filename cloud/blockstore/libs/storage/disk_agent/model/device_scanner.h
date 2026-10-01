@@ -18,7 +18,7 @@ using TDeviceCallback = std::function<NProto::TError(
     const TString& path,
     const NProto::TStorageDiscoveryConfig::TPathConfig& pathConfig,
     ui32 deviceNumber,
-    ui32 blockSize,
+    ui32 fileBlockSize,
     ui64 fileSize)>;
 
 NProto::TError FindDevices(

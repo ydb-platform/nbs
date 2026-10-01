@@ -190,6 +190,10 @@ message TStorageDiscoveryConfig
 
         // Default block size.
         optional uint32 BlockSize = 4;
+
+        // Lay out the devices of all suitable pools one after another instead
+        // of using only the first suitable pool. Each pool must have a Layout.
+        optional bool SequentialLayout = 5;
     }
 
     repeated TPathConfig PathConfigs = 1;
