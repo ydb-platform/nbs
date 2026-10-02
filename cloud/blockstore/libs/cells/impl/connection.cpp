@@ -1018,10 +1018,12 @@ IBlockStorePtr CreateGrpcDataEndpoint(
     const TCellHostConfig& hostConfig,
     const IBlockStorePtr& controlService)
 {
-    // a channel of its own, so that it dies with the endpoint rather than
-    // being shared by everyone talking to this host
+    // The cell's ports are control ports, which take only the control
+    // service, so the data goes through that service too - but on a
+    // connection apart from the control one, so that bulk I/O cannot hold
+    // back the pings that judge whether the host is alive.
     const auto securePort = hostConfig.GetSecureGrpcPort();
-    auto endpoint = bootstrap.GrpcClient->CreateDataEndpoint(
+    auto endpoint = bootstrap.GrpcClient->CreateIOEndpoint(
         hostConfig.GetFqdn(),
         securePort ? securePort : hostConfig.GetGrpcPort(),
         securePort != 0);

@@ -271,6 +271,33 @@ IClientPtr TTestClientBuilder::BuildClient()
     return client;
 }
 
+IMultiHostClientPtr TTestClientBuilder::BuildMultiHostClient()
+{
+    auto clientConfig = std::make_shared<TClientAppConfig>(ClientAppConfig);
+
+    auto clientStats = CreateClientStats(
+        clientConfig,
+        TestContext.Monitoring,
+        TestContext.RequestStats,
+        TestContext.VolumeStats,
+        clientConfig->GetInstanceId());
+    auto certificateProvider = CreateClientCertificateProvider(
+        clientConfig,
+        TestContext.Logging);
+
+    auto [client, error] = CreateMultiHostClient(
+        std::move(clientConfig),
+        TestContext.Timer,
+        TestContext.Scheduler,
+        TestContext.Logging,
+        TestContext.Monitoring,
+        std::move(clientStats),
+        std::move(certificateProvider));
+
+    UNIT_ASSERT(!HasError(error));
+    return client;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TTestFactory::TTestFactory()

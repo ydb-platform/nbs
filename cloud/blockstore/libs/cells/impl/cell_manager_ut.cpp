@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+#include <cloud/blockstore/libs/service/storage.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -545,6 +546,119 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
             result.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldServeGrpcDataThroughControlPort)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+
+        auto service = std::make_shared<TTestService>();
+        ui32 zeroBlocksCount = 0;
+        service->ZeroBlocksHandler =
+            [&] (auto request) {
+                Y_UNUSED(request);
+                ++zeroBlocksCount;
+                return MakeFuture<NProto::TZeroBlocksResponse>();
+            };
+        TString written;
+        service->WriteBlocksHandler =
+            [&] (auto request) {
+                for (const auto& block: request->GetBlocks().GetBuffers()) {
+                    written += block;
+                }
+                return MakeFuture<NProto::TWriteBlocksResponse>();
+            };
+
+        TTestContext testContext;
+
+        auto server = TTestServerBuilder(testContext)
+            .SetPort(port)
+            .SetCellId("xyz")
+            .BuildServer(service);
+
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell(
+                "xyz",  // cellid
+                port,   // port
+                0,      // secure port
+                1,      // describe volume host count
+                1,      // min cell connections
+                {"localhost"})
+            .Build();
+        // the same gRPC data endpoint the rdma transport falls back to
+        cfg.MutableCells(0)->SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
+
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        auto cellManager = CreateCellManager(
+            config,
+            testContext.Timer,
+            testContext.Scheduler,
+            testContext.Logging,
+            testContext.Monitoring,
+            testContext.TraceSerializer,
+            testContext.ServerStats,
+            CreateClientCertificateProvider(config),
+            nullptr,
+            CreateLocalService());
+
+        server->Start();
+        cellManager->Start();
+        Y_DEFER {
+            cellManager->Stop();
+            server->Stop();
+        };
+
+        auto connectionOrError = cellManager
+            ->CreateConnection(
+                "xyz",
+                {},
+                std::make_shared<TClientAppConfig>(),
+                nullptr)
+            .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(
+            !HasError(connectionOrError),
+            connectionOrError.GetError());
+
+        // as a session sends it
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->MutableHeaders()->SetClientId("client");
+
+        auto storage = connectionOrError.GetResult()->GetStorage();
+        auto response =
+            storage->ZeroBlocks(MakeIntrusive<TCallContext>(), request)
+                .GetValue(TDuration::Seconds(5));
+
+        // the cell's control port only takes the control service
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(1, zeroBlocksCount);
+
+        // as a gRPC-IPC session sends it: with what its own server filled in
+        request->MutableHeaders()->MutableInternal()->SetRequestSource(
+            NProto::SOURCE_FD_DATA_CHANNEL);
+        response = storage->ZeroBlocks(MakeIntrusive<TCallContext>(), request)
+                       .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(2, zeroBlocksCount);
+
+        const ui32 blockSize = 4096;
+        TString data(blockSize, 'x');
+        auto writeRequest =
+            std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        writeRequest->MutableHeaders()->SetClientId("client");
+        writeRequest->MutableHeaders()->MutableInternal()->SetRequestSource(
+            NProto::SOURCE_FD_DATA_CHANNEL);
+        writeRequest->BlocksCount = 1;
+        writeRequest->SetBlockSize(blockSize);
+        writeRequest->Sglist =
+            TGuardedSgList({TBlockDataRef(data.data(), data.size())});
+        auto writeResponse =
+            storage
+                ->WriteBlocksLocal(MakeIntrusive<TCallContext>(), writeRequest)
+                .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(writeResponse), writeResponse.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(data, written);
     }
 }
 

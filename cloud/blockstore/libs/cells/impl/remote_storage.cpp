@@ -15,6 +15,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// A gRPC server fills Headers.Internal in for itself and a server in another
+// cell refuses it; nothing on this side reads it once the request leaves.
 struct TRemoteStorage: public IStorage
 {
     const IBlockStorePtr Endpoint;
@@ -29,6 +31,7 @@ struct TRemoteStorage: public IStorage
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TZeroBlocksRequest> request) override
     {
+        request->MutableHeaders()->ClearInternal();
         return Endpoint->ZeroBlocks(std::move(callContext), std::move(request));
     }
 
@@ -36,6 +39,7 @@ struct TRemoteStorage: public IStorage
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
+        request->MutableHeaders()->ClearInternal();
         return Endpoint->ReadBlocksLocal(
             std::move(callContext),
             std::move(request));
@@ -45,6 +49,7 @@ struct TRemoteStorage: public IStorage
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
+        request->MutableHeaders()->ClearInternal();
         return Endpoint->WriteBlocksLocal(
             std::move(callContext),
             std::move(request));
