@@ -43,7 +43,7 @@ struct TStorageGroupFactory: IStorageGroupFactory
             groupConfig.PageSize = config.GetPageSize();
         }
 
-        if (sg.GetType() == NProtoPrivate::TStorageGroup::E_SG_QUORUM_MIRROR) {
+        if (sg.GetType() == NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR) {
             return CreateQuorumMirroredStorageGroup(
                 std::move(groupConfig),
                 std::move(devices),

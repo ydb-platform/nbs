@@ -18,8 +18,8 @@ from cloud.storage.core.tools.testing.qemu.lib.common import (
 
 # Storage group type -> device count.
 STORAGE_GROUPS = {
-    "mirror": ("E_SG_MIRROR", 1),
-    "quorum": ("E_SG_QUORUM_MIRROR", 3),
+    "mirror": ("FAST_SHARD_STORAGE_MIRROR", 1),
+    "quorum": ("FAST_SHARD_STORAGE_QUORUM_MIRROR", 3),
 }
 
 
