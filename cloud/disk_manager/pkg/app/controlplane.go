@@ -105,9 +105,17 @@ func newGrpcServer(
 				PrivateKeyFile: cert.GetPrivateKeyFile(),
 			})
 		}
+		refreshCertsPeriod, err := time.ParseDuration(
+			config.GetGrpcConfig().GetRefreshCertsPeriod(),
+		)
+		if err != nil {
+			return nil, err
+		}
+
 		tlsProvider, err := common.NewGrpcServerTlsProvider(
 			ctx,
 			certs,
+			refreshCertsPeriod,
 			facadeMetricsRegistry,
 		)
 		if err != nil {
