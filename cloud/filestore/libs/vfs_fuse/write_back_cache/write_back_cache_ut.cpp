@@ -2251,42 +2251,46 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(drain.HasValue());
     }
 
-    Y_UNIT_TEST(ShouldReportStateMetrics)
+    Y_UNIT_TEST(ShouldReportOperationalStateMetrics)
     {
         TBootstrap b;
         TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
 
-        auto assertState = [&] (
+        auto assertOperationalState = [&] (
             i64 enabled,
             i64 draining,
             i64 disabled,
             i64 failed)
         {
-            UNIT_ASSERT_VALUES_EQUAL(enabled, b.Metrics.State.Enabled->Get());
+            UNIT_ASSERT_VALUES_EQUAL(
+                enabled,
+                b.Metrics.OperationalState.Enabled->Get());
             UNIT_ASSERT_VALUES_EQUAL(
                 draining,
-                b.Metrics.State.Draining->Get());
+                b.Metrics.OperationalState.Draining->Get());
             UNIT_ASSERT_VALUES_EQUAL(
                 disabled,
-                b.Metrics.State.Disabled->Get());
-            UNIT_ASSERT_VALUES_EQUAL(failed, b.Metrics.State.Failed->Get());
+                b.Metrics.OperationalState.Disabled->Get());
+            UNIT_ASSERT_VALUES_EQUAL(
+                failed,
+                b.Metrics.OperationalState.Failed->Get());
         };
 
         b.ModuleStats->UpdateStats(b.Timer->Now());
-        assertState(1, 0, 0, 0);
+        assertOperationalState(1, 0, 0, 0);
 
         b.WriteToCacheSync(1, 0, "abc");
         auto drain = b.Cache.Drain();
 
         UNIT_ASSERT(!drain.HasValue());
         b.ModuleStats->UpdateStats(b.Timer->Now());
-        assertState(0, 1, 0, 0);
+        assertOperationalState(0, 1, 0, 0);
 
         writeRequests.ProceedAll();
         UNIT_ASSERT(drain.HasValue());
 
         b.ModuleStats->UpdateStats(b.Timer->Now());
-        assertState(0, 0, 1, 0);
+        assertOperationalState(0, 0, 1, 0);
     }
 
     Y_UNIT_TEST(ShouldEvictFlushedRequestsOnRestart)
@@ -2822,8 +2826,14 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.ModuleStats->UpdateStats(TInstant::Now());
 
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.Storage.Corrupted->Get());
-        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.State.Enabled->Get());
-        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.State.Failed->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.OperationalState.Enabled->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.OperationalState.Draining->Get());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            b.Metrics.OperationalState.Disabled->Get());
+        UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.OperationalState.Failed->Get());
     }
 
     void TestHangWhenFileRingBufferIsCorrupted(TBootstrap& b)

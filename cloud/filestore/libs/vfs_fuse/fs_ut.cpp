@@ -7871,6 +7871,22 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
 
+    Y_UNIT_TEST(WriteBackCacheShouldNotReportMetricsWhenNotInitialized)
+    {
+        TBootstrap bootstrap;
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        UNIT_ASSERT(!bootstrap.GetFileSystemStatsCounters()->FindSubgroup(
+            "module",
+            "WriteBackCache"));
+    }
+
     Y_UNIT_TEST(WriteBackCacheShouldReportMetrics)
     {
         NProto::TFileStoreFeatures features;

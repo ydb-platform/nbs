@@ -38,7 +38,7 @@ struct TWriteBackCacheStateMetrics
         NMetrics::IMetricPtr FailedCount;
     };
 
-    struct TStateMetrics
+    struct TOperationalStateMetrics
     {
         NMetrics::IMetricPtr Enabled;
         NMetrics::IMetricPtr Draining;
@@ -55,7 +55,7 @@ struct TWriteBackCacheStateMetrics
     TRequestMetrics ReleaseHandleRequests;
     TRequestMetrics AcquireBarrierRequests;
 
-    TStateMetrics State;
+    TOperationalStateMetrics OperationalState;
 
     void Register(
         NMetrics::IMetricsRegistry& localMetricsRegistry,
@@ -83,7 +83,7 @@ struct IWriteBackCacheStateStats
         const TDuration AcquireBarrierRequest;
     };
 
-    struct TState
+    struct TOperationalState
     {
         const bool DrainRequested;
         const bool HasRequests;
@@ -108,7 +108,7 @@ struct IWriteBackCacheStateStats
     virtual TWriteBackCacheStateMetrics CreateMetrics() const = 0;
 
     virtual void UpdateStats(
-        const TState& state,
+        const TOperationalState& state,
         const TMaxInProgressDurations& values) = 0;
 };
 

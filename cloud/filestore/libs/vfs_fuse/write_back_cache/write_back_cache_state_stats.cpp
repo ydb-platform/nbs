@@ -28,10 +28,10 @@ private:
     TRelaxedExtendedEventCounterWithTimeStats<> ReleaseHandleRequestCounter;
     TRelaxedExtendedEventCounterWithTimeStats<> AcquireBarrierRequestCounter;
 
-    TRelaxedCounter StateEnabledCounter;
-    TRelaxedCounter StateDrainingCounter;
-    TRelaxedCounter StateDisabledCounter;
-    TRelaxedCounter StateFailedCounter;
+    TRelaxedCounter OperationalStateEnabledCounter;
+    TRelaxedCounter OperationalStateDrainingCounter;
+    TRelaxedCounter OperationalStateDisabledCounter;
+    TRelaxedCounter OperationalStateFailedCounter;
 
 public:
     void FlushStarted() override
@@ -141,30 +141,43 @@ public:
             .AcquireBarrierRequests = CreateMetrics(
                 [self]() -> const auto&
                 { return self->AcquireBarrierRequestCounter; }),
-            .State =
+            .OperationalState =
                 {
                     .Enabled = CreateMetric(
-                        [self] { return self->StateEnabledCounter.Get(); }),
+                        [self]
+                        {
+                            return self->OperationalStateEnabledCounter.Get();
+                        }),
                     .Draining = CreateMetric(
-                        [self] { return self->StateDrainingCounter.Get(); }),
+                        [self]
+                        {
+                            return self->OperationalStateDrainingCounter.Get();
+                        }),
                     .Disabled = CreateMetric(
-                        [self] { return self->StateDisabledCounter.Get(); }),
+                        [self]
+                        {
+                            return self->OperationalStateDisabledCounter.Get();
+                        }),
                     .Failed = CreateMetric(
-                        [self] { return self->StateFailedCounter.Get(); }),
+                        [self]
+                        { return self->OperationalStateFailedCounter.Get(); }),
                 },
         };
     }
 
     void UpdateStats(
-        const TState& state,
+        const TOperationalState& state,
         const TMaxInProgressDurations& values) override
     {
-        StateEnabledCounter.Set(static_cast<i64>(!state.DrainRequested));
-        StateDrainingCounter.Set(
-            static_cast<i64>(state.DrainRequested && state.HasRequests));
-        StateDisabledCounter.Set(
-            static_cast<i64>(state.DrainRequested && !state.HasRequests));
-        StateFailedCounter.Set(static_cast<i64>(state.Failed));
+        OperationalStateEnabledCounter.Set(
+            static_cast<i64>(!state.Failed && !state.DrainRequested));
+        OperationalStateDrainingCounter.Set(
+            static_cast<i64>(
+                !state.Failed && state.DrainRequested && state.HasRequests));
+        OperationalStateDisabledCounter.Set(
+            static_cast<i64>(
+                !state.Failed && state.DrainRequested && !state.HasRequests));
+        OperationalStateFailedCounter.Set(static_cast<i64>(state.Failed));
 
         FlushEventCounter.Update();
         BarrierEventCounter.Update(values.ActiveBarrier);
@@ -331,26 +344,26 @@ void TWriteBackCacheStateMetrics::Register(
     helper("AcquireBarrierRequests", AcquireBarrierRequests);
 
     localMetricsRegistry.Register(
-        {CreateSensor("State_Enabled")},
-        State.Enabled,
+        {CreateSensor("OperationalState_Enabled")},
+        OperationalState.Enabled,
         EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
 
     localMetricsRegistry.Register(
-        {CreateSensor("State_Draining")},
-        State.Draining,
+        {CreateSensor("OperationalState_Draining")},
+        OperationalState.Draining,
         EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
 
     localMetricsRegistry.Register(
-        {CreateSensor("State_Disabled")},
-        State.Disabled,
+        {CreateSensor("OperationalState_Disabled")},
+        OperationalState.Disabled,
         EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
 
     localMetricsRegistry.Register(
-        {CreateSensor("State_Failed")},
-        State.Failed,
+        {CreateSensor("OperationalState_Failed")},
+        OperationalState.Failed,
         EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
 }
