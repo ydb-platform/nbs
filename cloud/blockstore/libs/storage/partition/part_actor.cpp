@@ -1520,11 +1520,6 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     response->ChannelsCount = State->GetChannelCount();
     response->Generation = Executor()->Generation();
 
-    SharedState->UnflushedFreshBlobByteCount.store(
-        State->GetUnflushedFreshBlobByteCount());
-    SharedState->UnflushedFreshBlocksCount.store(
-        State->GetUnflushedFreshBlocksCount());
-
     response->SharedState = SharedState;
 
     for (size_t i = 0; i < State->GetChannelCount(); ++i) {

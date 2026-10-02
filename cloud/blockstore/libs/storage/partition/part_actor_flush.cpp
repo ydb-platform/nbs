@@ -793,7 +793,7 @@ void TPartitionActor::HandleFlushCompleted(
                 State->FlushFreshBlob(freshBlobCommitId);
         }
 
-        if (FreshBlocksWriter) {
+        if (IsFreshBlocksWriterEnabled()) {
             SharedState->UnflushedFreshBlobByteCount.fetch_sub(
                 flushedFreshBlobByteCount);
             SharedState->UnflushedFreshBlocksCount.fetch_sub(
