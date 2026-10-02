@@ -93,13 +93,19 @@ void NoteMount(
 void NoteUnmount(TCellConnection& connection, const TString& diskId);
 
 // what carries a binding's data right now
-TString DescribeDataTransport(const THostBinding& binding)
+TString DescribeDataTransport(
+    const THostBinding& binding,
+    const ITransportSwitcherPtr& switcher)
 {
-    switch (binding.HostConfig.GetTransport()) {
+    const auto& hostConfig = binding.HostConfig;
+    switch (hostConfig.GetTransport()) {
         case NProto::CELL_DATA_TRANSPORT_GRPC:
             return "grpc";
         case NProto::CELL_DATA_TRANSPORT_RDMA:
-            if (binding.Switcher && !binding.Switcher->IsPreferredActive()) {
+            // until the switcher is in, the data goes the fallback way
+            if (hostConfig.GetGrpcDataFallbackEnabled() &&
+                (!switcher || !switcher->IsPreferredActive()))
+            {
                 return "grpc fallback";
             }
             return "rdma";
@@ -375,9 +381,11 @@ public:
     TCellMountStatus GetMountStatus() const
     {
         THostBindingPtr binding;
+        ITransportSwitcherPtr switcher;
         TCellMountStatus status;
         with_lock (Lock) {
             binding = Binding;
+            switcher = binding->Switcher;
             status.DiskId = MountedDiskId;
             status.ClientId = MountedClientId;
             status.TabletHost = MountedTabletHost;
@@ -387,7 +395,7 @@ public:
         // never held together
         status.CellId = Pool->GetCellId();
         status.Host = binding->HostConfig.GetFqdn();
-        status.DataTransport = DescribeDataTransport(*binding);
+        status.DataTransport = DescribeDataTransport(*binding, switcher);
         return status;
     }
 
@@ -1121,7 +1129,7 @@ void TCellConnection::InstallBinding(const THostBindingPtr& binding)
     }
 
     binding->Sink = CreateDetachableTarget(DataRouter);
-    binding->Switcher = StartTransportSwitching(
+    auto switcher = StartTransportSwitching(
         binding->Sink,
         binding->DataEndpoint,
         [bootstrap = Bootstrap, hostConfig](
@@ -1139,6 +1147,11 @@ void TCellConnection::InstallBinding(const THostBindingPtr& binding)
         TTransportSwitcherConfig{
             .SettleTime = hostConfig.GetRdmaSettleTime(),
         });
+
+    // the binding may already be current, and the mon page reads it
+    with_lock (Lock) {
+        binding->Switcher = std::move(switcher);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

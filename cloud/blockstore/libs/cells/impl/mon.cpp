@@ -203,7 +203,9 @@ void RenderMounts(
                                 mount.DiskId,
                                 diagnosticsConfig);
                         }
-                        TABLED() { out << mount.DataTransport; }
+                        TABLED() {
+                            out << EncodeHtmlPcdata(mount.DataTransport);
+                        }
                         TABLED() {
                             // empty when the cell is older than the field
                             if (mount.TabletHost) {
