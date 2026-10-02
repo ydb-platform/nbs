@@ -204,6 +204,7 @@ OOMPolicy=continue \
 OOMScoreAdjust=-900 \
 Delegate=yes \
 TasksMax=infinity \
+LimitCORE=infinity \
 LimitMEMLOCK=infinity \
 Restart=on-failure \
 RestartSec=5s \
