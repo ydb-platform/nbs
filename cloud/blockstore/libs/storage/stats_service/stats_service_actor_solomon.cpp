@@ -30,6 +30,24 @@ bool IsRecentlyStarted(TInstant now, const TVolumeStatsInfo& v)
     return now <= v.ApproximateStartTs + TDuration::Minutes(5);
 }
 
+TString GetServiceVolumeType(const NProto::TVolume& volumeInfo)
+{
+    if (volumeInfo.GetIsSystem()) {
+        switch (volumeInfo.GetStorageMediaKind()) {
+            case NProto::STORAGE_MEDIA_SSD:
+                return "ssd_system";
+            case NProto::STORAGE_MEDIA_HDD:
+            case NProto::STORAGE_MEDIA_HYBRID:
+            case NProto::STORAGE_MEDIA_DEFAULT:
+                return "hdd_system";
+            default:
+                break;
+        }
+    }
+
+    return MediaKindToStatsString(volumeInfo.GetStorageMediaKind());
+}
+
 std::vector<std::pair<TString, TString>> BuildVolumeChain(
     const NProto::TVolume& volumeInfo)
 {
@@ -37,7 +55,7 @@ std::vector<std::pair<TString, TString>> BuildVolumeChain(
         {"volume", volumeInfo.GetDiskId()},
         {"cloud", volumeInfo.GetCloudId()},
         {"folder", volumeInfo.GetFolderId()},
-        {"type", MediaKindToStatsString(volumeInfo.GetStorageMediaKind())}};
+        {"type", GetServiceVolumeType(volumeInfo)}};
 }
 
 TIntrusivePtr<TDynamicCounters> RegisterChain(
