@@ -269,22 +269,6 @@ void TIndexTabletActor::HandleForcedTabletOperation(
         LogTag.c_str(),
         msg->Mode);
 
-    auto replyError = [&](const NProto::TError& error)
-    {
-        AbortForcedTabletOperation(
-            msg->Mode,
-            std::move(msg->OperationId),
-            error);
-
-        if (ev->Sender == ctx.SelfID) {
-            return;
-        }
-
-        auto response = std::make_unique<
-            TEvIndexTabletPrivate::TEvForcedTabletOperationResponse>(error);
-        NCloud::Reply(ctx, *ev, std::move(response));
-    };
-
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
@@ -294,12 +278,7 @@ void TIndexTabletActor::HandleForcedTabletOperation(
         return;
     }
 
-    const auto* state =
-        StartForcedTabletOperation(msg->Mode, std::move(msg->OperationId));
-    if (!state) {
-        replyError(MakeError(E_INVALID_STATE, "could not start the operation"));
-        return;
-    }
+    StartForcedTabletOperation(msg->Mode, std::move(msg->OperationId));
 
     std::unique_ptr<IActor> actor;
 

@@ -317,14 +317,11 @@ void TIndexTabletActor::HandleForcedRangeOperation(
         return;
     }
 
+    // always returns valid state after the previous check
     const auto* state = StartForcedRangeOperation(
         msg->Mode,
         std::move(msg->Ranges),
         std::move(msg->OperationId));
-    if (!state) {
-        replyError(MakeError(E_INVALID_STATE, "could not start the operation"));
-        return;
-    }
 
     std::unique_ptr<IActor> actor;
 
