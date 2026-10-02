@@ -344,25 +344,25 @@ void TWriteBackCacheStateMetrics::Register(
     helper("AcquireBarrierRequests", AcquireBarrierRequests);
 
     localMetricsRegistry.Register(
-        {CreateSensor("OperationalState_Enabled")},
+        {CreateLabel("state", "Enabled"), CreateSensor("OperationalState")},
         OperationalState.Enabled,
         EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
 
     localMetricsRegistry.Register(
-        {CreateSensor("OperationalState_Draining")},
+        {CreateLabel("state", "Draining"), CreateSensor("OperationalState")},
         OperationalState.Draining,
         EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
 
     localMetricsRegistry.Register(
-        {CreateSensor("OperationalState_Disabled")},
+        {CreateLabel("state", "Disabled"), CreateSensor("OperationalState")},
         OperationalState.Disabled,
         EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
 
     localMetricsRegistry.Register(
-        {CreateSensor("OperationalState_Failed")},
+        {CreateLabel("state", "Failed"), CreateSensor("OperationalState")},
         OperationalState.Failed,
         EAggregationType::AT_MAX,
         EMetricType::MT_ABSOLUTE);
