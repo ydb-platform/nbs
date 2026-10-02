@@ -327,8 +327,8 @@ message TDiskConfig
     repeated string UnconfirmedDeviceUUIDs = 21;
 
     // The journal layout of the disk devices. If the journal is enabled, the
-    // agents are told about the allocation of the devices (see AllocateDevice
-    // request).
+    // agents are told about the allocation and the deallocation of the devices
+    // (see AllocateDevice and DeallocateDevice requests).
     TJournalConfig JournalConfig = 22;
 }
 
@@ -1218,6 +1218,25 @@ message TAllocateDeviceRequest
 }
 
 message TAllocateDeviceResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// Deallocate device. Sent by Disk Registry before a disk with the journal
+// enabled is deallocated, while the device still belongs to the disk. 
+
+message TDeallocateDeviceRequest
+{
+    // Optional request headers.
+    THeaders Headers = 1;
+
+    // UUID of the device to deallocate.
+    string DeviceUUID = 2;
+}
+
+message TDeallocateDeviceResponse
 {
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;

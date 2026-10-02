@@ -2336,6 +2336,24 @@ Y_UNIT_TEST_SUITE(TDiskAgentTest)
         diskAgent.AllocateDevice("MemoryDevice1", journalConfig);
     }
 
+    Y_UNIT_TEST(ShouldHandleDeallocateDevice)
+    {
+        TTestBasicRuntime runtime;
+
+        auto env = TTestEnvBuilder(runtime)
+            .With(DiskAgentConfig({
+                "MemoryDevice1",
+                "MemoryDevice2",
+                "MemoryDevice3",
+            }))
+            .Build();
+
+        TDiskAgentClient diskAgent(runtime);
+        diskAgent.WaitReady();
+
+        diskAgent.DeallocateDevice("MemoryDevice1");
+    }
+
     Y_UNIT_TEST(ShouldSecureEraseMultipleDevices)
     {
         TTestBasicRuntime runtime;

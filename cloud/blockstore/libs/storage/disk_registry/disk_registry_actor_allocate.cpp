@@ -349,6 +349,25 @@ void TDiskRegistryActor::HandleDeallocateDisk(
         return;
     }
 
+    if (State->IsReadyForCleanup(diskId)) {
+        if (auto devices = State->GetJournalledDiskDevices(diskId)) {
+            //
+            // Postpone the deallocation until the agents acknowledge it: the
+            // devices of a journalled disk must not be released before their
+            // agents have been told about it
+            //
+
+            SendDeallocateDeviceRequests(
+                ctx,
+                std::move(requestInfo),
+                diskId,
+                msg->Record.GetSync(),
+                std::move(devices));
+
+            return;
+        }
+    }
+
     ExecuteTx<TRemoveDisk>(
         ctx,
         std::move(requestInfo),

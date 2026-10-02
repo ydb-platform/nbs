@@ -850,6 +850,17 @@ struct TEvDiskRegistryPrivate
     };
 
     //
+    // DeallocateDevicesCompleted
+    //
+
+    struct TDeallocateDevicesCompleted
+    {
+        TRequestInfoPtr RequestInfo;
+        TString DiskId;
+        bool Sync = false;
+    };
+
+    //
     // UpdatePathAttachState
     //
 
@@ -884,6 +895,8 @@ struct TEvDiskRegistryPrivate
 
         EvAttachDetachPathsOperationCompleted,
 
+        EvDeallocateDevicesCompleted,
+
         EvEnd
     };
 
@@ -910,6 +923,10 @@ struct TEvDiskRegistryPrivate
     using TEvAttachDetachPathsOperationCompleted = TResponseEvent<
         TAttachDetachPathsOperationCompleted,
         EvAttachDetachPathsOperationCompleted>;
+
+    using TEvDeallocateDevicesCompleted = TResponseEvent<
+        TDeallocateDevicesCompleted,
+        EvDeallocateDevicesCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

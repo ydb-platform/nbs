@@ -191,6 +191,7 @@ private:
             HFunc(TEvDiskAgent::TEvSecureEraseDeviceRequest, HandleSecureEraseDevice);
             HFunc(TEvDiskAgent::TEvEnableAgentDeviceRequest, HandleEnableAgentDevice);
             HFunc(TEvDiskAgent::TEvAllocateDeviceRequest, HandleAllocateDevice);
+            HFunc(TEvDiskAgent::TEvDeallocateDeviceRequest, HandleDeallocateDevice);
 
             HFunc(TEvDiskAgent::TEvDetachPathsRequest, HandleDetachPaths)
 
@@ -324,6 +325,16 @@ private:
             ctx,
             *ev,
             std::make_unique<TEvDiskAgent::TEvAllocateDeviceResponse>());
+    }
+
+    void HandleDeallocateDevice(
+        const TEvDiskAgent::TEvDeallocateDeviceRequest::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvDiskAgent::TEvDeallocateDeviceResponse>());
     }
 
     void HandleDetachPaths(

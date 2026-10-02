@@ -555,6 +555,11 @@ public:
     TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
 
     TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
+
+    /// Returns the devices of the disk (replicas included) if the journal is
+    /// enabled for it.
+    TVector<NProto::TDeviceConfig> GetJournalledDiskDevices(
+        const TDiskId& diskId) const;
     TDeviceList::TEraseIdempotencyKey GetEraseIdempotencyKey(
         const TDeviceId& deviceId) const;
 

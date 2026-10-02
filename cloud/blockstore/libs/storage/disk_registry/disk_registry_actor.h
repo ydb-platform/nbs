@@ -201,6 +201,13 @@ private:
         TVector<NProto::TDeviceConfig> devices,
         std::unique_ptr<TEvDiskRegistry::TEvAllocateDiskResponse> response);
 
+    void SendDeallocateDeviceRequests(
+        const NActors::TActorContext& ctx,
+        TRequestInfoPtr requestInfo,
+        const TString& diskId,
+        bool sync,
+        TVector<NProto::TDeviceConfig> devices);
+
     void DestroyBrokenDisks(const NActors::TActorContext& ctx);
 
     void ReallocateDisks(const NActors::TActorContext& ctx);
@@ -533,6 +540,10 @@ private:
 
     void HandleOperationCompleted(
         const TEvDiskRegistryPrivate::TEvOperationCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleDeallocateDevicesCompleted(
+        const TEvDiskRegistryPrivate::TEvDeallocateDevicesCompleted::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleUpdateVolumeConfigResponse(

@@ -297,6 +297,16 @@ public:
         return request;
     }
 
+    auto CreateDeallocateDeviceRequest(TString uuid)
+    {
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvDeallocateDeviceRequest>();
+
+        request->Record.SetDeviceUUID(std::move(uuid));
+
+        return request;
+    }
+
     auto CreateChecksumDeviceBlocksRequest(
         const TString& uuid,
         ui64 startIndex,

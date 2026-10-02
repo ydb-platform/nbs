@@ -7622,6 +7622,45 @@ bool TDiskRegistryState::IsReadyForCleanup(const TDiskId& diskId) const
     return DisksToCleanup.contains(diskId);
 }
 
+TVector<NProto::TDeviceConfig> TDiskRegistryState::GetJournalledDiskDevices(
+    const TDiskId& diskId) const
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return {};
+    }
+
+    //
+    // Collect the disks that hold the devices: a mirrored disk keeps them in
+    // its replicas
+    //
+
+    TVector<TDiskId> diskIds;
+    if (disk->ReplicaCount) {
+        for (ui32 i = 0; i < disk->ReplicaCount + 1; ++i) {
+            diskIds.push_back(GetReplicaDiskId(diskId, i));
+        }
+    } else {
+        diskIds.push_back(diskId);
+    }
+
+    TVector<NProto::TDeviceConfig> devices;
+    for (const auto& id: diskIds) {
+        const auto* d = Disks.FindPtr(id);
+        if (!d || !d->JournalConfig.GetEnabled()) {
+            continue;
+        }
+
+        for (const auto& uuid: d->Devices) {
+            if (const auto* device = FindDevice(uuid)) {
+                devices.push_back(*device);
+            }
+        }
+    }
+
+    return devices;
+}
+
 TVector<TString> TDiskRegistryState::GetDisksToCleanup() const
 {
     return {DisksToCleanup.begin(), DisksToCleanup.end()};
