@@ -1,8 +1,7 @@
 #include <cloud/filestore/libs/storage/query/parser.h>
 
 #include <library/cpp/testing/unittest/registar.h>
-
-#include <type_traits>
+#include <util/generic/overloaded.h>
 
 namespace NCloud::NFileStore::NStorage::NQuery {
 
@@ -19,34 +18,26 @@ const TString& PredicateColumn(const TPredicate& predicate)
 
 const TValue& PredicateValue(const TPredicate& predicate, size_t index = 0)
 {
-    return std::visit(
-        [index](const auto& value) -> const TValue&
-        {
-            if constexpr (
-                std::is_same_v<std::decay_t<decltype(value)>, TInPredicate>)
-            {
-                return value.Values[index];
-            } else {
-                return value.Value;
-            }
+    return std::visit(TOverloaded{
+        [] (const TSingleValuePredicate& value) -> const TValue& {
+            return value.Value;
         },
-        predicate);
+        [index] (const TInPredicate& value) -> const TValue& {
+            return value.Values[index];
+        },
+    }, predicate);
 }
 
 size_t PredicateValuesSize(const TPredicate& predicate)
 {
-    return std::visit(
-        [](const auto& value) -> size_t
-        {
-            if constexpr (
-                std::is_same_v<std::decay_t<decltype(value)>, TInPredicate>)
-            {
-                return value.Values.size();
-            } else {
-                return 1;
-            }
+    return std::visit(TOverloaded{
+        [] (const TSingleValuePredicate&) -> size_t {
+            return 1;
         },
-        predicate);
+        [] (const TInPredicate& value) -> size_t {
+            return value.Values.size();
+        },
+    }, predicate);
 }
 
 }   // namespace

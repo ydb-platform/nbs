@@ -1,6 +1,7 @@
 #include <cloud/filestore/libs/storage/query/parser.h>
 
 #include <util/string/cast.h>
+#include <util/generic/overloaded.h>
 
 #include <utility>
 
@@ -14,8 +15,7 @@ private:
     struct TPredicateBuilder
     {
         TString Column;
-        EOperator Operator = EOperator::Equal;
-        TVector<TValue> Values;
+        TPredicate Value;
     };
 
     enum class EExprStackItem
@@ -49,6 +49,8 @@ private:
     TString Unquote() const;
     void SetError(TStringBuf message, const char* at);
     bool FinishPredicate();
+    void AppendValue(TValue value);
+    TValue& LastValue();
     bool Reduce();
     bool OnLogical(EExprStackItem op);
     bool OnCloseParen();
@@ -67,28 +69,28 @@ private:
         PendingPredicate = true;
     }
     action SetPredicateColumn { Predicate.Column = Matched(); }
-    action SetEqual { Predicate.Operator = EOperator::Equal; }
-    action SetNotEqual { Predicate.Operator = EOperator::NotEqual; }
-    action SetGreater { Predicate.Operator = EOperator::Greater; }
-    action SetGreaterOrEqual { Predicate.Operator = EOperator::GreaterOrEqual; }
-    action SetLess { Predicate.Operator = EOperator::Less; }
-    action SetLessOrEqual { Predicate.Operator = EOperator::LessOrEqual; }
-    action SetSubstr { Predicate.Operator = EOperator::Substr; }
-    action SetIn { Predicate.Operator = EOperator::In; }
-    action BeginColumnValue { Predicate.Values.emplace_back(TColumnRef{}); }
+    action SetEqual { Predicate.Value = TEqualPredicate{}; }
+    action SetNotEqual { Predicate.Value = TNotEqualPredicate{}; }
+    action SetGreater { Predicate.Value = TGreaterPredicate{}; }
+    action SetGreaterOrEqual { Predicate.Value = TGreaterOrEqualPredicate{}; }
+    action SetLess { Predicate.Value = TLessPredicate{}; }
+    action SetLessOrEqual { Predicate.Value = TLessOrEqualPredicate{}; }
+    action SetSubstr { Predicate.Value = TSubstrPredicate{}; }
+    action SetIn { Predicate.Value = TInPredicate{}; }
+    action BeginColumnValue { AppendValue(TColumnRef{}); }
     action SetColumnValue {
-        std::get<TColumnRef>(Predicate.Values.back()).Name = Matched();
+        std::get<TColumnRef>(LastValue()).Name = Matched();
     }
-    action BeginNumber { Predicate.Values.emplace_back(ui64{}); }
+    action BeginNumber { AppendValue(ui64{}); }
     action SetNumber {
         ui64 value = 0;
         if (!TryFromString(Matched(), value)) {
             SetError("numeric value is out of range", Start);
             goto PARSE_ERROR;
         }
-        Predicate.Values.back() = value;
+        LastValue() = value;
     }
-    action AddString { Predicate.Values.emplace_back(Unquote()); }
+    action AddString { AppendValue(Unquote()); }
     action BeginWhere { HasWhere = true; }
     action OpenParen { Operators.push_back(EExprStackItem::OpenParen); }
     action CloseParen {
@@ -195,71 +197,39 @@ void TParser::SetError(TStringBuf message, const char* at)
 bool TParser::FinishPredicate()
 {
     if (PendingPredicate) {
-        TPredicate predicate;
-        switch (Predicate.Operator) {
-          case EOperator::Equal: {
-              TEqualPredicate value;
-              value.Column = std::move(Predicate.Column);
-              value.Value = std::move(Predicate.Values.front());
-              predicate = std::move(value);
-              break;
-          }
-          case EOperator::NotEqual: {
-              TNotEqualPredicate value;
-              value.Column = std::move(Predicate.Column);
-              value.Value = std::move(Predicate.Values.front());
-              predicate = std::move(value);
-              break;
-          }
-          case EOperator::Greater: {
-              TGreaterPredicate value;
-              value.Column = std::move(Predicate.Column);
-              value.Value = std::move(Predicate.Values.front());
-              predicate = std::move(value);
-              break;
-          }
-          case EOperator::GreaterOrEqual: {
-              TGreaterOrEqualPredicate value;
-              value.Column = std::move(Predicate.Column);
-              value.Value = std::move(Predicate.Values.front());
-              predicate = std::move(value);
-              break;
-          }
-          case EOperator::Less: {
-              TLessPredicate value;
-              value.Column = std::move(Predicate.Column);
-              value.Value = std::move(Predicate.Values.front());
-              predicate = std::move(value);
-              break;
-          }
-          case EOperator::LessOrEqual: {
-              TLessOrEqualPredicate value;
-              value.Column = std::move(Predicate.Column);
-              value.Value = std::move(Predicate.Values.front());
-              predicate = std::move(value);
-              break;
-          }
-          case EOperator::Substr: {
-              TSubstrPredicate value;
-              value.Column = std::move(Predicate.Column);
-              value.Value = std::move(Predicate.Values.front());
-              predicate = std::move(value);
-              break;
-          }
-          case EOperator::In: {
-              TInPredicate value;
-              value.Column = std::move(Predicate.Column);
-              value.Values = std::move(Predicate.Values);
-              predicate = std::move(value);
-              break;
-          }
-        }
+        std::visit([&] (auto& value) {
+            value.Column = std::move(Predicate.Column);
+        }, Predicate.Value);
         auto node = std::make_shared<TExpression>();
-        node->Node = std::move(predicate);
+        node->Node = std::move(Predicate.Value);
         Expressions.push_back(std::move(node));
         PendingPredicate = false;
     }
     return !Expressions.empty();
+}
+
+void TParser::AppendValue(TValue value)
+{
+    std::visit(TOverloaded{
+        [&] (TSingleValuePredicate& predicate) {
+            predicate.Value = std::move(value);
+        },
+        [&] (TInPredicate& predicate) {
+            predicate.Values.emplace_back(std::move(value));
+        },
+    }, Predicate.Value);
+}
+
+TValue& TParser::LastValue()
+{
+    return std::visit(TOverloaded{
+        [] (TSingleValuePredicate& predicate) -> TValue& {
+            return predicate.Value;
+        },
+        [] (TInPredicate& predicate) -> TValue& {
+            return predicate.Values.back();
+        },
+    }, Predicate.Value);
 }
 
 bool TParser::Reduce()
@@ -357,7 +327,7 @@ bool TParser::FinishExpression()
         SetError("invalid WHERE expression", p);
         return false;
     }
-    Query.Where = std::move(Expressions.back());
+    Query.Where = std::move(*Expressions.back());
     return true;
 }
 

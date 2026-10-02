@@ -18,57 +18,23 @@ struct TColumnRef
 
 using TValue = std::variant<ui64, TString, TColumnRef>;
 
-enum class EOperator
-{
-    Equal,
-    NotEqual,
-    Greater,
-    GreaterOrEqual,
-    Less,
-    LessOrEqual,
-    Substr,
-    In,
-};
-
 struct TPredicateBase
 {
     TString Column;
 };
 
-struct TEqualPredicate : TPredicateBase
+struct TSingleValuePredicate : TPredicateBase
 {
     TValue Value;
 };
 
-struct TNotEqualPredicate : TPredicateBase
-{
-    TValue Value;
-};
-
-struct TGreaterPredicate : TPredicateBase
-{
-    TValue Value;
-};
-
-struct TGreaterOrEqualPredicate : TPredicateBase
-{
-    TValue Value;
-};
-
-struct TLessPredicate : TPredicateBase
-{
-    TValue Value;
-};
-
-struct TLessOrEqualPredicate : TPredicateBase
-{
-    TValue Value;
-};
-
-struct TSubstrPredicate : TPredicateBase
-{
-    TValue Value;
-};
+struct TEqualPredicate : TSingleValuePredicate {};
+struct TNotEqualPredicate : TSingleValuePredicate {};
+struct TGreaterPredicate : TSingleValuePredicate {};
+struct TGreaterOrEqualPredicate : TSingleValuePredicate {};
+struct TLessPredicate : TSingleValuePredicate {};
+struct TLessOrEqualPredicate : TSingleValuePredicate {};
+struct TSubstrPredicate : TSingleValuePredicate {};
 
 struct TInPredicate : TPredicateBase
 {
@@ -110,7 +76,7 @@ struct TSelect
     TString Table;
     // Empty means SELECT *.
     TVector<TString> Columns;
-    std::optional<TExpression> Where;
+    TMaybe<TExpression> Where;
     TMaybe<ui64> Limit;
 };
 
