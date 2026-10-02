@@ -1594,16 +1594,16 @@ public:
 protected:
     struct TPendingForcedRangeOperation
     {
-        TEvIndexTabletPrivate::EForcedRangeOperationMode Mode =
-            TEvIndexTabletPrivate::EForcedRangeOperationMode::Compaction;
+        using EMode = TEvIndexTabletPrivate::EForcedRangeOperationMode;
+        EMode Mode = EMode::Compaction;
         TVector<ui32> Ranges;
         TString OperationId;
     };
 
     struct TPendingForcedTabletOperation
     {
-        TEvIndexTabletPrivate::EForcedTabletOperationMode Mode =
-            TEvIndexTabletPrivate::EForcedTabletOperationMode::Flush;
+        using EMode = TEvIndexTabletPrivate::EForcedTabletOperationMode;
+        EMode Mode = EMode::Flush;
         TString OperationId;
     };
 
