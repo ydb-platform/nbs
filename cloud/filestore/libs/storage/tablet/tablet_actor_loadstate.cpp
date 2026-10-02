@@ -101,7 +101,8 @@ bool TIndexTabletActor::PrepareTx_LoadState(
         db->ReadFileSystem(args.FileSystem),
         db->ReadFileSystemStats(args.FileSystemStats),
         db->ReadTabletStorageInfo(args.TabletStorageInfo),
-        db->ReadNode(RootNodeId, 0, args.RootNode),
+        // reading the latest version of the root node
+        db->ReadNode(RootNodeId, InvalidCommitId - 1, args.RootNode),
         db->ReadSessions(args.Sessions),
         db->ReadSessionHandles(args.Handles),
         db->ReadSessionLocks(args.Locks),

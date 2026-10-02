@@ -2015,6 +2015,36 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         }
     }
 
+    Y_UNIT_TEST(ShouldKeepRootNodeUponTabletReboot)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.SetNodeAttr(
+            TSetNodeAttrArgs(RootNodeId).SetMode(0700).SetUid(42));
+        // creating a child modifies the root node as well
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        const auto before = tablet.UnsafeGetNode(RootNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(0700, before.GetNode().GetMode());
+        UNIT_ASSERT_VALUES_EQUAL(42, before.GetNode().GetUid());
+        UNIT_ASSERT(before.GetCommitId());
+
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        const auto after = tablet.UnsafeGetNode(RootNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(
+            before.GetNode().ShortUtf8DebugString(),
+            after.GetNode().ShortUtf8DebugString());
+        UNIT_ASSERT_VALUES_EQUAL(before.GetCommitId(), after.GetCommitId());
+    }
+
     Y_UNIT_TEST(ShouldAdvanceNodeCommitIdUponModification)
     {
         TTestEnv env;
