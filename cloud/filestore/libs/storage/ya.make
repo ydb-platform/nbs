@@ -5,13 +5,13 @@ RECURSE(
     init
     model
     perf
+    query
     service
     ss_proxy
     tablet
     tablet/model
     tablet/protos
     tablet_proxy
-    query
 )
 
 RECURSE_FOR_TESTS(
