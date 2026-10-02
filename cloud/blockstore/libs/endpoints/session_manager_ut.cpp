@@ -87,6 +87,7 @@ struct TTestCellManager: public ICellManager
         const NClient::TClientAppConfigPtr& clientConfig)>;
 
     TCreateConnectionHandler CreateConnectionHandler;
+    ICellConnectionObserverPtr LastObserver;
     const IBlockStorePtr LocalService;
 
     explicit TTestCellManager(IBlockStorePtr localService = nullptr)
@@ -101,7 +102,7 @@ struct TTestCellManager: public ICellManager
         ICellConnectionObserverPtr observer) override
     {
         Y_UNUSED(fqdn);
-        Y_UNUSED(observer);
+        LastObserver = std::move(observer);
 
         UNIT_ASSERT(CreateConnectionHandler);
         return MakeFuture(CreateConnectionHandler(cellId, clientConfig));
@@ -900,6 +901,167 @@ Y_UNIT_TEST_SUITE(TSessionManagerTest)
     Y_UNIT_TEST(ShouldNotForceRemoteMountModeForCellEndpointsWhenNotTemporaryServer)
     {
         ShouldForceRemoteMountModeForCellEndpoints(false);
+    }
+
+    Y_UNIT_TEST(ShouldReportServingCellHostOfCellEndpoint)
+    {
+        const TString socketPath = "testSocket";
+        const TString diskId = "testDiskId";
+        const TString cellId = "testCellId";
+        const TString clientId = "testClientId";
+        const TString instanceId = "testInstanceId";
+
+        auto service = std::make_shared<TTestService>();
+        service->DescribeVolumeHandler =
+            [&] (std::shared_ptr<NProto::TDescribeVolumeRequest> request) {
+                auto response = NProto::TDescribeVolumeResponse();
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                response.SetCellId(cellId);
+                return MakeFuture(std::move(response));
+            };
+
+        auto cellService = std::make_shared<TTestService>();
+        cellService->MountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TMountVolumeRequest> request) {
+                NProto::TMountVolumeResponse response;
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                response.SetInactiveClientsTimeout(100);
+                return MakeFuture(response);
+            };
+        cellService->UnmountVolumeHandler =
+            [&] (std::shared_ptr<NProto::TUnmountVolumeRequest> request) {
+                Y_UNUSED(request);
+                return MakeFuture(NProto::TUnmountVolumeResponse());
+            };
+
+        auto cellManager = std::make_shared<TTestCellManager>(service);
+        cellManager->CreateConnectionHandler =
+            [&] (const TString& requestedCellId,
+                 const NClient::TClientAppConfigPtr& clientConfig)
+                -> TResultOrError<ICellConnectionPtr>
+            {
+                Y_UNUSED(requestedCellId);
+                Y_UNUSED(clientConfig);
+                UNIT_ASSERT(cellManager->LastObserver);
+                // a connection reports its host as soon as it connects - before
+                // the volume is mounted
+                cellManager->LastObserver->OnServingHostChanged("host-1");
+                return ICellConnectionPtr(std::make_shared<TTestCellConnection>(
+                    cellService,
+                    CreateStorageStub()));
+            };
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        // the server stats stub registers nothing - register the volume the way
+        // a real mount would
+        NProto::TVolume volume;
+        volume.SetDiskId(diskId);
+        volume.SetCloudId("cloud");
+        volume.SetFolderId("folder");
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+        volumeStats->MountVolume(volume, clientId, instanceId);
+
+        auto cellMount = [&] (const TString& fqdn) -> i64 {
+            auto cell = monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", diskId)
+                ->GetSubgroup("instance", instanceId)
+                ->GetSubgroup("cloud", "cloud")
+                ->GetSubgroup("folder", "folder")
+                ->GetSubgroup("type", "ssd")
+                ->FindSubgroup("cell", cellId);
+            auto host = cell ? cell->FindSubgroup("cell_host", fqdn) : nullptr;
+            auto counter = host ? host->FindCounter("CellMount") : nullptr;
+            return counter ? counter->Val() : 0;
+        };
+
+        auto executor = TExecutor::Create("TestService");
+        auto logging = CreateLoggingService("console");
+
+        TSessionManagerOptions options;
+        options.DisableDurableClient = true;
+
+        auto encryptionClientFactory = CreateEncryptionClientFactory(
+            logging,
+            CreateDefaultEncryptionKeyProvider(),
+            NProto::EZP_WRITE_ENCRYPTED_ZEROS);
+
+        auto sessionManager = CreateSessionManager(
+            CreateWallClockTimer(),
+            CreateSchedulerStub(),
+            logging,
+            CreateMonitoringServiceStub(),
+            CreateRequestStatsStub(),
+            volumeStats,
+            CreateServerStatsStub(),
+            service,
+            cellManager,
+            CreateDefaultStorageProvider(service),
+            encryptionClientFactory,
+            executor,
+            options);
+
+        executor->Start();
+        Y_DEFER {
+            executor->Stop();
+        };
+
+        NProto::TStartEndpointRequest request;
+        request.SetUnixSocketPath(socketPath);
+        request.SetDiskId(diskId);
+        request.SetClientId(clientId);
+        request.SetInstanceId(instanceId);
+
+        {
+            auto future = sessionManager->CreateSession(
+                MakeIntrusive<TCallContext>(),
+                request);
+
+            auto sessionOrError = future.GetValueSync();
+            UNIT_ASSERT_C(!HasError(sessionOrError), sessionOrError.GetError());
+        }
+
+        // the host reported before the mount shows up once mounted
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-1"));
+
+        cellManager->LastObserver->OnServingHostChanged("host-2");
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("host-1"));
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-2"));
+
+        {
+            auto future = sessionManager->RemoveSession(
+                MakeIntrusive<TCallContext>(),
+                socketPath,
+                request.GetHeaders());
+
+            auto error = future.GetValueSync();
+            UNIT_ASSERT_C(!HasError(error), error);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("host-2"));
+
+        {
+            auto future = sessionManager->CreateSession(
+                MakeIntrusive<TCallContext>(),
+                request);
+
+            auto sessionOrError = future.GetValueSync();
+            UNIT_ASSERT_C(!HasError(sessionOrError), sessionOrError.GetError());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-1"));
+
+        // a session dropped without being stopped (like an abandoned session
+        // switch) takes its serving host with it
+        sessionManager.reset();
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("host-1"));
     }
 }
 
