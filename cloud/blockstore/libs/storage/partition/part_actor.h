@@ -122,6 +122,7 @@ private:
     const ui64 StartTime = GetCycleCount();
     const TStorageConfigConstPtr Config;
     const NProto::TPartitionConfig PartitionConfig;
+    const bool FreshBlocksWriterEnabled;
     const TVolumeLabelsConstPtr VolumeLabels;
     const TDiagnosticsConfigConstPtr DiagnosticsConfig;
     const IProfileLogPtr ProfileLog;
