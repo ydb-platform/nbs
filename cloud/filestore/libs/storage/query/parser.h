@@ -62,8 +62,8 @@ struct TExpression;
 struct TLogicalExpression
 {
     ELogicalOperator Operator = ELogicalOperator::And;
-    std::shared_ptr<TExpression> Left;
-    std::shared_ptr<TExpression> Right;
+    std::unique_ptr<TExpression> Left;
+    std::unique_ptr<TExpression> Right;
 };
 
 struct TExpression
