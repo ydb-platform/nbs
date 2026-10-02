@@ -1582,9 +1582,9 @@ public:
 
         TForcedTabletOperationState(
                 TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
-                const TString& operationId)
+                TString operationId)
             : Mode(mode)
-            , OperationId(operationId)
+            , OperationId(std::move(operationId))
         {}
     };
 
