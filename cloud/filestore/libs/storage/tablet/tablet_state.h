@@ -1648,8 +1648,6 @@ public:
         return ForcedOperationState.Get();
     }
 
-    // TODO: FindForcedOperation does not perform lookup in pending
-    // requests queue (https://github.com/ydb-platform/nbs/issues/6977)
     const TForcedOperationState* FindForcedOperation(
         const TString& operationId) const;
 
