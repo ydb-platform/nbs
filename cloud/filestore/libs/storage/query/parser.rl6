@@ -121,8 +121,8 @@ private:
     required_ws = [ \t\r\n\f\v]+;
     identifier = [a-zA-Z_][a-zA-Z_0-9]*;
     number = [0-9]+;
-    single_quoted = "'" ( [^'\\] | '\\' any )* "'";
-    double_quoted = '"' ( [^"\\] | '\\' any )* '"';
+    single_quoted = "'" ( [^'] | "''" )* "'";
+    double_quoted = '"' ( [^"] | '""' )* '"';
 
     value = (identifier >Mark >BeginColumnValue @SetColumnValue)
           | (number >Mark >BeginNumber @SetNumber)
@@ -180,8 +180,9 @@ TString TParser::Matched() const
 TString TParser::Unquote() const
 {
     TString result;
+    const char quote = *Start;
     for (const char* pos = Start + 1; pos < p; ++pos) {
-        if (*pos == '\\') {
+        if (*pos == quote && pos + 1 < p && pos[1] == quote) {
             ++pos;
         }
         result += *pos;

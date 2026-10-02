@@ -174,10 +174,10 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT(!error.Message.empty());
     }
 
-    Y_UNIT_TEST(ShouldParseEscapedStringsAndLimit)
+    Y_UNIT_TEST(ShouldParseDoubledQuotesAndLimit)
     {
         auto query =
-            Parse("select name from NodeRefs where name = 'it\\'s' limit 0");
+            Parse("select name from NodeRefs where name = 'it''s' limit 0");
 
         UNIT_ASSERT(query);
         UNIT_ASSERT_VALUES_EQUAL(1, query->Columns.size());
@@ -188,6 +188,31 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
             std::get<TString>(
                 PredicateValue(std::get<TPredicate>(query->Where->Node))));
         UNIT_ASSERT_VALUES_EQUAL(*query->Limit, 0);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveBackslashesInStrings)
+    {
+        auto query = Parse(R"(SELECT * FROM NodeRefs WHERE name = 'a\b')");
+
+        UNIT_ASSERT(query);
+        UNIT_ASSERT(query->Where);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString("a\\b"),
+            std::get<TString>(
+                PredicateValue(std::get<TPredicate>(query->Where->Node))));
+        UNIT_ASSERT(!Parse(R"(SELECT * FROM NodeRefs WHERE name = 'it\'s')"));
+    }
+
+    Y_UNIT_TEST(ShouldParseDoubledDoubleQuotes)
+    {
+        auto query = Parse(R"(SELECT * FROM NodeRefs WHERE name = "say ""hi""")");
+
+        UNIT_ASSERT(query);
+        UNIT_ASSERT(query->Where);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString("say \"hi\""),
+            std::get<TString>(
+                PredicateValue(std::get<TPredicate>(query->Where->Node))));
     }
 
     Y_UNIT_TEST(ShouldParsePrecedenceAndColumnReferences)
