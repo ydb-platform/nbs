@@ -151,21 +151,20 @@ public:
     void SendResponse(TServerResponsePtr response) override
     {
         ResponseQueue.Enqueue(std::move(response));
-        CompleteRequest();
     }
 
-    bool AcquireRequest(size_t requestBytes) override
+    TRequestToken AcquireRequest(size_t requestBytes) override
     {
         if (IsShuttingDown()) {
-            return false;
+            return {};
         }
 
         ActiveRequests.fetch_add(1, std::memory_order_acq_rel);
+        TRequestToken requestToken(this);
 
         if (Limiter) {
             if (!Limiter->Acquire(requestBytes)) {
-                CompleteRequest();
-                return false;
+                return {};
             }
 
             InFlightBytes += requestBytes;
@@ -175,11 +174,10 @@ public:
         // shutting down while this request is waiting for capacity.
         if (IsShuttingDown()) {
             ReleaseRequest(requestBytes);
-            CompleteRequest();
-            return false;
+            return {};
         }
 
-        return true;
+        return requestToken;
     }
 
     size_t CollectRequests(const TIncompleteRequestsCollector& collector)
@@ -294,7 +292,7 @@ private:
         return ShuttingDown.test(std::memory_order_acquire);
     }
 
-    void CompleteRequest()
+    void CompleteRequest() override
     {
         const auto previous =
             ActiveRequests.fetch_sub(1, std::memory_order_acq_rel);
