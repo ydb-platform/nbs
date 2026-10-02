@@ -31,7 +31,7 @@ private:
     TPredicateBuilder Predicate;
     bool PendingPredicate = false;
     bool HasWhere = false;
-    TVector<std::shared_ptr<TExpression>> Expressions;
+    TVector<std::unique_ptr<TExpression>> Expressions;
     TVector<EExprStackItem> Operators;
     const char* Start = nullptr;
 
@@ -200,7 +200,7 @@ bool TParser::FinishPredicate()
         std::visit([&] (auto& value) {
             value.Column = std::move(Predicate.Column);
         }, Predicate.Value);
-        auto node = std::make_shared<TExpression>();
+        auto node = std::make_unique<TExpression>();
         node->Node = std::move(Predicate.Value);
         Expressions.push_back(std::move(node));
         PendingPredicate = false;
@@ -256,7 +256,7 @@ bool TParser::Reduce()
     logical.Right = std::move(Expressions.back());
     Expressions.pop_back();
     logical.Left = std::move(Expressions.back());
-    auto node = std::make_shared<TExpression>();
+    auto node = std::make_unique<TExpression>();
     node->Node = std::move(logical);
     Expressions.back() = std::move(node);
     return true;
