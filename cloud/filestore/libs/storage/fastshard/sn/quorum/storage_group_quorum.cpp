@@ -28,7 +28,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui64 ReservedPages = TStorageGroupHeader::StorageGroupReservedPages;
-constexpr ui32 QuorumMirrorGroupType = NProtoPrivate::TStorageGroup::E_SG_QUORUM_MIRROR;
+constexpr ui32 QuorumMirrorGroupType = NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR;
 
 // TODO(#5895): unify with blockstore
 bool IsAllZeroes(const char* src, size_t size)
