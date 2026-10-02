@@ -175,16 +175,13 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
 
         auto callContext = MakeIntrusive<TCallContext>();
 
+        request.MediaKind = NProto::STORAGE_MEDIA_HYBRID;
         serverStats->AddIncompleteRequest(
             *callContext,
-            request.VolumeInfo,
-            NProto::STORAGE_MEDIA_HYBRID,
-            EBlockStoreRequest::WriteBlocks,
+            request,
             TRequestTime{
                 .TotalTime = TDuration::Hours(1),
-                .ExecutionTime = TDuration::Hours(1)
-            }
-        );
+                .ExecutionTime = TDuration::Hours(1)});
 
         serverStats->UpdateStats(false);
 
@@ -292,16 +289,13 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         // Set flag HasUncountableRejects
         callContext->SetHasUncountableRejects();
 
+        request.MediaKind = NProto::STORAGE_MEDIA_HYBRID;
         serverStats->AddIncompleteRequest(
             *callContext,
-            request.VolumeInfo,
-            NProto::STORAGE_MEDIA_HYBRID,
-            EBlockStoreRequest::WriteBlocks,
+            request,
             TRequestTime{
                 .TotalTime = TDuration::Hours(1),
-                .ExecutionTime = TDuration::Hours(1)
-            }
-        );
+                .ExecutionTime = TDuration::Hours(1)});
 
         serverStats->UpdateStats(false);
 
@@ -454,6 +448,134 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             ->GetCounters()
             ->GetSubgroup("request", "DescribeVolume")
             ->GetCounter("Errors")->Val());
+    }
+
+    Y_UNIT_TEST(ShouldReportIncompleteStartEndpointByMountAndAccessMode)
+    {
+        const auto checkModeCounters =
+            [](const NMonitoring::TDynamicCountersPtr& counters,
+               NProto::EVolumeMountMode mountMode,
+               NProto::EVolumeAccessMode accessMode,
+               ui64 expectedMaxTime,
+               TDuration totalTime)
+        {
+            const auto checkGroupCounters =
+                [&](NProto::EVolumeMountMode otherMountMode,
+                    NProto::EVolumeAccessMode otherAccessMode)
+            {
+                auto group =
+                    counters
+                        ->GetSubgroup(
+                            "mount_mode",
+                            otherMountMode == NProto::VOLUME_MOUNT_LOCAL
+                                ? "local"
+                                : "remote")
+                        ->GetSubgroup(
+                            "access_mode",
+                            otherAccessMode == NProto::VOLUME_ACCESS_READ_ONLY
+                                ? "read_only"
+                                : "read_write")
+                        ->GetSubgroup("request", "StartEndpoint");
+                const bool selected = otherMountMode == mountMode &&
+                                      otherAccessMode == accessMode;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    selected ? expectedMaxTime : 0,
+                    group->GetCounter("MaxTime")->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    selected ? totalTime.MicroSeconds() : 0,
+                    group->GetCounter("MaxTotalTime")->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    selected ? 1 : 0,
+                    group->GetCounter("InProgress")->Val());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    0,
+                    group->GetCounter("Count", true)->Val());
+            };
+
+            for (const auto otherMountMode:
+                 {NProto::VOLUME_MOUNT_LOCAL, NProto::VOLUME_MOUNT_REMOTE})
+            {
+                for (const auto otherAccessMode:
+                     {NProto::VOLUME_ACCESS_READ_WRITE,
+                      NProto::VOLUME_ACCESS_READ_ONLY})
+                {
+                    checkGroupCounters(otherMountMode, otherAccessMode);
+                }
+            }
+        };
+
+        const auto checkCase = [&](NProto::EVolumeMountMode mountMode,
+                                   NProto::EVolumeAccessMode accessMode,
+                                   bool suppressMaxTime)
+        {
+            auto timer = std::make_shared<TTestTimer>();
+            auto monitoring = CreateMonitoringServiceStub();
+            auto counters = monitoring->GetCounters();
+            auto serverStats = CreateServerStats(
+                std::make_shared<TTestDumpable>(),
+                std::make_shared<TDiagnosticsConfig>(),
+                monitoring,
+                CreateProfileLogStub(),
+                CreateServerRequestStats(
+                    counters,
+                    timer,
+                    EHistogramCounterOption::ReportMultipleCounters,
+                    {}),
+                CreateVolumeStatsStub());
+
+            TMetricRequest request{EBlockStoreRequest::StartEndpoint};
+            request.AccessMode = accessMode;
+            request.MountMode = mountMode;
+            auto callContext = MakeIntrusive<TCallContext>();
+            if (suppressMaxTime) {
+                callContext->SetHasUncountableRejects();
+            }
+
+            TLog log;
+            serverStats->RequestStarted(log, request, *callContext);
+
+            const TRequestTime time{
+                .TotalTime = TDuration::Seconds(10),
+                .ExecutionTime = TDuration::Seconds(6)};
+            serverStats->AddIncompleteRequest(*callContext, request, time);
+            serverStats->UpdateStats(false);
+
+            const auto expectedMaxTime =
+                suppressMaxTime ? 0 : time.ExecutionTime.MicroSeconds();
+            auto total = counters->GetSubgroup("request", "StartEndpoint");
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedMaxTime,
+                total->GetCounter("MaxTime")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                time.TotalTime.MicroSeconds(),
+                total->GetCounter("MaxTotalTime")->Val());
+
+            checkModeCounters(
+                counters,
+                mountMode,
+                accessMode,
+                expectedMaxTime,
+                time.TotalTime);
+
+            serverStats->RequestCompleted(log, request, *callContext, {});
+            UNIT_ASSERT_VALUES_EQUAL(0, total->GetCounter("InProgress")->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1,
+                total->GetCounter("Count", true)->Val());
+        };
+
+        for (const auto mountMode:
+             {NProto::VOLUME_MOUNT_LOCAL, NProto::VOLUME_MOUNT_REMOTE})
+        {
+            for (const auto accessMode:
+                 {NProto::VOLUME_ACCESS_READ_WRITE,
+                  NProto::VOLUME_ACCESS_READ_ONLY})
+            {
+                for (const bool suppressMaxTime: {false, true}) {
+                    checkCase(mountMode, accessMode, suppressMaxTime);
+                }
+            }
+        }
     }
 }
 
