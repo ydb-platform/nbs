@@ -199,9 +199,6 @@ public:
     // The barrier should be valid and previously acquired via AcquireBarrier
     void ReleaseBarrier(ui64 nodeId, ui64 barrierId);
 
-    // Callback from QueuedOperations under lock
-    void OnRequestsSerialized();
-
     // UpdateStats under lock
     void UpdateStats() const;
 
@@ -226,6 +223,8 @@ private:
     void EvictUnpinnedFlushedEntries(ui64 nodeId, TNodeState& nodeState);
     void CheckAndAcquireBarriers(TNodeState& nodeState);
 
+    // Callback from QueuedOperations under lock
+    void ProcessSerializedRequests();
     void ProcessPendingRequests();
     std::unique_ptr<TCachedWriteDataRequest> GetNextReadyCachedRequest();
     void ProcessReadyCachedRequest(

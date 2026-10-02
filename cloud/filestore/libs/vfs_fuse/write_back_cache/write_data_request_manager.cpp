@@ -364,21 +364,21 @@ void TWriteDataRequestManager::UpdateStats() const
 {
     auto now = Timer->Now();
 
-    const auto* frontPendingRequest = HasAllocatedPendingRequests()
-                                          ? AllocatedPendingRequests.Front()
-                                          : UnallocatedPendingRequests.Front();
+    const TPendingWriteDataRequest* front = nullptr;
+    if (HasAllocatedPendingRequests()) {
+        front = AllocatedPendingRequests.Front();
+    } else if (HasUnallocatedPendingRequests()) {
+        front = UnallocatedPendingRequests.Front();
+    }
 
-    auto maxPendingRequestDuration = frontPendingRequest
-                                         ? now - frontPendingRequest->Time
-                                         : TDuration::Zero();
+    auto maxPendingRequestDuration =
+        front ? now - front->Time : TDuration::Zero();
 
     auto maxUnflushedRequestDuration =
         UnflushedRequests.Empty() ? TDuration::Zero()
                                   : now - UnflushedRequests.Front()->Time;
 
-    Stats->UpdateStats(
-        maxPendingRequestDuration,
-        maxUnflushedRequestDuration);
+    Stats->UpdateStats(maxPendingRequestDuration, maxUnflushedRequestDuration);
 
     PersistentStorage->UpdateStats();
 }

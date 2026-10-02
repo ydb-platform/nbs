@@ -26,6 +26,12 @@ private:
     ITimerPtr Timer;
     IWriteDataRequestManagerStatsPtr Stats;
 
+    // Non-owning lifecycle queues; callers own the requests (TNodeCache in
+    // production). Allocation is global FIFO, so every node's pending queue
+    // consists of an allocated prefix followed by an unallocated suffix.
+    // Failure paths may remove only the unallocated suffix. Allocated requests
+    // remain alive for out-of-lock serialization and leave this queue only
+    // through GetNextReadyCachedRequest().
     TIntrusiveList<TPendingWriteDataRequest> UnallocatedPendingRequests;
     TIntrusiveList<TPendingWriteDataRequest> AllocatedPendingRequests;
     TIntrusiveList<TCachedWriteDataRequest> UnflushedRequests;
@@ -76,10 +82,13 @@ public:
     ui64 GetMaxUnflushedSequenceId() const;
 
     /**
-     * Creates a pending WriteData request and adds it to the pending queue.
-     * The returned object must outlive its presence in the queue and must
-     * leave via TryProcessPendingRequest/TryPopFrontPendingRequest/Remove;
-     * destroying it while queued unlinks silently but leaks metrics.
+     * Creates a pending WriteData request and adds a non-owning pointer to the
+     * unallocated queue; the returned object remains owned by the caller.
+     *
+     * After TryAllocPendingRequest() succeeds, the serializer may hold a raw
+     * pointer while the cache-state lock is released. An allocated request
+     * must remain alive until GetNextReadyCachedRequest() removes it from
+     * AllocatedPendingRequests.
      */
     [[nodiscard]] std::unique_ptr<TPendingWriteDataRequest> AddRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);

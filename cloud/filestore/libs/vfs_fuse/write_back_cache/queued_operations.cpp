@@ -1,4 +1,5 @@
 #include "queued_operations.h"
+#include "write_data_request.h"
 
 #include <variant>
 
@@ -105,8 +106,11 @@ struct TQueuedOperations::TEvent: public TEventVariant
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TQueuedOperations::TQueuedOperations(IQueuedOperationsProcessor& processor)
+TQueuedOperations::TQueuedOperations(
+    IQueuedOperationsProcessor& processor,
+    std::function<void()> requestsSerializedCallback)
     : Processor(processor)
+    , RequestsSerializedCallback(std::move(requestsSerializedCallback))
 {}
 
 TQueuedOperations::~TQueuedOperations() = default;
@@ -135,6 +139,9 @@ void TQueuedOperations::Release()
         // Process events first because they may complete futures and unblock
         // requests. Serialization is CPU-intensive, so postponing it minimizes
         // completion latency and lets us respond quickly.
+        //
+        // Serialization failures are fatal: requests have already been
+        // validated, so any failure indicates an invariant violation.
         for (auto& request: requestsToSerialize) {
             request->SerializeToAllocation();
         }
@@ -142,7 +149,7 @@ void TQueuedOperations::Release()
         Lock.Acquire();
 
         // This call may enqueue new events
-        Processor.OnRequestsSerialized();
+        RequestsSerializedCallback();
     }
 }
 
