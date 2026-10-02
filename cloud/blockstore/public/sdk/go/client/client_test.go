@@ -139,3 +139,84 @@ func TestLocalNVMeMethods(t *testing.T) {
 	err = client.ReleaseNVMeDevice(ctx, "sn")
 	require.NoError(t, err)
 }
+
+func TestReadBlocksSnapshotCreationRead(t *testing.T) {
+	ctx := context.Background()
+	snapshotCtx := WithSnapshotCreationRead(ctx)
+	derivedCtx, cancel := context.WithCancel(
+		WithClientID(snapshotCtx, "snapshot-client"),
+	)
+	defer cancel()
+
+	for _, testCase := range []struct {
+		name                 string
+		ctx                  context.Context
+		snapshotCreationRead bool
+	}{
+		{"ordinary", ctx, false},
+		{"snapshot", snapshotCtx, true},
+		{"derivedContext", derivedCtx, true},
+		{"ordinaryAfterSnapshot", ctx, false},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			for _, checkpointID := range []string{"", "checkpoint"} {
+				calls := 0
+				buffers := [][]byte{[]byte("block-data")}
+				impl := &testClient{
+					ReadBlocksHandler: func(
+						ctx context.Context,
+						req *protos.TReadBlocksRequest,
+					) (*protos.TReadBlocksResponse, error) {
+						calls++
+						require.Equal(
+							t, testCase.snapshotCreationRead, req.GetSnapshotCreationRead(),
+						)
+						require.Equal(t, checkpointID, req.GetCheckpointId())
+						req.Headers = &protos.THeaders{}
+						(&grpcClient{}).setupHeaders(ctx, req)
+						require.False(t, req.GetHeaders().GetIsBackgroundRequest())
+						return &protos.TReadBlocksResponse{
+							Blocks: &protos.TIOVector{Buffers: buffers},
+						}, nil
+					},
+				}
+				client := &Client{safeClient{impl}}
+				blocks, err := client.ReadBlocks(
+					testCase.ctx, "disk", 0, 1, checkpointID, "session",
+				)
+				require.NoError(t, err)
+				require.Equal(t, buffers, blocks)
+				require.Equal(t, 1, calls)
+			}
+		})
+	}
+}
+
+func TestSnapshotCreationReadDoesNotAffectWrites(t *testing.T) {
+	ctx := context.Background()
+	buffers := [][]byte{[]byte("block-data")}
+	calls := 0
+	impl := &testClient{
+		WriteBlocksHandler: func(
+			ctx context.Context,
+			req *protos.TWriteBlocksRequest,
+		) (*protos.TWriteBlocksResponse, error) {
+			calls++
+			require.Equal(t, &protos.TWriteBlocksRequest{
+				DiskId:     "disk",
+				StartIndex: 1,
+				Blocks:     &protos.TIOVector{Buffers: buffers},
+				SessionId:  "session",
+			}, req)
+			req.Headers = &protos.THeaders{}
+			(&grpcClient{}).setupHeaders(ctx, req)
+			require.False(t, req.GetHeaders().GetIsBackgroundRequest())
+			return &protos.TWriteBlocksResponse{}, nil
+		},
+	}
+	client := &Client{safeClient{impl}}
+	for _, writeCtx := range []context.Context{ctx, WithSnapshotCreationRead(ctx)} {
+		require.NoError(t, client.WriteBlocks(writeCtx, "disk", 1, buffers, "session"))
+	}
+	require.Equal(t, 2, calls)
+}

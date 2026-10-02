@@ -322,7 +322,8 @@ private:
         const TBlockRange32& readRange,
         IReadBlocksHandlerPtr readHandler,
         bool replyLocal,
-        bool shouldReportBlobIdsOnFailure);
+        bool shouldReportBlobIdsOnFailure,
+        bool asyncRead);
 
     void DescribeBlocks(
         const NActors::TActorContext& ctx,

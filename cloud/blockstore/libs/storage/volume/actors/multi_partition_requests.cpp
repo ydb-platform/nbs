@@ -213,6 +213,8 @@ NProto::TError ToPartitionRequests<TEvService::TReadBlocksMethod>(
         );
         (*requests)[i].Event->Record.SetBlocksCount(blocksCount);
         (*requests)[i].Event->Record.SetCheckpointId(proto.GetCheckpointId());
+        (*requests)[i].Event->Record.SetSnapshotCreationRead(
+            proto.GetSnapshotCreationRead());
         (*requests)[i].Event->Record.SetSessionId(proto.GetSessionId());
     }
 
@@ -383,6 +385,8 @@ NProto::TError ToPartitionRequests<TEvService::TReadBlocksLocalMethod>(
 
         request.Event->Record.SetBlocksCount(blocksCount);
         request.Event->Record.SetCheckpointId(proto.GetCheckpointId());
+        request.Event->Record.SetSnapshotCreationRead(
+            proto.GetSnapshotCreationRead());
         request.Event->Record.SetBlockSize(blockSize);
         request.Event->Record.ShouldReportFailedRangesOnFailure =
             ev->Get()->Record.ShouldReportFailedRangesOnFailure;
