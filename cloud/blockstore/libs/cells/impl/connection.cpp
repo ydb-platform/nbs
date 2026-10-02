@@ -2,12 +2,12 @@
 
 #include "detachable_target.h"
 #include "endpoint_router.h"
+#include "multiclient_endpoint.h"
 #include "transport_switcher.h"
 #include "remote_storage.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
-#include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
@@ -732,7 +732,7 @@ private:
         // tail gives that channel back
         auto self = shared_from_this();
 
-        TFuture<NClient::IMultiClientEndpointPtr> channel;
+        TFuture<IMultiClientEndpointPtr> channel;
         try {
             channel = Pool->AcquireControlChannel(fqdn);
         } catch (...) {
@@ -752,7 +752,7 @@ private:
 
     void OnChannelAcquired(
         TString fqdn,
-        const NClient::IMultiClientEndpointPtr& endpoint)
+        const IMultiClientEndpointPtr& endpoint)
     {
         if (!endpoint) {
             AbortMigration(fqdn, "no control channel", true);

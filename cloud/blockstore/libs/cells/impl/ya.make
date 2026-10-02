@@ -13,6 +13,7 @@ SRCS(
     forward_service.cpp
     host_pool.cpp
     mon.cpp
+    multiclient_endpoint.cpp
     remote_storage.cpp
     transport_switcher.cpp
 )
