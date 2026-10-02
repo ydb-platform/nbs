@@ -702,6 +702,8 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             shardRequest->SetName(args.NewChildRef->ShardNodeName);
             shardRequest->SetUnlinkDirectory(
                 args.DestinationNodeAttr.GetType() == NProto::E_DIRECTORY_NODE);
+            shardRequest->SetShouldUnlockUponCompletion(false);
+
             const bool serialized = args.ProfileLogRequest.SerializeToString(
                 args.OpLogEntry.MutableProfileLogRequest());
             if (!serialized) {
