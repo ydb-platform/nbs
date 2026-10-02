@@ -1,4 +1,4 @@
-UNITTEST_FOR(library/cpp/systemd_time)
+UNITTEST_FOR(cloud/storage/core/libs/systemd_time)
 
 SRCS(
     reference_ut.cpp

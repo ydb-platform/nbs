@@ -5,7 +5,7 @@
 into a microsecond-resolution `TInstant`.
 
 ```cpp
-#include <library/cpp/systemd_time/timestamp.h>
+#include <cloud/storage/core/libs/systemd_time/timestamp.h>
 
 TInstant timestamp;
 if (NSystemdTime::TryParseTimestamp("30min ago", timestamp)) {

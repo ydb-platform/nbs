@@ -15,7 +15,7 @@ PEERDIR(
 
     library/cpp/eventlog/dumper
     library/cpp/getopt
-    library/cpp/systemd_time
+    cloud/storage/core/libs/systemd_time
 )
 
 END()
