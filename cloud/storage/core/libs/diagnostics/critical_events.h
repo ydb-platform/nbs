@@ -31,7 +31,20 @@ namespace NCloud {
 ////////////////////////////////////////////////////////////////////////////////
 
 void SetCriticalEventsLog(TLog log);
-void InitCriticalEventsCounter(NMonitoring::TDynamicCountersPtr counters);
+
+// Attach the counter root; create missing counters as RATE (derivative=true)
+// or GAUGE (false).
+void InitCriticalEventsCounter(
+    NMonitoring::TDynamicCountersPtr counters,
+    bool derivative = true);
+
+// Return true after counting the event, or false to use the default
+// counter increment.
+using TCriticalEventReporter = bool (*)(const TString& sensorName);
+
+// Set the callback for counting events, or pass nullptr to increment
+// counters directly. Logging and debug checks remain in the common path.
+void SetCriticalEventReporter(TCriticalEventReporter reporter);
 
 TString GetCriticalEventFullName(const TString& name);
 TString GetImpossibleEventFullName(const TString& name);

@@ -464,11 +464,11 @@ void TBootstrapYdb::InitRdmaClient()
             STORAGE_INFO("RDMA client initialized");
         }
     } catch (...) {
-        STORAGE_ERROR("Failed to initialize RDMA client: "
-            << CurrentExceptionMessage().c_str());
+        ReportRdmaError(
+            TStringBuilder() << "Failed to initialize RDMA client: "
+                             << CurrentExceptionMessage());
 
         RdmaClient = nullptr;
-        PostponedCriticalEvents.push_back(GetCriticalEventForRdmaError());
     }
 }
 
@@ -516,8 +516,7 @@ void TBootstrapYdb::InitKikimrService()
 
     auto preemptedVolumes = NStorage::CreateManuallyPreemptedVolumes(
         Configs->StorageConfig,
-        Log,
-        PostponedCriticalEvents);
+        Log);
 
     const auto& cert = Configs->StorageConfig->GetNodeRegistrationCert();
 
