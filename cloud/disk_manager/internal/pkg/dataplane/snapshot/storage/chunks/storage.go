@@ -8,9 +8,22 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type ChunkBlob struct {
+	Data        []byte
+	Checksum    uint32
+	Compression string
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Interface for communicating with different chunk storages.
 type Storage interface {
 	ReadChunk(ctx context.Context, chunk *common.Chunk) (err error)
+
+	ReadChunkBlob(
+		ctx context.Context,
+		chunkID string,
+	) (chunkBlob ChunkBlob, err error)
 
 	WriteChunk(
 		ctx context.Context,

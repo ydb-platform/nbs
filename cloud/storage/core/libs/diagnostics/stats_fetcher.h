@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/common/public.h>
 #include <cloud/storage/core/protos/diagnostics.pb.h>
 
 #include <util/datetime/base.h>
@@ -34,7 +35,8 @@ IStatsFetcherPtr CreateCgroupStatsFetcher(
 
 IStatsFetcherPtr CreateTaskStatsFetcher(
     TString componentName,
-    int pid);
+    int pid,
+    ITaskQueuePtr netlinkExecutor);
 
 IStatsFetcherPtr CreateStatsFetcherStub();
 
@@ -43,6 +45,7 @@ TString BuildCpuWaitStatsFilename(const TString& serviceName);
 IStatsFetcherPtr BuildStatsFetcher(
     NProto::EStatsFetcherType statsFetcherType,
     const TString& cpuWaitFilename,
-    const TLog& log);
+    const TLog& log,
+    ITaskQueuePtr netlinkExecutor);
 
 }   // namespace NCloud::NStorage

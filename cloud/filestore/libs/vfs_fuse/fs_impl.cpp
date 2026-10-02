@@ -495,7 +495,7 @@ TFuture<void> TFileSystem::ProcessHandleOpsQueueEntry(
         auto callContext = MakeIntrusive<TCallContext>(
             Config->GetFileSystemId(),
             CreateRequestId());
-        callContext->RequestType = EFileStoreRequest::DestroyHandle;
+        callContext->RequestType = EFileStoreRequest::AsyncDestroyHandle;
         RequestStats->RequestStarted(Log, *callContext);
 
         return Session->DestroyHandle(callContext, std::move(request))

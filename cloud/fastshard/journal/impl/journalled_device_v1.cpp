@@ -19,9 +19,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TJournalledDevice final
+class TJournalledDeviceV1 final
     : public IJournalledDevice
-    , public std::enable_shared_from_this<TJournalledDevice>
+    , public std::enable_shared_from_this<TJournalledDeviceV1>
 {
 private:
     const IDevicePtr DataStore;
@@ -30,7 +30,7 @@ private:
     std::atomic<ui64> LastAckedLsn = 0;
 
 public:
-    explicit TJournalledDevice(IDevicePtr dataStore)
+    explicit TJournalledDeviceV1(IDevicePtr dataStore)
         : DataStore(std::move(dataStore))
     {}
 
@@ -140,9 +140,9 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IJournalledDevicePtr CreateJournalledDevice(IDevicePtr dataStore)
+IJournalledDevicePtr CreateJournalledDeviceV1(IDevicePtr dataStore)
 {
-    return std::make_shared<TJournalledDevice>(std::move(dataStore));
+    return std::make_shared<TJournalledDeviceV1>(std::move(dataStore));
 }
 
 }   // namespace NCloud::NJournalled

@@ -539,11 +539,38 @@ func (client *safeClient) CmsRemoveDevices(
 
 	actions := make([]*protos.TAction, len(devices))
 	t := protos.TAction_REMOVE_DEVICE
-	for i, device := range devices {
+	for i := range devices {
 		action := protos.TAction{
 			Type:   &t,
 			Host:   &host,
-			Device: &device,
+			Device: &devices[i],
+			DryRun: &dryRun,
+		}
+		actions[i] = &action
+	}
+
+	return client.Impl.CmsAction(
+		ctx,
+		&protos.TCmsActionRequest{
+			Actions: actions,
+		},
+	)
+}
+
+func (client *safeClient) CmsPurgeDevices(
+	ctx context.Context,
+	host string,
+	devices []string,
+	dryRun bool,
+) (*protos.TCmsActionResponse, error) {
+
+	actions := make([]*protos.TAction, len(devices))
+	t := protos.TAction_PURGE_DEVICE
+	for i := range devices {
+		action := protos.TAction{
+			Type:   &t,
+			Host:   &host,
+			Device: &devices[i],
 			DryRun: &dryRun,
 		}
 		actions[i] = &action

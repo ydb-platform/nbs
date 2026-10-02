@@ -275,6 +275,7 @@ void BuildSendCmsDeviceRequestMenu(
             <select name="CmsAction">
                 <option value="%u">ADD_DEVICE</option>
                 <option value="%u">REMOVE_DEVICE</option>
+                <option value="%u">PURGE_DEVICE</option>
             </select>
             <br>
             <label for="DeviceName">Device path (Name):</label>
@@ -297,6 +298,7 @@ void BuildSendCmsDeviceRequestMenu(
         "device-cms-request",
         static_cast<ui32>(NProto::TAction::ADD_DEVICE),
         static_cast<ui32>(NProto::TAction::REMOVE_DEVICE),
+        static_cast<ui32>(NProto::TAction::PURGE_DEVICE),
         constructDeviceNameOptions().c_str(),
         agentId.c_str(),
         tabletId);

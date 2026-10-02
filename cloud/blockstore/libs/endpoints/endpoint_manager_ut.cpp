@@ -169,11 +169,41 @@ struct TMockSessionManager final: public ISessionManager
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TDelayedResizeDevice final: public NBD::IDevice
+{
+    TPromise<void> ResizeStarted = NewPromise();
+    TPromise<NProto::TError> ResizeResult = NewPromise<NProto::TError>();
+
+    TFuture<NProto::TError> Start() override
+    {
+        return MakeFuture(NProto::TError());
+    }
+
+    TFuture<NProto::TError> Stop(bool) override
+    {
+        return MakeFuture(NProto::TError());
+    }
+
+    TFuture<NProto::TError> Resize(ui64) override
+    {
+        ResizeStarted.SetValue();
+        return ResizeResult.GetFuture();
+    }
+
+    TString GetPath() const override
+    {
+        return {};
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TTestDeviceFactory
     : public NBD::IDeviceFactory
 {
     TVector<TString> Devices;
     ui64 Index = 0;
+    NBD::IDevicePtr Device = NBD::CreateDeviceStub();
 
     NBD::IDevicePtr Create(
         const TNetworkAddress& connectAddress,
@@ -185,7 +215,7 @@ struct TTestDeviceFactory
         Y_UNUSED(blockCount);
         Y_UNUSED(blockSize);
         Devices.push_back(deviceName);
-        return NBD::CreateDeviceStub();
+        return Device;
     }
 
     NBD::IDevicePtr CreateFree(
@@ -198,7 +228,7 @@ struct TTestDeviceFactory
         Y_UNUSED(blockCount);
         Y_UNUSED(blockSize);
         Devices.push_back(devicePrefix + Index++);
-        return NBD::CreateDeviceStub();
+        return Device;
     }
 };
 
@@ -1430,6 +1460,65 @@ Y_UNIT_TEST_SUITE(TEndpointManagerTest)
                 error);
             UNIT_ASSERT_VALUES_EQUAL(1, listener->SwitchEndpointCounter);
         }
+    }
+
+    Y_UNIT_TEST(ShouldProcessRequestsWhileNbdResizeIsPending)
+    {
+        TBootstrap bootstrap;
+        TTempDir dir;
+        const TString nbdPrefix = (dir.Path() / "nbd").GetPath();
+        const TString nbdPath = nbdPrefix + "0";
+        const TString socketPath = (dir.Path() / "socket").GetPath();
+        TFsPath(nbdPath).Touch();
+
+        bootstrap.SessionManager = std::make_shared<TTestSessionManager>();
+        bootstrap.EndpointListeners = {
+            {NProto::IPC_NBD, std::make_shared<TTestEndpointListener>()}};
+        auto device = std::make_shared<TDelayedResizeDevice>();
+        auto factory = std::make_shared<TTestDeviceFactory>();
+        factory->Device = device;
+        bootstrap.NbdDeviceFactory = factory;
+        bootstrap.Options.NbdDevicePrefix = nbdPrefix;
+
+        auto manager = CreateEndpointManager(bootstrap);
+        bootstrap.Start();
+        Y_DEFER {
+            device->ResizeResult.TrySetValue(NProto::TError());
+            bootstrap.Stop();
+        };
+        UNIT_ASSERT(manager->RestoreEndpoints().Wait(5s));
+
+        NProto::TStartEndpointRequest request;
+        SetDefaultHeaders(request);
+        request.SetUnixSocketPath(socketPath);
+        request.SetDiskId("disk");
+        request.SetClientId(TestClientId);
+        request.SetIpcType(NProto::IPC_NBD);
+        request.SetNbdDeviceFile(nbdPath);
+        request.SetPersistent(true);
+        auto startResponse = StartEndpoint(*manager, request).GetValue(5s);
+        UNIT_ASSERT_C(!HasError(startResponse), startResponse.GetError());
+
+        auto refreshRequest =
+            std::make_shared<NProto::TRefreshEndpointRequest>();
+        refreshRequest->SetUnixSocketPath(socketPath);
+        auto refresh = manager->RefreshEndpoint(
+            MakeIntrusive<TCallContext>(),
+            std::move(refreshRequest));
+        UNIT_ASSERT(device->ResizeStarted.GetFuture().Wait(5s));
+        UNIT_ASSERT(!refresh.IsReady());
+
+        auto list = ListEndpoints(*manager);
+        UNIT_ASSERT_C(list.Wait(5s), "resize blocked the endpoint manager");
+        UNIT_ASSERT_C(!HasError(list.GetValue()), list.GetValue().GetError());
+        UNIT_ASSERT(!refresh.IsReady());
+
+        device->ResizeResult.SetValue(MakeError(E_FAIL, "resize failed"));
+        const auto response = refresh.GetValue(5s);
+        UNIT_ASSERT_VALUES_EQUAL(E_FAIL, response.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "resize failed",
+            response.GetError().GetMessage());
     }
 
     Y_UNIT_TEST(ShouldStartEndpointWithNbdDevice)

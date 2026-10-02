@@ -71,19 +71,24 @@ private:
     int Pid;
     const TDuration NetlinkSocketTimeout = TDuration::Seconds(1);
     TDuration Last;
+    const ITaskQueuePtr NetlinkExecutor;
 
     ui16 GetFamilyId()
     {
-        static ui16 familyId = NNetlink::GetFamilyId(TASKSTATS_GENL_NAME);
+        static ui16 familyId =
+            NNetlink::GetFamilyId(NetlinkExecutor, TASKSTATS_GENL_NAME)
+                .GetValueSync();
         return familyId;
     }
 
 public:
     TTaskStatsFetcher(
-            TString componentName,
-            int pid)
+        TString componentName,
+        int pid,
+        ITaskQueuePtr netlinkExecutor)
         : ComponentName(std::move(componentName))
         , Pid(pid)
+        , NetlinkExecutor(std::move(netlinkExecutor))
     {
     }
 
@@ -94,11 +99,9 @@ public:
     TResultOrError<TDuration> GetCpuWait() override
     {
         try {
-            NNetlink::TNetlinkSocket socket;
-            socket.Send(TTaskStatsRequest(GetFamilyId(), Pid));
-            NNetlink::TNetlinkResponse<TTaskStatsResponse> response;
-            socket.Receive(response);
-            response.Msg.Validate();
+            auto response = NNetlink::Send<TTaskStatsResponse>(
+                NetlinkExecutor,
+                TTaskStatsRequest(GetFamilyId(), Pid)).GetValueSync();
             auto cpuLack = TDuration::MicroSeconds(
                 response.Msg.TaskStats.cpu_delay_total / 1000);
             auto retval = cpuLack - Last;
@@ -117,11 +120,13 @@ public:
 
 IStatsFetcherPtr CreateTaskStatsFetcher(
     TString componentName,
-    int pid)
+    int pid,
+    ITaskQueuePtr netlinkExecutor)
 {
     return std::make_shared<TTaskStatsFetcher>(
         std::move(componentName),
-        pid);
+        pid,
+        std::move(netlinkExecutor));
 }
 
 }   // namespace NCloud::NStorage

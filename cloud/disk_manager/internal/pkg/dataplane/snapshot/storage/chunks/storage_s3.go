@@ -97,6 +97,31 @@ func (s *StorageS3) ReadChunk(
 	return nil
 }
 
+func (s *StorageS3) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+) (chunkBlob ChunkBlob, err error) {
+
+	defer s.metrics.StatOperation(metrics.OperationReadChunkBlob)(&err)
+
+	object, err := s.s3.GetObject(ctx, s.bucket, s.newS3Key(chunkID))
+	if err != nil {
+		return ChunkBlob{}, err
+	}
+
+	metadata, err := newS3Metadata(object.Metadata)
+	if err != nil {
+		return ChunkBlob{}, err
+	}
+
+	chunkBlob = ChunkBlob{
+		Data:        object.Data,
+		Checksum:    metadata.checksum,
+		Compression: metadata.compression,
+	}
+	return chunkBlob, nil
+}
+
 func (s *StorageS3) WriteChunk(
 	ctx context.Context,
 	referer string,
@@ -253,6 +278,16 @@ func newS3Metadata(metadataMap map[string]*string) (s3Metadata, error) {
 	}
 
 	return metadata, nil
+}
+
+func NewS3Object(chunkBlob ChunkBlob) persistence.S3Object {
+	return persistence.S3Object{
+		Data: chunkBlob.Data,
+		Metadata: s3Metadata{
+			compression: chunkBlob.Compression,
+			checksum:    chunkBlob.Checksum,
+		}.toMap(),
+	}
 }
 
 func (m s3Metadata) toMap() map[string]*string {

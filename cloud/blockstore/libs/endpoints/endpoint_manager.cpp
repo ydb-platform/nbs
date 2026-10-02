@@ -34,6 +34,7 @@
 #include <util/generic/guid.h>
 #include <util/generic/hash.h>
 #include <util/generic/overloaded.h>
+#include <util/generic/scope.h>
 #include <util/generic/set.h>
 #include <util/string/builder.h>
 #include <util/system/fs.h>
@@ -417,6 +418,7 @@ struct TEndpoint
     NProto::TVolume Volume;
     std::weak_ptr<NClient::ISession> Session;
     ui64 Generation = 0;
+    TFuture<void> Restart;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1206,7 +1208,16 @@ NProto::TStopEndpointResponse TEndpointManager::StopEndpointImpl(
                              << " hasn't been started yet");
     }
 
-    auto endpoint = std::move(it->second);
+    auto endpoint = it->second;
+    if (endpoint->Restart.Initialized()) {
+        Executor->WaitFor(endpoint->Restart);
+    }
+
+    it = Endpoints.find(socketPath);
+    if (it == Endpoints.end() || it->second != endpoint) {
+        return TErrorResponse(E_REJECTED, "endpoint changed while stopping");
+    }
+
     Endpoints.erase(it);
     if (auto c =
             ServerStats->GetEndpointCounter(endpoint->Request->GetIpcType()))
@@ -1401,8 +1412,8 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
         return TErrorResponse(getSessionError);
     }
 
-    // Device may be null while NBD recovery is in progress.
-    if (!endpoint->Device) {
+    // reject refresh while restart attempt is in progress
+    if (endpoint->Restart.Initialized() && !endpoint->Restart.IsReady()) {
         return TErrorResponse(
             E_REJECTED,
             TStringBuilder() << "cannot refresh endpoint " << socketPath.Quote()
@@ -1412,9 +1423,10 @@ NProto::TRefreshEndpointResponse TEndpointManager::RefreshEndpointImpl(
     endpoint->Volume.SetBlocksCount(sessionInfo.Volume.GetBlocksCount());
     endpoint->Volume.SetBlockSize(sessionInfo.Volume.GetBlockSize());
 
-    auto error = endpoint->Device->Resize(
+    auto resize = it->second->Device->Resize(
         sessionInfo.Volume.GetBlocksCount() *
-        sessionInfo.Volume.GetBlockSize()).GetValueSync();
+        sessionInfo.Volume.GetBlockSize());
+    auto error = Executor->WaitFor(resize);
     if (HasError(error)) {
         return TErrorResponse(error);
     }
@@ -1488,6 +1500,13 @@ void TEndpointManager::DoProcessException(
             << " != " << context->Generation << "), cancel restart");
         return;
     }
+
+    auto restart = NewPromise<void>();
+    endpoint->Restart = restart.GetFuture();
+    Y_DEFER {
+        restart.TrySetValue();
+    };
+
     endpoint->Generation++;
 
     STORAGE_INFO(prefix << " restart endpoint");
@@ -1505,7 +1524,6 @@ void TEndpointManager::DoProcessException(
             STORAGE_ERROR(prefix << " failed to stop device: "
                                  << FormatError(error));
         }
-        endpoint->Device.reset();
     }
 
     STORAGE_INFO(prefix << " close socket");
@@ -1804,6 +1822,7 @@ TResultOrError<NBD::IDevicePtr> TEndpointManager::StartNbdDevice(
         auto startFuture = device->Start();
         const auto& startError = Executor->WaitFor(startFuture);
         if (HasError(startError)) {
+            ReleaseNbdDevice(request->GetNbdDeviceFile(), restoring);
             return startError;
         }
 

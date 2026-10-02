@@ -119,6 +119,12 @@ TPermissionList GetRequestPermissions(EFileStoreRequest requestType)
         case EFileStoreRequest::FuseFsyncDir:
             Y_ABORT("FuseFsyncDir must have been handled separately");
 
+        case EFileStoreRequest::AsyncDestroyHandle:
+            Y_ABORT(
+                "AsyncDestroyHandle is a client-assigned CallContext label "
+                "with no corresponding RPC method and must never reach "
+                "permission checks");
+
         case EFileStoreRequest::MAX:
             Y_ABORT("EFileStoreRequest::MAX is not valid");
     }

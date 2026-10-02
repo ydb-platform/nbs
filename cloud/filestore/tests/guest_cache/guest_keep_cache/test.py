@@ -50,7 +50,7 @@ def test():
         profile_tool_bin_path, common.output_path("vhost-profile.log"), fs_name
     )
 
-    # With GuestKeepCacheAllowed: true, and GuestCachingType: GCT_ANY_READ all
-    # reads except for the first one will be served from the page cache of the
-    # guest
+    # The file is opened and closed 10 times, so the tablet has to rely on
+    # the offloaded handle stats. All reads except for the first one should be
+    # served from the page cache of the guest
     assert result.get("ReadData", 0) == 1

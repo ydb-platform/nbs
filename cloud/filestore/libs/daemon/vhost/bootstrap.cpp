@@ -454,10 +454,6 @@ void TBootstrapVhost::InitComponents()
                 Configs->VhostServiceConfig->GetEndpointStorageType());
     }
 
-    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
-        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
-    }
-
     switch (Configs->Options->Service) {
         case NDaemon::EServiceKind::Local:
         case NDaemon::EServiceKind::Kikimr:

@@ -29,8 +29,16 @@ NProto::TError CompareConfigs(
         return MakeError(E_ARGUMENT, "Unexpected offset");
     }
 
-    if (expected.GetJournalled() != current.GetJournalled()) {
+    const auto& expectedJournal = expected.GetJournalConfig();
+    const auto& currentJournal = current.GetJournalConfig();
+    if (expectedJournal.GetEnabled() != currentJournal.GetEnabled()) {
         return MakeError(E_ARGUMENT, "Unexpected journalled flag");
+    }
+
+    if (expectedJournal.GetLogMetaSize() != currentJournal.GetLogMetaSize() ||
+        expectedJournal.GetLogDataSize() != currentJournal.GetLogDataSize())
+    {
+        return MakeError(E_ARGUMENT, "Unexpected journal config");
     }
 
     if (expected.GetFileSize() && expected.GetFileSize() != current.GetFileSize()) {

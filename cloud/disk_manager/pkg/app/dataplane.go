@@ -38,7 +38,7 @@ func initDataplane(
 	s3 *persistence.S3Client,
 	migrationDstDB *persistence.YDBClient,
 	migrationDstS3 *persistence.S3Client,
-	followerS3 *backup.FollowerS3,
+	backupS3 *backup.S3,
 ) error {
 
 	dataplaneConfig := config.GetDataplaneConfig()
@@ -101,7 +101,7 @@ func initDataplane(
 		urlMetricsRegistry,
 		migrationDstStorage,
 		useS3InSnapshotMigration,
-		followerS3,
+		backupS3,
 	)
 }
 
