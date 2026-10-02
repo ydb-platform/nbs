@@ -40,6 +40,10 @@ struct ITransportSwitcher
 
     virtual NCloud::NStorage::NRdma::IClientEndpointHandlerPtr
         GetEndpointHandler() = 0;
+
+    // whether the data goes over the preferred transport now, rather than
+    // the fallback
+    virtual bool IsPreferredActive() = 0;
 };
 
 using ITransportSwitcherPtr = std::shared_ptr<ITransportSwitcher>;
