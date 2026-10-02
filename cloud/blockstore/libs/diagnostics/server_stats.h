@@ -143,6 +143,30 @@ struct IServerStats
         ui64 errors,
         std::span<TTimeBucket> timeHist,
         std::span<TSizeBucket> sizeHist) = 0;
+
+    // Records one final logical Read/Write at an endpoint boundary. The
+    // explicit byte count is the original endpoint request size; it may
+    // differ from the aligned byte count used by legacy request metrics.
+    // Retry backoff and generic postponed time remain in the measured
+    // service-side latency; only explicit quota shaping is excluded.
+    // Appended after all legacy methods and defaulted to preserve existing
+    // implementations.
+    virtual void RecordLatencyCompletion(
+        TMetricRequest&,
+        TCallContext&,
+        ui64,
+        const NProto::TError&)
+    {}
+
+    // Exact outcome-batch contract for latency accounting, including aggregate
+    // producers and explicitly recognized early rejections. Kept separate from
+    // BatchCompleted so its long-standing count/error semantics stay intact.
+    virtual void RecordLatencyBatch(
+        TMetricRequest&,
+        ui64,
+        ui64,
+        ui64)
+    {}
 };
 
 ////////////////////////////////////////////////////////////////////////////////

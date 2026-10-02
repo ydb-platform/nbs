@@ -85,6 +85,15 @@ public:
             = std::bind_front(&IServerStats::RequestCompleted, Stub.get());
 
     std::function<void(
+        TMetricRequest& metricRequest,
+        TCallContext& callContext,
+        ui64 requestBytes,
+        const NProto::TError& error)> RecordLatencyCompletionHandler
+            = std::bind_front(
+                &IServerStats::RecordLatencyCompletion,
+                Stub.get());
+
+    std::function<void(
         const TString& diskId,
         const TString& clientId,
         EBlockStoreRequest requestType)> RequestFastPathHitHandler
@@ -124,6 +133,14 @@ public:
         std::span<TTimeBucket> timeHist,
         std::span<TSizeBucket> sizeHist)> BatchCompletedHandler = std::bind_front(
             &IServerStats::BatchCompleted,
+            Stub.get());
+
+    std::function<void(
+        TMetricRequest& metricRequest,
+        ui64 goodOps,
+        ui64 badOps,
+        ui64 skippedOps)> RecordLatencyBatchHandler = std::bind_front(
+            &IServerStats::RecordLatencyBatch,
             Stub.get());
 
     std::function<void(bool updateIntervalFinished)> UpdateStatsHandler
@@ -231,6 +248,19 @@ public:
         RequestCompletedHandler(log, metricRequest, callContext, error);
     }
 
+    void RecordLatencyCompletion(
+        TMetricRequest& metricRequest,
+        TCallContext& callContext,
+        ui64 requestBytes,
+        const NProto::TError& error) override
+    {
+        RecordLatencyCompletionHandler(
+            metricRequest,
+            callContext,
+            requestBytes,
+            error);
+    }
+
     void RequestFastPathHit(
         const TString& diskId,
         const TString& clientId,
@@ -301,6 +331,19 @@ public:
             errors,
             timeHist,
             sizeHist);
+    }
+
+    void RecordLatencyBatch(
+        TMetricRequest& metricRequest,
+        ui64 goodOps,
+        ui64 badOps,
+        ui64 skippedOps) override
+    {
+        RecordLatencyBatchHandler(
+            metricRequest,
+            goodOps,
+            badOps,
+            skippedOps);
     }
 
     void UpdateStats(bool updateIntervalFinished) override
