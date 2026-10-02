@@ -2465,7 +2465,9 @@ func (s *storageYDB) takeBaseDisksToSchedule(
 		for _, disk := range scheduling {
 			if disk.ImageID == config.imageID && disk.ZoneID == config.zoneID {
 				alreadyScheduling = true
-				baseDisks = append(baseDisks, disk)
+				if disk.SrcDisk == nil {
+					baseDisks = append(baseDisks, disk)
+				}
 			}
 		}
 
@@ -3467,6 +3469,20 @@ func (s *storageYDB) retireBaseDisk(
 		}
 
 		if baseDiskIndex >= len(baseDiskTransitions) {
+			// The per-pool scheduler skips deleted and zero-capacity pools.
+			// Use the ready retiring disk as source so a replacement created
+			// after a concurrent acquire is picked up by the global scheduler.
+			// See https://github.com/ydb-platform/nbs/issues/6684.
+			if srcDisk == nil && (config == nil || config.capacity == 0) &&
+				found.status == baseDiskStatusReady {
+
+				srcDisk = &types.Disk{
+					ZoneId: found.zoneID,
+					DiskId: found.id,
+				}
+				srcBaseDisk = found
+			}
+
 			// Base disk can be used as a source for other base disks only
 			// after its own creation is finished. In particular, this forbids
 			// chains of holds (see inflightDependents): base disk that holds
