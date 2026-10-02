@@ -1625,13 +1625,16 @@ TIndexTabletState::StartForcedRangeOperation(
         ReportForcedOperationUnexpectedState("operation already running");
         return nullptr;
     }
-    TForcedRangeOperationState state(
+
+    ForcedOperationState.ConstructInPlace(
+        std::in_place_type_t<TForcedRangeOperationState>{},
         mode,
         std::move(ranges),
         std::move(operationId));
-    state.Status = NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
-    ForcedOperationState.ConstructInPlace(std::move(state));
-    return std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
+    auto* ret =
+        std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
+    ret->Status = NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
+    return ret;
 }
 
 TIndexTabletState::TForcedTabletOperationState*
@@ -1643,10 +1646,15 @@ TIndexTabletState::StartForcedTabletOperation(
         ReportForcedOperationUnexpectedState("operation already running");
         return nullptr;
     }
-    TForcedTabletOperationState state(mode, std::move(operationId));
-    state.Status = NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
-    ForcedOperationState.ConstructInPlace(std::move(state));
-    return std::get_if<TForcedTabletOperationState>(ForcedOperationState.Get());
+
+    ForcedOperationState.ConstructInPlace(
+        std::in_place_type_t<TForcedTabletOperationState>{},
+        mode,
+        std::move(operationId));
+    auto* ret =
+        std::get_if<TForcedTabletOperationState>(ForcedOperationState.Get());
+    ret->Status = NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
+    return ret;
 }
 
 void TIndexTabletState::UpdateForcedRangeOperationProgress(ui32 current)
