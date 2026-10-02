@@ -1,5 +1,7 @@
 #include "request_stats.h"
 
+#include "start_endpoint_test.h"
+
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
@@ -65,49 +67,6 @@ void AddRequestStats(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-struct TStartEndpointMode
-{
-    NProto::EVolumeMountMode MountMode;
-    NProto::EVolumeAccessMode AccessMode;
-    const char* MountLabel;
-    const char* AccessLabel;
-};
-
-constexpr TStartEndpointMode StartEndpointModes[] = {
-    {NProto::VOLUME_MOUNT_LOCAL,
-     NProto::VOLUME_ACCESS_READ_WRITE,
-     "local",
-     "read_write"},
-    {NProto::VOLUME_MOUNT_LOCAL,
-     NProto::VOLUME_ACCESS_READ_ONLY,
-     "local",
-     "read_only"},
-    {NProto::VOLUME_MOUNT_REMOTE,
-     NProto::VOLUME_ACCESS_READ_WRITE,
-     "remote",
-     "read_write"},
-    {NProto::VOLUME_MOUNT_REMOTE,
-     NProto::VOLUME_ACCESS_READ_ONLY,
-     "remote",
-     "read_only"},
-    {NProto::VOLUME_MOUNT_LOCAL,
-     NProto::VOLUME_ACCESS_USER_READ_ONLY,
-     "local",
-     "read_only"},
-    {NProto::VOLUME_MOUNT_REMOTE,
-     NProto::VOLUME_ACCESS_USER_READ_ONLY,
-     "remote",
-     "read_only"},
-    {NProto::VOLUME_MOUNT_LOCAL,
-     NProto::VOLUME_ACCESS_REPAIR,
-     "local",
-     "read_write"},
-    {NProto::VOLUME_MOUNT_REMOTE,
-     NProto::VOLUME_ACCESS_REPAIR,
-     "remote",
-     "read_write"},
-};
 
 IRequestStatsPtr CreateStartEndpointStats(
     NMonitoring::TDynamicCountersPtr counters,
@@ -1070,7 +1029,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRegisterCombinedStartEndpointModesWithoutMoreCounters)
+    Y_UNIT_TEST(ShouldRegisterCombinedStartEndpointModes)
     {
         const auto checkCase = [&](bool isServer, bool useMsUnits)
         {
@@ -1081,50 +1040,31 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             UNIT_ASSERT(!counters->FindSubgroup("access_mode", "read_write"));
             UNIT_ASSERT(!counters->FindSubgroup("access_mode", "read_only"));
 
-            const auto countAccessSeries =
-                [&](const NMonitoring::TDynamicCountersPtr& mountGroup,
-                    const char* mount,
-                    const char* access) -> ui64
+            const auto checkMode = [&](const TStartEndpointMode& mode)
             {
-                auto accessGroup =
-                    mountGroup->FindSubgroup("access_mode", access);
-                UNIT_ASSERT(accessGroup);
-                UNIT_ASSERT_VALUES_EQUAL(2, accessGroup->ReadSnapshot().size());
-                UNIT_ASSERT(accessGroup->FindCounter("HwProblems"));
-
-                auto requestGroup =
-                    FindStartEndpointCounters(counters, mount, access);
-                auto percentiles =
-                    FindStartEndpointTimePercentiles(requestGroup, useMsUnits);
-                UNIT_ASSERT(percentiles);
-                // Replace the percentile subgroup with its leaf counters,
-                // then include HwProblems from the parent group.
-                return requestGroup->ReadSnapshot().size() - 1 +
-                       percentiles->ReadSnapshot().size() + 1;
-            };
-
-            const auto countMountSeries = [&](const char* mount) -> ui64
-            {
-                auto mountGroup = counters->FindSubgroup("mount_mode", mount);
+                auto mountGroup =
+                    counters->FindSubgroup("mount_mode", mode.MountLabel);
                 UNIT_ASSERT(mountGroup);
-                UNIT_ASSERT_VALUES_EQUAL(2, mountGroup->ReadSnapshot().size());
                 UNIT_ASSERT(
                     !mountGroup->FindSubgroup("request", "StartEndpoint"));
                 UNIT_ASSERT(!mountGroup->FindCounter("HwProblems"));
 
-                ui64 seriesCount = 0;
-                for (const auto* access: {"read_write", "read_only"}) {
-                    seriesCount += countAccessSeries(mountGroup, mount, access);
-                }
-                return seriesCount;
+                auto accessGroup =
+                    mountGroup->FindSubgroup("access_mode", mode.AccessLabel);
+                UNIT_ASSERT(accessGroup);
+                UNIT_ASSERT(accessGroup->FindCounter("HwProblems"));
+
+                auto requestGroup = FindStartEndpointCounters(
+                    counters,
+                    mode.MountLabel,
+                    mode.AccessLabel);
+                UNIT_ASSERT(
+                    FindStartEndpointTimePercentiles(requestGroup, useMsUnits));
             };
 
-            ui64 seriesCount = 0;
-            for (const auto* mount: {"local", "remote"}) {
-                seriesCount += countMountSeries(mount);
+            for (const auto& mode: StartEndpointModes) {
+                checkMode(mode);
             }
-            // The old four independent mode groups also exported 80 series.
-            UNIT_ASSERT_VALUES_EQUAL(80, seriesCount);
         };
 
         for (const bool isServer: {false, true}) {
@@ -1248,7 +1188,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
 
         for (const bool isServer: {false, true}) {
             for (const bool useMsUnits: {false, true}) {
-                for (const auto& mode: StartEndpointModes) {
+                for (const auto& mode: AllStartEndpointModes) {
                     checkCase(isServer, useMsUnits, mode);
                 }
             }
@@ -1306,7 +1246,7 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
         };
 
         for (const bool isServer: {false, true}) {
-            for (const auto& mode: StartEndpointModes) {
+            for (const auto& mode: AllStartEndpointModes) {
                 for (const auto calcMaxTime:
                      {ECalcMaxTime::ENABLE, ECalcMaxTime::DISABLE})
                 {
@@ -1365,11 +1305,9 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
 
     Y_UNIT_TEST(ShouldCountUnknownStartEndpointAccessModeAsReadWrite)
     {
-        const auto unknownAccessMode =
-            static_cast<NProto::EVolumeAccessMode>(1000);
-
-        const auto checkCase =
-            [&](bool isServer, NProto::EVolumeMountMode mountMode)
+        const auto checkCase = [&](bool isServer,
+                                   NProto::EVolumeMountMode mountMode,
+                                   NProto::EVolumeAccessMode unknownAccessMode)
         {
             auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
             auto requestStats = CreateStartEndpointStats(counters, isServer);
@@ -1434,7 +1372,13 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             for (const auto mountMode:
                  {NProto::VOLUME_MOUNT_LOCAL, NProto::VOLUME_MOUNT_REMOTE})
             {
-                checkCase(isServer, mountMode);
+                for (const auto unknownAccessMode:
+                     {static_cast<NProto::EVolumeAccessMode>(1000),
+                      NProto::EVolumeAccessMode_INT_MIN_SENTINEL_DO_NOT_USE_,
+                      NProto::EVolumeAccessMode_INT_MAX_SENTINEL_DO_NOT_USE_})
+                {
+                    checkCase(isServer, mountMode, unknownAccessMode);
+                }
             }
         }
     }

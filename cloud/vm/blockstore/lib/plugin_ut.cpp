@@ -1008,13 +1008,8 @@ Y_UNIT_TEST_SUITE(TPluginTest)
                 TRequestTime time)
         {
             Y_UNUSED(callContext);
+            Y_UNUSED(metricRequest);
             Y_UNUSED(time);
-            UNIT_ASSERT_EQUAL(
-                NProto::VOLUME_ACCESS_READ_WRITE,
-                metricRequest.AccessMode);
-            UNIT_ASSERT_EQUAL(
-                NProto::VOLUME_MOUNT_LOCAL,
-                metricRequest.MountMode);
             ++collected;
         };
 

@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
+#include <cloud/blockstore/libs/diagnostics/start_endpoint_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 
@@ -1606,31 +1607,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldTrackStartEndpointMountAndAccessModes)
     {
-        struct TMode
-        {
-            NProto::EVolumeMountMode MountMode;
-            NProto::EVolumeAccessMode AccessMode;
-            TString MountLabel;
-            TString AccessLabel;
-        };
-
-        const TVector<TMode> modes = {
-            {NProto::VOLUME_MOUNT_LOCAL,
-             NProto::VOLUME_ACCESS_READ_WRITE,
-             "local",
-             "read_write"},
-            {NProto::VOLUME_MOUNT_LOCAL,
-             NProto::VOLUME_ACCESS_READ_ONLY,
-             "local",
-             "read_only"},
-            {NProto::VOLUME_MOUNT_REMOTE,
-             NProto::VOLUME_ACCESS_READ_WRITE,
-             "remote",
-             "read_write"},
-            {NProto::VOLUME_MOUNT_REMOTE,
-             NProto::VOLUME_ACCESS_READ_ONLY,
-             "remote",
-             "read_only"}};
+        const auto& modes = StartEndpointModes;
 
         const size_t requestCount = modes.size() * 2;
         TVector<TPromise<void>> receivedPromises;

@@ -4,6 +4,7 @@
 
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/diagnostics/start_endpoint_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 
@@ -24,51 +25,8 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TStartEndpointModes
-{
-    NProto::EVolumeAccessMode AccessMode;
-    NProto::EVolumeMountMode MountMode;
-    TString AccessLabel;
-    TString MountLabel;
-};
-
-const TStartEndpointModes StartEndpointModes[] = {
-    {NProto::VOLUME_ACCESS_READ_WRITE,
-     NProto::VOLUME_MOUNT_LOCAL,
-     "read_write",
-     "local"},
-    {NProto::VOLUME_ACCESS_READ_ONLY,
-     NProto::VOLUME_MOUNT_LOCAL,
-     "read_only",
-     "local"},
-    {NProto::VOLUME_ACCESS_READ_WRITE,
-     NProto::VOLUME_MOUNT_REMOTE,
-     "read_write",
-     "remote"},
-    {NProto::VOLUME_ACCESS_READ_ONLY,
-     NProto::VOLUME_MOUNT_REMOTE,
-     "read_only",
-     "remote"},
-    {NProto::VOLUME_ACCESS_USER_READ_ONLY,
-     NProto::VOLUME_MOUNT_LOCAL,
-     "read_only",
-     "local"},
-    {NProto::VOLUME_ACCESS_USER_READ_ONLY,
-     NProto::VOLUME_MOUNT_REMOTE,
-     "read_only",
-     "remote"},
-    {NProto::VOLUME_ACCESS_REPAIR,
-     NProto::VOLUME_MOUNT_LOCAL,
-     "read_write",
-     "local"},
-    {NProto::VOLUME_ACCESS_REPAIR,
-     NProto::VOLUME_MOUNT_REMOTE,
-     "read_write",
-     "remote"},
-};
-
 void CheckStartEndpointMetrics(
-    const TStartEndpointModes& modes,
+    const TStartEndpointMode& modes,
     ui32 errorCode,
     bool setModes = true)
 {
@@ -185,8 +143,8 @@ void CheckStartEndpointMetrics(
             auto group = counters->GetSubgroup("mount_mode", mount)
                              ->GetSubgroup("access_mode", access)
                              ->GetSubgroup("request", "StartEndpoint");
-            const bool selected =
-                modes.MountLabel == mount && modes.AccessLabel == access;
+            const bool selected = TString(modes.MountLabel) == mount &&
+                                  TString(modes.AccessLabel) == access;
             UNIT_ASSERT_VALUES_EQUAL(0, group->GetCounter("InProgress")->Val());
             UNIT_ASSERT_VALUES_EQUAL(
                 selected ? expectedCount : 0,
@@ -218,7 +176,7 @@ Y_UNIT_TEST_SUITE(TMetricClientTest)
 {
     Y_UNIT_TEST(ShouldTrackStartEndpointModesWhileRunningAndAfterCompletion)
     {
-        for (const auto& modes: StartEndpointModes) {
+        for (const auto& modes: AllStartEndpointModes) {
             CheckStartEndpointMetrics(modes, S_OK);
         }
     }
@@ -230,14 +188,14 @@ Y_UNIT_TEST_SUITE(TMetricClientTest)
 
     Y_UNIT_TEST(ShouldTrackFailedStartEndpointModes)
     {
-        for (const auto& modes: StartEndpointModes) {
+        for (const auto& modes: AllStartEndpointModes) {
             CheckStartEndpointMetrics(modes, E_FAIL);
         }
     }
 
     Y_UNIT_TEST(ShouldTrackCancelledStartEndpointModesOnlyOnce)
     {
-        for (const auto& modes: StartEndpointModes) {
+        for (const auto& modes: AllStartEndpointModes) {
             CheckStartEndpointMetrics(modes, E_CANCELLED);
         }
     }

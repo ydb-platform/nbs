@@ -710,13 +710,21 @@ private:
         NProto::EVolumeAccessMode accessMode,
         NProto::EVolumeMountMode mountMode)
     {
-        const bool readOnly =
-            accessMode == NProto::VOLUME_ACCESS_READ_ONLY ||
-            accessMode == NProto::VOLUME_ACCESS_USER_READ_ONLY;
-        if (mountMode == NProto::VOLUME_MOUNT_REMOTE) {
-            return readOnly ? TotalRemoteRO : TotalRemoteRW;
+        const bool remoteMount = mountMode == NProto::VOLUME_MOUNT_REMOTE;
+        auto& readWriteCounters = remoteMount ? TotalRemoteRW : TotalLocalRW;
+        auto& readOnlyCounters = remoteMount ? TotalRemoteRO : TotalLocalRO;
+        switch (accessMode) {
+            case NProto::VOLUME_ACCESS_READ_ONLY:
+            case NProto::VOLUME_ACCESS_USER_READ_ONLY:
+                return readOnlyCounters;
+            case NProto::VOLUME_ACCESS_READ_WRITE:
+            case NProto::VOLUME_ACCESS_REPAIR:
+                return readWriteCounters;
+            case NProto::EVolumeAccessMode_INT_MIN_SENTINEL_DO_NOT_USE_:
+            case NProto::EVolumeAccessMode_INT_MAX_SENTINEL_DO_NOT_USE_:
+                break;
         }
-        return readOnly ? TotalLocalRO : TotalLocalRW;
+        return readWriteCounters;
     }
 };
 
