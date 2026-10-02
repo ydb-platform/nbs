@@ -858,39 +858,74 @@ void TWriteBackCacheState::CheckAndAcquireBarriers(TNodeState& nodeState)
 
 void TWriteBackCacheState::ProcessPendingRequests()
 {
-    while (RequestManager.HasPendingRequests()) {
-        auto res = RequestManager.TryProcessPendingRequest();
-        if (res.Failed) {
-            SetFailedFlag();
-            return;
-        }
-
-        auto request = std::move(res.CachedRequest);
-        if (!request) {
-            TriggerFlushAll(false);
-            break;
-        }
-
-        const ui64 nodeId = request->GetNodeId();
-        auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
-
-        Y_ABORT_UNLESS(nodeState.Cache.HasPendingRequests());
-        auto pendingRequest = nodeState.Cache.DequeuePendingRequest();
-
-        Y_ABORT_UNLESS(
-            pendingRequest->GetSequenceId() == request->GetSequenceId());
-
-        QueuedOperations.CompleteWriteDataPromise(
-            std::move(pendingRequest->AccessPromise()));
-
-        auto& handleState = nodeState.Handles[request->GetHandle()];
-        handleState.PendingRequests.Remove(pendingRequest.get());
-        handleState.UnflushedRequests.PushBack(request.get());
-
-        EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
-
-        UpdateFlushStatus(nodeId, nodeState);
+    while (auto* pendingRequest = TryAllocNextPendingRequest()) {
+        pendingRequest->SerializeToAllocation();
+        auto cachedRequest = GetNextReadyCachedRequest();
+        Y_ABORT_UNLESS(cachedRequest);
+        ProcessReadyCachedRequest(std::move(cachedRequest));
     }
+}
+
+TPendingWriteDataRequest* TWriteBackCacheState::TryAllocNextPendingRequest()
+{
+    if (IsFailed) {
+        return nullptr;
+    }
+
+    auto allocResult = RequestManager.TryAllocPendingRequest();
+    if (allocResult.Failed) {
+        SetFailedFlag();
+        return nullptr;
+    }
+
+    if (allocResult.StorageIsFull) {
+        TriggerFlushAll(false);
+        return nullptr;
+    }
+
+    // May be empty on backpressure or when the queue is empty
+    return allocResult.Request;
+}
+
+std::unique_ptr<TCachedWriteDataRequest>
+TWriteBackCacheState::GetNextReadyCachedRequest()
+{
+    if (IsFailed) {
+        return nullptr;
+    }
+
+    auto nextReadyResult = RequestManager.GetNextReadyCachedRequest();
+    if (nextReadyResult.Failed) {
+        SetFailedFlag();
+        return nullptr;
+    }
+
+    // May be empty when the queue is empty or the front request is not
+    // serialized yet
+    return std::move(nextReadyResult.Request);
+}
+
+void TWriteBackCacheState::ProcessReadyCachedRequest(
+    std::unique_ptr<TCachedWriteDataRequest> request)
+{
+    const ui64 nodeId = request->GetNodeId();
+    auto& nodeState = Nodes.GetOrCreateNodeState(nodeId);
+
+    Y_ABORT_UNLESS(nodeState.Cache.HasPendingRequests());
+    auto pendingRequest = nodeState.Cache.DequeuePendingRequest();
+
+    Y_ABORT_UNLESS(pendingRequest->GetSequenceId() == request->GetSequenceId());
+
+    QueuedOperations.CompleteWriteDataPromise(
+        std::move(pendingRequest->AccessPromise()));
+
+    auto& handleState = nodeState.Handles[request->GetHandle()];
+    handleState.PendingRequests.Remove(pendingRequest.get());
+    handleState.UnflushedRequests.PushBack(request.get());
+
+    EnqueueUnflushedRequest(nodeId, nodeState, std::move(request));
+
+    UpdateFlushStatus(nodeId, nodeState);
 }
 
 void TWriteBackCacheState::EnqueueUnflushedRequest(
