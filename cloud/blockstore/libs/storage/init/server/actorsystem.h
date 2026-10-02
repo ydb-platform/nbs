@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/config/blockstore.pb.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
 #include <cloud/blockstore/libs/config/blockstore_config_holder.h>
