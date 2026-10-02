@@ -37,7 +37,8 @@ namespace NActors {
         TExecutorThread(TWorkerId workerId,
                         TActorSystem* actorSystem,
                         IExecutorPool* executorPool,
-                        const TString& threadName);
+                        const TString& threadName,
+                        const TString& cpuList);
 
         // shared thread ctor
         TExecutorThread(TWorkerId workerId,
@@ -46,6 +47,7 @@ namespace NActors {
                     IExecutorPool* executorPool,
                     i16 poolCount,
                     const TString& threadName,
+                    const TString& cpuList,
                     ui64 softProcessingDurationTs);
 
         virtual ~TExecutorThread();
@@ -115,6 +117,7 @@ namespace NActors {
         alignas(64) ui64 RevolvingReadCounter = 0;
         ui64 RevolvingWriteCounter = 0;
         const TString ThreadName;
+        const TString CpuList;
         volatile TThreadId ThreadId = UnknownThreadId;
         bool IsSharedThread = false;
 

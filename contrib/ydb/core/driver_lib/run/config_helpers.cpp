@@ -60,6 +60,7 @@ void AddExecutorPool(NActors::TCpuManagerConfig& cpuManager, const NKikimrConfig
             NActors::TBasicExecutorPoolConfig basic;
             basic.PoolId = poolId;
             basic.PoolName = poolConfig.GetName();
+            basic.CpuList = poolConfig.GetCpuList();
             basic.UseRingQueue = systemConfig.HasUseRingQueue() && systemConfig.GetUseRingQueue();
             if (poolConfig.HasMaxAvgPingDeviation() && counters) {
                 auto poolGroup = counters->GetSubgroup("execpool", basic.PoolName);

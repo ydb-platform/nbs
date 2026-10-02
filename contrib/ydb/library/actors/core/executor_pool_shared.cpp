@@ -362,6 +362,7 @@ namespace NActors {
                     Pools[Threads[i].OwnerPoolId],
                     static_cast<i16>(Pools.size()),
                     PoolName,
+                    CpuList,
                     SoftProcessingDurationTs
                     ));
             ScheduleWriters[i].Init(ScheduleReaders[i]);
