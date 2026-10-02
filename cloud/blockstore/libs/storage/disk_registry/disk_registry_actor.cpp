@@ -742,6 +742,9 @@ STFUNC(TDiskRegistryActor::StateWork)
         HFunc(TEvDiskRegistryPrivate::TEvOperationCompleted,
             HandleOperationCompleted);
 
+        HFunc(TEvDiskRegistryPrivate::TEvDeallocateDevicesCompleted,
+            HandleDeallocateDevicesCompleted);
+
         HFunc(TEvDiskRegistryPrivate::TEvUpdateVolumeConfigResponse,
             HandleUpdateVolumeConfigResponse);
 

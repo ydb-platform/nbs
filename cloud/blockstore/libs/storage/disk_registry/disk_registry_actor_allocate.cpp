@@ -88,7 +88,8 @@ void TDiskRegistryActor::HandleAllocateDisk(
             msg->Record.GetAgentIds().end()
         },
         msg->Record.GetPoolName(),
-        msg->Record.GetStorageMediaKind());
+        msg->Record.GetStorageMediaKind(),
+        msg->Record.GetJournalConfig());
 }
 
 bool TDiskRegistryActor::PrepareAddDisk(
@@ -128,7 +129,8 @@ void TDiskRegistryActor::ExecuteAddDisk(
             .ReplicaCount = args.ReplicaCount,
             .AgentIds = args.AgentIds,
             .PoolName = args.PoolName,
-            .MediaKind = args.MediaKind
+            .MediaKind = args.MediaKind,
+            .JournalConfig = args.JournalConfig
         },
         &result);
 
@@ -148,6 +150,8 @@ void TDiskRegistryActor::ExecuteAddDisk(
     args.Replicas = std::move(result.Replicas);
     args.DeviceReplacementUUIDs = std::move(result.DeviceReplacementIds);
     args.LaggingDevices = std::move(result.LaggingDevices);
+    args.UnconfirmedDevices = std::move(result.UnconfirmedDevices);
+    args.DiskJournalConfig = std::move(result.JournalConfig);
     args.IOMode = result.IOMode;
     args.IOModeTs = result.IOModeTs;
     args.MuteIOErrors = result.MuteIOErrors;
@@ -286,7 +290,22 @@ void TDiskRegistryActor::CompleteAddDisk(
         }
     }
 
-    NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    if (!HasError(response->GetError()) && args.UnconfirmedDevices) {
+        //
+        // Hold the response back until the agents acknowledge the allocation:
+        // the volume must not get a device its agent has not been told about
+        //
+
+        SendAllocateDeviceRequests(
+            ctx,
+            args.RequestInfo,
+            args.DiskId,
+            args.DiskJournalConfig,
+            std::move(args.UnconfirmedDevices),
+            std::move(response));
+    } else {
+        NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    }
 
     DestroyBrokenDisks(ctx);
     NotifyUsers(ctx);
@@ -328,6 +347,25 @@ void TDiskRegistryActor::HandleDeallocateDisk(
         AddPendingDeallocation(ctx, diskId, std::move(requestInfo));
 
         return;
+    }
+
+    if (State->IsReadyForCleanup(diskId)) {
+        if (auto devices = State->GetJournalledDiskDevices(diskId)) {
+            //
+            // Postpone the deallocation until the agents acknowledge it: the
+            // devices of a journalled disk must not be released before their
+            // agents have been told about it
+            //
+
+            SendDeallocateDeviceRequests(
+                ctx,
+                std::move(requestInfo),
+                diskId,
+                msg->Record.GetSync(),
+                std::move(devices));
+
+            return;
+        }
     }
 
     ExecuteTx<TRemoveDisk>(

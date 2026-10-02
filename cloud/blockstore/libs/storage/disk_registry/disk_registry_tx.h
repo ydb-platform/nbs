@@ -22,6 +22,7 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(RemoveAgent,                        __VA_ARGS__)                       \
     xxx(UpdateConfig,                       __VA_ARGS__)                       \
     xxx(CleanupDevices,                     __VA_ARGS__)                       \
+    xxx(ConfirmDeviceAllocation,            __VA_ARGS__)                       \
     xxx(CreatePlacementGroup,               __VA_ARGS__)                       \
     xxx(DestroyPlacementGroup,              __VA_ARGS__)                       \
     xxx(AlterPlacementGroupMembership,      __VA_ARGS__)                       \
@@ -130,6 +131,7 @@ struct TTxDiskRegistry
         const TVector<TString> AgentIds;
         const TString PoolName;
         const NProto::EStorageMediaKind MediaKind;
+        const NProto::TJournalConfig JournalConfig;
 
         NProto::TError Error;
         TVector<NProto::TDeviceConfig> Devices;
@@ -137,6 +139,8 @@ struct TTxDiskRegistry
         TVector<TVector<NProto::TDeviceConfig>> Replicas;
         TVector<TString> DeviceReplacementUUIDs;
         TVector<TLaggingDevice> LaggingDevices;
+        TVector<NProto::TDeviceConfig> UnconfirmedDevices;
+        NProto::TJournalConfig DiskJournalConfig;
         NProto::EVolumeIOMode IOMode = NProto::VOLUME_IO_OK;
         TInstant IOModeTs;
         bool MuteIOErrors = false;
@@ -153,7 +157,8 @@ struct TTxDiskRegistry
                 ui32 replicaCount,
                 TVector<TString> agentIds,
                 TString poolName,
-                NProto::EStorageMediaKind mediaKind)
+                NProto::EStorageMediaKind mediaKind,
+                NProto::TJournalConfig journalConfig)
             : RequestInfo(std::move(requestInfo))
             , DiskId(std::move(diskId))
             , CloudId(std::move(cloudId))
@@ -166,6 +171,7 @@ struct TTxDiskRegistry
             , AgentIds(std::move(agentIds))
             , PoolName(std::move(poolName))
             , MediaKind(mediaKind)
+            , JournalConfig(std::move(journalConfig))
         {}
 
         void Clear()
@@ -176,6 +182,8 @@ struct TTxDiskRegistry
             Replicas.clear();
             DeviceReplacementUUIDs.clear();
             LaggingDevices.clear();
+            UnconfirmedDevices.clear();
+            DiskJournalConfig.Clear();
             IOMode = NProto::VOLUME_IO_OK;
             IOModeTs = {};
             MuteIOErrors = false;
@@ -325,6 +333,31 @@ struct TTxDiskRegistry
         void Clear()
         {
             SyncDeallocatedDisks.clear();
+        }
+    };
+
+    //
+    // ConfirmDeviceAllocation
+    //
+
+    struct TConfirmDeviceAllocation
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TString DiskId;
+        const TVector<TString> Devices;
+
+        TConfirmDeviceAllocation(
+                TRequestInfoPtr requestInfo,
+                TString diskId,
+                TVector<TString> devices)
+            : RequestInfo(std::move(requestInfo))
+            , DiskId(std::move(diskId))
+            , Devices(std::move(devices))
+        {}
+
+        void Clear()
+        {
+            // nothing to do
         }
     };
 

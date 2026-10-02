@@ -192,6 +192,7 @@ using TVolumeConfig = NKikimrBlockStore::TVolumeConfig;
     xxx(CleanupDisks,                               __VA_ARGS__)               \
     xxx(SecureErase,                                __VA_ARGS__)               \
     xxx(CleanupDevices,                             __VA_ARGS__)               \
+    xxx(ConfirmDeviceAllocation,                    __VA_ARGS__)               \
     xxx(FinishAcquireDisk,                          __VA_ARGS__)               \
     xxx(RemoveDiskSession,                          __VA_ARGS__)               \
     xxx(DestroyBrokenDisks,                         __VA_ARGS__)               \
@@ -326,6 +327,26 @@ struct TEvDiskRegistryPrivate
     };
 
     struct TCleanupDevicesResponse
+    {};
+
+    //
+    // ConfirmDeviceAllocation
+    //
+
+    struct TConfirmDeviceAllocationRequest
+    {
+        TString DiskId;
+        TVector<TString> Devices;
+
+        TConfirmDeviceAllocationRequest(
+                TString diskId,
+                TVector<TString> devices)
+            : DiskId(std::move(diskId))
+            , Devices(std::move(devices))
+        {}
+    };
+
+    struct TConfirmDeviceAllocationResponse
     {};
 
     //
@@ -829,6 +850,17 @@ struct TEvDiskRegistryPrivate
     };
 
     //
+    // DeallocateDevicesCompleted
+    //
+
+    struct TDeallocateDevicesCompleted
+    {
+        TRequestInfoPtr RequestInfo;
+        TString DiskId;
+        bool Sync = false;
+    };
+
+    //
     // UpdatePathAttachState
     //
 
@@ -863,6 +895,8 @@ struct TEvDiskRegistryPrivate
 
         EvAttachDetachPathsOperationCompleted,
 
+        EvDeallocateDevicesCompleted,
+
         EvEnd
     };
 
@@ -889,6 +923,10 @@ struct TEvDiskRegistryPrivate
     using TEvAttachDetachPathsOperationCompleted = TResponseEvent<
         TAttachDetachPathsOperationCompleted,
         EvAttachDetachPathsOperationCompleted>;
+
+    using TEvDeallocateDevicesCompleted = TResponseEvent<
+        TDeallocateDevicesCompleted,
+        EvDeallocateDevicesCompleted>;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

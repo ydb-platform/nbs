@@ -86,6 +86,15 @@ TString GetMirroredDiskGroupId(const TString& diskId)
     return diskId + "/g";
 }
 
+bool IsSameJournalConfig(
+    const NProto::TJournalConfig& lhs,
+    const NProto::TJournalConfig& rhs)
+{
+    return lhs.GetEnabled() == rhs.GetEnabled() &&
+           lhs.GetLogMetaSize() == rhs.GetLogMetaSize() &&
+           lhs.GetLogDataSize() == rhs.GetLogDataSize();
+}
+
 TString GetReplicaDiskId(const TString& diskId, ui32 i)
 {
     return TStringBuilder() << diskId << "/" << i;
@@ -514,6 +523,10 @@ void TDiskRegistryState::ProcessDisks(TVector<NProto::TDiskConfig> configs)
         disk.MigrationStartTs = TInstant::MicroSeconds(config.GetMigrationStartTs());
         disk.VolumeHealth = config.GetVolumeHealth();
         disk.VolumeHealthSeqNo = config.GetVolumeHealthSeqNo();
+        disk.UnconfirmedDevices.insert(
+            config.GetUnconfirmedDeviceUUIDs().begin(),
+            config.GetUnconfirmedDeviceUUIDs().end());
+        disk.JournalConfig = config.GetJournalConfig();
 
         for (auto& hi: *config.MutableHistory()) {
             disk.History.push_back(std::move(hi));
@@ -2524,7 +2537,8 @@ NProto::TError TDiskRegistryState::AllocateCheckpoint(
         {},                       // MasterDiskId
         {},                       // AgentIds
         diskInfo.GetPoolName(),   // PoolName;
-        checkpointMediaKind};
+        checkpointMediaKind,
+        {}};   // JournalConfig
 
     if (diskParams.BlocksCount == 0 ){
         return MakeError(E_ARGUMENT, "blocks count == 0");
@@ -2794,6 +2808,11 @@ NProto::TError TDiskRegistryState::AllocateDiskReplicas(
             result->Migrations.end(),
             std::make_move_iterator(subResult.Migrations.begin()),
             std::make_move_iterator(subResult.Migrations.end()));
+        result->UnconfirmedDevices.insert(
+            result->UnconfirmedDevices.end(),
+            std::make_move_iterator(subResult.UnconfirmedDevices.begin()),
+            std::make_move_iterator(subResult.UnconfirmedDevices.end()));
+        result->JournalConfig = std::move(subResult.JournalConfig);
     }
 
     return {};
@@ -3020,6 +3039,25 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
     const bool isShadowDiskAllocation =
         !checkpointParams.GetCheckpointId().empty();
 
+    //
+    // Take the journal config from the request only when the disk is created:
+    // an existing disk keeps the config it was created with, so all its
+    // devices are handled the same way whatever the later requests carry
+    //
+
+    if (disk.Devices.empty()) {
+        disk.JournalConfig = params.JournalConfig;
+    } else if (!IsSameJournalConfig(disk.JournalConfig, params.JournalConfig)) {
+        STORAGE_WARN(
+            "Disk %s: the journal config from the request (%s) is ignored, "
+            "the disk was created with (%s)",
+            params.DiskId.Quote().c_str(),
+            params.JournalConfig.ShortDebugString().c_str(),
+            disk.JournalConfig.ShortDebugString().c_str());
+    }
+
+    result->JournalConfig = disk.JournalConfig;
+
     auto onError = [&]
     {
         const bool isNewDisk = disk.Devices.empty();
@@ -3067,6 +3105,18 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
 
     auto& output = result->Devices;
 
+    auto collectUnconfirmedDevices = [&] {
+        if (!disk.JournalConfig.GetEnabled()) {
+            return;
+        }
+
+        for (const auto& device: output) {
+            if (disk.UnconfirmedDevices.contains(device.GetDeviceUUID())) {
+                result->UnconfirmedDevices.push_back(device);
+            }
+        }
+    };
+
     if (auto error = GetDiskMigrations(disk, result->Migrations); HasError(error)) {
         onError();
 
@@ -3098,6 +3148,8 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
             disk.FolderId = params.FolderId;
             db.UpdateDisk(BuildDiskConfig(params.DiskId, disk));
         }
+
+        collectUnconfirmedDevices();
 
         return MakeError(S_ALREADY, TStringBuilder() <<
             "disk " << params.DiskId.Quote() << " already exists");
@@ -3146,12 +3198,18 @@ NProto::TError TDiskRegistryState::AllocateSimpleDisk(
 
     for (const auto& device: allocatedDevices) {
         disk.Devices.push_back(device.GetDeviceUUID());
+
+        if (disk.JournalConfig.GetEnabled()) {
+            disk.UnconfirmedDevices.insert(device.GetDeviceUUID());
+        }
     }
 
     output.insert(
         output.end(),
         std::make_move_iterator(allocatedDevices.begin()),
         std::make_move_iterator(allocatedDevices.end()));
+
+    collectUnconfirmedDevices();
 
     disk.LogicalBlockSize = params.BlockSize;
     disk.CloudId = params.CloudId;
@@ -4316,6 +4374,35 @@ TVector<TDiskRegistryState::TDiskId> TDiskRegistryState::MarkDevicesAsClean(
     return ret;
 }
 
+void TDiskRegistryState::ConfirmDeviceAllocation(
+    TDiskRegistryDatabase& db,
+    const TDiskId& diskId,
+    const TVector<TDeviceId>& uuids)
+{
+    THashSet<TDiskId> updatedDisks;
+
+    for (const auto& uuid: uuids) {
+        //
+        // Skip the device if it does not belong to the disk or to one of its
+        // replicas anymore: the acknowledgement is stale then
+        //
+
+        const auto ownerId = DeviceList.FindDiskId(uuid);
+        auto* owner = Disks.FindPtr(ownerId);
+        if (!owner || (ownerId != diskId && owner->MasterDiskId != diskId)) {
+            continue;
+        }
+
+        if (owner->UnconfirmedDevices.erase(uuid)) {
+            updatedDisks.insert(ownerId);
+        }
+    }
+
+    for (const auto& id: updatedDisks) {
+        db.UpdateDisk(BuildDiskConfig(id, Disks[id]));
+    }
+}
+
 bool TDiskRegistryState::TryUpdateDevice(
     TInstant now,
     TDiskRegistryDatabase& db,
@@ -5401,6 +5488,15 @@ NProto::TDiskConfig TDiskRegistryState::BuildDiskConfig(
 
     for (const auto& hi: diskState.History) {
         config.AddHistory()->CopyFrom(hi);
+    }
+
+    for (const auto& uuid: diskState.UnconfirmedDevices) {
+        *config.AddUnconfirmedDeviceUUIDs() = uuid;
+    }
+    Sort(*config.MutableUnconfirmedDeviceUUIDs());
+
+    if (diskState.JournalConfig.GetEnabled()) {
+        *config.MutableJournalConfig() = diskState.JournalConfig;
     }
 
     return config;
@@ -7524,6 +7620,45 @@ NProto::TDiskRegistryStateBackup TDiskRegistryState::BackupState() const
 bool TDiskRegistryState::IsReadyForCleanup(const TDiskId& diskId) const
 {
     return DisksToCleanup.contains(diskId);
+}
+
+TVector<NProto::TDeviceConfig> TDiskRegistryState::GetJournalledDiskDevices(
+    const TDiskId& diskId) const
+{
+    const auto* disk = Disks.FindPtr(diskId);
+    if (!disk) {
+        return {};
+    }
+
+    //
+    // Collect the disks that hold the devices: a mirrored disk keeps them in
+    // its replicas
+    //
+
+    TVector<TDiskId> diskIds;
+    if (disk->ReplicaCount) {
+        for (ui32 i = 0; i < disk->ReplicaCount + 1; ++i) {
+            diskIds.push_back(GetReplicaDiskId(diskId, i));
+        }
+    } else {
+        diskIds.push_back(diskId);
+    }
+
+    TVector<NProto::TDeviceConfig> devices;
+    for (const auto& id: diskIds) {
+        const auto* d = Disks.FindPtr(id);
+        if (!d || !d->JournalConfig.GetEnabled()) {
+            continue;
+        }
+
+        for (const auto& uuid: d->Devices) {
+            if (const auto* device = FindDevice(uuid)) {
+                devices.push_back(*device);
+            }
+        }
+    }
+
+    return devices;
 }
 
 TVector<TString> TDiskRegistryState::GetDisksToCleanup() const

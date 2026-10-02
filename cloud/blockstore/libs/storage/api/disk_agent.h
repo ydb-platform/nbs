@@ -31,6 +31,8 @@ namespace NCloud::NBlockStore::NStorage {
     xxx(DirectCopyBlocks,         __VA_ARGS__)                                 \
     xxx(DetachPaths,              __VA_ARGS__)                                 \
     xxx(AttachPaths,              __VA_ARGS__)                                 \
+    xxx(AllocateDevice,           __VA_ARGS__)                                 \
+    xxx(DeallocateDevice,         __VA_ARGS__)                                 \
 // BLOCKSTORE_DISK_AGENT_REQUESTS_PROTO
 
 #define BLOCKSTORE_DISK_AGENT_REQUESTS(xxx, ...)                               \
@@ -102,6 +104,12 @@ struct TEvDiskAgent
         EvDetachPathsResponse = EvBegin + 26,
         EvAttachPathsRequest = EvBegin + 27,
         EvAttachPathsResponse = EvBegin + 28,
+
+        EvAllocateDeviceRequest = EvBegin + 29,
+        EvAllocateDeviceResponse = EvBegin + 30,
+
+        EvDeallocateDeviceRequest = EvBegin + 31,
+        EvDeallocateDeviceResponse = EvBegin + 32,
 
         EvEnd
     };

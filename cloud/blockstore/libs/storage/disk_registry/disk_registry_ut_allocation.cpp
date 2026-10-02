@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/disk_registry/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/ss_proxy_client.h>
+#include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <contrib/ydb/core/testlib/basics/runtime.h>
 
@@ -150,6 +151,359 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 msg.GetDevices(1).GetNodeId(),
                 msg.GetDevices(2).GetNodeId());
         }
+    }
+
+    Y_UNIT_TEST(ShouldHoldJournalledDiskAllocationUntilAgentsAcknowledgeDevices)
+    {
+        const auto agent1 = CreateAgentConfig("agent-1", {
+            Device("dev-1", "uuid-1", "rack-1", 10_GB),
+            Device("dev-2", "uuid-2", "rack-1", 10_GB)
+        });
+
+        const auto agent2 = CreateAgentConfig("agent-2", {
+            Device("dev-1", "uuid-3", "rack-1", 10_GB),
+            Device("dev-2", "uuid-4", "rack-1", 10_GB)
+        });
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents({ agent1, agent2 })
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            CreateRegistryConfig(0, {agent1, agent2}));
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+        WaitForSecureErase(*runtime, {agent1, agent2});
+
+        NProto::TJournalConfig journalConfig;
+        journalConfig.SetEnabled(true);
+        journalConfig.SetLogMetaSize(1_MB);
+        journalConfig.SetLogDataSize(64_MB);
+
+        bool rejectRequests = true;
+        TVector<TString> requestedJournals;
+        TVector<TString> requestedDevices;
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() ==
+                        TEvDiskAgent::EvAllocateDeviceRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvDiskAgent::TEvAllocateDeviceRequest>();
+                    requestedJournals.push_back(
+                        msg->Record.GetJournalConfig().ShortDebugString());
+                    requestedDevices.push_back(msg->Record.GetDeviceUUID());
+
+                    if (rejectRequests) {
+                        auto response = std::make_unique<
+                            TEvDiskAgent::TEvAllocateDeviceResponse>(
+                            MakeError(E_IO));
+
+                        runtime->Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie));
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        auto allocate = [&] (
+            const TString& diskId,
+            ui64 diskSize,
+            const NProto::TJournalConfig& journal)
+        {
+            requestedJournals.clear();
+            requestedDevices.clear();
+
+            auto request =
+                diskRegistry.CreateAllocateDiskRequest(diskId, diskSize);
+            *request->Record.MutableJournalConfig() = journal;
+            diskRegistry.SendRequest(std::move(request));
+
+            auto response = diskRegistry.RecvAllocateDiskResponse();
+            runtime->DispatchEvents({}, 10ms);
+
+            Sort(requestedDevices);
+
+            return response;
+        };
+
+        auto getDevices = [] (const auto& response) {
+            TVector<TString> devices;
+            for (const auto& device: response->Record.GetDevices()) {
+                devices.push_back(device.GetDeviceUUID());
+            }
+            Sort(devices);
+
+            return devices;
+        };
+
+        //
+        // Allocate a new disk while the agents answer with errors: the
+        // requests are sent for each device and the allocation is rejected
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            allocate("disk-1", 20_GB, journalConfig)->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(2, requestedDevices.size());
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>(2, journalConfig.ShortDebugString()),
+            requestedJournals);
+
+        const auto devices = requestedDevices;
+
+        //
+        // Restart the tablet and retry without the journal config: the
+        // unacknowledged devices and the config of the disk are persisted, so
+        // the same requests are sent again
+        //
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_REJECTED,
+            allocate("disk-1", 20_GB, {})->GetStatus());
+        ASSERT_VECTORS_EQUAL(devices, requestedDevices);
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>(2, journalConfig.ShortDebugString()),
+            requestedJournals);
+
+        //
+        // Let the agents acknowledge the devices: the disk gets them only now
+        //
+
+        rejectRequests = false;
+
+        {
+            auto response = allocate("disk-1", 20_GB, journalConfig);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            ASSERT_VECTORS_EQUAL(devices, getDevices(response));
+            ASSERT_VECTORS_EQUAL(devices, requestedDevices);
+        }
+
+        //
+        // Repeat the allocation: all the devices are acknowledged, so no
+        // requests are sent
+        //
+
+        {
+            auto response = allocate("disk-1", 20_GB, journalConfig);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            ASSERT_VECTORS_EQUAL(devices, getDevices(response));
+            UNIT_ASSERT_VALUES_EQUAL(0, requestedDevices.size());
+        }
+
+        //
+        // Resize the disk: a request is sent for the added device only
+        //
+
+        {
+            auto response = allocate("disk-1", 30_GB, journalConfig);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            const auto resizedDevices = getDevices(response);
+            UNIT_ASSERT_VALUES_EQUAL(3, resizedDevices.size());
+
+            TVector<TString> addedDevices;
+            SetDifference(
+                resizedDevices.begin(),
+                resizedDevices.end(),
+                devices.begin(),
+                devices.end(),
+                std::back_inserter(addedDevices));
+
+            UNIT_ASSERT_VALUES_EQUAL(1, addedDevices.size());
+            ASSERT_VECTORS_EQUAL(addedDevices, requestedDevices);
+            ASSERT_VECTORS_EQUAL(
+                TVector<TString>(1, journalConfig.ShortDebugString()),
+                requestedJournals);
+        }
+
+        //
+        // Allocate a disk without the journal: no requests are sent, so the
+        // agents that answer with errors do not affect the allocation
+        //
+
+        rejectRequests = true;
+
+        {
+            auto response = allocate("disk-2", 10_GB, {});
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(1, getDevices(response).size());
+            UNIT_ASSERT_VALUES_EQUAL(0, requestedDevices.size());
+        }
+
+        //
+        // Repeat the allocation with the journal config: the disk was created
+        // without the journal, so the config is ignored
+        //
+
+        {
+            auto response = allocate("disk-2", 10_GB, journalConfig);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+            UNIT_ASSERT_VALUES_EQUAL(0, requestedDevices.size());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldHoldJournalledDiskDeallocationUntilAgentsAcknowledgeIt)
+    {
+        const auto agent1 = CreateAgentConfig("agent-1", {
+            Device("dev-1", "uuid-1", "rack-1", 10_GB),
+            Device("dev-2", "uuid-2", "rack-1", 10_GB)
+        });
+
+        const auto agent2 = CreateAgentConfig("agent-2", {
+            Device("dev-1", "uuid-3", "rack-1", 10_GB),
+            Device("dev-2", "uuid-4", "rack-1", 10_GB)
+        });
+
+        auto runtime = TTestRuntimeBuilder()
+            .WithAgents({ agent1, agent2 })
+            .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            CreateRegistryConfig(0, {agent1, agent2}));
+
+        RegisterAgents(*runtime, 2);
+        WaitForAgents(*runtime, 2);
+        WaitForSecureErase(*runtime, {agent1, agent2});
+
+        auto allocate = [&] (const TString& diskId, ui64 diskSize, bool journal)
+        {
+            auto request =
+                diskRegistry.CreateAllocateDiskRequest(diskId, diskSize);
+            request->Record.MutableJournalConfig()->SetEnabled(journal);
+            diskRegistry.SendRequest(std::move(request));
+
+            auto response = diskRegistry.RecvAllocateDiskResponse();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+
+            TVector<TString> devices;
+            for (const auto& device: response->Record.GetDevices()) {
+                devices.push_back(device.GetDeviceUUID());
+            }
+            Sort(devices);
+
+            return devices;
+        };
+
+        const auto devices = allocate("disk-1", 20_GB, true);
+        UNIT_ASSERT_VALUES_EQUAL(2, devices.size());
+
+        allocate("disk-2", 10_GB, false);
+
+        diskRegistry.MarkDiskForCleanup("disk-1");
+        diskRegistry.MarkDiskForCleanup("disk-2");
+
+        bool rejectRequests = true;
+        TVector<TString> requestedDevices;
+        ui32 secureEraseRequests = 0;
+        runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() ==
+                        TEvDiskAgent::EvSecureEraseDeviceRequest)
+                {
+                    ++secureEraseRequests;
+                }
+
+                if (event->GetTypeRewrite() ==
+                        TEvDiskAgent::EvDeallocateDeviceRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvDiskAgent::TEvDeallocateDeviceRequest>();
+                    requestedDevices.push_back(msg->Record.GetDeviceUUID());
+
+                    if (rejectRequests) {
+                        auto response = std::make_unique<
+                            TEvDiskAgent::TEvDeallocateDeviceResponse>(
+                            MakeError(E_IO));
+
+                        runtime->Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie));
+
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            }
+        );
+
+        auto deallocate = [&] (const TString& diskId) {
+            requestedDevices.clear();
+
+            diskRegistry.SendDeallocateDiskRequest(diskId);
+            auto response = diskRegistry.RecvDeallocateDiskResponse();
+            runtime->DispatchEvents({}, 10ms);
+
+            Sort(requestedDevices);
+
+            return response->GetStatus();
+        };
+
+        //
+        // Deallocate the journalled disk while the agents answer with errors:
+        // the requests are sent for each device, the deallocation is rejected
+        // and the devices are not released
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, deallocate("disk-1"));
+        ASSERT_VECTORS_EQUAL(devices, requestedDevices);
+        UNIT_ASSERT_VALUES_EQUAL(0, secureEraseRequests);
+
+        //
+        // Restart the tablet: the journal config of the disk is persisted, so
+        // the requests are sent again
+        //
+
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, deallocate("disk-1"));
+        ASSERT_VECTORS_EQUAL(devices, requestedDevices);
+        UNIT_ASSERT_VALUES_EQUAL(0, secureEraseRequests);
+
+        //
+        // Let the agents acknowledge the deallocation: the disk is deallocated
+        // only now
+        //
+
+        rejectRequests = false;
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, deallocate("disk-1"));
+        ASSERT_VECTORS_EQUAL(devices, requestedDevices);
+
+        //
+        // Deallocate the disk without the journal: no requests are sent, so
+        // the agents that answer with errors do not affect the deallocation
+        //
+
+        rejectRequests = true;
+
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, deallocate("disk-2"));
+        UNIT_ASSERT_VALUES_EQUAL(0, requestedDevices.size());
     }
 
     Y_UNIT_TEST(ShouldTakeDeviceOverridesIntoAccount)

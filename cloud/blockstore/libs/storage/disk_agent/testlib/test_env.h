@@ -285,6 +285,28 @@ public:
         return request;
     }
 
+    auto CreateAllocateDeviceRequest(
+        TString uuid,
+        NProto::TJournalConfig journalConfig)
+    {
+        auto request = std::make_unique<TEvDiskAgent::TEvAllocateDeviceRequest>();
+
+        request->Record.SetDeviceUUID(std::move(uuid));
+        *request->Record.MutableJournalConfig() = std::move(journalConfig);
+
+        return request;
+    }
+
+    auto CreateDeallocateDeviceRequest(TString uuid)
+    {
+        auto request =
+            std::make_unique<TEvDiskAgent::TEvDeallocateDeviceRequest>();
+
+        request->Record.SetDeviceUUID(std::move(uuid));
+
+        return request;
+    }
+
     auto CreateChecksumDeviceBlocksRequest(
         const TString& uuid,
         ui64 startIndex,

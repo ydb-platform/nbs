@@ -5,6 +5,7 @@ GENERATE_ENUM_SERIALIZATION(disk_registry_state.h)
 SRCS(
     disk_registry_actor_acquire.cpp
     disk_registry_actor_add_lagging_devices.cpp
+    disk_registry_actor_allocate_device.cpp
     disk_registry_actor_allocate.cpp
     disk_registry_actor_attach_detach_path.cpp
     disk_registry_actor_backup_state.cpp
@@ -17,6 +18,7 @@ SRCS(
     disk_registry_actor_cms.cpp
     disk_registry_actor_config.cpp
     disk_registry_actor_create_disk_from_devices.cpp
+    disk_registry_actor_deallocate_device.cpp
     disk_registry_actor_describe.cpp
     disk_registry_actor_destroy.cpp
     disk_registry_actor_ensure_state_integrity.cpp

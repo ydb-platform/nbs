@@ -288,6 +288,13 @@ class TDiskRegistryState
 
         TVector<TLaggingDevice> OutdatedLaggingDevices;
 
+        // Devices allocated for the disk whose agents have not acknowledged
+        // the AllocateDevice request yet.
+        THashSet<TDeviceId> UnconfirmedDevices;
+
+        // The journal layout of the disk devices.
+        NProto::TJournalConfig JournalConfig;
+
         NProto::EVolumeHealth VolumeHealth = NProto::VOLUME_HEALTH_HEALTHY;
         ui64 VolumeHealthSeqNo = 0;
     };
@@ -416,6 +423,10 @@ public:
 
         NProto::EStorageMediaKind MediaKind =
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED;
+
+        // The journal config for a new disk. It is ignored if the disk already
+        // exists: the disk keeps the config it was created with.
+        NProto::TJournalConfig JournalConfig;
     };
 
     struct TAllocateDiskResult
@@ -425,6 +436,13 @@ public:
         TVector<TVector<NProto::TDeviceConfig>> Replicas;
         TVector<TString> DeviceReplacementIds;
         TVector<TLaggingDevice> LaggingDevices;
+
+        // Devices of the disk (replicas included) whose agents have not
+        // acknowledged the AllocateDevice request yet.
+        TVector<NProto::TDeviceConfig> UnconfirmedDevices;
+
+        // The journal config the disk was created with.
+        NProto::TJournalConfig JournalConfig;
 
         NProto::EVolumeIOMode IOMode = {};
         TInstant IOModeTs;
@@ -537,6 +555,11 @@ public:
     TVector<NProto::TDeviceConfig> GetBrokenDevices() const;
 
     TVector<NProto::TDeviceConfig> GetDirtyDevices() const;
+
+    /// Returns the devices of the disk (replicas included) if the journal is
+    /// enabled for it.
+    TVector<NProto::TDeviceConfig> GetJournalledDiskDevices(
+        const TDiskId& diskId) const;
     TDeviceList::TEraseIdempotencyKey GetEraseIdempotencyKey(
         const TDeviceId& deviceId) const;
 
@@ -556,6 +579,13 @@ public:
         TDiskRegistryDatabase& db,
         const TVector<TDeviceId>& uuids);
     bool MarkDeviceAsDirty(TDiskRegistryDatabase& db, const TDeviceId& uuid);
+
+    /// Mark the devices of the disk (or of its replicas) as acknowledged by
+    /// their agents: the AllocateDevice request has been handled for them.
+    void ConfirmDeviceAllocation(
+        TDiskRegistryDatabase& db,
+        const TDiskId& diskId,
+        const TVector<TDeviceId>& uuids);
 
     NProto::TError CreatePlacementGroup(
         TDiskRegistryDatabase& db,
