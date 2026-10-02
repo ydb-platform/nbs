@@ -22,6 +22,16 @@ type TaskSchedule struct {
 	Min        int  // (0 - 59)
 }
 
+type TaskScheduleTiming struct {
+	// Time when the caller received the request.
+	// Zero means that the reception time is unknown.
+	ReceivedAt time.Time
+
+	// Earliest time when the task can start.
+	// Zero means that no initial delay is requested.
+	NotBefore time.Time
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 type Scheduler interface {
@@ -31,6 +41,14 @@ type Scheduler interface {
 		ctx context.Context,
 		taskType string,
 		description string,
+		request proto.Message,
+	) (string, error)
+
+	ScheduleTaskAt(
+		ctx context.Context,
+		taskType string,
+		description string,
+		timing TaskScheduleTiming,
 		request proto.Message,
 	) (string, error)
 

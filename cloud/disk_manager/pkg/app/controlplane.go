@@ -452,13 +452,20 @@ func initControlplane(
 			cellSelector,
 		),
 	)
+
+	snapshotService, err := snapshots.NewService(
+		taskScheduler,
+		taskStorage,
+		config.GetSnapshotsConfig(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	facade.RegisterSnapshotService(
 		server,
 		taskScheduler,
-		snapshots.NewService(
-			taskScheduler,
-			config.GetSnapshotsConfig(),
-		),
+		snapshotService,
 	)
 	facade.RegisterPrivateService(
 		server,

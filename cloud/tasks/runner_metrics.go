@@ -11,6 +11,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"github.com/ydb-platform/nbs/cloud/tasks/metrics"
+	"github.com/ydb-platform/nbs/cloud/tasks/storage"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -48,6 +49,7 @@ func printStackTraces() string {
 
 type runnerMetrics interface {
 	OnExecutionStarted(execCtx ExecutionContext)
+	OnInitialRunStarted(state storage.TaskState, at time.Time)
 	OnExecutionStopped()
 	OnExecutionError(err error)
 	OnExecutionErrorIgnoreSilence(err error)
@@ -120,6 +122,47 @@ func (m *runnerMetricsImpl) OnExecutionStarted(execCtx ExecutionContext) {
 	}
 
 	m.taskMetrics.inflightTasksGauge.Add(1)
+}
+
+func (m *runnerMetricsImpl) OnInitialRunStarted(
+	state storage.TaskState,
+	at time.Time,
+) {
+
+	if state.ReceivedAt.IsZero() || state.AvailableAt.IsZero() {
+		return
+	}
+
+	registry := m.registry.WithTags(map[string]string{
+		"type": state.TaskType,
+	})
+
+	buckets := metrics.NewDurationBuckets(
+		time.Millisecond,
+		10*time.Millisecond,
+		100*time.Millisecond,
+		time.Second,
+		5*time.Second,
+		30*time.Second,
+		time.Minute,
+		2*time.Minute,
+		5*time.Minute,
+		10*time.Minute,
+	)
+
+	values := map[string]time.Duration{
+		"initialRun/plannedDelay": state.AvailableAt.Sub(state.ReceivedAt),
+		"initialRun/actualDelay":  at.Sub(state.ReceivedAt),
+		"initialRun/queueDelay":   at.Sub(state.AvailableAt),
+	}
+
+	for name, value := range values {
+		if value < 0 {
+			value = 0
+		}
+
+		registry.DurationHistogram(name, buckets).RecordDuration(value)
+	}
 }
 
 func (m *runnerMetricsImpl) OnExecutionStopped() {
