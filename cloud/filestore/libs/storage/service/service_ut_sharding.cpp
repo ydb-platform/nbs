@@ -4117,17 +4117,16 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             1,
             ExtractShardNo(createNodeResponse.GetNode().GetId()));
 
-        bool intercept = true;
         bool intercepted = false;
-        env.GetRuntime().SetEventFilter(
-            [&] (auto& runtime, TAutoPtr<IEventHandle>& event) {
+        auto prevFilter = env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
                 Y_UNUSED(runtime);
-                if (event->GetTypeRewrite() == TEvService::EvUnlinkNodeRequest) {
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvUnlinkNodeRequest) {
                     const auto* msg =
                         event->Get<TEvService::TEvUnlinkNodeRequest>();
-                    if (intercept && msg->Record.GetFileSystemId()
-                            == fsConfig.Shard1Id)
-                    {
+                    if (msg->Record.GetFileSystemId() == fsConfig.Shard1Id) {
                         intercepted = true;
                         return true;
                     }
@@ -4142,12 +4141,12 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
         }
         UNIT_ASSERT(intercepted);
+        env.GetRuntime().SetEventFilter(prevFilter);
 
         // The NodeRef has already been removed from the leader, but the OpLog
         // entry is still present because the shard request was intercepted.
         // Enabling directory creation in shards restarts the leader and makes
         // it replay the entry using the newly enabled mode.
-        intercept = false;
         service.ResizeFileStore(
             fsConfig.FsId,
             fsConfig.MainFsBlockCount,

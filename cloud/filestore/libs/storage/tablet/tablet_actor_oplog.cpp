@@ -90,7 +90,7 @@ void TIndexTabletActor::ReplayOpLog(
             // If the request was created by the previous version, we set
             // ShouldUnlockUponCompletion as it was set by the previous version.
             // It's OK, because both changes are made manually and therefore
-            // cannot occur simultaneously between writing and replaying an
+            // should not occur simultaneously between writing and replaying an
             // OpLogEntry: a version change and enabling directory creation in
             // shards.
             if (!request.HasShouldUnlockUponCompletion()) {
