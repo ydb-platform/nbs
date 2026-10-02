@@ -120,6 +120,13 @@ public:
                         .CompletedImmediately = CreateMetric(276),
                         .FailedCount = CreateMetric(277),
                     },
+                .State =
+                    {
+                        .Enabled = CreateMetric(281),
+                        .Draining = CreateMetric(282),
+                        .Disabled = CreateMetric(283),
+                        .Failed = CreateMetric(284),
+                    },
             },
             TNodeStateHolderMetrics{
                 .Nodes =
@@ -363,6 +370,10 @@ component=client_fs:
                             sensor=ReleaseHandleRequests_InProgressCount: 261
                             sensor=ReleaseHandleRequests_InProgressMaxCount: 262
                             sensor=ReleaseHandleRequests_MaxTime: 265
+                            sensor=State_Disabled: 283
+                            sensor=State_Draining: 282
+                            sensor=State_Enabled: 281
+                            sensor=State_Failed: 284
                             sensor=Storage_Corrupted: 518
                             sensor=Storage_EntryCount: 514
                             sensor=Storage_EntryMaxCount: 515
@@ -446,6 +457,10 @@ component=client_fs:
                             sensor=ReleaseHandleRequests_InProgressCount: 2610
                             sensor=ReleaseHandleRequests_InProgressMaxCount: 2620
                             sensor=ReleaseHandleRequests_MaxTime: 2650
+                            sensor=State_Disabled: 2830
+                            sensor=State_Draining: 2820
+                            sensor=State_Enabled: 2810
+                            sensor=State_Failed: 2840
                             sensor=Storage_Corrupted: 5180
                             sensor=Storage_EntryCount: 5140
                             sensor=Storage_EntryMaxCount: 5150
@@ -554,6 +569,10 @@ component=client_fs:
                             sensor=ReleaseHandleRequests_InProgressCount: 2610
                             sensor=ReleaseHandleRequests_InProgressMaxCount: 2620
                             sensor=ReleaseHandleRequests_MaxTime: 2650
+                            sensor=State_Disabled: 2830
+                            sensor=State_Draining: 2820
+                            sensor=State_Enabled: 2810
+                            sensor=State_Failed: 2840
                             sensor=Storage_Corrupted: 5180
                             sensor=Storage_EntryCount: 5140
                             sensor=Storage_EntryMaxCount: 5150

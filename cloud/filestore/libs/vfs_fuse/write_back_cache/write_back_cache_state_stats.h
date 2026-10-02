@@ -38,6 +38,14 @@ struct TWriteBackCacheStateMetrics
         NMetrics::IMetricPtr FailedCount;
     };
 
+    struct TStateMetrics
+    {
+        NMetrics::IMetricPtr Enabled;
+        NMetrics::IMetricPtr Draining;
+        NMetrics::IMetricPtr Disabled;
+        NMetrics::IMetricPtr Failed;
+    };
+
     TFlushMetrics Flush;
     NMetrics::IMetricPtr WriteDataRequestDroppedCount;
     TBarrierMetrics Barriers;
@@ -46,6 +54,8 @@ struct TWriteBackCacheStateMetrics
     TRequestMetrics FlushAllRequests;
     TRequestMetrics ReleaseHandleRequests;
     TRequestMetrics AcquireBarrierRequests;
+
+    TStateMetrics State;
 
     void Register(
         NMetrics::IMetricsRegistry& localMetricsRegistry,
@@ -73,6 +83,13 @@ struct IWriteBackCacheStateStats
         const TDuration AcquireBarrierRequest;
     };
 
+    struct TState
+    {
+        const bool DrainRequested;
+        const bool HasRequests;
+        const bool Failed;
+    };
+
     virtual ~IWriteBackCacheStateStats() = default;
 
     virtual void FlushStarted() = 0;
@@ -89,7 +106,10 @@ struct IWriteBackCacheStateStats
     virtual void RequestFailed(ERequestType type, TDuration duration) = 0;
 
     virtual TWriteBackCacheStateMetrics CreateMetrics() const = 0;
-    virtual void UpdateStats(const TMaxInProgressDurations& values) = 0;
+
+    virtual void UpdateStats(
+        const TState& state,
+        const TMaxInProgressDurations& values) = 0;
 };
 
 using IWriteBackCacheStateStatsPtr = std::shared_ptr<IWriteBackCacheStateStats>;

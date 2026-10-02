@@ -28,6 +28,11 @@ private:
     TRelaxedExtendedEventCounterWithTimeStats<> ReleaseHandleRequestCounter;
     TRelaxedExtendedEventCounterWithTimeStats<> AcquireBarrierRequestCounter;
 
+    TRelaxedCounter StateEnabledCounter;
+    TRelaxedCounter StateDrainingCounter;
+    TRelaxedCounter StateDisabledCounter;
+    TRelaxedCounter StateFailedCounter;
+
 public:
     void FlushStarted() override
     {
@@ -126,8 +131,7 @@ public:
 
                 },
             .FlushRequests = CreateMetrics(
-                [self]() -> const auto&
-                { return self->FlushRequestCounter; }),
+                [self]() -> const auto& { return self->FlushRequestCounter; }),
             .FlushAllRequests = CreateMetrics(
                 [self]() -> const auto&
                 { return self->FlushAllRequestCounter; }),
@@ -137,11 +141,31 @@ public:
             .AcquireBarrierRequests = CreateMetrics(
                 [self]() -> const auto&
                 { return self->AcquireBarrierRequestCounter; }),
+            .State =
+                {
+                    .Enabled = CreateMetric(
+                        [self] { return self->StateEnabledCounter.Get(); }),
+                    .Draining = CreateMetric(
+                        [self] { return self->StateDrainingCounter.Get(); }),
+                    .Disabled = CreateMetric(
+                        [self] { return self->StateDisabledCounter.Get(); }),
+                    .Failed = CreateMetric(
+                        [self] { return self->StateFailedCounter.Get(); }),
+                },
         };
     }
 
-    void UpdateStats(const TMaxInProgressDurations& values) override
+    void UpdateStats(
+        const TState& state,
+        const TMaxInProgressDurations& values) override
     {
+        StateEnabledCounter.Set(static_cast<i64>(!state.DrainRequested));
+        StateDrainingCounter.Set(
+            static_cast<i64>(state.DrainRequested && state.HasRequests));
+        StateDisabledCounter.Set(
+            static_cast<i64>(state.DrainRequested && !state.HasRequests));
+        StateFailedCounter.Set(static_cast<i64>(state.Failed));
+
         FlushEventCounter.Update();
         BarrierEventCounter.Update(values.ActiveBarrier);
         FlushRequestCounter.Update(values.FlushRequest);
@@ -305,6 +329,30 @@ void TWriteBackCacheStateMetrics::Register(
     helper("FlushAllRequests", FlushAllRequests);
     helper("ReleaseHandleRequests", ReleaseHandleRequests);
     helper("AcquireBarrierRequests", AcquireBarrierRequests);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("State_Enabled")},
+        State.Enabled,
+        EAggregationType::AT_MAX,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("State_Draining")},
+        State.Draining,
+        EAggregationType::AT_MAX,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("State_Disabled")},
+        State.Disabled,
+        EAggregationType::AT_MAX,
+        EMetricType::MT_ABSOLUTE);
+
+    localMetricsRegistry.Register(
+        {CreateSensor("State_Failed")},
+        State.Failed,
+        EAggregationType::AT_MAX,
+        EMetricType::MT_ABSOLUTE);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

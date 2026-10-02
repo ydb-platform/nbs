@@ -592,7 +592,13 @@ void TWriteBackCacheState::UpdateStats() const
 
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    Stats->UpdateStats({
+    const IWriteBackCacheStateStats::TState state = {
+        .DrainRequested = DrainingMode,
+        .HasRequests = RequestManager.HasPendingOrUnflushedRequests(),
+        .Failed = IsFailed,
+    };
+
+    const IWriteBackCacheStateStats::TMaxInProgressDurations durations = {
         .ActiveBarrier =
             ActiveBarriers.Empty()
                 ? TDuration::Zero()
@@ -612,7 +618,9 @@ void TWriteBackCacheState::UpdateStats() const
             PendingBarriers.Empty()
                 ? TDuration::Zero()
                 : now - PendingBarriers.Front()->RequestStartTime,
-    });
+    };
+
+    Stats->UpdateStats(state, durations);
 
     Nodes.UpdateStats();
     RequestManager.UpdateStats();
