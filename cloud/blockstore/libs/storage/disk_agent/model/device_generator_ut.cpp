@@ -4,6 +4,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -792,7 +793,10 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             UNIT_ASSERT_VALUES_EQUAL(42, gen.ExtractResult().size());
         }
 
-        // The pool limit overrides the path limit.
+        //
+        // Use the pool limit when it is lower than the path limit
+        //
+
         {
             auto path = MakePathConfig(def, 42);
             path.MutablePoolConfigs(0)->SetMaxDeviceCount(10);
@@ -808,6 +812,27 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
                 error.GetCode(),
                 error.GetMessage());
             UNIT_ASSERT_VALUES_EQUAL(10, gen.ExtractResult().size());
+        }
+
+        //
+        // Use the path limit when it is lower than the pool limit
+        //
+
+        {
+            auto path = MakePathConfig(def, 42);
+            path.MutablePoolConfigs(0)->SetMaxDeviceCount(50);
+
+            auto error = gen(
+                "/dev/disk/by-partlabel/NVMENBS04",
+                path,
+                4,
+                4_KB,
+                100_KB);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                error.GetMessage());
+            UNIT_ASSERT_VALUES_EQUAL(42, gen.ExtractResult().size());
         }
     }
 
@@ -848,6 +873,310 @@ Y_UNIT_TEST_SUITE(TDeviceGeneratorTest)
             9_KB);
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_NOT_FOUND,
+            error.GetCode(),
+            error.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(0, gen.ExtractResult().size());
+    }
+
+    Y_UNIT_TEST_F(ShouldLayOutPoolsSequentially, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPathConfig compute;
+        compute.SetBlockSize(4_KB);
+        compute.SetSequentialLayout(true);
+
+        auto& foo = *compute.AddPoolConfigs();
+        foo.SetPoolName("foo");
+        foo.SetMaxDeviceCount(2);
+        foo.MutableLayout()->SetDeviceSize(120_GB);
+
+        auto& bar = *compute.AddPoolConfigs();
+        bar.SetPoolName("bar");
+        bar.SetMaxDeviceCount(3);
+        bar.MutableLayout()->SetDeviceSize(93_GB);
+        bar.MutableJournalConfig()->SetEnabled(true);
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        auto error = gen(
+            "/dev/disk/by-partlabel/NVMECOMPUTE01",
+            compute,
+            1,
+            512,
+            1_TB);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        auto r = gen.ExtractResult();
+        UNIT_ASSERT_VALUES_EQUAL(5, r.size());
+
+        const ui64 offsets[] {
+            0,
+            120_GB,
+            240_GB,
+            240_GB + 93_GB,
+            240_GB + 93_GB * 2,
+        };
+
+        THashSet<TString> ids;
+        for (size_t i = 0; i != r.size(); ++i) {
+            const auto& d = r[i];
+            const bool isFoo = i < 2;
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                isFoo ? "foo" : "bar",
+                d.GetPoolName(),
+                d);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                isFoo ? 120_GB : 93_GB,
+                d.GetFileSize(),
+                d);
+            UNIT_ASSERT_VALUES_EQUAL_C(offsets[i], d.GetOffset(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(4_KB, d.GetBlockSize(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                !isFoo,
+                d.GetJournalConfig().GetEnabled(),
+                d);
+            UNIT_ASSERT_C(ids.insert(d.GetDeviceId()).second, d);
+        }
+
+        //
+        // Check that without the sequential layout only the first suitable
+        // pool is used and its devices get the same ids
+        //
+
+        compute.SetSequentialLayout(false);
+
+        error = gen(
+            "/dev/disk/by-partlabel/NVMECOMPUTE01",
+            compute,
+            1,
+            512,
+            1_TB);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        auto first = gen.ExtractResult();
+        UNIT_ASSERT_VALUES_EQUAL(2, first.size());
+
+        for (size_t i = 0; i != first.size(); ++i) {
+            const auto& d = first[i];
+
+            UNIT_ASSERT_VALUES_EQUAL_C("foo", d.GetPoolName(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(offsets[i], d.GetOffset(), d);
+            UNIT_ASSERT_VALUES_EQUAL_C(r[i].GetDeviceId(), d.GetDeviceId(), d);
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldLayOutPoolsSequentiallyWithHeadersAndPaddings, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPathConfig nvme;
+        nvme.SetSequentialLayout(true);
+
+        auto& foo = *nvme.AddPoolConfigs();
+        foo.SetPoolName("foo");
+        foo.SetMaxDeviceCount(2);
+
+        {
+            auto& layout = *foo.MutableLayout();
+            layout.SetHeaderSize(8_KB);
+            layout.SetDeviceSize(10_KB);
+            layout.SetDevicePadding(1_KB);
+        }
+
+        auto& bar = *nvme.AddPoolConfigs();
+        bar.SetPoolName("bar");
+        bar.SetBlockSize(512);
+        bar.SetMaxDeviceCount(1);
+
+        {
+            auto& layout = *bar.MutableLayout();
+            layout.SetHeaderSize(4_KB);
+            layout.SetDeviceSize(20_KB);
+            layout.SetDevicePadding(2_KB);
+        }
+
+        auto& rest = *nvme.AddPoolConfigs();
+        rest.SetPoolName("rest");
+        rest.SetMaxDeviceCount(100);
+        rest.MutableLayout()->SetDeviceSize(5_KB);
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        auto error = gen(
+            "/dev/disk/by-partlabel/NVMENBS01",
+            nvme,
+            1,
+            4_KB,
+            69_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        auto r = gen.ExtractResult();
+        UNIT_ASSERT_VALUES_EQUAL(6, r.size());
+
+        //
+        // Expect two "foo" devices because of the pool limit
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL_C("foo", r[0].GetPoolName(), r[0]);
+        UNIT_ASSERT_VALUES_EQUAL_C(8_KB, r[0].GetOffset(), r[0]);
+        UNIT_ASSERT_VALUES_EQUAL_C(10_KB, r[0].GetFileSize(), r[0]);
+        UNIT_ASSERT_VALUES_EQUAL_C(4_KB, r[0].GetBlockSize(), r[0]);
+
+        UNIT_ASSERT_VALUES_EQUAL_C("foo", r[1].GetPoolName(), r[1]);
+        UNIT_ASSERT_VALUES_EQUAL_C(19_KB, r[1].GetOffset(), r[1]);
+        UNIT_ASSERT_VALUES_EQUAL_C(10_KB, r[1].GetFileSize(), r[1]);
+        UNIT_ASSERT_VALUES_EQUAL_C(4_KB, r[1].GetBlockSize(), r[1]);
+
+        //
+        // Expect the "bar" device right after the last "foo" device and the
+        // "bar" header: the padding only separates the devices of one pool
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL_C("bar", r[2].GetPoolName(), r[2]);
+        UNIT_ASSERT_VALUES_EQUAL_C(33_KB, r[2].GetOffset(), r[2]);
+        UNIT_ASSERT_VALUES_EQUAL_C(20_KB, r[2].GetFileSize(), r[2]);
+        UNIT_ASSERT_VALUES_EQUAL_C(512, r[2].GetBlockSize(), r[2]);
+
+        //
+        // Expect the "rest" devices to take the rest of the file: only three
+        // of them fit
+        //
+
+        UNIT_ASSERT_VALUES_EQUAL_C("rest", r[3].GetPoolName(), r[3]);
+        UNIT_ASSERT_VALUES_EQUAL_C(53_KB, r[3].GetOffset(), r[3]);
+        UNIT_ASSERT_VALUES_EQUAL_C(5_KB, r[3].GetFileSize(), r[3]);
+
+        UNIT_ASSERT_VALUES_EQUAL_C("rest", r[4].GetPoolName(), r[4]);
+        UNIT_ASSERT_VALUES_EQUAL_C(58_KB, r[4].GetOffset(), r[4]);
+        UNIT_ASSERT_VALUES_EQUAL_C(5_KB, r[4].GetFileSize(), r[4]);
+
+        UNIT_ASSERT_VALUES_EQUAL_C("rest", r[5].GetPoolName(), r[5]);
+        UNIT_ASSERT_VALUES_EQUAL_C(63_KB, r[5].GetOffset(), r[5]);
+        UNIT_ASSERT_VALUES_EQUAL_C(5_KB, r[5].GetFileSize(), r[5]);
+    }
+
+    Y_UNIT_TEST_F(ShouldLimitTotalDeviceCountInSequentialLayout, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPathConfig nvme;
+        nvme.SetSequentialLayout(true);
+        nvme.SetMaxDeviceCount(3);
+
+        auto& foo = *nvme.AddPoolConfigs();
+        foo.SetPoolName("foo");
+        foo.SetMaxDeviceCount(2);
+        foo.MutableLayout()->SetDeviceSize(10_KB);
+
+        auto& bar = *nvme.AddPoolConfigs();
+        bar.SetPoolName("bar");
+        bar.SetMaxDeviceCount(5);
+        bar.MutableLayout()->SetDeviceSize(20_KB);
+
+        auto& rest = *nvme.AddPoolConfigs();
+        rest.SetPoolName("rest");
+        rest.MutableLayout()->SetDeviceSize(5_KB);
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        auto error = gen(
+            "/dev/disk/by-partlabel/NVMENBS01",
+            nvme,
+            1,
+            4_KB,
+            1_MB);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        //
+        // Expect only one "bar" device and no "rest" devices: the path limit
+        // is shared by all pools of the file
+        //
+
+        auto r = gen.ExtractResult();
+        UNIT_ASSERT_VALUES_EQUAL(3, r.size());
+
+        UNIT_ASSERT_VALUES_EQUAL_C("foo", r[0].GetPoolName(), r[0]);
+        UNIT_ASSERT_VALUES_EQUAL_C(0, r[0].GetOffset(), r[0]);
+        UNIT_ASSERT_VALUES_EQUAL_C("foo", r[1].GetPoolName(), r[1]);
+        UNIT_ASSERT_VALUES_EQUAL_C(10_KB, r[1].GetOffset(), r[1]);
+        UNIT_ASSERT_VALUES_EQUAL_C("bar", r[2].GetPoolName(), r[2]);
+        UNIT_ASSERT_VALUES_EQUAL_C(20_KB, r[2].GetOffset(), r[2]);
+    }
+
+    Y_UNIT_TEST_F(ShouldSkipUnsuitablePoolsInSequentialLayout, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPathConfig nvme;
+        nvme.SetSequentialLayout(true);
+
+        auto& small = *nvme.AddPoolConfigs();
+        small.SetPoolName("small");
+        small.SetMaxSize(10_KB);
+        small.SetMaxDeviceCount(1);
+        small.MutableLayout()->SetDeviceSize(1_KB);
+
+        auto& foo = *nvme.AddPoolConfigs();
+        foo.SetPoolName("foo");
+        foo.SetMinSize(50_KB);
+        foo.SetMaxDeviceCount(2);
+        foo.MutableLayout()->SetDeviceSize(10_KB);
+
+        auto& bar = *nvme.AddPoolConfigs();
+        bar.SetPoolName("bar");
+        bar.SetMaxDeviceCount(1);
+        bar.MutableLayout()->SetDeviceSize(20_KB);
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        auto error = gen(
+            "/dev/disk/by-partlabel/NVMENBS01",
+            nvme,
+            1,
+            4_KB,
+            100_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), error.GetMessage());
+
+        auto r = gen.ExtractResult();
+        UNIT_ASSERT_VALUES_EQUAL(3, r.size());
+
+        UNIT_ASSERT_VALUES_EQUAL_C("foo", r[0].GetPoolName(), r[0]);
+        UNIT_ASSERT_VALUES_EQUAL_C(0, r[0].GetOffset(), r[0]);
+        UNIT_ASSERT_VALUES_EQUAL_C("foo", r[1].GetPoolName(), r[1]);
+        UNIT_ASSERT_VALUES_EQUAL_C(10_KB, r[1].GetOffset(), r[1]);
+        UNIT_ASSERT_VALUES_EQUAL_C("bar", r[2].GetPoolName(), r[2]);
+        UNIT_ASSERT_VALUES_EQUAL_C(20_KB, r[2].GetOffset(), r[2]);
+
+        //
+        // Check that a file that doesn't fit into any pool is rejected
+        //
+
+        error = gen("/dev/disk/by-partlabel/NVMENBS02", nvme, 2, 4_KB, 15_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_NOT_FOUND,
+            error.GetCode(),
+            error.GetMessage());
+        UNIT_ASSERT_VALUES_EQUAL(0, gen.ExtractResult().size());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectSequentialLayoutWithoutPoolLayout, TFixture)
+    {
+        NProto::TStorageDiscoveryConfig::TPathConfig nvme;
+        nvme.SetSequentialLayout(true);
+
+        auto& foo = *nvme.AddPoolConfigs();
+        foo.SetPoolName("foo");
+        foo.SetMaxDeviceCount(2);
+        foo.MutableLayout()->SetDeviceSize(10_KB);
+
+        auto& bar = *nvme.AddPoolConfigs();
+        bar.SetPoolName("bar");
+        // Layout is not specified
+
+        TDeviceGenerator gen { Log, AgentId };
+
+        auto error = gen(
+            "/dev/disk/by-partlabel/NVMENBS01",
+            nvme,
+            1,
+            4_KB,
+            100_KB);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
             error.GetCode(),
             error.GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(0, gen.ExtractResult().size());

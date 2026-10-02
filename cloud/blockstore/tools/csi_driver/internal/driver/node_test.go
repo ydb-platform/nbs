@@ -298,6 +298,7 @@ func doTestPublishUnpublishVolumeForKubevirtHelper(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -555,6 +556,7 @@ func doTestStagedPublishUnpublishVolumeForKubevirtHelper(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -1012,6 +1014,7 @@ func TestPublishUnpublishDiskForInfrakuber(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -1170,6 +1173,7 @@ func TestPublishUnpublishDeviceForInfrakuber(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -1618,6 +1622,7 @@ func TestGetVolumeStatCapabilitiesWithoutVmMode(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	ctx := context.Background()
@@ -1688,6 +1693,7 @@ func TestGetVolumeStatCapabilitiesWithVmMode(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	ctx := context.Background()
@@ -1751,6 +1757,7 @@ func TestPublishDeviceWithReadWriteManyModeIsNotSupportedWithNBS(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	_, err := nodeService.NodeStageVolume(ctx, &csi.NodeStageVolumeRequest{
@@ -1850,6 +1857,7 @@ func TestExternaFs(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_MULTI_NODE_MULTI_WRITER
@@ -1998,6 +2006,7 @@ func TestStopEndpointAfterNodeStageVolumeFailureForInfrakuber(t *testing.T) {
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	volumeCapability := csi.VolumeCapability{
@@ -2092,6 +2101,7 @@ func stageVolumeWithTimeoutForKubevirt(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -2263,6 +2273,7 @@ func TestNodeUnstageVolumeErrorForKubevirt(
 		defaultStartEndpointRequestTimeout,
 		testCtx.nfsVhostReplicaCount,
 		testCtx.nbsServerReplicaCount,
+		false, // offlineResize
 	)
 
 	accessMode := csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER
@@ -2380,6 +2391,211 @@ func TestNodeUnstageVolumeStageRecordErrorsForKubevirt(t *testing.T) {
 				require.NoError(t, statErr)
 			}
 			nbsClient.AssertNotCalled(t, "StopEndpoint", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func TestOnlineNodeExpandVolume(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		vmMode      bool
+		filesystem  bool
+		blocksCount uint64
+		needResize  bool
+		wantCode    codes.Code
+	}{
+		{name: "block", blocksCount: 2},
+		{name: "filesystem", filesystem: true, blocksCount: 2, needResize: true},
+		{name: "filesystem already expanded", filesystem: true, blocksCount: 2},
+		{name: "larger disk", blocksCount: 3, wantCode: codes.InvalidArgument},
+		{name: "grow disk", blocksCount: 1},
+		{name: "VM", vmMode: true, blocksCount: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testCtx := CreateTestContext(t, tc.vmMode, false, tc.vmMode, 1, 2)
+			service := newNodeService(
+				defaultNodeId, defaultCientId, tc.vmMode, testCtx.socketsDir,
+				testCtx.targetFsPathPattern, testCtx.targetBlkPathPattern, testCtx.localFsOverrides,
+				getNbsClients(testCtx.nbsClients), getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient, testCtx.nfsLocalFilestoreClient, testCtx.mounter,
+				nil, false, defaultStartEndpointRequestTimeout,
+				testCtx.nfsVhostReplicaCount, testCtx.nbsServerReplicaCount, false,
+			)
+			clientIndex := 0
+			if tc.vmMode {
+				clientIndex = 1
+				require.NoError(t, os.MkdirAll(testCtx.stagingTargetPath, 0700))
+				data, err := json.Marshal(&StageData{
+					Backend: "nbs", InstanceId: defaultInstanceId, ClientIndex: uint(clientIndex),
+				})
+				require.NoError(t, err)
+				require.NoError(t, os.WriteFile(
+					filepath.Join(testCtx.stagingTargetPath, defaultDiskId+".json"), data, 0600))
+			}
+			nbsClient := testCtx.nbsClients[clientIndex]
+			ctx := context.Background()
+			nbsClient.On("DescribeVolume", ctx, &nbs.TDescribeVolumeRequest{DiskId: defaultDiskId}).
+				Return(&nbs.TDescribeVolumeResponse{Volume: &nbs.TVolume{
+					BlockSize: 4096, BlocksCount: tc.blocksCount, ConfigVersion: 42,
+				}}, nil).Once()
+			if tc.wantCode == codes.OK {
+				if !tc.vmMode {
+					nbsClient.On("ResizeVolume", ctx, &nbs.TResizeVolumeRequest{
+						DiskId: defaultDiskId, BlocksCount: 2, ConfigVersion: 42,
+					}).Return(&nbs.TResizeVolumeResponse{}, nil).Once()
+					nbsClient.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).
+						Return(&nbs.TListEndpointsResponse{Endpoints: []*nbs.TStartEndpointRequest{{
+							UnixSocketPath: testCtx.nbsSocketPath,
+							NbdDevice:      &nbs.TStartEndpointRequest_NbdDeviceFile{NbdDeviceFile: "/dev/nbd0"},
+						}}}, nil).Once()
+				}
+				nbsClient.On("RefreshEndpoint", ctx, &nbs.TRefreshEndpointRequest{
+					UnixSocketPath: testCtx.nbsSocketPath,
+				}).Return(&nbs.TRefreshEndpointResponse{}, nil).Once()
+			}
+			volumePath := testCtx.targetPathBlockMode
+			if tc.filesystem {
+				volumePath = testCtx.targetPathMountMode
+				testCtx.mounter.On("NeedResize", "/dev/nbd0", volumePath).Return(tc.needResize, nil).Once()
+				if tc.needResize {
+					testCtx.mounter.On("Resize", "/dev/nbd0", volumePath).Return(true, nil).Once()
+				}
+			}
+			resp, err := service.NodeExpandVolume(ctx, &csi.NodeExpandVolumeRequest{
+				VolumeId: testCtx.volumeId, VolumePath: volumePath,
+				StagingTargetPath: testCtx.stagingTargetPath,
+				CapacityRange:     &csi.CapacityRange{RequiredBytes: 8192},
+			})
+			require.Equal(t, tc.wantCode, status.Code(err), "%v", err)
+			if tc.wantCode == codes.OK {
+				require.NotNil(t, resp)
+				assert.Equal(t, int64(8192), resp.CapacityBytes)
+			} else {
+				require.Nil(t, resp)
+			}
+			for _, client := range testCtx.nbsClients {
+				client.AssertExpectations(t)
+				client.AssertNotCalled(t, "StatVolume", mock.Anything, mock.Anything)
+				if tc.vmMode || tc.wantCode != codes.OK {
+					client.AssertNotCalled(t, "ResizeVolume", mock.Anything, mock.Anything)
+				}
+			}
+			testCtx.mounter.AssertExpectations(t)
+		})
+	}
+}
+
+func TestNodeStageVolumeExpansion(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		offline     bool
+		block       bool
+		needResize  bool
+		checkError  error
+		resizeError error
+		wantCode    codes.Code
+	}{
+		{name: "online staging"},
+		{name: "offline filesystem", offline: true, needResize: true},
+		{name: "offline filesystem already expanded", offline: true},
+		{name: "offline block", offline: true, block: true},
+		{name: "retry filesystem check", offline: true, checkError: fmt.Errorf("check failed"), wantCode: codes.Internal},
+		{name: "retry filesystem resize", offline: true, needResize: true, resizeError: fmt.Errorf("resize failed"), wantCode: codes.FailedPrecondition},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testCtx := CreateTestContext(t, false, false, false, 1, 1)
+			service := newNodeService(
+				defaultNodeId, defaultCientId, false, testCtx.socketsDir,
+				testCtx.targetFsPathPattern, testCtx.targetBlkPathPattern, testCtx.localFsOverrides,
+				getNbsClients(testCtx.nbsClients), getNfsClients(testCtx.nfsClients),
+				testCtx.nfsLocalClient, testCtx.nfsLocalFilestoreClient, testCtx.mounter,
+				nil, false, defaultStartEndpointRequestTimeout, 1, 1, tc.offline,
+			)
+			ctx := context.Background()
+			client := testCtx.nbsClients[0]
+			attempts := 1
+			if tc.wantCode != codes.OK {
+				attempts++
+			}
+			client.On("ListEndpoints", ctx, &nbs.TListEndpointsRequest{}).
+				Return(&nbs.TListEndpointsResponse{}, nil).Times(attempts)
+			client.On("StartEndpoint", ctx, mock.MatchedBy(func(req *nbs.TStartEndpointRequest) bool {
+				return req.DiskId == defaultDiskId && req.UnixSocketPath == testCtx.nbsSocketPath &&
+					req.IpcType == nbs.EClientIpcType_IPC_NBD
+			})).Return(&nbs.TStartEndpointResponse{NbdDeviceFile: "/dev/nbd0"}, nil).Times(attempts)
+			capability := &csi.VolumeCapability{
+				AccessType: &csi.VolumeCapability_Mount{Mount: &csi.VolumeCapability_MountVolume{FsType: "ext4"}},
+				AccessMode: &csi.VolumeCapability_AccessMode{Mode: csi.VolumeCapability_AccessMode_SINGLE_NODE_WRITER},
+			}
+			if tc.block {
+				capability.AccessType = &csi.VolumeCapability_Block{Block: &csi.VolumeCapability_BlockVolume{}}
+				path := filepath.Join(testCtx.stagingTargetPath, defaultDiskId)
+				testCtx.mounter.On("IsMountPoint", path).Return(false, nil).Twice()
+				testCtx.mounter.On("Mount", "/dev/nbd0", path, "", []string{"bind"}).Return(nil).Once()
+			} else {
+				testCtx.mounter.On("HasBlockDevice", "/dev/nbd0").Return(true, nil).Times(attempts)
+				testCtx.mounter.On("IsMountPoint", testCtx.stagingTargetPath).Return(false, nil).Once()
+				mounted := false
+				testCtx.mounter.On("FormatAndMount", "/dev/nbd0", testCtx.stagingTargetPath, "ext4",
+					[]string{"errors=remount-ro"}).Return(nil).Run(func(mock.Arguments) { mounted = true }).Once()
+				if tc.offline {
+					testCtx.mounter.On("NeedResize", "/dev/nbd0", testCtx.stagingTargetPath).
+						Return(tc.needResize, tc.checkError).
+						Run(func(mock.Arguments) { require.True(t, mounted, "resize must run after mounting") }).Once()
+					if tc.needResize {
+						testCtx.mounter.On("Resize", "/dev/nbd0", testCtx.stagingTargetPath).
+							Return(tc.resizeError == nil, tc.resizeError).Once()
+					}
+				}
+				if attempts > 1 {
+					testCtx.mounter.On("IsMountPoint", testCtx.stagingTargetPath).Return(true, nil).Once()
+					testCtx.mounter.On("NeedResize", "/dev/nbd0", testCtx.stagingTargetPath).Return(true, nil).Once()
+					testCtx.mounter.On("Resize", "/dev/nbd0", testCtx.stagingTargetPath).Return(true, nil).Once()
+				}
+			}
+			req := &csi.NodeStageVolumeRequest{
+				VolumeId: defaultDiskId, StagingTargetPath: testCtx.stagingTargetPath, VolumeCapability: capability,
+			}
+			resp, err := service.NodeStageVolume(ctx, req)
+			require.Equal(t, tc.wantCode, status.Code(err), "%v", err)
+			if tc.wantCode != codes.OK {
+				require.Nil(t, resp)
+				resp, err = service.NodeStageVolume(ctx, req)
+				require.NoError(t, err)
+			}
+			require.NotNil(t, resp)
+			client.AssertExpectations(t)
+			testCtx.mounter.AssertExpectations(t)
+			client.AssertNotCalled(t, "ResizeVolume", mock.Anything, mock.Anything)
+			client.AssertNotCalled(t, "RefreshEndpoint", mock.Anything, mock.Anything)
+			client.AssertNotCalled(t, "StopEndpoint", mock.Anything, mock.Anything)
+		})
+	}
+}
+
+func TestNodeExpandVolumeNotFoundWithoutCapacityRange(t *testing.T) {
+	for _, vmMode := range []bool{false, true} {
+		t.Run(fmt.Sprintf("vmMode=%t", vmMode), func(t *testing.T) {
+			ctx := context.Background()
+			client := mocks.NewNbsClientMock()
+			service := &nodeService{
+				vmMode:     vmMode,
+				nbsClients: []nbsclient.ClientIface{client},
+				volumeOps:  &sync.Map{},
+			}
+			if !vmMode {
+				client.On("DescribeVolume", ctx, &nbs.TDescribeVolumeRequest{DiskId: "missing-volume"}).
+					Return((*nbs.TDescribeVolumeResponse)(nil), &nbsclient.ClientError{Code: nbsclient.E_NOT_FOUND}).Once()
+			}
+			// csi-sanity omits CapacityRange when checking a nonexistent volume.
+			resp, err := service.NodeExpandVolume(ctx, &csi.NodeExpandVolumeRequest{
+				VolumeId:          "missing-volume",
+				VolumePath:        "some/path",
+				StagingTargetPath: t.TempDir(),
+			})
+			require.Nil(t, resp)
+			require.Equal(t, codes.NotFound, status.Code(err), "%v", err)
+			client.AssertExpectations(t)
 		})
 	}
 }

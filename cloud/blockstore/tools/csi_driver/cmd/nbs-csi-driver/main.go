@@ -28,6 +28,7 @@ func main() {
 	flag.StringVar(&cfg.Endpoint, "endpoint", "/csi/csi.sock", "CSI endpoint")
 	flag.StringVar(&cfg.NodeID, "node-id", "undefined", "Node ID")
 	flag.BoolVar(&cfg.VMMode, "vm-mode", false, "Pass socket files to containers for VMs")
+	flag.BoolVar(&cfg.OfflineResize, "offline-resize", false, "Require offline NBS volume expansion in pod mode (reject volumes with clients)")
 	flag.UintVar(&cfg.MonPort, "mon-port", 8774, "Monitoring port")
 	flag.StringVar(&cfg.NbsHost, "nbs-host", "localhost", "NBS host")
 	flag.UintVar(&cfg.NbsPort, "nbs-port", 9766, "NBS port")

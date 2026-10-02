@@ -29,7 +29,7 @@ func RegisterForExecution(
 	urlMetricsRegistry metrics.Registry,
 	migrationDstStorage storage.Storage,
 	useS3InMigration bool,
-	followerS3 *backup.FollowerS3,
+	backupS3 *backup.S3,
 ) error {
 
 	err := taskRegistry.RegisterForExecution("dataplane.CreateSnapshotFromDisk", func() tasks.Task {
@@ -230,6 +230,7 @@ func RegisterForExecution(
 				storage:                   storage,
 				storageQuotaReporter:      snapshotStorageQuotaReporter,
 				metricsCollectionInterval: snapshotMetricsCollectionInterval,
+				backupEnabled:             backupS3 != nil,
 			}
 		},
 	)
@@ -279,11 +280,17 @@ func RegisterForExecution(
 		return err
 	}
 
-	if followerS3 != nil {
+	if backupS3 != nil {
 		err = taskRegistry.RegisterForExecution(
-			"dataplane.ScheduleBackupChunksTasks",
+			"dataplane.BackupSnapshotData",
 			func() tasks.Task {
-				return &scheduleBackupChunksTasks{}
+				return &backupSnapshotDataTask{
+					storage:  storage,
+					backupS3: backupS3,
+					batchSize: int(
+						config.GetBackupSnapshotDataBatchSize(),
+					),
+				}
 			},
 		)
 		if err != nil {
@@ -293,7 +300,13 @@ func RegisterForExecution(
 		err = taskRegistry.RegisterForExecution(
 			"dataplane.BackupChunks",
 			func() tasks.Task {
-				return &backupChunksTask{}
+				return &backupChunksTask{
+					storage:       storage,
+					backupS3:      backupS3,
+					batchSize:     int(config.GetBackupChunksTaskBatchSize()),
+					inflightLimit: int(config.GetBackupChunksInflightLimit()),
+					registry:      metricsRegistry,
+				}
 			},
 		)
 		if err != nil {
@@ -339,6 +352,6 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.DeleteSnapshotData":          func() tasks.Task { return &deleteSnapshotDataTask{} },
 	"dataplane.DeleteDiskFromIncremental":   func() tasks.Task { return &deleteDiskFromIncrementalTask{} },
 	"dataplane.CreateDRBasedDiskCheckpoint": func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
-	"dataplane.ScheduleBackupChunksTasks":   func() tasks.Task { return &scheduleBackupChunksTasks{} },
+	"dataplane.BackupSnapshotData":          func() tasks.Task { return &backupSnapshotDataTask{} },
 	"dataplane.BackupChunks":                func() tasks.Task { return &backupChunksTask{} },
 }
