@@ -1058,6 +1058,9 @@ func TestCreateSnapshotFromFilesystemAndBackWithNemesis(t *testing.T) {
 	restoreExecCtx.On("GetTaskID").Return("nemesis-from-snapshot")
 	restoreExecCtx.On("SaveState", mock.Anything).Return(nil)
 
+	fetchNodesFromStorageLimit := uint32(100)
+	config.FetchNodesFromStorageLimit = &fetchNodesFromStorageLimit
+
 	fromSnapshotTask := f.newTransferFromSnapshotToFilesystemTask(
 		config,
 		dstFilesystemID,
