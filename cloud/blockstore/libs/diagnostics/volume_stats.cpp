@@ -1162,6 +1162,7 @@ private:
                 ->GetSubgroup(
                     "type",
                     MediaKindToStatsString(
+                        volumeConfig.GetIsSystem(),
                         volumeConfig.GetStorageMediaKind()));
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
