@@ -1,7 +1,5 @@
 #pragma once
 
-#include "write_data_request.h"
-
 #include <cloud/filestore/public/api/protos/data.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -11,7 +9,13 @@
 #include <util/generic/vector.h>
 #include <util/system/spinlock.h>
 
+#include <functional>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TPendingWriteDataRequest;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -20,9 +24,6 @@ struct IQueuedOperationsProcessor
     virtual ~IQueuedOperationsProcessor() = default;
 
     virtual void ScheduleFlushNode(ui64 nodeId) = 0;
-
-    // This method is called under lock
-    virtual void OnRequestsSerialized() = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -35,11 +36,20 @@ private:
 
     TAdaptiveLock Lock;
     TVector<TEvent> Events;
+
+    // Non-owning pointers. The cache-state lifetime invariant keeps allocated
+    // requests alive until this serialization batch completes.
     TVector<TPendingWriteDataRequest*> RequestsToSerialize;
     IQueuedOperationsProcessor& Processor;
 
+    // Invoked under Lock after queued WriteData requests are serialized
+    const std::function<void()> RequestsSerializedCallback;
+
 public:
-    explicit TQueuedOperations(IQueuedOperationsProcessor& processor);
+    TQueuedOperations(
+        IQueuedOperationsProcessor& processor,
+        std::function<void()> requestsSerializedCallback);
+
     ~TQueuedOperations();
 
     void Acquire();

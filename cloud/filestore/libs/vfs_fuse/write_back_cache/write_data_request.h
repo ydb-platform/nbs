@@ -41,6 +41,11 @@ protected:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// A pending request is externally owned (by TNodeCache in production) until
+// it is either promoted to a cached request or rejected.
+// TWriteDataRequestManager, THandleState and TQueuedOperations keep only
+// non-owning pointers. In particular, an allocated request must remain alive
+// while TQueuedOperations serializes it without the cache-state lock.
 class TPendingWriteDataRequest
     : public TWriteDataRequestBase<TPendingWriteDataRequest>
     , public TIntrusiveListItem<TPendingWriteDataRequest, THandleStateTag>

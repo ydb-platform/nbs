@@ -1444,6 +1444,10 @@ private:
 
     void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
     {
+        // Stopping the completion queue first guarantees that no
+        // request-driven WriteBackCache call is in flight. Cache callbacks
+        // retain TImpl while accessing its state, so destruction cannot race
+        // a TQueuedOperations::Release() serialization pass.
         if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "

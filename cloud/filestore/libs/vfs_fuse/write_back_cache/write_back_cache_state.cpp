@@ -35,7 +35,9 @@ TWriteBackCacheState::TWriteBackCacheState(
           std::move(persistentStorage),
           Timer,
           std::move(writeDataRequestManagerStats))
-    , QueuedOperations(processor)
+    , QueuedOperations(
+          processor,
+          [this] { ProcessSerializedRequests(); })
 {}
 
 NProto::TError TWriteBackCacheState::Init()
@@ -607,15 +609,6 @@ void TWriteBackCacheState::ReleaseBarrier(ui64 nodeId, ui64 barrierId)
     }
 }
 
-void TWriteBackCacheState::OnRequestsSerialized()
-{
-    while (auto cachedRequest = GetNextReadyCachedRequest()) {
-        ProcessReadyCachedRequest(std::move(cachedRequest));
-    }
-
-    ProcessPendingRequests();
-}
-
 void TWriteBackCacheState::UpdateStats() const
 {
     auto now = Timer->Now();
@@ -902,12 +895,24 @@ void TWriteBackCacheState::CheckAndAcquireBarriers(TNodeState& nodeState)
     }
 }
 
+void TWriteBackCacheState::ProcessSerializedRequests()
+{
+    while (auto cachedRequest = GetNextReadyCachedRequest()) {
+        ProcessReadyCachedRequest(std::move(cachedRequest));
+    }
+
+    ProcessPendingRequests();
+}
+
 void TWriteBackCacheState::ProcessPendingRequests()
 {
     if (IsFailed) {
         return;
     }
 
+    // Allocate and serialize only one request per invocation to minimize
+    // latency: its response can be sent without waiting for other pending
+    // requests to be serialized.
     auto allocResult = RequestManager.TryAllocPendingRequest();
     if (allocResult.Failed) {
         SetFailedFlag();
