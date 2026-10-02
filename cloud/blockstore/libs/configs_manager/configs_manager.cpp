@@ -11,7 +11,8 @@ section clears dynamic overrides; equivalent inputs do not republish.
 
 #include "events.h"
 
-#include <cloud/blockstore/libs/config/helpers.h>
+#include <cloud/blockstore/libs/config/blockstore_config_management.h>
+#include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>

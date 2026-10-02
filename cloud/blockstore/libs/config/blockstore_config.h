@@ -1,14 +1,15 @@
 /*******************************************************************************
 
-The shared Blockstore configuration model. MakeBlockstoreConfig() builds
-immutable configurations from static and dynamic sources. Readers retain one
-configuration for a logical operation.
+The read-only Blockstore configuration interface. Readers retain one
+configuration for a logical operation. Source processing and configuration
+factories are declared in blockstore_config_management.h.
 
 *******************************************************************************/
 
 #pragma once
 
-#include <cloud/blockstore/config/blockstore.pb.h>
+#include <cloud/blockstore/config/grpc_client.pb.h>
+#include <cloud/blockstore/config/root_kms.pb.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
@@ -28,7 +29,6 @@ configuration for a logical operation.
 #include <cloud/storage/core/libs/iam/iface/config.h>
 
 #include <util/generic/ptr.h>
-#include <util/generic/string.h>
 
 #include <memory>
 
@@ -42,26 +42,10 @@ using TRootKmsConfigConstPtr = std::shared_ptr<const NProto::TRootKmsConfig>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Non-protobuf inputs used to build selected runtime configuration sections.
-struct TBlockstoreConfigExtraParameters
-{
-    // Host-specific inputs used to build the DiskAgent wrapper.
-    struct
-    {
-        // Local DiskAgent rack; empty if the rack is not specified.
-        TString Rack;
-
-        // Local DiskAgent network throughput in megabits per second; zero if
-        // the throughput is not specified.
-        ui32 NetworkMbitThroughput = 0;
-    } DiskAgent;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 // An independently owned, read-only set of top-level Blockstore configuration
 // sections. MakeBlockstoreConfig() creates implementations that own all
-// sections. Getters return const owning pointers, so callers may retain the
+// sections, see blockstore_config_management.h.
+// Getters return const owning pointers, so callers may retain the
 // whole configuration or an individual section. The Storage wrapper shares
 // live ICB controls: its effective values may change while its protobuf-backed
 // state remains immutable.
@@ -124,38 +108,5 @@ public:
 
 using IBlockstoreConfigPtr = TIntrusivePtr<IBlockstoreConfig>;
 using IBlockstoreConfigConstPtr = TIntrusiveConstPtr<IBlockstoreConfig>;
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Merge dynamicConfig into a copy of staticConfig according to protobuf rules,
-// except for Features. Keep the first feature with each name within a source;
-// replace a matching static feature with the complete dynamic record at its
-// position, and append dynamic-only features in their source order.
-NProto::TBlockstoreConfig MergeBlockstoreConfig(
-    const NProto::TBlockstoreConfig& staticConfig,
-    const NProto::TBlockstoreConfig& dynamicConfig);
-
-// Copy non-protobuf parameters from the current Blockstore configuration.
-TBlockstoreConfigExtraParameters GetBlockstoreConfigExtraParameters(
-    const IBlockstoreConfig& currentConfig);
-
-// Merge the source protos and create independently owned runtime adapters. The
-// controls pointer must be non-null and becomes the live ICB overlay of the
-// Storage wrapper. Extra parameters supply host-specific DiskAgent values.
-IBlockstoreConfigPtr MakeBlockstoreConfig(
-    const NProto::TBlockstoreConfig& staticConfig,
-    const NProto::TBlockstoreConfig& dynamicConfig,
-    NStorage::TStorageConfigControlsPtr controls,
-    TBlockstoreConfigExtraParameters extraParameters = {});
-
-// Create a bootstrap configuration from merged source protos and copies of the
-// initialized Storage and DiskAgent adapters. The Storage copy shares its
-// live ICB controls in either mode and uses Features from the merged sources.
-// Build every other section from the merged sources.
-IBlockstoreConfigPtr MakeBlockstoreConfig(
-    const NProto::TBlockstoreConfig& staticConfig,
-    const NProto::TBlockstoreConfig& dynamicConfig,
-    const NStorage::TStorageConfig& storageConfig,
-    const NStorage::TDiskAgentConfig& diskAgentConfig);
 
 }   // namespace NCloud::NBlockStore
