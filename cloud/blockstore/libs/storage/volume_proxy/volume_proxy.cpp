@@ -350,8 +350,9 @@ TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
 
 void TVolumeProxyActor::EraseConnection(TConnection* conn)
 {
-    auto removeFromMap =
-        [conn](THashMap<TString, TConnection*>& map, const TString& key)
+    auto removeFromMap = [conn]<typename TKey>(
+                             THashMap<TKey, TConnection*>& map,
+                             const TKey& key)
     {
         auto it = map.find(key);
         if (it != map.end() && it->second == conn) {
@@ -364,7 +365,8 @@ void TVolumeProxyActor::EraseConnection(TConnection* conn)
     removeFromMap(ConnectionByRealDiskId, conn->DiskId);
     removeFromMap(ConnectionByRealDiskId, conn->RealDiskId);
 
-    ConnectionByTablet.erase(conn->TabletId);
+    removeFromMap(ConnectionByTablet, conn->TabletId);
+
     ConnectionById.erase(conn->Id);
 }
 
