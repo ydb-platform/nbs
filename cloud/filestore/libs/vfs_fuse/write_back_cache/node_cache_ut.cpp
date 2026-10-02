@@ -172,7 +172,15 @@ struct TBootstrap
         request->SetOffset(offset);
         *request->MutableBuffer() = std::move(data);
 
-        auto res = RequestManager.AddRequest(std::move(request));
+        auto pendingRequest = RequestManager.AddRequest(std::move(request));
+        auto res = RequestManager.TryProcessPendingRequest();
+
+        UNIT_ASSERT(!res.Failed);
+        UNIT_ASSERT(res.CachedRequest);
+        UNIT_ASSERT_VALUES_EQUAL(
+            pendingRequest->GetSequenceId(),
+            res.CachedRequest->GetSequenceId());
+
         return std::move(res.CachedRequest);
     }
 
