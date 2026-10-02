@@ -6,6 +6,7 @@ SRCS(
     cgroup_stats_fetcher.cpp
     critical_events.cpp
     executor_counters.cpp
+    file_io_stats_publisher.cpp
     histogram_types.cpp
     histogram.cpp
     stats_handler.cpp
