@@ -92,7 +92,7 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
     {
         const auto assertComparison = [] (TStringBuf op, auto expectedTag) {
             auto query = Parse(
-                TString("SELECT * FROM t WHERE a ") + TString(op) + " 42");
+                TString("SELECT * FROM t WHERE a") + TString(op) + "42");
 
             UNIT_ASSERT(query);
             UNIT_ASSERT(query->Where);
@@ -108,10 +108,31 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
                 std::get<ui64>(PredicateValue(predicate)));
         };
 
+        assertComparison("=", TEqualPredicate{});
         assertComparison(">", TGreaterPredicate{});
         assertComparison(">=", TGreaterOrEqualPredicate{});
         assertComparison("<", TLessPredicate{});
         assertComparison("<=", TLessOrEqualPredicate{});
+    }
+
+    Y_UNIT_TEST(ShouldRequireWhitespaceBeforeWordOperators)
+    {
+        const auto assertInPredicate = [] (TStringBuf input, TStringBuf column) {
+            auto query = Parse(input);
+            UNIT_ASSERT_C(query, input);
+            UNIT_ASSERT(query->Where);
+            UNIT_ASSERT(std::holds_alternative<TPredicate>(query->Where->Node));
+
+            const auto& predicate = std::get<TPredicate>(query->Where->Node);
+            UNIT_ASSERT(std::holds_alternative<TInPredicate>(predicate));
+            UNIT_ASSERT_VALUES_EQUAL(column, PredicateColumn(predicate));
+        };
+
+        assertInPredicate("SELECT * FROM t WHERE a IN {1}", "a");
+        assertInPredicate("SELECT * FROM t WHERE aIN IN {1}", "aIN");
+
+        UNIT_ASSERT(!Parse("SELECT * FROM t WHERE aIN {1}"));
+        UNIT_ASSERT(!Parse("SELECT * FROM t WHERE aSUBSTR 'x'"));
     }
 
     Y_UNIT_TEST(ShouldRejectEmptyIn)

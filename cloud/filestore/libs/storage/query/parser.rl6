@@ -131,15 +131,18 @@ private:
     columns = (identifier >Mark >BeginColumn @SetColumn)
               (ws ',' ws (identifier >Mark >BeginColumn @SetColumn))*;
 
-    predicate = (identifier >Mark >BeginPredicate @SetPredicateColumn) ws
+    symbolic_operator =
+        ('>=' @SetGreaterOrEqual | '>' @SetGreater |
+         '<=' @SetLessOrEqual | '<' @SetLess |
+         ('==' | '=') @SetEqual | '!=' @SetNotEqual);
+
+    predicate = (identifier >Mark >BeginPredicate @SetPredicateColumn)
                 (
-                    ('>=' @SetGreaterOrEqual | '>' @SetGreater |
-                     '<=' @SetLessOrEqual | '<' @SetLess |
-                     ('==' | '=') @SetEqual | '!=' @SetNotEqual)
-                    ws value
-                  | "SUBSTR"i @SetSubstr required_ws value
-                  | "IN"i @SetIn ws '{' ws value
-                    (ws ',' ws value)* ws '}'
+                    ws symbolic_operator ws value
+                  | required_ws
+                    ("SUBSTR"i @SetSubstr required_ws value
+                    | "IN"i @SetIn ws '{' ws value
+                      (ws ',' ws value)* ws '}')
                 );
 
     atom = ('(' @OpenParen ws)* predicate (ws ')' @CloseParen)*;
