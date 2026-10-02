@@ -76,6 +76,23 @@ func (c *testingClient) FillEncryptedDisk(
 	encryption *types.EncryptionDesc,
 ) (DiskContentInfo, error) {
 
+	return c.FillEncryptedDiskWithChunkSize(
+		ctx,
+		diskID,
+		contentSize,
+		4*1024*1024, // chunkSize
+		encryption,
+	)
+}
+
+func (c *testingClient) FillEncryptedDiskWithChunkSize(
+	ctx context.Context,
+	diskID string,
+	contentSize uint64,
+	chunkSize uint64,
+	encryption *types.EncryptionDesc,
+) (DiskContentInfo, error) {
+
 	session, err := c.MountRW(
 		ctx,
 		diskID,
@@ -88,8 +105,14 @@ func (c *testingClient) FillEncryptedDisk(
 	}
 	defer session.Close(ctx)
 
-	chunkSize := uint64(1024 * 4096) // 4 MiB
 	blockSize := uint64(session.BlockSize())
+	if chunkSize == 0 || chunkSize%blockSize != 0 {
+		return DiskContentInfo{}, fmt.Errorf(
+			"chunkSize %v should be a positive multiple of blockSize %v",
+			chunkSize,
+			blockSize,
+		)
+	}
 	blocksInChunk := uint32(chunkSize / blockSize)
 	storageSize := uint64(0)
 	zeroes := make([]byte, chunkSize)

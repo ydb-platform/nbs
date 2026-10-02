@@ -227,14 +227,45 @@ def start(argv):
         set_env("DISK_MANAGER_RECIPE_GENERATED_VMDK_IMAGE_SIZE", str(vmdk_image_generator.raw_image_size))
         set_env("DISK_MANAGER_RECIPE_GENERATED_VMDK_IMAGE_CRC32", str(vmdk_image_generator.raw_image_crc32))
 
+    if '--generate-partial-vmdk-image' in argv:
+        raw_image_file_path = os.path.join(working_dir, "generated_partial_chunk_raw_for_vmdk_image")
+        vmdk_image_file_path = os.path.join(working_dir, "generated_partial_chunk_vmdk_image")
+        generator = VMDKImageGenerator(
+            raw_image_file_path,
+            vmdk_image_file_path,
+            chunk_size=4*1024*1024 + 4096,
+        )
+        generator.generate()
+        server = ImageFileServerLauncher(vmdk_image_file_path, None)
+        server.start()
+        set_env("DISK_MANAGER_RECIPE_PARTIAL_CHUNK_VMDK_IMAGE_FILE_SERVER_PORT", str(server.port))
+        set_env("DISK_MANAGER_RECIPE_PARTIAL_CHUNK_VMDK_IMAGE_SIZE", str(generator.raw_image_size))
+        set_env("DISK_MANAGER_RECIPE_PARTIAL_CHUNK_VMDK_IMAGE_CRC32", str(generator.raw_image_crc32))
+
+    if '--generate-partial-raw-images' in argv:
+        for name, chunk_size, chunks_count in [
+                ('partial_chunk', 1024 * 1024 + 2048, 4),
+                ('partial_block', 1024 * 1024 + 1, 4),
+        ]:
+            image_size = chunk_size * chunks_count
+            image_file_path = os.path.join(working_dir, "generated_{}_raw_image".format(name))
+            generator = RawImageGenerator(image_file_path, chunk_size, chunks_count)
+            generator.generate()
+            server = ImageFileServerLauncher(image_file_path, image_size)
+            server.start()
+            env_prefix = "DISK_MANAGER_RECIPE_{}_RAW_IMAGE_".format(name.upper())
+            set_env(env_prefix + "FILE_SERVER_PORT", str(server.port))
+            set_env(env_prefix + "SIZE", str(image_size))
+            set_env(env_prefix + "CRC32", str(generator.image_crc32))
+
     if '--generate-big-raw-images' in argv:
         big_raw_image_file_path = os.path.join(working_dir, "generated_big_raw_image")
         other_big_raw_image_file_path = os.path.join(working_dir, "generated_other_big_raw_image")
         big_raw_image_file_size = 536870912  # 512 MiB
         other_big_raw_image_file_size = 1073741824  # 1 GiB
-        raw_image_generator = RawImageGenerator(big_raw_image_file_path, big_raw_image_file_size)
+        raw_image_generator = RawImageGenerator(big_raw_image_file_path, 1024 * 1024, 512)
         raw_image_generator.generate()
-        other_raw_image_generator = RawImageGenerator(other_big_raw_image_file_path, other_big_raw_image_file_size)
+        other_raw_image_generator = RawImageGenerator(other_big_raw_image_file_path, 1024 * 1024, 1024)
         other_raw_image_generator.generate()
         big_raw_image_file_server = ImageFileServerLauncher(
             big_raw_image_file_path,

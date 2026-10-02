@@ -637,6 +637,39 @@ func TestDiskServiceMigrateDisk(t *testing.T) {
 	testcommon.CheckConsistency(t, ctx)
 }
 
+func TestDiskServiceMigrateDiskWithPartialChunk(t *testing.T) {
+	params := migrationTestParams{
+		SrcZoneID: "zone-a",
+		DstZoneID: "zone-b",
+		DiskID:    t.Name(),
+		DiskKind:  disk_manager.DiskKind_DISK_KIND_SSD,
+		DiskSize:  migrationTestsDiskSize + 65*4096,
+	}
+
+	ctx, client := setupMigrationTest(t, params)
+	defer client.Close()
+
+	srcZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.SrcZoneID)
+	_, err := srcZoneNBSClient.FillEncryptedDiskWithChunkSize(
+		ctx,
+		params.DiskID,
+		uint64(params.DiskSize),
+		4096, // chunkSize
+		nil,  // encryption
+	)
+	require.NoError(t, err)
+
+	successfullyMigrateDisk(t, ctx, client, params)
+
+	dstZoneNBSClient := testcommon.NewNbsTestingClient(t, ctx, params.DstZoneID)
+	dstParams, err := dstZoneNBSClient.Describe(ctx, params.DiskID)
+	require.NoError(t, err)
+	require.Equal(t, uint64(params.DiskSize), dstParams.BlocksCount*uint64(dstParams.BlockSize))
+
+	testcommon.DeleteDisk(t, ctx, client, params.DiskID)
+	testcommon.CheckConsistency(t, ctx)
+}
+
 func TestDiskServiceCancelMigrateDisk(t *testing.T) {
 	params := migrationTestParams{
 		SrcZoneID: "zone-a",
