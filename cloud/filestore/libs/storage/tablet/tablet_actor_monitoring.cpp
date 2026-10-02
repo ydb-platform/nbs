@@ -338,18 +338,48 @@ void DumpOperationState(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void DumpCompactionInfo(
+void DumpForcedOperation(
     IOutputStream& out,
     const TIndexTabletState::TForcedOperationState& state)
 {
-    const auto* rangeOpState =
-        std::get_if<TIndexTabletState::TForcedRangeOperationState>(&state);
-    if (rangeOpState) {
-        DumpProgress(
-            out,
-            rangeOpState->Current,
-            rangeOpState->RangesToCompact.size());
-    }
+    std::visit(
+        TOverloaded{
+            [&](const TIndexTabletState::TForcedRangeOperationState& state)
+            {
+                std::string opName;
+                using EMode = TEvIndexTabletPrivate::EForcedRangeOperationMode;
+                switch (state.Mode) {
+                    case EMode::Cleanup:
+                        opName = "Cleanup";
+                        break;
+                    case EMode::Compaction:
+                        opName = "Compaction";
+                        break;
+                    case EMode::DeleteZeroCompactionRanges:
+                        opName = "DeleteZeroCompactionRanges";
+                        break;
+                }
+                out << "Forced " << opName << ":";
+                DumpProgress(out, state.Current, state.RangesToCompact.size());
+            },
+            [&](const TIndexTabletState::TForcedTabletOperationState& state)
+            {
+                std::string opName;
+                using EMode = TEvIndexTabletPrivate::EForcedTabletOperationMode;
+                switch (state.Mode) {
+                    case EMode::Flush:
+                        opName = "Flush";
+                        break;
+                    case EMode::FlushBytes:
+                        opName = "FlushBytes";
+                        break;
+                    case EMode::CollectGarbage:
+                        opName = "CollectGarbage";
+                        break;
+                }
+                out << "Forced " << opName << ": in progress...";
+            }},
+        state);
 }
 
 void DumpRangeId(IOutputStream& out, ui64 tabletId, ui32 rangeId)
@@ -1310,7 +1340,7 @@ void TIndexTabletActor::RenderHttpInfo_OverviewTab(
         }
 
         if (IsForcedOperationRunning()) {
-            DumpCompactionInfo(out, *GetForcedOperationState());
+            DumpForcedOperation(out, *GetForcedOperationState());
         } else {
             out << "<div class='collapse form-group' id='compact-all'>";
             BuildForceCompactionButton(out, TabletID());
