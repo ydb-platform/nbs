@@ -139,6 +139,12 @@ private:
         const TEvService::TEvGetSessionEventsResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void RejectGetSessionEvents(
+        const TEvService::TEvGetSessionEventsRequest::TPtr& ev,
+        const TActorContext& ctx);
+
+    void CompleteEventListener(const TActorContext& ctx, const char* reason);
+
     void ScheduleWakeup(const TActorContext& ctx);
 
     void HandleWakeup(
@@ -277,6 +283,11 @@ void TCreateSessionActor::HandleConnect(
 {
     auto* msg = ev->Get();
 
+    if (msg->ClientId && msg->ClientId != PipeClient) {
+        // a stale pipe that has already been replaced
+        return;
+    }
+
     if (msg->Status != NKikimrProto::OK) {
         LOG_ERROR(ctx, TFileStoreComponents::SERVICE_WORKER,
             "%s failed to connect to %lu: %s",
@@ -301,9 +312,20 @@ void TCreateSessionActor::HandleConnect(
 }
 
 void TCreateSessionActor::HandleDisconnect(
-    TEvTabletPipe::TEvClientDestroyed::TPtr&,
+    TEvTabletPipe::TEvClientDestroyed::TPtr& ev,
     const TActorContext& ctx)
 {
+    const auto* msg = ev->Get();
+    if (msg->ClientId && msg->ClientId != PipeClient) {
+        //
+        // A stale pipe that has already been replaced: treating it as a
+        // disconnect would reset the current pipe and spuriously complete
+        // the event listener.
+        //
+
+        return;
+    }
+
     LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
         "%s pipe disconnected",
         LogTag().c_str(),
@@ -316,6 +338,14 @@ void TCreateSessionActor::OnDisconnect(const TActorContext& ctx)
 {
     NTabletPipe::CloseClient(ctx, PipeClient);
     PipeClient = {};
+
+    //
+    // Without the pipe the tablet cannot deliver events to this session, so
+    // the listener may miss some. Completing the stream tells the client to
+    // drop whatever it built from them.
+    //
+
+    CompleteEventListener(ctx, "pipe to the tablet reset");
 
     if (!FirstWakeupScheduled) {
         // Wakeup cycle is inactive => reconnect won't be initiated
@@ -470,10 +500,14 @@ void TCreateSessionActor::HandleGetSessionEvents(
     Y_ABORT_UNLESS(SessionId);
 
     if (ev->Cookie == TEvService::StreamCookie) {
+        if (EventListener && EventListener != ev->Sender) {
+            CompleteEventListener(ctx, "replaced by a new listener");
+        }
+
         LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
             "%s subscribe event listener (%s)",
             LogTag().c_str(),
-            ToString(EventListener).c_str());
+            ToString(ev->Sender).c_str());
 
         EventListener = ev->Sender;
     }
@@ -522,6 +556,46 @@ void TCreateSessionActor::HandleGetSessionEventsResponse(
     }
 }
 
+void TCreateSessionActor::RejectGetSessionEvents(
+    const TEvService::TEvGetSessionEventsRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (ev->Cookie == TEvService::StreamCookie) {
+        //
+        // A stream request is answered with its completion only - the
+        // session is going away and will not deliver anything.
+        //
+
+        ctx.Send(
+            ev->Sender,
+            new TEvents::TEvCompleted(0 /* id */, E_REJECTED));
+        return;
+    }
+
+    auto response = std::make_unique<TEvService::TEvGetSessionEventsResponse>(
+        MakeError(E_REJECTED, "session is shutting down"));
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TCreateSessionActor::CompleteEventListener(
+    const TActorContext& ctx,
+    const char* reason)
+{
+    if (!EventListener) {
+        return;
+    }
+
+    LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
+        "%s complete event listener (%s): %s",
+        LogTag().c_str(),
+        ToString(EventListener).c_str(),
+        reason);
+
+    ctx.Send(
+        std::exchange(EventListener, {}),
+        new TEvents::TEvCompleted(0 /* id */, E_REJECTED));
+}
+
 void TCreateSessionActor::ScheduleWakeup(const TActorContext& ctx)
 {
     ctx.Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup());
@@ -540,6 +614,7 @@ void TCreateSessionActor::HandleWakeup(
             LogTag().c_str(),
             LastPing.ToStringUpToSeconds().c_str());
         Become(&TThis::StateShutdown);
+        CompleteEventListener(ctx, "idle session closed");
         return Notify(ctx, MakeError(E_TIMEOUT, "closed idle session"), true);
     }
 
@@ -550,6 +625,7 @@ void TCreateSessionActor::HandleWakeup(
             LogTag().c_str(),
             LastPipeResetTime.ToStringUpToSeconds().c_str());
         Become(&TThis::StateShutdown);
+        CompleteEventListener(ctx, "failed to connect to fs");
         return Notify(ctx, MakeError(E_TIMEOUT, "failed to connect to fs"), true);
     }
 
@@ -574,6 +650,7 @@ void TCreateSessionActor::HandlePoisonPill(
 
     if (ev->Sender != Owner) {
         Become(&TThis::StateShutdown);
+        CompleteEventListener(ctx, "session cancelled");
         Notify(ctx, MakeError(E_REJECTED, "request cancelled"), true);
     } else {
         Die(ctx);
@@ -609,6 +686,8 @@ void TCreateSessionActor::Notify(
 
 void TCreateSessionActor::Die(const TActorContext& ctx)
 {
+    CompleteEventListener(ctx, "session actor stopped");
+
     if (PipeClient) {
         NTabletPipe::CloseClient(ctx, PipeClient);
         PipeClient = {};
@@ -668,7 +747,9 @@ STFUNC(TCreateSessionActor::StateShutdown)
         IgnoreFunc(TEvTabletPipe::TEvClientDestroyed);
         IgnoreFunc(TEvIndexTablet::TEvCreateSessionResponse);
         IgnoreFunc(TEvServicePrivate::TEvPingSession);
-        IgnoreFunc(TEvService::TEvGetSessionEventsRequest);
+        HFunc(
+            TEvService::TEvGetSessionEventsRequest,
+            RejectGetSessionEvents);
         IgnoreFunc(TEvService::TEvGetSessionEventsResponse);
 
         default:

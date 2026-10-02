@@ -583,6 +583,56 @@ Y_UNIT_TEST_SUITE(TSessionTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldReopenSessionEventStreamAfterCompletion)
+    {
+        TBootstrap bootstrap;
+        bootstrap.Start();
+
+        TVector<std::shared_ptr<NProto::TGetSessionEventsRequest>> requests;
+        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> handler;
+        bootstrap.FileStore->GetSessionEventsStreamHandler = [&] (
+            auto callContext,
+            auto request,
+            auto responseHandler)
+        {
+            Y_UNUSED(callContext);
+            requests.push_back(std::move(request));
+            handler = std::move(responseHandler);
+        };
+
+        {
+            auto future = bootstrap.Session->CreateSession();
+            UNIT_ASSERT(!HasError(future.GetValue(WaitTimeout)));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(1, requests.size());
+
+        //
+        // The filestore completes the stream (e.g. after a pipe reset):
+        // the session reopens it, but not immediately.
+        //
+
+        handler->HandleCompletion(MakeError(E_REJECTED));
+        UNIT_ASSERT_VALUES_EQUAL(1, requests.size());
+
+        bootstrap.Scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, requests.size());
+        UNIT_ASSERT_VALUES_EQUAL(SessionId, GetSessionId(*requests[1]));
+        UNIT_ASSERT_VALUES_EQUAL(ClientId, GetClientId(*requests[1]));
+
+        //
+        // A destroyed session does not reopen its stream.
+        //
+
+        {
+            auto future = bootstrap.Session->DestroySession();
+            UNIT_ASSERT(!HasError(future.GetValue(WaitTimeout)));
+        }
+
+        handler->HandleCompletion(MakeError(E_REJECTED));
+        bootstrap.Scheduler->RunAllScheduledTasks();
+        UNIT_ASSERT_VALUES_EQUAL(2, requests.size());
+    }
+
     Y_UNIT_TEST(ShouldHandleDestroySessionAfterFailedSessionRestore)
     {
         TBootstrap bootstrap;

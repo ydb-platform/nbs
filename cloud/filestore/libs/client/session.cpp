@@ -17,6 +17,7 @@
 #include <util/system/spinlock.h>
 
 #include <atomic>
+#include <functional>
 #include <mutex>
 
 namespace NCloud::NFileStore::NClient {
@@ -181,6 +182,10 @@ std::tuple<TString, ui64, bool> GetSessionParams(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr TDuration SessionEventStreamReopenDelay = TDuration::Seconds(1);
+
+////////////////////////////////////////////////////////////////////////////////
+
 //
 // Receives the events the filestore sends to the session. For now the
 // events are only logged.
@@ -194,6 +199,7 @@ private:
     const TString LogTag;
     const TString SessionId;
     const ui64 SessionSeqNo;
+    const std::function<void()> OnCompleted;
     std::atomic<bool> Completed = false;
 
 public:
@@ -201,11 +207,13 @@ public:
             TLog log,
             TString logTag,
             TString sessionId,
-            ui64 sessionSeqNo)
+            ui64 sessionSeqNo,
+            std::function<void()> onCompleted)
         : Log(std::move(log))
         , LogTag(std::move(logTag))
         , SessionId(std::move(sessionId))
         , SessionSeqNo(sessionSeqNo)
+        , OnCompleted(std::move(onCompleted))
     {}
 
     void HandleResponse(
@@ -228,9 +236,18 @@ public:
 
     void HandleCompletion(const NProto::TError& error) override
     {
+        //
+        // The filestore could not deliver events for a while (e.g. its
+        // connection to the tablet was reset), so some may have been
+        // missed. Everything derived from the events has to be dropped
+        // here. For now the completion is only logged.
+        //
+
         Completed = true;
         STORAGE_INFO(LogTag << " session event stream completed: "
             << FormatError(error));
+
+        OnCompleted();
     }
 
     // Whether this handler still serves the given session.
@@ -559,11 +576,7 @@ private:
                 if (!EventsHandler ||
                     !EventsHandler->IsServing(SessionId, SessionSeqNo))
                 {
-                    EventsHandler = std::make_shared<TSessionEventsHandler>(
-                        Log,
-                        LogTag(SessionId, SessionSeqNo),
-                        SessionId,
-                        SessionSeqNo);
+                    EventsHandler = CreateEventsHandler();
                     newEventsHandler = EventsHandler;
                 }
 
@@ -581,6 +594,70 @@ private:
         }
 
         state->Response.SetValue(std::move(response));
+    }
+
+    // Must be called under SessionLock.
+    TSessionEventsHandlerPtr CreateEventsHandler()
+    {
+        auto onCompleted = [weakPtr = weak_from_this()] {
+            if (auto self = weakPtr.lock()) {
+                self->ScheduleReopenSessionEventStream();
+            }
+        };
+
+        return std::make_shared<TSessionEventsHandler>(
+            Log,
+            LogTag(SessionId, SessionSeqNo),
+            SessionId,
+            SessionSeqNo,
+            std::move(onCompleted));
+    }
+
+    void ScheduleReopenSessionEventStream()
+    {
+        //
+        // The delay keeps a filestore that completes every stream at once
+        // (e.g. a session that is shutting down) from being flooded.
+        //
+
+        Scheduler->Schedule(
+            Timer->Now() + SessionEventStreamReopenDelay,
+            [weakPtr = weak_from_this()] {
+                if (auto self = weakPtr.lock()) {
+                    self->ReopenSessionEventStream();
+                }
+            });
+    }
+
+    void ReopenSessionEventStream()
+    {
+        TSessionEventsHandlerPtr handler;
+        TString sessionId;
+        ui64 sessionSeqNo = 0;
+
+        with_lock (SessionLock) {
+            //
+            // Nothing to do if the session is gone, or if a new stream has
+            // already been opened for it (e.g. by session re-establishment).
+            //
+
+            if (SessionState != SessionEstablished ||
+                (EventsHandler &&
+                    EventsHandler->IsServing(SessionId, SessionSeqNo)))
+            {
+                return;
+            }
+
+            EventsHandler = CreateEventsHandler();
+            handler = EventsHandler;
+            sessionId = SessionId;
+            sessionSeqNo = SessionSeqNo;
+        }
+
+        STORAGE_INFO(LogTag(sessionId, sessionSeqNo)
+            << " reopening session event stream");
+
+        OpenSessionEventStream(sessionId, sessionSeqNo, std::move(handler));
     }
 
     void OpenSessionEventStream(

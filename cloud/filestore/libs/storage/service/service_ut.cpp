@@ -1318,6 +1318,105 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             events[0].GetInvalidateNodeRef(0).GetName());
     }
 
+    Y_UNIT_TEST(ShouldCompleteSessionEventStreamUponPipeReset)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        TActorId sessionActor;
+        runtime.SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
+            if (event->GetTypeRewrite() ==
+                TEvSSProxy::EvDescribeFileStoreRequest)
+            {
+                sessionActor = event->Sender;
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+        auto headers = service.InitSession("test", "client");
+        UNIT_ASSERT(sessionActor);
+
+        service.GetSessionEventsStream(headers);
+
+        //
+        // Drop the pipe to the tablet: the session actor completes the
+        // stream, then reconnects and re-establishes the session.
+        //
+
+        runtime.Send(
+            new IEventHandle(
+                sessionActor,
+                TActorId(),
+                new TEvTabletPipe::TEvClientDestroyed(
+                    static_cast<ui64>(0),
+                    TActorId(),
+                    TActorId())),
+            nodeIdx);
+
+        //
+        // Events may have been missed meanwhile: the stream is completed.
+        //
+
+        TAutoPtr<IEventHandle> handle;
+        auto* completed = runtime.GrabEdgeEvent<TEvents::TEvCompleted>(
+            handle,
+            TDuration::Seconds(10));
+        UNIT_ASSERT(completed);
+        UNIT_ASSERT_VALUES_EQUAL(service.GetSender(), handle->Recipient);
+        UNIT_ASSERT_VALUES_EQUAL(static_cast<ui32>(E_REJECTED),
+            completed->Status);
+
+        //
+        // A reopened stream gets the events again.
+        //
+
+        service.GetSessionEventsStream(headers);
+
+        auto actionResponse =
+            ExecuteInvalidateNodeRef(service, RootNodeId, "file");
+        UNIT_ASSERT_VALUES_EQUAL(1, actionResponse.GetNotifiedSessionCount());
+
+        auto response =
+            service.RecvResponse<TEvService::TEvGetSessionEventsResponse>();
+        const auto& events = response->Record.GetEvents();
+        UNIT_ASSERT_VALUES_EQUAL(1, events.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, events[0].InvalidateNodeRefSize());
+    }
+
+    Y_UNIT_TEST(ShouldCompleteReplacedSessionEventListener)
+    {
+        TTestEnv env;
+        auto& runtime = env.GetRuntime();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateFileStore("test", 1000);
+
+        auto headers = service.InitSession("test", "client");
+        service.GetSessionEventsStream(headers);
+
+        //
+        // Another listener takes over the session's stream: the previous
+        // one is completed instead of being left hanging.
+        //
+
+        TServiceClient otherService(runtime, nodeIdx);
+        otherService.GetSessionEventsStream(headers);
+
+        TAutoPtr<IEventHandle> handle;
+        auto* completed = runtime.GrabEdgeEvent<TEvents::TEvCompleted>(
+            handle,
+            TDuration::Seconds(10));
+        UNIT_ASSERT(completed);
+        UNIT_ASSERT_VALUES_EQUAL(service.GetSender(), handle->Recipient);
+    }
+
     Y_UNIT_TEST(ShouldRejectInvalidateNodeRefWithoutNodeRef)
     {
         TTestEnv env;
