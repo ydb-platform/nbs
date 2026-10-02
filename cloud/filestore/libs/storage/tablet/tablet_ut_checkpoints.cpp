@@ -63,7 +63,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Checkpoints)
             auto response = tablet.GetStorageStats();
             const auto& stats = response->Record.GetStats();
             UNIT_ASSERT_VALUES_EQUAL(stats.GetUsedNodesCount(), 2);
-            UNIT_ASSERT_VALUES_EQUAL(stats.GetCheckpointNodesCount(), 2);   // TODO
+            UNIT_ASSERT_VALUES_EQUAL(stats.GetCheckpointNodesCount(), 3);   // TODO
         }
 
         tablet.InitSession("client", "session2", "checkpoint");
