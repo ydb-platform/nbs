@@ -34,20 +34,12 @@ IIncompleteRequestProviderPtr CreateIncompleteRequestProviderStub()
 TIncompleteRequestsCollector CreateIncompleteRequestsCollectorStub()
 {
     return [](TCallContext& callContext,
-              IVolumeInfoPtr volumeInfo,
-              NCloud::NProto::EStorageMediaKind mediaKind,
-              EBlockStoreRequest requestType,
-              TRequestTime time,
-              NProto::EVolumeAccessMode accessMode,
-              NProto::EVolumeMountMode mountMode)
+              const TMetricRequest& metricRequest,
+              TRequestTime time)
     {
         Y_UNUSED(callContext);
-        Y_UNUSED(volumeInfo);
-        Y_UNUSED(mediaKind);
-        Y_UNUSED(requestType);
+        Y_UNUSED(metricRequest);
         Y_UNUSED(time);
-        Y_UNUSED(accessMode);
-        Y_UNUSED(mountMode);
     };
 }
 

@@ -456,15 +456,14 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
 
         {
             const auto totalTime = TDuration::Seconds(15);
+            TMetricRequest metricRequest{EBlockStoreRequest::WriteBlocks};
+            metricRequest.MediaKind = NCloud::NProto::STORAGE_MEDIA_DEFAULT;
             requestStats->AddIncompleteStats(
-                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
-                EBlockStoreRequest::WriteBlocks,
+                metricRequest,
                 TRequestTime{
                     .TotalTime = totalTime,
                     .ExecutionTime = totalTime},
-                ECalcMaxTime::ENABLE,
-                NProto::VOLUME_ACCESS_READ_WRITE,
-                NProto::VOLUME_MOUNT_LOCAL);
+                ECalcMaxTime::ENABLE);
             requestStats->UpdateStats(true);
 
             UNIT_ASSERT_EQUAL(
@@ -1270,14 +1269,15 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 0,
                 mode.AccessMode,
                 mode.MountMode);
+            TMetricRequest metricRequest{EBlockStoreRequest::StartEndpoint};
+            metricRequest.MediaKind = NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+            metricRequest.AccessMode = mode.AccessMode;
+            metricRequest.MountMode = mode.MountMode;
             requestStats->AddIncompleteStats(
-                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
-                EBlockStoreRequest::StartEndpoint,
+                metricRequest,
                 {.TotalTime = TDuration::Seconds(20),
                  .ExecutionTime = TDuration::Seconds(12)},
-                calcMaxTime,
-                mode.AccessMode,
-                mode.MountMode);
+                calcMaxTime);
 
             const auto checkUpdatedStats = [&](bool updatePercentiles)
             {
@@ -1329,14 +1329,15 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 {{.RequestTime = TDuration::Seconds(1)}},
                 NProto::VOLUME_ACCESS_READ_ONLY,
                 NProto::VOLUME_MOUNT_REMOTE);
+            TMetricRequest metricRequest{EBlockStoreRequest::KickEndpoint};
+            metricRequest.MediaKind = NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+            metricRequest.AccessMode = NProto::VOLUME_ACCESS_READ_ONLY;
+            metricRequest.MountMode = NProto::VOLUME_MOUNT_REMOTE;
             requestStats->AddIncompleteStats(
-                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
-                EBlockStoreRequest::KickEndpoint,
+                metricRequest,
                 {.TotalTime = TDuration::Seconds(20),
                  .ExecutionTime = TDuration::Seconds(12)},
-                ECalcMaxTime::ENABLE,
-                NProto::VOLUME_ACCESS_READ_ONLY,
-                NProto::VOLUME_MOUNT_REMOTE);
+                ECalcMaxTime::ENABLE);
             requestStats->UpdateStats(true);
 
             auto kickCounters =
@@ -1386,14 +1387,15 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
                 mountMode);
             AssertStartEndpointCounter(counters, expectedMode, "InProgress", 1);
 
+            TMetricRequest metricRequest{EBlockStoreRequest::StartEndpoint};
+            metricRequest.MediaKind = NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+            metricRequest.AccessMode = unknownAccessMode;
+            metricRequest.MountMode = mountMode;
             requestStats->AddIncompleteStats(
-                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
-                EBlockStoreRequest::StartEndpoint,
+                metricRequest,
                 {.TotalTime = TDuration::Seconds(20),
                  .ExecutionTime = TDuration::Seconds(12)},
-                ECalcMaxTime::ENABLE,
-                unknownAccessMode,
-                mountMode);
+                ECalcMaxTime::ENABLE);
             requestStats->UpdateStats(false);
             AssertStartEndpointCounter(
                 counters,

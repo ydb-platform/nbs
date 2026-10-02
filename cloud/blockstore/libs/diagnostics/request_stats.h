@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "metric_request.h"
+
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
@@ -45,12 +47,9 @@ struct IRequestStats
         NProto::EVolumeMountMode mountMode) = 0;
 
     virtual void AddIncompleteStats(
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        EBlockStoreRequest requestType,
+        const TMetricRequest& metricRequest,
         TRequestTime requestTime,
-        ECalcMaxTime calcMaxTime,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode) = 0;
+        ECalcMaxTime calcMaxTime) = 0;
 
     virtual void AddRetryStats(
         NCloud::NProto::EStorageMediaKind mediaKind,

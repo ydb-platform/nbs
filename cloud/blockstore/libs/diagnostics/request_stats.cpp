@@ -491,13 +491,12 @@ public:
     }
 
     void AddIncompleteStats(
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        EBlockStoreRequest requestType,
+        const TMetricRequest& metricRequest,
         TRequestTime requestTime,
-        ECalcMaxTime calcMaxTime,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode) override
+        ECalcMaxTime calcMaxTime) override
     {
+        const auto mediaKind = metricRequest.MediaKind;
+        const auto requestType = metricRequest.RequestType;
         Total.AddIncompleteStats(
             static_cast<TRequestCounters::TRequestType>(
                 TranslateLocalRequestType(requestType)),
@@ -517,7 +516,9 @@ public:
         }
 
         if (requestType == EBlockStoreRequest::StartEndpoint) {
-            GetRequestCounters(accessMode, mountMode)
+            GetRequestCounters(
+                metricRequest.AccessMode,
+                metricRequest.MountMode)
                 .AddIncompleteStats(
                     static_cast<TRequestCounters::TRequestType>(requestType),
                     requestTime.ExecutionTime,
@@ -772,19 +773,13 @@ struct TRequestStatsStub final
     }
 
     void AddIncompleteStats(
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        EBlockStoreRequest requestType,
+        const TMetricRequest& metricRequest,
         TRequestTime requestTime,
-        ECalcMaxTime calcMaxTime,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode) override
+        ECalcMaxTime calcMaxTime) override
     {
-        Y_UNUSED(mediaKind);
-        Y_UNUSED(requestType);
+        Y_UNUSED(metricRequest);
         Y_UNUSED(requestTime);
         Y_UNUSED(calcMaxTime);
-        Y_UNUSED(accessMode);
-        Y_UNUSED(mountMode);
     }
 
     void AddRetryStats(

@@ -109,12 +109,8 @@ public:
 
     std::function<void(
         TCallContext& callContext,
-        IVolumeInfoPtr volumeInfo,
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        EBlockStoreRequest requestType,
-        TRequestTime time,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode)>
+        const TMetricRequest& metricRequest,
+        TRequestTime time)>
         AddIncompleteRequestHandler =
             std::bind_front(&IServerStats::AddIncompleteRequest, Stub.get());
 
@@ -275,21 +271,10 @@ public:
 
     void AddIncompleteRequest(
         TCallContext& callContext,
-        IVolumeInfoPtr volumeInfo,
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        EBlockStoreRequest requestType,
-        TRequestTime time,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode) override
+        const TMetricRequest& metricRequest,
+        TRequestTime time) override
     {
-        AddIncompleteRequestHandler(
-            callContext,
-            std::move(volumeInfo),
-            mediaKind,
-            requestType,
-            time,
-            accessMode,
-            mountMode);
+        AddIncompleteRequestHandler(callContext, metricRequest, time);
     }
 
     void BatchCompleted(

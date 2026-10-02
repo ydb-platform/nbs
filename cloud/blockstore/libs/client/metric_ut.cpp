@@ -122,30 +122,26 @@ void CheckStartEndpointMetrics(
     size_t collected = 0;
     const auto count = client->CollectRequests(
         [&](TCallContext& context,
-            IVolumeInfoPtr volumeInfo,
-            NCloud::NProto::EStorageMediaKind mediaKind,
-            EBlockStoreRequest requestType,
-            TRequestTime requestTime,
-            NProto::EVolumeAccessMode accessMode,
-            NProto::EVolumeMountMode mountMode)
+            const TMetricRequest& metricRequest,
+            TRequestTime requestTime)
         {
             ++collected;
             UNIT_ASSERT_VALUES_EQUAL(callContext.Get(), &context);
-            UNIT_ASSERT(!volumeInfo);
-            UNIT_ASSERT_EQUAL(NProto::STORAGE_MEDIA_HDD, mediaKind);
-            UNIT_ASSERT_EQUAL(EBlockStoreRequest::StartEndpoint, requestType);
-            UNIT_ASSERT_EQUAL(modes.AccessMode, accessMode);
-            UNIT_ASSERT_EQUAL(modes.MountMode, mountMode);
+            UNIT_ASSERT(!metricRequest.VolumeInfo);
+            UNIT_ASSERT_EQUAL(
+                NProto::STORAGE_MEDIA_HDD,
+                metricRequest.MediaKind);
+            UNIT_ASSERT_EQUAL(
+                EBlockStoreRequest::StartEndpoint,
+                metricRequest.RequestType);
+            UNIT_ASSERT_EQUAL(modes.AccessMode, metricRequest.AccessMode);
+            UNIT_ASSERT_EQUAL(modes.MountMode, metricRequest.MountMode);
             UNIT_ASSERT_GE(requestTime.TotalTime, elapsed);
             UNIT_ASSERT_GE(requestTime.ExecutionTime, elapsed);
             serverStats->AddIncompleteRequest(
                 context,
-                std::move(volumeInfo),
-                mediaKind,
-                requestType,
-                requestTime,
-                accessMode,
-                mountMode);
+                metricRequest,
+                requestTime);
         });
     UNIT_ASSERT_VALUES_EQUAL(1, count);
     UNIT_ASSERT_VALUES_EQUAL(1, collected);

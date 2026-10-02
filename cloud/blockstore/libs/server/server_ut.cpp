@@ -1740,21 +1740,17 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TVector<ui32> collected(requestCount, 0);
         server->CollectRequests(
             [&](TCallContext& callContext,
-                IVolumeInfoPtr,
-                NCloud::NProto::EStorageMediaKind,
-                EBlockStoreRequest requestType,
-                TRequestTime,
-                NProto::EVolumeAccessMode accessMode,
-                NProto::EVolumeMountMode mountMode)
+                const TMetricRequest& metricRequest,
+                TRequestTime)
             {
                 UNIT_ASSERT_EQUAL(
                     EBlockStoreRequest::StartEndpoint,
-                    requestType);
+                    metricRequest.RequestType);
                 const auto index = callContext.RequestId - 1;
                 UNIT_ASSERT(index < requestCount);
                 const auto& mode = modes[index / 2];
-                UNIT_ASSERT_EQUAL(mode.AccessMode, accessMode);
-                UNIT_ASSERT_EQUAL(mode.MountMode, mountMode);
+                UNIT_ASSERT_EQUAL(mode.AccessMode, metricRequest.AccessMode);
+                UNIT_ASSERT_EQUAL(mode.MountMode, metricRequest.MountMode);
                 ++collected[index];
             });
         for (const auto count: collected) {

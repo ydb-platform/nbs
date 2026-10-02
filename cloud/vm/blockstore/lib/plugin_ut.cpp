@@ -1004,20 +1004,17 @@ Y_UNIT_TEST_SUITE(TPluginTest)
         size_t collected = 0;
         TIncompleteRequestsCollector collector =
             [&](TCallContext& callContext,
-                IVolumeInfoPtr volumeInfo,
-                NCloud::NProto::EStorageMediaKind mediaKind,
-                EBlockStoreRequest requestType,
-                TRequestTime time,
-                NProto::EVolumeAccessMode accessMode,
-                NProto::EVolumeMountMode mountMode)
+                const TMetricRequest& metricRequest,
+                TRequestTime time)
         {
             Y_UNUSED(callContext);
-            Y_UNUSED(volumeInfo);
-            Y_UNUSED(requestType);
-            Y_UNUSED(mediaKind);
             Y_UNUSED(time);
-            UNIT_ASSERT_EQUAL(NProto::VOLUME_ACCESS_READ_WRITE, accessMode);
-            UNIT_ASSERT_EQUAL(NProto::VOLUME_MOUNT_LOCAL, mountMode);
+            UNIT_ASSERT_EQUAL(
+                NProto::VOLUME_ACCESS_READ_WRITE,
+                metricRequest.AccessMode);
+            UNIT_ASSERT_EQUAL(
+                NProto::VOLUME_MOUNT_LOCAL,
+                metricRequest.MountMode);
             ++collected;
         };
 

@@ -175,16 +175,13 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
 
         auto callContext = MakeIntrusive<TCallContext>();
 
+        request.MediaKind = NProto::STORAGE_MEDIA_HYBRID;
         serverStats->AddIncompleteRequest(
             *callContext,
-            request.VolumeInfo,
-            NProto::STORAGE_MEDIA_HYBRID,
-            EBlockStoreRequest::WriteBlocks,
+            request,
             TRequestTime{
                 .TotalTime = TDuration::Hours(1),
-                .ExecutionTime = TDuration::Hours(1)},
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL);
+                .ExecutionTime = TDuration::Hours(1)});
 
         serverStats->UpdateStats(false);
 
@@ -292,16 +289,13 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         // Set flag HasUncountableRejects
         callContext->SetHasUncountableRejects();
 
+        request.MediaKind = NProto::STORAGE_MEDIA_HYBRID;
         serverStats->AddIncompleteRequest(
             *callContext,
-            request.VolumeInfo,
-            NProto::STORAGE_MEDIA_HYBRID,
-            EBlockStoreRequest::WriteBlocks,
+            request,
             TRequestTime{
                 .TotalTime = TDuration::Hours(1),
-                .ExecutionTime = TDuration::Hours(1)},
-            NProto::VOLUME_ACCESS_READ_WRITE,
-            NProto::VOLUME_MOUNT_LOCAL);
+                .ExecutionTime = TDuration::Hours(1)});
 
         serverStats->UpdateStats(false);
 
@@ -543,14 +537,7 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
             const TRequestTime time{
                 .TotalTime = TDuration::Seconds(10),
                 .ExecutionTime = TDuration::Seconds(6)};
-            serverStats->AddIncompleteRequest(
-                *callContext,
-                {},
-                request.MediaKind,
-                request.RequestType,
-                time,
-                accessMode,
-                mountMode);
+            serverStats->AddIncompleteRequest(*callContext, request, time);
             serverStats->UpdateStats(false);
 
             const auto expectedMaxTime =

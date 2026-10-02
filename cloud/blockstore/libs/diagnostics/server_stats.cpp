@@ -148,12 +148,8 @@ public:
 
     void AddIncompleteRequest(
         TCallContext& callContext,
-        IVolumeInfoPtr volumeInfo,
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        EBlockStoreRequest requestType,
-        TRequestTime time,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode) override;
+        const TMetricRequest& metricRequest,
+        TRequestTime time) override;
 
     void BatchCompleted(
         TMetricRequest& metricRequest,
@@ -656,27 +652,19 @@ void TServerStats::OutputHtml(IOutputStream& out, const IMonHttpRequest& request
 
 void TServerStats::AddIncompleteRequest(
     TCallContext& callContext,
-    IVolumeInfoPtr volumeInfo,
-    NCloud::NProto::EStorageMediaKind mediaKind,
-    EBlockStoreRequest requestType,
-    TRequestTime time,
-    NProto::EVolumeAccessMode accessMode,
-    NProto::EVolumeMountMode mountMode)
+    const TMetricRequest& metricRequest,
+    TRequestTime time)
 {
     auto calcMaxTime = callContext.GetHasUncountableRejects()
                            ? ECalcMaxTime::DISABLE
                            : ECalcMaxTime::ENABLE;
 
-    RequestStats->AddIncompleteStats(
-        mediaKind,
-        requestType,
-        time,
-        calcMaxTime,
-        accessMode,
-        mountMode);
+    RequestStats->AddIncompleteStats(metricRequest, time, calcMaxTime);
 
-    if (volumeInfo) {
-        volumeInfo->AddIncompleteStats(requestType, time);
+    if (metricRequest.VolumeInfo) {
+        metricRequest.VolumeInfo->AddIncompleteStats(
+            metricRequest.RequestType,
+            time);
     }
 }
 
@@ -904,20 +892,12 @@ public:
 
     void AddIncompleteRequest(
         TCallContext& callContext,
-        IVolumeInfoPtr volumeInfo,
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        EBlockStoreRequest requestType,
-        TRequestTime time,
-        NProto::EVolumeAccessMode accessMode,
-        NProto::EVolumeMountMode mountMode) override
+        const TMetricRequest& metricRequest,
+        TRequestTime time) override
     {
         Y_UNUSED(callContext);
-        Y_UNUSED(volumeInfo);
-        Y_UNUSED(requestType);
-        Y_UNUSED(mediaKind);
+        Y_UNUSED(metricRequest);
         Y_UNUSED(time);
-        Y_UNUSED(accessMode);
-        Y_UNUSED(mountMode);
     }
 
     void BatchCompleted(
