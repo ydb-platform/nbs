@@ -1,10 +1,11 @@
 #include "io_companion.h"
+
 #include "cloud/storage/core/libs/tablet/blob_id.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 #include <cloud/blockstore/libs/storage/core/request_info.h>
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 
 #include <cloud/storage/core/libs/diagnostics/wilson_trace_compatibility.h>
 

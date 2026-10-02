@@ -3,11 +3,11 @@
 #include "part_thread_safe_state.h"
 
 #include <cloud/blockstore/libs/storage/core/write_buffer_request.h>
-#include <cloud/blockstore/libs/storage/partition/model/barrier.h>
-#include <cloud/blockstore/libs/storage/partition/model/block_index.h>
-#include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
-#include <cloud/blockstore/libs/storage/partition/model/operation_status.h>
 #include <cloud/blockstore/libs/storage/partition_common/commit_ids_state.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/barrier.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/block_index.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/operation_status.h>
 
 #include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 #include <cloud/storage/core/libs/tablet/gc_logic.h>

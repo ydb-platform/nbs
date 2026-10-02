@@ -1,12 +1,12 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
-#include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
-#include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
-#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
-#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/commit_queue.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/group_downtimes.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 
 #include <util/system/spinlock.h>
 
