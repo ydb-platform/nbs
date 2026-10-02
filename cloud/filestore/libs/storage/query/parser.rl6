@@ -11,6 +11,13 @@ namespace {
 class TParser
 {
 private:
+    struct TPredicateBuilder
+    {
+        TString Column;
+        EOperator Operator = EOperator::Equal;
+        TVector<TValue> Values;
+    };
+
     enum class EExprStackItem
     {
         OpenParen,
@@ -21,7 +28,7 @@ private:
     TStringBuf Input;
     TParseError* Error;
     TSelect Query;
-    TPredicate Predicate;
+    TPredicateBuilder Predicate;
     bool PendingPredicate = false;
     bool HasWhere = false;
     TVector<std::shared_ptr<TExpression>> Expressions;
@@ -62,6 +69,10 @@ private:
     action SetPredicateColumn { Predicate.Column = Matched(); }
     action SetEqual { Predicate.Operator = EOperator::Equal; }
     action SetNotEqual { Predicate.Operator = EOperator::NotEqual; }
+    action SetGreater { Predicate.Operator = EOperator::Greater; }
+    action SetGreaterOrEqual { Predicate.Operator = EOperator::GreaterOrEqual; }
+    action SetLess { Predicate.Operator = EOperator::Less; }
+    action SetLessOrEqual { Predicate.Operator = EOperator::LessOrEqual; }
     action SetSubstr { Predicate.Operator = EOperator::Substr; }
     action SetIn { Predicate.Operator = EOperator::In; }
     action BeginColumnValue { Predicate.Values.emplace_back(TColumnRef{}); }
@@ -120,7 +131,9 @@ private:
 
     predicate = (identifier >Mark >BeginPredicate @SetPredicateColumn) ws
                 (
-                    (('==' | '=') @SetEqual | '!=' @SetNotEqual)
+                    ('>=' @SetGreaterOrEqual | '>' @SetGreater |
+                     '<=' @SetLessOrEqual | '<' @SetLess |
+                     ('==' | '=') @SetEqual | '!=' @SetNotEqual)
                     ws value
                   | "SUBSTR"i @SetSubstr required_ws value
                   | "IN"i @SetIn ws '{' ws value
@@ -182,8 +195,67 @@ void TParser::SetError(TStringBuf message, const char* at)
 bool TParser::FinishPredicate()
 {
     if (PendingPredicate) {
+        TPredicate predicate;
+        switch (Predicate.Operator) {
+          case EOperator::Equal: {
+              TEqualPredicate value;
+              value.Column = std::move(Predicate.Column);
+              value.Value = std::move(Predicate.Values.front());
+              predicate = std::move(value);
+              break;
+          }
+          case EOperator::NotEqual: {
+              TNotEqualPredicate value;
+              value.Column = std::move(Predicate.Column);
+              value.Value = std::move(Predicate.Values.front());
+              predicate = std::move(value);
+              break;
+          }
+          case EOperator::Greater: {
+              TGreaterPredicate value;
+              value.Column = std::move(Predicate.Column);
+              value.Value = std::move(Predicate.Values.front());
+              predicate = std::move(value);
+              break;
+          }
+          case EOperator::GreaterOrEqual: {
+              TGreaterOrEqualPredicate value;
+              value.Column = std::move(Predicate.Column);
+              value.Value = std::move(Predicate.Values.front());
+              predicate = std::move(value);
+              break;
+          }
+          case EOperator::Less: {
+              TLessPredicate value;
+              value.Column = std::move(Predicate.Column);
+              value.Value = std::move(Predicate.Values.front());
+              predicate = std::move(value);
+              break;
+          }
+          case EOperator::LessOrEqual: {
+              TLessOrEqualPredicate value;
+              value.Column = std::move(Predicate.Column);
+              value.Value = std::move(Predicate.Values.front());
+              predicate = std::move(value);
+              break;
+          }
+          case EOperator::Substr: {
+              TSubstrPredicate value;
+              value.Column = std::move(Predicate.Column);
+              value.Value = std::move(Predicate.Values.front());
+              predicate = std::move(value);
+              break;
+          }
+          case EOperator::In: {
+              TInPredicate value;
+              value.Column = std::move(Predicate.Column);
+              value.Values = std::move(Predicate.Values);
+              predicate = std::move(value);
+              break;
+          }
+        }
         auto node = std::make_shared<TExpression>();
-        node->Predicate = std::move(Predicate);
+        node->Node = std::move(predicate);
         Expressions.push_back(std::move(node));
         PendingPredicate = false;
     }
@@ -197,14 +269,13 @@ bool TParser::Reduce()
         return false;
     }
 
-    auto node = std::make_shared<TExpression>();
-    node->Kind = TExpression::EKind::Logical;
+    TLogicalExpression logical;
     switch (Operators.back()) {
       case EExprStackItem::And:
-          node->Operator = ELogicalOperator::And;
+          logical.Operator = ELogicalOperator::And;
           break;
       case EExprStackItem::Or:
-          node->Operator = ELogicalOperator::Or;
+          logical.Operator = ELogicalOperator::Or;
           break;
       case EExprStackItem::OpenParen:
           SetError("cannot reduce an opening parenthesis", p);
@@ -212,9 +283,11 @@ bool TParser::Reduce()
     }
     Operators.pop_back();
 
-    node->Right = std::move(Expressions.back());
+    logical.Right = std::move(Expressions.back());
     Expressions.pop_back();
-    node->Left = std::move(Expressions.back());
+    logical.Left = std::move(Expressions.back());
+    auto node = std::make_shared<TExpression>();
+    node->Node = std::move(logical);
     Expressions.back() = std::move(node);
     return true;
 }

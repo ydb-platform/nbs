@@ -22,16 +22,68 @@ enum class EOperator
 {
     Equal,
     NotEqual,
+    Greater,
+    GreaterOrEqual,
+    Less,
+    LessOrEqual,
     Substr,
     In,
 };
 
-struct TPredicate
+struct TPredicateBase
 {
     TString Column;
-    EOperator Operator = EOperator::Equal;
+};
+
+struct TEqualPredicate : TPredicateBase
+{
+    TValue Value;
+};
+
+struct TNotEqualPredicate : TPredicateBase
+{
+    TValue Value;
+};
+
+struct TGreaterPredicate : TPredicateBase
+{
+    TValue Value;
+};
+
+struct TGreaterOrEqualPredicate : TPredicateBase
+{
+    TValue Value;
+};
+
+struct TLessPredicate : TPredicateBase
+{
+    TValue Value;
+};
+
+struct TLessOrEqualPredicate : TPredicateBase
+{
+    TValue Value;
+};
+
+struct TSubstrPredicate : TPredicateBase
+{
+    TValue Value;
+};
+
+struct TInPredicate : TPredicateBase
+{
     TVector<TValue> Values;
 };
+
+using TPredicate = std::variant<
+    TEqualPredicate,
+    TNotEqualPredicate,
+    TGreaterPredicate,
+    TGreaterOrEqualPredicate,
+    TLessPredicate,
+    TLessOrEqualPredicate,
+    TSubstrPredicate,
+    TInPredicate>;
 
 enum class ELogicalOperator
 {
@@ -39,19 +91,18 @@ enum class ELogicalOperator
     Or,
 };
 
-struct TExpression
-{
-    enum class EKind
-    {
-        Predicate,
-        Logical,
-    };
+struct TExpression;
 
-    EKind Kind = EKind::Predicate;
-    TPredicate Predicate;
+struct TLogicalExpression
+{
     ELogicalOperator Operator = ELogicalOperator::And;
     std::shared_ptr<TExpression> Left;
     std::shared_ptr<TExpression> Right;
+};
+
+struct TExpression
+{
+    std::variant<TPredicate, TLogicalExpression> Node;
 };
 
 struct TSelect
@@ -59,8 +110,7 @@ struct TSelect
     TString Table;
     // Empty means SELECT *.
     TVector<TString> Columns;
-    // Null when the query has no WHERE clause.
-    std::shared_ptr<TExpression> Where;
+    std::optional<TExpression> Where;
     TMaybe<ui64> Limit;
 };
 
