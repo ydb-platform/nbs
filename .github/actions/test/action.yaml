@@ -226,6 +226,20 @@ runs:
                 ;;
         esac
 
+        if [[ "$BUILD_PRESET" == release-*san ]]; then
+            export ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}disable_coredump=0"
+            export MSAN_OPTIONS="${MSAN_OPTIONS:+$MSAN_OPTIONS:}disable_coredump=0"
+            export UBSAN_OPTIONS="${UBSAN_OPTIONS:+$UBSAN_OPTIONS:}disable_coredump=0"
+            # --test-env replaces ya's defaults, so set its sanitizer exit code explicitly.
+            export TSAN_OPTIONS="${TSAN_OPTIONS:+$TSAN_OPTIONS:}exitcode=100:disable_coredump=0"
+
+            # ya imports the other sanitizer options and appends its defaults to every
+            # *SAN_OPTIONS except for TSAN_OPTIONS, so we need to pass it explicitly to ya.
+            # https://github.com/yandex/yatool/blob/a4c5371cab44406f97e800e60697e3dd7bb29a8a/devtools/ya/test/system/env/__init__.py#L179
+
+            extra_params+=(--test-env=TSAN_OPTIONS)
+        fi
+
         # strip quotes from the string
         # TODO: remove it when pr.yaml gets updated
         TEST_TARGET=${TEST_TARGET//\"/}
