@@ -41,7 +41,7 @@ struct TChecksumCalcInfo
         , BlockChecksumsEnabled(false)
     {}
 
-    TChecksumCalcInfo(ui32 blockSize, TIovecs iovecs)
+    explicit TChecksumCalcInfo(ui32 blockSize, TIovecs iovecs = {})
         : BlockSize(blockSize)
         , BlockChecksumsEnabled(true)
         , Iovecs(std::move(iovecs))
