@@ -226,6 +226,16 @@ runs:
                 ;;
         esac
 
+        case "$BUILD_PRESET" in
+            debug | relwithdebinfo | release-ubsan)
+                # Bash expresses RLIMIT_CORE in KiB. Set both limits to 2 GiB.
+                ulimit -c $((2 * 1024 * 1024))
+                ;;
+            *)
+                ulimit -c 0
+                ;;
+        esac
+
         # strip quotes from the string
         # TODO: remove it when pr.yaml gets updated
         TEST_TARGET=${TEST_TARGET//\"/}
@@ -813,6 +823,7 @@ runs:
       shell: bash
       run: |
         echo "::group::clean-up"
+        find /coredumps -maxdepth 1 -type f -uid "$(id -u)" -delete 2> /dev/null || true
         rm -rf $TMP_DIR $SUMMARY_LINKS $BAZEL_REMOTE_PASSWORD_FILE \
                $SUMMARY_OUT_ENV_PATH $SUMMARY_LINKS $GITHUB_TOKEN_FILE
         echo "::endgroup::"
