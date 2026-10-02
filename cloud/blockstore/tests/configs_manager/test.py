@@ -37,6 +37,7 @@ from contrib.ydb.tests.library.clients.kikimr_dynconfig_client import (
 
 
 DATABASE = "/Root/nbs"
+SECRET = "dynamic-secret-value"
 
 
 # Build main YAML from the running YDB settings for Console validation.
@@ -141,6 +142,32 @@ def wait_runtime_rejection(nbs, count=1, timeout=120):
             return log
         time.sleep(1)
     raise AssertionError("ConfigsManager did not report the rejected configuration")
+
+
+# Wait until the read-only page shows the expected configuration state.
+def wait_monitoring_page(nbs, predicate, timeout=120):
+    url = f"http://localhost:{nbs.mon_port}/blockstore/configs_manager"
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200 and predicate(response.text):
+                return response.text
+        except requests.RequestException:
+            pass
+        time.sleep(1)
+    raise AssertionError("configs manager monitoring page did not converge")
+
+
+# Extract the source and effective cells for one configuration parameter.
+def get_parameter_row(page, parameter):
+    match = re.search(
+        rf"<tr><td(?: class='config-dynamic-deferred')?>"
+        rf"{re.escape(parameter)}</td>(.*?)</tr>",
+        page,
+    )
+    assert match is not None
+    return match.group(1)
 
 
 def start_dynamic_config_ydb():
@@ -323,7 +350,11 @@ def test_dynamic_blockstore_config_lifecycle():
         replace_database_config(
             ydb,
             0,
-            "storage_service:\n  write_blob_threshold: 200",
+            "storage_service:\n"
+            "  write_blob_threshold: 200\n"
+            "server:\n"
+            "  server_config:\n"
+            f"    node_registration_token: {SECRET}",
         )
 
         # Distinguish the PrivateDatabaseConfig startup seed from the static configuration.
@@ -341,6 +372,24 @@ def test_dynamic_blockstore_config_lifecycle():
         updates = wait_config_delivery(nbs)
         assert get_icb_values(nbs, "WriteBlobThreshold") == (200, 200)
 
+        # Check source columns, published startup values and secret redaction.
+        page = wait_monitoring_page(
+            nbs,
+            lambda text: (
+                "StorageService.WriteBlobThreshold</td>"
+                "<td>100</td><td>200</td>" in text
+            ),
+        )
+        for title in ("Parameter", "Static", "Dynamic", "ICB", "Effective"):
+            assert f"<th>{title}</th>" in page
+        assert "class='config-dynamic-total'>1</span>" in page
+        assert re.search(r"Last update</td><td>[^<]+, startup</td>", page)
+        assert get_parameter_row(page, "StorageService.WriteBlobThreshold") == (
+            "<td>100</td><td>200</td><td>&mdash;</td><td>200</td>"
+        )
+        assert "[redacted]" in page
+        assert SECRET not in page
+
         # Replace an operator override when the configured base changes.
         set_icb_value(nbs, "WriteBlobThreshold", 500)
         assert get_icb_values(nbs, "WriteBlobThreshold") == (500, 200)
@@ -351,6 +400,19 @@ def test_dynamic_blockstore_config_lifecycle():
         )
         updates = wait_config_delivery(nbs, updates)
         assert get_icb_values(nbs, "WriteBlobThreshold") == (300, 300)
+
+        # Show the accepted runtime source and the new effective base.
+        page = wait_monitoring_page(
+            nbs,
+            lambda text: (
+                re.search(r"Last update</td><td>[^<]+, runtime(?: \(unchanged\))?</td>", text)
+                and "StorageService.WriteBlobThreshold</td>"
+                "<td>100</td><td>300</td>" in text
+            ),
+        )
+        assert get_parameter_row(page, "StorageService.WriteBlobThreshold") == (
+            "<td>100</td><td>300</td><td>&mdash;</td><td>300</td>"
+        )
 
         # Keep this override when another control's configured base changes.
         set_icb_value(nbs, "WriteBlobThreshold", 600)
@@ -382,6 +444,21 @@ def test_dynamic_blockstore_config_lifecycle():
         assert "will be lost after a restart" in log
         assert get_icb_values(nbs, "WriteBlobThreshold") == (600, 300)
 
+        # Show the rejection reason while retaining the accepted source and ICB.
+        page = wait_monitoring_page(
+            nbs,
+            lambda text: re.search(
+                r"Last update</td><td>[^<]+, runtime(?: \(unchanged\))? "
+                r"<span class='config-update-rejected'>- rejected: "
+                r"Failed to parse PrivateDatabaseConfig from CMS:",
+                text,
+            ),
+        )
+        assert "expected json map" in page
+        assert get_parameter_row(page, "StorageService.WriteBlobThreshold") == (
+            "<td>100</td><td>300</td><td>600</td><td>600</td>"
+        )
+
         # Recover after an error without restarting the subscriber.
         replace_database_config(
             ydb,
@@ -391,6 +468,16 @@ def test_dynamic_blockstore_config_lifecycle():
         updates = wait_config_delivery(nbs, updates)
         assert get_icb_values(nbs, "WriteBlobThreshold") == (400, 400)
 
+        # Clear the rejection suffix after accepting the corrected source.
+        wait_monitoring_page(
+            nbs,
+            lambda text: (
+                re.search(r"Last update</td><td>[^<]+, runtime(?: \(unchanged\))?</td>", text)
+                and "StorageService.WriteBlobThreshold</td>"
+                "<td>100</td><td>400</td>" in text
+            ),
+        )
+
         # Remove an invalid source after another rejection.
         replace_database_config(ydb, 5, "storage_service: invalid")
         wait_runtime_rejection(nbs, count=2)
@@ -398,6 +485,19 @@ def test_dynamic_blockstore_config_lifecycle():
         replace_database_config(ydb, 6, "")
         wait_config_delivery(nbs, updates)
         assert get_icb_values(nbs, "WriteBlobThreshold") == (100, 100)
+
+        # Show source removal and the restored mutable static base.
+        page = wait_monitoring_page(
+            nbs,
+            lambda text: (
+                re.search(r"Dynamic config</td><td><span[^>]*>absent</span></td>", text)
+                and "StorageService.WriteBlobThreshold</td>"
+                "<td>100</td><td>&mdash;</td>" in text
+            ),
+        )
+        assert get_parameter_row(page, "StorageService.WriteBlobThreshold") == (
+            "<td>100</td><td>&mdash;</td><td>&mdash;</td><td>100</td>"
+        )
     finally:
         if nbs:
             nbs.kill()
@@ -437,6 +537,23 @@ def test_runtime_markers_and_node_restart():
         assert re.search(r"<td>ListVolumesConcurrency</td>\s*<td>20</td>", page.text)
         assert get_icb_values(nbs, "WriteBlobThreshold") == (300, 300)
 
+        # Mark the RO change deferred to restart while preserving source values.
+        page = wait_monitoring_page(
+            nbs,
+            lambda text: (
+                "class='config-dynamic-total'>2</span>" in text
+                and "deferred: 1</span>" in text
+            ),
+        )
+        assert (
+            "<td class='config-dynamic-deferred'>"
+            "StorageService.ListVolumesConcurrency</td>"
+        ) in page
+        assert get_parameter_row(page, "StorageService.ListVolumesConcurrency") == (
+            "<td>10</td><td>30</td>"
+            "<td class='config-icb-unavailable'></td><td>20</td>"
+        )
+
         # Start a new process from the current cluster source and accept new RO.
         nbs.stop()
         nbs = start_nbs(config)
@@ -445,6 +562,12 @@ def test_runtime_markers_and_node_restart():
         page.raise_for_status()
         assert re.search(r"<td>ListVolumesConcurrency</td>\s*<td>30</td>", page.text)
         assert get_icb_values(nbs, "WriteBlobThreshold") == (300, 300)
+
+        # Clear the deferred count once the new process accepts the source.
+        wait_monitoring_page(
+            nbs,
+            lambda text: "class='config-dynamic-total'>2</span></td>" in text,
+        )
 
         # Remove the source and restore RW static fallback without changing RO.
         replace_database_config(ydb, 2, "")
