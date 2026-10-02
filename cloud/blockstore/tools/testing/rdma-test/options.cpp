@@ -123,6 +123,11 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue(MemoryWindowsPoolSize)
         .StoreResult(&MemoryWindowsPoolSize);
 
+    opts.AddLongOption("max-eager-request-bytes")
+        .RequiredArgument("NUM")
+        .DefaultValue(MaxEagerRequestBytes)
+        .StoreResult(&MaxEagerRequestBytes);
+
     // device geometry
     opts.AddLongOption("storage")
         .RequiredArgument("{" + GetEnumAllNames<EStorageKind>() + "}")

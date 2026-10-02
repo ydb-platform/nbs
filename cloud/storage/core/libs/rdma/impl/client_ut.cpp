@@ -4,6 +4,7 @@
 #include "utils.h"
 
 #include <cloud/storage/core/libs/common/context.h>
+#include <cloud/storage/core/libs/common/page_size.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/rdma/iface/protobuf.h>
@@ -182,6 +183,40 @@ TEST(TRdmaClientTest, ShouldDeriveQueueSizesFromQueueSizeAtValidate)
     serverConfig.Validate(log);
     EXPECT_EQ(512u, serverConfig.SendQueueSize);
     EXPECT_EQ(512u, serverConfig.RecvQueueSize);
+}
+
+TEST(TRdmaClientTest, ShouldAlignEagerLimitAtValidate)
+{
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+    auto log = logging->CreateLog("TEST");
+
+    const ui32 pageSize = GetPlatformPageSize();
+
+    TClientConfig clientConfig;
+    clientConfig.MaxEagerRequestBytes = 7 * pageSize + 1;
+    clientConfig.Validate(log);
+    EXPECT_EQ(8 * pageSize, clientConfig.MaxEagerRequestBytes);
+
+    clientConfig.MaxEagerRequestBytes = pageSize / 2;
+    clientConfig.Validate(log);
+    EXPECT_EQ(pageSize, clientConfig.MaxEagerRequestBytes);
+
+    clientConfig.MaxBufferSize = 3 * pageSize + 1;
+    clientConfig.MaxEagerRequestBytes = 4 * pageSize;
+    clientConfig.Validate(log);
+    EXPECT_EQ(3 * pageSize, clientConfig.MaxEagerRequestBytes);
+
+    TServerConfig serverConfig;
+    serverConfig.MaxEagerRequestBytes = 7 * pageSize + 1;
+    serverConfig.Validate(log);
+    EXPECT_EQ(8 * pageSize, serverConfig.MaxEagerRequestBytes);
+
+    // eager buffers come from the cached chunks
+    serverConfig.BufferPool.MaxChunkAlloc = 4 * pageSize + 1;
+    serverConfig.MaxEagerRequestBytes = 8 * pageSize;
+    serverConfig.Validate(log);
+    EXPECT_EQ(4 * pageSize, serverConfig.MaxEagerRequestBytes);
 }
 
 TEST(TRdmaClientTest, ShouldUseConfiguredResolveTimeoutAndQpParamsOnConnect)
@@ -1129,7 +1164,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
         acceptedConnectVersion = ParseMessageHeader(param->private_data);
 
         TAcceptMessage acceptMsg{};
-        InitMessageHeader(&acceptMsg, RDMA_PROTO_PREV_VERSION);
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION_2);
         NVerbs::EnqueueAcceptEvent(
             testContext,
             id,
@@ -1170,7 +1205,7 @@ TEST(TRdmaClientTest, ShouldNegotiateProtocolVersionFromAcceptMessage)
         MakeIntrusive<TCallContextBase>(0u));
 
     sent.Wait();
-    ASSERT_EQ(RDMA_PROTO_PREV_VERSION, sentVersion.load());
+    ASSERT_EQ(RDMA_PROTO_VERSION_2, sentVersion.load());
 }
 
 TEST(TRdmaClientTest, ShouldDisconnectOnUnsupportedProtocolVersionInAccept)
@@ -1221,7 +1256,526 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnsupportedProtocolVersionInAccept)
     ASSERT_GE(connectAttempts.load(), 1);
 }
 
-TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
+TEST(TRdmaClientTest, ShouldSendEagerRequestsUpToNegotiatedLimit)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxResponseDelay = 4s;
+    clientConfig->MaxEagerRequestBytes = 32_KB;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+    struct TSentRequest
+    {
+        int NumSge = 0;
+        ui32 HeaderLen = 0;
+        ui32 PayloadSgeLen = 0;
+        ui64 InAddress = 0;
+        ui32 InLength = 0;
+    };
+    TVector<TSentRequest> sentRequests;
+
+    testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        if (wr->opcode == IBV_WR_SEND) {
+            const auto* msg =
+                reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr);
+            sentRequests.push_back({
+                wr->num_sge,
+                wr->sg_list[0].length,
+                wr->num_sge > 1 ? wr->sg_list[1].length : 0,
+                msg->In.Address,
+                msg->In.Length});
+        }
+        PostSend<TRequestMessage>(testContext, qp, wr);
+    };
+
+    auto respond = [&] {
+        while (true) {
+            with_lock (testContext->CompletionLock) {
+                if (testContext->RecvEvents && testContext->ReqIds) {
+                    auto* re = testContext->RecvEvents.front();
+                    auto* responseMsg = reinterpret_cast<TResponseMessage*>(
+                        re->sg_list[0].addr);
+                    Zero(*responseMsg);
+                    InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
+                    responseMsg->ReqId = testContext->ReqIds.front();
+
+                    testContext->ReqIds.pop_front();
+                    testContext->RecvEvents.pop_front();
+                    testContext->ProcessedRecvEvents.push_back(re);
+                    testContext->CompletionHandle.Set();
+                    break;
+                }
+            }
+        }
+    };
+
+    struct TCase
+    {
+        size_t RequestBytes;
+        bool Eager;
+    };
+    const TCase cases[] = {
+        {1024, true},
+        {32_KB, true},
+        {32_KB + 1, false},
+        {64_KB, false},
+    };
+
+    for (const auto& testCase: cases) {
+        TManualEvent ev;
+        bool received = false;
+
+        auto ctx = std::make_unique<TRequestContext>();
+        ctx->Handler = [&](TStringBuf, TStringBuf, ui32, size_t) {
+            received = true;
+            ev.Signal();
+        };
+
+        auto request = endpoint->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            std::move(ctx),
+            testCase.RequestBytes,
+            1024);
+        ASSERT_FALSE(HasError(request.GetError()));
+
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        respond();
+        ev.WaitT(clientConfig->MaxResponseDelay + 1s);
+        ASSERT_TRUE(received);
+
+        const auto& sent = sentRequests.back();
+        if (testCase.Eager) {
+            ASSERT_EQ(2, sent.NumSge);
+            ASSERT_EQ(sizeof(TRequestMessage), sent.HeaderLen);
+            ASSERT_EQ(0u, sent.InAddress);
+            ASSERT_EQ(sent.InLength, sent.PayloadSgeLen);
+            ASSERT_GE(sent.InLength, testCase.RequestBytes);
+            ASSERT_LE(sent.InLength, clientConfig->MaxEagerRequestBytes);
+        } else {
+            ASSERT_EQ(1, sent.NumSge);
+            ASSERT_NE(0u, sent.InAddress);
+        }
+    }
+
+    ASSERT_EQ(std::size(cases), sentRequests.size());
+}
+
+TEST(TRdmaClientTest, ShouldNotSendEagerRequestsAboveServerLimit)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxResponseDelay = 4s;
+    clientConfig->MaxEagerRequestBytes = 32_KB;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    testContext->HandleConnect = [&](auto* id, auto* param)
+    {
+        Y_UNUSED(param);
+
+        TAcceptMessage acceptMsg{};
+        InitMessageHeader(&acceptMsg, RDMA_PROTO_VERSION);
+        acceptMsg.MaxEagerRequestBytes = 8_KB;
+        NVerbs::EnqueueAcceptEvent(
+            testContext,
+            id,
+            &acceptMsg,
+            sizeof(acceptMsg));
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+    std::atomic<int> sentSges = 0;
+    testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr) {
+        if (wr->opcode == IBV_WR_SEND) {
+            sentSges = wr->num_sge;
+        }
+        PostSend<TRequestMessage>(testContext, qp, wr);
+    };
+
+    auto respond = [&] {
+        while (true) {
+            with_lock (testContext->CompletionLock) {
+                if (testContext->RecvEvents && testContext->ReqIds) {
+                    auto* re = testContext->RecvEvents.front();
+                    auto* responseMsg = reinterpret_cast<TResponseMessage*>(
+                        re->sg_list[0].addr);
+                    Zero(*responseMsg);
+                    InitMessageHeader(responseMsg, RDMA_PROTO_VERSION);
+                    responseMsg->ReqId = testContext->ReqIds.front();
+
+                    testContext->ReqIds.pop_front();
+                    testContext->RecvEvents.pop_front();
+                    testContext->ProcessedRecvEvents.push_back(re);
+                    testContext->CompletionHandle.Set();
+                    break;
+                }
+            }
+        }
+    };
+
+    struct TCase
+    {
+        size_t RequestBytes;
+        int NumSge;
+    };
+    const TCase cases[] = {
+        {4_KB, 2},
+        {8_KB, 2},
+        {16_KB, 1},
+    };
+
+    for (const auto& testCase: cases) {
+        TManualEvent ev;
+        bool received = false;
+
+        auto ctx = std::make_unique<TRequestContext>();
+        ctx->Handler = [&](TStringBuf, TStringBuf, ui32, size_t) {
+            received = true;
+            ev.Signal();
+        };
+
+        auto request = endpoint->AllocateRequest(
+            std::make_shared<TClientHandler>(),
+            std::move(ctx),
+            testCase.RequestBytes,
+            1024);
+        ASSERT_FALSE(HasError(request.GetError()));
+
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+
+        respond();
+        ev.WaitT(clientConfig->MaxResponseDelay + 1s);
+        ASSERT_TRUE(received);
+        ASSERT_EQ(testCase.NumSge, sentSges.load());
+    }
+}
+
+TEST(TRdmaClientTest, ShouldHoldEagerBufferUntilSendCompletes)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxResponseDelay = 2s;
+    clientConfig->MaxEagerRequestBytes = 4_KB;
+    // one buffer per chunk, so chunk reuse is visible in registrations
+    clientConfig->BufferPool.ChunkSize = 4_KB;
+    clientConfig->BufferPool.MaxChunkAlloc = 4_KB;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    std::atomic<size_t> registered = 0;
+    testContext->RegisterMemoryRegion = [&](auto...)
+    {
+        registered++;
+    };
+
+    // SENDs are not completed until the test releases them
+    TVector<ibv_send_wr*> heldSends;
+    testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
+    {
+        Y_UNUSED(qp);
+        with_lock (testContext->CompletionLock) {
+            heldSends.push_back(new ibv_send_wr(*wr));
+        }
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+    // request and response message rings
+    ASSERT_EQ(2u, registered.load());
+
+    struct TResponse: IClientRequestHandler
+    {
+        ui32 Status = 0;
+        TManualEvent Received;
+
+        void HandleResponse(
+            TClientRequestPtr req,
+            ui32 status,
+            size_t responseBytes) override
+        {
+            Y_UNUSED(responseBytes);
+
+            req.reset();
+            Status = status;
+            Received.Signal();
+        }
+    };
+
+    auto allocate = [&](IClientRequestHandlerPtr handler)
+    {
+        auto request = endpoint->AllocateRequest(
+            std::move(handler),
+            std::make_unique<TNullContext>(),
+            4_KB,
+            4_KB);
+        EXPECT_FALSE(HasError(request.GetError()));
+        return request.ExtractResult();
+    };
+
+    auto response = std::make_shared<TResponse>();
+    endpoint->SendRequest(
+        allocate(response),
+        MakeIntrusive<TCallContextBase>(0u));
+    // request and response buffers
+    ASSERT_EQ(4u, registered.load());
+
+    // the request times out while its SEND is still posted
+    ASSERT_TRUE(response->Received.WaitT(clientConfig->MaxResponseDelay + 2s));
+    ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response->Status);
+
+    // the response chunk is reused, the request chunk is still referenced
+    // by the posted SEND
+    auto request2 = allocate(std::make_shared<TClientHandler>());
+    ASSERT_EQ(5u, registered.load());
+
+    with_lock (testContext->CompletionLock) {
+        ASSERT_EQ(1u, heldSends.size());
+        testContext->SendEvents.push_back(heldSends.front());
+        heldSends.clear();
+        testContext->CompletionHandle.Set();
+    }
+
+    auto counters = GetClientCounters(monitoring);
+    while (counters->GetCounter("ActiveSend")->Val() != 0) {
+        SpinLockPause();
+    }
+
+    // both chunks are free now
+    request2.reset();
+    auto request3 = allocate(std::make_shared<TClientHandler>());
+    ASSERT_EQ(5u, registered.load());
+}
+
+TEST(TRdmaClientTest, ShouldBindOnlyResponseBufferForEagerRequests)
+{
+    auto testContext = MakeIntrusive<NVerbs::TTestContext>();
+    testContext->AllowConnect = true;
+
+    auto verbs = NVerbs::CreateTestVerbs(testContext);
+    auto monitoring = CreateMonitoringServiceStub();
+    auto clientConfig = std::make_shared<TClientConfig>();
+    clientConfig->UseMemoryWindows = true;
+    clientConfig->MaxReconnectDelay = 5s;
+    clientConfig->MaxResponseDelay = 4s;
+    clientConfig->MaxEagerRequestBytes = 32_KB;
+
+    auto logging =
+        CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
+
+    auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
+    client->Start();
+    Y_DEFER {
+        client->Stop();
+    };
+
+    std::atomic<int> bound = 0;
+    std::atomic<int> invalidated = 0;
+    std::atomic<int> destroyed = 0;
+    std::atomic<int> sentSges = 0;
+
+    testContext->PostSend = [&](ibv_qp* qp, ibv_send_wr* wr)
+    {
+        Y_UNUSED(qp);
+
+        auto guard = Guard(testContext->CompletionLock);
+
+        switch (wr->opcode) {
+            case IBV_WR_BIND_MW:
+                bound++;
+                break;
+
+            case IBV_WR_LOCAL_INV:
+                invalidated++;
+                break;
+
+            default:
+                sentSges = wr->num_sge;
+                testContext->ReqIds.push_back(
+                    reinterpret_cast<TRequestMessage*>(wr->sg_list[0].addr)
+                        ->ReqId);
+        }
+
+        testContext->SendEvents.push_back(new ibv_send_wr(*wr));
+        testContext->CompletionHandle.Set();
+    };
+
+    testContext->DestroyMemoryWindow = [&](ibv_mw* mw)
+    {
+        Y_UNUSED(mw);
+        destroyed++;
+    };
+
+    auto endpoint = client->StartEndpoint("::", 10020).ExtractValueSync();
+
+    struct TResponse: IClientRequestHandler
+    {
+        ui32 Status = 0;
+        TManualEvent Received;
+
+        void HandleResponse(
+            TClientRequestPtr req,
+            ui32 status,
+            size_t responseBytes) override
+        {
+            Y_UNUSED(req);
+            Y_UNUSED(responseBytes);
+
+            Status = status;
+            Received.Signal();
+        }
+    };
+
+    auto handleRequest = [&]()
+    {
+        while (true) {
+            with_lock (testContext->CompletionLock) {
+                if (testContext->RecvEvents && testContext->ReqIds) {
+                    auto* recv = testContext->RecvEvents.front();
+                    auto* response = reinterpret_cast<TResponseMessage*>(
+                        recv->sg_list[0].addr);
+                    Zero(*response);
+                    InitMessageHeader(response, RDMA_PROTO_VERSION);
+                    response->ReqId = testContext->ReqIds.front();
+
+                    testContext->ReqIds.pop_front();
+                    testContext->RecvEvents.pop_front();
+                    testContext->ProcessedRecvEvents.push_back(recv);
+                    testContext->CompletionHandle.Set();
+                    break;
+                }
+            }
+        }
+    };
+
+    auto counters = GetClientCounters(monitoring);
+    auto waitForIdle = [&]()
+    {
+        const auto deadline = TInstant::Now() + TDuration::Seconds(5);
+        while (TInstant::Now() < deadline &&
+               (counters->GetCounter("ActiveBinds")->Val() != 0 ||
+                counters->GetCounter("QueuedInvalidations")->Val() != 0 ||
+                counters->GetCounter("ActiveInvalidations")->Val() != 0 ||
+                counters->GetCounter("MemoryWindows")->Val() != 0))
+        {
+            SpinLockPause();
+        }
+        EXPECT_EQ(0, counters->GetCounter("ActiveBinds")->Val());
+        EXPECT_EQ(0, counters->GetCounter("QueuedInvalidations")->Val());
+        EXPECT_EQ(0, counters->GetCounter("ActiveInvalidations")->Val());
+        EXPECT_EQ(0, counters->GetCounter("MemoryWindows")->Val());
+    };
+
+    auto send = [&](std::shared_ptr<TResponse> response, size_t requestBytes)
+    {
+        auto request = endpoint->AllocateRequest(
+            response,
+            std::make_unique<TNullContext>(),
+            requestBytes,
+            4_KB);
+        EXPECT_FALSE(HasError(request.GetError()));
+
+        endpoint->SendRequest(
+            request.ExtractResult(),
+            MakeIntrusive<TCallContextBase>(0u));
+    };
+
+    // eager request binds and invalidates the response buffer only
+    auto response1 = std::make_shared<TResponse>();
+    send(response1, 4_KB);
+    handleRequest();
+
+    ASSERT_TRUE(response1->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
+    // request duration is measured against the wall clock, so it can
+    // legitimately time out if the process stalls
+    if (response1->Status == RDMA_PROTO_OK) {
+        ASSERT_EQ(2, sentSges);
+        ASSERT_EQ(1, bound);
+        ASSERT_EQ(1, invalidated);
+        ASSERT_EQ(0, destroyed);
+    }
+    waitForIdle();
+
+    bound = 0;
+    invalidated = 0;
+    destroyed = 0;
+
+    // timed out eager request destroys its single memory window
+    auto response2 = std::make_shared<TResponse>();
+    send(response2, 4_KB);
+
+    ASSERT_TRUE(response2->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
+    ASSERT_EQ(static_cast<ui32>(RDMA_PROTO_FAIL), response2->Status);
+    ASSERT_EQ(1, bound);
+    ASSERT_EQ(0, invalidated);
+    ASSERT_EQ(1, destroyed);
+
+    // complete request to drain the test transport
+    handleRequest();
+    waitForIdle();
+
+    bound = 0;
+    invalidated = 0;
+    destroyed = 0;
+
+    // request above the eager limit binds both buffers
+    auto response3 = std::make_shared<TResponse>();
+    send(response3, 64_KB);
+    handleRequest();
+
+    ASSERT_TRUE(response3->Received.WaitT(clientConfig->MaxResponseDelay + 1s));
+    if (response3->Status == RDMA_PROTO_OK) {
+        ASSERT_EQ(1, sentSges);
+        ASSERT_EQ(2, bound);
+        ASSERT_EQ(2, invalidated);
+        ASSERT_EQ(0, destroyed);
+    }
+    waitForIdle();
+}
+
+TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionToServerVersionOnRejection)
 {
     auto testContext = MakeIntrusive<NVerbs::TTestContext>();
 
@@ -1234,7 +1788,6 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
         CreateLoggingService("console", TLogSettings{TLOG_RESOURCES});
 
     auto client = CreateTestClient(verbs, logging, monitoring, clientConfig);
-
     client->Start();
     Y_DEFER {
         client->Stop();
@@ -1252,11 +1805,8 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
         if (attempt == 1) {
             firstConnectVersion = version;
             TRejectMessage rejectMsg{};
-            InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION_1);
+            InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION_2);
             rejectMsg.Status = SafeCast<ui16>(RDMA_PROTO_INVALID_REQUEST);
-            rejectMsg.QueueSize = SafeCast<ui16>(clientConfig->QueueSize);
-            rejectMsg.MaxBufferSize =
-                SafeCast<ui32>(clientConfig->MaxBufferSize);
             NVerbs::EnqueueRejectEvent(
                 testContext,
                 id,
@@ -1282,7 +1832,7 @@ TEST(TRdmaClientTest, ShouldDowngradeProtocolVersionOnRejection)
     ASSERT_TRUE(endpoint);
 
     ASSERT_EQ(RDMA_PROTO_VERSION, firstConnectVersion.load());
-    ASSERT_EQ(RDMA_PROTO_PREV_VERSION, secondConnectVersion.load());
+    ASSERT_EQ(RDMA_PROTO_VERSION_2, secondConnectVersion.load());
 }
 
 TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
@@ -1325,7 +1875,7 @@ TEST(TRdmaClientTest, ShouldAdjustQueueSizeOnConfigMismatchInRejection)
             firstSendQueueSize = SafeCast<ui16>(connectMsg->SendQueueSize);
             firstRecvQueueSize = SafeCast<ui16>(connectMsg->RecvQueueSize);
 
-            TRejectMessage2 rejectMsg{};
+            TRejectMessage rejectMsg{};
             InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION);
             rejectMsg.Status = SafeCast<ui16>(RDMA_PROTO_CONFIG_MISMATCH);
             rejectMsg.SendQueueSize = ServerSendQueueSize;
@@ -1399,7 +1949,7 @@ TEST(TRdmaClientTest, ShouldDisconnectOnUnknownProtocolVersionInRejectMessage)
 
         // synthesize a reject message with a totally unknown version that
         // doesn't match any switch branch in HandleRejected
-        TRejectMessage2 rejectMsg{};
+        TRejectMessage rejectMsg{};
         InitMessageHeader(&rejectMsg, RDMA_PROTO_VERSION + 5);
         NVerbs::EnqueueRejectEvent(
             testContext,
