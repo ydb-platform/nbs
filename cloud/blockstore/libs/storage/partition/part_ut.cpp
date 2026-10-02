@@ -17,11 +17,11 @@
 #include <cloud/blockstore/libs/storage/core/compaction_options.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob_test.h>
 #include <cloud/blockstore/libs/storage/partition/part.h>
 #include <cloud/blockstore/libs/storage/partition/part_events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob_test.h>
 #include <cloud/blockstore/libs/storage/testlib/part_client.h>
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>

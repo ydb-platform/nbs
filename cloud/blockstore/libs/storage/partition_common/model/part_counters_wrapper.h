@@ -1,8 +1,6 @@
 
 #pragma once
 
-#include "public.h"
-
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
