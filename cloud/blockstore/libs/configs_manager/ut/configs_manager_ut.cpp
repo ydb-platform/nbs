@@ -1,3 +1,5 @@
+#include "configs_manager_test_helpers.h"
+
 #include <cloud/blockstore/libs/config/blockstore_config_management.h>
 #include <cloud/blockstore/libs/config/opaque_config_parser.h>
 #include <cloud/blockstore/libs/configs_manager/configs_manager.h>
@@ -16,7 +18,6 @@
 #include <library/cpp/logger/stream.h>
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/generic/yexception.h>
 #include <util/stream/str.h>
 
 #include <utility>
@@ -63,76 +64,6 @@ STFUNC(TSubscriberActor::StateWork)
         IgnoreFunc(TEvConfigsManager::TEvConfigChanged);
         cFunc(TEvents::TSystem::PoisonPill, PassAway);
     }
-}
-
-#define FORWARDED_CONFIG_GETTERS(xxx)                                          \
-    xxx(GetServerConfig)                                                       \
-    xxx(GetFeaturesConfig)                                                     \
-    xxx(GetStorageConfig)                                                      \
-    xxx(GetDiagnosticsConfig)                                                  \
-    xxx(GetDiscoveryServiceConfig)                                             \
-    xxx(GetEndpointConfig)                                                     \
-    xxx(GetDiskRegistryProxyConfig)                                            \
-    xxx(GetSpdkEnvConfig)                                                      \
-    xxx(GetRdmaConfig)                                                         \
-    xxx(GetYdbStatsConfig)                                                     \
-    xxx(GetLogbrokerConfig)                                                    \
-    xxx(GetNotifyConfig)                                                       \
-    xxx(GetIamClientConfig)                                                    \
-    xxx(GetKmsClientConfig)                                                    \
-    xxx(GetComputeClientConfig)                                                \
-    xxx(GetRootKmsConfig)                                                      \
-    xxx(GetCellsConfig)                                                        \
-    xxx(GetLocalNVMeConfig)
-
-// A configuration wrapper that fails once while the manager reads adapter
-// inputs. Publish it through the holder to exercise recovery without changing
-// the actor API. All other reads delegate to the owned configuration.
-class TFailingBlockstoreConfig final: public IBlockstoreConfig
-{
-public:
-    explicit TFailingBlockstoreConfig(IBlockstoreConfigConstPtr config);
-
-#define DECLARE_GETTER(name)                                                   \
-    decltype(std::declval<IBlockstoreConfig>().name()) name() const override;
-    FORWARDED_CONFIG_GETTERS(DECLARE_GETTER)
-#undef DECLARE_GETTER
-
-    // Fail on the first read, then allow the same update to be retried.
-    const NStorage::TDiskAgentConfigConstPtr&
-    GetDiskAgentConfig() const override;
-
-private:
-    // The retained configuration supplying every section and shared controls.
-    const IBlockstoreConfigConstPtr Config;
-
-    // A pending injected failure, consumed by the first DiskAgent getter call.
-    mutable bool FailNextRead = true;
-};
-
-TFailingBlockstoreConfig::TFailingBlockstoreConfig(
-    IBlockstoreConfigConstPtr config)
-    : Config(std::move(config))
-{}
-
-#define DEFINE_GETTER(name)                                                    \
-    decltype(std::declval<IBlockstoreConfig>().name())                         \
-    TFailingBlockstoreConfig::name() const                                     \
-    {                                                                          \
-        return Config->name();                                                 \
-    }
-FORWARDED_CONFIG_GETTERS(DEFINE_GETTER)
-#undef DEFINE_GETTER
-#undef FORWARDED_CONFIG_GETTERS
-
-// Throw once before adapter construction, leaving the retained data unchanged.
-const NStorage::TDiskAgentConfigConstPtr&
-TFailingBlockstoreConfig::GetDiskAgentConfig() const
-{
-    if (std::exchange(FailNextRead, false)) {
-        ythrow yexception() << "test configuration preparation failure";
-    }
-    return Config->GetDiskAgentConfig();
 }
 
 // A ConfigsManager fixture with an edge actor representing ConfigsDispatcher.
@@ -233,9 +164,7 @@ void TFixture::SetUp(NUnitTest::TTestContext&)
     startupConfig.MutableStorageService()->SetVolumePreemptionType(
         NProto::PREEMPTION_MOVE_LEAST_HEAVY);
     NormalizeDynamicBlockstoreConfig(staticConfig, dynamicConfig);
-    startupConfig = MergeBlockstoreConfigSources(
-        startupConfig,
-        dynamicConfig);
+    startupConfig = MergeBlockstoreConfigSources(startupConfig, dynamicConfig);
     ConfigHolder = std::make_shared<TBlockstoreConfigHolder>(
         MakeBlockstoreConfig(startupConfig, Controls));
     Controls->UpdateDefaults(startupConfig.GetStorageService());
@@ -1054,9 +983,9 @@ storage_service:
             .ConfigsDispatcherId = Dispatcher,
         }));
         TAutoPtr<IEventHandle> handle;
-        UNIT_ASSERT(Runtime.GrabEdgeEventRethrow<
-                    TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest>(
-            handle));
+        UNIT_ASSERT(
+            Runtime.GrabEdgeEventRethrow<
+                TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest>(handle));
         const auto subscriber = Runtime.AllocateEdgeActor();
         Subscribe(subscriber);
         WaitForConfigChanged(subscriber);
@@ -1092,16 +1021,15 @@ storage_service:
         WaitForConfigChanged(subscriber);
         const auto makeConfig = [](bool reverse, ui32 writeThreshold)
         {
-            auto config = std::make_shared<NProto::TBlockstoreConfig>(
-                MakeConfig(300));
+            auto config =
+                std::make_shared<NProto::TBlockstoreConfig>(MakeConfig(300));
             auto* threshold =
                 config->MutableDiagnostics()->AddRequestThresholds();
             const auto* field =
                 threshold->GetDescriptor()->FindFieldByName("ByRequestType");
             for (const TString name: {"ReadBlocks", "WriteBlocks"}) {
-                auto* entry = threshold->GetReflection()->AddMessage(
-                    threshold,
-                    field);
+                auto* entry =
+                    threshold->GetReflection()->AddMessage(threshold, field);
                 entry->GetReflection()->SetString(
                     entry,
                     entry->GetDescriptor()->FindFieldByName("key"),
@@ -1112,11 +1040,8 @@ storage_service:
                     name == "ReadBlocks" ? 10 : writeThreshold);
             }
             if (reverse) {
-                threshold->GetReflection()->SwapElements(
-                    threshold,
-                    field,
-                    0,
-                    1);
+                threshold->GetReflection()
+                    ->SwapElements(threshold, field, 0, 1);
             }
             const auto& entry = threshold->GetReflection()->GetRepeatedMessage(
                 *threshold,
