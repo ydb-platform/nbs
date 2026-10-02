@@ -1,6 +1,6 @@
 #include "host_pool.h"
+#include "multiclient_endpoint.h"
 
-#include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 
@@ -71,7 +71,7 @@ struct TPingableService: public TTestService
 struct TTestMultiClientEndpoint
     : public TBlockStoreImpl<
           TTestMultiClientEndpoint,
-          NClient::IMultiClientEndpoint>
+          IMultiClientEndpoint>
 {
     const std::shared_ptr<TPingableService> Service;
 
@@ -164,7 +164,7 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
             service = std::make_shared<TPingableService>();
         }
 
-        return MakeFuture<NClient::IMultiClientEndpointPtr>(
+        return MakeFuture<IMultiClientEndpointPtr>(
             std::make_shared<TTestMultiClientEndpoint>(service));
     }
 

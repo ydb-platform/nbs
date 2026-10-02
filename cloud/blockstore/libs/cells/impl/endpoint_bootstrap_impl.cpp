@@ -1,8 +1,9 @@
 #include "endpoint_bootstrap_impl.h"
 
+#include "multiclient_endpoint.h"
+
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
-#include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
 
 namespace NCloud::NBlockStore::NCells {

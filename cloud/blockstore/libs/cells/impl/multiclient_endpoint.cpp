@@ -16,7 +16,7 @@
 #include <util/generic/hash.h>
 #include <util/system/spinlock.h>
 
-namespace NCloud::NBlockStore::NClient {
+namespace NCloud::NBlockStore::NCells {
 
 using namespace NThreading;
 
@@ -204,7 +204,7 @@ IBlockStorePtr CreateClient(
 ////////////////////////////////////////////////////////////////////////////////
 
 IMultiClientEndpointPtr CreateMultiClientEndpoint(
-    IMultiHostClientPtr client,
+    NClient::IMultiHostClientPtr client,
     const TString& host,
     ui32 port,
     bool isSecure)
@@ -213,4 +213,4 @@ IMultiClientEndpointPtr CreateMultiClientEndpoint(
     return std::make_shared<TMultiClientEndpoint>(std::move(endpoint));
 }
 
-}   // namespace NCloud::NBlockStore::NClient
+}   // namespace NCloud::NBlockStore::NCells
