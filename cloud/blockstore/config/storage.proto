@@ -1716,13 +1716,18 @@ message TStorageServiceConfig
     // Number of ranges to process in a single mixed-block-count compaction run.
     optional uint32 MixedBlocksCountCompactionRangeCountPerRun = 534;
 
-    // Maximum mixed bytes per allocation unit for SSD/HDD volumes.
-    // The disk-wide limit scales proportionally with disk size, including disks
-    // smaller than one allocation unit. Zero disables the per-disk
-    // mixed-block-count compaction trigger.
-    optional uint64 SSDMaxMixedBytesPerUnit = 535;
-    optional uint64 HDDMaxMixedBytesPerUnit = 536;
+    // Maximum percentage of mixed bytes relative to all mixed and merged bytes
+    // stored on the disk. Reaching this threshold triggers mixed-block-count
+    // compaction once the minimum stored byte count below is reached.
+    // Zero disables the per-disk mixed-block-count compaction trigger.
+    optional uint64 SSDMaxMixedBlocksPercentage = 535;
+    optional uint64 HDDMaxMixedBlocksPercentage = 536;
 
     // Track concurrent writes when updating compaction range statistics.
     optional bool CompactionStatsTrackerEnabled = 537;
+
+    // Minimum total mixed and merged bytes stored on the disk before enabling
+    // the per-disk mixed-block percentage trigger. Zero removes this minimum.
+    optional uint64 SSDMixedBlocksPerDiskCompactionStartBytes = 538;
+    optional uint64 HDDMixedBlocksPerDiskCompactionStartBytes = 539;
 }

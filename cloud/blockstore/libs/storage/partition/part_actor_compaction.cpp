@@ -1315,7 +1315,7 @@ public:
     {
         ui64 PerRangeCount; // Blobs count or garbage blocks count.
         ui64 PerRangeThreshold;
-        ui64 PerDiskCount; // Blobs count or garbage blocks count.
+        ui64 PerDiskCount; // Blobs count or block percentage.
         ui64 PerDiskThreshold;
         TEvPartitionPrivate::ECompactionMode Mode;
         ECompactionTriggerKind TriggerKind;
@@ -1618,12 +1618,29 @@ private:
 
         const ui64 diskMixedBlockCount =
             State.GetCompactionMap().GetMixedBlocksCountPerDisk();
-        const bool diskMixedBlockCountOverThreshold =
-            State.GetMaxMixedBlocksPerDisk() &&
-            diskMixedBlockCount >= State.GetMaxMixedBlocksPerDisk();
+        const ui64 diskTotalBlockCount =
+            State.GetCompactionMap().GetTotalBlocksCountPerDisk();
+        // All stored blocks have the same size, so this is also the mixed
+        // bytes percentage, including overwritten blocks still stored in blobs.
+        const ui32 diskMixedBlocksPercentage =
+            GetPercentage(diskMixedBlockCount, diskTotalBlockCount);
+        const ui64 maxMixedBlocksPercentage =
+            isSSD ? Config->GetSSDMaxMixedBlocksPercentage()
+                  : Config->GetHDDMaxMixedBlocksPercentage();
+        const ui64 perDiskCompactionStartBytes =
+            isSSD ? Config->GetSSDMixedBlocksPerDiskCompactionStartBytes()
+                  : Config->GetHDDMixedBlocksPerDiskCompactionStartBytes();
+        const ui64 totalBytesStored =
+            diskTotalBlockCount * State.GetBlockSize();
+        const bool enoughBytesStored =
+            totalBytesStored >= perDiskCompactionStartBytes;
+
+        const bool diskMixedBlocksPercentageOverThreshold =
+            enoughBytesStored && maxMixedBlocksPercentage > 0 &&
+            diskMixedBlocksPercentage >= maxMixedBlocksPercentage;
 
         if (!rangeMixedBlockCountOverThreshold &&
-            !diskMixedBlockCountOverThreshold)
+            !diskMixedBlocksPercentageOverThreshold)
         {
             return std::nullopt;
         }
@@ -1639,8 +1656,8 @@ private:
         return TTriggerInfo(
             rangeMixedBytesCount,
             threshold,
-            diskMixedBlockCount,
-            State.GetMaxMixedBlocksPerDisk(),
+            diskMixedBlocksPercentage,
+            maxMixedBlocksPercentage,
             TEvPartitionPrivate::MixedBlocksCountCompaction,
             triggerKind,
             true /* throttlingAllowed */,

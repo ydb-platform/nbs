@@ -235,9 +235,6 @@ void TPartitionActor::CompleteLoadState(
     ui32 maxBlobsPerUnit = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
         Config->GetSSDMaxBlobsPerUnit() :
         Config->GetHDDMaxBlobsPerUnit();
-    ui64 maxMixedBytesPerUnit = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD
-                                    ? Config->GetSSDMaxMixedBytesPerUnit()
-                                    : Config->GetHDDMaxMixedBytesPerUnit();
     ui32 maxBlobsPerRange = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
         Config->GetSSDMaxBlobsPerRange() :
         Config->GetHDDMaxBlobsPerRange();
@@ -267,7 +264,6 @@ void TPartitionActor::CompleteLoadState(
         mixedIndexCacheSize,
         GetAllocationUnit(*Config, mediaKind),
         maxBlobsPerUnit,
-        maxMixedBytesPerUnit,
         maxBlobsPerRange,
         Config->GetCompactionRangeCountPerRun(),
         SharedState,
