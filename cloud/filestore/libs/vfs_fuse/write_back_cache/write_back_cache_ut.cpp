@@ -2257,20 +2257,20 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         TManualProceedHandlers writeRequests(b.Session->WriteDataHandler);
 
         auto assertOperationalState = [&] (
-            i64 enabled,
-            i64 draining,
-            i64 disabled,
+            i64 active,
+            i64 stopping,
+            i64 inactive,
             i64 failed)
         {
             UNIT_ASSERT_VALUES_EQUAL(
-                enabled,
-                b.Metrics.OperationalState.Enabled->Get());
+                active,
+                b.Metrics.OperationalState.Active->Get());
             UNIT_ASSERT_VALUES_EQUAL(
-                draining,
-                b.Metrics.OperationalState.Draining->Get());
+                stopping,
+                b.Metrics.OperationalState.Stopping->Get());
             UNIT_ASSERT_VALUES_EQUAL(
-                disabled,
-                b.Metrics.OperationalState.Disabled->Get());
+                inactive,
+                b.Metrics.OperationalState.Inactive->Get());
             UNIT_ASSERT_VALUES_EQUAL(
                 failed,
                 b.Metrics.OperationalState.Failed->Get());
@@ -2826,13 +2826,13 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         b.ModuleStats->UpdateStats(TInstant::Now());
 
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.Storage.Corrupted->Get());
-        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.OperationalState.Enabled->Get());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.OperationalState.Active->Get());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            b.Metrics.OperationalState.Draining->Get());
+            b.Metrics.OperationalState.Stopping->Get());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
-            b.Metrics.OperationalState.Disabled->Get());
+            b.Metrics.OperationalState.Inactive->Get());
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.OperationalState.Failed->Get());
     }
 

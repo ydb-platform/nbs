@@ -122,9 +122,9 @@ public:
                     },
                 .OperationalState =
                     {
-                        .Enabled = CreateMetric(281),
-                        .Draining = CreateMetric(282),
-                        .Disabled = CreateMetric(283),
+                        .Active = CreateMetric(281),
+                        .Stopping = CreateMetric(282),
+                        .Inactive = CreateMetric(283),
                         .Failed = CreateMetric(284),
                     },
             },
@@ -298,6 +298,18 @@ component=client:
         sensor=UnflushedQueue_MaxTime: 4250
         sensor=WriteDataRequest_DroppedCount: 2431
 
+        state=Active:
+            sensor=OperationalState: 3091
+
+        state=Failed:
+            sensor=OperationalState: 3124
+
+        state=Inactive:
+            sensor=OperationalState: 3113
+
+        state=Stopping:
+            sensor=OperationalState: 3102
+
 component=client_fs:
 
     host=cluster:
@@ -385,17 +397,17 @@ component=client_fs:
                             sensor=UnflushedQueue_ProcessedTime: 424
                             sensor=WriteDataRequest_DroppedCount: 221
 
-                            state=Disabled:
-                                sensor=OperationalState: 283
-
-                            state=Draining:
-                                sensor=OperationalState: 282
-
-                            state=Enabled:
+                            state=Active:
                                 sensor=OperationalState: 281
 
                             state=Failed:
                                 sensor=OperationalState: 284
+
+                            state=Inactive:
+                                sensor=OperationalState: 283
+
+                            state=Stopping:
+                                sensor=OperationalState: 282
 
         filesystem=test2:
 
@@ -480,17 +492,17 @@ component=client_fs:
                             sensor=UnflushedQueue_ProcessedTime: 4240
                             sensor=WriteDataRequest_DroppedCount: 2210
 
-                            state=Disabled:
-                                sensor=OperationalState: 2830
-
-                            state=Draining:
-                                sensor=OperationalState: 2820
-
-                            state=Enabled:
+                            state=Active:
                                 sensor=OperationalState: 2810
 
                             state=Failed:
                                 sensor=OperationalState: 2840
+
+                            state=Inactive:
+                                sensor=OperationalState: 2830
+
+                            state=Stopping:
+                                sensor=OperationalState: 2820
 )";
 
 constexpr auto Expected2 = R"(
@@ -510,6 +522,18 @@ component=client:
         sensor=Storage_Corrupted: 5180
         sensor=UnflushedQueue_MaxTime: 4250
         sensor=WriteDataRequest_DroppedCount: 2431
+
+        state=Active:
+            sensor=OperationalState: 2810
+
+        state=Failed:
+            sensor=OperationalState: 2840
+
+        state=Inactive:
+            sensor=OperationalState: 2830
+
+        state=Stopping:
+            sensor=OperationalState: 2820
 
 component=client_fs:
 
@@ -600,17 +624,17 @@ component=client_fs:
                             sensor=UnflushedQueue_ProcessedTime: 4240
                             sensor=WriteDataRequest_DroppedCount: 2210
 
-                            state=Disabled:
-                                sensor=OperationalState: 2830
-
-                            state=Draining:
-                                sensor=OperationalState: 2820
-
-                            state=Enabled:
+                            state=Active:
                                 sensor=OperationalState: 2810
 
                             state=Failed:
                                 sensor=OperationalState: 2840
+
+                            state=Inactive:
+                                sensor=OperationalState: 2830
+
+                            state=Stopping:
+                                sensor=OperationalState: 2820
 )";
 
 constexpr auto Expected3 = R"(

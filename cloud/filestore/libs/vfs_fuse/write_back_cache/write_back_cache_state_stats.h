@@ -8,6 +8,28 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EOperationalState
+{
+    // WriteBackCache accepts new cached WriteData requests normally
+    Active,
+
+    // WriteBackCache is draining pending and unflushed requests.
+    // New WriteData requests are not accepted during this state.
+    Stopping,
+
+    // WriteBackCache has stopped draining requests.
+    // This state also covers the case when ServerWriteBackCacheEnabled = false,
+    // but WriteBackCache was previously initialized.
+    Inactive,
+
+    // WriteBackCache encountered an unrecoverable error.
+    // This corresponds to persistent storage corruption or an internal problem
+    // in the logic.
+    Failed,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TWriteBackCacheStateMetrics
 {
     struct TFlushMetrics
@@ -40,9 +62,9 @@ struct TWriteBackCacheStateMetrics
 
     struct TOperationalStateMetrics
     {
-        NMetrics::IMetricPtr Enabled;
-        NMetrics::IMetricPtr Draining;
-        NMetrics::IMetricPtr Disabled;
+        NMetrics::IMetricPtr Active;
+        NMetrics::IMetricPtr Stopping;
+        NMetrics::IMetricPtr Inactive;
         NMetrics::IMetricPtr Failed;
     };
 
@@ -83,13 +105,6 @@ struct IWriteBackCacheStateStats
         const TDuration AcquireBarrierRequest;
     };
 
-    struct TOperationalState
-    {
-        const bool DrainRequested;
-        const bool HasRequests;
-        const bool Failed;
-    };
-
     virtual ~IWriteBackCacheStateStats() = default;
 
     virtual void FlushStarted() = 0;
@@ -108,7 +123,7 @@ struct IWriteBackCacheStateStats
     virtual TWriteBackCacheStateMetrics CreateMetrics() const = 0;
 
     virtual void UpdateStats(
-        const TOperationalState& state,
+        EOperationalState state,
         const TMaxInProgressDurations& values) = 0;
 };
 
