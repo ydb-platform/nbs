@@ -153,69 +153,66 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
-        if constexpr (
-            std::is_same_v<TMethod, TBlockStoreMountVolumeMethod> ||
-            std::is_same_v<TMethod, TBlockStoreUnmountVolumeMethod>)
-        {
-            // marks the request as an inter-cell forward, so the receiving
-            // host's forward service can let it past authorization - see the
-            // inter-cell-forward design. Describe carries its own cell id
-            // through the describe path already
-            request->MutableHeaders()->SetCellId(CellId);
-        }
+        return TMethod::Execute(
+            Impl.get(),
+            std::move(callContext),
+            std::move(request));
+    }
 
-        // the mounted disk is noted on the answer, not on the request: a
-        // mount that fails, or one that has since been unmounted, is not ours
-        if constexpr (std::is_same_v<TMethod, TBlockStoreMountVolumeMethod>) {
-            auto diskId = request->GetDiskId();
-            auto clientId = request->GetHeaders().GetClientId();
-            return TMethod::Execute(
-                       Impl.get(),
-                       std::move(callContext),
-                       std::move(request))
-                .Apply(
-                    [connection = std::weak_ptr<TCellConnection>(Connection),
-                     diskId = std::move(diskId),
-                     clientId = std::move(clientId)](const auto& f)
-                    {
-                        const auto& response = f.GetValue();
-                        if (!HasError(response)) {
-                            if (auto self = connection.lock()) {
-                                NoteMount(
-                                    *self,
-                                    diskId,
-                                    clientId,
-                                    response.GetTabletHost());
-                            }
+    // the mounted disk is noted on the answer, not on the request: a mount
+    // that fails, or one that has since been unmounted, is not ours
+    TFuture<NProto::TMountVolumeResponse> MountVolume(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TMountVolumeRequest> request) override
+    {
+        // marks the request as an inter-cell forward, so the receiving host's
+        // forward service can let it past authorization - see the
+        // inter-cell-forward design. Describe carries its own cell id through
+        // the describe path already
+        request->MutableHeaders()->SetCellId(CellId);
+
+        auto diskId = request->GetDiskId();
+        auto clientId = request->GetHeaders().GetClientId();
+        return Impl->MountVolume(std::move(callContext), std::move(request))
+            .Apply(
+                [connection = std::weak_ptr<TCellConnection>(Connection),
+                 diskId = std::move(diskId),
+                 clientId = std::move(clientId)](const auto& f)
+                {
+                    const auto& response = f.GetValue();
+                    if (!HasError(response)) {
+                        if (auto self = connection.lock()) {
+                            NoteMount(
+                                *self,
+                                diskId,
+                                clientId,
+                                response.GetTabletHost());
                         }
-                        return response;
-                    });
-        } else if constexpr (
-            std::is_same_v<TMethod, TBlockStoreUnmountVolumeMethod>)
-        {
-            auto diskId = request->GetDiskId();
-            return TMethod::Execute(
-                       Impl.get(),
-                       std::move(callContext),
-                       std::move(request))
-                .Apply(
-                    [connection = std::weak_ptr<TCellConnection>(Connection),
-                     diskId = std::move(diskId)](const auto& f)
-                    {
-                        const auto& response = f.GetValue();
-                        if (!HasError(response)) {
-                            if (auto self = connection.lock()) {
-                                NoteUnmount(*self, diskId);
-                            }
+                    }
+                    return response;
+                });
+    }
+
+    TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TUnmountVolumeRequest> request) override
+    {
+        request->MutableHeaders()->SetCellId(CellId);
+
+        auto diskId = request->GetDiskId();
+        return Impl->UnmountVolume(std::move(callContext), std::move(request))
+            .Apply(
+                [connection = std::weak_ptr<TCellConnection>(Connection),
+                 diskId = std::move(diskId)](const auto& f)
+                {
+                    const auto& response = f.GetValue();
+                    if (!HasError(response)) {
+                        if (auto self = connection.lock()) {
+                            NoteUnmount(*self, diskId);
                         }
-                        return response;
-                    });
-        } else {
-            return TMethod::Execute(
-                Impl.get(),
-                std::move(callContext),
-                std::move(request));
-        }
+                    }
+                    return response;
+                });
     }
 };
 
