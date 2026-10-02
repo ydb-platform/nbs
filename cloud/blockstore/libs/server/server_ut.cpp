@@ -1540,10 +1540,17 @@ Y_UNIT_TEST_SUITE(TServerTest)
         ui16 dataPort = portManager.GetPort(9002);
 
         auto service = std::make_shared<TTestService>();
+        TString ioPeer;
         service->ZeroBlocksHandler =
             [&] (std::shared_ptr<NProto::TZeroBlocksRequest> request) {
-                Y_UNUSED(request);
+                ioPeer = request->GetHeaders().GetInternal().GetPeer();
                 return MakeFuture<NProto::TZeroBlocksResponse>();
+            };
+        TString controlPeer;
+        service->PingHandler =
+            [&] (std::shared_ptr<NProto::TPingRequest> request) {
+                controlPeer = request->GetHeaders().GetInternal().GetPeer();
+                return MakeFuture<NProto::TPingResponse>();
             };
 
         TTestFactory testFactory;
@@ -1582,9 +1589,18 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_EQUAL(
             ioEndpoint,
             client->CreateIOEndpoint("localhost", port, false));
-        UNIT_ASSERT_UNEQUAL(
-            ioEndpoint,
-            client->CreateEndpoint("localhost", port, false));
+
+        // and on a TCP connection of its own
+        auto controlEndpoint = client->CreateEndpoint("localhost", port, false);
+        auto ping = controlEndpoint
+                        ->Ping(
+                            MakeIntrusive<TCallContext>(),
+                            std::make_shared<NProto::TPingRequest>())
+                        .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(ping), ping.GetError());
+        UNIT_ASSERT(controlPeer);
+        UNIT_ASSERT(ioPeer);
+        UNIT_ASSERT_VALUES_UNEQUAL(controlPeer, ioPeer);
     }
 }
 

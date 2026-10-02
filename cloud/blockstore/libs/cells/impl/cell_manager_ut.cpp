@@ -561,6 +561,14 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
                 ++zeroBlocksCount;
                 return MakeFuture<NProto::TZeroBlocksResponse>();
             };
+        TString written;
+        service->WriteBlocksHandler =
+            [&] (auto request) {
+                for (const auto& block: request->GetBlocks().GetBuffers()) {
+                    written += block;
+                }
+                return MakeFuture<NProto::TWriteBlocksResponse>();
+            };
 
         TTestContext testContext;
 
@@ -625,6 +633,32 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         // the cell's control port only takes the control service
         UNIT_ASSERT_C(!HasError(response), response.GetError());
         UNIT_ASSERT_VALUES_EQUAL(1, zeroBlocksCount);
+
+        // as a gRPC-IPC session sends it: with what its own server filled in
+        request->MutableHeaders()->MutableInternal()->SetRequestSource(
+            NProto::SOURCE_FD_DATA_CHANNEL);
+        response = storage->ZeroBlocks(MakeIntrusive<TCallContext>(), request)
+                       .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(2, zeroBlocksCount);
+
+        const ui32 blockSize = 4096;
+        TString data(blockSize, 'x');
+        auto writeRequest =
+            std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        writeRequest->MutableHeaders()->SetClientId("client");
+        writeRequest->MutableHeaders()->MutableInternal()->SetRequestSource(
+            NProto::SOURCE_FD_DATA_CHANNEL);
+        writeRequest->BlocksCount = 1;
+        writeRequest->SetBlockSize(blockSize);
+        writeRequest->Sglist =
+            TGuardedSgList({TBlockDataRef(data.data(), data.size())});
+        auto writeResponse =
+            storage
+                ->WriteBlocksLocal(MakeIntrusive<TCallContext>(), writeRequest)
+                .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(writeResponse), writeResponse.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(data, written);
     }
 }
 
