@@ -564,6 +564,25 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
         UNIT_ASSERT_VALUES_EQUAL(
             TDuration::Zero(),
             emptyPolicy->SuggestDelay(now, mediaKind, requestType, byteCount));
+
+        // ZeroBlocks is throttled for this kind because it is not a
+        // BlobStorage media kind. A second request at the same instant
+        // exceeds the burst.
+        auto zeroPolicy = CreateClientThrottlerPolicy(performanceProfile);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            zeroPolicy->SuggestDelay(
+                now,
+                mediaKind,
+                EBlockStoreRequest::ZeroBlocks,
+                byteCount));
+        UNIT_ASSERT(
+            zeroPolicy->SuggestDelay(
+                now,
+                mediaKind,
+                EBlockStoreRequest::ZeroBlocks,
+                byteCount)
+            > TDuration::Zero());
     }
 
     Y_UNIT_TEST(TestPreparePerformanceProfileOverflow)
