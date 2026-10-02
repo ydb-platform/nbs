@@ -352,6 +352,32 @@ func (s *storageYDB) RetireBaseDisk(
 				baseDiskID,
 				srcDisk,
 				useImageSize,
+				false, // useBaseDiskAsSrc
+			)
+			return err
+		},
+	)
+	return rebaseInfos, err
+}
+
+func (s *storageYDB) RetireBaseDiskUsingBaseDiskAsSource(
+	ctx context.Context,
+	baseDiskID string,
+	useImageSize uint64,
+) ([]RebaseInfo, error) {
+
+	var rebaseInfos []RebaseInfo
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			rebaseInfos, err = s.retireBaseDisk(
+				ctx,
+				session,
+				baseDiskID,
+				nil, // srcDisk
+				useImageSize,
+				true, // useBaseDiskAsSrc
 			)
 			return err
 		},
