@@ -1640,10 +1640,6 @@ public:
         TVector<ui32> ranges,
         TString operationId,
         const NProto::TError& error);
-    void AbortForcedTabletOperation(
-        TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
-        TString operationId,
-        const NProto::TError& error);
 
     void CompleteForcedOperation(const NProto::TError& error);
 

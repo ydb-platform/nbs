@@ -1691,20 +1691,6 @@ void TIndexTabletState::AbortForcedRangeOperation(
     CompletedForcedOperations.push_back(state);
 }
 
-void TIndexTabletState::AbortForcedTabletOperation(
-    TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
-    TString operationId,
-    const NProto::TError& error)
-{
-    TForcedTabletOperationState state(mode, std::move(operationId));
-    state.Status =
-        HasError(error)
-            ? NProtoPrivate::TForcedOperationStatusResponse::E_FAILED
-            : NProtoPrivate::TForcedOperationStatusResponse::E_COMPLETED;
-    state.Error = error;
-    CompletedForcedOperations.push_back(state);
-}
-
 void TIndexTabletState::CompleteForcedOperation(const NProto::TError& error)
 {
     if (!ForcedOperationState) {
