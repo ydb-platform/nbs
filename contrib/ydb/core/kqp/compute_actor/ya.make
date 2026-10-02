@@ -16,6 +16,7 @@ SRCS(
 )
 
 PEERDIR(
+    contrib/ydb/core/tx/columnshard/hooks/abstract
     contrib/ydb/core/actorlib_impl
     contrib/ydb/core/base
     contrib/ydb/core/kqp/federated_query
