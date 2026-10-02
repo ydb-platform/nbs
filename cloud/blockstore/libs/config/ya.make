@@ -4,10 +4,9 @@
 LIBRARY()
 
 SRCS(
-    blockstore_config.cpp
+    blockstore_config_management.cpp
     blockstore_config_holder.cpp
     blockstore_config_provider.cpp
-    helpers.cpp
     opaque_config_parser.cpp
 )
 
