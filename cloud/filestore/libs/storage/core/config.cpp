@@ -36,6 +36,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(EstablishSessionTimeout,       TDuration, TDuration::Seconds(30)      )\
     xxx(IdleSessionTimeout,            TDuration, TDuration::Hours(1)         )\
     xxx(MaxDeleteSessionHandlesPerTx,  ui32,      1'000'000                   )\
+    xxx(SessionOrphaningEnabled,       bool,      false                       )\
                                                                                \
     xxx(WriteBlobThreshold,            ui32,      128_KB                      )\
                                                                                \
