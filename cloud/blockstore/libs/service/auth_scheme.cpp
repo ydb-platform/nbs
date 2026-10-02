@@ -187,7 +187,9 @@ TPermissionList GetRequestPermissions(
     action.to_lower();
 
     auto perms = [] (TString name, std::initializer_list<EPermission> lst) {
-        return std::pair {name, NCloud::CreatePermissionList(lst)};
+        return std::pair {
+            name,
+            NCloud::NBlockStore::CreatePermissionList(lst)};
     };
 
     static const THashMap<TString, TPermissionList> actions = {
@@ -199,6 +201,7 @@ TPermissionList GetRequestPermissions(
         perms("getpartitioninfo", {EPermission::Get}),
         perms("getrebuildmetadatastatus", {EPermission::Get}),
         perms("getscandiskstatus", {EPermission::Get}),
+        perms("gettabletstate", {EPermission::Get}),
         perms("scandisk", {EPermission::Get}),
         perms("getdiskregistrytabletinfo", {EPermission::Get}),
         perms("listnvmedevices", {EPermission::Get}),
