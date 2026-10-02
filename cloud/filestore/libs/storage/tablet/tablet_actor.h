@@ -364,6 +364,17 @@ private:
     void ScheduleEnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
+
+    std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+    ProcessForcedRangeOperationRequest(
+        const NProtoPrivate::TForcedOperationRequest& request,
+        const NActors::TActorContext& ctx);
+
+    std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
+    ProcessForcedTabletOperationRequest(
+        const NProtoPrivate::TForcedOperationRequest& request,
+        const NActors::TActorContext& ctx);
+
     void HandleForcedOperationCompletedImpl(
         const NActors::TActorId& sender,
         const NProto::TError& error,
@@ -966,16 +977,6 @@ private:
     std::unique_ptr<IIndexTabletDatabase> CreateIndexTabletDatabaseProxy(
         NKikimr::NTable::TDatabase& database,
         TVector<IInMemoryIndexState::TIndexStateRequest>& nodeUpdates);
-
-    std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
-    ProcessForcedRangeOperationRequest(
-        const NProtoPrivate::TForcedOperationRequest& request,
-        const NActors::TActorContext& ctx);
-
-    std::unique_ptr<TEvIndexTablet::TEvForcedOperationResponse>
-    ProcessForcedTabletOperationRequest(
-        const NProtoPrivate::TForcedOperationRequest& request,
-        const NActors::TActorContext& ctx);
 };
 
 }   // namespace NCloud::NFileStore::NStorage
