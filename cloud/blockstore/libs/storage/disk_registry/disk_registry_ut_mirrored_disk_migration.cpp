@@ -420,6 +420,157 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         ShouldFinishMigrationForMirroredDiskImpl(true);
     }
 
+    void ShouldReplaceBrokenDevicesRateLimitedBeforeRestartImpl(
+        bool limitPerRowEnabled,
+        bool rateLimitWindowPassed)
+    {
+        const auto agent1 = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        const auto agent2 = CreateAgentConfig(
+            "agent-2",
+            {
+                Device("dev-1", "uuid-3", "rack-2", 10_GB),
+                Device("dev-2", "uuid-4", "rack-2", 10_GB),
+            });
+
+        const auto agent3 = CreateAgentConfig(
+            "agent-3",
+            {
+                Device("dev-1", "uuid-5", "rack-3", 10_GB),
+                Device("dev-2", "uuid-6", "rack-3", 10_GB),
+            });
+
+        NProto::TStorageServiceConfig config = CreateDefaultStorageConfig();
+        config.SetLimitMirrorDisksDeviceReplacementsPerRowEnabled(
+            limitPerRowEnabled);
+        config.SetMaxAutomaticDeviceReplacementsPerHour(1);
+        auto runtime = TTestRuntimeBuilder()
+                           .With(config)
+                           .WithAgents({agent1, agent2, agent3})
+                           .Build();
+
+        TDiskRegistryClient diskRegistry(*runtime);
+        diskRegistry.WaitReady();
+        diskRegistry.SetWritableState(true);
+
+        diskRegistry.UpdateConfig(
+            CreateRegistryConfig(0, {agent1, agent2, agent3}));
+
+        RegisterAgents(*runtime, 3);
+        WaitForAgents(*runtime, 3);
+        WaitForSecureErase(*runtime, {agent1, agent2, agent3});
+
+        TSSProxyClient ss(*runtime);
+        ss.CreateVolume("mirrored-vol");
+        diskRegistry.AllocateDisk(
+            "mirrored-vol",
+            10_GB,
+            DefaultLogicalBlockSize,
+            "",   // placementGroupId
+            0,    // placementPartitionIndex
+            "",   // cloudId
+            "",   // folderId
+            2,    // replicaCount
+            NProto::STORAGE_MEDIA_SSD_MIRROR3);
+
+        auto deliverNotifications = [&]
+        {
+            runtime->AdvanceCurrentTime(TDuration::Seconds(10));
+            runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+        };
+
+        auto getReplicaDevice = [&]
+        {
+            auto response = diskRegistry.DescribeDisk("mirrored-vol");
+            const auto& r = response->Record;
+            UNIT_ASSERT_VALUES_EQUAL(2, r.ReplicasSize());
+            UNIT_ASSERT_VALUES_EQUAL(1, r.GetReplicas(0).DevicesSize());
+            return r.GetReplicas(0).GetDevices(0).GetDeviceUUID();
+        };
+
+        deliverNotifications();
+
+        // The first failure is handled immediately and exhausts the
+        // automatic replacement rate limit.
+        diskRegistry.ChangeDeviceState("uuid-1", NProto::DEVICE_STATE_ERROR);
+        deliverNotifications();
+
+        // The second failure is not handled due to the rate limit.
+        diskRegistry.ChangeDeviceState("uuid-3", NProto::DEVICE_STATE_ERROR);
+        deliverNotifications();
+
+        UNIT_ASSERT_VALUES_EQUAL("uuid-3", getReplicaDevice());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            diskRegistry.ListDisksToNotify()->DiskIds.size());
+
+        if (rateLimitWindowPassed) {
+            runtime->AdvanceCurrentTime(TDuration::Hours(2));
+        }
+
+        ui32 reallocateRequests = 0;
+        runtime->SetEventFilter(
+            [&](auto&, TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvReallocateDiskRequest) {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvReallocateDiskRequest>();
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        "mirrored-vol",
+                        msg->Record.GetDiskId());
+                    ++reallocateRequests;
+                }
+                return false;
+            });
+
+        // Agents don't reregister after the restart, so nothing but the
+        // restart itself can trigger the replacement and the notification.
+        diskRegistry.RebootTablet();
+        diskRegistry.WaitReady();
+        runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        // The restart pass doesn't depend on the per-row limit flag, but it
+        // respects the automatic replacement rate limit.
+        if (rateLimitWindowPassed) {
+            UNIT_ASSERT_VALUES_EQUAL("uuid-4", getReplicaDevice());
+            // The volume is notified about the replacement made on restart.
+            UNIT_ASSERT_VALUES_EQUAL(1, reallocateRequests);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                diskRegistry.ListDisksToNotify()->DiskIds.size());
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL("uuid-3", getReplicaDevice());
+            UNIT_ASSERT_VALUES_EQUAL(0, reallocateRequests);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldReplaceRateLimitedDeviceAndNotifyVolumeAfterRestart)
+    {
+        ShouldReplaceBrokenDevicesRateLimitedBeforeRestartImpl(true, true);
+    }
+
+    Y_UNIT_TEST(ShouldRespectReplacementRateLimitAfterRestart)
+    {
+        ShouldReplaceBrokenDevicesRateLimitedBeforeRestartImpl(true, false);
+    }
+
+    Y_UNIT_TEST(ShouldReplaceBrokenDevicesAfterRestartIfLimitPerRowDisabled)
+    {
+        ShouldReplaceBrokenDevicesRateLimitedBeforeRestartImpl(false, true);
+    }
+
+    Y_UNIT_TEST(
+        ShouldRespectReplacementRateLimitAfterRestartIfLimitPerRowDisabled)
+    {
+        ShouldReplaceBrokenDevicesRateLimitedBeforeRestartImpl(false, false);
+    }
+
     Y_UNIT_TEST(ShouldReplaceBrokenDevicesAfterRestart)
     {
         const auto agent1 = CreateAgentConfig(

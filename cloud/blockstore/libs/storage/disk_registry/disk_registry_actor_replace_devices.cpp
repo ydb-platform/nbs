@@ -44,8 +44,13 @@ void TDiskRegistryActor::CompleteReplaceBrokenDevicesAfterRestart(
     const TActorContext& ctx,
     TTxDiskRegistry::TReplaceBrokenDevicesAfterRestart& args)
 {
-    Y_UNUSED(ctx);
     Y_UNUSED(args);
+
+    ReallocateDisks(ctx);
+    NotifyUsers(ctx);
+    PublishDiskStates(ctx);
+    SecureErase(ctx);
+    StartMigration(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
