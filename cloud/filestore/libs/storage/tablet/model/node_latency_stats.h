@@ -14,6 +14,7 @@ namespace NCloud::NFileStore::NStorage {
 struct TNodeLatencyStats
 {
     ui64 NodeId = 0;
+    ui32 NodeType = 0;
     EFileStoreRequest RequestType = EFileStoreRequest::MAX;
     ui64 RequestCount = 0;
     ui64 TotalLatencyUs = 0;
@@ -74,9 +75,18 @@ public:
     void Reset(size_t maxEntries, TDuration decayHalfLife);
     bool UpdateLatencyStats(
         ui64 nodeId,
+        ui32 nodeType,
         EFileStoreRequest requestType,
         TInstant now,
         TDuration latency);
+    bool UpdateLatencyStats(
+        ui64 nodeId,
+        EFileStoreRequest requestType,
+        TInstant now,
+        TDuration latency)
+    {
+        return UpdateLatencyStats(nodeId, 0, requestType, now, latency);
+    }
     static double CalculateLatencyDecay(
         const TNodeLatencyStats& stats,
         TInstant now,
