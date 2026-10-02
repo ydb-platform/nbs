@@ -1383,6 +1383,47 @@ void TIndexTabletActor::EnqueueForcedOperationIfNeeded(const TActorContext& ctx)
         *pendingRequest);
 }
 
+
+void TIndexTabletActor::HandleForcedOperationCompletedImpl(
+    const TActorId& sender,
+    const NProto::TError& error,
+    const TActorContext& ctx)
+{
+    if (!IsForcedOperationRunning()) {
+        ReportForcedOperationUnexpectedState(
+            "got ForcedOperationCompleted but no current op");
+        return;
+    }
+
+    std::visit(
+        TOverloaded{
+            [&](const TForcedRangeOperationState& state)
+            {
+                LOG_DEBUG(
+                    ctx,
+                    TFileStoreComponents::TABLET,
+                    "%s ForcedRangeOperation mode=%u completed (%s)",
+                    LogTag.c_str(),
+                    state.Mode,
+                    FormatError(error).c_str());
+            },
+            [&](const TForcedTabletOperationState& state)
+            {
+                LOG_DEBUG(
+                    ctx,
+                    TFileStoreComponents::TABLET,
+                    "%s ForcedTabletOperation mode=%u completed (%s)",
+                    LogTag.c_str(),
+                    state.Mode,
+                    FormatError(error).c_str());
+            }},
+        *GetForcedOperationState());
+
+    WorkerActors.erase(sender);
+    CompleteForcedOperation(error);
+    EnqueueForcedOperationIfNeeded(ctx);
+}
+
 void TIndexTabletActor::HandleForcedOperationStatus(
     const TEvIndexTablet::TEvForcedOperationStatusRequest::TPtr& ev,
     const TActorContext& ctx)

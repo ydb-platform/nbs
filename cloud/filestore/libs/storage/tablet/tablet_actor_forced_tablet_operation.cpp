@@ -314,33 +314,8 @@ void TIndexTabletActor::HandleForcedTabletOperationCompleted(
     const TEvIndexTabletPrivate::TEvForcedTabletOperationCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!IsForcedOperationRunning()) {
-        ReportForcedOperationUnexpectedState(
-            "got ForcedTabletOperationCompleted but no current op");
-        return;
-    }
-
     auto* msg = ev->Get();
-    const auto* state =
-        std::get_if<TForcedTabletOperationState>(GetForcedOperationState());
-    if (!state) {
-        ReportForcedOperationUnexpectedState(
-            "got ForcedTabletOperationCompleted but current op is a range op");
-        return;
-    }
-
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s ForcedTabletOperation mode=%u completed (%s)",
-        LogTag.c_str(),
-        state->Mode,
-        FormatError(msg->GetError()).c_str());
-
-    WorkerActors.erase(ev->Sender);
-
-    CompleteForcedOperation(msg->GetError());
-    EnqueueForcedOperationIfNeeded(ctx);
+    HandleForcedOperationCompletedImpl(ev->Sender, msg->GetError(), ctx);
 }
 
 }   // namespace NCloud::NFileStore::NStorage

@@ -364,6 +364,10 @@ private:
     void ScheduleEnqueueBlobIndexOpIfNeeded(const NActors::TActorContext& ctx);
 
     TVector<ui32> GenerateForceDeleteZeroCompactionRanges() const;
+    void HandleForcedOperationCompletedImpl(
+        const NActors::TActorId& sender,
+        const NProto::TError& error,
+        const NActors::TActorContext& ctx);
 
     void AddInFlightRequest(
         TRequestInfo& requestInfo,

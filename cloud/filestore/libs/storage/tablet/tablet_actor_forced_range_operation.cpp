@@ -362,32 +362,8 @@ void TIndexTabletActor::HandleForcedRangeOperationCompleted(
     const TEvIndexTabletPrivate::TEvForcedRangeOperationCompleted::TPtr& ev,
     const TActorContext& ctx)
 {
-    if (!IsForcedOperationRunning()) {
-        ReportForcedOperationUnexpectedState(
-            "got ForcedRangeOperationCompleted but no current op");
-        return;
-    }
-
     auto* msg = ev->Get();
-    const auto* state =
-        std::get_if<TForcedRangeOperationState>(GetForcedOperationState());
-    if (!state) {
-        ReportForcedOperationUnexpectedState(
-            "got ForcedRangeOperationCompleted but current op is a tablet op");
-        return;
-    }
-
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s ForcedRangeOperation mode=%u completed (%s)",
-        LogTag.c_str(),
-        state->Mode,
-        FormatError(msg->GetError()).c_str());
-    WorkerActors.erase(ev->Sender);
-
-    CompleteForcedOperation(msg->GetError());
-    EnqueueForcedOperationIfNeeded(ctx);
+    HandleForcedOperationCompletedImpl(ev->Sender, msg->GetError(), ctx);
 }
 
 void TIndexTabletActor::HandleForcedRangeOperationProgress(
