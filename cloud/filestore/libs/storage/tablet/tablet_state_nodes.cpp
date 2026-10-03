@@ -823,8 +823,8 @@ TInMemoryIndexStateStats TIndexTabletState::GetInMemoryIndexStateStats() const
 
 bool TIndexTabletState::HasPendingFileSystemEvent() const
 {
-    return PendingFileSystemEvent.InvalidateNodeSize()
-        || PendingFileSystemEvent.InvalidateNodeRefSize();
+    return PendingFileSystemEvent.InvalidateNodesSize()
+        || PendingFileSystemEvent.InvalidateNodeRefsSize();
 }
 
 NProto::TFileSystemEvent TIndexTabletState::TakePendingFileSystemEvent()
@@ -835,7 +835,7 @@ NProto::TFileSystemEvent TIndexTabletState::TakePendingFileSystemEvent()
 void TIndexTabletState::AddInvalidateNodeEvent(ui64 nodeId)
 {
     if (FileSystemEventsEnabled) {
-        PendingFileSystemEvent.AddInvalidateNode()->SetNodeId(nodeId);
+        PendingFileSystemEvent.AddInvalidateNodes()->SetNodeId(nodeId);
     }
 }
 
@@ -844,7 +844,7 @@ void TIndexTabletState::AddInvalidateNodeRefEvent(
     const TString& name)
 {
     if (FileSystemEventsEnabled) {
-        auto* invalidate = PendingFileSystemEvent.AddInvalidateNodeRef();
+        auto* invalidate = PendingFileSystemEvent.AddInvalidateNodeRefs();
         invalidate->SetNodeId(nodeId);
         invalidate->SetName(name);
     }

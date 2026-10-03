@@ -28,11 +28,11 @@ public:
 
     void OnEvent(const NProto::TFileSystemEvent& event) override
     {
-        for (const auto& invalidate: event.GetInvalidateNode()) {
+        for (const auto& invalidate: event.GetInvalidateNodes()) {
             InvalidateNode(invalidate.GetNodeId());
         }
 
-        for (const auto& invalidate: event.GetInvalidateNodeRef()) {
+        for (const auto& invalidate: event.GetInvalidateNodeRefs()) {
             InvalidateNodeRef(invalidate.GetNodeId(), invalidate.GetName());
         }
     }

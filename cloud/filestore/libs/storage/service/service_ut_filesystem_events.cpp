@@ -42,7 +42,7 @@ struct TTestFileSystemEventHandler final
     bool HasInvalidateNode(ui64 nodeId) const
     {
         for (const auto& event: Events) {
-            for (const auto& invalidate: event.GetInvalidateNode()) {
+            for (const auto& invalidate: event.GetInvalidateNodes()) {
                 if (invalidate.GetNodeId() == nodeId) {
                     return true;
                 }
@@ -54,7 +54,7 @@ struct TTestFileSystemEventHandler final
     bool HasInvalidateNodeRef(ui64 nodeId, const TString& name) const
     {
         for (const auto& event: Events) {
-            for (const auto& invalidate: event.GetInvalidateNodeRef()) {
+            for (const auto& invalidate: event.GetInvalidateNodeRefs()) {
                 if (invalidate.GetNodeId() == nodeId
                         && invalidate.GetName() == name)
                 {
@@ -105,8 +105,8 @@ NProto::TFileSystemEvent MakeEvent(
     const TString& name)
 {
     NProto::TFileSystemEvent event;
-    event.AddInvalidateNode()->SetNodeId(nodeId);
-    auto* invalidate = event.AddInvalidateNodeRef();
+    event.AddInvalidateNodes()->SetNodeId(nodeId);
+    auto* invalidate = event.AddInvalidateNodeRefs();
     invalidate->SetNodeId(parentNodeId);
     invalidate->SetName(name);
     return event;
@@ -155,13 +155,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
 
         const auto& event = handler->Events[0];
         UNIT_ASSERT_VALUES_EQUAL("test", event.GetFileSystemId());
-        UNIT_ASSERT_VALUES_EQUAL(1, event.InvalidateNodeSize());
-        UNIT_ASSERT_VALUES_EQUAL(42, event.GetInvalidateNode(0).GetNodeId());
-        UNIT_ASSERT_VALUES_EQUAL(1, event.InvalidateNodeRefSize());
+        UNIT_ASSERT_VALUES_EQUAL(1, event.InvalidateNodesSize());
+        UNIT_ASSERT_VALUES_EQUAL(42, event.GetInvalidateNodes(0).GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL(1, event.InvalidateNodeRefsSize());
         UNIT_ASSERT_VALUES_EQUAL(
             1,
-            event.GetInvalidateNodeRef(0).GetNodeId());
-        UNIT_ASSERT_VALUES_EQUAL("a", event.GetInvalidateNodeRef(0).GetName());
+            event.GetInvalidateNodeRefs(0).GetNodeId());
+        UNIT_ASSERT_VALUES_EQUAL("a", event.GetInvalidateNodeRefs(0).GetName());
 
         //
         // Handlers registered for other filesystems get nothing.

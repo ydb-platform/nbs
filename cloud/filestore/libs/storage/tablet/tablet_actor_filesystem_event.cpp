@@ -90,7 +90,7 @@ void TIndexTabletActor::HandleGenerateFileSystemEvent(
         record.ShortUtf8DebugString().Quote().c_str());
 
     const auto& event = record.GetEvent();
-    if (!event.InvalidateNodeSize() && !event.InvalidateNodeRefSize()) {
+    if (!event.InvalidateNodesSize() && !event.InvalidateNodeRefsSize()) {
         NCloud::Reply(
             ctx,
             *ev,
