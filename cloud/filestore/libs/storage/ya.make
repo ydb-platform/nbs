@@ -1,6 +1,7 @@
 RECURSE(
     api
     core
+    dr_proxy
     fastshard
     init
     model

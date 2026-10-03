@@ -930,4 +930,14 @@ message TStorageConfig
 
     // Limits the number of tablet data channels used for writes.
     optional uint32 MaxUsedDataChannelCount = 547;
+
+    // Disk registry tablet that manages the fast shard devices.
+    optional uint64 FastShardDRTabletId = 548;
+
+    // Hive owner key of that tablet, looked up when the tablet id is unset.
+    optional uint64 FastShardDROwner = 549;
+    optional uint64 FastShardDROwnerIdx = 550;
+
+    // Timeout for the lookup (in milliseconds).
+    optional uint32 FastShardDRLookupTimeout = 551;
 }
