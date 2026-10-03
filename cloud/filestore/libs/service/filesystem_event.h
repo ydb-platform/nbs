@@ -26,7 +26,8 @@ struct IFileSystemEventHandler
      * Called when the transport that delivers the events gets disconnected.
      * Events sent before the disconnect may have been lost.
      *
-     * @param event - tabletId (can be used for diagnostic purposes).
+     * @param tabletId - the id of the disconnected tablet (can be used for
+     * diagnostic purposes).
      */
     virtual void OnDisconnect(ui64 tabletId) = 0;
 };

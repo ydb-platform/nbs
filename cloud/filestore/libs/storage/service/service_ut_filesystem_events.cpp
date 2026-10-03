@@ -34,8 +34,9 @@ struct TTestFileSystemEventHandler final
         Events.push_back(event);
     }
 
-    void OnDisconnect() override
+    void OnDisconnect(ui64 tabletId) override
     {
+        Y_UNUSED(tabletId);
         ++DisconnectCount;
     }
 
