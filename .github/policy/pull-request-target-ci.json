@@ -1,0 +1,54 @@
+{
+  "name": "NBS: allow pull_request_target for trusted CI",
+  "enforcement": "disabled",
+  "conditions": {
+    "workflow_path": {
+      "include": [
+        ".github/workflows/pr.yaml",
+        ".github/workflows/pre-commit.yaml"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "restrict_actions_actors",
+      "parameters": {
+        "allowed_actors": [
+          {
+            "id": 4,
+            "type": "RepositoryRole"
+          },
+          {
+            "id": 2,
+            "type": "RepositoryRole"
+          },
+          {
+            "id": 5,
+            "type": "RepositoryRole"
+          },
+          {
+            "id": 9863268,
+            "type": "Team"
+          },
+          {
+            "id": 9863273,
+            "type": "Team"
+          },
+          {
+            "id": 19724215,
+            "type": "Team"
+          }
+        ]
+      }
+    },
+    {
+      "type": "restrict_action_events",
+      "parameters": {
+        "allowed_events": [
+          "pull_request_target"
+        ]
+      }
+    }
+  ]
+}

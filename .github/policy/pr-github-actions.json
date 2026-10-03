@@ -1,0 +1,34 @@
+{
+  "name": "NBS: restrict pr-github-actions actors",
+  "enforcement": "disabled",
+  "conditions": {
+    "workflow_path": {
+      "include": [
+        ".github/workflows/pr-github-actions.yaml"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "restrict_actions_actors",
+      "parameters": {
+        "allowed_actors": [
+          {
+            "id": 19724215,
+            "type": "Team"
+          }
+        ]
+      }
+    },
+    {
+      "type": "restrict_action_events",
+      "parameters": {
+        "allowed_events": [
+          "pull_request",
+          "workflow_dispatch"
+        ]
+      }
+    }
+  ]
+}
