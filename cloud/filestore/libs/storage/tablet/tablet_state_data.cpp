@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/split_range.h>
 
 #include <util/generic/guid.h>
+#include <util/generic/overloaded.h>
 
 namespace NCloud::NFileStore::NStorage {
 
@@ -1584,38 +1585,92 @@ TString TIndexTabletState::EnqueueForcedRangeOperation(
     if (operationId.empty()) {
         operationId = CreateGuidAsString();
     }
-    PendingForcedRangeOperations.emplace_back(
-        mode,
-        std::move(ranges),
-        operationId);
+    PendingForcedOperations.emplace_back(
+        TPendingForcedRangeOperation(mode, std::move(ranges), operationId));
     return operationId;
 }
 
-TMaybe<TIndexTabletState::TPendingForcedRangeOperation> TIndexTabletState::
-    DequeueForcedRangeOperation()
+TString TIndexTabletState::EnqueueForcedTabletOperation(
+    TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
+    TString operationId)
 {
-    if (PendingForcedRangeOperations.empty()) {
+    if (!operationId) {
+        operationId = CreateGuidAsString();
+    }
+    PendingForcedOperations.emplace_back(
+        TPendingForcedTabletOperation(mode, operationId));
+    return operationId;
+}
+
+TMaybe<TIndexTabletState::TPendingForcedOperation>
+TIndexTabletState::DequeueForcedOperation()
+{
+    if (PendingForcedOperations.empty()) {
         return {};
     }
 
-    auto op = std::move(PendingForcedRangeOperations.back());
-    PendingForcedRangeOperations.pop_back();
+    auto op = std::move(PendingForcedOperations.back());
+    PendingForcedOperations.pop_back();
 
     return op;
 }
 
-void TIndexTabletState::StartForcedRangeOperation(
+TIndexTabletState::TForcedRangeOperationState*
+TIndexTabletState::StartForcedRangeOperation(
     TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
     TVector<ui32> ranges,
     TString operationId)
 {
-    TABLET_VERIFY(!ForcedRangeOperationState.Defined());
-    ForcedRangeOperationState.ConstructInPlace(
+    if (ForcedOperationState.Defined()) {
+        ReportForcedOperationUnexpectedState("operation already running");
+        return nullptr;
+    }
+
+    ForcedOperationState.ConstructInPlace(
+        std::in_place_type_t<TForcedRangeOperationState>{},
         mode,
         std::move(ranges),
         std::move(operationId));
-    ForcedRangeOperationState->Status =
-        NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
+    auto* ret =
+        std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
+    ret->Status = NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
+    return ret;
+}
+
+TIndexTabletState::TForcedTabletOperationState*
+TIndexTabletState::StartForcedTabletOperation(
+    TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
+    TString operationId)
+{
+    if (ForcedOperationState.Defined()) {
+        ReportForcedOperationUnexpectedState("operation already running");
+        return nullptr;
+    }
+
+    ForcedOperationState.ConstructInPlace(
+        std::in_place_type_t<TForcedTabletOperationState>{},
+        mode,
+        std::move(operationId));
+    auto* ret =
+        std::get_if<TForcedTabletOperationState>(ForcedOperationState.Get());
+    ret->Status = NProtoPrivate::TForcedOperationStatusResponse::E_RUNNING;
+    return ret;
+}
+
+void TIndexTabletState::UpdateForcedRangeOperationProgress(ui32 current)
+{
+    if (!ForcedOperationState) {
+        ReportForcedOperationUnexpectedState("no current operation");
+        return;
+    }
+
+    auto* state =
+        std::get_if<TForcedRangeOperationState>(ForcedOperationState.Get());
+    if (!state) {
+        ReportForcedOperationUnexpectedState("range state expected");
+        return;
+    }
+    state->Current = Max(state->Current, current);
 }
 
 void TIndexTabletState::AbortForcedRangeOperation(
@@ -1624,47 +1679,70 @@ void TIndexTabletState::AbortForcedRangeOperation(
     TString operationId,
     const NProto::TError& error)
 {
-    CompletedForcedRangeOperations.emplace_back(
+    TForcedRangeOperationState state(
         mode,
         std::move(ranges),
         std::move(operationId));
-    CompletedForcedRangeOperations.back().Status =
+    state.Status =
         HasError(error)
             ? NProtoPrivate::TForcedOperationStatusResponse::E_FAILED
             : NProtoPrivate::TForcedOperationStatusResponse::E_COMPLETED;
-    CompletedForcedRangeOperations.back().Error = error;
+    state.Error = error;
+    CompletedForcedOperations.push_back(state);
 }
 
-void TIndexTabletState::CompleteForcedRangeOperation(const NProto::TError& error)
+void TIndexTabletState::CompleteForcedOperation(const NProto::TError& error)
 {
-    Y_DEBUG_ABORT_UNLESS(ForcedRangeOperationState);
-    if (ForcedRangeOperationState && ForcedRangeOperationState->OperationId) {
-        ForcedRangeOperationState->Error = error;
-        if (HasError(error)) {
-            ForcedRangeOperationState->Status =
-                NProtoPrivate::TForcedOperationStatusResponse::E_FAILED;
-        } else {
-            ForcedRangeOperationState->Status =
-                NProtoPrivate::TForcedOperationStatusResponse::E_COMPLETED;
-            ForcedRangeOperationState->Current =
-                ForcedRangeOperationState->RangesToCompact.size();
-        }
-        CompletedForcedRangeOperations.push_back(*ForcedRangeOperationState);
+    if (!ForcedOperationState) {
+        ReportForcedOperationUnexpectedState("no current operation");
+        return;
     }
-    ForcedRangeOperationState.Clear();
+
+    // clang-format off
+    const auto onSuccess = TOverloaded{
+        [&](TForcedRangeOperationState& state)
+        {
+            state.Current = state.RangesToCompact.size();
+        },
+        [&](TForcedTabletOperationState&)
+        {}
+    };
+    // clang-format on
+
+    const bool failed = HasError(error);
+
+    using TStatus = NProtoPrivate::TForcedOperationStatusResponse;
+    std::visit(
+        [&](auto& state)
+        {
+            state.Error = error;
+            state.Status = failed ? TStatus::E_FAILED : TStatus::E_COMPLETED;
+            if (!failed) {
+                onSuccess(state);
+            }
+        },
+        *ForcedOperationState);
+    CompletedForcedOperations.push_back(*ForcedOperationState);
+    ForcedOperationState.Clear();
 }
 
-auto TIndexTabletState::FindForcedRangeOperation(
-    const TString& operationId) const -> const TForcedRangeOperationState*
+auto TIndexTabletState::FindForcedOperation(
+    const TString& operationId) const -> const TForcedOperationState*
 {
-    if (ForcedRangeOperationState
-            && ForcedRangeOperationState->OperationId == operationId)
+    auto checkId = [&operationId](const TForcedOperationState& state)
     {
-        return ForcedRangeOperationState.Get();
+        return std::visit(
+            [&operationId](const auto& state)
+            { return state.OperationId == operationId; },
+            state);
+    };
+
+    if (ForcedOperationState && checkId(*ForcedOperationState.Get())) {
+        return ForcedOperationState.Get();
     }
 
-    for (const auto& op: CompletedForcedRangeOperations) {
-        if (op.OperationId == operationId) {
+    for (const auto& op: CompletedForcedOperations) {
+        if (checkId(op)) {
             return &op;
         }
     }
@@ -1675,8 +1753,10 @@ auto TIndexTabletState::FindForcedRangeOperation(
 bool TIndexTabletState::IsForcedRangeOperationPending(
     const TString& operationId) const
 {
-    for (auto const& op: PendingForcedRangeOperations) {
-        if (op.OperationId == operationId) {
+    for (auto const& op: PendingForcedOperations) {
+        const auto& opId =
+            std::visit([](const auto& op) { return op.OperationId; }, op);
+        if (opId == operationId) {
             return true;
         }
     }
