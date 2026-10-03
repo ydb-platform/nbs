@@ -18,6 +18,9 @@ namespace NCloud::NFileStore::NProfileTool {
 
 class TCommonFilterParams
 {
+private:
+    const TInstant ReferenceTime = TInstant::Now();
+
 public:
     explicit TCommonFilterParams(NLastGetopt::TOpts& opts);
 

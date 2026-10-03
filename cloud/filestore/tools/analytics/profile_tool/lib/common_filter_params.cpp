@@ -1,6 +1,7 @@
 #include "common_filter_params.h"
 
 #include <library/cpp/getopt/small/last_getopt.h>
+#include <cloud/storage/core/libs/systemd_time/timestamp.h>
 
 namespace NCloud::NFileStore::NProfileTool {
 
@@ -28,10 +29,10 @@ TMaybe<T> Parse(
     return parseResult.Get<T>(label.data());
 }
 
-template <>
-TMaybe<TInstant> Parse(
+TMaybe<TInstant> ParseTimestamp(
     TStringBuf label,
-    const NLastGetopt::TOptsParseResultException& parseResult)
+    const NLastGetopt::TOptsParseResultException& parseResult,
+    TInstant now)
 {
     if (!parseResult.Has(label.data())) {
         return {};
@@ -39,7 +40,7 @@ TMaybe<TInstant> Parse(
 
     const auto res = parseResult.Get<TString>(label.data());
     TInstant ts;
-    if (!TInstant::TryParseIso8601(res, ts)) {
+    if (!NSystemdTime::TryParseTimestamp(res, ts, now)) {
         Cerr << "Failed to parse time format: " << res << Endl;
         Cerr << "Parameter \"" << label << "\" will be ignored" << Endl;
         return {};
@@ -72,13 +73,16 @@ TCommonFilterParams::TCommonFilterParams(NLastGetopt::TOpts& opts)
     opts.AddLongOption(
             SinceLabel.data(),
             "Since timestamp, used for filtering. "
-            "Format: YYYY-MM-DDThh:mm:ss (https://www.iso.org/standard/40874.html)")
+            "Format: systemd.time timestamp (e.g. '2026-10-01T12:00:00Z', "
+            "'today', '-2h', '30min ago'; omitted timezone defaults to "
+            "local). ")
         .RequiredArgument("STR");
 
     opts.AddLongOption(
             UntilLabel.data(),
             "Until timestamp, used for filtering. "
-            "Format: YYYY-MM-DDThh:mm:ss (https://www.iso.org/standard/40874.html)")
+            "Format: systemd.time timestamp (e.g. '2026-10-01T12:00:00Z', "
+            "'now', '+1h'; omitted timezone defaults to local). ")
         .RequiredArgument("STR");
 }
 
@@ -103,13 +107,13 @@ TMaybe<ui64> TCommonFilterParams::GetHandle(
 TMaybe<TInstant> TCommonFilterParams::GetSince(
     const NLastGetopt::TOptsParseResultException& parseResult) const
 {
-    return Parse<TInstant>(SinceLabel, parseResult);
+    return ParseTimestamp(SinceLabel, parseResult, ReferenceTime);
 }
 
 TMaybe<TInstant> TCommonFilterParams::GetUntil(
     const NLastGetopt::TOptsParseResultException& parseResult) const
 {
-    return Parse<TInstant>(UntilLabel, parseResult);
+    return ParseTimestamp(UntilLabel, parseResult, ReferenceTime);
 }
 
 }   // namespace NCloud::NFileStore::NProfileTool
