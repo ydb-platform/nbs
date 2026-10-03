@@ -65,8 +65,7 @@ bool TWriteBackCacheState::IsDrained() const
 {
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    return DrainingMode && !IsFailed &&
-           !RequestManager.HasPendingOrUnflushedRequests();
+    return GetOperationalState() == EOperationalState::Inactive;
 }
 
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
@@ -591,7 +590,7 @@ void TWriteBackCacheState::UpdateStats() const
 
     auto guard = LockStateAndPostponeQueuedOperations();
 
-    Stats->UpdateStats({
+    const IWriteBackCacheStateStats::TMaxInProgressDurations durations = {
         .ActiveBarrier =
             ActiveBarriers.Empty()
                 ? TDuration::Zero()
@@ -611,13 +610,28 @@ void TWriteBackCacheState::UpdateStats() const
             PendingBarriers.Empty()
                 ? TDuration::Zero()
                 : now - PendingBarriers.Front()->RequestStartTime,
-    });
+    };
+
+    Stats->UpdateStats(GetOperationalState(), durations);
 
     Nodes.UpdateStats();
     RequestManager.UpdateStats();
 }
 
 // Private methods
+
+EOperationalState TWriteBackCacheState::GetOperationalState() const
+{
+    if (IsFailed) {
+        return EOperationalState::Failed;
+    }
+    if (DrainingMode) {
+        return RequestManager.HasPendingOrUnflushedRequests()
+                   ? EOperationalState::Stopping
+                   : EOperationalState::Inactive;
+    }
+    return EOperationalState::Active;
+}
 
 TGuard<TQueuedOperations>
 TWriteBackCacheState::LockStateAndPostponeQueuedOperations() const
