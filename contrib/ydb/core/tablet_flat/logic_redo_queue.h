@@ -54,6 +54,7 @@ namespace NRedo {
 
             Items++;
             Memory += entry->BytesMem();
+            EmbeddedBytes += entry->Embedded.size();
             LargeGlobIdsBytes += entry->BytesLargeGlobId();
 
             for (ui32 table : entry->Tables()) {
@@ -94,6 +95,7 @@ namespace NRedo {
 
             Items = 0;
             Memory = 0;
+            EmbeddedBytes = 0;
             LargeGlobIdsBytes = 0;
 
             auto logos = snap.MutableNonSnapLogBodies();
@@ -121,6 +123,11 @@ namespace NRedo {
             }
         }
 
+        bool CanEmbed(ui64 bytes, ui64 limit) const noexcept
+        {
+            return bytes <= limit && EmbeddedBytes <= limit - bytes;
+        }
+
         TArrayRef<const TUsage> GrabUsage() noexcept
         {
             Usage.clear();
@@ -142,6 +149,7 @@ namespace NRedo {
 
         ui64 Items = 0;
         ui64 Memory = 0;    /* Bytes consumed memory by records */
+        ui64 EmbeddedBytes = 0;
         ui64 LargeGlobIdsBytes = 0;    /* Bytes acquired in redo TLargeGlobId-s  */
     };
 

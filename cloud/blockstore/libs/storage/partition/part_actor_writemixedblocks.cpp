@@ -525,9 +525,9 @@ bool TPartitionActor::WriteMixedBlocks(
                 commitId,
                 DescribeRange(request->Data.Range).c_str());
 
-            const ui32 checksumBoundary =
-                Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
-                / State->GetBlockSize();
+            const ui64 checksumBoundary =
+                Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs() /
+                State->GetBlockSize();
             if (request->Data.Range.Start < checksumBoundary) {
                 checksumsEnabled = true;
             }

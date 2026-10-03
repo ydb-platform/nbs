@@ -670,9 +670,14 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
         startupStorageConfig->GetYdbViewerServiceEnabled();
     servicesMask.EnableLoadService = startupStorageConfig->GetEnableLoadActor();
 
-    auto nodeId = sArgs.NodeId;
-    auto onStart = [=] (IActorSystem& actorSystem) {
-        if (!sArgs.IsHiveLocalServiceEnabled) {
+    // Capturing all of sArgs would retain the endpoint service and create
+    // an ownership cycle back to this actor system.
+    auto onStart = [nodeId = sArgs.NodeId,
+                    isHiveLocalServiceEnabled = sArgs.IsHiveLocalServiceEnabled,
+                    schemeShardDir = startupStorageConfig->GetSchemeShardDir()](
+                       IActorSystem& actorSystem)
+    {
+        if (!isHiveLocalServiceEnabled) {
             using namespace NNodeWhiteboard;
             const TActorId wb(MakeNodeWhiteboardServiceId(nodeId));
             actorSystem.Send(
@@ -682,7 +687,7 @@ IActorSystemPtr CreateActorSystem(const TServerActorSystemArgs& sArgs)
             actorSystem.Send(
                 wb,
                 std::make_unique<TEvWhiteboard::TEvSystemStateSetTenant>(
-                    startupStorageConfig->GetSchemeShardDir()));
+                    schemeShardDir));
         }
     };
 

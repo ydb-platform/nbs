@@ -121,6 +121,8 @@ struct TEvPartitionCommonPrivate
     struct TReadBlobResponse
     {
         TVector<ui32> BlockChecksums;
+        // Sorted positions replaced with Repair markers, without a checksum.
+        TVector<ui32> RepairedBlockIndices;
         ui64 ExecCycles = 0;
     };
 

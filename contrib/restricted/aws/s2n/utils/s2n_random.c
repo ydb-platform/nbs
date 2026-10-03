@@ -600,6 +600,8 @@ static int s2n_rand_rdrand_impl(void *data, uint32_t size)
         output.u64 = 0;
 
         for (int tries = 0; tries < 10; tries++) {
+            /* RDRAND overwrites eax/rax before setc uses the address of the
+             * success output. Early-clobber keeps that address in another register. */
     #if defined(__i386__)
             /* execute the rdrand instruction, store the result in a general purpose register (it's assigned to
             * output.i386_fields.u_low). Check the carry bit, which will be set on success. Then clober the register and reset
@@ -613,14 +615,14 @@ static int s2n_rand_rdrand_impl(void *data, uint32_t size)
             __asm__ __volatile__(
                     ".byte 0x0f, 0xc7, 0xf0;\n"
                     "setc %b1;\n"
-                    : "=a"(output.i386_fields.u_low), "=qm"(success_low)
+                    : "=&a"(output.i386_fields.u_low), "=qm"(success_low)
                     :
                     : "cc");
 
             __asm__ __volatile__(
                     ".byte 0x0f, 0xc7, 0xf0;\n"
                     "setc %b1;\n"
-                    : "=a"(output.i386_fields.u_high), "=qm"(success_high)
+                    : "=&a"(output.i386_fields.u_high), "=qm"(success_high)
                     :
                     : "cc");
             /* cppcheck-suppress knownConditionTrueFalse */
@@ -644,7 +646,7 @@ static int s2n_rand_rdrand_impl(void *data, uint32_t size)
             __asm__ __volatile__(
                     ".byte 0x48, 0x0f, 0xc7, 0xf0;\n"
                     "setc %b1;\n"
-                    : "=a"(output.u64), "=qm"(success)
+                    : "=&a"(output.u64), "=qm"(success)
                     :
                     : "cc");
     #endif /* defined(__i386__) */

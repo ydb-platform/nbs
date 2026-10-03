@@ -16,7 +16,6 @@ namespace NTabletFlatExecutor {
 
 LWTRACE_USING(TABLET_FLAT_PROVIDER)
 
-const static ui64 MaxSizeToEmbedInLog = 2048;
 const static ui64 MaxBytesToBatch = 2 * 1024 * 1024;
 const static ui64 MaxItemsToBatch = 64;
 
@@ -232,7 +231,9 @@ void TLogicRedo::MakeLogEntry(TLogCommit &commit, TString redo, TArrayRef<const 
 
         Counters->Cumulative()[TMonCo::LOG_REDO_WRITTEN].Increment(coded.size());
 
-        if (embed && coded.size() <= MaxSizeToEmbedInLog) {
+        if (embed && coded.size() <= MaxRedoBytesToEmbed &&
+            Queue->CanEmbed(coded.size(), MaxRedoBytesInSnapshot))
+        {
             // Note: Encode reserves MaxCompressedLength bytes
             NUtil::ShrinkToFit(coded);
 

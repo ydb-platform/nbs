@@ -166,6 +166,10 @@ bool TSchemeModifier::Apply(const TAlterRecord &delta)
             changes |= SetExecutorCacheSize(delta.GetExecutorCacheSize());
         if (delta.HasExecutorAllowLogBatching())
             changes |= SetExecutorAllowLogBatching(delta.GetExecutorAllowLogBatching());
+        if (delta.HasExecutorMaxRedoBytesToEmbed())
+            changes |= SetExecutorMaxRedoBytesToEmbed(delta.GetExecutorMaxRedoBytesToEmbed());
+        if (delta.HasExecutorMaxRedoBytesInSnapshot())
+            changes |= SetExecutorMaxRedoBytesInSnapshot(delta.GetExecutorMaxRedoBytesInSnapshot());
         if (delta.HasExecutorLogFlushPeriod())
             changes |= SetExecutorLogFlushPeriod(TDuration::MicroSeconds(delta.GetExecutorLogFlushPeriod()));
         if (delta.HasExecutorLimitInFlyTx())
@@ -375,6 +379,16 @@ bool TSchemeModifier::SetExecutorCacheSize(ui64 size)
 bool TSchemeModifier::SetExecutorAllowLogBatching(bool allow)
 {
     return ChangeExecutorSetting(Scheme.Executor.AllowLogBatching, allow);
+}
+
+bool TSchemeModifier::SetExecutorMaxRedoBytesToEmbed(ui32 bytes)
+{
+    return ChangeExecutorSetting(Scheme.Executor.MaxRedoBytesToEmbed, bytes);
+}
+
+bool TSchemeModifier::SetExecutorMaxRedoBytesInSnapshot(ui64 bytes)
+{
+    return ChangeExecutorSetting(Scheme.Executor.MaxRedoBytesInSnapshot, bytes);
 }
 
 bool TSchemeModifier::SetExecutorLogFastCommitTactic(bool allow)

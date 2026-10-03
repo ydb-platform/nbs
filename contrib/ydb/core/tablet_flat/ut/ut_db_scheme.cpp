@@ -159,6 +159,39 @@ namespace {
 }
 
 Y_UNIT_TEST_SUITE(TScheme) {
+    Y_UNIT_TEST(ExecutorRedoEmbeddingLimitSurvivesSnapshot)
+    {
+        TScheme origin;
+        UNIT_ASSERT_VALUES_EQUAL(origin.Executor.MaxRedoBytesToEmbed, 2048);
+
+        UNIT_ASSERT_VALUES_EQUAL(origin.Executor.MaxRedoBytesInSnapshot, Max<ui64>());
+
+        // Older scheme deltas have no embedding limit.
+        auto oldDelta = TModel().Build();
+        oldDelta.SetExecutorAllowLogBatching(true);
+        TSchemeModifier(origin).Apply(*oldDelta.Flush());
+        UNIT_ASSERT_VALUES_EQUAL(origin.Executor.MaxRedoBytesToEmbed, 2048);
+
+        UNIT_ASSERT_VALUES_EQUAL(origin.Executor.MaxRedoBytesInSnapshot, Max<ui64>());
+
+        for (const ui32 limit : {0u, 512u, 2048u}) {
+            TAlter delta;
+            delta.SetExecutorMaxRedoBytesToEmbed(limit);
+            delta.SetExecutorMaxRedoBytesInSnapshot(ui64(limit) << 32);
+            TSchemeModifier(origin).Apply(*delta.Flush());
+
+            TSchemeChanges snapshot;
+            UNIT_ASSERT(snapshot.ParseFromString(
+                origin.GetSnapshot()->SerializeAsString()));
+            TScheme restored;
+            TSchemeModifier(restored).Apply(snapshot);
+            UNIT_ASSERT_VALUES_EQUAL(restored.Executor.MaxRedoBytesToEmbed, limit);
+            UNIT_ASSERT_VALUES_EQUAL(restored.Executor.MaxRedoBytesInSnapshot, ui64(limit) << 32);
+            UNIT_ASSERT(restored.Executor.AllowLogBatching);
+            TModel().Check(restored);
+        }
+    }
+
     Y_UNIT_TEST(Shapshot)
     {
         const TModel model;

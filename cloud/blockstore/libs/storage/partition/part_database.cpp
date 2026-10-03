@@ -98,13 +98,109 @@ std::pair<ui16, ui8> SplitBlobOffsetAndCompactionRangeCount(ui32 value)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TBlobMetaCache::TBlobMetaCache(size_t maxEntries, size_t maxEntryBytes)
+    : MaxEntryBytes(maxEntryBytes)
+    , Entries(&Allocator)
+{
+    Entries.SetMaxSize(maxEntries);
+}
+
+const NProto::TBlobMeta* TBlobMetaCache::Find(
+    const TPartialBlobId& blobId,
+    TStringBuf serialized)
+{
+    auto it = Entries.find(blobId);
+    if (it == Entries.end()) {
+        return nullptr;
+    }
+    if (it->second.Serialized == serialized) {
+        return &it->second.Meta;
+    }
+
+    Entries.erase(it);
+    return nullptr;
+}
+
+void TBlobMetaCache::Put(
+    const TPartialBlobId& blobId,
+    TStringBuf serialized,
+    const NProto::TBlobMeta& meta)
+{
+    Entries.erase(blobId);
+    if (serialized.size() + meta.SpaceUsedLong() > MaxEntryBytes) {
+        return;
+    }
+
+    TEntry entry{TString(serialized), meta};
+    if (entry.Serialized.capacity() + entry.Meta.SpaceUsedLong() >
+        MaxEntryBytes)
+    {
+        return;
+    }
+    Entries.emplace(blobId, std::move(entry));
+}
+
+void TBlobMetaCache::Erase(const TPartialBlobId& blobId)
+{
+    Entries.erase(blobId);
+}
+
+size_t TBlobMetaCache::GetSize() const
+{
+    return Entries.size();
+}
+
+size_t TBlobMetaCache::GetPayloadBytes()
+{
+    size_t bytes = 0;
+    for (const auto& [blobId, entry]: Entries) {
+        Y_UNUSED(blobId);
+        bytes += entry.Serialized.capacity() + entry.Meta.SpaceUsedLong();
+    }
+    return bytes;
+}
+
+size_t TBlobMetaCache::GetIndexBytes() const
+{
+    return Allocator.GetBytesAllocated();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TCounters>
-void TPartitionDatabaseImpl<TCounters>::InitSchema()
+void TPartitionDatabaseImpl<TCounters>::InitSchema(bool checksumsEnabled)
 {
     Materialize<TPartitionSchema>();
 
     TSchemaInitializer<TPartitionSchema::TTables>::InitStorage(
         Database.Alter());
+
+    // Restore normal index policies when upgrading from checksum versions
+    // that forced frequent compactions to reclaim embedded redo records.
+    for (const ui32 tableId: {
+             TPartitionSchema::MergedBlocksIndex::TableId,
+             TPartitionSchema::BlobsIndex::TableId,
+             TPartitionSchema::CompactionMap::TableId,
+             TPartitionSchema::UsedBlocks::TableId,
+             TPartitionSchema::LogicalUsedBlocks::TableId})
+    {
+        auto policy = *Database.GetScheme().Tables.at(tableId).CompactionPolicy;
+        policy.LogOverheadSizeToSnapshot =
+            NLocalDb::TCompactionPolicy().LogOverheadSizeToSnapshot;
+        Database.Alter().SetCompactionPolicy(tableId, policy);
+    }
+
+    // Embed only short commits when checksums are enabled. Larger checksum
+    // metadata records use referenced redo blobs, so they are not copied into
+    // every executor snapshot. Keep an aggregate bound for retained short
+    // records, and restore the executor defaults when checksums are disabled.
+    Database.Alter()
+        .SetExecutorMaxRedoBytesToEmbed(
+            checksumsEnabled
+                ? 512
+                : NTable::TScheme::TExecutorInfo::DefaultMaxRedoBytesToEmbed)
+        .SetExecutorMaxRedoBytesInSnapshot(
+            checksumsEnabled ? 2 * 1024 * 1024 : Max<ui64>());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -760,20 +856,47 @@ void TPartitionDatabaseImpl<TCounters>::DeleteBlobMeta(const TPartialBlobId& blo
 template <typename TCounters>
 bool TPartitionDatabaseImpl<TCounters>::ReadBlobMeta(
     const TPartialBlobId& blobId,
-    TMaybe<NProto::TBlobMeta>& meta)
+    TMaybe<NProto::TBlobMeta>& meta,
+    TBlobMetaCache* cache)
 {
     COUNT_METHOD_CALL;
     using TTable = TPartitionSchema::BlobsIndex;
 
-    auto it =
-        Table<TTable>().Key(blobId.CommitId(), blobId.UniqueId()).Select();
+    // This is a point lookup. Avoid constructing the general row iterator
+    // for every blob whose checksums are needed by a read.
+    const ui64 commitId = blobId.CommitId();
+    const ui64 uniqueId = blobId.UniqueId();
+    const TRawTypeValue key[] = {
+        {&commitId, sizeof(commitId), NScheme::NTypeIds::Uint64},
+        {&uniqueId, sizeof(uniqueId), NScheme::NTypeIds::Uint64}};
+    const ui32 columns[] = {TTable::BlobMeta::ColumnId};
+    NTable::TRowState row;
+    const auto ready = Database.Select(TTable::TableId, key, columns, row);
 
-    if (!it.IsReady()) {
-        return false;   // not ready
+    if (ready == NTable::EReady::Page) {
+        return false;   // retry after the executor loads the missing page
     }
 
-    if (it.IsValid()) {
-        meta = it.template GetValue<TTable::BlobMeta>();
+    if (ready == NTable::EReady::Data) {
+        // Select's cells are borrowed until the next database read. Parse
+        // before returning so that the caller owns the complete metadata.
+        const auto& value = row.Get(0);
+        const TStringBuf serialized(
+            static_cast<const char*>(value.Data()), value.Size());
+        if (cache) {
+            if (const auto* cached = cache->Find(blobId, serialized)) {
+                meta = *cached;
+                return true;
+            }
+        }
+
+        meta.ConstructInPlace();
+        Y_ABORT_UNLESS(meta->ParseFromArray(value.Data(), value.Size()));
+        if (cache) {
+            cache->Put(blobId, serialized, *meta);
+        }
+    } else if (cache) {
+        cache->Erase(blobId);
     }
 
     return true;

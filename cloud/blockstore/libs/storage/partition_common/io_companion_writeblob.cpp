@@ -177,6 +177,8 @@ void TWriteBlobActor::SendPutRequest(const TActorContext& ctx)
             TWellKnownEntityTypes::TABLET,
             TabletId);
 
+        BlockChecksums.reserve(
+            blobContent.size() / Request->BlockSizeForChecksums);
         ui32 offset = 0;
         while (offset < blobContent.size()) {
             BlockChecksums.push_back(ComputeDefaultDigest({

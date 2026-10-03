@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
+#include <cloud/storage/core/libs/common/lru_cache.h>
 
 #include <contrib/ydb/core/tablet_flat/flat_cxx_database.h>
 
@@ -49,6 +50,48 @@ public:
     }
 };
 
+class TBlobMetaCache
+{
+public:
+    // Bound retained protobuf payload separately from the cache index.
+    static constexpr size_t DefaultMaxEntries = 512;
+    static constexpr size_t DefaultMaxEntryBytes = 16 * 1024;
+
+private:
+    struct TEntry
+    {
+        TString Serialized;
+        NProto::TBlobMeta Meta;
+    };
+
+    const size_t MaxEntryBytes;
+    TProfilingAllocator Allocator;
+    NCloud::TLRUCache<TPartialBlobId, TEntry, false, TPartialBlobIdHash> Entries;
+
+public:
+    explicit TBlobMetaCache(
+        size_t maxEntries = DefaultMaxEntries,
+        size_t maxEntryBytes = DefaultMaxEntryBytes);
+
+    // A hit requires equality with the bytes read by the current transaction.
+    // No assumption about blob immutability or cache invalidation is needed.
+    const NProto::TBlobMeta* Find(
+        const TPartialBlobId& blobId,
+        TStringBuf serialized);
+
+    void Put(
+        const TPartialBlobId& blobId,
+        TStringBuf serialized,
+        const NProto::TBlobMeta& meta);
+
+    void Erase(const TPartialBlobId& blobId);
+    size_t GetSize() const;
+    size_t GetPayloadBytes();
+    size_t GetIndexBytes() const;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TCounters>
 class TPartitionDatabaseImpl: public NKikimr::NIceDb::TNiceDb
 {
@@ -73,7 +116,7 @@ public:
         return Counters;
     }
 
-    void InitSchema();
+    void InitSchema(bool checksumsEnabled = false);
 
     //
     // Meta
@@ -168,7 +211,8 @@ public:
 
     bool ReadBlobMeta(
         const TPartialBlobId& blobId,
-        TMaybe<NProto::TBlobMeta>& blobMeta);
+        TMaybe<NProto::TBlobMeta>& blobMeta,
+        TBlobMetaCache* cache = nullptr);
 
     bool ReadNewBlobs(
         TVector<TPartialBlobId>& blobIds,

@@ -191,6 +191,11 @@ void TReadBlobActor::HandleGetResult(
     const auto& blobId = Request->BlobId;
     size_t blocksCount = Request->BlobOffsets.size();
     TVector<ui32> blockChecksums;
+    TVector<ui32> repairedBlockIndices;
+    TString checksumScratch;
+    if (ShouldCalculateChecksums) {
+        blockChecksums.reserve(blocksCount);
+    }
 
     if (auto guard = Request->Sglist.Acquire()) {
         const auto& sglist = guard.Get();
@@ -210,31 +215,31 @@ void TReadBlobActor::HandleGetResult(
                         msg->Print(false).data());
 
                     const auto marker = GetBrokenDataMarker();
-                    auto& block = sglist[sglistIndex];
-                    Y_ABORT_UNLESS(block.Data());
-                    memcpy(
-                        const_cast<char*>(block.Data()),
-                        marker.data(),
-                        Min(block.Size(), marker.size())
-                    );
-                    ++sglistIndex;
-
-                    while (sglistIndex < sglist.size()) {
-                        const ui16 offset = Request->BlobOffsets[sglistIndex];
-                        const ui16 prevOffset = Request->BlobOffsets[sglistIndex - 1];
-                        if (offset != prevOffset + 1) {
-                            break;
-                        }
-
+                    auto repairBlock = [&] {
                         auto& block = sglist[sglistIndex];
                         Y_ABORT_UNLESS(block.Data());
                         memcpy(
                             const_cast<char*>(block.Data()),
                             marker.data(),
-                            Min(block.Size(), marker.size())
-                        );
-
+                            Min(block.Size(), marker.size()));
+                        if (ShouldCalculateChecksums) {
+                            // Preserve the position without treating the
+                            // replacement marker as verified blob data.
+                            blockChecksums.push_back(0);
+                            repairedBlockIndices.push_back(sglistIndex);
+                        }
                         ++sglistIndex;
+                    };
+                    repairBlock();
+
+                    while (sglistIndex < sglist.size()) {
+                        const ui16 offset = Request->BlobOffsets[sglistIndex];
+                        const ui16 prevOffset =
+                            Request->BlobOffsets[sglistIndex - 1];
+                        if (offset != prevOffset + 1) {
+                            break;
+                        }
+                        repairBlock();
                     }
 
                     continue;
@@ -260,14 +265,26 @@ void TReadBlobActor::HandleGetResult(
 
                 Y_ABORT_UNLESS(sglist[sglistIndex].Size() == BlockSize);
                 void* to = const_cast<char*>(sglist[sglistIndex].Data());
-                if (ShouldCalculateChecksums) {
-                    auto block = TString::Uninitialized(BlockSize);
-                    iter.ExtractPlainDataAndAdvance(block.begin(), BlockSize);
-                    blockChecksums.push_back(
-                        ComputeDefaultDigest({block.data(), BlockSize}));
-
-                    memcpy(to, block.data(), BlockSize);
+                if (ShouldCalculateChecksums &&
+                    iter.ContiguousSize() < BlockSize)
+                {
+                    // Keep checksumming independent of the caller's mutable
+                    // destination. Reuse one scratch block for fragmented
+                    // ropes.
+                    if (checksumScratch.empty()) {
+                        checksumScratch = TString::Uninitialized(BlockSize);
+                    }
+                    iter.ExtractPlainDataAndAdvance(checksumScratch.begin(),
+                                                    BlockSize);
+                    blockChecksums.push_back(ComputeDefaultDigest(
+                        {checksumScratch.data(), BlockSize}));
+                    memcpy(to, checksumScratch.data(), BlockSize);
                 } else {
+                    if (ShouldCalculateChecksums) {
+                        // BlobStorage owns this immutable source buffer.
+                        blockChecksums.push_back(ComputeDefaultDigest(
+                            {iter.ContiguousData(), BlockSize}));
+                    }
                     iter.ExtractPlainDataAndAdvance(to, BlockSize);
                 }
                 ++sglistIndex;
@@ -289,6 +306,7 @@ void TReadBlobActor::HandleGetResult(
 
     auto response = std::make_unique<TResponse>();
     response->BlockChecksums = std::move(blockChecksums);
+    response->RepairedBlockIndices = std::move(repairedBlockIndices);
     response->ExecCycles = RequestInfo->GetExecCycles();
     ReplyAndDie(ctx, std::move(response));
 }

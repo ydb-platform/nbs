@@ -39,6 +39,7 @@
 
 #include <contrib/ydb/core/base/blobstorage.h>
 #include <contrib/ydb/core/blobstorage/vdisk/common/vdisk_events.h>
+#include <contrib/ydb/core/control/immediate_control_board_impl.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -264,19 +265,17 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 void InitTestActorRuntime(
-    TTestActorRuntime& runtime,
-    const NProto::TStorageServiceConfig& config,
-    ui32 blockCount,
-    ui32 channelCount,
+    TTestActorRuntime& runtime, const NProto::TStorageServiceConfig& config,
+    ui32 blockCount, ui32 channelCount,
     std::unique_ptr<TTabletStorageInfo> tabletInfo,
     TTestPartitionInfo partitionInfo = TTestPartitionInfo(),
-    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default)
+    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
+    TStorageConfigControlsPtr storageControls = {})
 {
     auto storageConfig = std::make_shared<TStorageConfig>(
         config,
         std::make_shared<NFeatures::TFeaturesConfig>(
-            NCloud::NProto::TFeaturesConfig())
-    );
+            NCloud::NProto::TFeaturesConfig()), std::move(storageControls));
 
     NProto::TPartitionConfig partConfig;
 
@@ -390,7 +389,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     TMaybe<ui32> channelsCount = {},
     const TTestPartitionInfo& testPartitionInfo = TTestPartitionInfo(),
     IActorPtr volumeProxy = {},
-    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default)
+    EStorageAccessMode storageAccessMode = EStorageAccessMode::Default,
+    TStorageConfigControlsPtr storageControls = {})
 {
     auto runtime = std::make_unique<TTestBasicRuntime>(1);
 
@@ -432,14 +432,10 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     }
 
     InitTestActorRuntime(
-        *runtime,
-        config,
-        blockCount,
+        *runtime, config, blockCount,
         channelsCount ? *channelsCount : tabletInfo->Channels.size(),
-        std::move(tabletInfo),
-        testPartitionInfo,
-        storageAccessMode
-    );
+        std::move(tabletInfo), testPartitionInfo, storageAccessMode,
+        std::move(storageControls));
 
     return runtime;
 }
@@ -12693,6 +12689,278 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         });
     }
 
+    Y_UNIT_TEST(ShouldVerifyHealthyBlocksAlongsideRepairMarkers)
+    {
+        auto config = DefaultConfig();
+        config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(ui64{1} << 44);
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        auto runtime = PrepareTestActorRuntime(
+            config, 1024 * 1024, {}, {}, {}, EStorageAccessMode::Repair);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        const ui32 start = 1_GB / DefaultBlockSize + 1024;
+        const auto range = TBlockRange32::WithLength(start, 4);
+        for (ui32 i = 0; i < 4; ++i) {
+            partition.WriteBlocks(start + i, 'a' + i);
+        }
+        partition.Flush();
+        partition.WriteBlocks(start + 1, 'z');
+
+        ui64 verified = 0;
+        ui64 unverified = 0;
+        ui32 repaired = 0;
+        bool repairAll = false;
+        bool corruptHealthy = false;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvBlobStorage::EvGetResult) {
+                    auto* msg = event->Get<TEvBlobStorage::TEvGetResult>();
+                    if (msg->ResponseSz == 2 &&
+                        msg->Responses[0].Shift == 0 &&
+                        msg->Responses[0].RequestedSize == DefaultBlockSize &&
+                        msg->Responses[1].Shift == 2 * DefaultBlockSize &&
+                        msg->Responses[1].RequestedSize == 2 * DefaultBlockSize)
+                    {
+                        msg->Responses[0].Status = NKikimrProto::NODATA;
+                        if (repairAll) {
+                            msg->Responses[1].Status = NKikimrProto::NODATA;
+                        } else if (corruptHealthy) {
+                            auto& buffer = msg->Responses[1].Buffer;
+                            TString data = TString::Uninitialized(buffer.size());
+                            auto iter = buffer.begin();
+                            iter.ExtractPlainDataAndAdvance(data.begin(), data.size());
+                            data.begin()[0] ^= 1;
+                            buffer = TRope(std::move(data));
+                        }
+                        ++repaired;
+                    }
+                } else if (event->GetTypeRewrite() ==
+                           TEvPartitionPrivate::EvReadBlocksCompleted)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionPrivate::TEvReadBlocksCompleted>();
+                    verified += msg->ChecksumBlocksVerified;
+                    unverified += msg->ChecksumBlocksUnverified;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(GetBrokenDataMarker()) + GetBlocksContent('z', 1) +
+                GetBlocksContent('c', 1) + GetBlocksContent('d', 1),
+            GetBlocksContent(partition.ReadBlocks(range)));
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(1, repaired);
+        UNIT_ASSERT_VALUES_EQUAL(2, verified);
+        UNIT_ASSERT_VALUES_EQUAL(1, unverified);
+
+        repairAll = true;
+        verified = unverified = repaired = 0;
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(GetBrokenDataMarker()) + GetBlocksContent('z', 1) +
+                TString(GetBrokenDataMarker()) + TString(GetBrokenDataMarker()),
+            GetBlocksContent(partition.ReadBlocks(range)));
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(1, repaired);
+        UNIT_ASSERT_VALUES_EQUAL(0, verified);
+        UNIT_ASSERT_VALUES_EQUAL(3, unverified);
+
+        repairAll = false;
+        corruptHealthy = true;
+        repaired = 0;
+        partition.SendReadBlocksRequest(range);
+        auto response = partition.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(1, repaired);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+
+        // Compaction preserves the marker as unprotected data and verifies
+        // healthy blocks before persisting the new blob.
+        corruptHealthy = false;
+        repaired = 0;
+        partition.Compaction(start);
+        UNIT_ASSERT_VALUES_EQUAL(1, repaired);
+        verified = unverified = 0;
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(GetBrokenDataMarker()) + GetBlocksContent('z', 1) +
+                GetBlocksContent('c', 1) + GetBlocksContent('d', 1),
+            GetBlocksContent(partition.ReadBlocks(range)));
+        runtime->DispatchEvents({}, 10ms);
+        UNIT_ASSERT_VALUES_EQUAL(3, verified);
+        UNIT_ASSERT_VALUES_EQUAL(1, unverified);
+    }
+
+    Y_UNIT_TEST(ShouldCheckWholeDiskWithoutChecksumBoundaryOverflow)
+    {
+        constexpr ui32 blockCount = 1024 * 1024;
+        auto config = DefaultConfig();
+        config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(ui64{1} << 44);
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        auto runtime = PrepareTestActorRuntime(config, blockCount);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui64 verified = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvReadBlocksCompleted)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionPrivate::TEvReadBlocksCompleted>();
+                    verified += msg->ChecksumBlocksVerified;
+                    UNIT_ASSERT_VALUES_EQUAL(0, msg->ChecksumBlocksUnverified);
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto checkRead = [&](const TBlockRange32& range)
+        {
+            verified = 0;
+            const auto result = GetBlocksContent(partition.ReadBlocks(range));
+            runtime->DispatchEvents({}, 10ms);
+            UNIT_ASSERT_VALUES_EQUAL(range.Size(), verified);
+            return result;
+        };
+
+        const TVector<ui32> starts = {
+            0,
+            static_cast<ui32>(1_GB / DefaultBlockSize + 1024),
+            blockCount - 1024};
+        for (ui32 start: starts) {
+            const auto range = TBlockRange32::WithLength(start, 1024);
+            partition.WriteBlocks(range, 'a');   // merged write
+            UNIT_ASSERT_VALUES_EQUAL(GetBlocksContent('a', 1024),
+                                     checkRead(range));
+            partition.WriteBlocks(TBlockRange32::WithLength(start + 7, 1),
+                                  'b');   // fresh write
+            partition.Flush();
+            const auto actual = checkRead(range);
+            const auto expected = GetBlocksContent('a', 7) +
+                                  GetBlocksContent('b', 1) +
+                                  GetBlocksContent('a', 1016);
+            UNIT_ASSERT_VALUES_EQUAL(expected, actual);
+            partition.Compaction(start);
+            UNIT_ASSERT_VALUES_EQUAL(expected, checkRead(range));
+        }
+        partition.RebootTablet();
+        partition.WaitReady();
+        EnableReadBlobCorruption(*runtime);
+        for (ui32 start: starts) {
+            partition.SendReadBlocksRequest(
+                TBlockRange32::WithLength(start, 1024));
+            auto response = partition.RecvReadBlocksResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(E_REJECTED, response->GetStatus(),
+                                       response->GetErrorReason());
+            partition.SendCompactionRequest(start);
+            const auto compact = partition.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, compact->GetStatus());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldEstablishChecksumsAfterReenablingAndCompaction)
+    {
+        auto config = DefaultConfig();
+        config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(0);
+        config.SetCheckBlockChecksumsInBlobsUponRead(true);
+        auto controls = std::make_shared<TStorageConfigControls>();
+        TControlBoard board;
+        controls->Register(board);
+        auto runtime =
+            PrepareTestActorRuntime(config, 1024 * 1024, {}, {}, {},
+                                    EStorageAccessMode::Default, controls);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+        const ui32 start = 1_GB / DefaultBlockSize + 1024;
+        const auto range = TBlockRange32::WithLength(start, 1024);
+        partition.WriteBlocks(range, 'a');
+
+        ui64 verified = 0;
+        ui64 unverified = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvReadBlocksCompleted)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionPrivate::TEvReadBlocksCompleted>();
+                    verified += msg->ChecksumBlocksVerified;
+                    unverified += msg->ChecksumBlocksUnverified;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto readAndCheck = [&](char fill, bool hasChecksums)
+        {
+            verified = unverified = 0;
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetBlocksContent(fill, 1024),
+                GetBlocksContent(partition.ReadBlocks(range)));
+            runtime->DispatchEvents({}, 10ms);
+            UNIT_ASSERT_VALUES_EQUAL(hasChecksums ? 1024 : 0, verified);
+            UNIT_ASSERT_VALUES_EQUAL(hasChecksums ? 0 : 1024, unverified);
+        };
+        auto setPrefix = [&](ui64 length)
+        {
+            TAtomic previous = {};
+            UNIT_ASSERT(!board.SetValue(
+                "BlockStore_DiskPrefixLengthWithBlockChecksumsInBlobs", length,
+                previous));
+        };
+
+        setPrefix(ui64{1} << 44);
+        partition.RebootTablet();
+        partition.WaitReady();
+        readAndCheck('a', false);
+
+        // Interrupt baseline creation before its new payload is committed.
+        std::unique_ptr<IEventHandle> heldWrite;
+        runtime->SetEventFilter(
+            [&](auto&, auto& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionCommonPrivate::EvWriteBlobRequest)
+                {
+                    heldWrite.reset(event.Release());
+                    return true;
+                }
+                return false;
+            });
+        partition.SendCompactionRequest(start);
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return bool(heldWrite);
+        };
+        runtime->DispatchEvents(options);
+        UNIT_ASSERT(heldWrite);
+        runtime->SetEventFilter([](auto&, auto&) { return false; });
+        partition.RebootTablet();
+        partition.WaitReady();
+        auto interrupted = partition.RecvCompactionResponse();
+        UNIT_ASSERT(FAILED(interrupted->GetStatus()));
+        heldWrite.reset();
+        readAndCheck('a', false);
+        partition.Compaction(start);
+        readAndCheck('a', true);
+
+        setPrefix(0);
+        partition.WriteBlocks(range, 'b');
+        setPrefix(ui64{1} << 44);
+        partition.RebootTablet();
+        partition.WaitReady();
+        readAndCheck('b', false);
+        partition.Compaction(start);
+        partition.RebootTablet();
+        partition.WaitReady();
+        readAndCheck('b', true);
+        EnableReadBlobCorruption(*runtime);
+        partition.SendReadBlocksRequest(range);
+        auto response = partition.RecvReadBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+    }
+
     Y_UNIT_TEST(ShouldDetectBlockCorruptionInBlobs)
     {
         constexpr ui32 blockCount = 1024 * 1024;
@@ -12791,10 +13059,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             response->GetErrorReason());
     }
 
-    Y_UNIT_TEST(ShouldProperlyCalculateBlockChecksumsForBatchedWrites)
+    void TestBlockChecksumsForBatchedWrites(ui64 prefix)
     {
         constexpr ui32 blockCount = 1024 * 1024;
         auto config = DefaultConfig();
+        config.SetDiskPrefixLengthWithBlockChecksumsInBlobs(prefix);
         // enabling batching + checksum checks
         config.SetCheckBlockChecksumsInBlobsUponRead(true);
         config.SetWriteRequestBatchingEnabled(true);
@@ -12909,6 +13178,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 response->GetStatus(),
                 response->GetErrorReason());
         }
+    }
+
+    Y_UNIT_TEST(ShouldProperlyCalculateBlockChecksumsForBatchedWrites)
+    {
+        TestBlockChecksumsForBatchedWrites(1_GB);
+    }
+
+    Y_UNIT_TEST(ShouldCalculateWholeDiskBlockChecksumsForBatchedWrites)
+    {
+        TestBlockChecksumsForBatchedWrites(ui64{1} << 44);
     }
 
     Y_UNIT_TEST(ShouldCancelRequestsOnTabletRestart)

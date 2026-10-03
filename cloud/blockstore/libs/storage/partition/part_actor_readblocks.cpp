@@ -290,6 +290,8 @@ private:
     TVector<TBatchRequest> BatchRequests;
     size_t RequestsScheduled = 0;
     size_t RequestsCompleted = 0;
+    ui64 ChecksumBlocksVerified = 0;
+    ui64 ChecksumBlocksUnverified = 0;
 
     bool WaitBaseDiskRequests = false;
 
@@ -340,6 +342,7 @@ private:
     bool VerifyChecksums(
         const TActorContext& ctx,
         const TVector<ui32>& actualChecksums,
+        const TVector<ui32>& repairedBlockIndices,
         const TBatchRequest& batch);
 
 private:
@@ -504,6 +507,8 @@ void TReadBlocksActor::NotifyCompleted(
         std::move(BlockInfos)
     );
     request->ReadStats = ReadStats;
+    request->ChecksumBlocksVerified = ChecksumBlocksVerified;
+    request->ChecksumBlocksUnverified = ChecksumBlocksUnverified;
 
     NCloud::Send(ctx, Tablet, std::move(request));
 }
@@ -568,10 +573,26 @@ void TReadBlocksActor::ReplyAndDie(
 bool TReadBlocksActor::VerifyChecksums(
     const TActorContext& ctx,
     const TVector<ui32>& actualChecksums,
+    const TVector<ui32>& repairedBlockIndices,
     const TBatchRequest& batch)
 {
     const size_t n = Min(batch.Requests.size(), actualChecksums.size());
+    if (ChecksumsEnabled) {
+        ChecksumBlocksUnverified += batch.Requests.size() - n;
+    }
+    auto repaired = repairedBlockIndices.begin();
     for (ui32 i = 0; i < n; ++i) {
+        if (repaired != repairedBlockIndices.end() && *repaired == i) {
+            ++repaired;
+            ++ChecksumBlocksUnverified;
+            continue;
+        }
+        // An absent legacy checksum is not a successful integrity check.
+        if (!batch.Checksums[i]) {
+            ++ChecksumBlocksUnverified;
+            continue;
+        }
+
         auto error = VerifyBlockChecksum(
             actualChecksums[i],
             batch.BlobId,
@@ -584,6 +605,7 @@ bool TReadBlocksActor::VerifyChecksums(
             HandleError(ctx, error);
             return false;
         }
+        ++ChecksumBlocksVerified;
     }
 
     return true;
@@ -612,7 +634,9 @@ void TReadBlocksActor::HandleReadBlobResponse(
         return;
     }
 
-    if (!VerifyChecksums(ctx, msg->BlockChecksums, batch)) {
+    if (!VerifyChecksums(
+            ctx, msg->BlockChecksums, msg->RepairedBlockIndices, batch))
+    {
         return;
     }
 
@@ -1126,9 +1150,9 @@ bool TPartitionActor::PrepareReadBlocks(
         commitId
     );
 
-    const ui32 checksumBoundary =
-        Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs()
-        / State->GetBlockSize();
+    const ui64 checksumBoundary =
+        Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs() /
+        State->GetBlockSize();
     args.ChecksumsEnabled = args.ReadRange.Start < checksumBoundary
         && Config->GetCheckBlockChecksumsInBlobsUponRead();
 
@@ -1140,18 +1164,19 @@ bool TPartitionActor::PrepareReadBlocks(
 
             const auto& value = std::get<TBlobMark>(mark);
 
+            const auto blobId = MakePartialBlobId(value.BlobId);
+            if (args.BlobId2Meta.contains(blobId)) {
+                continue;
+            }
+
             TMaybe<NProto::TBlobMeta> meta;
-            auto blobId = MakePartialBlobId(value.BlobId);
-            if (db.ReadBlobMeta(blobId, meta)) {
+            if (db.ReadBlobMeta(blobId, meta, &State->AccessBlobMetaCache())) {
                 Y_ABORT_UNLESS(meta.Defined(),
                     "Could not read blob meta for blob: %s",
                     ToString(value.BlobId).data());
+                args.BlobId2Meta.emplace(blobId, std::move(meta.GetRef()));
             } else {
                 ready = false;
-            }
-
-            if (ready) {
-                args.BlobId2Meta[blobId] = std::move(meta.GetRef());
             }
         }
     }
@@ -1348,6 +1373,14 @@ void TPartitionActor::FinalizeReadBlocks(
     const ui64 blocksCount = counters.GetBlocksCount();
 
     UpdateStats(stats);
+    Counters
+        ->Cumulative()[TPartitionCounters::
+                           CUMULATIVE_COUNTER_UserRead_ChecksumBlocksVerified]
+        .Increment(operation.ChecksumBlocksVerified);
+    Counters
+        ->Cumulative()[TPartitionCounters::
+                           CUMULATIVE_COUNTER_UserRead_ChecksumBlocksUnverified]
+        .Increment(operation.ChecksumBlocksUnverified);
 
     const ui64 requestBytes = State->GetBlockSize() * blocksCount;
 

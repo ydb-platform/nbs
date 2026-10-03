@@ -70,6 +70,8 @@ message TAlterRecord {
     optional uint32 ExecutorLimitInFlyTx = 104;
     optional string ExecutorResourceProfile = 105;
     optional bool ExecutorLogFastCommitTactic = 106;
+    optional uint32 ExecutorMaxRedoBytesToEmbed = 107;
+    optional uint64 ExecutorMaxRedoBytesInSnapshot = 108;
 };
 
 message TSchemeChanges {

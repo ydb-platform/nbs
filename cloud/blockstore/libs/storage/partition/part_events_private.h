@@ -704,6 +704,8 @@ struct TEvPartitionPrivate
         };
 
         TStackVec<TCompactionRangeReadStats, 2> ReadStats;
+        ui64 ChecksumBlocksVerified = 0;
+        ui64 ChecksumBlocksUnverified = 0;
     };
 
     //

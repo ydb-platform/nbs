@@ -2,6 +2,7 @@ RECURSE(
     bad-guest
     build-fresh-blob
     chaos-monkey
+    checksum-bench
     disk-registry-state-generator
     eternal_tests
     fake-conductor
