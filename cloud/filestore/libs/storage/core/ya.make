@@ -2,6 +2,7 @@ LIBRARY(filestore-libs-storage-core)
 
 SRCS(
     blob_id.cpp
+    compressed_bitmap.cpp
     config.cpp
     cpu_timer.cpp
     helpers.cpp
