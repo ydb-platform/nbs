@@ -13,7 +13,7 @@ namespace NCloud::NFileStore::NFuse {
 ////////////////////////////////////////////////////////////////////////////////
 
 IFileSystemEventHandlerPtr CreateFileSystemEventHandler(
-    ILoggingServicePtr logging,
+    TLog log,
     TString fileSystemId);
 
 }   // namespace NCloud::NFileStore::NFuse

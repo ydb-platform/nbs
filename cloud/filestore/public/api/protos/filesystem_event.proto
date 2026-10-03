@@ -5,7 +5,8 @@ package NCloud.NFileStore.NProto;
 option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
 
 ////////////////////////////////////////////////////////////////////////////////
-// FileSystem event. Sent by the tablet to the clients that hold pipes to it.
+// FileSystem event. Sent by the tablet to some of the clients that hold pipes
+// to it.
 
 message TFileSystemEvent
 {

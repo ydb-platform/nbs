@@ -268,7 +268,7 @@ void TIndexTabletProxyActor::NotifyFileSystemEventHandlerDisconnected(
         "Pipe to tablet %lu disconnected, notifying FileSystemEvent handler",
         tabletId);
 
-    FileSystemEventHandler->OnDisconnect();
+    FileSystemEventHandler->OnDisconnect(tabletId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

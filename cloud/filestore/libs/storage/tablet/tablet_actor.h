@@ -463,7 +463,7 @@ private:
         const NProto::TSessionEvent& event);
 
     void RegisterFileSystemEventClient(
-        const NActors::TActorId& pipeServerId,
+        const NActors::TActorId& recipient,
         const NActors::TActorId& clientId);
 
     ui32 SendFileSystemEvent(

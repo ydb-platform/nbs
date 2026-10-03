@@ -11,7 +11,7 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletActor::RegisterFileSystemEventClient(
-    const TActorId& pipeServerId,
+    const TActorId& recipient,
     const TActorId& clientId)
 {
     //
@@ -20,11 +20,11 @@ void TIndexTabletActor::RegisterFileSystemEventClient(
     // disconnect notification - such senders are not registered.
     //
 
-    if (pipeServerId == SelfId()) {
+    if (recipient == SelfId()) {
         return;
     }
 
-    FileSystemEventClients[pipeServerId] = clientId;
+    FileSystemEventClients[recipient] = clientId;
 }
 
 ui32 TIndexTabletActor::SendFileSystemEvent(

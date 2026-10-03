@@ -139,7 +139,6 @@ PEERDIR(
     cloud/storage/core/libs/viewer
     cloud/storage/core/protos
 
-    library/cpp/digest/md5
     library/cpp/protobuf/json
 
     contrib/ydb/core/base

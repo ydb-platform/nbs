@@ -743,7 +743,7 @@ public:
     {
         if (MultiFileSystemEventHandler && !FileSystemEventHandler) {
             FileSystemEventHandler = CreateFileSystemEventHandler(
-                Logging,
+                Log,
                 Config->GetFileSystemId());
             MultiFileSystemEventHandler->Register(
                 Config->GetFileSystemId(),

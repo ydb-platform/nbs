@@ -1,8 +1,11 @@
 #include "filesystem_event_handler.h"
 
 #include <cloud/filestore/libs/service/filesystem_event.h>
+#include <cloud/filestore/libs/service/mask.h>
 
 #include <cloud/storage/core/libs/diagnostics/logging.h>
+
+#include <library/cpp/logger/log.h>
 
 namespace NCloud::NFileStore::NFuse {
 
@@ -14,13 +17,13 @@ class TFileSystemEventHandler final
     : public IFileSystemEventHandler
 {
 private:
-    const TString FileSystemId;
     TLog Log;
+    const TString FileSystemId;
 
 public:
-    TFileSystemEventHandler(ILoggingServicePtr logging, TString fileSystemId)
-        : FileSystemId(std::move(fileSystemId))
-        , Log(logging->CreateLog("NFS_FUSE"))
+    TFileSystemEventHandler(TLog log, TString fileSystemId)
+        : Log(std::move(log))
+        , FileSystemId(std::move(fileSystemId))
     {}
 
     void OnEvent(const NProto::TFileSystemEvent& event) override
@@ -34,11 +37,12 @@ public:
         }
     }
 
-    void OnDisconnect() override
+    void OnDisconnect(ui64 tabletId) override
     {
         STORAGE_INFO(
-            "[f:%s] FileSystemEvent transport disconnected",
-            FileSystemId.Quote().c_str());
+            "[f:%s] FileSystemEvent transport disconnected: %lu",
+            FileSystemId.Quote().c_str(),
+            tabletId);
     }
 
 private:
@@ -52,11 +56,23 @@ private:
 
     void InvalidateNodeRef(ui64 nodeId, const TString& name)
     {
-        STORAGE_INFO(
+        //
+        // Logging the name in debug mode only - in order not to suddenly start
+        // writing file names to some distributed log storage with too broad
+        // read privileges.
+        //
+
+        STORAGE_DEBUG(
             "[f:%s] InvalidateNodeRef: %lu, %s",
             FileSystemId.Quote().c_str(),
             nodeId,
             name.Quote().c_str());
+
+        STORAGE_INFO(
+            "[f:%s] InvalidateNodeRef: %lu, %s",
+            FileSystemId.Quote().c_str(),
+            nodeId,
+            MaskFileName(name).Quote().c_str());
     }
 };
 
@@ -65,11 +81,11 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 IFileSystemEventHandlerPtr CreateFileSystemEventHandler(
-    ILoggingServicePtr logging,
+    TLog log,
     TString fileSystemId)
 {
     return std::make_shared<TFileSystemEventHandler>(
-        std::move(logging),
+        std::move(log),
         std::move(fileSystemId));
 }
 
