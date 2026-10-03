@@ -302,6 +302,15 @@ void TIndexTabletActor::HandleUpdateConfig(
     newConfig.SetStrictFileSystemSizeEnforcementEnabled(
         oldConfig.GetStrictFileSystemSizeEnforcementEnabled());
 
+    // Preserve the shard creation state across AlterFileStore/resize
+    // UpdateConfig calls. Otherwise a retry could wipe the persisted bitmap and
+    // reset the CAS version while the resize actor still needs them for
+    // subsequent shard creation state updates.
+    if (oldConfig.HasShardCreationState()) {
+        *newConfig.MutableShardCreationState() =
+            oldConfig.GetShardCreationState();
+    }
+
     // Config update occured due to alter/resize.
     if (auto error = ValidateUpdateConfigRequest(oldConfig, newConfig)) {
         LOG_ERROR(ctx, TFileStoreComponents::TABLET,
