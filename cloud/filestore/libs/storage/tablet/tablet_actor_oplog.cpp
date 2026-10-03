@@ -81,18 +81,25 @@ void TIndexTabletActor::ReplayOpLog(
                 NProto::TProfileLogRequestInfo{},
                 0,   // requestId
                 op.GetEntryId(),
-                {},     // result
-                false   // shouldUnlockUponCompletion
+                {}   // result
             );
         } else if (op.HasUnlinkNodeInShardRequest()) {
-            const auto& request = op.GetUnlinkNodeInShardRequest();
-            // UnlinkNodeInShardRequests originating from
-            // RenameNode[InDestination] ops don't have OriginalRequest and
-            // don't require any post-unlink NodeRef deletion.
-            bool hasOriginalRequest = request.HasOriginalRequest();
-            bool shouldUnlockUponCompletion = hasOriginalRequest
-                && GetFileSystem().GetDirectoryCreationInShardsEnabled();
-            if (shouldUnlockUponCompletion) {
+            // Copy the request as it can be modified.
+            auto request = op.GetUnlinkNodeInShardRequest();
+
+            // If the request was created by the previous version, we set
+            // ShouldUnlockUponCompletion as it was set by the previous version.
+            // It's OK, because both changes are made manually and therefore
+            // should not occur simultaneously between writing and replaying an
+            // OpLogEntry: a version change and enabling directory creation in
+            // shards.
+            if (!request.HasShouldUnlockUponCompletion()) {
+                request.SetShouldUnlockUponCompletion(
+                    request.HasOriginalRequest() &&
+                    GetFileSystem().GetDirectoryCreationInShardsEnabled());
+            }
+
+            if (request.GetShouldUnlockUponCompletion()) {
                 // There is a need to unlock the node ref after the operation is
                 // completed, because the node ref should have been locked
                 const auto& originalRequest = request.GetOriginalRequest();
@@ -108,12 +115,12 @@ void TIndexTabletActor::ReplayOpLog(
             RegisterUnlinkNodeInShardActor(
                 ctx,
                 nullptr,   // requestInfo
-                op.GetUnlinkNodeInShardRequest(),
+                request,
                 std::move(profileLogRequest),
                 0,   // requestId
                 op.GetEntryId(),
-                {},   // result
-                shouldUnlockUponCompletion);
+                {}   // result
+            );
         } else if (op.HasRenameNodeInDestinationRequest()) {
             const auto& request = op.GetRenameNodeInDestinationRequest();
             const bool locked = TryLockNodeRef({
