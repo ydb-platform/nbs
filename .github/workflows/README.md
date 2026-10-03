@@ -41,9 +41,12 @@ critical path. Critical-path build nodes are marked on their individual spans.
 
 `render-workflow-trace.yaml` runs after the main test workflows complete. It
 combines GitHub workflow, queue, job, and step timings with any available ya
-bundles and stores `workflow-trace.*` in the same S3 report prefix. The
-`workflow_run` job always checks out the default branch and bounds both S3
-downloads and parsed OTLP data before rendering PR-produced content.
+bundles. It stores `workflow-only-trace.*` without imported ya spans and
+`workflow-trace.*` with them in the same S3 report prefix. The `workflow_run`
+job always checks out the default branch and bounds both S3 downloads and
+parsed OTLP data before rendering PR-produced content. For a stacked pull
+request, it renders only the bottom PR whose stack base matches its target
+branch, mirroring the main PR workflow gates.
 
 To render a saved OTLP bundle locally:
 

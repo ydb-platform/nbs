@@ -14,8 +14,12 @@ from scripts.tracing.otlp import (
     span_status_code,
     span_status_message,
 )
+from scripts.tracing.trace_io import read_otlp_jsonl
 from scripts.tracing.workflow_trace import build_workflow_trace
-from scripts.tracing.workflow_trace_report import download_s3_trace_inputs
+from scripts.tracing.workflow_trace_report import (
+    download_s3_trace_inputs,
+    write_workflow_trace_bundles,
+)
 
 
 def _workflow_run() -> dict:
@@ -124,6 +128,23 @@ def test_workflow_projection_from_github_jobs_and_imported_trace() -> None:
         == "https://reports.example/logs/a/"
     )
     assert metadata["github.pull_request.number"] == [42]
+
+
+def test_report_writes_workflow_only_and_combined_bundles(tmp_path) -> None:
+    workflow_only_manifest, combined_manifest = write_workflow_trace_bundles(
+        output_dir=tmp_path,
+        workflow_run=_workflow_run(),
+        jobs=_jobs(),
+        imported=_imported_trace(),
+    )
+
+    workflow_only = read_otlp_jsonl([tmp_path / "workflow-only-trace.otlp.jsonl.gz"])
+    combined = read_otlp_jsonl([tmp_path / "workflow-trace.otlp.jsonl.gz"])
+
+    assert workflow_only_manifest["span_count"] == 5
+    assert combined_manifest["span_count"] == 6
+    assert "ya make tests" not in {span.name for span in workflow_only}
+    assert "ya make tests" in {span.name for span in combined}
 
 
 def test_rerun_timeline_ignores_original_creation_time() -> None:
