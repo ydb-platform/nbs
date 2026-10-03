@@ -505,6 +505,7 @@ TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
             EXPECT_EQ(1u, fx.Metrics->ConnectionsCreated.load());
             EXPECT_EQ(1u, fx.Metrics->ConnectionsUsed.load());
             EXPECT_EQ(3u, fx.Metrics->RequestsCompleted.load());
+            EXPECT_GT(fx.Metrics->ConnectTimeUs.load(), 0u);
             return 0;
         },
         0);

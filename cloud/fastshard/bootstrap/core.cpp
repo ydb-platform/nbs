@@ -14,6 +14,15 @@ void Init()
     silk::FiberScheduler::initialize();
 }
 
+void Init(const cpu_set_t& cpuMask)
+{
+    silk::FiberScheduler::Options options;
+    options.cpuMask = cpuMask;
+
+    silk::initialize();
+    silk::FiberScheduler::initialize(&options);
+}
+
 void Destroy()
 {
     silk::FiberScheduler::destroy();
