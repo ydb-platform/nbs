@@ -2015,6 +2015,69 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         }
     }
 
+    Y_UNIT_TEST(ShouldKeepRootNodeUponTabletReboot)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        tablet.SetNodeAttr(
+            TSetNodeAttrArgs(RootNodeId).SetMode(0700).SetUid(42));
+        // creating a child modifies the root node as well
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+
+        const auto before = tablet.UnsafeGetNode(RootNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(0700, before.GetNode().GetMode());
+        UNIT_ASSERT_VALUES_EQUAL(42, before.GetNode().GetUid());
+        UNIT_ASSERT(before.GetCommitId());
+
+        tablet.RebootTablet();
+        tablet.InitSession("client", "session");
+
+        const auto after = tablet.UnsafeGetNode(RootNodeId)->Record;
+        UNIT_ASSERT_VALUES_EQUAL(
+            before.GetNode().ShortUtf8DebugString(),
+            after.GetNode().ShortUtf8DebugString());
+        UNIT_ASSERT_VALUES_EQUAL(before.GetCommitId(), after.GetCommitId());
+    }
+
+    Y_UNIT_TEST(ShouldAdvanceNodeCommitIdUponModification)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        auto commitId = [&]
+        {
+            return tablet.UnsafeGetNode(id)->Record.GetCommitId();
+        };
+
+        auto prev = commitId();
+        auto expectAdvanced = [&]
+        {
+            auto cur = commitId();
+            UNIT_ASSERT_GT(cur, prev);
+            prev = cur;
+        };
+
+        tablet.WriteData(handle, 0, 4_KB, 'a');
+        expectAdvanced();
+
+        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetMode(0644));
+        expectAdvanced();
+    }
+
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInUnsafeNodeOperations)
     {
         const ui32 maxTabletStep = 4;
