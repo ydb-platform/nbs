@@ -19,7 +19,7 @@ private:
     TVector<TBlock> Blocks;
 
 public:
-    void Accept(const TBlock& block, TStringBuf blockData) override
+    void Accept(const TBlock& block, std::pair<TStringBuf, IBlockBufferPtr> blockData) override
     {
         Y_UNUSED(blockData);
         Blocks.push_back(block);

@@ -114,7 +114,12 @@ void TFlushActor::WriteBlob(const TActorContext& ctx)
     request->Mode = TEvIndexTabletPrivate::EWriteBlobMode::Flush;
 
     for (auto& blob: Blobs) {
-        request->Blobs.emplace_back(blob.BlobId, std::move(blob.BlobContent));
+        TString strBlob;
+        strBlob.reserve(blob.BlobContent.size() * BlockSize);
+        for (const auto& [blockData, buffer]: blob.BlobContent) {
+            strBlob.append(blockData);
+        }
+        request->Blobs.emplace_back(blob.BlobId, std::move(strBlob));
         request->Blobs.back().Async = true;
     }
 
@@ -343,7 +348,7 @@ void TIndexTabletActor::HandleFlush(
     for (auto& blob: blobs) {
         const auto ok = GenerateBlobId(
             commitId,
-            blob.BlobContent.size(),
+            blob.BlobContent.size() * GetBlockSize(),
             blobIndex++,
             &blob.BlobId);
 

@@ -6,15 +6,15 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void TMixedBlobBuilder::Accept(const TBlock& block, TStringBuf blockData)
+void TMixedBlobBuilder::Accept(const TBlock& block, std::pair<TStringBuf, IBlockBufferPtr> blockData)
 {
-    Y_ABORT_UNLESS(blockData.size() == BlockSize);
+    Y_ABORT_UNLESS(blockData.first.size() == BlockSize);
 
     auto& range = Ranges[GetMixedRangeIndex(
         Hasher,
         block.NodeId,
         block.BlockIndex)];
-    AddBlock(range, block, blockData);
+    AddBlock(range, block, std::move(blockData));
 
     if (range.Blocks.size() == MaxBlocksInBlob) {
         CompleteBlob(range);
@@ -24,14 +24,24 @@ void TMixedBlobBuilder::Accept(const TBlock& block, TStringBuf blockData)
 void TMixedBlobBuilder::AddBlock(
     TRange& range,
     const TBlock& block,
-    TStringBuf blockData)
+    std::pair<TStringBuf, IBlockBufferPtr> blockData)
 {
     if (!range.BlobContent) {
         range.BlobContent.reserve(MaxBlocksInBlob * BlockSize);
     }
 
     range.Blocks.push_back(block);
-    range.BlobContent.append(blockData);
+    if (blockData.second) {
+        range.BlobContent.emplace_back(std::move(blockData));
+    } else {
+        Y_ABORT_UNLESS(blockData.first.size() == BlockSize);
+        auto blockBuffer = CreateBlockBuffer(
+            TByteRange(0, blockData.first.size(), blockData.first.size()),
+            TString(blockData.first));
+        range.BlobContent.emplace_back(
+            blockBuffer->GetBlock(0),
+            std::move(blockBuffer));
+    }
 
     ++BlocksCount;
 
