@@ -20,6 +20,8 @@
 #include <util/stream/input.h>
 #include <util/stream/output.h>
 
+#include <functional>
+
 namespace NCloud::NBlockStore::NBD {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,7 +93,8 @@ struct IServerHandler
 
     virtual bool NegotiateClient(
         IInputStream& in,
-        IOutputStream& out) = 0;
+        IOutputStream& out,
+        const std::function<bool()>& connectionReadyHandler = {}) = 0;
 
     virtual void SendResponse(
         IOutputStream& out,

@@ -31,6 +31,7 @@ PEERDIR(
     library/cpp/coroutine/engine
     library/cpp/coroutine/listener
     library/cpp/deprecated/atomic
+    library/cpp/threading/future/subscription
 )
 
 END()
