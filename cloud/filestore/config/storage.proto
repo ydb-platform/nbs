@@ -944,4 +944,8 @@ message TStorageConfig
 
     // Timeout for the lookup (in milliseconds).
     optional uint32 FastShardDiskRegistryLookupTimeout = 552;
+
+    // If set to true, the tablet sends FileSystemEvents (InvalidateNode,
+    // InvalidateNodeRef) to its clients upon Node and NodeRef changes.
+    optional bool FileSystemEventsEnabled = 553;
 }

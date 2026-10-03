@@ -9,6 +9,7 @@ SRCS(
     error.cpp
     filestore.cpp
     filestore_test.cpp
+    filesystem_event.cpp
     request.cpp
     service_auth.cpp
 )

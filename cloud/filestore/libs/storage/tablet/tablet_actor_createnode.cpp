@@ -444,6 +444,8 @@ void TIndexTabletActor::HandleCreateNode(
     const TEvService::TEvCreateNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
+
     using TMethod = TEvService::TCreateNodeMethod;
     auto* msg = ev->Get();
 

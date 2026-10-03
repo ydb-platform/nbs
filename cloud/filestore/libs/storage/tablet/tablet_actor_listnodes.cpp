@@ -60,6 +60,8 @@ void TIndexTabletActor::HandleListNodes(
     const TEvService::TEvListNodesRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
+
     using TMethod = TEvService::TListNodesMethod;
     auto* msg = ev->Get();
 

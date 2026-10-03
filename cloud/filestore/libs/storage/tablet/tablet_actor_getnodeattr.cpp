@@ -52,6 +52,8 @@ void TIndexTabletActor::HandleGetNodeAttr(
     const TEvService::TEvGetNodeAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
+
     using TMethod = TEvService::TGetNodeAttrMethod;
     auto* msg = ev->Get();
 

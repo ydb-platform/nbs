@@ -43,6 +43,7 @@ SRCS(
     tablet_actor_destroyhandle.cpp
     tablet_actor_destroysession.cpp
     tablet_actor_dumprange.cpp
+    tablet_actor_filesystem_event.cpp
     tablet_actor_filteralivenodes.cpp
     tablet_actor_flush.cpp
     tablet_actor_flush_bytes.cpp

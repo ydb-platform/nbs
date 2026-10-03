@@ -5,6 +5,7 @@
 #include <cloud/filestore/libs/diagnostics/metrics/public.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
 #include <cloud/filestore/libs/diagnostics/user_counter.h>
+#include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/public.h>
 #include <cloud/filestore/libs/storage/fastshard/server/server.h>
@@ -40,6 +41,9 @@ struct TActorSystemArgs
 
     NFastShard::IServerPtr FastShardServer;
     NFastShard::IFileSystemShardFactoryPtr FastShardFactory;
+
+    // Receives FileSystemEvents delivered to IndexTabletProxy.
+    IFileSystemEventHandlerPtr FileSystemEventHandler;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

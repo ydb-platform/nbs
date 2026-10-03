@@ -30,6 +30,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/public/api/protos/filesystem_event.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
@@ -249,6 +250,15 @@ private:
 
     bool CompressNodeRef = false;
 
+    /*const*/ bool FileSystemEventsEnabled = false;
+
+    //
+    // Invalidations accumulated by the transactions executed since the last
+    // TakePendingFileSystemEvent call.
+    //
+
+    NProto::TFileSystemEvent PendingFileSystemEvent;
+
     bool StateLoaded = false;
 
 protected:
@@ -345,6 +355,34 @@ public:
     void SetFrozen(IIndexTabletDatabase& db, bool frozen);
 
     void SetCompressNodeRef(IIndexTabletDatabase& db, bool compressNodeRef);
+
+    //
+    // FileSystemEvents
+    //
+
+    /**
+     * Checks whether Node and NodeRef changes produced any invalidations
+     * since the last TakePendingFileSystemEvent call. Invalidations are
+     * produced only if FileSystemEventsEnabled is set.
+     *
+     * @return - True if there are pending invalidations.
+     */
+    bool HasPendingFileSystemEvent() const;
+
+    /**
+     * Extracts the pending invalidations.
+     *
+     * @return - The event with all the pending invalidations.
+     */
+    NProto::TFileSystemEvent TakePendingFileSystemEvent();
+
+protected:
+    void AddInvalidateNodeEvent(ui64 nodeId);
+
+private:
+    void AddInvalidateNodeRefEvent(ui64 nodeId, const TString& name);
+
+public:
 
     //
     // FileSystem

@@ -372,6 +372,7 @@ public:
 
     bool GetParentlessFilesOnly() const;
     bool GetAllowHandlelessIO() const;
+    bool GetFileSystemEventsEnabled() const;
 
     bool GetLazyXAttrsEnabled() const;
 

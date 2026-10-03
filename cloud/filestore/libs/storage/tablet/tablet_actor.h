@@ -205,6 +205,13 @@ private:
     TStorageConfigPtr Config;
     TDiagnosticsConfigPtr DiagConfig;
 
+    //
+    // PipeServerId -> ActorId of the client on the other side of the pipe
+    // (IndexTabletProxyActor). FileSystemEvents are sent to these clients.
+    //
+
+    THashMap<NActors::TActorId, NActors::TActorId> FileSystemEventClients;
+
     struct TCompactionStateLoadStatus
     {
         TDeque<TEvIndexTabletPrivate::TLoadCompactionMapChunkRequest> LoadQueue;
@@ -454,6 +461,16 @@ private:
     void NotifySessionEvent(
         const NActors::TActorContext& ctx,
         const NProto::TSessionEvent& event);
+
+    void RegisterFileSystemEventClient(
+        const NActors::TActorId& pipeServerId,
+        const NActors::TActorId& clientId);
+
+    ui32 SendFileSystemEvent(
+        const NActors::TActorContext& ctx,
+        NProto::TFileSystemEvent event);
+
+    void FlushFileSystemEvents(const NActors::TActorContext& ctx);
 
     TBackpressureThresholds BuildBackpressureThresholds() const;
     TBackpressureThresholds BuildBackpressureSoftThresholds() const;

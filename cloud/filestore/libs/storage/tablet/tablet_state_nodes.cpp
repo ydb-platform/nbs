@@ -4,6 +4,8 @@
 
 #include <cloud/filestore/libs/storage/model/utils.h>
 
+#include <utility>
+
 namespace NCloud::NFileStore::NStorage {
 
 namespace
@@ -77,6 +79,19 @@ void TIndexTabletState::UpdateNode(
     const NProto::TNode& attrs,
     const NProto::TNode& prevAttrs)
 {
+    //
+    // Time-only changes don't produce InvalidateNode. Otherwise every write
+    // (which always updates MTime) would produce an event. A write produces
+    // InvalidateNode only if it changes the file size. The same applies to
+    // the parent directory MTime/CTime updates upon CreateNode/UnlinkNode -
+    // those changes are covered by InvalidateNodeRef. Explicit time changes
+    // via SetNodeAttr produce InvalidateNode in SetNodeAttr itself.
+    //
+
+    if (HasNonTimeAttrChanges(attrs, prevAttrs)) {
+        AddInvalidateNodeEvent(nodeId);
+    }
+
     UpdateUsedBlocksCount(db, attrs.GetSize(), prevAttrs.GetSize());
 
     const ui32 prevQuotaId = prevAttrs.GetQuotaId();
@@ -144,6 +159,8 @@ NProto::TError TIndexTabletState::RemoveNode(
 
     db.DeleteNode(node.NodeId);
     DecrementUsedNodesCount(db);
+
+    AddInvalidateNodeEvent(node.NodeId);
 
     UpdateUsedBlocksCount(db, 0, node.Attrs.GetSize());
 
@@ -581,6 +598,8 @@ void TIndexTabletState::CreateNodeRef(
     }
 
     db.WriteNodeRef(nodeRef, markExhaustive);
+
+    AddInvalidateNodeRefEvent(nodeId, childName);
 }
 
 void TIndexTabletState::RemoveNodeRef(
@@ -594,6 +613,8 @@ void TIndexTabletState::RemoveNodeRef(
     const TString& shardNodeName)
 {
     db.DeleteNodeRef(nodeId, childName);
+
+    AddInvalidateNodeRefEvent(nodeId, childName);
 
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, minCommitId);
     if (checkpointId != InvalidCommitId) {
@@ -795,6 +816,38 @@ void TIndexTabletState::MarkNodeRefsExhaustive(ui64 nodeId)
 TInMemoryIndexStateStats TIndexTabletState::GetInMemoryIndexStateStats() const
 {
     return Impl->InMemoryIndexState->GetStats();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// FileSystemEvents
+
+bool TIndexTabletState::HasPendingFileSystemEvent() const
+{
+    return PendingFileSystemEvent.InvalidateNodeSize()
+        || PendingFileSystemEvent.InvalidateNodeRefSize();
+}
+
+NProto::TFileSystemEvent TIndexTabletState::TakePendingFileSystemEvent()
+{
+    return std::exchange(PendingFileSystemEvent, {});
+}
+
+void TIndexTabletState::AddInvalidateNodeEvent(ui64 nodeId)
+{
+    if (FileSystemEventsEnabled) {
+        PendingFileSystemEvent.AddInvalidateNode()->SetNodeId(nodeId);
+    }
+}
+
+void TIndexTabletState::AddInvalidateNodeRefEvent(
+    ui64 nodeId,
+    const TString& name)
+{
+    if (FileSystemEventsEnabled) {
+        auto* invalidate = PendingFileSystemEvent.AddInvalidateNodeRef();
+        invalidate->SetNodeId(nodeId);
+        invalidate->SetName(name);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
