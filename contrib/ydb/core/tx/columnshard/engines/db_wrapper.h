@@ -9,6 +9,8 @@
 
 namespace NKikimrTxColumnShard {
 class TIndexPortionMeta;
+class TIndexPortionAccessor;
+class TIndexPortionBlobsInfo;
 }
 
 namespace NKikimr::NTable {

@@ -1,6 +1,8 @@
+import copy
 import json
 import logging
 import os
+import re
 import subprocess
 import time
 import tempfile
@@ -809,7 +811,7 @@ class Nbs(LocalNbs):
         return outs, errs
 
 
-def __run_test(test_case):
+def __run_test(test_case, diagnostics=False, auth=False):
     kikimr_binary_path = yatest_common.binary_path("contrib/ydb/apps/ydbd/ydbd")
 
     configurator = KikimrConfigGenerator(
@@ -855,6 +857,8 @@ def __run_test(test_case):
 
     storage = TStorageServiceConfig()
     storage.DisableLocalService = False
+    storage.YdbViewerServiceEnabled = diagnostics
+    storage.EnableLoadActor = diagnostics
     storage.SchemeShardDir = "/Root/nbs"
     if test_case.use_nrd:
         storage.AllocationUnitNonReplicatedSSD = 1
@@ -868,9 +872,20 @@ def __run_test(test_case):
     storage.EnableToChangeStatesFromDiskRegistryMonpage = True
     storage.EnableToChangeErrorStatesFromDiskRegistryMonpage = True
 
+    domains = copy.deepcopy(configurator.domains_txt)
+    if auth:
+        security = domains.SecurityConfig
+        security.EnforceUserTokenRequirement = True
+        security.EnforceUserTokenCheckRequirement = True
+        del security.DefaultUserSIDs[:]
+        del security.MonitoringAllowedSIDs[:]
+        security.MonitoringAllowedSIDs.append("test-monitor@as")
+
     nbs = Nbs(
         kikimr_port,
-        configurator.domains_txt,
+        domains,
+        enable_access_service=auth,
+        ping_path='/viewer/capabilities' if diagnostics else '/blockstore',
         server_app_config=server_app_config,
         storage_config_patches=[storage],
         enable_tls=True,
@@ -923,3 +938,122 @@ def __run_test(test_case):
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
 def test_monitoring(test_case):
     assert __run_test(test_case) is True
+
+
+class Diagnostics:
+    use_nrd = False
+
+    def __init__(self, auth):
+        self.auth = auth
+
+    def run(self, nbs, nbs_http_port):
+        base_url = f'http://localhost:{nbs_http_port}'
+        viewer_url = base_url + '/viewer/json/sysinfo'
+        load_url = base_url + '/actors/load'
+        headers = {'Accept': 'application/json'}
+        for iteration in range(2):
+            if iteration:
+                nbs.restart()
+                wait_for_nbs_server(nbs.nbs_port)
+
+            if self.auth:
+                cases = [(None, None, 401)]
+                if not iteration:
+                    # The mock initially rejects every access-service request.
+                    cases.append(('invalid', None, 403))
+                cases.append(('no-permission', 'test-no-monitor-permission', 403))
+                for token, subject, expected in cases:
+                    # The mock stores one response, not a token-to-user mapping.
+                    if subject is not None:
+                        nbs.access_service.authenticate(subject)
+                        nbs.access_service.authorize(subject)
+                    denied_headers = {'Accept': 'application/json'}
+                    if token is not None:
+                        denied_headers['Authorization'] = f'Bearer {token}-{iteration}'
+                    for url in (viewer_url, load_url):
+                        response = requests.get(
+                            url, headers=denied_headers,
+                            timeout=20, allow_redirects=False)
+                        assert response.status_code == expected, response.text
+                        if subject is not None:
+                            assert 'SID is not allowed' in response.text
+
+                nbs.access_service.authenticate('test-monitor')
+                nbs.access_service.authorize('test-monitor')
+                headers['Authorization'] = f'Bearer test-monitor-{iteration}'
+
+            response = requests.get(
+                viewer_url, headers=headers, timeout=20,
+                allow_redirects=False)
+            assert response.status_code == 200, response.text
+            states = response.json()['SystemStateInfo']
+            assert states
+            assert all(int(state['NodeId']) > 0 for state in states)
+
+            load_headers = {
+                **headers, 'Content-Type': 'application/x-protobuf-text'}
+            response = requests.post(
+                load_url, data={'config': 'not a protobuf'},
+                headers=load_headers, timeout=20)
+            assert response.status_code == 200, response.text
+            assert response.json()['status'] == 'bad protobuf'
+
+            response = requests.post(
+                load_url,
+                data={'config': (
+                    'MemoryLoad { DurationSeconds: 60 '
+                    'BlockSize: 4096 IntervalUs: 10000 }')},
+                headers=load_headers, timeout=20)
+            assert response.status_code == 200, response.text
+            started = response.json()
+            assert started['status'] == 'ok', started
+            assert started['tag'] > 0, started
+            assert started['uuid'], started
+
+            params = {'mode': 'results', 'uuid': started['uuid']}
+            deadline = time.monotonic() + 30
+            while True:
+                response = requests.get(
+                    load_url, params=params,
+                    headers={**headers, 'Accept': 'text/html'}, timeout=20)
+                assert response.status_code == 200, response.text
+                allocated = re.search(
+                    r'Allocated bytes</td>\s*<td[^>]*>(\d+)', response.text)
+                if allocated and int(allocated.group(1)) > 0:
+                    break
+                assert time.monotonic() < deadline, response.text
+                time.sleep(0.1)
+
+            response = requests.post(
+                load_url, data={'mode': 'stop'},
+                headers=load_headers, timeout=20)
+            assert response.status_code == 200, response.text
+            assert response.json()['status'] == 'OK', response.text
+
+            deadline = time.monotonic() + 30
+            while True:
+                response = requests.get(
+                    load_url, params=params, headers=headers, timeout=20)
+                assert response.status_code == 200, response.text
+                results = response.json()
+                if results:
+                    assert len(results) == 1, results
+                    assert results[0]['uuid'] == started['uuid'], results
+                    assert results[0]['tag'] == started['tag'], results
+                    assert len(results[0]['nodes']) == 1, results
+                    break
+                assert time.monotonic() < deadline, started
+                time.sleep(0.1)
+
+            response = requests.get(
+                load_url, params=params,
+                headers={**headers, 'Accept': 'text/html'}, timeout=20)
+            assert response.status_code == 200, response.text
+            assert 'Finish reason# Abort, stop signal received' in response.text
+
+        return True
+
+
+@pytest.mark.parametrize("auth", [False, True], ids=["anonymous", "authorized"])
+def test_diagnostics_after_restart(auth):
+    assert __run_test(Diagnostics(auth), diagnostics=True, auth=auth)
