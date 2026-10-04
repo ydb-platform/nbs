@@ -51,6 +51,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString ServerMetricsComponent = "server";
+const TString LocalServiceMetricsComponent = "local_service";
 
 }   // namespace
 
@@ -254,6 +255,9 @@ void TBootstrapServer::InitLocalService()
         Timer,
         Scheduler,
         Logging,
+        FilestoreCounters->GetSubgroup(
+            "component",
+            LocalServiceMetricsComponent),
         FileIOService,
         ThreadPool,
         nullptr   // no profile log
