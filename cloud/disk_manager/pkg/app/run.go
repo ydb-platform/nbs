@@ -186,6 +186,11 @@ func run(
 		nbsConfig.GetRefreshCertsPeriod(),
 	)
 	if err != nil {
+		logging.Error(
+			ctx,
+			"Failed to parse NBS client RefreshCertsPeriod: %v",
+			err,
+		)
 		return err
 	}
 
@@ -221,6 +226,11 @@ func run(
 		nfsConfig.GetRefreshCertsPeriod(),
 	)
 	if err != nil {
+		logging.Error(
+			ctx,
+			"Failed to parse NFS client RefreshCertsPeriod: %v",
+			err,
+		)
 		return err
 	}
 

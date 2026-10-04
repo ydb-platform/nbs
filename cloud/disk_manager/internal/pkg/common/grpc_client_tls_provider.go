@@ -55,16 +55,6 @@ func NewGrpcClientTlsProvider(
 		)
 	}
 
-	provider := &grpcClientTlsProvider{
-		rootCertsFile: config.RootCertsFile,
-		fingerprintGauge: registry.WithTags(
-			map[string]string{
-				"subsystem": "certificates",
-				"path":      config.RootCertsFile,
-			},
-		).Gauge("fingerprint"),
-	}
-
 	rootCerts, err := os.ReadFile(config.RootCertsFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read root cert file: %w", err)
@@ -75,8 +65,17 @@ func NewGrpcClientTlsProvider(
 		return nil, err
 	}
 
-	provider.rootCerts = string(rootCerts)
-	provider.tlsConfig = tlsConfig
+	provider := &grpcClientTlsProvider{
+		rootCertsFile: config.RootCertsFile,
+		fingerprintGauge: registry.WithTags(
+			map[string]string{
+				"subsystem": "certificates",
+				"path":      config.RootCertsFile,
+			},
+		).Gauge("fingerprint"),
+		rootCerts: string(rootCerts),
+		tlsConfig: tlsConfig,
+	}
 	provider.fingerprintGauge.Set(float64(rootCertsFingerprint(rootCerts)))
 
 	if config.RefreshPeriod > 0 {
@@ -98,8 +97,6 @@ func (p *grpcClientTlsProvider) refreshLoop(
 	period time.Duration,
 ) {
 
-	// Files are checked once per period and new content must be read
-	// unchanged twice in a row, so a change takes effect within two periods.
 	ticker := time.NewTicker(period)
 	defer ticker.Stop()
 
@@ -113,9 +110,8 @@ func (p *grpcClientTlsProvider) refreshLoop(
 	}
 }
 
-// Periodic checks apply new content after two of them read it unchanged (see
-// stableRead), i.e. within two refresh periods. Content that fails to load or
-// parse is logged and the previous one is kept.
+// New content is applied once stableRead confirms it. Content that fails to
+// load or parse is logged and the previous one is kept.
 func (p *grpcClientTlsProvider) refresh(ctx context.Context) {
 	rootCerts, err := os.ReadFile(p.rootCertsFile)
 	if err != nil {

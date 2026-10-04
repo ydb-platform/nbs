@@ -16,8 +16,9 @@ const (
 
 // Guards against picking up a file that is still being rewritten: new content
 // is applied only after two consecutive reads return it unchanged. The caller
-// must space the reads apart. A best effort only: a writer that stalls longer
-// than the interval between reads leaves a partial file that gets applied.
+// must space the reads apart: with one read per period a change takes effect
+// within two periods. A best effort only: a writer that stalls longer than the
+// interval between reads leaves a partial file that gets applied.
 type stableRead[T comparable] struct {
 	pending    T
 	hasPending bool
@@ -44,8 +45,4 @@ func (r *stableRead[T]) reset() {
 	var empty T
 	r.pending = empty
 	r.hasPending = false
-}
-
-func (r *stableRead[T]) isPending() bool {
-	return r.hasPending
 }

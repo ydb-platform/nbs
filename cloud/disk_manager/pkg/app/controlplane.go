@@ -109,6 +109,11 @@ func newGrpcServer(
 			config.GetGrpcConfig().GetRefreshCertsPeriod(),
 		)
 		if err != nil {
+			logging.Error(
+				ctx,
+				"Failed to parse GRPC RefreshCertsPeriod: %v",
+				err,
+			)
 			return nil, err
 		}
 

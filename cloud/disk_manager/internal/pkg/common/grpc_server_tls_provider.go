@@ -142,8 +142,6 @@ func (p *GrpcServerTlsProvider) monitorCertificates(
 	defer validityTicker.Stop()
 
 	// Receiving from a nil channel blocks forever, so refresh is disabled.
-	// Files are checked once per period and new content must be read
-	// unchanged twice in a row, so a change takes effect within two periods.
 	var refreshTicks <-chan time.Time
 	if refreshPeriod > 0 {
 		refreshTicker := time.NewTicker(refreshPeriod)
@@ -163,22 +161,21 @@ func (p *GrpcServerTlsProvider) monitorCertificates(
 	}
 }
 
-// Periodic checks apply new content after two of them read it unchanged (see
-// stableRead), i.e. within two refresh periods. Content that fails to load or
-// validate is logged and the previous one is kept.
+// New content is applied once stableRead confirms it. Content that fails to
+// load or validate is logged and the previous one is kept.
 func (p *GrpcServerTlsProvider) refresh(ctx context.Context, now time.Time) {
-	for i, config := range p.configs {
-		p.refreshCertificate(ctx, i, config, now)
+	for i := range p.configs {
+		p.refreshCertificate(ctx, i, now)
 	}
 }
 
 func (p *GrpcServerTlsProvider) refreshCertificate(
 	ctx context.Context,
 	index int,
-	config GrpcServerCertificateConfig,
 	now time.Time,
 ) {
 
+	config := p.configs[index]
 	pem, err := readServerCertificatePEM(config)
 	if err != nil {
 		p.stableReads[index].reset()
@@ -204,6 +201,9 @@ func (p *GrpcServerTlsProvider) refreshCertificate(
 	}
 
 	if err != nil {
+		// The content stays pending and is validated again on every check, so
+		// e.g. a certificate whose NotBefore is slightly ahead of the clock is
+		// applied once it becomes valid.
 		p.warnRefreshFailure(ctx, config, err)
 		return
 	}
