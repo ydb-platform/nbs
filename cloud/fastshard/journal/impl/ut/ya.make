@@ -5,6 +5,7 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 SRCS(
     device_page_store_ut.cpp
     file_device_ut.cpp
+    journal_ut.cpp
     journalled_device_v1_ut.cpp
     journalled_device_v2_ut.cpp
     key_buffer_store_ut.cpp

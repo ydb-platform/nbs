@@ -148,7 +148,8 @@ struct TEndpointManagerContext : TAppContext
 ////////////////////////////////////////////////////////////////////////////////
 
 using TClientRequestsInFlight = NStorage::NGrpc::TRequestsInFlight<
-    NStorage::NGrpc::TRequestHandlerBase>;
+    NStorage::NGrpc::TRequestHandlerBase,
+    TWellKnownEntityTypes::FILESYSTEM>;
 
 using TExecutorContext = NStorage::NGrpc::
     TExecutorContext<grpc::CompletionQueue, TClientRequestsInFlight>;

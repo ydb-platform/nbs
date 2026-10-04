@@ -235,13 +235,11 @@ struct TRequestStats final
     }
 
     void AddIncompleteStats(
-        NCloud::NProto::EStorageMediaKind mediaKind,
-        EBlockStoreRequest requestType,
+        const TMetricRequest& metricRequest,
         TRequestTime requestTime,
         ECalcMaxTime calcMaxTime) override
     {
-        Y_UNUSED(mediaKind);
-        Y_UNUSED(requestType);
+        Y_UNUSED(metricRequest);
         Y_UNUSED(requestTime);
         Y_UNUSED(calcMaxTime);
     }

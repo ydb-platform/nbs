@@ -3,6 +3,8 @@ package driver
 import (
 	"context"
 	"log"
+	"math"
+	"sync"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	nbsapi "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos"
@@ -33,17 +35,24 @@ var nbsServerControllerServiceCapabilities = []*csi.ControllerServiceCapability{
 type nbsServerControllerService struct {
 	csi.ControllerServer
 
-	nbsClient nbsclient.ClientIface
-	nfsClient nfsclient.ClientIface
+	nbsClient     nbsclient.ClientIface
+	nfsClient     nfsclient.ClientIface
+	vmMode        bool
+	offlineResize bool
+	volumeOps     sync.Map
 }
 
 func newNBSServerControllerService(
 	nbsClient nbsclient.ClientIface,
-	nfsClient nfsclient.ClientIface) csi.ControllerServer {
+	nfsClient nfsclient.ClientIface,
+	vmMode bool,
+	offlineResize bool) csi.ControllerServer {
 
 	return &nbsServerControllerService{
-		nbsClient: nbsClient,
-		nfsClient: nfsClient,
+		nbsClient:     nbsClient,
+		nfsClient:     nfsClient,
+		vmMode:        vmMode,
+		offlineResize: offlineResize,
 	}
 }
 
@@ -243,7 +252,102 @@ func (c *nbsServerControllerService) ControllerGetCapabilities(
 	req *csi.ControllerGetCapabilitiesRequest,
 ) (*csi.ControllerGetCapabilitiesResponse, error) {
 
-	return &csi.ControllerGetCapabilitiesResponse{
-		Capabilities: nbsServerControllerServiceCapabilities,
-	}, nil
+	capabilities := append([]*csi.ControllerServiceCapability{}, nbsServerControllerServiceCapabilities...)
+	if !c.vmMode && c.offlineResize {
+		capabilities = append(capabilities, &csi.ControllerServiceCapability{
+			Type: &csi.ControllerServiceCapability_Rpc{
+				Rpc: &csi.ControllerServiceCapability_RPC{
+					Type: csi.ControllerServiceCapability_RPC_EXPAND_VOLUME,
+				},
+			},
+		})
+	}
+	return &csi.ControllerGetCapabilitiesResponse{Capabilities: capabilities}, nil
+}
+
+func (c *nbsServerControllerService) ControllerExpandVolume(
+	ctx context.Context,
+	req *csi.ControllerExpandVolumeRequest,
+) (*csi.ControllerExpandVolumeResponse, error) {
+	log.Printf("csi.ControllerExpandVolume: %+v", req)
+
+	if c.vmMode || !c.offlineResize {
+		return nil, status.Error(codes.Unimplemented, "Controller expansion is only supported in offline pod mode")
+	}
+	if req.GetVolumeId() == "" {
+		return nil, status.Error(codes.InvalidArgument, "VolumeId is missing in ControllerExpandVolumeRequest")
+	}
+	capacityRange := req.GetCapacityRange()
+	if capacityRange == nil || capacityRange.RequiredBytes < 0 || capacityRange.LimitBytes < 0 ||
+		(capacityRange.RequiredBytes == 0 && capacityRange.LimitBytes == 0) ||
+		(capacityRange.LimitBytes != 0 && capacityRange.RequiredBytes > capacityRange.LimitBytes) {
+		return nil, status.Error(codes.InvalidArgument, "Invalid CapacityRange in ControllerExpandVolumeRequest")
+	}
+	if c.nbsClient == nil {
+		return nil, status.Error(codes.Unimplemented, "NBS controller expansion is not configured")
+	}
+
+	if _, opInProgress := c.volumeOps.LoadOrStore(req.VolumeId, nil); opInProgress {
+		return nil, status.Errorf(codes.Aborted, volumeOperationInProgress, req.VolumeId)
+	}
+	defer c.volumeOps.Delete(req.VolumeId)
+
+	statResp, err := c.nbsClient.StatVolume(ctx, &nbsapi.TStatVolumeRequest{
+		DiskId: req.VolumeId, NoPartition: true,
+	})
+	if err != nil {
+		return nil, volumeExpansionError("Stat volume before resize", err)
+	}
+	volume := statResp.GetVolume()
+	blockSize := uint64(volume.GetBlockSize())
+	if blockSize == 0 || volume.GetBlocksCount() > uint64(math.MaxInt64)/blockSize {
+		return nil, status.Error(codes.Internal, "Invalid volume capacity or block size")
+	}
+
+	// Round up using integer arithmetic, including capacities above 2^53.
+	blocksCount := uint64(capacityRange.RequiredBytes) / blockSize
+	if uint64(capacityRange.RequiredBytes)%blockSize != 0 {
+		blocksCount++
+	}
+	if blocksCount < volume.BlocksCount {
+		blocksCount = volume.BlocksCount
+	}
+	if blocksCount > uint64(math.MaxInt64)/blockSize {
+		return nil, status.Error(codes.OutOfRange, "Requested capacity exceeds the supported range")
+	}
+	capacityBytes := int64(blocksCount * blockSize)
+	if capacityRange.LimitBytes != 0 && capacityBytes > capacityRange.LimitBytes {
+		return nil, status.Error(codes.OutOfRange, "Volume capacity exceeds LimitBytes")
+	}
+	response := &csi.ControllerExpandVolumeResponse{
+		CapacityBytes: capacityBytes,
+		// Staging creates an endpoint with the new capacity and expands the filesystem.
+		NodeExpansionRequired: false,
+	}
+	// A retry may arrive after the volume has been staged again. No backend
+	// mutation is needed, so clients must not prevent an idempotent success.
+	if blocksCount == volume.BlocksCount {
+		return response, nil
+	}
+
+	if len(statResp.GetClients()) != 0 {
+		return nil, status.Errorf(codes.FailedPrecondition,
+			"Cannot resize volume %s with clients; unstage the volume first", req.VolumeId)
+	}
+
+	_, err = c.nbsClient.ResizeVolume(ctx, &nbsapi.TResizeVolumeRequest{
+		DiskId: req.VolumeId, BlocksCount: blocksCount, ConfigVersion: volume.ConfigVersion,
+	})
+	if err != nil {
+		return nil, volumeExpansionError("Resize volume", err)
+	}
+	return response, nil
+}
+
+func volumeExpansionError(operation string, err error) error {
+	code := getGrpcErrorCode(err)
+	if nbsclient.IsDiskNotFoundError(err) {
+		code = codes.NotFound
+	}
+	return status.Errorf(code, "%s failed: %v", operation, err)
 }

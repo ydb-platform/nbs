@@ -2,8 +2,9 @@
 
 #include "public.h"
 
+#include <cloud/fastshard/protos/device.pb.h>
+
 #include <cloud/storage/core/libs/common/startable.h>
-#include <cloud/storage/core/protos/device.pb.h>
 
 #include <library/cpp/threading/future/future.h>
 

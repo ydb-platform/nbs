@@ -1001,23 +1001,21 @@ Y_UNIT_TEST_SUITE(TPluginTest)
             UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);
         }
 
-        TIncompleteRequestsCollector collector = [] (
-            TCallContext& callContext,
-            IVolumeInfoPtr volumeInfo,
-            NCloud::NProto::EStorageMediaKind mediaKind,
-            EBlockStoreRequest requestType,
-            TRequestTime time) -> size_t
+        size_t collected = 0;
+        TIncompleteRequestsCollector collector =
+            [&](TCallContext& callContext,
+                const TMetricRequest& metricRequest,
+                TRequestTime time)
         {
             Y_UNUSED(callContext);
-            Y_UNUSED(volumeInfo);
-            Y_UNUSED(requestType);
-            Y_UNUSED(mediaKind);
+            Y_UNUSED(metricRequest);
             Y_UNUSED(time);
-            return 1;
+            ++collected;
         };
 
         auto requestCount = plugin->CollectRequests(collector);
         UNIT_ASSERT_VALUES_EQUAL(3, requestCount);
+        UNIT_ASSERT_VALUES_EQUAL(3, collected);
 
         trigger.SetValue();
 
@@ -1029,6 +1027,7 @@ Y_UNIT_TEST_SUITE(TPluginTest)
         UNIT_ASSERT_EQUAL(readStatus, BP_COMPLETION_READ_FINISHED);
 
         UNIT_ASSERT_VALUES_EQUAL(0, plugin->CollectRequests(collector));
+        UNIT_ASSERT_VALUES_EQUAL(3, collected);
 
         error = plugin->UnmountVolume(&volume);
         UNIT_ASSERT_EQUAL(error, BLOCK_PLUGIN_E_OK);

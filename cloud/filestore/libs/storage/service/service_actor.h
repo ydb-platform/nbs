@@ -71,6 +71,7 @@ private:
     TCounterPtr CompletedRequestCountWithLogData;
     TCounterPtr CompletedRequestCountWithError;
     TCounterPtr CompletedRequestCountWithoutErrorOrLogData;
+    TCounterPtr HardLinkFromShardDirToMainTabletNodeCount;
 
     TCounterPtr HddFileSystemCount;
     TCounterPtr HddTabletCount;

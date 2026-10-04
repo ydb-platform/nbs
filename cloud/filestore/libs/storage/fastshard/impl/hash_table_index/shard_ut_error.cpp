@@ -298,6 +298,8 @@ TEST(HashTableIndexShardErrorTest, CreatesHandles)
 
 TEST(HashTableIndexShardErrorTest, NumbersRecordsAboveTheStorageGroupLsn)
 {
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
     TStorageFixture fx;
     fx.Factory->Group->LastLsn = 41;
 
@@ -329,6 +331,8 @@ TEST(HashTableIndexShardErrorTest, NumbersRecordsAboveTheStorageGroupLsn)
 
 TEST(HashTableIndexShardErrorTest, LinksPastTheLsnOfAnOperationThatWroteNothing)
 {
+    silk::Logger::setLevel(silk::LogLevel::DEBUG);
+
     TStorageFixture fx;
 
     auto shard = CreateHashTableIndexFileSystemShard(
@@ -365,10 +369,12 @@ TEST(HashTableIndexShardErrorTest, LinksPastTheLsnOfAnOperationThatWroteNothing)
     ASSERT_EQ(S_OK, error.GetCode()) << FormatError(error);
 
     const auto& links = fx.Factory->Group->WriteLinks;
-    ASSERT_EQ(2U, links.size());
+    ASSERT_EQ(3U, links.size());
     // The chain is unbroken, and the lsn nobody wrote is not in it.
     EXPECT_EQ(links[0].Lsn, links[1].PrevLsn);
-    EXPECT_GT(links[1].Lsn, links[0].Lsn + 1);
+    EXPECT_EQ(links[1].Lsn, links[2].PrevLsn);
+    EXPECT_EQ(links[1].Lsn, links[0].Lsn + 1);
+    EXPECT_GT(links[2].Lsn, links[1].Lsn + 1);
 }
 
 TEST(HashTableIndexShardErrorTest, EntersErrorStateUponBrokenFormatPage)
@@ -432,7 +438,7 @@ TEST(HashTableIndexShardErrorTest, EntersErrorStateUponBrokenFormatPage)
         auto e = fx.Factory->Group->WriteLogRecord(
             {} /* headers */,
             std::move(pageGroups),
-            0 /* lsn */);
+            TLsnLink{});
         ASSERT_EQ(S_OK, e.GetCode()) << e.GetMessage();
 
         //

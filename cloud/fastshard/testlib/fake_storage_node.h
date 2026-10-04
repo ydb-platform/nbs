@@ -1,8 +1,7 @@
 #pragma once
 
+#include <cloud/fastshard/protos/device.pb.h>
 #include <cloud/fastshard/sn/iface/storage_node.h>
-
-#include <cloud/storage/core/protos/device.pb.h>
 
 #include <util/generic/deque.h>
 #include <util/generic/vector.h>

@@ -222,13 +222,13 @@ func run(
 	var s3 *persistence.S3Client
 	var s3Bucket string
 
-	var followerS3 *backup.FollowerS3
+	var backupS3 *backup.S3
 	backupConfig := config.GetSnapshotStorageBackupConfig()
 	if backupConfig != nil {
 		var s3Client *persistence.S3Client
 		s3Client, err = persistence.NewS3ClientFromConfig(
 			backupConfig.GetS3Config(),
-			mon.NewRegistry("follower_s3_client"),
+			mon.NewRegistry("backup_s3_client"),
 			nil, // availabilityMonitoring
 			creds,
 		)
@@ -236,7 +236,7 @@ func run(
 			return err
 		}
 
-		followerS3 = backup.NewFollowerS3(
+		backupS3 = backup.NewS3(
 			s3Client,
 			backupConfig.GetS3Bucket(),
 			backupConfig.GetS3KeyPrefix(),
@@ -361,7 +361,7 @@ func run(
 			s3,
 			migrationDstDB,
 			migrationDstS3,
-			followerS3,
+			backupS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize dataplane: %v", err)
@@ -433,7 +433,7 @@ func run(
 			nbsFactory,
 			nfsClientMetricsRegistry,
 			nfsTlsProvider,
-			followerS3,
+			backupS3,
 		)
 		if err != nil {
 			logging.Error(ctx, "Failed to initialize GRPC services: %v", err)

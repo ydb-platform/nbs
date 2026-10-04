@@ -3589,11 +3589,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldAutomaticallyRunLoadOptimizingCompaction)
+    void CheckLoadOptimizingCompaction(ui32 maxBlobsPerUnit)
     {
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
         config.SetHDDMaxBlobsPerRange(999);
+        config.SetAllocationUnitHDD(1);
+        config.SetHDDMaxBlobsPerUnit(maxBlobsPerUnit);
 
         auto runtime = PrepareTestActorRuntime(config);
 
@@ -3662,6 +3664,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
         UNIT_ASSERT_EQUAL(0, compactionByBlobCount);
         UNIT_ASSERT_EQUAL(1, compactionByReadStats);
+    }
+
+    Y_UNIT_TEST(ShouldAutomaticallyRunLoadOptimizingCompaction)
+    {
+        CheckLoadOptimizingCompaction(0);
+    }
+
+    Y_UNIT_TEST(ShouldKeepReadOptimizationCompactionWithBlobBudget)
+    {
+        CheckLoadOptimizingCompaction(1000000);
     }
 
     Y_UNIT_TEST(ShouldPrioritizeIgnoringZeroedCompactionOverGarbageCompaction)
@@ -12044,6 +12056,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetV1GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(999999999);
         config.SetCompactionRangeGarbageThreshold(999999999);
+        config.SetAllocationUnitSSD(4);
+        config.SetAllocationUnitHDD(4);
         config.SetSSDMaxBlobsPerUnit(7);
         config.SetHDDMaxBlobsPerUnit(7);
 
@@ -12059,6 +12073,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         runtime->SetObserverFunc([&] (TAutoPtr<IEventHandle>& event) {
                 switch (event->GetTypeRewrite()) {
                     case TEvPartitionPrivate::EvCompactionRequest: {
+                        auto* msg = event->Get<
+                            TEvPartitionPrivate::TEvCompactionRequest>();
+                        UNIT_ASSERT(
+                            msg->Mode ==
+                            TEvPartitionPrivate::BlobCountCompaction);
                         compactionRequestObserved = true;
                         break;
                     }
@@ -12074,10 +12093,10 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             }
         );
 
-        for (size_t i = 0; i < 6; ++i) {
+        for (size_t i = 0; i < 3; ++i) {
+            partition.WriteBlocks(TBlockRange32::WithLength(i * 1024, 1024), i);
             partition.WriteBlocks(TBlockRange32::WithLength(i * 1024, 1024), i);
         }
-
 
         partition.SendToPipe(
             std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
@@ -12092,12 +12111,11 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         // wait for background operations completion
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
 
-        // blob count is less than 4 * 2 => no compaction
+        // Six blobs are below the disk budget of seven.
         UNIT_ASSERT(!compactionRequestObserved);
 
-        for (size_t i = 6; i < 10; ++i) {
-            partition.WriteBlocks(TBlockRange32::WithLength(i * 1024, 1024), i);
-        }
+        partition.WriteBlocks(TBlockRange32::WithLength(3 * 1024, 1024), 3);
+        partition.WriteBlocks(TBlockRange32::WithLength(3 * 1024, 1024), 3);
 
         // wait for background operations completion
         runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
@@ -12115,6 +12133,103 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         }
 
         UNIT_ASSERT(0 < compactionByBlobCount);
+    }
+
+    Y_UNIT_TEST(ShouldNotCompactSingleBlobRangesOverBlobBudget)
+    {
+        auto config = DefaultConfig();
+        config.SetHDDCompactionType(NProto::CT_LOAD);
+        config.SetHDDMaxBlobsPerUnit(7);
+        config.SetCompactionGarbageThreshold(999999999);
+        config.SetCompactionRangeGarbageThreshold(999999999);
+        auto runtime = PrepareTestActorRuntime(config, 1024 * 1024);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui32 compactionRequests = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvCompactionRequest)
+                {
+                    ++compactionRequests;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        for (ui32 i = 0; i < 10; ++i) {
+            partition.WriteBlocks(TBlockRange32::WithLength(i * 1024, 1024), i);
+        }
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        UNIT_ASSERT_VALUES_EQUAL(0, compactionRequests);
+        UNIT_ASSERT_VALUES_EQUAL(
+            10,
+            partition.StatPartition()->Record.GetStats().GetMergedBlobsCount());
+    }
+
+    void CheckCompactionOfRangesWithMostBlobs(bool batchCompaction)
+    {
+        auto config = DefaultConfig();
+        config.SetHDDCompactionType(NProto::CT_LOAD);
+        config.SetAllocationUnitHDD(16);
+        config.SetHDDMaxBlobsPerUnit(11);
+        config.SetHDDMaxBlobsPerRange(100);
+        config.SetBatchCompactionEnabled(batchCompaction);
+        config.SetCompactionRangeCountPerRun(2);
+        config.SetCompactionCountPerRunIncreasingThreshold(99999);
+        config.SetCompactionCountPerRunDecreasingThreshold(0);
+        config.SetCompactionGarbageThreshold(999999999);
+        config.SetCompactionRangeGarbageThreshold(999999999);
+        auto runtime = PrepareTestActorRuntime(config, 4 * 1024 * 1024);
+        TPartitionClient partition(*runtime);
+        partition.WaitReady();
+
+        ui32 compactionRequests = 0;
+        runtime->SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvCompactionRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvPartitionPrivate::TEvCompactionRequest>();
+                    UNIT_ASSERT(
+                        msg->Mode == TEvPartitionPrivate::BlobCountCompaction);
+                    ++compactionRequests;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Leave empty ranges in the group: their load score is higher than
+        // that of written ranges without reads.
+        for (ui32 i = 0; i < 6; ++i) {
+            partition.WriteBlocks(TBlockRange32::WithLength(0, 1024), i);
+        }
+        for (ui32 i = 1; i < 4; ++i) {
+            for (ui32 j = 0; j < 2; ++j) {
+                partition.WriteBlocks(
+                    TBlockRange32::WithLength(i * 1024 * 1024, 1024),
+                    j);
+            }
+        }
+        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+        partition.Cleanup();
+        UNIT_ASSERT_VALUES_EQUAL(1, compactionRequests);
+        // The first range removes five blobs; a second range removes one more.
+        UNIT_ASSERT_VALUES_EQUAL(
+            batchCompaction ? 6 : 7,
+            partition.StatPartition()->Record.GetStats().GetMergedBlobsCount());
+    }
+
+    Y_UNIT_TEST(ShouldCompactRangeWithMostBlobsWhenOverBlobBudget)
+    {
+        CheckCompactionOfRangesWithMostBlobs(false);
+    }
+
+    Y_UNIT_TEST(ShouldCompactBatchWithMostBlobsWhenOverBlobBudget)
+    {
+        CheckCompactionOfRangesWithMostBlobs(true);
     }
 
     void CheckIncrementAndDecrementCompactionPerRun(
@@ -12142,6 +12257,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             decreasingPercentageThreshold);
         config.SetHDDMaxBlobsPerUnit(maxBlobsPerUnit);
         config.SetSSDMaxBlobsPerUnit(maxBlobsPerUnit);
+        config.SetAllocationUnitSSD(16);
+        config.SetAllocationUnitHDD(16);
         config.SetMaxCompactionRangeCountPerRun(maxCompactionRangeCountPerRun);
         config.SetCompactionCountPerRunChangingPeriod(1);
         config.SetSSDMaxBlobsPerRange(maxBlobsPerRange);
@@ -13241,6 +13358,8 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetV1GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(999999999);
         config.SetCompactionRangeGarbageThreshold(999999999);
+        config.SetAllocationUnitSSD(4);
+        config.SetAllocationUnitHDD(4);
         config.SetSSDMaxBlobsPerUnit(7);
         config.SetHDDMaxBlobsPerUnit(7);
 

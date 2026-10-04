@@ -384,7 +384,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateRankingTest)
         Executor.WriteTx(
             [&](TDiskRegistryDatabase db)
             {
-                auto [d, error] = State->StartDeviceMigration(
+                auto [d, error] = StartDeviceMigration(
+                    *State,
                     Now(),
                     db,
                     "vol2",
@@ -424,7 +425,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateRankingTest)
                 const auto migrations = State->BuildMigrationList();
                 UNIT_ASSERT_VALUES_EQUAL(2, migrations.size());
                 for (const auto& m: migrations) {
-                    auto [d, error] = State->StartDeviceMigration(
+                    auto [d, error] = StartDeviceMigration(
+                        *State,
                         Now(),
                         db,
                         m.DiskId,

@@ -6,6 +6,7 @@ SRCS(
 
 PEERDIR(
     cloud/fastshard/journal/iface
+    cloud/fastshard/protos
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/coroutine

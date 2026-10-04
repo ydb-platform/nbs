@@ -41,6 +41,13 @@ constexpr ui64 DefaultDeviceSize = 10_GB;
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TResultOrError<NProto::TDeviceConfig> StartDeviceMigration(
+    TDiskRegistryState& state,
+    TInstant now,
+    TDiskRegistryDatabase& db,
+    const TString& diskId,
+    const TString& sourceId);
+
 NProto::TError FinishDeviceMigration(
     TDiskRegistryState& state,
     TDiskRegistryDatabase& db,
@@ -100,7 +107,7 @@ TDeviceConfig Device(
     ui64 totalSize = DefaultDeviceSize,
     TString transportId = {},
     NProto::EDeviceState state = NProto::DEVICE_STATE_ONLINE,
-    NProto::TRdmaEndpoint rdmaEndpoint = {});
+    NProto::TEndpoint rdmaEndpoint = {});
 
 TDeviceConfig Device(
     TString name,

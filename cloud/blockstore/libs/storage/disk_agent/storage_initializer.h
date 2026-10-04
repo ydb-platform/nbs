@@ -4,6 +4,7 @@
 
 #include "storage_with_stats.h"
 
+#include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/nvme/public.h>
 #include <cloud/blockstore/libs/service/public.h>
@@ -12,6 +13,7 @@
 #include <cloud/blockstore/libs/storage/disk_agent/model/public.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
 
+#include <util/generic/hash.h>
 #include <util/generic/vector.h>
 
 #include <library/cpp/threading/future/future.h>
@@ -31,7 +33,7 @@ struct TInitializeStorageResult
     TVector<TString> ConfigMismatchErrors;
     TVector<TString> DevicesWithSuspendedIO;
     TVector<TString> LostDevicesIds;
-    TVector<TString> JournalledDeviceIds;
+    THashMap<TString, NProto::TJournalConfig> JournalledDevices;
     TDeviceGuard Guard;
 };
 

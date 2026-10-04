@@ -1,14 +1,15 @@
 #include "client.h"
 
 #include <cloud/fastshard/ipc/ipc.h>
+#include <cloud/fastshard/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/protos/device.pb.h>
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/mutex.h>
 #include <silk/util/logger.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/scope.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -163,9 +164,14 @@ public:
         // connection attempts.
         //
 
+        const TInstant started = TInstant::Now();
         int fd = OpenTcp(Host, Port);
-        if (fd >= 0 && Metrics) {
-            Metrics->ConnectionsCreated.fetch_add(1);
+        if (Metrics) {
+            Metrics->ConnectTimeUs.fetch_add(
+                (TInstant::Now() - started).MicroSeconds());
+            if (fd >= 0) {
+                Metrics->ConnectionsCreated.fetch_add(1);
+            }
         }
         return {.Fd = fd, .Used = false};
     }

@@ -8,6 +8,8 @@
 #include <cloud/blockstore/libs/nbd/public.h>
 #include <cloud/blockstore/libs/service/public.h>
 
+#include <cloud/storage/core/libs/common/public.h>
+
 #include <cloud/storage/core/libs/grpc/public.h>
 
 #include <library/cpp/logger/log.h>
@@ -40,6 +42,8 @@ private:
     NClient::IClientPtr Client;
     IBlockStorePtr ClientEndpoint;
     NClient::ISessionPtr Session;
+
+    ITaskQueuePtr LongRunningTaskExecutor;
 
     IServerPtr NbdServer;
     IDevicePtr NbdDevice;

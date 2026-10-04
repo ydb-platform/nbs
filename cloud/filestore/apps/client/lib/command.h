@@ -127,6 +127,9 @@ protected:
         return extract ? UnsafeExtractValue(future) : future.GetValue();
     }
 
+    // like Sleep, but Stop() (e.g. on Ctrl-C) wakes us up
+    void InterruptibleSleep(TDuration timeout);
+
 private:
     bool WaitForI(const NThreading::TFuture<void>& future);
 

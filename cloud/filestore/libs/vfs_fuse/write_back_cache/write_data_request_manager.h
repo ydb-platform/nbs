@@ -33,13 +33,6 @@ private:
     THashSet<ui64> NodesWithBackpressure;
 
 public:
-    struct TAddRequestResult
-    {
-        std::unique_ptr<TPendingWriteDataRequest> PendingRequest = nullptr;
-        std::unique_ptr<TCachedWriteDataRequest> CachedRequest = nullptr;
-        bool Failed = false;
-    };
-
     struct TProcessPendingRequestResult
     {
         std::unique_ptr<TCachedWriteDataRequest> CachedRequest = nullptr;
@@ -75,19 +68,12 @@ public:
     ui64 GetMaxUnflushedSequenceId() const;
 
     /**
-     * Adds a WriteData request to the persistent storage.
-     *
-     * Returns result with non-empty TAddRequestResult::CachedRequest if the
-     * request has been successfully stored in the storage.
-     *
-     * Returns result with non-empty TAddRequestResult::PendingRequest if the
-     * the storage is full or backpressure is in effect, and the request has
-     * been added to the pending queue.
-     *
-     * Returns result with TAddRequestResult::Failed == true if the storage is
-     * in failed state.
+     * Creates a pending WriteData request and adds it to the pending queue.
+     * The returned object must outlive its presence in the queue and must
+     * leave via TryProcessPendingRequest/TryPopFrontPendingRequest/Remove;
+     * destroying it while queued unlinks silently but leaks metrics.
      */
-    [[nodiscard]] TAddRequestResult AddRequest(
+    [[nodiscard]] std::unique_ptr<TPendingWriteDataRequest> AddRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     /**
@@ -98,11 +84,12 @@ public:
      * if the front request has been successfully stored in the storage.
      *
      * Returns result with empty TProcessPendingRequestResult::CachedRequest and
-     * TAddRequestResult::Failed == false if the storage is full, backpressure
-     * is in effect or the pending queue is empty.
+     * TProcessPendingRequestResult::Failed == false if the storage is full,
+     * backpressure is in effect or the pending queue is empty.
      *
      * Returns result with empty TProcessPendingRequestResult::CachedRequest and
-     * TAddRequestResult::Failed == true if the storage is in failed state.
+     * TProcessPendingRequestResult::Failed == true if the storage is in failed
+     * state.
      */
     [[nodiscard]] TProcessPendingRequestResult TryProcessPendingRequest();
 
@@ -152,9 +139,7 @@ public:
 
 private:
     TProcessPendingRequestResult TryStoreRequestInPersistentStorage(
-        ui64 sequenceId,
-        TInstant time,
-        const NProto::TWriteDataRequest& request);
+        const TPendingWriteDataRequest& pendingRequest);
 
     // Access methods that triggers stats update
     void PendingRequestsPushBack(TPendingWriteDataRequest* request);

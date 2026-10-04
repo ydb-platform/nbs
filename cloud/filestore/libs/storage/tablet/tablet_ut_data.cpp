@@ -789,6 +789,132 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldUpdateTimestampsUponBlobWrite)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetWriteBlobThreshold(2 * block);
+
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        const auto size = 4 * block;
+        const ui64 oldTime = 1;
+        const auto resetTimes = TSetNodeAttrArgs(id)
+            .SetMTime(oldTime)
+            .SetCTime(oldTime);
+
+        // in-place overwrite: only mtime changes
+        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(size));
+        tablet.SetNodeAttr(resetTimes);
+        tablet.WriteData(handle, 0, size, 'a');
+
+        auto response = tablet.GetStorageStats();
+        const auto& stats = response->Record.GetStats();
+        UNIT_ASSERT_VALUES_EQUAL(1, stats.GetMixedBlobsCount());
+
+        auto attrs = GetNodeAttrs(tablet, id);
+        UNIT_ASSERT_VALUES_EQUAL(size, attrs.GetSize());
+        UNIT_ASSERT_GT(attrs.GetMTime(), oldTime);
+        UNIT_ASSERT_VALUES_EQUAL(oldTime, attrs.GetCTime());
+
+        // the file grows: both mtime and ctime change
+        tablet.SetNodeAttr(resetTimes);
+        tablet.WriteData(handle, size, size, 'b');
+
+        attrs = GetNodeAttrs(tablet, id);
+        UNIT_ASSERT_VALUES_EQUAL(2 * size, attrs.GetSize());
+        UNIT_ASSERT_GT(attrs.GetMTime(), oldTime);
+        UNIT_ASSERT_GT(attrs.GetCTime(), oldTime);
+    }
+
+    TABLET_TEST(ShouldUpdateTimestampsUponAddData)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        TTestEnv env(testEnvConfig);
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        ui64 handle = CreateHandle(tablet, id);
+
+        auto addData = [&](ui64 offset)
+        {
+            auto gbi =
+                tablet.GenerateBlobIds(id, handle, offset, block)->Record;
+            UNIT_ASSERT_VALUES_EQUAL(1, gbi.BlobsSize());
+            const auto blobId =
+                LogoBlobIDFromLogoBlobID(gbi.GetBlobs(0).GetBlobId());
+
+            auto evPut = std::make_unique<TEvBlobStorage::TEvPut>(
+                blobId,
+                TString(block, 'a'),
+                TInstant::Max(),
+                NKikimrBlobStorage::UserData);
+            const auto proxy =
+                MakeBlobStorageProxyID(gbi.GetBlobs(0).GetBSGroupId());
+            env.GetRuntime().Send(CreateEventForBSProxy(
+                env.GetRuntime().AllocateEdgeActor(proxy.NodeId()),
+                proxy,
+                evPut.release(),
+                blobId.Cookie()));
+
+            tablet.AddData(
+                id,
+                handle,
+                offset,
+                block,
+                TVector<NKikimr::TLogoBlobID>({blobId}),
+                gbi.GetCommitId());
+        };
+
+        const ui64 oldTime = 1;
+        const auto resetTimes = TSetNodeAttrArgs(id)
+            .SetMTime(oldTime)
+            .SetCTime(oldTime);
+
+        // in-place overwrite: only mtime changes
+        tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetSize(block));
+        tablet.SetNodeAttr(resetTimes);
+        addData(0);
+
+        auto attrs = GetNodeAttrs(tablet, id);
+        UNIT_ASSERT_VALUES_EQUAL(block, attrs.GetSize());
+        UNIT_ASSERT_GT(attrs.GetMTime(), oldTime);
+        UNIT_ASSERT_VALUES_EQUAL(oldTime, attrs.GetCTime());
+
+        // the file grows: both mtime and ctime change
+        tablet.SetNodeAttr(resetTimes);
+        addData(block);
+
+        attrs = GetNodeAttrs(tablet, id);
+        UNIT_ASSERT_VALUES_EQUAL(2 * block, attrs.GetSize());
+        UNIT_ASSERT_GT(attrs.GetMTime(), oldTime);
+        UNIT_ASSERT_GT(attrs.GetCTime(), oldTime);
+    }
+
     TABLET_TEST(ShouldAcceptLargeUnalignedWrites)
     {
         const auto rangeSize = 4 * tabletConfig.BlockSize;
@@ -2683,6 +2809,69 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             {{{"sensor", "ChannelsToMoveCount"}, {"filesystem", "test"}}, 1},
         });
         // clang-format on
+
+        tablet.DestroyHandle(handle);
+    }
+
+    TABLET_TEST(ShouldNotWriteBeyondMaxUsedDataChannelCount)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetFlushThreshold(1_GB);
+        storageConfig.SetFlushBytesThreshold(1_GB);
+        storageConfig.SetWriteBlobThreshold(4 * block);
+        storageConfig.SetMaxUsedDataChannelCount(3);
+
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
+        auto registry = env.GetRegistry();
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        tabletConfig.ChannelCount = 10;
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        TVector<ui32> channels;
+
+        env.GetRuntime().SetEventFilter([&] (auto& runtime, auto& event) {
+            Y_UNUSED(runtime);
+
+            switch (event->GetTypeRewrite()) {
+                using namespace NKikimr;
+
+                case TEvBlobStorage::EvPut: {
+                    auto* msg = event->template Get<TEvBlobStorage::TEvPut>();
+                    if (msg->Id.Channel() > 2) {
+                        channels.push_back(msg->Id.Channel());
+                    }
+
+                    break;
+                }
+            }
+
+            return false;
+        });
+
+        for (ui32 i = 0; i < 10; ++i) {
+            tablet.WriteData(handle, 0, 4 * block, 'a');
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(10, channels.size());
+
+        for (const ui32 c: channels) {
+            UNIT_ASSERT_LT(c, 6);
+        }
 
         tablet.DestroyHandle(handle);
     }

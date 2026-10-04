@@ -1,5 +1,6 @@
 #include "tablet_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/storage/fastshard/iface/fs.h>
 
 namespace NCloud::NFileStore::NStorage {
@@ -16,12 +17,12 @@ void TIndexTabletActor::CreateFastShard(const TActorContext& ctx)
         GetFileSystem().GetShardNo(),
         Executor()->Generation());
 
-    auto* ass = ctx.ActorSystem();
+    auto* actorSystem = ctx.ActorSystem();
     const auto selfId = SelfId();
     FastShard->Init().Subscribe(
-        [ass, selfId](const auto& future)
+        [actorSystem, selfId](const auto& future)
         {
-            ass->Send(
+            actorSystem->Send(
                 selfId,
                 new TEvIndexTabletPrivate::TEvFastShardInitCompleted(
                     future.GetValue()));
@@ -34,10 +35,32 @@ void TIndexTabletActor::HandleFastShardInitCompleted(
 {
     const auto& error = ev->Get()->Error;
     if (HasError(error)) {
+        //
+        // A restart would retry the same init against the same storage and
+        // most likely fail the same way, so the tablet stays up in the
+        // broken state instead: it rejects requests with an error and can
+        // be inspected. The storage group already retries retriable errors
+        // inside Init.
+        //
+
+        ReportFastShardInitFailed(TStringBuilder()
+            << LogTag << " FastShard init failed: " << FormatError(error));
+
         LOG_ERROR_S(ctx, TFileStoreComponents::TABLET,
-            LogTag << " FastShard init failed, restarting: "
-            << FormatError(error));
-        Suicide(ctx);
+            LogTag << " Switching tablet to BROKEN state due to the failed"
+            << " FastShard init: " << FormatError(error));
+
+        BecomeAux(ctx, STATE_ADAPTER_BROKEN);
+
+        // allow pipes to connect
+        SignalTabletActive(ctx);
+
+        // resend pending WaitReady requests
+        while (WaitReadyRequests) {
+            ctx.Send(WaitReadyRequests.front().release());
+            WaitReadyRequests.pop_front();
+        }
+
         return;
     }
 

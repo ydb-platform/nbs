@@ -26,10 +26,17 @@ var pluginCapabilities = []*csi.PluginCapability{
 
 type identity struct {
 	driverName, driverVersion string
+	vmMode                    bool
+	offlineResize             bool
 }
 
-func newIdentityService(driverName, driverVersion string) csi.IdentityServer {
-	return &identity{driverName: driverName, driverVersion: driverVersion}
+func newIdentityService(driverName, driverVersion string, vmMode, offlineResize bool) csi.IdentityServer {
+	return &identity{
+		driverName:    driverName,
+		driverVersion: driverVersion,
+		vmMode:        vmMode,
+		offlineResize: offlineResize,
+	}
 }
 
 func (i *identity) GetPluginInfo(context.Context, *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
@@ -40,7 +47,19 @@ func (i *identity) GetPluginInfo(context.Context, *csi.GetPluginInfoRequest) (*c
 }
 
 func (i *identity) GetPluginCapabilities(context.Context, *csi.GetPluginCapabilitiesRequest) (*csi.GetPluginCapabilitiesResponse, error) {
-	return &csi.GetPluginCapabilitiesResponse{Capabilities: pluginCapabilities}, nil
+	capabilities := append([]*csi.PluginCapability{}, pluginCapabilities...)
+	if !i.vmMode {
+		expansionType := csi.PluginCapability_VolumeExpansion_ONLINE
+		if i.offlineResize {
+			expansionType = csi.PluginCapability_VolumeExpansion_OFFLINE
+		}
+		capabilities = append(capabilities, &csi.PluginCapability{
+			Type: &csi.PluginCapability_VolumeExpansion_{
+				VolumeExpansion: &csi.PluginCapability_VolumeExpansion{Type: expansionType},
+			},
+		})
+	}
+	return &csi.GetPluginCapabilitiesResponse{Capabilities: capabilities}, nil
 }
 
 func (*identity) Probe(context.Context, *csi.ProbeRequest) (*csi.ProbeResponse, error) {

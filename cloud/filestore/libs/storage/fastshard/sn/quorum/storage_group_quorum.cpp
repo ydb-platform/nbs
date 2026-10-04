@@ -28,7 +28,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui64 ReservedPages = TStorageGroupHeader::StorageGroupReservedPages;
-constexpr ui32 QuorumMirrorGroupType = NProtoPrivate::TStorageGroup::E_SG_QUORUM_MIRROR;
+constexpr ui32 QuorumMirrorGroupType = NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR;
 
 // TODO(#5895): unify with blockstore
 bool IsAllZeroes(const char* src, size_t size)
@@ -155,6 +155,31 @@ private:
     mutable silk::FiberMutex Mutex;
     NProto::TError Error;
     std::atomic<bool> BrokenFlag{false};
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TInflight
+{
+public:
+    void Increment()
+    {
+        Started.increment();
+    }
+
+    void Decrement()
+    {
+        Finished.increment();
+    }
+
+    void Wait()
+    {
+        Y_UNUSED(Finished.wait(Started.get()));
+    }
+
+private:
+    silk::FiberSequencer Started;
+    silk::FiberSequencer Finished;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -300,6 +325,9 @@ struct TGroupState
     // Highest lsn acked by every device.
     silk::FiberSequencer LowWatermarkLsn;
 
+    TInflight ReadsInflight;
+    TInflight WritesInflight;
+
     std::atomic<bool> Initialized = false;
     std::atomic<bool> Stopped = false;
 
@@ -352,13 +380,11 @@ int WriteDispatchFiberMain(TWriteDispatchParams* params) noexcept
         // Break the group first, so the writer this wakes finds it broken.
         state.Health.Fail(error, proxy.DeviceUUID);
         params->Op->Acks.stop();
-        return 0;
-    }
-
-    if (params->Op->Acks.increment() == state.Proxies.size()) {
+    } else if (params->Op->Acks.increment() == state.Proxies.size()) {
         state.LowWatermarkLsn.advance(params->Op->Lsn);
     }
 
+    state.WritesInflight.Decrement();
     return 0;
 }
 
@@ -465,8 +491,10 @@ int ValidateDeviceConfigAndInitIfNeeded(TValidateDeviceParams* params) noexcept
             TStringBuilder()
                 << proxy.DeviceUUID << " header mismatch: " << header
                 << ", expected page size " << state.Config.PageSize);
+        return 0;
     }
 
+    proxy.SeedLsn(response.GetLastAckedLogSequenceNumber());
     return 0;
 }
 
@@ -649,94 +677,31 @@ NProto::TError ReadRecordsAbove(
     return {};
 }
 
-struct TQueryPositionParams
-{
-    TDeviceProxyPtr Proxy;
-    ui64* Lsn = nullptr;
-    NProto::TError* Error = nullptr;
-};
-
-NProto::TError QueryCurrentJournalPosition(
-    TGroupState& state,
-    TVector<ui64>& maxLsnPerDevice)
-{
-    const ui32 count = state.Proxies.size();
-
-    TVector<silk::FiberFuture> futures(count);
-    TVector<NProto::TError> errors(count);
-    for (ui32 i = 0; i < count; ++i) {
-        const int r = silk::FiberScheduler::run<TQueryPositionParams>(
-            [] (TQueryPositionParams* params) noexcept
-            {
-                NProto::TReadJournalTailResponse response;
-                auto error = params->Proxy->ReadJournalTail(
-                    0, // after Lsn
-                    1, // max records
-                    &response);
-
-                if (HasError(error)) {
-                    *params->Error = std::move(error);
-                } else {
-                    // TODO(#6957): so far device advances lsn only after wm moves
-                    // gracefully handle sg device init writes.
-                    *params->Lsn = std::max(
-                        response.GetLastAckedLogSequenceNumber(),
-                        params->Proxy->GetLastAckedLsn());
-                }
-
-                return 0;
-            },
-            TQueryPositionParams{
-                .Proxy = state.Proxies[i],
-                .Lsn = &maxLsnPerDevice[i],
-                .Error = &errors[i]
-            },
-            &futures[i]);
-        Y_ABORT_UNLESS(r == 0, "failed to spawn fiber: %s", ::strerror(r));
-    }
-
-    NProto::TError error;
-    for (ui32 i = 0; i < count; ++i) {
-        futures[i].wait();
-        if (!HasError(errors[i])) {
-            continue;
-        }
-
-        SILK_ERROR(
-            "sg position of %s: %s",
-            state.Proxies[i]->DeviceUUID.c_str(),
-            FormatError(errors[i]).c_str());
-        if (!HasError(error)) {
-            error = errors[i];
-        }
-    }
-
-    return error;
-}
-
-// Finds where every device is, reads what the slowest one lacks from the
-// most advanced one and replays it onto everyone behind.
+// Reads what the slowest device lacks from the most advanced one and replays
+// it onto everyone behind. Where each device is was learnt at validation:
+// from its header read, or from the claim written to it.
 NProto::TError RebuildJournal(const TGroupStatePtr& state)
 {
     TVector<ui64> maxLsnPerDevice(state->Proxies.size());
-    auto error = QueryCurrentJournalPosition(*state, maxLsnPerDevice);
-    if (HasError(error)) {
-        return error;
-    }
-
-    for (ui32 i = 0; i < maxLsnPerDevice.size(); ++i) {
-        state->Proxies[i]->SeedLsn(maxLsnPerDevice[i]);
+    for (ui32 i = 0; i < state->Proxies.size(); ++i) {
+        maxLsnPerDevice[i] = state->Proxies[i]->GetLastAckedLsn();
     }
 
     auto low =
         std::min_element(maxLsnPerDevice.begin(), maxLsnPerDevice.end());
     auto high =
         std::max_element(maxLsnPerDevice.begin(), maxLsnPerDevice.end());
+
     if (*low < *high) {
         const ui32 source = std::distance(maxLsnPerDevice.begin(), high);
 
         NProto::TReadJournalTailResponse tail;
-        error = ReadRecordsAbove(*state->Proxies[source], *low, *high, &tail);
+        auto error = ReadRecordsAbove(
+            *state->Proxies[source],
+            *low,
+            *high,
+            &tail);
+
         if (HasError(error)) {
             return error;
         }
@@ -746,6 +711,7 @@ NProto::TError RebuildJournal(const TGroupStatePtr& state)
             maxLsnPerDevice,
             *high,
             tail.GetRecords());
+
         if (HasError(error)) {
             return error;
         }
@@ -909,6 +875,8 @@ public:
 
         // TODO(#6957): Need a proper cancellation token for requests inflight
         State->WatermarkLoopStopped.wait();
+        State->ReadsInflight.Wait();
+        State->WritesInflight.Wait();
 
         auto error = MirrorRequest<NProto::TReleaseDevicesResponse>(
             State->Config,
@@ -952,6 +920,7 @@ public:
 
         SILK_DEBUG("sg write: %s", DebugMessage(op->Request).c_str());
         for (const auto& proxy: State->Proxies) {
+            State->WritesInflight.Increment();
             const int r = silk::FiberScheduler::run(
                 WriteDispatchFiberMain,
                 TWriteDispatchParams{
@@ -1000,6 +969,8 @@ public:
             return error;
         }
 
+        State->ReadsInflight.Increment();
+
         const ui64 required = State->QuorumLsn.get();
         const ui32 count = State->Proxies.size();
         const ui32 start = State->Selector.fetch_add(
@@ -1026,12 +997,14 @@ public:
             auto error = proxy.Read(request, &response);
             if (!HasError(error)) {
                 ExtractPageGroups(response, pageGroups);
+                State->ReadsInflight.Decrement();
                 return ShiftToClient(pageGroups);
             }
 
             lastError = std::move(error);
         }
 
+        State->ReadsInflight.Decrement();
         return lastError;
     }
 

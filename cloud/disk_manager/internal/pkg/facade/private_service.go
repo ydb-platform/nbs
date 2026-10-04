@@ -293,6 +293,66 @@ func (s *privateService) ListFilesystems(
 	return &api.ListFilesystemsResponse{FilesystemIds: ids}, nil
 }
 
+func (s *privateService) GetFilesystemSnapshot(
+	ctx context.Context,
+	req *api.GetFilesystemSnapshotRequest,
+) (*api.GetFilesystemSnapshotResponse, error) {
+
+	if len(req.GetFilesystemSnapshotId()) == 0 {
+		return nil, common.NewInvalidArgumentError(
+			"filesystem snapshot ID is empty",
+		)
+	}
+
+	meta, err := s.resourceStorage.GetFilesystemSnapshotMeta(
+		ctx,
+		req.FilesystemSnapshotId,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if meta == nil {
+		return &api.GetFilesystemSnapshotResponse{}, nil
+	}
+
+	snapshot := &api.FilesystemSnapshot{
+		Id:           meta.ID,
+		FolderId:     meta.FolderID,
+		CreateTaskId: meta.CreateTaskID,
+		CreatingAt:   timestamppb.New(meta.CreatingAt),
+		DeleteTaskId: meta.DeleteTaskID,
+		Size:         meta.Size,
+		StorageSize:  meta.StorageSize,
+		Ready:        meta.Ready,
+	}
+	if meta.Filesystem != nil {
+		snapshot.Filesystem = &disk_manager.FilesystemId{
+			ZoneId:       meta.Filesystem.ZoneId,
+			FilesystemId: meta.Filesystem.FilesystemId,
+		}
+	}
+
+	return &api.GetFilesystemSnapshotResponse{Snapshot: snapshot}, nil
+}
+
+func (s *privateService) ListFilesystemSnapshots(
+	ctx context.Context,
+	req *api.ListFilesystemSnapshotsRequest,
+) (*api.ListFilesystemSnapshotsResponse, error) {
+
+	ids, err := s.resourceStorage.ListFilesystemSnapshots(
+		ctx,
+		req.FolderId,
+		req.CreatingBefore.AsTime(),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return &api.ListFilesystemSnapshotsResponse{FilesystemSnapshotIds: ids}, nil
+}
+
 func (s *privateService) ListPlacementGroups(
 	ctx context.Context,
 	req *api.ListPlacementGroupsRequest,

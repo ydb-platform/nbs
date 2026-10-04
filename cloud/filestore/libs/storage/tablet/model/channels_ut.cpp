@@ -139,6 +139,57 @@ Y_UNIT_TEST_SUITE(TChannelsTest)
             channels.GetChannelsToMove(t));
     }
 
+    Y_UNIT_TEST(ShouldRespectMaxUsedDataChannelCount)
+    {
+        const ui32 t = 10;
+        const ui32 maxUsedDataChannelCount = 5;
+
+        TChannels channels = SetupChannels(100);
+        channels.SetMaxUsedDataChannelCount(maxUsedDataChannelCount);
+
+        CHECK_SELECTED_CHANNEL(Index, 1);
+        CHECK_SELECTED_CHANNEL(Index, 1);
+        CHECK_SELECTED_CHANNEL(Fresh, 2);
+        CHECK_SELECTED_CHANNEL(Fresh, 2);
+        CHECK_SELECTED_CHANNEL(Mixed, 3);
+        CHECK_SELECTED_CHANNEL(Mixed, 4);
+        CHECK_SELECTED_CHANNEL(Mixed, 5);
+        CHECK_SELECTED_CHANNEL(Mixed, 6);
+        CHECK_SELECTED_CHANNEL(Mixed, 7);
+        CHECK_SELECTED_CHANNEL(Mixed, 3);
+        CHECK_SELECTED_CHANNEL(Mixed, 4);
+        CHECK_SELECTED_CHANNEL(Mixed, 5);
+        CHECK_SELECTED_CHANNEL(Mixed, 6);
+        CHECK_SELECTED_CHANNEL(Mixed, 7);
+
+        ASSERT_VECTORS_EQUAL(
+            TVector<ui32>{},
+            channels.GetChannelsToMove(t));
+
+        channels.UpdateChannelStats(4, false, true, 0);
+
+        ASSERT_VECTORS_EQUAL(
+            TVector<ui32>({4}),
+            channels.GetChannelsToMove(t));
+
+        channels.UpdateChannelStats(5, false, true, 0);
+
+        ASSERT_VECTORS_EQUAL(
+            TVector<ui32>({4, 5}),
+            channels.GetChannelsToMove(t));
+
+        CHECK_SELECTED_CHANNEL(Index, 1);
+        CHECK_SELECTED_CHANNEL(Index, 1);
+        CHECK_SELECTED_CHANNEL(Fresh, 2);
+        CHECK_SELECTED_CHANNEL(Fresh, 2);
+        CHECK_SELECTED_CHANNEL(Mixed, 3);
+        CHECK_SELECTED_CHANNEL(Mixed, 6);
+        CHECK_SELECTED_CHANNEL(Mixed, 7);
+        CHECK_SELECTED_CHANNEL(Mixed, 3);
+        CHECK_SELECTED_CHANNEL(Mixed, 6);
+        CHECK_SELECTED_CHANNEL(Mixed, 7);
+    }
+
     Y_UNIT_TEST(ShouldBalanceChannelsBasedOnFreeSpace)
     {
         const ui32 channelCount = 11;

@@ -364,10 +364,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             [&](TDiskRegistryDatabase db) mutable
             {
                 UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/0", "uuid-1")
+                    StartDeviceMigration(state, Now(), db, "disk-1/0", "uuid-1")
                         .GetError());
                 UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/0", "uuid-2")
+                    StartDeviceMigration(state, Now(), db, "disk-1/0", "uuid-2")
                         .GetError());
             });
 
@@ -652,10 +652,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             [&](TDiskRegistryDatabase db) mutable
             {
                 UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/2", "uuid-7")
+                    StartDeviceMigration(state, Now(), db, "disk-1/2", "uuid-7")
                         .GetError());
                 UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/2", "uuid-8")
+                    StartDeviceMigration(state, Now(), db, "disk-1/2", "uuid-8")
                         .GetError());
             });
 
@@ -773,14 +773,14 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             [&](TDiskRegistryDatabase db) mutable
             {
                 auto result =
-                    state.StartDeviceMigration(Now(), db, "disk-1/2", "uuid-7");
+                    StartDeviceMigration(state, Now(), db, "disk-1/2", "uuid-7");
                 UNIT_ASSERT_SUCCESS(result.GetError());
                 UNIT_ASSERT_VALUES_EQUAL(
                     "uuid-13",
                     result.GetResult().GetDeviceUUID());
 
                 result =
-                    state.StartDeviceMigration(Now(), db, "disk-1/2", "uuid-8");
+                    StartDeviceMigration(state, Now(), db, "disk-1/2", "uuid-8");
                 UNIT_ASSERT_SUCCESS(result.GetError());
                 UNIT_ASSERT_VALUES_EQUAL(
                     "uuid-14",
@@ -823,7 +823,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             [&](TDiskRegistryDatabase db) mutable
             {
                 auto result =
-                    state.StartDeviceMigration(Now(), db, replicaId, sourceId);
+                    StartDeviceMigration(state, Now(), db, replicaId, sourceId);
                 UNIT_ASSERT_SUCCESS(result.GetError());
                 targetId = result.GetResult().GetDeviceUUID();
             });
@@ -1046,10 +1046,10 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateLaggingAgentsTest)
             [&](TDiskRegistryDatabase db) mutable
             {
                 UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/0", "uuid-1")
+                    StartDeviceMigration(state, Now(), db, "disk-1/0", "uuid-1")
                         .GetError());
                 UNIT_ASSERT_SUCCESS(
-                    state.StartDeviceMigration(Now(), db, "disk-1/1", "uuid-13")
+                    StartDeviceMigration(state, Now(), db, "disk-1/1", "uuid-13")
                         .GetError());
             });
 

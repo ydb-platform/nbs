@@ -165,7 +165,6 @@ struct TClientRequestHandlerBase
 {
     const EBlockStoreRequest RequestType;
     ui64 RequestId = 0;
-    TString DiskId;
 
     enum {
         WaitingForRequest = 0,
@@ -184,57 +183,9 @@ struct TClientRequestHandlerBase
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TRequestsInFlight
-{
-public:
-    using TRequestHandler = TClientRequestHandlerBase;
-
-private:
-    THashSet<TRequestHandler*> Requests;
-    TAdaptiveLock RequestsLock;
-    bool ShouldStop = false;
-
-public:
-    bool Register(TRequestHandler* handler)
-    {
-        with_lock (RequestsLock) {
-            if (ShouldStop) {
-                return false;
-            }
-
-            auto res = Requests.emplace(handler);
-            STORAGE_VERIFY(
-                res.second,
-                TWellKnownEntityTypes::DISK,
-                handler->DiskId);
-        }
-
-        return true;
-    }
-
-    void Unregister(TRequestHandler* handler)
-    {
-        with_lock (RequestsLock) {
-            auto it = Requests.find(handler);
-            STORAGE_VERIFY(
-                it != Requests.end(),
-                TWellKnownEntityTypes::DISK,
-                handler->DiskId);
-
-            Requests.erase(it);
-        }
-    }
-
-    void Shutdown()
-    {
-        with_lock (RequestsLock) {
-            ShouldStop = true;
-            for (auto* handler: Requests) {
-                handler->Cancel();
-            }
-        }
-    }
-};
+using TRequestsInFlight = NStorage::NGrpc::TRequestsInFlight<
+    TClientRequestHandlerBase,
+    TWellKnownEntityTypes::DISK>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -434,7 +385,7 @@ private:
 
         RequestId = EnsureRequestId(*Request);
 
-        DiskId = GetDiskId(*Request);
+        EntityId = GetDiskId(*Request);
 
         Context.set_deadline(now + requestTimeout);
         if (const auto& authToken = AppCtx.Config->GetAuthToken()) {
@@ -478,7 +429,7 @@ private:
                     AppCtx.Log,
                     RequestType,
                     RequestId,
-                    DiskId,
+                    EntityId,
                     AppCtx.Config->GetClientId(),
                     "ProcessResponse: value already set (request cancelled?)");
             }
@@ -487,7 +438,7 @@ private:
                 AppCtx.Log,
                 RequestType,
                 RequestId,
-                DiskId,
+                EntityId,
                 AppCtx.Config->GetClientId());
         }
     }
@@ -504,7 +455,7 @@ private:
                     AppCtx.Log,
                     RequestType,
                     RequestId,
-                    DiskId,
+                    EntityId,
                     AppCtx.Config->GetClientId(),
                     "ReportError: value already set (request completed?)");
             }
@@ -513,7 +464,7 @@ private:
                 AppCtx.Log,
                 RequestType,
                 RequestId,
-                DiskId,
+                EntityId,
                 AppCtx.Config->GetClientId());
         }
     }
@@ -538,7 +489,7 @@ private:
     {
         if (!HasError(response)) {
             AppCtx.ClientStats->UnmountVolume(
-                DiskId,
+                EntityId,
                 AppCtx.Config->GetClientId());
         }
     }
@@ -578,6 +529,11 @@ public:
     std::shared_ptr<grpc::Channel> CreateTcpSocketChannel(
         const TString& address,
         bool secureEndpoint);
+
+    std::shared_ptr<grpc::Channel> CreateTcpSocketChannel(
+        const TString& address,
+        bool secureEndpoint,
+        const grpc::ChannelArguments& args);
 
     std::shared_ptr<grpc::Channel> CreateUnixSocketChannel(
         const TString& unixSocketPath,
@@ -635,6 +591,7 @@ private:
     TAdaptiveLock EndpointLock;
 
     THashMap<std::pair<TString, bool>, IBlockStorePtr> Cache;
+    THashMap<TString, IBlockStorePtr> IOEndpoints;
 
 public:
     using TClientBase::TClientBase;
@@ -654,6 +611,9 @@ public:
             for (auto& [key, endpoint]: Cache) {
                 endpoint.reset();
             }
+            for (auto& [address, endpoint]: IOEndpoints) {
+                endpoint.reset();
+            }
         }
     };
 
@@ -663,6 +623,11 @@ public:
         bool isSecure) override;
 
     IBlockStorePtr CreateDataEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure) override;
+
+    IBlockStorePtr CreateIOEndpoint(
         const TString& host,
         ui32 port,
         bool isSecure) override;
@@ -728,6 +693,17 @@ std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
     const TString& address,
     bool secureEndpoint)
 {
+    return CreateTcpSocketChannel(
+        address,
+        secureEndpoint,
+        CreateChannelArguments());
+}
+
+std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
+    const TString& address,
+    bool secureEndpoint,
+    const grpc::ChannelArguments& args)
+{
     auto credentials = CreateTcpClientChannelCredentials(
         secureEndpoint,
         *Config,
@@ -735,10 +711,7 @@ std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
 
     STORAGE_INFO("Connect to " << address);
 
-    return CreateCustomChannel(
-        address,
-        credentials,
-        CreateChannelArguments());
+    return CreateCustomChannel(address, credentials, args);
 }
 
 std::shared_ptr<grpc::Channel> TClientBase::CreateUnixSocketChannel(
@@ -1250,6 +1223,39 @@ IBlockStorePtr TMultiHostClient::CreateDataEndpoint(
             NProto::TBlockStoreDataService::NewStub(std::move(channel)));
 
         Cache.emplace(make_pair(address, true), endpoint);
+        return endpoint;
+    }
+}
+
+IBlockStorePtr TMultiHostClient::CreateIOEndpoint(
+    const TString& host,
+    ui32 port,
+    bool isSecure)
+{
+    with_lock (EndpointLock) {
+        Y_ENSURE(port);
+        auto address = Join(":", host, port);
+
+        if (auto it = IOEndpoints.find(address); it != IOEndpoints.end()) {
+            return it->second;
+        }
+
+        // otherwise gRPC may hand this channel the connection it already
+        // keeps to the same address for the control endpoint
+        auto args = CreateChannelArguments();
+        args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
+
+        auto channel = CreateTcpSocketChannel(address, isSecure, args);
+        if (!channel) {
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
+                << "could not start gRPC client";
+        }
+
+        auto endpoint = std::make_shared<TEndpoint<TMultiHostClient>>(
+            shared_from_this(),
+            NProto::TBlockStoreService::NewStub(std::move(channel)));
+
+        IOEndpoints.emplace(address, endpoint);
         return endpoint;
     }
 }

@@ -7,7 +7,6 @@ SRCS(
     config.cpp
     durable.cpp
     metric.cpp
-    multiclient_endpoint.cpp
     session.cpp
     switchable_client.cpp
     switchable_session.cpp

@@ -1,5 +1,6 @@
-#include "bootstrap.h"
 #include "command.h"
+
+#include "bootstrap.h"
 #include "factory.h"
 
 #include <cloud/blockstore/libs/client/client.h>
@@ -7,8 +8,8 @@
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/client/session.h>
 #include <cloud/blockstore/libs/client/throttling.h>
-#include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/incomplete_request_processor.h>
+#include <cloud/blockstore/libs/diagnostics/probes.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
@@ -26,8 +27,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_updater.h>
-#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/threadpool.h>
+#include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/storage/core/libs/grpc/utils.h>
 #include <cloud/storage/core/libs/version/version.h>
 
@@ -636,7 +637,8 @@ void TCommand::InitClientConfig()
     }
 
     if (!clientConfig.GetClientId()) {
-        clientConfig.SetClientId(CreateGuidAsString());
+        clientConfig.SetClientId(
+            TStringBuilder() << "cli-" << CreateGuidAsString());
     }
 
     // This retry mode is not expected in blockstore-client

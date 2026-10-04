@@ -283,11 +283,34 @@ struct TEvHiveProxy
 
     struct TGetTabletBootInfosRequest
     {
+        // Zero preserves the existing request for all entries.
+        const ui64 TabletId;
+
+        explicit TGetTabletBootInfosRequest(ui64 tabletId = 0)
+            : TabletId(tabletId)
+        {}
     };
 
     struct TGetTabletBootInfosResponse
     {
         TVector<TTabletBootInfo> TabletBootInfos;
+    };
+
+    //
+    // UpdateTabletBootInfoBackup notification
+    //
+
+    struct TUpdateTabletBootInfoBackupNotification
+    {
+        const NKikimr::TTabletStorageInfoPtr StorageInfo;
+        const ui32 Generation;
+
+        TUpdateTabletBootInfoBackupNotification(
+            NKikimr::TTabletStorageInfoPtr storageInfo,
+            ui32 generation)
+            : StorageInfo(std::move(storageInfo))
+            , Generation(generation)
+        {}
     };
 
     //
@@ -333,6 +356,8 @@ struct TEvHiveProxy
         EvGetTabletBootInfosRequest = EvBegin + 22,
         EvGetTabletBootInfosResponse = EvBegin + 23,
 
+        EvUpdateTabletBootInfoBackup = EvBegin + 24,
+
         EvEnd
     };
 
@@ -342,10 +367,20 @@ struct TEvHiveProxy
     STORAGE_HIVE_PROXY_REQUESTS(STORAGE_DECLARE_EVENTS)
 
     using TEvTabletLockLost = TResponseEvent<TTabletLockLost, EvTabletLockLost>;
+    using TEvUpdateTabletBootInfoBackup = TRequestEvent<
+        TUpdateTabletBootInfoBackupNotification,
+        EvUpdateTabletBootInfoBackup>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 NActors::TActorId MakeHiveProxyServiceId();
+
+// Sends an activated leader tablet's boot info to update the local backup.
+// Applied only when a local backup is configured in normal mode.
+void UpdateTabletBootInfoBackup(
+    const NActors::TActorContext& ctx,
+    NKikimr::TTabletStorageInfoPtr storageInfo,
+    ui32 generation);
 
 }   // namespace NCloud::NStorage

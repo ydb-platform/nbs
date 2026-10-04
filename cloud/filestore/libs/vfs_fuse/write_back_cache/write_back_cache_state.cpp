@@ -97,19 +97,18 @@ TFuture<TWriteDataResponse> TWriteBackCacheState::AddWriteDataRequest(
         return HangingRequests.CreateWriteDataResponse();
     }
 
-    auto res = RequestManager.AddRequest(std::move(request));
+    auto pendingRequest = RequestManager.AddRequest(std::move(request));
 
-    if (res.PendingRequest) {
-        return AddRequest(std::move(res.PendingRequest));
-    }
+    auto future = pendingRequest->AccessPromise().GetFuture();
 
-    if (res.CachedRequest) {
-        return AddRequest(std::move(res.CachedRequest));
-    }
+    auto& nodeState = Nodes.GetOrCreateNodeState(pendingRequest->GetNodeId());
+    auto& handleState = nodeState.Handles[pendingRequest->GetHandle()];
+    handleState.PendingRequests.PushBack(pendingRequest.get());
+    nodeState.Cache.EnqueuePendingRequest(std::move(pendingRequest));
 
-    SetFailedFlag();
+    ProcessPendingRequests();
 
-    return HangingRequests.CreateWriteDataResponse();
+    return future;
 }
 
 TFuture<TError> TWriteBackCacheState::AddFlushRequest(ui64 nodeId)
@@ -624,29 +623,6 @@ TGuard<TQueuedOperations>
 TWriteBackCacheState::LockStateAndPostponeQueuedOperations() const
 {
     return Guard(QueuedOperations);
-}
-
-TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
-    std::unique_ptr<TPendingWriteDataRequest> request)
-{
-    auto future = request->AccessPromise().GetFuture();
-    TriggerFlushAll(false);
-
-    auto& nodeState =
-        Nodes.GetOrCreateNodeState(request->GetRequest().GetNodeId());
-
-    auto& handleState = nodeState.Handles[request->GetRequest().GetHandle()];
-    handleState.PendingRequests.PushBack(request.get());
-
-    nodeState.Cache.EnqueuePendingRequest(std::move(request));
-
-    return future;
-}
-
-TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(
-    std::unique_ptr<TCachedWriteDataRequest> request)
-{
-    return AddRequest(std::move(request), /* handleReleased = */ false);
 }
 
 TFuture<TWriteDataResponse> TWriteBackCacheState::AddRequest(

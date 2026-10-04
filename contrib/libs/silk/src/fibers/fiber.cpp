@@ -1051,12 +1051,6 @@ void FiberScheduler::destroy() noexcept
         scheduler->schedulerThreads[i].join();
     }
 
-    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
-    {
-        ProcessorState * processor = &scheduler->processorState[cpu];
-        processor->destroy();
-    }
-
     for (uint16_t i = 0; i < scheduler->workerThreadCount; ++i)
     {
         scheduler->wakeThread();
@@ -1065,6 +1059,18 @@ void FiberScheduler::destroy() noexcept
     for (uint16_t i = 0; i < scheduler->workerThreadCount; ++i)
     {
         scheduler->workerThreads[i].join();
+    }
+
+    // Processors are destroyed only after every scheduler and worker thread
+    // has been joined. A worker's runFiber epilogue touches the dispatched
+    // fiber's home processor (submitIo, postWakeup) and can be preempted
+    // there long after the fiber itself terminated and was joined by the
+    // application - destroying the rings before the join turns that stall
+    // into a use-after-free on the io_uring ring.
+    for (uint16_t cpu = 0; cpu < scheduler->processorCount; ++cpu)
+    {
+        ProcessorState * processor = &scheduler->processorState[cpu];
+        processor->destroy();
     }
 
     // A fiber still linked here suspended (or stayed scheduled) and never ran
@@ -1867,9 +1873,10 @@ bool FiberScheduler::parkProcessor(ProcessorState * processor, uint64_t waitNs, 
         }
     }
 
-    // Double-check: work may have arrived between the last drain and here.
-    // If so, skip the park entirely so that work is not delayed by waitNs.
-    bool parking = !processor->hasWork();
+    // Double-check behind the fence: work may have arrived between the last drain and here, and a stop arrives
+    // as no work at all - destroy rings only a processor it already sees sleeping, so the stop is re-read here
+    // for the same reason the fence exists. Either this load sees it, or destroy's paired load sees the park.
+    bool parking = !processor->hasWork() && !scheduler->stopping.load(std::memory_order_relaxed);
 
     if (parking && (indefinitePark || standby))
     {

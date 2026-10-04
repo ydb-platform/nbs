@@ -155,6 +155,7 @@ void TBootstrapCommon::Init()
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
     BackgroundThreadPool = CreateThreadPool("Background", 1);
+    LongRunningTaskExecutor = CreateLongRunningTaskExecutor("LongRunning");
     BackgroundScheduler = CreateBackgroundScheduler(
         Scheduler,
         BackgroundThreadPool);
@@ -303,7 +304,8 @@ void TBootstrapCommon::InitActorSystem()
             ? NCloud::NStorage::BuildCpuWaitStatsFilename(
                   Configs->DiagnosticsConfig->GetCpuWaitServiceName())
             : std::move(cpuWaitFilename),
-        Log);
+        Log,
+        LongRunningTaskExecutor);
 
     STORAGE_INFO("StatsFetcher initialized");
 

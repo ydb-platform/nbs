@@ -7,6 +7,8 @@
 
 #include <linux/nbd-netlink.h>
 
+#include <exception>
+
 #include <util/generic/scope.h>
 #include <util/stream/mem.h>
 
@@ -56,6 +58,11 @@ using TNbdConfigureRequest = TNetlinkRequest<
         TNetlinkAttribute<NBD_SOCK_ITEM,
             TNetlinkAttribute<NBD_SOCK_FD, ui32>>>>;
 
+using TNbdResizeRequest = TNetlinkRequest<
+    TNetlinkAttribute<NBD_ATTR_INDEX, ui32>,
+    TNetlinkAttribute<NBD_ATTR_SIZE_BYTES, ui64>,
+    TNetlinkAttribute<NBD_ATTR_BLOCK_SIZE_BYTES, ui64>>;
+
 using TNbdConfigureFreeRequest = TNetlinkRequest<
     TNetlinkAttribute<NBD_ATTR_SIZE_BYTES, ui64>,
     TNetlinkAttribute<NBD_ATTR_BLOCK_SIZE_BYTES, ui64>,
@@ -86,9 +93,10 @@ using TNbdDisconnectRequest = TNetlinkRequest<
 
 class TNetlinkDevice final
     : public IDevice
+    , public std::enable_shared_from_this<TNetlinkDevice>
 {
 private:
-    const ui16 FamilyId;
+    const ITaskQueuePtr Executor;
     const ILoggingServicePtr Logging;
     const TNetworkAddress ConnectAddress;
     const TString DevicePath;
@@ -96,13 +104,15 @@ private:
     const TDuration RequestTimeout;
     const TDuration ConnectionTimeout;
 
+    ui16 FamilyId = 0;
     TLog Log;
     IClientHandlerPtr Handler;
     TSocket Socket;
     std::optional<ui32> DeviceIndex;
 
-    TPromise<NProto::TError> StartResult;
-    TPromise<NProto::TError> StopResult;
+    TFuture<NProto::TError> StartResult;
+    TFuture<NProto::TError> StopResult;
+    bool Disconnected = false;
 
 public:
     TNetlinkDevice(
@@ -111,26 +121,31 @@ public:
         TString devicePath,
         TString devicePrefix,
         TDuration requestTimeout,
-        TDuration connectionTimeout);
+        TDuration connectionTimeout,
+        ITaskQueuePtr executor);
 
     ~TNetlinkDevice();
 
     TFuture<NProto::TError> Start() override;
     TFuture<NProto::TError> Stop(bool deleteDevice) override;
     TFuture<NProto::TError> Resize(ui64 deviceSizeInBytes) override;
+
     TString GetPath() const override;
 
 private:
+    TFuture<NProto::TError> Configure();
+    TFuture<NProto::TError> ConfigureFree();
+    TFuture<NProto::TError> Disconnect();
+
     TString GetDevice() const;
 
     void ParseIndex();
-
     void ConnectSocket();
     void DisconnectSocket();
 
-    void Configure();
-    void ConfigureFree();
-    void Disconnect();
+    NProto::TError MakeNetlinkError(
+        TStringBuf operation,
+        const std::exception& e) const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -141,8 +156,9 @@ TNetlinkDevice::TNetlinkDevice(
         TString devicePath,
         TString devicePrefix,
         TDuration requestTimeout,
-        TDuration connectionTimeout)
-    : FamilyId(NNetlink::GetFamilyId(NBD_GENL_FAMILY_NAME))
+        TDuration connectionTimeout,
+        ITaskQueuePtr executor)
+    : Executor(std::move(executor))
     , Logging(std::move(logging))
     , ConnectAddress(std::move(connectAddress))
     , DevicePath(std::move(devicePath))
@@ -161,53 +177,167 @@ TNetlinkDevice::~TNetlinkDevice()
 TFuture<NProto::TError> TNetlinkDevice::Start()
 {
     if (StartResult.Initialized()) {
-        return StartResult.GetFuture();
-    }
-    StartResult = NewPromise<NProto::TError>();
-
-    try {
-        ConnectSocket();
-        if (DevicePath) {
-            ParseIndex();
-            Configure();
-        } else {
-            ConfigureFree();
-        }
-
-    } catch (const std::exception& e) {
-        StartResult.SetValue(MakeError(
-            E_FAIL,
-            TStringBuilder()
-                << "unable to configure " << GetDevice() << ": " << e.what()));
+        return StartResult;
     }
 
-    return StartResult.GetFuture();
+    StartResult = NNetlink::GetFamilyId(Executor, NBD_GENL_FAMILY_NAME)
+        .Apply([self = shared_from_this()](const auto& result) {
+            self->FamilyId = result.GetValue();
+            self->ConnectSocket();
+            if (self->DevicePath) {
+                self->ParseIndex();
+                return self->Configure();
+            }
+            return self->ConfigureFree();
+        }).Apply([self = shared_from_this()](const auto& result) {
+            try {
+                return result.GetValue();
+            } catch (const std::exception& e) {
+                return self->MakeNetlinkError("configure", e);
+            }
+        });
+
+    return StartResult;
 }
 
 TFuture<NProto::TError> TNetlinkDevice::Stop(bool deleteDevice)
 {
-    if (StopResult.Initialized()) {
-        return StopResult.GetFuture();
-    }
-    StopResult = NewPromise<NProto::TError>();
-
-    try {
+    if (!StopResult.Initialized()) {
         DisconnectSocket();
-
-        if (deleteDevice) {
-            Disconnect();
-        } else {
-            StopResult.SetValue(MakeError(S_OK));
-        }
-
-    } catch (const TServiceError& e) {
-        StopResult.SetValue(MakeError(
-            e.GetCode(),
-            TStringBuilder()
-                << "unable to disconnect " << GetDevice() << ": " << e.what()));
+        StopResult = MakeFuture(MakeError(S_OK));
     }
 
-    return StopResult.GetFuture();
+    if (deleteDevice && DeviceIndex && !Disconnected) {
+        auto disconnect = Disconnect();
+        Disconnected = true;
+        StopResult = std::move(disconnect);
+    }
+
+    return StopResult;
+}
+
+// query device status and connect or reconfigure it
+TFuture<NProto::TError> TNetlinkDevice::Configure()
+{
+    return
+        NNetlink::Send<TNbdStatusResponse>(
+            Executor,
+            TNbdStatusRequest(
+                FamilyId,
+                NBD_CMD_STATUS,
+                *DeviceIndex))
+        .Apply([self = shared_from_this()](const auto& result) {
+            const auto& status = result.GetValue();
+            const auto& info = self->Handler->GetExportInfo();
+            auto& Log = self->Log;
+            STORAGE_INFO("query " << self->GetDevice());
+            return NNetlink::Send(
+                self->Executor,
+                TNbdConfigureRequest(
+                    self->FamilyId,
+                    status.Msg.Connected ? NBD_CMD_RECONFIGURE
+                                         : NBD_CMD_CONNECT,
+                    *self->DeviceIndex,
+                    static_cast<ui64>(info.Size),
+                    static_cast<ui64>(info.MinBlockSize),
+                    static_cast<ui64>(info.Flags),
+                    self->RequestTimeout.Seconds(),
+                    self->ConnectionTimeout.Seconds(),
+                    TNetlinkAttribute<
+                        NBD_SOCK_ITEM,
+                        TNetlinkAttribute<NBD_SOCK_FD, ui32>>(
+                        static_cast<ui32>(self->Socket))));
+        }).Apply([self = shared_from_this()](const auto& result) {
+            result.TryRethrow();
+            auto& Log = self->Log;
+            STORAGE_INFO("configure " << self->GetDevice());
+            return MakeError(S_OK);
+        });
+}
+
+// connect any free device
+TFuture<NProto::TError> TNetlinkDevice::ConfigureFree()
+{
+    const auto& info = Handler->GetExportInfo();
+
+    return
+        NNetlink::Send<TNbdConfigureResponse>(
+            Executor,
+            TNbdConfigureFreeRequest(
+                FamilyId,
+                NBD_CMD_CONNECT,
+                static_cast<ui64>(info.Size),
+                static_cast<ui64>(info.MinBlockSize),
+                static_cast<ui64>(info.Flags),
+                RequestTimeout.Seconds(),
+                ConnectionTimeout.Seconds(),
+                TNetlinkAttribute<
+                    NBD_SOCK_ITEM,
+                    TNetlinkAttribute<NBD_SOCK_FD, ui32>>(
+                    static_cast<ui32>(Socket))))
+        .Apply([self = shared_from_this()](const auto& result) {
+            self->DeviceIndex = result.GetValue().Msg.Index;
+            auto& Log = self->Log;
+            STORAGE_INFO("configure " << self->GetDevice());
+            return MakeError(S_OK);
+        });
+}
+
+TFuture<NProto::TError> TNetlinkDevice::Disconnect()
+{
+    return
+        NNetlink::Send(
+            Executor,
+            TNbdDisconnectRequest(
+                FamilyId,
+                NBD_CMD_DISCONNECT,
+                *DeviceIndex))
+        .Apply([self = shared_from_this()](const auto& result) {
+            try {
+                result.TryRethrow();
+                auto& Log = self->Log;
+                STORAGE_INFO("disconnect " << self->GetDevice());
+                return MakeError(S_OK);
+            } catch (const TServiceError& e) {
+                return self->MakeNetlinkError("disconnect", e);
+            }
+        });
+}
+
+TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
+{
+    const auto& info = Handler->GetExportInfo();
+
+    return
+        NNetlink::Send(
+            Executor,
+            TNbdResizeRequest(
+                FamilyId,
+                NBD_CMD_RECONFIGURE,
+                *DeviceIndex,
+                deviceSizeInBytes,
+                static_cast<ui64>(info.MinBlockSize)))
+        .Apply([self = shared_from_this()](const auto& result) {
+            try {
+                result.TryRethrow();
+                auto& Log = self->Log;
+                STORAGE_INFO("resize " << self->GetDevice());
+                return MakeError(S_OK);
+            } catch (const TServiceError& e) {
+                return self->MakeNetlinkError("resize", e);
+            }
+        });
+}
+
+TString TNetlinkDevice::GetPath() const
+{
+    if (DevicePath) {
+        return DevicePath;
+    }
+    if (DeviceIndex) {
+        return TStringBuilder() << DevicePrefix << *DeviceIndex;
+    }
+    return "nbd device";
 }
 
 TString TNetlinkDevice::GetDevice() const
@@ -257,133 +387,16 @@ void TNetlinkDevice::DisconnectSocket()
     Socket.Close();
 }
 
-// query device status and connect or reconfigure it
-void TNetlinkDevice::Configure()
+NProto::TError TNetlinkDevice::MakeNetlinkError(
+    TStringBuf operation,
+    const std::exception& e) const
 {
-    NNetlink::TNetlinkSocket socket;
-
-    TNbdStatusRequest request(FamilyId, NBD_CMD_STATUS, *DeviceIndex);
-    socket.Send(request);
-    NNetlink::TNetlinkResponse<TNbdStatusResponse> status;
-    socket.Receive(status);
-    STORAGE_INFO("query " << GetDevice());
-
-    const auto& info = Handler->GetExportInfo();
-    socket.Send(
-        TNbdConfigureRequest(
-            FamilyId,
-            status.Msg.Connected ? NBD_CMD_RECONFIGURE : NBD_CMD_CONNECT,
-            *DeviceIndex,
-            static_cast<ui64>(info.Size),
-            static_cast<ui64>(info.MinBlockSize),
-            static_cast<ui64>(info.Flags),
-            RequestTimeout.Seconds(),
-            ConnectionTimeout.Seconds(),
-            TNetlinkAttribute<
-                NBD_SOCK_ITEM,
-                TNetlinkAttribute<
-                    NBD_SOCK_FD,
-                    ui32>>(static_cast<ui32>(Socket))));
-
-    NNetlink::TNetlinkResponse<> configure;
-    socket.Receive(configure);
-
-    StartResult.SetValue(MakeError(S_OK));
-    STORAGE_INFO("configure " << GetDevice());
-}
-
-// connect any free device
-void TNetlinkDevice::ConfigureFree()
-{
-    NNetlink::TNetlinkSocket socket;
-
-    const auto& info = Handler->GetExportInfo();
-    socket.Send(
-        TNbdConfigureFreeRequest(
-            FamilyId,
-            NBD_CMD_CONNECT,
-            static_cast<ui64>(info.Size),
-            static_cast<ui64>(info.MinBlockSize),
-            static_cast<ui64>(info.Flags),
-            RequestTimeout.Seconds(),
-            ConnectionTimeout.Seconds(),
-            TNetlinkAttribute<
-                NBD_SOCK_ITEM,
-                TNetlinkAttribute<
-                    NBD_SOCK_FD,
-                    ui32>>(static_cast<ui32>(Socket))));
-
-    NNetlink::TNetlinkResponse<TNbdConfigureResponse> configure;
-    socket.Receive(configure);
-    DeviceIndex = configure.Msg.Index;
-
-    StartResult.SetValue(MakeError(S_OK));
-    STORAGE_INFO("configure " << GetDevice())
-}
-
-void TNetlinkDevice::Disconnect()
-{
-    try {
-        NNetlink::TNetlinkSocket socket;
-        TNbdDisconnectRequest request(
-            FamilyId,
-            NBD_CMD_DISCONNECT,
-            *DeviceIndex);
-        socket.Send(request);
-        NNetlink::TNetlinkResponse<> response;
-        socket.Receive(response);
-        StopResult.SetValue(MakeError(S_OK));
-        STORAGE_INFO("disconnect " << GetDevice());
-    } catch (const TServiceError& e) {
-        StartResult.SetValue(MakeError(
-            e.GetCode(),
-            TStringBuilder()
-                << "unable to disconnect " << GetDevice() << ": " << e.what()));
-    }
-}
-
-TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
-{
-    try {
-        const auto& info = Handler->GetExportInfo();
-        NNetlink::TNetlinkSocket socket;
-        socket.Send(
-            TNbdConfigureRequest(
-                FamilyId,
-                NBD_CMD_RECONFIGURE,
-                *DeviceIndex,
-                deviceSizeInBytes,
-                static_cast<ui64>(info.MinBlockSize),
-                static_cast<ui64>(info.Flags),
-                RequestTimeout.Seconds(),
-                ConnectionTimeout.Seconds(),
-                TNetlinkAttribute<
-                    NBD_SOCK_ITEM,
-                    TNetlinkAttribute<
-                        NBD_SOCK_FD,
-                        ui32>>(static_cast<ui32>(Socket))));
-        NNetlink::TNetlinkResponse<> response;
-        socket.Receive(response);
-        STORAGE_INFO("resize " << GetDevice());
-    } catch (const TServiceError& e) {
-        return MakeFuture(MakeError(
-            e.GetCode(),
-            TStringBuilder()
-                << "unable to resize " << GetDevice() << ": " << e.what()));
-    }
-
-    return MakeFuture(MakeError(S_OK));
-}
-
-TString TNetlinkDevice::GetPath() const
-{
-    if (DevicePath) {
-        return DevicePath;
-    }
-    if (DeviceIndex) {
-        return TStringBuilder() << DevicePrefix << *DeviceIndex;
-    }
-    return "nbd device";
+    const auto* serviceError = dynamic_cast<const TServiceError*>(&e);
+    return MakeError(
+        serviceError ? serviceError->GetCode() : E_FAIL,
+        TStringBuilder()
+            << "unable to " << operation << " " << GetDevice()
+            << ": " << e.what());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -395,15 +408,18 @@ private:
     const ILoggingServicePtr Logging;
     const TDuration RequestTimeout;
     const TDuration ConnectionTimeout;
+    const ITaskQueuePtr Executor;
 
 public:
     TNetlinkDeviceFactory(
             ILoggingServicePtr logging,
             TDuration requestTimeout,
-            TDuration connectionTimeout)
+            TDuration connectionTimeout,
+            ITaskQueuePtr executor)
         : Logging(std::move(logging))
         , RequestTimeout(requestTimeout)
         , ConnectionTimeout(connectionTimeout)
+        , Executor(std::move(executor))
     {}
 
     IDevicePtr Create(
@@ -421,7 +437,8 @@ public:
             std::move(devicePath),
             "",
             RequestTimeout,
-            ConnectionTimeout);
+            ConnectionTimeout,
+            Executor);
     }
 
     IDevicePtr CreateFree(
@@ -439,7 +456,8 @@ public:
             "",
             std::move(devicePrefix),
             RequestTimeout,
-            ConnectionTimeout);
+            ConnectionTimeout,
+            Executor);
     }
 };
 
@@ -452,7 +470,8 @@ IDevicePtr CreateNetlinkDevice(
     TNetworkAddress connectAddress,
     TString devicePath,
     TDuration requestTimeout,
-    TDuration connectionTimeout)
+    TDuration connectionTimeout,
+    ITaskQueuePtr executor)
 {
     return std::make_shared<TNetlinkDevice>(
         std::move(logging),
@@ -460,7 +479,8 @@ IDevicePtr CreateNetlinkDevice(
         std::move(devicePath),
         "",
         requestTimeout,
-        connectionTimeout);
+        connectionTimeout,
+        std::move(executor));
 }
 
 IDevicePtr CreateFreeNetlinkDevice(
@@ -468,7 +488,8 @@ IDevicePtr CreateFreeNetlinkDevice(
     TNetworkAddress connectAddress,
     TString devicePrefix,
     TDuration requestTimeout,
-    TDuration connectionTimeout)
+    TDuration connectionTimeout,
+    ITaskQueuePtr executor)
 {
     return std::make_shared<TNetlinkDevice>(
         std::move(logging),
@@ -476,18 +497,21 @@ IDevicePtr CreateFreeNetlinkDevice(
         "",
         std::move(devicePrefix),
         requestTimeout,
-        connectionTimeout);
+        connectionTimeout,
+        std::move(executor));
 }
 
 IDeviceFactoryPtr CreateNetlinkDeviceFactory(
     ILoggingServicePtr logging,
     TDuration requestTimeout,
-    TDuration connectionTimeout)
+    TDuration connectionTimeout,
+    ITaskQueuePtr executor)
 {
     return std::make_shared<TNetlinkDeviceFactory>(
         std::move(logging),
         requestTimeout,
-        connectionTimeout);
+        connectionTimeout,
+        std::move(executor));
 }
 
 }   // namespace NCloud::NBlockStore::NBD

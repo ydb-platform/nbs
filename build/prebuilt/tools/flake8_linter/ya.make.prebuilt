@@ -1,5 +1,12 @@
 SET_RESOURCE_URI_FROM_JSON(SANDBOX_RESOURCE_URI ${ARCADIA_ROOT}/build/prebuilt/tools/flake8_linter/resources.json)
 
+# Grace uses the AArch64 linter binary; JSON resource lookup does not resolve Grace.
+IF (ARCH_ARMV9A_GRACE)
+    IF (SANDBOX_RESOURCE_URI == "")
+        SET(SANDBOX_RESOURCE_URI sbr:6561764909)
+    ENDIF()
+ENDIF()
+
 IF (SANDBOX_RESOURCE_URI != "")
     ENABLE(PREBUILT)
 

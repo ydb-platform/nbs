@@ -1,9 +1,9 @@
+#include <cloud/fastshard/protos/device.pb.h>
 #include <cloud/fastshard/sn/iface/storage_node.h>
 #include <cloud/fastshard/sn/impl/storage_node.h>
 #include <cloud/fastshard/testlib/silk_env.h>
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/protos/device.pb.h>
 
 #include <silk/fibers/fiber.h>
 

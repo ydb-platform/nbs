@@ -1,10 +1,10 @@
 #pragma once
 
 #include "bootstrap.h"
+#include "multiclient_endpoint.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
-#include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
 
 namespace NCloud::NBlockStore::NCells {
@@ -18,7 +18,7 @@ struct THostConfig;
 struct ICellHostEndpointBootstrap
 {
     using TGrpcEndpointBootstrapFuture =
-        NThreading::TFuture<NClient::IMultiClientEndpointPtr>;
+        NThreading::TFuture<IMultiClientEndpointPtr>;
     using TRdmaEndpointBootstrapResult = TResultOrError<IBlockStorePtr>;
     using TShutdownEndpointFuture = NThreading::TFuture<void>;
 

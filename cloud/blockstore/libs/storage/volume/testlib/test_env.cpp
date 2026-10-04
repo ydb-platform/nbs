@@ -797,7 +797,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     NCloud::NStorage::NRdma::IClientPtr rdmaClient,
     TVector<TDiskAgentStatePtr> diskAgentStates,
     bool debugActorRegistration,
-    IProfileLogPtr profileLog)
+    IProfileLogPtr profileLog,
+    EVolumeStartMode startMode)
 {
     const ui32 agentCount = Max<ui32>(diskAgentStates.size(), 1);
     auto runtime = std::make_unique<TTestBasicRuntime>(agentCount);
@@ -987,7 +988,7 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
             rdmaClient,
             partitionBudgetManager,
             NServer::CreateEndpointEventProxy(),
-            EVolumeStartMode::ONLINE,
+            startMode,
             {}   // diskId
         );
         return tablet.release();
@@ -1016,11 +1017,24 @@ TTestRuntimeBuilder& TTestRuntimeBuilder::With(TDiskRegistryStatePtr state)
     return *this;
 }
 
+TTestRuntimeBuilder& TTestRuntimeBuilder::With(EVolumeStartMode startMode)
+{
+    VolumeStartMode = startMode;
+
+    return *this;
+}
+
 std::unique_ptr<TTestActorRuntime> TTestRuntimeBuilder::Build()
 {
     return PrepareTestActorRuntime(
         std::move(StorageServiceConfig),
-        std::move(DiskRegistryState));
+        std::move(DiskRegistryState),
+        {},        // featuresConfig
+        {},        // rdmaClient
+        {},        // diskAgentStates
+        false,     // debugActorRegistration
+        nullptr,   // profileLog
+        VolumeStartMode);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

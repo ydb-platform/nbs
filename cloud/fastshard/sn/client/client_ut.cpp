@@ -1,3 +1,4 @@
+#include <cloud/fastshard/protos/device.pb.h>
 #include <cloud/fastshard/sn/client/client.h>
 #include <cloud/fastshard/sn/iface/storage_node.h>
 #include <cloud/fastshard/sn/server/server.h>
@@ -5,7 +6,6 @@
 #include <cloud/fastshard/testlib/silk_env.h>
 
 #include <cloud/storage/core/libs/common/error.h>
-#include <cloud/storage/core/protos/device.pb.h>
 
 #include <silk/fibers/fiber.h>
 #include <silk/fibers/future.h>
@@ -505,6 +505,7 @@ TEST(ClientTest, ReusesConnectionAcrossSequentialCalls)
             EXPECT_EQ(1u, fx.Metrics->ConnectionsCreated.load());
             EXPECT_EQ(1u, fx.Metrics->ConnectionsUsed.load());
             EXPECT_EQ(3u, fx.Metrics->RequestsCompleted.load());
+            EXPECT_GT(fx.Metrics->ConnectTimeUs.load(), 0u);
             return 0;
         },
         0);

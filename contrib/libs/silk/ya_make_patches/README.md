@@ -38,7 +38,9 @@ ya_make_patches/
 │   ├── 02-fiber-uring24-compat.patch
 │   ├── 03-rseq-register-per-thread.patch
 │   ├── 04-fiber-cxa-get-globals-arcadia-libcxxrt.patch
-│   └── 05-fiber-uring24-sqes-sz.patch
+│   ├── 05-fiber-uring24-sqes-sz.patch
+│   ├── 06-crash-dumper-script-dir.patch
+│   └── 07-fiber-py-libcxx-atomics.patch
 └── overlay/                          # Files copied verbatim into silk tree
     ├── ya.make
     ├── include/sys/rseq.h            # Stub for ya include checker
@@ -84,6 +86,24 @@ ya_make_patches/
   Silk targets liburing 2.9 where `sqes_sz` records the length of the sqes
   mapping; the repo has 2.4 without that field. The computed expression is
   exactly the length 2.4 itself mmaps and munmaps for the sqes array.
+- **06-crash-dumper-script-dir**: `installCrashDumper` takes the gdb
+  script directory from the `SILK_CRASH_DUMPER_SCRIPT_DIR` environment
+  variable when it is set. Upstream looks for `crash-dumper.py` next to
+  `/proc/self/exe`; `ya make -t` runs the test binary from its own build
+  root, where files the ut module copies with `COPY_FILE` are not
+  present, so the scripts are not found there.
+- **07-fiber-py-libcxx-atomics**: `_atomic_load` in `src/gdb/fiber.py`
+  learns the libc++ field layout (`__a_.__a_value`), and its raw-memory
+  fallback reads the atomic's own size instead of a fixed 8 bytes. The
+  1-byte fiber state atomic otherwise folds in the neighbouring fields
+  and prints as garbage instead of RUNNING/SUSPENDED.
+  Both patches are candidates for upstreaming; drop once silk ships
+  equivalents.
+
+Dropped patches: the former **06-fiber-destroy-join-workers-first** (join
+worker threads before destroying the processors in
+`FiberScheduler::destroy`) was accepted upstream verbatim and removed from
+this set; the patches after it were renumbered.
 
 If a future silk version is built against a newer liburing or librseq, the
 corresponding patch can be dropped. Patches 02 and 05 can be dropped

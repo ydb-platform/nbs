@@ -217,7 +217,23 @@ Y_UNIT_TEST_SUITE(TCompareConfigsTest)
 
         {
             auto file1 = File1;
-            file1.SetJournalled(true);
+            file1.MutableJournalConfig()->SetEnabled(true);
+
+            const auto error = compare(file1);
+            UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
+        }
+
+        {
+            auto file1 = File1;
+            file1.MutableJournalConfig()->SetLogMetaSize(4096);
+
+            const auto error = compare(file1);
+            UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);
+        }
+
+        {
+            auto file1 = File1;
+            file1.MutableJournalConfig()->SetLogDataSize(65536);
 
             const auto error = compare(file1);
             UNIT_ASSERT_VALUES_EQUAL_C(E_ARGUMENT, error.GetCode(), error);

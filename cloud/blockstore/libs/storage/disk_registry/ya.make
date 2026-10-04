@@ -39,6 +39,7 @@ SRCS(
     disk_registry_actor_placement.cpp
     disk_registry_actor_publish_disk_state.cpp
     disk_registry_actor_writable_state.cpp
+    disk_registry_actor_purge_device_cms.cpp
     disk_registry_actor_purge_host_cms.cpp
     disk_registry_actor_query_agents_info.cpp
     disk_registry_actor_query_available_storage.cpp
@@ -85,6 +86,7 @@ PEERDIR(
     cloud/blockstore/libs/storage/disk_common
     cloud/blockstore/libs/storage/disk_registry/actors
     cloud/blockstore/libs/storage/disk_registry/model
+    cloud/storage/core/libs/api
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
     contrib/ydb/library/actors/core

@@ -9,9 +9,9 @@
 #include <cloud/blockstore/config/disk.pb.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
-#include <cloud/blockstore/libs/service_local/broken_storage.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/service_local/broken_storage.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/compare_configs.h>
 #include <cloud/blockstore/libs/storage/disk_agent/model/config.h>
@@ -22,12 +22,15 @@
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/string/builder.h>
+#include <util/string/cast.h>
 #include <util/string/printf.h>
 #include <util/system/file.h>
 #include <util/system/fs.h>
+#include <util/system/hostname.h>
 #include <util/system/mutex.h>
 
 #include <cstring>
+#include <optional>
 #include <tuple>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -112,6 +115,25 @@ TVector<TString> GetLostDevicesIds(
     return result;
 }
 
+std::optional<NProto::TEndpoint> GetJournalledEndpoint(
+    const TDiskAgentConfig& config)
+{
+    TStringBuf host;
+    TStringBuf port;
+    TStringBuf(config.GetJournalledDeviceTcpServerListenAddress())
+        .RSplit(':', host, port);
+
+    if (ui32 value = FromStringWithDefault<ui32>(port, 0)) {
+        NProto::TEndpoint endpoint;
+        endpoint.SetHost(FQDNHostName());
+        endpoint.SetPort(value);
+
+        return endpoint;
+    }
+
+    return std::nullopt;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TInitializer: public std::enable_shared_from_this<TInitializer>
@@ -134,7 +156,7 @@ private:
     TVector<TString> ConfigMismatchErrors;
     TVector<TString> DevicesWithSuspendedIO;
     TVector<TString> LostDevicesIds;
-    TVector<TString> JournalledDeviceIds;
+    THashMap<TString, NProto::TJournalConfig> JournalledDevices;
     TMutex Lock;
 
     THashMap<TString, TString> PathToSerial;
@@ -291,6 +313,15 @@ bool TInitializer::ValidateStorageDiscoveryConfig() const
 
     for (const auto& path: config.GetPathConfigs()) {
         for (const auto& pool: path.GetPoolConfigs()) {
+            if (path.GetSequentialLayout() && !pool.HasLayout()) {
+                STORAGE_WARN(
+                    "Bad pool configuration: the sequential layout requires "
+                    "a layout for each pool. "
+                    "Config: " << pool);
+
+                return false;
+            }
+
             if (pool.HasLayout()) {
                 const auto& layout = pool.GetLayout();
 
@@ -659,6 +690,7 @@ TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
     Devices.resize(deviceCount);
     Stats.resize(deviceCount);
 
+    const auto journalledEndpoint = GetJournalledEndpoint(*AgentConfig);
     TVector<TFuture<IStoragePtr>> futures;
 
     int i = 0;
@@ -668,8 +700,14 @@ TFuture<TInitializeStorageResult> TInitializer::CreateStorages()
         Configs[i] = CreateConfig(device);
         Stats[i] = std::make_shared<TStorageIoStats>();
 
-        if (device.GetJournalled()) {
-            JournalledDeviceIds.push_back(device.GetDeviceId());
+        if (device.GetJournalConfig().GetEnabled()) {
+            JournalledDevices.emplace(
+                device.GetDeviceId(),
+                device.GetJournalConfig());
+
+            if (journalledEndpoint) {
+                *Configs[i].MutableJournalledEndpoint() = *journalledEndpoint;
+            }
         }
 
         auto onInitError = [i, this] () {
@@ -803,7 +841,7 @@ TInitializeStorageResult TInitializer::GetResult()
     r.ConfigMismatchErrors = std::move(ConfigMismatchErrors);
     r.DevicesWithSuspendedIO = std::move(DevicesWithSuspendedIO);
     r.LostDevicesIds = std::move(LostDevicesIds);
-    r.JournalledDeviceIds = std::move(JournalledDeviceIds);
+    r.JournalledDevices = std::move(JournalledDevices);
     r.Guard = std::move(Guard);
 
     return r;

@@ -96,6 +96,8 @@ public:
     TTestClientBuilder& SetVolumeStats(IVolumeStatsPtr volumeStats);
 
     NClient::IClientPtr BuildClient();
+
+    NClient::IMultiHostClientPtr BuildMultiHostClient();
 };
 
 ////////////////////////////////////////////////////////////////////////////////

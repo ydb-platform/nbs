@@ -11,6 +11,7 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/model/helpers.h>
 
+#include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler.h>
 #include <cloud/storage/core/libs/throttling/tablet_throttler_logger.h>
@@ -312,6 +313,10 @@ void TVolumeActor::OnActivateExecutor(const TActorContext& ctx)
     ScheduleRegularUpdates(ctx);
 
     if (!Executor()->GetStats().IsFollower()) {
+        // Hive Local boots bypass HiveProxy's external-boot backup path.
+        // Save their metadata for fallback recovery without Hive. External boots
+        // also report the actual generation, which may exceed Hive's suggestion.
+        UpdateTabletBootInfoBackup(ctx, Info(), Executor()->Generation());
         ExecuteTx<TInitSchema>(ctx);
     }
 

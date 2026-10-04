@@ -4,7 +4,9 @@
 #include "options.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/cells/iface/forward_service.h>
 #include <cloud/blockstore/libs/cells/impl/cell_manager.h>
+#include <cloud/blockstore/libs/cells/impl/mon.h>
 #include <cloud/storage/core/libs/grpc/tls_certificate_provider.h>
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/config/blockstore_config.h>
@@ -801,7 +803,8 @@ void TBootstrapYdb::InitKikimrService()
     StatsFetcher = NCloud::NStorage::BuildStatsFetcher(
         Configs->DiagnosticsConfig->GetStatsFetcherType(),
         Configs->DiagnosticsConfig->GetCpuWaitFilename(),
-        Log);
+        Log,
+        LongRunningTaskExecutor);
 
     STORAGE_INFO("StatsFetcher initialized");
 
@@ -1039,10 +1042,38 @@ void TBootstrapYdb::SetupCellManager()
             GetTraceSerializer(),
             ServerStats,
             std::move(cellCertProvider),
-            RdmaClient);
+            RdmaClient,
+            Service);
     } else {
-        CellManager = NCells::CreateCellManagerStub();
+        CellManager = NCells::CreateCellManagerStub(Service);
     }
+}
+
+void TBootstrapYdb::SetupCellMonitoringActor()
+{
+    if (CellManager && ActorSystem &&
+        Configs->CellsConfig->GetCellsEnabled())
+    {
+        ActorSystem->Register(NCells::CreateCellsMonActor(
+            CellManager,
+            Configs->DiagnosticsConfig));
+    }
+}
+
+IBlockStorePtr TBootstrapYdb::WrapServiceForInterCellForward(
+    IBlockStorePtr authorized,
+    IBlockStorePtr trusted)
+{
+    auto service = NCells::CreateCellForwardService(
+        std::move(authorized),
+        std::move(trusted),
+        CellManager->GetInboundActivity(),
+        Logging,
+        Timer);
+
+    STORAGE_INFO("CellForwardService initialized");
+
+    return service;
 }
 
 }   // namespace NCloud::NBlockStore::NServer

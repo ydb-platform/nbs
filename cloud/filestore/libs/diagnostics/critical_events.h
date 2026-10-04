@@ -62,7 +62,6 @@ namespace NCloud::NFileStore{
     xxx(NodeCacheInvalidNode)                                                  \
     xxx(ConfirmBlobsFailed)                                                    \
     xxx(UnconfirmedFlowProxyRetryThresholdReached)                             \
-    xxx(HardLinkFromShardDirToMainTabletNode)                                  \
     xxx(HardLinkUndoFailed)                                                    \
     xxx(ReadDataResponseParserFailed)                                          \
     xxx(MalformedShardNodeRef)                                                 \
@@ -77,6 +76,8 @@ namespace NCloud::NFileStore{
     xxx(ListNodesLocalNodeNotFound)                                            \
     xxx(PersistentStateUnstatableEntry)                                        \
     xxx(PersistentStateUnlistableDir)                                          \
+    xxx(DupCacheEntryRequestIdCollision)                                       \
+    xxx(FastShardInitFailed)                                                   \
 // FILESTORE_CRITICAL_EVENTS
 
 #define FILESTORE_CRITICAL_EVENTS_WITHOUT_LOGGING(xxx)                         \

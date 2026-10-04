@@ -41,12 +41,12 @@ bool TLogPageIndex::TryApplyNext(const TLogRecord& record)
     return true;
 }
 
-void TLogPageIndex::EraseUpTo(ui64 lsn)
+void TLogPageIndex::EraseBelow(ui64 lsn)
 {
     std::lock_guard lock(Lock);
 
     for (auto it = Entries.begin(); it != Entries.end();) {
-        if (it->second.Lsn <= lsn) {
+        if (it->second.Lsn < lsn) {
             it = Entries.erase(it);
         } else {
             ++it;

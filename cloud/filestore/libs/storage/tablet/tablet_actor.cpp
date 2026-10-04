@@ -59,6 +59,8 @@ const TIndexTabletActor::TStateInfo TIndexTabletActor::States[STATE_MAX] = {
     { "Adapter",     (IActor::TReceiveFunc)&TIndexTabletActor::StateAdapter},
     { "Zombie",      (IActor::TReceiveFunc)&TIndexTabletActor::StateZombie },
     { "Broken",      (IActor::TReceiveFunc)&TIndexTabletActor::StateBroken },
+    { "AdapterBroken",
+        (IActor::TReceiveFunc)&TIndexTabletActor::StateAdapterBroken },
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1849,6 +1851,28 @@ STFUNC(TIndexTabletActor::StateBroken)
                 ev,
                 TFileStoreComponents::TABLET,
                 __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+STFUNC(TIndexTabletActor::StateAdapterBroken)
+{
+    //
+    // A tablet broken by a failed FastShard init has its state loaded, and
+    // the failure is most likely caused by its shard config (e.g. dead
+    // storage devices). ConfigureAsShard is the only way to repair it - the
+    // rest is the same as in StateBroken.
+    //
+
+    switch (ev->GetTypeRewrite()) {
+        HFunc(
+            TEvIndexTablet::TEvConfigureAsShardRequest,
+            HandleConfigureAsShard);
+
+        default:
+            StateBroken(ev);
             break;
     }
 }

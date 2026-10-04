@@ -306,7 +306,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT(map.Lookup({Range(1, 1)}, 100).Mappings.empty());
     }
 
-    Y_UNIT_TEST(ShouldRemoveEverythingUpToTheGivenLsn)
+    Y_UNIT_TEST(ShouldRemoveEverythingBelowTheGivenLsn)
     {
         TLogPageIndex map;
         map.InitLastIndexedLsn(10);
@@ -319,9 +319,9 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT(map.TryApplyNext(*second));
         UNIT_ASSERT(map.TryApplyNext(*third));
 
-        map.EraseUpTo(30);
+        map.EraseBelow(31);
 
-        // everything at or below lsn 30 is gone, lsn 40 stays
+        // everything below lsn 31 is gone, lsn 40 stays
         UNIT_ASSERT_VALUES_EQUAL("9->300x2", DescribeAll(map));
 
         // removing does not rewind the applied position
@@ -337,7 +337,7 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         UNIT_ASSERT(map.TryApplyNext(*record));
 
         // trimming beyond the applied position drops everything applied so far
-        map.EraseUpTo(30);
+        map.EraseBelow(31);
         UNIT_ASSERT_VALUES_EQUAL("", DescribeAll(map));
 
         // and it does not rewind the applied position
@@ -352,10 +352,10 @@ Y_UNIT_TEST_SUITE(TLogPageIndexTest)
         auto record = MakePageRecord(10, 20, {{1, Range(100, 2)}});
         UNIT_ASSERT(map.TryApplyNext(*record));
 
-        map.EraseUpTo(19);
+        map.EraseBelow(20);
         UNIT_ASSERT_VALUES_EQUAL("1->100x2", DescribeAll(map));
 
-        map.EraseUpTo(20);
+        map.EraseBelow(21);
         UNIT_ASSERT_VALUES_EQUAL("", DescribeAll(map));
     }
 
@@ -391,10 +391,10 @@ void ModelApply(TModel& model, ui64 lsn, const TVector<TPageMapping>& mappings)
     }
 }
 
-void ModelEraseUpTo(TModel& model, ui64 lsn)
+void ModelEraseBelow(TModel& model, ui64 lsn)
 {
     for (auto it = model.begin(); it != model.end();) {
-        it = it->second.first <= lsn ? model.erase(it) : std::next(it);
+        it = it->second.first < lsn ? model.erase(it) : std::next(it);
     }
 }
 
@@ -492,9 +492,9 @@ Y_UNIT_TEST_SUITE(TLogPageIndexModelTest)
                 ModelApply(model, lsn, mappings);
 
                 if (rng.Next(6) == 0) {
-                    const ui64 upTo = rng.Next(lsn + 20);
-                    map.EraseUpTo(upTo);
-                    ModelEraseUpTo(model, upTo);
+                    const ui64 below = rng.Next(lsn + 20);
+                    map.EraseBelow(below);
+                    ModelEraseBelow(model, below);
                 }
 
                 // query random windows with random afterLsn

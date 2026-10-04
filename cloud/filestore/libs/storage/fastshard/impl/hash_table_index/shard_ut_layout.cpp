@@ -104,7 +104,7 @@ struct TStorageFixture
         //
 
         auto* group = Config.AddStorageGroups();
-        group->SetType(NProtoPrivate::TStorageGroup::E_SG_MIRROR);
+        group->SetType(NFileStore::NProto::FAST_SHARD_STORAGE_MIRROR);
         for (ui32 i = 1; i <= 3; ++i) {
             auto* device = group->AddDevices();
             device->SetHost("host-" + ToString(i));
@@ -205,7 +205,7 @@ TEST(HashTableIndexShardLayoutTest, DumpsLayout)
     {
         const auto& groups = parsed["storageGroups"].GetArray();
         ASSERT_EQ(1u, groups.size()) << json.Str();
-        EXPECT_EQ("E_SG_MIRROR", groups[0]["type"].GetString());
+        EXPECT_EQ("FAST_SHARD_STORAGE_MIRROR", groups[0]["type"].GetString());
 
         const auto& devices = groups[0]["devices"].GetArray();
         ASSERT_EQ(3u, devices.size()) << json.Str();
@@ -252,7 +252,7 @@ TEST(HashTableIndexShardLayoutTest, DumpsLayout)
         || html.Str().Contains("fastShardStatsJson")) << html.Str();
 
     EXPECT_TRUE(html.Str().Contains("Storage Groups")) << html.Str();
-    EXPECT_TRUE(html.Str().Contains("<td>E_SG_MIRROR</td>")) << html.Str();
+    EXPECT_TRUE(html.Str().Contains("<td>FAST_SHARD_STORAGE_MIRROR</td>")) << html.Str();
     for (ui32 i = 1; i <= 3; ++i) {
         EXPECT_TRUE(
             html.Str().Contains("<td>host-" + ToString(i) + "</td>"))

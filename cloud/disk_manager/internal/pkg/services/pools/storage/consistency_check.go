@@ -143,6 +143,7 @@ func (s *storageYDB) checkBaseDiskConsistency(
 	ctx context.Context,
 	baseDisk baseDisk,
 	slots []slot,
+	inflightDependents map[string]int64,
 ) error {
 
 	slotsBaseDiskCount := uint64(0)
@@ -171,6 +172,35 @@ func (s *storageYDB) checkBaseDiskConsistency(
 		return errors.NewNonRetriableErrorf(
 			"base_disk %+v is in inconsistent state",
 			baseDisk,
+		)
+	}
+
+	// Counter must never be negative or exceed the actual number of dependents
+	// (that would hold base disk forever). It may be less than the actual
+	// number while holdBaseDisksWithInflightDependents is disabled, because
+	// increments are not applied in that case.
+	// TODO: check for equality unconditionally after deployment of this
+	// version is finished.
+	expected := inflightDependents[baseDisk.id]
+
+	// Chains of holds are forbidden (see retireBaseDisk): base disk that is
+	// being created from another base disk can't be a source itself.
+	if baseDisk.holdsSrcDisk() && expected != 0 {
+		return errors.NewNonRetriableErrorf(
+			"base_disk %+v is being created from another base disk, but has %v inflight dependents",
+			baseDisk,
+			expected,
+		)
+	}
+
+	if baseDisk.inflightDependents < 0 ||
+		baseDisk.inflightDependents > expected ||
+		(s.holdBaseDisksWithInflightDependents && baseDisk.inflightDependents != expected) {
+
+		return errors.NewNonRetriableErrorf(
+			"base_disk %+v has inconsistent inflight dependents count, expected %v",
+			baseDisk,
+			expected,
 		)
 	}
 
@@ -203,8 +233,21 @@ func (s *storageYDB) checkBaseDisksConsistency(
 		return err
 	}
 
+	// Number of base disks being created from each source base disk.
+	inflightDependents := make(map[string]int64)
 	for _, baseDisk := range baseDisks {
-		err = s.checkBaseDiskConsistency(ctx, baseDisk, slots)
+		if baseDisk.holdsSrcDisk() {
+			inflightDependents[baseDisk.srcDiskID]++
+		}
+	}
+
+	for _, baseDisk := range baseDisks {
+		err = s.checkBaseDiskConsistency(
+			ctx,
+			baseDisk,
+			slots,
+			inflightDependents,
+		)
 		if err != nil {
 			return err
 		}

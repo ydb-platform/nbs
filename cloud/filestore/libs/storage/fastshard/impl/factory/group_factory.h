@@ -9,7 +9,7 @@
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
 /**
- * An unrecognised type falls back to E_SG_MIRROR.
+ * An unrecognised type falls back to FAST_SHARD_STORAGE_MIRROR.
  */
 IStorageGroupFactoryPtr CreateStorageGroupFactory();
 

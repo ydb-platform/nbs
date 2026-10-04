@@ -1720,3 +1720,201 @@ func TestYDBRequestDoesNotHang(t *testing.T) {
 		}()
 	}
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+func TestBackupChunkQueue(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	entries := []BackupChunkQueueEntry{
+		{SnapshotID: "snap1", ChunkID: "t.snap1.0"},
+		{SnapshotID: "snap1", ChunkID: "t.snap1.1"},
+		{SnapshotID: "snap2", ChunkID: "t.snap2.0"},
+	}
+	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:2])
+	require.NoError(t, err)
+
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap2", entries[2:])
+	require.NoError(t, err)
+
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:1])
+	require.NoError(t, err)
+
+	length, err := f.storage.GetBackupChunkQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 3, length)
+
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 2)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	completed, err := f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.Zero(t, completed)
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
+	require.NoError(t, err)
+
+	completed, err = f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, completed)
+
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:2])
+	require.NoError(t, err)
+
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, entries[2:], got)
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[2:])
+	require.NoError(t, err)
+
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, got)
+
+	length, err = f.storage.GetBackupChunkQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 0, length)
+}
+
+func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	entries := []BackupChunkQueueEntry{
+		{SnapshotID: "snap1", ChunkID: "t.snap1.0"},
+		{SnapshotID: "snap1", ChunkID: "t.snap1.1"},
+		{SnapshotID: "snap1", ChunkID: "t.snap1.2"},
+		{SnapshotID: "snap2", ChunkID: "t.snap2.0"},
+	}
+	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:3])
+	require.NoError(t, err)
+
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap2", entries[3:])
+	require.NoError(t, err)
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
+	require.NoError(t, err)
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[3:])
+	require.NoError(t, err)
+
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, entries[2:3], got)
+
+	length, err := f.storage.GetBackupChunkQueueLength(f.ctx)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, length)
+
+	completed, err := f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, completed)
+
+	for _, expected := range []int{1, 1, 0} {
+		cleared, err := f.storage.ClearCompletedBackupChunkQueueEntries(
+			f.ctx,
+			"snap1",
+			1, // limit
+		)
+		require.NoError(t, err)
+		require.Equal(t, expected, cleared)
+	}
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:2])
+	require.NoError(t, err)
+
+	completed, err = f.storage.GetBackedUpChunkCount(f.ctx, "snap1")
+	require.NoError(t, err)
+	require.Zero(t, completed)
+
+	cleared, err := f.storage.ClearCompletedBackupChunkQueueEntries(
+		f.ctx,
+		"snap2",
+		10, // limit
+	)
+	require.NoError(t, err)
+	require.Equal(t, 1, cleared)
+}
+
+func TestReadChunkBlob(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunk := makeChunk(0, "abc")
+	chunkID, err := f.storage.WriteChunk(
+		f.ctx,
+		"",
+		"snapshot",
+		chunk,
+		true, // useS3
+	)
+	require.NoError(t, err)
+
+	chunkBlob, err := f.storage.ReadChunkBlob(
+		f.ctx,
+		chunkID,
+		true, // storedInS3
+	)
+	require.NoError(t, err)
+	stored := getS3Object(f, chunkID)
+	require.Equal(t, stored.Data, chunkBlob.Data)
+	require.Equal(
+		t,
+		*stored.Metadata["Checksum"],
+		strconv.FormatUint(uint64(chunkBlob.Checksum), 10),
+	)
+	require.Empty(t, chunkBlob.Compression)
+
+	_, err = f.storage.ReadChunkBlob(
+		f.ctx,
+		"missing",
+		true, // storedInS3
+	)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+}
+
+func TestReadChunkBlobStoredInYDB(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	chunk := makeChunk(0, "abc")
+	chunkID, err := f.storage.WriteChunk(
+		f.ctx,
+		"",
+		"snapshot",
+		chunk,
+		false, // useS3
+	)
+	require.NoError(t, err)
+
+	chunkBlob, err := f.storage.ReadChunkBlob(
+		f.ctx,
+		chunkID,
+		false, // storedInS3
+	)
+	require.NoError(t, err)
+	require.Equal(t, chunk.Data, chunkBlob.Data)
+	require.Equal(t, chunk.Checksum(), chunkBlob.Checksum)
+	require.Empty(t, chunkBlob.Compression)
+
+	_, err = f.storage.ReadChunkBlob(
+		f.ctx,
+		"missing",
+		false, // storedInS3
+	)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+}
+
+func TestGetSnapshotIDFromChunkID(t *testing.T) {
+	require.Equal(t, "snap1", getSnapshotIDFromChunkID("task1.snap1.7"))
+	require.Equal(t, "snap.1", getSnapshotIDFromChunkID("task1.snap.1.7"))
+	require.Empty(t, getSnapshotIDFromChunkID("task1.snap1"))
+	require.Empty(t, getSnapshotIDFromChunkID(""))
+
+	require.True(t, IsChunkCreatedBySnapshot("task1.snap.1.7", "snap.1"))
+	require.False(t, IsChunkCreatedBySnapshot("task1.snap1.7", "snap2"))
+	require.False(t, IsChunkCreatedBySnapshot("", ""))
+}

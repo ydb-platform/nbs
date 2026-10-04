@@ -53,6 +53,14 @@ struct TFileSystemShardStats
 
 struct IFileSystemShard
 {
+    /**
+     * Destruction joins every operation the shard is still running, so
+     * once the shard is destroyed no shard-owned activity remains. As a
+     * consequence, the last reference to the shard must never be
+     * released from inside a completion callback of one of the shard's
+     * own futures - the callback runs inside the operation being joined
+     * and the destructor would wait for itself.
+     */
     virtual ~IFileSystemShard() = default;
 
 #define FAST_SHARD_DECLARE_METHOD(name, ns, ...)                               \

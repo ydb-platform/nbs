@@ -14,7 +14,7 @@ namespace {
 struct TMetadataHeader
 {
     ui64 Version = 0;
-    ui64 LastAckedLsn = 0;
+    ui64 LsnLowWatermark = 0;
 };
 
 struct TRecordHeader
@@ -40,7 +40,7 @@ TBuffer SerializeMetadata(const TJournalMetadata& metadata)
 {
     TMetadataHeader header;
     header.Version = metadata.Version;
-    header.LastAckedLsn = metadata.LastAckedLsn;
+    header.LsnLowWatermark = metadata.LsnLowWatermark;
 
     TBuffer buffer(sizeof(header));
     buffer.Append(reinterpret_cast<const char*>(&header), sizeof(header));
@@ -63,7 +63,7 @@ std::optional<TJournalMetadata> DeserializeMetadata(const TBuffer& buffer)
 
     return TJournalMetadata{
         .Version = static_cast<ui32>(header.Version),
-        .LastAckedLsn = header.LastAckedLsn,
+        .LsnLowWatermark = header.LsnLowWatermark,
     };
 }
 

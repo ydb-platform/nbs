@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
@@ -140,6 +141,16 @@ func (s *StorageMock) ReadChunkMap(
 	return args.Get(0).(<-chan storage.ChunkMapEntry), args.Get(1).(<-chan error)
 }
 
+func (s *StorageMock) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+	storedInS3 bool,
+) (chunks.ChunkBlob, error) {
+
+	args := s.Called(ctx, chunkID, storedInS3)
+	return args.Get(0).(chunks.ChunkBlob), args.Error(1)
+}
+
 func (s *StorageMock) ReadChunk(
 	ctx context.Context,
 	chunk *common.Chunk,
@@ -256,6 +267,61 @@ func (s *StorageMock) ListSnapshots(
 
 func NewStorageMock() *StorageMock {
 	return &StorageMock{}
+}
+
+func (s *StorageMock) EnqueueBackupChunks(
+	ctx context.Context,
+	snapshotID string,
+	entries []storage.BackupChunkQueueEntry,
+) error {
+
+	args := s.Called(ctx, snapshotID, entries)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetQueuedChunksToBackup(
+	ctx context.Context,
+	limit int,
+) ([]storage.BackupChunkQueueEntry, error) {
+
+	args := s.Called(ctx, limit)
+	return args.Get(0).([]storage.BackupChunkQueueEntry), args.Error(1)
+}
+
+func (s *StorageMock) GetBackedUpChunkCount(
+	ctx context.Context,
+	snapshotID string,
+) (uint64, error) {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Get(0).(uint64), args.Error(1)
+}
+
+func (s *StorageMock) ChunksBackupCompleted(
+	ctx context.Context,
+	entries []storage.BackupChunkQueueEntry,
+) error {
+
+	args := s.Called(ctx, entries)
+	return args.Error(0)
+}
+
+func (s *StorageMock) ClearCompletedBackupChunkQueueEntries(
+	ctx context.Context,
+	snapshotID string,
+	limit int,
+) (int, error) {
+
+	args := s.Called(ctx, snapshotID, limit)
+	return args.Int(0), args.Error(1)
+}
+
+func (s *StorageMock) GetBackupChunkQueueLength(
+	ctx context.Context,
+) (uint64, error) {
+
+	args := s.Called(ctx)
+	return args.Get(0).(uint64), args.Error(1)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

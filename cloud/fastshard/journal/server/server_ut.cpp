@@ -1,8 +1,9 @@
 #include "server.h"
 
+#include <cloud/fastshard/protos/device.pb.h>
+
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
-#include <cloud/storage/core/protos/device.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 #include <library/cpp/testing/unittest/tests_data.h>

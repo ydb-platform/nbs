@@ -1417,7 +1417,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            2,
             b.Metrics.PendingQueue.ProcessedCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
 
@@ -1432,7 +1432,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(error, pending.GetValue());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(
-            4,
+            6,
             b.Metrics.PendingQueue.ProcessedCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(1, b.Metrics.UnflushedQueue.Count->Get());
     }
@@ -1452,7 +1452,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(
-            0,
+            2,
             b.Metrics.PendingQueue.ProcessedCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
 
@@ -1461,7 +1461,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
 
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(
-            2,
+            4,
             b.Metrics.PendingQueue.ProcessedCount->Get());
         UNIT_ASSERT_VALUES_EQUAL(2, b.Metrics.UnflushedQueue.Count->Get());
 

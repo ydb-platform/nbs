@@ -1,5 +1,7 @@
 import json
 import os
+import re
+import time
 
 import pytest
 import yatest.common as common
@@ -47,11 +49,25 @@ def __process_stat(node):
     return node
 
 
-def __execute_action_expecting_failure(client, action, request):
+def __execute_action_expecting_failure(client, action, request, **kwargs):
     with pytest.raises(common.ExecutionError) as e:
-        client.execute_action(action, request)
+        client.execute_action(action, request, **kwargs)
     # error description is printed to stdout and is a part of canonical output
     return e.value.execution_result.stdout
+
+
+def __execute_action_expecting_argument_error(client, action, request):
+    with pytest.raises(common.ExecutionError) as e:
+        client.execute_action(action, request, all_shards=True)
+    stderr = e.value.execution_result.stderr
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8")
+    # stderr: "<cmdline> failed: (<exception type>) <file>:<line>: E_ARGUMENT
+    # <message> | ", only the error code and message are stable enough to be
+    # canonized
+    match = re.search(r"\b(E_ARGUMENT .*?) \|", stderr)
+    assert match is not None, stderr
+    return (match.group(1) + "\n").encode("utf-8")
 
 
 def __exec_ls(client, *args):
@@ -62,6 +78,129 @@ def __exec_ls(client, *args):
         __process_stat(node)
 
     return json.dumps(nodes, indent=4).encode('utf-8')
+
+
+def __create_fs_with_3_shards(client):
+    block_count = SHARD_SIZE // BLOCK_SIZE
+    out = client.create(
+        "fs0", "test_cloud", "test_folder", BLOCK_SIZE, block_count)
+    out += client.resize("fs0", block_count, shard_count=3)
+    return out
+
+
+def __get_config_all_shards(client):
+    return client.execute_action(
+        "getstorageconfig",
+        {"FileSystemId": "fs0", "OnlyOverride": True},
+        all_shards=True)
+
+
+def __canonize(results_path, out):
+    with open(results_path, "wb") as results_file:
+        results_file.write(out)
+
+    return common.canonical_file(results_path, local=True)
+
+
+def test_storage_config_all_shards():
+    client, _, results_path = __init_test()
+    out = __create_fs_with_3_shards(client)
+
+    request = {
+        "FileSystemId": "fs0",
+        "StorageConfig": {"ThrottlingEnabled": True},
+        "MergeWithStorageConfigFromTabletDB": True,
+    }
+    out += client.execute_action("changestorageconfig", request)
+    # ThrottlingEnabled is set only for fs0, not for the shards
+    out += __get_config_all_shards(client)
+
+    out += client.execute_action("changestorageconfig", {
+        "FileSystemId": "fs0_s1",
+        "StorageConfig": {"ReadAheadCacheMaxNodes": 42},
+        "MergeWithStorageConfigFromTabletDB": True,
+    })
+    request["StorageConfig"]["ThrottlingEnabled"] = False
+    out += client.execute_action(
+        "changestorageconfig", request, all_shards=True)
+    # ThrottlingEnabled is false everywhere, fs0_s1 keeps
+    # ReadAheadCacheMaxNodes
+    out += __get_config_all_shards(client)
+
+    out += client.destroy("fs0")
+    return __canonize(results_path, out)
+
+
+def test_storage_config_all_shards_delay():
+    client, _, _ = __init_test()
+    __create_fs_with_3_shards(client)
+
+    start = time.monotonic()
+    client.execute_action("changestorageconfig", {
+        "FileSystemId": "fs0",
+        "StorageConfig": {"ThrottlingEnabled": True},
+        "MergeWithStorageConfigFromTabletDB": True,
+    }, all_shards=True, all_shards_delay=1)
+    # 1s before each of the 3 shards
+    assert time.monotonic() - start >= 3
+
+    client.destroy("fs0")
+
+
+def test_storage_config_all_shards_invalid_input():
+    client, _, results_path = __init_test()
+    out = __create_fs_with_3_shards(client)
+
+    for action, request in [
+        ("getfilesystemtopology", {"FileSystemId": "fs0"}),
+        ("getstorageconfig", {"FileSystemId": ""}),
+        ("getstorageconfig", {"FileSystemId": "fs0_s1"}),
+    ]:
+        out += __execute_action_expecting_argument_error(
+            client, action, request)
+
+    out += __execute_action_expecting_failure(
+        client,
+        "getstorageconfig",
+        {"FileSystemId": "missing"},
+        all_shards=True)
+
+    out += client.destroy("fs0")
+    return __canonize(results_path, out)
+
+
+def test_storage_config_all_shards_partial_failure():
+    client, _, results_path = __init_test()
+    out = __create_fs_with_3_shards(client)
+    out += client.destroy("fs0_s2")
+
+    # Error for fs0_s2, Response for the rest
+    out += __execute_action_expecting_failure(
+        client,
+        "getstorageconfig",
+        {"FileSystemId": "fs0", "OnlyOverride": True},
+        all_shards=True)
+
+    out += client.destroy("fs0")
+    return __canonize(results_path, out)
+
+
+def test_storage_config_all_shards_without_shards():
+    client, _, results_path = __init_test()
+    # a filesystem smaller than ShardAllocationUnit is created without shards
+    out = client.create(
+        "fs0", "test_cloud", "test_folder", BLOCK_SIZE,
+        SHARD_SIZE // BLOCK_SIZE // 2)
+
+    out += client.execute_action("changestorageconfig", {
+        "FileSystemId": "fs0",
+        "StorageConfig": {"ThrottlingEnabled": True},
+        "MergeWithStorageConfigFromTabletDB": True,
+    }, all_shards=True)
+    out += __get_config_all_shards(client)
+
+    out += client.destroy("fs0")
+    return __canonize(results_path, out)
 
 
 def test_shard_autoaddition():

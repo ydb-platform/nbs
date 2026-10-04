@@ -40,12 +40,14 @@ struct TChannelRegistry
 
     const TChannelMeta* SelectChannel(
         double minFreeSpace,
-        double freeSpaceThreshold)
+        double freeSpaceThreshold,
+        ui32 channelCountLimit)
     {
         const TChannelMeta* bestMeta = nullptr;
         double bestSpaceShare = 0;
-        for (ui32 i = 0; i < ChannelMetas.size(); ++i) {
-            const auto* meta = ChannelMetas[ChannelIndex % ChannelMetas.size()];
+        const ui32 limit = Min<ui32>(channelCountLimit, ChannelMetas.size());
+        for (ui32 i = 0; i < limit; ++i) {
+            const auto* meta = ChannelMetas[ChannelIndex % limit];
             ++ChannelIndex;
             if (!meta->Writable) {
                 continue;
@@ -93,9 +95,11 @@ using TChannelsByDataKind = std::array<
 struct TChannels::TImpl
 {
     TDeque<TChannelMeta> AllChannels;
+    ui32 MaxUsedDataChannelCount = Max<ui32>();
     TChannelsByDataKind ByDataKind;
 
     void AddChannel(ui32 channel, EChannelDataKind dataKind, TString poolKind);
+    void SetMaxUsedDataChannelCount(ui32 maxUsedDataChannelCount);
     void UpdateChannelStats(
         ui32 channel,
         bool writable,
@@ -132,6 +136,11 @@ void TChannels::TImpl::AddChannel(
     AllChannels[channel] = TChannelMeta(channel, dataKind, std::move(poolKind));
     auto& byDataKind = ByDataKind[static_cast<ui32>(dataKind)];
     byDataKind.ChannelMetas.push_back(&AllChannels.back());
+}
+
+void TChannels::TImpl::SetMaxUsedDataChannelCount(ui32 maxUsedDataChannelCount)
+{
+    MaxUsedDataChannelCount = maxUsedDataChannelCount;
 }
 
 void TChannels::TImpl::UpdateChannelStats(
@@ -173,13 +182,30 @@ TVector<ui32> TChannels::TImpl::GetChannelsToMove(
 {
     TVector<ui32> result;
 
+    const ui32 dataChannelCount =
+        ByDataKind[static_cast<ui32>(EChannelDataKind::Mixed)]
+        .ChannelMetas.size();
+    const ui32 dataChannelCountLimit =
+        Min<ui32>(MaxUsedDataChannelCount, dataChannelCount);
+    const ui32 nonDataChannelCount = AllChannels.size() - dataChannelCount;
+    const ui32 channelCountLimit = nonDataChannelCount + dataChannelCountLimit;
+
+    ui32 processedDataChannelCount = 0;
     for (const auto& meta: AllChannels) {
+        if (meta.DataKind == EChannelDataKind::Mixed) {
+            if (processedDataChannelCount == dataChannelCountLimit) {
+                continue;
+            }
+
+            ++processedDataChannelCount;
+        }
+
         if (meta.ToMove) {
             result.push_back(meta.Channel);
         }
     }
 
-    const ui32 absThreshold = (percentageThreshold / 100.) * AllChannels.size();
+    const ui32 absThreshold = (percentageThreshold / 100.) * channelCountLimit;
 
     if (result.size() < absThreshold) {
         return {};
@@ -225,8 +251,15 @@ TMaybe<ui32> TChannels::TImpl::SelectChannel(
     double freeSpaceThreshold)
 {
     auto& byDataKind = ByDataKind[static_cast<ui32>(dataKind)];
-    const auto* meta =
-        byDataKind.SelectChannel(minFreeSpace, freeSpaceThreshold);
+    ui32 channelCountLimit = Max<ui32>();
+    if (dataKind == EChannelDataKind::Mixed) {
+        channelCountLimit = MaxUsedDataChannelCount;
+    }
+
+    const auto* meta = byDataKind.SelectChannel(
+        minFreeSpace,
+        freeSpaceThreshold,
+        channelCountLimit);
     if (meta) {
         return meta->Channel;
     }
@@ -260,6 +293,11 @@ void TChannels::AddChannel(
     TString poolKind)
 {
     GetImpl().AddChannel(channel, dataKind, std::move(poolKind));
+}
+
+void TChannels::SetMaxUsedDataChannelCount(ui32 maxUsedDataChannelCount)
+{
+    GetImpl().SetMaxUsedDataChannelCount(maxUsedDataChannelCount);
 }
 
 void TChannels::UpdateChannelStats(
