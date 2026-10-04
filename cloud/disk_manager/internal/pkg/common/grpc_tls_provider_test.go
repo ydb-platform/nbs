@@ -502,6 +502,8 @@ func TestGrpcClientTlsProviderRefreshKeepsLastGoodRootCertificate(
 }
 
 func TestGrpcClientTlsProviderRefreshesPeriodically(t *testing.T) {
+	const refreshPeriod = 10 * time.Millisecond
+
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -526,7 +528,7 @@ func TestGrpcClientTlsProviderRefreshesPeriodically(t *testing.T) {
 		false,
 		GrpcClientTlsProviderConfig{
 			RootCertsFile: certPath,
-			RefreshPeriod: 10 * time.Millisecond,
+			RefreshPeriod: refreshPeriod,
 		},
 		registry,
 	)
@@ -534,10 +536,14 @@ func TestGrpcClientTlsProviderRefreshesPeriodically(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(certPath, secondPEM, 0o600))
 	expectedPool := newCertPool(t, secondPEM)
-	// Hangs if the new content is never applied.
-	for !provider.GetTlsConfig().RootCAs.Equal(expectedPool) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	require.Eventually(
+		t,
+		func() bool {
+			return provider.GetTlsConfig().RootCAs.Equal(expectedPool)
+		},
+		1000*refreshPeriod,
+		refreshPeriod,
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -941,6 +947,8 @@ func TestGrpcServerTlsProviderRefreshesCertificatesIndependently(
 }
 
 func TestGrpcServerTlsProviderRefreshesPeriodically(t *testing.T) {
+	const refreshPeriod = 10 * time.Millisecond
+
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -976,17 +984,28 @@ func TestGrpcServerTlsProviderRefreshesPeriodically(t *testing.T) {
 			CertFile:       files.certPath,
 			PrivateKeyFile: files.keyPath,
 		}},
-		10*time.Millisecond,
+		refreshPeriod,
 		registry,
 	)
 	require.NoError(t, err)
 
 	writeServerCertificate(t, files, secondPEM, secondKeyPEM)
 	expectedLeaf := leafOf(t, secondPEM)
-	// Hangs if the new content is never applied.
-	for !bytes.Equal(selectedLeaf(t, provider, ""), expectedLeaf) {
-		time.Sleep(10 * time.Millisecond)
-	}
+	// The condition runs outside the test goroutine, so it must not use
+	// require.
+	require.Eventually(
+		t,
+		func() bool {
+			provider.mutex.RLock()
+			defer provider.mutex.RUnlock()
+			return bytes.Equal(
+				provider.certificates[0].Certificate[0],
+				expectedLeaf,
+			)
+		},
+		1000*refreshPeriod,
+		refreshPeriod,
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
