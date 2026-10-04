@@ -206,7 +206,7 @@ TLogicRedo::TCommitRWTransactionResult TLogicRedo::CommitRWTransaction(
                 tx->TxSpan.Link(Batch->Commit->TraceId, {});
             }
         }
-        
+
         Batch->Commit->PushTx(seat.Get());
 
         CompletionQueue.push_back({ seat, Batch->Commit->Step });

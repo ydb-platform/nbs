@@ -52,7 +52,7 @@ TAutoPtr<TSchemeChanges> TScheme::GetSnapshot() const {
             default: {
                 delta.AddColumn(table, col.Name, it.first, col.PType.GetTypeId(), col.NotNull, col.Null);
                 break;
-            }            
+            }
             }
 
             delta.AddColumnToFamily(table, it.first, col.Family);
