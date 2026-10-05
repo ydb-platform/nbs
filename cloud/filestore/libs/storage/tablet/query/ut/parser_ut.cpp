@@ -250,6 +250,22 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
             UNIT_ASSERT_C(!error.Message.empty(), input);
         }
     }
+
+    Y_UNIT_TEST(ShouldReportParseErrorOffset)
+    {
+        TParseError error;
+        const TString unexpectedToken =
+            "SELECT * FROM NodeRefs @ WHERE child_id = 1";
+        UNIT_ASSERT(!Parse(unexpectedToken, &error));
+        UNIT_ASSERT_VALUES_EQUAL(
+            unexpectedToken.find('@'),
+            error.Offset);
+
+        const TString unexpectedEof =
+            "SELECT * FROM NodeRefs WHERE child_id =";
+        UNIT_ASSERT(!Parse(unexpectedEof, &error));
+        UNIT_ASSERT_VALUES_EQUAL(unexpectedEof.size(), error.Offset);
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NQuery
