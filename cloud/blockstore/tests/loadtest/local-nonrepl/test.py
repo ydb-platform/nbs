@@ -436,7 +436,7 @@ def test_load(test_case, backend, root_kms):
 @pytest.mark.skipif(SELECTED_BACKEND == 'io_uring', reason='RDMA supported only in AIO backend')
 @pytest.mark.parametrize("test_case", TESTS, ids=[x.name for x in TESTS])
 @pytest.mark.parametrize("backend", BACKENDS)
-def test_load_rdma(test_case, backend):
+def test_load_rdma(test_case, backend, root_kms):
     test_case.config_path = yatest_common.source_path(test_case.config_path)
     if test_case.lwtrace_query_path:
         test_case.lwtrace_query_path = yatest_common.source_path(test_case.lwtrace_query_path)
