@@ -388,6 +388,13 @@ void TPartitionActor::FreshBlobsLoaded(const TActorContext& ctx)
 
 void TPartitionActor::BlobsConfirmed(const TActorContext& ctx)
 {
+    if (FreshBlocksWriterEnabled) {
+        SharedState->UnflushedFreshBlobByteCount.store(
+            State->GetUnflushedFreshBlobByteCount());
+        SharedState->UnflushedFreshBlocksCount.store(
+            State->GetUnflushedFreshBlocksCount());
+    }
+
     Activate(ctx);
 }
 

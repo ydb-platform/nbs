@@ -1088,6 +1088,144 @@ Y_UNIT_TEST_SUITE(TFreshBlocksWriterTest)
             zeroResponse->GetErrorReason());
     }
 
+    Y_UNIT_TEST(ShouldCorrectlyUpdateSharedCountersWhenFlushIsConcurrentWithFreshBlocksWriterStart)
+    {
+        auto config = DefaultConfig();
+        config.SetFreshByteCountHardLimit(0);
+        config.SetFreshLogicalBlocksByteCountHardLimit(DefaultBlockSize);
+        config.SetFlushThreshold(4_MB);
+
+        TMyTestEnv testEnv;
+        InitTestActorRuntime(testEnv, config);
+        auto& runtime = testEnv.GetRuntime();
+
+        auto partition = testEnv.GetPartitionClient();
+        partition.WaitReady();
+
+        auto fbwClient = testEnv.GetFreshBlocksWriterClient();
+        fbwClient.WaitReady();
+        fbwClient.WriteBlocks(0, '1');
+
+        std::unique_ptr<IEventHandle> waitReadyResponse;
+        std::unique_ptr<IEventHandle> addBlobsResponse;
+        bool seenWaitReadyResponse = false;
+        bool seenAddBlobsResponse = false;
+        TPartitionThreadSafeStatePtr sharedState;
+        bool flushCompleted = false;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (!seenWaitReadyResponse &&
+                    event->GetTypeRewrite() ==
+                        TEvPartition::EvWaitReadyResponse &&
+                    event->Sender == testEnv.PartitionActorId &&
+                    event->GetRecipientRewrite() ==
+                        testEnv.FreshBlocksWriterActorId)
+                {
+                    seenWaitReadyResponse = true;
+                    waitReadyResponse.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                if (!seenAddBlobsResponse &&
+                    event->GetTypeRewrite() ==
+                        TEvPartitionPrivate::EvAddBlobsResponse &&
+                    event->Sender == testEnv.PartitionActorId)
+                {
+                    seenAddBlobsResponse = true;
+                    addBlobsResponse.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+
+                if (event->GetTypeRewrite() ==
+                        TEvPartitionCommonPrivate::EvGetFreshChannelsInfoResponse &&
+                    event->Sender == testEnv.PartitionActorId &&
+                    event->GetRecipientRewrite() ==
+                        testEnv.FreshBlocksWriterActorId)
+                {
+                    const auto* msg = event->Get<
+                        TEvPartitionCommonPrivate::TEvGetFreshChannelsInfoResponse>();
+                    sharedState = msg->SharedState;
+                }
+                flushCompleted |= event->GetTypeRewrite() ==
+                                  TEvPartitionPrivate::EvFlushCompleted;
+
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        // Will automatically start flush on partition tablet restart.
+        partition.KillTablet();
+        partition.ReconnectPipe();
+
+        TDispatchOptions dispatchOptions;
+        dispatchOptions.CustomFinalCondition = [&]()
+        {
+            return waitReadyResponse && addBlobsResponse;
+        };
+        runtime.DispatchEvents(dispatchOptions, 10ms);
+
+        UNIT_ASSERT(waitReadyResponse);
+        UNIT_ASSERT(addBlobsResponse);
+        UNIT_ASSERT(!flushCompleted);
+
+        runtime.SendAsync(waitReadyResponse.release());
+
+        dispatchOptions.CustomFinalCondition = [&]()
+        {
+            return bool(sharedState);
+        };
+        runtime.DispatchEvents(dispatchOptions, 10ms);
+
+        UNIT_ASSERT(sharedState);
+        // AddBlobs has removed the block from partition state, but the shared
+        // counters must retain it until HandleFlushCompleted runs.
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            sharedState->UnflushedFreshBlocksCount.load());
+        UNIT_ASSERT(sharedState->UnflushedFreshBlobByteCount.load() > 0);
+        UNIT_ASSERT(!flushCompleted);
+
+        runtime.SendAsync(addBlobsResponse.release());
+
+        dispatchOptions.CustomFinalCondition = [&]()
+        {
+            return flushCompleted;
+        };
+        runtime.DispatchEvents(dispatchOptions, 10ms);
+
+        UNIT_ASSERT(flushCompleted);
+
+        // Wait for the partition to process the observed FlushCompleted event.
+        partition.WaitReady();
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            sharedState->UnflushedFreshBlocksCount.load());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            sharedState->UnflushedFreshBlobByteCount.load());
+
+        auto newFbwClient = testEnv.GetFreshBlocksWriterClient();
+        newFbwClient.WaitReady();
+
+        newFbwClient.SendWriteBlocksRequest(1, '2');
+        auto response = newFbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            response->GetStatus(),
+            response->GetErrorReason());
+
+        newFbwClient.SendWriteBlocksRequest(2, '3');
+        response = newFbwClient.RecvWriteBlocksResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            response->GetStatus(),
+            response->GetErrorReason());
+        UNIT_ASSERT_STRING_CONTAINS(
+            response->GetErrorReason(),
+            "FreshLogicalBlocksByteCountHardLimit");
+    }
+
     Y_UNIT_TEST(ShouldNotTrimInProgressWrites)
     {
         TMyTestEnv testEnv;

@@ -69,6 +69,12 @@ TPartitionActor::TPartitionActor(
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
+    , FreshBlocksWriterEnabled(
+          Config->GetFreshBlocksWriterEnabled() ||
+          Config->IsFreshBlocksWriterFeatureEnabled(
+              PartitionConfig.GetCloudId(),
+              PartitionConfig.GetFolderId(),
+              PartitionConfig.GetDiskId()))
     , VolumeLabels(MakeVolumeLabels(
           PartitionConfig.GetDiskId(),
           PartitionConfig.GetCloudId(),
@@ -1047,11 +1053,7 @@ void TPartitionActor::CreateIOCompanionClient()
 
 bool TPartitionActor::IsFreshBlocksWriterEnabled() const
 {
-    return Config->GetFreshBlocksWriterEnabled() ||
-           Config->IsFreshBlocksWriterFeatureEnabled(
-               PartitionConfig.GetCloudId(),
-               PartitionConfig.GetFolderId(),
-               PartitionConfig.GetDiskId());
+    return FreshBlocksWriterEnabled;
 }
 
 bool TPartitionActor::IsReadBlockMaskOnCompactionOptimizationEnabled() const
@@ -1519,11 +1521,6 @@ void TPartitionActor::HandleGetFreshChannelsInfo(
     response->TabletInfo = MakeIntrusive<NKikimr::TTabletStorageInfo>(*Info());
     response->ChannelsCount = State->GetChannelCount();
     response->Generation = Executor()->Generation();
-
-    SharedState->UnflushedFreshBlobByteCount.store(
-        State->GetUnflushedFreshBlobByteCount());
-    SharedState->UnflushedFreshBlocksCount.store(
-        State->GetUnflushedFreshBlocksCount());
 
     response->SharedState = SharedState;
 
