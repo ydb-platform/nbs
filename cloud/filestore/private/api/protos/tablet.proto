@@ -1005,6 +1005,8 @@ message TUnsafeGetNodeResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
     NProto.TNodeAttr Node = 2;
+    // Commit id of the last modification of the node
+    uint64 CommitId = 3;
 }
 
 message TUnsafeCreateNodeRefRequest
