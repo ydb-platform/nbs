@@ -2,7 +2,6 @@
 
 #include "endpoint_bootstrap.h"
 #include "host_pool.h"
-#include "multiclient_endpoint.h"
 
 #include <cloud/blockstore/config/cells.pb.h>
 #include <cloud/blockstore/libs/cells/iface/config.h>
@@ -42,6 +41,8 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
     // what the connection stamped on it
     TString LastRequestCellId;
 
+    NProto::TMountVolumeRequest LastMountRequest;
+
     // when set, a mount is answered only once the test says so
     bool DeferMount = false;
     TPromise<NProto::TMountVolumeResponse> MountPromise =
@@ -72,6 +73,7 @@ struct TTestBlockStore: public TBlockStoreImpl<TTestBlockStore, IBlockStore>
 
         typename TMethod::TResponse response;
         if constexpr (std::is_same_v<TMethod, TBlockStoreMountVolumeMethod>) {
+            LastMountRequest = *request;
             if (DeferMount) {
                 return MountPromise.GetFuture();
             }
@@ -103,8 +105,8 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
     // when set, the setup for this fqdn hands back a future nobody has
     // resolved yet, so a test can catch a migration mid-flight
     TString DeferForFqdn;
-    TPromise<IMultiClientEndpointPtr> DeferredSetupPromise =
-        NewPromise<IMultiClientEndpointPtr>();
+    TPromise<IBlockStorePtr> DeferredSetupPromise =
+        NewPromise<IBlockStorePtr>();
 
     TGrpcEndpointBootstrapFuture SetupHostGrpcEndpoint(
         const TBootstrap& bootstrap,
@@ -121,9 +123,8 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
             return DeferredSetupPromise.GetFuture();
         }
 
-        return MakeFuture<IMultiClientEndpointPtr>(
-            CreateMultiClientEndpoint(
-                GrpcClient,
+        return MakeFuture<IBlockStorePtr>(
+            GrpcClient->CreateEndpoint(
                 config.GetFqdn(),
                 9766,
                 false));
@@ -737,8 +738,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         UNIT_ASSERT_VALUES_EQUAL("host-a", connection->GetHost());
 
         env.EndpointsSetup->DeferredSetupPromise.SetValue(
-            CreateMultiClientEndpoint(
-                env.GrpcClient,
+            env.GrpcClient->CreateEndpoint(
                 "host-z",
                 9766,
                 false));
@@ -958,8 +958,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         env.Pool->SetHostAlive("host-a", false);
 
         env.EndpointsSetup->DeferredSetupPromise.SetValue(
-            CreateMultiClientEndpoint(
-                env.GrpcClient,
+            env.GrpcClient->CreateEndpoint(
                 "host-b",
                 9766,
                 false));
@@ -1071,8 +1070,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         env.Pool->SetHostAlive("host-c", true);
 
         env.EndpointsSetup->DeferredSetupPromise.SetValue(
-            CreateMultiClientEndpoint(
-                env.GrpcClient,
+            env.GrpcClient->CreateEndpoint(
                 "host-b",
                 9766,
                 false));
@@ -1135,8 +1133,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         env.Pool->SetHostAlive("host-c", true);
 
         env.EndpointsSetup->DeferredSetupPromise.SetValue(
-            CreateMultiClientEndpoint(
-                env.GrpcClient,
+            env.GrpcClient->CreateEndpoint(
                 "host-b",
                 9766,
                 false));
@@ -1176,8 +1173,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         env.Pool->SetHostAlive("host-c", true);
 
         env.EndpointsSetup->DeferredSetupPromise.SetValue(
-            CreateMultiClientEndpoint(
-                env.GrpcClient,
+            env.GrpcClient->CreateEndpoint(
                 "host-b",
                 9766,
                 false));
@@ -1229,8 +1225,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         env.EndpointsSetup->RdmaHandler->HandleConnected();
 
         env.EndpointsSetup->DeferredSetupPromise.SetValue(
-            CreateMultiClientEndpoint(
-                env.GrpcClient,
+            env.GrpcClient->CreateEndpoint(
                 "host-a",
                 9766,
                 false));
@@ -1316,8 +1311,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         // way in; the queued target then carries the connection straight
         // on to host-c, before that could be acted on
         env.EndpointsSetup->DeferredSetupPromise.SetValue(
-            CreateMultiClientEndpoint(
-                env.GrpcClient,
+            env.GrpcClient->CreateEndpoint(
                 "host-b",
                 9766,
                 false));
@@ -1419,8 +1413,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
             };
 
         env.EndpointsSetup->DeferredSetupPromise.SetValue(
-            CreateMultiClientEndpoint(
-                env.GrpcClient,
+            env.GrpcClient->CreateEndpoint(
                 "host-b",
                 9766,
                 false));
@@ -1453,8 +1446,7 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         env.Pool->SetHostAlive("host-c", true);
 
         env.EndpointsSetup->DeferredSetupPromise.SetValue(
-            CreateMultiClientEndpoint(
-                env.GrpcClient,
+            env.GrpcClient->CreateEndpoint(
                 "host-b",
                 9766,
                 false));
@@ -1531,6 +1523,24 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
         UNIT_ASSERT_VALUES_EQUAL(
             "cell-1",
             env.GrpcClient->Service->LastRequestCellId);
+    }
+
+    Y_UNIT_TEST(ShouldMountWithoutEncryptionOnTheCellSide)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC);
+        auto connection = env.Connect("host-a");
+
+        auto request = std::make_shared<NProto::TMountVolumeRequest>();
+        request->MutableEncryptionSpec()->SetMode(NProto::ENCRYPTION_AES_XTS);
+        connection->GetService()->MountVolume(
+            MakeIntrusive<TCallContext>(),
+            request);
+
+        const auto& mount = env.GrpcClient->Service->LastMountRequest;
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NProto::NO_ENCRYPTION),
+            static_cast<int>(mount.GetEncryptionSpec().GetMode()));
+        UNIT_ASSERT(mount.GetForceDisableEncryption());
     }
 }
 

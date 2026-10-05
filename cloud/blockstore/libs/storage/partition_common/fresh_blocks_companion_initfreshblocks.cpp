@@ -1,7 +1,7 @@
 #include "fresh_blocks_companion.h"
 
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/actor_loadfreshblobs.h>
 
 #include <cloud/storage/core/libs/actors/helpers.h>
