@@ -2719,8 +2719,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
         env.GetRuntime().Send(shardRequest.Release(), nodeIdx);
 
-        // the service can't distinguish this case from a rename-over race -
-        // the retried request is the one that reports the missing file
+        // the nodeRef changed under the request - the retried request is the
+        // one that reports the missing file
 
         auto getNodeAttrResponse = service.RecvGetNodeAttrResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
@@ -2801,6 +2801,51 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             getNodeAttrResponse->GetError().GetMessage());
         UNIT_ASSERT_VALUES_EQUAL(
             "shard failure",
+            getNodeAttrResponse->GetError().GetMessage());
+    }
+
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldNotRejectGetNodeAttrByNameWhenNodeIsLostInShard)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto nodeId1 =
+            service
+                .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_EQUAL(1, ExtractShardNo(nodeId1));
+
+        auto leaderHeaders = headers;
+        leaderHeaders.DisableMultiTabletForwarding = true;
+        const auto shardNodeName =
+            service
+                .GetNodeAttr(leaderHeaders, fsConfig.FsId, RootNodeId, "file1")
+                ->Record.GetNode()
+                .GetShardNodeName();
+        UNIT_ASSERT(shardNodeName);
+
+        // removing the node directly from the shard leaves a dangling nodeRef
+        // in the leader - this is not a race, the client should get
+        // E_FS_NOENT instead of retrying forever
+
+        auto headers1 = headers;
+        headers1.FileSystemId = fsConfig.Shard1Id;
+        headers1.DisableMultiTabletForwarding = true;
+        service.UnlinkNode(headers1, RootNodeId, shardNodeName);
+
+        service.SendGetNodeAttrRequest(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1");
+        auto getNodeAttrResponse = service.RecvGetNodeAttrResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_FS_NOENT,
+            getNodeAttrResponse->GetError().GetCode(),
             getNodeAttrResponse->GetError().GetMessage());
     }
 

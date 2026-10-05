@@ -35,6 +35,7 @@ private:
     // Response data
     NProto::TGetNodeAttrResponse LeaderResponse;
     bool LeaderResponded = false;
+    NProto::TError ShardError;
 
     // Stats for reporting
     IRequestStatsPtr RequestStats;
@@ -58,6 +59,7 @@ public:
 
 private:
     STFUNC(StateWork);
+    STFUNC(StateCheck);
 
     void GetNodeAttrInLeader(const TActorContext& ctx);
 
@@ -66,6 +68,12 @@ private:
         const TActorContext& ctx);
 
     void GetNodeAttrInShard(const TActorContext& ctx);
+
+    void CheckNodeRefInLeader(const TActorContext& ctx);
+
+    void HandleGetNodeAttrResponseCheck(
+        const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandleWakeup(
         const TEvents::TEvWakeup::TPtr& ev,
@@ -175,29 +183,11 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
 
     if (HasError(msg->GetError())) {
         if (LeaderResponded && msg->GetError().GetCode() == E_FS_NOENT) {
-            // the node resolved by the leader is already gone from the shard
-            // (e.g. renamed over between the two phases) - the client should
-            // retry the whole request
-            LOG_INFO(
-                ctx,
-                TFileStoreComponents::SERVICE,
-                "[%s] GetNodeAttr node not found in shard %s (%s) for %lu, %s",
-                LogTag.c_str(),
-                LeaderResponse.GetNode().GetShardFileSystemId().c_str(),
-                LeaderResponse.GetNode().GetShardNodeName().Quote().c_str(),
-                GetNodeAttrRequest.GetNodeId(),
-                GetNodeAttrRequest.GetName().Quote().c_str());
-
-            ui32 flags = 0;
-            SetProtoFlag(flags, NCloud::NProto::EF_INSTANT_RETRIABLE);
-            HandleError(
-                ctx,
-                MakeError(
-                    E_REJECTED,
-                    TStringBuilder()
-                        << "concurrent directory modifications for request: "
-                        << GetNodeAttrRequest.ShortDebugString().Quote(),
-                    flags));
+            // the node resolved by the leader is gone from the shard - either
+            // the nodeRef changed between the two phases (e.g. renamed over)
+            // or the node is lost, the leader tells which
+            ShardError = msg->GetError();
+            CheckNodeRefInLeader(ctx);
             return;
         }
 
@@ -254,6 +244,89 @@ void TGetNodeAttrActor::HandleWakeup(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TGetNodeAttrActor::CheckNodeRefInLeader(const TActorContext& ctx)
+{
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Checking NodeRef in leader for %lu, %s",
+        LogTag.c_str(),
+        GetNodeAttrRequest.GetNodeId(),
+        GetNodeAttrRequest.GetName().Quote().c_str());
+
+    auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
+    request->Record = GetNodeAttrRequest;
+    request->CallContext = RequestInfo->CallContext;
+
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+
+    Become(&TThis::StateCheck);
+}
+
+void TGetNodeAttrActor::HandleGetNodeAttrResponseCheck(
+    const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    bool exists = true;
+    bool locked = false;
+    if (HasError(msg->GetError())) {
+        if (msg->GetError().GetCode() == E_FS_NOENT) {
+            exists = false;
+        } else {
+            HandleError(ctx, *msg->Record.MutableError());
+            return;
+        }
+    } else {
+        exists = msg->Record.GetNode().GetShardNodeName() ==
+                 LeaderResponse.GetNode().GetShardNodeName();
+        locked = msg->Record.GetIsNodeRefLocked();
+    }
+
+    if (exists && !locked) {
+        LOG_WARN(
+            ctx,
+            TFileStoreComponents::SERVICE,
+            "[%s] Node found in leader but missing in shard %s (%s) for %lu, "
+            "%s",
+            LogTag.c_str(),
+            LeaderResponse.GetNode().GetShardFileSystemId().c_str(),
+            LeaderResponse.GetNode().GetShardNodeName().Quote().c_str(),
+            GetNodeAttrRequest.GetNodeId(),
+            GetNodeAttrRequest.GetName().Quote().c_str());
+
+        HandleError(ctx, std::move(ShardError));
+        return;
+    }
+
+    // the nodeRef is being modified or has already been replaced/removed -
+    // the client should retry the whole request
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] NodeRef changed under GetNodeAttr for %lu, %s (exists: %d, "
+        "locked: %d)",
+        LogTag.c_str(),
+        GetNodeAttrRequest.GetNodeId(),
+        GetNodeAttrRequest.GetName().Quote().c_str(),
+        exists,
+        locked);
+
+    ui32 flags = 0;
+    SetProtoFlag(flags, NCloud::NProto::EF_INSTANT_RETRIABLE);
+    HandleError(
+        ctx,
+        MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "concurrent directory modifications for request: "
+                << GetNodeAttrRequest.ShortDebugString().Quote(),
+            flags));
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 void TGetNodeAttrActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
@@ -301,6 +374,24 @@ STFUNC(TGetNodeAttrActor::StateWork)
         HFunc(
             TEvService::TEvGetNodeAttrResponse,
             HandleGetNodeAttrResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TGetNodeAttrActor::StateCheck)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvService::TEvGetNodeAttrResponse,
+            HandleGetNodeAttrResponseCheck);
 
         default:
             HandleUnexpectedEvent(
