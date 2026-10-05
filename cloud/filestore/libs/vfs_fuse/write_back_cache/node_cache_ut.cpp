@@ -173,15 +173,26 @@ struct TBootstrap
         *request->MutableBuffer() = std::move(data);
 
         auto pendingRequest = RequestManager.AddRequest(std::move(request));
-        auto res = RequestManager.TryProcessPendingRequest();
+        auto allocResult = RequestManager.TryAllocPendingRequest();
 
-        UNIT_ASSERT(!res.Failed);
-        UNIT_ASSERT(res.CachedRequest);
+        UNIT_ASSERT(!allocResult.Failed);
+        UNIT_ASSERT(pendingRequest.get() == allocResult.Request);
+
+        pendingRequest->SerializeToAllocation();
+
+        auto nextReadyCacheResultResult =
+            RequestManager.GetNextReadyCachedRequest();
+
+        UNIT_ASSERT(!nextReadyCacheResultResult.Failed);
+
+        auto cachedRequest = std::move(nextReadyCacheResultResult.Request);
+        UNIT_ASSERT(cachedRequest);
+
         UNIT_ASSERT_VALUES_EQUAL(
             pendingRequest->GetSequenceId(),
-            res.CachedRequest->GetSequenceId());
+            cachedRequest->GetSequenceId());
 
-        return std::move(res.CachedRequest);
+        return cachedRequest;
     }
 
     TString GetCachedData(
