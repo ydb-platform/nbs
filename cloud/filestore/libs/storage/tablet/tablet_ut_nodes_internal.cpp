@@ -2033,7 +2033,9 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         const auto before = tablet.UnsafeGetNode(RootNodeId)->Record;
         UNIT_ASSERT_VALUES_EQUAL(0700, before.GetNode().GetMode());
         UNIT_ASSERT_VALUES_EQUAL(42, before.GetNode().GetUid());
-        UNIT_ASSERT(before.GetCommitId());
+        // TODO(#5953): older versions read the root node at commit id 0 upon
+        // tablet start
+        UNIT_ASSERT_VALUES_EQUAL(0, before.GetCommitId());
 
         tablet.RebootTablet();
         tablet.InitSession("client", "session");
@@ -2042,7 +2044,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
         UNIT_ASSERT_VALUES_EQUAL(
             before.GetNode().ShortUtf8DebugString(),
             after.GetNode().ShortUtf8DebugString());
-        UNIT_ASSERT_VALUES_EQUAL(before.GetCommitId(), after.GetCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(0, after.GetCommitId());
     }
 
     Y_UNIT_TEST(ShouldAdvanceNodeCommitIdUponModification)
@@ -2076,6 +2078,24 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_NodesInternal)
 
         tablet.SetNodeAttr(TSetNodeAttrArgs(id).SetMode(0644));
         expectAdvanced();
+
+        // the same goes for directories
+        auto dir =
+            CreateNode(tablet, TCreateNodeArgs::Directory(RootNodeId, "dir"));
+        const auto dirCommitId =
+            tablet.UnsafeGetNode(dir)->Record.GetCommitId();
+        tablet.SetNodeAttr(TSetNodeAttrArgs(dir).SetMode(0700));
+        UNIT_ASSERT_GT(
+            tablet.UnsafeGetNode(dir)->Record.GetCommitId(),
+            dirCommitId);
+
+        // TODO(#5953): the root node stays at commit id 0, older versions read
+        // it at this commit id upon tablet start
+        tablet.SetNodeAttr(TSetNodeAttrArgs(RootNodeId).SetMode(0700));
+        CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            tablet.UnsafeGetNode(RootNodeId)->Record.GetCommitId());
     }
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInUnsafeNodeOperations)
