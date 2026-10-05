@@ -186,6 +186,13 @@ public:
 
         const auto handleId = NextHandleId++;
 
+        if (Handles.find(handleId) != Handles.end()) {
+            ReportLocalFsDuplicateFileHandle(TStringBuilder() <<
+                "HandleId=" << handleId <<
+                ", HandlesCount=" << Handles.size());
+            return ErrorInvalidHandle(handleId);
+        }
+
         const auto recordIndex = HandleTable->AllocRecord();
         if (recordIndex == THandleTable::InvalidIndex) {
             return ErrorNoSpaceLeft();
@@ -195,13 +202,6 @@ public:
         state->HandleId = handleId;
         state->NodeId = nodeId;
         state->Flags = flags;
-
-        if (Handles.find(handleId) != Handles.end()) {
-            ReportLocalFsDuplicateFileHandle(TStringBuilder() <<
-                "HandleId=" << handleId <<
-                ", HandlesCount=" << Handles.size());
-            return ErrorInvalidHandle(handleId);
-        }
 
         Handles.emplace(handleId, THandle{std::move(handle), recordIndex});
         HandleTable->CommitRecord(recordIndex);
