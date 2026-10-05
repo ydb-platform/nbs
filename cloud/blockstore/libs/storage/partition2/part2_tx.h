@@ -22,6 +22,7 @@
 
 #include <cloud/storage/core/libs/common/block_buffer.h>
 #include <cloud/storage/core/libs/common/compressed_bitmap.h>
+#include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
 #include <util/generic/algorithm.h>
@@ -344,6 +345,9 @@ struct TTxPartition
         const TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
         const TMaybe<EPromoteCompactionSource> PromoteCompactionSource;
 
+        // flush
+        const TVector<TPartialBlobId> AlreadyOverwrittenBlobIds;
+
         ui64 DeletionCommitId = 0;
 
         TAddBlobs(
@@ -359,7 +363,8 @@ struct TTxPartition
                 TAffectedBlocks affectedBlocks,
                 TVector<TBlobCompactionInfo> mixedBlobCompactionInfos,
                 TVector<TBlobCompactionInfo> mergedBlobCompactionInfos,
-                TMaybe<EPromoteCompactionSource> promoteCompactionSource = {})
+                TMaybe<EPromoteCompactionSource> promoteCompactionSource,
+                TVector<TPartialBlobId> alreadyOverwrittenBlobIds)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , MixedBlobs(std::move(mixedBlobs))
@@ -373,7 +378,10 @@ struct TTxPartition
             , MixedBlobCompactionInfos(std::move(mixedBlobCompactionInfos))
             , MergedBlobCompactionInfos(std::move(mergedBlobCompactionInfos))
             , PromoteCompactionSource(promoteCompactionSource)
-        {}
+            , AlreadyOverwrittenBlobIds(
+                  Sorted(std::move(alreadyOverwrittenBlobIds)))
+        {
+        }
 
         void Clear()
         {

@@ -109,7 +109,9 @@ TTxPartition::TAddBlobs MakeArgs(
         std::move(affectedBlobs),
         std::move(affectedBlocks),
         std::move(mixedBlobCompactionInfos),
-        std::move(mergedBlobCompactionInfos));
+        std::move(mergedBlobCompactionInfos),
+        {},
+        {});
 }
 
 void RunExecute(TTestExecutor& executor, TPartitionState& state,
@@ -214,7 +216,7 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
                                                   blocks * DefaultBlockSize,
                                                   blobs.size(), 0),
                                    std::move(indices), std::move(commits),
-                                   TVector<ui32>{});
+                                   TVector<ui32>{}, false);   // ignoreBlob
             }
             if (l0) {
                 state.InitFreshBlocks(freshBlocks);
@@ -223,11 +225,16 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
             }
 
             TTxPartition::TAddBlobs args(
-                MakeIntrusive<TRequestInfo>(), commitId,
+                MakeIntrusive<TRequestInfo>(),
+                commitId,
                 {},
                 {},
-                {}, l0 ? blobs : TVector<TAddLevelIndexBlob>{},
-                l0 ? TVector<TAddLevelIndexBlob>{} : blobs, ADD_FLUSH_RESULT,
+                {},
+                l0 ? blobs : TVector<TAddLevelIndexBlob>{},
+                l0 ? TVector<TAddLevelIndexBlob>{} : blobs,
+                ADD_FLUSH_RESULT,
+                {},
+                {},
                 {},
                 {},
                 {},
@@ -445,7 +452,7 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
             {{l0BlobId,
               {16, 17},
               {MakeCommitId(0, 4), MakeCommitId(0, 4)},
-              {161, 171}}},
+              {161, 171}, false}},
             ADD_FLUSH_RESULT);
 
         RunExecute(executor, state, args, MakeCommitId(0, 50));
@@ -517,11 +524,13 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
             {{firstBlobId,
               {1, 2},
               {MakeCommitId(0, 5), MakeCommitId(0, 5)},
-              {11, 22}},
+              {11, 22},
+              false},
              {secondBlobId,
               {2, 3, 4},
               {MakeCommitId(0, 7), MakeCommitId(0, 7), MakeCommitId(0, 7)},
-              {23, 33, 44}}},
+              {23, 33, 44},
+              false}},
             ADD_FLUSH_RESULT);
 
         RunExecute(executor, state, args, MakeCommitId(0, 50));
@@ -627,7 +636,8 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
             {{initialBlobId,
               {1, 2},
               {initialCommitId, initialCommitId},
-              {11, 22}}},
+              {11, 22},
+              false}},
             ADD_FLUSH_RESULT);
         RunExecute(executor, state, initialArgs, MakeCommitId(0, 50));
 
@@ -649,10 +659,7 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
             {},
             {},
             {},
-            {{concurrentBlobId,
-              {3},
-              {concurrentCommitId},
-              {33}}},
+            {{concurrentBlobId, {3}, {concurrentCommitId}, {33}, false}},
             ADD_FLUSH_RESULT);
         RunExecute(executor, state, concurrentArgs, MakeCommitId(0, 50));
 
@@ -673,13 +680,15 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
             {{promotedBlobId,
               {1, 2},
               {initialCommitId, initialCommitId},
-              {11, 22}}},
+              {11, 22},
+              false}},
             ADD_PROMOTE_COMPACTION_RESULT,
             {},   // affectedBlobs
             {},   // affectedBlocks
             {},   // mixedBlobCompactionInfos
             {},   // mergedBlobCompactionInfos
-            EPromoteCompactionSource::L0);
+            EPromoteCompactionSource::L0,
+            {});
         RunExecute(executor, state, promoteArgs, MakeCommitId(0, 50));
 
         UNIT_ASSERT_VALUES_EQUAL(2, state.GetL0BlobsCount());

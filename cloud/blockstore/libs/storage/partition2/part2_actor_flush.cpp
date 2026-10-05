@@ -40,16 +40,19 @@ public:
         TGuardedBuffer<TBlockBuffer> BlobContent;
         TVector<TBlock> Blocks;
         TVector<ui32> Checksums;
+        bool IsAlreadyOverwritten = false;
 
         TRequest(
             const TPartialBlobId& blobId,
             TBlockBuffer blobContent,
             TVector<TBlock> blocks,
-            TVector<ui32> checksums)
+            TVector<ui32> checksums,
+            bool isAlreadyOverwritten)
             : BlobId(blobId)
             , BlobContent(std::move(blobContent))
             , Blocks(std::move(blocks))
             , Checksums(std::move(checksums))
+            , IsAlreadyOverwritten(isAlreadyOverwritten)
         {}
     };
 
@@ -227,6 +230,7 @@ void TFlushActor::WriteBlobs(const TActorContext& ctx)
 void TFlushActor::AddBlobs(const TActorContext& ctx)
 {
     TVector<TAddLevelIndexBlob> l0Blobs(Reserve(Requests.size()));
+    TVector<TPartialBlobId> alreadyOverwrittenBlobIds;
 
     for (auto& req: Requests) {
         BlocksCount += req.Blocks.size();
@@ -243,6 +247,10 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
             std::move(commitIds),
             std::move(req.Checksums),
             false);   // ignoreBlob
+
+        if (req.IsAlreadyOverwritten) {
+            alreadyOverwrittenBlobIds.push_back(req.BlobId);
+        }
     }
 
     auto request = std::make_unique<TEvPartitionPrivate::TEvAddBlobsRequest>(
@@ -254,6 +262,8 @@ void TFlushActor::AddBlobs(const TActorContext& ctx)
         std::move(l0Blobs),
         TVector<TAddLevelIndexBlob>(),   // l1Blobs
         ADD_FLUSH_RESULT);
+
+    request->AlreadyOverwrittenBlobIds = std::move(alreadyOverwrittenBlobIds);
 
     NCloud::Send(
         ctx,
@@ -404,12 +414,23 @@ STFUNC(TFlushActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
-    const TVector<TPromoteCompactionVisitor::TBlob>& blobs)
+    const TVector<TPromoteCompactionVisitor::TBlob>& blobs,
+    const TVector<TPromoteCompactionVisitor::TBlob>& alreadyOverwrittenBlobs)
 {
     TFlushedCommitIds result;
     TVector<ui64> commitIds;
 
     for (const auto& blob: blobs) {
+        for (const auto& [blockIndex, mark]: blob.BlockIndexToMark) {
+            Y_ABORT_UNLESS(
+                std::holds_alternative<
+                    TPromoteCompactionVisitor::TFreshBlockMark>(
+                    mark.IndexSpecificMark));
+            commitIds.push_back(mark.CommitId);
+        }
+    }
+
+    for (const auto& blob: alreadyOverwrittenBlobs) {
         for (const auto& [blockIndex, mark]: blob.BlockIndexToMark) {
             Y_ABORT_UNLESS(
                 std::holds_alternative<
@@ -604,9 +625,11 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
         State->GetUnflushedFreshBlobCommitIds(commitId);
 
     TVector<TPromoteCompactionVisitor::TBlob> blobs;
+    TVector<TPromoteCompactionVisitor::TBlob> alreadyOverwrittenBlobs;
     {
         TPromoteCompactionVisitor visitor(
-            State->GetMeta().GetL0RangeSize(),
+            {State->GetMeta().GetL0RangeSize()},
+            {0},
             State->GetBlockSize(),
             State->GetMaxBlocksInBlob(),
             /*allowBlockDuplicates*/ true,
@@ -614,11 +637,16 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
 
         State->FindFreshBlocks(visitor, TBlockRange32::Max(), commitId);
 
-        blobs = visitor.Finish().ResultedBlobs;
+        auto scanResult = visitor.Finish();
+        blobs = std::move(scanResult.ResultedBlobs);
+        alreadyOverwrittenBlobs = std::move(scanResult.AlreadyOverwrittenBlobs);
     }
 
     STORAGE_VERIFY(
-        TPromoteCompactionVisitor::CollectReadBlobRequests(blobs).empty(),
+        TPromoteCompactionVisitor::CollectReadBlobRequests(blobs).empty() &&
+            TPromoteCompactionVisitor::CollectReadBlobRequests(
+                alreadyOverwrittenBlobs)
+                .empty(),
         TWellKnownEntityTypes::TABLET,
         TabletID());
 
@@ -647,25 +675,36 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
         return;
     }
 
-    auto flushedCommitIdsFromChannel = BuildFlushedCommitIdsFromChannel(blobs);
+    auto flushedCommitIdsFromChannel =
+        BuildFlushedCommitIdsFromChannel(blobs, alreadyOverwrittenBlobs);
 
     {
         auto& flushedCommitIdsInProgress =
             State->AccessFlushedCommitIdsInProgress();
         Y_ABORT_UNLESS(flushedCommitIdsInProgress.empty());
 
-        for (const auto& blob: blobs) {
-            for (const auto& block: blob.BlockIndexToMark) {
-                flushedCommitIdsInProgress.insert(block.second.CommitId);
+        auto addCommitIds = [&flushedCommitIdsInProgress](const auto& blobs)
+        {
+            for (const auto& blob: blobs) {
+                for (const auto& block: blob.BlockIndexToMark) {
+                    flushedCommitIdsInProgress.insert(block.second.CommitId);
+                }
             }
-        }
+        };
+
+        addCommitIds(blobs);
+        addCommitIds(alreadyOverwrittenBlobs);
     }
 
     TVector<TFlushActor::TRequest> requests(Reserve(blobs.size()));
 
     ui32 blobIndex = 0;
-    for (auto& blob: blobs) {
-        auto blobId = State->GenerateBlobId(
+    auto addBlob = [commitId, &blobIndex, state = State.get()](
+                       TPromoteCompactionVisitor::TBlob& blob,
+                       TVector<TFlushActor::TRequest>& requests,
+                       bool isAlreadyOverwritten)
+    {
+        auto blobId = state->GenerateBlobId(
             EChannelDataKind::Mixed,
             EChannelPermission::UserWritesAllowed,
             commitId,
@@ -686,7 +725,16 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
             blobId,
             std::move(blob.BlobContent),
             std::move(blocks),
-            TVector<ui32>());
+            TVector<ui32>(),
+            isAlreadyOverwritten);
+    };
+
+    for (auto& blob: blobs) {
+        addBlob(blob, requests, false);
+    }
+
+    for (auto& blob: alreadyOverwrittenBlobs) {
+        addBlob(blob, requests, true);
     }
 
     Y_ABORT_UNLESS(requests);

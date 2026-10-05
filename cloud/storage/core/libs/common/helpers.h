@@ -34,4 +34,11 @@ void SetErrorProtoFlag(NProto::TError& error, const T flag)
     error.SetFlags(flags);
 }
 
+template <typename T>
+T Sorted(T container)
+{
+    Sort(container);
+    return container;
+}
+
 }   // namespace NCloud

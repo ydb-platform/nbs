@@ -238,6 +238,7 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         TVector<TVector<ui32>> l0BlobBlockIndices;
         TVector<TVector<ui64>> l0BlobCommitIds;
         TMap<ui32, TLogoBlobID> l0BlobIdsByRange;
+        TVector<TLogoBlobID> overwrittenL0BlobIds;
 
         runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
@@ -254,10 +255,27 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
                         UNIT_ASSERT(request->MergedBlobs.empty());
                         UNIT_ASSERT(request->FreshBlobs.empty());
                         UNIT_ASSERT(request->L1Blobs.empty());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            1,
+                            request->AlreadyOverwrittenBlobIds.size());
 
                         for (const auto& blob: request->L0Blobs) {
                             l0BlobBlockIndices.push_back(blob.BlockIndices);
                             l0BlobCommitIds.push_back(blob.CommitIds);
+
+                            if (blob.BlobId ==
+                                request->AlreadyOverwrittenBlobIds.front())
+                            {
+                                const TVector<ui32> expectedBlockIndices = {
+                                    VersionedBlockIndex,
+                                    VersionedBlockIndex};
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    expectedBlockIndices,
+                                    blob.BlockIndices);
+                                overwrittenL0BlobIds.push_back(
+                                    MakeBlobId(TestTabletId, blob.BlobId));
+                                continue;
+                            }
 
                             UNIT_ASSERT(!blob.BlockIndices.empty());
                             const ui32 rangeIndex =
@@ -279,11 +297,12 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         partition.Flush();
 
         UNIT_ASSERT_VALUES_EQUAL(1, flushAddBlobsRequestCount);
-        UNIT_ASSERT_VALUES_EQUAL(3, l0BlobBlockIndices.size());
+        UNIT_ASSERT_VALUES_EQUAL(4, l0BlobBlockIndices.size());
         UNIT_ASSERT_VALUES_EQUAL(
             l0BlobBlockIndices.size(),
             l0BlobCommitIds.size());
         UNIT_ASSERT_VALUES_EQUAL(3, l0BlobIdsByRange.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, overwrittenL0BlobIds.size());
 
         TVector<ui32> flushedBlockIndices;
         for (size_t i = 0; i < l0BlobBlockIndices.size(); ++i) {
@@ -372,13 +391,13 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
             partition,
             VersionedBlockIndex,
             "checkpoint-1",
-            versionedBlockBlobId->second,
+            overwrittenL0BlobIds.front(),
             'a');
         AssertDescribeBlockContent(
             partition,
             VersionedBlockIndex,
             "checkpoint-2",
-            versionedBlockBlobId->second,
+            overwrittenL0BlobIds.front(),
             'b');
         AssertDescribeBlockContent(
             partition,
@@ -423,6 +442,7 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
 
         ui32 promoteAddBlobsRequestCount = 0;
         TMap<ui32, TLogoBlobID> l0BlobIdsByRange;
+        TVector<TLogoBlobID> overwrittenL0BlobIds;
         TMap<ui32, TLogoBlobID> l1BlobIdsByRange;
         TVector<TVector<ui32>> l1BlobBlockIndices;
         TVector<TVector<ui64>> l1BlobCommitIds;
@@ -437,7 +457,29 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
                         event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
 
                     if (request->Mode == EAddBlobMode::ADD_FLUSH_RESULT) {
+                        UNIT_ASSERT_VALUES_EQUAL(3, request->L0Blobs.size());
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            1,
+                            request->AlreadyOverwrittenBlobIds.size());
+
                         for (const auto& blob: request->L0Blobs) {
+                            if (blob.BlobId ==
+                                request->AlreadyOverwrittenBlobIds.front())
+                            {
+                                const TVector<ui32> expectedBlockIndices = {
+                                    PromotedRangeStart,
+                                    PromotedRangeStart};
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    expectedBlockIndices,
+                                    blob.BlockIndices);
+                                UNIT_ASSERT_VALUES_EQUAL(
+                                    blob.BlockIndices.size(),
+                                    blob.CommitIds.size());
+                                overwrittenL0BlobIds.push_back(
+                                    MakeBlobId(TestTabletId, blob.BlobId));
+                                continue;
+                            }
+
                             UNIT_ASSERT(!blob.BlockIndices.empty());
                             const ui32 rangeIndex =
                                 blob.BlockIndices.front() / L0RangeBlockCount;
@@ -459,6 +501,7 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
                         UNIT_ASSERT(request->MergedBlobs.empty());
                         UNIT_ASSERT(request->FreshBlobs.empty());
                         UNIT_ASSERT(request->L0Blobs.empty());
+                        UNIT_ASSERT(request->AlreadyOverwrittenBlobIds.empty());
                         UNIT_ASSERT_VALUES_EQUAL(
                             1,
                             request->AffectedBlobs.size());
@@ -499,6 +542,7 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         partition.Flush();
 
         UNIT_ASSERT_VALUES_EQUAL(2, l0BlobIdsByRange.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, overwrittenL0BlobIds.size());
 
         auto request = std::make_unique<
             TEvPartitionPrivate::TEvPromoteCompactionRequest>();
@@ -552,20 +596,17 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
             unpromotedBlobId->second,
             '0');
 
-        const auto promotedSourceBlobId =
-            l0BlobIdsByRange.find(PromotedRangeIndex);
-        UNIT_ASSERT(promotedSourceBlobId != l0BlobIdsByRange.end());
         AssertDescribeBlockContent(
             partition,
             PromotedRangeStart,
             "checkpoint-1",
-            promotedSourceBlobId->second,
+            overwrittenL0BlobIds.front(),
             'a');
         AssertDescribeBlockContent(
             partition,
             PromotedRangeStart,
             "checkpoint-2",
-            promotedSourceBlobId->second,
+            overwrittenL0BlobIds.front(),
             'b');
 
         const auto promotedBlobId =

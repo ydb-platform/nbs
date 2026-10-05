@@ -7,19 +7,25 @@ namespace NCloud::NBlockStore::NStorage::NPartition2 {
 ////////////////////////////////////////////////////////////////////////////////
 
 TPromoteCompactionVisitor::TPromoteCompactionVisitor(
-    ui64 targetRangeBlocksCount,
+    TVector<ui64> targetRangeBlocksCount,
+    TVector<ui64> targetBlobSizesForPromote,
     ui32 blockSize,
     ui32 maxBlocksInBlob,
     bool allowBlockDuplicates,
     const TCleanupQueue& cleanupQueue)
     : BlockSize(blockSize)
-    , TargetRangeBlocksCount(targetRangeBlocksCount)
+    , TargetRangeBlocksCount(std::move(targetRangeBlocksCount))
+    , TargetBlobSizesForPromote(std::move(targetBlobSizesForPromote))
     , MaxBlocksInBlob(maxBlocksInBlob)
     , AllowBlockDuplicates(allowBlockDuplicates)
     , CleanupQueue(cleanupQueue)
 {
+    Y_ABORT_UNLESS(!TargetRangeBlocksCount.empty());
+    Y_ABORT_UNLESS(
+        IsSorted(TargetRangeBlocksCount.begin(), TargetRangeBlocksCount.end()));
+    Y_ABORT_UNLESS(
+        TargetRangeBlocksCount.size() == TargetBlobSizesForPromote.size());
     Y_ABORT_UNLESS(BlockSize);
-    Y_ABORT_UNLESS(TargetRangeBlocksCount);
     Y_ABORT_UNLESS(MaxBlocksInBlob);
 }
 
@@ -63,57 +69,191 @@ bool TPromoteCompactionVisitor::Visit(
     return true;
 }
 
-auto TPromoteCompactionVisitor::Finish() -> TScanResult
+namespace {
+
+TMap<ui64, TPromoteCompactionVisitor::TBlockMark> ExtractLiveBlocks(
+    TMap<ui64, TVector<TPromoteCompactionVisitor::TBlockMark>>& blocks)
 {
+    TMap<ui64, TPromoteCompactionVisitor::TBlockMark> liveBlocks;
 
-    TVector<TBlob> blobs;
-    for (auto& [targetRangeIndex, blocksForRange]: BlocksPerRange) {
-        Y_UNUSED(targetRangeIndex);
-        bool firstBlockInRange = true;
-
-        for (auto& [blockIndex, marksForBlock]: blocksForRange) {
-            Sort(
-                marksForBlock,
-                [](const auto& a, const auto& b)
-                { return a.CommitId < b.CommitId; });
-
-            for (const auto& mark: marksForBlock) {
-                if (firstBlockInRange ||
-                    blobs.back().BlockIndexToMark.size() >= MaxBlocksInBlob)
-                {
-                    blobs.emplace_back();
-                    firstBlockInRange = false;
-                }
-
-                auto& currentBlob = blobs.back();
-
-                if (std::holds_alternative<TFreshBlockMark>(
-                        mark.IndexSpecificMark))
-                {
-                    const auto& freshBlockMark =
-                        std::get<TFreshBlockMark>(mark.IndexSpecificMark);
-
-                    if (freshBlockMark.Content.empty()) {
-                        currentBlob.BlobContent.AddBlock(BlockSize, char{0});
-                    } else {
-                        currentBlob.BlobContent.AddBlock(
-                            {freshBlockMark.Content.data(),
-                             freshBlockMark.Content.size()});
-                    }
-                } else if (
-                    std::holds_alternative<TBlobBlockMark>(
-                        mark.IndexSpecificMark))
-                {
-                    currentBlob.BlobContent.AddBlock(BlockSize, char{0});
-                }
-
-                currentBlob.BlockIndexToMark.emplace_back(blockIndex, mark);
+    TVector<ui64> blocksToRemoveFromOverwrittenOnes;
+    for (auto& [blockIndex, marks]: blocks) {
+        size_t newestMarkIndex = 0;
+        for (size_t j = 0; j < marks.size(); ++j) {
+            if (marks[j].CommitId > marks[newestMarkIndex].CommitId) {
+                newestMarkIndex = j;
             }
         }
+
+        std::swap(marks.back(), marks[newestMarkIndex]);
+
+        liveBlocks[blockIndex] = std::move(marks.back());
+        marks.pop_back();
+        if (marks.empty()) {
+            blocksToRemoveFromOverwrittenOnes.push_back(blockIndex);
+        }
+    }
+
+    for (auto blockIndex: blocksToRemoveFromOverwrittenOnes) {
+        blocks.erase(blockIndex);
+    }
+
+    return liveBlocks;
+}
+
+class TBlocksVisitor
+{
+    using TBlockMark = TPromoteCompactionVisitor::TBlockMark;
+    using TFreshBlockMark = TPromoteCompactionVisitor::TFreshBlockMark;
+    using TBlobBlockMark = TPromoteCompactionVisitor::TBlobBlockMark;
+    using TBlob = TPromoteCompactionVisitor::TBlob;
+
+private:
+    const ui64 TargetRangeBlocksCount;
+    const ui64 TargetBlobSizeForPromote;
+    const ui32 MaxBlocksInBlob;
+    const ui32 BlockSize;
+    const bool AcceptOnlyHugeBlobs;
+
+    TBlob Blob;
+    std::optional<ui64> LastRangeIndex;
+    TVector<TBlob>& Blobs;
+
+public:
+    TBlocksVisitor(
+        ui64 targetRangeBlocksCount,
+        ui64 targetBlobSizeForPromote,
+        ui32 maxBlocksInBlob,
+        ui32 blockSize,
+        bool acceptOnlyHugeBlobs,
+        TVector<TBlob>& blobs)
+        : TargetRangeBlocksCount(targetRangeBlocksCount)
+        , TargetBlobSizeForPromote(targetBlobSizeForPromote)
+        , MaxBlocksInBlob(maxBlocksInBlob)
+        , BlockSize(blockSize)
+        , AcceptOnlyHugeBlobs(acceptOnlyHugeBlobs)
+        , Blobs(blobs)
+    {}
+
+    void Visit(ui32 blockIndex, const TBlockMark& mark)
+    {
+        if (blockIndex / TargetRangeBlocksCount != LastRangeIndex ||
+            Blob.BlockIndexToMark.size() == MaxBlocksInBlob)
+        {
+            if (Blob.BlockIndexToMark.size() > 0) {
+                if (!AcceptOnlyHugeBlobs || BlobIsHuge(Blob)) {
+                    Blobs.emplace_back(std::move(Blob));
+                }
+            }
+
+            Blob.BlockIndexToMark.clear();
+            Blob.BlobContent.Clear();
+            LastRangeIndex = blockIndex / TargetRangeBlocksCount;
+        }
+
+        Blob.BlockIndexToMark.emplace_back(blockIndex, mark);
+
+        if (std::holds_alternative<TFreshBlockMark>(mark.IndexSpecificMark)) {
+            const auto& freshBlockMark =
+                std::get<TFreshBlockMark>(mark.IndexSpecificMark);
+
+            if (freshBlockMark.Content.empty()) {
+                Blob.BlobContent.AddBlock(BlockSize, char{0});
+            } else {
+                Blob.BlobContent.AddBlock(
+                    {freshBlockMark.Content.data(),
+                     freshBlockMark.Content.size()});
+            }
+        } else if (
+            std::holds_alternative<TBlobBlockMark>(mark.IndexSpecificMark))
+        {
+            Blob.BlobContent.AddBlock(BlockSize, char{0});
+        } else {
+            Y_ABORT("Unexpected mark type");
+        }
+    }
+
+    void Finish()
+    {
+        if (Blob.BlockIndexToMark.size() > 0) {
+            if (!AcceptOnlyHugeBlobs || BlobIsHuge(Blob)) {
+                Blobs.emplace_back(std::move(Blob));
+            }
+        }
+
+        Blob.BlockIndexToMark.clear();
+        Blob.BlobContent.Clear();
+        LastRangeIndex = std::nullopt;
+    }
+
+private:
+    [[nodiscard]] bool BlobIsHuge(const TBlob& blob) const
+    {
+        return blob.BlobContent.GetBlocksCount() > TargetBlobSizeForPromote;
+    }
+};
+
+}   // namespace
+
+auto TPromoteCompactionVisitor::Finish() -> TScanResult
+{
+    TVector<TBlob> blobs;
+    TVector<TBlob> alreadyOverwrittenBlobs;
+
+    auto overwrittenBlocks = std::move(Blocks);
+    auto liveBlocks = ExtractLiveBlocks(overwrittenBlocks);
+
+    for (size_t i = 0; i < TargetRangeBlocksCount.size(); ++i) {
+        const ui64 rangeSize = TargetRangeBlocksCount[i];
+        const bool acceptOnlyHugeBlobs = i < TargetRangeBlocksCount.size() - 1;
+
+        TBlocksVisitor visitor{
+            rangeSize,
+            TargetBlobSizesForPromote[i],
+            MaxBlocksInBlob,
+            BlockSize,
+            acceptOnlyHugeBlobs,
+            blobs};
+
+        const size_t blobsCountBefore = blobs.size();
+
+        for (auto& [blockIndex, mark]: liveBlocks) {
+            visitor.Visit(blockIndex, mark);
+        }
+        visitor.Finish();
+
+        for (size_t j = blobsCountBefore; j < blobs.size(); ++j) {
+            for (const auto& [blockIndex, _]: blobs[j].BlockIndexToMark) {
+                liveBlocks.erase(blockIndex);
+            }
+        }
+
+        // No need to try to bypass levels for already garbage blobs.
+        if (acceptOnlyHugeBlobs) {
+            continue;
+        }
+
+        TBlocksVisitor garbageVisitor{
+            rangeSize,
+            TargetBlobSizesForPromote[i],
+            MaxBlocksInBlob,
+            BlockSize,
+            false,   // acceptOnlyHugeBlobs
+            alreadyOverwrittenBlobs};
+
+        for (auto& [blockIndex, marks]: overwrittenBlocks) {
+            for (const auto& mark: marks) {
+                garbageVisitor.Visit(blockIndex, mark);
+            }
+        }
+        garbageVisitor.Finish();
+
+        // TODO: Check that no blocks was skipped.
     }
 
     return {
         .ResultedBlobs = std::move(blobs),
+        .AlreadyOverwrittenBlobs = std::move(alreadyOverwrittenBlobs),
         .AffectedBlobs = std::move(AffectedBlobs),
         .MaxCommitId = MaxCommitId};
 }
@@ -162,11 +302,7 @@ auto TPromoteCompactionVisitor::CollectReadBlobRequests(TVector<TBlob>& blobs)
 
 void TPromoteCompactionVisitor::AddBlockMark(ui32 blockIndex, TBlockMark mark)
 {
-    const ui64 targetRangeIndex = blockIndex / TargetRangeBlocksCount;
-
-    auto& blocksForRange = BlocksPerRange[targetRangeIndex];
-
-    auto& marksForBlock = blocksForRange[blockIndex];
+    auto& marksForBlock = Blocks[blockIndex];
 
     MaxCommitId = std::max(MaxCommitId, mark.CommitId);
 

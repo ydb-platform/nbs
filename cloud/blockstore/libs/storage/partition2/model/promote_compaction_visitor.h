@@ -56,19 +56,21 @@ public:
 
 private:
     const ui32 BlockSize;
-    const ui64 TargetRangeBlocksCount;
+    const TVector<ui64> TargetRangeBlocksCount;
+    const TVector<ui64> TargetBlobSizesForPromote;
     const ui32 MaxBlocksInBlob;
     const bool AllowBlockDuplicates;
     const TCleanupQueue& CleanupQueue;
 
-    TMap<ui64, TMap<ui64, TVector<TBlockMark>>> BlocksPerRange;
+    TMap<ui64, TVector<TBlockMark>> Blocks;
     THashMap<TPartialBlobId, NProto::TBlobMeta2, TPartialBlobIdHash>
         AffectedBlobs;
     ui64 MaxCommitId = 0;
 
 public:
-    explicit TPromoteCompactionVisitor(
-        ui64 targetRangeBlocksCount,
+    TPromoteCompactionVisitor(
+        TVector<ui64> targetRangeBlocksCount,
+        TVector<ui64> targetBlobSizesForPromote,
         ui32 blockSize,
         ui32 maxBlocksInBlob,
         bool allowBlockDuplicates,
@@ -89,6 +91,7 @@ public:
     struct TScanResult
     {
         TVector<TBlob> ResultedBlobs;
+        TVector<TBlob> AlreadyOverwrittenBlobs;
         THashMap<TPartialBlobId, NProto::TBlobMeta2, TPartialBlobIdHash>
             AffectedBlobs;
         ui64 MaxCommitId = 0;

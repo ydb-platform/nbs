@@ -37,6 +37,23 @@ const TPromoteCompactionVisitor::TBlockMark& GetMark(
     return mark;
 }
 
+void AssertBlockIndices(
+    const TPromoteCompactionVisitor::TBlob& blob,
+    const TVector<ui32>& expectedBlockIndices,
+    ui64 expectedCommitId)
+{
+    UNIT_ASSERT_VALUES_EQUAL(
+        expectedBlockIndices.size(),
+        blob.BlockIndexToMark.size());
+    UNIT_ASSERT_VALUES_EQUAL(
+        expectedBlockIndices.size(),
+        blob.BlobContent.GetBlocksCount());
+
+    for (size_t i = 0; i < expectedBlockIndices.size(); ++i) {
+        GetMark(blob, i, expectedBlockIndices[i], expectedCommitId);
+    }
+}
+
 void AssertFreshMark(
     const TPromoteCompactionVisitor::TBlockMark& mark,
     const TPartialBlobId& expectedBlobId,
@@ -92,7 +109,8 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
     {
         TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
-            /*targetRangeBlocksCount*/ 4,
+            /*targetRangeBlocksCount*/ {4},
+            /*targetBlobSizesForPromote*/ {0},
             BlockSize,
             /*maxBlocksInBlob*/ 2,
             /*allowBlockDuplicates*/ false,
@@ -120,7 +138,8 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
             UNIT_ASSERT(cleanupQueue.Add({queuedBlobId, 30, blobMeta}));
 
             TPromoteCompactionVisitor visitor(
-                /*targetRangeBlocksCount*/ 4,
+                /*targetRangeBlocksCount*/ {4},
+                /*targetBlobSizesForPromote*/ {0},
                 BlockSize,
                 /*maxBlocksInBlob*/ 2,
                 /*allowBlockDuplicates*/ false,
@@ -148,7 +167,8 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
 
         TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
-            /*targetRangeBlocksCount*/ 4,
+            /*targetRangeBlocksCount*/ {4},
+            /*targetBlobSizesForPromote*/ {0},
             BlockSize,
             /*maxBlocksInBlob*/ 2,
             /*allowBlockDuplicates*/ false,
@@ -185,6 +205,147 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
             "5555");
     }
 
+    Y_UNIT_TEST(ShouldBuildBlobsForSmallerRangesBeforeLargestRange)
+    {
+        TCleanupQueue cleanupQueue(BlockSize);
+        TPromoteCompactionVisitor visitor(
+            /*targetRangeBlocksCount*/ {4, 8, 16},
+            /*targetBlobSizesForPromote*/ {2, 3, 100},
+            BlockSize,
+            /*maxBlocksInBlob*/ 8,
+            /*allowBlockDuplicates*/ false,
+            cleanupQueue);
+
+        // Visit in reverse order to also check ordering inside each blob.
+        for (ui32 blockIndex: {30, 29, 28, 20, 16, 13, 12, 9, 8, 5, 4, 2, 1, 0})
+        {
+            UNIT_ASSERT(VisitFreshBlock(visitor, blockIndex, 20, "live"));
+        }
+
+        auto result = visitor.Finish();
+        const auto& blobs = result.ResultedBlobs;
+        UNIT_ASSERT_VALUES_EQUAL(5, blobs.size());
+        UNIT_ASSERT(result.AlreadyOverwrittenBlobs.empty());
+
+        // Dense four-block ranges win, including the last range in the scan.
+        AssertBlockIndices(blobs[0], {0, 1, 2}, 20);
+        AssertBlockIndices(blobs[1], {28, 29, 30}, 20);
+        // Two sparse four-block ranges together fill an eight-block range.
+        AssertBlockIndices(blobs[2], {8, 9, 12, 13}, 20);
+        // A blob exactly at the promotion threshold falls back, and remaining
+        // sparse blocks are combined only within the largest range boundaries.
+        AssertBlockIndices(blobs[3], {4, 5}, 20);
+        AssertBlockIndices(blobs[4], {16, 20}, 20);
+
+        for (const auto& blob: blobs) {
+            for (size_t i = 0; i < blob.BlockIndexToMark.size(); ++i) {
+                AssertFreshMark(blob.BlockIndexToMark[i].second, {}, "live");
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "live",
+                    blob.BlobContent.GetBlock(i).AsStringBuf());
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepSparseTailsWhenSplittingPromotedBlobs)
+    {
+        TCleanupQueue cleanupQueue(BlockSize);
+        TPromoteCompactionVisitor visitor(
+            /*targetRangeBlocksCount*/ {16, 64},
+            /*targetBlobSizesForPromote*/ {3, 100},
+            BlockSize,
+            /*maxBlocksInBlob*/ 4,
+            /*allowBlockDuplicates*/ false,
+            cleanupQueue);
+
+        for (ui32 blockIndex: {0, 1, 2, 3, 4, 5, 16, 17, 18, 60, 61, 62, 63}) {
+            UNIT_ASSERT(VisitFreshBlock(visitor, blockIndex, 20, "live"));
+        }
+
+        auto result = visitor.Finish();
+        const auto& blobs = result.ResultedBlobs;
+        UNIT_ASSERT_VALUES_EQUAL(4, blobs.size());
+        UNIT_ASSERT(result.AlreadyOverwrittenBlobs.empty());
+
+        AssertBlockIndices(blobs[0], {0, 1, 2, 3}, 20);
+        AssertBlockIndices(blobs[1], {60, 61, 62, 63}, 20);
+        // Keep the two-block tail and the range exactly at the threshold.
+        // The largest range still respects the maximum blob size.
+        AssertBlockIndices(blobs[2], {4, 5, 16, 17}, 20);
+        AssertBlockIndices(blobs[3], {18}, 20);
+    }
+
+    Y_UNIT_TEST(ShouldPackOverwrittenBlocksOnlyInLargestRange)
+    {
+        const TPartialBlobId overwrittenBlobId(10, Max<ui64>());
+
+        TCleanupQueue cleanupQueue(BlockSize);
+        TPromoteCompactionVisitor visitor(
+            /*targetRangeBlocksCount*/ {4, 8, 16},
+            /*targetBlobSizesForPromote*/ {2, 3, 100},
+            BlockSize,
+            /*maxBlocksInBlob*/ 5,
+            /*allowBlockDuplicates*/ true,
+            cleanupQueue);
+
+        for (ui32 blockIndex: {0, 1, 2, 4, 5, 6, 16, 17, 18}) {
+            UNIT_ASSERT(VisitFreshBlock(visitor, blockIndex, 20, "live"));
+            UNIT_ASSERT(
+                visitor.Visit(blockIndex, 10, overwrittenBlobId, blockIndex));
+        }
+
+        auto result = visitor.Finish();
+        const auto& blobs = result.ResultedBlobs;
+        UNIT_ASSERT_VALUES_EQUAL(3, blobs.size());
+        AssertBlockIndices(blobs[0], {0, 1, 2}, 20);
+        AssertBlockIndices(blobs[1], {4, 5, 6}, 20);
+        AssertBlockIndices(blobs[2], {16, 17, 18}, 20);
+
+        // Even dense overwritten ranges bypass promotion. Pack them using
+        // only the largest range boundaries and the maximum blob size.
+        const auto& overwrittenBlobs = result.AlreadyOverwrittenBlobs;
+        UNIT_ASSERT_VALUES_EQUAL(3, overwrittenBlobs.size());
+        AssertBlockIndices(overwrittenBlobs[0], {0, 1, 2, 4, 5}, 10);
+        AssertBlockIndices(overwrittenBlobs[1], {6}, 10);
+        AssertBlockIndices(overwrittenBlobs[2], {16, 17, 18}, 10);
+
+        for (const auto& blob: overwrittenBlobs) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                TString(blob.BlockIndexToMark.size() * BlockSize, 0),
+                blob.BlobContent.AsString());
+            for (const auto& [blockIndex, mark]: blob.BlockIndexToMark) {
+                AssertBlobMark(mark, overwrittenBlobId, blockIndex);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCountOnlyLiveBlocksForPromotion)
+    {
+        const TPartialBlobId overwrittenBlobId(10, Max<ui64>());
+
+        TCleanupQueue cleanupQueue(BlockSize);
+        TPromoteCompactionVisitor visitor(
+            /*targetRangeBlocksCount*/ {4, 8},
+            /*targetBlobSizesForPromote*/ {2, 100},
+            BlockSize,
+            /*maxBlocksInBlob*/ 8,
+            /*allowBlockDuplicates*/ true,
+            cleanupQueue);
+
+        for (ui32 blockIndex: {0, 1}) {
+            UNIT_ASSERT(
+                visitor.Visit(blockIndex, 10, overwrittenBlobId, blockIndex));
+            UNIT_ASSERT(VisitFreshBlock(visitor, blockIndex, 20, "live"));
+        }
+        UNIT_ASSERT(VisitFreshBlock(visitor, 4, 20, "live"));
+
+        auto result = visitor.Finish();
+        UNIT_ASSERT_VALUES_EQUAL(1, result.ResultedBlobs.size());
+        AssertBlockIndices(result.ResultedBlobs[0], {0, 1, 4}, 20);
+        UNIT_ASSERT_VALUES_EQUAL(1, result.AlreadyOverwrittenBlobs.size());
+        AssertBlockIndices(result.AlreadyOverwrittenBlobs[0], {0, 1}, 10);
+    }
+
     Y_UNIT_TEST(ShouldKeepMarkWithNewestCommitId)
     {
         const TPartialBlobId blobId1(1, Max<ui64>());
@@ -195,7 +356,8 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
 
         TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
-            /*targetRangeBlocksCount*/ 100,
+            /*targetRangeBlocksCount*/ {100},
+            /*targetBlobSizesForPromote*/ {0},
             BlockSize,
             /*maxBlocksInBlob*/ 10,
             /*allowBlockDuplicates*/ false,
@@ -242,7 +404,8 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
 
         TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
-            /*targetRangeBlocksCount*/ 100,
+            /*targetRangeBlocksCount*/ {100},
+            /*targetBlobSizesForPromote*/ {0},
             BlockSize,
             /*maxBlocksInBlob*/ 10,
             /*allowBlockDuplicates*/ true,
@@ -252,16 +415,37 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         UNIT_ASSERT(VisitFreshBlock(visitor, 0, 10, "aaaa"));
         UNIT_ASSERT(visitor.Visit(0, 11, blobId1, 1));
 
-        auto blobs = visitor.Finish().ResultedBlobs;
+        auto result = visitor.Finish();
+        const auto& blobs = result.ResultedBlobs;
+        const auto& overwrittenBlobs = result.AlreadyOverwrittenBlobs;
         UNIT_ASSERT_VALUES_EQUAL(1, blobs.size());
-        UNIT_ASSERT_VALUES_EQUAL(3, blobs[0].BlockIndexToMark.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, overwrittenBlobs.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, blobs[0].BlockIndexToMark.size());
         UNIT_ASSERT_VALUES_EQUAL(
-            TString("aaaa") + TString(2 * BlockSize, 0),
+            TString(BlockSize, 0),
             blobs[0].BlobContent.AsString());
+        AssertBlobMark(GetMark(blobs[0], 0, 0, 12), blobId2, 2);
 
-        AssertFreshMark(GetMark(blobs[0], 0, 0, 10), {}, "aaaa");
-        AssertBlobMark(GetMark(blobs[0], 1, 0, 11), blobId1, 1);
-        AssertBlobMark(GetMark(blobs[0], 2, 0, 12), blobId2, 2);
+        const auto& overwrittenBlob = overwrittenBlobs[0];
+        UNIT_ASSERT_VALUES_EQUAL(2, overwrittenBlob.BlockIndexToMark.size());
+        UNIT_ASSERT_VALUES_EQUAL(2, overwrittenBlob.BlobContent.GetBlocksCount());
+        const size_t freshMarkIndex =
+            overwrittenBlob.BlockIndexToMark[0].second.CommitId == 10 ? 0 : 1;
+        const size_t blobMarkIndex = 1 - freshMarkIndex;
+        AssertFreshMark(
+            GetMark(overwrittenBlob, freshMarkIndex, 0, 10),
+            {},
+            "aaaa");
+        AssertBlobMark(
+            GetMark(overwrittenBlob, blobMarkIndex, 0, 11),
+            blobId1,
+            1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "aaaa",
+            overwrittenBlob.BlobContent.GetBlock(freshMarkIndex).AsStringBuf());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TString(BlockSize, 0),
+            overwrittenBlob.BlobContent.GetBlock(blobMarkIndex).AsStringBuf());
     }
 
     Y_UNIT_TEST(ShouldCollectReadRequestsBySourceBlob)
@@ -271,7 +455,8 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
 
         TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
-            /*targetRangeBlocksCount*/ 3,
+            /*targetRangeBlocksCount*/ {3},
+            /*targetBlobSizesForPromote*/ {0},
             BlockSize,
             /*maxBlocksInBlob*/ 2,
             /*allowBlockDuplicates*/ false,

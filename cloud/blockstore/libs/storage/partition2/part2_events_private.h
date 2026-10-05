@@ -311,6 +311,9 @@ struct TEvPartitionPrivate
         TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
         TMaybe<EPromoteCompactionSource> PromoteCompactionSource;
 
+        // flush
+        TVector<TPartialBlobId> AlreadyOverwrittenBlobIds;
+
         TAddBlobsRequest() = default;
 
         TAddBlobsRequest(
@@ -325,7 +328,8 @@ struct TEvPartitionPrivate
                 TAffectedBlocks affectedBlocks = {},
                 TVector<TBlobCompactionInfo> mixedBlobCompactionInfos = {},
                 TVector<TBlobCompactionInfo> mergedBlobCompactionInfos = {},
-                TMaybe<EPromoteCompactionSource> promoteCompactionSource = {})
+                TMaybe<EPromoteCompactionSource> promoteCompactionSource = {},
+                TVector<TPartialBlobId> alreadyOverwrittenBlobIds = {})
             : CommitId(commitId)
             , MixedBlobs(std::move(mixedBlobs))
             , MergedBlobs(std::move(mergedBlobs))
@@ -338,6 +342,7 @@ struct TEvPartitionPrivate
             , MixedBlobCompactionInfos(std::move(mixedBlobCompactionInfos))
             , MergedBlobCompactionInfos(std::move(mergedBlobCompactionInfos))
             , PromoteCompactionSource(promoteCompactionSource)
+            , AlreadyOverwrittenBlobIds(std::move(alreadyOverwrittenBlobIds))
         {}
     };
 

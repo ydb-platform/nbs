@@ -547,7 +547,8 @@ bool TPartitionActor::PreparePromoteCompaction(
         sourceRangeBlocksCount);
 
     TPromoteCompactionVisitor visitor(
-        GetTargetRangeBlocksCount(*State, args.Source),
+        {GetTargetRangeBlocksCount(*State, args.Source)},
+        {0},
         State->GetBlockSize(),
         State->GetMaxBlocksInBlob(),
         /*allowBlockDuplicates*/ false,
@@ -582,6 +583,11 @@ bool TPartitionActor::PreparePromoteCompaction(
     }
 
     args.ScanResult = visitor.Finish();
+
+    STORAGE_VERIFY(
+        args.ScanResult.AlreadyOverwrittenBlobs.empty(),
+        TWellKnownEntityTypes::TABLET,
+        TabletID());
 
     return true;
 }

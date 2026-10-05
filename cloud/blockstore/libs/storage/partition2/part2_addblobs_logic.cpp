@@ -166,7 +166,13 @@ public:
             ProcessNewBlob</*TLevel=*/0>(actorSystem, db, blob);
 
             auto& cm = State.GetCompactionMapL0();
-            cm.BlobAdded(blob.BlockIndices, blob.CommitIds, Args.CommitId);
+            bool isAlreadyOverwritten = BinarySearch(
+                Args.AlreadyOverwrittenBlobIds.begin(),
+                Args.AlreadyOverwrittenBlobIds.end(),
+                blob.BlobId);
+            if (!isAlreadyOverwritten) {
+                cm.BlobAdded(blob.BlockIndices, blob.CommitIds, Args.CommitId);
+            }
             RegisterLevelIndexBlob(ELevelIndex::L0, cm, blob);
         }
 
@@ -174,7 +180,13 @@ public:
             ProcessNewBlob</*TLevel=*/1>(actorSystem, db, blob);
 
             auto& cm = State.GetCompactionMapL1();
-            cm.BlobAdded(blob.BlockIndices, blob.CommitIds, Args.CommitId);
+            bool isAlreadyOverwritten = BinarySearch(
+                Args.AlreadyOverwrittenBlobIds.begin(),
+                Args.AlreadyOverwrittenBlobIds.end(),
+                blob.BlobId);
+            if (!isAlreadyOverwritten) {
+                cm.BlobAdded(blob.BlockIndices, blob.CommitIds, Args.CommitId);
+            }
             RegisterLevelIndexBlob(ELevelIndex::L1, cm, blob);
         }
 
@@ -709,6 +721,17 @@ private:
                     State.IncrementL1NonHugeBlobsCount(1);
                 }
             }
+        }
+
+        // add blob to cleanup queue if it is already completely overwritten
+        if (BinarySearch(
+                Args.AlreadyOverwrittenBlobIds.begin(),
+                Args.AlreadyOverwrittenBlobIds.end(),
+                blob.BlobId))
+        {
+            State.GetCleanupQueue().Add(
+                {blob.BlobId, DeletionCommitId, std::move(blobMeta)});
+            db.WriteCleanupQueue(blob.BlobId, DeletionCommitId);
         }
     }
 
