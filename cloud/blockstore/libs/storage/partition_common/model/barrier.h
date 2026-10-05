@@ -1,7 +1,5 @@
 #pragma once
 
-#include "public.h"
-
 #include <util/generic/set.h>
 #include <util/generic/vector.h>
 

@@ -4,30 +4,15 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/small.inc)
 
 SRCS(
     background_ops_throttling_ut.cpp
-    barrier_ut.cpp
-    block_index_ut.cpp
     block_mask_ut.cpp
-    checkpoint_ut.cpp
     cleanup_queue_ut.cpp
-    commit_queue_ut.cpp
     compaction_map_load_state_ut.cpp
     compaction_stats_tracker_ut.cpp
     flush_blocks_visitor_ut.cpp
-    fresh_blob_ut.cpp
     garbage_queue_ut.cpp
-    group_downtimes_ut.cpp
     mixed_blocks_filter_ut.cpp
     mixed_blocks_filter_load_state_ut.cpp
     mixed_index_cache_ut.cpp
-)
-
-PEERDIR(
-    library/cpp/resource
-)
-
-RESOURCE(
-    data/fresh_write.blob fresh_write.blob
-    data/fresh_zero.blob fresh_zero.blob
 )
 
 END()

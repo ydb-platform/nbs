@@ -1,7 +1,5 @@
 #pragma once
 
-#include "public.h"
-
 #include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 

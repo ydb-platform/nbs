@@ -1,7 +1,5 @@
 #pragma once
 
-#include "public.h"
-
 #include "barrier.h"
 
 #include <cloud/blockstore/libs/storage/core/tablet.h>

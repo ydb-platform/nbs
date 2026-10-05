@@ -27,13 +27,13 @@
 #include <cloud/blockstore/libs/storage/core/transaction_time_tracker.h>
 #include <cloud/blockstore/libs/storage/model/log_title.h>
 #include <cloud/blockstore/libs/storage/partition/model/compaction_map_load_state.h>
-#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
-#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/events_private.h>
 #include <cloud/blockstore/libs/storage/partition_common/fresh_blocks_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/io_companion.h>
 #include <cloud/blockstore/libs/storage/partition_common/long_running_operation_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/part_counters_wrapper.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
 #include <cloud/storage/core/libs/tablet/blob_id.h>

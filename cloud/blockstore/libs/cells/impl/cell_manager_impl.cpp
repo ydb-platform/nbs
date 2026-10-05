@@ -3,7 +3,6 @@
 #include "describe_volume.h"
 #include "connection.h"
 #include "endpoint_bootstrap.h"
-#include "multiclient_endpoint.h"
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
