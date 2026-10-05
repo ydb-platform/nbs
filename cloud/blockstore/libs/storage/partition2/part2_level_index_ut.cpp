@@ -201,12 +201,137 @@ void AssertReadBlockContent(
         response->Record.GetBlocks().GetBuffers(0));
 }
 
+TVector<TVector<ui32>> TestBlobFormation(EAddBlobMode mode)
+{
+    constexpr ui32 R = MaxBlocksCount;   // merged range size in blocks
+    constexpr ui32 L1RangeBlockCount = 2 * R;
+    constexpr ui32 L0RangeBlockCount = 4 * L1RangeBlockCount;
+
+    auto config = DefaultConfig();
+    config.SetFreshChannelWriteRequestsEnabled(true);
+    config.SetL0RangeSizeV2(L0RangeBlockCount * DefaultBlockSize);
+    config.SetL1RangeSizeV2(L1RangeBlockCount * DefaultBlockSize);
+    config.SetMergedPromotedBlobExpectedSize(3 * DefaultBlockSize);
+    config.SetL1PromotedBlobExpectedSize(4 * DefaultBlockSize);
+
+    auto runtime = PrepareTestActorRuntime(config, L0RangeBlockCount);
+    TPartitionClient partition(*runtime);
+    partition.WaitReady();
+
+    const TVector<TVector<ui32>> inputGroups = {
+        {0, 1, 2, 3},                           // above merged threshold
+        {R, R + 1, R + 2},                      // at merged threshold
+        {2 * R, 2 * R + 1, 3 * R, 3 * R + 1},   // at L1 threshold
+        {4 * R, 4 * R + 1, 5 * R},              // below L1 threshold
+        {6 * R},                                // sparse remainder
+        {7 * R, 7 * R + 1, 7 * R + 2}};         // last merged range
+
+    TVector<TVector<ui32>> actualBlobs;
+    runtime->SetObserverFunc(
+        [&](TAutoPtr<IEventHandle>& event)
+        {
+            // Only explicit promotions with a range index may run.
+            if (event->GetTypeRewrite() ==
+                    TEvPartitionPrivate::EvPromoteCompactionRequest &&
+                !event->Get<TEvPartitionPrivate::TEvPromoteCompactionRequest>()
+                     ->RangeIndex)
+            {
+                return TTestActorRuntime::EEventAction::DROP;
+            }
+
+            if (event->GetTypeRewrite() ==
+                TEvPartitionPrivate::EvAddBlobsRequest) {
+                const auto* request =
+                    event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+                if (request->Mode == mode) {
+                    const auto& blobs = mode == ADD_FLUSH_RESULT
+                                            ? request->L0Blobs
+                                            : request->L1Blobs;
+                    for (const auto& blob: blobs) {
+                        actualBlobs.push_back(blob.BlockIndices);
+                    }
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+    for (const auto& group: inputGroups) {
+        for (ui32 blockIndex: group) {
+            partition.WriteBlocks(blockIndex, 'a' + blockIndex % 26);
+            if (mode == ADD_PROMOTE_COMPACTION_RESULT) {
+                // Separate single-block L0 blobs must be combined by promotion.
+                partition.Flush();
+            }
+        }
+    }
+
+    if (mode == ADD_FLUSH_RESULT) {
+        partition.Flush();
+    } else {
+        auto request = std::make_unique<
+            TEvPartitionPrivate::TEvPromoteCompactionRequest>();
+        request->RangeIndex = 0;
+        partition.SendToPipe(std::move(request));
+        const auto response = partition.RecvResponse<
+            TEvPartitionPrivate::TEvPromoteCompactionResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    }
+
+    const auto checkContents = [&]
+    {
+        for (const auto& group: inputGroups) {
+            for (ui32 blockIndex: group) {
+                AssertReadBlockContent(
+                    partition, blockIndex, 'a' + blockIndex % 26);
+            }
+        }
+    };
+    checkContents();
+    partition.RebootTablet();
+    partition.WaitReady();
+    checkContents();
+
+    Sort(actualBlobs);
+    return actualBlobs;
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
 {
+    Y_UNIT_TEST(ShouldFormMergedAndL1SizedBlobsDuringFlush)
+    {
+        constexpr ui32 R = MaxBlocksCount;
+        const TVector<TVector<ui32>> expectedBlobs = {
+            {0, 1, 2, 3},
+            {R, R + 1, R + 2},   // exact merged threshold is accepted
+            {2 * R, 2 * R + 1, 3 * R, 3 * R + 1},
+            // Only blocks below both thresholds fall back to an L0-sized blob.
+            {4 * R, 4 * R + 1, 5 * R, 6 * R},
+            {7 * R, 7 * R + 1, 7 * R + 2}};
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedBlobs, TestBlobFormation(ADD_FLUSH_RESULT));
+    }
+
+    Y_UNIT_TEST(ShouldFormMergedSizedBlobsDuringL0Promotion)
+    {
+        constexpr ui32 R = MaxBlocksCount;
+        const TVector<TVector<ui32>> expectedBlobs = {
+            {0, 1, 2, 3},
+            {R, R + 1, R + 2},
+            {2 * R, 2 * R + 1, 3 * R, 3 * R + 1},
+            // The remaining blocks are split at L1 range boundaries.
+            {4 * R, 4 * R + 1, 5 * R},
+            {6 * R},
+            {7 * R, 7 * R + 1, 7 * R + 2}};
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedBlobs, TestBlobFormation(ADD_PROMOTE_COMPACTION_RESULT));
+    }
+
     Y_UNIT_TEST(ShouldFlushFreshBlocksToL0Index)
     {
         constexpr ui32 L1RangeBlockCount = MaxBlocksCount;

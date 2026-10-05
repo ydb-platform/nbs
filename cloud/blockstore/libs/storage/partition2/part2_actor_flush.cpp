@@ -628,8 +628,13 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
     TVector<TPromoteCompactionVisitor::TBlob> alreadyOverwrittenBlobs;
     {
         TPromoteCompactionVisitor visitor(
-            {State->GetMeta().GetL0RangeSize()},
-            {0},
+            {State->GetCompactionMap().GetRangeSize(),
+             State->GetMeta().GetL1RangeSize(),
+             State->GetMeta().GetL0RangeSize()},
+            {Config->GetMergedPromotedBlobExpectedSize() /
+                 State->GetBlockSize(),
+             Config->GetL1PromotedBlobExpectedSize() / State->GetBlockSize(),
+             0},
             State->GetBlockSize(),
             State->GetMaxBlocksInBlob(),
             /*allowBlockDuplicates*/ true,

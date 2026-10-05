@@ -210,7 +210,7 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ {4, 8, 16},
-            /*targetBlobSizesForPromote*/ {2, 3, 100},
+            /*targetBlobSizesForPromote*/ {3, 4, 100},
             BlockSize,
             /*maxBlocksInBlob*/ 8,
             /*allowBlockDuplicates*/ false,
@@ -227,12 +227,12 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         UNIT_ASSERT_VALUES_EQUAL(5, blobs.size());
         UNIT_ASSERT(result.AlreadyOverwrittenBlobs.empty());
 
-        // Dense four-block ranges win, including the last range in the scan.
+        // Blobs exactly at the threshold win, including the last range.
         AssertBlockIndices(blobs[0], {0, 1, 2}, 20);
         AssertBlockIndices(blobs[1], {28, 29, 30}, 20);
         // Two sparse four-block ranges together fill an eight-block range.
         AssertBlockIndices(blobs[2], {8, 9, 12, 13}, 20);
-        // A blob exactly at the promotion threshold falls back, and remaining
+        // A blob below the promotion threshold falls back, and remaining
         // sparse blocks are combined only within the largest range boundaries.
         AssertBlockIndices(blobs[3], {4, 5}, 20);
         AssertBlockIndices(blobs[4], {16, 20}, 20);
@@ -268,11 +268,11 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         UNIT_ASSERT(result.AlreadyOverwrittenBlobs.empty());
 
         AssertBlockIndices(blobs[0], {0, 1, 2, 3}, 20);
-        AssertBlockIndices(blobs[1], {60, 61, 62, 63}, 20);
-        // Keep the two-block tail and the range exactly at the threshold.
-        // The largest range still respects the maximum blob size.
-        AssertBlockIndices(blobs[2], {4, 5, 16, 17}, 20);
-        AssertBlockIndices(blobs[3], {18}, 20);
+        AssertBlockIndices(blobs[1], {16, 17, 18}, 20);
+        AssertBlockIndices(blobs[2], {60, 61, 62, 63}, 20);
+        // The three-block range is promoted at the exact threshold, while the
+        // two-block tail falls back to the largest range without being lost.
+        AssertBlockIndices(blobs[3], {4, 5}, 20);
     }
 
     Y_UNIT_TEST(ShouldPackOverwrittenBlocksOnlyInLargestRange)
@@ -326,7 +326,7 @@ Y_UNIT_TEST_SUITE(TPromoteCompactionVisitorTest)
         TCleanupQueue cleanupQueue(BlockSize);
         TPromoteCompactionVisitor visitor(
             /*targetRangeBlocksCount*/ {4, 8},
-            /*targetBlobSizesForPromote*/ {2, 100},
+            /*targetBlobSizesForPromote*/ {3, 100},
             BlockSize,
             /*maxBlocksInBlob*/ 8,
             /*allowBlockDuplicates*/ true,

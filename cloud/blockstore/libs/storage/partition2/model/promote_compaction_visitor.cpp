@@ -189,7 +189,7 @@ public:
 private:
     [[nodiscard]] bool BlobIsHuge(const TBlob& blob) const
     {
-        return blob.BlobContent.GetBlocksCount() > TargetBlobSizeForPromote;
+        return blob.BlobContent.GetBlocksCount() >= TargetBlobSizeForPromote;
     }
 };
 

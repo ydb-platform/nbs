@@ -28,17 +28,39 @@ ui64 GetSourceRangeBlocksCount(
     Y_UNREACHABLE();
 }
 
-ui64 GetTargetRangeBlocksCount(
+TVector<ui64> GetTargetRangesBlocksCount(
     const TPartitionState& state,
     EPromoteCompactionSource source)
 {
     switch (source) {
         case EPromoteCompactionSource::L0:
-            return state.GetMeta().GetL1RangeSize();
+            return {
+                state.GetCompactionMap().GetRangeSize(),
+                state.GetMeta().GetL1RangeSize()};
         case EPromoteCompactionSource::L1:
-            return state.GetCompactionMap().GetRangeSize();
+            return {state.GetCompactionMap().GetRangeSize()};
     }
     Y_UNREACHABLE();
+}
+
+TVector<ui64> GetTargetBlobSizesForPromote(
+    const TStorageConfigPtr config,
+    const TPartitionState& state,
+    EPromoteCompactionSource source)
+{
+    ui64 targetMergedBlobSize =
+        config->GetMergedPromotedBlobExpectedSize() / state.GetBlockSize();
+    ui64 targetL1BlobSize =
+        config->GetL1PromotedBlobExpectedSize() / state.GetBlockSize();
+    switch (source) {
+        case EPromoteCompactionSource::L0:
+            return {targetMergedBlobSize, targetL1BlobSize};
+        case EPromoteCompactionSource::L1:
+            return {targetMergedBlobSize};
+        default:
+            Y_ABORT();
+    }
+    return {};
 }
 
 TLevelIndexCompactionMap& GetCompactionMap(
@@ -75,7 +97,7 @@ ui64 CalculateUsedBlocksNeededForPromote(
     const ui64 sourceRangeBlocksCount =
         GetSourceRangeBlocksCount(state, source);
     const ui64 targetRangeBlocksCount =
-        GetTargetRangeBlocksCount(state, source);
+        *GetTargetRangesBlocksCount(state, source).rbegin();
     const ui64 targetRangesCount =
         (sourceRangeBlocksCount - 1) / targetRangeBlocksCount + 1;
     const ui64 expectedBlobSize =
@@ -547,8 +569,8 @@ bool TPartitionActor::PreparePromoteCompaction(
         sourceRangeBlocksCount);
 
     TPromoteCompactionVisitor visitor(
-        {GetTargetRangeBlocksCount(*State, args.Source)},
-        {0},
+        GetTargetRangesBlocksCount(*State, args.Source),
+        GetTargetBlobSizesForPromote(Config, *State, args.Source),
         State->GetBlockSize(),
         State->GetMaxBlocksInBlob(),
         /*allowBlockDuplicates*/ false,
