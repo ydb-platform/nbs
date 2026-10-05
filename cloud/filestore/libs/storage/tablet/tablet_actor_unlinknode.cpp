@@ -497,6 +497,15 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
                 args.ChildRef->ShardNodeName,
                 args.ChildRef->MinCommitId,
                 args.CommitId);
+
+            auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
+            UpdateNode(
+                *db,
+                args.ParentNode->NodeId,
+                args.ParentNode->MinCommitId,
+                args.CommitId,
+                parent,
+                args.ParentNode->Attrs);
         }
 
         // OpLogEntryId doesn't have to be a CommitId - it's just convenient to
@@ -534,6 +543,18 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         if (HasError(e)) {
             args.Error = std::move(e);
             return;
+        }
+
+        // in parentless mode ParentNode is the unlinked node itself
+        if (!Config->GetParentlessFilesOnly()) {
+            auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
+            UpdateNode(
+                *db,
+                args.ParentNode->NodeId,
+                args.ParentNode->MinCommitId,
+                args.CommitId,
+                parent,
+                args.ParentNode->Attrs);
         }
     }
 
@@ -754,6 +775,15 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
         args.ChildRef->ShardNodeName,
         args.ChildRef->MinCommitId,
         args.CommitId);
+
+    auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
+    UpdateNode(
+        *db,
+        args.ParentNode->NodeId,
+        args.ParentNode->MinCommitId,
+        args.CommitId,
+        parent,
+        args.ParentNode->Attrs);
 }
 
 void TIndexTabletActor::CompleteTx_CompleteUnlinkNode(
