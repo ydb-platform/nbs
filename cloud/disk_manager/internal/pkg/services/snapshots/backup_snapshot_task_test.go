@@ -67,7 +67,8 @@ func TestBackupSnapshotTask(t *testing.T) {
 		"dataplane.BackupSnapshotData",
 		"",
 		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotDataRequest) bool {
-			return request.SnapshotId == "snap1"
+			return request.SnapshotId == "snap1" &&
+				len(request.EncryptedDek) != 0
 		}),
 	).Return("dataplane1", nil)
 	scheduler.On(
@@ -77,7 +78,14 @@ func TestBackupSnapshotTask(t *testing.T) {
 		"dataplane1",
 	).Return(&empty.Empty{}, nil)
 
-	backupS3 := backup.NewS3(s3, backupTestBucket, t.Name())
+	backupS3, err := backup.NewS3(
+		s3,
+		backupTestBucket,
+		t.Name(),
+		"kek1",
+		make([]byte, 32),
+	)
+	require.NoError(t, err)
 
 	task := &backupSnapshotTask{
 		scheduler: scheduler,
@@ -92,10 +100,9 @@ func TestBackupSnapshotTask(t *testing.T) {
 	require.Equal(t, "dataplane1", task.state.DataplaneTaskID)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	object, err := s3.GetObject(
+	object, err := backupS3.GetObject(
 		ctx,
-		backupTestBucket,
-		backupS3.Key(backup.SnapshotMetaKey("disk1", "snap1")),
+		backup.SnapshotMetaKey("disk1", "snap1"),
 	)
 	require.NoError(t, err)
 

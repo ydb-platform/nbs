@@ -75,9 +75,22 @@ func (t *backupSnapshotTask) Run(
 		return errors.NewNonRetriableError(err)
 	}
 
+	if len(t.state.EncryptedDek) == 0 {
+		t.state.EncryptedDek, err = t.backupS3.NewEncryptedDEK()
+		if err != nil {
+			return err
+		}
+
+		err = execCtx.SaveState(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
 	err = t.backupS3.PutObject(
 		ctx,
 		backup.SnapshotMetaKey(meta.Disk.DiskId, snapshotID),
+		t.state.EncryptedDek,
 		persistence.S3Object{Data: data},
 	)
 	if err != nil {
@@ -95,7 +108,8 @@ func (t *backupSnapshotTask) Run(
 		"dataplane.BackupSnapshotData",
 		"",
 		&dataplane_protos.BackupSnapshotDataRequest{
-			SnapshotId: snapshotID,
+			SnapshotId:   snapshotID,
+			EncryptedDek: t.state.EncryptedDek,
 		},
 	)
 	if err != nil {
