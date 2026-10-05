@@ -2,7 +2,6 @@
 
 #include "detachable_target.h"
 #include "endpoint_router.h"
-#include "multiclient_endpoint.h"
 #include "transport_switcher.h"
 #include "remote_storage.h"
 
@@ -170,6 +169,10 @@ public:
         // inter-cell-forward design. Describe carries its own cell id through
         // the describe path already
         request->MutableHeaders()->SetCellId(CellId);
+
+        // the data is encrypted on this side, before it leaves for the cell
+        request->MutableEncryptionSpec()->Clear();
+        request->SetForceDisableEncryption(true);
 
         auto diskId = request->GetDiskId();
         auto clientId = request->GetHeaders().GetClientId();
@@ -732,7 +735,7 @@ private:
         // tail gives that channel back
         auto self = shared_from_this();
 
-        TFuture<IMultiClientEndpointPtr> channel;
+        TFuture<IBlockStorePtr> channel;
         try {
             channel = Pool->AcquireControlChannel(fqdn);
         } catch (...) {
@@ -752,9 +755,9 @@ private:
 
     void OnChannelAcquired(
         TString fqdn,
-        const IMultiClientEndpointPtr& endpoint)
+        const IBlockStorePtr& controlService)
     {
-        if (!endpoint) {
+        if (!controlService) {
             AbortMigration(fqdn, "no control channel", true);
             return;
         }
@@ -762,10 +765,6 @@ private:
         TResultOrError<THostBindingPtr> built = MakeError(E_FAIL);
         try {
             auto hostConfig = Pool->MakeHostConfig(fqdn);
-            auto controlService = endpoint->CreateClientEndpoint(
-                ClientConfig->GetClientId(),
-                ClientConfig->GetInstanceId());
-
             built = BuildHostBinding(Bootstrap, hostConfig, controlService);
         } catch (...) {
             AbortMigration(fqdn, CurrentExceptionMessage(), true);
@@ -1289,18 +1288,14 @@ TCellConnectionFuture CreateCellConnection(
          observer = std::move(observer),
          fqdn = std::move(fqdn)](const auto& f) mutable -> TCellConnectionFuture
         {
-            auto controlEndpoint = f.GetValue();
-            if (!controlEndpoint) {
+            auto controlService = f.GetValue();
+            if (!controlService) {
                 pool->ReleaseControlChannel(fqdn);
                 return MakeFuture(TResultOrError<ICellConnectionPtr>(MakeError(
                     E_REJECTED,
                     TStringBuilder()
                         << "Can't set up a control channel to " << fqdn)));
             }
-
-            auto controlService = controlEndpoint->CreateClientEndpoint(
-                clientConfig->GetClientId(),
-                clientConfig->GetInstanceId());
 
             auto controlRouter = CreateEndpointRouter(controlService);
             auto dataRouter = CreateEndpointRouter(controlService);

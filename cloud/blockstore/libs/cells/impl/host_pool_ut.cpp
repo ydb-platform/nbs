@@ -1,5 +1,4 @@
 #include "host_pool.h"
-#include "multiclient_endpoint.h"
 
 #include <cloud/blockstore/libs/service/service_method.h>
 #include <cloud/blockstore/libs/service/service_test.h>
@@ -68,53 +67,6 @@ struct TPingableService: public TTestService
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestMultiClientEndpoint
-    : public TBlockStoreImpl<
-          TTestMultiClientEndpoint,
-          IMultiClientEndpoint>
-{
-    const std::shared_ptr<TPingableService> Service;
-
-    explicit TTestMultiClientEndpoint(
-            std::shared_ptr<TPingableService> service)
-        : Service(std::move(service))
-    {}
-
-    void Start() override
-    {}
-
-    void Stop() override
-    {}
-
-    TStorageBuffer AllocateBuffer(size_t bytesCount) override
-    {
-        Y_UNUSED(bytesCount);
-        return nullptr;
-    }
-
-    IBlockStorePtr CreateClientEndpoint(
-        const TString& clientId,
-        const TString& instanceId) override
-    {
-        Y_UNUSED(clientId);
-        Y_UNUSED(instanceId);
-        return Service;
-    }
-
-    template <typename TMethod>
-    TFuture<typename TMethod::TResponse> Execute(
-        TCallContextPtr callContext,
-        std::shared_ptr<typename TMethod::TRequest> request)
-    {
-        return TMethod::Execute(
-            Service.get(),
-            std::move(callContext),
-            std::move(request));
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 // Minimal ICellHostEndpointBootstrap: the pool only needs a grpc endpoint
 // future to exist, never resolved here. Not part of the brief's pasted
 // block - added because AcquireControlChannel dereferences
@@ -164,8 +116,7 @@ struct TTestEndpointBootstrap: public ICellHostEndpointBootstrap
             service = std::make_shared<TPingableService>();
         }
 
-        return MakeFuture<IMultiClientEndpointPtr>(
-            std::make_shared<TTestMultiClientEndpoint>(service));
+        return MakeFuture<IBlockStorePtr>(service);
     }
 
     TRdmaEndpointBootstrapResult SetupHostRdmaEndpoint(
