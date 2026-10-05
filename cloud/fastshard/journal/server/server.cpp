@@ -10,6 +10,7 @@
 
 #include <util/generic/scope.h>
 #include <util/network/address.h>
+#include <util/string/builder.h>
 
 #include <optional>
 
@@ -80,6 +81,105 @@ STORAGE_JOURNALLED_DEVICE_SERVER(STORAGE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TRequest>
+void OutHeaders(IOutputStream& out, const TRequest& request)
+{
+    out << "client: " << request.GetHeaders().GetClientId().Quote();
+}
+
+template <typename TRequest>
+void OutDeviceUUIDs(IOutputStream& out, const TRequest& request)
+{
+    out << ", devices: [";
+    for (size_t i = 0; i < request.DeviceUUIDsSize(); ++i) {
+        out << (i ? ", " : "") << request.GetDeviceUUIDs(i).Quote();
+    }
+    out << "]";
+}
+
+template <typename TRequest>
+void OutDeviceUUID(IOutputStream& out, const TRequest& request)
+{
+    out << ", device: " << request.GetDeviceUUID().Quote();
+}
+
+TString DescribeRequest(const NProto::TAcquireDevicesRequest& request)
+{
+    TStringBuilder out;
+    OutHeaders(out.Out, request);
+    OutDeviceUUIDs(out.Out, request);
+    out << ", generation: " << request.GetGeneration();
+    return out;
+}
+
+TString DescribeRequest(const NProto::TReleaseDevicesRequest& request)
+{
+    TStringBuilder out;
+    OutHeaders(out.Out, request);
+    OutDeviceUUIDs(out.Out, request);
+    return out;
+}
+
+TString DescribeRequest(const NProto::TFormatDeviceRequest& request)
+{
+    TStringBuilder out;
+    OutHeaders(out.Out, request);
+    OutDeviceUUID(out.Out, request);
+    return out;
+}
+
+TString DescribeRequest(const NProto::TReadPagesRequest& request)
+{
+    TStringBuilder out;
+    OutHeaders(out.Out, request);
+    OutDeviceUUID(out.Out, request);
+    out << ", pages: [";
+    for (size_t i = 0; i < request.PageGroupRefsSize(); ++i) {
+        const auto& ref = request.GetPageGroupRefs(i);
+        out << (i ? ", " : "") << ref.GetFirstPageNo() << "x"
+            << ref.GetPageCount();
+    }
+    out << "]";
+    return out;
+}
+
+TString DescribeRequest(const NProto::TWriteLogRecordRequest& request)
+{
+    TStringBuilder out;
+    OutHeaders(out.Out, request);
+    OutDeviceUUID(out.Out, request);
+    out << ", lsn: " << request.GetLogSequenceNumber()
+        << ", prev lsn: " << request.GetPrevLogSequenceNumber() << ", pages: [";
+    for (size_t i = 0; i < request.PageGroupsSize(); ++i) {
+        const auto& group = request.GetPageGroups(i);
+        out << (i ? ", " : "") << group.GetFirstPageNo() << "x"
+            << group.ContentSize();
+    }
+    out << "]";
+    return out;
+}
+
+TString DescribeRequest(const NProto::TReadJournalTailRequest& request)
+{
+    TStringBuilder out;
+    OutHeaders(out.Out, request);
+    OutDeviceUUID(out.Out, request);
+    out << ", after lsn: " << request.GetAfterLogSequenceNumber()
+        << ", max records: " << request.GetMaxRecordCount();
+    return out;
+}
+
+TString DescribeRequest(const NProto::TAdvanceLsnLowWatermarkRequest& request)
+{
+    TStringBuilder out;
+    OutHeaders(out.Out, request);
+    OutDeviceUUID(out.Out, request);
+    out << ", lsn low watermark: " << request.GetLsnLowWatermark();
+    return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TConnection
 {
     TSocketHolder Socket;
@@ -139,11 +239,10 @@ class TServer final
 {
 private:
     const TNetworkAddress ListenAddress;
-    const ILoggingServicePtr Logging;
     const TExecutorPtr Executor;
     const IServerBackendPtr Backend;
+    const TLog Log;
 
-    TLog Log;
     std::optional<TContListener> Listener;
 
     TVector<TConnectionPtr> Connections;
@@ -174,7 +273,7 @@ private:
     void OnExit(TConnectionPtr conn);
 
     auto ReadDeviceProtocolRequest(TContIO& io)
-        -> NProto::TDeviceProtocolRequest;
+        -> std::optional<NProto::TDeviceProtocolRequest>;
 
     void HandleRequest(
         NProto::TDeviceProtocolRequest& request,
@@ -194,6 +293,10 @@ private:
         try {
             auto& proto = TMethod::MutableProto(request);
 
+            STORAGE_DEBUG(
+                TMethod::Name << " #" << requestId
+                              << " received: " << DescribeRequest(proto));
+
             future = TMethod::Execute(*Backend, std::move(proto));
         } catch (...) {
             STORAGE_ERROR(
@@ -203,12 +306,22 @@ private:
         }
 
         future.Subscribe(
-            [conn, requestId](const auto& future)
+            [Log = Log, conn, requestId](const auto& future)
             {
                 NProto::TDeviceProtocolResponse response;
                 response.SetRequestId(requestId);
-                TMethod::MutableProto(response).CopyFrom(
+
+                auto& proto = TMethod::MutableProto(response);
+                proto.CopyFrom(
                     SafeExecute<TResponse>([&] { return future.GetValue(); }));
+
+                const bool failed = HasError(proto.GetError());
+
+                STORAGE_LOG(
+                    failed ? TLOG_ERR : TLOG_DEBUG,
+                    TMethod::Name << " #" << requestId
+                                  << (failed ? " failed: " : " completed: ")
+                                  << FormatError(proto.GetError()));
 
                 conn->ResponseQueue.Enqueue(std::move(response));
             });
@@ -223,15 +336,13 @@ TServer::TServer(
     TExecutorPtr executor,
     IServerBackendPtr backend)
     : ListenAddress(listenAddress)
-    , Logging(std::move(logging))
     , Executor(std::move(executor))
     , Backend(std::move(backend))
+    , Log(logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
 {}
 
 void TServer::Start()
 {
-    Log = Logging->CreateLog("DEVICE_SERVER");
-
     Backend->Start();
 
     auto future = Executor->Execute([this] { StartListen(); });
@@ -326,11 +437,13 @@ void TServer::Receive(TConnectionPtr conn)
     try {
         TContIO io(conn->Socket, RunningCont());
 
-        for (;;) {
-            auto request = ReadDeviceProtocolRequest(io);
-
-            HandleRequest(request, conn);
+        while (auto request = ReadDeviceProtocolRequest(io)) {
+            HandleRequest(*request, conn);
         }
+
+        STORAGE_DEBUG(
+            "connection closed by peer "
+            << PrintHostAndPort(*NAddr::GetPeerAddr(conn->Socket)));
     } catch (...) {
         STORAGE_ERROR("Receive: " << CurrentExceptionMessage());
     }
@@ -382,10 +495,18 @@ void TServer::OnExit(TConnectionPtr conn)
 }
 
 auto TServer::ReadDeviceProtocolRequest(TContIO& io)
-    -> NProto::TDeviceProtocolRequest
+    -> std::optional<NProto::TDeviceProtocolRequest>
 {
     ui32 wireSize = 0;
-    io.LoadOrFail(&wireSize, sizeof(wireSize));
+    const size_t headerSize = io.Load(&wireSize, sizeof(wireSize));
+    if (headerSize == 0) {
+        // The peer closed the connection
+        return std::nullopt;
+    }
+
+    Y_ENSURE(
+        headerSize == sizeof(wireSize),
+        "truncated request header: " << headerSize << " bytes");
 
     const ui32 size = InetToHost(wireSize);
 
