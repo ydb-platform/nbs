@@ -7,6 +7,7 @@ SRCS(
     factory.cpp
     find_bytes_access.cpp
     mask.cpp
+    time_range.cpp
 )
 
 PEERDIR(

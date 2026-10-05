@@ -55,7 +55,7 @@ public:
                 ythrow yexception() << "unknown command: " << name;
             }
 
-            return Command->Run(argc, argv);
+            return Command->Run(argc - 1, argv + 1);
 
         } catch (const NLastGetopt::TUsageException& e) {
             Cerr << FormatCmdLine(argc, argv)

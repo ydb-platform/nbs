@@ -13,7 +13,7 @@ Profile log fills in three places:
 
 | Command line parameter | Data type | Description |
 |:----------------------:|:---------:|-------------|
-| ```--profile-log```    | String    | Path to log file with NFS binary profile log |
+| ```--profile-log```    | String    | Path to NFS binary profile log; repeat for multiple files, or pass additional paths after it |
 | ```--fs-id```          | String    | Filesystem Id, used to output events only for specified filesystem. |
 | ```--node-id```        | ui64      | Node id (a.k.a. inode), output events which were applied to specified node id |
 | ```--handle```         | ui64      | Handle id, output events which used specified handle id |

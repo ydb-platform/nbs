@@ -57,6 +57,8 @@ class TDumpEventsCommand final
 {
 private:
     const TCommonFilterParams CommonFilterParams;
+    TMaybe<TInstant> Since;
+    TMaybe<TInstant> Until;
 
     IRequestFilterPtr Filter = CreateRequestFilterAccept();
 
@@ -160,18 +162,18 @@ public:
                 std::move(systemRequests));
         }
 
-        const auto until = CommonFilterParams.GetUntil(parseResult);
-        if (until.Defined()) {
+        Until = CommonFilterParams.GetUntil(parseResult);
+        if (Until.Defined()) {
             Filter = CreateRequestFilterUntil(
                 std::move(Filter),
-                until.GetRef().MicroSeconds());
+                Until.GetRef().MicroSeconds());
         }
 
-        const auto since = CommonFilterParams.GetSince(parseResult);
-        if (since.Defined()) {
+        Since = CommonFilterParams.GetSince(parseResult);
+        if (Since.Defined()) {
             Filter = CreateRequestFilterSince(
                 std::move(Filter),
-                since.GetRef().MicroSeconds());
+                Since.GetRef().MicroSeconds());
         }
 
         const auto fileSystemId =
@@ -182,18 +184,26 @@ public:
                 fileSystemId.GetRef());
         }
 
+        ProfileLogFiles =
+            SelectProfileLogFiles(std::move(ProfileLogFiles), Since, Until);
+
         return true;
     }
 
     int Execute() override
     {
         TEventProcessor processor(Filter);
-        const char* path[] = {"", PathToProfileLog.c_str()};
-        return IterateEventLog(
-            NEvClass::Factory(),
-            &processor,
-            2,
-            path);
+        for (const auto& file: ProfileLogFiles) {
+            const auto& pathToProfileLog = file.Path;
+            const int result = ProcessProfileLog(
+                pathToProfileLog,
+                processor,
+                OptsParseResult.GetRef().Has("ignore-errors"));
+            if (result != 0) {
+                return result;
+            }
+        }
+        return 0;
     }
 };
 

@@ -66,6 +66,8 @@ class TFindBytesAccessCommand final
 {
 private:
     const TCommonFilterParams CommonFilterParams;
+    TMaybe<TInstant> Since;
+    TMaybe<TInstant> Until;
 
     ui64 Start = 0;
     ui64 Count = 0;
@@ -121,18 +123,18 @@ public:
                 handle.GetRef());
         }
 
-        const auto until = CommonFilterParams.GetUntil(parseResult);
-        if (until.Defined()) {
+        Until = CommonFilterParams.GetUntil(parseResult);
+        if (Until.Defined()) {
             filter = CreateRequestFilterUntil(
                 std::move(filter),
-                until.GetRef().MicroSeconds());
+                Until.GetRef().MicroSeconds());
         }
 
-        const auto since = CommonFilterParams.GetSince(parseResult);
-        if (since.Defined()) {
+        Since = CommonFilterParams.GetSince(parseResult);
+        if (Since.Defined()) {
             filter = CreateRequestFilterSince(
                 std::move(filter),
-                since.GetRef().MicroSeconds());
+                Since.GetRef().MicroSeconds());
         }
 
         const auto fileSystemId = CommonFilterParams.GetFileSystemId(parseResult);
@@ -157,18 +159,26 @@ public:
                 filter,
                 std::move(requestTypes)));
 
+        ProfileLogFiles =
+            SelectProfileLogFiles(std::move(ProfileLogFiles), Since, Until);
+
         return true;
     }
 
     int Execute() override
     {
         TEventProcessor processor(Filters);
-        const char* path[] = {"", PathToProfileLog.c_str()};
-        return IterateEventLog(
-            NEvClass::Factory(),
-            &processor,
-            2,
-            path);
+        for (const auto& file: ProfileLogFiles) {
+            const auto& pathToProfileLog = file.Path;
+            const int result = ProcessProfileLog(
+                pathToProfileLog,
+                processor,
+                OptsParseResult.GetRef().Has("ignore-errors"));
+            if (result != 0) {
+                return result;
+            }
+        }
+        return 0;
     }
 };
 
