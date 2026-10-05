@@ -436,35 +436,42 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         RenderCellsPage(out, *config, snapshot, TDiagnosticsConfig());
         const auto html = out.Str();
 
-        // one page: search form, remote mounts, outbound and inbound sections,
-        // config
-        UNIT_ASSERT_STRING_CONTAINS(html, "action");
-        UNIT_ASSERT_STRING_CONTAINS(html, "Volume");
-        UNIT_ASSERT_STRING_CONTAINS(html, "xyz");
-        UNIT_ASSERT_STRING_CONTAINS(html, "host-alpha");
-        UNIT_ASSERT_STRING_CONTAINS(html, "Cells config");
-        // each cell's config folds away under its own button
+        UNIT_ASSERT_STRING_CONTAINS(html, "this node: abc");
+        UNIT_ASSERT_STRING_CONTAINS(html, "name='Volume'");
+        UNIT_ASSERT_STRING_CONTAINS(html, "value='search'");
+
+        // a healthy cell folds away, its heading already says it is fine
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "data-target='#cell-config-0'>Cell xyz</button>");
+            "<details class='panel panel-success'>"
+            "<summary class='panel-heading'><strong>xyz</strong>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "1 / 1 alive");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "data-target='#cell-outbound-0'>Cell xyz</button>");
-        UNIT_ASSERT_STRING_CONTAINS(html, "Outbound host status");
-        UNIT_ASSERT_STRING_CONTAINS(html, "Inbound inter-cell connections");
+            "<td>host-alpha</td><td><span class='label label-success'>"
+            "alive</span></td><td><span class='badge'>0</span></td>"
+            "<td>9001</td>");
 
         // a remote mount names the host it goes through, linked to the disk
-        // there, and what carries its data now
+        // there, what carries its data now and where its tablet is
         UNIT_ASSERT_STRING_CONTAINS(html, "Remote mounts");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<a href='http://host-alpha:8766/blockstore/service?action=search"
-            "&amp;Volume=disk-1'>host-alpha</a>");
-        UNIT_ASSERT_STRING_CONTAINS(html, "grpc fallback");
+            "&amp;Volume=disk-1' target='_blank' rel='noopener'>host-alpha</a>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<span class='label label-warning'>grpc fallback</span>");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<a href='http://host-beta:8766/blockstore/service?action=search"
-            "&amp;Volume=disk-1'>host-beta</a>");
+            "&amp;Volume=disk-1' target='_blank' rel='noopener'>host-beta</a> "
+            "<span class='label label-warning'>elsewhere</span>");
+
+        UNIT_ASSERT_STRING_CONTAINS(html, "Inbound");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<summary class='panel-heading'><strong>Cells config</strong>");
     }
 
     Y_UNIT_TEST(ShouldRenderSearchResultLinks)
@@ -490,26 +497,37 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 
         TStringStream out;
         RenderCellsSearchResult(
-            out, results, TDiagnosticsConfig(), "disk-x");
+            out, results, TDiagnosticsConfig(), "own", "disk-x");
         const auto html = out.Str();
 
-        UNIT_ASSERT_STRING_CONTAINS(html, "disk-x");
-        // a remote hit links to the responding host's mon port, with the
-        // action that triggers the search on the target service page
+        // a remote hit links the disk to the responding host's mon port, with
+        // the action that triggers the search on the target service page, in
+        // a new tab
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "http://host-a:8766/blockstore/service?action=search"
-            "&amp;Volume=disk-x");
+            "<td><a href='http://host-a:8766/blockstore/service?action=search"
+            "&amp;Volume=disk-x' target='_blank' rel='noopener'>disk-x</a>"
+            "</td><td>host-a</td>"
+            "<td><span class='label label-success'>found</span></td>");
         // the local hit links relative to /blockstore/Cells so the Viewer node
         // prefix survives; no leading slash, no http://host:port
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "<a href='service?action=search&amp;Volume=disk-x'>"
-            "localhost</a>");
-        UNIT_ASSERT_STRING_CONTAINS(html, "not found");
-        UNIT_ASSERT_STRING_CONTAINS(html, "unavailable");
+            "<td>local (own)</td><td><a href='service?action=search"
+            "&amp;Volume=disk-x' target='_blank' rel='noopener'>disk-x</a>"
+            "</td><td>localhost</td>");
         UNIT_ASSERT_STRING_CONTAINS(
-            html, "migration destination copy on host-m");
+            html,
+            "<span class='label label-default'>not found</span>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<span class='label label-warning'>unavailable</span>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<td></td><td>host-m</td>"
+            "<td><span class='label label-info'>migration copy</span></td>");
+        // the form keeps what was searched for
+        UNIT_ASSERT_STRING_CONTAINS(html, "value='disk-x'");
     }
 
     Y_UNIT_TEST(ShouldEncodeSpecialCharsInSearchLink)
@@ -521,7 +539,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 
         TStringStream out;
         RenderCellsSearchResult(
-            out, results, TDiagnosticsConfig(), "disk#a&b");
+            out, results, TDiagnosticsConfig(), "own", "disk#a&b");
         const auto html = out.Str();
 
         // the id is url-encoded before html-escaping, so '#'/'&' cannot

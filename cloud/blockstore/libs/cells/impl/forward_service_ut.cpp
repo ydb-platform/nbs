@@ -115,7 +115,6 @@ Y_UNIT_TEST_SUITE(TCellForwardServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, rows.size());
         UNIT_ASSERT_VALUES_EQUAL("peer-1", rows[0].Peer);
         UNIT_ASSERT_VALUES_EQUAL("disk-42", rows[0].DiskId);
-        UNIT_ASSERT_VALUES_EQUAL(1, rows[0].Mounts);
     }
 }
 

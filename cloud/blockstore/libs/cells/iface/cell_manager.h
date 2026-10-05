@@ -74,6 +74,7 @@ struct TCellsSnapshot
     THashMap<TString, TVector<TCellHostStatus>> HostStatuses;   // by cell id
     TVector<TCellInboundActivity::TRow> InboundActivity;
     TVector<TCellMountStatus> Mounts;
+    TInstant Taken;   // when the snapshot was made
 };
 
 struct ICellManager: public IStartable

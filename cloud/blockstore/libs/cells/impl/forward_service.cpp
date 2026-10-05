@@ -105,7 +105,6 @@ public:
                     peer,
                     diskId,
                     headers.GetClientId(),
-                    TMethod::BlockStoreRequest,
                     Timer->Now());
             }
 
