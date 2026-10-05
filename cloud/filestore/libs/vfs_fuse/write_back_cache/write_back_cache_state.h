@@ -202,6 +202,8 @@ public:
     void UpdateStats() const;
 
 private:
+    EOperationalState GetOperationalState() const;
+
     // Combines acquiring mutex and executing queued operations on mutex release
     // TQueuedOperations has custom Release method that:
     // 1. Copies the accumulated operations to a temporary vector.
