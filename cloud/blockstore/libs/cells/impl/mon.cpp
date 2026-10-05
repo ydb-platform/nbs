@@ -215,7 +215,7 @@ void RenderStat(
     IOutputStream& out,
     TStringBuf box,
     const TString& value,
-    TStringBuf caption)
+    const TString& caption)
 {
     out << "<div class='col-sm-3'><div class='" << box << "'>"
         << "<div class='stat'>" << value << "</div>"
@@ -228,10 +228,17 @@ void RenderSummary(
     const TCellsConfig& config,
     const TCellsSnapshot& snapshot)
 {
+    // a host nobody pings is only "not found dead yet", so it is kept out of
+    // the alive count rather than vouched for
     ui32 alive = 0;
     ui32 total = 0;
+    ui32 notProbed = 0;
     for (const auto& [cellId, statuses]: snapshot.HostStatuses) {
-        Y_UNUSED(cellId);
+        const auto* cellConfig = config.GetCells().FindPtr(cellId);
+        if (!cellConfig || !(*cellConfig)->GetHostMigrationEnabled()) {
+            notProbed += statuses.size();
+            continue;
+        }
         total += statuses.size();
         alive += CountIf(statuses, [](const auto& s) { return s.Alive; });
     }
@@ -251,7 +258,9 @@ void RenderSummary(
         out,
         alive < total ? "alert alert-warning" : "well well-sm",
         TStringBuilder() << alive << " / " << total,
-        "hosts alive");
+        notProbed ? TStringBuilder() << "hosts alive, " << notProbed
+                                     << " not probed"
+                  : TStringBuilder() << "hosts alive");
     RenderStat(
         out,
         "well well-sm",
@@ -261,15 +270,15 @@ void RenderSummary(
     out << "</div>";
 }
 
-TString DescribeTransport(const TCellConfig& cellConfig)
+TString DescribeTransport(
+    NProto::ECellDataTransport transport,
+    bool grpcDataFallbackEnabled)
 {
-    switch (cellConfig.GetTransport()) {
+    switch (transport) {
         case NProto::CELL_DATA_TRANSPORT_GRPC:
             return "grpc";
         case NProto::CELL_DATA_TRANSPORT_RDMA:
-            return cellConfig.GetGrpcDataFallbackEnabled()
-                       ? "rdma + grpc fallback"
-                       : "rdma";
+            return grpcDataFallbackEnabled ? "rdma + grpc fallback" : "rdma";
         default:
             return "unknown";
     }
@@ -290,8 +299,12 @@ void RenderCell(
         CountIf(statuses, [](const auto& s) { return s.Alive; }));
     const auto total = static_cast<ui32>(statuses.size());
 
+    // without pings a host is alive only in the sense that nothing has said
+    // otherwise, so such a cell is never shown as healthy
+    const bool probed = cellConfig.GetHostMigrationEnabled();
+
     TStringBuf health = "warning";
-    if (!total) {
+    if (!total || (alive == total && !probed)) {
         health = "default";
     } else if (alive == total) {
         health = "success";
@@ -301,13 +314,25 @@ void RenderCell(
 
     // a healthy cell folds away: its heading already says all there is
     out << "<details class='panel panel-" << health << "'"
-        << (alive == total && total ? "" : " open") << ">"
+        << (health == "success" ? "" : " open") << ">"
         << "<summary class='panel-heading'><strong>"
         << EncodeHtmlPcdata(cellId) << "</strong> ";
-    RenderLabel(out, "default", DescribeTransport(cellConfig));
+    // a host can override it, see the hosts' own column
+    RenderLabel(
+        out,
+        "default",
+        "default: " + DescribeTransport(
+                          cellConfig.GetTransport(),
+                          cellConfig.GetGrpcDataFallbackEnabled()));
     out << " ";
-    RenderLabel(out, health, TStringBuilder() << alive << " / " << total
-        << " alive");
+    if (probed) {
+        RenderLabel(
+            out,
+            health,
+            TStringBuilder() << alive << " / " << total << " alive");
+    } else {
+        RenderLabel(out, "default", "not probed");
+    }
     out << "</summary>";
 
     HTML(out) {
@@ -317,6 +342,7 @@ void RenderCell(
                     TABLEH() { out << "Host"; }
                     TABLEH() { out << "State"; }
                     TABLEH() { out << "Connections"; }
+                    TABLEH() { out << "Transport"; }
                     TABLEH() { out << "gRPC"; }
                     TABLEH() { out << "Secure gRPC"; }
                     TABLEH() { out << "RDMA"; }
@@ -335,10 +361,12 @@ void RenderCell(
                     TABLER() {
                         TABLED() { out << EncodeHtmlPcdata(status.Fqdn); }
                         TABLED() {
-                            if (status.Alive) {
-                                RenderLabel(out, "success", "alive");
-                            } else {
+                            if (!status.Alive) {
                                 RenderLabel(out, "danger", "down");
+                            } else if (!probed) {
+                                RenderLabel(out, "default", "not probed");
+                            } else {
+                                RenderLabel(out, "success", "alive");
                             }
                             if (status.Warm) {
                                 out << " ";
@@ -348,6 +376,11 @@ void RenderCell(
                         TABLED() {
                             out << "<span class='badge'>"
                                 << status.Connections << "</span>";
+                        }
+                        TABLED() {
+                            out << DescribeTransport(
+                                host.GetTransport(),
+                                host.GetGrpcDataFallbackEnabled());
                         }
                         TABLED() { out << FormatPort(host.GetGrpcPort()); }
                         TABLED() {
@@ -496,7 +529,7 @@ void RenderInbound(
                     TABLEH() { out << "Peer"; }
                     TABLEH() { out << "Disk"; }
                     TABLEH() { out << "Client"; }
-                    TABLEH() { out << "Last seen"; }
+                    TABLEH() { out << "Last mount"; }
                 }
             }
             TABLEBODY() {

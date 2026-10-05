@@ -416,13 +416,23 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 
         auto cfg = TCellConfigBuilder("abc", true)
             .AddCell("xyz", 9001, 0, 1, 1, {"host-alpha"})
+            .AddCell("uvw", 9001, 0, 1, 1, {"host-gamma"})
             .Build();
+        // pinged, so its hosts' liveness means something; uvw is not
+        cfg.MutableCells(0)->SetHostMigrationEnabled(true);
+        // the host overrides the cell's transport
+        cfg.MutableCells(0)->SetTransport(NProto::CELL_DATA_TRANSPORT_RDMA);
+        cfg.MutableCells(0)->MutableHosts(0)->SetTransport(
+            NProto::CELL_DATA_TRANSPORT_GRPC);
         auto config = std::make_shared<TCellsConfig>(std::move(cfg));
         Y_UNUSED(testContext);
 
         TCellsSnapshot snapshot;
         snapshot.HostStatuses["xyz"].push_back(
             {.Fqdn = "host-alpha", .Alive = true, .Warm = false,
+             .Connections = 0});
+        snapshot.HostStatuses["uvw"].push_back(
+            {.Fqdn = "host-gamma", .Alive = true, .Warm = false,
              .Connections = 0});
         snapshot.Mounts.push_back(
             {.DiskId = "disk-1",
@@ -448,9 +458,27 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT_STRING_CONTAINS(html, "1 / 1 alive");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
+            "<span class='label label-default'>default: rdma</span>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
             "<td>host-alpha</td><td><span class='label label-success'>"
             "alive</span></td><td><span class='badge'>0</span></td>"
-            "<td>9001</td>");
+            "<td>grpc</td><td>9001</td>");
+
+        // a host nobody pings is not vouched for: not counted alive, and its
+        // cell is neither green nor folded
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<details class='panel panel-default' open>"
+            "<summary class='panel-heading'><strong>uvw</strong>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<td>host-gamma</td><td><span class='label label-default'>"
+            "not probed</span></td>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<div class='stat'>1 / 1</div>"
+            "<small class='text-muted'>hosts alive, 1 not probed</small>");
 
         // a remote mount names the host it goes through, linked to the disk
         // there, what carries its data now and where its tablet is
