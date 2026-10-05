@@ -593,7 +593,9 @@ void TVolumeProxyActor::HandleWakeup(
             "%s Remove connection",
             conn->LogTitle.GetWithTime().c_str());
 
-        ClientCache->Shutdown(ctx, conn->TabletId);
+        if (GetConnectionByTabletId(conn->TabletId) == conn) {
+            ClientCache->Shutdown(ctx, conn->TabletId);
+        }
         EraseConnection(conn);
     } else {
         if (conn->LastActivity >= now - PipeInactivityTimeout) {
