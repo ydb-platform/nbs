@@ -601,10 +601,14 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
     Y_UNIT_TEST(ShouldNotEraseAnotherConnectionTabletMapping)
     {
+        const auto inactivityTimeout = TDuration::Seconds(1);
+        const auto timeoutMargin = TDuration::MilliSeconds(100);
+        const auto connectionStartDelay = inactivityTimeout / 2;
+
         TTestEnv env;
         NProto::TStorageServiceConfig config;
         config.SetVolumeProxyPipeInactivityTimeout(
-            TDuration::Seconds(10).MilliSeconds());
+            inactivityTimeout.MilliSeconds());
         ui32 nodeIdx = SetupTestEnv(env, config);
 
         auto& runtime = env.GetRuntime();
@@ -612,8 +616,8 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 
         service.CreateVolume();
 
-        runtime.AdvanceCurrentTime(TDuration::Seconds(11));
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.AdvanceCurrentTime(inactivityTimeout + timeoutMargin);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
 
         auto sendStatRequest = [&](bool exactDiskIdMatch, ui64 cookie)
         {
@@ -635,8 +639,8 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         TActorId volumeActorId;
         bool holdDescribeResponses = true;
         bool observeStatResponses = false;
-        runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvStatVolumeRequest: {
@@ -649,7 +653,7 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                     }
                     case TEvSSProxy::EvDescribeVolumeResponse: {
                         if (holdDescribeResponses) {
-                            auto* msg = event->Get<
+                            auto* msg = event->template Get<
                                 TEvSSProxy::TEvDescribeVolumeResponse>();
                             const auto& volumeDescription =
                                 msg->PathDescription
@@ -657,16 +661,16 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                             volumeTabletId =
                                 volumeDescription.GetVolumeTabletId();
                             describeResponses.emplace_back(event.Release());
-                            return TTestActorRuntime::EEventAction::DROP;
+                            return true;
                         }
                         break;
                     }
                     case TEvService::EvStatVolumeResponse: {
                         if (observeStatResponses &&
                             event->GetRecipientRewrite() ==
-                            service.GetSender()) {
-                            auto* msg =
-                                event->Get<TEvService::TEvStatVolumeResponse>();
+                                service.GetSender()) {
+                            auto* msg = event->template Get<
+                                TEvService::TEvStatVolumeResponse>();
                             UNIT_ASSERT_C(
                                 SUCCEEDED(msg->GetStatus()),
                                 msg->GetErrorReason());
@@ -674,15 +678,15 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         sendStatRequest(false, 1);
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT_VALUES_EQUAL(1, describeResponses.size());
 
         sendStatRequest(true, 2);
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT_VALUES_EQUAL(2, describeResponses.size());
         UNIT_ASSERT(
             describeResponses[0]->Cookie != describeResponses[1]->Cookie);
@@ -691,31 +695,32 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
         holdDescribeResponses = false;
         observeStatResponses = true;
         runtime.Send(describeResponses[0].Release(), nodeIdx);
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT(volumeActorId);
 
-        runtime.AdvanceCurrentTime(TDuration::Seconds(5));
+        runtime.AdvanceCurrentTime(connectionStartDelay);
 
         runtime.Send(describeResponses[1].Release(), nodeIdx);
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT(volumeActorId);
 
         // Expire the first connection. The second connection must remain
         // registered in ConnectionByTablet.
-        runtime.AdvanceCurrentTime(TDuration::Seconds(6));
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.AdvanceCurrentTime(
+            inactivityTimeout - connectionStartDelay + timeoutMargin);
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
 
         bool requestDropped = false;
         bool responseReceived = false;
         constexpr ui64 FinalRequestCookie = 3;
-        runtime.SetObserverFunc(
-            [&](TAutoPtr<IEventHandle>& event)
+        runtime.SetEventFilter(
+            [&](auto&, auto& event)
             {
                 switch (event->GetTypeRewrite()) {
                     case TEvService::EvStatVolumeRequest: {
                         if (event->GetRecipientRewrite() == volumeActorId) {
                             requestDropped = true;
-                            return TTestActorRuntime::EEventAction::DROP;
+                            return true;
                         }
                         break;
                     }
@@ -723,8 +728,8 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                         if (event->Cookie == FinalRequestCookie &&
                             event->GetRecipientRewrite() ==
                                 service.GetSender()) {
-                            auto* msg =
-                                event->Get<TEvService::TEvStatVolumeResponse>();
+                            auto* msg = event->template Get<
+                                TEvService::TEvStatVolumeResponse>();
                             UNIT_ASSERT_VALUES_EQUAL(
                                 E_REJECTED,
                                 msg->GetStatus());
@@ -733,15 +738,15 @@ Y_UNIT_TEST_SUITE(TVolumeProxyTest)
                         break;
                     }
                 }
-                return TTestActorRuntime::DefaultObserverFunc(event);
+                return false;
             });
 
         sendStatRequest(true, FinalRequestCookie);
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT(requestDropped);
 
         RebootTablet(runtime, volumeTabletId, service.GetSender(), nodeIdx);
-        runtime.DispatchEvents({}, TDuration::Seconds(1));
+        runtime.DispatchEvents({}, TDuration::MilliSeconds(1));
         UNIT_ASSERT(responseReceived);
     }
 
