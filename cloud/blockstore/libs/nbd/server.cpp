@@ -499,6 +499,10 @@ private:
     {
         TSocketHolder socket(accept.S->Release());
 
+        if (Stopping) {
+            return;
+        }
+
         const auto localAddress = PrintHostAndPort(ListenAddress);
         auto address = NAddr::GetPeerAddr(socket);
         STORAGE_DEBUG("endpoint " << localAddress
@@ -515,10 +519,6 @@ private:
             HandlerFactory->CreateHandler(),
             std::move(socket));
 
-        if (Stopping) {
-            connection->Stop();
-            return;
-        }
         NegotiatingConnections.push_back(connection);
 
         Executor->GetContExecutor()->CreateOwned(
