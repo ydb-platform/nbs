@@ -55,6 +55,10 @@ static TString Unquote(const char* text, size_t length)
 
 "=="|"="                    { return EQ; }
 "!="                        { return NE; }
+">="                        { return GE; }
+">"                         { return GT; }
+"<="                        { return LE; }
+"<"                         { return LT; }
 
 '([^\\'\n]|\\.)*'           |
 \"([^\\\"\n]|\\.)*\"         {
