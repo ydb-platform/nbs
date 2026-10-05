@@ -2459,6 +2459,67 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         // clang-format on
     }
 
+    Y_UNIT_TEST(ShouldCollectZeroBlocksIoSizeWithBothReportingPolicies)
+    {
+        for (bool skipZeroBlocks: {false, true}) {
+            for (auto media:
+                 {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_SSD_MIRROR3})
+            {
+                auto monitoring = CreateMonitoringServiceStub();
+                NProto::TDiagnosticsConfig diagnostics;
+                diagnostics.SetSkipReportingZeroBlocksMetricsForYDBBasedDisks(
+                    skipZeroBlocks);
+                auto volumeStats = CreateVolumeStats(
+                    monitoring,
+                    std::make_shared<TDiagnosticsConfig>(diagnostics),
+                    {}, EVolumeStatsType::EServerStats, CreateWallClockTimer());
+                Mount(volumeStats, "test", "client", "instance", media);
+                auto volume = volumeStats->GetVolumeInfo("test", "client");
+                for (auto type:
+                     {EBlockStoreRequest::WriteBlocks,
+                      EBlockStoreRequest::ZeroBlocks})
+                {
+                    const auto started = volume->RequestStarted(type, 4096);
+                    volume->RequestCompleted(
+                        type,
+                        started,
+                        TDuration::Zero(),
+                        TDuration::Zero(),
+                        TDuration::Zero(),
+                        4096,
+                        EDiagnosticsErrorKind::Success,
+                        NCloud::NProto::EF_NONE, true, 0, 512);
+                }
+                auto instance =
+                    monitoring->GetCounters()
+                        ->GetSubgroup("counters", "blockstore")
+                        ->GetSubgroup("component", "server_volume")
+                        ->GetSubgroup("host", "cluster")
+                        ->GetSubgroup("volume", "test")
+                        ->GetSubgroup("instance", "instance")
+                        ->GetSubgroup("cloud", DefaultCloudId)
+                        ->GetSubgroup("folder", DefaultFolderId)
+                        ->GetSubgroup("type", MediaKindToStatsString(media));
+                for (const auto* name: {"WriteBlocks", "ZeroBlocks"}) {
+                    auto group = instance->GetSubgroup("request", name);
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        1, group->GetCounter("IoSizeCount", true)->Val());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        512, group->GetCounter("IoSizeBytes", true)->Val());
+                }
+                TLabelKeeper keeper;
+                volumeStats->GetUserCounters()->Append(
+                    TInstant::Now(), &keeper);
+                const bool filtered =
+                    skipZeroBlocks && media == NProto::STORAGE_MEDIA_SSD;
+                UNIT_ASSERT_VALUES_EQUAL(
+                    filtered ? "1" : "2",
+                    keeper.GetValue("compute.cloud_id.folder_id.test.instance."
+                                    "disk.write_ops"));
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldSkipReportingZeroBlocksMetricsForYDBBasedDisks)
     {
         auto monitoring = CreateMonitoringServiceStub();

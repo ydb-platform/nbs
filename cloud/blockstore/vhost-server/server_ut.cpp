@@ -1,11 +1,15 @@
 #include "server.h"
 
 #include "backend_aio.h"
+#include "backend_rdma.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryptor.h>
+#include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/service/storage_test.h>
 
+#include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -29,6 +33,11 @@
 
 #include <vhost/blockdev.h>
 
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
+#include <cstring>
+#include <mutex>
 #include <span>
 
 IOutputStream& operator<<(
@@ -448,9 +457,355 @@ TString MakeRandomPattern(size_t size) {
     return result;
 }
 
+class TAioIoSizeTest: public TServerTest
+{
+protected:
+    void SendFailedRead(ui64 firstSector)
+    {
+        auto header =
+            Hdr(Memory, {.type = VIRTIO_BLK_T_IN, .sector = firstSector});
+        auto data =
+            Memory.Allocate(RequestSize + (Unaligned ? 1 : 0), BlockSize);
+        auto buffer = data.subspan(Unaligned ? 1 : 0, RequestSize);
+        auto status = Memory.Allocate(1);
+        auto result = Client.WriteAsync(QueueIndex, {header}, {buffer, status});
+        ASSERT_TRUE(result.Wait(TDuration::Seconds(10)));
+        ASSERT_EQ(RequestSize + 1, result.GetValueSync());
+        ASSERT_EQ(VIRTIO_BLK_S_IOERR, status[0]);
+    }
+};
+
+class TTestRdmaStorageProvider final: public IStorageProvider
+{
+private:
+    const IStoragePtr Storage;
+
+public:
+    explicit TTestRdmaStorageProvider(IStoragePtr storage)
+        : Storage(std::move(storage))
+    {}
+
+    NThreading::TFuture<IStoragePtr> CreateStorage(
+        const NProto::TVolume& volume,
+        const TString& clientId, NProto::EVolumeAccessMode accessMode) override
+    {
+        Y_UNUSED(volume);
+        Y_UNUSED(clientId);
+        Y_UNUSED(accessMode);
+
+        return NThreading::MakeFuture<IStoragePtr>(Storage);
+    }
+};
+
+class TTestRdmaCompletionStats final: public ICompletionStats
+{
+private:
+    std::mutex Mutex;
+    std::condition_variable Changed;
+    TSimpleStats Snapshot;
+
+public:
+    std::optional<TSimpleStats> Get(TDuration timeout) override
+    {
+        Y_UNUSED(timeout);
+
+        std::lock_guard<std::mutex> guard(Mutex);
+        return Snapshot;
+    }
+
+    void Sync(const TSimpleStats& stats) override
+    {
+        {
+            std::lock_guard<std::mutex> guard(Mutex);
+            Snapshot = stats;
+        }
+
+        Changed.notify_all();
+    }
+
+    void Sync(const TAtomicStats& stats) override
+    {
+        TSimpleStats snapshot;
+        snapshot += stats;
+        Sync(snapshot);
+    }
+
+    std::optional<TSimpleStats> WaitForCompleted(ui64 expectedCompleted)
+    {
+        std::unique_lock<std::mutex> guard(Mutex);
+
+        const bool ready = Changed.wait_for(
+            guard,
+            std::chrono::seconds(10),
+            [&] { return Snapshot.Completed >= expectedCompleted; });
+
+        if (!ready) {
+            return std::nullopt;
+        }
+
+        return Snapshot;
+    }
+};
+
+enum class ETestRdmaResult
+{
+    Success,
+    Error,
+    RetryThenSuccess,
+    RetryThenError,
+};
+
+class TRdmaServerTest: public TServerTest
+{
+public:
+    std::shared_ptr<TTestStorage> Storage;
+    std::shared_ptr<TTestRdmaCompletionStats> CompletionStats;
+
+    std::atomic<ui32> ReadAttempts = 0;
+    std::atomic<ui32> WriteAttempts = 0;
+
+    std::atomic<ui64> ReadBytesSeen = 0;
+    std::atomic<ui64> WriteBytesSeen = 0;
+
+    ETestRdmaResult Result = ETestRdmaResult::Success;
+    ui64 SentRequestCount = 0;
+
+    NProto::TError MakeAttemptError(ui32 attempt) const
+    {
+        const bool shouldRetry = Result == ETestRdmaResult::RetryThenSuccess ||
+                                 Result == ETestRdmaResult::RetryThenError;
+
+        if (shouldRetry && attempt == 0) {
+            return MakeError(E_REJECTED, "test retry");
+        }
+
+        if (Result == ETestRdmaResult::Error ||
+            Result == ETestRdmaResult::RetryThenError)
+        {
+            return MakeError(E_FAIL, "test final error");
+        }
+
+        return {};
+    }
+
+    void StartRdmaServer(ETestRdmaResult result)
+    {
+        Result = result;
+
+        Storage = std::make_shared<TTestStorage>();
+        Storage->DoAllocations = true;
+
+        CompletionStats = std::make_shared<TTestRdmaCompletionStats>();
+
+        Storage->ReadBlocksLocalHandler = [this](auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+
+            ReadBytesSeen.store(
+                static_cast<ui64>(request->GetBlocksCount()) *
+                request->GetBlockSize());
+
+            const ui32 attempt = ReadAttempts.fetch_add(1);
+
+            NProto::TReadBlocksLocalResponse response;
+            *response.MutableError() = MakeAttemptError(attempt);
+
+            return NThreading::MakeFuture(std::move(response));
+        };
+
+        Storage->WriteBlocksLocalHandler =
+            [this](auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+
+            WriteBytesSeen.store(
+                static_cast<ui64>(request->BlocksCount) *
+                request->GetBlockSize());
+
+            const ui32 attempt = WriteAttempts.fetch_add(1);
+
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = MakeAttemptError(attempt);
+
+            return NThreading::MakeFuture(std::move(response));
+        };
+
+        Options.DeviceBackend = "rdma";
+        Options.Layout = {
+            {
+                .DevicePath = "rdma://127.0.0.1:10020/test-device",
+                .ByteCount = TotalByteCount,
+                .Offset = 0,
+            },
+        };
+
+        auto provider = std::make_shared<TTestRdmaStorageProvider>(Storage);
+
+        Server = CreateServer(
+            Logging,
+            CreateRdmaBackend(Logging, std::move(provider), CompletionStats));
+
+        Server->Start(Options);
+
+        ASSERT_TRUE(Client.Init());
+
+        Memory = TMonotonicBufferResource{Client.GetMemory()};
+    }
+
+    void SendRequest(bool read, bool expectSuccess, bool severalBuffers = false)
+    {
+        auto header =
+            Hdr(Memory,
+                {
+                    .type = static_cast<ui32>(
+                        read ? VIRTIO_BLK_T_IN : VIRTIO_BLK_T_OUT),
+                });
+
+        ASSERT_FALSE(header.empty());
+
+        const size_t extraByte = Unaligned ? 1 : 0;
+        auto allocation = Memory.Allocate(RequestSize + extraByte, BlockSize);
+
+        ASSERT_EQ(RequestSize + extraByte, allocation.size());
+
+        // Shift the buffer address by one byte for an unaligned request.
+        auto data = allocation.subspan(extraByte, RequestSize);
+        std::memset(data.data(), 'x', data.size());
+
+        auto status = Memory.Allocate(1);
+        ASSERT_EQ(1u, status.size());
+        status[0] = static_cast<char>(0xff);
+
+        NVHost::TSgList inBuffers{header};
+        NVHost::TSgList outBuffers;
+
+        auto& dataBuffers = read ? outBuffers : inBuffers;
+
+        if (severalBuffers) {
+            const size_t middle = data.size() / 2;
+            dataBuffers.push_back(data.first(middle));
+            dataBuffers.push_back(data.subspan(middle));
+        } else {
+            dataBuffers.push_back(data);
+        }
+
+        outBuffers.push_back(status);
+
+        auto operation = Client.WriteAsync(QueueIndex, inBuffers, outBuffers);
+
+        ASSERT_TRUE(operation.Wait(TDuration::Seconds(10)));
+
+        const ui32 responseLength = operation.GetValue();
+
+        EXPECT_EQ(
+            read ? RequestSize + status.size() : status.size(), responseLength);
+        EXPECT_EQ(
+            expectSuccess ? VIRTIO_BLK_S_OK : VIRTIO_BLK_S_IOERR,
+            static_cast<ui8>(status[0]));
+
+        ++SentRequestCount;
+        const auto snapshot =
+            CompletionStats->WaitForCompleted(SentRequestCount);
+
+        ASSERT_TRUE(snapshot.has_value());
+    }
+
+    void CheckCounters(bool expectSuccess, ui32 expectedAttempts)
+    {
+        const auto snapshot = CompletionStats->WaitForCompleted(2);
+
+        ASSERT_TRUE(snapshot.has_value());
+
+        // In every scenario we send one read and one write.
+        EXPECT_EQ(2u, snapshot->Completed);
+
+        const ui64 expectedCount = expectSuccess ? 1 : 0;
+        const ui64 expectedBytes = expectSuccess ? RequestSize : 0;
+        const ui64 expectedErrors = expectSuccess ? 0 : 1;
+
+        for (const auto type: {VHD_BDEV_READ, VHD_BDEV_WRITE}) {
+            const auto& request = snapshot->Requests[type];
+
+            EXPECT_EQ(expectedCount, request.Count);
+            EXPECT_EQ(expectedBytes, request.Bytes);
+            EXPECT_EQ(expectedErrors, request.Errors);
+
+            EXPECT_EQ(expectedCount, request.IoSizeCount);
+            EXPECT_EQ(expectedBytes, request.IoSizeBytes);
+
+            EXPECT_EQ(request.Count, request.IoSizeCount);
+        }
+
+        EXPECT_EQ(expectedAttempts, ReadAttempts.load());
+        EXPECT_EQ(expectedAttempts, WriteAttempts.load());
+
+        EXPECT_EQ(RequestSize, ReadBytesSeen.load());
+        EXPECT_EQ(RequestSize, WriteBytesSeen.load());
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
+
+TEST_P(TRdmaServerTest, ShouldCountLogicalReadAndWriteBytes)
+{
+    ASSERT_NO_FATAL_FAILURE(StartRdmaServer(ETestRdmaResult::Success));
+
+    ASSERT_NO_FATAL_FAILURE(SendRequest(true, true));
+    ASSERT_NO_FATAL_FAILURE(SendRequest(false, true));
+
+    ASSERT_NO_FATAL_FAILURE(CheckCounters(true, 1));
+}
+
+TEST_P(TRdmaServerTest, ShouldIgnoreFailedRequestsInIoSize)
+{
+    ASSERT_NO_FATAL_FAILURE(StartRdmaServer(ETestRdmaResult::Error));
+
+    ASSERT_NO_FATAL_FAILURE(SendRequest(true, false));
+    ASSERT_NO_FATAL_FAILURE(SendRequest(false, false));
+
+    ASSERT_NO_FATAL_FAILURE(CheckCounters(false, 1));
+}
+
+TEST_P(TRdmaServerTest, ShouldCountRetriedRequestOnce)
+{
+    ASSERT_NO_FATAL_FAILURE(StartRdmaServer(ETestRdmaResult::RetryThenSuccess));
+
+    ASSERT_NO_FATAL_FAILURE(SendRequest(true, true));
+    ASSERT_NO_FATAL_FAILURE(SendRequest(false, true));
+
+    ASSERT_NO_FATAL_FAILURE(CheckCounters(true, 2));
+}
+
+TEST_P(TRdmaServerTest, ShouldIgnoreRetryThenFinalErrorInIoSize)
+{
+    ASSERT_NO_FATAL_FAILURE(StartRdmaServer(ETestRdmaResult::RetryThenError));
+
+    ASSERT_NO_FATAL_FAILURE(SendRequest(true, false));
+    ASSERT_NO_FATAL_FAILURE(SendRequest(false, false));
+
+    ASSERT_NO_FATAL_FAILURE(CheckCounters(false, 2));
+}
+
+TEST_P(TRdmaServerTest, ShouldCountOneRequestForSeveralBuffers)
+{
+    ASSERT_NO_FATAL_FAILURE(StartRdmaServer(ETestRdmaResult::Success));
+
+    ASSERT_NO_FATAL_FAILURE(SendRequest(true, true, true));
+    ASSERT_NO_FATAL_FAILURE(SendRequest(false, true, true));
+
+    ASSERT_NO_FATAL_FAILURE(CheckCounters(true, 1));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    IoSize,
+    TRdmaServerTest,
+    testing::Combine(
+        testing::Values(NProto::NO_ENCRYPTION),
+        testing::Values(size_t{1}, size_t{16}),
+        testing::Values(ui32{512}, ui32{4096}),
+        testing::Values(false, true), testing::Values(size_t{1})));
 
 TEST_P(TServerTest, ShouldGetDeviceID)
 {
@@ -467,6 +822,48 @@ TEST_P(TServerTest, ShouldGetDeviceID)
     EXPECT_EQ(Serial, TStringBuf(serial.data()));
     EXPECT_EQ(VIRTIO_BLK_S_OK, status[0]);
 }
+
+TEST_P(TAioIoSizeTest, ShouldTrackIoSizeForFailedSingleAio)
+{
+    StartServer();
+    Files[0].Resize(0);
+    SendFailedRead(0);
+    const auto stats = GetStats(1).SimpleStats;
+    ASSERT_EQ(1u, stats.Completed);
+    const auto& read = stats.Requests[0];
+    EXPECT_EQ(0u, read.Count);
+    EXPECT_EQ(0u, read.IoSizeCount);
+    EXPECT_EQ(0u, read.IoSizeBytes);
+    EXPECT_EQ(1u, read.Errors);
+    EXPECT_EQ(RequestSize, read.Bytes);
+}
+
+TEST_P(TAioIoSizeTest, ShouldTrackIoSizeForFailedCompoundAio)
+{
+    StartServer();
+    // Both parts fail, independently of their completion order.
+    Files[0].Resize(0);
+    Files[1].Resize(0);
+    SendFailedRead(ChunkByteCount / SectorSize - SectorsPerBlock);
+    const auto stats = GetStats(2).SimpleStats;
+    ASSERT_EQ(2u, stats.Completed);
+    const auto& read = stats.Requests[0];
+    // Compound requests follow the existing Count policy even on an error.
+    EXPECT_EQ(1u, read.Count);
+    EXPECT_EQ(1u, read.IoSizeCount);
+    EXPECT_EQ(RequestSize, read.IoSizeBytes);
+    EXPECT_EQ(1u, read.Errors);
+    EXPECT_EQ(RequestSize, read.Bytes);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    IoSize,
+    TAioIoSizeTest,
+    testing::Combine(
+        testing::Values(NProto::EEncryptionMode::NO_ENCRYPTION),
+        testing::Values(2),
+        testing::Values(512, 4096),
+        testing::Values(false, true), testing::Values(0)));
 
 TEST_P(TServerTest, ShouldReadAndWrite)
 {
@@ -541,6 +938,8 @@ TEST_P(TServerTest, ShouldReadAndWrite)
     {
         const auto& read = stats.Requests[0];
         EXPECT_EQ(readsCount, read.Count);
+        EXPECT_EQ(readsCount, read.IoSizeCount);
+        EXPECT_EQ(readsCount * RequestSize, read.IoSizeBytes);
         EXPECT_EQ(readsCount * RequestSize, read.Bytes);
         EXPECT_EQ(0u, read.Errors);
         EXPECT_EQ(Unaligned ? readsCount - splittedReads : 0, read.Unaligned);
@@ -548,6 +947,8 @@ TEST_P(TServerTest, ShouldReadAndWrite)
     {
         const auto& write = stats.Requests[1];
         EXPECT_EQ(writesCount, write.Count);
+        EXPECT_EQ(writesCount, write.IoSizeCount);
+        EXPECT_EQ(writesCount * RequestSize, write.IoSizeBytes);
         EXPECT_EQ(writesCount * RequestSize, write.Bytes);
         EXPECT_EQ(0u, write.Errors);
         EXPECT_EQ(
@@ -1084,6 +1485,14 @@ TEST_P(TServerTest, ShouldStatEncryptorErrors)
     EXPECT_EQ(readCount + splittedReads, stats.Dequeued);
     EXPECT_EQ(readCount + splittedReads, stats.Submitted);
     EXPECT_EQ(readCount + writeCount, stats.EncryptorErrors);
+    // Decryption fails after AIO has already updated Count.
+    EXPECT_EQ(readCount, stats.Requests[0].Count);
+    EXPECT_EQ(readCount, stats.Requests[0].IoSizeCount);
+    EXPECT_EQ(readCount * RequestSize, stats.Requests[0].IoSizeBytes);
+    // Encryption fails before submitting any AIO write.
+    EXPECT_EQ(0u, stats.Requests[1].Count);
+    EXPECT_EQ(0u, stats.Requests[1].IoSizeCount);
+    EXPECT_EQ(0u, stats.Requests[1].IoSizeBytes);
 }
 
 TEST_P(TServerTest, ShouldStatAllZeroesBlocks)

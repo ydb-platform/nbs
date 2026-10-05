@@ -138,7 +138,10 @@ private:
     ui32 SectorsToBlockShift = 0;
 
 public:
-    explicit TRdmaBackend(ILoggingServicePtr logging);
+    explicit TRdmaBackend(
+        ILoggingServicePtr logging,
+        IStorageProviderPtr storageProvider,
+        ICompletionStatsPtr completionStats);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -161,9 +164,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRdmaBackend::TRdmaBackend(ILoggingServicePtr logging)
+TRdmaBackend::TRdmaBackend(
+    ILoggingServicePtr logging,
+    IStorageProviderPtr storageProvider, ICompletionStatsPtr completionStats)
     : Logging{std::move(logging)}
-    , CompletionStats(CreateCompletionStats())
+    , StorageProvider{std::move(storageProvider)}
+    , CompletionStats{
+          completionStats ? std::move(completionStats)
+                          : CreateCompletionStats()}
 {
     Log = Logging->CreateLog("RDMA");
 }
@@ -186,21 +194,21 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     SectorsToBlockShift = MostSignificantBit(BlockSize) - VHD_SECTOR_SHIFT;
 
-    auto rdmaClientConfig = std::make_shared<TClientConfig>();
-    rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
-    rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
-    rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
+    if (!StorageProvider) {
+        auto rdmaClientConfig = std::make_shared<TClientConfig>();
+        rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
+        rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
+        rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
-    auto monitoring = NCloud::CreateMonitoringServiceStub();
-    RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
-        Logging,
-        std::move(monitoring),
-        std::move(rdmaClientConfig));
+        auto monitoring = NCloud::CreateMonitoringServiceStub();
 
-    StorageProvider = NStorage::CreateRdmaStorageProvider(
-        CreateServerStatsStub(),
-        RdmaClient,
-        NStorage::ERdmaTaskQueueOpt::DontUse);
+        RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
+            Logging, std::move(monitoring), std::move(rdmaClientConfig));
+
+        StorageProvider = NStorage::CreateRdmaStorageProvider(
+            CreateServerStatsStub(),
+            RdmaClient, NStorage::ERdmaTaskQueueOpt::DontUse);
+    }
 
     Volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     Volume.SetBlockSize(BlockSize);
@@ -212,10 +220,9 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
         DevicePath devicePath("rdma");
         auto error = devicePath.Parse(chunk.DevicePath);
         STORAGE_VERIFY_C(
-                !HasError(error),
-                TWellKnownEntityTypes::ENDPOINT,
-                ClientId,
-                "device parse error: " << error.GetMessage());
+            !HasError(error),
+            TWellKnownEntityTypes::ENDPOINT,
+            ClientId, "device parse error: " << error.GetMessage());
 
         auto* device = Volume.MutableDevices()->Add();
         device->SetDeviceUUID(devicePath.Uuid);
@@ -256,7 +263,6 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
         .total_blocks = totalBytes / BlockSize,
         .features = ReadOnly ? VHD_BDEV_F_READONLY : 0,
         .pte_flush_byte_threshold = options.PteFlushByteThreshold};
-
 }
 
 IBlockStorePtr TRdmaBackend::CreateDataClient(IStoragePtr storage)
@@ -289,7 +295,10 @@ void TRdmaBackend::Start()
     STORAGE_INFO("Starting RDMA backend");
 
     Scheduler->Start();
-    RdmaClient->Start();
+
+    if (RdmaClient) {
+        RdmaClient->Start();
+    }
 
     auto accessMode = ReadOnly ? NProto::VOLUME_ACCESS_READ_ONLY
                                : NProto::VOLUME_ACCESS_READ_WRITE;
@@ -305,7 +314,10 @@ void TRdmaBackend::Stop()
 {
     STORAGE_INFO("Stopping RDMA backend");
 
-    RdmaClient->Stop();
+    if (RdmaClient) {
+        RdmaClient->Stop();
+    }
+
     Scheduler->Stop();
 }
 
@@ -450,9 +462,16 @@ void TRdmaBackend::CompleteRequest(
     ++CompletionStatsData.Completed;
 
     if (!isError) {
-        const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
-        CompletionStatsData.Requests[bio->type].Count += 1;
-        CompletionStatsData.Requests[bio->type].Bytes += bytes;
+        const ui64 bytes =
+            static_cast<ui64>(bio->total_sectors) * VHD_SECTOR_SIZE;
+        auto& requestStat = CompletionStatsData.Requests[bio->type];
+
+        requestStat.Count += 1;
+        requestStat.Bytes += bytes;
+
+        requestStat.IoSizeCount += 1;
+        requestStat.IoSizeBytes += bytes;
+
         CompletionStatsData.Sizes[bio->type].Increment(bytes);
         CompletionStatsData.Times[bio->type].Increment(
             GetCycleCount() - startCycles);
@@ -469,9 +488,13 @@ void TRdmaBackend::CompleteRequest(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBackendPtr CreateRdmaBackend(ILoggingServicePtr logging)
+IBackendPtr CreateRdmaBackend(
+    ILoggingServicePtr logging,
+    IStorageProviderPtr storageProvider, ICompletionStatsPtr completionStats)
 {
-    return std::make_shared<TRdmaBackend>(std::move(logging));
+    return std::make_shared<TRdmaBackend>(
+        std::move(logging),
+        std::move(storageProvider), std::move(completionStats));
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

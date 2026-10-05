@@ -841,6 +841,8 @@ TRequestContextPtr TServerHandler::RegisterRequest(
         ServerStats->GetBlockSize(Options.DiskId) * (endIndex - startIndex),
         unaligned);
 
+    requestCtx->MetricRequest.LogicalRequestBytes = request.Length;
+
     ServerStats->RequestStarted(
         Log,
         requestCtx->MetricRequest,

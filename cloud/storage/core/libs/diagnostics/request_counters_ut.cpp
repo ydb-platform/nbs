@@ -31,6 +31,8 @@ struct TRequest
     TDuration ShapingTime;
     bool Aligned = false;
     ui64 RequestCompletionTime = 0;
+    std::optional<ui64> LogicalRequestBytes;
+    EDiagnosticsErrorKind ErrorKind = EDiagnosticsErrorKind::Success;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -59,11 +61,10 @@ void AddRequestStats(
             request.BackoffTime,
             request.ShapingTime,
             request.RequestBytes,
-            EDiagnosticsErrorKind::Success,
+            request.ErrorKind,
             NCloud::NProto::EF_NONE,
             request.Aligned,
-            ECalcMaxTime::ENABLE,
-            responseSent);
+            ECalcMaxTime::ENABLE, responseSent, request.LogicalRequestBytes);
     }
 }
 
@@ -155,6 +156,201 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         // NHPTimer warmup, see issue #2830 for more information
         Y_UNUSED(GetCyclesPerMillisecond());
+    }
+
+    Y_UNIT_TEST(ShouldCountLogicalIoSize)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoSize});
+        counters.Register(*monitoring->GetCounters());
+        AddRequestStats(
+            counters,
+            WriteRequestType,
+            {{.RequestBytes = 4096, .LogicalRequestBytes = 512},
+             {.RequestBytes = 8192, .LogicalRequestBytes = 5632}});
+        AddRequestStats(
+            counters,
+            ReadRequestType,
+            {{.RequestBytes = 8192, .LogicalRequestBytes = 5632}});
+        for (auto type: {WriteRequestType, ReadRequestType}) {
+            auto group = monitoring->GetCounters()->GetSubgroup(
+                "request", RequestNames[type]);
+            const bool write = type == WriteRequestType;
+            UNIT_ASSERT_VALUES_EQUAL(
+                write ? 2 : 1, group->GetCounter("IoSizeCount", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                write ? 6144 : 5632,
+                group->GetCounter("IoSizeBytes", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                write ? 12288 : 8192,
+                group->GetCounter("RequestBytes", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                group->GetCounter("Count", true)->Val(),
+                group->GetCounter("IoSizeCount", true)->Val());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseIoSizeFallbackAndPreserveExplicitZero)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoSize});
+        counters.Register(*monitoring->GetCounters());
+        AddRequestStats(
+            counters,
+            WriteRequestType,
+            {{.RequestBytes = 4096},
+             {.RequestBytes = 4096, .LogicalRequestBytes = 0}});
+        auto group =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+        UNIT_ASSERT_VALUES_EQUAL(
+            2, group->GetCounter("IoSizeCount", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            4096, group->GetCounter("IoSizeBytes", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldApplyCountErrorPolicyToIoSize)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoSize});
+        counters.Register(*monitoring->GetCounters());
+        for (auto type: {WriteRequestType, ReadRequestType}) {
+            for (auto error:
+                 {EDiagnosticsErrorKind::Success,
+                  EDiagnosticsErrorKind::ErrorAborted,
+                  EDiagnosticsErrorKind::ErrorFatal,
+                  EDiagnosticsErrorKind::ErrorRetriable,
+                  EDiagnosticsErrorKind::ErrorThrottling,
+                  EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint,
+                  EDiagnosticsErrorKind::ErrorSession,
+                  EDiagnosticsErrorKind::ErrorSilent})
+            {
+                AddRequestStats(
+                    counters,
+                    type,
+                    {{.RequestBytes = 4096,
+                      .LogicalRequestBytes = 512,
+                      .ErrorKind = error}});
+            }
+            auto group = monitoring->GetCounters()->GetSubgroup(
+                "request", RequestNames[type]);
+            UNIT_ASSERT_VALUES_EQUAL(
+                2, group->GetCounter("Count", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                2, group->GetCounter("IoSizeCount", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1024, group->GetCounter("IoSizeBytes", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                6, group->GetCounter("Errors", true)->Val());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRegisterIoSizeOnlyWhenEnabledForReadWrite)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto disabled = MakeRequestCounters();
+        disabled.Register(*monitoring->GetCounters());
+        AddRequestStats(disabled, WriteRequestType, {{.RequestBytes = 4096}});
+        auto group =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+        UNIT_ASSERT(!group->FindCounter("IoSizeCount"));
+        UNIT_ASSERT(!group->FindCounter("IoSizeBytes"));
+
+        auto controlGroup =
+            monitoring->GetCounters()->GetSubgroup("control", "enabled");
+        TRequestCounters control(
+            CreateWallClockTimer(),
+            1,
+            [](auto) { return TString("MountVolume"); },
+            [](auto) { return false; },
+            [](auto) { return false; },
+            TRequestCounters::EOption::ReportIoSize,
+            EHistogramCounterOption::ReportMultipleCounters,
+            {});
+        control.Register(*controlGroup);
+        AddRequestStats(control, 0, {{.RequestBytes = 4096}});
+        group = controlGroup->GetSubgroup("request", "MountVolume");
+        UNIT_ASSERT(!group->FindCounter("IoSizeCount"));
+        UNIT_ASSERT(!group->FindCounter("IoSizeBytes"));
+    }
+
+    Y_UNIT_TEST(ShouldForwardIoSizeToSubscribers)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto root = MakeRequestCountersPtr(
+            {.Options = TRequestCounters::EOption::ReportIoSize});
+        auto outer = MakeRequestCountersPtr(
+            {.Options = TRequestCounters::EOption::ReportIoSize});
+        auto inner = MakeRequestCountersPtr(
+            {.Options = TRequestCounters::EOption::ReportIoSize});
+        const auto rootGroup = monitoring->GetCounters();
+        const auto outerGroup = rootGroup->GetSubgroup("subscriber", "outer");
+        const auto innerGroup = rootGroup->GetSubgroup("subscriber", "inner");
+        root->Register(*rootGroup);
+        outer->Register(*outerGroup);
+        inner->Register(*innerGroup);
+        root->Subscribe(outer);
+        outer->Subscribe(inner);
+        AddRequestStats(
+            *root,
+            ReadRequestType,
+            {{.RequestBytes = 8192, .LogicalRequestBytes = 5632}});
+        for (const auto& parent: {rootGroup, outerGroup, innerGroup}) {
+            auto group = parent->GetSubgroup("request", "ReadBlocks");
+            UNIT_ASSERT_VALUES_EQUAL(
+                1, group->GetCounter("IoSizeCount", true)->Val());
+            UNIT_ASSERT_VALUES_EQUAL(
+                5632, group->GetCounter("IoSizeBytes", true)->Val());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCountIoSizeOnceAfterRetries)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoSize});
+        counters.Register(*monitoring->GetCounters());
+        const auto started = counters.RequestStarted(WriteRequestType, 4096);
+        for (int i = 0; i != 2; ++i) {
+            counters.AddRetryStats(
+                WriteRequestType,
+                EDiagnosticsErrorKind::ErrorRetriable, NCloud::NProto::EF_NONE);
+        }
+        auto group =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+        UNIT_ASSERT_VALUES_EQUAL(
+            0, group->GetCounter("IoSizeCount", true)->Val());
+        counters.RequestCompleted(
+            WriteRequestType,
+            started,
+            TDuration::Zero(),
+            TDuration::Zero(),
+            TDuration::Zero(),
+            4096,
+            EDiagnosticsErrorKind::Success,
+            NCloud::NProto::EF_NONE, true, ECalcMaxTime::ENABLE, 0, 512);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, group->GetCounter("IoSizeCount", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(
+            512, group->GetCounter("IoSizeBytes", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldKeep64BitIoSize)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoSize});
+        counters.Register(*monitoring->GetCounters());
+        AddRequestStats(
+            counters,
+            ReadRequestType,
+            {{.RequestBytes = 8_GB, .LogicalRequestBytes = 8_GB}});
+        auto group =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+        UNIT_ASSERT_VALUES_EQUAL(
+            8_GB, group->GetCounter("IoSizeBytes", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldTrackRequestsInProgress)

@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -1122,19 +1123,23 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         ui32 requestCounter = 0;
         ui32 expectedRequestCounter = 0;
+        ui32 startedCounter = 0;
+        ui32 completedCounter = 0;
+        bool failRequests = false;
 
-        serverStats->PrepareMetricRequestHandler = [&] (
-            TMetricRequest& metricRequest,
-            TString clientId,
-            TString diskId,
-            ui64 startIndex,
-            ui32 requestBytes,
-            bool unaligned)
+        serverStats->PrepareMetricRequestHandler =
+            [&](TMetricRequest& metricRequest,
+                TString clientId,
+                TString diskId,
+                ui64 startIndex, ui64 requestBytes, bool unaligned)
         {
             Y_UNUSED(clientId);
 
             UNIT_ASSERT(diskId == testDiskId);
             metricRequest.DiskId = std::move(diskId);
+            metricRequest.RequestBytes = requestBytes;
+            metricRequest.LogicalRequestBytes = requestBytes;
+            metricRequest.Unaligned = unaligned;
 
             UNIT_ASSERT_VALUES_EQUAL(expectedUnaligned, unaligned);
 
@@ -1157,18 +1162,64 @@ Y_UNIT_TEST_SUITE(TServerTest)
             ++requestCounter;
         };
 
+        auto checkLogicalSize = [&](const TMetricRequest& request)
+        {
+            switch (request.RequestType) {
+                case EBlockStoreRequest::ReadBlocks:
+                case EBlockStoreRequest::WriteBlocks:
+                case EBlockStoreRequest::ZeroBlocks:
+                    break;
+                default:
+                    return;
+            }
+
+            UNIT_ASSERT_VALUES_EQUAL(
+                totalSectors * sectorSize, request.LogicalRequestBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedBlockCount * blockSize, request.RequestBytes);
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedUnaligned, request.Unaligned);
+        };
+        serverStats->RequestStartedHandler =
+            [&](TLog&, TMetricRequest& request, TCallContext&, const TString&)
+        {
+            checkLogicalSize(request);
+            if (IsReadWriteRequest(request.RequestType)) {
+                ++startedCounter;
+            }
+        };
+        serverStats->RequestCompletedHandler = [&](TLog&,
+                                                   TMetricRequest& request,
+                                                   TCallContext&,
+                                                   const NProto::TError& error)
+        {
+            checkLogicalSize(request);
+            if (IsReadWriteRequest(request.RequestType)) {
+                UNIT_ASSERT_VALUES_EQUAL(failRequests, HasError(error));
+                ++completedCounter;
+            }
+        };
+
         auto testStorage = std::make_shared<TTestStorage>();
         testStorage->WriteBlocksLocalHandler =
             [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) {
                 Y_UNUSED(ctx);
                 Y_UNUSED(request);
-                return MakeFuture(NProto::TWriteBlocksLocalResponse());
+                NProto::TWriteBlocksLocalResponse response;
+                if (failRequests) {
+                    *response.MutableError() = MakeError(E_FAIL);
+                }
+                return MakeFuture(std::move(response));
             };
         testStorage->ReadBlocksLocalHandler =
             [&] (TCallContextPtr ctx, std::shared_ptr<NProto::TReadBlocksLocalRequest> request) {
                 Y_UNUSED(ctx);
                 Y_UNUSED(request);
-                return MakeFuture(NProto::TReadBlocksLocalResponse());
+                NProto::TReadBlocksLocalResponse response;
+                if (failRequests) {
+                    *response.MutableError() = MakeError(E_FAIL);
+                }
+                return MakeFuture(std::move(response));
             };
 
         auto queueFactory = std::make_shared<TTestVhostQueueFactory>();
@@ -1222,8 +1273,15 @@ Y_UNIT_TEST_SUITE(TServerTest)
                     totalSectors * sectorSize,
                     sgList);
                 const auto& response = future.GetValue(TDuration::Seconds(5));
-                UNIT_ASSERT(response == TVhostRequest::SUCCESS);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    static_cast<ui32>(failRequests
+                        ? TVhostRequest::IOERR : TVhostRequest::SUCCESS),
+                    static_cast<ui32>(response));
                 UNIT_ASSERT_VALUES_EQUAL(++expectedRequestCounter, requestCounter);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedRequestCounter, startedCounter);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedRequestCounter, completedCounter);
             }
 
             {
@@ -1233,10 +1291,24 @@ Y_UNIT_TEST_SUITE(TServerTest)
                     totalSectors * sectorSize,
                     sgList);
                 const auto& response = future.GetValue(TDuration::Seconds(5));
-                UNIT_ASSERT(response == TVhostRequest::SUCCESS);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    static_cast<ui32>(failRequests
+                        ? TVhostRequest::IOERR : TVhostRequest::SUCCESS),
+                    static_cast<ui32>(response));
                 UNIT_ASSERT_VALUES_EQUAL(++expectedRequestCounter, requestCounter);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedRequestCounter, startedCounter);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedRequestCounter, completedCounter);
             }
         };
+
+        firstSector = 1;
+        totalSectors = 1;
+        expectedUnaligned = true;
+        expectedStartIndex = 0;
+        expectedBlockCount = 1;
+        testIoRequets();
 
         firstSector = 8;
         totalSectors = 32;
@@ -1264,6 +1336,8 @@ Y_UNIT_TEST_SUITE(TServerTest)
         expectedUnaligned = true;
         expectedStartIndex = 1;
         expectedBlockCount = 2;
+        testIoRequets();
+        failRequests = true;
         testIoRequets();
     }
 

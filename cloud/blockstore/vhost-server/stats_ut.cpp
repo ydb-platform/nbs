@@ -18,6 +18,35 @@ using namespace NCloud::NBlockStore::NVHostServer;
 
 Y_UNIT_TEST_SUITE(TStatsTest)
 {
+    Y_UNIT_TEST(ShouldPreserveIoSizeInSnapshots)
+    {
+        TAtomicStats atomic;
+        atomic.Requests[0].IoSizeCount = 2;
+        atomic.Requests[0].IoSizeBytes = 8_GB;
+        atomic.Requests[1].IoSizeCount = 1;
+        atomic.Requests[1].IoSizeBytes = 512;
+        TSimpleStats snapshot;
+        for (size_t i = 0; i != 2; ++i) {
+            snapshot.Requests[i] = TRequestStats<ui64>(atomic.Requests[i]);
+        }
+        TSimpleStats sum;
+        sum += atomic;
+        sum += snapshot;
+        for (size_t i = 0; i != 2; ++i) {
+            TRequestStats<ui64> assigned;
+            assigned = atomic.Requests[i];
+            auto delta = sum.Requests[i] - snapshot.Requests[i];
+            UNIT_ASSERT_VALUES_EQUAL(i == 0 ? 2 : 1, assigned.IoSizeCount);
+            UNIT_ASSERT_VALUES_EQUAL(i == 0 ? 8_GB : 512, assigned.IoSizeBytes);
+            UNIT_ASSERT_VALUES_EQUAL(assigned.IoSizeCount, delta.IoSizeCount);
+            UNIT_ASSERT_VALUES_EQUAL(assigned.IoSizeBytes, delta.IoSizeBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                assigned.IoSizeCount, snapshot.Requests[i].IoSizeCount);
+            UNIT_ASSERT_VALUES_EQUAL(
+                assigned.IoSizeBytes, snapshot.Requests[i].IoSizeBytes);
+        }
+    }
+
     Y_UNIT_TEST(ShouldDumpStats)
     {
         constexpr ui64 cyclesPerSecond = 2000000000;

@@ -377,6 +377,8 @@ struct TRequestCounters::TStatCounters
     TIntrusivePtr<TDynamicCounters> CountersGroup;
 
     TDynamicCounters::TCounterPtr Count;
+    TDynamicCounters::TCounterPtr IoSizeCount;
+    TDynamicCounters::TCounterPtr IoSizeBytes;
     TDynamicCounters::TCounterPtr MaxCount;
     TDynamicCounters::TCounterPtr UnalignedCount;
     TDynamicCounters::TCounterPtr Time;
@@ -498,7 +500,7 @@ struct TRequestCounters::TStatCounters
         bool isReadWriteRequest,
         bool reportDataPlaneHistogram,
         bool reportControlPlaneHistogram,
-        bool throttlingHistogramsDisabled)
+        bool throttlingHistogramsDisabled, bool reportIoSize)
     {
         CountersGroup = std::move(countersGroup);
         auto& counters = *CountersGroup;
@@ -516,6 +518,11 @@ struct TRequestCounters::TStatCounters
 
         if (IsReadWriteRequest) {
             RequestBytes = counters.GetCounter("RequestBytes", true);
+        }
+
+        if (IsReadWriteRequest && reportIoSize) {
+            IoSizeCount = counters.GetCounter("IoSizeCount", true);
+            IoSizeBytes = counters.GetCounter("IoSizeBytes", true);
         }
     }
 
@@ -665,7 +672,7 @@ struct TRequestCounters::TStatCounters
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         bool unaligned,
-        ECalcMaxTime calcMaxTime)
+        ECalcMaxTime calcMaxTime, std::optional<ui64> logicalRequestBytes)
     {
         const bool failed = errorKind != EDiagnosticsErrorKind::Success
             && (errorKind != EDiagnosticsErrorKind::ErrorSilent
@@ -675,6 +682,11 @@ struct TRequestCounters::TStatCounters
             Errors->Inc();
         } else {
             Count->Inc();
+
+            if (IoSizeCount) {
+                IoSizeCount->Inc();
+                IoSizeBytes->Add(logicalRequestBytes.value_or(requestBytes));
+            }
         }
 
         switch (errorKind) {
@@ -971,7 +983,8 @@ void TRequestCounters::Register(TDynamicCounters& counters)
                 IsReadWriteRequestType(t),
                 Options & EOption::ReportDataPlaneHistogram,
                 Options & EOption::ReportControlPlaneHistogram,
-                Options & EOption::ThrottlingHistogramsDisabled);
+                Options & EOption::ThrottlingHistogramsDisabled,
+                Options & EOption::ReportIoSize);
 
             // ReadWrite counters are usually the most important ones so let's
             // report zeroes for them instead of not reporting anything at all
@@ -1009,7 +1022,7 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
     ui32 errorFlags,
     bool unaligned,
     ECalcMaxTime calcMaxTime,
-    ui64 responseSent)
+    ui64 responseSent, std::optional<ui64> logicalRequestBytes)
 {
     const ui64 requestCompleted = GetCycleCount();
     const TDuration totalTime =
@@ -1031,10 +1044,7 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
         backoffTime,
         shapingTime,
         requestBytes,
-        errorKind,
-        errorFlags,
-        unaligned,
-        calcMaxTime);
+        errorKind, errorFlags, unaligned, calcMaxTime, logicalRequestBytes);
 
     return {.ExecutionTime = execTime, .Time = totalTime};
 }
@@ -1191,7 +1201,7 @@ void TRequestCounters::RequestCompletedImpl(
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
     bool unaligned,
-    ECalcMaxTime calcMaxTime)
+    ECalcMaxTime calcMaxTime, std::optional<ui64> logicalRequestBytes)
 {
     if (SpecialCounters) {
         SpecialCounters->AddStats(errorKind, errorFlags);
@@ -1209,9 +1219,7 @@ void TRequestCounters::RequestCompletedImpl(
             backoffTime,
             shapingTime,
             requestBytes,
-            errorKind,
-            unaligned,
-            calcMaxTime);
+            errorKind, unaligned, calcMaxTime, logicalRequestBytes);
     }
     NotifySubscribers(
         &TRequestCounters::RequestCompletedImpl,
@@ -1224,10 +1232,7 @@ void TRequestCounters::RequestCompletedImpl(
         backoffTime,
         shapingTime,
         requestBytes,
-        errorKind,
-        errorFlags,
-        unaligned,
-        calcMaxTime);
+        errorKind, errorFlags, unaligned, calcMaxTime, logicalRequestBytes);
 }
 
 bool TRequestCounters::ShouldReport(TRequestType requestType) const

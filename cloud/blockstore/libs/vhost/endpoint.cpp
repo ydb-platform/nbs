@@ -311,6 +311,8 @@ TRequestPtr TEndpoint::RegisterRequest(TVhostRequestPtr vhostRequest)
         blockSize * (endIndex - startIndex),
         unaligned);
 
+    request->MetricRequest.LogicalRequestBytes = request->VhostRequest->Length;
+
     AppCtx.ServerStats->RequestStarted(
         AppCtx.Log,
         request->MetricRequest,

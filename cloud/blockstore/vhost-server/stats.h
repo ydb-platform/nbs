@@ -31,6 +31,8 @@ struct TRequestStats
 {
     T Count = {};
     T Bytes = {};
+    T IoSizeCount = {};
+    T IoSizeBytes = {};
     T Errors = {};
     T Unaligned = {};
 
@@ -40,6 +42,8 @@ struct TRequestStats
     explicit TRequestStats(const TRequestStats<U>& rhs) noexcept
         : Count{rhs.Count}
         , Bytes{rhs.Bytes}
+        , IoSizeCount{rhs.IoSizeCount}
+        , IoSizeBytes{rhs.IoSizeBytes}
         , Errors{rhs.Errors}
         , Unaligned{rhs.Unaligned}
     {}
@@ -49,6 +53,8 @@ struct TRequestStats
     {
         Count = rhs.Count;
         Bytes = rhs.Bytes;
+        IoSizeCount = rhs.IoSizeCount;
+        IoSizeBytes = rhs.IoSizeBytes;
         Errors = rhs.Errors;
         Unaligned = rhs.Unaligned;
 
@@ -60,6 +66,8 @@ struct TRequestStats
     {
         Count += rhs.Count;
         Bytes += rhs.Bytes;
+        IoSizeCount += rhs.IoSizeCount;
+        IoSizeBytes += rhs.IoSizeBytes;
         Errors += rhs.Errors;
         Unaligned += rhs.Unaligned;
 
@@ -72,6 +80,8 @@ TRequestStats<T> operator-(TRequestStats<T> lhs, TRequestStats<T>& rhs) noexcept
 {
     lhs.Count -= rhs.Count;
     lhs.Bytes -= rhs.Bytes;
+    lhs.IoSizeCount -= rhs.IoSizeCount;
+    lhs.IoSizeBytes -= rhs.IoSizeBytes;
     lhs.Errors -= rhs.Errors;
     lhs.Unaligned -= rhs.Unaligned;
 

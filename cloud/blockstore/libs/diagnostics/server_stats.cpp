@@ -283,6 +283,7 @@ void TServerStats::PrepareMetricRequest(
     metricRequest.DiskId = std::move(diskId);
     metricRequest.StartIndex = startIndex;
     metricRequest.RequestBytes = requestBytes;
+    metricRequest.LogicalRequestBytes = requestBytes;
     metricRequest.Unaligned = unaligned;
 
     if (metricRequest.DiskId) {
@@ -459,8 +460,7 @@ void TServerStats::RequestCompleted(
             req.RequestBytes,
             errorKind,
             errorFlags,
-            req.Unaligned,
-            responseSentCycles);
+            req.Unaligned, responseSentCycles, req.LogicalRequestBytes);
 
         if (calcMaxTime == ECalcMaxTime::DISABLE) {
             maxTimeSuppressedMessage = ", Warning! MaxTime calculation suppressed";

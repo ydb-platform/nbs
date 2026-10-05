@@ -9,6 +9,7 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -88,10 +89,12 @@ class TServerContext
 {
 private:
     IOutputStream& Out;
+    IServerHandler& Handler;
 
 public:
-    TServerContext(IOutputStream& out)
+    TServerContext(IOutputStream& out, IServerHandler& handler)
         : Out(out)
+        , Handler(handler)
     {}
 
     void Start() override
@@ -133,11 +136,7 @@ public:
 
     void SendResponse(TServerResponsePtr response) override
     {
-        Out.Write(response->HeaderBuffer.Data(), response->HeaderBuffer.Size());
-
-        if (response->DataBuffer) {
-            Out.Write(response->DataBuffer.get(), response->RequestBytes);
-        }
+        Handler.SendResponse(Out, *response);
     }
 };
 
@@ -300,8 +299,7 @@ TExportInfo NegotiateClient(
 void ProcessRequests(
     IServerHandler& handler,
     TStringStream& in,
-    TStringStream& out,
-    ui32 length = 4*1024)
+    TStringStream& out, ui32 length = 4 * 1024, bool expectSuccess = true)
 {
     TRequestReader reader(in);
     TRequestWriter writer(out);
@@ -342,7 +340,7 @@ void ProcessRequests(
         writer.WriteRequest(request);
     }
 
-    auto ctx = MakeIntrusive<TServerContext>(in);
+    auto ctx = MakeIntrusive<TServerContext>(in, handler);
     handler.ProcessRequests(ctx, out, in, nullptr);
 
     {
@@ -350,9 +348,14 @@ void ProcessRequests(
         TBuffer replyData;
         UNIT_ASSERT(reader.ReadStructuredReply(reply));
         reader.ReadStructuredReplyData(reply, replyData);
-        UNIT_ASSERT(reply.Type == NBD_REPLY_TYPE_OFFSET_DATA);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui16>(expectSuccess
+                ? NBD_REPLY_TYPE_OFFSET_DATA : NBD_REPLY_TYPE_ERROR),
+            reply.Type);
         UNIT_ASSERT(reply.Handle == 1);
-        UNIT_ASSERT(replyData.Size() == length);
+        if (expectSuccess) {
+            UNIT_ASSERT_VALUES_EQUAL(length, replyData.Size());
+        }
     }
 
     {
@@ -360,9 +363,14 @@ void ProcessRequests(
         TBuffer replyData;
         UNIT_ASSERT(reader.ReadStructuredReply(reply));
         reader.ReadStructuredReplyData(reply, replyData);
-        UNIT_ASSERT(reply.Type == NBD_REPLY_TYPE_NONE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui16>(expectSuccess
+                ? NBD_REPLY_TYPE_NONE : NBD_REPLY_TYPE_ERROR),
+            reply.Type);
         UNIT_ASSERT(reply.Handle == 2);
-        UNIT_ASSERT(!replyData.Size());
+        if (expectSuccess) {
+            UNIT_ASSERT(!replyData.Size());
+        }
     }
 
     {
@@ -370,9 +378,14 @@ void ProcessRequests(
         TBuffer replyData;
         UNIT_ASSERT(reader.ReadStructuredReply(reply));
         reader.ReadStructuredReplyData(reply, replyData);
-        UNIT_ASSERT(reply.Type == NBD_REPLY_TYPE_NONE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui16>(expectSuccess
+                ? NBD_REPLY_TYPE_NONE : NBD_REPLY_TYPE_ERROR),
+            reply.Type);
         UNIT_ASSERT(reply.Handle == 3);
-        UNIT_ASSERT(!replyData.Size());
+        if (expectSuccess) {
+            UNIT_ASSERT(!replyData.Size());
+        }
     }
 }
 
@@ -420,7 +433,7 @@ void ProcessUnalignedRequests(
         writer.WriteRequest(request);
     }
 
-    auto ctx = MakeIntrusive<TServerContext>(in);
+    auto ctx = MakeIntrusive<TServerContext>(in, handler);
     handler.ProcessRequests(ctx, out, in, nullptr);
 
     {
@@ -626,19 +639,25 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
 
         ui32 requestCounter = 0;
         ui32 expectedRequestCounter = 0;
+        ui32 startedCounter = 0;
+        ui32 completedCounter = 0;
+        bool failRequests = false;
+        bool mixedLengths = false;
+        ui64 logicalBytes = DefaultBlockSize;
 
-        serverStats->PrepareMetricRequestHandler = [&] (
-            TMetricRequest& metricRequest,
-            TString clientId,
-            TString diskId,
-            ui64 startIndex,
-            ui32 requestBytes,
-            bool unaligned)
+        serverStats->PrepareMetricRequestHandler =
+            [&](TMetricRequest& metricRequest,
+                TString clientId,
+                TString diskId,
+                ui64 startIndex, ui64 requestBytes, bool unaligned)
         {
             Y_UNUSED(clientId);
 
             UNIT_ASSERT(diskId == DefaultDiskId);
             metricRequest.DiskId = std::move(diskId);
+            metricRequest.RequestBytes = requestBytes;
+            metricRequest.LogicalRequestBytes = requestBytes;
+            metricRequest.Unaligned = unaligned;
 
             UNIT_ASSERT_VALUES_EQUAL(expectedUnaligned, unaligned);
 
@@ -659,6 +678,52 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
             }
 
             ++requestCounter;
+        };
+
+        auto checkLogicalSize = [&](const TMetricRequest& request)
+        {
+            switch (request.RequestType) {
+                case EBlockStoreRequest::ReadBlocks:
+                case EBlockStoreRequest::WriteBlocks:
+                case EBlockStoreRequest::ZeroBlocks:
+                    break;
+                default:
+                    return;
+            }
+
+            const ui64 expectedBytes =
+                mixedLengths
+                    ? (request.RequestType == EBlockStoreRequest::ReadBlocks
+                           ? 11 * 512
+                       : request.RequestType == EBlockStoreRequest::WriteBlocks
+                           ? 13 * 512
+                           : 8 * 512)
+                    : logicalBytes;
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedBytes, request.LogicalRequestBytes);
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedBlockCount * DefaultBlockSize, request.RequestBytes);
+
+            UNIT_ASSERT_VALUES_EQUAL(expectedUnaligned, request.Unaligned);
+        };
+        serverStats->RequestStartedHandler =
+            [&](TLog&, TMetricRequest& request, TCallContext&, const TString&)
+        {
+            checkLogicalSize(request);
+            if (IsReadWriteRequest(request.RequestType)) {
+                ++startedCounter;
+            }
+        };
+        serverStats->RequestCompletedHandler = [&](TLog&,
+                                                   TMetricRequest& request,
+                                                   TCallContext&,
+                                                   const NProto::TError& error)
+        {
+            checkLogicalSize(request);
+            if (IsReadWriteRequest(request.RequestType)) {
+                UNIT_ASSERT_VALUES_EQUAL(failRequests, HasError(error));
+                ++completedCounter;
+            }
         };
 
         auto factory = CreateServerHandlerFactory(
@@ -688,7 +753,39 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
         expectedStartIndex = 1;
         expectedBlockCount = 2;
         expectedRequestCounter += 3;
+        UNIT_ASSERT_VALUES_EQUAL(3, startedCounter);
+        UNIT_ASSERT_VALUES_EQUAL(3, completedCounter);
+        mixedLengths = true;
         ProcessUnalignedRequests(*handler, in, out);
+        UNIT_ASSERT_VALUES_EQUAL(6, startedCounter);
+        UNIT_ASSERT_VALUES_EQUAL(6, completedCounter);
+
+        mixedLengths = false;
+        logicalBytes = 512;
+        expectedStartIndex = 0;
+        expectedBlockCount = 1;
+        failRequests = true;
+        storage->ReadBlocksLocalHandler = [](auto, auto)
+        {
+            NProto::TReadBlocksLocalResponse response;
+            *response.MutableError() = MakeError(E_FAIL);
+            return MakeFuture(std::move(response));
+        };
+        storage->WriteBlocksLocalHandler = [](auto, auto)
+        {
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = MakeError(E_FAIL);
+            return MakeFuture(std::move(response));
+        };
+        storage->ZeroBlocksHandler = [](auto, auto)
+        {
+            NProto::TZeroBlocksResponse response;
+            *response.MutableError() = MakeError(E_FAIL);
+            return MakeFuture(std::move(response));
+        };
+        ProcessRequests(*handler, in, out, 512, false);
+        UNIT_ASSERT_VALUES_EQUAL(9, startedCounter);
+        UNIT_ASSERT_VALUES_EQUAL(9, completedCounter);
 
         bootstrap->Stop();
     }
