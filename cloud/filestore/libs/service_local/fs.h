@@ -88,6 +88,9 @@ namespace NCloud::NFileStore {
 // Counters shared by all TLocalFileSystem instances of a local service
 struct TLocalFileSystemCounters
 {
+    // Configured limit on file handles per session
+    const NMonitoring::TDynamicCounters::TCounterPtr MaxHandlePerSessionCount;
+
     // CreateHandle requests rejected because the session handle table is full
     const NMonitoring::TDynamicCounters::TCounterPtr
         SessionFileHandleLimitRejectedCount;
@@ -114,6 +117,7 @@ private:
 
     NProto::TFileStore Store;
     TLog Log;
+    TLogThrottler HandleLimitLogThrottler{TDuration::Seconds(1)};
 
     TSessionList SessionsList;
     THashMap<TString, TSessionList::iterator> SessionsById;

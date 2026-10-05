@@ -84,7 +84,8 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
         // is full
         if (error.GetCode() == E_FS_NOSPC) {
             Counters->SessionFileHandleLimitRejectedCount->Inc();
-            STORAGE_WARN(
+            STORAGE_WARN_T(
+                HandleLimitLogThrottler,
                 "Session file handle limit reached, ClientId="
                 << GetClientId(request)
                 << ", SessionId=" << GetSessionId(request)

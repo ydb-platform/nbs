@@ -6,7 +6,8 @@ namespace NCloud::NFileStore {
 
 TLocalFileSystemCounters::TLocalFileSystemCounters(
         NMonitoring::TDynamicCounters& counters)
-    : SessionFileHandleLimitRejectedCount(counters.GetCounter(
+    : MaxHandlePerSessionCount(counters.GetCounter("MaxHandlePerSessionCount"))
+    , SessionFileHandleLimitRejectedCount(counters.GetCounter(
           "SessionFileHandleLimitRejectedCount",
           true /* derivative */))
 {}

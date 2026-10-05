@@ -192,8 +192,8 @@ public:
         RootPath.CheckExists();
         Log = Logging->CreateLog("NFS_SERVICE");
 
-        counters->GetCounter("MaxHandlePerSessionCount")
-            ->Set(Config->GetMaxHandlePerSessionCount());
+        FileSystemCounters->MaxHandlePerSessionCount->Set(
+            Config->GetMaxHandlePerSessionCount());
     }
 
     void Start() override;
