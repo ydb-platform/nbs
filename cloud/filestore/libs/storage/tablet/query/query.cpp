@@ -15,10 +15,12 @@ namespace NCloud::NFileStore::NStorage::NQuery {
 struct TParseContext
 {
     TSelect Query;
-    TString Error;
+    TParseError Error;
 };
 
 TParseContext CurrentParseContext;
+size_t CurrentTokenOffset = 0;
+size_t ScannedInputBytes = 0;
 
 TMaybe<TSelect> Parse(TStringBuf input, TParseError* error)
 {
@@ -26,7 +28,9 @@ TMaybe<TSelect> Parse(TStringBuf input, TParseError* error)
     const std::lock_guard guard(Mutex);
 
     CurrentParseContext.Query = TSelect{};
-    CurrentParseContext.Error.clear();
+    CurrentParseContext.Error = {};
+    CurrentTokenOffset = 0;
+    ScannedInputBytes = 0;
 
     auto* buffer = yy_scan_bytes(input.data(), input.size());
     const int result = yyparse();
@@ -34,9 +38,10 @@ TMaybe<TSelect> Parse(TStringBuf input, TParseError* error)
 
     if (result != 0) {
         if (error) {
-            error->Message = CurrentParseContext.Error.empty()
-                ? "invalid query"
-                : CurrentParseContext.Error;
+            *error = CurrentParseContext.Error;
+            if (error->Message.empty()) {
+                error->Message = "invalid query";
+            }
         }
         return Nothing();
     }

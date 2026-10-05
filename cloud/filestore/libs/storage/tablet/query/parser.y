@@ -10,10 +10,11 @@ namespace NCloud::NFileStore::NStorage::NQuery {
 struct TParseContext
 {
     TSelect Query;
-    TString Error;
+    TParseError Error;
 };
 
 extern TParseContext CurrentParseContext;
+extern size_t CurrentTokenOffset;
 
 static TExpression* PredicateExpression(TPredicate* predicate)
 {
@@ -49,7 +50,8 @@ static TExpression* LogicalExpression(
 
 static void SetError(const char* message)
 {
-    CurrentParseContext.Error = message;
+    CurrentParseContext.Error.Message = message;
+    CurrentParseContext.Error.Offset = CurrentTokenOffset;
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NQuery
@@ -77,6 +79,8 @@ void yyerror(const char* message);
     TVector<TString>* columns;
     TVector<NCloud::NFileStore::NStorage::NQuery::TValue>* values;
 }
+
+%destructor { delete $$; } <text> <value> <predicate> <expression> <columns> <values>
 
 %token SELECT FROM WHERE AND OR IN SUBSTR LIMIT INVALID
 %token EQ NE GT GE LT LE

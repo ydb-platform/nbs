@@ -13,6 +13,16 @@
 
 #include <cctype>
 
+namespace NCloud::NFileStore::NStorage::NQuery {
+extern size_t CurrentTokenOffset;
+extern size_t ScannedInputBytes;
+}
+
+#define YY_USER_ACTION \
+    NCloud::NFileStore::NStorage::NQuery::CurrentTokenOffset = \
+        NCloud::NFileStore::NStorage::NQuery::ScannedInputBytes; \
+    NCloud::NFileStore::NStorage::NQuery::ScannedInputBytes += yyleng;
+
 ////////////////////////////////////////////////////////////////////////////////
 
 static int Keyword(const char* text)
@@ -52,6 +62,12 @@ static TString Unquote(const char* text, size_t length)
 %%
 
 [ \t\r\n]+                  ;
+
+<<EOF>>                     {
+    NCloud::NFileStore::NStorage::NQuery::CurrentTokenOffset =
+        NCloud::NFileStore::NStorage::NQuery::ScannedInputBytes;
+    return 0;
+}
 
 "=="|"="                    { return EQ; }
 "!="                        { return NE; }
