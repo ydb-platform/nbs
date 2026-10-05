@@ -61,6 +61,13 @@ public:
     NCloud::NStorage::NRdma::IClientEndpointHandlerPtr GetEndpointHandler()
         override;
 
+    bool IsPreferredActive() override
+    {
+        with_lock (Lock) {
+            return PreferredActive;
+        }
+    }
+
     void Start()
     {
         auto result = Factory(GetEndpointHandler());

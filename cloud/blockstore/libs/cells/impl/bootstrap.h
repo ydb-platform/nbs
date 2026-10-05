@@ -15,6 +15,9 @@ struct ICellHostEndpointBootstrap;
 using ICellHostEndpointBootstrapPtr =
     std::shared_ptr<ICellHostEndpointBootstrap>;
 
+class TCellConnectionRegistry;
+using TCellConnectionRegistryPtr = std::shared_ptr<TCellConnectionRegistry>;
+
 struct TBootstrap
 {
     ITimerPtr Timer;
@@ -33,6 +36,9 @@ struct TBootstrap
     ITaskQueuePtr RdmaTaskQueue;
 
     ICellHostEndpointBootstrapPtr EndpointsSetup;
+
+    // the connections made so far, for the mon page; may be null
+    TCellConnectionRegistryPtr Connections;
 };
 
 }   // namespace NCloud::NBlockStore::NCells

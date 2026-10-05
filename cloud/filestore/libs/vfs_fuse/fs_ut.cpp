@@ -7871,6 +7871,22 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT(stopFuture.Wait(WaitTimeout));
     }
 
+    Y_UNIT_TEST(WriteBackCacheShouldNotReportMetricsWhenNotInitialized)
+    {
+        TBootstrap bootstrap;
+
+        bootstrap.Start();
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
+        bootstrap.ModuleStatsRegistry->UpdateStats(true);
+
+        UNIT_ASSERT(!bootstrap.GetFileSystemStatsCounters()->FindSubgroup(
+            "module",
+            "WriteBackCache"));
+    }
+
     Y_UNIT_TEST(WriteBackCacheShouldReportMetrics)
     {
         NProto::TFileStoreFeatures features;
@@ -8274,6 +8290,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         TFuture<ui32> writeFuture;
 
         for (ui32 i = 1; i <= maxRequestCount; i++) {
+            bool isBackpressured = backpressureCount->Val() == 1;
+
             // Requests should not overlap nor touch in order to be put into
             // separate flush batches
             writeFuture = bootstrap.Fuse->SendRequest<TWriteRequest>(
@@ -8282,26 +8300,25 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 i * 100,
                 "abc");
 
-            // Request should be put in either unflushed or pending queue
-            UNIT_ASSERT(WaitForCondition(
-                WaitTimeout,
-                [&]()
-                {
-                    bootstrap.ModuleStatsRegistry->UpdateStats(true);
-                    return unflushedQueueCount->Val() == i ||
-                           pendingQueueCount->Val() == 1;
-                }));
-
-            if (pendingQueueCount->Val() == 1) {
-                // This happens when backpressure is applied
+            if (isBackpressured) {
                 break;
-            } else {
-                UNIT_ASSERT(writeFuture.Wait(WaitTimeout));
             }
+
+            // Backpressure status is updated before the request is responded
+            UNIT_ASSERT(writeFuture.Wait(WaitTimeout));
+            bootstrap.ModuleStatsRegistry->UpdateStats(true);
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(1, pendingQueueCount->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, backpressureCount->Val());
+
+        UNIT_ASSERT(WaitForCondition(
+            WaitTimeout,
+            [&]()
+            {
+                bootstrap.ModuleStatsRegistry->UpdateStats(true);
+                return pendingQueueCount->Val() == 1;
+            }));
+
         UNIT_ASSERT(!writeFuture.HasValue());
 
         firstWriteDataPromise.SetValue({});

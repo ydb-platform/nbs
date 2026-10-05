@@ -51,7 +51,6 @@ private:
     const ui64 RequestId;
     const ui64 OpLogEntryId;
     TUnlinkNodeInShardResult Result;
-    bool ShouldUnlockUponCompletion;
 
 public:
     TUnlinkNodeInShardActor(
@@ -62,8 +61,7 @@ public:
         NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result,
-        bool shouldUnlockUponCompletion);
+        TUnlinkNodeInShardResult result);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -93,8 +91,7 @@ TUnlinkNodeInShardActor::TUnlinkNodeInShardActor(
         NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result,
-        bool shouldUnlockUponCompletion)
+        TUnlinkNodeInShardResult result)
     : LogTag(std::move(logTag))
     , RequestInfo(std::move(requestInfo))
     , ParentId(parentId)
@@ -103,7 +100,6 @@ TUnlinkNodeInShardActor::TUnlinkNodeInShardActor(
     , RequestId(requestId)
     , OpLogEntryId(opLogEntryId)
     , Result(std::move(result))
-    , ShouldUnlockUponCompletion(shouldUnlockUponCompletion)
 {}
 
 void TUnlinkNodeInShardActor::Bootstrap(const TActorContext& ctx)
@@ -181,7 +177,7 @@ void TUnlinkNodeInShardActor::HandleUnlinkNodeResponse(
             FormatError(msg->GetError()).Quote().c_str());
 
         const ui32 code = msg->GetError().GetCode();
-        if (ShouldUnlockUponCompletion && (code == E_FS_NOTEMPTY
+        if (Request.GetShouldUnlockUponCompletion() && (code == E_FS_NOTEMPTY
             || Request.GetUnlinkDirectory() && code == E_FS_NOTDIR))
         {
             //
@@ -257,7 +253,7 @@ void TUnlinkNodeInShardActor::ReplyAndDie(
             OpLogEntryId,
             std::move(Result),
             std::move(ProfileLogRequest),
-            ShouldUnlockUponCompletion,
+            Request.GetShouldUnlockUponCompletion(),
             Request.GetOriginalRequest()));
 
     Die(ctx);
@@ -513,6 +509,8 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         shardRequest->SetName(args.ChildRef->ShardNodeName);
         shardRequest->SetUnlinkDirectory(args.Request.GetUnlinkDirectory());
         shardRequest->MutableOriginalRequest()->CopyFrom(args.Request);
+        shardRequest->SetShouldUnlockUponCompletion(
+            GetFileSystem().GetDirectoryCreationInShardsEnabled());
         const bool serialized = args.ProfileLogRequest.SerializeToString(
             args.OpLogEntry.MutableProfileLogRequest());
         if (!serialized) {
@@ -584,18 +582,16 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         args.Error = MakeError(E_INVALID_STATE, std::move(message));
     }
 
-    bool shouldUnlockUponCompletion = true;
     // If the node is external and creation of directories in shards is enabled
     // for this filesystem and the request is to be forwarded to the shard, then
     // the nodeRef is not unlocked here as it is possible that the shard will
     // reject the request. In this case the nodeRef will be unlocked afterwards.
     if (HasError(args.Error) ||
-        (args.ChildRef && !args.ChildRef.GetOrElse({}).IsExternal()) ||
-        Config->GetParentlessFilesOnly() ||
-        !GetFileSystem().GetDirectoryCreationInShardsEnabled())
+        !(args.OpLogEntry.HasUnlinkNodeInShardRequest() &&
+          args.OpLogEntry.GetUnlinkNodeInShardRequest()
+              .GetShouldUnlockUponCompletion()))
     {
         UnlockNodeRef({args.ParentNodeId, args.Name});
-        shouldUnlockUponCompletion = false;
     }
 
     if (!HasError(args.Error)) {
@@ -613,8 +609,7 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
                 std::move(args.ProfileLogRequest),
                 args.RequestId,
                 args.OpLogEntry.GetEntryId(),
-                {},
-                shouldUnlockUponCompletion);
+                {});
 
             return;
         }
@@ -968,8 +963,7 @@ void TIndexTabletActor::RegisterUnlinkNodeInShardActor(
     NProto::TProfileLogRequestInfo profileLogRequest,
     ui64 requestId,
     ui64 opLogEntryId,
-    TUnlinkNodeInShardResult result,
-    bool shouldUnlockUponCompletion)
+    TUnlinkNodeInShardResult result)
 {
     auto actor = std::make_unique<TUnlinkNodeInShardActor>(
         LogTag,
@@ -979,8 +973,7 @@ void TIndexTabletActor::RegisterUnlinkNodeInShardActor(
         std::move(profileLogRequest),
         requestId,
         opLogEntryId,
-        std::move(result),
-        shouldUnlockUponCompletion);
+        std::move(result));
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

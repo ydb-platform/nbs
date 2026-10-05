@@ -4100,6 +4100,203 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT_VALUES_EQUAL(0, listNodesResponse.NodesSize());
     }
 
+    SERVICE_TEST(
+        ShouldUnlockNodeRefUponEnablingDirectoryCreationInShardsDuringUnlink)
+    {
+        config.SetDirectoryCreationInShardsEnabled(false);
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            ExtractShardNo(createNodeResponse.GetNode().GetId()));
+
+        bool intercepted = false;
+        auto prevFilter = env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvUnlinkNodeRequest) {
+                    const auto* msg =
+                        event->Get<TEvService::TEvUnlinkNodeRequest>();
+                    if (msg->Record.GetFileSystemId() == fsConfig.Shard1Id) {
+                        intercepted = true;
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        service.SendUnlinkNodeRequest(headers, RootNodeId, "file1");
+
+        ui32 iterations = 0;
+        while (!intercepted && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT(intercepted);
+        env.GetRuntime().SetEventFilter(prevFilter);
+
+        // The NodeRef has already been removed from the leader, but the OpLog
+        // entry is still present because the shard request was intercepted.
+        // Enabling directory creation in shards restarts the leader and makes
+        // it replay the entry using the newly enabled mode.
+        service.ResizeFileStore(
+            fsConfig.FsId,
+            fsConfig.MainFsBlockCount,
+            false /* force */,
+            0 /* shardCount */,
+            true /* enableStrictSizeMode */,
+            true /* directoryCreationInShards */,
+            true /* forceDirectoryCreationInShards */);
+
+        const auto unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            unlinkResponse->GetStatus(),
+            FormatError(unlinkResponse->GetError()));
+
+        WaitForTabletStart(service);
+        headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter = counters->GetCounter(
+            "AppCriticalEvents/InvalidNodeRefUponCompleteUnlinkNode");
+
+        iterations = 0;
+        while (!counter->GetAtomic() && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, counter->GetAtomic());
+
+        // The replayed unlink must release the in-memory NodeRef lock even
+        // though the reference was removed before the mode switch.
+        const auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createHandleResponse->GetStatus(),
+            FormatError(createHandleResponse->GetError()));
+    }
+
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldReplayLegacyUnlinkNodeInShardOpLogEntry)
+    {
+        const bool directoryCreationInShardsEnabled =
+            config.GetDirectoryCreationInShardsEnabled();
+
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto createNodeResponse = service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, "file1"))->Record;
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            ExtractShardNo(createNodeResponse.GetNode().GetId()));
+
+        bool intercept = true;
+        bool intercepted = false;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, TAutoPtr<IEventHandle>& event)
+            {
+                Y_UNUSED(runtime);
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvUnlinkNodeRequest) {
+                    const auto* msg =
+                        event->Get<TEvService::TEvUnlinkNodeRequest>();
+                    if (intercept &&
+                        msg->Record.GetFileSystemId() == fsConfig.Shard1Id)
+                    {
+                        intercepted = true;
+                        return true;
+                    }
+                }
+                return false;
+            });
+
+        service.SendUnlinkNodeRequest(headers, RootNodeId, "file1");
+
+        ui32 iterations = 0;
+        while (!intercepted && iterations++ < 100) {
+            env.GetRuntime().DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT(intercepted);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            fsInfo.MainTabletId);
+
+        auto listResponse = tablet.ListOpLogEntries();
+        UNIT_ASSERT_VALUES_EQUAL(1, listResponse->OpLogEntries.size());
+
+        auto legacyEntry = std::move(listResponse->OpLogEntries[0]);
+        UNIT_ASSERT(legacyEntry.HasUnlinkNodeInShardRequest());
+
+        auto* shardRequest = legacyEntry.MutableUnlinkNodeInShardRequest();
+        UNIT_ASSERT(shardRequest->HasShouldUnlockUponCompletion());
+        UNIT_ASSERT_VALUES_EQUAL(
+            directoryCreationInShardsEnabled,
+            shardRequest->GetShouldUnlockUponCompletion());
+
+        // Simulate an OpLog entry written by a version which did not persist
+        // ShouldUnlockUponCompletion.
+        shardRequest->ClearShouldUnlockUponCompletion();
+        UNIT_ASSERT(!shardRequest->HasShouldUnlockUponCompletion());
+
+        tablet.DeleteOpLogEntry(legacyEntry.GetEntryId());
+        tablet.WriteOpLogEntry(std::move(legacyEntry));
+
+        listResponse = tablet.ListOpLogEntries();
+        UNIT_ASSERT_VALUES_EQUAL(1, listResponse->OpLogEntries.size());
+        UNIT_ASSERT(
+            !listResponse->OpLogEntries[0]
+                 .GetUnlinkNodeInShardRequest()
+                 .HasShouldUnlockUponCompletion());
+
+        intercept = false;
+        tablet.RebootTablet();
+
+        const auto unlinkResponse = service.RecvUnlinkNodeResponse();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            unlinkResponse->GetStatus(),
+            FormatError(unlinkResponse->GetError()));
+
+        tablet.ReconnectPipe();
+        tablet.WaitReady();
+        headers = service.InitSession(fsConfig.FsId, "client");
+
+        listResponse = tablet.ListOpLogEntries();
+        UNIT_ASSERT_VALUES_EQUAL(0, listResponse->OpLogEntries.size());
+
+        const auto createHandleResponse = service.CreateHandle(
+            headers,
+            fsConfig.FsId,
+            RootNodeId,
+            "file1",
+            TCreateHandleArgs::CREATE);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            createHandleResponse->GetStatus(),
+            FormatError(createHandleResponse->GetError()));
+    }
+
     SERVICE_TEST(ShouldRetryUnlinkingInShardUponLeaderRestartForRenameNode)
     {
         TShardedFileSystemConfig fsConfig;

@@ -79,8 +79,8 @@ def parse_args():
         help="ExpectedGroupCapacity in bytes for the fastshard config")
     p.add_argument(
         "--storage-group-type",
-        choices=["E_SG_MIRROR", "E_SG_QUORUM_MIRROR"],
-        default=env("STORAGE_GROUP_TYPE", "E_SG_MIRROR"),
+        choices=["FAST_SHARD_STORAGE_MIRROR", "FAST_SHARD_STORAGE_QUORUM_MIRROR"],
+        default=env("STORAGE_GROUP_TYPE", "FAST_SHARD_STORAGE_MIRROR"),
         help="storage group implementation for the fastshards "
              "(default: %(default)s)")
     p.add_argument(

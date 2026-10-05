@@ -568,7 +568,7 @@ void DumpLayoutComponentsJson(
         writer.BeginObject();
         writer.WriteKey("type");
         writer.WriteString(
-            NProtoPrivate::TStorageGroup::EStorageGroupType_Name(
+            NProto::EFastShardStorageKind_Name(
                 group.GetType()));
         writer.WriteKey("devices");
         writer.BeginList();
@@ -623,7 +623,7 @@ void DumpLayoutComponentsHtml(
             deviceRows.push_back({
                 {"GROUP_NO", ToString(groupNo)},
                 {"GROUP_TYPE",
-                 NProtoPrivate::TStorageGroup::EStorageGroupType_Name(
+                 NProto::EFastShardStorageKind_Name(
                      group.GetType())},
                 {"HOST", device.GetHost()},
                 {"PORT", ToString(device.GetPort())},

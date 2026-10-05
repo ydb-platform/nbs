@@ -65,7 +65,7 @@
     ],
     "storageGroups": [
         {
-            "type": "E_SG_MIRROR",
+            "type": "FAST_SHARD_STORAGE_MIRROR",
             "devices": [
                 {
                     "host": "localhost",

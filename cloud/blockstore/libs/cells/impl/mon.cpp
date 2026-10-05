@@ -73,14 +73,34 @@ struct TEvPrivate
 
 void RenderSearchForm(IOutputStream& out)
 {
+    // the same form as the search on the service page
     HTML(out) {
-        TAG(TH3) { out << "Find a disk"; }
+        TAG(TH3) { out << "Search Volume"; }
         out << "<form method='GET'>"
-            << "<input type='text' name='Volume'/>"
-            << "<input type='hidden' name='action' value='search'/>"
+            << "Volume: <input type='text' name='Volume'/> "
             << "<input class='btn btn-primary' type='submit' value='Search'/>"
+            << "<input type='hidden' name='action' value='search'/>"
             << "</form>";
     }
+}
+
+// a link to the disk's page on a remote host
+void RenderRemoteVolumeLink(
+    IOutputStream& out,
+    const TString& fqdn,
+    const TString& diskId,
+    const TDiagnosticsConfig& diagnosticsConfig)
+{
+    // a reachable url under the deployment's hostname scheme (bastion,
+    // viewer, ...), html-escaped as it embeds the fqdn; the id is url-encoded
+    // before html-escaping, or a '#'/'&' in it would truncate or split the
+    // Volume query parameter
+    out << "<a href='"
+        << EncodeHtmlPcdata(
+               GetExternalHostUrl(fqdn, EHostService::Nbs, diagnosticsConfig))
+        << "blockstore/service?action=search&amp;Volume="
+        << EncodeHtmlPcdata(CGIEscapeRet(diskId)) << "'>"
+        << EncodeHtmlPcdata(fqdn) << "</a>";
 }
 
 void RenderSearchResultTable(
@@ -108,38 +128,26 @@ void RenderSearchResultTable(
                         }
                         TABLED() {
                             switch (result.Status) {
-                                case ECellDescribeStatus::Found: {
-                                    // url-encode the id before html-escaping it,
-                                    // or a '#'/'&' in the id would truncate or
-                                    // split the Volume query parameter
-                                    const auto encodedDiskId =
-                                        EncodeHtmlPcdata(CGIEscapeRet(diskId));
-                                    out << "<a href='";
+                                case ECellDescribeStatus::Found:
                                     if (result.CellId) {
-                                        // reachable url under the deployment's
-                                        // hostname scheme (bastion, viewer, ...);
-                                        // html-escape it too, it embeds the fqdn
-                                        out << EncodeHtmlPcdata(
-                                                   GetExternalHostUrl(
-                                                       result.Fqdn,
-                                                       EHostService::Nbs,
-                                                       diagnosticsConfig))
-                                            << "blockstore/service?action=search"
-                                               "&amp;Volume="
-                                            << encodedDiskId;
+                                        RenderRemoteVolumeLink(
+                                            out,
+                                            result.Fqdn,
+                                            diskId,
+                                            diagnosticsConfig);
                                     } else {
                                         // the local disk is on this same node;
                                         // link relative to /blockstore/Cells so
                                         // the Viewer node prefix is preserved
-                                        out << "service?action=search"
+                                        out << "<a href='service?action=search"
                                                "&amp;Volume="
-                                            << encodedDiskId;
+                                            << EncodeHtmlPcdata(
+                                                   CGIEscapeRet(diskId))
+                                            << "'>"
+                                            << EncodeHtmlPcdata(result.Fqdn)
+                                            << "</a>";
                                     }
-                                    out << "'>"
-                                        << EncodeHtmlPcdata(result.Fqdn)
-                                        << "</a>";
                                     break;
-                                }
                                 case ECellDescribeStatus::MigrationDestination:
                                     out << "migration destination copy on "
                                         << EncodeHtmlPcdata(result.Fqdn);
@@ -164,6 +172,57 @@ void RenderSearchResultTable(
     }
 }
 
+void RenderMounts(
+    IOutputStream& out,
+    const TVector<TCellMountStatus>& mounts,
+    const TDiagnosticsConfig& diagnosticsConfig)
+{
+    HTML(out) {
+        TAG(TH3) { out << "Remote mounts"; }
+        TABLE_SORTABLE_CLASS("table table-condensed") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "DiskId"; }
+                    TABLEH() { out << "ClientId"; }
+                    TABLEH() { out << "Cell"; }
+                    TABLEH() { out << "Host"; }
+                    TABLEH() { out << "Data transport"; }
+                    TABLEH() { out << "Tablet host"; }
+                }
+            }
+            TABLEBODY() {
+                for (const auto& mount: mounts) {
+                    TABLER() {
+                        TABLED() { out << EncodeHtmlPcdata(mount.DiskId); }
+                        TABLED() { out << EncodeHtmlPcdata(mount.ClientId); }
+                        TABLED() { out << EncodeHtmlPcdata(mount.CellId); }
+                        TABLED() {
+                            RenderRemoteVolumeLink(
+                                out,
+                                mount.Host,
+                                mount.DiskId,
+                                diagnosticsConfig);
+                        }
+                        TABLED() {
+                            out << EncodeHtmlPcdata(mount.DataTransport);
+                        }
+                        TABLED() {
+                            // empty when the cell is older than the field
+                            if (mount.TabletHost) {
+                                RenderRemoteVolumeLink(
+                                    out,
+                                    mount.TabletHost,
+                                    mount.DiskId,
+                                    diagnosticsConfig);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 void RenderConfig(IOutputStream& out, const TCellsConfig& config)
 {
     HTML(out) {
@@ -171,32 +230,38 @@ void RenderConfig(IOutputStream& out, const TCellsConfig& config)
     }
     config.DumpHtml(out);
 
+    // the collapse id goes into a CSS selector as is, so it is numbered
+    // rather than taken from the cell id
+    ui32 index = 0;
     for (const auto& [cellId, cellConfig]: config.GetCells()) {
         HTML(out) {
-            TAG(TH4) { out << "Cell " << cellId; }
-        }
-        cellConfig->DumpHtml(out);
+            COLLAPSED_BUTTON_CONTENT(
+                "cell-config-" + ToString(index++),
+                "Cell " + EncodeHtmlPcdata(cellId))
+            {
+                cellConfig->DumpHtml(out);
 
-        HTML(out) {
-            TABLE_CLASS("table table-condensed") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Host"; }
-                        TABLEH() { out << "GrpcPort"; }
-                        TABLEH() { out << "SecureGrpcPort"; }
-                        TABLEH() { out << "RdmaPort"; }
-                    }
-                }
-                TABLEBODY() {
-                    for (const auto& [fqdn, host]: cellConfig->GetHosts()) {
-                        Y_UNUSED(fqdn);
+                TABLE_CLASS("table table-condensed") {
+                    TABLEHEAD() {
                         TABLER() {
-                            TABLED() {
-                                out << EncodeHtmlPcdata(host.GetFqdn());
+                            TABLEH() { out << "Host"; }
+                            TABLEH() { out << "GrpcPort"; }
+                            TABLEH() { out << "SecureGrpcPort"; }
+                            TABLEH() { out << "RdmaPort"; }
+                        }
+                    }
+                    TABLEBODY() {
+                        for (const auto& [fqdn, host]: cellConfig->GetHosts())
+                        {
+                            Y_UNUSED(fqdn);
+                            TABLER() {
+                                TABLED() {
+                                    out << EncodeHtmlPcdata(host.GetFqdn());
+                                }
+                                TABLED() { out << host.GetGrpcPort(); }
+                                TABLED() { out << host.GetSecureGrpcPort(); }
+                                TABLED() { out << host.GetRdmaPort(); }
                             }
-                            TABLED() { out << host.GetGrpcPort(); }
-                            TABLED() { out << host.GetSecureGrpcPort(); }
-                            TABLED() { out << host.GetRdmaPort(); }
                         }
                     }
                 }
@@ -212,27 +277,36 @@ void RenderOutbound(
     HTML(out) {
         TAG(TH3) { out << "Outbound host status"; }
     }
+    ui32 index = 0;
     for (const auto& [cellId, statuses]: hostStatuses) {
         HTML(out) {
-            TAG(TH4) { out << "Cell " << cellId; }
-            TABLE_CLASS("table table-condensed") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Host"; }
-                        TABLEH() { out << "Alive"; }
-                        TABLEH() { out << "Warm"; }
-                        TABLEH() { out << "Connections"; }
-                    }
-                }
-                TABLEBODY() {
-                    for (const auto& status: statuses) {
+            COLLAPSED_BUTTON_CONTENT(
+                "cell-outbound-" + ToString(index++),
+                "Cell " + EncodeHtmlPcdata(cellId))
+            {
+                TABLE_CLASS("table table-condensed") {
+                    TABLEHEAD() {
                         TABLER() {
-                            TABLED() {
-                                out << EncodeHtmlPcdata(status.Fqdn);
+                            TABLEH() { out << "Host"; }
+                            TABLEH() { out << "Alive"; }
+                            TABLEH() { out << "Warm"; }
+                            TABLEH() { out << "Connections"; }
+                        }
+                    }
+                    TABLEBODY() {
+                        for (const auto& status: statuses) {
+                            TABLER() {
+                                TABLED() {
+                                    out << EncodeHtmlPcdata(status.Fqdn);
+                                }
+                                TABLED() {
+                                    out << (status.Alive ? "yes" : "no");
+                                }
+                                TABLED() {
+                                    out << (status.Warm ? "yes" : "no");
+                                }
+                                TABLED() { out << status.Connections; }
                             }
-                            TABLED() { out << (status.Alive ? "yes" : "no"); }
-                            TABLED() { out << (status.Warm ? "yes" : "no"); }
-                            TABLED() { out << status.Connections; }
                         }
                     }
                 }
@@ -328,7 +402,11 @@ private:
         }
 
         TStringStream out;
-        RenderCellsPage(out, *CellManager->Config, CellManager->GetSnapshot());
+        RenderCellsPage(
+            out,
+            *CellManager->Config,
+            CellManager->GetSnapshot(),
+            *DiagnosticsConfig);
 
         ctx.Send(
             ev->Sender,
@@ -391,12 +469,14 @@ private:
 void RenderCellsPage(
     IOutputStream& out,
     const TCellsConfig& config,
-    const TCellsSnapshot& snapshot)
+    const TCellsSnapshot& snapshot,
+    const TDiagnosticsConfig& diagnosticsConfig)
 {
     RenderSearchForm(out);
-    RenderConfig(out, config);
+    RenderMounts(out, snapshot.Mounts, diagnosticsConfig);
     RenderOutbound(out, snapshot.HostStatuses);
     RenderInbound(out, snapshot.InboundActivity);
+    RenderConfig(out, config);
 }
 
 void RenderCellsSearchResult(

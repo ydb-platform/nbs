@@ -8,6 +8,28 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+enum class EOperationalState
+{
+    // WriteBackCache accepts new cached WriteData requests normally
+    Active,
+
+    // WriteBackCache is draining pending and unflushed requests.
+    // New WriteData requests are not accepted during this state.
+    Stopping,
+
+    // WriteBackCache has stopped draining requests.
+    // This state also covers the case when ServerWriteBackCacheEnabled = false,
+    // but WriteBackCache was previously initialized.
+    Inactive,
+
+    // WriteBackCache encountered an unrecoverable error.
+    // This corresponds to persistent storage corruption or an internal problem
+    // in the logic.
+    Failed,
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TWriteBackCacheStateMetrics
 {
     struct TFlushMetrics
@@ -38,6 +60,14 @@ struct TWriteBackCacheStateMetrics
         NMetrics::IMetricPtr FailedCount;
     };
 
+    struct TOperationalStateMetrics
+    {
+        NMetrics::IMetricPtr Active;
+        NMetrics::IMetricPtr Stopping;
+        NMetrics::IMetricPtr Inactive;
+        NMetrics::IMetricPtr Failed;
+    };
+
     TFlushMetrics Flush;
     NMetrics::IMetricPtr WriteDataRequestDroppedCount;
     TBarrierMetrics Barriers;
@@ -46,6 +76,8 @@ struct TWriteBackCacheStateMetrics
     TRequestMetrics FlushAllRequests;
     TRequestMetrics ReleaseHandleRequests;
     TRequestMetrics AcquireBarrierRequests;
+
+    TOperationalStateMetrics OperationalState;
 
     void Register(
         NMetrics::IMetricsRegistry& localMetricsRegistry,
@@ -89,7 +121,10 @@ struct IWriteBackCacheStateStats
     virtual void RequestFailed(ERequestType type, TDuration duration) = 0;
 
     virtual TWriteBackCacheStateMetrics CreateMetrics() const = 0;
-    virtual void UpdateStats(const TMaxInProgressDurations& values) = 0;
+
+    virtual void UpdateStats(
+        EOperationalState state,
+        const TMaxInProgressDurations& values) = 0;
 };
 
 using IWriteBackCacheStateStatsPtr = std::shared_ptr<IWriteBackCacheStateStats>;

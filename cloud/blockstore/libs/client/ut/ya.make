@@ -8,6 +8,7 @@ SRCS(
     session_ut.cpp
     switchable_client_ut.cpp
     switchable_session_ut.cpp
+    metric_ut.cpp
 )
 
 PEERDIR(

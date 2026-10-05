@@ -65,6 +65,16 @@ public:
         return *Request;
     }
 
+    ui64 GetNodeId() const
+    {
+        return Request->GetNodeId();
+    }
+
+    ui64 GetHandle() const
+    {
+        return Request->GetHandle();
+    }
+
     NThreading::TPromise<NProto::TWriteDataResponse>& AccessPromise()
     {
         return Promise;

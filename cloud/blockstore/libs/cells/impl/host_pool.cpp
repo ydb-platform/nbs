@@ -526,7 +526,7 @@ void TCellHostPool::PingSweep()
     {
         TString Fqdn;
         ui64 Epoch;
-        NClient::IMultiClientEndpointPtr Endpoint;
+        IMultiClientEndpointPtr Endpoint;
     };
 
     TVector<TTarget> targets;

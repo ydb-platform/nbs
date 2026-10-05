@@ -202,18 +202,14 @@ public:
     void UpdateStats() const;
 
 private:
+    EOperationalState GetOperationalState() const;
+
     // Combines acquiring mutex and executing queued operations on mutex release
     // TQueuedOperations has custom Release method that:
     // 1. Copies the accumulated operations to a temporary vector.
     // 2. Releases mutex.
     // 3. Executes the operations from the temporary vector.
     TGuard<TQueuedOperations> LockStateAndPostponeQueuedOperations() const;
-
-    NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
-        std::unique_ptr<TPendingWriteDataRequest> request);
-
-    NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
-        std::unique_ptr<TCachedWriteDataRequest> request);
 
     NThreading::TFuture<NProto::TWriteDataResponse> AddRequest(
         std::unique_ptr<TCachedWriteDataRequest> request,
