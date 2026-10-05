@@ -1620,13 +1620,6 @@ private:
             State.GetCompactionMap().GetMixedBlocksCountPerDisk();
         const ui64 diskTotalBlockCount =
             State.GetCompactionMap().GetTotalBlocksCountPerDisk();
-        // All stored blocks have the same size, so this is also the mixed
-        // bytes percentage, including overwritten blocks still stored in blobs.
-        const ui32 diskMixedBlocksPercentage =
-            GetPercentage(diskMixedBlockCount, diskTotalBlockCount);
-        const ui64 maxMixedBlocksPercentage =
-            isSSD ? Config->GetSSDMaxMixedBlocksPercentage()
-                  : Config->GetHDDMaxMixedBlocksPercentage();
         const ui64 perDiskCompactionStartBytes =
             isSSD ? Config->GetSSDMixedBlocksPerDiskCompactionStartBytes()
                   : Config->GetHDDMixedBlocksPerDiskCompactionStartBytes();
@@ -1635,8 +1628,19 @@ private:
         const bool enoughBytesStored =
             totalBytesStored >= perDiskCompactionStartBytes;
 
+        // All stored blocks have the same size, so this is also the mixed
+        // bytes percentage, including overwritten blocks still stored in blobs.
+        const ui32 diskMixedBlocksPercentage =
+            enoughBytesStored
+                ? GetPercentage(diskMixedBlockCount, diskTotalBlockCount)
+                : 0;
+
+        const ui64 maxMixedBlocksPercentage =
+            isSSD ? Config->GetSSDMaxMixedBlocksPercentage()
+                  : Config->GetHDDMaxMixedBlocksPercentage();
+
         const bool diskMixedBlocksPercentageOverThreshold =
-            enoughBytesStored && maxMixedBlocksPercentage > 0 &&
+            maxMixedBlocksPercentage > 0 &&
             diskMixedBlocksPercentage >= maxMixedBlocksPercentage;
 
         if (!rangeMixedBlockCountOverThreshold &&
