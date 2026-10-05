@@ -20,6 +20,9 @@ bool IsNonReplicatedMediaKind(NProto::EStorageMediaKind mediaKind);
 bool IsReliableMediaKind(NProto::EStorageMediaKind mediaKind);
 TString MediaKindToString(NProto::EStorageMediaKind mediaKind);
 TString MediaKindToStatsString(NProto::EStorageMediaKind mediaKind);
+TString MediaKindToStatsString(
+    bool isSystem,
+    NProto::EStorageMediaKind mediaKind);
 TString MediaKindToComputeType(NProto::EStorageMediaKind mediaKind);
 bool ParseMediaKind(const TStringBuf s, NProto::EStorageMediaKind* mediaKind);
 

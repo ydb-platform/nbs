@@ -994,6 +994,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
     void DoTestShouldReportBytesCount(
         EPublishingPolicy policy,
         NProto::EStorageMediaKind mediaKind,
+        const TString& expectedType,
         bool isSystem,
         bool copiedDisk = false)
     {
@@ -1034,17 +1035,29 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         options.FinalEvents.emplace_back(NActors::TEvents::TSystem::Wakeup);
         runtime.DispatchEvents(options);
 
-        auto type = MediaKindToString(mediaKind);
-        if (isSystem) {
-            type += "_system";
-        }
-
-        ui64 actual = *runtime.GetAppData(0).Counters
+        auto serviceCounters = runtime.GetAppData(0).Counters
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "service")
-            ->GetSubgroup("type", type)
-            ->GetCounter("BytesCount");
-        UNIT_ASSERT_VALUES_EQUAL(100500, actual);
+            ->GetSubgroup("type", expectedType);
+        auto serviceBytesCount = serviceCounters->GetCounter("BytesCount");
+        UNIT_ASSERT(serviceBytesCount);
+        UNIT_ASSERT_VALUES_EQUAL(100500, serviceBytesCount->Val());
+
+        // Copied volumes do not publish service_volume counters
+        if (!copiedDisk) {
+            // Verify service_volume uses the same type as service
+            auto serviceVolumeCounters = runtime.GetAppData(0).Counters
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "service_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", DefaultDiskId)
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", expectedType);
+            auto serviceVolumeBytesCount = serviceVolumeCounters->GetCounter("BytesCount");
+            UNIT_ASSERT(serviceVolumeBytesCount);
+            UNIT_ASSERT_VALUES_EQUAL(100500, serviceVolumeBytesCount->Val());
+        }
     }
 
     Y_UNIT_TEST(ShouldReportBytesCountForHDDVolumes)
@@ -1052,13 +1065,25 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_HDD,
+            "hdd",
             false,
             false);
         DoTestShouldReportBytesCount(
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_HDD,
+            "hdd",
             false,
             true);
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::Repl,
+            NProto::STORAGE_MEDIA_HYBRID,
+            "hdd",
+            false);
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::Repl,
+            NProto::STORAGE_MEDIA_DEFAULT,
+            "hdd",
+            false);
     }
 
     Y_UNIT_TEST(ShouldReportBytesCountForSSDVolumes)
@@ -1066,6 +1091,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_SSD,
+            "ssd",
             false,
             false);
     }
@@ -1075,6 +1101,17 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_HDD,
+            "hdd_system",
+            true);
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::Repl,
+            NProto::STORAGE_MEDIA_HYBRID,
+            "hdd_system",
+            true);
+        DoTestShouldReportBytesCount(
+            EPublishingPolicy::Repl,
+            NProto::STORAGE_MEDIA_DEFAULT,
+            "hdd_system",
             true);
     }
 
@@ -1083,6 +1120,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::Repl,
             NProto::STORAGE_MEDIA_SSD,
+            "ssd_system",
             true);
     }
 
@@ -1091,6 +1129,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
+            "ssd_nonrepl",
             false);
     }
 
@@ -1099,6 +1138,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_HDD_NONREPLICATED,
+            "hdd_nonrepl",
             false);
     }
 
@@ -1107,6 +1147,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_SSD_MIRROR2,
+            "ssd_mirror2",
             false);
     }
 
@@ -1115,6 +1156,7 @@ Y_UNIT_TEST_SUITE(TServiceVolumeStatsTest)
         DoTestShouldReportBytesCount(
             EPublishingPolicy::DiskRegistryBased,
             NProto::STORAGE_MEDIA_SSD_MIRROR3,
+            "ssd_mirror3",
             false);
     }
 
