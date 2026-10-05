@@ -110,7 +110,6 @@ struct TConfigInitializerYdb final
     void ApplyLocalNVMeConfig(const TString& text);
 
     void ApplyNamedConfigs(const NKikimrConfig::TAppConfig& config);
-    void ApplyBlockstoreConfig(const NKikimrConfig::TAppConfig& config);
     void ApplyAllowedKikimrFeatureFlags(
         const NKikimrConfig::TAppConfig& config);
 
