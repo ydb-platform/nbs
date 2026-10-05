@@ -18,20 +18,38 @@ struct TColumnRef
 
 using TValue = std::variant<ui64, TString, TColumnRef>;
 
-enum class EPredicate
-{
-    Equal,
-    NotEqual,
-    In,
-    Substr,
-};
-
-struct TCondition
+struct TPredicateBase
 {
     TString Column;
-    EPredicate Predicate = EPredicate::Equal;
+};
+
+struct TSingleValuePredicate : TPredicateBase
+{
+    TValue Value;
+};
+
+struct TEqualPredicate : TSingleValuePredicate {};
+struct TNotEqualPredicate : TSingleValuePredicate {};
+struct TGreaterPredicate : TSingleValuePredicate {};
+struct TGreaterOrEqualPredicate : TSingleValuePredicate {};
+struct TLessPredicate : TSingleValuePredicate {};
+struct TLessOrEqualPredicate : TSingleValuePredicate {};
+struct TSubstrPredicate : TSingleValuePredicate {};
+
+struct TInPredicate : TPredicateBase
+{
     TVector<TValue> Values;
 };
+
+using TPredicate = std::variant<
+    TEqualPredicate,
+    TNotEqualPredicate,
+    TGreaterPredicate,
+    TGreaterOrEqualPredicate,
+    TLessPredicate,
+    TLessOrEqualPredicate,
+    TSubstrPredicate,
+    TInPredicate>;
 
 enum class ELogicalOperator
 {
@@ -39,19 +57,18 @@ enum class ELogicalOperator
     Or,
 };
 
+struct TExpression;
+
+struct TLogicalExpression
+{
+    ELogicalOperator Operator = ELogicalOperator::And;
+    std::unique_ptr<TExpression> Left;
+    std::unique_ptr<TExpression> Right;
+};
+
 struct TExpression
 {
-    enum class EKind
-    {
-        Predicate,
-        Logical,
-    };
-
-    EKind Kind = EKind::Predicate;
-    TCondition Predicate;
-    ELogicalOperator Operator = ELogicalOperator::And;
-    std::shared_ptr<TExpression> Left;
-    std::shared_ptr<TExpression> Right;
+    std::variant<TPredicate, TLogicalExpression> Node;
 };
 
 struct TSelect
@@ -59,8 +76,7 @@ struct TSelect
     TString Table;
     // Empty means SELECT *.
     TVector<TString> Columns;
-    TVector<TCondition> Conditions;
-    std::shared_ptr<TExpression> Where;
+    TMaybe<TExpression> Where;
     TMaybe<ui64> Limit;
 };
 

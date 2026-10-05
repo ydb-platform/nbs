@@ -2,9 +2,60 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <type_traits>
+
 namespace NCloud::NFileStore::NStorage::NQuery {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+const TPredicate& AsPredicate(const TExpression& expression)
+{
+    return std::get<TPredicate>(expression.Node);
+}
+
+const TLogicalExpression& AsLogical(const TExpression& expression)
+{
+    return std::get<TLogicalExpression>(expression.Node);
+}
+
+const TString& PredicateColumn(const TPredicate& predicate)
+{
+    return std::visit(
+        [](const auto& value) -> const TString& { return value.Column; },
+        predicate);
+}
+
+const TValue& PredicateValue(const TPredicate& predicate, size_t index = 0)
+{
+    return std::visit(
+        [index](const auto& value) -> const TValue& {
+            using T = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<T, TInPredicate>) {
+                return value.Values[index];
+            } else {
+                return value.Value;
+            }
+        },
+        predicate);
+}
+
+size_t PredicateValuesSize(const TPredicate& predicate)
+{
+    return std::visit(
+        [](const auto& value) -> size_t {
+            using T = std::decay_t<decltype(value)>;
+            if constexpr (std::is_same_v<T, TInPredicate>) {
+                return value.Values.size();
+            } else {
+                return 1;
+            }
+        },
+        predicate);
+}
+
+}   // namespace
 
 Y_UNIT_TEST_SUITE(TQueryParserTest)
 {
@@ -17,9 +68,10 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT_VALUES_EQUAL(query->Table, "NodeRefs");
         UNIT_ASSERT(query->Columns.empty());
         UNIT_ASSERT(query->Where);
-        UNIT_ASSERT(query->Where->Kind == TExpression::EKind::Predicate);
-        UNIT_ASSERT_VALUES_EQUAL("child_id", query->Where->Predicate.Column);
-        UNIT_ASSERT_VALUES_EQUAL(3, query->Where->Predicate.Values.size());
+        const auto& predicate = AsPredicate(*query->Where);
+        UNIT_ASSERT(std::holds_alternative<TInPredicate>(predicate));
+        UNIT_ASSERT_VALUES_EQUAL("child_id", PredicateColumn(predicate));
+        UNIT_ASSERT_VALUES_EQUAL(3, PredicateValuesSize(predicate));
         UNIT_ASSERT_VALUES_EQUAL(10, *query->Limit);
     }
 
@@ -32,13 +84,13 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT(query);
         UNIT_ASSERT_VALUES_EQUAL(query->Columns.size(), 2);
         UNIT_ASSERT(query->Where);
-        UNIT_ASSERT(query->Where->Kind == TExpression::EKind::Logical);
-        UNIT_ASSERT(query->Where->Left);
-        UNIT_ASSERT(query->Where->Right);
-        UNIT_ASSERT(query->Where->Operator == ELogicalOperator::And);
+        const auto& logical = AsLogical(*query->Where);
+        UNIT_ASSERT(logical.Left);
+        UNIT_ASSERT(logical.Right);
+        UNIT_ASSERT(logical.Operator == ELogicalOperator::And);
         UNIT_ASSERT(
             std::holds_alternative<TString>(
-                query->Where->Left->Predicate.Values[0]));
+                PredicateValue(AsPredicate(*logical.Left))));
     }
 
     Y_UNIT_TEST(ShouldRejectEmptyIn)
@@ -88,10 +140,9 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         UNIT_ASSERT(query);
         UNIT_ASSERT_VALUES_EQUAL(1, query->Columns.size());
         UNIT_ASSERT(query->Where);
-        UNIT_ASSERT(query->Where->Kind == TExpression::EKind::Predicate);
         UNIT_ASSERT_VALUES_EQUAL(
             "it's",
-            std::get<TString>(query->Where->Predicate.Values[0]));
+            std::get<TString>(PredicateValue(AsPredicate(*query->Where))));
         UNIT_ASSERT_VALUES_EQUAL(*query->Limit, 0);
     }
 
@@ -103,20 +154,19 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
 
         UNIT_ASSERT(query);
         UNIT_ASSERT(query->Where);
-        UNIT_ASSERT(query->Where->Kind == TExpression::EKind::Logical);
-        UNIT_ASSERT(query->Where->Operator == ELogicalOperator::Or);
-        UNIT_ASSERT(
-            query->Where->Left->Predicate.Predicate == EPredicate::Equal);
+        const auto& logical = AsLogical(*query->Where);
+        UNIT_ASSERT(logical.Operator == ELogicalOperator::Or);
+        const auto& equal = AsPredicate(*logical.Left);
+        UNIT_ASSERT(std::holds_alternative<TEqualPredicate>(equal));
         UNIT_ASSERT_VALUES_EQUAL(
             "b",
-            std::get<TColumnRef>(query->Where->Left->Predicate.Values[0]).Name);
-        UNIT_ASSERT(query->Where->Right->Operator == ELogicalOperator::And);
-        UNIT_ASSERT(
-            query->Where->Right->Left->Predicate.Predicate ==
-            EPredicate::NotEqual);
-        UNIT_ASSERT(
-            query->Where->Right->Right->Predicate.Predicate ==
-            EPredicate::Substr);
+            std::get<TColumnRef>(PredicateValue(equal)).Name);
+        const auto& andExpression = AsLogical(*logical.Right);
+        UNIT_ASSERT(andExpression.Operator == ELogicalOperator::And);
+        UNIT_ASSERT(std::holds_alternative<TNotEqualPredicate>(
+            AsPredicate(*andExpression.Left)));
+        UNIT_ASSERT(std::holds_alternative<TSubstrPredicate>(
+            AsPredicate(*andExpression.Right)));
     }
 
     Y_UNIT_TEST(ShouldParseNestedParentheses)
@@ -127,9 +177,33 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
 
         UNIT_ASSERT(query);
         UNIT_ASSERT(query->Where);
-        UNIT_ASSERT(query->Where->Operator == ELogicalOperator::And);
-        UNIT_ASSERT(query->Where->Left->Operator == ELogicalOperator::Or);
+        const auto& logical = AsLogical(*query->Where);
+        UNIT_ASSERT(logical.Operator == ELogicalOperator::And);
+        UNIT_ASSERT(AsLogical(*logical.Left).Operator == ELogicalOperator::Or);
         UNIT_ASSERT_VALUES_EQUAL(5, *query->Limit);
+    }
+
+    Y_UNIT_TEST(ShouldParseComparisonOperators)
+    {
+        const auto assertComparison = [] (TStringBuf op, auto expectedTag) {
+            auto query = Parse(
+                TString("SELECT * FROM t WHERE a ") + TString(op) + " 42");
+
+            UNIT_ASSERT(query);
+            UNIT_ASSERT(query->Where);
+            const auto& predicate = AsPredicate(*query->Where);
+            UNIT_ASSERT(
+                std::holds_alternative<decltype(expectedTag)>(predicate));
+            UNIT_ASSERT_VALUES_EQUAL("a", PredicateColumn(predicate));
+            UNIT_ASSERT_VALUES_EQUAL(
+                42,
+                std::get<ui64>(PredicateValue(predicate)));
+        };
+
+        assertComparison(">", TGreaterPredicate{});
+        assertComparison(">=", TGreaterOrEqualPredicate{});
+        assertComparison("<", TLessPredicate{});
+        assertComparison("<=", TLessOrEqualPredicate{});
     }
 
     Y_UNIT_TEST(ShouldNotTreatKeywordsInsideIdentifiersAsOperators)
@@ -137,21 +211,24 @@ Y_UNIT_TEST_SUITE(TQueryParserTest)
         auto candy = Parse("SELECT a FROM t WHERE a == candy");
         UNIT_ASSERT(candy);
         UNIT_ASSERT(candy->Where);
-        UNIT_ASSERT(candy->Where->Kind == TExpression::EKind::Predicate);
+        const auto& equal = AsPredicate(*candy->Where);
+        UNIT_ASSERT(std::holds_alternative<TEqualPredicate>(equal));
         UNIT_ASSERT_VALUES_EQUAL(
             "candy",
-            std::get<TColumnRef>(candy->Where->Predicate.Values[0]).Name);
+            std::get<TColumnRef>(PredicateValue(equal)).Name);
 
         auto logical = Parse("SELECT a FROM t WHERE a == floor OR  c == d");
         UNIT_ASSERT(logical);
         UNIT_ASSERT(logical->Where);
-        UNIT_ASSERT(logical->Where->Kind == TExpression::EKind::Logical);
-        UNIT_ASSERT(logical->Where->Operator == ELogicalOperator::Or);
+        const auto& logicalExpression = AsLogical(*logical->Where);
+        UNIT_ASSERT(logicalExpression.Operator == ELogicalOperator::Or);
         UNIT_ASSERT_VALUES_EQUAL(
             "floor",
             std::get<TColumnRef>(
-                logical->Where->Left->Predicate.Values[0]).Name);
-        UNIT_ASSERT_VALUES_EQUAL("c", logical->Where->Right->Predicate.Column);
+                PredicateValue(AsPredicate(*logicalExpression.Left))).Name);
+        UNIT_ASSERT_VALUES_EQUAL(
+            "c",
+            PredicateColumn(AsPredicate(*logicalExpression.Right)));
     }
 
     Y_UNIT_TEST(ShouldRejectMalformedQueries)

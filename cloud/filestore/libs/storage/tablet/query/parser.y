@@ -15,12 +15,21 @@ struct TParseContext
 
 extern TParseContext* CurrentParseContext;
 
-static TExpression* PredicateExpression(TCondition* condition)
+static TExpression* PredicateExpression(TPredicate* predicate)
 {
     auto expression = new TExpression;
-    expression->Predicate = std::move(*condition);
-    delete condition;
+    expression->Node = std::move(*predicate);
+    delete predicate;
     return expression;
+}
+
+template <typename TPredicateType>
+static TPredicate* SingleValuePredicate(TString column, TValue value)
+{
+    TPredicateType predicate;
+    predicate.Column = std::move(column);
+    predicate.Value = std::move(value);
+    return new TPredicate(std::move(predicate));
 }
 
 static TExpression* LogicalExpression(
@@ -28,11 +37,13 @@ static TExpression* LogicalExpression(
     TExpression* left,
     TExpression* right)
 {
+    TLogicalExpression logical;
+    logical.Operator = op;
+    logical.Left.reset(left);
+    logical.Right.reset(right);
+
     auto expression = new TExpression;
-    expression->Kind = TExpression::EKind::Logical;
-    expression->Operator = op;
-    expression->Left.reset(left);
-    expression->Right.reset(right);
+    expression->Node = std::move(logical);
     return expression;
 }
 
@@ -63,20 +74,20 @@ void yyerror(const char* message);
     TString* text;
     ui64 number;
     NCloud::NFileStore::NStorage::NQuery::TValue* value;
-    NCloud::NFileStore::NStorage::NQuery::TCondition* condition;
+    NCloud::NFileStore::NStorage::NQuery::TPredicate* predicate;
     NCloud::NFileStore::NStorage::NQuery::TExpression* expression;
     TVector<TString>* columns;
     TVector<NCloud::NFileStore::NStorage::NQuery::TValue>* values;
 }
 
 %token SELECT FROM WHERE AND OR IN SUBSTR LIMIT INVALID
-%token EQ NE
+%token EQ NE GT GE LT LE
 %token <text> IDENTIFIER STRING
 %token <number> NUMBER
 
 %type <columns> columns identifier_list
 %type <expression> where_clause expr primary
-%type <condition> predicate
+%type <predicate> predicate
 %type <value> value
 %type <values> value_list
 
@@ -90,7 +101,10 @@ query:
     {
         CurrentParseContext->Query.Columns = std::move(*$2);
         CurrentParseContext->Query.Table = std::move(*$4);
-        CurrentParseContext->Query.Where.reset($5);
+        if ($5) {
+            CurrentParseContext->Query.Where = std::move(*$5);
+            delete $5;
+        }
         delete $2;
         delete $4;
     }
@@ -159,7 +173,6 @@ expr:
 primary:
     predicate
     {
-        CurrentParseContext->Query.Conditions.push_back(*$1);
         $$ = PredicateExpression($1);
     }
   | '(' expr ')'
@@ -171,37 +184,59 @@ primary:
 predicate:
     IDENTIFIER EQ value
     {
-        $$ = new TCondition;
-        $$->Column = std::move(*$1);
-        $$->Predicate = EPredicate::Equal;
-        $$->Values.push_back(std::move(*$3));
+        $$ = SingleValuePredicate<TEqualPredicate>(
+            std::move(*$1), std::move(*$3));
         delete $1;
         delete $3;
     }
   | IDENTIFIER NE value
     {
-        $$ = new TCondition;
-        $$->Column = std::move(*$1);
-        $$->Predicate = EPredicate::NotEqual;
-        $$->Values.push_back(std::move(*$3));
+        $$ = SingleValuePredicate<TNotEqualPredicate>(
+            std::move(*$1), std::move(*$3));
         delete $1;
         delete $3;
     }
   | IDENTIFIER SUBSTR value
     {
-        $$ = new TCondition;
-        $$->Column = std::move(*$1);
-        $$->Predicate = EPredicate::Substr;
-        $$->Values.push_back(std::move(*$3));
+        $$ = SingleValuePredicate<TSubstrPredicate>(
+            std::move(*$1), std::move(*$3));
+        delete $1;
+        delete $3;
+    }
+  | IDENTIFIER GT value
+    {
+        $$ = SingleValuePredicate<TGreaterPredicate>(
+            std::move(*$1), std::move(*$3));
+        delete $1;
+        delete $3;
+    }
+  | IDENTIFIER GE value
+    {
+        $$ = SingleValuePredicate<TGreaterOrEqualPredicate>(
+            std::move(*$1), std::move(*$3));
+        delete $1;
+        delete $3;
+    }
+  | IDENTIFIER LT value
+    {
+        $$ = SingleValuePredicate<TLessPredicate>(
+            std::move(*$1), std::move(*$3));
+        delete $1;
+        delete $3;
+    }
+  | IDENTIFIER LE value
+    {
+        $$ = SingleValuePredicate<TLessOrEqualPredicate>(
+            std::move(*$1), std::move(*$3));
         delete $1;
         delete $3;
     }
   | IDENTIFIER IN '{' value_list '}'
     {
-        $$ = new TCondition;
-        $$->Column = std::move(*$1);
-        $$->Predicate = EPredicate::In;
-        $$->Values = std::move(*$4);
+        TInPredicate predicate;
+        predicate.Column = std::move(*$1);
+        predicate.Values = std::move(*$4);
+        $$ = new TPredicate(std::move(predicate));
         delete $1;
         delete $4;
     }
