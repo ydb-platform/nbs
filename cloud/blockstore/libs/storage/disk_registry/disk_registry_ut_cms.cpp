@@ -2062,8 +2062,8 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
-                    TEvDiskAgent::EvAttachPathsResponse) {
-
+                    TEvDiskAgent::EvAttachPathsResponse)
+                {
                     UNIT_ASSERT(!attachPathsResponse);
                     attachPathsResponse.Swap(event);
 
