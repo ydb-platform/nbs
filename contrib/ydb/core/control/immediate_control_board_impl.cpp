@@ -37,10 +37,19 @@ void TControlBoard::RestoreDefaults() {
 }
 
 void TControlBoard::RestoreDefault(TString name) {
+    TAtomicBase prevValue;
+    TAtomicBase newValue;
+    RestoreDefault(name, prevValue, newValue);
+}
+
+// Restore one registered control and leave both outputs untouched for an unknown name.
+bool TControlBoard::RestoreDefault(TString name, TAtomicBase& outPrevValue, TAtomicBase& outNewValue) {
     TIntrusivePtr<TControl> control;
     if (Board.Get(name, control)) {
-        control->RestoreDefault();
+        control->RestoreDefault(outPrevValue, outNewValue);
+        return true;
     }
+    return false;
 }
 
 bool TControlBoard::SetValue(TString name, TAtomic value, TAtomic &outPrevValue) {
@@ -61,8 +70,9 @@ void TControlBoard::GetValue(TString name, TAtomic &outValue, bool &outIsControl
     }
 }
 
-TString TControlBoard::RenderAsHtml() const {
+TString TControlBoard::RenderAsHtml(ui64* outChangedCount) const {
     TStringStream str;
+    ui64 changedCount = 0;
     HTML(str) {
         TABLE_SORTABLE_CLASS("table") {
             TABLEHEAD() {
@@ -79,18 +89,20 @@ TString TControlBoard::RenderAsHtml() const {
                 for (const auto& bucket : Board.Buckets) {
                     TReadGuard guard(bucket.GetLock());
                     for (const auto &item : bucket.GetMap()) {
+                        const bool isDefault = item.second->IsDefault();
+                        changedCount += !isDefault;
                         TABLER() {
                             TABLED() { str << item.first; }
                             TABLED() { str << item.second->RangeAsString(); }
                             TABLED() {
-                                if (item.second->IsDefault()) {
+                                if (isDefault) {
                                     str << "<p>" << item.second->Get() << "</p>";
                                 } else {
                                     str << "<p style='color:red;'><b>" << item.second->Get() << " </b></p>";
                                 }
                             }
                             TABLED() {
-                                if (item.second->IsDefault()) {
+                                if (isDefault) {
                                     str << "<p>" << item.second->GetDefault() << "</p>";
                                 } else {
                                     str << "<p style='color:red;'><b>" << item.second->GetDefault() << " </b></p>";
@@ -101,17 +113,25 @@ TString TControlBoard::RenderAsHtml() const {
                                 str << "<input name='" << item.first << "' type='text' value='"
                                     << item.second->Get() << "'/>";
                                 str << "<button type='submit' style='color:red;'><b>Change</b></button>";
+                                if (!isDefault) {
+                                    str << "<button type='submit' name='restoreDefault' value='" << item.first
+                                        << "' style='color:green; margin-left:4px; white-space:nowrap;'>"
+                                        << "<b>Restore Default</b></button>";
+                                }
                                 str << "</form>";
                             }
-                            TABLED() { str << !item.second->IsDefault(); }
+                            TABLED() { str << !isDefault; }
                         }
                     }
                 }
             }
         }
         str << "<form class='form_horizontal' method='post'>";
-        str << "<button type='submit' name='restoreDefaults' style='color:green;'><b>Restore Default</b></button>";
+        str << "<button type='submit' name='restoreDefaults' style='color:green;'><b>Restore Defaults</b></button>";
         str << "</form>";
+    }
+    if (outChangedCount) {
+        *outChangedCount = changedCount;
     }
     return str.Str();
 }
