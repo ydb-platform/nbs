@@ -1,13 +1,13 @@
 # Fast shard device management
 
-Problem: Filestore must manage the full device lifecycle through blockstore DR: allocation on filesystem creation,
-deallocation on deletion, and replacement after device failures and during scheduled maintenance.
+Filestore must allocate devices through Blockstore DR on creation and release them on deletion.
+It must also replace devices after failures and during maintenance.
 
 ## Blockstore DR
 
-### External ownership and notifications
+### External ownership
 
-**Problem:** persist the external owner and deliver existing DR notifications to it.
+**Problem:** store the external owner and send existing DR notifications to it.
 
 ```proto
 TAllocateDiskRequest       { + uint64 ExternalVolumeTabletId; }
@@ -17,24 +17,24 @@ TDiskConfig                { + uint64 ExternalVolumeTabletId; }
 TReallocateDiskRequest     { + uint64 ExternalVolumeTabletId; }
 ```
 
-Zero keeps native NBS behavior. Pass the owner through allocation transaction arguments,
-`TAllocateDiskParams`, `TDiskState`, load/save and backup. Persist it on the logical
-disk and internal replicas. Reject allocation with a different owner, including
-native/external changes, before mutating state or returning `S_ALREADY`.
+`ExternalVolumeTabletId` contains the tablet ID of the Filestore shard that uses the allocated devices.
+If the value is zero, DR manages the disk as an NBS volume.
 
-`TNotifyActor` takes the owner from the logical disk and sets `ExternalVolumeTabletId`. Keep
-the existing notification queue, sequence numbers and retries.
+Pass this tablet ID through allocation transaction arguments and `TAllocateDiskParams`.
+Store it in the disk's `TDiskState` and `TDiskConfig` records.
+Cleanup and deallocation requests must contain the same tablet ID as the disk record.
 
-In `TVolumeProxyActor`, branch on `ExternalVolumeTabletId` **before native SS lookup**.
+### Notifications
 
-The Filestore tablet handles the `ReallocateDiskRequest/Response` pair as a wire
-duplicate, see [Filestore DR proxy](#filestore-dr-proxy). Its reconciliation and
-acknowledgement rules are in [Filestore Tablet](#filestore-tablet).
+For each notification, `TDiskRegistryActor` in addition supplies `TNotifyActor` with `ExternalVolumeTabletId`.
+The worker sends requests through `TVolumeProxyActor`, which uses a nonzero `ExternalVolumeTabletId` to skip SS lookup.
 
-### Paths that assume an NBS volume
+The Filestore shard handles the `ReallocateDiskRequest/Response` pair through [wire-compatible events](#layout-notification-protocol).
+See [Filestore tablet](#filestore-tablet) for layout changes and acknowledgement rules.
 
-**Problem:** DR uses NBS services to check, configure and delete volumes. Filestore
-owns its tablets, so these calls must skip disks with `ExternalVolumeTabletId` set.
+### Operations that assume an NBS volume
+
+For external disks, change these operations:
 
 - **Failed allocation:** keep the rollback that releases partially allocated devices
   and return the error to Filestore. Skip `AddToBrokenDisks`: it schedules deletion
@@ -43,160 +43,192 @@ owns its tablets, so these calls must skip disks with `ExternalVolumeTabletId` s
   information is lost when the disk record is erased.
 - **Volume config:** skip NBS SS config updates for external disks.
 - **Unsupported operations:** reject checkpoint allocation and block-size changes
-  when `ExternalVolumeTabletId` is set, before changing state.
-- **DR restore:** retain external disks and their replica/allocation records from
+  when `ExternalVolumeTabletId` is set, before any state change.
+- **DR restore:** keep external disks and their replica/allocation records from
   the backup. Skip NBS `ListVolumes`, `DescribeVolume` and `GetVolumeInfo` ownership
   checks for them.
-- **Cleanup loop:** deallocates a marked external disk on the next cycle without an SS
-  check. Acceptable: the mark is set right before `DeallocateDisk`.
+- **Cleanup loop:** deallocate a marked external disk without an SS lookup.
 
-### MEDIA_KIND_JOURNALDEVICE
+### Journal devices
 
-Optionally support `STORAGE_MEDIA_JOURNAL`. To explicitly ensure proper device type instead of fragile pool name.
+Optionally add `STORAGE_MEDIA_JOURNAL` to create journal devices by type instead of pool name.
 
 ## Filestore DR proxy
 
-**Problem:** isolate Filestore from Blockstore.
+**Problem:** limit dependencies between Filestore and Blockstore.
 
-Registers under `MakeFileStoreDeviceProxyId()`. Provides DR event wrapping under public api. Only `impl/` part of the
-library links blockstore counterpart.
+Add a Filestore DR proxy with its own API to isolate Blockstore dependencies.
 
-Note that tablet directly has to handle notification from DR, i.e. `TEvVolume::TEvReallocateDiskRequest/Response`. For 
-that purpose `TEvLayoutChangedRequest/Response` are wire duplicates using the same actor event IDs.
+### Requests and responses
+
+The service and tablets use the proxy, which maps Filestore events to Blockstore events and responses back to Filestore.
 
 ```cpp
-// cloud/filestore/libs/storage/api/device_service.h, tablet/service -> proxy -> DR
+// cloud/filestore/libs/storage/api/device_service.h, tablet/service <-> proxy <-> DR
 TEvAllocateDevicesRequest   { FileSystemId, TabletId, CloudId, FolderId, DeviceCount, DeviceBlocksCount }
-TEvDescribeDevicesRequest   { FileSystemId }                        // DescribeDisk, read-only
+TEvDescribeDevicesRequest   { FileSystemId }
 TEvMarkForCleanupRequest    { FileSystemId, TabletId }
-TEvDeallocateDevicesRequest { FileSystemId, TabletId }              // Sync = false
-TEvFinishRepairRequest      { FileSystemId, DeviceUUID }            // MarkReplacementDevice(false)
+TEvDeallocateDevicesRequest { FileSystemId, TabletId }
+TEvFinishRepairRequest      { FileSystemId, DeviceUUID }
 TEvFinishMigrationRequest   { FileSystemId, SourceUUID, TargetUUID }
-TEvReplaceDeviceRequest     { FileSystemId, ReplicaIndex, DeviceUUID }  // DiskId = <fs>/<index>
+TEvReplaceDeviceRequest     { FileSystemId, ReplicaIndex, DeviceUUID }
 -> TEv*Response {
     Error;
-    // Allocate/describe only; preserve DR replica slots, main replica first.
     Replicas[][] { DeviceUUID, Host, Port };
     Migrations[] { SourceUUID, TStorageDevice Target };
     ReplacementDeviceUUIDs[];
     UnavailableDeviceUUIDs[];
 }
+```
 
-TEvLayoutChangedRequest     { Headers = 1, DiskId = 2, ExternalVolumeTabletId = 3 }
+### Layout notification protocol
+
+The Filestore DR proxy handles all communication with Blockstore except for one event. DR sends layout
+change notifications directly to the tablet named by `ExternalVolumeTabletId`. The Filestore DR proxy
+exposes these events as direct wire duplicates.
+
+NOTE: the wire duplicates share the event IDs of the Blockstore pair, so a receiver in the same process
+reads the wrong message type. Keep DR and Filestore in separate processes, tests included.
+
+```cpp
+TEvLayoutChangedRequest     { Headers = 1, FileSystemId = 2 }
 -> TEvLayoutChangedResponse { Error = 1 }
 ```
 
-Extend `TDescribeDiskResponse` with `UnavailableDeviceUUIDs`.
-
-## FilestoreService
+## Filestore service
 
 **Problem:** support create, resize and delete fast shards. Idempotency and cleanup are separate work.
 
-### Creation/Resize/Deletion
+### Shard counts
+
+Add these request fields:
 
 ```proto
-TCreateFileStoreRequest { + FastShardCount; } // subset of ShardCount
-TResizeFileStoreRequest { + FastShardCount; } // desired total; omission preserves it
+TCreateFileStoreRequest { + optional uint32 FastShardCount; }
+TResizeFileStoreRequest { + optional uint32 FastShardCount; }
 ```
 
-Require `0 < FastShardCount < ShardCount` when fast shards are requested. Populate
-`FileShardFileSystemIds` with fast shards and keep ordinary shards in the
-directory-routing set.
+`ShardCount` counts ordinary shards; `FastShardCount` counts additional fast shards. Neither includes the main tablet.
+On resize, these values specify the resulting counts, not increments. Reject count decreases until shard removal is supported.
+
+### Automatic fast-shard count
+
+Add these fields to `NProto::TStorageConfig` in `cloud/filestore/config/storage.proto`:
+
+```proto
+optional bool AutomaticFastShardCreationEnabled;
+optional uint64 FastShardAllocationUnit;
+```
+
+#### Configuration requests
+
+When the resolved fast-shard count is nonzero, configure the main tablet and shards as follows:
+
+- `ShardFileSystemIds`: all shard IDs; `FileShardFileSystemIds`: only fast-shard IDs.
+- Main and ordinary tablets: `IsFastShard = false`, `DirectoryCreationInShardsEnabled = true` and both lists.
+- Fast shards: `IsFastShard = true`, allocated `FastShardConfig` and `DirectoryCreationInShardsEnabled = false`.
 
 - **Creation:** in `TCreateFileStoreActor`, add a prepare step to allocate devices.
-- **Resize:** in `TAlterFileStoreActor`, same optional intermediate loop.
-- **Deletion:** release device sessions before deallocating fast-shard disks. So
-  change `TDestroyFileStoreActor` logic to `GetFileSystemTopology -> PrepareDestroy -> Delete from SS`.
+- **Resize:** add the equivalent step to `TAlterFileStoreActor`.
+- **Deletion:** use `GetFileSystemTopology -> PrepareDestroy -> Delete from SS` in `TDestroyFileStoreActor`.
+  `PrepareDestroy` must release and mark devices for cleanup in DR.
 
-```cpp
-// Private tablet API.
-TPrepareDestroyRequest { FilesystemId }
--> TPrepareDestroyResponse { Error }
-```
-
-`PrepareDestroy` checks sessions, finishes teardown and sends `MarkForCleanup -> DeallocateDevices` through the DR proxy.
-
-## Filestore Tablet
+## Filestore tablet
 
 ### Configuration
 
-**Scope:** persist the DR layout and run device changes through the existing shard configuration path.
+**Problem:** persist the DR layout and run device changes through the existing shard configuration path.
 
 ```proto
 TStorageGroup {
-    repeated TStorageDevice Devices;       // current replica slots
+    repeated TStorageDevice Devices;
     + TDeviceLayout TargetDeviceLayout;
 }
 
 TDeviceLayout {
-    repeated TDeviceMigration Migrations;       // { SourceUUID, TStorageDevice Target }
-    repeated TDeviceReplacement Replacements;   // { BrokenUUID, TStorageDevice Target }
+    repeated TDeviceMigration Migrations;
+    repeated TDeviceReplacement Replacements;
     repeated string UnavailableDeviceUUIDs;
+}
+
+TDeviceMigration {
+    SourceUUID;
+    TStorageDevice Target;
+}
+
+TDeviceReplacement {
+    BrokenUUID;
+    TStorageDevice Target;
 }
 ```
 
 The tablet matches DR replacement targets to persisted `Devices` by replica slot
 to fill `BrokenUUID`. Keep existing pairs for unchanged copies.
 
-Each DR `AllocateDeviceResponse`/`DescribeDeviceResponse` contains the complete current layout. One active reconfiguration 
-actor per tablet runs `AllocateDisk -> ConfigureAsShard -> apply device changes`. Reject overlapping DR notifications 
+Each DR `AllocateDeviceResponse`/`DescribeDeviceResponse` contains the complete current layout. One active reconfiguration
+actor per tablet runs `AllocateDisk -> ConfigureAsShard -> apply device changes`. Reject overlapping DR notifications
 with `E_REJECTED`; DR retries them.
 
-Extend the fast-shard API:
+### Reconfiguration
+
+Add these methods to `IFileSystemShard` to account for device changes:
 
 ```cpp
-IFileSystemShard {
-    + TFuture<TError> MigrateDevice(TString sourceUUID, TStorageDevice target);
-    + TFuture<TError> ReplaceDevice(TString brokenUUID, TStorageDevice target);
-    + TFuture<TError> RevokeDevice(TString deviceUUID);
-    + TFuture<TError> PromoteDevice(TString targetUUID);
-};
+TFuture<TError> MigrateDevice(
+    TString sourceUUID,
+    TStorageDevice target);
+
+TFuture<TError> ReplaceDevice(
+    TString brokenUUID,
+    TStorageDevice target);
+
+TFuture<TError> RevokeDevice(TString deviceUUID);
+TFuture<TError> PromoteDevice(TString targetUUID);
 ```
 
-`MigrateDevice`/`ReplaceDevice` futures complete after copying and journal catch-up.
-Layout updates start copies without waiting for completion; unchanged copies keep running.
-
-Add corresponding private tablet events:
+Add corresponding private tablet events to notify tablet of completions:
 
 ```cpp
-TEvMigrateDeviceRequest/Response { OperationId, SourceUUID, TargetUUID } / { Error };
-TEvReplaceDeviceRequest/Response { OperationId, BrokenUUID, TargetUUID } / { Error };
-TEvRevokeDeviceRequest/Response { OperationId, DeviceUUID } / { Error };
-TEvPromoteDeviceRequest/Response { OperationId, TargetUUID } / { Error };
-```
+TEvMigrateDeviceRequest {
+    OperationId, TabletGeneration, SourceUUID, TargetUUID
+}
+TEvReplaceDeviceRequest {
+    OperationId, TabletGeneration, BrokenUUID, TargetUUID
+}
+TEvRevokeDeviceRequest {
+    OperationId, TabletGeneration, DeviceUUID
+}
+TEvPromoteDeviceRequest {
+    OperationId, TabletGeneration, TargetUUID
+}
 
-`OperationId` identifies a local copy attempt; ignore completions that no longer
-match the active operation. Queue copy completions while reconfiguration is busy.
-
-Run completion handling through the same reconfiguration actor. If DR cancels a
-copy, call `RevokeDevice(target)`. ACK a DR notification after removed-device I/O
-has drained; DR may release those devices on ACK.
-
-```text
-Copy completes -> FinishMigration(source, target) or FinishRepair(target)
-               -> refresh and persist layout -> PromoteDevice(target)
+TEvMigrateDeviceResponse { OperationId, TabletGeneration, Error }
+TEvReplaceDeviceResponse { OperationId, TabletGeneration, Error }
+TEvRevokeDeviceResponse  { OperationId, TabletGeneration, Error }
+TEvPromoteDeviceResponse { OperationId, TabletGeneration, Error }
 ```
 
 ## Storage Group
 
 ### Startup
 
-**Scope:** initialize usable replicas without contacting devices already known to be broken.
+**Problem:** initialize usable replicas without contacting devices already known to be broken.
 
 At startup, SG uses both `Devices` and `TargetDeviceLayout` to exclude known broken
-devices and unfinished targets from recovery sources. Device initialization failure
-does not restart the tablet: with quorum the shard serves; without it the tablet should boot into RecoveryMode.
+devices and unfinished targets from recovery sources. The tablet handles device configuration changes in
+`StateAdapterBroken`, also named recovery mode, so that it recovers without a restart.
 
 ### SG replication proxy
 
-**Scope:** copy a device online while keeping normal SG read/write routing.
+**Problem:** copy a device online while keeping normal SG read and write routing.
 
-Internally SG uses `DeviceProxy` for device bookkeeping. `ReplicationProxy` is proposed to tackle concurrent writes/replication.
-Main difference is in
-- keeping track of replication cursor in SG service data range.
-- interlocking between replicating and record ranges, e.g. via `TDisjointIntervalMap`.
+SG uses `TDeviceProxy` for device operations. Add a replication proxy with:
 
-Also for purpose of replicating direct page write method should be added:
+- Copy progress in reserved pages 1–7; page 0 contains the SG header.
+  Advance progress only after copied pages are durable.
+- Coordination of page copies and concurrent writes by page range, for example through `TDisjointIntervalMap`.
+
+Add a direct page-write method for device copies:
 
 ```proto
 // device.proto
@@ -209,16 +241,16 @@ TWritePagesResponse { Error; }
 
 ### Configuration management
 
-`MigrateDevice` adds a replication proxy and increases the write quorum by one while the
-source and target coexist: `Q+1` of `N+1` intersects every `Q` of `N` quorum of both the
-old and the promoted configuration, so no committed record is lost across the switch.
+`N` is the original replica count; `Q` is the write quorum, with `2Q > N`.
+`MigrateDevice` adds a replication proxy and increases the write quorum by one while source and target coexist.
+`Q+1` of `N+1` intersects every `Q` of `N` quorum in both the original and final configurations.
 
-`ReplaceDevice` disables the broken proxy and adds a replication proxy without
-changing the write quorum. The target starts voting only after promotion.
+`ReplaceDevice` disables the broken proxy and adds a replication proxy without changing the write quorum.
+The target starts voting only after promotion.
 
-`PromoteDevice` verifies copy completion and journal catch-up, then replaces the
-replication proxy with a normal device proxy. Quorum stays unchanged.
+`PromoteDevice` requires durable copy completion and journal replay through `QuorumLsn`.
+It then replaces the replication proxy with a normal device proxy. Quorum stays unchanged.
 
-`RevokeDevice` removes the device from the SG configuration. Removing a migration
-source after target promotion, or its target after cancellation, lowers quorum by
-one exactly once. Replacement does not change quorum.
+`RevokeDevice` removes the device from the SG configuration.
+Removing a migration source after promotion, or its target after cancellation, lowers quorum by one exactly once.
+Replacement does not change quorum. Recover quorum from stored migration state, not device count alone.
