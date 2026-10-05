@@ -746,6 +746,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(SSDMaxMixedBytesPerUnit,                    ui64,       0             )\
     xxx(HDDMaxMixedBytesPerUnit,                    ui64,       0             )\
     xxx(CompactionStatsTrackerEnabled,              bool,       false         )\
+    xxx(VolumeBalancerEnabled,                      bool,       false         )\
 
 // BLOCKSTORE_STORAGE_CONFIG_RW
 // clang-format on

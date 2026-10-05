@@ -1725,4 +1725,7 @@ message TStorageServiceConfig
 
     // Track concurrent writes when updating compaction range statistics.
     optional bool CompactionStatsTrackerEnabled = 537;
+
+    // Enables volume balancer preemption mechanism.
+    optional bool VolumeBalancerEnabled = 538;
 }

@@ -1004,6 +1004,8 @@ public:
     [[nodiscard]] ui64 GetHDDMaxMixedBytesPerUnit() const;
 
     [[nodiscard]] bool GetCompactionStatsTrackerEnabled() const;
+
+    [[nodiscard]] bool GetVolumeBalancerEnabled() const;
 };
 
 ui64 GetAllocationUnit(

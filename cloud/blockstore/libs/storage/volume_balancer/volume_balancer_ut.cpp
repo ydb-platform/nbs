@@ -103,6 +103,12 @@ public:
         return *this;
     }
 
+    TVolumeBalancerConfigBuilder& WithEnabled(bool enabled)
+    {
+        StorageConfig.SetVolumeBalancerEnabled(enabled);
+        return *this;
+    }
+
     NProto::TStorageServiceConfig Build()
     {
         return StorageConfig;
@@ -522,7 +528,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         TVolumeBalancerConfigBuilder config;
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY),
+            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
+            .WithEnabled(true),
             testEnv.VolumeStats,
             testEnv.Fetcher,
             testEnv.GetEdgeActor()));
@@ -550,7 +557,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         TVolumeBalancerConfigBuilder config;
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_LEAST_HEAVY),
+            config.WithType(NProto::PREEMPTION_MOVE_LEAST_HEAVY)
+            .WithEnabled(true),
             testEnv.VolumeStats,
             testEnv.Fetcher,
             testEnv.GetEdgeActor()));
@@ -579,6 +587,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY);
         config.WithInitialPullDelay(TDuration::Seconds(20));
+        config.WithEnabled(true);
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
             config,
@@ -629,6 +638,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY);
         config.WithInitialPullDelay(TDuration::Seconds(20));
+        config.WithEnabled(true);
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
             config,
@@ -699,6 +709,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         TVolumeBalancerConfigBuilder config;
 
         config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY);
+        config.WithEnabled(true);
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
             config,
@@ -736,7 +747,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         TVolumeBalancerConfigBuilder config;
 
         auto volumeBalancerActorId = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY),
+            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
+            .WithEnabled(true),
             testEnv.VolumeStats,
             testEnv.Fetcher,
             testEnv.GetEdgeActor()));
@@ -803,7 +815,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         TVolumeBalancerConfigBuilder config;
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY),
+            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
+            .WithEnabled(true),
             testEnv.VolumeStats,
             testEnv.Fetcher,
             testEnv.GetEdgeActor()));
@@ -877,7 +890,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         TVolumeBalancerConfigBuilder config;
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY),
+            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
+            .WithEnabled(true),
             testEnv.VolumeStats,
             testEnv.Fetcher,
             testEnv.GetEdgeActor()));
@@ -929,7 +943,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         TVolumeBalancerConfigBuilder config;
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY),
+            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
+            .WithEnabled(true),
             testEnv.VolumeStats,
             testEnv.Fetcher,
             testEnv.GetEdgeActor()));
@@ -974,6 +989,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
             config.WithType(NProto::PREEMPTION_MOVE_LEAST_HEAVY)
+                .WithEnabled(true)
                 .WithMaxInProgress(0),
             testEnv.VolumeStats,
             testEnv.Fetcher,
@@ -1019,6 +1035,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
 
         auto volumeBindingActorID = testEnv.Register(CreateVolumeBalancerActor(
             config.WithType(NProto::PREEMPTION_MOVE_LEAST_HEAVY)
+                .WithEnabled(true)
                 .WithMaxInProgress(1),
             testEnv.VolumeStats,
             testEnv.Fetcher,
