@@ -11,6 +11,8 @@ SRCS(
     incomplete_request_processor.cpp
     incomplete_requests.cpp
     latency_sli.cpp
+    latency_config.cpp
+    latency_checkpoint.cpp
     hostname.cpp
     probes.cpp
     profile_log.cpp
@@ -53,6 +55,7 @@ PEERDIR(
     library/cpp/monlib/service
     library/cpp/monlib/service/pages
     library/cpp/monlib/service/pages/tablesorter
+    library/cpp/string_utils/base64
     library/cpp/string_utils/quote
     library/cpp/threading/hot_swap
 )

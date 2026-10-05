@@ -1,6 +1,7 @@
 #include "request_aio.h"
 
 #include "critical_event.h"
+#include "latency_tracker.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -23,7 +24,8 @@ bool IsBrokenDevice(const TAioDevice& device)
     return !device.File.IsOpen();
 }
 
-void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
+void DiscardRequest(vhd_io* io, TSimpleStats& queueStats,
+                    const TLatencyTracker* latencyTracker, TCpuCycles started)
 {
     ++queueStats.SubFailed;
     auto* bio = vhd_get_bdev_io(io);
@@ -32,6 +34,12 @@ void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
     auto& requestStat = queueStats.Requests[bio->type];
     requestStat.Errors += 1;
     requestStat.Bytes += bytes;
+
+    if (latencyTracker && latencyTracker->IsEnabled()) {
+        latencyTracker->Record(queueStats, bio->type, bytes,
+                               GetCycleCount() - started,
+                               ELatencyCompletion::Error);
+    }
 
     vhd_complete_bio(io, VHD_BDEV_IOERR);
 }
@@ -103,7 +111,8 @@ void PrepareCompoundIO(
     vhd_io* io,
     TVector<iocb*>& batch,
     TCpuCycles now,
-    TSimpleStats& queueStats)
+                       TCpuCycles latencyStartTs, TSimpleStats& queueStats,
+                       const TLatencyTracker* latencyTracker)
 {
     auto* bio = vhd_get_bdev_io(io);
     const ui64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
@@ -129,7 +138,7 @@ void PrepareCompoundIO(
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
 
     if (std::any_of(it, end, IsBrokenDevice)) {
-        DiscardRequest(io, queueStats);
+        DiscardRequest(io, queueStats, latencyTracker, latencyStartTs);
         return;
     }
 
@@ -151,6 +160,10 @@ void PrepareCompoundIO(
         totalBytes,
         now);
 
+    if (latencyTracker && latencyTracker->IsEnabled()) {
+        req->LatencyStartTs = latencyStartTs;
+    }
+
     if (bio->type == VHD_BDEV_WRITE) {
         const bool success = SgListCopyWithOptionalEncryption(
             Log,
@@ -160,6 +173,12 @@ void PrepareCompoundIO(
             bio->first_sector);
         if (!success) {
             ++queueStats.EncryptorErrors;
+            if (latencyTracker && latencyTracker->IsEnabled()) {
+                latencyTracker->Record(queueStats, bio->type,
+                                       bio->total_sectors * VHD_SECTOR_SIZE,
+                                       GetCycleCount() - latencyStartTs,
+                                       ELatencyCompletion::Error);
+            }
             vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
             return;
         }
@@ -310,7 +329,19 @@ void PrepareIO(
     TCpuCycles now,
     TSimpleStats& queueStats)
 {
+    PrepareIO(Log, encryptor, devices, io, batch, now, queueStats, nullptr);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void PrepareIO(TLog& Log, IEncryptor* encryptor,
+               const TVector<TAioDevice>& devices, vhd_io* io,
+               TVector<iocb*>& batch, TCpuCycles now, TSimpleStats& queueStats,
+               const TLatencyTracker* latencyTracker)
+{
     auto* bio = vhd_get_bdev_io(io);
+    const TCpuCycles latencyStartTs =
+        latencyTracker && latencyTracker->IsEnabled() ? GetCycleCount() : now;
     const ui64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
     const ui64 totalBytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
@@ -327,7 +358,8 @@ void PrepareIO(
 
     if (device.EndOffset < logicalOffset + totalBytes) {
         // The request is cross-device, so we split it into two.
-        PrepareCompoundIO(encryptor, Log, devices, io, batch, now, queueStats);
+        PrepareCompoundIO(encryptor, Log, devices, io, batch, now,
+                          latencyStartTs, queueStats, latencyTracker);
         return;
     }
 
@@ -343,7 +375,7 @@ void PrepareIO(
         !device.File.IsOpen());
 
     if (IsBrokenDevice(device)) {
-        DiscardRequest(io, queueStats);
+        DiscardRequest(io, queueStats, latencyTracker, latencyStartTs);
         return;
     }
 
@@ -375,6 +407,10 @@ void PrepareIO(
         io,
         now);
 
+    if (latencyTracker && latencyTracker->IsEnabled()) {
+        req->LatencyStartTs = latencyStartTs;
+    }
+
     if (needToAllocateBuffer) {
         req->Unaligned = !isAllBuffersAligned;
         if (bio->type == VHD_BDEV_WRITE) {
@@ -386,6 +422,11 @@ void PrepareIO(
                 bio->first_sector);
             if (!success) {
                 ++queueStats.EncryptorErrors;
+                if (latencyTracker && latencyTracker->IsEnabled()) {
+                    latencyTracker->Record(queueStats, bio->type, totalBytes,
+                                           GetCycleCount() - latencyStartTs,
+                                           ELatencyCompletion::Error);
+                }
                 vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
                 return;
             }
@@ -446,6 +487,7 @@ TAioRequest::TAioRequest(
     : iocb()
     , Io(io)
     , SubmitTs(submitTs)
+    , LatencyStartTs(submitTs)
     , BufferAllocated(allocatedBufferSize != 0)
     , BufferCount(bufferCount)
 {
@@ -531,6 +573,7 @@ TAioCompoundRequest::TAioCompoundRequest(
     : Inflight(inflight)
     , Io(io)
     , SubmitTs(submitTs)
+    , LatencyStartTs(submitTs)
     , BufferSize(bufferSize)
     , Buffer{
           static_cast<char*>(std::aligned_alloc(blockSize, bufferSize)),

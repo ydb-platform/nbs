@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/nvme/nvme.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
@@ -493,10 +494,11 @@ class TLocalStorage final
 private:
     static constexpr ui32 MaxRequestSize = 32_MB;
 
-    // Request ordering is not defined by blockstore service, so individual request order is not enforced.
-    // However, ordering is controlled by clients and clients need to rely on request _submission_ atomicity.
-    // This lock makes sure that async write submissions are done atomically in relation to
-    // other write request submissions and read request submissions.
+    // Request ordering is not defined by blockstore service, so individual
+    // request order is not enforced. However, ordering is controlled by clients
+    // and clients need to rely on request _submission_ atomicity. This lock
+    // makes sure that async write submissions are done atomically in relation
+    // to other write request submissions and read request submissions.
     TRWMutex WriteSubmissionLock;
 
 public:
@@ -748,9 +750,23 @@ TFuture<NProto::TReadBlocksLocalResponse> TLocalStorage::ReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
-    return SubmitQueue->Execute(
+    auto latency = StartLatency(callContext);
+    auto future = [&]() -> TFuture<NProto::TReadBlocksLocalResponse>
+    {
+        return SubmitQueue->Execute(
         [this, ctx = std::move(callContext), req = std::move(request)] () mutable {
             return DoReadBlocksLocal(std::move(ctx), std::move(req));
+        });
+    }();
+    if (!latency) {
+        return future;
+    }
+    return future.Apply(
+        [latency](const auto& f)
+        {
+            auto response = f.GetValue();
+            FinishLatencyLeaf(latency, response);
+            return response;
         });
 }
 
@@ -758,9 +774,22 @@ TFuture<NProto::TWriteBlocksLocalResponse> TLocalStorage::WriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
-    return SubmitQueue->Execute(
-        [this, ctx = std::move(callContext), req = std::move(request)] () mutable {
-            return DoWriteBlocksLocal(std::move(ctx), std::move(req));
+    auto latency = StartLatency(callContext);
+    auto future = [&]() -> TFuture<NProto::TWriteBlocksLocalResponse>
+    {
+        return SubmitQueue->Execute(
+            [this, ctx = std::move(callContext), req = std::move(request)] () mutable {
+                return DoWriteBlocksLocal(std::move(ctx), std::move(req)); });
+    }();
+    if (!latency) {
+        return future;
+    }
+    return future.Apply(
+        [latency](const auto& f)
+        {
+            auto response = f.GetValue();
+            FinishLatencyLeaf(latency, response);
+            return response;
         });
 }
 
@@ -900,7 +929,7 @@ public:
             ValidatedBlocksRatio);
 
         return MakeFuture<IStoragePtr>(storage);
-    };
+    }
 };
 
 }   // namespace

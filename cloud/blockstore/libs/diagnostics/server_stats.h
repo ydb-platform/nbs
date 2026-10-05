@@ -111,10 +111,21 @@ struct IServerStats
     using TTimeBucket = std::pair<TDuration, ui64>;
     using TSizeBucket = std::pair<ui64, ui64>;
 
+    // An explicit endpoint rejection, before a legacy request is registered.
+    // Call only where the original client cause is established locally.
+    virtual void LatencyClientRejected(
+        TMetricRequest& request, ui64 startedCycles,
+        NProto::TLatencyDiagnostics::EExclusion origin)
+    {
+        Y_UNUSED(request);
+        Y_UNUSED(startedCycles);
+        Y_UNUSED(origin);
+    }
+
     // Optional shadow supplement; the legacy batch contract is unchanged.
     virtual void LatencyBatchCompleted(
         TMetricRequest& request, const TLatencyCounts& counts,
-        ELatencyBatchStatus status = ELatencyBatchStatus::Accepted)
+        ELatencyBatchStatus status = ELatencyBatchStatus::CountsOnly)
     {
         Y_UNUSED(request);
         Y_UNUSED(counts);

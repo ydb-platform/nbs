@@ -1,6 +1,8 @@
 
 #include "unaligned_device_handler.h"
 
+#include "latency.h"
+
 #include <cloud/blockstore/libs/service/context.h>
 
 namespace NCloud::NBlockStore {
@@ -109,7 +111,7 @@ protected:
     virtual void DoExecutePostponed() = 0;
 };
 
-// Wrapper for a write request.
+//  Wrapper for a write request.
 class TWriteRequest final: public TModifyRequest
 {
 public:
@@ -139,7 +141,7 @@ private:
     TResponseFuture ModifyAndWrite();
 };
 
-// Wrapper for a zero request.
+//  Wrapper for a zero request.
 class TZeroRequest final: public TModifyRequest
 {
 public:
@@ -313,6 +315,8 @@ TWriteRequest::TResponseFuture TWriteRequest::ReadModifyWrite(
 {
     AllocateRMWBuffer(backend);
 
+    auto latency = StartLatency(CallContext);
+    const ui64 readStarted = GetCycleCount();
     auto read = backend.ExecuteReadRequest(
         CallContext,
         BlocksInfo.MakeAligned(),
@@ -320,17 +324,29 @@ TWriteRequest::TResponseFuture TWriteRequest::ReadModifyWrite(
         {});
 
     return read.Apply(
-        [weakPtr = weak_from_this()](
+        [weakPtr = weak_from_this(), latency, readStarted](
             const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
         {
             const auto& response = future.GetValue();
+            CollectLatency(latency, readStarted, response);
             if (HasError(response)) {
-                return MakeFuture<NProto::TWriteBlocksResponse>(
-                    TErrorResponse(response.GetError()));
+                NProto::TWriteBlocksResponse result =
+                    TErrorResponse(response.GetError());
+                FinishLatency(latency, result);
+                return MakeFuture(std::move(result));
             }
 
             if (auto p = weakPtr.lock()) {
-                return static_cast<TWriteRequest*>(p.get())->ModifyAndWrite();
+                const ui64 writeStarted = GetCycleCount();
+                return static_cast<TWriteRequest*>(p.get())->ModifyAndWrite()
+                    .Apply(
+                        [latency, writeStarted](const auto& f)
+                        {
+                            auto result = f.GetValue();
+                            CollectLatency(latency, writeStarted, result);
+                            FinishLatency(latency, result);
+                            return result;
+                        });
             }
 
             return MakeFuture<NProto::TWriteBlocksLocalResponse>(
@@ -497,8 +513,10 @@ TFuture<NProto::TReadBlocksLocalResponse> TUnalignedDeviceHandler::Read(
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
     auto normalizeError = TryToNormalize(sgList, blocksInfo);
     if (HasError(normalizeError)) {
-        return MakeFuture<NProto::TReadBlocksLocalResponse>(
-            TErrorResponse(normalizeError));
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(WithLatencyLeaf(
+            ctx,
+            static_cast<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(normalizeError))));
     }
     return blocksInfo.IsAligned() ? Backend->ExecuteReadRequest(
                                         std::move(ctx),
@@ -521,15 +539,19 @@ TFuture<NProto::TWriteBlocksLocalResponse> TUnalignedDeviceHandler::Write(
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
     auto normalizeError = TryToNormalize(sgList, blocksInfo);
     if (HasError(normalizeError)) {
-        return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-            TErrorResponse(normalizeError));
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(WithLatencyLeaf(
+            ctx,
+            static_cast<NProto::TWriteBlocksLocalResponse>(
+                TErrorResponse(normalizeError))));
     }
 
     if (!blocksInfo.IsAligned() &&
         blocksInfo.Range.Size() > MaxUnalignedBlockCount)
     {
-        return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-            CreateUnalignedTooBigResponse(blocksInfo.Range.Size()));
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(WithLatencyLeaf(
+            ctx,
+            static_cast<NProto::TWriteBlocksLocalResponse>(
+                CreateUnalignedTooBigResponse(blocksInfo.Range.Size()))));
     }
 
     auto request = std::make_shared<TWriteRequest>(
@@ -637,8 +659,10 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
     TString checkpointId) const
 {
     if (blocksInfo.Range.Size() > MaxUnalignedBlockCount) {
-        return MakeFuture<NProto::TReadBlocksLocalResponse>(
-            CreateUnalignedTooBigResponse(blocksInfo.Range.Size()));
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(WithLatencyLeaf(
+            ctx,
+            static_cast<NProto::TReadBlocksLocalResponse>(
+                CreateUnalignedTooBigResponse(blocksInfo.Range.Size()))));
     }
 
     auto bufferSize = blocksInfo.MakeAligned().BufferSize();

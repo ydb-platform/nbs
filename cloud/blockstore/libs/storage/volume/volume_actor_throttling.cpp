@@ -1,5 +1,6 @@
 #include "volume_actor.h"
 
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
 #include <cloud/blockstore/libs/storage/api/partition.h>
@@ -187,12 +188,28 @@ NProto::TError TVolumeActor::Throttle(
             || throttlingDisabled
             || !GetThrottlingEnabled<TMethod>(*Config, State->GetConfig()))
     {
+        if (auto latency = ev->Get()->Latency; latency && latency->Waiting) {
+            latency->Waiting = false;
+            latency->Operation.EndQuota(GetCycleCount());
+            // Limiter bypass after postponement invalidates the old decision.
+            latency->Operation.Invalidate();
+        }
         return ok;
     }
 
     auto* msg = ev->Get();
 
     const auto& tp = State->GetThrottlingPolicy();
+    if (LatencyQuotaPolicyVersion != tp.GetVersion()) {
+        for (const auto& weak: LatencyWaiters) {
+            if (auto waiter = weak.lock()) {
+                waiter->Operation.Invalidate();
+            }
+        }
+        LatencyWaiters.clear();
+        LatencyQuotaEnd = 0;
+        LatencyQuotaPolicyVersion = tp.GetVersion();
+    }
     *throttlingRequestInfo = BuildThrottlingRequestInfo(
         State->GetConfig().GetBlockSize(),
         *msg,
@@ -208,12 +225,52 @@ NProto::TError TVolumeActor::Throttle(
         return ok;
     }
 
+    auto latency = msg->Latency;
+    const ui64 quotaStarted = GetCycleCount();
+    State->AccessThrottlingPolicy().EnableLatency(
+        DiagnosticsConfig->GetEnableLatency());
     const auto status = Throttler->Throttle(
         ctx,
         msg->CallContext,
         *throttlingRequestInfo,
         [&ev]() { return NActors::IEventHandlePtr(ev.Release()); },
         TMethod::Name);
+
+    if (status == ETabletThrottlerStatus::POSTPONED) {
+        if (latency && !latency->Waiting) {
+            latency->Waiting = true;
+            latency->WaitStarted = quotaStarted;
+            LatencyWaiters.push_back(latency);
+            if (LatencyQuotaEnd > quotaStarted) {
+                latency->Operation.AddQuota(
+                    quotaStarted,
+                    LatencyQuotaEnd,
+                    NProto::TLatencyDiagnostics::PROFILE_LIMIT);
+            }
+        }
+        // Describe/zero requests can hold the same FIFO ahead of measured I/O.
+        // Broadcast a proven quota interval even when the head has no graph.
+        const auto quotaDelay =
+            State->GetThrottlingPolicy().GetLatencyQuotaDelay();
+        if (quotaDelay) {
+            LatencyQuotaEnd = quotaStarted + DurationToCyclesSafe(quotaDelay);
+            for (auto it = LatencyWaiters.begin(); it != LatencyWaiters.end();) {
+                auto waiter = it->lock();
+                if (!waiter || !waiter->Waiting) {
+                    it = LatencyWaiters.erase(it);
+                } else {
+                    waiter->Operation.AddQuota(
+                        Max(quotaStarted, waiter->WaitStarted),
+                        LatencyQuotaEnd,
+                        NProto::TLatencyDiagnostics::PROFILE_LIMIT);
+                    ++it;
+                }
+            }
+        }
+    } else if (latency) {
+        latency->Waiting = false;
+        latency->Operation.EndQuota(GetCycleCount());
+    }
 
     switch (status) {
         case ETabletThrottlerStatus::POSTPONED:

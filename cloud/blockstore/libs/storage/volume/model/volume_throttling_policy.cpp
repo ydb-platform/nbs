@@ -21,8 +21,8 @@ using EOpType = EVolumeThrottlingOpType;
 // Read ops are limited based solely on the requested MaxRead{Bandwidth,Iops}.
 // Write ops are limited based on some 'Target{Bandwidth,Iops}', which equals
 // MaxWrite{Bandwidth,Iops} when the partition's health is fine and is
-// gradually decreased if the partition's not feeling OK until it actually starts
-// feeling OK
+// gradually decreased if the partition's not feeling OK until it actually
+// starts feeling OK
 
 double CalculateWriteCostMultiplier(const TBackpressureReport& lastReport)
 {
@@ -94,6 +94,7 @@ struct TVolumeThrottlingPolicy::TImpl
     const bool UseDiskSpaceScore;
     const TMaxQuotas MaxQuotas;
     TBoostedTimeBucket Bucket;
+    std::unique_ptr<TBoostedTimeBucket> OriginalQuotaBucket;
     TVector<TBackpressureReport> PartitionBackpressures;
     TBackpressureReport CurrentBackpressure;
     double WriteCostMultiplier = 1;
@@ -128,6 +129,15 @@ struct TVolumeThrottlingPolicy::TImpl
               CalculateBoostTime(Config),
               CalculateBoostRefillTime(Config),
               initialBoostBudget)
+        , OriginalQuotaBucket(std::make_unique<TBoostedTimeBucket>(
+              SecondsToDuration(
+                  (OriginalConfig.GetBurstPercentage()
+                       ? OriginalConfig.GetBurstPercentage()
+                       : 10) /
+                  100.), CalculateBoostRate(OriginalConfig),
+              CalculateBoostTime(OriginalConfig),
+              CalculateBoostRefillTime(OriginalConfig),
+              CalculateBoostTime(OriginalConfig)))
     {}
 
     NProto::TVolumePerformanceProfile CalculateProfile(
@@ -369,6 +379,23 @@ struct TVolumeThrottlingPolicy::TImpl
                                 requestInfo.ByteCount);
     }
 
+    TDuration OriginalQuotaCost(const TThrottlingRequestInfo& requestInfo) const
+    {
+        const auto op = static_cast<EOpType>(requestInfo.OpType);
+        const ui64 iops =
+            op == EOpType::Write && OriginalConfig.GetMaxWriteIops()
+                ? OriginalConfig.GetMaxWriteIops()
+                : OriginalConfig.GetMaxReadIops();
+        const ui64 bandwidth =
+            op == EOpType::Describe ? 0
+            : op == EOpType::Write && OriginalConfig.GetMaxWriteBandwidth()
+                ? OriginalConfig.GetMaxWriteBandwidth()
+                : OriginalConfig.GetMaxReadBandwidth();
+        return CostPerIO(CalculateThrottlerC1(iops, bandwidth),
+                         CalculateThrottlerC2(iops, bandwidth),
+                         requestInfo.ByteCount);
+    }
+
     TMaybe<TDuration> SuggestDelay(
         TInstant ts,
         TDuration queueTime,
@@ -458,6 +485,7 @@ void TVolumeThrottlingPolicy::Reset(
     TDuration initialBoostBudget,
     bool useDiskSpaceScore)
 {
+    auto previous = std::move(Impl);
     Impl = std::make_unique<TImpl>(
         config,
         throttlingRule,
@@ -468,6 +496,11 @@ void TVolumeThrottlingPolicy::Reset(
         defaultPostponedRequestWeight,
         initialBoostBudget,
         useDiskSpaceScore);
+    if (previous && previous->OriginalConfig.SerializeAsString() ==
+                        config.SerializeAsString())
+    {
+        Impl->OriginalQuotaBucket = std::move(previous->OriginalQuotaBucket);
+    }
 }
 
 void TVolumeThrottlingPolicy::Reset(
@@ -536,6 +569,7 @@ bool TVolumeThrottlingPolicy::TryPostpone(
     TInstant ts,
     const TThrottlingRequestInfo& requestInfo)
 {
+    LatencyQuotaDelay = TDuration::Zero();
     return Impl->TryPostpone(ts, requestInfo);
 }
 
@@ -544,7 +578,35 @@ TMaybe<TDuration> TVolumeThrottlingPolicy::SuggestDelay(
     TDuration queueTime,
     const TThrottlingRequestInfo& requestInfo)
 {
-    return Impl->SuggestDelay(ts, queueTime, requestInfo);
+    LatencyQuotaDelay = TDuration::Zero();
+    if (!LatencyEnabled || !Impl->OriginalConfig.GetThrottlingEnabled()) {
+        return Impl->SuggestDelay(ts, queueTime, requestInfo);
+    }
+    auto original = *Impl->OriginalQuotaBucket;
+    const auto quotaDelay =
+        original.Register(ts, Impl->OriginalQuotaCost(requestInfo));
+    auto delay = Impl->SuggestDelay(ts, queueTime, requestInfo);
+    if (delay.Defined()) {
+        if (*delay == TDuration::Zero()) {
+            // Only actual admissions spend the original-profile budget. A
+            // rejection or a wakeup must never charge the request twice.
+            Impl->OriginalQuotaBucket->Register(
+                ts, Impl->OriginalQuotaCost(requestInfo));
+        } else {
+            LatencyQuotaDelay = Min(*delay, quotaDelay);
+        }
+    }
+    return delay;
+}
+
+void TVolumeThrottlingPolicy::EnableLatency(bool enabled)
+{
+    LatencyEnabled = enabled;
+}
+
+TDuration TVolumeThrottlingPolicy::GetLatencyQuotaDelay() const
+{
+    return LatencyQuotaDelay;
 }
 
 double TVolumeThrottlingPolicy::GetWriteCostMultiplier() const

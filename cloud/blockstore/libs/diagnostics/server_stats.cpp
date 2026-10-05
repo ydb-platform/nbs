@@ -9,6 +9,7 @@
 #include "volume_stats.h"
 
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
 #include <cloud/storage/core/libs/common/format.h>
@@ -50,6 +51,7 @@ class TServerStats final
 private:
     const IDumpablePtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TLatencyThresholds LatencyThresholds;
     const IProfileLogPtr ProfileLog;
     const IRequestStatsPtr RequestStats;
     const IVolumeStatsPtr VolumeStats;
@@ -153,7 +155,11 @@ public:
 
     void LatencyBatchCompleted(
         TMetricRequest& request, const TLatencyCounts& counts,
-        ELatencyBatchStatus status = ELatencyBatchStatus::Accepted) override;
+        ELatencyBatchStatus status = ELatencyBatchStatus::CountsOnly) override;
+
+    void LatencyClientRejected(
+        TMetricRequest& request, ui64 startedCycles,
+        NProto::TLatencyDiagnostics::EExclusion origin) override;
 
     TLatencyBatchResult UpdateLatencyBatch(TLatencyBatchTracker& tracker,
                                            const TLatencyBatch* batch) override;
@@ -207,6 +213,9 @@ TServerStats::TServerStats(
         TString requestInstanceId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
+    , LatencyThresholds(
+          DiagnosticsConfig ? DiagnosticsConfig->GetConfigProto()
+                            : NProto::TDiagnosticsConfig{})
     , ProfileLog(std::move(profileLog))
     , RequestStats(std::move(requestStats))
     , VolumeStats(std::move(volumeStats))
@@ -333,7 +342,12 @@ void TServerStats::RequestStarted(
         req.StartIndex,
         req.RequestBytes);
 
+    if (DiagnosticsConfig && DiagnosticsConfig->GetEnableLatency()) {
+        callContext.EnableLatency();
+    }
+
     if (DiagnosticsConfig && DiagnosticsConfig->GetEnableLatency() &&
+        req.LatencyOrigin &&
         !req.CellRequest &&
         (TranslateLocalRequestType(req.RequestType) ==
              EBlockStoreRequest::ReadBlocks ||
@@ -434,7 +448,7 @@ void TServerStats::RequestCompleted(
         const auto diagnostics = callContext.GetLatencyDiagnostics();
         LatencyBatchCompleted(
             req,
-            EvaluateLatency(DiagnosticsConfig->GetConfigProto(), req.MediaKind,
+            EvaluateLatency(LatencyThresholds, req.MediaKind,
                             req.RequestType,
                             req.LatencyState->OriginalRequestBytes, totalTime,
                             diagnostics.get(), !HasError(error)));
@@ -719,6 +733,23 @@ void TServerStats::LatencyBatchCompleted(TMetricRequest& req,
     }
 }
 
+void TServerStats::LatencyClientRejected(
+    TMetricRequest& request, ui64 startedCycles,
+    NProto::TLatencyDiagnostics::EExclusion origin)
+{
+    if (!DiagnosticsConfig || !DiagnosticsConfig->GetEnableLatency()) {
+        return;
+    }
+    const ui64 finished = GetCycleCount();
+    TLatencyOperation operation(false, startedCycles);
+    const auto graph = operation.FinishLeaf(finished, origin);
+    LatencyBatchCompleted(
+        request, EvaluateLatency(LatencyThresholds, request.MediaKind,
+                                 request.RequestType, request.RequestBytes,
+                                 CyclesToDurationSafe(finished - startedCycles),
+                                 &graph, false));
+}
+
 TLatencyBatchResult TServerStats::UpdateLatencyBatch(
     TLatencyBatchTracker& tracker, const TLatencyBatch* batch)
 {
@@ -730,9 +761,7 @@ TLatencyBatchResult TServerStats::UpdateLatencyBatch(
     }
     const auto& config = DiagnosticsConfig->GetConfigProto();
     return tracker.Update(
-        *batch,
-        ValidateLatencyThresholds(config) ? config.GetLatencyThresholdVersion()
-                                          : 0, TInstant::Now(),
+        *batch, LatencyThresholds.GetVersion(), TInstant::Now(),
         TDuration::MilliSeconds(config.GetLatencyBatchMaxAgeMs()));
 }
 

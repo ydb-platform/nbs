@@ -549,7 +549,7 @@ void TBootstrapBase::Init()
         if (Configs->ServerConfig->GetVhostServerPath()
                 && !Configs->Options->TemporaryServer)
         {
-            vhostEndpointListener = CreateExternalVhostEndpointListener(
+            vhostEndpointListener = CreateExternalVhostEndpointListenerWithDiagnostics(
                 Configs->ServerConfig,
                 Logging,
                 ServerStats,
@@ -558,7 +558,8 @@ void TBootstrapBase::Init()
                     ? TString {}
                     : FQDNHostName(),
                 RdmaClient && RdmaClient->IsAlignedDataEnabled(),
-                std::move(vhostEndpointListener));
+                std::move(vhostEndpointListener),
+                Configs->DiagnosticsConfig);
 
             STORAGE_INFO("VHOST External Vhost EndpointListener initialized");
         }

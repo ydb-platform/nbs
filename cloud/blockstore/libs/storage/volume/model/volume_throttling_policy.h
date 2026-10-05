@@ -2,8 +2,8 @@
 
 #include "public.h"
 
-#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 #include <cloud/blockstore/libs/storage/api/public.h>
+#include <cloud/blockstore/public/api/protos/volume_throttling.pb.h>
 
 #include <cloud/storage/core/libs/throttling/tablet_throttler_policy.h>
 
@@ -55,6 +55,8 @@ private:
     struct TImpl;
     std::unique_ptr<TImpl> Impl;
     ui32 PolicyVersion = 0;
+    bool LatencyEnabled = false;
+    TDuration LatencyQuotaDelay;
 
 public:
     TVolumeThrottlingPolicy(
@@ -104,6 +106,9 @@ public:
     [[nodiscard]] TSplittedUsedQuota TakeSplittedUsedQuota();
     const TBackpressureReport& GetCurrentBackpressure() const;
     const NProto::TVolumePerformanceProfile& GetConfig() const;
+
+    void EnableLatency(bool enabled);
+    TDuration GetLatencyQuotaDelay() const;
 
     ui32 GetVersion() const
     {

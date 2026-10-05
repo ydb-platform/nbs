@@ -130,6 +130,15 @@ void ReportLatency(TEndpointStats& endpoint, EBlockStoreRequest kind,
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TEndpointStats::ReportLatencyMissing()
+{
+    const auto result =
+        ServerStats->UpdateLatencyBatch(*LatencyTracker, nullptr);
+    if (result.Status != ELatencyBatchStatus::Disabled) {
+        ReportLatency(*this, EBlockStoreRequest::ReadBlocks, {}, result.Status);
+    }
+}
+
 void TEndpointStats::Update(const NJson::TJsonValue& stats)
 {
     BatchCompleted(*ServerStats, EBlockStoreRequest::ReadBlocks, stats["read"],
@@ -153,7 +162,7 @@ void TEndpointStats::Update(const NJson::TJsonValue& stats)
                       result.Status);
         // Batch telemetry is per volume, so report its status only once.
         ReportLatency(*this, EBlockStoreRequest::WriteBlocks, result.Write,
-                      ELatencyBatchStatus::Accepted);
+                      ELatencyBatchStatus::CountsOnly);
     }
 
     // Report critical events

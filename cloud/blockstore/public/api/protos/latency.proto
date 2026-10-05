@@ -27,6 +27,8 @@ message TLatencyDiagnostics
         PROFILE_IOPS = 1;
         PROFILE_BANDWIDTH = 2;
         PROFILE_BURST = 3;
+        // Combined IOPS/bandwidth/burst budget of the original profile.
+        PROFILE_LIMIT = 4;
     }
 
     message TNode

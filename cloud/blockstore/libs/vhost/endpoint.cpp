@@ -1,6 +1,7 @@
 #include "endpoint.h"
 
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -274,6 +275,10 @@ void TEndpoint::ProcessRequest(TRequestPtr request)
         [weakPtr, req = std::move(request)](const auto& f)
         {
             const auto& response = f.GetValue();
+            if (req->CallContext->IsLatencyEnabled()) {
+                req->CallContext->SetLatencyDiagnostics(
+                    response.GetHeaders().GetLatency());
+            }
             if (auto p = weakPtr.lock()) {
                 p->CompleteRequest(*req, response.GetError());
                 p->UnregisterRequest(*req);
@@ -311,6 +316,7 @@ TRequestPtr TEndpoint::RegisterRequest(TVhostRequestPtr vhostRequest)
         blockSize * (endIndex - startIndex),
         unaligned);
 
+    request->MetricRequest.LatencyOrigin = true;
     AppCtx.ServerStats->RequestStarted(
         AppCtx.Log,
         request->MetricRequest,
@@ -331,6 +337,12 @@ TRequestPtr TEndpoint::RegisterRequest(TVhostRequestPtr vhostRequest)
             RequestsInFlight.PushBack(request.Get());
             return request;
         }
+    }
+
+    if (request->MetricRequest.LatencyState) {
+        TLatencyOperation latency(
+            false, request->MetricRequest.LatencyState->StartedCycles);
+        request->CallContext->SetLatencyDiagnostics(latency.FinishLeaf());
     }
 
     auto error = MakeError(E_CANCELLED, "Vhost endpoint was stopped");

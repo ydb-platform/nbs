@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -539,6 +540,14 @@ void TServerHandler::ProcessRequests(
 
                 if (!ctx->AcquireRequest(request.Length)) {
                     // no need to reply, cause server is shutting down
+                    if (requestCtx->MetricRequest.LatencyState) {
+                        TLatencyOperation latency(
+                            false,
+                            requestCtx->MetricRequest.LatencyState
+                                ->StartedCycles);
+                        requestCtx->CallContext->SetLatencyDiagnostics(
+                            latency.FinishLeaf());
+                    }
                     UnregisterRequest(requestCtx, cancelError);
                     break;
                 }
@@ -558,6 +567,15 @@ void TServerHandler::ProcessRequests(
 
             case NBD_CMD_WRITE: {
                 if (Options.CheckpointId) {
+                    const ui64 started = GetCycleCount();
+                    TMetricRequest metric{EBlockStoreRequest::WriteBlocks};
+                    ServerStats->PrepareMetricRequest(
+                        metric, Options.ClientId, Options.DiskId,
+                        request.From / Options.BlockSize, request.Length,
+                        false);
+                    ServerStats->LatencyClientRejected(
+                        metric, started,
+                        NProto::TLatencyDiagnostics::INVALID_CLIENT_REQUEST);
                     replyError(E_ARGUMENT, "invalid write request");
                     break;
                 }
@@ -568,6 +586,14 @@ void TServerHandler::ProcessRequests(
 
                 if (!ctx->AcquireRequest(request.Length)) {
                     // no need to reply, cause server is shutting down
+                    if (requestCtx->MetricRequest.LatencyState) {
+                        TLatencyOperation latency(
+                            false,
+                            requestCtx->MetricRequest.LatencyState
+                                ->StartedCycles);
+                        requestCtx->CallContext->SetLatencyDiagnostics(
+                            latency.FinishLeaf());
+                    }
                     UnregisterRequest(requestCtx, cancelError);
                     break;
                 }
@@ -605,6 +631,14 @@ void TServerHandler::ProcessRequests(
 
                 if (!ctx->AcquireRequest(request.Length)) {
                     // no need to reply, cause server is shutting down
+                    if (requestCtx->MetricRequest.LatencyState) {
+                        TLatencyOperation latency(
+                            false,
+                            requestCtx->MetricRequest.LatencyState
+                                ->StartedCycles);
+                        requestCtx->CallContext->SetLatencyDiagnostics(
+                            latency.FinishLeaf());
+                    }
                     UnregisterRequest(requestCtx, cancelError);
                     break;
                 }
@@ -666,8 +700,18 @@ void TServerHandler::ProcessReadRequest(
 
         const auto& response = ctx->WaitFor(future);
         error = response.GetError();
+        if (requestCtx->CallContext->IsLatencyEnabled()) {
+            requestCtx->CallContext->SetLatencyDiagnostics(
+                response.GetHeaders().GetLatency());
+        }
 
         guardedSgList.Close();
+    }
+
+    if (!request.Length && requestCtx->MetricRequest.LatencyState) {
+        TLatencyOperation latency(
+            false, requestCtx->MetricRequest.LatencyState->StartedCycles);
+        requestCtx->CallContext->SetLatencyDiagnostics(latency.FinishLeaf());
     }
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
@@ -735,9 +779,19 @@ void TServerHandler::ProcessWriteRequest(
 
         const auto& response = ctx->WaitFor(future);
         error = response.GetError();
+        if (requestCtx->CallContext->IsLatencyEnabled()) {
+            requestCtx->CallContext->SetLatencyDiagnostics(
+                response.GetHeaders().GetLatency());
+        }
 
         guardedSgList.Close();
         requestData.reset();
+    }
+
+    if (!request.Length && requestCtx->MetricRequest.LatencyState) {
+        TLatencyOperation latency(
+            false, requestCtx->MetricRequest.LatencyState->StartedCycles);
+        requestCtx->CallContext->SetLatencyDiagnostics(latency.FinishLeaf());
     }
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
@@ -790,6 +844,12 @@ void TServerHandler::ProcessZeroRequest(
         error = response.GetError();
     }
 
+    if (!request.Length && requestCtx->MetricRequest.LatencyState) {
+        TLatencyOperation latency(
+            false, requestCtx->MetricRequest.LatencyState->StartedCycles);
+        requestCtx->CallContext->SetLatencyDiagnostics(latency.FinishLeaf());
+    }
+
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
     STORAGE_DEBUG(CreateRequestInfo(*requestCtx)
         << " PROCESS ZeroResponse"
@@ -840,6 +900,8 @@ TRequestContextPtr TServerHandler::RegisterRequest(
         startIndex,
         ServerStats->GetBlockSize(Options.DiskId) * (endIndex - startIndex),
         unaligned);
+
+    requestCtx->MetricRequest.LatencyOrigin = true;
 
     ServerStats->RequestStarted(
         Log,

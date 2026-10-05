@@ -4,12 +4,14 @@
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist_block_range.h>
 
-#include <util/generic/algorithm.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <util/generic/algorithm.h>
 #include <util/system/yassert.h>
 
 namespace NCloud::NBlockStore::NServer {
@@ -173,6 +175,7 @@ struct TGenericBlocksCtx
     TAtomic RemainingRequests;
     TAdaptiveLock Lock;
     NProto::TError LastError;
+    TLatencyOperationPtr Latency;
 
     explicit TGenericBlocksCtx(ui32 count)
         : Promise(NewPromise<R>())
@@ -190,6 +193,7 @@ struct TGenericBlocksCtx
         if (AtomicDecrement(RemainingRequests) == 0) {
             R response;
             response.MutableError()->Swap(&LastError);
+            FinishLatency(Latency, response);
             Promise.SetValue(std::move(response));
         }
     }
@@ -426,6 +430,7 @@ TFuture<NProto::TReadBlocksLocalResponse> TCompoundStorage::ReadBlocksLocal(
     auto requestContext = std::make_shared<TReadBlocksLocalCtx>(
         count,
         std::move(guard));
+    requestContext->Latency = StartLatency(callContext, true);
 
     TStorageBlockRange storageBlockRange;
     while (it.Next(storageBlockRange)) {
@@ -439,10 +444,13 @@ TFuture<NProto::TReadBlocksLocalResponse> TCompoundStorage::ReadBlocksLocal(
         subRequest->SetBlockSize(request->GetBlockSize());
         subRequest->Sglist.SetSgList(src.Next(blockCount));
 
+        const ui64 latencyStarted = GetCycleCount();
         Storages[storageBlockRange.Storage]->ReadBlocksLocal(
             callContext,
             std::move(subRequest)
         ).Subscribe([=] (const auto& future) {
+            CollectLatency(requestContext->Latency, latencyStarted,
+                           future.GetValue());
             requestContext->OnResponse(future.GetValue().GetError());
         });
     }
@@ -500,6 +508,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TCompoundStorage::WriteBlocksLocal(
     auto requestContext = std::make_shared<TWriteBlocksLocalCtx>(
         count,
         std::move(guard));
+    requestContext->Latency = StartLatency(callContext, true);
 
     TStorageBlockRange storageBlockRange;
     while (it.Next(storageBlockRange)) {
@@ -513,10 +522,13 @@ TFuture<NProto::TWriteBlocksLocalResponse> TCompoundStorage::WriteBlocksLocal(
         subRequest->BlocksCount = blockCount;
         subRequest->Sglist.SetSgList(dst.Next(blockCount));
 
+        const ui64 latencyStarted = GetCycleCount();
         Storages[storageBlockRange.Storage]->WriteBlocksLocal(
             callContext,
             std::move(subRequest)
         ).Subscribe([=] (const auto& future) {
+            CollectLatency(requestContext->Latency, latencyStarted,
+                           future.GetValue());
             requestContext->OnResponse(future.GetValue().GetError());
         });
     }

@@ -1,3 +1,4 @@
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/storage/core/libs/common/error.h>
 
@@ -33,20 +34,48 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
-        Y_UNUSED(callContext);
-        Y_UNUSED(request);
+        auto latency = StartLatency(callContext);
+        auto future = [&]() -> TFuture<NProto::TReadBlocksLocalResponse>
+        {
+                Y_UNUSED(callContext);
+            Y_UNUSED(request);
 
-        return MakeResponse<NProto::TReadBlocksLocalResponse>();
+            return MakeResponse<NProto::TReadBlocksLocalResponse>();
+        }();
+        if (!latency) {
+            return future;
+        }
+        return future.Apply(
+            [latency](const auto& f)
+            {
+                auto response = f.GetValue();
+                FinishLatencyLeaf(latency, response);
+                return response;
+            });
     }
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
-        Y_UNUSED(callContext);
-        Y_UNUSED(request);
+        auto latency = StartLatency(callContext);
+        auto future = [&]() -> TFuture<NProto::TWriteBlocksLocalResponse>
+        {
+                Y_UNUSED(callContext);
+            Y_UNUSED(request);
 
-        return MakeResponse<NProto::TWriteBlocksLocalResponse>();
+            return MakeResponse<NProto::TWriteBlocksLocalResponse>();
+        }();
+        if (!latency) {
+            return future;
+        }
+        return future.Apply(
+            [latency](const auto& f)
+            {
+                auto response = f.GetValue();
+                FinishLatencyLeaf(latency, response);
+                return response;
+            });
     }
 
     TFuture<NProto::TError> EraseDevice(

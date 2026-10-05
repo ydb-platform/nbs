@@ -257,6 +257,7 @@ private:
     TRequestCounters RequestCounters;
     TLatencyCounters ReadLatency;
     TLatencyCounters WriteLatency;
+    TDynamicCounters::TCounterPtr LatencyTelemetryReady;
     TDynamicCounters::TCounterPtr LatencyTelemetryMissing;
     TDynamicCounters::TCounterPtr LatencyTelemetryInvalid;
     TDynamicCounters::TCounterPtr LatencyTelemetryDuplicate;
@@ -463,6 +464,13 @@ public:
                           const TLatencyCounts& counts,
                           ELatencyBatchStatus status) override
     {
+        if (LatencyTelemetryReady &&
+            status != ELatencyBatchStatus::CountsOnly &&
+            status != ELatencyBatchStatus::Disabled &&
+            status != ELatencyBatchStatus::Duplicate)
+        {
+            *LatencyTelemetryReady = status == ELatencyBatchStatus::Accepted;
+        }
         if (LatencyTelemetryMissing) {
             switch (status) {
                 case ELatencyBatchStatus::Missing:
@@ -1006,11 +1014,11 @@ public:
                 // Advance the cumulative availability counters by the real time
                 // this instance has been served since the last accounted tick.
                 // Sampling every tick (not only on the publish tick) tracks the
-                // downtime/suffering signal at tick resolution; the per-instance
-                // timestamp (seeded at mount) avoids crediting time before the
-                // volume was served; advancing the timestamp only by the whole
-                // seconds credited keeps the sub-second remainder and avoids
-                // drift.
+                // downtime/suffering signal at tick resolution; the
+                // per-instance timestamp (seeded at mount) avoids crediting
+                // time before the volume was served; advancing the timestamp
+                // only by the whole seconds credited keeps the sub-second
+                // remainder and avoids drift.
                 if (instance->ObservedSecondsCounter &&
                     now > instance->AvailabilityLastUpdateTime)
                 {
@@ -1211,6 +1219,8 @@ private:
                 *countersGroup->GetSubgroup("request", "ReadBlocks"));
             info->WriteLatency.Register(
                 *countersGroup->GetSubgroup("request", "WriteBlocks"));
+            info->LatencyTelemetryReady =
+                countersGroup->GetCounter("LatencyExternalTelemetryReady");
             info->LatencyTelemetryMissing = countersGroup->GetCounter(
                 "LatencyTelemetryMissingBatches", true);
             info->LatencyTelemetryInvalid = countersGroup->GetCounter(
@@ -1219,6 +1229,8 @@ private:
                 "LatencyTelemetryDuplicateBatches", true);
             info->LatencyTelemetryUnknown = countersGroup->GetCounter(
                 "LatencyTelemetryUnknownBatches", true);
+            *countersGroup->GetCounter("LatencyThresholdTableValid") =
+                ValidateLatencyThresholds(DiagnosticsConfig->GetConfigProto());
             *countersGroup->GetCounter("LatencyThresholdVersion") =
                 DiagnosticsConfig->GetConfigProto()
                     .GetLatencyThresholdVersion();

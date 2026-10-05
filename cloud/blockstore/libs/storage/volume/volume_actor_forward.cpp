@@ -1,6 +1,7 @@
 #include "volume_actor.h"
 
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/storage/api/undelivered.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -52,6 +53,7 @@ void RejectVolumeRequest(
     NActors::TActorId caller,
     ui64 callerCookie,
     TCallContext& callContext,
+    const std::shared_ptr<TLatencyVolumeRequest>& latency,
     NProto::TError error)
 {
     auto response =
@@ -62,6 +64,12 @@ void RejectVolumeRequest(
         callContext.Time(EProcessingStage::Postponed),
         callContext.Time(EProcessingStage::Shaping));
 
+    if (latency) {
+        latency->Waiting = false;
+        latency->Operation.EndQuota(GetCycleCount());
+        *response->Record.MutableHeaders()->MutableLatency() =
+            latency->Operation.FinishLeaf();
+    }
     NCloud::Send(ctx, caller, std::move(response), callerCookie);
 }
 
@@ -183,6 +191,8 @@ typename TMethod::TRequest::TPtr TVolumeActor::WrapRequest(
             throttlingRequestInfo,
             &RejectVolumeRequest<TMethod>,
             isMultipartitionWriteOrZero));
+
+    VolumeRequests.at(volumeRequestId).Latency = msg->Latency;
 
     if (isMultipartitionWriteOrZero) {
         ++MultipartitionWriteAndZeroRequestsInProgress;
@@ -465,6 +475,13 @@ bool TVolumeActor::ReplyToOriginalRequest(
         *volumeRequest.CallContext,
         volumeRequest.ReceiveTime);
 
+    if (volumeRequest.Latency) {
+        // No purchased-profile limiter exists below the volume admission
+        // boundary. Partition splits, retries and shaping remain service work.
+        *response->Record.MutableHeaders()->MutableLatency() =
+            volumeRequest.Latency->Operation.FinishLeaf();
+    }
+
     // forward response to the caller
     auto event = std::make_unique<IEventHandle>(
         volumeRequest.Caller,
@@ -607,6 +624,12 @@ void TVolumeActor::ForwardRequest(
     auto* msg = ev->Get();
     ui64 now = GetCycleCount();
 
+    if constexpr (IsReadOrWriteMethod<TMethod>) {
+        if (DiagnosticsConfig->GetEnableLatency() && !msg->Latency) {
+            msg->Latency = std::make_shared<TLatencyVolumeRequest>();
+        }
+    }
+
     // Fill block range.
     TBlockRange64 blockRange;
     if constexpr (
@@ -652,6 +675,11 @@ void TVolumeActor::ForwardRequest(
             std::move(error));
 
         FillResponse<TMethod>(*response, *msg->CallContext, now);
+        if (msg->Latency) {
+            msg->Latency->Waiting = false;
+            *response->Record.MutableHeaders()->MutableLatency() =
+                msg->Latency->Operation.FinishLeaf();
+        }
 
         NCloud::Reply(ctx, *ev, std::move(response));
     };

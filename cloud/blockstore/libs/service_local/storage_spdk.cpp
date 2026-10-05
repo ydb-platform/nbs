@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/common/caching_allocator.h>
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
@@ -13,9 +14,9 @@
 #include <cloud/blockstore/libs/spdk/iface/env.h>
 #include <cloud/storage/core/libs/common/error.h>
 
-#include <library/cpp/monlib/dynamic_counters/counters.h>
-
 #include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -78,65 +79,94 @@ TFuture<NProto::TReadBlocksLocalResponse> TSpdkStorage::ReadBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
 {
-    Y_UNUSED(callContext);
+    auto latency = StartLatency(callContext);
+    auto future = [&]() -> TFuture<NProto::TReadBlocksLocalResponse>
+    {
+            Y_UNUSED(callContext);
 
-    const ui64 startIndex = request->GetStartIndex();
-    const ui32 totalBlockCount = request->GetBlocksCount();
+        const ui64 startIndex = request->GetStartIndex();
+        const ui32 totalBlockCount = request->GetBlocksCount();
 
-    // std::function can't work with move only objects
-    auto guard = std::make_shared<TGuardedSgList::TGuard>(
-        request->Sglist.Acquire());
+        // std::function can't work with move only objects
+        auto guard = std::make_shared<TGuardedSgList::TGuard>(
+            request->Sglist.Acquire());
 
-    if (!*guard) {
-        return FutureErrorResponse<NProto::TReadBlocksLocalResponse>(
-            E_CANCELLED,
-            "failed to acquire sglist in SpdkStorage");
+        if (!*guard) {
+            return FutureErrorResponse<NProto::TReadBlocksLocalResponse>(
+                E_CANCELLED,
+                "failed to acquire sglist in SpdkStorage");
+        }
+
+        auto result = Device->Read(
+            guard->Get(),
+            startIndex * BlockSize,
+            totalBlockCount * BlockSize);
+
+        return result.Apply([request, guard] (const auto& future) mutable {
+            guard.reset();
+
+            NProto::TReadBlocksLocalResponse response;
+            *response.MutableError() = future.GetValue();
+
+            return response;
+        });
+    }();
+    if (!latency) {
+        return future;
     }
-
-    auto result = Device->Read(
-        guard->Get(),
-        startIndex * BlockSize,
-        totalBlockCount * BlockSize);
-
-    return result.Apply([request, guard] (const auto& future) mutable {
-        guard.reset();
-
-        NProto::TReadBlocksLocalResponse response;
-        *response.MutableError() = future.GetValue();
-
-        return response;
-    });
+    return future.Apply(
+        [latency](const auto& f)
+        {
+            auto response = f.GetValue();
+            FinishLatencyLeaf(latency, response);
+            return response;
+        });
 }
 
 TFuture<NProto::TWriteBlocksLocalResponse> TSpdkStorage::WriteBlocksLocal(
     TCallContextPtr callContext,
     std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
 {
-    Y_UNUSED(callContext);
+    auto latency = StartLatency(callContext);
+    auto future = [&]() -> TFuture<NProto::TWriteBlocksLocalResponse>
+    {
+        Y_UNUSED(callContext);
 
-    const ui64 startIndex = request->GetStartIndex();
-    const ui32 totalBlockCount = request->BlocksCount;
+        const ui64 startIndex = request->GetStartIndex();
+        const ui32 totalBlockCount = request->BlocksCount;
 
-    // std::function can't work with move only objects
-    auto guard = std::make_shared<TGuardedSgList::TGuard>(
-        request->Sglist.Acquire());
+        // std::function can't work with move only objects
+        auto guard = std::make_shared<TGuardedSgList::TGuard>(
+            request->Sglist.Acquire());
 
-    if (!*guard) {
-        return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
-            E_CANCELLED,
-            "failed to acquire sglist in SpdkStorage");
+        if (!*guard) {
+            return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
+                E_CANCELLED,
+                "failed to acquire sglist in SpdkStorage");
+        }
+
+        auto result = Device->Write(
+            guard->Get(),
+            startIndex * BlockSize,
+            totalBlockCount * BlockSize);
+
+        return result.Apply([request, guard] (const auto& future) mutable {
+            guard.reset();
+
+            NProto::TWriteBlocksLocalResponse response;
+            *response.MutableError() = future.GetValue();
+
+                    return response;
+                });
+    }();
+    if (!latency) {
+        return future;
     }
-
-    auto result = Device->Write(
-        guard->Get(),
-        startIndex * BlockSize,
-        totalBlockCount * BlockSize);
-
-    return result.Apply([request, guard] (const auto& future) mutable {
-        guard.reset();
-
-        NProto::TWriteBlocksLocalResponse response;
-        *response.MutableError() = future.GetValue();
+    return future.Apply(
+        [latency](const auto& f)
+        {
+            auto response = f.GetValue();
+            FinishLatencyLeaf(latency, response);
 
         return response;
     });
@@ -212,13 +242,26 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
-        Y_UNUSED(callContext);
-        Y_UNUSED(request);
+        auto latency = StartLatency(callContext);
+        auto future = [&]() -> TFuture<NProto::TWriteBlocksLocalResponse>
+        {
+                Y_UNUSED(callContext);
+            Y_UNUSED(request);
 
-        return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
-            E_IO,
-            "Volume in error state"
-        );
+            return FutureErrorResponse<NProto::TWriteBlocksLocalResponse>(
+                E_IO,
+                "Volume in error state");
+        }();
+        if (!latency) {
+            return future;
+        }
+        return future.Apply(
+            [latency](const auto& f)
+            {
+                auto response = f.GetValue();
+                FinishLatencyLeaf(latency, response);
+                return response;
+            });
     }
 };
 

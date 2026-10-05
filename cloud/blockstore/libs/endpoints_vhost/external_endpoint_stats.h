@@ -22,6 +22,8 @@ struct TEndpointStats
     std::shared_ptr<TLatencyBatchTracker> LatencyTracker =
         std::make_shared<TLatencyBatchTracker>();
 
+    void ReportLatencyMissing();
+
     void Update(const NJson::TJsonValue& stats);
 };
 

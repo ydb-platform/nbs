@@ -108,6 +108,10 @@ message THeaders
     // copy with a mangled name with an additional suffix.
     bool ExactDiskIdMatch = 16;
 
+    // Requests optional, versioned latency evidence from an instrumented peer.
+    // A missing response field means unknown measurement, never zero quota.
+    uint32 LatencyVersion = 17;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -5,15 +5,16 @@
 #include <library/cpp/getopt/small/last_getopt.h>
 
 #include <util/generic/strbuf.h>
+#include <util/generic/yexception.h>
 #include <util/string/cast.h>
 #include <util/string/join.h>
 #include <util/string/split.h>
 
+#include <cstdlib>
+
 using namespace NLastGetopt;
 
 namespace NCloud::NBlockStore::NVHostServer {
-
-////////////////////////////////////////////////////////////////////////////////
 
 void CheckOneOf(
     const TVector<TString>& values,
@@ -193,6 +194,22 @@ void TOptions::Parse(int argc, char** argv)
 
     if (!QueueCount) {
         QueueCount = Min<ui32>(8, Layout.size());
+    }
+
+    if (const char* latencyThresholdsConfig =
+            std::getenv(LatencyConfigEnvName.data()))
+    {
+        try {
+            LatencyConfig = ParseLatencyConfig(latencyThresholdsConfig);
+            LatencyTrackingEnabled = LatencyConfig.Config.GetEnableLatency();
+            if (LatencyTrackingEnabled) {
+                LatencyGeneration = NextLatencyGeneration(SocketPath);
+            }
+        } catch (...) {
+            // Diagnostics cannot prevent endpoint startup. Missing telemetry
+            // is visible to the parent through its existing health counters.
+            LatencyTrackingEnabled = false;
+        }
     }
 }
 

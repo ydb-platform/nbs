@@ -40,6 +40,7 @@ struct TRequestEvent
     , public TArgs
 {
     TCallContextPtr CallContext = MakeIntrusive<TCallContext>();
+    std::shared_ptr<TLatencyVolumeRequest> Latency;
 
     TRequestEvent() = default;
 
@@ -118,6 +119,7 @@ struct TProtoRequestEvent
     : public NActors::TEventPB<TProtoRequestEvent<TArgs, EventId>, TArgs, EventId>
 {
     TCallContextPtr CallContext = MakeIntrusive<TCallContext>();
+    std::shared_ptr<TLatencyVolumeRequest> Latency;
 
     TProtoRequestEvent() = default;
 

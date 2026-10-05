@@ -35,6 +35,26 @@ TMaybe<TDuration> CalculateLatency(
 
 bool ValidateLatencyThresholds(const NProto::TDiagnosticsConfig& config);
 
+// Validate the immutable table once, outside the completion path.
+class TLatencyThresholds
+{
+    NProto::TDiagnosticsConfig Config;
+    bool Valid = false;
+
+public:
+    TLatencyThresholds() = default;
+    explicit TLatencyThresholds(const NProto::TDiagnosticsConfig& config);
+    ui32 GetVersion() const;
+    TMaybe<TDuration> Find(ui32 mediaKind, EBlockStoreRequest requestType,
+                           ui64 bytes) const;
+};
+
+TLatencyCounts EvaluateLatency(
+    const TLatencyThresholds& thresholds, ui32 mediaKind,
+    EBlockStoreRequest requestType, ui64 originalRequestBytes,
+    TMaybe<TDuration> totalTime, const NProto::TLatencyDiagnostics* diagnostics,
+    bool success);
+
 TLatencyCounts EvaluateLatency(
     const NProto::TDiagnosticsConfig& config, ui32 mediaKind,
     EBlockStoreRequest requestType, ui64 originalRequestBytes,
@@ -78,6 +98,7 @@ struct TLatencyBatch
 enum class ELatencyBatchStatus
 {
     Accepted,
+    CountsOnly,
     Unknown,
     Duplicate,
     Invalid,
@@ -97,8 +118,17 @@ class TLatencyBatchTracker
 private:
     std::mutex Lock;
     TMaybe<TLatencyBatch> Last;
+    TString CheckpointPath;
+    bool CheckpointHealthy = true;
+    bool Established = false;
+
+    bool SaveCheckpoint(const TLatencyBatch& batch);
 
 public:
+    // Configure once, before collection starts. Empty path keeps an in-memory
+    // tracker for callers without a persistent endpoint identity.
+    void SetCheckpointPath(const TString& path);
+
     TLatencyBatchResult Update(const TLatencyBatch& batch,
                                ui32 thresholdVersion, TInstant now,
                                TDuration maxAge);

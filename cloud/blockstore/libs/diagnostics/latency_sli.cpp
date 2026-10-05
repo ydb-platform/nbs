@@ -1,5 +1,6 @@
 #include "latency_sli.h"
 
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 
 #include <util/generic/vector.h>
@@ -13,34 +14,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr size_t MaxLatencyNodes = 4096;
-constexpr size_t MaxLatencyEdges = 16384;
-
-TMaybe<TDuration> FindThreshold(const NProto::TDiagnosticsConfig& config,
-                                ui32 mediaKind, EBlockStoreRequest requestType,
-                                ui64 bytes)
-{
-    if (!ValidateLatencyThresholds(config)) {
-        return {};
-    }
-    requestType = TranslateLocalRequestType(requestType);
-    if (requestType != EBlockStoreRequest::ReadBlocks &&
-        requestType != EBlockStoreRequest::WriteBlocks)
-    {
-        return {};
-    }
-    const bool write = requestType == EBlockStoreRequest::WriteBlocks;
-    TMaybe<TDuration> result;
-    for (const auto& row: config.GetLatencyThresholds()) {
-        if (row.GetMediaKind() == mediaKind && row.GetWrite() == write &&
-            row.GetStartBytes() <= bytes && bytes < row.GetEndBytes())
-        {
-            result = TDuration::MicroSeconds(row.GetThresholdUs());
-        }
-    }
-    return result;
-}
-
 bool CountOperations(const TLatencyCounts& counts, ui64& total)
 {
     total = 0;
@@ -48,7 +21,7 @@ bool CountOperations(const TLatencyCounts& counts, ui64& total)
          {counts.Good, counts.Bad, counts.Unknown, counts.InvalidClientRequest,
           counts.ClientCancellation, counts.ClientLimit})
     {
-        if (value > std::numeric_limits<ui64>::max() - total) {
+        if (value > static_cast<ui64>(std::numeric_limits<i64>::max()) - total) {
             return false;
         }
         total += value;
@@ -108,76 +81,38 @@ bool ValidateLatencyThresholds(const NProto::TDiagnosticsConfig& config)
     return true;
 }
 
-TMaybe<TDuration> CalculateLatency(
-    const NProto::TLatencyDiagnostics& diagnostics, TDuration totalTime)
+TLatencyThresholds::TLatencyThresholds(
+    const NProto::TDiagnosticsConfig& config)
+    : Config(config)
+    , Valid(ValidateLatencyThresholds(config))
+{}
+
+ui32 TLatencyThresholds::GetVersion() const
 {
-    if (!diagnostics.HasVersion() ||
-        diagnostics.GetVersion() != LatencyDiagnosticsVersion ||
-        !diagnostics.HasComplete() || !diagnostics.GetComplete() ||
-        !diagnostics.HasTotalUs() || !diagnostics.HasExclusion() ||
-        diagnostics.NodesSize() == 0 ||
-        diagnostics.NodesSize() > MaxLatencyNodes ||
-        diagnostics.GetTotalUs() > totalTime.MicroSeconds())
+    return Valid ? Config.GetLatencyThresholdVersion() : 0;
+}
+
+TMaybe<TDuration> TLatencyThresholds::Find(
+    ui32 mediaKind, EBlockStoreRequest requestType, ui64 bytes) const
+{
+    if (!Valid)
     {
         return {};
     }
-
-    TVector<ui64> observedEnds;
-    TVector<ui64> adjustedEnds;
-    observedEnds.reserve(diagnostics.NodesSize());
-    adjustedEnds.reserve(diagnostics.NodesSize());
-    ui64 observedFinish = 0;
-    ui64 adjustedFinish = 0;
-    size_t edges = 0;
-    for (const auto& node: diagnostics.GetNodes()) {
-        if (!node.HasStartUs() || !node.HasDurationUs() || !node.HasKind() ||
-            (node.GetKind() != NProto::TLatencyDiagnostics::SERVICE &&
-             node.GetKind() != NProto::TLatencyDiagnostics::QUOTA) ||
-            (node.GetKind() == NProto::TLatencyDiagnostics::QUOTA &&
-             (!node.HasQuotaReason() ||
-              (node.GetQuotaReason() !=
-                   NProto::TLatencyDiagnostics::PROFILE_IOPS &&
-               node.GetQuotaReason() !=
-                   NProto::TLatencyDiagnostics::PROFILE_BANDWIDTH &&
-               node.GetQuotaReason() !=
-                   NProto::TLatencyDiagnostics::PROFILE_BURST))) ||
-            node.GetStartUs() > diagnostics.GetTotalUs() ||
-            node.GetDurationUs() > diagnostics.GetTotalUs() - node.GetStartUs())
+    requestType = TranslateLocalRequestType(requestType);
+    if (requestType != EBlockStoreRequest::ReadBlocks &&
+        requestType != EBlockStoreRequest::WriteBlocks) {
+            return {};
+        }
+        const bool write = requestType == EBlockStoreRequest::WriteBlocks;
+    for (const auto& row: Config.GetLatencyThresholds()) {
+        if (row.GetMediaKind() == mediaKind && row.GetWrite() == write &&
+            row.GetStartBytes() <= bytes && bytes < row.GetEndBytes())
         {
-            return {};
+            return TDuration::MicroSeconds(row.GetThresholdUs());
         }
-        ui64 observedReady = 0;
-        ui64 adjustedReady = 0;
-        edges += node.DependenciesSize();
-        if (edges > MaxLatencyEdges) {
-            return {};
-        }
-        for (const auto dependency: node.GetDependencies()) {
-            if (dependency >= observedEnds.size()) {
-                return {};   // cycle, forward edge or missing node
-            }
-            observedReady = std::max(observedReady, observedEnds[dependency]);
-            adjustedReady = std::max(adjustedReady, adjustedEnds[dependency]);
-        }
-        if (observedReady > node.GetStartUs()) {
-            return {};
-        }
-        const ui64 launchDelay = node.GetStartUs() - observedReady;
-        const ui64 duration =
-            node.GetKind() == NProto::TLatencyDiagnostics::QUOTA
-                ? 0
-                : node.GetDurationUs();
-        // Every adjusted term is bounded by its observed counterpart.
-        const ui64 adjustedEnd = adjustedReady + launchDelay + duration;
-        const ui64 observedEnd = node.GetStartUs() + node.GetDurationUs();
-        observedEnds.push_back(observedEnd);
-        adjustedEnds.push_back(adjustedEnd);
-        observedFinish = std::max(observedFinish, observedEnd);
-        adjustedFinish = std::max(adjustedFinish, adjustedEnd);
     }
-    // Keep the response tail and all time outside the producer's boundary.
-    return TDuration::MicroSeconds(
-        totalTime.MicroSeconds() - observedFinish + adjustedFinish);
+    return {};
 }
 
 TLatencyCounts EvaluateLatency(
@@ -186,8 +121,25 @@ TLatencyCounts EvaluateLatency(
     TMaybe<TDuration> totalTime, const NProto::TLatencyDiagnostics* diagnostics,
     bool success)
 {
+    return EvaluateLatency(TLatencyThresholds(config), mediaKind, requestType,
+                           originalRequestBytes, totalTime, diagnostics,
+                           success);
+}
+
+TMaybe<TDuration> CalculateLatency(
+    const NProto::TLatencyDiagnostics& diagnostics, TDuration totalTime)
+{
+    return ReplayLatencyGraph(diagnostics, totalTime);
+}
+
+TLatencyCounts EvaluateLatency(
+    const TLatencyThresholds& thresholds, ui32 mediaKind,
+    EBlockStoreRequest requestType, ui64 originalRequestBytes,
+    TMaybe<TDuration> totalTime, const NProto::TLatencyDiagnostics* diagnostics,
+    bool success)
+{
     const auto threshold =
-        FindThreshold(config, mediaKind, requestType, originalRequestBytes);
+        thresholds.Find(mediaKind, requestType, originalRequestBytes);
     const auto latency = diagnostics && totalTime
                              ? CalculateLatency(*diagnostics, *totalTime)
                              : TMaybe<TDuration>{};
@@ -249,6 +201,9 @@ TLatencyBatchResult TLatencyBatchTracker::Update(const TLatencyBatch& batch,
                                                  TInstant now, TDuration maxAge)
 {
     std::lock_guard lock(Lock);
+    if (!CheckpointHealthy) {
+        return {};
+    }
     ui64 readCount = 0;
     ui64 writeCount = 0;
     if (!batch.Generation || !batch.Sequence || !batch.CapturedAt ||
@@ -261,7 +216,10 @@ TLatencyBatchResult TLatencyBatchTracker::Update(const TLatencyBatch& batch,
                  (batch.Generation == Last->Generation &&
                   batch.Sequence <= Last->Sequence)))
     {
-        return {.Status = ELatencyBatchStatus::Duplicate};
+        const bool fresh =
+            batch.CapturedAt <= now && now - batch.CapturedAt <= maxAge;
+        return {.Status = fresh ? ELatencyBatchStatus::Duplicate
+                            : ELatencyBatchStatus::Invalid};
     }
 
     const bool sameGeneration = Last && batch.Generation == Last->Generation;
@@ -281,7 +239,7 @@ TLatencyBatchResult TLatencyBatchTracker::Update(const TLatencyBatch& batch,
     // and stale snapshots must not manufacture Good. Account their deltas as
     // Unknown and consume their high-water mark so re-delivery is harmless.
     const bool contiguous =
-        sameGeneration && batch.Sequence - Last->Sequence == 1;
+        Established && sameGeneration && batch.Sequence - Last->Sequence == 1;
     const bool fresh =
         batch.CapturedAt <= now && now - batch.CapturedAt <= maxAge;
     const bool compatible =
@@ -298,6 +256,11 @@ TLatencyBatchResult TLatencyBatchTracker::Update(const TLatencyBatch& batch,
     } else {
         result.Status = ELatencyBatchStatus::Accepted;
     }
+    if (!SaveCheckpoint(batch)) {
+        CheckpointHealthy = false;
+        return {};
+    }
+    Established = true;
     Last = batch;
     return result;
 }

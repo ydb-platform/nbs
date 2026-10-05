@@ -31,6 +31,16 @@ void TCallContext::SetHasUncountableRejects()
     AtomicSet(HasUncountableRejects, true);
 }
 
+void TCallContext::EnableLatency()
+{
+    AtomicSet(LatencyEnabled, true);
+}
+
+bool TCallContext::IsLatencyEnabled() const
+{
+    return AtomicGet(LatencyEnabled);
+}
+
 void TCallContext::SetLatencyDiagnostics(
     NProto::TLatencyDiagnostics diagnostics)
 {

@@ -38,8 +38,8 @@
 #include <cloud/blockstore/libs/storage/volume/model/requests_time_tracker.h>
 
 #include <cloud/storage/core/libs/api/hive_proxy.h>
-#include <cloud/storage/core/protos/trace.pb.h>
 #include <cloud/storage/core/libs/rdma/iface/public.h>
+#include <cloud/storage/core/protos/trace.pb.h>
 
 #include <contrib/ydb/core/base/tablet_pipe.h>
 #include <contrib/ydb/core/blockstore/core/blockstore.h>
@@ -145,6 +145,7 @@ class TVolumeActor final
             NActors::TActorId caller,
             ui64 callerCookie,
             TCallContext& callContext,
+            const std::shared_ptr<TLatencyVolumeRequest>& latency,
             NProto::TError error);
 
         const NActors::TActorId Caller;
@@ -156,6 +157,7 @@ class TVolumeActor final
         TThrottlingRequestInfo ThrottlingRequestInfo;
         TCancelRoutine* const CancelRoutine;
         const bool IsMultipartitionWriteOrZero;
+        std::shared_ptr<TLatencyVolumeRequest> Latency;
 
         TVolumeRequest(
                 const NActors::TActorId& caller,
@@ -186,12 +188,15 @@ class TVolumeActor final
                 ctx,
                 Caller,
                 CallerCookie,
-                *CallContext,
-                std::move(error));
+                *CallContext, Latency,
+                          std::move(error));
         }
     };
 
     using TVolumeRequestMap = THashMap<ui64, TVolumeRequest>;
+    TVector<std::weak_ptr<TLatencyVolumeRequest>> LatencyWaiters;
+    ui64 LatencyQuotaEnd = 0;
+    ui64 LatencyQuotaPolicyVersion = 0;
 
 public:
     struct TDuplicateRequest
@@ -348,7 +353,8 @@ private:
     TDeviceOperationTracker DeviceOperationTracker;
 
     // inflight VolumeRequestId -> duplicate request queue
-    // we respond to duplicate requests as soon as our original request is completed
+    // we respond to duplicate requests as soon as our original request is
+    // completed
     THashMap<ui64, TDeque<TDuplicateRequest>> DuplicateWriteAndZeroRequests;
     ui32 DuplicateRequestCount = 0;
 

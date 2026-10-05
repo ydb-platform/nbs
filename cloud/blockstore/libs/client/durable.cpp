@@ -6,6 +6,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
@@ -84,6 +85,8 @@ struct TRequestStateBase
     std::shared_ptr<typename T::TRequest> Request;
     TPromise<typename T::TResponse> Response;
     ELogPriority DetailsLogPriority = TLOG_DEBUG;
+    TLatencyOperationPtr Latency;
+    ui64 LatencyAttemptStarted = 0;
 
     TRequestStateBase(
             TCallContextPtr callContext,
@@ -91,6 +94,10 @@ struct TRequestStateBase
         : CallContext(std::move(callContext))
         , Request(std::move(request))
         , Response(NewPromise<typename T::TResponse>())
+        ,
+        Latency(
+            IsReadWriteRequest(T::BlockStoreRequest) ? StartLatency(CallContext)
+                                                     : nullptr)
     {}
 };
 
@@ -194,6 +201,10 @@ private:
         }
 
         EnsureRequestId(*request);
+        state->LatencyAttemptStarted = GetCycleCount();
+        if (state->Latency) {
+            request->MutableHeaders()->SetLatencyVersion(LatencyVersion);
+        }
 
         TMethod::Execute(Client.get(), state->CallContext, std::move(request))
             .Subscribe(
@@ -235,6 +246,10 @@ private:
         TRequestStatePtr<TMethod> state,
         typename TMethod::TResponse response)
     {
+        if constexpr (IsReadWriteRequest(TMethod::BlockStoreRequest)) {
+            CollectLatency(state->Latency, state->LatencyAttemptStarted,
+                           response);
+        }
         const ui64 requestId = GetRequestId(*state->Request);
         const auto& diskId = GetDiskId(*state->Request);
         const auto& clientId = GetClientId(*state->Request);
@@ -387,6 +402,10 @@ private:
                     << ", duration: " << FormatDuration(duration)
                     << ")");
             }
+        }
+
+        if constexpr (IsReadWriteRequest(TMethod::BlockStoreRequest)) {
+            FinishLatency(state->Latency, response);
         }
 
         try {

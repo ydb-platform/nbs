@@ -1,6 +1,7 @@
 #include "backend_rdma.h"
 
 #include "backend.h"
+#include "latency_tracker.h"
 
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -9,13 +10,13 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/rdma/helper.h>
+#include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_rdma.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
-#include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -23,6 +24,8 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
+
+#include <cloud/contrib/vhost/include/vhost/server.h>
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
@@ -76,6 +79,7 @@ public:
             TStringBuilder() << "Unsupported request " << type.Quote()));      \
     }                                                                          \
 
+
 #define BLOCKSTORE_IMPLEMENT_METHOD(name, ...)                                 \
     TFuture<NProto::T##name##Response> name(                                   \
         TCallContextPtr callContext,                                           \
@@ -83,6 +87,7 @@ public:
     {                                                                          \
         return Storage->name(std::move(callContext), std::move(request));      \
     }                                                                          \
+
 
     BLOCKSTORE_GRPC_SERVICE(BLOCKSTORE_DONT_IMPLEMENT_METHOD)
     BLOCKSTORE_LOCAL_SERVICE(BLOCKSTORE_IMPLEMENT_METHOD)
@@ -132,10 +137,11 @@ private:
     NProto::TVolume Volume;
     TString ClientId;
     ICompletionStatsPtr CompletionStats;
-    TSimpleStats CompletionStatsData;
+    TAtomicStats CompletionStatsData;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
+    TLatencyTracker LatencyTracker;
 
 public:
     explicit TRdmaBackend(ILoggingServicePtr logging);
@@ -155,7 +161,9 @@ private:
     void CompleteRequest(
         struct vhd_io* io,
         TCpuCycles startCycles,
-        bool isError);
+                         const TCallContext* callContext,
+                         const NProto::TError& error,
+                         const NProto::TLatencyDiagnostics& latency);
     IBlockStorePtr CreateDataClient(IStoragePtr storage);
 };
 
@@ -177,6 +185,8 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     ClientId = options.ClientId;
     ReadOnly = options.ReadOnly;
+    LatencyTracker =
+        TLatencyTracker(options.LatencyTrackingEnabled, options.LatencyConfig);
 
     BlockSize = options.BlockSize;
     STORAGE_VERIFY(
@@ -365,6 +375,11 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     auto requestId = CreateRequestId();
     auto callContext = MakeIntrusive<TCallContext>(requestId);
+    TCallContextPtr latencyCallContext;
+    if (LatencyTracker.IsEnabled()) {
+        latencyCallContext = callContext;
+        callContext->EnableLatency();
+    }
 
     auto* reqHeaders = request->MutableHeaders();
     reqHeaders->SetRequestId(requestId);
@@ -385,7 +400,8 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
     auto future =
         DataClient->ReadBlocksLocal(std::move(callContext), std::move(request));
     future.Subscribe(
-        [this, io, requestId, startCycles](const auto& future)
+        [this, io, requestId, startCycles,
+         latencyCallContext](const auto& future)
         {
             const auto& response = future.GetValue();
             auto& error = response.GetError();
@@ -394,7 +410,8 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
                 requestId,
                 error.GetCode(),
                 error.GetMessage().c_str());
-            CompleteRequest(io, startCycles, HasError(error));
+            CompleteRequest(io, startCycles, latencyCallContext.Get(), error,
+                            response.GetHeaders().GetLatency());
         });
 }
 
@@ -407,6 +424,11 @@ void TRdmaBackend::ProcessWriteRequest(
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     auto requestId = CreateRequestId();
     auto callContext = MakeIntrusive<TCallContext>(requestId);
+    TCallContextPtr latencyCallContext;
+    if (LatencyTracker.IsEnabled()) {
+        latencyCallContext = callContext;
+        callContext->EnableLatency();
+    }
 
     auto* reqHeaders = request->MutableHeaders();
     reqHeaders->SetRequestId(requestId);
@@ -427,7 +449,8 @@ void TRdmaBackend::ProcessWriteRequest(
     auto future =
         DataClient->WriteBlocksLocal(std::move(callContext), std::move(request));
     future.Subscribe(
-        [this, io, requestId, startCycles](const auto& future)
+        [this, io, requestId, startCycles,
+         latencyCallContext](const auto& future)
         {
             const auto& response = future.GetValue();
             auto& error = response.GetError();
@@ -436,28 +459,37 @@ void TRdmaBackend::ProcessWriteRequest(
                 requestId,
                 error.GetCode(),
                 error.GetMessage().c_str());
-            CompleteRequest(io, startCycles, HasError(error));
+            CompleteRequest(io, startCycles, latencyCallContext.Get(), error,
+                            response.GetHeaders().GetLatency());
         });
 }
 
 void TRdmaBackend::CompleteRequest(
     struct vhd_io* io,
-    TCpuCycles startCycles,
-    bool isError)
+    TCpuCycles startCycles, const TCallContext* callContext,
+    const NProto::TError& error, const NProto::TLatencyDiagnostics& graph)
 {
     auto* bio = vhd_get_bdev_io(io);
+    const bool isError = HasError(error);
+    const TCpuCycles completed = GetCycleCount();
+    const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
     ++CompletionStatsData.Completed;
 
     if (!isError) {
-        const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
         CompletionStatsData.Requests[bio->type].Count += 1;
         CompletionStatsData.Requests[bio->type].Bytes += bytes;
         CompletionStatsData.Sizes[bio->type].Increment(bytes);
-        CompletionStatsData.Times[bio->type].Increment(
-            GetCycleCount() - startCycles);
+        CompletionStatsData.Times[bio->type].Increment(completed - startCycles);
     } else {
         CompletionStatsData.Requests[bio->type].Errors += 1;
+    }
+
+    if (LatencyTracker.IsEnabled()) {
+        Y_DEBUG_ABORT_UNLESS(callContext);
+        const TCpuCycles elapsed = completed - startCycles;
+        LatencyTracker.Record(CompletionStatsData, bio->type, bytes, elapsed,
+                              !HasError(error), &graph);
     }
 
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);

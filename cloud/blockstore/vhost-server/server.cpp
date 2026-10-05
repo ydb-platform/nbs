@@ -98,6 +98,11 @@ private:
     TVector<vhd_request_queue*> Queues;
     std::unique_ptr<TAtomicStats[]> QueueStats;
 
+    bool LatencyTrackingEnabled = false;
+    ui32 LatencyThresholdVersion = 0;
+    ui64 LatencyGeneration = 0;
+    std::atomic<ui64> LatencySequence = 0;
+
     TVector<std::thread> QueueThreads;
 
 public:
@@ -127,6 +132,10 @@ void TServer::Start(const TOptions& options)
     STORAGE_INFO("Starting the server");
 
     SocketPath = options.SocketPath;
+    LatencyTrackingEnabled = options.LatencyTrackingEnabled;
+    LatencyThresholdVersion =
+        options.LatencyConfig.Config.GetLatencyThresholdVersion();
+    LatencyGeneration = options.LatencyGeneration;
 
     Info = Backend->Init(options);
 
@@ -221,12 +230,18 @@ TCompleteStats TServer::GetStats(const TSimpleStats& prevStats)
     if (!completionStats) {
         return TCompleteStats{
             .SimpleStats{prevStats},
-            .CriticalEvents{TakeAccumulatedCriticalEvents()}};
+            .CriticalEvents{TakeAccumulatedCriticalEvents()},
+                              .LatencyTrackingEnabled = false};
     }
 
     TCompleteStats result{
         .SimpleStats{*completionStats},
-        .CriticalEvents = TakeAccumulatedCriticalEvents()};
+        .CriticalEvents = TakeAccumulatedCriticalEvents(),
+                          .LatencyTrackingEnabled = LatencyTrackingEnabled,
+                          .LatencyThresholdVersion = LatencyThresholdVersion,
+                          .LatencyGeneration = LatencyGeneration,
+                          .LatencySequence = ++LatencySequence,
+                          .LatencyCapturedAt = TInstant::Now().MicroSeconds()};
 
     for (ui32 i = 0; i != Queues.size(); ++i) {
         result.SimpleStats += QueueStats[i];
@@ -270,6 +285,10 @@ void TServer::SyncQueueStats(ui32 queueIndex, const TSimpleStats& queueStats)
 
     stats.Requests[0] = queueStats.Requests[VHD_BDEV_READ];
     stats.Requests[1] = queueStats.Requests[VHD_BDEV_WRITE];
+    if (LatencyTrackingEnabled) {
+        stats.LatencyCounters[0] = queueStats.LatencyCounters[VHD_BDEV_READ];
+        stats.LatencyCounters[1] = queueStats.LatencyCounters[VHD_BDEV_WRITE];
+    }
 }
 
 }   // namespace

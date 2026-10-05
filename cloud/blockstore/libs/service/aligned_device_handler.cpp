@@ -1,5 +1,7 @@
 #include "aligned_device_handler.h"
 
+#include "latency.h"
+
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
@@ -118,13 +120,17 @@ TFuture<NProto::TReadBlocksLocalResponse> TAlignedDeviceHandler::Read(
     auto blocksInfo = TBlocksInfo(from, length, BlockSize);
     auto normalizeError = TryToNormalize(sgList, blocksInfo);
     if (HasError(normalizeError)) {
-        return MakeFuture<NProto::TReadBlocksLocalResponse>(
-            TErrorResponse(normalizeError));
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(WithLatencyLeaf(
+            ctx,
+            static_cast<NProto::TReadBlocksLocalResponse>(
+                TErrorResponse(normalizeError))));
     }
 
     if (!blocksInfo.IsAligned()) {
-        return MakeFuture<NProto::TReadBlocksLocalResponse>(
-            CreateRequestNotAlignedResponse());
+        return MakeFuture<NProto::TReadBlocksLocalResponse>(WithLatencyLeaf(
+            ctx,
+            static_cast<NProto::TReadBlocksLocalResponse>(
+                CreateRequestNotAlignedResponse())));
     }
 
     return ExecuteReadRequest(
@@ -144,13 +150,17 @@ TFuture<NProto::TWriteBlocksLocalResponse> TAlignedDeviceHandler::Write(
 
     auto normalizeError = TryToNormalize(sgList, blocksInfo);
     if (HasError(normalizeError)) {
-        return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-            TErrorResponse(normalizeError));
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(WithLatencyLeaf(
+            ctx,
+            static_cast<NProto::TWriteBlocksLocalResponse>(
+                TErrorResponse(normalizeError))));
     }
 
     if (!blocksInfo.IsAligned()) {
-        return MakeFuture<NProto::TWriteBlocksLocalResponse>(
-            CreateRequestNotAlignedResponse());
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>(WithLatencyLeaf(
+            ctx,
+            static_cast<NProto::TWriteBlocksLocalResponse>(
+                CreateRequestNotAlignedResponse())));
     }
 
     return ExecuteWriteRequest(std::move(ctx), blocksInfo, std::move(sgList));
@@ -198,6 +208,8 @@ TAlignedDeviceHandler::ExecuteReadRequest(
 
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     request->MutableHeaders()->SetRequestId(ctx->RequestId);
+    request->MutableHeaders()->SetLatencyVersion(
+        ctx->IsLatencyEnabled() ? LatencyVersion : 0);
     request->MutableHeaders()->SetTimestamp(TInstant::Now().MicroSeconds());
     request->MutableHeaders()->SetClientId(ClientId);
     request->SetCheckpointId(checkpointId);
@@ -234,6 +246,8 @@ TAlignedDeviceHandler::ExecuteReadRequest(
             CreateErrorAcquireResponse());
     }
 
+    auto latency = StartLatency(ctx);
+    const ui64 latencyStarted = GetCycleCount();
     auto result = Storage->ReadBlocksLocal(ctx, std::move(request));
 
     auto originalRange = blocksInfo.Range;
@@ -243,7 +257,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
     Y_DEBUG_ABORT_UNLESS(blocksInfo.Range.Size());
 
     return result.Apply(
-        [ctx = std::move(ctx),
+        [latency, latencyStarted, ctx = std::move(ctx),
          weakPtr = weak_from_this(),
          blocksInfo = blocksInfo,
          sgList = std::move(sgList),
@@ -251,7 +265,8 @@ TAlignedDeviceHandler::ExecuteReadRequest(
          originalRange = originalRange](
             const TFuture<NProto::TReadBlocksLocalResponse>& future) mutable
         {
-            const auto& response = future.GetValue();
+            auto response = future.GetValue();
+            CollectLatency(latency, latencyStarted, response);
             if (HasError(response)) {
                 if (auto self = weakPtr.lock()) {
                     self->ReportCriticalError(
@@ -259,15 +274,25 @@ TAlignedDeviceHandler::ExecuteReadRequest(
                         "Read",
                         originalRange);
                 }
-                return future;
+                FinishLatency(latency, response);
+                return MakeFuture(std::move(response));
             }
 
             if (auto self = weakPtr.lock()) {
-                return self->ExecuteReadRequest(
+                const ui64 nextStarted = GetCycleCount();
+                auto next = self->ExecuteReadRequest(
                     std::move(ctx),
                     blocksInfo,
                     std::move(sgList),
                     std::move(checkpointId));
+                return next.Apply(
+                    [latency, nextStarted](const auto& f)
+                    {
+                        auto result = f.GetValue();
+                        CollectLatency(latency, nextStarted, result);
+                        FinishLatency(latency, result);
+                        return result;
+                    });
             }
             return MakeFuture<NProto::TReadBlocksLocalResponse>(
                 TErrorResponse(E_CANCELLED));
@@ -287,6 +312,8 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
 
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     request->MutableHeaders()->SetRequestId(ctx->RequestId);
+    request->MutableHeaders()->SetLatencyVersion(
+        ctx->IsLatencyEnabled() ? LatencyVersion : 0);
     request->MutableHeaders()->SetTimestamp(TInstant::Now().MicroSeconds());
     request->MutableHeaders()->SetClientId(ClientId);
     request->SetStartIndex(blocksInfo.Range.Start);
@@ -322,6 +349,8 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
             CreateErrorAcquireResponse());
     }
 
+    auto latency = StartLatency(ctx);
+    const ui64 latencyStarted = GetCycleCount();
     auto result = Storage->WriteBlocksLocal(ctx, std::move(request));
 
     auto originalRange = blocksInfo.Range;
@@ -331,14 +360,15 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
     Y_DEBUG_ABORT_UNLESS(blocksInfo.Range.Size());
 
     return result.Apply(
-        [ctx = std::move(ctx),
+        [latency, latencyStarted, ctx = std::move(ctx),
          weakPtr = weak_from_this(),
          blocksInfo = blocksInfo,
          sgList = std::move(sgList),
          originalRange = originalRange](
             const TFuture<NProto::TWriteBlocksResponse>& future) mutable
         {
-            const auto& response = future.GetValue();
+            auto response = future.GetValue();
+            CollectLatency(latency, latencyStarted, response);
             if (HasError(response)) {
                 if (auto self = weakPtr.lock()) {
                     self->ReportCriticalError(
@@ -346,14 +376,24 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
                         "Write",
                         originalRange);
                 }
-                return future;
+                FinishLatency(latency, response);
+                return MakeFuture(std::move(response));
             }
 
             if (auto self = weakPtr.lock()) {
-                return self->ExecuteWriteRequest(
+                const ui64 nextStarted = GetCycleCount();
+                auto next = self->ExecuteWriteRequest(
                     std::move(ctx),
                     blocksInfo,
                     std::move(sgList));
+                return next.Apply(
+                    [latency, nextStarted](const auto& f)
+                    {
+                        auto result = f.GetValue();
+                        CollectLatency(latency, nextStarted, result);
+                        FinishLatency(latency, result);
+                        return result;
+                    });
             }
             return MakeFuture<NProto::TWriteBlocksResponse>(
                 TErrorResponse(E_CANCELLED));

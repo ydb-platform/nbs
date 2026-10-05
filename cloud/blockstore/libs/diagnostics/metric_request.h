@@ -32,6 +32,7 @@ struct TMetricRequest
     TInstant RequestTimestamp;
     bool Unaligned = false;
     bool CellRequest = false;
+    bool LatencyOrigin = false;
     std::shared_ptr<TLatencyRequestState> LatencyState;
     NProto::EVolumeAccessMode AccessMode =
         NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE;

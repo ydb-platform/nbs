@@ -8,6 +8,7 @@ SRCS(
     auth_scheme.cpp
     blocks_info.cpp
     context.cpp
+    latency.cpp
     device_handler.cpp
     overlapping_requests_guard_service.cpp
     overlapping_requests_guard.cpp

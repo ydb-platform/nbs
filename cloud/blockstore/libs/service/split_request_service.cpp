@@ -1,5 +1,6 @@
 #include "split_request_service.h"
 
+#include "latency.h"
 #include "service.h"
 #include "service_method.h"
 
@@ -172,6 +173,7 @@ private:
 
     TAdaptiveLock Lock;
     size_t SubResponseReceived = 0;
+    TLatencyOperationPtr Latency;
 
 public:
     explicit TCompositeRequest(std::shared_ptr<TRequest> request)
@@ -184,6 +186,7 @@ public:
         const TVector<TBlockRange64>& subRanges,
         ui32 blockSize)
     {
+        Latency = StartLatency(callContext, true);
         auto subRequests = CreateSubRequests(Request, subRanges, blockSize);
 
         if (subRequests.empty()) {
@@ -201,15 +204,19 @@ public:
         auto future = Promise.GetFuture();
 
         for (size_t i = 0; i < subRequests.size(); ++i) {
+            const ui64 latencyStarted = GetCycleCount();
             auto subFuture = TBlockStoreAdapter::Execute(
                 service,
                 callContext,
                 subRequests[i]);
             subFuture.Subscribe(
-                [self = this->shared_from_this(), requestIndex = i]   //
+                [self = this->shared_from_this(), requestIndex = i,
+                 latencyStarted]   //
                 (const TFuture<TResponse>& f)
                 {
                     self->SubResponses[requestIndex] = UnsafeExtractValue(f);
+                    CollectLatency(self->Latency, latencyStarted,
+                                   self->SubResponses[requestIndex]);
                     self->OnSubResponse(requestIndex);
                 });
         }
@@ -241,15 +248,20 @@ private:
                 return;
             }
 
+            if (!isLastResponse && Latency) {
+                Latency->Invalidate();
+            }
             promise.Swap(Promise);
         }
         // Reply to client without lock.
 
         if constexpr (TBlockStoreMethodTraits<TRequest>::IsReadRequest()) {
-            promise.SetValue(
-                hasError ? std::move(response)
-                         : MergeReadResponses(SubResponses));
+            auto result = hasError ? std::move(response)
+                         : MergeReadResponses(SubResponses);
+            FinishLatency(Latency, result);
+            promise.SetValue(std::move(result));
         } else {
+            FinishLatency(Latency, response);
             promise.SetValue(std::move(response));
         }
 

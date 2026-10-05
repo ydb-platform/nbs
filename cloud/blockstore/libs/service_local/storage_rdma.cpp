@@ -5,9 +5,12 @@
 
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/storage/protos/disk.pb.h>
+
+#include <cloud/storage/core/libs/common/error.h>
 
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -367,18 +370,46 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
-        return HandleRequest<TReadBlocksHandler>(
+        auto latency = StartLatency(callContext);
+        auto future = [&]() -> TFuture<NProto::TReadBlocksLocalResponse>
+        {
+            return HandleRequest<TReadBlocksHandler>(
             std::move(callContext),
             std::move(request));
+        }();
+        if (!latency) {
+            return future;
+        }
+        return future.Apply(
+            [latency](const auto& f)
+            {
+                auto response = f.GetValue();
+                FinishLatencyLeaf(latency, response);
+                return response;
+            });
     }
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
-        return HandleRequest<TWriteBlocksHandler>(
+        auto latency = StartLatency(callContext);
+        auto future = [&]() -> TFuture<NProto::TWriteBlocksLocalResponse>
+        {
+            return HandleRequest<TWriteBlocksHandler>(
             std::move(callContext),
             std::move(request));
+        }();
+        if (!latency) {
+            return future;
+        }
+        return future.Apply(
+            [latency](const auto& f)
+            {
+                auto response = f.GetValue();
+                FinishLatencyLeaf(latency, response);
+                return response;
+            });
     }
 
     TFuture<NProto::TZeroBlocksResponse> ZeroBlocks(

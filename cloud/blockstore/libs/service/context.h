@@ -13,11 +13,14 @@ namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TLatencyVolumeRequest;
+
 struct TCallContext final: public TCallContextBase
 {
 private:
     TAtomic SilenceRetriableErrors = false;
     TAtomic HasUncountableRejects = false;
+    TAtomic LatencyEnabled = false;
     mutable std::mutex LatencyLock;
     std::shared_ptr<const NProto::TLatencyDiagnostics> LatencyDiagnostics;
 
@@ -29,6 +32,9 @@ public:
 
     bool GetHasUncountableRejects() const;
     void SetHasUncountableRejects();
+
+    void EnableLatency();
+    bool IsLatencyEnabled() const;
 
     // Publish only the merged graph for the original operation, after all
     // children/retries complete. Never publish an individual child's graph.

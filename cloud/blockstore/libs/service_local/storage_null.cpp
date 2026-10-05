@@ -1,6 +1,7 @@
 #include "storage_null.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 
@@ -33,44 +34,72 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TReadBlocksLocalRequest> request) override
     {
-        Y_UNUSED(callContext);
+        auto latency = StartLatency(callContext);
+        auto future = [&]() -> TFuture<NProto::TReadBlocksLocalResponse>
+        {
+            Y_UNUSED(callContext);
 
-        const auto blockSize = request->GetBlockSize();
-        const auto blocksCount = request->GetBlocksCount();
-        size_t responseSize = blockSize * blocksCount;
+            const auto blockSize = request->GetBlockSize();
+            const auto blocksCount = request->GetBlocksCount();
+            size_t responseSize = blockSize * blocksCount;
 
-        auto guard = request->Sglist.Acquire();
-        if (!guard) {
-            NProto::TReadBlocksLocalResponse response = TErrorResponse(
-                E_CANCELLED,
-                "failed to acquire sglist in NullStorage");
-            return MakeFuture(std::move(response));
-        }
-
-        // simulate zero response
-        for (const auto& buf : guard.Get()) {
-            if (responseSize == 0) {
-                break;
+            auto guard = request->Sglist.Acquire();
+            if (!guard) {
+                NProto::TReadBlocksLocalResponse response = TErrorResponse(
+                    E_CANCELLED,
+                    "failed to acquire sglist in NullStorage");
+                return MakeFuture(std::move(response));
             }
 
-            const auto size = std::min(buf.Size(), responseSize);
-            if (buf.Data()) {
-                memset(const_cast<char*>(buf.Data()), 0, size);
-            }
-            responseSize -= size;
-        }
+            // simulate zero response
+            for (const auto& buf : guard.Get()) {
+                if (responseSize == 0) {
+                    break;
+                }
 
-        return MakeFuture(NProto::TReadBlocksLocalResponse());
+                const auto size = std::min(buf.Size(), responseSize);
+                if (buf.Data()) {
+                    memset(const_cast<char*>(buf.Data()), 0, size);
+                }
+                responseSize -= size;
+            }
+
+            return MakeFuture(NProto::TReadBlocksLocalResponse());
+        }();
+        if (!latency) {
+            return future;
+        }
+        return future.Apply(
+            [latency](const auto& f)
+            {
+                auto response = f.GetValue();
+                FinishLatencyLeaf(latency, response);
+                return response;
+            });
     }
 
     TFuture<NProto::TWriteBlocksLocalResponse> WriteBlocksLocal(
         TCallContextPtr callContext,
         std::shared_ptr<NProto::TWriteBlocksLocalRequest> request) override
     {
-        Y_UNUSED(callContext);
-        Y_UNUSED(request);
+        auto latency = StartLatency(callContext);
+        auto future = [&]() -> TFuture<NProto::TWriteBlocksLocalResponse>
+        {
+                Y_UNUSED(callContext);
+            Y_UNUSED(request);
 
-        return MakeFuture(NProto::TWriteBlocksLocalResponse());
+            return MakeFuture(NProto::TWriteBlocksLocalResponse());
+        }();
+        if (!latency) {
+            return future;
+        }
+        return future.Apply(
+            [latency](const auto& f)
+            {
+                auto response = f.GetValue();
+                FinishLatencyLeaf(latency, response);
+                return response;
+            });
     }
 
     TFuture<NProto::TError> EraseDevice(
@@ -107,7 +136,7 @@ public:
         Y_UNUSED(accessMode);
 
         return MakeFuture<IStoragePtr>(std::make_shared<TNullStorage>());
-    };
+    }
 };
 
 }   // namespace
