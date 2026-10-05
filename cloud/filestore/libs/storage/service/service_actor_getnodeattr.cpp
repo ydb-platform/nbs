@@ -1,5 +1,6 @@
 #include "service_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
@@ -285,16 +286,13 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponseCheck(
     }
 
     if (exists && !locked) {
-        LOG_WARN(
-            ctx,
-            TFileStoreComponents::SERVICE,
-            "[%s] Node found in leader but missing in shard %s (%s) for %lu, "
-            "%s",
-            LogTag.c_str(),
-            LeaderResponse.GetNode().GetShardFileSystemId().c_str(),
-            LeaderResponse.GetNode().GetShardNodeName().Quote().c_str(),
-            GetNodeAttrRequest.GetNodeId(),
-            GetNodeAttrRequest.GetName().Quote().c_str());
+        ReportNodeNotFoundInShard(
+            TStringBuilder()
+            << "[" << LogTag << "] Node found in leader but missing in shard "
+            << LeaderResponse.GetNode().GetShardFileSystemId() << " ("
+            << LeaderResponse.GetNode().GetShardNodeName().Quote() << ") for "
+            << GetNodeAttrRequest.GetNodeId() << ", "
+            << GetNodeAttrRequest.GetName().Quote());
 
         HandleError(ctx, std::move(ShardError));
         return;
@@ -482,7 +480,7 @@ void TStorageServiceActor::HandleGetNodeAttr(
         ProfileLog,
         TraceSerializer,
         disableMultiTabletForwarding,
-        StorageConfig->GetFakeShardPhaseDelay());
+        StorageConfig->GetArtificialShardPhaseDelay());
 
     NCloud::Register(ctx, std::move(actor));
 }

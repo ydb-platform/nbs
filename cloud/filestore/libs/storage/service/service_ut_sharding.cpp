@@ -2847,6 +2847,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             E_FS_NOENT,
             getNodeAttrResponse->GetError().GetCode(),
             getNodeAttrResponse->GetError().GetMessage());
+
+        const auto counters =
+            env.GetCounters()->FindSubgroup("component", "service");
+        UNIT_ASSERT(counters);
+        const auto counter =
+            counters->GetCounter("AppCriticalEvents/NodeNotFoundInShard");
+        UNIT_ASSERT_VALUES_EQUAL(1, counter->GetAtomic());
     }
 
     SERVICE_TEST(ShouldPerformLocksForExternalNodes)

@@ -360,7 +360,7 @@ void TStorageServiceActor::HandleCreateHandle(
         filestore.GetFileSystemId(),
         session->RequestStats,
         ProfileLog,
-        StorageConfig->GetFakeShardPhaseDelay());
+        StorageConfig->GetArtificialShardPhaseDelay());
 
     NCloud::Register(ctx, std::move(actor));
 }

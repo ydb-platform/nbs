@@ -1,1 +1,1 @@
-FakeShardPhaseDelay: 20
+ArtificialShardPhaseDelay: 20
