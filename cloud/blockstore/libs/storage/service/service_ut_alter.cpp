@@ -1067,28 +1067,44 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         TServiceClient service(runtime, nodeIdx);
         service.CreateVolume(DefaultDiskId, DefaultBlocksCount);
 
+        service.SendRequest(
+            MakeSSProxyServiceId(),
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                DefaultDiskId));
+        const auto description =
+            service.RecvResponse<TEvSSProxy::TEvDescribeVolumeResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, description->GetStatus());
+
         std::optional<NKikimrBlockStore::TVolumeConfig> alterVolumeConfig;
 
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 switch (event->GetTypeRewrite()) {
-                    case TEvSSProxy::EvDescribeVolumeResponse: {
+                    case TEvSSProxy::EvDescribeVolumeRequest: {
                         // Report the test volume as a direct volume.
-                        auto* msg =
-                            event->Get<TEvSSProxy::TEvDescribeVolumeResponse>();
-                        auto& pathDescription =
-                            const_cast<NKikimrSchemeOp::TPathDescription&>(
-                                msg->PathDescription);
+                        auto pathDescription = description->PathDescription;
                         pathDescription.MutableBlockStoreVolumeDescription()
                             ->MutableVolumeConfig()
                             ->SetStorageMediaKind(
                                 NCloud::NProto::
                                     STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
-                        break;
+                        auto response = std::make_unique<
+                            TEvSSProxy::TEvDescribeVolumeResponse>(
+                            description->Path,
+                            std::move(pathDescription));
+                        runtime.Send(
+                            new IEventHandle(
+                                event->Sender,
+                                event->Recipient,
+                                response.release(),
+                                0,   // flags
+                                event->Cookie),
+                            nodeIdx);
+                        return TTestActorRuntime::EEventAction::DROP;
                     }
                     case TEvSSProxy::EvModifySchemeRequest: {
-                        // Capture the resize config and reply with success.
+                        // Reply to the captured resize request and drop it.
                         auto* msg =
                             event->Get<TEvSSProxy::TEvModifySchemeRequest>();
                         alterVolumeConfig =
@@ -1111,17 +1127,67 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
                 return TTestActorRuntime::DefaultObserverFunc(event);
             });
 
-        service.SendResizeVolumeRequest(DefaultDiskId, DefaultBlocksCount);
+        auto createResizeRequest = [&](ui64 blocksCount)
+        {
+            auto request =
+                service.CreateResizeVolumeRequest(DefaultDiskId, blocksCount);
+            request->Record.ClearPerformanceProfile();
+            return request;
+        };
+
+        auto checkUnsupportedResizeOptions = [&](ui64 blocksCount)
+        {
+            auto request = createResizeRequest(blocksCount);
+            request->Record.MutablePerformanceProfile()->SetMaxReadIops(100);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            auto response = service.RecvResizeVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED, response->GetStatus());
+            UNIT_ASSERT(!alterVolumeConfig);
+
+            request = createResizeRequest(blocksCount);
+            request->Record.MutablePerformanceProfile();
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            response = service.RecvResizeVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED, response->GetStatus());
+            UNIT_ASSERT(!alterVolumeConfig);
+
+            request = createResizeRequest(blocksCount);
+            request->Record.MutableFlags()->SetNoSeparateMixedChannelAllocation(
+                true /* noSeparateMixedChannelAllocation */);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            response = service.RecvResizeVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED, response->GetStatus());
+            UNIT_ASSERT(!alterVolumeConfig);
+
+            request = createResizeRequest(blocksCount);
+            request->Record.MutableFlags();
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            response = service.RecvResizeVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED, response->GetStatus());
+            UNIT_ASSERT(!alterVolumeConfig);
+        };
+
+        // Unsupported options are rejected before the same-size shortcut.
+        checkUnsupportedResizeOptions(DefaultBlocksCount);
+        checkUnsupportedResizeOptions(DefaultBlocksCount * 2);
+
+        service.SendRequest(
+            MakeStorageServiceId(),
+            createResizeRequest(DefaultBlocksCount));
         auto response = service.RecvResizeVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, response->GetStatus());
         UNIT_ASSERT(!alterVolumeConfig);
 
-        service.SendResizeVolumeRequest(DefaultDiskId, DefaultBlocksCount / 2);
+        service.SendRequest(
+            MakeStorageServiceId(),
+            createResizeRequest(DefaultBlocksCount / 2));
         response = service.RecvResizeVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
         UNIT_ASSERT(!alterVolumeConfig);
 
-        service.SendResizeVolumeRequest(DefaultDiskId, DefaultBlocksCount * 2);
+        service.SendRequest(
+            MakeStorageServiceId(),
+            createResizeRequest(DefaultBlocksCount * 2));
         response = service.RecvResizeVolumeResponse();
         UNIT_ASSERT_VALUES_EQUAL_C(
             S_OK,
@@ -1136,6 +1202,85 @@ Y_UNIT_TEST_SUITE(TServiceAlterTest)
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             alterVolumeConfig->ExplicitChannelProfilesSize());
+    }
+
+    void DoTestShouldValidateDirectVolumePartitionsOnlyOnResize(
+        const ui32 partitionsCount)
+    {
+        TTestEnv env;
+        ui32 nodeIdx = SetupTestEnv(env);
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume(DefaultDiskId, DefaultBlocksCount);
+
+        service.SendRequest(
+            MakeSSProxyServiceId(),
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                DefaultDiskId));
+        const auto description =
+            service.RecvResponse<TEvSSProxy::TEvDescribeVolumeResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, description->GetStatus());
+
+        auto pathDescription = description->PathDescription;
+        auto* config = pathDescription.MutableBlockStoreVolumeDescription()
+                           ->MutableVolumeConfig();
+        config->SetStorageMediaKind(
+            NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP);
+        // Report an invalid direct-volume partition count.
+        config->ClearPartitions();
+        for (ui32 i = 0; i < partitionsCount; ++i) {
+            config->AddPartitions()->SetBlockCount(DefaultBlocksCount);
+        }
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvDescribeVolumeRequest) {
+                    auto response =
+                        std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                            description->Path,
+                            pathDescription);
+                    runtime.Send(
+                        new IEventHandle(
+                            event->Sender,
+                            event->Recipient,
+                            response.release(),
+                            0,   // flags
+                            event->Cookie),
+                        nodeIdx);
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        auto request = service.CreateResizeVolumeRequest(
+            DefaultDiskId,
+            DefaultBlocksCount * 2);
+        request->Record.ClearPerformanceProfile();
+        service.SendRequest(MakeStorageServiceId(), std::move(request));
+        auto response = service.RecvResizeVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, response->GetStatus());
+
+        service.AlterVolume(DefaultDiskId, "project", "folder", "cloud");
+        auto statResponse = service.StatVolume(DefaultDiskId);
+        const auto& volume = statResponse->Record.GetVolume();
+        UNIT_ASSERT_VALUES_EQUAL("project", volume.GetProjectId());
+        UNIT_ASSERT_VALUES_EQUAL("folder", volume.GetFolderId());
+        UNIT_ASSERT_VALUES_EQUAL("cloud", volume.GetCloudId());
+    }
+
+    Y_UNIT_TEST(ShouldValidateMissingDirectVolumePartitionOnlyOnResize)
+    {
+        DoTestShouldValidateDirectVolumePartitionsOnlyOnResize(
+            0 /* partitionsCount */);
+    }
+
+    Y_UNIT_TEST(ShouldValidateMultipleDirectVolumePartitionsOnlyOnResize)
+    {
+        DoTestShouldValidateDirectVolumePartitionsOnlyOnResize(
+            2 /* partitionsCount */);
     }
 }
 

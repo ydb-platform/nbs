@@ -34,8 +34,7 @@ private:
 
     const TStorageConfigConstPtr Config;
 
-    const NProto::TResizeVolumeRequestFlags Flags;
-    const NProto::TVolumePerformanceProfile PerformanceProfile;
+    const NProto::TResizeVolumeRequest ResizeRequest;
     NKikimrBlockStore::TVolumeConfig VolumeConfig;
     NProto::TError Error;
 
@@ -127,9 +126,12 @@ private:
 
     void DescribeVolume(const TActorContext& ctx);
 
-    bool PrepareSsdDirectMirror3Of5GroupVolumeResize(
-        const TActorContext& ctx,
-        const NKikimrBlockStore::TVolumeConfig& oldVolumeConfig);
+    NProto::TError ValidateSsdDirectMirror3Of5GroupVolumeResize(
+        const NKikimrBlockStore::TVolumeConfig& oldVolumeConfig) const;
+
+    NProto::TError ValidateVolumeResize(
+        const TVolumeParams& volumeParams,
+        ui64 oldBlocksCount) const;
 
     void StatVolume(const TActorContext& ctx);
 
@@ -169,15 +171,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TAlterVolumeActor::TAlterVolumeActor(
-        const TActorId& sender,
-        ui64 cookie,
-        TStorageConfigConstPtr config,
-        const NProto::TResizeVolumeRequest& request)
+    const TActorId& sender,
+    ui64 cookie,
+    TStorageConfigConstPtr config,
+    const NProto::TResizeVolumeRequest& request)
     : Sender(sender)
     , Cookie(cookie)
     , Config(std::move(config))
-    , Flags(request.GetFlags())
-    , PerformanceProfile(request.GetPerformanceProfile())
+    , ResizeRequest(request)
     , NewBlocksCount(request.GetBlocksCount())
     , DiskId(request.GetDiskId())
     , ConfigVersion(request.GetConfigVersion())
@@ -244,52 +245,116 @@ void TAlterVolumeActor::DescribeVolume(const TActorContext& ctx)
             /*exactDiskIdMatch=*/false));
 }
 
-bool TAlterVolumeActor::PrepareSsdDirectMirror3Of5GroupVolumeResize(
-    const TActorContext& ctx,
-    const NKikimrBlockStore::TVolumeConfig& oldVolumeConfig)
+NProto::TError TAlterVolumeActor::ValidateSsdDirectMirror3Of5GroupVolumeResize(
+    const NKikimrBlockStore::TVolumeConfig& oldVolumeConfig) const
 {
     if (SetupChannelsRequested) {
-        Error = MakeError(
+        return MakeError(
             E_NOT_IMPLEMENTED,
             "SetupChannels is not supported for ssd-direct-mirror3of5-group "
             "volumes");
-        ReplyAndDie(ctx);
-        return false;
+    }
+
+    if (ResizeRequest.HasPerformanceProfile()) {
+        return MakeError(
+            E_NOT_IMPLEMENTED,
+            "PerformanceProfile is not supported for "
+            "ssd-direct-mirror3of5-group volumes");
+    }
+
+    if (ResizeRequest.HasFlags()) {
+        return MakeError(
+            E_NOT_IMPLEMENTED,
+            "Resize flags are not supported for ssd-direct-mirror3of5-group "
+            "volumes");
     }
 
     if (oldVolumeConfig.PartitionsSize() != 1) {
-        Error = MakeError(
+        return MakeError(
             E_INVALID_STATE,
             TStringBuilder()
                 << "ssd-direct-mirror3of5-group volume should have exactly "
                    "one partition, got "
                 << oldVolumeConfig.PartitionsSize());
-        ReplyAndDie(ctx);
-        return false;
     }
 
-    if (NewBlocksCount) {
-        const ui64 oldBlocksCount =
-            oldVolumeConfig.GetPartitions(0).GetBlockCount();
-
-        if (NewBlocksCount < oldBlocksCount) {
-            Error = MakeError(E_ARGUMENT, "Cannot decrease volume size");
-            ReplyAndDie(ctx);
-            return false;
-        }
-
-        if (NewBlocksCount == oldBlocksCount) {
-            Error = MakeError(
-                S_ALREADY,
-                "Volume already has the required settings");
-            WaitReady(ctx);
-            return false;
-        }
-
-        VolumeConfig.AddPartitions()->SetBlockCount(NewBlocksCount);
+    const ui64 oldBlocksCount =
+        oldVolumeConfig.GetPartitions(0).GetBlockCount();
+    if (NewBlocksCount < oldBlocksCount) {
+        return MakeError(E_ARGUMENT, "Cannot decrease volume size");
     }
 
-    return true;
+    if (NewBlocksCount == oldBlocksCount) {
+        return MakeError(S_ALREADY);
+    }
+
+    return {};
+}
+
+NProto::TError TAlterVolumeActor::ValidateVolumeResize(
+    const TVolumeParams& volumeParams,
+    ui64 oldBlocksCount) const
+{
+    if (volumeParams.GetBlocksCount() < oldBlocksCount) {
+        return MakeError(E_ARGUMENT, "Cannot decrease volume size");
+    }
+
+    const auto maxBlocks = ComputeMaxBlocks(
+        *Config,
+        volumeParams.MediaKind,
+        volumeParams.PartitionsCount);
+
+    if (volumeParams.GetBlocksCount() > maxBlocks) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "disk size for media kind "
+                             << MediaKindToString(volumeParams.MediaKind)
+                             << " should be <= " << maxBlocks << " blocks");
+    }
+
+    const auto size = volumeParams.GetBlocksCount() * volumeParams.BlockSize;
+
+    if (volumeParams.MediaKind ==
+            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED &&
+        size % (Config->GetAllocationUnitNonReplicatedSSD() * 1_GB) != 0)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "volume size should be divisible by "
+                << (Config->GetAllocationUnitNonReplicatedSSD() * 1_GB));
+    }
+
+    if (volumeParams.MediaKind ==
+            NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED &&
+        size % (Config->GetAllocationUnitNonReplicatedHDD() * 1_GB) != 0)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "volume size should be divisible by "
+                << (Config->GetAllocationUnitNonReplicatedHDD() * 1_GB));
+    }
+
+    if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2 &&
+        size % (Config->GetAllocationUnitMirror2SSD() * 1_GB) != 0)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "volume size should be divisible by "
+                             << (Config->GetAllocationUnitMirror2SSD() * 1_GB));
+    }
+
+    if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3 &&
+        size % (Config->GetAllocationUnitMirror3SSD() * 1_GB) != 0)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder() << "volume size should be divisible by "
+                             << (Config->GetAllocationUnitMirror3SSD() * 1_GB));
+    }
+
+    return {};
 }
 
 void TAlterVolumeActor::StatVolume(const TActorContext& ctx)
@@ -378,148 +443,106 @@ void TAlterVolumeActor::HandleDescribeVolumeResponse(
         ConfigVersion = oldVolumeConfig.GetVersion();
     }
 
-    const auto mediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
-        oldVolumeConfig.GetStorageMediaKind());
-    if (IsSsdDirectMirror3Of5GroupMediaKind(mediaKind)) {
-        if (!PrepareSsdDirectMirror3Of5GroupVolumeResize(ctx, oldVolumeConfig)) {
+    if (NewBlocksCount || SetupChannelsRequested) {
+        const auto mediaKind = static_cast<NCloud::NProto::EStorageMediaKind>(
+            oldVolumeConfig.GetStorageMediaKind());
+        const bool isDirectVolume =
+            IsSsdDirectMirror3Of5GroupMediaKind(mediaKind);
+        TVolumeParams volumeParams;
+        NProto::TError validationError;
+
+        if (isDirectVolume) {
+            validationError =
+                ValidateSsdDirectMirror3Of5GroupVolumeResize(oldVolumeConfig);
+        } else {
+            ui32 oldBlocksCount = 0;
+            for (const auto& partition: oldVolumeConfig.GetPartitions()) {
+                oldBlocksCount += partition.GetBlockCount();
+                Y_ABORT_UNLESS(
+                    oldVolumeConfig.GetPartitions(0).GetBlockCount() ==
+                    partition.GetBlockCount());
+            }
+
+            volumeParams = BuildVolumeParams(oldVolumeConfig, oldBlocksCount);
+            if (NewBlocksCount) {
+                validationError =
+                    ValidateVolumeResize(volumeParams, oldBlocksCount);
+            }
+        }
+
+        if (FAILED(validationError.GetCode())) {
+            Error = std::move(validationError);
+            ReplyAndDie(ctx);
             return;
         }
-    } else if (NewBlocksCount || SetupChannelsRequested) {
-        ui32 oldBlocksCount = 0;
-        for (const auto& partition: oldVolumeConfig.GetPartitions()) {
-            oldBlocksCount += partition.GetBlockCount();
-            Y_ABORT_UNLESS(oldVolumeConfig.GetPartitions(0).GetBlockCount()
-                    == partition.GetBlockCount());
-        }
 
-        auto volumeParams = BuildVolumeParams(oldVolumeConfig, oldBlocksCount);
-
-        if (NewBlocksCount) {
-            if (volumeParams.GetBlocksCount() < oldBlocksCount) {
-                Error = MakeError(E_ARGUMENT, "Cannot decrease volume size");
-                ReplyAndDie(ctx);
-                return;
+        bool volumeConfigChanged;
+        if (isDirectVolume) {
+            volumeConfigChanged = validationError.GetCode() != S_ALREADY;
+            if (volumeConfigChanged) {
+                VolumeConfig.AddPartitions()->SetBlockCount(NewBlocksCount);
             }
+        } else {
+            Y_ABORT_UNLESS(
+                VolumeConfig.GetCloudId().empty() &&
+                VolumeConfig.GetFolderId().empty() &&
+                VolumeConfig.GetProjectId().empty());
 
-            const auto maxBlocks = ComputeMaxBlocks(
-                *Config,
-                volumeParams.MediaKind,
-                volumeParams.PartitionsCount
-            );
+            VolumeConfig.SetCloudId(oldVolumeConfig.GetCloudId());
+            VolumeConfig.SetFolderId(oldVolumeConfig.GetFolderId());
+            VolumeConfig.SetProjectId(oldVolumeConfig.GetProjectId());
 
-            if (volumeParams.GetBlocksCount() > maxBlocks) {
-                Error = MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder() << "disk size for media kind "
-                        << MediaKindToString(volumeParams.MediaKind)
-                        << " should be <= " << maxBlocks << " blocks"
-                );
-                ReplyAndDie(ctx);
-                return;
-            }
-
-            const auto size = volumeParams.GetBlocksCount() * volumeParams.BlockSize;
-
-            if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED
-                    && size % (Config->GetAllocationUnitNonReplicatedSSD() * 1_GB) != 0)
-            {
-                Error = MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder() << "volume size should be divisible by "
-                        << (Config->GetAllocationUnitNonReplicatedSSD() * 1_GB)
-                );
-                ReplyAndDie(ctx);
-                return;
-            }
-
-            if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_HDD_NONREPLICATED
-                    && size % (Config->GetAllocationUnitNonReplicatedHDD() * 1_GB) != 0)
-            {
-                Error = MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder() << "volume size should be divisible by "
-                        << (Config->GetAllocationUnitNonReplicatedHDD() * 1_GB)
-                );
-                ReplyAndDie(ctx);
-                return;
-            }
-
-            if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2
-                    && size % (Config->GetAllocationUnitMirror2SSD() * 1_GB) != 0)
-            {
-                Error = MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder() << "volume size should be divisible by "
-                        << (Config->GetAllocationUnitMirror2SSD() * 1_GB)
-                );
-                ReplyAndDie(ctx);
-                return;
-            }
-
-            if (volumeParams.MediaKind == NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3
-                    && size % (Config->GetAllocationUnitMirror3SSD() * 1_GB) != 0)
-            {
-                Error = MakeError(
-                    E_ARGUMENT,
-                    TStringBuilder() << "volume size should be divisible by "
-                        << (Config->GetAllocationUnitMirror3SSD() * 1_GB)
-                );
-                ReplyAndDie(ctx);
-                return;
-            }
-        }
-
-        Y_ABORT_UNLESS(
-            VolumeConfig.GetCloudId().empty() &&
-            VolumeConfig.GetFolderId().empty() &&
-            VolumeConfig.GetProjectId().empty());
-
-        VolumeConfig.SetCloudId(oldVolumeConfig.GetCloudId());
-        VolumeConfig.SetFolderId(oldVolumeConfig.GetFolderId());
-        VolumeConfig.SetProjectId(oldVolumeConfig.GetProjectId());
-
-        if (SetupChannelsRequested) {
-            VolumeConfig.SetPoolKindChangeAllowed(true);
-        } else if (oldVolumeConfig.HasIsPartitionsPoolKindSetManually()) {
-            if (!oldVolumeConfig.GetIsPartitionsPoolKindSetManually()) {
+            if (SetupChannelsRequested) {
                 VolumeConfig.SetPoolKindChangeAllowed(true);
-            } else {
-                VolumeConfig.SetIsPartitionsPoolKindSetManually(true);
-            }
-        }
-
-        if (oldVolumeConfig.GetIsPartitionsPoolKindSetManually()) {
-            for (ui32 i = 0; i < oldVolumeConfig.ExplicitChannelProfilesSize(); ++i) {
-                while (i >= VolumeConfig.ExplicitChannelProfilesSize()) {
-                    VolumeConfig.AddExplicitChannelProfiles();
+            } else if (oldVolumeConfig.HasIsPartitionsPoolKindSetManually()) {
+                if (!oldVolumeConfig.GetIsPartitionsPoolKindSetManually()) {
+                    VolumeConfig.SetPoolKindChangeAllowed(true);
+                } else {
+                    VolumeConfig.SetIsPartitionsPoolKindSetManually(true);
                 }
-                auto* existingProfile = VolumeConfig.MutableExplicitChannelProfiles(i);
-                const auto& oldProfile =
-                    oldVolumeConfig.GetExplicitChannelProfiles(i);
-                existingProfile->SetPoolKind(oldProfile.GetPoolKind());
             }
+
+            if (oldVolumeConfig.GetIsPartitionsPoolKindSetManually()) {
+                for (ui32 i = 0;
+                     i < oldVolumeConfig.ExplicitChannelProfilesSize();
+                     ++i)
+                {
+                    while (i >= VolumeConfig.ExplicitChannelProfilesSize()) {
+                        VolumeConfig.AddExplicitChannelProfiles();
+                    }
+                    auto* existingProfile =
+                        VolumeConfig.MutableExplicitChannelProfiles(i);
+                    const auto& oldProfile =
+                        oldVolumeConfig.GetExplicitChannelProfiles(i);
+                    existingProfile->SetPoolKind(oldProfile.GetPoolKind());
+                }
+            }
+
+            ResizeVolume(
+                *Config,
+                volumeParams,
+                ResizeRequest.GetFlags(),
+                ResizeRequest.GetPerformanceProfile(),
+                VolumeConfig);
+
+            volumeConfigChanged =
+                !NewBlocksCount ||
+                SetMissingParams(volumeParams, oldVolumeConfig, VolumeConfig) ||
+                !CompareVolumeConfigs(oldVolumeConfig, VolumeConfig);
         }
 
-        ResizeVolume(
-            *Config,
-            volumeParams,
-            Flags,
-            PerformanceProfile,
-            VolumeConfig
-        );
-
-        if (
-                NewBlocksCount
-                && !SetMissingParams(volumeParams, oldVolumeConfig, VolumeConfig)
-                && CompareVolumeConfigs(oldVolumeConfig, VolumeConfig)
-           )
-        {
-            LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
-                "Volume %s already has the required settings, size=%lu",
+        if (!volumeConfigChanged) {
+            LOG_DEBUG(
+                ctx,
+                TBlockStoreComponents::SERVICE,
+                "Volume %s already has the required settings, requested "
+                "size=%lu",
                 DiskId.Quote().c_str(),
-                volumeParams.GetBlocksCount());
+                NewBlocksCount);
 
-            Error = MakeError(S_ALREADY, "Volume already has the required settings");
+            Error = MakeError(
+                S_ALREADY,
+                "Volume already has the required settings");
             WaitReady(ctx);
             return;
         }
