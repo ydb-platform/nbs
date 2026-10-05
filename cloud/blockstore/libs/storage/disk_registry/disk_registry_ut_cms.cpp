@@ -2057,11 +2057,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TVector<TString>({"dev-1"}),
             response->Record.GetPathsToAttach());
 
+        TAutoPtr<IEventHandle> attachPathsResponse;
         Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
                     TEvDiskAgent::EvAttachPathsResponse) {
+
+                    UNIT_ASSERT(!attachPathsResponse);
+                    attachPathsResponse.Swap(event);
+
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
@@ -2077,7 +2082,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TVector<TString>({"dev-1", "dev-2"}),
             response->Record.GetPathsToAttach());
 
+        UNIT_ASSERT(attachPathsResponse);
         Runtime->SetObserverFunc(TTestActorRuntimeBase::DefaultObserverFunc);
+
+        Runtime->Send(attachPathsResponse);
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT(!attachPathsResponse);
 
         RemoveDevice("agent-1", "dev-2");
 
