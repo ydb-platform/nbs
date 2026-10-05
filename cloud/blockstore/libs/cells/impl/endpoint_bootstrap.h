@@ -1,7 +1,6 @@
 #pragma once
 
 #include "bootstrap.h"
-#include "multiclient_endpoint.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
 #include <cloud/blockstore/libs/client/config.h>
@@ -18,7 +17,7 @@ struct THostConfig;
 struct ICellHostEndpointBootstrap
 {
     using TGrpcEndpointBootstrapFuture =
-        NThreading::TFuture<IMultiClientEndpointPtr>;
+        NThreading::TFuture<IBlockStorePtr>;
     using TRdmaEndpointBootstrapResult = TResultOrError<IBlockStorePtr>;
     using TShutdownEndpointFuture = NThreading::TFuture<void>;
 
