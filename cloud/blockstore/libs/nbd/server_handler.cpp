@@ -846,6 +846,11 @@ TRequestContextPtr TServerHandler::RegisterRequest(
         requestCtx->MetricRequest,
         *requestCtx->CallContext);
 
+    if (requestCtx->MetricRequest.LatencyState) {
+        requestCtx->MetricRequest.LatencyState->OriginalRequestBytes =
+            request.Length;
+    }
+
     RequestsInFlight.PushBack(requestCtx.Get());
 
     return requestCtx;

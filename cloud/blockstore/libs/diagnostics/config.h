@@ -195,6 +195,8 @@ public:
 
     [[nodiscard]] bool GetEnableDurableVolumeInfo() const;
 
+    [[nodiscard]] bool GetEnableLatency() const;
+
     [[nodiscard]] NProto::EVolumeCriticalEventsReportingMode
     GetVolumeCriticalEventsReportingMode() const;
 

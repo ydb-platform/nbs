@@ -316,6 +316,11 @@ TRequestPtr TEndpoint::RegisterRequest(TVhostRequestPtr vhostRequest)
         request->MetricRequest,
         *request->CallContext);
 
+    if (request->MetricRequest.LatencyState) {
+        request->MetricRequest.LatencyState->OriginalRequestBytes =
+            request->VhostRequest->Length;
+    }
+
     if (shouldDrop) {
         CompleteRequest(*request, NProto::TError{});
         return nullptr;

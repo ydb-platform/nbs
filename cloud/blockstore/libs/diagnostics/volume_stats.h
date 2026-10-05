@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include "downtime_history.h"
+#include "latency_sli.h"
 
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -73,6 +74,15 @@ struct IVolumeInfo
 
     using TTimeBucket = std::pair<TDuration, ui64>;
     using TSizeBucket = std::pair<ui64, ui64>;
+
+    virtual void LatencyCompleted(
+        EBlockStoreRequest requestType, const TLatencyCounts& counts,
+        ELatencyBatchStatus status = ELatencyBatchStatus::Accepted)
+    {
+        Y_UNUSED(requestType);
+        Y_UNUSED(counts);
+        Y_UNUSED(status);
+    }
 
     virtual void BatchCompleted(
         EBlockStoreRequest requestType,

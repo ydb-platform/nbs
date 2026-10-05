@@ -294,6 +294,22 @@ message TDiagnosticsConfig
     // object (not removed by InactiveClientsTimeout while the endpoint exists)
     optional bool EnableDurableVolumeInfo = 59;
 
+    // Opt-in shadow metrics only; no SLO or limiter behavior changes.
+    optional bool EnableLatency = 61 [default = false];
+    optional uint32 LatencyThresholdVersion = 62;
+
+    message TLatencyThreshold
+    {
+        optional uint32 MediaKind = 1;
+        optional bool Write = 2;
+        // Half-open interval in original request bytes, before alignment/split.
+        optional uint64 StartBytes = 3;
+        optional uint64 EndBytes = 4;
+        optional uint64 ThresholdUs = 5;
+    }
+    repeated TLatencyThreshold LatencyThresholds = 63;
+    optional uint32 LatencyBatchMaxAgeMs = 64 [default = 30000];
+
     // Selects the critical event metrics to report.
     optional EVolumeCriticalEventsReportingMode
         VolumeCriticalEventsReportingMode = 60;

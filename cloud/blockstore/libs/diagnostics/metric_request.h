@@ -10,9 +10,13 @@
 #include <util/datetime/base.h>
 #include <util/generic/string.h>
 
+#include <memory>
+
 namespace NCloud::NBlockStore {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+struct TLatencyRequestState;
 
 struct TMetricRequest
 {
@@ -28,6 +32,7 @@ struct TMetricRequest
     TInstant RequestTimestamp;
     bool Unaligned = false;
     bool CellRequest = false;
+    std::shared_ptr<TLatencyRequestState> LatencyState;
     NProto::EVolumeAccessMode AccessMode =
         NProto::EVolumeAccessMode::VOLUME_ACCESS_READ_WRITE;
     NProto::EVolumeMountMode MountMode =

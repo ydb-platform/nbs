@@ -10,6 +10,7 @@ SRCS(
     fault_injection.cpp
     incomplete_request_processor.cpp
     incomplete_requests.cpp
+    latency_sli.cpp
     hostname.cpp
     probes.cpp
     profile_log.cpp

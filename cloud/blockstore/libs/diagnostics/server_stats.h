@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "latency_sli.h"
+
 #include <cloud/blockstore/libs/diagnostics/incomplete_requests.h>
 #include <cloud/blockstore/libs/diagnostics/metric_request.h>
 #include <cloud/blockstore/libs/service/context.h>
@@ -108,6 +110,24 @@ struct IServerStats
 
     using TTimeBucket = std::pair<TDuration, ui64>;
     using TSizeBucket = std::pair<ui64, ui64>;
+
+    // Optional shadow supplement; the legacy batch contract is unchanged.
+    virtual void LatencyBatchCompleted(
+        TMetricRequest& request, const TLatencyCounts& counts,
+        ELatencyBatchStatus status = ELatencyBatchStatus::Accepted)
+    {
+        Y_UNUSED(request);
+        Y_UNUSED(counts);
+        Y_UNUSED(status);
+    }
+
+    virtual TLatencyBatchResult UpdateLatencyBatch(
+        TLatencyBatchTracker& tracker, const TLatencyBatch* batch)
+    {
+        Y_UNUSED(tracker);
+        Y_UNUSED(batch);
+        return {.Status = ELatencyBatchStatus::Disabled};
+    }
 
     virtual void BatchCompleted(
         TMetricRequest& metricRequest,

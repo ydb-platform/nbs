@@ -65,6 +65,7 @@ namespace {
                                                                                                          \
     xxx(ExecutionTimeSizeClasses,       TVector<TSizeInterval>,  {}                                     )\
     xxx(PassTraceIdToBlobstorage,       bool,                    false                                  )\
+    xxx(EnableLatency,                  bool,                    false                                  )\
     xxx(EnableDurableVolumeInfo,        bool,                    false                                  )\
     xxx(VolumeCriticalEventsReportingMode,                                                               \
                                         NProto::EVolumeCriticalEventsReportingMode,                      \

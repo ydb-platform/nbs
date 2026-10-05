@@ -31,6 +31,22 @@ void TCallContext::SetHasUncountableRejects()
     AtomicSet(HasUncountableRejects, true);
 }
 
+void TCallContext::SetLatencyDiagnostics(
+    NProto::TLatencyDiagnostics diagnostics)
+{
+    auto data = std::make_shared<const NProto::TLatencyDiagnostics>(
+        std::move(diagnostics));
+    std::lock_guard lock(LatencyLock);
+    LatencyDiagnostics = std::move(data);
+}
+
+std::shared_ptr<const NProto::TLatencyDiagnostics>
+TCallContext::GetLatencyDiagnostics() const
+{
+    std::lock_guard lock(LatencyLock);
+    return LatencyDiagnostics;
+}
+
 TCallContextPtr ToBlockStoreCallContext(TCallContextBasePtr callContext)
 {
     if (!callContext) {

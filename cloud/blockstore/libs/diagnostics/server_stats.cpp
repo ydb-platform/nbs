@@ -151,6 +151,13 @@ public:
         const TMetricRequest& metricRequest,
         TRequestTime time) override;
 
+    void LatencyBatchCompleted(
+        TMetricRequest& request, const TLatencyCounts& counts,
+        ELatencyBatchStatus status = ELatencyBatchStatus::Accepted) override;
+
+    TLatencyBatchResult UpdateLatencyBatch(TLatencyBatchTracker& tracker,
+                                           const TLatencyBatch* batch) override;
+
     void BatchCompleted(
         TMetricRequest& metricRequest,
         ui64 count,
@@ -326,6 +333,18 @@ void TServerStats::RequestStarted(
         req.StartIndex,
         req.RequestBytes);
 
+    if (DiagnosticsConfig && DiagnosticsConfig->GetEnableLatency() &&
+        !req.CellRequest &&
+        (TranslateLocalRequestType(req.RequestType) ==
+             EBlockStoreRequest::ReadBlocks ||
+         TranslateLocalRequestType(req.RequestType) ==
+             EBlockStoreRequest::WriteBlocks))
+    {
+        req.LatencyState = std::make_shared<TLatencyRequestState>();
+        req.LatencyState->StartedCycles = GetCycleCount();
+        req.LatencyState->OriginalRequestBytes = req.RequestBytes;
+    }
+
     req.RequestTimestamp = TInstant::Now();
     auto started = RequestStats->RequestStarted(
         req.MediaKind,
@@ -400,6 +419,27 @@ void TServerStats::RequestCompleted(
     TCallContext& callContext,
     const NProto::TError& error)
 {
+    // Own the boundary and finalization separately from processing-stage
+    // clocks, which may be reused by retries or internal parts.
+    if (req.LatencyState && !req.LatencyState->Completed.exchange(true)) {
+        const auto responseSent = callContext.GetResponseSentCycles();
+        const auto finished = responseSent ? responseSent : GetCycleCount();
+        TMaybe<TDuration> totalTime;
+        if (req.LatencyState->StartedCycles &&
+            finished >= req.LatencyState->StartedCycles)
+        {
+            totalTime = CyclesToDurationSafe(
+                finished - req.LatencyState->StartedCycles);
+        }
+        const auto diagnostics = callContext.GetLatencyDiagnostics();
+        LatencyBatchCompleted(
+            req,
+            EvaluateLatency(DiagnosticsConfig->GetConfigProto(), req.MediaKind,
+                            req.RequestType,
+                            req.LatencyState->OriginalRequestBytes, totalTime,
+                            diagnostics.get(), !HasError(error)));
+    }
+
     const ui64 started = callContext.GetRequestStartedCycles();
     const auto postponedTime = callContext.Time(EProcessingStage::Postponed);
     const auto predictedTime = callContext.GetPossiblePostponeDuration();
@@ -666,6 +706,34 @@ void TServerStats::AddIncompleteRequest(
             metricRequest.RequestType,
             time);
     }
+}
+
+void TServerStats::LatencyBatchCompleted(TMetricRequest& req,
+                                         const TLatencyCounts& counts,
+                                         ELatencyBatchStatus status)
+{
+    if (DiagnosticsConfig && DiagnosticsConfig->GetEnableLatency() &&
+        !req.CellRequest && req.VolumeInfo)
+    {
+        req.VolumeInfo->LatencyCompleted(req.RequestType, counts, status);
+    }
+}
+
+TLatencyBatchResult TServerStats::UpdateLatencyBatch(
+    TLatencyBatchTracker& tracker, const TLatencyBatch* batch)
+{
+    if (!DiagnosticsConfig || !DiagnosticsConfig->GetEnableLatency()) {
+        return {.Status = ELatencyBatchStatus::Disabled};
+    }
+    if (!batch) {
+        return {.Status = ELatencyBatchStatus::Missing};
+    }
+    const auto& config = DiagnosticsConfig->GetConfigProto();
+    return tracker.Update(
+        *batch,
+        ValidateLatencyThresholds(config) ? config.GetLatencyThresholdVersion()
+                                          : 0, TInstant::Now(),
+        TDuration::MilliSeconds(config.GetLatencyBatchMaxAgeMs()));
 }
 
 void TServerStats::BatchCompleted(

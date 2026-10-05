@@ -1,5 +1,6 @@
 syntax = "proto3";
 
+import "cloud/blockstore/public/api/protos/latency.proto";
 import "cloud/storage/core/protos/request_source.proto";
 import "cloud/storage/core/protos/throttler.proto";
 import "cloud/storage/core/protos/trace.proto";
@@ -106,6 +107,7 @@ message THeaders
     // When set it does not allow the execution of request on a disk that is a
     // copy with a mangled name with an additional suffix.
     bool ExactDiskIdMatch = 16;
+
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -118,4 +120,7 @@ message TResponseHeaders
 
     // Response throttler info.
     NCloud.NProto.TThrottlerInfo Throttler = 2;
+
+    // Optional versioned diagnostics. Absence never means zero quota wait.
+    TLatencyDiagnostics Latency = 3;
 }

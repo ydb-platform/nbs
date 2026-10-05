@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/blockstore/libs/diagnostics/latency_sli.h>
 #include <cloud/blockstore/libs/diagnostics/public.h>
 #include <cloud/blockstore/public/api/protos/endpoints.pb.h>
 
@@ -17,6 +18,9 @@ struct TEndpointStats
     TString DiskId;
 
     IServerStatsPtr ServerStats;
+
+    std::shared_ptr<TLatencyBatchTracker> LatencyTracker =
+        std::make_shared<TLatencyBatchTracker>();
 
     void Update(const NJson::TJsonValue& stats);
 };

@@ -255,6 +255,12 @@ private:
     const TRealInstanceId RealInstanceId;
 
     TRequestCounters RequestCounters;
+    TLatencyCounters ReadLatency;
+    TLatencyCounters WriteLatency;
+    TDynamicCounters::TCounterPtr LatencyTelemetryMissing;
+    TDynamicCounters::TCounterPtr LatencyTelemetryInvalid;
+    TDynamicCounters::TCounterPtr LatencyTelemetryDuplicate;
+    TDynamicCounters::TCounterPtr LatencyTelemetryUnknown;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
     // Cumulative per-volume availability counters (derivative/RATE, seconds).
@@ -451,6 +457,40 @@ public:
         RequestCounters.RequestFastPathHit(
             static_cast<TRequestCounters::TRequestType>(
                 TranslateLocalRequestType(requestType)));
+    }
+
+    void LatencyCompleted(EBlockStoreRequest requestType,
+                          const TLatencyCounts& counts,
+                          ELatencyBatchStatus status) override
+    {
+        if (LatencyTelemetryMissing) {
+            switch (status) {
+                case ELatencyBatchStatus::Missing:
+                    ++*LatencyTelemetryMissing;
+                    break;
+                case ELatencyBatchStatus::Invalid:
+                    ++*LatencyTelemetryInvalid;
+                    break;
+                case ELatencyBatchStatus::Duplicate:
+                    ++*LatencyTelemetryDuplicate;
+                    break;
+                case ELatencyBatchStatus::Unknown:
+                    ++*LatencyTelemetryUnknown;
+                    break;
+                default:
+                    break;
+            }
+        }
+        switch (TranslateLocalRequestType(requestType)) {
+            case EBlockStoreRequest::ReadBlocks:
+                ReadLatency.Add(counts);
+                break;
+            case EBlockStoreRequest::WriteBlocks:
+                WriteLatency.Add(counts);
+                break;
+            default:
+                break;
+        }
     }
 
     void BatchCompleted(
@@ -1164,6 +1204,25 @@ private:
                     MediaKindToStatsString(
                         volumeConfig.GetStorageMediaKind()));
         info->RequestCounters.Register(*countersGroup);
+        if (Type == EVolumeStatsType::EServerStats &&
+            DiagnosticsConfig->GetEnableLatency())
+        {
+            info->ReadLatency.Register(
+                *countersGroup->GetSubgroup("request", "ReadBlocks"));
+            info->WriteLatency.Register(
+                *countersGroup->GetSubgroup("request", "WriteBlocks"));
+            info->LatencyTelemetryMissing = countersGroup->GetCounter(
+                "LatencyTelemetryMissingBatches", true);
+            info->LatencyTelemetryInvalid = countersGroup->GetCounter(
+                "LatencyTelemetryInvalidBatches", true);
+            info->LatencyTelemetryDuplicate = countersGroup->GetCounter(
+                "LatencyTelemetryDuplicateBatches", true);
+            info->LatencyTelemetryUnknown = countersGroup->GetCounter(
+                "LatencyTelemetryUnknownBatches", true);
+            *countersGroup->GetCounter("LatencyThresholdVersion") =
+                DiagnosticsConfig->GetConfigProto()
+                    .GetLatencyThresholdVersion();
+        }
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
 
         // Register the cumulative counters in the narrow component=sli_volume
