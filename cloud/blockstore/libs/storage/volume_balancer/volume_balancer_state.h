@@ -86,8 +86,7 @@ public:
 
     bool GetEnabled() const
     {
-        return StorageConfig->GetVolumeBalancerEnabled() &&
-               GetVolumePreemptionType() != NProto::PREEMPTION_NONE &&
+        return GetVolumePreemptionType() != NProto::PREEMPTION_NONE &&
                IsEnabled;
     }
 

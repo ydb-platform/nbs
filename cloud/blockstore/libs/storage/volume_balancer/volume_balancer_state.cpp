@@ -280,7 +280,9 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         volume.FolderId,
         diskId);
 
-    const bool balancerEnabled = isFeatureEnabledForFolder || GetEnabled();
+    const bool balancerEnabled = isFeatureEnabledForFolder ||
+                                 StorageConfig->GetVolumeBalancerEnabled() ||
+                                 GetEnabled();
 
     // NProto::STORAGE_MEDIA_DEFAULT means that volume mounting
     // is still in progress and will change to something else
