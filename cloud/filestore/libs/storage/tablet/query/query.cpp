@@ -18,27 +18,25 @@ struct TParseContext
     TString Error;
 };
 
-TParseContext* CurrentParseContext = nullptr;
+TParseContext CurrentParseContext;
 
 TMaybe<TSelect> Parse(TStringBuf input, TParseError* error)
 {
     static std::mutex Mutex;
     const std::lock_guard guard(Mutex);
 
-    TParseContext context;
-    CurrentParseContext = &context;
+    CurrentParseContext.Query = TSelect{};
+    CurrentParseContext.Error.clear();
 
-    auto *buffer = yy_scan_bytes(input.data(), input.size());
+    auto* buffer = yy_scan_bytes(input.data(), input.size());
     const int result = yyparse();
     yy_delete_buffer(buffer);
 
-    CurrentParseContext = nullptr;
-
     if (result != 0) {
         if (error) {
-            error->Message = context.Error.empty()
+            error->Message = CurrentParseContext.Error.empty()
                 ? "invalid query"
-                : context.Error;
+                : CurrentParseContext.Error;
         }
         return Nothing();
     }
@@ -46,7 +44,7 @@ TMaybe<TSelect> Parse(TStringBuf input, TParseError* error)
     if (error) {
         *error = {};
     }
-    return std::move(context.Query);
+    return std::move(CurrentParseContext.Query);
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NQuery

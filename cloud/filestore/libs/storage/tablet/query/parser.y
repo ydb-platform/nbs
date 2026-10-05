@@ -13,7 +13,7 @@ struct TParseContext
     TString Error;
 };
 
-extern TParseContext* CurrentParseContext;
+extern TParseContext CurrentParseContext;
 
 static TExpression* PredicateExpression(TPredicate* predicate)
 {
@@ -49,9 +49,7 @@ static TExpression* LogicalExpression(
 
 static void SetError(const char* message)
 {
-    if (CurrentParseContext) {
-        CurrentParseContext->Error = message;
-    }
+    CurrentParseContext.Error = message;
 }
 
 }   // namespace NCloud::NFileStore::NStorage::NQuery
@@ -99,10 +97,10 @@ void yyerror(const char* message);
 query:
     SELECT columns FROM IDENTIFIER where_clause limit_clause
     {
-        CurrentParseContext->Query.Columns = std::move(*$2);
-        CurrentParseContext->Query.Table = std::move(*$4);
+        CurrentParseContext.Query.Columns = std::move(*$2);
+        CurrentParseContext.Query.Table = std::move(*$4);
         if ($5) {
-            CurrentParseContext->Query.Where = std::move(*$5);
+            CurrentParseContext.Query.Where = std::move(*$5);
             delete $5;
         }
         delete $2;
@@ -151,7 +149,7 @@ limit_clause:
     %empty
   | LIMIT NUMBER
     {
-        CurrentParseContext->Query.Limit = $2;
+        CurrentParseContext.Query.Limit = $2;
     }
 ;
 
