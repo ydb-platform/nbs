@@ -6,13 +6,13 @@ from yatest.common import process
 
 class VMDKImageGenerator():
 
-    def __init__(self, raw_image_file_path, vmdk_image_file_path):
+    def __init__(self, raw_image_file_path, vmdk_image_file_path, chunk_size=4*1024*1024):
         self.__raw_image_file_path = raw_image_file_path
         self.__vmdk_image_file_path = vmdk_image_file_path
 
-        self.__chunk_size = 4*1024*1024
-        self.__raw_image_chunks = random.randrange(8, 32)
-        self.__raw_image_size = self.__chunk_size * self.__raw_image_chunks
+        self.__chunk_size = chunk_size
+        self.__chunks_count = random.randrange(8, 32)
+        self.__raw_image_size = self.__chunk_size * self.__chunks_count
 
     def generate(self):
         process.execute([
@@ -20,7 +20,7 @@ class VMDKImageGenerator():
             "if=/dev/urandom",
             "of={}".format(self.__raw_image_file_path),
             "bs={}".format(self.__chunk_size),
-            "count={}".format(self.__raw_image_chunks),
+            "count={}".format(self.__chunks_count),
         ])
 
         holes = random.randrange(0, 10)

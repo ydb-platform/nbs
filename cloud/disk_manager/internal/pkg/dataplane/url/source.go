@@ -32,6 +32,9 @@ type URLSource interface {
 
 	ETag() string
 
+	// Returns the image's logical size, without padding to a whole chunk.
+	Size() uint64
+
 	// TODO (jkuradobery): remove this in favour of new metrics
 	CacheMissedRequestsCount() uint64
 }
@@ -162,6 +165,10 @@ func (s *urlSource) Close(ctx context.Context) {
 
 func (s *urlSource) ETag() string {
 	return s.reader.ETag()
+}
+
+func (s *urlSource) Size() uint64 {
+	return s.chunkMapReader.size()
 }
 
 func (s *urlSource) CacheMissedRequestsCount() uint64 {

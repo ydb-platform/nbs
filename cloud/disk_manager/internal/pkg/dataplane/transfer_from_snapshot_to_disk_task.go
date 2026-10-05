@@ -15,6 +15,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 )
 
@@ -78,6 +79,14 @@ func (t *transferFromSnapshotToDiskTask) Run(
 		return err
 	}
 	defer target.Close(ctx)
+
+	if target.Size() < srcMeta.Size {
+		return errors.NewNonRetriableErrorf(
+			"destination disk size %v is smaller than snapshot size %v",
+			target.Size(),
+			srcMeta.Size,
+		)
+	}
 
 	transferer := common.Transferer{
 		ReaderCount:         t.config.GetReaderCount(),
