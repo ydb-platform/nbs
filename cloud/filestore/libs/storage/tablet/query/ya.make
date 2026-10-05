@@ -1,4 +1,4 @@
-LIBRARY()
+LIBRARY(cloud-filestore-libs-storage-tablet-query)
 
 SRCS(
     lexer.l
