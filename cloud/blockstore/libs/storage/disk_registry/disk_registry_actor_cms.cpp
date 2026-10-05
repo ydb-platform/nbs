@@ -262,9 +262,7 @@ void TCmsRequestActor::HandleCmsActionResponse(
     const TActorContext& ctx)
 {
     const auto& error = response.GetError();
-    if (error.GetCode() == E_REJECTED &&
-        error.GetMessage() == "too many inflight transactions")
-    {
+    if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
         ctx.Schedule(
             CmsSubrequestTimeout.GetDelayAndIncrease(),
             new TEvents::TEvWakeup(ECmsRequestActorWakeupTag::Retry));
