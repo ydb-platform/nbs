@@ -900,8 +900,8 @@ namespace NActors {
                 Fail(TEvHandshakeFail::HANDSHAKE_FAIL_PERMANENT, Sprintf("Incompatible protocol %" PRIu64, response.Header.Version));
             }
 
-            // Copy the packed field before TMaybe binds a reference to it.
-            NextPacketFromPeer = static_cast<ui64>(response.Header.NextPacket);
+            // extract next packet
+            NextPacketFromPeer = response.Header.NextPacket;
 
             if (!PeerVirtualId) {
                 // creating new session -- we have to generate request
@@ -1158,8 +1158,8 @@ namespace NActors {
                 ValidateIncomingPeerViaDirectLookup();
             }
 
-            // Copy the packed field before TMaybe binds a reference to it.
-            NextPacketFromPeer = static_cast<ui64>(request.Header.NextPacket);
+            // extract next packet
+            NextPacketFromPeer = request.Header.NextPacket;
 
             // process some extra payload, if necessary
             switch (request.Header.Version) {
@@ -1304,7 +1304,7 @@ namespace NActors {
                 Params.UseExternalDataChannel = request.GetRequestExternalDataChannel() && Common->Settings.EnableExternalDataChannel;
                 Params.UseXxhash = request.GetRequestXxhash();
                 Params.UseXdcShuffle = request.GetRequestXdcShuffle();
-                Params.UseKernelLiveness = MainChannel.IsKernelLivenessReady();
+                Params.UseKernelLiveness = MainChannel.IsKernelLivenessReady(); 
                 Params.AllowDisablingPayloadChecksums = request.GetRequestAllowDisablingPayloadChecksums();
 
                 if (Params.UseExternalDataChannel) {

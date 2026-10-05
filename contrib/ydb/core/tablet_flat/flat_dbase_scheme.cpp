@@ -52,7 +52,7 @@ TAutoPtr<TSchemeChanges> TScheme::GetSnapshot() const {
             default: {
                 delta.AddColumn(table, col.Name, it.first, col.PType.GetTypeId(), col.NotNull, col.Null);
                 break;
-            }
+            }            
             }
 
             delta.AddColumnToFamily(table, it.first, col.Family);
@@ -77,8 +77,6 @@ TAutoPtr<TSchemeChanges> TScheme::GetSnapshot() const {
     delta.SetRedo(Redo.Annex);
     delta.SetExecutorCacheSize(Executor.CacheSize);
     delta.SetExecutorAllowLogBatching(Executor.AllowLogBatching);
-    delta.SetExecutorMaxRedoBytesToEmbed(Executor.MaxRedoBytesToEmbed);
-    delta.SetExecutorMaxRedoBytesInSnapshot(Executor.MaxRedoBytesInSnapshot);
     delta.SetExecutorLogFlushPeriod(Executor.LogFlushPeriod);
     delta.SetExecutorResourceProfile(Executor.ResourceProfile);
     delta.SetExecutorFastLogPolicy(Executor.LogFastTactic);
@@ -268,24 +266,6 @@ TAlter& TAlter::SetExecutorAllowLogBatching(bool allow)
     TAlterRecord &delta = *Log.AddDelta();
     delta.SetDeltaType(TAlterRecord::UpdateExecutorInfo);
     delta.SetExecutorAllowLogBatching(allow);
-
-    return ApplyLastRecord();
-}
-
-TAlter& TAlter::SetExecutorMaxRedoBytesToEmbed(ui32 bytes)
-{
-    TAlterRecord &delta = *Log.AddDelta();
-    delta.SetDeltaType(TAlterRecord::UpdateExecutorInfo);
-    delta.SetExecutorMaxRedoBytesToEmbed(bytes);
-
-    return ApplyLastRecord();
-}
-
-TAlter& TAlter::SetExecutorMaxRedoBytesInSnapshot(ui64 bytes)
-{
-    TAlterRecord &delta = *Log.AddDelta();
-    delta.SetDeltaType(TAlterRecord::UpdateExecutorInfo);
-    delta.SetExecutorMaxRedoBytesInSnapshot(bytes);
 
     return ApplyLastRecord();
 }

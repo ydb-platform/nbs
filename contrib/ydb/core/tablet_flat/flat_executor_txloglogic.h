@@ -3,7 +3,6 @@
 #include "flat_sausage_grind.h"
 #include "flat_sausage_slicer.h"
 #include "flat_dbase_change.h"
-#include "flat_dbase_scheme.h"
 #include "flat_exec_seat.h"
 #include "flat_exec_commit.h"
 #include "flat_executor_counters.h"
@@ -32,8 +31,6 @@ class TLogicRedo {
     TAutoPtr<NRedo::TQueue> Queue;
     NPageCollection::TSlicer Slicer;
 
-    ui32 MaxRedoBytesToEmbed = NTable::TScheme::TExecutorInfo::DefaultMaxRedoBytesToEmbed;
-    ui64 MaxRedoBytesInSnapshot = Max<ui64>();
     TExecutorCounters *Counters = nullptr;
     TTabletCountersWithTxTypes *AppTxCounters = nullptr;
 
@@ -59,14 +56,6 @@ public:
 
     TLogicRedo(TAutoPtr<NPageCollection::TSteppedCookieAllocator>, TCommitManager*, TAutoPtr<NRedo::TQueue>);
     ~TLogicRedo();
-
-    void SetMaxRedoBytesToEmbed(ui32 bytes) noexcept {
-        MaxRedoBytesToEmbed = bytes;
-    }
-
-    void SetMaxRedoBytesInSnapshot(ui64 bytes) noexcept {
-        MaxRedoBytesInSnapshot = bytes;
-    }
 
     void Describe(IOutputStream &out) const noexcept;
     void InstallCounters(TExecutorCounters *counters, TTabletCountersWithTxTypes* appTxCounters);

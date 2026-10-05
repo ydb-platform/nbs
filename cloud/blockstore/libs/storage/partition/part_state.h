@@ -596,7 +596,6 @@ public:
     //
 
 private:
-    TBlobMetaCache BlobMetaCache;
     TProfilingAllocator MixedIndexCacheAllocator;
     TMixedIndexCache MixedIndexCache;
     std::optional<TMixedBlocksFilter> MixedBlocksFilter;
@@ -624,11 +623,6 @@ public:
     void RaiseRangeTemperature(ui32 rangeIndex);
 
     ui64 GetMixedIndexCacheMemSize() const;
-
-    TBlobMetaCache& AccessBlobMetaCache()
-    {
-        return BlobMetaCache;
-    }
 
     const TMixedBlocksFilter* GetMixedBlocksFilter() const
     {

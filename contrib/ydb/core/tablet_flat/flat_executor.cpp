@@ -235,11 +235,6 @@ void TExecutor::RecreatePageCollectionsCache() noexcept
 
 void TExecutor::ReflectSchemeSettings() noexcept
 {
-    if (LogicRedo) {
-        LogicRedo->SetMaxRedoBytesToEmbed(Scheme().Executor.MaxRedoBytesToEmbed);
-        LogicRedo->SetMaxRedoBytesInSnapshot(Scheme().Executor.MaxRedoBytesInSnapshot);
-    }
-
     for (const auto &it : Scheme().Tables) {
         auto &policy = *it.second.CompactionPolicy;
 

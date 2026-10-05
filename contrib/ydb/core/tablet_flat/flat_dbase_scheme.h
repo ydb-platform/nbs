@@ -108,15 +108,7 @@ public:
 
     struct TExecutorInfo {
         ui64 CacheSize = 384 * 1024; // (DEPRECATED)
-        static constexpr ui32 DefaultMaxRedoBytesToEmbed = 2048;
-
         bool AllowLogBatching = false;
-        // Compressed redo larger than this is stored outside log snapshots.
-        // Zero disables embedding without disabling transaction batching.
-        ui32 MaxRedoBytesToEmbed = DefaultMaxRedoBytesToEmbed;
-        // Total embedded payload retained by the redo queue. Existing payload
-        // is reclaimed at the next snapshot after its tables are compacted.
-        ui64 MaxRedoBytesInSnapshot = Max<ui64>();
         bool LogFastTactic = true;
         TDuration LogFlushPeriod = TDuration::MicroSeconds(500);
         ui32 LimitInFlyTx = 0;
@@ -244,8 +236,6 @@ public:
     TAlter& SetExecutorCacheSize(ui64 cacheSize);
     TAlter& SetExecutorFastLogPolicy(bool allow);
     TAlter& SetExecutorAllowLogBatching(bool allow);
-    TAlter& SetExecutorMaxRedoBytesToEmbed(ui32 bytes);
-    TAlter& SetExecutorMaxRedoBytesInSnapshot(ui64 bytes);
     TAlter& SetExecutorLogFlushPeriod(TDuration flushPeriod);
     TAlter& SetExecutorLimitInFlyTx(ui32 limitTxInFly);
     TAlter& SetExecutorResourceProfile(const TString &name);

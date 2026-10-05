@@ -31,7 +31,7 @@ void TPartitionActor::ExecuteInitSchema(
     // TRequestScope timer(*args.RequestInfo);
     TPartitionDatabase db(tx.DB);
 
-    db.InitSchema(Config->GetDiskPrefixLengthWithBlockChecksumsInBlobs() != 0);
+    db.InitSchema();
 }
 
 void TPartitionActor::CompleteInitSchema(

@@ -192,10 +192,6 @@ void TReadBlobActor::HandleGetResult(
     size_t blocksCount = Request->BlobOffsets.size();
     TVector<ui32> blockChecksums;
     TVector<ui32> repairedBlockIndices;
-    TString checksumScratch;
-    if (ShouldCalculateChecksums) {
-        blockChecksums.reserve(blocksCount);
-    }
 
     if (auto guard = Request->Sglist.Acquire()) {
         const auto& sglist = guard.Get();
@@ -265,26 +261,14 @@ void TReadBlobActor::HandleGetResult(
 
                 Y_ABORT_UNLESS(sglist[sglistIndex].Size() == BlockSize);
                 void* to = const_cast<char*>(sglist[sglistIndex].Data());
-                if (ShouldCalculateChecksums &&
-                    iter.ContiguousSize() < BlockSize)
-                {
-                    // Keep checksumming independent of the caller's mutable
-                    // destination. Reuse one scratch block for fragmented
-                    // ropes.
-                    if (checksumScratch.empty()) {
-                        checksumScratch = TString::Uninitialized(BlockSize);
-                    }
-                    iter.ExtractPlainDataAndAdvance(checksumScratch.begin(),
-                                                    BlockSize);
-                    blockChecksums.push_back(ComputeDefaultDigest(
-                        {checksumScratch.data(), BlockSize}));
-                    memcpy(to, checksumScratch.data(), BlockSize);
+                if (ShouldCalculateChecksums) {
+                    auto block = TString::Uninitialized(BlockSize);
+                    iter.ExtractPlainDataAndAdvance(block.begin(), BlockSize);
+                    blockChecksums.push_back(
+                        ComputeDefaultDigest({block.data(), BlockSize}));
+
+                    memcpy(to, block.data(), BlockSize);
                 } else {
-                    if (ShouldCalculateChecksums) {
-                        // BlobStorage owns this immutable source buffer.
-                        blockChecksums.push_back(ComputeDefaultDigest(
-                            {iter.ContiguousData(), BlockSize}));
-                    }
                     iter.ExtractPlainDataAndAdvance(to, BlockSize);
                 }
                 ++sglistIndex;

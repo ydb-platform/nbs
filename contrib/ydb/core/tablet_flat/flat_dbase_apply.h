@@ -40,8 +40,6 @@ namespace NTable {
 
         bool SetExecutorCacheSize(ui64 cacheSize);
         bool SetExecutorAllowLogBatching(bool allow);
-        bool SetExecutorMaxRedoBytesToEmbed(ui32 bytes);
-        bool SetExecutorMaxRedoBytesInSnapshot(ui64 bytes);
         bool SetExecutorLogFastCommitTactic(bool allow);
         bool SetExecutorLogFlushPeriod(TDuration flushPeriod);
         bool SetExecutorLimitInFlyTx(ui32 limitTxInFly);

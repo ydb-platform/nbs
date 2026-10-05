@@ -1164,19 +1164,18 @@ bool TPartitionActor::PrepareReadBlocks(
 
             const auto& value = std::get<TBlobMark>(mark);
 
-            const auto blobId = MakePartialBlobId(value.BlobId);
-            if (args.BlobId2Meta.contains(blobId)) {
-                continue;
-            }
-
             TMaybe<NProto::TBlobMeta> meta;
-            if (db.ReadBlobMeta(blobId, meta, &State->AccessBlobMetaCache())) {
+            auto blobId = MakePartialBlobId(value.BlobId);
+            if (db.ReadBlobMeta(blobId, meta)) {
                 Y_ABORT_UNLESS(meta.Defined(),
                     "Could not read blob meta for blob: %s",
                     ToString(value.BlobId).data());
-                args.BlobId2Meta.emplace(blobId, std::move(meta.GetRef()));
             } else {
                 ready = false;
+            }
+
+            if (ready) {
+                args.BlobId2Meta[blobId] = std::move(meta.GetRef());
             }
         }
     }

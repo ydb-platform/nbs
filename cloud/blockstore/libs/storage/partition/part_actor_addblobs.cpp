@@ -304,7 +304,6 @@ private:
             mixedBlocks.AddBlocks(blockIndex);
         }
 
-        blobMeta.MutableBlockChecksums()->Reserve(blob.Checksums.size());
         for (ui32 checksum: blob.Checksums) {
             blobMeta.AddBlockChecksums(checksum);
         }
@@ -372,7 +371,6 @@ private:
         mergedBlocks.SetEnd(blob.BlockRange.End);
         mergedBlocks.SetSkipped(skipped);
 
-        blobMeta.MutableBlockChecksums()->Reserve(blob.Checksums.size());
         for (ui32 checksum: blob.Checksums) {
             blobMeta.AddBlockChecksums(checksum);
         }
@@ -442,7 +440,6 @@ private:
             mixedBlocks.AddCommitIds(block.CommitId);
         }
 
-        blobMeta.MutableBlockChecksums()->Reserve(blob.Checksums.size());
         for (ui32 checksum: blob.Checksums) {
             blobMeta.AddBlockChecksums(checksum);
         }

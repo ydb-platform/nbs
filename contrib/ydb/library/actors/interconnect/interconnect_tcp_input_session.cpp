@@ -143,7 +143,7 @@ namespace NActors {
                 );
 
                 mrOffset += credCopy.GetSize();
-                credOffset += credCopy.GetSize();
+                credOffset += credCopy.GetSize(); 
 
                 if (mrOffset == curMemReg.GetSize()) {  // section finished
                     pendingEvent.RdmaBuffers.pop_front();
@@ -448,9 +448,7 @@ namespace NActors {
         const ui64 serial = header.Serial;
         const ui64 confirm = header.Confirm;
         if (!Params.Encryption) {
-            // Access the packed field directly without binding an unaligned reference.
-            ChecksumExpected = header.Checksum;
-            header.Checksum = 0;
+            ChecksumExpected = std::exchange(header.Checksum, 0);
             if (Params.UseXxhash) {
                 XXH3_64bits_reset(&XxhashState);
                 XXH3_64bits_update(&XxhashState, &header, sizeof(header));

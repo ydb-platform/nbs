@@ -1,6 +1,4 @@
 #include "flat_dbase_sz_env.h"
-#include "flat_exec_commit.h"
-#include "logic_redo_queue.h"
 #include "flat_executor_ut_common.h"
 #include <contrib/ydb/core/base/counters.h>
 #include <contrib/ydb/core/testlib/actors/block_events.h>
@@ -586,207 +584,6 @@ public:
 THolder<TSharedPageCacheCounters> GetSharedPageCounters(TMyEnvBase& env) {
     return MakeHolder<TSharedPageCacheCounters>(GetServiceCounters(env->GetDynamicCounters(), "tablets")->GetSubgroup("type", "S_CACHE"));
 };
-
-
-Y_UNIT_TEST_SUITE(TFlatTableExecutor_RedoEmbedding) {
-    struct TTxSetLimit : public ITransaction {
-        explicit TTxSetLimit(ui32 limit, ui64 budget = Max<ui64>())
-            : Limit(limit)
-            , Budget(budget)
-        {}
-
-        bool Execute(TTransactionContext& txc, const TActorContext&) override {
-            txc.DB.Alter()
-                .SetExecutorAllowLogBatching(true)
-                .SetExecutorLogFlushPeriod(TDuration::Zero())
-                .SetExecutorMaxRedoBytesToEmbed(Limit)
-                .SetExecutorMaxRedoBytesInSnapshot(Budget);
-            return true;
-        }
-
-        void Complete(const TActorContext& ctx) override {
-            ctx.Send(ctx.SelfID, new NFake::TEvReturn);
-        }
-
-        const ui32 Limit;
-        const ui64 Budget;
-    };
-
-    struct TTxCheckRows : public ITransaction {
-        TTxCheckRows(ui64 rows, ui32 limit, ui64 budget = Max<ui64>())
-            : Rows(rows)
-            , Limit(limit)
-            , Budget(budget)
-        {}
-
-        bool Execute(TTransactionContext& txc, const TActorContext&) override {
-            UNIT_ASSERT_VALUES_EQUAL(
-                txc.DB.GetScheme().Executor.MaxRedoBytesToEmbed, Limit);
-            UNIT_ASSERT_VALUES_EQUAL(
-                txc.DB.GetScheme().Executor.MaxRedoBytesInSnapshot, Budget);
-            UNIT_ASSERT(txc.DB.GetScheme().Executor.AllowLogBatching);
-            for (ui64 value = 0; value < Rows; ++value) {
-                const auto key = NScheme::TInt64::TInstance(value);
-                const NTable::TTag tag = TRowsModel::ColumnValueId;
-                NTable::TRowState row;
-                const auto ready = txc.DB.Select(
-                    TRowsModel::TableId, {key}, {tag}, row);
-                if (ready == NTable::EReady::Page) {
-                    return false;
-                }
-                UNIT_ASSERT_VALUES_EQUAL(ready, NTable::EReady::Data);
-                UNIT_ASSERT_VALUES_EQUAL(row.Get(0).AsBuf(), "value");
-            }
-            return true;
-        }
-
-        void Complete(const TActorContext& ctx) override {
-            ctx.Send(ctx.SelfID, new NFake::TEvReturn);
-        }
-
-        const ui64 Rows;
-        const ui32 Limit;
-        const ui64 Budget;
-    };
-
-
-    Y_UNIT_TEST(BoundEmbeddedPayloadAcrossTabletRestart) {
-        TMyEnvBase env;
-        env.Env.SetScheduledLimit(2000);
-        TRowsModel rows;
-        rows.RowTo(0);
-        env.FireDummyTablet();
-        env.SendSync(rows.MakeScheme(new TCompactionPolicy()));
-        constexpr ui64 budget = 1024;
-        env.SendSync(new NFake::TEvExecute{new TTxSetLimit(2048, budget)});
-
-        ui64 embeddedBytes = 0;
-        ui32 external = 0;
-        env.Env.SetObserverFunc([&](TAutoPtr<IEventHandle>& ev) {
-            if (ev->GetTypeRewrite() == TEvTablet::EvCommit &&
-                ev->Cookie == ui64(ECommit::Redo))
-            {
-                const auto* commit = ev->Get<TEvTablet::TEvCommit>();
-                embeddedBytes += commit->EmbeddedLogBody.size();
-                external += !commit->References.empty();
-            }
-            return TTestActorRuntime::EEventAction::PROCESS;
-        });
-
-        for (ui64 phase = 0; phase < 2; ++phase) {
-            for (ui64 i = 0; i < 128; ++i) {
-                env.SendSync(new NFake::TEvExecute{
-                    new TRowsModel::TTxAddRows(
-                        phase * 128 + i, 1, 1, 0, TRowVersion::Min())});
-            }
-            UNIT_ASSERT_C(embeddedBytes > 0, "Small redo must keep the fast path");
-            UNIT_ASSERT_C(embeddedBytes <= budget, "Embedding exceeded its budget");
-            UNIT_ASSERT_C(external > 0, "Excess redo must be stored externally");
-            env.RestartTablet();
-            env.SendSync(new NFake::TEvExecute{
-                new TTxCheckRows((phase + 1) * 128, 2048, budget)}, true);
-        }
-        env.Env.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
-    }
-
-    Y_UNIT_TEST(ReclaimEmbeddedBudgetOnlyAfterSnapshotDropsRedo) {
-        NRedo::TQueue queue({});
-        const ui32 table = 1;
-        UNIT_ASSERT(queue.CanEmbed(1024, 1024));
-        UNIT_ASSERT(!queue.CanEmbed(1, 0));
-        queue.Push({1, 1}, {&table, 1}, TString(600, 'a'));
-        queue.Push({1, 2}, {&table, 1}, TString(400, 'b'));
-        UNIT_ASSERT_VALUES_EQUAL(queue.EmbeddedBytes, 1000);
-        UNIT_ASSERT(queue.CanEmbed(24, 1024));
-        UNIT_ASSERT(!queue.CanEmbed(25, 1024));
-        UNIT_ASSERT(!queue.CanEmbed(Max<ui64>(), Max<ui64>()));
-
-        NKikimrExecutorFlat::TLogSnapshot snapshot;
-        queue.Flush(snapshot);
-        UNIT_ASSERT_VALUES_EQUAL(snapshot.EmbeddedLogBodiesSize(), 2);
-        UNIT_ASSERT_VALUES_EQUAL(queue.EmbeddedBytes, 1000);
-
-        NTable::TSnapEdge edge;
-        edge.TxStamp = NTable::TTxStamp(1, 1).Raw;
-        TGCBlobDelta gc;
-        queue.Cut(table, edge, gc);
-        UNIT_ASSERT_VALUES_EQUAL(queue.EmbeddedBytes, 1000);
-        snapshot.Clear();
-        queue.Flush(snapshot);
-        UNIT_ASSERT_VALUES_EQUAL(snapshot.EmbeddedLogBodiesSize(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(queue.EmbeddedBytes, 400);
-        UNIT_ASSERT(queue.CanEmbed(624, 1024));
-        UNIT_ASSERT(!queue.CanEmbed(625, 1024));
-
-        edge.TxStamp = NTable::TTxStamp(1, 2).Raw;
-        queue.Cut(table, edge, gc);
-        snapshot.Clear();
-        queue.Flush(snapshot);
-        UNIT_ASSERT_VALUES_EQUAL(queue.EmbeddedBytes, 0);
-        UNIT_ASSERT_VALUES_EQUAL(snapshot.EmbeddedLogBodiesSize(), 0);
-        UNIT_ASSERT(queue.CanEmbed(Max<ui64>(), Max<ui64>()));
-    }
-
-    Y_UNIT_TEST(KeepBatchingAndRecoverDataWhenChangingEmbeddingLimit) {
-        TMyEnvBase env;
-        env.Env.SetScheduledLimit(2000);
-        TRowsModel rows;
-        rows.RowTo(0);
-        env.FireDummyTablet();
-        env.SendSync(rows.MakeScheme(new TCompactionPolicy()));
-
-        bool observe = false;
-        ui32 commits = 0;
-        ui32 embedded = 0;
-        ui32 external = 0;
-        env.Env.SetObserverFunc([&](TAutoPtr<IEventHandle>& ev) {
-            if (observe && ev->GetTypeRewrite() == TEvTablet::EvCommit &&
-                ev->Cookie == ui64(ECommit::Redo))
-            {
-                const auto* commit = ev->Get<TEvTablet::TEvCommit>();
-                ++commits;
-                embedded += !commit->EmbeddedLogBody.empty();
-                external += !commit->References.empty();
-            }
-            return TTestActorRuntime::EEventAction::PROCESS;
-        });
-
-        ui64 written = 0;
-        const auto writeAndCheck = [&](ui32 limit) {
-            commits = embedded = external = 0;
-            observe = true;
-            // Submit one actor event so zero-delay flush runs after all writes.
-            TVector<THolder<ITransaction>> transactions;
-            for (ui32 i = 0; i < 16; ++i) {
-                transactions.emplace_back(new TRowsModel::TTxAddRows(
-                    written + i, 1, 1, 0, TRowVersion::Min()));
-            }
-            env.SendAsync(new NFake::TEvExecute{std::move(transactions)});
-            for (ui32 i = 0; i < 16; ++i) {
-                env.GrabEdgeEvent<TEvents::TEvWakeup>(TDuration::Seconds(10));
-            }
-            observe = false;
-            written += 16;
-            UNIT_ASSERT_C(commits > 0 && commits < 16,
-                "Transactions must still share commits, got " << commits);
-            UNIT_ASSERT_VALUES_EQUAL(embedded, limit ? commits : 0);
-            UNIT_ASSERT_VALUES_EQUAL(external, limit ? 0 : commits);
-            env.SendSync(new NFake::TEvExecute{
-                new TTxCheckRows(written, limit)});
-        };
-
-        for (const ui32 limit : {2048u, 0u, 2048u}) {
-            env.SendSync(new NFake::TEvExecute{new TTxSetLimit(limit)});
-            writeAndCheck(limit);
-            env.RestartTablet();
-            env.SendSync(new NFake::TEvExecute{
-                new TTxCheckRows(written, limit)}, /* retry = */ true);
-            // No new Alter call: exercise the setting restored at activation.
-            writeAndCheck(limit);
-        }
-        env.Env.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
-    }
-}
 
 /**
  * Test scan going in parallel with compactions.
@@ -5713,7 +5510,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
         ui32 Attempt = 0;
         TVector<ui64>& ReadSizes;
         ui64 MinKey, MaxKey;
-
+        
         TTxCalculateReadSize(TVector<ui64>& readSizes, ui64 minKey, ui64 maxKey)
             : ReadSizes(readSizes)
             , MinKey(minKey)
@@ -5807,12 +5604,12 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
         env.SendSync(rows.MakeScheme(new TCompactionPolicy(), false));
 
         env.SendSync(rows.MakeRows(rowsCount, 10*1024));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
         TVector<ui64> sizes;
-
+        
         env.SendSync(new NFake::TEvExecute{ new TTxCalculateReadSize(sizes, 0, 1) });
         UNIT_ASSERT_VALUES_EQUAL(sizes, (TVector<ui64>{20566, 20566}));
 
@@ -5843,12 +5640,12 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
         env.SendSync(rows.MakeScheme(std::move(policy)));
 
         env.SendSync(rows.MakeRows(rowsCount, 10*1024));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
         TVector<ui64> sizes;
-
+        
         env.SendSync(new NFake::TEvExecute{ new TTxCalculateReadSize(sizes, 0, 1) });
         UNIT_ASSERT_VALUES_EQUAL(sizes, (TVector<ui64>{0, 0, 0, 0, 20566, 20566}));
 
@@ -5886,7 +5683,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
         env.SendSync(rows.MakeScheme(new TCompactionPolicy()));
 
         env.SendSync(rows.MakeRows(10*1024, 10*1024));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -5933,7 +5730,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
         env.SendSync(rows.MakeScheme(std::move(policy)));
 
         env.SendSync(rows.MakeRows(10*1024, 10*1024));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -5971,7 +5768,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
         env.SendSync(rows.MakeScheme(new TCompactionPolicy(), false));
 
         env.SendSync(rows.MakeRows(rowsCount, 10*1024));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6038,7 +5835,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
         env.SendSync(rows.MakeScheme(std::move(policy)));
 
         env.SendSync(rows.MakeRows(rowsCount, 10*1024));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6104,7 +5901,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
 
         env.SendSync(rows.RowTo(1).VersionTo(TRowVersion(1, 10)).MakeRows(rowsCount, 10*1024));
         env.SendSync(rows.RowTo(1).VersionTo(TRowVersion(2, 20)).MakeRows(rowsCount, 10*1024));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6172,7 +5969,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
 
         env.SendSync(rows.RowTo(1).VersionTo(TRowVersion(1, 10)).MakeRows(rowsCount, 10*1024));
         env.SendSync(rows.RowTo(1).VersionTo(TRowVersion(2, 20)).MakeRows(rowsCount, 10*1024));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6237,7 +6034,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
         env.SendSync(rows.MakeScheme(new TCompactionPolicy(), true));
 
         env.SendSync(rows.MakeRows(rowsCount, 10*1024));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6304,7 +6101,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
         env.SendSync(rows.MakeScheme(std::move(policy), true));
 
         env.SendSync(rows.MakeRows(rowsCount, 10*1024));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6369,7 +6166,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_IndexLoading) {
         env.SendSync(rows.MakeScheme(new TCompactionPolicy(), true));
 
         env.SendSync(rows.MakeRows(rowsCount, 10));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6483,7 +6280,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
             ctx.Send(ctx.SelfID, new NFake::TEvReturn);
         }
     };
-
+    
     void ZeroSharedCache(TMyEnvBase &env) {
         env->Send(MakeSharedPageCacheId(), TActorId{}, new NMemory::TEvConsumerLimit(0));
     }
@@ -6512,10 +6309,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 10 history pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 10 data pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6547,10 +6344,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 10 history pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 10 data pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6583,10 +6380,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 10 history pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 10 data pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6616,10 +6413,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 1 historic[0] + 10 historic[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 1 groups[0] + 10 groups[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6651,10 +6448,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 1 historic[0] + 10 historic[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 1 groups[0] + 10 groups[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6687,10 +6484,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 1 historic[0] + 10 historic[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 1 groups[0] + 10 groups[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6722,10 +6519,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 1 historic[0] + 10 historic[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 1 groups[0] + 10 groups[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6759,10 +6556,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 1 historic[0] + 10 historic[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 1 groups[0] + 10 groups[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6796,10 +6593,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 1 historic[0] + 10 historic[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 1 groups[0] + 10 groups[1] pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6829,10 +6626,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 10 historic[0] pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 10 groups[0] pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6866,10 +6663,10 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
 
         // 10 historic[0] pages
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(70, 950));
-
+        
         // 10 groups[0] pages
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(70, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6886,7 +6683,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_StickyPages) {
         env.FireDummyTablet(ui32(NFake::TDummy::EFlg::Comp));
 
         env.SendSync(new NFake::TEvExecute{ new TTxFullScan(failedAttempts) }, true);
-        UNIT_ASSERT_VALUES_EQUAL(failedAttempts, 0); // if at least one family of a group is for memory load it
+        UNIT_ASSERT_VALUES_EQUAL(failedAttempts, 0); // if at least one family of a group is for memory load it 
     }
 }
 
@@ -6897,7 +6694,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_BTreeIndex) {
     struct TTxFullScan : public ITransaction {
         int& ReadRows;
         int& FailedAttempts;
-
+        
         TTxFullScan(int& readRows, int& failedAttempts)
             : ReadRows(readRows)
             , FailedAttempts(failedAttempts)
@@ -6911,7 +6708,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_BTreeIndex) {
             TVector<NTable::TTag> tags{ { TRowsModel::ColumnKeyId, TRowsModel::ColumnValueId } };
 
             auto iter = txc.DB.IterateRange(TRowsModel::TableId, { }, tags, {2, 0});
-
+            
             ReadRows = 0;
             while (iter->Next(ENext::Data) == EReady::Data) {
                 ReadRows++;
@@ -6951,7 +6748,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_BTreeIndex) {
 
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(1000, 950));
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(1000, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -6989,7 +6786,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_BTreeIndex) {
 
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(1000, 950));
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(1000, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -7015,7 +6812,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_BTreeIndex) {
         TRowsModel rows;
 
         auto &appData = env->GetAppData();
-
+        
         appData.FeatureFlags.SetEnableLocalDBBtreeIndex(false);
         auto counters = GetSharedPageCounters(env);
         int readRows = 0, failedAttempts = 0;
@@ -7028,7 +6825,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_BTreeIndex) {
 
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(1000, 950));
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(1000, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -7067,7 +6864,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_BTreeIndex) {
 
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(1000, 950));
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(1000, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -7106,7 +6903,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_BTreeIndex) {
 
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(1000, 950));
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(1000, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
@@ -7145,7 +6942,7 @@ Y_UNIT_TEST_SUITE(TFlatTableExecutor_BTreeIndex) {
 
         env.SendSync(rows.VersionTo(TRowVersion(1, 10)).RowTo(0).MakeRows(1000, 950));
         env.SendSync(rows.VersionTo(TRowVersion(2, 20)).RowTo(0).MakeRows(1000, 950));
-
+        
         env.SendSync(new NFake::TEvCompact(TRowsModel::TableId));
         env.WaitFor<NFake::TEvCompacted>();
 
