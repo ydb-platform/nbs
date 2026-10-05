@@ -5,7 +5,6 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 TEST_SRCS(test.py)
 
 DEPENDS(
-    cloud/blockstore/apps/client
     cloud/blockstore/apps/disk_agent
     cloud/blockstore/apps/server
     cloud/blockstore/tools/testing/notify-mock
