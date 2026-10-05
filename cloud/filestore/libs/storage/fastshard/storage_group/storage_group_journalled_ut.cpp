@@ -1,5 +1,5 @@
-#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
-#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_quorum.h>
+#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
+#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
 
 #include <cloud/fastshard/journal/iface/journalled_device.h>
 #include <cloud/fastshard/protos/device.pb.h>
