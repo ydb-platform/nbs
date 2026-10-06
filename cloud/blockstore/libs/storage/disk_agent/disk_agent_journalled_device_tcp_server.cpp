@@ -536,6 +536,8 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
     THashMap<TString, TJournalledDeviceSpec> devices;
     auto timer = CreateWallClockTimer();
 
+    const TInstant creationStarted = TInstant::Now();
+
     for (const auto& config: configs) {
         const auto& uuid = config.Device.GetDeviceUUID();
 
@@ -575,8 +577,17 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
+        "Created " << devices.size() << " of " << configs.size()
+                   << " journalled devices in "
+                   << FormatDuration(TInstant::Now() - creationStarted));
+
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
         "Starting journalled device TCP server on " << address.Quote()
                                                     << "...");
+
+    const TInstant started = TInstant::Now();
 
     try {
         const TNetworkAddress listenAddress = CreateNetworkAddress(address);
@@ -599,7 +610,9 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
         LOG_INFO_S(
             ctx,
             TBlockStoreComponents::DISK_AGENT,
-            "Journalled device TCP server started on " << address.Quote());
+            "Journalled device TCP server started on "
+                << address.Quote() << " in "
+                << FormatDuration(TInstant::Now() - started));
 
         return {};
 

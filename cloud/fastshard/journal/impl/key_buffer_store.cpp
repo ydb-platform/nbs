@@ -4,6 +4,7 @@
 
 #include <cloud/fastshard/journal/iface/device.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
@@ -401,6 +402,12 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
         RestoreStarted = true;
     }
 
+    STORAGE_INFO(
+        "restoring from " << PageCount << " pages ("
+                          << FormatByteSize(PageCount * PageSize) << ")");
+
+    const TInstant started = TInstant::Now();
+
     // the scan goes straight to the device - the page store knows
     // nothing about the pages before the restore
     TVector<TFuture<TResultOrError<TVector<TBuffer>>>> futures;
@@ -416,8 +423,17 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
 
     return WaitAll(futures).Apply(
         [self = shared_from_this(),
-         futures = std::move(futures)](const TFuture<void>&)
+         futures = std::move(futures),
+         started](const TFuture<void>&)
         {
+            auto& Log = self->Log;
+
+            const TInstant readDone = TInstant::Now();
+            STORAGE_INFO(
+                "read " << futures.size() << " requests of up to "
+                        << MaxPagesPerReadRequest << " pages in "
+                        << FormatDuration(readDone - started));
+
             TVector<TString> pages;
             pages.reserve(self->PageCount);
 
@@ -440,7 +456,21 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
                         << " pages, expected " << self->PageCount));
             }
 
-            return self->RestoreFromPages(pages);
+            const TInstant copyDone = TInstant::Now();
+            STORAGE_INFO(
+                "copied " << pages.size() << " pages in "
+                          << FormatDuration(copyDone - readDone));
+
+            auto result = self->RestoreFromPages(pages);
+
+            STORAGE_INFO(
+                "parsed " << pages.size() << " pages in "
+                          << FormatDuration(TInstant::Now() - copyDone)
+                          << (HasError(result) ? ", failed: " : "")
+                          << (HasError(result) ? FormatError(result.GetError())
+                                               : TString()));
+
+            return result;
         });
 }
 
@@ -598,12 +628,14 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
 
     // the pages of a single (key, seq) entry
     THashMap<TEntryId, TCandidate, TEntryIdHash> candidates;
+    ui64 validPageCount = 0;
 
     for (ui64 i = SuperblockSlotCount; i < pages.size(); ++i) {
         auto parsed = ParseEntryPage(pages[i], PageSize);
         if (!parsed) {
             continue;
         }
+        ++validPageCount;
 
         const auto& [header, chunk] = *parsed;
         maxSeq = Max(maxSeq, header.Seq);
@@ -637,13 +669,18 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
     };
 
     THashMap<ui64, TWinner> winners;
+    ui64 erasedCount = 0;
+    ui64 brokenCount = 0;
+    ui64 incompleteCount = 0;
 
     for (const auto& [id, candidate]: candidates) {
         if (superblock && id.Key < superblock->ErasedBelowKey) {
+            ++erasedCount;
             continue;
         }
 
         if (candidate.Broken) {
+            ++brokenCount;
             continue;
         }
 
@@ -652,6 +689,7 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
             [](const auto& chunk) { return chunk.has_value(); });
 
         if (!complete) {
+            ++incompleteCount;
             continue;
         }
 
@@ -660,6 +698,15 @@ IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
             winner = {.Seq = id.Seq, .Candidate = &candidate};
         }
     }
+
+    STORAGE_INFO(
+        "found " << validPageCount << " valid entry pages, "
+                 << candidates.size() << " candidates (" << erasedCount
+                 << " erased, " << brokenCount << " broken, "
+                 << incompleteCount << " incomplete), " << winners.size()
+                 << " keys, erased below key "
+                 << (superblock ? superblock->ErasedBelowKey : 0)
+                 << ", max seq " << maxSeq);
 
     TVector<TKeyBuffer> buffers;
     buffers.reserve(winners.size());

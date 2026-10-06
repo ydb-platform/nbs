@@ -6,6 +6,7 @@
 #include "log_index.h"
 #include "lsn_barrier.h"
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/future_helper.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
@@ -366,6 +367,9 @@ TFuture<TResultOrError<ui64>> TJournal::Restore()
 
 TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
 {
+    const TInstant started = TInstant::Now();
+    const ui64 bufferCount = buffers.size();
+
     //
     // Take the lsn low watermark from the metadata
     //
@@ -450,6 +454,9 @@ TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
     // given to the head of the chain.
     //
 
+    const TInstant deserialized = TInstant::Now();
+    const ui64 recordCount = lsnToRecord.size();
+
     ui64 headLsn = lsnLowWatermark;
     auto records = FilterStrandedRecords(std::move(lsnToRecord), &headLsn);
 
@@ -489,6 +496,18 @@ TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
     IndexChainedRecords();
 
     ui64 lastIndexedLsn = LogPageIndex.GetLastIndexedLsn();
+
+    STORAGE_INFO(
+        "restored " << records.size() << " of " << recordCount
+                    << " log records from " << bufferCount
+                    << " buffers: deserialized in "
+                    << FormatDuration(deserialized - started)
+                    << ", rebuilt in "
+                    << FormatDuration(TInstant::Now() - deserialized)
+                    << ", lsn low watermark " << lsnLowWatermark
+                    << ", head lsn " << headLsn << ", last indexed lsn "
+                    << lastIndexedLsn);
+
     if (lastIndexedLsn < lsnLowWatermark) {
         return MakeError(
             E_INVALID_STATE,

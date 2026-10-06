@@ -7,6 +7,7 @@
 #include <cloud/fastshard/journal/iface/device.h>
 #include <cloud/fastshard/journal/iface/journalled_device.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -309,10 +310,20 @@ private:
 
     NCloud::NProto::TError DoStart()
     {
+        STORAGE_INFO("restoring the journal on " << DeviceUUID.Quote());
+
+        const TInstant started = TInstant::Now();
+
         auto response = Executor->ExtractResponse(Journal->Restore());
         if (HasError(response)) {
             return response.GetError();
         }
+
+        STORAGE_INFO(
+            "restored the journal on "
+            << DeviceUUID.Quote() << " in "
+            << FormatDuration(TInstant::Now() - started)
+            << ", last indexed lsn " << response.GetResult());
 
         IndexedLsnBarrier.Advance(response.GetResult());
 
