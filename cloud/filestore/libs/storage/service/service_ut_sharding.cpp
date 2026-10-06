@@ -2516,6 +2516,54 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             getNodeAttrResponse->GetErrorReason().c_str());
     }
 
+    SERVICE_TEST_DIR_CREATION_IN_SHARDS(
+        ShouldUpdateParentCMTimeUponUnlinkExternalNode)
+    {
+        TShardedFileSystemConfig fsConfig;
+        CREATE_ENV_AND_SHARDED_FILESYSTEM();
+
+        auto headers = service.InitSession(fsConfig.FsId, "client");
+
+        const auto dirId =
+            service
+                .CreateNode(
+                    headers,
+                    TCreateNodeArgs::Directory(RootNodeId, "dir"))
+                ->Record.GetNode()
+                .GetId();
+        const auto fileId =
+            service.CreateNode(headers, TCreateNodeArgs::File(dirId, "file"))
+                ->Record.GetNode()
+                .GetId();
+        UNIT_ASSERT_VALUES_UNEQUAL(0, ExtractShardNo(fileId));
+        service.CreateNode(headers, TCreateNodeArgs::Directory(dirId, "subdir"));
+
+        auto resetTimes = [&] {
+            TSetNodeAttrArgs arg(dirId);
+            arg.SetATime(111111);
+            arg.SetMTime(222222);
+            arg.SetCTime(333333);
+            service.SetNodeAttr(headers, fsConfig.FsId, arg);
+        };
+
+        auto checkTimesUpdated = [&] {
+            auto node =
+                service.GetNodeAttr(headers, fsConfig.FsId, dirId, "")
+                    ->Record.GetNode();
+            UNIT_ASSERT_VALUES_EQUAL(111111, node.GetATime());
+            UNIT_ASSERT_GT(node.GetMTime(), 222222);
+            UNIT_ASSERT_GT(node.GetCTime(), 333333);
+        };
+
+        resetTimes();
+        service.UnlinkNode(headers, dirId, "file");
+        checkTimesUpdated();
+
+        resetTimes();
+        service.UnlinkNode(headers, dirId, "subdir", true);
+        checkTimesUpdated();
+    }
+
     SERVICE_TEST(ShouldPerformLocksForExternalNodes)
     {
         TShardedFileSystemConfig fsConfig;

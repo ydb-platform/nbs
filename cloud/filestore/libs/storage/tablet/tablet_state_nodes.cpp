@@ -103,8 +103,15 @@ void TIndexTabletState::UpdateNode(
 
     ui64 checkpointId = Impl->Checkpoints.FindCheckpoint(nodeId, minCommitId);
     if (checkpointId == InvalidCommitId) {
-        // simple in-place update
-        db.WriteNode(nodeId, minCommitId, attrs);
+        // in-place update. The new version starts at maxCommitId, so that the
+        // node's CommitId points to its last modification.
+        // TODO(#5953): get rid of the special case for the root node. Older
+        // versions read it at CommitId 0 upon tablet start, so it should stay
+        // there until newer versions no longer need it
+        db.WriteNode(
+            nodeId,
+            nodeId == RootNodeId ? minCommitId : maxCommitId,
+            attrs);
     } else {
         // copy-on-write update
         db.WriteNode(nodeId, maxCommitId, attrs);

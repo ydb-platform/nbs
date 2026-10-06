@@ -67,6 +67,7 @@ class FilestoreDaemonConfigGenerator:
         ic_port=None,
         trace_sampling_rate=None,
         bs_failure_probability=None,
+        use_fast_shard_port=False,
     ):
         self.__binary_path = binary_path
         self.__working_dir, self.__configs_dir = get_directories()
@@ -100,6 +101,10 @@ class FilestoreDaemonConfigGenerator:
             self.__secure_port = self._port_manager.reserve_port()
             self.__app_config.ServerConfig.SecurePort = self.__secure_port
 
+        if use_fast_shard_port:
+            self.__fast_shard_port = self._port_manager.reserve_port()
+            self.__storage_config.FastShardServerPort = self.__fast_shard_port
+
         with open(self.__app_config_file_path, "w") as config_file:
             if self.__app_config:
                 config_file.write(MessageToString(self.__app_config))
@@ -116,6 +121,10 @@ class FilestoreDaemonConfigGenerator:
     @property
     def secure_port(self):
         return self.__secure_port
+
+    @property
+    def fast_shard_port(self):
+        return self.__fast_shard_port
 
     @property
     def mon_port(self):
@@ -440,6 +449,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
         ic_port=None,
         trace_sampling_rate=None,
         bs_failure_probability=None,
+        use_fast_shard_port=False,
     ):
         super().__init__(
             binary_path,
@@ -462,6 +472,7 @@ class FilestoreServerConfigGenerator(FilestoreDaemonConfigGenerator):
             ic_port=ic_port,
             trace_sampling_rate=trace_sampling_rate,
             bs_failure_probability=bs_failure_probability,
+            use_fast_shard_port=use_fast_shard_port,
         )
 
 

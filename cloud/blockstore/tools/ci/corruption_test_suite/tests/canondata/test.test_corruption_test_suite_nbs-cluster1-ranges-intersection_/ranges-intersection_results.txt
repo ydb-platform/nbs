@@ -24,16 +24,6 @@ Input=
 Command=ycp --format json --profile fake-cluster1 compute instance attach-disk --request -
 Input=
 Waiting for bdev 1:1:1:1:1:1:1:1//dev/vdb
-SSH 1:1:1:1:1:1:1:1: /usr/bin/verify-test --blocksize=1048576 --iodepth=64 --offset=17408 --step=1024 --filesize=1073741824 --file /dev/vdb 2>&1
-Command=ycp --format json --profile fake-cluster1 compute instance detach-disk --request -
-Input=
-Command=ycp --format json --profile fake-cluster1 compute disk delete --request -
-Input=
-Command=ycp --format json --profile fake-cluster1 compute disk create --request -
-Input=
-Command=ycp --format json --profile fake-cluster1 compute instance attach-disk --request -
-Input=
-Waiting for bdev 1:1:1:1:1:1:1:1//dev/vdb
 SSH 1:1:1:1:1:1:1:1: /usr/bin/verify-test --blocksize=1048576 --iodepth=64 --offset=17408 --step=1024 --filesize=195035136 --file /dev/vdb 2>&1
 Command=ycp --format json --profile fake-cluster1 compute instance detach-disk --request -
 Input=

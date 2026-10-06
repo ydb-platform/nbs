@@ -164,7 +164,8 @@ class LocalLoadTest:
             except Exception as dmesg_error:
                 logging.info(f"Failed to save dmesg output: {dmesg_error}")
                 pass
-            subprocess.check_call(["sync"])
+            sync_target = os.getenv("NFS_MOUNT_PATH", "/")
+            subprocess.check_call(["sync", "-f", sync_target])
 
     @property
     def endpoint(self):
