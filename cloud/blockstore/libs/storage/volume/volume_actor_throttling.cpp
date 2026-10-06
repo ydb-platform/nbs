@@ -236,6 +236,20 @@ NProto::TError TVolumeActor::Throttle(
         [&ev]() { return NActors::IEventHandlePtr(ev.Release()); },
         TMethod::Name);
 
+    if (DiagnosticsConfig->GetEnableLatency() &&
+        !State->GetThrottlingPolicy().IsLatencyQuotaKnown())
+    {
+        if (latency) {
+            latency->Operation.Invalidate();
+        }
+        for (const auto& weak: LatencyWaiters) {
+            if (auto waiter = weak.lock()) {
+                waiter->Operation.Invalidate();
+            }
+        }
+        LatencyQuotaEnd = 0;
+    }
+
     if (status == ETabletThrottlerStatus::POSTPONED) {
         if (latency && !latency->Waiting) {
             latency->Waiting = true;

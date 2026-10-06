@@ -1,9 +1,4 @@
-#include "latency_config.h"
-
-#include <library/cpp/string_utils/base64/base64.h>
-
-#include <util/generic/yexception.h>
-#include <util/string/cast.h>
+#include "latency_generation.h"
 
 #include <fcntl.h>
 #include <sys/file.h>
@@ -13,33 +8,6 @@
 #include <limits>
 
 namespace NCloud::NBlockStore::NVHostServer {
-TString SerializeLatencyConfig(const NProto::TDiagnosticsConfig& config,
-                               ui32 mediaKind)
-{
-    NProto::TDiagnosticsConfig selected;
-    selected.SetEnableLatency(config.GetEnableLatency());
-    selected.SetLatencyThresholdVersion(config.GetLatencyThresholdVersion());
-    for (const auto& row: config.GetLatencyThresholds()) {
-        if (row.GetMediaKind() == mediaKind) {
-            *selected.AddLatencyThresholds() = row;
-        }
-    }
-    return ToString(mediaKind) + ":" +
-           Base64Encode(selected.SerializeAsString());
-}
-
-TLatencyConfig ParseLatencyConfig(TStringBuf value)
-{
-    Y_ENSURE(value.size() < 65536, "latency configuration is too large");
-    const auto colon = value.find(':');
-    Y_ENSURE(colon != TStringBuf::npos, "invalid latency configuration");
-    TLatencyConfig result;
-    result.MediaKind = FromString<ui32>(value.SubStr(0, colon));
-    Y_ENSURE(
-        result.Config.ParseFromString(Base64Decode(value.SubStr(colon + 1))),
-        "invalid latency protobuf");
-    return result;
-}
 
 ui64 NextLatencyGeneration(const TString& socketPath)
 {

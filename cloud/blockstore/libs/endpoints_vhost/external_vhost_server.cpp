@@ -8,7 +8,6 @@
 #include <cloud/blockstore/libs/common/public.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
-#include <cloud/blockstore/libs/diagnostics/latency_config.h>
 #include <cloud/blockstore/libs/diagnostics/latency_sli.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/encryption/model/utils.h>
@@ -48,10 +47,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <optional>
-#include <thread>
+#include <google/protobuf/text_format.h>
 
-extern char** environ;
+#include <algorithm>
+#include <thread>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -75,12 +74,6 @@ constexpr auto StatReadDuration = TDuration::Seconds(1);
 constexpr auto RestartMinDelay = TDuration::MilliSeconds(100);
 constexpr auto RestartMaxDelay = TDuration::Seconds(30);
 constexpr auto RestartWasTooLongAgo = TDuration::Seconds(60);
-
-using TInternalExternalEndpointFactory = std::function<IExternalEndpointPtr(
-    const TString& clientId, const TString& diskId,
-    TVector<TString> args,
-    TVector<TString> cgroups,
-    std::optional<TString> latencyThresholdsConfigV1)>;
 
 enum class EEndpointType
 {
@@ -113,13 +106,32 @@ BuildConfiguredLatencyThresholds(const TDiagnosticsConfigPtr& diagnosticsConfig)
         diagnosticsConfig->GetConfigProto());
 }
 
-std::optional<TString> SerializeLatencyThresholdsConfigV1(
+void AppendLatencyArguments(
+    TVector<TString>& args,
     const NProto::TDiagnosticsConfig* config,
     NProto::EStorageMediaKind mediaKind)
 {
-    return config ? std::optional<TString>(NVHostServer::SerializeLatencyConfig(
-                        *config, mediaKind))
-                  : std::nullopt;
+    if (!config) {
+        return;
+    }
+    NProto::TDiagnosticsConfig selected;
+    selected.SetEnableLatency(true);
+    selected.SetLatencyThresholdVersion(config->GetLatencyThresholdVersion());
+    for (const auto& row: config->GetLatencyThresholds()) {
+        if (row.GetMediaKind() == static_cast<ui32>(mediaKind)) {
+            *selected.AddLatencyThresholds() = row;
+        }
+    }
+    TString text;
+    if (!google::protobuf::TextFormat::PrintToString(selected, &text) ||
+        text.size() >= 65536)
+    {
+        return;
+    }
+    args.emplace_back("--latency-config");
+    args.emplace_back(std::move(text));
+    args.emplace_back("--latency-media-kind");
+    args.emplace_back(ToString(static_cast<ui32>(mediaKind)));
 }
 
 TString ReadFromFile(const TString& fileName)
@@ -309,10 +321,7 @@ struct TPipe
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TChild SpawnChild(
-    const TString& binaryPath,
-    TVector<TString> args,
-                  const std::optional<TString>& latencyThresholdsConfigV1)
+TChild SpawnChild(const TString& binaryPath, TVector<TString> args)
 {
     args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
 
@@ -330,32 +339,6 @@ TChild SpawnChild(
         qargs.push_back(const_cast<char*>(arg.data()));
     }
     qargs.emplace_back();
-
-    TString latencyThresholdsEnv;
-    if (latencyThresholdsConfigV1) {
-        latencyThresholdsEnv = TStringBuilder()
-                               << NVHostServer::LatencyConfigEnvName << '='
-                               << *latencyThresholdsConfigV1;
-    }
-
-    // Build a complete child environment before fork(). Besides adding the
-    // selected v1 config, this deliberately removes any ambient value when
-    // the feature is disabled.
-    TVector<char*> qenv;
-    for (char** env = environ; *env; ++env) {
-        const TStringBuf entry{*env};
-        const auto name = NVHostServer::LatencyConfigEnvName;
-        if (entry.size() > name.size() && entry.StartsWith(name) &&
-            entry[name.size()] == '=')
-        {
-            continue;
-        }
-        qenv.push_back(*env);
-    }
-    if (latencyThresholdsConfigV1) {
-        qenv.push_back(const_cast<char*>(latencyThresholdsEnv.data()));
-    }
-    qenv.emplace_back();
 
     pid_t childPid = ::fork();
 
@@ -382,13 +365,6 @@ TChild SpawnChild(
         // freopen((TString("/tmp/out.") + ToString(::getpid())).c_str(), "w",
         // stdout); freopen((TString("/tmp/err.") +
         // ToString(::getpid())).c_str(), "w", stderr);
-
-        // Do not call setenv()/putenv() after fork: they may allocate or lock.
-        // Repointing environ only changes the forked child. argv/envp were
-        // fully built before fork(), and keeping execvp preserves the existing
-        // PATH lookup behavior. An older child safely ignores the unknown
-        // environment variable.
-        environ = qenv.data();
 
         ::execvp(binaryPath.c_str(), qargs.data());
     }
@@ -614,7 +590,6 @@ private:
     const TString BinaryPath;
     const TVector<TString> Args;
     const TVector<TString> Cgroups;
-    const std::optional<TString> LatencyThresholdsConfigV1;
 
     TLog Log;
 
@@ -638,15 +613,13 @@ public:
             TEndpointStats stats,
             TString binaryPath,
             TVector<TString> args,
-            TVector<TString> cgroups,
-              std::optional<TString> latencyThresholdsConfigV1)
+            TVector<TString> cgroups)
         : Logging{std::move(logging)}
         , Executor{std::move(executor)}
         , ClientId{std::move(clientId)}
         , BinaryPath{std::move(binaryPath)}
         , Args{std::move(args)}
         , Cgroups{std::move(cgroups)}
-        , LatencyThresholdsConfigV1{std::move(latencyThresholdsConfigV1)}
         , Log{Logging->CreateLog("BLOCKSTORE_EXTERNAL_ENDPOINT")}
         , Stats{std::move(stats)}
         , LogPrefix{
@@ -734,7 +707,7 @@ private:
 
     TIntrusivePtr<TEndpointProcess> StartProcess()
     {
-        if (LatencyThresholdsConfigV1) {
+        if (std::find(Args.begin(), Args.end(), "--latency-config") != Args.end()) {
             for (size_t i = 0; i + 1 < Args.size(); ++i) {
                 if (Args[i] == "--socket-path") {
                     Stats.LatencyTracker->SetCheckpointPath(
@@ -743,7 +716,7 @@ private:
                 }
             }
         }
-        auto process = SpawnChild(BinaryPath, Args, LatencyThresholdsConfigV1);
+        auto process = SpawnChild(BinaryPath, Args);
 
         STORAGE_INFO(
             LogPrefix << "Endpoint process has been started, PID:"
@@ -825,7 +798,7 @@ private:
     const ui32 SocketAccessMode;
     const bool IsAlignedDataEnabled;
     const IEndpointListenerPtr FallbackListener;
-    const TInternalExternalEndpointFactory EndpointFactory;
+    const TExternalEndpointFactory EndpointFactory;
     const TDuration VhostServerTimeoutAfterParentExit;
     const std::shared_ptr<const NProto::TDiagnosticsConfig> LatencyThresholds;
 
@@ -843,7 +816,7 @@ public:
             TString localAgentId,
             bool isAlignedDataEnabled,
             IEndpointListenerPtr fallbackListener,
-        TInternalExternalEndpointFactory endpointFactory,
+        TExternalEndpointFactory endpointFactory,
         TDiagnosticsConfigPtr diagnosticsConfig)
         : ServerConfig{std::move(serverConfig)}
         , Logging{std::move(logging)}
@@ -1207,13 +1180,13 @@ private:
             request.GetClientCGroups().begin(),
             request.GetClientCGroups().end());
 
+        AppendLatencyArguments(
+            args, LatencyThresholds.get(), volume.GetStorageMediaKind());
         auto ep = EndpointFactory(
             clientId,
             request.GetDiskId(),
             std::move(args),
-            std::move(cgroups),
-            SerializeLatencyThresholdsConfigV1(LatencyThresholds.get(),
-                                               volume.GetStorageMediaKind()));
+            std::move(cgroups));
 
         ep->PrepareToStart();
         ShutdownOldEndpoint(request.GetDiskId());
@@ -1350,8 +1323,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListenerWithDiagnostics(
         const TString& clientId,
         const TString& diskId,
         TVector<TString> args,
-        TVector<TString> cgroups,
-                              std::optional<TString> latencyThresholdsConfigV1)
+        TVector<TString> cgroups)
     {
         return std::make_shared<TEndpoint>(
             clientId,
@@ -1363,7 +1335,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListenerWithDiagnostics(
                 .ServerStats = serverStats
             },
             serverConfig->GetVhostServerPath(), std::move(args),
-            std::move(cgroups), std::move(latencyThresholdsConfigV1));
+            std::move(cgroups));
     };
 
     return std::make_shared<TExternalVhostEndpointListener>(
@@ -1379,20 +1351,6 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
     bool isAlignedDataEnabled, IEndpointListenerPtr fallbackListener,
     TExternalEndpointFactory factory)
 {
-    TInternalExternalEndpointFactory adapter =
-        [factory = std::move(factory)](
-            const TString& clientId, const TString& diskId,
-            TVector<TString> args,
-            TVector<TString> cgroups,
-            std::optional<TString> latencyThresholdsConfigV1)
-    {
-        Y_UNUSED(latencyThresholdsConfigV1);
-        return factory(clientId, diskId,
-            std::move(args),
-            std::move(cgroups)
-        );
-    };
-
     return std::make_shared<TExternalVhostEndpointListener>(
         std::move(serverConfig),
         std::move(logging),
@@ -1401,7 +1359,7 @@ IEndpointListenerPtr CreateExternalVhostEndpointListener(
         std::move(localAgentId),
         isAlignedDataEnabled,
         std::move(fallbackListener),
-        std::move(adapter),
+        std::move(factory),
         TDiagnosticsConfigPtr{});
 }
 

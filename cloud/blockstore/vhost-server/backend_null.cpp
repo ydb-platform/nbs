@@ -54,7 +54,7 @@ vhd_bdev_info TNullBackend::Init(const TOptions& options)
     }
     BlockSize = options.BlockSize;
     LatencyTracker =
-        TLatencyTracker(options.LatencyTrackingEnabled, options.LatencyConfig);
+        TLatencyTracker(options.LatencyConfig, options.LatencyMediaKind);
 
     return {
         .serial = options.Serial.c_str(),

@@ -132,9 +132,9 @@ void TServer::Start(const TOptions& options)
     STORAGE_INFO("Starting the server");
 
     SocketPath = options.SocketPath;
-    LatencyTrackingEnabled = options.LatencyTrackingEnabled;
+    LatencyTrackingEnabled = options.LatencyConfig.GetEnableLatency();
     LatencyThresholdVersion =
-        options.LatencyConfig.Config.GetLatencyThresholdVersion();
+        options.LatencyConfig.GetLatencyThresholdVersion();
     LatencyGeneration = options.LatencyGeneration;
 
     Info = Backend->Init(options);

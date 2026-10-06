@@ -95,6 +95,8 @@ struct TVolumeThrottlingPolicy::TImpl
     const TMaxQuotas MaxQuotas;
     TBoostedTimeBucket Bucket;
     std::unique_ptr<TBoostedTimeBucket> OriginalQuotaBucket;
+    bool OriginalQuotaKnown = false;
+    TInstant LastQuotaObservation;
     TVector<TBackpressureReport> PartitionBackpressures;
     TBackpressureReport CurrentBackpressure;
     double WriteCostMultiplier = 1;
@@ -129,16 +131,51 @@ struct TVolumeThrottlingPolicy::TImpl
               CalculateBoostTime(Config),
               CalculateBoostRefillTime(Config),
               initialBoostBudget)
-        , OriginalQuotaBucket(std::make_unique<TBoostedTimeBucket>(
-              SecondsToDuration(
-                  (OriginalConfig.GetBurstPercentage()
-                       ? OriginalConfig.GetBurstPercentage()
-                       : 10) /
-                  100.), CalculateBoostRate(OriginalConfig),
-              CalculateBoostTime(OriginalConfig),
-              CalculateBoostRefillTime(OriginalConfig),
-              CalculateBoostTime(OriginalConfig)))
-    {}
+        , OriginalQuotaKnown(
+              initialBoostBudget >= CalculateBoostTime(OriginalConfig))
+    {
+        ResetOriginalQuotaBudget(initialBoostBudget);
+    }
+
+    TDuration OriginalBurstTime() const
+    {
+        return SecondsToDuration(
+            (OriginalConfig.GetBurstPercentage()
+                 ? OriginalConfig.GetBurstPercentage()
+                 : 10) / 100.);
+    }
+
+    void ResetOriginalQuotaBudget(TDuration boostBudget)
+    {
+        OriginalQuotaBucket = std::make_unique<TBoostedTimeBucket>(
+            OriginalBurstTime(),
+            CalculateBoostRate(OriginalConfig),
+            CalculateBoostTime(OriginalConfig),
+            CalculateBoostRefillTime(OriginalConfig),
+            Min(boostBudget, CalculateBoostTime(OriginalConfig)));
+    }
+
+    void ObserveQuotaTime(TInstant ts)
+    {
+        // A restored real-limiter budget may include storage-pressure costs.
+        // Its original-profile history is unknown until an idle interval is
+        // long enough to refill both original-profile buckets completely.
+        if (LastQuotaObservation && ts < LastQuotaObservation) {
+            OriginalQuotaKnown = false;
+        } else if (!OriginalQuotaKnown && LastQuotaObservation) {
+            const auto boost = CalculateBoostTime(OriginalConfig);
+            const auto refill = boost
+                ? CalculateBoostRefillTime(OriginalConfig)
+                : TDuration::Zero();
+            if ((!boost || refill) &&
+                ts - LastQuotaObservation >= Max(OriginalBurstTime(), refill))
+            {
+                ResetOriginalQuotaBudget(boost);
+                OriginalQuotaKnown = true;
+            }
+        }
+        LastQuotaObservation = ts;
+    }
 
     NProto::TVolumePerformanceProfile CalculateProfile(
         const NProto::TVolumeThrottlingRule& throttlingRule) const
@@ -500,6 +537,8 @@ void TVolumeThrottlingPolicy::Reset(
                         config.SerializeAsString())
     {
         Impl->OriginalQuotaBucket = std::move(previous->OriginalQuotaBucket);
+        Impl->OriginalQuotaKnown = previous->OriginalQuotaKnown;
+        Impl->LastQuotaObservation = previous->LastQuotaObservation;
     }
 }
 
@@ -524,6 +563,10 @@ void TVolumeThrottlingPolicy::Reset(
 void TVolumeThrottlingPolicy::Reset(
     const TVolumeThrottlingPolicy& policy)
 {
+    auto quota = std::make_unique<TBoostedTimeBucket>(
+        *policy.Impl->OriginalQuotaBucket);
+    const bool known = policy.Impl->OriginalQuotaKnown;
+    const auto observed = policy.Impl->LastQuotaObservation;
     Reset(
         policy.Impl->OriginalConfig,
         policy.Impl->ThrottlingRule,
@@ -533,6 +576,9 @@ void TVolumeThrottlingPolicy::Reset(
         policy.Impl->DefaultPostponedRequestWeight,
         policy.Impl->Bucket.GetCurrentBoostBudget(),
         policy.Impl->UseDiskSpaceScore);
+    Impl->OriginalQuotaBucket = std::move(quota);
+    Impl->OriginalQuotaKnown = known;
+    Impl->LastQuotaObservation = observed;
 }
 
 void TVolumeThrottlingPolicy::Reset(
@@ -579,19 +625,41 @@ TMaybe<TDuration> TVolumeThrottlingPolicy::SuggestDelay(
     const TThrottlingRequestInfo& requestInfo)
 {
     LatencyQuotaDelay = TDuration::Zero();
-    if (!LatencyEnabled || !Impl->OriginalConfig.GetThrottlingEnabled()) {
+    if (!Impl->OriginalConfig.GetThrottlingEnabled() ||
+        !requestInfo.ByteCount || requestInfo.PolicyVersion < Impl->PolicyVersion)
+    {
         return Impl->SuggestDelay(ts, queueTime, requestInfo);
     }
+    if (!LatencyEnabled) {
+        // Enabling diagnostics later must not assume a fresh quota budget.
+        Impl->OriginalQuotaKnown = false;
+        Impl->LastQuotaObservation = ts;
+        return Impl->SuggestDelay(ts, queueTime, requestInfo);
+    }
+    Impl->ObserveQuotaTime(ts);
+    if (!Impl->OriginalQuotaKnown) {
+        return Impl->SuggestDelay(ts, queueTime, requestInfo);
+    }
+
     auto original = *Impl->OriginalQuotaBucket;
-    const auto quotaDelay =
-        original.Register(ts, Impl->OriginalQuotaCost(requestInfo));
-    auto delay = Impl->SuggestDelay(ts, queueTime, requestInfo);
+    const auto cost = Impl->OriginalQuotaCost(requestInfo);
+    const auto quotaDelay = original.Register(ts, cost);
+    const auto delay = Impl->SuggestDelay(ts, queueTime, requestInfo);
+    if (quotaDelay) {
+        // Register can partially spend boost while still postponing. Retain
+        // that progress, just as the real bucket does on the same attempt.
+        Impl->OriginalQuotaBucket->Register(ts, cost);
+    }
     if (delay.Defined()) {
         if (*delay == TDuration::Zero()) {
-            // Only actual admissions spend the original-profile budget. A
-            // rejection or a wakeup must never charge the request twice.
-            Impl->OriginalQuotaBucket->Register(
-                ts, Impl->OriginalQuotaCost(requestInfo));
+            if (quotaDelay) {
+                // A temporary profile can admit earlier than the original
+                // profile. Do not keep attributing from an unspent request.
+                Impl->OriginalQuotaKnown = false;
+            } else {
+                // Spend the operation cost only when it actually advances.
+                Impl->OriginalQuotaBucket->Register(ts, cost);
+            }
         } else {
             LatencyQuotaDelay = Min(*delay, quotaDelay);
         }
@@ -607,6 +675,12 @@ void TVolumeThrottlingPolicy::EnableLatency(bool enabled)
 TDuration TVolumeThrottlingPolicy::GetLatencyQuotaDelay() const
 {
     return LatencyQuotaDelay;
+}
+
+bool TVolumeThrottlingPolicy::IsLatencyQuotaKnown() const
+{
+    return !Impl->OriginalConfig.GetThrottlingEnabled() ||
+           Impl->OriginalQuotaKnown;
 }
 
 double TVolumeThrottlingPolicy::GetWriteCostMultiplier() const

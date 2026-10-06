@@ -1,6 +1,9 @@
 #include "options.h"
 
+#include <cloud/blockstore/libs/diagnostics/latency_generation.h>
 #include <cloud/blockstore/libs/encryption/model/utils.h>
+
+#include <google/protobuf/text_format.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>
 
@@ -9,8 +12,6 @@
 #include <util/string/cast.h>
 #include <util/string/join.h>
 #include <util/string/split.h>
-
-#include <cstdlib>
 
 using namespace NLastGetopt;
 
@@ -171,6 +172,17 @@ void TOptions::Parse(int argc, char** argv)
         .DefaultValue(0)
         .StoreResult(&ThreadPoolSize);
 
+    TString latencyConfigText;
+    TString latencyMediaKind;
+    opts.AddLongOption("latency-config", "manual latency diagnostics textproto")
+        .RequiredArgument("TEXTPROTO")
+        .StoreResult(&latencyConfigText);
+    opts.AddLongOption(
+            "latency-media-kind",
+            "storage media kind for latency lookup")
+        .RequiredArgument("INT")
+        .StoreResult(&latencyMediaKind);
+
     TOptsParseResultException res(&opts, argc, argv);
 
     if (res.FindLongOptParseResult("verbose") && VerboseLevel.empty()) {
@@ -196,19 +208,20 @@ void TOptions::Parse(int argc, char** argv)
         QueueCount = Min<ui32>(8, Layout.size());
     }
 
-    if (const char* latencyThresholdsConfig =
-            std::getenv(LatencyConfigEnvName.data()))
-    {
+    if (!latencyConfigText.empty()) {
         try {
-            LatencyConfig = ParseLatencyConfig(latencyThresholdsConfig);
-            LatencyTrackingEnabled = LatencyConfig.Config.GetEnableLatency();
-            if (LatencyTrackingEnabled) {
+            Y_ENSURE(latencyConfigText.size() < 65536,
+                     "latency configuration is too large");
+            LatencyMediaKind = FromString<ui32>(latencyMediaKind);
+            Y_ENSURE(google::protobuf::TextFormat::ParseFromString(
+                         latencyConfigText, &LatencyConfig),
+                     "invalid latency configuration");
+            if (LatencyConfig.GetEnableLatency()) {
                 LatencyGeneration = NextLatencyGeneration(SocketPath);
             }
         } catch (...) {
-            // Diagnostics cannot prevent endpoint startup. Missing telemetry
-            // is visible to the parent through its existing health counters.
-            LatencyTrackingEnabled = false;
+            // Invalid diagnostics must not prevent ordinary endpoint startup.
+            LatencyConfig.Clear();
         }
     }
 }

@@ -1,7 +1,6 @@
 #pragma once
 #include "stats.h"
 
-#include <cloud/blockstore/libs/diagnostics/latency_config.h>
 #include <cloud/blockstore/libs/diagnostics/latency_sli.h>
 #include <cloud/blockstore/libs/service/latency.h>
 
@@ -15,16 +14,16 @@ enum class ELatencyCompletion
 class TLatencyTracker
 {
     bool Enabled = false;
-    TLatencyConfig Config;
+    ui32 MediaKind = 0;
     TLatencyThresholds Thresholds;
 
 public:
     TLatencyTracker() = default;
 
-    TLatencyTracker(bool enabled, TLatencyConfig config)
-        : Enabled(enabled)
-        , Config(std::move(config))
-        , Thresholds(Config.Config)
+    TLatencyTracker(const NProto::TDiagnosticsConfig& config, ui32 mediaKind)
+        : Enabled(config.GetEnableLatency())
+        , MediaKind(mediaKind)
+        , Thresholds(config)
     {}
 
     bool IsEnabled() const
@@ -41,7 +40,7 @@ public:
         }
         const auto result = EvaluateLatency(
             Thresholds,
-            Config.MediaKind,
+            MediaKind,
             type == 1 ? EBlockStoreRequest::WriteBlocks
                       : EBlockStoreRequest::ReadBlocks, bytes,
             CyclesToDurationSafe(elapsed), graph, success);

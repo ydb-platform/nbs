@@ -109,6 +109,7 @@ public:
 
     void EnableLatency(bool enabled);
     TDuration GetLatencyQuotaDelay() const;
+    bool IsLatencyQuotaKnown() const;
 
     ui32 GetVersion() const
     {

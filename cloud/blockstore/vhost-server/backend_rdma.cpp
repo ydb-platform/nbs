@@ -186,7 +186,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     ClientId = options.ClientId;
     ReadOnly = options.ReadOnly;
     LatencyTracker =
-        TLatencyTracker(options.LatencyTrackingEnabled, options.LatencyConfig);
+        TLatencyTracker(options.LatencyConfig, options.LatencyMediaKind);
 
     BlockSize = options.BlockSize;
     STORAGE_VERIFY(

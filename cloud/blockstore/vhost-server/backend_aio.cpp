@@ -261,7 +261,7 @@ vhd_bdev_info TAioBackend::Init(const TOptions& options)
     }
     BatchSize = options.BatchSize;
     LatencyTracker =
-        TLatencyTracker(options.LatencyTrackingEnabled, options.LatencyConfig);
+        TLatencyTracker(options.LatencyConfig, options.LatencyMediaKind);
 
     IoSetup();
 
