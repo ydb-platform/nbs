@@ -883,7 +883,7 @@ void PrepareRangeCompaction(
             skippedBlobs);
     }
 
-    const ui32 checksumBoundary =
+    const ui64 checksumBoundary =
         config.GetDiskPrefixLengthWithBlockChecksumsInBlobs() /
         state.GetBlockSize();
     args.ChecksumsEnabled = args.BlockRange.Start < checksumBoundary;
