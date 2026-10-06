@@ -587,6 +587,132 @@ Y_UNIT_TEST_SUITE(TServerTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldFinishVhostIoDepthForPendingExceptionalStorage)
+    {
+        for (const auto type:
+             {EBlockStoreRequest::ReadBlocks, EBlockStoreRequest::WriteBlocks,
+              EBlockStoreRequest::ZeroBlocks})
+        {
+            std::atomic<ui64> nowNs = 0;
+            TIoDepthTracker depth(1, [&] { return nowNs.load(); });
+            std::atomic<ui32> completed = 0;
+            auto stats = std::make_shared<TTestServerStats>();
+            stats->RequestStartedHandler = [&](TLog&, TMetricRequest& request,
+                                               TCallContext&, const TString&)
+            {
+                if (request.RequestType == type) {
+                    depth.Started(0);
+                }
+            };
+            stats->RequestCompletedHandler = [&](TLog&, TMetricRequest& request,
+                                                 TCallContext&,
+                                                 const NProto::TError& error)
+            {
+                if (request.RequestType == type) {
+                    UNIT_ASSERT_VALUES_EQUAL(error.GetCode(),
+                                             completed++ == 0 ? E_FAIL : S_OK);
+                    UNIT_ASSERT(depth.Completed(0));
+                }
+            };
+
+            auto read = NewPromise<NProto::TReadBlocksLocalResponse>();
+            auto write = NewPromise<NProto::TWriteBlocksLocalResponse>();
+            auto zero = NewPromise<NProto::TZeroBlocksResponse>();
+            auto arrived = NewPromise<void>();
+            std::atomic<ui32> calls = 0;
+            TVector<TString> blocks;
+            auto sglist =
+                ResizeBlocks(blocks, 1, TString(DefaultBlockSize, 'r'));
+            // Stop the server before destroying the storage callbacks' captures
+            // and buffers, including when an assertion fails.
+            TTestEnvironment env(DefaultBlockSize, false, stats);
+            if (type == EBlockStoreRequest::ReadBlocks) {
+                env.GetTestStorage()->ReadBlocksLocalHandler = [&](auto, auto)
+                {
+                    if (calls++ == 0) {
+                        arrived.SetValue();
+                        return read.GetFuture();
+                    }
+                    return MakeFuture(NProto::TReadBlocksLocalResponse{});
+                };
+            } else if (type == EBlockStoreRequest::WriteBlocks) {
+                env.GetTestStorage()->WriteBlocksLocalHandler = [&](auto, auto)
+                {
+                    if (calls++ == 0) {
+                        arrived.SetValue();
+                        return write.GetFuture();
+                    }
+                    return MakeFuture(NProto::TWriteBlocksLocalResponse{});
+                };
+            } else {
+                env.GetTestStorage()->ZeroBlocksHandler = [&](auto, auto)
+                {
+                    if (calls++ == 0) {
+                        arrived.SetValue();
+                        return zero.GetFuture();
+                    }
+                    return MakeFuture(NProto::TZeroBlocksResponse{});
+                };
+            }
+            Y_DEFER
+            {
+                const TErrorResponse error(E_FAIL, "test cleanup");
+                read.TrySetValue(NProto::TReadBlocksLocalResponse(error));
+                write.TrySetValue(NProto::TWriteBlocksLocalResponse(error));
+                zero.TrySetValue(NProto::TZeroBlocksResponse(error));
+            };
+
+            auto device = env.GetVhostDevice();
+            auto failed =
+                device->SendTestRequest(type, 0, DefaultBlockSize, sglist);
+            arrived.GetFuture().GetValue(TDuration::Seconds(5));
+
+            // This endpoint has one queue. A later request completes only after
+            // processing the first request returned and installed its
+            // callbacks.
+            const auto probeType = type == EBlockStoreRequest::ReadBlocks
+                                       ? EBlockStoreRequest::ZeroBlocks
+                                       : EBlockStoreRequest::ReadBlocks;
+            auto probe = device->SendTestRequest(probeType, DefaultBlockSize,
+                                                 DefaultBlockSize, sglist);
+            UNIT_ASSERT(
+                probe.GetValue(TDuration::Seconds(5)) ==
+                TVhostRequest::SUCCESS);
+            UNIT_ASSERT(!failed.HasValue());
+            UNIT_ASSERT_VALUES_EQUAL(depth.Snapshot().Lanes[0].Current, 1);
+
+            nowNs = 1'000;
+            const auto exception = std::make_exception_ptr(
+                yexception() << "test pending storage failure");
+            if (type == EBlockStoreRequest::ReadBlocks) {
+                read.SetException(exception);
+            } else if (type == EBlockStoreRequest::WriteBlocks) {
+                write.SetException(exception);
+            } else {
+                zero.SetException(exception);
+            }
+            UNIT_ASSERT(
+                failed.GetValue(TDuration::Seconds(5)) == TVhostRequest::IOERR);
+            UNIT_ASSERT_VALUES_EQUAL(depth.Snapshot().Lanes[0].Current, 0);
+
+            // A failed write/zero must also release the device-handler queue.
+            TSgList unaligned = {
+                TBlockDataRef(blocks[0].data(), DefaultBlockSize - 2)};
+            auto next = device->SendTestRequest(type, 1, DefaultBlockSize - 2,
+                                                unaligned);
+            UNIT_ASSERT(
+                next.GetValue(TDuration::Seconds(5)) == TVhostRequest::SUCCESS);
+            env.StopVhostServer();
+
+            nowNs = 2'000;
+            const auto snapshot = depth.Snapshot();
+            UNIT_ASSERT_VALUES_EQUAL(completed.load(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].Current, 0);
+            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].IntegralUs, 1);
+            UNIT_ASSERT(snapshot.Continuous);
+        }
+    }
+
     Y_UNIT_TEST(ShouldStartStopVhostEndpoint)
     {
         auto logging = CreateLoggingService("console");

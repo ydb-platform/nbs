@@ -3,6 +3,7 @@
 #include "client.h"
 #include "client_handler.h"
 #include "error_handler.h"
+#include "protocol.h"
 #include "server_handler.h"
 
 #include <cloud/blockstore/libs/client/config.h>
@@ -31,6 +32,8 @@
 
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
+#include <util/generic/yexception.h>
+#include <util/network/socket.h>
 
 #include <atomic>
 
@@ -303,6 +306,7 @@ struct TIoDepthServerStats
             return NowNs.load();
         }};
     std::atomic<ui32> CompletedCount = 0;
+    std::atomic<ui32> ErrorCount = 0;
     std::atomic<bool> Balanced = true;
     TPromise<void> FirstCompletion = NewPromise<void>();
     std::shared_ptr<TTestServerStats> Stats =
@@ -318,20 +322,163 @@ struct TIoDepthServerStats
                 Depth.Started(static_cast<ui32>(request.RequestType));
             }
         };
-        Stats->RequestCompletedHandler =
-            [this](
-                TLog&,
-                TMetricRequest& request, TCallContext&, const NProto::TError&)
+        Stats->RequestCompletedHandler = [this](TLog&, TMetricRequest& request,
+                                                TCallContext&,
+                                                const NProto::TError& error)
         {
             if (IsNonLocalReadWriteRequest(request.RequestType)) {
                 if (!Depth.Completed(static_cast<ui32>(request.RequestType))) {
                     Balanced = false;
                 }
+                ErrorCount.fetch_add(HasError(error));
                 if (CompletedCount.fetch_add(1) == 0) {
                     FirstCompletion.SetValue();
                 }
             }
         };
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Execute ready Storage futures on Receive's executor so the successful
+// response is deterministically queued before the next malformed header.
+class TInlineServerContext final: public IServerContext
+{
+private:
+    const IServerContextPtr Context;
+
+public:
+    explicit TInlineServerContext(IServerContextPtr context)
+        : Context(std::move(context))
+    {}
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    bool AcquireRequest(size_t bytes) override
+    {
+        return Context->AcquireRequest(bytes);
+    }
+
+    void Enqueue(ITaskPtr task) override
+    {
+        task->Execute();
+    }
+
+    const NProto::TReadBlocksLocalResponse& WaitFor(
+        const TFuture<NProto::TReadBlocksLocalResponse>& future) override
+    {
+        return Context->WaitFor(future);
+    }
+
+    const NProto::TWriteBlocksLocalResponse& WaitFor(
+        const TFuture<NProto::TWriteBlocksLocalResponse>& future) override
+    {
+        return Context->WaitFor(future);
+    }
+
+    const NProto::TZeroBlocksResponse& WaitFor(
+        const TFuture<NProto::TZeroBlocksResponse>& future) override
+    {
+        return Context->WaitFor(future);
+    }
+
+    void SendResponse(TServerResponsePtr response) override
+    {
+        Context->SendResponse(std::move(response));
+    }
+};
+
+class TQueuedResponseHandler final: public IServerHandler
+{
+private:
+    const IServerHandlerPtr Handler;
+    const bool FailSend;
+    std::atomic<ui32>& SendAttempts;
+
+public:
+    TQueuedResponseHandler(IServerHandlerPtr handler, bool failSend,
+                           std::atomic<ui32>& sendAttempts)
+        : Handler(std::move(handler))
+        , FailSend(failSend)
+        , SendAttempts(sendAttempts)
+    {}
+
+    bool NegotiateClient(IInputStream&, IOutputStream&) override
+    {
+        return true;
+    }
+
+    void SendResponse(IOutputStream& out, TServerResponse& response) override
+    {
+        ++SendAttempts;
+        if (FailSend) {
+            ythrow yexception() << "response write failed";
+        }
+        Handler->SendResponse(out, response);
+    }
+
+    void CompleteResponse(TServerResponse& response) override
+    {
+        Handler->CompleteResponse(response);
+    }
+
+    void ProcessRequests(IServerContextPtr context, IInputStream&,
+                         IOutputStream& out, TCont*) override
+    {
+        TStringStream requests;
+        TRequestWriter writer(requests);
+        for (ui64 handle = 1; handle <= (FailSend ? 2 : 1); ++handle) {
+            TRequest request{};
+            request.Magic = NBD_REQUEST_MAGIC;
+            request.Type = NBD_CMD_WRITE_ZEROES;
+            request.Handle = handle;
+            request.Length = DefaultBlockSize;
+            writer.WriteRequest(request);
+        }
+        requests.Write(TString(sizeof(ui32), '\0'));
+
+        Handler->ProcessRequests(
+            MakeIntrusive<TInlineServerContext>(std::move(context)), requests,
+            out, nullptr);
+    }
+
+    void ProcessException(std::exception_ptr exception) override
+    {
+        Handler->ProcessException(std::move(exception));
+    }
+
+    size_t CollectRequests(
+        const TIncompleteRequestsCollector& collector) override
+    {
+        return Handler->CollectRequests(collector);
+    }
+};
+
+class TQueuedResponseHandlerFactory final: public IServerHandlerFactory
+{
+private:
+    const IServerHandlerFactoryPtr Factory;
+    const bool FailSend;
+    std::atomic<ui32>& SendAttempts;
+
+public:
+    TQueuedResponseHandlerFactory(IServerHandlerFactoryPtr factory,
+                                  bool failSend,
+                                  std::atomic<ui32>& sendAttempts)
+        : Factory(std::move(factory))
+        , FailSend(failSend)
+        , SendAttempts(sendAttempts)
+    {}
+
+    IServerHandlerPtr CreateHandler() override
+    {
+        return std::make_shared<TQueuedResponseHandler>(
+            Factory->CreateHandler(), FailSend, SendAttempts);
     }
 };
 
@@ -1074,6 +1221,227 @@ Y_UNIT_TEST_SUITE(TServerTest)
         }
 
         bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldFinalizeQueuedResponsesBeforeReceiveFailure)
+    {
+        for (const bool failSend: {false, true}) {
+            TIoDepthServerStats stats;
+            std::atomic<ui32> sendAttempts = 0;
+            auto storage = std::make_shared<TTestStorage>();
+            storage->ZeroBlocksHandler = [](auto, auto)
+            {
+                return MakeFuture<NProto::TZeroBlocksResponse>();
+            };
+            auto logging = CreateLoggingService("console", {TLOG_DEBUG});
+            auto factory = CreateServerHandlerFactory(
+                CreateDefaultDeviceHandlerFactory(), logging, storage,
+                stats.Stats, CreateErrorHandlerStub(), DefaultStorageOptions);
+            auto server = CreateServer(logging, {});
+            TPortManager portManager;
+            TNetworkAddress address(portManager.GetPort());
+            logging->Start();
+            server->Start();
+            Y_DEFER
+            {
+                server->Stop();
+                logging->Stop();
+            };
+            auto error =
+                server
+                    ->StartEndpoint(
+                        address,
+                        std::make_shared<TQueuedResponseHandlerFactory>(
+                            factory, failSend, sendAttempts))
+                    .GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+
+            TSocket socket(address, TDuration::Seconds(5));
+            socket.SetSocketTimeout(5);
+            TSocketInput input(socket);
+            TRequestReader reader(input);
+            TSimpleReply reply;
+            if (failSend) {
+                UNIT_ASSERT(!reader.ReadSimpleReply(reply));
+            } else {
+                UNIT_ASSERT(reader.ReadSimpleReply(reply));
+                UNIT_ASSERT_VALUES_EQUAL(reply.Handle, 1);
+                UNIT_ASSERT(reply.Error == NBD_SUCCESS);
+            }
+
+            error =
+                server->StopEndpoint(address).GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+            UNIT_ASSERT(stats.Balanced.load());
+            UNIT_ASSERT_VALUES_EQUAL(sendAttempts.load(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(),
+                                     failSend ? 2 : 1);
+            UNIT_ASSERT_VALUES_EQUAL(stats.ErrorCount.load(), failSend ? 2 : 0);
+            const auto snapshot = stats.Depth.Snapshot();
+            const auto lane = static_cast<ui32>(EBlockStoreRequest::ZeroBlocks);
+            UNIT_ASSERT(snapshot.Continuous);
+            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].Current, 0);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFinishIoDepthForPendingExceptionalStorage)
+    {
+        for (const auto type:
+             {EBlockStoreRequest::ReadBlocks, EBlockStoreRequest::WriteBlocks,
+              EBlockStoreRequest::ZeroBlocks})
+        {
+            TIoDepthServerStats stats;
+            TManualEvent arrived;
+            auto read = NewPromise<NProto::TReadBlocksLocalResponse>();
+            auto write = NewPromise<NProto::TWriteBlocksLocalResponse>();
+            auto zero = NewPromise<NProto::TZeroBlocksResponse>();
+            auto bothCompleted = NewPromise<void>();
+            const auto onCompleted = stats.Stats->RequestCompletedHandler;
+            stats.Stats->RequestCompletedHandler =
+                [&, onCompleted](auto& log, auto& request, auto& ctx,
+                                 const auto& error)
+            {
+                onCompleted(log, request, ctx, error);
+                if (stats.CompletedCount.load() == 2) {
+                    bothCompleted.TrySetValue();
+                }
+            };
+
+            auto storage = std::make_shared<TTestStorage>();
+            if (type == EBlockStoreRequest::ReadBlocks) {
+                storage->ReadBlocksLocalHandler = [&](auto, auto request)
+                {
+                    if (request->GetStartIndex() == 0) {
+                        arrived.Signal();
+                        return read.GetFuture();
+                    }
+                    return MakeFuture(NProto::TReadBlocksLocalResponse{});
+                };
+            } else if (type == EBlockStoreRequest::WriteBlocks) {
+                storage->WriteBlocksLocalHandler = [&](auto, auto request)
+                {
+                    if (request->GetStartIndex() == 0) {
+                        arrived.Signal();
+                        return write.GetFuture();
+                    }
+                    return MakeFuture(NProto::TWriteBlocksLocalResponse{});
+                };
+            } else {
+                storage->ZeroBlocksHandler = [&](auto, auto request)
+                {
+                    if (request->GetStartIndex() == 0) {
+                        arrived.Signal();
+                        return zero.GetFuture();
+                    }
+                    return MakeFuture(NProto::TZeroBlocksResponse{});
+                };
+            }
+
+            TVector<TString> blocks;
+            auto sglist =
+                ResizeBlocks(blocks, 1, TString(DefaultBlockSize, 'a'));
+            TPortManager portManager;
+            TNetworkAddress address(portManager.GetPort());
+            TServerConfig serverConfig;
+            serverConfig.ThreadsCount = 1;
+            auto bootstrap =
+                CreateBootstrap(address, storage, DefaultStorageOptions,
+                                serverConfig, nullptr, nullptr, stats.Stats);
+            bool stopped = false;
+            Y_DEFER
+            {
+                const TErrorResponse error(E_FAIL, "test cleanup");
+                read.TrySetValue(NProto::TReadBlocksLocalResponse(error));
+                write.TrySetValue(NProto::TWriteBlocksLocalResponse(error));
+                zero.TrySetValue(NProto::TZeroBlocksResponse(error));
+                if (!stopped) {
+                    bootstrap->Stop();
+                }
+            };
+
+            auto error = bootstrap->Start();
+            UNIT_ASSERT_C(!HasError(error), error);
+            auto endpoint = bootstrap->GetClientEndpoint();
+            auto send = [&](ui64 startIndex) -> TFuture<NProto::TError>
+            {
+                auto ctx = MakeIntrusive<TCallContext>();
+                if (type == EBlockStoreRequest::ReadBlocks) {
+                    auto request =
+                        std::make_shared<NProto::TReadBlocksLocalRequest>();
+                    request->SetStartIndex(startIndex);
+                    request->SetBlocksCount(1);
+                    request->SetBlockSize(DefaultBlockSize);
+                    request->Sglist = TGuardedSgList(sglist);
+                    return endpoint
+                        ->ReadBlocksLocal(std::move(ctx), std::move(request))
+                        .Apply([](const auto& f)
+                               { return f.GetValue().GetError(); });
+                }
+                if (type == EBlockStoreRequest::WriteBlocks) {
+                    auto request =
+                        std::make_shared<NProto::TWriteBlocksLocalRequest>();
+                    request->SetStartIndex(startIndex);
+                    request->SetBlockSize(DefaultBlockSize);
+                    request->BlocksCount = 1;
+                    request->Sglist = TGuardedSgList(sglist);
+                    return endpoint
+                        ->WriteBlocksLocal(std::move(ctx), std::move(request))
+                        .Apply([](const auto& f)
+                               { return f.GetValue().GetError(); });
+                }
+                auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+                request->SetStartIndex(startIndex);
+                request->SetBlocksCount(1);
+                return endpoint->ZeroBlocks(std::move(ctx), std::move(request))
+                    .Apply([](const auto& f)
+                           { return f.GetValue().GetError(); });
+            };
+
+            auto failed = send(0);
+            UNIT_ASSERT(arrived.WaitT(TDuration::Seconds(5)));
+            // Both workers use the sole coroutine executor. Storage returns
+            // without yielding, so this later reply requires the first worker
+            // to have subscribed in WaitFor and yielded on its pending future.
+            error = send(1).GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+            UNIT_ASSERT(!failed.IsReady());
+            stats.FirstCompletion.GetFuture().GetValue(TDuration::Seconds(5));
+
+            const auto lane = static_cast<ui32>(type);
+            stats.NowNs = 1'000'000'000;
+            const auto pending = stats.Depth.Snapshot();
+            UNIT_ASSERT(pending.Continuous);
+            UNIT_ASSERT_VALUES_EQUAL(pending.Lanes[lane].Current, 1);
+            UNIT_ASSERT_VALUES_EQUAL(pending.Lanes[lane].IntegralUs, 1'000'000);
+            UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 1);
+
+            const auto exception = std::make_exception_ptr(
+                yexception() << "test pending storage failure");
+            if (type == EBlockStoreRequest::ReadBlocks) {
+                read.SetException(exception);
+            } else if (type == EBlockStoreRequest::WriteBlocks) {
+                write.SetException(exception);
+            } else {
+                zero.SetException(exception);
+            }
+            error = failed.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(error.GetCode(), E_FAIL);
+            bothCompleted.GetFuture().GetValue(TDuration::Seconds(5));
+            stats.NowNs = 2'000'000'000;
+            const auto final = stats.Depth.Snapshot();
+            UNIT_ASSERT(stats.Balanced.load());
+            UNIT_ASSERT(final.Continuous);
+            UNIT_ASSERT_VALUES_EQUAL(final.Lanes[lane].Current, 0);
+            UNIT_ASSERT_VALUES_EQUAL(final.Lanes[lane].IntegralUs, 1'000'000);
+            UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 2);
+            UNIT_ASSERT_VALUES_EQUAL(stats.ErrorCount.load(), 1);
+
+            error =
+                bootstrap->StopEndpointAsync().GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT_C(!HasError(error), error);
+            bootstrap->Stop();
+            stopped = true;
+        }
     }
 
     Y_UNIT_TEST(ShouldKeepIoDepthPendingUntilEndpointDrain)

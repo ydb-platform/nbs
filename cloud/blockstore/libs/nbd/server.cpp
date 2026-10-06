@@ -69,6 +69,10 @@ private:
 
     TContLockFreeQueue<TServerResponsePtr> ResponseQueue;
 
+    // Receive and Send run on the same executor. Report a receive failure only
+    // after Send has finalized the responses queued before the stop marker.
+    std::exception_ptr ReceiveException;
+
     size_t InFlightBytes = 0;
 
     // Requests read from this connection that may still reach or be executing
@@ -213,7 +217,7 @@ private:
             if (!IsShuttingDown() && !c->Cancelled()) {
                 STORAGE_INFO("lost connection with client, failed to receive: "
                     << CurrentExceptionMessage());
-                Handler->ProcessException(std::current_exception());
+                ReceiveException = std::current_exception();
             }
         }
 
@@ -234,11 +238,10 @@ private:
         TIntrusivePtr<TConnection> holder(this);
 
         TServerResponsePtr response;
+        std::exception_ptr sendException;
         while (ResponseQueue.Dequeue(&response)) {
             if (!response) {
                 // stop signal received
-                Handler->ProcessException(
-                    std::make_exception_ptr(TSystemError(-ESHUTDOWN)));
                 break;
             }
 
@@ -247,7 +250,8 @@ private:
             } catch (...) {
                 STORAGE_INFO("lost connection with client, failed to send: "
                     << CurrentExceptionMessage());
-                Handler->ProcessException(std::current_exception());
+                sendException = std::current_exception();
+                break;
             }
 
             ReleaseRequest(response->RequestBytes);
@@ -255,6 +259,11 @@ private:
         }
 
         ShutDown();
+        Handler->ProcessException(
+            sendException ? sendException
+                          : (ReceiveException ? ReceiveException
+                                              : std::make_exception_ptr(
+                                                    TSystemError(-ESHUTDOWN))));
         ReleaseRequest(InFlightBytes);
         SendFinished.store(true, std::memory_order_seq_cst);
         TryCompleteDrain();

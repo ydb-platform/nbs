@@ -3,6 +3,8 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 
+#include <exception>
+
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
@@ -34,6 +36,19 @@ TErrorResponse CreateUnalignedTooBigResponse(ui32 blockCount)
         E_ARGUMENT,
         TStringBuilder() << "Unaligned request is too big. BlockCount="
                          << blockCount};
+}
+
+template <typename TExecute>
+auto ExecuteSafely(TExecute&& execute)
+{
+    using TResponse = typename decltype(execute())::value_type;
+    try {
+        return execute();
+    } catch (...) {
+        // Complete synchronous failures through the same continuation that
+        // unregisters requests after asynchronous failures.
+        return MakeErrorFuture<TResponse>(std::current_exception());
+    }
 }
 
 }   // namespace
@@ -119,6 +134,7 @@ public:
 private:
     TResponsePromise Promise;
     TGuardedSgList SgList;
+    TGuardedSgList RMWGuardedSgList;
 
 public:
     TWriteRequest(
@@ -126,6 +142,7 @@ public:
         TCallContextPtr callContext,
         const TBlocksInfo& blocksInfo,
         TGuardedSgList sgList);
+    ~TWriteRequest() override;
 
     TResponseFuture ExecuteOrPostpone(bool readyToRun);
 
@@ -275,9 +292,15 @@ TWriteRequest::TWriteRequest(
     , SgList(std::move(sgList))
 {}
 
+TWriteRequest::~TWriteRequest()
+{
+    RMWGuardedSgList.Close();
+}
+
 TWriteRequest::TResponseFuture TWriteRequest::ExecuteOrPostpone(bool readyToRun)
 {
-    return readyToRun ? DoExecute() : Promise.GetFuture();
+    return readyToRun ? ExecuteSafely([this] { return DoExecute(); })
+                      : Promise.GetFuture();
 }
 
 void TWriteRequest::DoPostpone()
@@ -289,9 +312,13 @@ void TWriteRequest::DoPostpone()
 void TWriteRequest::DoExecutePostponed()
 {
     Y_ABORT_UNLESS(Promise.Initialized());
-    auto future = DoExecute();
-    future.Subscribe([promise = Promise](const TResponseFuture& f) mutable
-                     { promise.SetValue(f.GetValue()); });
+    auto future = ExecuteSafely([this] { return DoExecute(); });
+    future.Subscribe(
+        [promise = Promise](const TResponseFuture& f) mutable
+        {
+            promise.SetValue(SafeExecute<NProto::TWriteBlocksLocalResponse>(
+                [&] { return f.GetValue(); }));
+        });
 }
 
 TWriteRequest::TResponseFuture TWriteRequest::DoExecute()
@@ -312,11 +339,12 @@ TWriteRequest::TResponseFuture TWriteRequest::ReadModifyWrite(
     TAlignedDeviceHandler& backend)
 {
     AllocateRMWBuffer(backend);
+    // Close access to the owned RMW buffer independently of the caller's
+    // reusable sglist before the request releases this buffer.
+    RMWGuardedSgList = SgList.CreateDepender(RMWBufferSgList);
 
     auto read = backend.ExecuteReadRequest(
-        CallContext,
-        BlocksInfo.MakeAligned(),
-        SgList.Create(RMWBufferSgList),
+        CallContext, BlocksInfo.MakeAligned(), RMWGuardedSgList,
         {});
 
     return read.Apply(
@@ -357,10 +385,8 @@ TWriteRequest::TResponseFuture TWriteRequest::ModifyAndWrite()
             CreateErrorAcquireResponse());
     }
 
-    return backend->ExecuteWriteRequest(
-        CallContext,
-        BlocksInfo.MakeAligned(),
-        SgList.Create(RMWBufferSgList));
+    return backend->ExecuteWriteRequest(CallContext, BlocksInfo.MakeAligned(),
+                                        RMWGuardedSgList);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -382,7 +408,8 @@ TZeroRequest::~TZeroRequest()
 
 TZeroRequest::TResponseFuture TZeroRequest::ExecuteOrPostpone(bool readyToRun)
 {
-    return readyToRun ? DoExecute() : Promise.GetFuture();
+    return readyToRun ? ExecuteSafely([this] { return DoExecute(); })
+                      : Promise.GetFuture();
 }
 
 void TZeroRequest::DoPostpone()
@@ -394,9 +421,13 @@ void TZeroRequest::DoPostpone()
 void TZeroRequest::DoExecutePostponed()
 {
     Y_ABORT_UNLESS(Promise.Initialized());
-    auto future = DoExecute();
-    future.Subscribe([promise = Promise](const TResponseFuture& f) mutable
-                     { promise.SetValue(f.GetValue()); });
+    auto future = ExecuteSafely([this] { return DoExecute(); });
+    future.Subscribe(
+        [promise = Promise](const TResponseFuture& f) mutable
+        {
+            promise.SetValue(SafeExecute<NProto::TZeroBlocksResponse>(
+                [&] { return f.GetValue(); }));
+        });
 }
 
 TZeroRequest::TResponseFuture TZeroRequest::DoExecute()
@@ -550,7 +581,8 @@ TFuture<NProto::TWriteBlocksLocalResponse> TUnalignedDeviceHandler::Write(
             if (auto p = weakDeviceHandler.lock()) {
                 p->OnRequestFinished(std::move(weakRequest));
             }
-            return f.GetValue();
+            return SafeExecute<NProto::TWriteBlocksLocalResponse>(
+                [&] { return f.GetValue(); });
         });
 }
 
@@ -604,7 +636,8 @@ TUnalignedDeviceHandler::ExecuteZeroBlocksRequest(
             if (auto p = weakDeviceHandler.lock()) {
                 p->OnRequestFinished(std::move(weakRequest));
             }
-            return f.GetValue();
+            return SafeExecute<NProto::TZeroBlocksResponse>(
+                [&] { return f.GetValue(); });
         });
 }
 

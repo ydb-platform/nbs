@@ -15,6 +15,7 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <array>
+#include <exception>
 
 namespace NCloud::NBlockStore {
 
@@ -279,12 +280,398 @@ public:
     }
 };
 
+enum class EStorageMethod
+{
+    Read,
+    Write,
+    Zero,
+};
+
+struct TModificationFailureScenario
+{
+    bool Zero;
+    bool Aligned;
+    EStorageMethod FailingMethod;
+};
+
+struct TTestStorageWithTrackedBuffers final: TTestStorage
+{
+    std::function<void()> BufferReleaseHandler;
+
+    TStorageBuffer AllocateBuffer(size_t bytesCount) override
+    {
+        return TStorageBuffer(
+            new char[bytesCount],
+            [handler = BufferReleaseHandler](char* buffer)
+            {
+                handler();
+                delete[] buffer;
+            });
+    }
+};
+
+constexpr std::array<TModificationFailureScenario, 6>
+    ModificationFailureScenarios{{
+        {false, true, EStorageMethod::Write},
+        {false, false, EStorageMethod::Read},
+        {false, false, EStorageMethod::Write},
+        {true, true, EStorageMethod::Zero},
+        {true, false, EStorageMethod::Read},
+        {true, false, EStorageMethod::Write},
+    }};
+
+void CheckModificationFailure(const TModificationFailureScenario& scenario,
+                              bool asynchronous, bool postponed)
+{
+    const auto storageError = MakeError(E_REJECTED, "storage failure");
+    const TServiceError storageException(storageError);
+    const ui32 blockSize = DefaultBlockSize;
+    const auto failureContext =
+        TStringBuilder() << "zero=" << scenario.Zero
+                         << ", aligned=" << scenario.Aligned << ", method="
+                         << static_cast<ui32>(scenario.FailingMethod)
+                         << ", asynchronous=" << asynchronous
+                         << ", postponed=" << postponed;
+
+    auto readPromise = NewPromise<NProto::TReadBlocksLocalResponse>();
+    auto writePromise = NewPromise<NProto::TWriteBlocksLocalResponse>();
+    auto zeroPromise = NewPromise<NProto::TZeroBlocksResponse>();
+    auto blockerPromise = NewPromise<NProto::TWriteBlocksLocalResponse>();
+    bool blockWrite = postponed;
+    bool failureArmed = !postponed;
+    ui32 failures = 0;
+    ui32 successfulWrites = 0;
+    TVector<TGuardedSgList> retainedRMWBuffers;
+    ui32 buffersReleased = 0;
+    bool rmwAccessClosedBeforeRelease = true;
+
+    auto fail = [&](auto& promise)
+    {
+        failureArmed = false;
+        ++failures;
+        if (!asynchronous) {
+            throw storageException;
+        }
+        return promise.GetFuture();
+    };
+
+    auto storage = std::make_shared<TTestStorageWithTrackedBuffers>();
+    storage->BufferReleaseHandler = [&]
+    {
+        ++buffersReleased;
+        for (const auto& retained: retainedRMWBuffers) {
+            if (retained.Acquire()) {
+                rmwAccessClosedBeforeRelease = false;
+            }
+        }
+    };
+    storage->ReadBlocksLocalHandler =
+        [&](TCallContextPtr,
+            std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+    {
+        if (failureArmed && scenario.FailingMethod == EStorageMethod::Read) {
+            retainedRMWBuffers.push_back(request->Sglist);
+            return fail(readPromise);
+        }
+        return MakeFuture<NProto::TReadBlocksLocalResponse>();
+    };
+    storage->WriteBlocksLocalHandler =
+        [&](TCallContextPtr,
+            std::shared_ptr<NProto::TWriteBlocksLocalRequest> request)
+    {
+        if (blockWrite) {
+            blockWrite = false;
+            return blockerPromise.GetFuture();
+        }
+        if (failureArmed && scenario.FailingMethod == EStorageMethod::Write) {
+            if (!scenario.Aligned) {
+                retainedRMWBuffers.push_back(request->Sglist);
+            }
+            return fail(writePromise);
+        }
+        ++successfulWrites;
+        return MakeFuture<NProto::TWriteBlocksLocalResponse>();
+    };
+    storage->ZeroBlocksHandler =
+        [&](TCallContextPtr, std::shared_ptr<NProto::TZeroBlocksRequest>)
+    {
+        if (failureArmed && scenario.FailingMethod == EStorageMethod::Zero) {
+            return fail(zeroPromise);
+        }
+        return MakeFuture<NProto::TZeroBlocksResponse>();
+    };
+
+    auto deviceHandler =
+        CreateDeviceHandlerFactoryForTesting(blockSize)->CreateDeviceHandler(
+            TDeviceHandlerParams{
+                .Storage = storage,
+                .BlockSize = blockSize,
+                .StorageMediaKind = NProto::STORAGE_MEDIA_SSD});
+    auto buffer = TString(blockSize, 'a');
+    TGuardedSgList callerSgList({{buffer.data(), buffer.size()}});
+    auto write = [&](bool aligned)
+    {
+        const ui64 length = aligned ? blockSize : 1;
+        return deviceHandler->Write(
+            MakeIntrusive<TCallContext>(), aligned ? 0 : 1, length,
+            callerSgList.Create({{buffer.data(), length}}));
+    };
+
+    TFuture<NProto::TWriteBlocksLocalResponse> blocker;
+    if (postponed) {
+        // An unaligned modification blocks both aligned and unaligned requests
+        // on the same block.
+        blocker = write(false);
+        UNIT_ASSERT_C(!blocker.IsReady(), failureContext);
+        failureArmed = true;
+    }
+
+    TFuture<NProto::TError> failed;
+    if (scenario.Zero) {
+        failed =
+            deviceHandler
+                ->Zero(MakeIntrusive<TCallContext>(), scenario.Aligned ? 0 : 1,
+                       scenario.Aligned ? blockSize : 1)
+                .Apply([](const auto& f) { return f.GetValue().GetError(); });
+    } else {
+        failed =
+            write(scenario.Aligned)
+                .Apply([](const auto& f) { return f.GetValue().GetError(); });
+    }
+    // Exercise both request queues: an aligned failure blocks unaligned I/O,
+    // and an unaligned failure blocks aligned I/O.
+    auto following = write(!scenario.Aligned);
+    if (postponed) {
+        UNIT_ASSERT_C(!failed.IsReady(), failureContext);
+        UNIT_ASSERT_C(!following.IsReady(), failureContext);
+        blockerPromise.SetValue(NProto::TWriteBlocksLocalResponse());
+        UNIT_ASSERT_C(blocker.IsReady(), failureContext);
+        UNIT_ASSERT_C(!HasError(blocker.GetValue()), failureContext);
+    }
+
+    UNIT_ASSERT_VALUES_EQUAL_C(1, failures, failureContext);
+    if (asynchronous) {
+        UNIT_ASSERT_C(!failed.IsReady(), failureContext);
+        UNIT_ASSERT_C(!following.IsReady(), failureContext);
+        auto exception = std::make_exception_ptr(storageException);
+        switch (scenario.FailingMethod) {
+            case EStorageMethod::Read:
+                readPromise.SetException(exception);
+                break;
+            case EStorageMethod::Write:
+                writePromise.SetException(exception);
+                break;
+            case EStorageMethod::Zero:
+                zeroPromise.SetException(exception);
+                break;
+        }
+    }
+
+    UNIT_ASSERT_C(failed.IsReady(), failureContext);
+    const auto& error = failed.GetValue();
+    UNIT_ASSERT_VALUES_EQUAL_C(storageError.GetCode(), error.GetCode(),
+                               failureContext);
+    UNIT_ASSERT_VALUES_EQUAL_C(storageException.GetMessage(),
+                               error.GetMessage(), failureContext);
+    UNIT_ASSERT_C(following.IsReady(), failureContext);
+    UNIT_ASSERT_C(!HasError(following.GetValue()), failureContext);
+    UNIT_ASSERT_VALUES_EQUAL_C(1, successfulWrites, failureContext);
+    UNIT_ASSERT_VALUES_EQUAL_C(scenario.Aligned ? 0 : 1,
+                               retainedRMWBuffers.size(), failureContext);
+    for (const auto& retained: retainedRMWBuffers) {
+        // Storage may keep an sglist after failing, but cannot acquire the
+        // request-owned buffer after the request completes and frees it.
+        UNIT_ASSERT_C(!retained.Acquire(), failureContext);
+    }
+    UNIT_ASSERT_C(callerSgList.Acquire(), failureContext);
+    UNIT_ASSERT_C(buffersReleased > 0, failureContext);
+    UNIT_ASSERT_C(rmwAccessClosedBeforeRelease, failureContext);
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
 {
+    Y_UNIT_TEST(ShouldNotifySubscribersOnAsynchronousStorageExceptions)
+    {
+        auto counters = SetupCriticalEvents();
+        auto criticalEvent = counters->GetCounter(
+            "AppCriticalEvents/ErrorWasSentToTheGuestForReliableDisk", true);
+        auto storage = std::make_shared<TTestStorage>();
+        auto readPromise = NewPromise<NProto::TReadBlocksLocalResponse>();
+        auto writePromise = NewPromise<NProto::TWriteBlocksLocalResponse>();
+        auto zeroPromise = NewPromise<NProto::TZeroBlocksResponse>();
+        storage->ReadBlocksLocalHandler =
+            [&](TCallContextPtr,
+                std::shared_ptr<NProto::TReadBlocksLocalRequest>)
+        {
+            return readPromise.GetFuture();
+        };
+        storage->WriteBlocksLocalHandler =
+            [&](TCallContextPtr,
+                std::shared_ptr<NProto::TWriteBlocksLocalRequest>)
+        {
+            return writePromise.GetFuture();
+        };
+        storage->ZeroBlocksHandler =
+            [&](TCallContextPtr, std::shared_ptr<NProto::TZeroBlocksRequest>)
+        {
+            return zeroPromise.GetFuture();
+        };
+        auto deviceHandler =
+            CreateDeviceHandlerFactoryForTesting(DefaultBlockSize)
+                ->CreateDeviceHandler(TDeviceHandlerParams{
+                    .Storage = storage,
+                    .BlockSize = DefaultBlockSize,
+                    .UnalignedRequestsDisabled = true,
+                    .StorageMediaKind = NProto::STORAGE_MEDIA_SSD});
+        auto buffer = TString(DefaultBlockSize, 'a');
+        TGuardedSgList sgList({{buffer.data(), buffer.size()}});
+
+        auto read = deviceHandler->Read(MakeIntrusive<TCallContext>(), 0,
+                                        DefaultBlockSize, sgList,
+                                        {});
+        auto write = deviceHandler->Write(MakeIntrusive<TCallContext>(), 0,
+                                          DefaultBlockSize, sgList);
+        auto zero = deviceHandler->Zero(MakeIntrusive<TCallContext>(), 0,
+                                        DefaultBlockSize);
+        UNIT_ASSERT(!read.IsReady());
+        UNIT_ASSERT(!write.IsReady());
+        UNIT_ASSERT(!zero.IsReady());
+        ui32 notified = 0;
+        read.Subscribe([&](const auto&) { ++notified; });
+        write.Subscribe([&](const auto&) { ++notified; });
+        zero.Subscribe([&](const auto&) { ++notified; });
+
+        const auto error =
+            MakeError(E_REJECTED, "asynchronous storage failure");
+        auto exception = std::make_exception_ptr(TServiceError(error));
+        // Resolve pending promises after all callbacks have been registered.
+        // A throwing diagnostic subscriber would stop dispatch before these
+        // completion subscribers are notified.
+        readPromise.SetException(exception);
+        writePromise.SetException(exception);
+        zeroPromise.SetException(exception);
+
+        UNIT_ASSERT_VALUES_EQUAL(3, notified);
+        UNIT_ASSERT_VALUES_EQUAL(3, criticalEvent->Val());
+        UNIT_ASSERT_VALUES_EQUAL(error.GetCode(),
+                                 ExtractResponse(read).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(error.GetCode(),
+                                 ExtractResponse(write).GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(error.GetCode(),
+                                 ExtractResponse(zero).GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldPreserveSharedStorageResponses)
+    {
+        auto counters = SetupCriticalEvents();
+        for (bool unalignedRequestsDisabled: {false, true}) {
+            for (bool errorResponse: {false, true}) {
+                auto storage = std::make_shared<TTestStorage>();
+                auto readPromise =
+                    NewPromise<NProto::TReadBlocksLocalResponse>();
+                auto writePromise =
+                    NewPromise<NProto::TWriteBlocksLocalResponse>();
+                auto zeroPromise = NewPromise<NProto::TZeroBlocksResponse>();
+                storage->ReadBlocksLocalHandler =
+                    [&](TCallContextPtr,
+                        std::shared_ptr<NProto::TReadBlocksLocalRequest>)
+                {
+                    return readPromise.GetFuture();
+                };
+                storage->WriteBlocksLocalHandler =
+                    [&](TCallContextPtr,
+                        std::shared_ptr<NProto::TWriteBlocksLocalRequest>)
+                {
+                    return writePromise.GetFuture();
+                };
+                storage->ZeroBlocksHandler =
+                    [&](TCallContextPtr,
+                        std::shared_ptr<NProto::TZeroBlocksRequest>)
+                {
+                    return zeroPromise.GetFuture();
+                };
+                auto deviceHandler =
+                    CreateDeviceHandlerFactoryForTesting(DefaultBlockSize)
+                        ->CreateDeviceHandler(TDeviceHandlerParams{
+                            .Storage = storage,
+                            .BlockSize = DefaultBlockSize,
+                            .UnalignedRequestsDisabled =
+                                unalignedRequestsDisabled,
+                            .StorageMediaKind = NProto::STORAGE_MEDIA_SSD});
+                auto buffer = TString(DefaultBlockSize, 'a');
+                TGuardedSgList sgList({{buffer.data(), buffer.size()}});
+                auto read = deviceHandler->Read(MakeIntrusive<TCallContext>(),
+                                                0, DefaultBlockSize, sgList,
+                                                {});
+                auto write = deviceHandler->Write(MakeIntrusive<TCallContext>(),
+                                                  0, DefaultBlockSize, sgList);
+                auto zero = deviceHandler->Zero(MakeIntrusive<TCallContext>(),
+                                                0, DefaultBlockSize);
+
+                auto prepareResponse = [errorResponse](auto& response)
+                {
+                    response.MutableHeaders()->MutableThrottler()->SetDelay(
+                        123);
+                    if (errorResponse) {
+                        *response.MutableError() =
+                            MakeError(E_IO, "original storage error message");
+                    }
+                };
+                NProto::TReadBlocksLocalResponse readResponse;
+                NProto::TWriteBlocksLocalResponse writeResponse;
+                NProto::TZeroBlocksResponse zeroResponse;
+                prepareResponse(readResponse);
+                prepareResponse(writeResponse);
+                prepareResponse(zeroResponse);
+                readPromise.SetValue(readResponse);
+                writePromise.SetValue(writeResponse);
+                zeroPromise.SetValue(zeroResponse);
+
+                // Both the caller and other consumers of the shared storage
+                // future must retain error details and successful metadata.
+                UNIT_ASSERT_VALUES_EQUAL(readResponse.SerializeAsString(),
+                                         read.GetValue().SerializeAsString());
+                UNIT_ASSERT_VALUES_EQUAL(writeResponse.SerializeAsString(),
+                                         write.GetValue().SerializeAsString());
+                UNIT_ASSERT_VALUES_EQUAL(zeroResponse.SerializeAsString(),
+                                         zero.GetValue().SerializeAsString());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    readResponse.SerializeAsString(),
+                    readPromise.GetFuture().GetValue().SerializeAsString());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    writeResponse.SerializeAsString(),
+                    writePromise.GetFuture().GetValue().SerializeAsString());
+                UNIT_ASSERT_VALUES_EQUAL(
+                    zeroResponse.SerializeAsString(),
+                    zeroPromise.GetFuture().GetValue().SerializeAsString());
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUnregisterFailedModifications)
+    {
+        auto counters = SetupCriticalEvents();
+        for (bool asynchronous: {false, true}) {
+            for (const auto& scenario: ModificationFailureScenarios) {
+                CheckModificationFailure(scenario, asynchronous, false);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUnregisterFailedPostponedModifications)
+    {
+        auto counters = SetupCriticalEvents();
+        for (bool asynchronous: {false, true}) {
+            for (const auto& scenario: ModificationFailureScenarios) {
+                CheckModificationFailure(scenario, asynchronous, true);
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldHandleUnalignedReadRequests)
     {
         TTestEnvironment env(2, DefaultBlockSize, 8);

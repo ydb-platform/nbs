@@ -8,11 +8,13 @@
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/coroutine/engine/impl.h>
 
+#include <util/generic/scope.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/generic/yexception.h>
@@ -701,6 +703,10 @@ void TServerHandler::ProcessReadRequest(
             auto guardedSgList = TGuardedSgList({
                 { responseData.get(), request.Length }
             });
+            Y_DEFER
+            {
+                guardedSgList.Close();
+            };
 
             auto future = DeviceHandler->Read(
                 requestCtx->CallContext,
@@ -711,8 +717,6 @@ void TServerHandler::ProcessReadRequest(
 
             const auto& response = ctx->WaitFor(future);
             error = response.GetError();
-
-            guardedSgList.Close();
         }
     } catch (...) {
         error = MakeError(E_FAIL, CurrentExceptionMessage());
@@ -775,6 +779,10 @@ void TServerHandler::ProcessWriteRequest(
             auto guardedSgList = TGuardedSgList({
                 { requestData.get(), request.Length }
             });
+            Y_DEFER
+            {
+                guardedSgList.Close();
+            };
 
             auto future = DeviceHandler->Write(
                 requestCtx->CallContext,
@@ -784,10 +792,8 @@ void TServerHandler::ProcessWriteRequest(
 
             const auto& response = ctx->WaitFor(future);
             error = response.GetError();
-
-            guardedSgList.Close();
-            requestData.reset();
         }
+        requestData.reset();
     } catch (...) {
         error = MakeError(E_FAIL, CurrentExceptionMessage());
     }

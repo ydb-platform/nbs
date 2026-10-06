@@ -18,9 +18,14 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/scope.h>
 #include <util/stream/str.h>
+#include <util/system/event.h>
 
 #include <array>
+#include <atomic>
+#include <functional>
+#include <thread>
 
 namespace NCloud::NBlockStore::NBD {
 
@@ -98,6 +103,7 @@ public:
     bool ForwardResponses = true;
     TVector<ITaskPtr> PendingTasks;
     TServerResponsePtr LastResponse;
+    std::function<void()> BeforeWait;
 
     TServerContext(IOutputStream& out)
         : Out(out)
@@ -130,25 +136,34 @@ public:
         if (Deferred) {
             PendingTasks.push_back(std::move(task));
         } else {
-        task->Execute();
+            task->Execute();
         }
     }
 
     const NProto::TReadBlocksLocalResponse& WaitFor(
         const TFuture<NProto::TReadBlocksLocalResponse>& future) override
     {
+        if (BeforeWait) {
+            BeforeWait();
+        }
         return future.GetValue(TDuration::Max());
     }
 
     const NProto::TWriteBlocksLocalResponse& WaitFor(
         const TFuture<NProto::TWriteBlocksLocalResponse>& future) override
     {
+        if (BeforeWait) {
+            BeforeWait();
+        }
         return future.GetValue(TDuration::Max());
     }
 
     const NProto::TZeroBlocksResponse& WaitFor(
         const TFuture<NProto::TZeroBlocksResponse>& future) override
     {
+        if (BeforeWait) {
+            BeforeWait();
+        }
         return future.GetValue(TDuration::Max());
     }
 
@@ -339,7 +354,7 @@ public:
     ui32 CompletedCount = 0;
     ui32 ErrorCount = 0;
     bool Balanced = true;
-    std::shared_ptr<TTestStorage> Storage = std::make_shared<TTestStorage>();
+    std::shared_ptr<TTestStorage> Storage;
     std::shared_ptr<TTestServerStats> Stats =
         std::make_shared<TTestServerStats>();
     IServerHandlerPtr Handler;
@@ -347,7 +362,10 @@ public:
     TStringStream Requests;
     TIntrusivePtr<TServerContext> Context;
 
-    TIoDepthHandlerFixture()
+    explicit TIoDepthHandlerFixture(
+        std::shared_ptr<TTestStorage> storage =
+            std::make_shared<TTestStorage>())
+        : Storage(std::move(storage))
     {
         Storage->DoAllocations = true;
         SetupStorage(*Storage);
@@ -418,6 +436,26 @@ class TThrowingIoDepthOutput final: public IOutputStream
     void DoWrite(const void*, size_t) override
     {
         ythrow yexception() << "response write failed";
+    }
+};
+
+class TBufferLifetimeStorage final: public TTestStorage
+{
+public:
+    std::atomic<bool> GuardHeld = false;
+    std::atomic<bool> ReleasedWithGuard = false;
+    std::atomic<bool> BufferReleased = false;
+
+    TStorageBuffer AllocateBuffer(size_t bytes) override
+    {
+        return std::shared_ptr<char>(
+            new char[bytes],
+            [this](char* buffer)
+            {
+                ReleasedWithGuard = GuardHeld.load();
+                BufferReleased = true;
+                delete[] buffer;
+            });
     }
 };
 
@@ -672,6 +710,149 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
         fixture.Handler->CompleteResponse(*fixture.Context->LastResponse);
         UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
         UNIT_ASSERT(fixture.Depth.Snapshot().Continuous);
+    }
+
+    Y_UNIT_TEST(ShouldCloseStorageBuffersOnSuccessAndException)
+    {
+        for (const ui32 command: {NBD_CMD_READ, NBD_CMD_WRITE}) {
+            // Successful response, synchronous throw, already exceptional
+            // future, and an exception after all subscribers were installed.
+            for (const ui32 failure: {0, 1, 2, 3}) {
+                TIoDepthHandlerFixture fixture;
+                TGuardedSgList retainedSgList;
+                auto read = NewPromise<NProto::TReadBlocksLocalResponse>();
+                auto write = NewPromise<NProto::TWriteBlocksLocalResponse>();
+                const auto exception = std::make_exception_ptr(
+                    yexception() << "storage buffer failure");
+                auto complete = [&](const auto& request, auto& promise)
+                {
+                    retainedSgList = request->Sglist;
+                    if (failure == 1) {
+                        std::rethrow_exception(exception);
+                    }
+                    if (failure == 2) {
+                        promise.SetException(exception);
+                    } else if (failure == 0) {
+                        promise.SetValue({});
+                    }
+                    return promise.GetFuture();
+                };
+                fixture.Storage->ReadBlocksLocalHandler =
+                    [&](auto, auto request)
+                {
+                    return complete(request, read);
+                };
+                fixture.Storage->WriteBlocksLocalHandler =
+                    [&](auto, auto request)
+                {
+                    return complete(request, write);
+                };
+                if (failure == 3) {
+                    fixture.Context->BeforeWait = [&]
+                    {
+                        if (command == NBD_CMD_READ) {
+                            read.SetException(exception);
+                        } else {
+                            write.SetException(exception);
+                        }
+                    };
+                }
+
+                fixture.Accept(command);
+                fixture.NowNs = 1'000'000'000;
+                fixture.Context->ExecutePending();
+
+                // Storage retained a copy before returning/throwing. It must
+                // lose access before the owner releases or sends the buffer.
+                UNIT_ASSERT(!retainedSgList.Empty());
+                UNIT_ASSERT(!retainedSgList.Acquire());
+                UNIT_ASSERT(fixture.Balanced);
+                UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
+                UNIT_ASSERT_VALUES_EQUAL(fixture.ErrorCount, failure != 0);
+                const auto lane = static_cast<ui32>(
+                    command == NBD_CMD_READ ? EBlockStoreRequest::ReadBlocks
+                                            : EBlockStoreRequest::WriteBlocks);
+                const auto snapshot = fixture.Depth.Snapshot();
+                UNIT_ASSERT(snapshot.Continuous);
+                UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].Current, 0);
+                UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].IntegralUs,
+                                         1'000'000);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepFailedBuffersUntilStorageReleasesGuard)
+    {
+        for (const ui32 command: {NBD_CMD_READ, NBD_CMD_WRITE}) {
+            auto storage = std::make_shared<TBufferLifetimeStorage>();
+            TIoDepthHandlerFixture fixture(storage);
+            TGuardedSgList retainedSgList;
+            TManualEvent guardAcquired;
+            TManualEvent completeRequest;
+            TManualEvent releaseGuard;
+            auto read = NewPromise<NProto::TReadBlocksLocalResponse>();
+            auto write = NewPromise<NProto::TWriteBlocksLocalResponse>();
+            std::atomic<bool> subscriberThrew = false;
+            std::thread worker;
+            Y_DEFER
+            {
+                completeRequest.Signal();
+                releaseGuard.Signal();
+                if (worker.joinable()) {
+                    worker.join();
+                }
+            };
+            auto launch = [&](auto request, const auto& response)
+            {
+                retainedSgList = request->Sglist;
+                worker = std::thread(
+                    [&, request, promise = response]() mutable
+                    {
+                        auto guard = request->Sglist.Acquire();
+                        storage->GuardHeld = bool(guard);
+                        guardAcquired.Signal();
+                        completeRequest.WaitT(TDuration::Seconds(5));
+                        try {
+                            promise.SetException(std::make_exception_ptr(
+                                yexception()
+                                << "storage failed with an active guard"));
+                        } catch (...) {
+                            subscriberThrew = true;
+                        }
+                        // Keep the guard across exceptional completion. Close
+                        // must wait before the owner can release the read/write
+                        // buffer.
+                        releaseGuard.WaitT(TDuration::MilliSeconds(100));
+                        storage->GuardHeld = false;
+                    });
+                UNIT_ASSERT(guardAcquired.WaitT(TDuration::Seconds(5)));
+                UNIT_ASSERT(storage->GuardHeld.load());
+                return response.GetFuture();
+            };
+            storage->ReadBlocksLocalHandler = [&](auto, auto request)
+            {
+                return launch(request, read);
+            };
+            storage->WriteBlocksLocalHandler = [&](auto, auto request)
+            {
+                return launch(request, write);
+            };
+            fixture.Context->BeforeWait = [&]
+            {
+                completeRequest.Signal();
+            };
+            fixture.Accept(command);
+            fixture.Context->ExecutePending();
+            worker.join();
+
+            UNIT_ASSERT(!subscriberThrew.load());
+            UNIT_ASSERT(storage->BufferReleased.load());
+            UNIT_ASSERT(!storage->ReleasedWithGuard.load());
+            UNIT_ASSERT(!retainedSgList.Acquire());
+            UNIT_ASSERT(fixture.Balanced);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.ErrorCount, 1);
+        }
     }
 
     Y_UNIT_TEST(ShouldCompleteIoDepthForTruncatedWritePayload)
