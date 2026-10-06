@@ -35,12 +35,31 @@ TVector<TProfileLogFile> SelectProfileLogFiles(
     const TMaybe<TInstant>& since,
     const TMaybe<TInstant>& until)
 {
-    if (files.size() == 1) {
+    if (files.size() <= 1) {
         return files;
     }
-    if (since && until && *since >= *until) {
+    // Widen only file selection; per-request time filters remain exact.
+    const auto drift = TDuration::Seconds(300);
+    const auto selectionSince =
+        since ? TMaybe<TInstant>(*since - drift) : Nothing();
+    const auto selectionUntil =
+        until ? TMaybe<TInstant>(*until + drift) : Nothing();
+    if (selectionSince && selectionUntil && *selectionSince >= *selectionUntil) {
         return {};
     }
+    if (selectionUntil && files.front().EndTime &&
+        *selectionUntil < *files.front().EndTime)
+    {
+        files.resize(1);
+        return files;
+    }
+    const auto& lastStart = files[files.size() - 2].EndTime;
+    if (selectionSince && lastStart && *selectionSince > *lastStart) {
+        files.front() = std::move(files.back());
+        files.resize(1);
+        return files;
+    }
+
     size_t selected = 0;
     TMaybe<TInstant> previousEnd;
     for (size_t i = 0; i < files.size(); ++i) {
@@ -56,8 +75,10 @@ TVector<TProfileLogFile> SelectProfileLogFiles(
         // filtering.
         previousEnd = file.EndTime;
         const bool reversed = start && file.EndTime && *start > *file.EndTime;
-        if (reversed || ((!since || !file.EndTime || *file.EndTime >= *since) &&
-                         (!until || !start || *start < *until)))
+        if (reversed ||
+            ((!selectionSince || !file.EndTime ||
+              *file.EndTime >= *selectionSince) &&
+             (!selectionUntil || !start || *start <= *selectionUntil)))
         {
             if (selected != i) {
                 files[selected] = std::move(files[i]);

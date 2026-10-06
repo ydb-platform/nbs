@@ -188,6 +188,10 @@ void TMaskSensitiveData::MaskSensitiveData(
     TEventLog eventLog(out, 0);
     TSelfFlushLogFrame logFrame(eventLog);
     for (const auto& file: in) {
+        if (in.size() > 1) {
+            Cerr << "Reading " << file.Path << " " << file.EndTime << "\n";
+        }
+
         NEventLog::TOptions options;
         options.FileName = file.Path;
 

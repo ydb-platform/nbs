@@ -169,12 +169,15 @@ public:
     {
         TEventProcessor processor(Filters);
         for (const auto& file: ProfileLogFiles) {
-            const auto& pathToProfileLog = file.Path;
-            const int result = ProcessProfileLog(
-                pathToProfileLog,
+            if (ProfileLogFiles.size() > 1) {
+                Cerr << "Reading " << file.Path << " " << file.EndTime << "\n";
+            }
+
+            const auto result = ProcessProfileLog(
+                file.Path,
                 processor,
                 OptsParseResult.GetRef().Has("ignore-errors"));
-            if (result != 0) {
+            if (result) {
                 return result;
             }
         }

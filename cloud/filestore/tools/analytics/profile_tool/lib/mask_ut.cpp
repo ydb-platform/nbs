@@ -1,4 +1,5 @@
 #include "mask.h"
+#include "time_range.h"
 
 #include <library/cpp/testing/unittest/registar.h>
 
