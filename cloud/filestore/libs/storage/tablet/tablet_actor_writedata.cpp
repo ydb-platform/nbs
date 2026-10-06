@@ -59,20 +59,25 @@ void TIndexTabletActor::HandleWriteData(
         }
     }
 
-    NProto::TProfileLogRequestInfo profileLogRequest;
-    InitTabletProfileLogRequestInfo(
-        profileLogRequest,
-        EFileStoreRequest::WriteData,
-        *msg,
-        ctx.Now(),
-        BehaveAsShard(msg->Record.GetHeaders()));
-
     TString& buffer = *msg->Record.MutableBuffer();
     const TByteRange range(
         msg->Record.GetOffset(),
         externalPayload ? payload.size() : buffer.size(),
         GetBlockSize()
     );
+
+    NProto::TProfileLogRequestInfo profileLogRequest;
+    InitTabletProfileLogRequestInfo(
+        profileLogRequest,
+        EFileStoreRequest::WriteData,
+        ctx.Now(),
+        BehaveAsShard(msg->Record.GetHeaders()));
+    AddRange(
+        msg->Record.GetNodeId(),
+        msg->Record.GetHandle(),
+        range.Offset,
+        range.Length,
+        profileLogRequest);
 
     if (Config->GetBlockChecksumsInProfileLogEnabled()) {
         CalculateChecksums(
