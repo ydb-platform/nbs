@@ -11,6 +11,7 @@ namespace NCloud::NFastShard {
 #define SN_METHODS(xxx, ...)                                                   \
     xxx(AcquireDevices, __VA_ARGS__)                                           \
     xxx(ReleaseDevices, __VA_ARGS__)                                           \
+    xxx(FormatDevice, __VA_ARGS__)                                             \
     xxx(ReadPages, __VA_ARGS__)                                                \
     xxx(WriteLogRecord, __VA_ARGS__)                                           \
     xxx(ReadJournalTail, __VA_ARGS__)                                          \

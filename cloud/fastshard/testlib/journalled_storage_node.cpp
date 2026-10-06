@@ -101,6 +101,13 @@ NProto::TReleaseDevicesResponse TJournalledStorageNode::ReleaseDevices(
     return {};
 }
 
+NProto::TFormatDeviceResponse TJournalledStorageNode::FormatDevice(
+    NProto::TFormatDeviceRequest)
+{
+    ++Counters.FormatDevice;
+    return {};
+}
+
 #define SN_FORWARD(name)                                                       \
     NProto::T##name##Response TJournalledStorageNode::name(                    \
         NProto::T##name##Request request)                                      \

@@ -92,6 +92,7 @@ TEST(TFastShardClientTest, ShouldListEveryStorageNodeMethod)
     const TVector<TString> expected = {
         "acquiredevices",
         "advancelsnlowwatermark",
+        "formatdevice",
         "readjournaltail",
         "readpages",
         "releasedevices",
@@ -231,6 +232,16 @@ TEST(TFastShardClientTest, ShouldAdvanceLsnLowWatermark)
     const auto& req = f.Storage->AdvanceLsnLowWatermarkCalls[0];
     EXPECT_EQ(req.GetDeviceUUID(), "d1");
     EXPECT_EQ(req.GetLsnLowWatermark(), 17u);
+    EXPECT_EQ(f.Output->Str(), "OK\n");
+}
+
+TEST(TFastShardClientTest, ShouldFormatDevice)
+{
+    TFixture f;
+    EXPECT_TRUE(f.Run("formatdevice", {"--device-uuid", "d1"}));
+
+    ASSERT_EQ(f.Storage->FormatCalls.size(), 1u);
+    EXPECT_EQ(f.Storage->FormatCalls[0].GetDeviceUUID(), "d1");
     EXPECT_EQ(f.Output->Str(), "OK\n");
 }
 

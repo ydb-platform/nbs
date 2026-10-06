@@ -24,6 +24,7 @@ namespace {
 #define STORAGE_JOURNALLED_DEVICE_SERVER(xxx, ...) \
     xxx(AcquireDevices, __VA_ARGS__)               \
     xxx(ReleaseDevices, __VA_ARGS__)               \
+    xxx(FormatDevice, __VA_ARGS__)                 \
     xxx(ReadPages, __VA_ARGS__)                    \
     xxx(WriteLogRecord, __VA_ARGS__)               \
     xxx(ReadJournalTail, __VA_ARGS__)              \
@@ -415,6 +416,10 @@ void TServer::HandleRequest(
         }
         case ERequestCase::kReleaseDevices: {
             ProcessRequest<TReleaseDevicesMethod>(conn, std::move(request));
+            break;
+        }
+        case ERequestCase::kFormatDevice: {
+            ProcessRequest<TFormatDeviceMethod>(conn, std::move(request));
             break;
         }
         case ERequestCase::kReadPages: {

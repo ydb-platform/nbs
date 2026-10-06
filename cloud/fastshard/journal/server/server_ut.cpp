@@ -32,6 +32,10 @@ struct TTestBackend: public IServerBackend
         std::function<TFuture<NProto::TReleaseDevicesResponse>(
             NProto::TReleaseDevicesRequest)>;
 
+    using TFormatDeviceFunc =
+        std::function<TFuture<NProto::TFormatDeviceResponse>(
+            NProto::TFormatDeviceRequest)>;
+
     using TReadPagesFunc = std::function<TFuture<NProto::TReadPagesResponse>(
         NProto::TReadPagesRequest)>;
 
@@ -49,6 +53,7 @@ struct TTestBackend: public IServerBackend
 
     TAcquireDevicesFunc AcquireDevicesImpl;
     TReleaseDevicesFunc ReleaseDevicesImpl;
+    TFormatDeviceFunc FormatDeviceImpl;
     TReadPagesFunc ReadPagesImpl;
     TWriteLogRecordFunc WriteLogRecordImpl;
     TReadJournalTailFunc ReadJournalTailImpl;
@@ -72,6 +77,13 @@ struct TTestBackend: public IServerBackend
         -> TFuture<NProto::TReleaseDevicesResponse> final
     {
         return ReleaseDevicesImpl(std::move(request));
+    }
+
+    [[nodiscard]] auto FormatDevice(
+        NProto::TFormatDeviceRequest request)
+        -> TFuture<NProto::TFormatDeviceResponse> final
+    {
+        return FormatDeviceImpl(std::move(request));
     }
 
     [[nodiscard]] auto ReadPages(
@@ -561,6 +573,53 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
         UNIT_ASSERT_EQUAL(expectedIds, ids2);
 
         queue.Stop();
+    }
+
+    Y_UNIT_TEST_F(ShouldDispatchFormatDevice, TFixture)
+    {
+        const ui64 requestId = 50;
+
+        const auto expectedRequest = []
+        {
+            NProto::TFormatDeviceRequest proto;
+            proto.MutableHeaders()->SetClientId("format");
+            proto.SetDeviceUUID("uuid-1");
+            return proto;
+        }();
+
+        std::optional<NProto::TFormatDeviceRequest> formatDeviceRequest;
+
+        Backend->FormatDeviceImpl = [&](auto request)
+        {
+            formatDeviceRequest = std::move(request);
+
+            NProto::TFormatDeviceResponse response;
+            *response.MutableError() = MakeError(E_REJECTED, "format-error");
+            return MakeFuture(std::move(response));
+        };
+
+        TTestClient client{Port};
+
+        {
+            NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+            request.MutableFormatDevice()->CopyFrom(expectedRequest);
+            client.Send(request);
+        }
+
+        auto response = client.Receive();
+
+        UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+        UNIT_ASSERT(response.HasFormatDevice());
+
+        const auto& error = response.GetFormatDevice().GetError();
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL("format-error", error.GetMessage());
+
+        UNIT_ASSERT(formatDeviceRequest);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedRequest.DebugString(),
+            formatDeviceRequest->DebugString());
     }
 
     Y_UNIT_TEST_F(ShouldHandleBackendExecptions, TFixture)
