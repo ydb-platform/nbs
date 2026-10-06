@@ -939,24 +939,23 @@ void TIndexTabletActor::HandleGetDiagnosticStats(
     auto response =
         std::make_unique<TEvIndexTablet::TEvGetDiagnosticStatsResponse>();
 
-    for (const auto& accessStats:
-         GetNodeAccessStats(ctx.Now(), ev->Get()->Record.GetLimit()))
-    {
+    const auto limit = ev->Get()->Record.GetLimit();
+    for (const auto& accessStats: GetNodeAccessStats(ctx.Now(), limit)) {
         auto* out = response->Record.AddNodeStats();
         out->SetShardId(GetFileSystemId());
         out->SetNodeId(accessStats.NodeId);
+        out->SetNodeType(accessStats.NodeType);
         out->SetRequestCount(accessStats.RequestCount);
         out->SetAccessScore(accessStats.AccessScore);
         out->SetLastAccessedTimestampUs(
             accessStats.LastAccessed.MicroSeconds());
     }
 
-    for (const auto& latencyStats:
-         GetLatencyStats(ctx.Now(), ev->Get()->Record.GetLimit()))
-    {
+    for (const auto& latencyStats: GetLatencyStats(ctx.Now(), limit)) {
         auto* out = response->Record.AddLatencyStats();
         out->SetShardId(GetFileSystemId());
         out->SetNodeId(latencyStats.NodeId);
+        out->SetNodeType(latencyStats.NodeType);
         out->SetRequestType(GetFileStoreRequestName(latencyStats.RequestType));
         out->SetRequestCount(latencyStats.RequestCount);
         out->SetTotalLatencyUs(latencyStats.TotalLatencyUs);

@@ -201,9 +201,17 @@ void TIndexTabletActor::CompleteTx_GetNodeAttr(
             0,
             ctx.Now() - args.RequestInfo->StartedTs);
 
-        if (!UpdateAccessStats(args.NodeId, ctx.Now()) ||
+        ui32 nodeType = NProto::E_REGULAR_NODE;
+        if (args.TargetNode) {
+            nodeType = args.TargetNode->Attrs.GetType();
+        }
+        if (args.ParentNode) {
+            nodeType = args.ParentNode->Attrs.GetType();
+        }
+        if (!UpdateAccessStats(args.NodeId, nodeType, ctx.Now()) ||
             !UpdateLatencyStats(
                 args.NodeId,
+                nodeType,
                 EFileStoreRequest::GetNodeAttr,
                 ctx.Now(),
                 ctx.Now() - args.RequestInfo->StartedTs))

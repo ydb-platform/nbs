@@ -290,9 +290,16 @@ void TIndexTabletState::LoadState(
     InitShardBalancer(config);
 }
 
-bool TIndexTabletState::UpdateAccessStats(ui64 nodeId, TInstant now)
+bool TIndexTabletState::UpdateAccessStats(
+    ui64 nodeId,
+    ui32 nodeType,
+    TInstant now)
 {
-    return Impl->AccessTracker.UpdateAccessStats(nodeId, now);
+    if (!IsMainTablet() && nodeId == NProto::E_ROOT_NODE_ID) {
+        return true;
+    }
+
+    return Impl->AccessTracker.UpdateAccessStats(nodeId, nodeType, now);
 }
 
 TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(
@@ -303,12 +310,17 @@ TVector<TNodeAccessStats> TIndexTabletState::GetNodeAccessStats(
 
 bool TIndexTabletState::UpdateLatencyStats(
     ui64 nodeId,
+    ui32 nodeType,
     EFileStoreRequest requestType,
     TInstant now,
     TDuration latency)
 {
+    if (!IsMainTablet() && nodeId == NProto::E_ROOT_NODE_ID) {
+        return true;
+    }
+
     return Impl->LatencyTracker
-        .UpdateLatencyStats(nodeId, requestType, now, latency);
+        .UpdateLatencyStats(nodeId, nodeType, requestType, now, latency);
 }
 
 TVector<TNodeLatencyStats> TIndexTabletState::GetLatencyStats(

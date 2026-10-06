@@ -249,6 +249,7 @@ message TNodeStats
     uint64 RequestCount = 3;
     double AccessScore = 4;
     uint64 LastAccessedTimestampUs = 5;
+    uint32 NodeType = 6;
 }
 
 message TNodeLatencyStats
@@ -260,6 +261,7 @@ message TNodeLatencyStats
     uint64 TotalLatencyUs = 5;
     double AverageLatencyDecayedUs = 6;
     uint64 LastAccessedTimestampUs = 7;
+    uint32 NodeType = 8;
 }
 
 message TGetDiagnosticStatsRequest

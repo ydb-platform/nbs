@@ -63,7 +63,10 @@ void TNodeAccessStatsTracker::Reset(size_t maxEntries, TDuration halfLife)
     Enabled = maxEntries != 0 && halfLife != TDuration::Zero();
 }
 
-bool TNodeAccessStatsTracker::UpdateAccessStats(ui64 nodeId, TInstant now)
+bool TNodeAccessStatsTracker::UpdateAccessStats(
+    ui64 nodeId,
+    ui32 nodeType,
+    TInstant now)
 {
     if (!Enabled) {
         return true;
@@ -76,6 +79,7 @@ bool TNodeAccessStatsTracker::UpdateAccessStats(ui64 nodeId, TInstant now)
     }
 
     stats.NodeId = nodeId;
+    stats.NodeType = nodeType;
     stats.AccessScore = CalculateDecayedAccessScore(stats, now, HalfLife) + 1;
     ++stats.RequestCount;
     stats.LastAccessed = now;
