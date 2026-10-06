@@ -40,7 +40,8 @@ void TIndexTabletActor::HandleWriteData(
                   << ", Payload size: " << msg->GetPayload(0).size();
             ReportWriteDataRequestWithBufferAndPayload(error.Str());
         } else {
-            // Copy payload to buffer only when it is not contigious
+            // Copy payload to buffer only when it is not contigious otherwise
+            // rope can be flattened several times when request is throttled.
             TRope rope = msg->GetPayload(0);
             if (rope.IsContiguous()) {
                 payload = rope.operator TRcBuf();

@@ -20,13 +20,12 @@ private:
 
     char* GetMutableData()
     {
+#ifdef TSTRING_IS_STD_STRING
         if constexpr (std::is_same_v<TBuffer, TRcBuf>) {
-            // Copy TString-backed payloads into the record buffer to prevent
-            // later modifications from affecting other owners. In std::string
-            // builds, TRcBuf copies share a wrapper containing the same TString
-            // object. TString::IsDetached() always returns true in these
-            // builds, so TRcBuf::Detach() does not copy the shared storage
-            // before modification.
+            // Copy TString-backed payloads into the record buffer to not affect
+            // other owners. In std::string builds, TString::IsDetached() always
+            // returns true, so TRcBuf::Detach() does not copy the shared
+            // storage before modification.
 
             // It is not a real issue as the payload uses TRcBufInternalBackend
             // backend and TString is not a std::string.
@@ -34,6 +33,7 @@ private:
                 Buffer = TRcBuf::Copy(Buffer.GetContiguousSpan());
             }
         }
+#endif
 
         return Buffer.Detach();
     }
