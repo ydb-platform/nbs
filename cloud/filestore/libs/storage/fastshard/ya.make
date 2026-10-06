@@ -3,5 +3,5 @@ RECURSE(
     iface
     impl
     server
-    sn
+    storage_group
 )

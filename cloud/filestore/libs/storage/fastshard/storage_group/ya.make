@@ -3,6 +3,7 @@ LIBRARY()
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
     SRCS(
         storage_group.cpp
+        storage_group_factory.cpp
         storage_group_helpers.cpp
         storage_group_quorum.cpp
     )
