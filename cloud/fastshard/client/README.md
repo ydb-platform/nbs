@@ -37,6 +37,12 @@ everything else that needs the real silk runtime.
  * `--timing` - print connect and round trip times (in ms) to stderr. The
    connection is opened lazily inside the call, so the round trip excludes
    the connect time
+ * `--acquire` - every command except `AcquireDevices` / `ReleaseDevices`:
+   acquire the device of the request (with the same headers and generation
+   0) before sending it and release it afterwards. If the acquire fails the
+   request is not sent; the release is attempted even when the request
+   fails, and a failed release fails the command. `--request-timeout`
+   applies to each of the three requests
  * free argument: the command; either camel case (`ReadPages`), a single
    lowercase word (`readpages`) or words separated by hyphens or underscores
    (`read-pages`)

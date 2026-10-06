@@ -245,6 +245,90 @@ TEST(TFastShardClientTest, ShouldFormatDevice)
     EXPECT_EQ(f.Output->Str(), "OK\n");
 }
 
+TEST(TFastShardClientTest, ShouldAcquireAndReleaseDeviceAroundRequest)
+{
+    TFixture f;
+    EXPECT_TRUE(f.Run(
+        "formatdevice",
+        {"--acquire", "--device-uuid", "d1", "--client-id", "cli"}));
+
+    ASSERT_EQ(f.Storage->AcquireCalls.size(), 1u);
+    const auto& acquire = f.Storage->AcquireCalls[0];
+    ASSERT_EQ(acquire.DeviceUUIDsSize(), 1u);
+    EXPECT_EQ(acquire.GetDeviceUUIDs(0), "d1");
+    EXPECT_EQ(acquire.GetHeaders().GetClientId(), "cli");
+
+    ASSERT_EQ(f.Storage->FormatCalls.size(), 1u);
+
+    ASSERT_EQ(f.Storage->ReleaseCalls.size(), 1u);
+    const auto& release = f.Storage->ReleaseCalls[0];
+    ASSERT_EQ(release.DeviceUUIDsSize(), 1u);
+    EXPECT_EQ(release.GetDeviceUUIDs(0), "d1");
+    EXPECT_EQ(release.GetHeaders().GetClientId(), "cli");
+
+    EXPECT_EQ(f.Output->Str(), "OK\n");
+}
+
+TEST(TFastShardClientTest, ShouldTakeAcquiredDeviceFromProtoRequest)
+{
+    TFixture f;
+    EXPECT_TRUE(f.Run(
+        "readjournaltail",
+        {"--acquire", "--proto"},
+        "DeviceUUID: \"d1\"\n"));
+
+    ASSERT_EQ(f.Storage->AcquireCalls.size(), 1u);
+    EXPECT_EQ(f.Storage->AcquireCalls[0].GetDeviceUUIDs(0), "d1");
+    EXPECT_EQ(f.Storage->ReadJournalTailCalls.size(), 1u);
+    ASSERT_EQ(f.Storage->ReleaseCalls.size(), 1u);
+    EXPECT_EQ(f.Storage->ReleaseCalls[0].GetDeviceUUIDs(0), "d1");
+}
+
+TEST(TFastShardClientTest, ShouldNotSendRequestIfAcquireFails)
+{
+    TFixture f;
+    *f.Storage->AcquireResp.MutableError() =
+        MakeError(E_REJECTED, "busy");
+
+    EXPECT_FALSE(f.Run("formatdevice", {"--acquire", "--device-uuid", "d1"}));
+    EXPECT_EQ(f.Storage->AcquireCalls.size(), 1u);
+    EXPECT_TRUE(f.Storage->FormatCalls.empty());
+    EXPECT_TRUE(f.Storage->ReleaseCalls.empty());
+    EXPECT_EQ(f.Output->Str(), "");
+}
+
+TEST(TFastShardClientTest, ShouldReleaseDeviceIfRequestFails)
+{
+    TFixture f;
+    *f.Storage->FormatResp.MutableError() = MakeError(E_IO, "io");
+
+    EXPECT_FALSE(f.Run("formatdevice", {"--acquire", "--device-uuid", "d1"}));
+    EXPECT_EQ(f.Storage->FormatCalls.size(), 1u);
+    EXPECT_EQ(f.Storage->ReleaseCalls.size(), 1u);
+}
+
+TEST(TFastShardClientTest, ShouldFailIfReleaseFails)
+{
+    TFixture f;
+    *f.Storage->ReleaseResp.MutableError() = MakeError(E_REJECTED, "nope");
+
+    EXPECT_FALSE(f.Run("formatdevice", {"--acquire", "--device-uuid", "d1"}));
+    EXPECT_EQ(f.Storage->FormatCalls.size(), 1u);
+    EXPECT_EQ(f.Storage->ReleaseCalls.size(), 1u);
+    EXPECT_EQ(f.Output->Str(), "OK\n");
+}
+
+TEST(TFastShardClientTest, ShouldNotOfferAcquireForAcquireAndRelease)
+{
+    for (const char* name: {"acquiredevices", "releasedevices"}) {
+        TFixture f;
+        EXPECT_THROW(
+            f.Run(name, {"--acquire", "--device-uuid", "d1"}),
+            NLastGetopt::TUsageException)
+            << name;
+    }
+}
+
 TEST(TFastShardClientTest, ShouldFailOnErrorResponse)
 {
     TFixture f;

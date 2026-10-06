@@ -52,6 +52,11 @@ protected:
     // Print connect / round trip times of the request to stderr.
     bool Timing = false;
 
+    // Acquire the device of the request before sending it and release the
+    // device afterwards; only offered by the commands that call
+    // AddAcquireOption.
+    bool Acquire = false;
+
     TString InputFile;
     std::unique_ptr<IInputStream> InputStream;
 
@@ -80,6 +85,10 @@ protected:
     // must not be destroyed until WaitForFiber returns (tests) or the
     // process is left via _exit (TApp).
     bool Stopped = false;
+
+    // The --acquire release after the request failed; the command fails
+    // even if the request itself succeeded.
+    bool ReleaseFailed = false;
 
     // Outcome of the fiber, valid once Done is signalled.
     bool Result = false;
@@ -122,16 +131,27 @@ protected:
 
     virtual bool DoExecute() = 0;
 
+    void AddAcquireOption();
+
     template <typename TRequest, typename TResponse>
     TResponse Call(
         TResponse (IStorageNode::*method)(TRequest),
         TRequest request)
     {
-        const TInstant started = TInstant::Now();
-        TResponse response = ((*Client).*method)(std::move(request));
-        CallTime = TInstant::Now() - started;
-        Called = true;
-        return response;
+        if constexpr (requires { request.GetDeviceUUID(); }) {
+            if (Acquire) {
+                const TString deviceUUID = request.GetDeviceUUID();
+                TResponse response;
+                *response.MutableError() = AcquireDevice(deviceUUID);
+                if (HasError(response)) {
+                    return response;
+                }
+                response = TimedCall(method, std::move(request));
+                ReleaseDevice(deviceUUID);
+                return response;
+            }
+        }
+        return TimedCall(method, std::move(request));
     }
 
     IInputStream& GetInputStream();
@@ -156,6 +176,21 @@ protected:
     }
 
 private:
+    template <typename TRequest, typename TResponse>
+    TResponse TimedCall(
+        TResponse (IStorageNode::*method)(TRequest),
+        TRequest request)
+    {
+        const TInstant started = TInstant::Now();
+        TResponse response = ((*Client).*method)(std::move(request));
+        CallTime = TInstant::Now() - started;
+        Called = true;
+        return response;
+    }
+
+    NCloud::NProto::TError AcquireDevice(const TString& deviceUUID);
+    void ReleaseDevice(const TString& deviceUUID);
+
     void PrintTiming() const;
 
     struct TFiberParams;

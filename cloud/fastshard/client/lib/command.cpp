@@ -9,6 +9,7 @@
 #include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
+#include <util/string/builder.h>
 #include <util/string/printf.h>
 #include <util/system/event.h>
 
@@ -94,6 +95,16 @@ TCommand::TCommand(IStorageNodePtr client)
     Opts.AddLongOption("timing", "print connect and round trip times to stderr")
         .NoArgument()
         .SetFlag(&Timing);
+}
+
+void TCommand::AddAcquireOption()
+{
+    Opts.AddLongOption("acquire")
+        .Help(
+            "acquire the device before the request and release it "
+            "afterwards")
+        .NoArgument()
+        .SetFlag(&Acquire);
 }
 
 void TCommand::ParseOpts(int argc, const char* argv[])
@@ -200,13 +211,44 @@ int TCommand::FiberMain(TFiberParams* params) noexcept
                 command.Port,
                 command.Metrics);
         }
-        command.Result = command.DoExecute();
+        command.Result = command.DoExecute() && !command.ReleaseFailed;
         command.GetOutputStream().Flush();
     } catch (...) {
         command.Error = CurrentExceptionMessage();
     }
     command.Done.Signal();
     return 0;
+}
+
+NCloud::NProto::TError TCommand::AcquireDevice(const TString& deviceUUID)
+{
+    NCloud::NProto::TAcquireDevicesRequest request;
+    PrepareHeaders(*request.MutableHeaders());
+    request.AddDeviceUUIDs(deviceUUID);
+
+    auto response = Client->AcquireDevices(std::move(request));
+    if (HasError(response)) {
+        auto error = response.GetError();
+        error.SetMessage(TStringBuilder()
+                         << "failed to acquire device " << deviceUUID << ": "
+                         << error.GetMessage());
+        return error;
+    }
+    return {};
+}
+
+void TCommand::ReleaseDevice(const TString& deviceUUID)
+{
+    NCloud::NProto::TReleaseDevicesRequest request;
+    PrepareHeaders(*request.MutableHeaders());
+    request.AddDeviceUUIDs(deviceUUID);
+
+    auto response = Client->ReleaseDevices(std::move(request));
+    if (HasError(response)) {
+        Cerr << "failed to release device " << deviceUUID << ": "
+             << FormatError(response.GetError()) << Endl;
+        ReleaseFailed = true;
+    }
 }
 
 void TCommand::SetInputStream(std::unique_ptr<IInputStream> is)
