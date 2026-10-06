@@ -1,5 +1,6 @@
 #include "volume_balancer_state.h"
 
+#include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 
 #include <cloud/storage/core/libs/common/media.h>
@@ -25,11 +26,14 @@ TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
     , LastSuccessfulPull(TInstant::Now())
 {}
 
-TVolumeBalancerState::TVolumeBalancerState(TStorageConfigConstPtr storageConfig)
+TVolumeBalancerState::TVolumeBalancerState(
+    TStorageConfigConstPtr storageConfig,
+    IVolumeBalancerSwitchPtr volumeBalancerSwitch)
     : StorageConfig(std::move(storageConfig))
     , InitialVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
     , OverridenVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
     , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
+    , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
 {}
 
 void TVolumeBalancerState::UpdateVolumeStats(
@@ -280,9 +284,16 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         volume.FolderId,
         diskId);
 
-    const bool balancerEnabled = isFeatureEnabledForFolder ||
-                                 StorageConfig->GetVolumeBalancerEnabled() ||
-                                 GetEnabled();
+    const bool configuredOn =
+        isFeatureEnabledForFolder ||
+        StorageConfig->GetVolumeBalancerEnabled() ||
+        GetVolumePreemptionType() !=
+            NProto::PREEMPTION_NONE;   // TODO: Remove after
+                                       // VolumeBalancerEnabled option
+                                       // integration
+
+    const bool balancerEnabled =
+        configuredOn && IsEnabled && VolumeBalancerSwitch->IsBalancerEnabled();
 
     // NProto::STORAGE_MEDIA_DEFAULT means that volume mounting
     // is still in progress and will change to something else

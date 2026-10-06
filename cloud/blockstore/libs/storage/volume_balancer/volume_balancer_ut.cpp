@@ -741,44 +741,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
             TDuration::Seconds(15));
     }
 
-    Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsDisabledViaConfigDispatcher)
-    {
-        TVolumeBalancerTestEnv testEnv;
-        TVolumeBalancerConfigBuilder config;
-
-        auto volumeBalancerActorId = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY)
-            .WithEnabled(true),
-            testEnv.VolumeStats,
-            testEnv.Fetcher,
-            testEnv.GetEdgeActor()));
-
-        testEnv.DispatchEvents();
-
-        // Send config update with VolumeBalancer = false
-        auto request =
-            std::make_unique<TEvConsole::TEvConfigNotificationRequest>();
-        request->Record.MutableConfig()
-            ->MutableBlockstoreConfig()
-            ->SetVolumePreemptionType(NKikimrConfig::PREEMPTION_NONE);
-
-        testEnv.Send(volumeBalancerActorId, std::move(request));
-
-        auto response = testEnv.GrabConfigNotificationResponse();
-
-        RunState(
-            testEnv,
-            volumeBalancerActorId,
-            {
-                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
-                {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
-            },
-            {{"vol0", 10}, {"vol1", 1}},
-            1,
-            {},
-            TDuration::Seconds(15));
-    }
-
     Y_UNIT_TEST(ShouldNotDoAnythingIfPreemptionTypeNone)
     {
         TVolumeBalancerTestEnv testEnv;

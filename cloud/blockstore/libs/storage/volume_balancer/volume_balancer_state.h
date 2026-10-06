@@ -65,8 +65,12 @@ private:
 
     TDuration PullDelayResetTimespan;
 
+    IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
+
 public:
-    TVolumeBalancerState(TStorageConfigConstPtr storageConfig);
+    TVolumeBalancerState(
+        TStorageConfigConstPtr storageConfig,
+        IVolumeBalancerSwitchPtr volumeBalancerSwitch);
 
     TString GetVolumeToPush() const;
     TString GetVolumeToPull() const;
