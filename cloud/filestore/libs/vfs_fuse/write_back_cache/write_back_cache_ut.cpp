@@ -151,28 +151,6 @@ struct TInFlightRequestTracker
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TTestTimer
-    : public ITimer
-{
-    TInstant Current = ::Now();
-    std::function<void()> NowHandler;
-
-    TInstant Now() override
-    {
-        if (NowHandler) {
-            NowHandler();
-        }
-        return Current;
-    }
-
-    void Sleep(TDuration duration) override
-    {
-        Current += duration;
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct TBootstrapArgs
 {
     TDuration AutomaticFlushPeriod = {};
@@ -187,7 +165,9 @@ struct TBootstrapArgs
     bool LogDataOperations = true;
 
     // Number of threads in each asynchronous TTestWriteBackCache stage.
-    // Zero selects synchronous execution.
+    // Zero selects synchronous execution. Asynchronous session handlers should
+    // report failures in responses instead of throwing assertions on worker
+    // threads, where they may not reach the initiating test thread.
     size_t ThreadCount = 0;
 };
 
@@ -2928,12 +2908,17 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT_VALUES_EQUAL(1, b.SessionWriteDataHandlerCalled.load());
     }
 
-    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWrites)
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodes)
     {
         constexpr size_t ThreadCount = 16;
         constexpr ui64 MaxRequestSize = 8_KB;
         constexpr ui64 FileSize = 256_KB;
         constexpr TDuration TestDuration = TDuration::Seconds(5);
+
+        // Incoming write iovecs are borrowed by the cache. Keep one buffer per
+        // thread alive through cache teardown so that a timed-out request
+        // cannot retain a dangling pointer.
+        TVector<TString> writeBuffers(ThreadCount);
 
         TBootstrap b(
             {.MaxWriteRequestsCount = 2,
@@ -3003,7 +2988,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                                 1;
 
                             if (RandomNumber(2u) == 0) {
-                                auto buffer = NUnitTest::RandomString(
+                                auto& buffer = writeBuffers[i];
+                                buffer = NUnitTest::RandomString(
                                     length,
                                     RandomNumber<ui32>());
 
@@ -3046,6 +3032,15 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
                             ythrow yexception()
                                 << "Flush failed for @" << nodeId << ": "
                                 << FormatError(error);
+                        }
+
+                        const auto expected = expectedData.ReadAll(nodeId);
+                        const auto actual = b.FlushedData.ReadAll(nodeId);
+                        if (expected != actual) {
+                            ythrow yexception()
+                                << "Flushed data mismatch for @" << nodeId
+                                << ". Expected: " << expected.Quote()
+                                << ", actual: " << actual.Quote();
                         }
 
                         for (ui64 offset = 0; offset < FileSize;

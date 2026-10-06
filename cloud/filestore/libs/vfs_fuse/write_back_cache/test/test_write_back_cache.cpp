@@ -18,6 +18,44 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TTask>
+void AddOrExecute(IThreadPool& threadPool, TTask task) noexcept
+{
+    try {
+        // Pass a copy so that the task is still available if the pool rejects
+        // it while shutting down.
+        if (threadPool.AddFunc(task)) {
+            return;
+        }
+    } catch (...) {
+        // A stopped pool may reject work by throwing instead of returning
+        // false. Complete it inline in either case.
+    }
+
+    task();
+}
+
+template <typename TCallable>
+auto AsyncOrExecute(TCallable&& callable, IThreadPool& threadPool)
+{
+    auto promise = NewPromise<TFutureType<TFunctionResult<TCallable>>>();
+    auto task =
+        [promise,
+         callable = std::forward<TCallable>(callable)]() mutable noexcept
+    {
+        try {
+            NThreading::NImpl::SetValue(promise, callable);
+        } catch (...) {
+            promise.TrySetException(std::current_exception());
+        }
+    };
+
+    AddOrExecute(threadPool, std::move(task));
+    return promise.GetFuture();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TAsyncFileStore final: public IFileStore
 {
 private:
@@ -35,7 +73,7 @@ public:
         TCallContextPtr callContext,                                           \
         std::shared_ptr<NProto::T##name##Request> request) override            \
     {                                                                          \
-        return Async(                                                          \
+        return AsyncOrExecute(                                                 \
             [fileStore = FileStore,                                            \
              callContext = std::move(callContext),                             \
              request = std::move(request)]() mutable                           \
@@ -66,7 +104,6 @@ private:
     TThreadPool SessionThreadPool{TThreadPoolParams("WBCSession")};
     TThreadPool CompletionThreadPool{TThreadPoolParams("WBCCompletion")};
 
-    IFileStorePtr AsyncSession;
     TWriteBackCache Cache;
 
     template <typename T>
@@ -74,15 +111,20 @@ private:
     {
         auto promise = NewPromise<T>();
         future.Subscribe(
-            [this, promise](const TFuture<T>& completed) mutable
+            [this, promise](const TFuture<T>& completed) mutable noexcept
             {
-                CompletionThreadPool.SafeAddFunc(
-                    [promise, completed]() mutable
+                AddOrExecute(
+                    CompletionThreadPool,
+                    [promise,
+                     completed = TFuture<T>(completed)]() mutable noexcept
                     {
                         try {
-                            promise.SetValue(completed.GetValue());
+                            if (completed.HasException()) {
+                                completed.TryRethrow();
+                            }
+                            promise.TrySetValue(completed.ExtractValue());
                         } catch (...) {
-                            promise.SetException(std::current_exception());
+                            promise.TrySetException(std::current_exception());
                         }
                     });
             });
@@ -96,8 +138,9 @@ private:
             return callable();
         }
 
-        return CompleteAsync(
-            Async(std::forward<TCallable>(callable), SubmissionThreadPool));
+        return CompleteAsync(AsyncOrExecute(
+            std::forward<TCallable>(callable),
+            SubmissionThreadPool));
     }
 
 public:
@@ -109,10 +152,9 @@ public:
             SessionThreadPool.Start(threadCount);
             CompletionThreadPool.Start(threadCount);
 
-            AsyncSession = std::make_shared<TAsyncFileStore>(
+            args.Session = std::make_shared<TAsyncFileStore>(
                 std::move(args.Session),
                 SessionThreadPool);
-            args.Session = AsyncSession;
         }
 
         Cache = TWriteBackCache(std::move(args));
@@ -120,11 +162,9 @@ public:
 
     ~TImpl()
     {
-        if (AsyncExecution) {
-            SubmissionThreadPool.Stop();
-            SessionThreadPool.Stop();
-            CompletionThreadPool.Stop();
-        }
+        SubmissionThreadPool.Stop();
+        SessionThreadPool.Stop();
+        CompletionThreadPool.Stop();
     }
 
     TFuture<NProto::TError> Drain()
