@@ -2,6 +2,7 @@ package pools
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
@@ -81,6 +82,14 @@ func RegisterForExecution(
 
 	baseDiskIdleTTL, err := time.ParseDuration(
 		config.GetBaseDiskIdleTTL(),
+	)
+	if err != nil {
+		return err
+	}
+
+	err = validateIdleCleanupConfig(
+		baseDiskIdleTTL,
+		config.GetHoldBaseDisksWithInflightDependents(),
 	)
 	if err != nil {
 		return err
@@ -283,5 +292,18 @@ func RegisterForExecution(
 		},
 	)
 
+	return nil
+}
+
+func validateIdleCleanupConfig(
+	baseDiskIdleTTL time.Duration,
+	holdBaseDisksWithInflightDependents bool,
+) error {
+
+	if baseDiskIdleTTL > 0 && !holdBaseDisksWithInflightDependents {
+		return fmt.Errorf(
+			"BaseDiskIdleTTL > 0 requires HoldBaseDisksWithInflightDependents=true",
+		)
+	}
 	return nil
 }

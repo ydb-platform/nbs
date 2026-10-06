@@ -246,7 +246,8 @@ func TestOptimizeBaseDisksTaskIdleCleanup(t *testing.T) {
 		"pools.RetireBaseDisk",
 		"",
 		&protos.RetireBaseDiskRequest{
-			BaseDiskId: "baseDisk1",
+			BaseDiskId:       "baseDisk1",
+			UseBaseDiskAsSrc: true,
 		},
 	).Return("idle_retire_task1", nil)
 
@@ -431,7 +432,8 @@ func TestOptimizeBaseDisksTaskIdleCleanupMultipleDisks(t *testing.T) {
 		"pools.RetireBaseDisk",
 		"",
 		&protos.RetireBaseDiskRequest{
-			BaseDiskId: "baseDisk1",
+			BaseDiskId:       "baseDisk1",
+			UseBaseDiskAsSrc: true,
 		},
 	).Return("idle_retire_task1", nil)
 
@@ -448,7 +450,8 @@ func TestOptimizeBaseDisksTaskIdleCleanupMultipleDisks(t *testing.T) {
 		"pools.RetireBaseDisk",
 		"",
 		&protos.RetireBaseDiskRequest{
-			BaseDiskId: "baseDisk2",
+			BaseDiskId:       "baseDisk2",
+			UseBaseDiskAsSrc: true,
 		},
 	).Return("idle_retire_task2", nil)
 
@@ -545,7 +548,8 @@ func TestOptimizeBaseDisksTaskIdleCleanupContinuesOnConfigurePoolFailure(
 		"pools.RetireBaseDisk",
 		"",
 		&protos.RetireBaseDiskRequest{
-			BaseDiskId: "baseDisk1",
+			BaseDiskId:       "baseDisk1",
+			UseBaseDiskAsSrc: true,
 		},
 	).Return("idle_retire_task1", nil)
 
