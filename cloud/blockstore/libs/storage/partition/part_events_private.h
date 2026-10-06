@@ -271,6 +271,16 @@ struct TBlockCountRebuildState
     ui64 MixedChannelBlocks = 0;
     ui64 MergedChannelBlocks = 0;
 
+    ui64 MixedIndexBlobs = 0;
+    ui64 MergedIndexBlobs = 0;
+    ui64 MixedChannelBlobs = 0;
+    ui64 MergedChannelBlobs = 0;
+
+    ui64 InitialMixedIndexBlobs = 0;
+    ui64 InitialMergedIndexBlobs = 0;
+    ui64 InitialMixedChannelBlobs = 0;
+    ui64 InitialMergedChannelBlobs = 0;
+
     ui64 InitialMixedIndexBlocks = 0;
     ui64 InitialMergedIndexBlocks = 0;
     ui64 InitialMixedChannelBlocks = 0;
