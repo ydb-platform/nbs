@@ -12,6 +12,7 @@ PEERDIR(
     cloud/storage/core/libs/common
     cloud/storage/core/libs/file_backed_containers
     library/cpp/digest/crc32c
+    library/cpp/protobuf/json
 )
 
 END()
