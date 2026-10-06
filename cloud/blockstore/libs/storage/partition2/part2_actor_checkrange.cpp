@@ -11,11 +11,17 @@
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
+using namespace NActors;
+
+using namespace NKikimr;
+
+LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TPartitionActor::HandleCheckRange(
     const TEvVolume::TEvCheckRangeRequest::TPtr& ev,
-    const NActors::TActorContext& ctx)
+    const TActorContext& ctx)
 {
     auto& record = ev->Get()->Record;
 
@@ -40,7 +46,7 @@ void TPartitionActor::HandleCheckRange(
         State->GetBlockSize(),
         LogTitle.GetChild(GetCycleCount()));
 
-    Actors.insert(actorId);
+    Actors.Insert(actorId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2
