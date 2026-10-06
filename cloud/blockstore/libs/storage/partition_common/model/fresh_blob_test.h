@@ -2,7 +2,7 @@
 
 #include "fresh_blob.h"
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -78,4 +78,4 @@ TVector<TGuardHolder> GetHolders(const TVector<TVector<TString>>& buffers)
     return holders;
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

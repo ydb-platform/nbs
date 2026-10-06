@@ -27,10 +27,6 @@ struct TFreshBlob
     {}
 };
 
-}   // namespace NCloud::NBlockStore::NStorage
-
-namespace NCloud::NBlockStore::NStorage::NPartition {
-
 ////////////////////////////////////////////////////////////////////////////////
 
 struct TGuardHolder
@@ -80,4 +76,4 @@ NProto::TError ParseFreshBlobContent(
     const TString& buffer,
     TVector<TOwningFreshBlock>& result);
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

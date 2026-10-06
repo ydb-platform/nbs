@@ -57,7 +57,7 @@ void TFreshBlocksCompanion::HandleLoadFreshBlobsCompleted(
 
     Actors.Erase(ev->Sender);
 
-    TVector<NPartition::TOwningFreshBlock> blocks;
+    TVector<TOwningFreshBlock> blocks;
     for (const auto& blob: msg->Blobs) {
         auto error = ParseFreshBlobContent(
             blob.CommitId,
