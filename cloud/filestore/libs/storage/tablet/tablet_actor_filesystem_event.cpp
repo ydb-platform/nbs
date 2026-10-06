@@ -15,6 +15,11 @@ void TIndexTabletActor::RegisterFileSystemEventClient(
     const TActorId& clientId)
 {
     //
+    // Called by the requests whose responses the client may cache: GetNodeAttr,
+    // GetNodeAttrBatch (attrs of shard-resident nodes upon ListNodes),
+    // ListNodes, ListNodesInternal, CreateNode, CreateHandle. ReadNodeRefs
+    // doesn't register its sender - it's used by the private API only.
+    //
     // Requests received via a pipe have the pipe server as their recipient.
     // Requests sent directly to the tablet have no pipe and therefore no
     // disconnect notification - such senders are not registered.

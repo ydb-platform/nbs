@@ -3,6 +3,7 @@
 
 #include <cloud/filestore/libs/service/filesystem_event.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
+#include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/libs/storage/testlib/service_client.h>
 #include <cloud/filestore/libs/storage/testlib/tablet_client.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
@@ -116,12 +117,107 @@ NProto::TFileSystemEvent MakeEvent(ui64 parentNodeId, const TString& name)
     return event;
 }
 
+void CheckClientRegisteredUponListNodesInShards(bool useListNodesInternal)
+{
+    TShardedFileSystemConfig fsConfig;
+
+    NProto::TStorageConfig config;
+    config.SetAutomaticShardCreationEnabled(true);
+    config.SetAutomaticallyCreatedShardSize(fsConfig.ShardBlockCount * 4_KB);
+    config.SetShardAllocationUnit(fsConfig.ShardBlockCount * 4_KB);
+    config.SetUseListNodesInternal(useListNodesInternal);
+    TTestEnv env({}, config);
+    ui32 nodeIdx = env.AddDynamicNode();
+
+    auto handler = std::make_shared<TTestFileSystemEventHandler>();
+    env.GetMultiFileSystemEventHandler()->Register(fsConfig.FsId, handler);
+
+    TServiceClient service(env.GetRuntime(), nodeIdx);
+    const auto fsInfo = CreateFileSystem(service, fsConfig);
+
+    auto headers = service.InitSession(fsConfig.FsId, "client");
+    for (ui32 i = 0; i < 4; ++i) {
+        service.CreateNode(
+            headers,
+            TCreateNodeArgs::File(RootNodeId, Sprintf("f%u", i)));
+    }
+
+    //
+    // Rebooting the tablets drops all their clients: CreateNode has
+    // registered the client both in the main tablet and in the shards.
+    //
+
+    const TVector<ui64> tabletIds = {
+        fsInfo.MainTabletId,
+        fsInfo.Shard1TabletId,
+        fsInfo.Shard2TabletId};
+    for (const ui64 tabletId: tabletIds) {
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+        tablet.RebootTablet();
+    }
+
+    for (const auto& fsId: fsConfig.MainAndShardIds()) {
+        const auto response =
+            GenerateFileSystemEvent(service, fsId, MakeEvent(42));
+        UNIT_ASSERT_VALUES_EQUAL_C(0, response.GetClientCount(), fsId);
+    }
+
+    headers = service.InitSession(
+        fsConfig.FsId,
+        "client",
+        {} /* checkpointId */,
+        true /* restoreClientSession */);
+
+    //
+    // ListNodes (or ListNodesInternal) goes to the main tablet, the attrs of
+    // the shard-resident nodes are fetched via GetNodeAttrBatch.
+    //
+
+    const auto listNodesResponse = service.ListNodes(headers, RootNodeId);
+    const auto& nodes = listNodesResponse->Record.GetNodes();
+    UNIT_ASSERT_VALUES_EQUAL(4, nodes.size());
+
+    THashSet<ui32> shardNos;
+    for (const auto& node: nodes) {
+        shardNos.insert(ExtractShardNo(node.GetId()));
+    }
+    UNIT_ASSERT(!shardNos.contains(0));
+
+    auto response =
+        GenerateFileSystemEvent(service, fsConfig.FsId, MakeEvent(42));
+    UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
+
+    const auto shardIds = fsConfig.ShardIds();
+    for (const ui32 shardNo: shardNos) {
+        const auto& shardId = shardIds[shardNo - 1];
+        response = GenerateFileSystemEvent(service, shardId, MakeEvent(42));
+        UNIT_ASSERT_VALUES_EQUAL_C(1, response.GetClientCount(), shardId);
+    }
+
+    UNIT_ASSERT_VALUES_EQUAL(1 + shardNos.size(), handler->Events.size());
+    for (const auto& event: handler->Events) {
+        UNIT_ASSERT_VALUES_EQUAL(fsConfig.FsId, event.GetFileSystemId());
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
 {
+    Y_UNIT_TEST(ShouldRegisterClientUponListNodesInShards)
+    {
+        CheckClientRegisteredUponListNodesInShards(
+            false /* useListNodesInternal */);
+    }
+
+    Y_UNIT_TEST(ShouldRegisterClientUponListNodesInternalInShards)
+    {
+        CheckClientRegisteredUponListNodesInShards(
+            true /* useListNodesInternal */);
+    }
+
     Y_UNIT_TEST(ShouldDeliverGeneratedFileSystemEvent)
     {
         TTestEnv env;

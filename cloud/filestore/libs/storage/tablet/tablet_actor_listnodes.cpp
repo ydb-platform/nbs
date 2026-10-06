@@ -112,6 +112,8 @@ void TIndexTabletActor::HandleListNodesInternal(
     const TEvIndexTablet::TEvListNodesInternalRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
+
     using TMethod = TEvIndexTablet::TListNodesInternalMethod;
     auto* msg = ev->Get();
 
