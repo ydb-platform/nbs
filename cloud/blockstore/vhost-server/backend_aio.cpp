@@ -45,8 +45,7 @@ void CompleteRequestImpl(
     requestStat.Unaligned += req->Unaligned;
 
     if (status == VHD_BDEV_SUCCESS) {
-        requestStat.IoSizeCount += 1;
-        requestStat.IoSizeBytes += bytes;
+        requestStat.AddIoSize(bytes);
     }
 
     if (req->BufferAllocated || encryptor) {
@@ -101,8 +100,7 @@ void CompleteCompoundRequestImpl(
         requestStat.Count += 1;
         requestStat.Bytes += bytes;
 
-        requestStat.IoSizeCount += 1;
-        requestStat.IoSizeBytes += bytes;
+        requestStat.AddIoSize(bytes);
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
             TBlockDataRef data = req->GetData();

@@ -4,10 +4,12 @@
 #include "backend_rdma.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryptor.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
+#include <cloud/blockstore/libs/service_local/compound_storage.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
@@ -33,6 +35,7 @@
 
 #include <vhost/blockdev.h>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -566,6 +569,8 @@ public:
 
     std::atomic<ui64> ReadBytesSeen = 0;
     std::atomic<ui64> WriteBytesSeen = 0;
+    std::atomic<ui64> ReadStartSeen = 0;
+    std::atomic<ui64> WriteStartSeen = 0;
 
     ETestRdmaResult Result = ETestRdmaResult::Success;
     ui64 SentRequestCount = 0;
@@ -595,20 +600,33 @@ public:
         Storage = std::make_shared<TTestStorage>();
         Storage->DoAllocations = true;
 
-        CompletionStats = std::make_shared<TTestRdmaCompletionStats>();
-
         Storage->ReadBlocksLocalHandler = [this](auto callContext, auto request)
         {
             Y_UNUSED(callContext);
+            EXPECT_EQ(BlockSize, request->GetBlockSize());
 
             ReadBytesSeen.store(
                 static_cast<ui64>(request->GetBlocksCount()) *
                 request->GetBlockSize());
+            ReadStartSeen.store(request->GetStartIndex());
 
             const ui32 attempt = ReadAttempts.fetch_add(1);
 
             NProto::TReadBlocksLocalResponse response;
             *response.MutableError() = MakeAttemptError(attempt);
+
+            auto guard = request->Sglist.Acquire();
+            EXPECT_TRUE(guard);
+            if (guard) {
+                EXPECT_EQ(ReadBytesSeen.load(), SgListGetSize(guard.Get()));
+                if (!HasError(response)) {
+                    for (const auto& buffer: guard.Get()) {
+                        std::memset(
+                            const_cast<char*>(buffer.Data()),
+                            'r', buffer.Size());
+                    }
+                }
+            }
 
             return NThreading::MakeFuture(std::move(response));
         };
@@ -617,15 +635,28 @@ public:
             [this](auto callContext, auto request)
         {
             Y_UNUSED(callContext);
+            EXPECT_EQ(BlockSize, request->GetBlockSize());
 
             WriteBytesSeen.store(
                 static_cast<ui64>(request->BlocksCount) *
                 request->GetBlockSize());
+            WriteStartSeen.store(request->GetStartIndex());
 
             const ui32 attempt = WriteAttempts.fetch_add(1);
 
             NProto::TWriteBlocksLocalResponse response;
             *response.MutableError() = MakeAttemptError(attempt);
+
+            auto guard = request->Sglist.Acquire();
+            EXPECT_TRUE(guard);
+            if (guard) {
+                EXPECT_EQ(WriteBytesSeen.load(), SgListGetSize(guard.Get()));
+                for (const auto& buffer: guard.Get()) {
+                    EXPECT_EQ(
+                        TString(buffer.Size(), 'x'),
+                        TString(buffer.Data(), buffer.Size()));
+                }
+            }
 
             return NThreading::MakeFuture(std::move(response));
         };
@@ -639,7 +670,16 @@ public:
             },
         };
 
-        auto provider = std::make_shared<TTestRdmaStorageProvider>(Storage);
+        ASSERT_NO_FATAL_FAILURE(StartRdmaServerWithStorage(Storage));
+    }
+
+    void StartRdmaServerWithStorage(IStoragePtr storage)
+    {
+        CompletionStats = std::make_shared<TTestRdmaCompletionStats>();
+        Options.DeviceBackend = "rdma";
+
+        auto provider =
+            std::make_shared<TTestRdmaStorageProvider>(std::move(storage));
 
         Server = CreateServer(
             Logging,
@@ -652,24 +692,33 @@ public:
         Memory = TMonotonicBufferResource{Client.GetMemory()};
     }
 
-    void SendRequest(bool read, bool expectSuccess, bool severalBuffers = false)
+    void SendRequest(
+        bool read,
+        bool expectSuccess,
+        bool severalBuffers = false,
+        ui64 requestBytes = 0, ui64 firstSector = 0)
     {
+        if (!requestBytes) {
+            requestBytes = RequestSize;
+        }
+
         auto header =
             Hdr(Memory,
                 {
                     .type = static_cast<ui32>(
                         read ? VIRTIO_BLK_T_IN : VIRTIO_BLK_T_OUT),
+                    .sector = firstSector,
                 });
 
         ASSERT_FALSE(header.empty());
 
         const size_t extraByte = Unaligned ? 1 : 0;
-        auto allocation = Memory.Allocate(RequestSize + extraByte, BlockSize);
+        auto allocation = Memory.Allocate(requestBytes + extraByte, BlockSize);
 
-        ASSERT_EQ(RequestSize + extraByte, allocation.size());
+        ASSERT_EQ(requestBytes + extraByte, allocation.size());
 
         // Shift the buffer address by one byte for an unaligned request.
-        auto data = allocation.subspan(extraByte, RequestSize);
+        auto data = allocation.subspan(extraByte, requestBytes);
         std::memset(data.data(), 'x', data.size());
 
         auto status = Memory.Allocate(1);
@@ -698,10 +747,19 @@ public:
         const ui32 responseLength = operation.GetValue();
 
         EXPECT_EQ(
-            read ? RequestSize + status.size() : status.size(), responseLength);
+            read ? requestBytes + status.size() : status.size(),
+            responseLength);
         EXPECT_EQ(
             expectSuccess ? VIRTIO_BLK_S_OK : VIRTIO_BLK_S_IOERR,
             static_cast<ui8>(status[0]));
+
+        if (read && expectSuccess) {
+            EXPECT_EQ(
+                TString(requestBytes, 'r'), TString(data.data(), data.size()));
+        } else if (read && !ReadAttempts.load()) {
+            EXPECT_EQ(
+                TString(requestBytes, 'x'), TString(data.data(), data.size()));
+        }
 
         ++SentRequestCount;
         const auto snapshot =
@@ -710,8 +768,14 @@ public:
         ASSERT_TRUE(snapshot.has_value());
     }
 
-    void CheckCounters(bool expectSuccess, ui32 expectedAttempts)
+    void CheckCounters(
+        bool expectSuccess,
+        ui32 expectedAttempts, ui64 requestBytes = 0, ui64 firstSector = 0)
     {
+        if (!requestBytes) {
+            requestBytes = RequestSize;
+        }
+
         const auto snapshot = CompletionStats->WaitForCompleted(2);
 
         ASSERT_TRUE(snapshot.has_value());
@@ -720,7 +784,7 @@ public:
         EXPECT_EQ(2u, snapshot->Completed);
 
         const ui64 expectedCount = expectSuccess ? 1 : 0;
-        const ui64 expectedBytes = expectSuccess ? RequestSize : 0;
+        const ui64 expectedBytes = expectSuccess ? requestBytes : 0;
         const ui64 expectedErrors = expectSuccess ? 0 : 1;
 
         for (const auto type: {VHD_BDEV_READ, VHD_BDEV_WRITE}) {
@@ -739,9 +803,308 @@ public:
         EXPECT_EQ(expectedAttempts, ReadAttempts.load());
         EXPECT_EQ(expectedAttempts, WriteAttempts.load());
 
-        EXPECT_EQ(RequestSize, ReadBytesSeen.load());
-        EXPECT_EQ(RequestSize, WriteBytesSeen.load());
+        EXPECT_EQ(requestBytes, ReadBytesSeen.load());
+        EXPECT_EQ(requestBytes, WriteBytesSeen.load());
+        EXPECT_EQ(firstSector / SectorsPerBlock, ReadStartSeen.load());
+        EXPECT_EQ(firstSector / SectorsPerBlock, WriteStartSeen.load());
     }
+};
+
+class TRdmaCompoundServerTest: public TRdmaServerTest
+{
+private:
+    struct TPendingPart
+    {
+        ui32 StorageIndex = 0;
+        ui64 StartIndex = 0;
+        ui32 BlocksCount = 0;
+        ui32 RequestBlockSize = 0;
+        ui64 SgBytes = 0;
+        TString WriteData;
+        std::function<void(NProto::TError)> Complete;
+    };
+
+    std::mutex PartsMutex;
+    std::condition_variable PartsChanged;
+    TVector<TPendingPart> Parts;
+    std::array<std::shared_ptr<TTestStorage>, 2> Storages;
+
+    void AddPart(TPendingPart part)
+    {
+        auto completed = std::make_shared<std::atomic<bool>>(false);
+        part.Complete =
+            [complete = std::move(part.Complete), completed](auto error)
+        {
+            if (!completed->exchange(true)) {
+                complete(std::move(error));
+            }
+        };
+
+        {
+            std::lock_guard<std::mutex> guard(PartsMutex);
+            Parts.push_back(std::move(part));
+        }
+        PartsChanged.notify_all();
+    }
+
+    std::optional<std::array<TPendingPart, 2>> WaitForParts(size_t offset)
+    {
+        std::unique_lock<std::mutex> guard(PartsMutex);
+        if (!PartsChanged.wait_for(
+                guard,
+                std::chrono::seconds(10),
+                [&] { return Parts.size() >= offset + 2; }))
+        {
+            return std::nullopt;
+        }
+
+        return std::array<TPendingPart, 2>{Parts[offset], Parts[offset + 1]};
+    }
+
+public:
+    void TearDown() override
+    {
+        TVector<TPendingPart> parts;
+        {
+            std::lock_guard<std::mutex> guard(PartsMutex);
+            parts = Parts;
+        }
+        for (const auto& part: parts) {
+            part.Complete(MakeError(E_FAIL, "cancel unfinished test part"));
+        }
+
+        TRdmaServerTest::TearDown();
+    }
+
+    void StartCompoundRdmaServer()
+    {
+        for (ui32 storageIndex = 0; storageIndex != Storages.size();
+             ++storageIndex)
+        {
+            auto& storage = Storages[storageIndex];
+            storage = std::make_shared<TTestStorage>();
+            storage->DoAllocations = true;
+
+            storage->ReadBlocksLocalHandler =
+                [this, storageIndex](auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+
+                auto promise =
+                    NThreading::NewPromise<NProto::TReadBlocksLocalResponse>();
+                auto guard = request->Sglist.Acquire();
+                EXPECT_TRUE(guard);
+
+                AddPart({
+                    .StorageIndex = storageIndex,
+                    .StartIndex = request->GetStartIndex(),
+                    .BlocksCount = request->GetBlocksCount(),
+                    .RequestBlockSize = request->GetBlockSize(),
+                    .SgBytes = guard ? SgListGetSize(guard.Get()) : 0,
+                    .Complete =
+                        [promise, request, storageIndex](auto error) mutable
+                    {
+                        if (!HasError(error)) {
+                            auto guard = request->Sglist.Acquire();
+                            EXPECT_TRUE(guard);
+                            if (guard) {
+                                for (const auto& buffer: guard.Get()) {
+                                    std::memset(
+                                        const_cast<char*>(buffer.Data()),
+                                        'a' + storageIndex, buffer.Size());
+                                }
+                            }
+                        }
+                        NProto::TReadBlocksLocalResponse response;
+                        *response.MutableError() = std::move(error);
+                        promise.SetValue(std::move(response));
+                    },
+                });
+
+                return promise.GetFuture();
+            };
+
+            storage->WriteBlocksLocalHandler =
+                [this, storageIndex](auto callContext, auto request)
+            {
+                Y_UNUSED(callContext);
+
+                auto promise =
+                    NThreading::NewPromise<NProto::TWriteBlocksLocalResponse>();
+                auto guard = request->Sglist.Acquire();
+                EXPECT_TRUE(guard);
+
+                TString data;
+                if (guard) {
+                    data.resize(SgListGetSize(guard.Get()));
+                    EXPECT_EQ(
+                        data.size(),
+                        SgListCopy(guard.Get(), {data.begin(), data.size()}));
+                }
+
+                AddPart({
+                    .StorageIndex = storageIndex,
+                    .StartIndex = request->GetStartIndex(),
+                    .BlocksCount = request->BlocksCount,
+                    .RequestBlockSize = request->GetBlockSize(),
+                    .SgBytes = data.size(),
+                    .WriteData = std::move(data),
+                    .Complete =
+                        [promise](auto error) mutable
+                    {
+                        NProto::TWriteBlocksLocalResponse response;
+                        *response.MutableError() = std::move(error);
+                        promise.SetValue(std::move(response));
+                    },
+                });
+
+                return promise.GetFuture();
+            };
+        }
+
+        Options.Layout = {
+            {
+                .DevicePath = "rdma://127.0.0.1:10020/first-device",
+                .ByteCount = ChunkByteCount,
+            },
+            {
+                .DevicePath = "rdma://127.0.0.1:10020/second-device",
+                .ByteCount = ChunkByteCount,
+            },
+        };
+
+        auto storage = NServer::CreateCompoundStorage(
+            {Storages[0], Storages[1]},
+            {BlocksPerChunk, 2 * BlocksPerChunk},
+            BlockSize,
+            {},
+            {}, CreateServerStatsStub());
+
+        ASSERT_NO_FATAL_FAILURE(StartRdmaServerWithStorage(std::move(storage)));
+    }
+
+    void SendCompoundRequest(
+        bool read, ETestRdmaResult result, ui32 firstCompletedPart)
+    {
+        const ui64 requestBytes = 2 * BlockSize;
+        auto header =
+            Hdr(Memory,
+                {
+                    .type = static_cast<ui32>(
+                        read ? VIRTIO_BLK_T_IN : VIRTIO_BLK_T_OUT),
+                    .sector = (BlocksPerChunk - 1) * SectorsPerBlock,
+                });
+        ASSERT_FALSE(header.empty());
+        auto allocation =
+            Memory.Allocate(requestBytes + (Unaligned ? 1 : 0), BlockSize);
+        ASSERT_EQ(requestBytes + (Unaligned ? 1 : 0), allocation.size());
+        auto data = allocation.subspan(Unaligned ? 1 : 0, requestBytes);
+        std::memset(data.data(), 'a', BlockSize);
+        std::memset(data.data() + BlockSize, 'b', BlockSize);
+        if (read) {
+            std::memset(data.data(), 'x', data.size());
+        }
+        auto status = Memory.Allocate(1);
+        ASSERT_EQ(1u, status.size());
+        status[0] = static_cast<char>(0xff);
+
+        size_t partsOffset = 0;
+        {
+            std::lock_guard<std::mutex> guard(PartsMutex);
+            partsOffset = Parts.size();
+        }
+
+        // A single data buffer still produces two real storage requests.
+        auto operation =
+            read ? Client.WriteAsync(QueueIndex, {header}, {data, status})
+                 : Client.WriteAsync(QueueIndex, {header, data}, {status});
+
+        const bool retry = result == ETestRdmaResult::RetryThenSuccess ||
+                           result == ETestRdmaResult::RetryThenError;
+        const bool success = result == ETestRdmaResult::Success ||
+                             result == ETestRdmaResult::RetryThenSuccess;
+
+        for (ui32 attempt = 0; attempt != (retry ? 2u : 1u); ++attempt) {
+            const auto parts = WaitForParts(partsOffset + 2 * attempt);
+            ASSERT_TRUE(parts.has_value());
+
+            for (ui32 storageIndex = 0; storageIndex != 2; ++storageIndex) {
+                const auto& part = (*parts)[storageIndex];
+                EXPECT_EQ(storageIndex, part.StorageIndex);
+                EXPECT_EQ(
+                    storageIndex ? 0u : BlocksPerChunk - 1, part.StartIndex);
+                EXPECT_EQ(1u, part.BlocksCount);
+                EXPECT_EQ(BlockSize, part.RequestBlockSize);
+                EXPECT_EQ(BlockSize, part.SgBytes);
+                if (!read) {
+                    EXPECT_EQ(
+                        TString(BlockSize, 'a' + storageIndex), part.WriteData);
+                }
+            }
+
+            NProto::TError error;
+            if (retry && attempt == 0) {
+                error = MakeError(E_REJECTED, "retry one compound part");
+            } else if (!success) {
+                error = MakeError(E_FAIL, "fail one compound part");
+            }
+
+            // Only one child fails. Exercise both orders of its completion.
+            (*parts)[firstCompletedPart].Complete(
+                firstCompletedPart == 0 ? error : NProto::TError{});
+            EXPECT_FALSE(operation.HasValue());
+            const auto snapshot = CompletionStats->Get(TDuration::Zero());
+            ASSERT_TRUE(snapshot.has_value());
+            EXPECT_EQ(SentRequestCount, snapshot->Completed);
+            const auto& pendingCounters =
+                snapshot->Requests[read ? VHD_BDEV_READ : VHD_BDEV_WRITE];
+            EXPECT_EQ(0u, pendingCounters.Count);
+            EXPECT_EQ(0u, pendingCounters.IoSizeCount);
+            EXPECT_EQ(0u, pendingCounters.IoSizeBytes);
+
+            (*parts)[1 - firstCompletedPart].Complete(
+                firstCompletedPart == 1 ? error : NProto::TError{});
+        }
+
+        ASSERT_TRUE(operation.Wait(TDuration::Seconds(10)));
+        EXPECT_EQ(
+            read ? requestBytes + status.size() : status.size(),
+            operation.GetValue());
+        EXPECT_EQ(
+            success ? VIRTIO_BLK_S_OK : VIRTIO_BLK_S_IOERR,
+            static_cast<ui8>(status[0]));
+        if (read && success) {
+            EXPECT_EQ(
+                TString(BlockSize, 'a') + TString(BlockSize, 'b'),
+                TString(data.data(), data.size()));
+        }
+
+        ++SentRequestCount;
+        const auto snapshot =
+            CompletionStats->WaitForCompleted(SentRequestCount);
+        ASSERT_TRUE(snapshot.has_value());
+        EXPECT_EQ(SentRequestCount, snapshot->Completed);
+
+        const auto& counters =
+            snapshot->Requests[read ? VHD_BDEV_READ : VHD_BDEV_WRITE];
+        const ui64 expectedCount = success ? 1 : 0;
+        EXPECT_EQ(expectedCount, counters.Count);
+        EXPECT_EQ(success ? requestBytes : 0, counters.Bytes);
+        EXPECT_EQ(success ? 0u : 1u, counters.Errors);
+        EXPECT_EQ(expectedCount, counters.IoSizeCount);
+        EXPECT_EQ(success ? requestBytes : 0, counters.IoSizeBytes);
+
+        std::lock_guard<std::mutex> guard(PartsMutex);
+        EXPECT_EQ(partsOffset + (retry ? 4 : 2), Parts.size());
+    }
+};
+
+class TRdmaSectorServerTest: public TRdmaServerTest
+{
+};
+
+class TRdmaBlockAlignmentTest: public TRdmaServerTest
+{
 };
 
 }   // namespace
@@ -805,6 +1168,126 @@ INSTANTIATE_TEST_SUITE_P(
         testing::Values(NProto::NO_ENCRYPTION),
         testing::Values(size_t{1}, size_t{16}),
         testing::Values(ui32{512}, ui32{4096}),
+        testing::Values(false, true), testing::Values(size_t{1})));
+
+TEST_P(TRdmaCompoundServerTest, ShouldCountOneParentForTwoStorageCompletions)
+{
+    ASSERT_NO_FATAL_FAILURE(StartCompoundRdmaServer());
+    ASSERT_NO_FATAL_FAILURE(
+        SendCompoundRequest(true, ETestRdmaResult::Success, 0));
+    ASSERT_NO_FATAL_FAILURE(
+        SendCompoundRequest(false, ETestRdmaResult::Success, 1));
+}
+
+TEST_P(TRdmaCompoundServerTest, ShouldIgnoreParentWhenOneStoragePartFails)
+{
+    ASSERT_NO_FATAL_FAILURE(StartCompoundRdmaServer());
+    ASSERT_NO_FATAL_FAILURE(
+        SendCompoundRequest(true, ETestRdmaResult::Error, 0));
+    ASSERT_NO_FATAL_FAILURE(
+        SendCompoundRequest(false, ETestRdmaResult::Error, 1));
+}
+
+TEST_P(TRdmaCompoundServerTest, ShouldCountRetriedCompoundParentOnce)
+{
+    ASSERT_NO_FATAL_FAILURE(StartCompoundRdmaServer());
+    ASSERT_NO_FATAL_FAILURE(
+        SendCompoundRequest(true, ETestRdmaResult::RetryThenSuccess, 0));
+    ASSERT_NO_FATAL_FAILURE(
+        SendCompoundRequest(false, ETestRdmaResult::RetryThenSuccess, 1));
+}
+
+TEST_P(TRdmaCompoundServerTest, ShouldIgnoreRetryThenFailedCompoundParent)
+{
+    ASSERT_NO_FATAL_FAILURE(StartCompoundRdmaServer());
+    ASSERT_NO_FATAL_FAILURE(
+        SendCompoundRequest(true, ETestRdmaResult::RetryThenError, 0));
+    ASSERT_NO_FATAL_FAILURE(
+        SendCompoundRequest(false, ETestRdmaResult::RetryThenError, 1));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    IoSize,
+    TRdmaCompoundServerTest,
+    testing::Combine(
+        testing::Values(NProto::NO_ENCRYPTION),
+        testing::Values(size_t{2}),
+        testing::Values(ui32{512}, ui32{4096}),
+        testing::Values(false, true), testing::Values(size_t{1})));
+
+TEST_P(TRdmaSectorServerTest, ShouldCountSectorSizedIoAtNonzeroOffset)
+{
+    ASSERT_NO_FATAL_FAILURE(StartRdmaServer(ETestRdmaResult::Success));
+
+    ASSERT_NO_FATAL_FAILURE(SendRequest(true, true, false, SectorSize, 1));
+    ASSERT_NO_FATAL_FAILURE(SendRequest(false, true, false, SectorSize, 1));
+
+    ASSERT_NO_FATAL_FAILURE(CheckCounters(true, 1, SectorSize, 1));
+}
+
+TEST_P(TRdmaSectorServerTest, ShouldCountSubPageIoAtNonzeroOffset)
+{
+    ASSERT_NO_FATAL_FAILURE(StartRdmaServer(ETestRdmaResult::Success));
+
+    ASSERT_NO_FATAL_FAILURE(SendRequest(true, true, false, 3 * SectorSize, 3));
+    ASSERT_NO_FATAL_FAILURE(SendRequest(false, true, false, 3 * SectorSize, 3));
+
+    ASSERT_NO_FATAL_FAILURE(CheckCounters(true, 1, 3 * SectorSize, 3));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    IoSize,
+    TRdmaSectorServerTest,
+    testing::Combine(
+        testing::Values(NProto::NO_ENCRYPTION),
+        testing::Values(size_t{16}),
+        testing::Values(ui32{512}),
+        testing::Values(false, true), testing::Values(size_t{1})));
+
+TEST_P(TRdmaBlockAlignmentTest, ShouldRejectUnalignedLengthOrOffsetBeforeIo)
+{
+    ASSERT_NO_FATAL_FAILURE(StartRdmaServer(ETestRdmaResult::Success));
+
+    const std::array<std::pair<ui64, ui64>, 3> requests = {{
+        {SectorSize, 0},
+        {BlockSize + SectorSize, 0},
+        {BlockSize, 1},
+    }};
+
+    for (const auto& [requestBytes, firstSector]: requests) {
+        ASSERT_NO_FATAL_FAILURE(
+            SendRequest(true, false, false, requestBytes, firstSector));
+        ASSERT_NO_FATAL_FAILURE(
+            SendRequest(false, false, false, requestBytes, firstSector));
+
+        const auto snapshot =
+            CompletionStats->WaitForCompleted(SentRequestCount);
+        ASSERT_TRUE(snapshot.has_value());
+        EXPECT_EQ(SentRequestCount, snapshot->Completed);
+
+        for (const auto type: {VHD_BDEV_READ, VHD_BDEV_WRITE}) {
+            const auto& counters = snapshot->Requests[type];
+            EXPECT_EQ(0u, counters.Count);
+            EXPECT_EQ(0u, counters.Bytes);
+            EXPECT_EQ(SentRequestCount / 2, counters.Errors);
+            EXPECT_EQ(0u, counters.IoSizeCount);
+            EXPECT_EQ(0u, counters.IoSizeBytes);
+        }
+
+        EXPECT_EQ(0u, ReadAttempts.load());
+        EXPECT_EQ(0u, WriteAttempts.load());
+        EXPECT_EQ(0u, ReadBytesSeen.load());
+        EXPECT_EQ(0u, WriteBytesSeen.load());
+    }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    IoSize,
+    TRdmaBlockAlignmentTest,
+    testing::Combine(
+        testing::Values(NProto::NO_ENCRYPTION),
+        testing::Values(size_t{1}),
+        testing::Values(ui32{4096}),
         testing::Values(false, true), testing::Values(size_t{1})));
 
 TEST_P(TServerTest, ShouldGetDeviceID)

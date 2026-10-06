@@ -328,12 +328,30 @@ void TRdmaBackend::ProcessQueue(
 {
     Y_UNUSED(queueIndex);
 
+    const ui64 sectorsPerBlock = BlockSize / VHD_SECTOR_SIZE;
+
     vhd_request req;
     while (vhd_dequeue_request(queue, &req)) {
         ++queueStats.Dequeued;
 
         struct vhd_bdev_io* bio = vhd_get_bdev_io(req.io);
         const TCpuCycles now = GetCycleCount();
+
+        // Reject partial blocks before converting sectors to block indices.
+        if ((bio->type == VHD_BDEV_READ || bio->type == VHD_BDEV_WRITE) &&
+            (bio->first_sector % sectorsPerBlock != 0 ||
+             bio->total_sectors % sectorsPerBlock != 0))
+        {
+            STORAGE_ERROR(
+                "Unaligned vhost request: type="
+                << static_cast<int>(bio->type) << ", first_sector="
+                << bio->first_sector << ", total_sectors=" << bio->total_sectors
+                << ", block_size=" << BlockSize);
+            CompleteRequest(req.io, now, true);
+            ++queueStats.Submitted;
+            continue;
+        }
+
         switch (bio->type) {
             case VHD_BDEV_READ:
                 ProcessReadRequest(req.io, now);
@@ -469,8 +487,7 @@ void TRdmaBackend::CompleteRequest(
         requestStat.Count += 1;
         requestStat.Bytes += bytes;
 
-        requestStat.IoSizeCount += 1;
-        requestStat.IoSizeBytes += bytes;
+        requestStat.AddIoSize(bytes);
 
         CompletionStatsData.Sizes[bio->type].Increment(bytes);
         CompletionStatsData.Times[bio->type].Increment(
