@@ -7,7 +7,7 @@
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 
-#include <contrib/ydb/library/actors/util/rope.h>
+#include <contrib/ydb/library/actors/util/rc_buf.h>
 
 namespace NCloud::NFileStore::NStorage {
 

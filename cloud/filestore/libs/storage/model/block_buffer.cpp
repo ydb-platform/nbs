@@ -18,6 +18,26 @@ private:
     const TByteRange ByteRange;
     TBuffer Buffer;
 
+    char* GetMutableData()
+    {
+        if constexpr (std::is_same_v<TBuffer, TRcBuf>) {
+            // Copy TString-backed payloads into the record buffer to prevent
+            // later modifications from affecting other owners. In std::string
+            // builds, TRcBuf copies share a wrapper containing the same TString
+            // object. TString::IsDetached() always returns true in these
+            // builds, so TRcBuf::Detach() does not copy the shared storage
+            // before modification.
+
+            // It is not a real issue as the payload uses TRcBufInternalBackend
+            // backend and TString is not a std::string.
+            if (Buffer.template ContainsNativeType<TString>()) {
+                Buffer = TRcBuf::Copy(Buffer.GetContiguousSpan());
+            }
+        }
+
+        return Buffer.Detach();
+    }
+
 public:
     TBlockBuffer(TByteRange byteRange, TBuffer buffer)
         : ByteRange(byteRange)
@@ -50,14 +70,14 @@ public:
         Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
 
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
-        char* ptr = Buffer.Detach() + offset;
+        char* ptr = GetMutableData() + offset;
         memcpy(ptr, block.data(), ByteRange.BlockSize);
     }
 
     void ClearBlock(size_t index) override
     {
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
-        char* ptr = Buffer.Detach() + offset;
+        char* ptr = GetMutableData() + offset;
         memset(ptr, 0, ByteRange.BlockSize);
     }
 };
