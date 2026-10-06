@@ -240,6 +240,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
 
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.NodeId,
         args.Node->MinCommitId,
         args.CommitId,
@@ -252,7 +253,7 @@ void TIndexTabletActor::ExecuteTx_SetNodeAttr(
     //
 
     if (!HasNonTimeAttrChanges(attrs, args.Node->Attrs)) {
-        AddInvalidateNodeEvent(args.NodeId);
+        AddInvalidateNodeEvent(args.FileSystemEvents, args.NodeId);
     }
 
     args.Node->Attrs = std::move(attrs);

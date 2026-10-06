@@ -421,6 +421,7 @@ private:
 
             Tablet.UpdateNode(
                 db,
+                args.FileSystemEvents,
                 id,
                 it->MinCommitId,
                 args.CommitId,

@@ -82,7 +82,12 @@ void TIndexTabletActor::ExecuteTx_DestroyDeferredNodes(
             continue;
         }
 
-        auto e = RemoveNode(*db, *node, node->MinCommitId, commitId);
+        auto e = RemoveNode(
+            *db,
+            args.FileSystemEvents,
+            *node,
+            node->MinCommitId,
+            commitId);
         if (HasError(e)) {
             WriteOrphanNode(*db, TStringBuilder()
                 << "DestroyDeferredNodes: RemoveNode: " << nodeId

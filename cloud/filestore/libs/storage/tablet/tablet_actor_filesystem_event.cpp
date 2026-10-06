@@ -27,49 +27,35 @@ void TIndexTabletActor::RegisterFileSystemEventClient(
     FileSystemEventClients[recipient] = clientId;
 }
 
-ui32 TIndexTabletActor::SendFileSystemEvent(
+ui32 TIndexTabletActor::SendFileSystemEvents(
     const TActorContext& ctx,
-    NProto::TFileSystemEvent event)
+    const TVector<NProto::TFileSystemEvent>& events)
 {
-    event.SetFileSystemId(GetMainFileSystemId());
-
     THashSet<TActorId> clients;
     for (const auto& [_, clientId]: FileSystemEventClients) {
         clients.insert(clientId);
     }
 
-    LOG_DEBUG(
-        ctx,
-        TFileStoreComponents::TABLET,
-        "%s Sending FileSystemEvent to %lu clients: %s",
-        LogTag.c_str(),
-        clients.size(),
-        event.ShortUtf8DebugString().Quote().c_str());
+    const auto& fileSystemId = GetMainFileSystemId();
+    for (const auto& event: events) {
+        LOG_DEBUG(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Sending FileSystemEvent to %lu clients: %s",
+            LogTag.c_str(),
+            clients.size(),
+            event.ShortUtf8DebugString().Quote().c_str());
 
-    for (const auto& clientId: clients) {
-        auto ev = std::make_unique<TEvIndexTabletProxy::TEvFileSystemEvent>();
-        ev->Record = event;
-        NCloud::Send(ctx, clientId, std::move(ev));
+        for (const auto& clientId: clients) {
+            auto ev =
+                std::make_unique<TEvIndexTabletProxy::TEvFileSystemEvent>();
+            ev->Record = event;
+            ev->Record.SetFileSystemId(fileSystemId);
+            NCloud::Send(ctx, clientId, std::move(ev));
+        }
     }
 
     return clients.size();
-}
-
-void TIndexTabletActor::FlushFileSystemEvents(const TActorContext& ctx)
-{
-    //
-    // Called upon each transaction completion. Read-only transactions may
-    // complete before the preceding read-write transaction is committed,
-    // so an event may reach the clients slightly before the change becomes
-    // durable. That is acceptable for invalidations: the clients re-read the
-    // state which is already updated in memory.
-    //
-
-    if (!HasPendingFileSystemEvent()) {
-        return;
-    }
-
-    SendFileSystemEvent(ctx, TakePendingFileSystemEvent());
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -90,17 +76,18 @@ void TIndexTabletActor::HandleGenerateFileSystemEvent(
         record.ShortUtf8DebugString().Quote().c_str());
 
     const auto& event = record.GetEvent();
-    if (!event.InvalidateNodesSize() && !event.InvalidateNodeRefsSize()) {
+    if (event.HasInvalidateNode() == event.HasInvalidateNodeRef()) {
         NCloud::Reply(
             ctx,
             *ev,
-            std::make_unique<TResponse>(
-                MakeError(E_ARGUMENT, "empty FileSystemEvent")));
+            std::make_unique<TResponse>(MakeError(
+                E_ARGUMENT,
+                "exactly one invalidation should be set")));
         return;
     }
 
     auto response = std::make_unique<TResponse>();
-    response->Record.SetClientCount(SendFileSystemEvent(ctx, event));
+    response->Record.SetClientCount(SendFileSystemEvents(ctx, {event}));
     NCloud::Reply(ctx, *ev, std::move(response));
 }
 

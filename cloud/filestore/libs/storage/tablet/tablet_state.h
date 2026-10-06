@@ -252,13 +252,6 @@ private:
 
     /*const*/ bool FileSystemEventsEnabled = false;
 
-    //
-    // Invalidations accumulated by the transactions executed since the last
-    // TakePendingFileSystemEvent call.
-    //
-
-    NProto::TFileSystemEvent PendingFileSystemEvent;
-
     bool StateLoaded = false;
 
 protected:
@@ -356,31 +349,21 @@ public:
 
     void SetCompressNodeRef(IIndexTabletDatabase& db, bool compressNodeRef);
 
-    //
-    // FileSystemEvents
-    //
-
-    /**
-     * Checks whether Node and NodeRef changes produced any invalidations
-     * since the last TakePendingFileSystemEvent call. Invalidations are
-     * produced only if FileSystemEventsEnabled is set.
-     *
-     * @return - True if there are pending invalidations.
-     */
-    bool HasPendingFileSystemEvent() const;
-
-    /**
-     * Extracts the pending invalidations.
-     *
-     * @return - The event with all the pending invalidations.
-     */
-    NProto::TFileSystemEvent TakePendingFileSystemEvent();
-
 protected:
-    void AddInvalidateNodeEvent(ui64 nodeId);
+    //
+    // FileSystemEvents - appended to the transaction's sink, only if
+    // FileSystemEventsEnabled is set.
+    //
+
+    void AddInvalidateNodeEvent(
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
+        ui64 nodeId);
 
 private:
-    void AddInvalidateNodeRefEvent(ui64 nodeId, const TString& name);
+    void AddInvalidateNodeRefEvent(
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
+        ui64 nodeId,
+        const TString& name);
 
 public:
 
@@ -627,6 +610,7 @@ public:
 
     void UpdateNode(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -635,6 +619,7 @@ public:
 
     [[nodiscard]] NProto::TError RemoveNode(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         const INodeIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
         ui64 maxCommitId);
@@ -648,6 +633,7 @@ public:
     // removed right away.
     [[nodiscard]] NProto::TError UnlinkNode(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 parentNodeId,
         const TString& name,
         const INodeIndexTabletDatabase::TNode& node,
@@ -658,6 +644,7 @@ public:
 
     void UnlinkExternalNode(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 parentNodeId,
         const TString& name,
         const TString& shardId,
@@ -781,6 +768,7 @@ public:
 public:
     void CreateNodeRef(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
         ui64 commitId,
         const TString& childName,
@@ -791,6 +779,7 @@ public:
 
     void RemoveNodeRef(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,

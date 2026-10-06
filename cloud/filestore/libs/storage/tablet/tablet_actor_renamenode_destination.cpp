@@ -655,6 +655,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             // remove existing target ref
             RemoveNodeRef(
                 *db,
+                args.FileSystemEvents,
                 args.NewParentNodeId,
                 args.NewChildRef->MinCommitId,
                 args.CommitId,
@@ -682,6 +683,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
             // remove target ref
             UnlinkExternalNode(
                 *db,
+                args.FileSystemEvents,
                 args.NewParentNode->NodeId,
                 args.NewName,
                 args.NewChildRef->ShardId,
@@ -719,6 +721,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
     // create target ref to source node
     CreateNodeRef(
         *db,
+        args.FileSystemEvents,
         args.NewParentNodeId,
         args.CommitId,
         args.NewName,
@@ -729,6 +732,7 @@ void TIndexTabletActor::ExecuteTx_RenameNodeInDestination(
     auto newParent = CopyAttrs(args.NewParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.NewParentNode->NodeId,
         args.NewParentNode->MinCommitId,
         args.CommitId,

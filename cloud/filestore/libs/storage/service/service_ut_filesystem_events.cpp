@@ -43,10 +43,10 @@ struct TTestFileSystemEventHandler final
     bool HasInvalidateNode(ui64 nodeId) const
     {
         for (const auto& event: Events) {
-            for (const auto& invalidate: event.GetInvalidateNodes()) {
-                if (invalidate.GetNodeId() == nodeId) {
-                    return true;
-                }
+            if (event.HasInvalidateNode()
+                    && event.GetInvalidateNode().GetNodeId() == nodeId)
+            {
+                return true;
             }
         }
         return false;
@@ -55,12 +55,12 @@ struct TTestFileSystemEventHandler final
     bool HasInvalidateNodeRef(ui64 nodeId, const TString& name) const
     {
         for (const auto& event: Events) {
-            for (const auto& invalidate: event.GetInvalidateNodeRefs()) {
-                if (invalidate.GetNodeId() == nodeId
-                        && invalidate.GetName() == name)
-                {
-                    return true;
-                }
+            const auto& invalidate = event.GetInvalidateNodeRef();
+            if (event.HasInvalidateNodeRef()
+                    && invalidate.GetNodeId() == nodeId
+                    && invalidate.GetName() == name)
+            {
+                return true;
             }
         }
         return false;
@@ -100,14 +100,17 @@ NProtoPrivate::TGenerateFileSystemEventResponse GenerateFileSystemEvent(
     return response;
 }
 
-NProto::TFileSystemEvent MakeEvent(
-    ui64 nodeId,
-    ui64 parentNodeId,
-    const TString& name)
+NProto::TFileSystemEvent MakeEvent(ui64 nodeId)
 {
     NProto::TFileSystemEvent event;
-    event.AddInvalidateNodes()->SetNodeId(nodeId);
-    auto* invalidate = event.AddInvalidateNodeRefs();
+    event.MutableInvalidateNode()->SetNodeId(nodeId);
+    return event;
+}
+
+NProto::TFileSystemEvent MakeEvent(ui64 parentNodeId, const TString& name)
+{
+    NProto::TFileSystemEvent event;
+    auto* invalidate = event.MutableInvalidateNodeRef();
     invalidate->SetNodeId(parentNodeId);
     invalidate->SetName(name);
     return event;
@@ -137,7 +140,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         //
 
         auto response =
-            GenerateFileSystemEvent(service, "test", MakeEvent(42, 1, "a"));
+            GenerateFileSystemEvent(service, "test", MakeEvent(42));
         UNIT_ASSERT_VALUES_EQUAL(0, response.GetClientCount());
         UNIT_ASSERT_VALUES_EQUAL(0, handler->Events.size());
 
@@ -150,19 +153,22 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         UNIT_ASSERT_VALUES_EQUAL(0, handler->Events.size());
 
         response =
-            GenerateFileSystemEvent(service, "test", MakeEvent(42, 1, "a"));
+            GenerateFileSystemEvent(service, "test", MakeEvent(42));
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Events.size());
 
         const auto& event = handler->Events[0];
         UNIT_ASSERT_VALUES_EQUAL("test", event.GetFileSystemId());
-        UNIT_ASSERT_VALUES_EQUAL(1, event.InvalidateNodesSize());
-        UNIT_ASSERT_VALUES_EQUAL(42, event.GetInvalidateNodes(0).GetNodeId());
-        UNIT_ASSERT_VALUES_EQUAL(1, event.InvalidateNodeRefsSize());
-        UNIT_ASSERT_VALUES_EQUAL(
-            1,
-            event.GetInvalidateNodeRefs(0).GetNodeId());
-        UNIT_ASSERT_VALUES_EQUAL("a", event.GetInvalidateNodeRefs(0).GetName());
+        UNIT_ASSERT(event.HasInvalidateNode());
+        UNIT_ASSERT(!event.HasInvalidateNodeRef());
+        UNIT_ASSERT_VALUES_EQUAL(42, event.GetInvalidateNode().GetNodeId());
+
+        response =
+            GenerateFileSystemEvent(service, "test", MakeEvent(1, "a"));
+        UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
+        UNIT_ASSERT_VALUES_EQUAL(2, handler->Events.size());
+        UNIT_ASSERT(handler->HasInvalidateNodeRef(1, "a"));
+        UNIT_ASSERT(!handler->Events[1].HasInvalidateNode());
 
         //
         // Handlers registered for other filesystems get nothing.
@@ -172,8 +178,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         env.GetMultiFileSystemEventHandler()->Register(
             "other",
             otherHandler);
-        GenerateFileSystemEvent(service, "test", MakeEvent(42, 1, "a"));
-        UNIT_ASSERT_VALUES_EQUAL(2, handler->Events.size());
+        GenerateFileSystemEvent(service, "test", MakeEvent(42));
+        UNIT_ASSERT_VALUES_EQUAL(3, handler->Events.size());
         UNIT_ASSERT_VALUES_EQUAL(0, otherHandler->Events.size());
 
         //
@@ -181,11 +187,11 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         //
 
         env.GetMultiFileSystemEventHandler()->Unregister("test", handler);
-        GenerateFileSystemEvent(service, "test", MakeEvent(42, 1, "a"));
-        UNIT_ASSERT_VALUES_EQUAL(2, handler->Events.size());
+        GenerateFileSystemEvent(service, "test", MakeEvent(42));
+        UNIT_ASSERT_VALUES_EQUAL(3, handler->Events.size());
     }
 
-    Y_UNIT_TEST(ShouldRejectEmptyFileSystemEvent)
+    Y_UNIT_TEST(ShouldRejectInvalidFileSystemEvent)
     {
         TTestEnv env;
         ui32 nodeIdx = env.AddDynamicNode();
@@ -196,6 +202,17 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         auto response = service.AssertExecuteActionFailed(
             "generatefilesystemevent",
             MakeGenerateFileSystemEventInput("test", {}));
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_ARGUMENT,
+            response->GetError().GetCode(),
+            FormatError(response->GetError()));
+
+        auto event = MakeEvent(42);
+        *event.MutableInvalidateNodeRef() =
+            MakeEvent(1, "a").GetInvalidateNodeRef();
+        response = service.AssertExecuteActionFailed(
+            "generatefilesystemevent",
+            MakeGenerateFileSystemEventInput("test", event));
         UNIT_ASSERT_VALUES_EQUAL_C(
             E_ARGUMENT,
             response->GetError().GetCode(),
@@ -353,7 +370,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         //
 
         auto response =
-            GenerateFileSystemEvent(service, "test", MakeEvent(42, 1, "a"));
+            GenerateFileSystemEvent(service, "test", MakeEvent(42));
         UNIT_ASSERT_VALUES_EQUAL(0, response.GetClientCount());
 
         headers = service.InitSession(
@@ -364,7 +381,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         service.GetNodeAttr(headers, "test", RootNodeId, "f");
 
         response =
-            GenerateFileSystemEvent(service, "test", MakeEvent(42, 1, "a"));
+            GenerateFileSystemEvent(service, "test", MakeEvent(42));
         UNIT_ASSERT_VALUES_EQUAL(1, response.GetClientCount());
         UNIT_ASSERT_VALUES_EQUAL(1, handler->Events.size());
     }
@@ -397,7 +414,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceFileSystemEventsTest)
         auto response = GenerateFileSystemEvent(
             service,
             fsConfig.Shard1Id,
-            MakeEvent(42, 1, "a"));
+            MakeEvent(42));
         UNIT_ASSERT_LE(1, response.GetClientCount());
         UNIT_ASSERT_LE(1, handler->Events.size());
 

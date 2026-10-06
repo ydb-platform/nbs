@@ -125,6 +125,7 @@ void TIndexTabletActor::ExecuteTx_DestroyHandle(
     {
         DeferNodeDestructionOrRemoveNode(
             *db,
+            args.FileSystemEvents,
             ctx,
             *args.Node,
             commitId,

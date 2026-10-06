@@ -466,11 +466,27 @@ private:
         const NActors::TActorId& recipient,
         const NActors::TActorId& clientId);
 
-    ui32 SendFileSystemEvent(
+    ui32 SendFileSystemEvents(
         const NActors::TActorContext& ctx,
-        NProto::TFileSystemEvent event);
+        const TVector<NProto::TFileSystemEvent>& events);
 
-    void FlushFileSystemEvents(const NActors::TActorContext& ctx);
+    template <typename T>
+    void SendTxFileSystemEvents(
+        const NActors::TActorContext& ctx,
+        const T& args)
+    {
+        //
+        // Must be called after UpdateInMemoryIndexState(args): otherwise a
+        // client, having received an event, may re-read the stale data from
+        // the in-memory index cache.
+        //
+
+        if constexpr (std::is_base_of_v<TIndexStateNodeUpdates, T>) {
+            if (!args.FileSystemEvents.empty()) {
+                SendFileSystemEvents(ctx, args.FileSystemEvents);
+            }
+        }
+    }
 
     TBackpressureThresholds BuildBackpressureThresholds() const;
     TBackpressureThresholds BuildBackpressureSoftThresholds() const;
@@ -510,6 +526,7 @@ private:
 
     void DestroySessionHandlesAndRemoveNodes(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         const NActors::TActorContext& ctx,
         TSession* session,
         ui64 commitId,
@@ -653,6 +670,7 @@ private:
     // was deferred or failed (in the latter case an orphan node is written).
     bool DeferNodeDestructionOrRemoveNode(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         const NActors::TActorContext& ctx,
         const INodeIndexTabletDatabase::TNode& node,
         ui64 commitId,

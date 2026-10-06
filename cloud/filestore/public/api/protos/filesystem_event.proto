@@ -29,6 +29,7 @@ message TFileSystemEvent
     // Main FileSystem identifier.
     string FileSystemId = 1;
 
-    repeated TInvalidateNode InvalidateNodes = 2;
-    repeated TInvalidateNodeRef InvalidateNodeRefs = 3;
+    // Exactly one of the invalidations is set.
+    TInvalidateNode InvalidateNode = 2;
+    TInvalidateNodeRef InvalidateNodeRef = 3;
 }

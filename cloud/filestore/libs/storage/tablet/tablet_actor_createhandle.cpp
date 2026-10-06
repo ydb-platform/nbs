@@ -423,6 +423,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         // TODO: support for O_TMPFILE
         CreateNodeRef(
             *db,
+            args.FileSystemEvents,
             args.NodeId,
             args.WriteCommitId,
             args.Name,
@@ -434,6 +435,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
         auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
         UpdateNode(
             *db,
+            args.FileSystemEvents,
             args.ParentNode->NodeId,
             args.ParentNode->MinCommitId,
             args.WriteCommitId,
@@ -460,6 +462,7 @@ void TIndexTabletActor::ExecuteTx_CreateHandle(
 
         UpdateNode(
             *db,
+            args.FileSystemEvents,
             args.TargetNodeId,
             args.TargetNode->MinCommitId,
             args.WriteCommitId,
