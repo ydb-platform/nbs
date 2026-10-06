@@ -160,7 +160,10 @@ def start_instance(args, inst_index):
 
     if args.invoke_test:
         recipe_set_env("TEST_COMMAND_WRAPPER",
-                       " ".join(ssh.get_command("sudo /run_test.sh", wrap_test_env=False)),
+                       " ".join(ssh.get_command(
+                           "sudo /run_test.sh",
+                           wrap_test_env=False,
+                           forward_host_ports=_get_forward_host_ports(args))),
                        inst_index)
 
     ready_flag_path = recipe_get_env("QEMU_SET_READY_FLAG", inst_index)
@@ -295,6 +298,11 @@ def _parse_args(argv):
         "--invoke-test",
         type=optional_env_value,
         help="Invoke test from qemu after starting")
+    parser.add_argument(
+        "--forward-host-port-envs",
+        type=optional_env_value,
+        help="Space-separated environment variable names containing host TCP "
+             "ports to expose on guest localhost while invoking the test")
     parser.add_argument("--use-virtiofs-server", type=optional_env_value)
     parser.add_argument(
         "--num-request-queues",
@@ -322,6 +330,19 @@ def _parse_args(argv):
         args.invoke_test = True
 
     return args
+
+
+def _get_forward_host_ports(args):
+    ports = []
+    for name in (args.forward_host_port_envs or "").split():
+        value = os.getenv(name)
+        if value is None or not value.isdecimal() or not 1 <= int(value) <= 65535:
+            raise QemuKvmRecipeException(
+                "{} must contain a TCP port to forward, got {!r}".format(name, value))
+        port = int(value)
+        if port not in ports:
+            ports.append(port)
+    return ports
 
 
 def _get_qemu_kvm(args):

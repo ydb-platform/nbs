@@ -3,7 +3,48 @@ from contextlib import ExitStack
 from types import SimpleNamespace
 from unittest import mock
 
+import pytest
+
 from cloud.storage.core.tools.testing.qemu.lib import recipe
+from cloud.storage.core.tools.testing.qemu.lib.common import SshToGuest
+
+
+def test_host_ports_are_forwarded_only_by_the_test_ssh_session():
+    args = recipe._parse_args([
+        "--forward-host-port-envs", "FAKE_ROOT_KMS_PORT OTHER_PORT",
+    ])
+    with mock.patch.dict(os.environ, {
+        "FAKE_ROOT_KMS_PORT": "23456",
+        "OTHER_PORT": "34567",
+    }):
+        ports = recipe._get_forward_host_ports(args)
+
+    ssh = SshToGuest(user="qemu", port=45678, key="/test/id_rsa")
+    command = ssh.get_command(
+        "sudo /run_test.sh", wrap_test_env=False, forward_host_ports=ports)
+
+    assert command[-2:] == ["127.0.0.1", "sudo /run_test.sh"]
+    assert command[command.index("ExitOnForwardFailure=yes") - 1] == "-o"
+    assert [command[i + 1] for i, arg in enumerate(command) if arg == "-R"] == [
+        "localhost:23456:localhost:23456",
+        "localhost:34567:localhost:34567",
+    ]
+    assert "-R" not in ssh.get_command("exit 0")
+
+
+@pytest.mark.parametrize("value", [None, "", "abc", "0", "65536"])
+def test_invalid_forwarded_host_port_is_rejected(value):
+    args = recipe._parse_args(["--forward-host-port-envs", "FAKE_ROOT_KMS_PORT"])
+    with mock.patch.dict(os.environ, {}, clear=True):
+        if value is not None:
+            os.environ["FAKE_ROOT_KMS_PORT"] = value
+        with pytest.raises(recipe.QemuKvmRecipeException, match="FAKE_ROOT_KMS_PORT"):
+            recipe._get_forward_host_ports(args)
+
+
+@pytest.mark.parametrize("argv", [[], ["--forward-host-port-envs", "$QEMU_FORWARD_HOST_PORT_ENVS"]])
+def test_host_port_forwarding_is_optional(argv):
+    assert recipe._get_forward_host_ports(recipe._parse_args(argv)) == []
 
 
 def test_recipe_set_env_updates_current_process_and_recipe_env():
@@ -65,10 +106,17 @@ def test_process_coredumps_uses_same_process_recipe_env():
     )
 
 
-def test_start_instance_sets_up_coredumps_immediately_after_ssh():
-    args = SimpleNamespace(shared_nic_port=0, invoke_test=False)
+@pytest.mark.parametrize("invoke_test", [False, True])
+def test_start_instance_sets_up_coredumps_immediately_after_ssh(invoke_test):
+    args = SimpleNamespace(
+        shared_nic_port=0,
+        invoke_test=invoke_test,
+        forward_host_port_envs="FAKE_ROOT_KMS_PORT",
+    )
     events = []
 
+    ssh = mock.Mock()
+    ssh.get_command.return_value = ["ssh", "guest"]
     qemu = mock.Mock()
     qemu.qemu_bin.stderr_file_name = "/test/qemu.err"
     qemu.qemu_bin.daemon.process.pid = 123
@@ -97,7 +145,8 @@ def test_start_instance_sets_up_coredumps_immediately_after_ssh():
         mock.patch.object(recipe, "append_recipe_err_files"),
         mock.patch.object(recipe, "_get_ssh_user", return_value="qemu"),
         mock.patch.object(recipe, "_get_ssh_key", return_value="/test/id_rsa"),
-        mock.patch.object(recipe, "SshToGuest"),
+        mock.patch.object(recipe, "SshToGuest", return_value=ssh),
+        mock.patch.dict(os.environ, {"FAKE_ROOT_KMS_PORT": "23456"}),
         mock.patch.object(
             recipe,
             "_wait_ssh",
@@ -123,3 +172,8 @@ def test_start_instance_sets_up_coredumps_immediately_after_ssh():
         recipe.start_instance(args, 0)
 
     assert events == ["ssh-ready", "coredumps", "guest-setup"]
+    if invoke_test:
+        ssh.get_command.assert_called_once_with(
+            "sudo /run_test.sh", wrap_test_env=False, forward_host_ports=[23456])
+    else:
+        ssh.get_command.assert_not_called()

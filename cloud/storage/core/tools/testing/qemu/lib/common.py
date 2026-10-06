@@ -28,7 +28,8 @@ class SshToGuest(object):
         self.port = port
         self.key = key
 
-    def get_command(self, command, timeout=None, wrap_test_env=True):
+    def get_command(self, command, timeout=None, wrap_test_env=True,
+                    forward_host_ports=()):
         cmd = []
 
         if timeout is not None:
@@ -58,6 +59,14 @@ class SshToGuest(object):
             "-l", self.user,
             "-p", str(self.port),
             "-o", "LogLevel=VERBOSE",
+        ]
+
+        if forward_host_ports:
+            cmd += ["-o", "ExitOnForwardFailure=yes"]
+            for port in forward_host_ports:
+                cmd += ["-R", "localhost:{0}:localhost:{0}".format(port)]
+
+        cmd += [
             "127.0.0.1",
             command
         ]

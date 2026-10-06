@@ -51,6 +51,7 @@ USE_RECIPE(
     --enable-kvm "$QEMU_ENABLE_KVM"
     --instance-count "$QEMU_INSTANCE_COUNT"
     --invoke-test "$QEMU_INVOKE_TEST"
+    --forward-host-port-envs "$QEMU_FORWARD_HOST_PORT_ENVS"
     --use-virtiofs-server "$QEMU_USE_VIRTIOFS_SERVER"
     --num-request-queues "$QEMU_NUM_REQUEST_QUEUES"
     --chardev-reconnect "$QEMU_CHARDEV_RECONNECT"
