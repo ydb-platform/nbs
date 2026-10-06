@@ -999,15 +999,15 @@ public:
 
     [[nodiscard]] ui32 GetMixedBlocksCountCompactionRangeCountPerRun() const;
 
-    [[nodiscard]] ui64 GetMaxMixedBlocksCompactionThresholdPercentageSSD() const;
+    [[nodiscard]] ui64 GetMixedBlocksCompactionThresholdPercentageSSD() const;
 
-    [[nodiscard]] ui64 GetMaxMixedBlocksCompactionThresholdPercentageHDD() const;
+    [[nodiscard]] ui64 GetMixedBlocksCompactionThresholdPercentageHDD() const;
 
     [[nodiscard]] bool GetCompactionStatsTrackerEnabled() const;
 
-    [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBlocksSSD() const;
+    [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesSSD() const;
 
-    [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBlocksHDD() const;
+    [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesHDD() const;
 };
 
 ui64 GetAllocationUnit(

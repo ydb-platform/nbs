@@ -1620,13 +1620,12 @@ private:
             State.GetCompactionMap().GetMixedBlocksCountPerDisk();
         const ui64 diskTotalBlockCount =
             State.GetCompactionMap().GetStoredBlocksCountPerDisk();
-        const ui64 perDiskCompactionStartBytes =
-            isSSD ? Config->GetMixedBlocksCompactionMinStoredBlocksSSD()
-                  : Config->GetMixedBlocksCompactionMinStoredBlocksHDD();
+        const ui64 minStoredBytes =
+            isSSD ? Config->GetMixedBlocksCompactionMinStoredBytesSSD()
+                  : Config->GetMixedBlocksCompactionMinStoredBytesHDD();
         const ui64 totalBytesStored =
             diskTotalBlockCount * State.GetBlockSize();
-        const bool enoughBytesStored =
-            totalBytesStored >= perDiskCompactionStartBytes;
+        const bool enoughBytesStored = totalBytesStored >= minStoredBytes;
 
         // All stored blocks have the same size, so this is also the mixed
         // bytes percentage, including overwritten blocks still stored in blobs.
@@ -1635,13 +1634,13 @@ private:
                 ? GetPercentage(diskMixedBlockCount, diskTotalBlockCount)
                 : 0;
 
-        const ui64 maxMixedBlocksPercentage =
-            isSSD ? Config->GetMaxMixedBlocksCompactionThresholdPercentageSSD()
-                  : Config->GetMaxMixedBlocksCompactionThresholdPercentageHDD();
+        const ui64 mixedBlocksPercentageThreshold =
+            isSSD ? Config->GetMixedBlocksCompactionThresholdPercentageSSD()
+                  : Config->GetMixedBlocksCompactionThresholdPercentageHDD();
 
         const bool mixedBlocksPercentageOverThreshold =
-            maxMixedBlocksPercentage > 0 &&
-            mixedBlocksPercentage >= maxMixedBlocksPercentage;
+            mixedBlocksPercentageThreshold > 0 &&
+            mixedBlocksPercentage >= mixedBlocksPercentageThreshold;
 
         if (!rangeMixedBlockCountOverThreshold &&
             !mixedBlocksPercentageOverThreshold)
@@ -1661,7 +1660,7 @@ private:
             rangeMixedBytesCount,
             threshold,
             mixedBlocksPercentage,
-            maxMixedBlocksPercentage,
+            mixedBlocksPercentageThreshold,
             TEvPartitionPrivate::MixedBlocksCountCompaction,
             triggerKind,
             true /* throttlingAllowed */,

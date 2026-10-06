@@ -3105,14 +3105,16 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         config.SetMixedBlocksCountCompactionEnabledHDD(enabled);
         config.SetMixedBlocksCountCompactionEnabledSSD(enabled);
         // The other media kind must not control this disk's trigger.
-        config.SetMaxMixedBlocksCompactionThresholdPercentageHDD(100);
-        config.SetMaxMixedBlocksCompactionThresholdPercentageSSD(100);
+        config.SetMixedBlocksCompactionThresholdPercentageHDD(100);
+        config.SetMixedBlocksCompactionThresholdPercentageSSD(100);
         if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD) {
-            config.SetMaxMixedBlocksCompactionThresholdPercentageSSD(percentageThreshold);
-            config.SetMixedBlocksCompactionMinStoredBlocksSSD(startBytes);
+            config.SetMixedBlocksCompactionThresholdPercentageSSD(
+                percentageThreshold);
+            config.SetMixedBlocksCompactionMinStoredBytesSSD(startBytes);
         } else {
-            config.SetMaxMixedBlocksCompactionThresholdPercentageHDD(percentageThreshold);
-            config.SetMixedBlocksCompactionMinStoredBlocksHDD(startBytes);
+            config.SetMixedBlocksCompactionThresholdPercentageHDD(
+                percentageThreshold);
+            config.SetMixedBlocksCompactionMinStoredBytesHDD(startBytes);
         }
 
         TTestPartitionInfo partitionInfo;
