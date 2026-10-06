@@ -62,3 +62,22 @@ message TFastShardCommandResponse
     // Set for the CollectStats command.
     TFastShardStats Stats = 3;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+// LayoutChanged request/response. A wire duplicate of the blockstore
+// ReallocateDisk request/response, see TEvDiskRegistryProxy.
+
+message TLayoutChangedRequest
+{
+    // Blockstore request headers, not read.
+    reserved 1;
+
+    // FileSystem identifier.
+    string FileSystemId = 2;
+}
+
+message TLayoutChangedResponse
+{
+    // Optional error, set only if error happened.
+    NCloud.NProto.TError Error = 1;
+}
