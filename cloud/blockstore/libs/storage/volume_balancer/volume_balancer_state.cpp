@@ -30,8 +30,6 @@ TVolumeBalancerState::TVolumeBalancerState(
     TStorageConfigConstPtr storageConfig,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch)
     : StorageConfig(std::move(storageConfig))
-    , InitialVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
-    , OverridenVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
     , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
     , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
 {}
@@ -285,15 +283,10 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         diskId);
 
     const bool configuredOn =
-        isFeatureEnabledForFolder ||
-        StorageConfig->GetVolumeBalancerEnabled() ||
-        GetVolumePreemptionType() !=
-            NProto::PREEMPTION_NONE;   // TODO: Remove after
-                                       // VolumeBalancerEnabled option
-                                       // integration
+        isFeatureEnabledForFolder || StorageConfig->GetVolumeBalancerEnabled();
 
-    const bool balancerEnabled =
-        configuredOn && IsEnabled && VolumeBalancerSwitch->IsBalancerEnabled();
+    const bool balancerEnabled = configuredOn && GetEnabled() &&
+                                 VolumeBalancerSwitch->IsBalancerEnabled();
 
     // NProto::STORAGE_MEDIA_DEFAULT means that volume mounting
     // is still in progress and will change to something else
