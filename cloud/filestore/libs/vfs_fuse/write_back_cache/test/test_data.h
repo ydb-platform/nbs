@@ -13,6 +13,11 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Extracts the data carried by a write request's buffer or iovecs.
+TString ExtractWriteData(const NProto::TWriteDataRequest& request);
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TTestData
 {
 private:
@@ -24,7 +29,7 @@ public:
     ~TTestData();
 
     void EnableLogReads(TString logTag, const TLog& log);
-    void EnabledLogWrites(TString logTag, const TLog& log);
+    void EnableLogWrites(TString logTag, const TLog& log);
 
     // Executes a read request using either the response buffer or its iovecs.
     // For buffer responses, responseBufferOffsetLimit is the exclusive upper
@@ -51,7 +56,8 @@ public:
     // Returns the identifiers of all stored nodes in unspecified order.
     TVector<ui64> GetNodeIds() const;
 
-    // Returns a deterministic serialization of all stored node data.
+    // Returns a deterministic serialization of all stored node data. The
+    // result is not an atomic snapshot across nodes.
     TString Dump() const;
 
     // Returns the total number of bytes supplied to successful writes.

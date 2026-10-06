@@ -47,6 +47,25 @@ void WriteBytes(TString& data, ui64 offset, TStringBuf buffer)
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TString ExtractWriteData(const NProto::TWriteDataRequest& request)
+{
+    if (request.GetIovecs().empty()) {
+        return TString(TStringBuf(request.GetBuffer())
+                           .Skip(
+                               Min<size_t>(
+                                   request.GetBufferOffset(),
+                                   request.GetBuffer().size())));
+    }
+
+    TString data;
+    for (const auto& iovec: request.GetIovecs()) {
+        data.append(AsStringBuf(iovec));
+    }
+    return data;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TTestData::TImpl
 {
 private:
@@ -67,9 +86,10 @@ private:
         TString Data;
     };
 
-    mutable TAdaptiveLock NodesLock;
+    TAdaptiveLock NodesLock;
     THashMap<ui64, std::unique_ptr<TNodeData>> Nodes;
     std::atomic<ui64> BytesWritten = 0;
+    std::atomic<ui64> NextLogSequenceId = 1;
     std::optional<TOperationLog> ReadLog;
     std::optional<TOperationLog> WriteLog;
 
@@ -88,22 +108,11 @@ public:
 
     NProto::TReadDataResponse Read(
         const NProto::TReadDataRequest& request,
-        ui32 responseBufferOffsetLimit) const
+        ui32 responseBufferOffsetLimit)
     {
         NProto::TReadDataResponse response;
-
-        auto* nodeData = FindNodeData(request.GetNodeId());
-        if (!nodeData) {
-            LogRead(request.GetNodeId(), request.GetOffset(), {});
-            return response;
-        }
-
-        auto guard = Guard(nodeData->Lock);
-
         auto data =
-            ReadBytes(nodeData->Data, request.GetOffset(), request.GetLength());
-
-        LogRead(request.GetNodeId(), request.GetOffset(), data);
+            Read(request.GetNodeId(), request.GetOffset(), request.GetLength());
 
         if (request.GetIovecs().empty()) {
             const auto responseBufferOffset =
@@ -119,72 +128,69 @@ public:
         }
 
         response.SetLength(data.size());
+        auto remainingData = TStringBuf(data);
         for (const auto& iovec: request.GetIovecs()) {
-            if (data.empty()) {
+            if (remainingData.empty()) {
                 break;
             }
 
             auto output = AsMemoryOutput(iovec);
-            const auto length = Min(data.size(), output.Avail());
-            output.Write(data.Head(length));
-            data.Skip(length);
+            const auto length = Min(remainingData.size(), output.Avail());
+            output.Write(remainingData.Head(length));
+            remainingData.Skip(length);
         }
 
         return response;
     }
 
-    TString Read(ui64 nodeId, ui64 offset, ui64 length) const
+    TString Read(ui64 nodeId, ui64 offset, ui64 length)
     {
-        auto* nodeData = FindNodeData(nodeId);
+        ui64 sequenceId = 0;
+        auto* nodeData = FindNodeDataForRead(nodeId, sequenceId);
         if (!nodeData) {
-            LogRead(nodeId, offset, {});
+            LogRead(sequenceId, nodeId, offset, {});
             return {};
         }
 
-        auto guard = Guard(nodeData->Lock);
-        TString data(ReadBytes(nodeData->Data, offset, length));
-        LogRead(nodeId, offset, data);
+        TString data;
+        {
+            auto guard = Guard(nodeData->Lock);
+            data = ReadBytes(nodeData->Data, offset, length);
+            sequenceId = GetNextReadLogSequenceId();
+        }
+
+        LogRead(sequenceId, nodeId, offset, data);
         return data;
     }
 
     TString Write(const NProto::TWriteDataRequest& request)
     {
-        TString buffer;
-        if (request.GetIovecs().empty()) {
-            buffer = TStringBuf(request.GetBuffer())
-                         .Skip(
-                             Min<size_t>(
-                                 request.GetBufferOffset(),
-                                 request.GetBuffer().size()));
-        } else {
-            for (const auto& iovec: request.GetIovecs()) {
-                buffer.append(AsStringBuf(iovec));
-            }
-        }
-
-        Write(request.GetNodeId(), request.GetOffset(), buffer);
-        return buffer;
+        auto data = ExtractWriteData(request);
+        Write(request.GetNodeId(), request.GetOffset(), data);
+        return data;
     }
 
     void Write(ui64 nodeId, ui64 offset, TStringBuf data)
     {
+        ui64 sequenceId = 0;
         {
             auto* nodeData = GetOrCreateNodeData(nodeId);
             auto guard = Guard(nodeData->Lock);
             WriteBytes(nodeData->Data, offset, data);
             BytesWritten.fetch_add(data.size());
+            sequenceId = GetNextWriteLogSequenceId();
         }
 
-        LogWrite(nodeId, offset, data);
+        LogWrite(sequenceId, nodeId, offset, data);
     }
 
-    bool Contains(ui64 nodeId) const
+    bool Contains(ui64 nodeId)
     {
         auto guard = Guard(NodesLock);
         return Nodes.contains(nodeId);
     }
 
-    TString ReadAll(ui64 nodeId) const
+    TString ReadAll(ui64 nodeId)
     {
         auto* nodeData = FindNodeData(nodeId);
         if (!nodeData) {
@@ -195,7 +201,7 @@ public:
         return nodeData->Data;
     }
 
-    TVector<ui64> GetNodeIds() const
+    TVector<ui64> GetNodeIds()
     {
         auto guard = Guard(NodesLock);
 
@@ -207,7 +213,7 @@ public:
         return nodeIds;
     }
 
-    TString Dump() const
+    TString Dump()
     {
         auto nodeIds = GetNodeIds();
         Sort(nodeIds);
@@ -224,29 +230,41 @@ public:
         return result;
     }
 
-    ui64 GetBytesWritten() const
+    ui64 GetBytesWritten()
     {
         return BytesWritten.load();
     }
 
 private:
-    void LogRead(ui64 nodeId, ui64 offset, TStringBuf data) const
+    ui64 GetNextReadLogSequenceId()
+    {
+        return ReadLog ? NextLogSequenceId.fetch_add(1) : 0;
+    }
+
+    ui64 GetNextWriteLogSequenceId()
+    {
+        return WriteLog ? NextLogSequenceId.fetch_add(1) : 0;
+    }
+
+    void LogRead(ui64 sequenceId, ui64 nodeId, ui64 offset, TStringBuf data)
     {
         if (ReadLog) {
             const auto& Log = ReadLog->Log;
             STORAGE_INFO(
-                ReadLog->Tag << " Read " << TString(data).Quote() << " from @"
-                             << nodeId << " at offset " << offset);
+                ReadLog->Tag << "[sequenceId=" << sequenceId << "] Read "
+                             << TString(data).Quote() << " from @" << nodeId
+                             << " at offset " << offset);
         }
     }
 
-    void LogWrite(ui64 nodeId, ui64 offset, TStringBuf data) const
+    void LogWrite(ui64 sequenceId, ui64 nodeId, ui64 offset, TStringBuf data)
     {
         if (WriteLog) {
             const auto& Log = WriteLog->Log;
             STORAGE_INFO(
-                WriteLog->Tag << " Written " << TString(data).Quote() << " to @"
-                              << nodeId << " at offset " << offset);
+                WriteLog->Tag << "[sequenceId=" << sequenceId << "] Written "
+                              << TString(data).Quote() << " to @" << nodeId
+                              << " at offset " << offset);
         }
     }
 
@@ -260,11 +278,22 @@ private:
         return nodeData.get();
     }
 
-    TNodeData* FindNodeData(ui64 nodeId) const
+    TNodeData* FindNodeData(ui64 nodeId)
     {
         auto guard = Guard(NodesLock);
         const auto it = Nodes.find(nodeId);
         return it != Nodes.end() ? it->second.get() : nullptr;
+    }
+
+    TNodeData* FindNodeDataForRead(ui64 nodeId, ui64& sequenceId)
+    {
+        auto guard = Guard(NodesLock);
+        const auto it = Nodes.find(nodeId);
+        if (it == Nodes.end()) {
+            sequenceId = GetNextReadLogSequenceId();
+            return nullptr;
+        }
+        return it->second.get();
     }
 };
 
@@ -281,7 +310,7 @@ void TTestData::EnableLogReads(TString logTag, const TLog& log)
     Impl->EnableLogReads(std::move(logTag), log);
 }
 
-void TTestData::EnabledLogWrites(TString logTag, const TLog& log)
+void TTestData::EnableLogWrites(TString logTag, const TLog& log)
 {
     Impl->EnableLogWrites(std::move(logTag), log);
 }
