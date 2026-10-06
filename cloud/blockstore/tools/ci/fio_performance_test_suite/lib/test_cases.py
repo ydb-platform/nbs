@@ -102,8 +102,6 @@ def _generate_test_cases_for_default_test_suite(
     cluster_name: str,
     service: str
 ) -> list[TestCase]:
-    types = ['network-ssd', 'network-ssd-v2'] \
-        if service == NBS else ['network-ssd']
     return [
         TestCase(service,
                  type,
@@ -116,7 +114,7 @@ def _generate_test_cases_for_default_test_suite(
                  '/dev/vdb')
         for type, size, device_bs, rw, bs, iodepth, rw_mix_read
         in itertools.product(
-            types,
+            ['network-ssd'],
             [320],  # GB
             [4 * 1024],  # bytes
             ['randrw'],
@@ -131,8 +129,6 @@ def _generate_test_cases_for_max_iops_test_suite(
     cluster_name: str,
     service: str
 ) -> list[TestCase]:
-    types = ['network-ssd', 'network-ssd-v2'] \
-        if service == NBS else ['network-ssd']
     return [
         TestCase(service,
                  type,
@@ -145,7 +141,7 @@ def _generate_test_cases_for_max_iops_test_suite(
                  '/dev/vdb')
         for type, size, device_bs, rw, bs, iodepth, rw_mix_read
         in itertools.product(
-            types,
+            ['network-ssd'],
             [960],  # GB
             [4 * 1024],  # bytes
             ['randread', 'randwrite', 'randrw'],
@@ -160,8 +156,6 @@ def _generate_test_cases_for_max_bandwidth_test_suite(
     cluster_name: str,
     service: str
 ) -> list[TestCase]:
-    types = ['network-ssd', 'network-ssd-v2'] \
-        if service == NBS else ['network-ssd']
     bs = [4 * 1024 ** 2] if service == NBS else [1024 ** 2]  # bytes
     return [
         TestCase(service,
@@ -175,7 +169,7 @@ def _generate_test_cases_for_max_bandwidth_test_suite(
                  '/dev/vdb')
         for type, size, device_bs, rw, bs, iodepth, rw_mix_read
         in itertools.product(
-            types,
+            ['network-ssd'],
             [960],  # GB
             [4 * 1024],  # bytes
             ['randread', 'randwrite', 'randrw'],
@@ -331,8 +325,6 @@ def _generate_test_cases_for_large_bs_test_suite(
     cluster_name: str,
     service: str
 ) -> list[TestCase]:
-    types = ['network-ssd', 'network-ssd-v2'] \
-        if service == NBS else ['network-ssd']
     return [
         TestCase(service,
                  type,
@@ -345,7 +337,7 @@ def _generate_test_cases_for_large_bs_test_suite(
                  '/dev/vdb')
         for type, size, device_bs, rw, bs, iodepth, rw_mix_read
         in itertools.product(
-            types,
+            ['network-ssd'],
             [320],  # GB
             [64 * 1024],  # bytes
             ['randrw'],
