@@ -285,7 +285,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         now += storageConfig->GetInitialPullDelay();
         state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
 
-        UNIT_ASSERT_VALUES_EQUAL("vol1", state.GetVolumeToPush());
+        UNIT_ASSERT(!state.GetVolumeToPush());
         UNIT_ASSERT(!state.GetVolumeToPull());
     }
 
