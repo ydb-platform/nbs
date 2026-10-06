@@ -1,5 +1,9 @@
 #include "server.h"
 
+#include "request.h"
+
+#include <cloud/fastshard/sn/iface/storage_node.h>
+
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/coroutine/queue.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -10,7 +14,6 @@
 
 #include <util/generic/scope.h>
 #include <util/network/address.h>
-#include <util/string/builder.h>
 
 #include <optional>
 
@@ -21,17 +24,6 @@ using namespace NThreading;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-#define STORAGE_JOURNALLED_DEVICE_SERVER(xxx, ...) \
-    xxx(AcquireDevices, __VA_ARGS__)               \
-    xxx(ReleaseDevices, __VA_ARGS__)               \
-    xxx(FormatDevice, __VA_ARGS__)                 \
-    xxx(ReadPages, __VA_ARGS__)                    \
-    xxx(WriteLogRecord, __VA_ARGS__)               \
-    xxx(ReadJournalTail, __VA_ARGS__)              \
-    xxx(AdvanceLsnLowWatermark, __VA_ARGS__)
-
-// STORAGE_JOURNALLED_DEVICE_SERVER
 
 template <
     typename TProtoRequest,
@@ -77,106 +69,7 @@ struct TServerMethod
     };                                                         \
     // STORAGE_DECLARE_METHOD
 
-STORAGE_JOURNALLED_DEVICE_SERVER(STORAGE_DECLARE_METHOD)
-
-////////////////////////////////////////////////////////////////////////////////
-
-template <typename TRequest>
-void OutHeaders(IOutputStream& out, const TRequest& request)
-{
-    out << "client: " << request.GetHeaders().GetClientId().Quote();
-}
-
-template <typename TRequest>
-void OutDeviceUUIDs(IOutputStream& out, const TRequest& request)
-{
-    out << ", devices: [";
-    for (size_t i = 0; i < request.DeviceUUIDsSize(); ++i) {
-        out << (i ? ", " : "") << request.GetDeviceUUIDs(i).Quote();
-    }
-    out << "]";
-}
-
-template <typename TRequest>
-void OutDeviceUUID(IOutputStream& out, const TRequest& request)
-{
-    out << ", device: " << request.GetDeviceUUID().Quote();
-}
-
-TString DescribeRequest(const NProto::TAcquireDevicesRequest& request)
-{
-    TStringBuilder out;
-    OutHeaders(out.Out, request);
-    OutDeviceUUIDs(out.Out, request);
-    out << ", generation: " << request.GetGeneration();
-    return out;
-}
-
-TString DescribeRequest(const NProto::TReleaseDevicesRequest& request)
-{
-    TStringBuilder out;
-    OutHeaders(out.Out, request);
-    OutDeviceUUIDs(out.Out, request);
-    return out;
-}
-
-TString DescribeRequest(const NProto::TFormatDeviceRequest& request)
-{
-    TStringBuilder out;
-    OutHeaders(out.Out, request);
-    OutDeviceUUID(out.Out, request);
-    return out;
-}
-
-TString DescribeRequest(const NProto::TReadPagesRequest& request)
-{
-    TStringBuilder out;
-    OutHeaders(out.Out, request);
-    OutDeviceUUID(out.Out, request);
-    out << ", pages: [";
-    for (size_t i = 0; i < request.PageGroupRefsSize(); ++i) {
-        const auto& ref = request.GetPageGroupRefs(i);
-        out << (i ? ", " : "") << ref.GetFirstPageNo() << "x"
-            << ref.GetPageCount();
-    }
-    out << "]";
-    return out;
-}
-
-TString DescribeRequest(const NProto::TWriteLogRecordRequest& request)
-{
-    TStringBuilder out;
-    OutHeaders(out.Out, request);
-    OutDeviceUUID(out.Out, request);
-    out << ", lsn: " << request.GetLogSequenceNumber()
-        << ", prev lsn: " << request.GetPrevLogSequenceNumber() << ", pages: [";
-    for (size_t i = 0; i < request.PageGroupsSize(); ++i) {
-        const auto& group = request.GetPageGroups(i);
-        out << (i ? ", " : "") << group.GetFirstPageNo() << "x"
-            << group.ContentSize();
-    }
-    out << "]";
-    return out;
-}
-
-TString DescribeRequest(const NProto::TReadJournalTailRequest& request)
-{
-    TStringBuilder out;
-    OutHeaders(out.Out, request);
-    OutDeviceUUID(out.Out, request);
-    out << ", after lsn: " << request.GetAfterLogSequenceNumber()
-        << ", max records: " << request.GetMaxRecordCount();
-    return out;
-}
-
-TString DescribeRequest(const NProto::TAdvanceLsnLowWatermarkRequest& request)
-{
-    TStringBuilder out;
-    OutHeaders(out.Out, request);
-    OutDeviceUUID(out.Out, request);
-    out << ", lsn low watermark: " << request.GetLsnLowWatermark();
-    return out;
-}
+SN_METHODS(STORAGE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -293,7 +186,7 @@ private:
         try {
             auto& proto = TMethod::MutableProto(request);
 
-            STORAGE_DEBUG(
+            STORAGE_TRACE(
                 TMethod::Name << " #" << requestId
                               << " received: " << DescribeRequest(proto));
 
@@ -318,7 +211,7 @@ private:
                 const bool failed = HasError(proto.GetError());
 
                 STORAGE_LOG(
-                    failed ? TLOG_ERR : TLOG_DEBUG,
+                    failed ? TLOG_ERR : TLOG_RESOURCES,
                     TMethod::Name << " #" << requestId
                                   << (failed ? " failed: " : " completed: ")
                                   << FormatError(proto.GetError()));
