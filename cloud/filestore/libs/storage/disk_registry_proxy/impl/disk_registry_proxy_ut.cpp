@@ -1,6 +1,6 @@
-#include "dr_proxy.h"
+#include "disk_registry_proxy.h"
 
-#include <cloud/filestore/libs/storage/dr_proxy/api/service.h>
+#include <cloud/filestore/libs/storage/disk_registry_proxy/api/service.h>
 #include <cloud/filestore/libs/storage/testlib/helpers.h>
 #include <cloud/filestore/libs/storage/testlib/test_env.h>
 
@@ -294,6 +294,8 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
+constexpr auto LookupTimeout = TDuration::Seconds(5);
+
 NProto::TStorageConfig DefaultConfig()
 {
     NProto::TStorageConfig config;
@@ -301,10 +303,11 @@ NProto::TStorageConfig DefaultConfig()
     config.SetPipeClientRetryCount(1);
     config.SetPipeClientMinRetryTime(10);   // ms
     config.SetPipeClientMaxRetryTime(10);   // ms
+    config.SetFastShardDiskRegistryLookupTimeout(LookupTimeout.MilliSeconds());
     return config;
 }
 
-struct TDRProxyEnv
+struct TDiskRegistryProxyEnv
 {
     TTestEnv Env;
     std::shared_ptr<TFakeDiskRegistryState> DiskRegistry =
@@ -316,7 +319,7 @@ struct TDRProxyEnv
     ui64 TabletId = 0;
     TActorId Sender;
 
-    explicit TDRProxyEnv(
+    explicit TDiskRegistryProxyEnv(
         bool withDiskRegistry = true,
         NProto::TStorageConfig config = DefaultConfig())
     {
@@ -326,18 +329,20 @@ struct TDRProxyEnv
 
         if (withDiskRegistry) {
             TabletId = BootFakeDiskRegistry(Env, NodeIdx, DiskRegistry);
-            if (config.GetFastShardDROwner()) {
+            if (config.GetFastShardDiskRegistryOwner()) {
                 HiveProxy->TabletId = TabletId;
                 Register(
                     MakeHiveProxyServiceId(),
                     std::make_unique<TFakeHiveProxy>(HiveProxy));
             } else {
-                config.SetFastShardDRTabletId(TabletId);
+                config.SetFastShardDiskRegistryTabletId(TabletId);
             }
         }
 
         Config = CreateTestStorageConfig(std::move(config));
-        Register(MakeFileStoreDeviceRegistryProxyId(), CreateDRProxy(Config));
+        Register(
+            MakeFileStoreDiskRegistryProxyId(),
+            CreateDiskRegistryProxy(Config));
     }
 
     void Register(const TActorId& serviceId, IActorPtr actor)
@@ -353,7 +358,7 @@ struct TDRProxyEnv
     {
         Env.GetRuntime().Send(
             new IEventHandle(
-                MakeFileStoreDeviceRegistryProxyId(),
+                MakeFileStoreDiskRegistryProxyId(),
                 Sender,
                 request.release()),
             NodeIdx);
@@ -379,6 +384,24 @@ struct TDRProxyEnv
     {
         Env.GetRuntime().DispatchEvents(TDispatchOptions{
             .CustomFinalCondition = std::move(condition)});
+    }
+
+    // The proxy refuses requests until it resolves the tablet. It creates the
+    // pipe in the same handler, so the connect event proves the lookup is done.
+    void WaitForTablet()
+    {
+        auto& runtime = Env.GetRuntime();
+        bool connected = false;
+        auto filter = runtime.SetEventFilter(
+            [&] (auto&, TAutoPtr<IEventHandle>& event)
+            {
+                connected |= event->GetTypeRewrite() ==
+                    TEvTabletPipe::EvClientConnected;
+                return false;
+            });
+
+        WaitFor([&] { return connected; });
+        runtime.SetEventFilter(std::move(filter));
     }
 };
 
@@ -411,7 +434,7 @@ void FillLayout(TRecord& record)
 }
 
 void CheckLayout(
-    const TEvDeviceService::TDeviceLayout& layout,
+    const TEvDiskRegistryProxy::TDeviceLayout& layout,
     const TVector<TString>& unavailable)
 {
     UNIT_ASSERT_VALUES_EQUAL(3, layout.Replicas.size());
@@ -474,28 +497,31 @@ std::unique_ptr<TEvent> LoadEvent(const TString& bytes)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-Y_UNIT_TEST_SUITE(TDRProxyTest)
+Y_UNIT_TEST_SUITE(TDiskRegistryProxyTest)
 {
-    using TEvAllocate = TEvDeviceService::TEvAllocateDevicesRequest;
-    using TEvAllocateResponse = TEvDeviceService::TEvAllocateDevicesResponse;
-    using TEvDescribe = TEvDeviceService::TEvDescribeDevicesRequest;
-    using TEvDescribeResponse = TEvDeviceService::TEvDescribeDevicesResponse;
-    using TEvMark = TEvDeviceService::TEvMarkForCleanupRequest;
-    using TEvMarkResponse = TEvDeviceService::TEvMarkForCleanupResponse;
+    using TEvAllocate = TEvDiskRegistryProxy::TEvAllocateDevicesRequest;
+    using TEvAllocateResponse = TEvDiskRegistryProxy::TEvAllocateDevicesResponse;
+    using TEvDescribe = TEvDiskRegistryProxy::TEvDescribeDevicesRequest;
+    using TEvDescribeResponse = TEvDiskRegistryProxy::TEvDescribeDevicesResponse;
+    using TEvMark = TEvDiskRegistryProxy::TEvMarkForCleanupRequest;
+    using TEvMarkResponse = TEvDiskRegistryProxy::TEvMarkForCleanupResponse;
+
+    constexpr auto Mirror3 = NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3;
 
     Y_UNIT_TEST(ShouldAllocateDevices)
     {
-        TDRProxyEnv env;
+        TDiskRegistryProxyEnv env;
         FillLayout(env.DiskRegistry->AllocateResponse);
 
         auto response = env.Execute<TEvAllocateResponse>(
-            std::make_unique<TEvAllocate>("fs", 42, "cloud", "folder", 3, 100, "fastshard"));
+            std::make_unique<TEvAllocate>(
+                "fs", 42, "cloud", "folder", Mirror3, 2, 100, "fastshard"));
         UNIT_ASSERT_C(!HasError(response->GetError()), response->GetError());
         CheckLayout(response->Layout, {"uuid-2"});
 
         const auto& request = env.DiskRegistry->Allocate;
         UNIT_ASSERT_VALUES_EQUAL("fs", request.GetDiskId());
-        // TODO(issue-7373): restore when DR supports OwnerVolumeTabletId
+        // TODO(#7373): restore when DiskRegistry supports OwnerVolumeTabletId
         // UNIT_ASSERT_VALUES_EQUAL(42, request.GetOwnerVolumeTabletId());
         UNIT_ASSERT_VALUES_EQUAL("cloud", request.GetCloudId());
         UNIT_ASSERT_VALUES_EQUAL("folder", request.GetFolderId());
@@ -508,43 +534,14 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
         UNIT_ASSERT_VALUES_EQUAL("fastshard", request.GetPoolName());
     }
 
-    Y_UNIT_TEST(ShouldMapDeviceCountToMediaKind)
-    {
-        TDRProxyEnv env;
-
-        env.Execute<TEvAllocateResponse>(
-            std::make_unique<TEvAllocate>("fs", 42, "", "", 1, 100, "fastshard"));
-        UNIT_ASSERT_VALUES_EQUAL(0, env.DiskRegistry->Allocate.GetReplicaCount());
-        UNIT_ASSERT_EQUAL(
-            NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
-            env.DiskRegistry->Allocate.GetStorageMediaKind());
-
-        env.Execute<TEvAllocateResponse>(
-            std::make_unique<TEvAllocate>("fs", 42, "", "", 2, 100, "fastshard"));
-        UNIT_ASSERT_VALUES_EQUAL(1, env.DiskRegistry->Allocate.GetReplicaCount());
-        UNIT_ASSERT_EQUAL(
-            NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR2,
-            env.DiskRegistry->Allocate.GetStorageMediaKind());
-
-        auto response = env.Execute<TEvAllocateResponse>(
-            std::make_unique<TEvAllocate>("other", 42, "", "", 0, 100, "fastshard"));
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL("fs", env.DiskRegistry->Allocate.GetDiskId());
-
-        response = env.Execute<TEvAllocateResponse>(
-            std::make_unique<TEvAllocate>("other", 42, "", "", 4, 100, "fastshard"));
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
-        UNIT_ASSERT_VALUES_EQUAL("fs", env.DiskRegistry->Allocate.GetDiskId());
-    }
-
     Y_UNIT_TEST(ShouldDescribeDevices)
     {
-        TDRProxyEnv env;
+        TDiskRegistryProxyEnv env;
         FillLayout(env.DiskRegistry->DescribeResponse);
 
         auto response =
-            env.Execute<TEvDeviceService::TEvDescribeDevicesResponse>(
-                std::make_unique<TEvDeviceService::TEvDescribeDevicesRequest>(
+            env.Execute<TEvDiskRegistryProxy::TEvDescribeDevicesResponse>(
+                std::make_unique<TEvDiskRegistryProxy::TEvDescribeDevicesRequest>(
                     "fs"));
         UNIT_ASSERT_C(!HasError(response->GetError()), response->GetError());
         CheckLayout(response->Layout, {});
@@ -553,26 +550,26 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
 
     Y_UNIT_TEST(ShouldMapLifecycleRequests)
     {
-        TDRProxyEnv env;
+        TDiskRegistryProxyEnv env;
         auto& dr = *env.DiskRegistry;
 
-        env.Execute<TEvDeviceService::TEvMarkForCleanupResponse>(
-            std::make_unique<TEvDeviceService::TEvMarkForCleanupRequest>(
+        env.Execute<TEvDiskRegistryProxy::TEvMarkForCleanupResponse>(
+            std::make_unique<TEvDiskRegistryProxy::TEvMarkForCleanupRequest>(
                 "fs", 42));
         UNIT_ASSERT_VALUES_EQUAL("fs", dr.MarkForCleanup.GetDiskId());
-        // TODO(issue-7373): restore when DR supports OwnerVolumeTabletId
+        // TODO(#7373): restore when DiskRegistry supports OwnerVolumeTabletId
         // UNIT_ASSERT_VALUES_EQUAL(42, dr.MarkForCleanup.GetOwnerVolumeTabletId());
 
-        env.Execute<TEvDeviceService::TEvDeallocateDevicesResponse>(
-            std::make_unique<TEvDeviceService::TEvDeallocateDevicesRequest>(
+        env.Execute<TEvDiskRegistryProxy::TEvDeallocateDevicesResponse>(
+            std::make_unique<TEvDiskRegistryProxy::TEvDeallocateDevicesRequest>(
                 "fs", 42));
         UNIT_ASSERT_VALUES_EQUAL("fs", dr.Deallocate.GetDiskId());
-        // TODO(issue-7373): restore when DR supports OwnerVolumeTabletId
+        // TODO(#7373): restore when DiskRegistry supports OwnerVolumeTabletId
         // UNIT_ASSERT_VALUES_EQUAL(42, dr.Deallocate.GetOwnerVolumeTabletId());
         UNIT_ASSERT(!dr.Deallocate.GetSync());
 
-        env.Execute<TEvDeviceService::TEvFinishRepairResponse>(
-            std::make_unique<TEvDeviceService::TEvFinishRepairRequest>(
+        env.Execute<TEvDiskRegistryProxy::TEvFinishRepairResponse>(
+            std::make_unique<TEvDiskRegistryProxy::TEvFinishRepairRequest>(
                 "fs", "uuid-3"));
         UNIT_ASSERT_VALUES_EQUAL("fs", dr.MarkReplacement.GetDiskId());
         UNIT_ASSERT_VALUES_EQUAL("uuid-3", dr.MarkReplacement.GetDeviceId());
@@ -581,12 +578,12 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
 
     Y_UNIT_TEST(ShouldMapReplicaRequests)
     {
-        TDRProxyEnv env;
+        TDiskRegistryProxyEnv env;
         auto& dr = *env.DiskRegistry;
 
-        env.Execute<TEvDeviceService::TEvFinishMigrationResponse>(
-            std::make_unique<TEvDeviceService::TEvFinishMigrationRequest>(
-                "fs", 3, 1, "uuid-2", "uuid-4"));
+        env.Execute<TEvDiskRegistryProxy::TEvFinishMigrationResponse>(
+            std::make_unique<TEvDiskRegistryProxy::TEvFinishMigrationRequest>(
+                "fs", 1, "uuid-2", "uuid-4"));
         UNIT_ASSERT_VALUES_EQUAL("fs/1", dr.FinishMigration.GetDiskId());
         UNIT_ASSERT_VALUES_EQUAL(1, dr.FinishMigration.MigrationsSize());
         UNIT_ASSERT_VALUES_EQUAL(
@@ -596,79 +593,80 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
             "uuid-4",
             dr.FinishMigration.GetMigrations(0).GetTargetDeviceId());
 
-        env.Execute<TEvDeviceService::TEvReplaceDeviceResponse>(
-            std::make_unique<TEvDeviceService::TEvReplaceDeviceRequest>(
-                "fs", 3, 1, "uuid-2"));
+        env.Execute<TEvDiskRegistryProxy::TEvReplaceDeviceResponse>(
+            std::make_unique<TEvDiskRegistryProxy::TEvReplaceDeviceRequest>(
+                "fs", 1, "uuid-2"));
         UNIT_ASSERT_VALUES_EQUAL("fs/1", dr.ReplaceDevice.GetDiskId());
         UNIT_ASSERT_VALUES_EQUAL("uuid-2", dr.ReplaceDevice.GetDeviceUUID());
         UNIT_ASSERT_VALUES_EQUAL("", dr.ReplaceDevice.GetDeviceReplacementUUID());
 
-        // A single-device shard is a plain disk, not a replica.
-        env.Execute<TEvDeviceService::TEvFinishMigrationResponse>(
-            std::make_unique<TEvDeviceService::TEvFinishMigrationRequest>(
-                "fs", 1, 0, "uuid-1", "uuid-4"));
+        // A disk without replicas is a plain disk.
+        env.Execute<TEvDiskRegistryProxy::TEvFinishMigrationResponse>(
+            std::make_unique<TEvDiskRegistryProxy::TEvFinishMigrationRequest>(
+                "fs", std::nullopt, "uuid-1", "uuid-4"));
         UNIT_ASSERT_VALUES_EQUAL("fs", dr.FinishMigration.GetDiskId());
-        env.Execute<TEvDeviceService::TEvReplaceDeviceResponse>(
-            std::make_unique<TEvDeviceService::TEvReplaceDeviceRequest>(
-                "fs", 1, 0, "uuid-1"));
+        env.Execute<TEvDiskRegistryProxy::TEvReplaceDeviceResponse>(
+            std::make_unique<TEvDiskRegistryProxy::TEvReplaceDeviceRequest>(
+                "fs", std::nullopt, "uuid-1"));
         UNIT_ASSERT_VALUES_EQUAL("fs", dr.ReplaceDevice.GetDiskId());
     }
 
     Y_UNIT_TEST(ShouldPassDiskRegistryErrors)
     {
-        TDRProxyEnv env;
+        TDiskRegistryProxyEnv env;
         env.DiskRegistry->Error = MakeError(E_NOT_FOUND, "no such disk");
 
         auto allocate = env.Execute<TEvAllocateResponse>(
-            std::make_unique<TEvAllocate>("fs", 42, "", "", 3, 100, "fastshard"));
+            std::make_unique<TEvAllocate>(
+                "fs", 42, "", "", Mirror3, 2, 100, "fastshard"));
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, allocate->GetStatus());
         UNIT_ASSERT(allocate->Layout.Replicas.empty());
 
         auto describe =
-            env.Execute<TEvDeviceService::TEvDescribeDevicesResponse>(
-                std::make_unique<TEvDeviceService::TEvDescribeDevicesRequest>(
+            env.Execute<TEvDiskRegistryProxy::TEvDescribeDevicesResponse>(
+                std::make_unique<TEvDiskRegistryProxy::TEvDescribeDevicesRequest>(
                     "fs"));
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, describe->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL("no such disk", describe->GetErrorReason());
         UNIT_ASSERT(describe->Layout.Replicas.empty());
 
-        auto mark = env.Execute<TEvDeviceService::TEvMarkForCleanupResponse>(
-            std::make_unique<TEvDeviceService::TEvMarkForCleanupRequest>(
+        auto mark = env.Execute<TEvDiskRegistryProxy::TEvMarkForCleanupResponse>(
+            std::make_unique<TEvDiskRegistryProxy::TEvMarkForCleanupRequest>(
                 "fs", 42));
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, mark->GetStatus());
 
         auto deallocate =
-            env.Execute<TEvDeviceService::TEvDeallocateDevicesResponse>(
-                std::make_unique<TEvDeviceService::TEvDeallocateDevicesRequest>(
+            env.Execute<TEvDiskRegistryProxy::TEvDeallocateDevicesResponse>(
+                std::make_unique<TEvDiskRegistryProxy::TEvDeallocateDevicesRequest>(
                     "fs", 42));
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, deallocate->GetStatus());
 
-        auto repair = env.Execute<TEvDeviceService::TEvFinishRepairResponse>(
-            std::make_unique<TEvDeviceService::TEvFinishRepairRequest>(
+        auto repair = env.Execute<TEvDiskRegistryProxy::TEvFinishRepairResponse>(
+            std::make_unique<TEvDiskRegistryProxy::TEvFinishRepairRequest>(
                 "fs", "uuid"));
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, repair->GetStatus());
 
         auto migration =
-            env.Execute<TEvDeviceService::TEvFinishMigrationResponse>(
-                std::make_unique<TEvDeviceService::TEvFinishMigrationRequest>(
-                    "fs", 1, 0, "source", "target"));
+            env.Execute<TEvDiskRegistryProxy::TEvFinishMigrationResponse>(
+                std::make_unique<TEvDiskRegistryProxy::TEvFinishMigrationRequest>(
+                    "fs", std::nullopt, "source", "target"));
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, migration->GetStatus());
 
-        auto replace = env.Execute<TEvDeviceService::TEvReplaceDeviceResponse>(
-            std::make_unique<TEvDeviceService::TEvReplaceDeviceRequest>(
-                "fs", 1, 0, "uuid"));
+        auto replace = env.Execute<TEvDiskRegistryProxy::TEvReplaceDeviceResponse>(
+            std::make_unique<TEvDiskRegistryProxy::TEvReplaceDeviceRequest>(
+                "fs", std::nullopt, "uuid"));
         UNIT_ASSERT_VALUES_EQUAL(E_NOT_FOUND, replace->GetStatus());
     }
 
-    Y_UNIT_TEST(ShouldReplayRequestsQueuedWhileConnecting)
+    Y_UNIT_TEST(ShouldSendRequestsOnlyAfterPipeConnects)
     {
-        TDRProxyEnv env;
+        TDiskRegistryProxyEnv env;
         auto& dr = *env.DiskRegistry;
 
-        // The requests reach the proxy before its pipe to the disk registry
-        // is up and leave for the tablet only after that.
+        // The requests reach the proxy before its pipe is up, and the pipe
+        // sends them to the tablet only after it connects.
         bool connected = false;
-        ui32 queued = 0;
+        ui32 sent = 0;
         env.Env.GetRuntime().SetEventFilter([&] (auto&, auto& event) {
             switch (event->GetTypeRewrite()) {
                 case TEvTabletPipe::EvClientConnected: {
@@ -680,10 +678,10 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
                     }
                     break;
                 }
-                case TEvDeviceService::EvDescribeDevicesRequest:
-                case TEvDeviceService::EvMarkForCleanupRequest:
+                case TEvDiskRegistryProxy::EvDescribeDevicesRequest:
+                case TEvDiskRegistryProxy::EvMarkForCleanupRequest:
                     UNIT_ASSERT(!connected);
-                    ++queued;
+                    ++sent;
                     break;
                 case TEvDiskRegistry::EvDescribeDiskRequest:
                 case TEvDiskRegistry::EvMarkDiskForCleanupRequest:
@@ -703,12 +701,12 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
 
         UNIT_ASSERT_VALUES_EQUAL("fs-1", dr.Describe.GetDiskId());
         UNIT_ASSERT_VALUES_EQUAL("fs-2", dr.MarkForCleanup.GetDiskId());
-        UNIT_ASSERT_VALUES_EQUAL(2, queued);
+        UNIT_ASSERT_VALUES_EQUAL(2, sent);
     }
 
     Y_UNIT_TEST(ShouldCancelInflightRequestsWhenPipeBreaks)
     {
-        TDRProxyEnv env;
+        TDiskRegistryProxyEnv env;
         auto& runtime = env.Env.GetRuntime();
 
         auto response = env.Execute<TEvDescribeResponse>(
@@ -749,9 +747,12 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
     {
         auto config = DefaultConfig();
         config.SetTenantHiveTabletId(777);
-        config.SetFastShardDROwner(16045690984503103501ULL);
-        config.SetFastShardDROwnerIdx(2);
-        TDRProxyEnv env(true /* withDiskRegistry */, std::move(config));
+        config.SetFastShardDiskRegistryOwner(16045690984503103501ULL);
+        config.SetFastShardDiskRegistryOwnerIdx(2);
+        TDiskRegistryProxyEnv env(
+            true /* withDiskRegistry */,
+            std::move(config));
+        env.WaitForTablet();
 
         auto response = env.Execute<TEvDescribeResponse>(
             std::make_unique<TEvDescribe>("fs"));
@@ -762,14 +763,17 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
         UNIT_ASSERT_VALUES_EQUAL(777, hive.HiveId);
         UNIT_ASSERT_VALUES_EQUAL(16045690984503103501ULL, hive.Owner);
         UNIT_ASSERT_VALUES_EQUAL(2, hive.OwnerIdx);
+        UNIT_ASSERT_VALUES_EQUAL(1, hive.Lookups);
     }
 
     Y_UNIT_TEST(ShouldRetryLookupOnTimeout)
     {
         auto config = DefaultConfig();
-        config.SetFastShardDROwner(1);
-        config.SetFastShardDROwnerIdx(1);
-        TDRProxyEnv env(true /* withDiskRegistry */, std::move(config));
+        config.SetFastShardDiskRegistryOwner(1);
+        config.SetFastShardDiskRegistryOwnerIdx(1);
+        TDiskRegistryProxyEnv env(
+            true /* withDiskRegistry */,
+            std::move(config));
         auto& runtime = env.Env.GetRuntime();
         auto& hive = *env.HiveProxy;
 
@@ -777,14 +781,13 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
         env.Send(std::make_unique<TEvDescribe>("fs"));
         env.WaitFor([&] { return hive.Lookups == 1; });
 
-        hive.Hang = false;
-        runtime.AdvanceCurrentTime(TDuration::Minutes(1));
         auto describe = env.Recv<TEvDescribeResponse>();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, describe->GetStatus());
-        UNIT_ASSERT_STRING_CONTAINS(describe->GetErrorReason(), "timed out");
+        UNIT_ASSERT_STRING_CONTAINS(describe->GetErrorReason(), "not available");
 
-        // Looked up again after the reconnect delay.
-        runtime.AdvanceCurrentTime(env.Config->GetPipeClientMinRetryTime());
+        // The lookup repeats until the hive answers.
+        hive.Hang = false;
+        runtime.AdvanceCurrentTime(LookupTimeout);
         env.WaitFor([&] { return hive.Lookups == 2; });
         describe = env.Execute<TEvDescribeResponse>(
             std::make_unique<TEvDescribe>("fs"));
@@ -794,9 +797,11 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
     Y_UNIT_TEST(ShouldRejectRequestsWhenLookupFails)
     {
         auto config = DefaultConfig();
-        config.SetFastShardDROwner(1);
-        config.SetFastShardDROwnerIdx(1);
-        TDRProxyEnv env(true /* withDiskRegistry */, std::move(config));
+        config.SetFastShardDiskRegistryOwner(1);
+        config.SetFastShardDiskRegistryOwnerIdx(1);
+        TDiskRegistryProxyEnv env(
+            true /* withDiskRegistry */,
+            std::move(config));
         auto& runtime = env.Env.GetRuntime();
         auto& hive = *env.HiveProxy;
 
@@ -806,17 +811,14 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
 
         auto describe = env.Recv<TEvDescribeResponse>();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, describe->GetStatus());
-        UNIT_ASSERT_STRING_CONTAINS(
-            describe->GetErrorReason(),
-            "no such tablet");
         auto mark = env.Recv<TEvMarkResponse>();
         UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, mark->GetStatus());
         UNIT_ASSERT_VALUES_EQUAL("", env.DiskRegistry->Describe.GetDiskId());
         UNIT_ASSERT_VALUES_EQUAL(1, hive.Lookups);
 
-        // Looked up again after the reconnect delay.
+        // The lookup repeats until the hive finds the tablet.
         hive.Error = {};
-        runtime.AdvanceCurrentTime(env.Config->GetPipeClientMinRetryTime());
+        runtime.AdvanceCurrentTime(LookupTimeout);
         env.WaitFor([&] { return hive.Lookups == 2; });
         describe = env.Execute<TEvDescribeResponse>(
             std::make_unique<TEvDescribe>("fs"));
@@ -826,15 +828,16 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
 
     Y_UNIT_TEST(ShouldRejectRequestsWithoutDiskRegistry)
     {
-        TDRProxyEnv env(false /* withDiskRegistry */);
+        TDiskRegistryProxyEnv env(false /* withDiskRegistry */);
 
         auto allocate = env.Execute<TEvAllocateResponse>(
-            std::make_unique<TEvAllocate>("fs", 42, "", "", 3, 100, "fastshard"));
+            std::make_unique<TEvAllocate>(
+                "fs", 42, "", "", Mirror3, 2, 100, "fastshard"));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, allocate->GetStatus());
 
         auto describe =
-            env.Execute<TEvDeviceService::TEvDescribeDevicesResponse>(
-                std::make_unique<TEvDeviceService::TEvDescribeDevicesRequest>(
+            env.Execute<TEvDiskRegistryProxy::TEvDescribeDevicesResponse>(
+                std::make_unique<TEvDiskRegistryProxy::TEvDescribeDevicesRequest>(
                     "fs"));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, describe->GetStatus());
     }
@@ -842,11 +845,12 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
     Y_UNIT_TEST(ShouldRejectRequestsWhenDiskRegistryIsDown)
     {
         auto config = DefaultConfig();
-        config.SetFastShardDRTabletId(MakeTabletID(false, 2));
-        TDRProxyEnv env(false /* withDiskRegistry */, std::move(config));
+        config.SetFastShardDiskRegistryTabletId(MakeTabletID(false, 2));
+        TDiskRegistryProxyEnv env(false /* withDiskRegistry */, std::move(config));
 
         // Queued for the connection that never comes, then cancelled.
-        env.Send(std::make_unique<TEvAllocate>("fs", 42, "", "", 3, 100, "fastshard"));
+        env.Send(std::make_unique<TEvAllocate>(
+                "fs", 42, "", "", Mirror3, 2, 100, "fastshard"));
         env.Send(std::make_unique<TEvDescribe>("fs"));
 
         auto allocate = env.Recv<TEvAllocateResponse>();
@@ -877,7 +881,7 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
 
         // Undeclared headers survive as unknown fields.
         auto received =
-            LoadEvent<TEvDeviceService::TEvLayoutChangedRequest>(bytes);
+            LoadEvent<TEvDiskRegistryProxy::TEvLayoutChangedRequest>(bytes);
         UNIT_ASSERT_VALUES_EQUAL(sent.Type(), received->Type());
         UNIT_ASSERT_VALUES_EQUAL("fs", received->Record.GetFileSystemId());
 
@@ -887,7 +891,7 @@ Y_UNIT_TEST_SUITE(TDRProxyTest)
             sent.Record,
             reemitted->Record));
 
-        TEvDeviceService::TEvLayoutChangedResponse answer(
+        TEvDiskRegistryProxy::TEvLayoutChangedResponse answer(
             MakeError(E_REJECTED, "busy"));
         const TString answerBytes = SerializeEvent(answer);
 

@@ -6,16 +6,20 @@
 #include <cloud/filestore/private/api/protos/fastshard.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
+#include <cloud/storage/core/protos/media.pb.h>
+
 #include <contrib/ydb/library/actors/core/actorid.h>
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 
+#include <optional>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-#define FILESTORE_DEVICE_SERVICE_REQUESTS(xxx, ...)                            \
+#define FILESTORE_DISK_REGISTRY_PROXY_REQUESTS(xxx, ...)                       \
     xxx(AllocateDevices,    __VA_ARGS__)                                       \
     xxx(DescribeDevices,    __VA_ARGS__)                                       \
     xxx(MarkForCleanup,     __VA_ARGS__)                                       \
@@ -23,11 +27,11 @@ namespace NCloud::NFileStore::NStorage {
     xxx(FinishRepair,       __VA_ARGS__)                                       \
     xxx(FinishMigration,    __VA_ARGS__)                                       \
     xxx(ReplaceDevice,      __VA_ARGS__)                                       \
-// FILESTORE_DEVICE_SERVICE_REQUESTS
+// FILESTORE_DISK_REGISTRY_PROXY_REQUESTS
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TEvDeviceService
+struct TEvDiskRegistryProxy
 {
     struct TDeviceMigration
     {
@@ -55,7 +59,8 @@ struct TEvDeviceService
         const ui64 TabletId;
         const TString CloudId;
         const TString FolderId;
-        const ui32 DeviceCount;
+        const NCloud::NProto::EStorageMediaKind MediaKind;
+        const ui32 ReplicaCount;
         const ui64 DeviceBlocksCount;
         const TString DevicePoolName;
 
@@ -64,14 +69,16 @@ struct TEvDeviceService
                 ui64 tabletId,
                 TString cloudId,
                 TString folderId,
-                ui32 deviceCount,
+                NCloud::NProto::EStorageMediaKind mediaKind,
+                ui32 replicaCount,
                 ui64 deviceBlocksCount,
                 TString devicePoolName)
             : FileSystemId(std::move(fileSystemId))
             , TabletId(tabletId)
             , CloudId(std::move(cloudId))
             , FolderId(std::move(folderId))
-            , DeviceCount(deviceCount)
+            , MediaKind(mediaKind)
+            , ReplicaCount(replicaCount)
             , DeviceBlocksCount(deviceBlocksCount)
             , DevicePoolName(std::move(devicePoolName))
         {}
@@ -173,24 +180,21 @@ struct TEvDeviceService
     // FinishMigration
     //
 
-    // DeviceCount and ReplicaIndex select the replica disk: <fs>/<index>, or
-    // <fs> itself for a single device.
+    // A set ReplicaIndex selects the replica disk <fs>/<index>, an unset one
+    // the disk <fs> itself.
     struct TFinishMigrationRequest
     {
         const TString FileSystemId;
-        const ui32 DeviceCount;
-        const ui32 ReplicaIndex;
+        const std::optional<ui32> ReplicaIndex;
         const TString SourceUUID;
         const TString TargetUUID;
 
         TFinishMigrationRequest(
                 TString fileSystemId,
-                ui32 deviceCount,
-                ui32 replicaIndex,
+                std::optional<ui32> replicaIndex,
                 TString sourceUUID,
                 TString targetUUID)
             : FileSystemId(std::move(fileSystemId))
-            , DeviceCount(deviceCount)
             , ReplicaIndex(replicaIndex)
             , SourceUUID(std::move(sourceUUID))
             , TargetUUID(std::move(targetUUID))
@@ -208,17 +212,14 @@ struct TEvDeviceService
     struct TReplaceDeviceRequest
     {
         const TString FileSystemId;
-        const ui32 DeviceCount;
-        const ui32 ReplicaIndex;
+        const std::optional<ui32> ReplicaIndex;
         const TString DeviceUUID;
 
         TReplaceDeviceRequest(
                 TString fileSystemId,
-                ui32 deviceCount,
-                ui32 replicaIndex,
+                std::optional<ui32> replicaIndex,
                 TString deviceUUID)
             : FileSystemId(std::move(fileSystemId))
-            , DeviceCount(deviceCount)
             , ReplicaIndex(replicaIndex)
             , DeviceUUID(std::move(deviceUUID))
         {}
@@ -234,7 +235,7 @@ struct TEvDeviceService
 
     enum EEvents
     {
-        EvBegin = TFileStoreEvents::DR_PROXY_START,
+        EvBegin = TFileStoreEvents::DISK_REGISTRY_PROXY_START,
 
         EvAllocateDevicesRequest = EvBegin + 1,
         EvAllocateDevicesResponse = EvBegin + 2,
@@ -265,16 +266,16 @@ struct TEvDeviceService
         EvLayoutChangedResponse = 272761157,
     };
 
-    static_assert(EvEnd < (int)TFileStoreEvents::DR_PROXY_END,
-        "EvEnd expected to be < TFileStoreEvents::DR_PROXY_END");
+    static_assert(EvEnd < (int)TFileStoreEvents::DISK_REGISTRY_PROXY_END,
+        "EvEnd expected to be < TFileStoreEvents::DISK_REGISTRY_PROXY_END");
 
-    FILESTORE_DEVICE_SERVICE_REQUESTS(FILESTORE_DECLARE_EVENTS)
+    FILESTORE_DISK_REGISTRY_PROXY_REQUESTS(FILESTORE_DECLARE_EVENTS)
 
     FILESTORE_DECLARE_PROTO_EVENTS(LayoutChanged, NProtoPrivate)
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NActors::TActorId MakeFileStoreDeviceRegistryProxyId();
+NActors::TActorId MakeFileStoreDiskRegistryProxyId();
 
 }   // namespace NCloud::NFileStore::NStorage

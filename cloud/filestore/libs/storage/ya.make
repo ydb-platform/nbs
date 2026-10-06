@@ -1,7 +1,7 @@
 RECURSE(
     api
     core
-    dr_proxy
+    disk_registry_proxy
     fastshard
     init
     model

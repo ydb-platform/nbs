@@ -10,6 +10,6 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-NActors::IActorPtr CreateDRProxy(TStorageConfigPtr config);
+NActors::IActorPtr CreateDiskRegistryProxy(TStorageConfigPtr config);
 
 }   // namespace NCloud::NFileStore::NStorage

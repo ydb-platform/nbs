@@ -6,7 +6,7 @@ using namespace NActors;
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TActorId MakeFileStoreDeviceRegistryProxyId()
+TActorId MakeFileStoreDiskRegistryProxyId()
 {
     return TActorId(0, "nfs-drproxy");
 }

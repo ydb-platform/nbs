@@ -1,13 +1,13 @@
-LIBRARY(filestore-libs-storage-dr_proxy-impl)
+LIBRARY(filestore-libs-storage-disk_registry_proxy-impl)
 
 SRCS(
-    dr_proxy.cpp
+    disk_registry_proxy.cpp
 )
 
 PEERDIR(
     cloud/blockstore/libs/storage/api
     cloud/filestore/libs/storage/core
-    cloud/filestore/libs/storage/dr_proxy/api
+    cloud/filestore/libs/storage/disk_registry_proxy/api
 
     cloud/storage/core/libs/actors
     cloud/storage/core/libs/api

@@ -936,12 +936,12 @@ message TStorageConfig
     optional uint32 ArtificialShardPhaseDelay = 548;
 
     // Disk registry tablet that manages the fast shard devices.
-    optional uint64 FastShardDRTabletId = 549;
+    optional uint64 FastShardDiskRegistryTabletId = 549;
 
     // Hive owner key of that tablet, looked up when the tablet id is unset.
-    optional uint64 FastShardDROwner = 550;
-    optional uint64 FastShardDROwnerIdx = 551;
+    optional uint64 FastShardDiskRegistryOwner = 550;
+    optional uint64 FastShardDiskRegistryOwnerIdx = 551;
 
     // Timeout for the lookup (in milliseconds).
-    optional uint32 FastShardDRLookupTimeout = 552;
+    optional uint32 FastShardDiskRegistryLookupTimeout = 552;
 }

@@ -435,10 +435,10 @@ public:
     [[nodiscard]] ui32 GetFastShardServerPort() const;
     [[nodiscard]] bool GetFastShardRuntimeEnabled() const;
     [[nodiscard]] bool GetFastShardExtendedVerificationEnabled() const;
-    [[nodiscard]] ui64 GetFastShardDRTabletId() const;
-    [[nodiscard]] ui64 GetFastShardDROwner() const;
-    [[nodiscard]] ui64 GetFastShardDROwnerIdx() const;
-    [[nodiscard]] TDuration GetFastShardDRLookupTimeout() const;
+    [[nodiscard]] ui64 GetFastShardDiskRegistryTabletId() const;
+    [[nodiscard]] ui64 GetFastShardDiskRegistryOwner() const;
+    [[nodiscard]] ui64 GetFastShardDiskRegistryOwnerIdx() const;
+    [[nodiscard]] TDuration GetFastShardDiskRegistryLookupTimeout() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 

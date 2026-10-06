@@ -1,4 +1,4 @@
-UNITTEST_FOR(cloud/filestore/libs/storage/dr_proxy/impl)
+UNITTEST_FOR(cloud/filestore/libs/storage/disk_registry_proxy/impl)
 
 IF (SANITIZER_TYPE)
     INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/medium.inc)
@@ -7,7 +7,7 @@ ELSE()
 ENDIF()
 
 SRCS(
-    dr_proxy_ut.cpp
+    disk_registry_proxy_ut.cpp
 )
 
 PEERDIR(

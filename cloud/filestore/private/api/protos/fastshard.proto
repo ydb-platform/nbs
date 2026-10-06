@@ -65,7 +65,7 @@ message TFastShardCommandResponse
 
 ////////////////////////////////////////////////////////////////////////////////
 // LayoutChanged request/response. A wire duplicate of the blockstore
-// ReallocateDisk request/response, see TEvDeviceService.
+// ReallocateDisk request/response, see TEvDiskRegistryProxy.
 
 message TLayoutChangedRequest
 {

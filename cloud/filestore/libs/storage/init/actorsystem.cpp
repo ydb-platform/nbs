@@ -13,8 +13,8 @@
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
-#include <cloud/filestore/libs/storage/dr_proxy/api/service.h>
-#include <cloud/filestore/libs/storage/dr_proxy/impl/dr_proxy.h>
+#include <cloud/filestore/libs/storage/disk_registry_proxy/api/service.h>
+#include <cloud/filestore/libs/storage/disk_registry_proxy/impl/disk_registry_proxy.h>
 #include <cloud/filestore/libs/storage/service/service.h>
 #include <cloud/filestore/libs/storage/ss_proxy/ss_proxy.h>
 #include <cloud/filestore/libs/storage/tablet/tablet.h>
@@ -132,14 +132,14 @@ public:
                 appData->UserPoolId));
 
         //
-        // DRProxy
+        // DiskRegistryProxy
         //
 
         if (Args.StorageConfig->GetFastShardRuntimeEnabled()) {
-            auto drProxy = CreateDRProxy(Args.StorageConfig);
+            auto drProxy = CreateDiskRegistryProxy(Args.StorageConfig);
 
             setup->LocalServices.emplace_back(
-                MakeFileStoreDeviceRegistryProxyId(),
+                MakeFileStoreDiskRegistryProxyId(),
                 TActorSetupCmd(
                     drProxy.release(),
                     TMailboxType::Revolving,
