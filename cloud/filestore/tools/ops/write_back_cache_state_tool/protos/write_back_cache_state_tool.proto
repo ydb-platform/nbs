@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package NCloud.NFileStore.NWriteBackCacheStateTool.NProto;
+
+////////////////////////////////////////////////////////////////////////////////
+
+enum EStateFileType
+{
+    Unknown = 0;
+    WriteBackCache = 1;
+    DirectoryHandles = 2;
+    HandleOpsQueue = 3;
+}
+
+message TStateFileInfo
+{
+    string FilePath = 1;
+    string FileSystemId = 2;
+    string SessionId = 3;
+    EStateFileType FileType = 4;
+    uint64 FileSize = 5;
+    bool IsLocked = 6;
+}
+
+message TStateFileList
+{
+    string StateDirectory = 1;
+    repeated TStateFileInfo Files = 2;
+}
