@@ -24,6 +24,8 @@ SET(
     cloud/filestore/tests/fio/qemu-kikimr-zero-copy-fallback-test/nfs-patch.txt
 )
 
+SET(ENABLE_EXTERNAL_DATA_CHANNEL yes)
+
 SET(QEMU_VIRTIO fs)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/filestore/tests/recipes/service-kikimr.inc)
