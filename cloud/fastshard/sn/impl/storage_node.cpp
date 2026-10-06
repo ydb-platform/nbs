@@ -200,6 +200,13 @@ public:
         return {};
     }
 
+    NCloud::NProto::TFormatDeviceResponse FormatDevice(
+        NCloud::NProto::TFormatDeviceRequest request) override
+    {
+        Y_UNUSED(request);
+        return {};
+    }
+
     NCloud::NProto::TReadPagesResponse ReadPages(
         NCloud::NProto::TReadPagesRequest request) override
     {
