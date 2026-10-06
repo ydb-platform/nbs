@@ -60,6 +60,8 @@ type Value = ydb_types.Value
 
 type RawValue = ydb_types.RawValue
 
+type StructValueOption = ydb_types.StructValueOption
+
 func OptionalValue(v Value) Value { return ydb_types.OptionalValue(v) }
 
 func TupleValue(values ...Value) Value {
