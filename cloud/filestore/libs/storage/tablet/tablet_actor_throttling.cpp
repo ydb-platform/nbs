@@ -41,10 +41,16 @@ TThrottlingRequestInfo BuildRequestInfo(
     const TEvService::TEvWriteDataRequest& request,
     ui32 policyVersion)
 {
+    ui64 byteCount = NCloud::NFileStore::CalculateByteCount(request.Record);
+    if (byteCount == 0 && request.GetPayloadCount() > 0) {
+        byteCount = request.GetPayload(0).GetSize();
+    }
+
     return {
-        NStorage::CalculateByteCount(request),
+        byteCount,
         static_cast<ui32>(TThrottlingPolicy::EOpType::Write),
-        policyVersion};
+        policyVersion
+    };
 }
 
 template <>
