@@ -104,20 +104,14 @@ void TIOCompanion::HandleReadBlobCompleted(
     const ui32 channel = msg->BlobId.Channel();
     const ui32 groupId = msg->GroupId;
     const bool isOverlayDisk = blobTabletId != TabletID;
-    ResourceMetricsQueue->Push(
-        NPartition::TUpdateNetworkStat(ctx.Now(), msg->BytesCount));
+    ResourceMetricsQueue->Push(TUpdateNetworkStat(ctx.Now(), msg->BytesCount));
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,
             "HandleReadBlobCompleted: invalid blob id received");
     } else {
-        ResourceMetricsQueue->Push(
-            NPartition::TUpdateReadThroughput(
-                ctx.Now(),
-                channel,
-                groupId,
-                msg->BytesCount,
-                isOverlayDisk));
+        ResourceMetricsQueue->Push(TUpdateReadThroughput(
+            ctx.Now(), channel, groupId, msg->BytesCount, isOverlayDisk));
     }
 
     if (isOverlayDisk) {

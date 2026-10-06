@@ -10,7 +10,7 @@ int main(int argc, char** argv)
     Y_UNUSED(argv);
 
     {
-        using namespace NCloud::NBlockStore::NStorage::NPartition;
+        using namespace NCloud::NBlockStore::NStorage;
 
         const auto buffers = GetBuffers(4096);
         const auto blockRanges = GetBlockRanges();
@@ -29,7 +29,7 @@ int main(int argc, char** argv)
     }
 
     {
-        using namespace NCloud::NBlockStore::NStorage::NPartition;
+        using namespace NCloud::NBlockStore::NStorage;
 
         const auto blob = BuildZeroFreshBlocksBlobContent(
             ZeroFreshBlocksRange

@@ -2,7 +2,7 @@
 
 #include <util/generic/ylimits.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -61,4 +61,4 @@ void TBarriers::GetCommitIds(TVector<ui64>& result) const
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

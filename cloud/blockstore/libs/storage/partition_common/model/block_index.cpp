@@ -6,7 +6,7 @@
 
 #include <cstring>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
@@ -167,4 +167,4 @@ void TBlockIndex::GetCommitIds(ui32 blockIndex, TVector<ui64>& commitIds)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

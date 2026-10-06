@@ -9,7 +9,7 @@
 
 #include <util/generic/size_literals.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
@@ -372,7 +372,7 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                 EChannelPermission::UserWritesAllowed,
                 1,
                 1024);
-            UNIT_ASSERT(blobId.Channel() == TPartitionSchema::FirstDataChannel);
+            UNIT_ASSERT(blobId.Channel() == DataChannelStart);
         }
     }
 
@@ -457,7 +457,7 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                     1024
                 );
                 UNIT_ASSERT_VALUES_EQUAL(
-                    ui32(TPartitionSchema::FirstDataChannel),
+                    ui32(DataChannelStart),
                     blobId.Channel()
                 );
                 auto blobId2 = state.GenerateBlobId(
@@ -467,14 +467,14 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                     1024
                 );
                 UNIT_ASSERT_VALUES_EQUAL(
-                    ui32(TPartitionSchema::FirstDataChannel + 1),
+                    ui32(DataChannelStart + 1),
                     blobId2.Channel()
                 );
             }
 
             UNIT_ASSERT_VALUES_EQUAL(0, state.GetAlmostFullChannelCount());
             state.UpdateChannelFreeSpaceShare(
-                TPartitionSchema::FirstDataChannel,
+                DataChannelStart,
                 0.15
             );
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetAlmostFullChannelCount());
@@ -487,13 +487,13 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                     1024
                 );
                 UNIT_ASSERT_VALUES_EQUAL(
-                    ui32(TPartitionSchema::FirstDataChannel + 1),
+                    ui32(DataChannelStart + 1),
                     blobId.Channel()
                 );
             }
 
             state.UpdateChannelFreeSpaceShare(
-                TPartitionSchema::FirstDataChannel,
+                DataChannelStart,
                 0.16
             );
             UNIT_ASSERT_VALUES_EQUAL(1, state.GetAlmostFullChannelCount());
@@ -506,11 +506,11 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                     1,
                     1024
                 );
-                if (blobId.Channel() == TPartitionSchema::FirstDataChannel) {
+                if (blobId.Channel() == DataChannelStart) {
                     ++firstChannelSelected;
                 } else {
                     UNIT_ASSERT_VALUES_EQUAL(
-                        ui32(TPartitionSchema::FirstDataChannel + 1),
+                        ui32(DataChannelStart + 1),
                         blobId.Channel()
                     );
                 }
@@ -519,11 +519,11 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
             UNIT_ASSERT(firstChannelSelected < 150 && firstChannelSelected > 50);
 
             state.UpdateChannelFreeSpaceShare(
-                TPartitionSchema::FirstDataChannel,
+                DataChannelStart,
                 0.16
             );
             state.UpdateChannelFreeSpaceShare(
-                TPartitionSchema::FirstDataChannel + 1,
+                DataChannelStart + 1,
                 0.161
             );
             UNIT_ASSERT_VALUES_EQUAL(2, state.GetAlmostFullChannelCount());
@@ -536,11 +536,11 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                     1,
                     1024
                 );
-                if (blobId.Channel() == TPartitionSchema::FirstDataChannel) {
+                if (blobId.Channel() == DataChannelStart) {
                     ++firstChannelSelected;
                 } else {
                     UNIT_ASSERT_VALUES_EQUAL(
-                        ui32(TPartitionSchema::FirstDataChannel + 1),
+                        ui32(DataChannelStart + 1),
                         blobId.Channel()
                     );
                 }
@@ -584,7 +584,7 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                 1024
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                ui32(TPartitionSchema::FirstDataChannel),
+                ui32(DataChannelStart),
                 mixedBlobId.Channel()
             );
             auto mergedBlobId = state.GenerateBlobId(
@@ -594,12 +594,12 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                 1024
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                ui32(TPartitionSchema::FirstDataChannel + 1),
+                ui32(DataChannelStart + 1),
                 mergedBlobId.Channel()
             );
         }
 
-        state.UpdatePermissions(TPartitionSchema::FirstDataChannel, {});
+        state.UpdatePermissions(DataChannelStart, {});
 
         {
             auto mixedBlobId = state.GenerateBlobId(
@@ -609,7 +609,7 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
                 1024
             );
             UNIT_ASSERT_VALUES_EQUAL(
-                ui32(TPartitionSchema::FirstDataChannel + 1),
+                ui32(DataChannelStart + 1),
                 mixedBlobId.Channel()
             );
         }
@@ -815,4 +815,4 @@ Y_UNIT_TEST_SUITE(TPartitionChannelsStateTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

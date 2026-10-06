@@ -6,7 +6,7 @@
 #include <util/string/builder.h>
 #include <util/ysaveload.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -143,4 +143,4 @@ NProto::TError ParseFreshBlobContent(
     return {};
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

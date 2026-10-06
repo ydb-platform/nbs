@@ -8,11 +8,12 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
+#include <cloud/blockstore/libs/storage/core/transaction.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/group_downtimes.h>
-#include <cloud/blockstore/libs/storage/partition_common/model/part_counters_wrapper.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_counters_wrapper.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 #include <cloud/blockstore/libs/storage/protos_ydb/volume.pb.h>
