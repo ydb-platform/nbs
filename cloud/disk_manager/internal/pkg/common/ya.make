@@ -16,6 +16,7 @@ SRCS(
     grpc_server_tls_provider.go
     inflight_queue.go
     progress_saver.go
+    stable_read.go
     util.go
 )
 
@@ -23,6 +24,7 @@ GO_TEST_SRCS(
     disk_kind_test.go
     grpc_tls_provider_test.go
     inflight_queue_test.go
+    stable_read_test.go
 )
 
 END()
