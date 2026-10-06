@@ -167,7 +167,7 @@ TString RenderSearchResultTable(
                         TABLED() {
                             if (result.Status == ECellDescribeStatus::Found) {
                                 // the local disk is on this same node: linked
-                                // relative to /blockstore/Cells so the Viewer
+                                // relative to /blockstore/cells so the Viewer
                                 // node prefix is preserved
                                 RenderLink(
                                     out,
@@ -211,62 +211,25 @@ TString RenderSearchResultTable(
     return out.Str();
 }
 
-void RenderStat(
-    IOutputStream& out,
-    TStringBuf box,
-    const TString& value,
-    const TString& caption)
+void RenderStat(IOutputStream& out, size_t value, TStringBuf caption)
 {
-    out << "<div class='col-sm-3'><div class='" << box << "'>"
+    out << "<div class='col-sm-3'><div class='well well-sm'>"
         << "<div class='stat'>" << value << "</div>"
         << "<small class='text-muted'>" << caption << "</small>"
         << "</div></div>";
 }
 
-void RenderSummary(
-    IOutputStream& out,
-    const TCellsConfig& config,
-    const TCellsSnapshot& snapshot)
+// cells need no tile: each one's panel heading below is its summary
+void RenderSummary(IOutputStream& out, const TCellsSnapshot& snapshot)
 {
-    // a host nobody pings is only "not found dead yet", so it is kept out of
-    // the alive count rather than vouched for
-    ui32 alive = 0;
-    ui32 total = 0;
-    ui32 notProbed = 0;
-    for (const auto& [cellId, statuses]: snapshot.HostStatuses) {
-        const auto* cellConfig = config.GetCells().FindPtr(cellId);
-        if (!cellConfig || !(*cellConfig)->GetHostMigrationEnabled()) {
-            notProbed += statuses.size();
-            continue;
-        }
-        total += statuses.size();
-        alive += CountIf(statuses, [](const auto& s) { return s.Alive; });
-    }
-
     THashSet<TString> peers;
     for (const auto& row: snapshot.InboundActivity) {
         peers.insert(row.Peer);
     }
 
     out << "<div class='row'>";
-    RenderStat(
-        out,
-        "well well-sm",
-        ToString(config.GetCells().size()),
-        "remote cells");
-    RenderStat(
-        out,
-        alive < total ? "alert alert-warning" : "well well-sm",
-        TStringBuilder() << alive << " / " << total,
-        notProbed ? TStringBuilder() << "hosts alive, " << notProbed
-                                     << " not probed"
-                  : TStringBuilder() << "hosts alive");
-    RenderStat(
-        out,
-        "well well-sm",
-        ToString(snapshot.Mounts.size()),
-        "remote mounts");
-    RenderStat(out, "well well-sm", ToString(peers.size()), "inbound peers");
+    RenderStat(out, snapshot.Mounts.size(), "intercell mounts");
+    RenderStat(out, peers.size(), "inbound peers");
     out << "</div>";
 }
 
@@ -438,7 +401,7 @@ void RenderMounts(
     const TVector<TCellMountStatus>& mounts,
     const TDiagnosticsConfig& diagnosticsConfig)
 {
-    out << "<h3>Remote mounts <small>disks this node serves through other "
+    out << "<h3>Intercell mounts <small>disks this node serves through other "
            "cells</small></h3>";
     if (mounts.empty()) {
         out << "<p class='text-muted'>None.</p>";
@@ -562,7 +525,7 @@ void RenderConfig(IOutputStream& out, const TCellsConfig& config)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The /blockstore/Cells page. Renders the manager's snapshot on a plain open;
+// The /blockstore/cells page. Renders the manager's snapshot on a plain open;
 // delegates a disk search to the manager's SearchVolume and renders the result
 // once its future completes, so the mon thread never waits on RPCs.
 class TCellsMonActor final
@@ -586,7 +549,7 @@ public:
         if (mon) {
             auto* root = mon->RegisterIndexPage("blockstore", "BlockStore");
             mon->RegisterActorPage(
-                root, "Cells", "Cells", false, ctx.ActorSystem(), SelfId());
+                root, "cells", "Cells", false, ctx.ActorSystem(), SelfId());
         }
         Become(&TThis::StateWork);
     }
@@ -691,7 +654,7 @@ void RenderCellsPage(
     out << PageStyle << "<div class='cells-page'>"
         << "<h2>Cells <span class='label label-primary'>this node: "
         << EncodeHtmlPcdata(config.GetCellId()) << "</span></h2>";
-    RenderSummary(out, config, snapshot);
+    RenderSummary(out, snapshot);
     RenderSearchPanel(out, {}, {});
     RenderCells(out, config, snapshot.HostStatuses);
     RenderMounts(out, snapshot.Mounts, diagnosticsConfig);

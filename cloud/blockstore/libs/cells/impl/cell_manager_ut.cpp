@@ -465,8 +465,8 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             "alive</span></td><td><span class='badge'>0</span></td>"
             "<td>grpc</td><td>9001</td>");
 
-        // a host nobody pings is not vouched for: not counted alive, and its
-        // cell is neither green nor folded
+        // a host nobody pings is not vouched for: its cell is neither green
+        // nor folded
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<details class='panel panel-default' open>"
@@ -475,14 +475,16 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             html,
             "<td>host-gamma</td><td><span class='label label-default'>"
             "not probed</span></td>");
+
+        // the summary counts what has no one-line heading of its own
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "<div class='stat'>1 / 1</div>"
-            "<small class='text-muted'>hosts alive, 1 not probed</small>");
+            "<div class='stat'>1</div>"
+            "<small class='text-muted'>intercell mounts</small>");
 
         // a remote mount names the host it goes through, linked to the disk
         // there, what carries its data now and where its tablet is
-        UNIT_ASSERT_STRING_CONTAINS(html, "Remote mounts");
+        UNIT_ASSERT_STRING_CONTAINS(html, "Intercell mounts");
         UNIT_ASSERT_STRING_CONTAINS(
             html,
             "<a href='http://host-alpha:8766/blockstore/service?action=search"
@@ -537,7 +539,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
             "&amp;Volume=disk-x' target='_blank' rel='noopener'>disk-x</a>"
             "</td><td>host-a</td>"
             "<td><span class='label label-success'>found</span></td>");
-        // the local hit links relative to /blockstore/Cells so the Viewer node
+        // the local hit links relative to /blockstore/cells so the Viewer node
         // prefix survives; no leading slash, no http://host:port
         UNIT_ASSERT_STRING_CONTAINS(
             html,
