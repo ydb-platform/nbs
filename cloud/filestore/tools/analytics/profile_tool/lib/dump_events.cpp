@@ -193,19 +193,7 @@ public:
     int Execute() override
     {
         TEventProcessor processor(Filter);
-        for (const auto& file: ProfileLogFiles) {
-            if (ProfileLogFiles.size() > 1) {
-                Cerr << "Reading " << file.Path << " " << file.EndTime << "\n";
-            }
-            const auto result = ProcessProfileLog(
-                file.Path,
-                processor,
-                OptsParseResult.GetRef().Has("ignore-errors"));
-            if (result) {
-                return result;
-            }
-        }
-        return 0;
+        return ProcessProfileLogs(processor);
     }
 };
 

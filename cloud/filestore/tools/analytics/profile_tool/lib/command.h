@@ -28,6 +28,8 @@ public:
     const NLastGetopt::TOpts& GetOpts() const;
 
 protected:
+    int ProcessProfileLogs(IEventProcessor& processor);
+
     static int ProcessProfileLog(
         const TString& path,
         IEventProcessor& processor,

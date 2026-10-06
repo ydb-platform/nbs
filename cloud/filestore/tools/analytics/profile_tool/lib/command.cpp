@@ -67,6 +67,21 @@ const NLastGetopt::TOpts& TCommand::GetOpts() const
     return Opts;
 }
 
+int TCommand::ProcessProfileLogs(IEventProcessor& processor)
+{
+    const bool ignoreErrors = OptsParseResult.GetRef().Has("ignore-errors");
+    for (const auto& file: ProfileLogFiles) {
+        if (ProfileLogFiles.size() > 1) {
+            Cerr << "Reading " << file.Path << " " << file.EndTime << "\n";
+        }
+        const auto result = ProcessProfileLog(file.Path, processor, ignoreErrors);
+        if (result) {
+            return result;
+        }
+    }
+    return 0;
+}
+
 int TCommand::ProcessProfileLog(
     const TString& path,
     IEventProcessor& processor,
