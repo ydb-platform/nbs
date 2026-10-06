@@ -6,6 +6,8 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/folder/tempdir.h>
+#include <util/stream/file.h>
 #include <util/stream/output.h>
 #include <util/system/tempfile.h>
 
@@ -138,6 +140,7 @@ public:
     {
         UpdateRawData(rawData);
     }
+
 };
 
 }   // namespace
@@ -230,6 +233,43 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         header.Version = static_cast<EFileRingBufferVersion>(11111);
 
         b.AssertValidateFailed("Unsupported file ring buffer version");
+    }
+
+    Y_UNIT_TEST(ShouldMapProvidedFileAfterPathIsReplaced)
+    {
+        TTempDir tempDir;
+        const auto stateFile = tempDir.Path() / "state";
+        const auto movedStateFile = tempDir.Path() / "original-state";
+        TFileOutput(stateFile).Write("original");
+
+        TFile openFile(
+            stateFile.GetPath(),
+            EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
+
+        stateFile.RenameTo(movedStateFile);
+        TFileOutput(stateFile).Write("replacement");
+
+        TFileMapFileRingBufferAccessor accessor(
+            openFile,
+            EFileRingBufferAccessorValidationMode::Debug,
+            TMemoryMapCommon::EOpenModeFlag::oRdOnly);
+
+        auto error = accessor.Map();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        auto rawData = accessor.GetRawData();
+        UNIT_ASSERT_VALUES_EQUAL(
+            "original",
+            TString(rawData.data(), rawData.size()));
+
+        accessor.Close();
+        error = accessor.Map();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        rawData = accessor.GetRawData();
+        UNIT_ASSERT_VALUES_EQUAL(
+            "original",
+            TString(rawData.data(), rawData.size()));
     }
 
     FILE_RING_BUFFER_TEST(ShouldValidateCorrectHeader)
@@ -440,21 +480,53 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         b.AssertValidateFailed("Invalid file ring buffer data capacity");
     }
 
-    FILE_RING_BUFFER_TEST(ShouldNotValidateInvalidReadPos)
+    FILE_RING_BUFFER_TEST(ShouldValidateHeaderLayoutSeparatelyFromPositions)
     {
         TBootstrap b;
-        b.ResizeAndRemap(sizeof(TFileRingBufferHeader) + sizeof(ui64));
+        b.Execute([](TFileRingBuffer&) {}, ver);
 
         auto& header = b.RawDataHeader();
-        header.Version = ver;
-        header.HeaderSize = sizeof(TFileRingBufferHeader);
-        header.MetadataOffset = sizeof(TFileRingBufferHeader);
-        header.MetadataCapacity = 0;
-        header.MetadataSize = 0;
-        header.DataOffset = sizeof(TFileRingBufferHeader);
-        header.DataCapacity = sizeof(ui64);
-        header.ReadPos = sizeof(ui64) + 1;
+        header.ReadPos = header.DataCapacity + 1;
+        header.WritePos = header.DataCapacity + 1;
 
+        auto error = TFileRingBufferValidator::ValidateHeaderLayout(
+            header,
+            b.RawData.size());
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        b.AssertValidateFailed("Invalid file ring buffer read position");
+
+        header.DataCapacity = b.RawData.size() - header.DataOffset + 1;
+        error = TFileRingBufferValidator::ValidateHeaderLayout(
+            header,
+            b.RawData.size());
+        UNIT_ASSERT_STRING_CONTAINS(
+            error.GetMessage(),
+            "Invalid file ring buffer data capacity");
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldNotValidateOutOfRangePositions)
+    {
+        TBootstrap b;
+        b.Execute([](TFileRingBuffer&) {}, ver);
+        b.AssertValidateSuccess();
+
+        auto& header = b.RawDataHeader();
+        const ui64 capacity = header.DataCapacity;
+
+        header.ReadPos = capacity;
+        header.WritePos = capacity;
+        b.AssertValidateSuccess();
+
+        header.ReadPos = 1;
+        header.WritePos = 1;
+        b.AssertValidateSuccess();
+
+        header.ReadPos = capacity + 8;
+        header.WritePos = capacity + 8;
+        b.AssertValidateFailed("Invalid file ring buffer read position");
+
+        header.WritePos = 0;
         b.AssertValidateFailed("Invalid file ring buffer read position");
     }
 
@@ -667,6 +739,86 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         } else {
             b.AssertValidateSuccess();
         }
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldOptionallySkipPayloadChecksumValidation)
+    {
+        TBootstrap b;
+        b.Execute(
+            [](TFileRingBuffer& rb) { UNIT_ASSERT(rb.PushBack("ABC").Pushed); },
+            ver);
+
+        b.AssertValidateSuccess();
+
+        const auto* header = b.Accessor.GetHeader();
+        auto* dataProcessor = b.Accessor.GetDataProcessor();
+        *dataProcessor->GetEntryDataPtr(header->ReadPos, 1) = 'X';
+
+        TFileRingBufferValidator checksumValidator(
+            /* validateChecksums = */ true);
+        auto error = checksumValidator.ValidateData(
+            *dataProcessor,
+            header->DataCapacity,
+            header->ReadPos,
+            header->WritePos);
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "Checksum mismatch");
+
+        TFileRingBufferValidator structuralValidator(
+            /* validateChecksums = */ false);
+        error = structuralValidator.ValidateData(
+            *dataProcessor,
+            header->DataCapacity,
+            header->ReadPos,
+            header->WritePos);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        error = structuralValidator.ValidateData(
+            *dataProcessor,
+            header->DataCapacity,
+            header->ReadPos,
+            header->WritePos - 1);
+        UNIT_ASSERT(HasError(error));
+    }
+
+    Y_UNIT_TEST(ShouldOptionallySkipSlackMarkerChecksumValidation)
+    {
+        TBootstrap b;
+        b.Execute(
+            [](TFileRingBuffer&) {},
+            EFileRingBufferVersion::V6);
+
+        b.AssertValidateSuccess();
+
+        auto* header = b.Accessor.GetHeader();
+        const auto alignment = b.Accessor.GetCapabilities().Alignment;
+        header->ReadPos = alignment;
+
+        auto* dataProcessor = b.Accessor.GetDataProcessor();
+        UNIT_ASSERT(dataProcessor->WriteEntryHeader(
+            header->ReadPos,
+            {.DataChecksum = 1}));
+
+        TFileRingBufferValidator checksumValidator(
+            /* validateChecksums = */ true);
+        auto error = checksumValidator.ValidateData(
+            *dataProcessor,
+            header->DataCapacity,
+            header->ReadPos,
+            header->WritePos);
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_STRING_CONTAINS(
+            error.GetMessage(),
+            "data size is zero and data checksum is non-zero");
+
+        TFileRingBufferValidator structuralValidator(
+            /* validateChecksums = */ false);
+        error = structuralValidator.ValidateData(
+            *dataProcessor,
+            header->DataCapacity,
+            header->ReadPos,
+            header->WritePos);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
     }
 
     FILE_RING_BUFFER_TEST(

@@ -1,7 +1,5 @@
 #include "file_ring_buffer_accessor.h"
 
-#include <cloud/storage/core/libs/common/error.h>
-
 #include <library/cpp/digest/crc32c/crc32c.h>
 
 #include <util/generic/algorithm.h>
@@ -23,6 +21,38 @@ NProto::TError MakeError(TString message)
 }
 
 NProto::TError ValidateHeader(
+    const TFileRingBufferHeader& header,
+    size_t rawDataSize)
+{
+    auto error =
+        TFileRingBufferValidator::ValidateHeaderLayout(header, rawDataSize);
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    if (header.ReadPos > header.DataCapacity) {
+        return MakeError(Sprintf(
+            "Invalid file ring buffer read position %lu (expected <= %lu)",
+            header.ReadPos,
+            header.DataCapacity));
+    }
+
+    if (header.WritePos > header.DataCapacity) {
+        return MakeError(Sprintf(
+            "Invalid file ring buffer write position %lu (expected <= %lu)",
+            header.WritePos,
+            header.DataCapacity));
+    }
+
+    return {};
+}
+
+}   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TError TFileRingBufferValidator::ValidateHeaderLayout(
     const TFileRingBufferHeader& header,
     size_t rawDataSize)
 {
@@ -101,27 +131,20 @@ NProto::TError ValidateHeader(
             rawDataSize - header.DataOffset));
     }
 
-    if (header.ReadPos > header.DataCapacity) {
-        return MakeError(Sprintf(
-            "Invalid file ring buffer read position %lu (expected <= %lu)",
-            header.ReadPos,
-            header.DataCapacity));
-    }
-
-    if (header.WritePos > header.DataCapacity) {
-        return MakeError(Sprintf(
-            "Invalid file ring buffer write position %lu (expected <= %lu)",
-            header.WritePos,
-            header.DataCapacity));
-    }
-
     return {};
 }
 
-TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
-    IFileRingBufferDataProcessor& dataProcessor,
+////////////////////////////////////////////////////////////////////////////////
+
+TFileRingBufferValidator::TFileRingBufferValidator(bool validateChecksums)
+    : ValidateChecksums(validateChecksums)
+{}
+
+TResultOrError<TFileRingBufferEntryHeader>
+TFileRingBufferValidator::ReadAndValidateEntry(
+    const IFileRingBufferDataProcessor& dataProcessor,
     ui64 pos,
-    const TFileRingBufferCapabilities& capabilities)
+    const TFileRingBufferCapabilities& capabilities) const
 {
     if (capabilities.Alignment > 0 && pos % capabilities.Alignment != 0) {
         return MakeError(Sprintf(
@@ -150,7 +173,8 @@ TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
 
         // When entry header is not written atomically, we cannot be sure that
         // the checksum is not stale so we skip this check
-        if (capabilities.EntryHeaderIsProcessedAtomically &&
+        if (ValidateChecksums &&
+            capabilities.EntryHeaderIsProcessedAtomically &&
             eh.DataChecksum != 0)
         {
             return MakeError(Sprintf(
@@ -170,8 +194,9 @@ TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
 
         if (eh.FreeFlag) {
             // When entry header is not written atomically, we cannot be sure
-            // that the checksum is not slate so we skip this check
-            if (capabilities.EntryHeaderIsProcessedAtomically &&
+            // that the checksum is not stale so we skip this check
+            if (ValidateChecksums &&
+                capabilities.EntryHeaderIsProcessedAtomically &&
                 eh.DataChecksum != 0)
             {
                 return MakeError(Sprintf(
@@ -179,7 +204,7 @@ TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
                     "(free flag is set and data checksum is non-zero)",
                     pos));
             }
-        } else {
+        } else if (ValidateChecksums) {
             auto actualCrc = Crc32c(payload, eh.DataSize);
             if (actualCrc != eh.DataChecksum) {
                 return MakeError(Sprintf(
@@ -194,12 +219,27 @@ TResultOrError<TFileRingBufferEntryHeader> ReadAndValidateEntry(
     return eh;
 }
 
-NProto::TError ValidateData(
-    IFileRingBufferDataProcessor& dataProcessor,
+NProto::TError TFileRingBufferValidator::ValidateData(
+    const IFileRingBufferDataProcessor& dataProcessor,
+    ui64 dataCapacity,
     ui64 readPos,
-    ui64 writePos)
+    ui64 writePos) const
 {
     auto capabilities = dataProcessor.GetCapabilities(false);
+
+    if (readPos > dataCapacity) {
+        return MakeError(Sprintf(
+            "Invalid file ring buffer read position %lu (expected <= %lu)",
+            readPos,
+            dataCapacity));
+    }
+
+    if (writePos > dataCapacity) {
+        return MakeError(Sprintf(
+            "Invalid file ring buffer write position %lu (expected <= %lu)",
+            writePos,
+            dataCapacity));
+    }
 
     // For an empty buffer, one of the following conditions should be met:
     // - readPos == writePos (alignment doesn't matter);
@@ -309,8 +349,6 @@ NProto::TError ValidateData(
     return {};
 }
 
-}   // namespace
-
 ////////////////////////////////////////////////////////////////////////////////
 
 TFileRingBufferAccessor::TFileRingBufferAccessor(
@@ -402,8 +440,13 @@ EValidationStatus TFileRingBufferAccessor::DoValidateAndInitialize()
 
     Capabilities = DataProcessor->GetCapabilities(true);
 
-    LastValidationError =
-        ValidateData(*DataProcessor, Header->ReadPos, Header->WritePos);
+    TFileRingBufferValidator validator(/* validateChecksums = */ true);
+
+    LastValidationError = validator.ValidateData(
+        *DataProcessor,
+        Header->DataCapacity,
+        Header->ReadPos,
+        Header->WritePos);
 
     if (HasError(LastValidationError)) {
         return EValidationStatus::Failed;
@@ -442,13 +485,24 @@ TFileMapFileRingBufferAccessor::TFileMapFileRingBufferAccessor(
     : TFileRingBufferAccessor(validationMode)
     , FileName(std::move(fileName))
     , OpenModeFlags(openModeFlags)
+    , BackingFile(std::nullopt)
+{}
+
+TFileMapFileRingBufferAccessor::TFileMapFileRingBufferAccessor(
+    TFile file,
+    EFileRingBufferAccessorValidationMode validationMode,
+    TMemoryMapCommon::EOpenModeFlag openModeFlags)
+    : TFileRingBufferAccessor(validationMode)
+    , FileName(file.GetName())
+    , OpenModeFlags(openModeFlags)
+    , BackingFile(std::move(file))
 {}
 
 NProto::TError TFileMapFileRingBufferAccessor::Map()
 {
     try {
         if (!FileMap) {
-            FileMap.emplace(FileName, OpenModeFlags);
+            CreateFileMap();
         }
         FileMap->Map(0, FileMap->Length());
     } catch (...) {
@@ -468,7 +522,7 @@ NProto::TError TFileMapFileRingBufferAccessor::ResizeAndRemap(size_t newSize)
 {
     try {
         if (!FileMap) {
-            FileMap.emplace(FileName, OpenModeFlags);
+            CreateFileMap();
         }
         FileMap->ResizeAndRemap(0, newSize);
     } catch (...) {
@@ -488,6 +542,15 @@ void TFileMapFileRingBufferAccessor::Close()
 {
     UpdateRawData({});
     FileMap.reset();
+}
+
+void TFileMapFileRingBufferAccessor::CreateFileMap()
+{
+    if (BackingFile) {
+        FileMap.emplace(*BackingFile, OpenModeFlags, FileName);
+    } else {
+        FileMap.emplace(FileName, OpenModeFlags);
+    }
 }
 
 NProto::TError TFileMapFileRingBufferAccessor::ProcessMap()
