@@ -1,0 +1,1 @@
+/usr/bin/clang -O3 -DNDEBUG CMakeFiles/libmem_validator.dir/libmem_validator.c.o -o libmem_validator  -lm 

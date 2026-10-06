@@ -1,0 +1,16 @@
+/home/anton-myagkov/projects/aocl-libmem/build/lib/libaocl-libmem.so.5.2.0
+/home/anton-myagkov/projects/aocl-libmem/build/lib/libaocl-libmem.so
+/home/anton-myagkov/projects/aocl-libmem/build/lib/libaocl-libmem.a
+/home/anton-myagkov/projects/aocl-libmem/build/tools/benchmarks/external/tbm.py
+/home/anton-myagkov/projects/aocl-libmem/build/tools/benchmarks/external/fbm.py
+/home/anton-myagkov/projects/aocl-libmem/build/tools/benchmarks/external/gbm.py
+/home/anton-myagkov/projects/aocl-libmem/build/tools/benchmarks/external/GetParser.py
+/home/anton-myagkov/projects/aocl-libmem/build/tools/benchmarks/external/gbench/gbench.cpp
+/home/anton-myagkov/projects/aocl-libmem/build/tools/benchmarks/external/tinybench/tbm.patch
+/home/anton-myagkov/projects/aocl-libmem/build/test/bench.py
+/home/anton-myagkov/projects/aocl-libmem/build/tools/analyser/prof_libmem.py
+/home/anton-myagkov/projects/aocl-libmem/build/test/validator.py
+/home/anton-myagkov/projects/aocl-libmem/build/test/CTestTestfile.cmake
+/home/anton-myagkov/projects/aocl-libmem/build/tools/graph_generator/histogram.py
+/home/anton-myagkov/projects/aocl-libmem/build/tools/graph_generator/linechart.py
+/home/anton-myagkov/projects/aocl-libmem/build/tools/graph_generator/graph_generator.py

@@ -24,6 +24,13 @@ PEERDIR(
     contrib/ydb/library/keys
 )
 
+# AOCL LibMem uses Zen 4 instructions and requires an AVX-512 capable CPU.
+IF (OS_LINUX AND ARCH_X86_64)
+    PEERDIR(
+        contrib/libs/aocl-libmem
+    )
+ENDIF()
+
 YQL_LAST_ABI_VERSION()
 
 END()

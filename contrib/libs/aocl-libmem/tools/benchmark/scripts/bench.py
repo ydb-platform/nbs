@@ -1,0 +1,776 @@
+#!/usr/bin/python3
+"""
+ Copyright (C) 2023-26 Advanced Micro Devices, Inc. All rights reserved.
+
+ Redistribution and use in source and binary forms, with or without modification,
+ are permitted provided that the following conditions are met:
+ 1. Redistributions of source code must retain the above copyright notice,
+    this list of conditions and the following disclaimer.
+ 2. Redistributions in binary form must reproduce the above copyright notice,
+    this list of conditions and the following disclaimer in the documentation
+    and/or other materials provided with the distribution.
+ 3. Neither the name of the copyright holder nor the names of its contributors
+    may be used to endorse or promote products derived from this software without
+    specific prior written permission.
+
+ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+ IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
+ INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+ BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+ OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+ WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ POSSIBILITY OF SUCH DAMAGE.
+"""
+
+import subprocess
+import os
+from os import environ as env
+from pandas import read_csv
+import argparse
+import re
+import csv
+import datetime
+from statistics import mean
+import sys
+
+sys.path.insert(0, '../tools/benchmark/external')
+import get_parser as ParserConfig
+
+# Make CMake-generated libmem_defs (build/test/) importable.
+_libmem_defs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "../../../test")
+if _libmem_defs_dir not in sys.path:
+    sys.path.insert(0, _libmem_defs_dir)
+
+def check_root_access():
+    try:
+        subprocess.run(['sudo', '-n', 'true'], check=True, capture_output=True)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def run_rdmsr(command):
+    try:
+        result = subprocess.run(command, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        output = result.stdout.decode('utf-8').strip()
+        return output
+    except subprocess.CalledProcessError as e:
+        print(f"Error executing command: {e}")
+        return None
+
+def parse_msr_output(output):
+    # Convert the hexadecimal output to a binary string, ensuring it's at least 64 bits long
+    binary_value = bin(int(output, 16))[2:].zfill(64)
+    # Extract the relevant bits (0-9)
+    parsed_info = {
+        "PrefetchAggressivenessProfile": binary_value[-10:-7],  # Bits 9:7
+        "MasterEnable": binary_value[-11],                      # Bit 6
+        "UpDown": binary_value[-12],                            # Bit 5
+        "Reserved": binary_value[-13],                          # Bit 4
+        "L2Stream": binary_value[-14],                          # Bit 3
+        "L1Region": binary_value[-15],                          # Bit 2
+        "L1Stride": binary_value[-16],                          # Bit 1
+        "L1Stream": binary_value[-17],                          # Bit 0
+    }
+    return parsed_info
+
+def get_msr_info(core_id):
+    command = f"sudo rdmsr -c 0xc0000108 -p {core_id}"
+    output = run_rdmsr(command)
+    if output:
+        return parse_msr_output(output)
+    return None
+
+def get_prefetch_aggressiveness_level(bits):
+    # Map the binary string to the actual level names
+    levels = {
+        '000': 'Level 0 - least aggressive prefetch profile',
+        '001': 'Level 1',
+        '010': 'Level 2',
+        '011': 'Level 3 - most aggressive prefetch profile',
+        '100': 'Reserved - Default, aggressive prefetch profile is disabled',
+        '101': 'Reserved - Default, aggressive prefetch profile is disabled',
+        '110': 'Reserved - Default, aggressive prefetch profile is disabled',
+        '111': 'Reserved - Default, aggressive prefetch profile is disabled',
+    }
+    return levels.get(bits, 'Unknown')
+
+# CAP-COUPLED sites depend on this <= 2 GiB. Grep "CAP-COUPLED" before raising.
+try:
+    from libmem_defs import MAX_BENCHMARK_SIZE
+except ImportError:
+    MAX_BENCHMARK_SIZE = 1024 * 1024 * 1024   # 1 GiB
+
+
+def parse_size_with_unit(size_str):
+    """
+    Parse a string representing a size with units (B, KB, MB, GB) and convert to bytes.
+    Examples: '8B', '16KB', '9MB', '1GB'
+
+    Args:
+        size_str (str): A string representing size with unit
+
+    Returns:
+        int: Size in bytes
+
+    Raises:
+        argparse.ArgumentTypeError: If the format is invalid
+    """
+    # Define pattern to match number followed by optional unit
+    pattern = r'^(\d+)(?:([KMGT]?B))?$'
+    match = re.match(pattern, size_str, re.IGNORECASE)
+
+    if not match:
+        raise argparse.ArgumentTypeError(
+            f"Invalid size format: {size_str}. Expected format: NUMBER[UNIT] "
+            "where UNIT is one of B, KB, MB, GB (case insensitive)"
+        )
+
+    value, unit = match.groups()
+    value = int(value)
+    # If SIZE is negative or zero, raise an error
+    if value <= 0:
+        raise argparse.ArgumentTypeError(f"Size must be a positive integer: {size_str}")
+
+    # Convert to bytes based on unit
+    if unit is None or unit.upper() == 'B':
+        return value
+    elif unit.upper() == 'KB':
+        return value * 1024
+    elif unit.upper() == 'MB':
+        return value * 1024 * 1024
+    elif unit.upper() == 'GB':
+        return value * 1024 * 1024 * 1024
+    else:
+        raise argparse.ArgumentTypeError(f"Unknown unit: {unit}")
+
+
+def _detect_l3_cache_bytes():
+    """Return per-CCD L3 size in bytes, or None. CMake value first, sysfs fallback."""
+    try:
+        from libmem_defs import L3_CACHE_MB
+        if L3_CACHE_MB > 0:
+            return L3_CACHE_MB * 1024 * 1024
+    except (ImportError, AttributeError):
+        pass
+
+    try:
+        with open("/sys/devices/system/cpu/cpu0/cache/index3/size") as f:
+            raw = f.read().strip()
+    except (FileNotFoundError, PermissionError, OSError):
+        return None
+    try:
+        if raw.endswith(('M', 'm')):
+            return int(raw[:-1]) * 1024 * 1024
+        if raw.endswith(('K', 'k')):
+            return int(raw[:-1]) * 1024
+        return int(raw)
+    except ValueError:
+        return None
+
+
+class BaseBench:
+    """Base class containing common benchmarking functionality"""
+
+    def __init__(self, **kwargs):
+        # Initialize common version tracking
+        self.LibMemVersion = ''
+        self.GlibcVersion = ''
+        self.size_unit = []
+        self.gains = []
+
+        # Initialize common arguments if provided
+        if kwargs:
+            self.ARGS = kwargs
+            self.MYPARSER = self.ARGS["ARGS"]
+
+            # Common attributes from command line
+            self.func = self.MYPARSER['ARGS']['func']
+            self.ranges = self.MYPARSER['ARGS']['range']
+            self.core = self.MYPARSER['ARGS']['core_id']
+            self.bench_name = self.MYPARSER['ARGS']['bench_name']
+            self.result_dir = self.MYPARSER['ARGS']['result_dir']
+            self.perf = self.MYPARSER['ARGS']['perf']
+            self.bestperf = self.MYPARSER['ARGS'].get('best_performance', False)
+
+            # Initialize common properties
+            self.size_values = []
+            self.variant = "amd"  # Default variant
+
+            # Performance comparison directories
+            if self.perf in ['c', 'b']:
+                self.old_perf_dir = self.MYPARSER['ARGS']['old_perf_dir']
+                self.new_perf_dir = self.MYPARSER['ARGS']['new_perf_dir']
+
+    def throughput_converter(self, value):
+        """Convert throughput values from M/s to G/s where applicable"""
+        for i in range(len(value)):
+            if 'M/s' in value[i]:
+                value[i] = float(value[i].replace('M/s', ''))
+                value[i] = round(value[i] / 1000, 5)
+            elif 'G/s' in value[i]:
+                value[i] = float(value[i].replace('G/s', ''))
+        return value
+
+    def _convert_throughput_fbm(self, value):
+        """Convert FleetBench throughput values to consistent G/s format"""
+        converted_values = []
+        for val in value:
+            if 'G/s' in val:
+                # Already in G/s, just extract the numeric value
+                numeric_val = float(val.replace('G/s', ''))
+                converted_values.append(numeric_val)
+            else:
+                # Assume M/s, convert to G/s
+                numeric_val = float(val.replace('M/s', ''))
+                converted_values.append(numeric_val / 1000)
+        return converted_values
+
+    def data_unit(self):
+        """Convert sizes from bytes to appropriate units (B, KB, MB)"""
+        self.size_unit = []
+        for size in self.size_values:
+            # Convert string to int if necessary
+            size_int = int(size) if isinstance(size, str) else size
+            if size_int < 1024:
+                self.size_unit.append(f"{size_int}B")
+            elif size_int < 1048576:
+                self.size_unit.append(f"{size_int // 1024}KB")
+            else:
+                self.size_unit.append(f"{size_int // 1048576}MB")
+
+    def calculate_gains(self, new_values, old_values):
+        """Calculate percentage gains between two sets of values"""
+        gains = []
+        for i in range(len(new_values)):
+            if old_values[i] != 0:
+                gain = round(((new_values[i] - old_values[i]) / old_values[i]) * 100)
+                gains.append(f"{gain}%")
+            else:
+                gains.append("N/A")
+        return gains
+
+    def write_comparison_csv(self, filename, headers, data_rows, append=False):
+        """Write comparison results to CSV file, optionally appending."""
+        import os
+        file_exists = os.path.isfile(filename)
+        mode = "a" if append else "w"
+        with open(filename, mode, newline="") as output_file:
+            writer = csv.writer(output_file)
+            # Only write header if not appending or file is empty
+            if not append or (not file_exists or os.stat(filename).st_size == 0):
+                writer.writerow(headers)
+            for row in data_rows:
+                writer.writerow(row)
+
+    def get_version_strings(self):
+        """Get formatted version strings for LibMem and Glibc"""
+        # Ensure versions are retrieved if not already set
+        if not hasattr(self, 'GlibcVersion') or not self.GlibcVersion:
+            try:
+                import subprocess
+                self.GlibcVersion = subprocess.check_output("ldd --version | awk '/ldd/{print $NF}'", shell=True)
+            except:
+                self.GlibcVersion = "Unknown"
+
+        if not hasattr(self, 'LibMemVersion') or not self.LibMemVersion:
+            try:
+                import subprocess
+                import sys
+                import os
+                # Add the test directory to path to import libmem_defs
+                test_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../../test")
+                if test_dir not in sys.path:
+                    sys.path.insert(0, test_dir)
+                from libmem_defs import LIBMEM_BIN_PATH
+                self.LibMemVersion = subprocess.check_output("file " + LIBMEM_BIN_PATH + \
+                    "| awk -F 'so.' '/libaocl-libmem.so/{print $3}'", shell=True)
+            except:
+                self.LibMemVersion = "Unknown"
+
+        # Convert to string and clean up
+        if isinstance(self.GlibcVersion, bytes):
+            glibc_version = self.GlibcVersion.decode('utf-8').strip()
+        else:
+            glibc_version = str(self.GlibcVersion).strip()
+
+        if isinstance(self.LibMemVersion, bytes):
+            libmem_version = self.LibMemVersion.decode('utf-8').strip()
+        else:
+            libmem_version = str(self.LibMemVersion).strip()
+
+        # Handle empty strings
+        glibc_version = glibc_version if glibc_version else "Unknown"
+        libmem_version = libmem_version if libmem_version else "Unknown"
+
+        return glibc_version, libmem_version
+
+    def print_result(self):
+        """Print benchmark results - to be implemented by subclasses"""
+        pass
+
+    def print_result_perf(self):
+        """Print performance-only results - to be implemented by subclasses"""
+        pass
+
+class Bench:
+    """
+    The object of this class will run the specified benchmark framework
+    based on the command given by the user
+    """
+
+    def __init__(self, **kwargs):
+        self.ARGS = kwargs
+        self.MYPARSER = self.ARGS["ARGS"]
+
+    def __call__(self, *args, **kwargs):
+        # Import benchmark classes dynamically to avoid circular imports
+        if(self.MYPARSER['benchmark']=='tbm'):
+            from tbm import TBM
+            TBM_execute = TBM(ARGS=self.ARGS, class_obj=self)
+            TBM_execute() #Status:Success/Failure
+        elif(self.MYPARSER['benchmark']=='gbm'):
+            from gbm import GBM
+            GBM_execute = GBM(ARGS=self.ARGS, class_obj=self)
+            GBM_execute() #Status:Success/Failure
+        elif(self.MYPARSER['benchmark']=='fbm'):
+            from fbm import FBM
+            FBM_execute = FBM(ARGS=self.ARGS, class_obj=self)
+            FBM_execute() #Status:Success/Failure
+        elif(self.MYPARSER['benchmark']=='dcperf'):
+            import sys
+            import os
+            sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'external'))
+            from dcperf import DCPerf
+            dcperf_execute = DCPerf(MYPARSER=self.MYPARSER, ARGS=self.ARGS, class_obj=self)
+            dcperf_execute()
+
+libmem_memory = ['memcpy', 'memmove', 'memset', 'memcmp', 'mempcpy']
+libmem_string = ['strcpy', 'strncpy', 'strcmp', 'strncmp', 'strlen', 'strnlen', 'strcat', 'strncat', 'strspn', 'strstr', 'memchr', 'strchr', 'strrchr']
+libmem_funcs = libmem_memory + libmem_string
+
+def run_command(cmd):
+    """Runs a shell command and returns the output."""
+    try:
+        output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode()
+    except subprocess.CalledProcessError as e:
+        output = f"Command '{e.cmd}' returned non-zero exit status {e.returncode}\n{e.output.decode()}"
+    return output
+
+def collect_system_info(output_file, core_id):
+    sudo_flag = check_root_access()
+
+    """
+    Collect system information and write to the specified output file.
+    """
+    with open(output_file, "w") as f:
+        f.write("=========================================\n")
+        f.write(" System Information Collection \n")
+        f.write("=========================================\n")
+
+        # Linux Kernel Version
+        f.write("\n==== Linux Kernel Version ====\n")
+        f.write(run_command("uname -r"))
+
+        # Linux Distribution Details
+        f.write("\n==== Linux Distribution Details ====\n")
+        lsb_release = run_command("lsb_release -a")
+        if lsb_release:
+            f.write(lsb_release)
+        else:
+            f.write("lsb_release command not found; using /etc/os-release:\n")
+            f.write(run_command("cat /etc/os-release"))
+
+        # BIOS and Microcode (if logged) Version
+        f.write("\n==== BIOS And MicroCode Info ====\n")
+        f.write("\n ---- Bios Information ----\n")
+        if sudo_flag:
+            f.write(run_command("sudo dmidecode -t bios 2>/dev/null | grep -E 'Vendor:|Version:|Release Date:|Address:'"))
+        else:
+            f.write("Failed to retrieve Bios Information as user does not have root privileges.\n")
+        f.write("\n---- MicroCode version ----\n")
+        f.write(run_command("grep 'microcode' /proc/cpuinfo | head -n 1"))
+
+        # Cache Details
+        f.write("\n==== Cache Details ====\n")
+        f.write(run_command("lscpu -C"))
+
+        # CPU Details
+        f.write("\n==== CPU Details ====\n")
+        f.write("\n---- Frequency Scaling Governor and Fixed Frequency Check ----\n")
+        f.write("Current CPU frequency scaling governor: " \
+                + run_command(f"cat /sys/devices/system/cpu/cpu{core_id}/cpufreq/scaling_governor"))
+        f.write("Current Frequency of the CPU: " + \
+                run_command(f"cat /sys/devices/system/cpu/cpu{core_id}/cpufreq/scaling_cur_freq"))
+        f.write("Min Frequency of the CPU: " + \
+                run_command(f"cat /sys/devices/system/cpu/cpu{core_id}/cpufreq/scaling_min_freq"))
+        f.write("Max Frequency of the CPU: " + \
+                run_command(f"cat /sys/devices/system/cpu/cpu{core_id}/cpufreq/scaling_max_freq"))
+        f.write("Note: If min_freq is equal to max_freq, system is in fixed frequency mode.\n")
+
+        f.write("\n---- CPU Model Name (from /proc/cpuinfo) ----\n")
+        f.write(run_command("grep -m 1 'model name' /proc/cpuinfo"))
+
+        f.write("\n---- Detailed CPU Information ----\n")
+        f.write(run_command("lscpu"))
+
+        # Prefetch Information
+        f.write("\n==== Prefetch Information ====\n")
+        if sudo_flag:
+            f.write("rdmsr output: " + run_command(f"sudo rdmsr -c 0xc0000108 -p {core_id}"))
+            msr_data = get_msr_info(core_id)
+            if msr_data:
+                prefetch_level = get_prefetch_aggressiveness_level(msr_data['PrefetchAggressivenessProfile'])
+                f.write(f"  Prefetch Aggressiveness Profile: {msr_data['PrefetchAggressivenessProfile']} ({prefetch_level})\n")
+                f.write(f"  Master Enable (to enable Prefetch Aggressiveness Profiles): {'Enabled' if msr_data['MasterEnable'] == '1' else 'Disabled'}\n")
+                f.write(f"  UpDown Prefetcher (the prefetcher that uses memory access history to determine whether to fetch the next or previous line into the L2 cache): {'Enabled' if msr_data['UpDown'] == '1' else 'Disabled'}\n")
+                f.write(f"  L2 Stream Prefetcher (the prefetcher that uses history of memory access patterns to fetch additional sequential lines into L2 cache): {'Enabled' if msr_data['L2Stream'] == '0' else 'Disabled'}\n")
+                f.write(f"  L1 Region Prefetcher (the prefetcher that uses memory access history to fetch additional lines into L1 cache): {'Enabled' if msr_data['L1Region'] == '0' else 'Disabled'}\n")
+                f.write(f"  L1 Stride Prefetcher (prefetcher that uses memory access history of individual instructions to fetch additional lines into L1 cache): {'Enabled' if msr_data['L1Stride'] == '0' else 'Disabled'}\n")
+                f.write(f"  L1 Stream Prefetcher (the stream prefetcher that uses history of memory access patterns to fetch additional sequential lines into L1 cache): {'Enabled' if msr_data['L1Stream'] == '0' else 'Disabled'}\n")
+            else:
+                f.write("Failed to retrieve Prefetch information.\n")
+        else:
+            f.write("Failed to retrieve Prefetch information as user does not have root privileges.\n")
+
+        # Memory Information
+        f.write("\n==== Memory Information ====\n")
+        f.write(run_command("free -h"))
+        f.write("\nAdditional details from /proc/meminfo (first few lines):\n")
+        f.write(run_command("head -n 5 /proc/meminfo"))
+
+        # Memory Speed Information
+        f.write("\n ----Memory Speed Information ----\n")
+        if sudo_flag:
+            f.write(run_command("sudo dmidecode -t memory | grep -i 'Speed' | sort | uniq"))
+        else:
+            f.write("Failed to retrieve memory Speed Information as user does not have root privileges.\n")
+
+        # Cache Type Information
+        f.write("\n ----Cache Type Information ----\n")
+        if sudo_flag:
+            f.write(run_command("sudo dmidecode -t cache | uniq"))
+        else:
+            f.write("Failed to retrieve the cache type information as user does not have root privileges.\n")
+
+        # Disk/Storage Information
+        f.write("\n==== Disk/Storage Information ====\n")
+        f.write(run_command("df -h"))
+        f.write("\n-> lsblk:\n")
+        f.write(run_command("lsblk"))
+
+        f.write("\n=========================================\n")
+        f.write("  System Info Collection Complete\n")
+        f.write("=========================================\n")
+
+def main():
+    """
+    Arguments are captured and stored to variable.
+    """
+    available_cores = subprocess.check_output("lscpu | grep 'CPU(s):' | \
+         awk '{print $2}' | head -n 1", shell=True).decode('utf-8').strip()
+
+    parser = argparse.ArgumentParser(prog='bench', description='This program will perform the benchmarking: TBM, GBM, FBM, DCPerf',
+                                     epilog="See './bench.py [gbm, tbm, fbm, dcperf] -h' for more information on a specific benchmark")
+
+    # Create subparsers for different benchmarking tools
+    subparsers = parser.add_subparsers(dest='benchmark', required=True)
+
+    # Common optional arguments for all benchmarks (without positional arguments)
+    common_options_parser = argparse.ArgumentParser(add_help=False)
+
+    common_options_parser.add_argument("-r", "--range", nargs=2,
+                            help="Range of data lengths to be benchmarked. Format: NUMBER[UNIT]\n"
+                                 "where UNIT is optional and can be B, KB, MB, or GB (case insensitive).\n"
+                                 "Examples: '8B', '16KB', '9MB', '1GB'\n"
+                                 "Memory functions [8B - 32MB]\n"
+                                 "String functions [8B - 4KB]\n"
+                                 "Memory functions can be benchmarked upto 1GB",
+                            type=parse_size_with_unit)
+    common_options_parser.add_argument("-perf",
+                            help="Performance runs for LibMem.\n"
+                                 "Default is performance benchmarking comparison.\n"
+                                 "  l - Performance analysis for LibMem\n"
+                                 "  g - Performance analysis for Glibc only\n"
+                                 "  c - Comparison report between old and new LibMem runs\n"
+                                 "  d - Default report Glibc vs LibMem",
+                            type=str, choices=['l', 'g', 'c', 'd'], default='d')
+
+    common_options_parser.add_argument("-t", "--iterator",
+                            help="Iteration pattern for a given range of data sizes.\n"
+                                 "Default is shift left by 1 of starting size - '<<1'.",
+                            type=int, default=0)
+
+    common_options_parser.add_argument("-x", "--core_id",
+                            help=f"CPU core_id on which benchmark has to be performed.\n"
+                                 f"Default choice of core-id is 8.\n"
+                                 f"Valid range is [0..{int(available_cores) - 1}]",
+                            type=int, default=8)
+
+    common_options_parser.add_argument("-sys", "--system_info",
+                            help="Logs system_info details like cpu freq, cache info, bios info, etc.",
+                            action="store_true")
+
+    common_options_parser.add_argument("-bestperf", "--best_performance",
+                            help="Runs benchmark 3 times and selects the best throughput\n"
+                                 "for each size from those iterations",
+                            action="store_true")
+
+    # Common parser with func argument for GBM, TBM, FBM
+    common_parser = argparse.ArgumentParser(add_help=False, parents=[common_options_parser])
+    common_parser.add_argument("func", help="LibMem supported functions",
+                            type=str, choices = libmem_funcs,default="memcpy")
+
+    # Subparser for GBM with additional options
+    gbm_parser = subparsers.add_parser('gbm', parents=[common_parser], help='GoogleBench Benchmarking Tool')
+    group = gbm_parser.add_mutually_exclusive_group()
+    gbm_parser.add_argument("-m", "--mode", help = "type of cached benchmarking :\
+                            h - hot, c - cold",\
+                            type = str, choices = ['h', 'c'], \
+                            default = 'h')
+
+    #Align and Page are mutually_exclusive options
+    group.add_argument("-a", "--align", help = "alignment of source\
+                                and destination addresses: a - aligned\
+                                u - unaligned, and d - default alignment\
+                                is random.",\
+                                type = str, choices = ['a','u','d'],  default = 'd')
+
+    group.add_argument("-p", "--page", help = "Page boundary options:\
+                                x - page_cross, t - page_tail, g - page_guarded (tail + guard)",\
+                                type = str, choices = ['x','t','g'],  default = 'n')
+
+    gbm_parser.add_argument("-s", "--spill", help = "cache line spill (only with -a u):\
+                                l - less spill (1-8 bytes past boundary, default),\
+                                m - more spill (56-63 bytes, near end of cache line)",\
+                                type = str, choices = ['l', 'm'],  default = 'l')
+
+    # Only add the overlap argument for memmove function
+    class OverlapAction(argparse.Action):
+        def __call__(self, parser, namespace, values, option_string=None):
+            # This will only be called if the argument is actually provided
+            if 'func' in namespace and namespace.func != 'memmove':
+                parser.error("The -o/--overlap option can only be used with the memmove function")
+            setattr(namespace, self.dest, values)
+
+    gbm_parser.add_argument("-o", "--overlap", help = "choose the overlapping behavior for memmove only: \
+                                f - forward overlap, b - backward overlap, d - both (default)",\
+                                type = str, choices = ['f', 'b', 'd'], default = 'd',
+                                action=OverlapAction)
+
+    gbm_parser.add_argument("-i", "--repetitions", help = "Number of repitations for\
+                            performance measurement. Default value is \
+                            set to 10 iterations.",
+                        type = int, default = 10)
+
+    gbm_parser.add_argument("-w", "--warm_up", help = "time in seconds\
+                                Default value is set to 1sec.",
+                            type = float, default = 1)
+
+    gbm_parser.add_argument("-preload", help = "Enables LD_PRELOAD for running bench",
+                          type = str, choices = ['y', 'n'], default = 'y')
+
+    gbm_parser.add_argument("--backend", help = "Allocation backend: "
+                          "p - posix_memalign (default), "
+                          "n - operator new",
+                          type = str, choices = ['p', 'n'], default = 'p')
+
+    class LayoutAction(argparse.Action):
+        def __call__(self, parser, namespace, values, option_string=None):
+            if hasattr(namespace, 'page') and namespace.page not in (None, 'n'):
+                parser.error("--layout and -p/--page are mutually exclusive")
+            if hasattr(namespace, 'overlap') and namespace.overlap not in (None, 'd', 'n'):
+                parser.error("--layout and -o/--overlap are mutually exclusive")
+            setattr(namespace, self.dest, values)
+
+    gbm_parser.add_argument("--layout", help = "Buffer layout for dual-buffer functions: "
+                          "i - independent allocations (default), "
+                          "c - contiguous (single block). "
+                          "Mutually exclusive with -p and -o.",
+                          type = str, choices = ['i', 'c'], default = 'i',
+                          action=LayoutAction)
+
+    gbm_parser.add_argument("--heap", help = "Path to heap runtime library for LD_PRELOAD "
+                          "(e.g. /usr/lib/libjemalloc.so). Empty = system default.",
+                          type = str, default = '')
+
+    # Subparser for TBM
+    tbm_parser = subparsers.add_parser('tbm', parents=[common_parser], help='TinyMembench Benchmarking Tool')
+
+    # Subparser for FBM
+    fbm_parser = subparsers.add_parser('fbm', parents=[common_options_parser], help='Fleetbench Benchmarking Tool')
+    fbm_parser.add_argument("func", help="FleetBench supported functions",
+                            type=str, choices=['memcpy', 'memmove', 'memset', 'memcmp'],
+                            default="memcpy")
+
+    fbm_parser.add_argument("-mem_alloc", help="specify the memory allocator for FleetBench",
+                               type=str, choices=['tcmalloc', 'glibc'], default='glibc')
+
+    fbm_parser.add_argument("-n", "--repetitions", help="Number of repetitions for "
+                            "performance measurement. Default value is "
+                            "set to 10 iterations.",
+                        type=int, default=10)
+
+    fbm_parser.add_argument("--enable-aslr", dest="enable_aslr",
+                        action="store_true",
+                        help="Enable ASLR during benchmark runs. "
+                             "By default ASLR is disabled via "
+                             "'setarch $(uname -m) -R' for consistency.")
+
+    # FBM mode selection (mutually exclusive)
+    fbm_mode_group = fbm_parser.add_mutually_exclusive_group()
+    fbm_mode_group.add_argument("-c", "--cached", dest="fbm_mode",
+                        action="store_const", const="c",
+                        help="Cached mode (v0.2): L1 cache only, 9 Google workloads")
+    fbm_mode_group.add_argument("-m", "--multi_cache", dest="fbm_mode",
+                        action="store_const", const="m",
+                        help="Multi-cache mode (v0.3.3): L1/L2/LLC/Cold, 10 workloads")
+    fbm_mode_group.add_argument("-a", "--alignment", dest="fbm_mode",
+                        action="store_const", const="a",
+                        help="Alignment mode (v2.1): L1/L2/LLC/Cold/Mixed, alignment-aware")
+    fbm_parser.set_defaults(fbm_mode='a')
+
+    fbm_parser.add_argument("-w", "--workload", help="Run individual workload "
+                            "(0-8 for specific distribution, "
+                            "'fleet' for fleet aggregate in -m/-a modes). "
+                            "Default: run all workloads.",
+                        type=str, default=None,
+                        choices=['0','1','2','3','4','5','6','7','8','fleet'])
+
+    # Subparser for DCPerf - uses common_options_parser but has custom positional arguments
+    dcperf_parser = subparsers.add_parser('dcperf', parents=[common_options_parser],
+                                          help='DCPerf Benchmarking Tool (Note: Requires sudo access)',
+                                          formatter_class=argparse.RawTextHelpFormatter)
+    
+    # Add func as optional for dcperf - choose between wdl or ai
+    dcperf_parser.add_argument("func", help="DCPerf benchmark type: 'wdl' (default) or 'ai'\n"
+                                            "Note: DCPerf benchmarks require sudo privileges to run",
+                            type=str, nargs='?', choices=['wdl', 'ai'], default='wdl')    # Add optional positional argument for wdl functions (memcpy/memset) or ai functions (rebatch/tensor)
+    dcperf_parser.add_argument("sub_func",
+                            help="Specific function/Type to benchmark (optional):\n"
+                                 "  For 'wdl': memcpy, memset (defaults to both if not specified)\n"
+                                 "  For 'ai': rebatch, tensor",
+                            type=str, nargs='?', choices=['memcpy', 'memset', 'rebatch', 'tensor'],
+                            default=None, metavar='FUNCTION/TYPE')
+
+    args = parser.parse_args()
+
+    # Ensure memory_operation is set only if mode exists
+    if hasattr(args, 'mode'):
+        args.memory_operation = args.mode
+    else:
+        args.memory_operation = 'h'
+
+    if args.benchmark == 'gbm':
+        args.bench_name = 'GooglBench_HotCached'
+        if args.memory_operation == 'c':
+            args.bench_name = 'GooglBench_ColdCached'
+    elif args.benchmark == 'tbm':
+        args.bench_name = 'TinyMemBench'
+    elif args.benchmark == 'fbm':
+        fbm_names = {'c': 'FleetBench_Cached', 'm': 'FleetBench_MultiCache', 'a': 'FleetBench_Alignment'}
+        args.bench_name = fbm_names.get(args.fbm_mode, 'FleetBench')
+    elif args.benchmark == 'dcperf':
+        args.bench_name = 'DCPerf'
+
+    # For dcperf, use wdl_func if specified, otherwise use func (wdl/ai)
+    if args.benchmark == 'dcperf' and hasattr(args, 'wdl_func') and args.wdl_func:
+        result_func = args.wdl_func
+    else:
+        result_func = args.func
+    
+    args.result_dir = 'out/' + args.bench_name + '/' + result_func + '/' \
+        + datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+
+    # Create result directory
+    os.makedirs(args.result_dir, exist_ok=False)
+
+    # Prompt for two directory paths when -perf c option is used
+    if hasattr(args, 'perf') and args.perf == 'c':
+        print("\nPerformance comparison mode (Old vs New LibMem) selected.")
+        print("Enter paths to directories containing perf_values.csv files:")
+
+        # Get path to first directory (old version)
+        old_dir_path = input("Enter path to OLD LibMem perf_values.csv directory: ").strip()
+        while not os.path.isdir(old_dir_path):
+            print(f"Error: Directory '{old_dir_path}' does not exist or is not accessible.")
+            old_dir_path = input("Enter path to OLD LibMem perf_values.csv directory: ").strip()
+
+        # Get path to second directory (new version)
+        new_dir_path = input("Enter path to NEW LibMem perf_values.csv directory: ").strip()
+        while not os.path.isdir(new_dir_path):
+            print(f"Error: Directory '{new_dir_path}' does not exist or is not accessible.")
+            new_dir_path = input("Enter path to NEW LibMem perf_values.csv directory: ").strip()
+
+        # Store the paths in args for later use
+        args.old_perf_dir = old_dir_path
+        args.new_perf_dir = new_dir_path
+
+        print(f"Using OLD LibMem perf_values.csv from: {old_dir_path}")
+        print(f"Using NEW LibMem perf_values.csv from: {new_dir_path}")
+
+    if getattr(args, 'system_info', False):
+        # Create a timestamped output file for system info
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = os.path.join(args.result_dir, f"system_info_{timestamp}.txt")
+        # Collect system information
+        collect_system_info(output_file, args.core_id)
+
+    # Default range: string = 4KB; memory = 2 x L3 (clamped to cap).
+    if args.range is None:
+        if args.func in libmem_string:
+            args.range = [8, 4096]
+        else:
+            l3_bytes = _detect_l3_cache_bytes()
+            if l3_bytes is not None:
+                args.range = [8, min(2 * l3_bytes, MAX_BENCHMARK_SIZE)]
+                print(f"[INFO] Default range (memory, L3={l3_bytes // (1024*1024)}MB): "
+                      f"8 B -> {args.range[1] // (1024*1024)} MB",
+                      file=sys.stderr)
+            else:
+                args.range = [8, 32 * 1024 * 1024]
+                print(f"[INFO] Default range (memory, L3 undetected): 8 B -> 32 MB (fallback)",
+                      file=sys.stderr)
+
+    if args.range[0] > args.range[1]:
+        raise argparse.ArgumentTypeError(
+            f"The first size must be less than or equal to the second size: {args.range[0]} < {args.range[1]}"
+        )
+
+    # Hard-cap user input loudly (defaults are clamped silently above).
+    if args.range[0] > MAX_BENCHMARK_SIZE or args.range[1] > MAX_BENCHMARK_SIZE:
+        print(f"ERROR: requested size exceeds MAX_BENCHMARK_SIZE ({MAX_BENCHMARK_SIZE} bytes).\n"
+              f"  size_start = {args.range[0]}, size_end = {args.range[1]}",
+              file=sys.stderr)
+        sys.exit(1)
+
+    # Warn about ignored/overridden option combinations
+    if args.benchmark == 'gbm':
+        page = getattr(args, 'page', 'n')
+        align = getattr(args, 'align', 'd')
+        spill = getattr(args, 'spill', 'n')
+        backend = getattr(args, 'backend', 'p')
+
+        if page == 'g' and backend == 'n':
+            print("WARNING: --backend=n ignored with -p g (page-guarded forces posix_memalign)")
+
+        if spill in ('l', 'm') and align != 'u':
+            print(f"WARNING: -s {spill} ignored (spill only applies with -a u)")
+
+    return vars(args)
+
+if __name__ == "__main__":
+    try:
+        # Check if numactl is installed
+        subprocess.check_output(['which', 'numactl'])
+    except subprocess.CalledProcessError:
+        # numactl is not installed, exiting the program
+        print("numactl utility NOT found. Please install it.")
+        exit(1)
+    myparser = main()
+
+    obj = Bench(ARGS=myparser)
+    obj()

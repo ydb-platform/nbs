@@ -1,0 +1,183 @@
+--- a/benchpress/config/jobs_ai.yml
++++ b/benchpress/config/jobs_ai.yml
+@@ -133,7 +133,7 @@
+   vars:
+     - 'threads=1'
+     - 'duration=300'
+-    - 'size_dist=benchmarks/rebatch/model_a.dist'
++    - 'size_dist=benchmarks/ai_wdl/rebatch/model_a.dist'
+     - 'tensors_num=54'
+     - 'prefetch=0'
+     - 'output_tensor_size=5023008'
+@@ -154,7 +154,7 @@
+   vars:
+     - 'threads=1'
+     - 'duration=300'
+-    - 'size_dist=benchmarks/rebatch/model_b.dist'
++    - 'size_dist=benchmarks/ai_wdl/rebatch/model_b.dist'
+     - 'tensors_num=53'
+     - 'prefetch=0'
+     - 'output_tensor_size=2421002'
+@@ -206,7 +206,7 @@
+     - '--pregenerated_copies={pregenerated_copies}'
+ 
+   vars:
+-    - 'distribution_file=benchmarks/deser/model_a.dist'
++    - 'distribution_file=benchmarks/ai_wdl/deser/model_a.dist'
+     - 'num_threads=16'
+     - 'duration_seconds=360'
+     - 'pregenerated_copies=10'
+@@ -222,7 +222,7 @@
+     - '--pregenerated_copies={pregenerated_copies}'
+ 
+   vars:
+-    - 'distribution_file=benchmarks/deser/model_b.dist'
++    - 'distribution_file=benchmarks/ai_wdl/deser/model_b.dist'
+     - 'num_threads=16'
+     - 'duration_seconds=360'
+     - 'pregenerated_copies=10'
+--- a/packages/wdl_bench/install_wdl_bench.sh
++++ b/packages/wdl_bench/install_wdl_bench.sh
+@@ -31,8 +31,6 @@
+     ['silesia']='https://sun.aei.polsl.pl/~sdeor/corpus/silesia.zip'
+ )
+ 
+-
+-
+ ##################### SYS CONFIG AND DEPS #########################
+ 
+ BPKGS_WDL_ROOT="$(dirname "$(readlink -f "$0")")" # Path to dir with this file.
+@@ -42,27 +40,15 @@
+ WDL_BUILD="${WDL_ROOT}/wdl_build"
+ WDL_DATASETS="${WDL_ROOT}/datasets"
+ 
+-# Determine OS version
+-LINUX_DIST_ID="$(awk -F "=" '/^ID=/ {print $2}' /etc/os-release | tr -d '"')"
+-
+-if [ "$LINUX_DIST_ID" = "ubuntu" ]; then
+-  apt install -y cmake autoconf automake flex bison \
+-    nasm clang patch git libssl-dev \
+-    tar unzip perl openssl python3-dev
+-
+-elif [ "$LINUX_DIST_ID" = "centos" ]; then
+-  dnf install -y cmake autoconf automake flex bison \
+-    meson nasm clang patch \
+-    git tar unzip perl openssl-devel python3-devel
+-fi
+-
++# Skip system package installation - assume dependencies are already installed
+ 
+ mkdir -p "${WDL_SOURCE}"
+ mkdir -p "${WDL_BUILD}"
+ mkdir -p "${WDL_DATASETS}"
+ 
+-if ! [ -f "/usr/local/bin/cmake" ]; then
+-    ln -s /usr/bin/cmake /usr/local/bin/cmake
++if ! [ -f "/usr/local/bin/cmake" ] && [ -f "/usr/bin/cmake" ]; then
++    mkdir -p /usr/local/bin
++    ln -s /usr/bin/cmake /usr/local/bin/cmake 2>/dev/null || true
+ fi
+ 
+ ##################### BUILD AND INSTALL FUNCTIONS #########################
+@@ -91,8 +77,6 @@
+     popd || exit
+ }
+ 
+-
+-
+ build_folly()
+ {
+     lib='folly'
+@@ -100,14 +84,14 @@
+     clone "$lib" || echo "Failed to clone $lib"
+     cd "$lib" || exit
+ 
+-    ./build/fbcode_builder/getdeps.py install-system-deps --recursive
++    # Skip system deps installation - assume already installed
++    echo "Skipping system dependency installation for folly"
+ 
+     python3 ./build/fbcode_builder/getdeps.py --allow-system-packages build --scratch-path "${WDL_BUILD}"
+ 
+     popd || exit
+ }
+ 
+-
+ build_fbthrift()
+ {
+     lib='fbthrift'
+@@ -115,14 +99,14 @@
+     clone "$lib" || echo "Failed to clone $lib"
+     cd "$lib" || exit
+ 
+-    ./build/fbcode_builder/getdeps.py install-system-deps --recursive fbthrift
++    # Skip system deps installation - assume already installed
++    echo "Skipping system dependency installation for fbthrift"
+ 
+     python3 ./build/fbcode_builder/getdeps.py --allow-system-packages build fbthrift --scratch-path "${WDL_BUILD}" --extra-cmake-defines='{"enable_tests": "1"}'
+ 
+     popd || exit
+ }
+ 
+-
+ build_lzbench()
+ {
+     lib='lzbench'
+@@ -153,7 +137,6 @@
+     make install
+     cp "${WDL_BUILD}/openssl/bin/openssl" "${WDL_ROOT}/" || exit
+ 
+-
+     popd || exit
+ }
+ 
+@@ -198,43 +181,32 @@
+     clone $lib || echo "Failed to clone $lib"
+     cd "$lib" || exit
+     make -C ./tests/bench/ -j
+-    cp ./test/bench/benchHash "${WDL_ROOT}/xxhash_benchmark" || exit
++    cp ./tests/bench/benchHash "${WDL_ROOT}/xxhash_benchmark" || exit
+ 
+     popd || exit
+ }
+ 
+-
+ ##################### BUILD AND INSTALL #########################
+ 
+ pushd "${WDL_ROOT}"
+ 
++# Only build folly for memcpy_benchmark and memset_benchmark
+ build_folly
+-build_fbthrift
+-build_lzbench
+-build_openssl
+-build_vdso
+-build_libaegis
+-build_xxhash
+-
+-folly_benchmark_list="concurrency_concurrent_hash_map_bench hash_hash_benchmark container_hash_maps_bench stats_digest_builder_benchmark fibers_fibers_benchmark crypto_lt_hash_benchmark memcpy_benchmark memset_benchmark io_async_event_base_benchmark io_iobuf_benchmark function_benchmark random_benchmark synchronization_small_locks_benchmark range_find_benchmark"
+ 
+-fbthrift_benchmark_list="ProtocolBench"
++# Only copy the specific benchmarks we need
++folly_benchmark_list="memcpy_benchmark memset_benchmark"
+ 
+ for benchmark in $folly_benchmark_list; do
+   cp "$WDL_BUILD/build/folly/$benchmark" "$WDL_ROOT/$benchmark"
+ done
+ 
+-for benchmark in $fbthrift_benchmark_list; do
+-  cp "$WDL_BUILD/build/fbthrift/bin/$benchmark" "$WDL_ROOT/$benchmark"
+-done
+-
++echo "Successfully built and installed memcpy_benchmark and memset_benchmark"
+ 
+ cp "${BPKGS_WDL_ROOT}/run.sh" ./
+ cp "${BPKGS_WDL_ROOT}/convert.py" ./
+ cp "${BPKGS_WDL_ROOT}/aggregate_result.py" ./
+ cp "${BPKGS_WDL_ROOT}/parse_line.py" ./
+ 
+-
+ popd
+ 
+-exit $?
++exit $?
+\ No newline at end of file
