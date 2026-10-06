@@ -60,6 +60,13 @@ Prints `OK`.
 
 Prints `OK`.
 
+### FormatDevice
+
+ * `--device-uuid` - device whose journal is wiped; **mandatory**
+
+Zeroes the journal metadata, so the journal restores as empty. A device
+without a journal is left untouched. Prints `OK`.
+
 ### ReadPages
 
  * `--device-uuid` - device to read from; **mandatory**

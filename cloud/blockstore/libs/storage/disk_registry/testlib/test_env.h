@@ -971,12 +971,17 @@ public:
         return request;
     }
 
-    auto CreateCmsActionRequest(TVector<NProto::TAction> requests)
+    auto CreateCmsActionRequest(
+        TVector<NProto::TAction> requests,
+        std::optional<NProto::THeaders> config = std::nullopt)
     {
         auto request = std::make_unique<TEvService::TEvCmsActionRequest>();
         for (const auto& r: requests) {
             auto& cmsAction = *request->Record.MutableActions()->Add();
             cmsAction = std::move(r);
+        }
+        if (config) {
+            *request->Record.MutableHeaders() = *config;
         }
         return request;
     }

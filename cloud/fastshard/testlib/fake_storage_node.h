@@ -32,6 +32,7 @@ struct TFakeStorageNode: public IStorageNode
 
     TVector<NCloud::NProto::TAcquireDevicesRequest> AcquireCalls;
     TVector<NCloud::NProto::TReleaseDevicesRequest> ReleaseCalls;
+    TVector<NCloud::NProto::TFormatDeviceRequest> FormatCalls;
     TVector<NCloud::NProto::TReadPagesRequest> ReadCalls;
     TVector<NCloud::NProto::TWriteLogRecordRequest> WriteCalls;
     TVector<NCloud::NProto::TReadJournalTailRequest> ReadJournalTailCalls;
@@ -40,6 +41,7 @@ struct TFakeStorageNode: public IStorageNode
 
     NCloud::NProto::TAcquireDevicesResponse AcquireResp;
     NCloud::NProto::TReleaseDevicesResponse ReleaseResp;
+    NCloud::NProto::TFormatDeviceResponse FormatResp;
     NCloud::NProto::TReadPagesResponse ReadResp;
     NCloud::NProto::TWriteLogRecordResponse WriteResp;
     NCloud::NProto::TReadJournalTailResponse ReadJournalTailResp;
@@ -48,6 +50,7 @@ struct TFakeStorageNode: public IStorageNode
 
     TDeque<NCloud::NProto::TAcquireDevicesResponse> AcquireRespQueue;
     TDeque<NCloud::NProto::TReleaseDevicesResponse> ReleaseRespQueue;
+    TDeque<NCloud::NProto::TFormatDeviceResponse> FormatRespQueue;
     TDeque<NCloud::NProto::TReadPagesResponse> ReadRespQueue;
     TDeque<NCloud::NProto::TWriteLogRecordResponse> WriteRespQueue;
     TDeque<NCloud::NProto::TReadJournalTailResponse> ReadJournalTailRespQueue;
@@ -57,6 +60,9 @@ struct TFakeStorageNode: public IStorageNode
 
     NCloud::NProto::TReleaseDevicesResponse ReleaseDevices(
         NCloud::NProto::TReleaseDevicesRequest request) override;
+
+    NCloud::NProto::TFormatDeviceResponse FormatDevice(
+        NCloud::NProto::TFormatDeviceRequest request) override;
 
     NCloud::NProto::TReadPagesResponse ReadPages(
         NCloud::NProto::TReadPagesRequest request) override;

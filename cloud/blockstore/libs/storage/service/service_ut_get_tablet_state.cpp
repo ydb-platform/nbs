@@ -13,7 +13,10 @@
 #include <contrib/ydb/core/base/tablet_resolver.h>
 #include <contrib/ydb/core/node_whiteboard/node_whiteboard.h>
 
+#include <google/protobuf/descriptor.h>
 #include <google/protobuf/util/json_util.h>
+
+#include <util/generic/hash.h>
 
 #include <optional>
 #include <utility>
@@ -462,8 +465,8 @@ Y_UNIT_TEST_SUITE(TGetTabletStateTest)
 
     Y_UNIT_TEST(ShouldReportStartingAndStoppedObservationsWithoutBooting)
     {
-        const std::pair<TWhiteboardInfo::ETabletState, TResponse::ELocalState>
-            cases[] = {
+        const THashMap<TWhiteboardInfo::ETabletState, TResponse::ELocalState>
+            expectedStates = {
                 {TWhiteboardInfo::Created, TResponse::LOCAL_STARTING},
                 {TWhiteboardInfo::ResolveStateStorage,
                  TResponse::LOCAL_STARTING},
@@ -479,16 +482,29 @@ Y_UNIT_TEST_SUITE(TGetTabletStateTest)
                 {TWhiteboardInfo::Stopped, TResponse::LOCAL_STOPPED},
                 {TWhiteboardInfo::Deleted, TResponse::LOCAL_STOPPED},
                 {TWhiteboardInfo::Active, TResponse::LOCAL_ACTIVE},
-                {TWhiteboardInfo::Reserved14, TResponse::LOCAL_UNKNOWN},
             };
 
-        for (const auto& [observed, expected]: cases) {
+        const auto* states =
+            TWhiteboardInfo::descriptor()->FindEnumTypeByName("ETabletState");
+        UNIT_ASSERT(states);
+
+        // Enumerate the schema to cover renamed reserved values and new states
+        // as LOCAL_UNKNOWN until they are explicitly supported.
+        for (int i = 0; i < states->value_count(); ++i) {
+            const auto* state = states->value(i);
+            const auto observed =
+                static_cast<TWhiteboardInfo::ETabletState>(state->number());
+            const auto expectedState = expectedStates.find(observed);
+            const auto expected = expectedState != expectedStates.end()
+                                      ? expectedState->second
+                                      : TResponse::LOCAL_UNKNOWN;
+
             TFixture fixture;
             fixture.ResolveFails = true;
             fixture.SetLocalState(observed);
             const auto result = fixture.Query(2);
             UNIT_ASSERT(result.GetState() == TResponse::UNKNOWN);
-            UNIT_ASSERT(result.GetLocalState() == expected);
+            UNIT_ASSERT_C(result.GetLocalState() == expected, state->name());
             UNIT_ASSERT_VALUES_EQUAL(result.GetLeaderNodeId(), 0);
             UNIT_ASSERT_VALUES_EQUAL(fixture.ConnectRequests, 0);
         }

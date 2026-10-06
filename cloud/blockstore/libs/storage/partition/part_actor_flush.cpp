@@ -793,7 +793,9 @@ void TPartitionActor::HandleFlushCompleted(
                 State->FlushFreshBlob(freshBlobCommitId);
         }
 
-        if (FreshBlocksWriter) {
+        if (IsFreshBlocksWriterEnabled()) {
+            // FreshBlocksWriter might be not initialized yet, but we should
+            // update these counters anyway.
             SharedState->UnflushedFreshBlobByteCount.fetch_sub(
                 flushedFreshBlobByteCount);
             SharedState->UnflushedFreshBlocksCount.fetch_sub(

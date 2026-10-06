@@ -108,6 +108,26 @@ TString MediaKindToStatsString(NProto::EStorageMediaKind mediaKind)
     }
 }
 
+TString MediaKindToStatsString(
+    bool isSystem,
+    NProto::EStorageMediaKind mediaKind)
+{
+    if (isSystem) {
+        switch (mediaKind) {
+            case NProto::STORAGE_MEDIA_SSD:
+                return "ssd_system";
+            case NProto::STORAGE_MEDIA_HDD:
+            case NProto::STORAGE_MEDIA_HYBRID:
+            case NProto::STORAGE_MEDIA_DEFAULT:
+                return "hdd_system";
+            default:
+                break;
+        }
+    }
+
+    return MediaKindToStatsString(mediaKind);
+}
+
 TString MediaKindToComputeType(NProto::EStorageMediaKind mediaKind)
 {
     switch (mediaKind) {

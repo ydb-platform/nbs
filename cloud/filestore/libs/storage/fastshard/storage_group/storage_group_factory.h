@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
+#include "storage_group.h"
 
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 

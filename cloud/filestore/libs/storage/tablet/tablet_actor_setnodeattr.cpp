@@ -18,7 +18,7 @@ NProto::TError ValidateRequest(
     ui32 blockSize,
     ui32 maxFileBlocks)
 {
-    if (request.GetNodeId() == InvalidNodeId || request.GetFlags() == 0) {
+    if (request.GetNodeId() == InvalidNodeId) {
         return ErrorInvalidArgument();
     }
 

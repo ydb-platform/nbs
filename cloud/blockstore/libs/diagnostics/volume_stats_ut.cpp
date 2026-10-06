@@ -119,7 +119,8 @@ void Mount(
     const TString& client,
     const TString& instance,
     NCloud::NProto::EStorageMediaKind mediaKind =
-        NCloud::NProto::STORAGE_MEDIA_SSD)
+        NCloud::NProto::STORAGE_MEDIA_SSD,
+    bool isSystem = false)
 {
     NProto::TVolume volume;
     volume.SetDiskId(name);
@@ -127,6 +128,7 @@ void Mount(
     volume.SetBlockSize(DefaultBlockSize);
     volume.SetCloudId(DefaultCloudId);
     volume.SetFolderId(DefaultFolderId);
+    volume.SetIsSystem(isSystem);
 
     volumeStats->MountVolume(volume, client, instance);
 }
@@ -347,6 +349,47 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         UNIT_ASSERT(!findType("instance-1", "ssd"));
         UNIT_ASSERT(findType("instance-2", "hdd"));
         UNIT_ASSERT(!findType("instance-2", "ssd"));
+    }
+
+    Y_UNIT_TEST(ShouldReportSystemMediaKindLabel)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume");
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        Mount(
+            volumeStats,
+            "system-disk",
+            "client",
+            "instance",
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            true);
+
+        auto systemType = counters
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "system-disk")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->FindSubgroup("type", "ssd_system");
+        UNIT_ASSERT(systemType);
+
+        auto regularType = counters
+            ->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", "system-disk")
+            ->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", DefaultCloudId)
+            ->GetSubgroup("folder", DefaultFolderId)
+            ->FindSubgroup("type", "ssd");
+        UNIT_ASSERT(!regularType);
     }
 
     Y_UNIT_TEST(ShouldRegisterAndUnregisterCountersPerVolume)

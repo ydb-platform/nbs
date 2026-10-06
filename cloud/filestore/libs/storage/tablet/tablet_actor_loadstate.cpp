@@ -97,11 +97,14 @@ bool TIndexTabletActor::PrepareTx_LoadState(
 
     auto db = CreateIndexTabletDatabase(tx.DB);
 
+    // a read at this commit id sees the latest version of the node
+    static constexpr ui64 MaxCommitId = Max<ui64>() - 1;
+
     std::initializer_list<bool> results = {
         db->ReadFileSystem(args.FileSystem),
         db->ReadFileSystemStats(args.FileSystemStats),
         db->ReadTabletStorageInfo(args.TabletStorageInfo),
-        db->ReadNode(RootNodeId, 0, args.RootNode),
+        db->ReadNode(RootNodeId, MaxCommitId, args.RootNode),
         db->ReadSessions(args.Sessions),
         db->ReadSessionHandles(args.Handles),
         db->ReadSessionLocks(args.Locks),

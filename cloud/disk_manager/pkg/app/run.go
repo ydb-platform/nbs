@@ -182,10 +182,24 @@ func run(
 	nbsClientMetricsRegistry := mon.NewRegistry("nbs_client")
 	nbsSessionMetricsRegistry := mon.NewRegistry("nbs_session")
 	nbsConfig := config.GetNbsConfig()
+	nbsRefreshCertsPeriod, err := time.ParseDuration(
+		nbsConfig.GetRefreshCertsPeriod(),
+	)
+	if err != nil {
+		logging.Error(
+			ctx,
+			"Failed to parse NBS client RefreshCertsPeriod: %v",
+			err,
+		)
+		return err
+	}
+
 	nbsTlsProvider, err := common.NewGrpcClientTlsProvider(
+		ctx,
 		nbsConfig.GetInsecure(),
 		common.GrpcClientTlsProviderConfig{
 			RootCertsFile: nbsConfig.GetRootCertsFile(),
+			RefreshPeriod: nbsRefreshCertsPeriod,
 		},
 		nbsClientMetricsRegistry,
 	)
@@ -208,10 +222,24 @@ func run(
 
 	nfsConfig := config.GetNfsConfig()
 	nfsClientMetricsRegistry := mon.NewRegistry("nfs_client")
+	nfsRefreshCertsPeriod, err := time.ParseDuration(
+		nfsConfig.GetRefreshCertsPeriod(),
+	)
+	if err != nil {
+		logging.Error(
+			ctx,
+			"Failed to parse NFS client RefreshCertsPeriod: %v",
+			err,
+		)
+		return err
+	}
+
 	nfsTlsProvider, err := common.NewGrpcClientTlsProvider(
+		ctx,
 		nfsConfig.GetInsecure(),
 		common.GrpcClientTlsProviderConfig{
 			RootCertsFile: nfsConfig.GetRootCertsFile(),
+			RefreshPeriod: nfsRefreshCertsPeriod,
 		},
 		nfsClientMetricsRegistry,
 	)

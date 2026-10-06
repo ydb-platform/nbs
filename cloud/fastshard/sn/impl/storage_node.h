@@ -12,7 +12,7 @@ namespace NCloud::NFastShard {
  * A dumb file-backed IStorageNode.
  *
  * Semantics:
- *   - AcquireDevices and ReleaseDevices are stubbed and return S_OK.
+ *   - AcquireDevices, ReleaseDevices, FormatDevice are stubbed and return S_OK.
  *   - There is no journal, so ReadJournalTail returns an empty record
  *     list and AdvanceLsnLowWatermark is a no-op; both return S_OK.
  *   - WriteLogRecord writes every page in every TDevicePageGroup

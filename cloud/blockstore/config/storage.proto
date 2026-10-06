@@ -881,6 +881,7 @@ message TStorageServiceConfig
     optional string DiskRegistryCountersHost = 283;
 
     // Maximum allowed fresh byte count after which we start to reject writes.
+    // Zero disables this limit.
     optional uint32 FreshByteCountHardLimit = 284;
 
     // Interval to postpone volume push/pull.
@@ -1695,6 +1696,7 @@ message TStorageServiceConfig
 
     // Maximum allowed logical size of all blocks (block count * block size) in
     // fresh after which we start to reject write and zero requests.
+    // Zero disables this limit.
     optional uint64 FreshLogicalBlocksByteCountHardLimit = 529;
 
     // Enables compaction triggered by the number of mixed blocks for HDD

@@ -1,10 +1,13 @@
 #include "service_actor.h"
 
+#include <cloud/filestore/libs/diagnostics/critical_events.h>
 #include <cloud/filestore/libs/diagnostics/profile_log_events.h>
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
+
+#include <cloud/storage/core/libs/common/helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -33,6 +36,7 @@ private:
     // Response data
     NProto::TGetNodeAttrResponse LeaderResponse;
     bool LeaderResponded = false;
+    NProto::TError ShardError;
 
     // Stats for reporting
     IRequestStatsPtr RequestStats;
@@ -40,6 +44,7 @@ private:
     ITraceSerializerPtr TraceSerializer;
 
     const bool DisableMultiTabletForwarding;
+    const TDuration ShardPhaseDelay;
 
 public:
     TGetNodeAttrActor(
@@ -48,12 +53,14 @@ public:
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        bool disableMultiTabletForwarding);
+        bool disableMultiTabletForwarding,
+        TDuration shardPhaseDelay);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
     STFUNC(StateWork);
+    STFUNC(StateCheck);
 
     void GetNodeAttrInLeader(const TActorContext& ctx);
 
@@ -62,6 +69,16 @@ private:
         const TActorContext& ctx);
 
     void GetNodeAttrInShard(const TActorContext& ctx);
+
+    void CheckNodeRefInLeader(const TActorContext& ctx);
+
+    void HandleGetNodeAttrResponseCheck(
+        const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+        const TActorContext& ctx);
+
+    void HandleWakeup(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -81,7 +98,8 @@ TGetNodeAttrActor::TGetNodeAttrActor(
         IRequestStatsPtr requestStats,
         IProfileLogPtr profileLog,
         ITraceSerializerPtr traceSerializer,
-        bool disableMultiTabletForwarding)
+        bool disableMultiTabletForwarding,
+        TDuration shardPhaseDelay)
     : RequestInfo(std::move(requestInfo))
     , GetNodeAttrRequest(std::move(getNodeAttrRequest))
     , LogTag(GetNodeAttrRequest.GetFileSystemId())
@@ -89,6 +107,7 @@ TGetNodeAttrActor::TGetNodeAttrActor(
     , ProfileLog(std::move(profileLog))
     , TraceSerializer(std::move(traceSerializer))
     , DisableMultiTabletForwarding(disableMultiTabletForwarding)
+    , ShardPhaseDelay(shardPhaseDelay)
 {
 }
 
@@ -164,6 +183,15 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
     auto* msg = ev->Get();
 
     if (HasError(msg->GetError())) {
+        if (LeaderResponded && msg->GetError().GetCode() == E_FS_NOENT) {
+            // the node resolved by the leader is gone from the shard - either
+            // the nodeRef changed between the two phases (e.g. renamed over)
+            // or the node is lost, the leader tells which
+            ShardError = msg->GetError();
+            CheckNodeRefInLeader(ctx);
+            return;
+        }
+
         HandleError(ctx, *msg->Record.MutableError());
         return;
     }
@@ -200,7 +228,99 @@ void TGetNodeAttrActor::HandleGetNodeAttrResponse(
 
     LeaderResponded = true;
     LeaderResponse = std::move(msg->Record);
+    if (Y_UNLIKELY(ShardPhaseDelay)) {
+        ctx.Schedule(ShardPhaseDelay, new TEvents::TEvWakeup());
+        return;
+    }
     GetNodeAttrInShard(ctx);
+}
+
+void TGetNodeAttrActor::HandleWakeup(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    GetNodeAttrInShard(ctx);
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void TGetNodeAttrActor::CheckNodeRefInLeader(const TActorContext& ctx)
+{
+    LOG_DEBUG(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] Checking NodeRef in leader for %lu, %s",
+        LogTag.c_str(),
+        GetNodeAttrRequest.GetNodeId(),
+        GetNodeAttrRequest.GetName().Quote().c_str());
+
+    auto request = std::make_unique<TEvService::TEvGetNodeAttrRequest>();
+    request->Record = GetNodeAttrRequest;
+    request->CallContext = RequestInfo->CallContext;
+
+    ctx.Send(MakeIndexTabletProxyServiceId(), request.release());
+
+    Become(&TThis::StateCheck);
+}
+
+void TGetNodeAttrActor::HandleGetNodeAttrResponseCheck(
+    const TEvService::TEvGetNodeAttrResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    auto* msg = ev->Get();
+
+    bool exists = true;
+    bool locked = false;
+    if (HasError(msg->GetError())) {
+        if (msg->GetError().GetCode() == E_FS_NOENT) {
+            exists = false;
+        } else {
+            HandleError(ctx, *msg->Record.MutableError());
+            return;
+        }
+    } else {
+        exists = msg->Record.GetNode().GetShardNodeName() ==
+                 LeaderResponse.GetNode().GetShardNodeName();
+        locked = msg->Record.GetIsNodeRefLocked();
+    }
+
+    if (exists && !locked) {
+        ReportNodeNotFoundInShard(
+            TStringBuilder()
+            << "[" << LogTag << "] Node found in leader but missing in shard "
+            << LeaderResponse.GetNode().GetShardFileSystemId() << " ("
+            << LeaderResponse.GetNode().GetShardNodeName().Quote() << ") for "
+            << GetNodeAttrRequest.GetNodeId() << ", "
+            << GetNodeAttrRequest.GetName().Quote());
+
+        HandleError(ctx, std::move(ShardError));
+        return;
+    }
+
+    // the nodeRef is being modified or has already been replaced/removed -
+    // the client should retry the whole request
+    LOG_INFO(
+        ctx,
+        TFileStoreComponents::SERVICE,
+        "[%s] NodeRef changed under GetNodeAttr for %lu, %s (exists: %d, "
+        "locked: %d)",
+        LogTag.c_str(),
+        GetNodeAttrRequest.GetNodeId(),
+        GetNodeAttrRequest.GetName().Quote().c_str(),
+        exists,
+        locked);
+
+    ui32 flags = 0;
+    SetProtoFlag(flags, NCloud::NProto::EF_INSTANT_RETRIABLE);
+    HandleError(
+        ctx,
+        MakeError(
+            E_REJECTED,
+            TStringBuilder()
+                << "concurrent directory modifications for request: "
+                << GetNodeAttrRequest.ShortDebugString().Quote(),
+            flags));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -247,10 +367,29 @@ STFUNC(TGetNodeAttrActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(
             TEvService::TEvGetNodeAttrResponse,
             HandleGetNodeAttrResponse);
+
+        default:
+            HandleUnexpectedEvent(
+                ev,
+                TFileStoreComponents::SERVICE_WORKER,
+                __PRETTY_FUNCTION__);
+            break;
+    }
+}
+
+STFUNC(TGetNodeAttrActor::StateCheck)
+{
+    switch (ev->GetTypeRewrite()) {
+        HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+
+        HFunc(
+            TEvService::TEvGetNodeAttrResponse,
+            HandleGetNodeAttrResponseCheck);
 
         default:
             HandleUnexpectedEvent(
@@ -340,7 +479,8 @@ void TStorageServiceActor::HandleGetNodeAttr(
         session->RequestStats,
         ProfileLog,
         TraceSerializer,
-        disableMultiTabletForwarding);
+        disableMultiTabletForwarding,
+        StorageConfig->GetArtificialShardPhaseDelay());
 
     NCloud::Register(ctx, std::move(actor));
 }
