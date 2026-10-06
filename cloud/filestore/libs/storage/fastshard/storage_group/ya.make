@@ -30,6 +30,10 @@ PEERDIR(
 END()
 
 IF (OPENSOURCE AND NOT FORCE_FASTSHARD_IPC_STUB)
+    RECURSE(
+        bench
+    )
+
     RECURSE_FOR_TESTS(
         ut
     )

@@ -1,6 +1,7 @@
 LIBRARY()
 
 SRCS(
+    delay_policy.cpp
     fake_storage_node.cpp
 )
 

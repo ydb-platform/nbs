@@ -1,9 +1,8 @@
 #pragma once
 
-#include "delay_policy.h"
+#include <cloud/fastshard/testlib/delay_policy.h>
 
-// XXX will refactor this out of hash_table_index separately very soon
-#include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/factory/public.h>
 
 namespace NCloud::NFileStore::NStorage::NFastShard {
 
@@ -19,6 +18,6 @@ namespace NCloud::NFileStore::NStorage::NFastShard {
  * @return - The constructed factory.
  */
 IStorageGroupFactoryPtr CreateNullStorageGroupFactory(
-    IDelayPolicyPtr delayPolicy);
+    NCloud::NFastShard::IDelayPolicyPtr delayPolicy);
 
 }   // namespace NCloud::NFileStore::NStorage::NFastShard
