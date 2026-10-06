@@ -76,8 +76,6 @@ private:
         const NActors::TActorContext& ctx,
         TString volume);
 
-    void SendConfigSubscriptionRequest(const NActors::TActorContext& ctx);
-
     bool IsMaxInProgressLimitReached() const;
 
     STFUNC(StateWork);
@@ -100,14 +98,6 @@ private:
 
     void HandleConfigureVolumeBalancerRequest(
         const TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleConfigSubscriptionResponse(
-        const TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleConfigNotificationRequest(
-        const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 
