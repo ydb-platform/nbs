@@ -129,8 +129,9 @@ TRequestStats<T> operator-(TRequestStats<T> lhs, TRequestStats<T>& rhs) noexcept
 {
     lhs.Count -= rhs.Count;
     lhs.Bytes -= rhs.Bytes;
-    lhs.IoSizeCount -= rhs.IoSizeCount;
-    lhs.IoSizeBytes -= rhs.IoSizeBytes;
+    const auto [count, bytes] = rhs.GetIoSize();
+    lhs.IoSizeCount -= count;
+    lhs.IoSizeBytes -= bytes;
     lhs.Errors -= rhs.Errors;
     lhs.Unaligned -= rhs.Unaligned;
 

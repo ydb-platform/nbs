@@ -69,6 +69,12 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         constexpr size_t snapshotCount = 128;
 
         TAtomicStats atomic;
+        // Subtract live counters from a larger fixed snapshot to exercise
+        // atomic subtraction without underflow during concurrent updates.
+        constexpr ui64 subtractionCount = ui64{1} << 40;
+        TRequestStats<std::atomic<ui64>> subtractionBase;
+        subtractionBase.IoSizeCount = subtractionCount;
+        subtractionBase.IoSizeBytes = subtractionCount * requestBytes;
         auto completionStats = CreateCompletionStats();
         std::atomic_bool stop = false;
         std::atomic<size_t> writersStarted = 0;
@@ -118,7 +124,16 @@ Y_UNIT_TEST_SUITE(TStatsTest)
         for (size_t i = 0; i != atomic.Requests.size(); ++i) {
             initialCounts[i] = atomic.Requests[i].GetIoSize().first;
         }
-        while (writersReady && snapshots != snapshotCount &&
+        auto hasUpdates = [&]
+        {
+            for (size_t i = 0; i != previous.size(); ++i) {
+                if (previous[i].IoSizeCount <= initialCounts[i]) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        while (writersReady && (snapshots < snapshotCount || !hasUpdates()) &&
                TInstant::Now() < deadline)
         {
             auto snapshot = completionStats->Get(TDuration::Seconds(1));
@@ -140,6 +155,10 @@ Y_UNIT_TEST_SUITE(TStatsTest)
                 TRequestStats<ui64> sum;
                 sum += atomic.Requests[i];
                 check(sum);
+
+                const auto [count, bytes] =
+                    (subtractionBase - atomic.Requests[i]).GetIoSize();
+                consistent &= bytes == count * requestBytes;
             }
         }
 
@@ -154,13 +173,10 @@ Y_UNIT_TEST_SUITE(TStatsTest)
 
         UNIT_ASSERT_C(writersReady, "Completion workers did not start");
         UNIT_ASSERT_C(!timedOut, "Completion stats snapshot timed out");
-        UNIT_ASSERT_VALUES_EQUAL(snapshotCount, snapshots);
+        UNIT_ASSERT_C(snapshots >= snapshotCount, "Not enough snapshots");
         UNIT_ASSERT_C(hasTraffic, "No concurrent completion updates observed");
-        for (size_t i = 0; i != previous.size(); ++i) {
-            UNIT_ASSERT_C(
-                previous[i].IoSizeCount > initialCounts[i],
-                "Completion updates did not overlap the snapshots");
-        }
+        UNIT_ASSERT_C(
+            hasUpdates(), "Completion updates did not overlap the snapshots");
         UNIT_ASSERT_C(
             consistent, "IoSizeCount / IoSizeBytes snapshot was torn");
     }
