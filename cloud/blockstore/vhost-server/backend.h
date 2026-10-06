@@ -19,6 +19,8 @@ struct IBackend: public IStartable
         TSimpleStats& queueStats) = 0;
     virtual std::optional<TSimpleStats> GetCompletionStats(
         TDuration timeout) = 0;
+    // A fresh absolute snapshot; it must not wait for an I/O completion.
+    virtual std::optional<TIoDepthSnapshot> GetIoDepthStats() = 0;
 };
 
 }   // namespace NCloud::NBlockStore::NVHostServer

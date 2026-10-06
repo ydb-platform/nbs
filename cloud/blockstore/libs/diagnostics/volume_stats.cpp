@@ -253,6 +253,7 @@ class TVolumeInfo final
 private:
     const std::shared_ptr<TVolumeInfoBase> VolumeBase;
     const TRealInstanceId RealInstanceId;
+    const bool ReportZeroBlocksMetrics;
 
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
@@ -283,7 +284,8 @@ private:
         const TVolumeInfoBase& volumeBase)
     {
         TRequestCounters::EOptions options =
-            TRequestCounters::EOption::OnlyReadWriteRequests;
+            TRequestCounters::EOption::OnlyReadWriteRequests |
+            TRequestCounters::EOption::ReportIoDepth;
 
         auto mediaKind = volumeBase.Volume.GetStorageMediaKind();
         if (IsDiskRegistryMediaKind(mediaKind)) {
@@ -299,14 +301,18 @@ public:
             ITimerPtr timer,
             TRealInstanceId realInstanceId,
             EHistogramCounterOptions histogramCounterOptions,
-            const TVector<TSizeInterval>& executionTimeSizeClasses)
+            const TVector<TSizeInterval>& executionTimeSizeClasses,
+            bool reportZeroBlocksMetrics,
+            TIoDepthClock ioDepthClock)
         : VolumeBase(std::move(volumeBase))
         , RealInstanceId(std::move(realInstanceId))
+        , ReportZeroBlocksMetrics(reportZeroBlocksMetrics)
         , RequestCounters(MakeRequestCounters(
               std::move(timer),
               GetRequestCountersOptions(*VolumeBase),
               histogramCounterOptions,
-              executionTimeSizeClasses))
+              executionTimeSizeClasses,
+              std::move(ioDepthClock)))
         , AvailabilityLastUpdateTime(VolumeBase->Timer->Now())
     {}
 
@@ -323,6 +329,46 @@ public:
     TDuration GetPossiblePostponeDuration() const override
     {
         return VolumeBase->PostponeTimePredictor->GetPossiblePostponeDuration();
+    }
+
+    std::optional<TIoDepthSnapshot> GetIoDepthSnapshot() override
+    {
+        return RequestCounters.GetIoDepthSnapshot();
+    }
+
+    std::optional<TVolumeIoDepthSnapshot> GetIoDepthByDirection() override
+    {
+        const auto snapshot = RequestCounters.GetIoDepthSnapshot();
+        if (!snapshot) {
+            return std::nullopt;
+        }
+
+        auto lane = [&](EBlockStoreRequest type)
+        {
+            return snapshot->Lanes[static_cast<ui32>(type)];
+        };
+        TVolumeIoDepthSnapshot result{
+            .Generation = snapshot->Generation,
+            .TimestampNs = snapshot->TimestampNs,
+            .Continuous = snapshot->Continuous,
+            .Read = lane(EBlockStoreRequest::ReadBlocks),
+            .Write = lane(EBlockStoreRequest::WriteBlocks)};
+
+        if (ReportZeroBlocksMetrics) {
+            const auto zero = lane(EBlockStoreRequest::ZeroBlocks);
+            const auto max = std::numeric_limits<ui64>::max();
+            if (zero.Current > max - result.Write.Current ||
+                zero.IntegralUs > max - result.Write.IntegralUs)
+            {
+                result.Continuous = false;
+                result.Write = {};
+            } else {
+                result.Write.Current += zero.Current;
+                result.Write.IntegralUs += zero.IntegralUs;
+            }
+        }
+
+        return result;
     }
 
     ui64 RequestStarted(
@@ -537,6 +583,7 @@ private:
     const TDiagnosticsConfigPtr DiagnosticsConfig;
     const EVolumeStatsType Type;
     const ITimerPtr Timer;
+    const TIoDepthClock IoDepthClock;
     const THashSet<TString> CloudIdsWithStrictSLA;
 
     TVector<TSizeInterval> ExecutionTimeSizeClasses =
@@ -577,12 +624,14 @@ public:
             TDuration inactiveClientsTimeout,
             TDiagnosticsConfigPtr diagnosticsConfig,
             EVolumeStatsType type,
-            ITimerPtr timer)
+            ITimerPtr timer,
+            TIoDepthClock ioDepthClock)
         : Monitoring(std::move(monitoring))
         , InactiveClientsTimeout(inactiveClientsTimeout)
         , DiagnosticsConfig(std::move(diagnosticsConfig))
         , Type(type)
         , Timer(std::move(timer))
+        , IoDepthClock(std::move(ioDepthClock))
         , CloudIdsWithStrictSLA([] (const TVector<TString>& v) {
             return THashSet<TString>(v.begin(), v.end());
         }(DiagnosticsConfig->GetCloudIdsWithStrictSLA()))
@@ -1138,12 +1187,18 @@ private:
         TVolumeBasePtr volumeBase,
         const TRealInstanceId& realInstanceId)
     {
+        const bool reportZeroBlocksMetrics =
+            !DiagnosticsConfig
+                 ->GetSkipReportingZeroBlocksMetricsForYDBBasedDisks() ||
+            IsDiskRegistryMediaKind(volumeBase->Volume.GetStorageMediaKind());
         auto info = std::make_shared<TVolumeInfo>(
             volumeBase,
             Timer,
             realInstanceId,
             DiagnosticsConfig->GetHistogramCounterOptions(),
-            ExecutionTimeSizeClasses);
+            ExecutionTimeSizeClasses,
+            reportZeroBlocksMetrics,
+            IoDepthClock);
 
         if (!Counters) {
             InitCounters();
@@ -1191,10 +1246,6 @@ private:
         info->HealthySecondsCounter =
             availabilityCountersGroup->GetCounter("HealthySeconds", true);
 
-        auto reportZeroBlocksMetrics =
-            !DiagnosticsConfig
-                 ->GetSkipReportingZeroBlocksMetricsForYDBBasedDisks() ||
-            IsDiskRegistryMediaKind(volumeConfig.GetStorageMediaKind());
         NUserCounter::RegisterServerVolumeInstance(
             *UserCounters,
             volumeConfig.GetCloudId(),
@@ -1411,7 +1462,8 @@ IVolumeStatsPtr CreateVolumeStats(
     TDiagnosticsConfigPtr diagnosticsConfig,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
-    ITimerPtr timer)
+    ITimerPtr timer,
+    TIoDepthClock ioDepthClock)
 {
     Y_DEBUG_ABORT_UNLESS(diagnosticsConfig);
     return std::make_shared<TVolumeStats>(
@@ -1419,14 +1471,16 @@ IVolumeStatsPtr CreateVolumeStats(
         inactiveClientsTimeout,
         std::move(diagnosticsConfig),
         type,
-        std::move(timer));
+        std::move(timer),
+        std::move(ioDepthClock));
 }
 
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
-    ITimerPtr timer)
+    ITimerPtr timer,
+    TIoDepthClock ioDepthClock)
 {
     NProto::TDiagnosticsConfig diagnosticsConfig;
     return std::make_shared<TVolumeStats>(
@@ -1434,7 +1488,8 @@ IVolumeStatsPtr CreateVolumeStats(
         inactiveClientsTimeout,
         std::make_shared<TDiagnosticsConfig>(diagnosticsConfig),
         type,
-        std::move(timer));
+        std::move(timer),
+        std::move(ioDepthClock));
 }
 
 

@@ -15,7 +15,10 @@
 
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
+#include <util/generic/yexception.h>
 #include <util/string/builder.h>
+#include <util/system/guard.h>
+#include <util/system/spinlock.h>
 
 namespace NCloud::NBlockStore::NBD {
 
@@ -51,6 +54,7 @@ private:
     TLog Log;
 
     TIntrusiveList<TRequestContext> RequestsInFlight;
+    TAdaptiveLock RequestsLock;
 
     bool StructuredReply = false;
     bool UseNbsErrors = false;
@@ -83,16 +87,28 @@ public:
         IOutputStream& out,
         TServerResponse& response) override
     {
-        out.Write(
-            response.HeaderBuffer.Data(),
-            response.HeaderBuffer.Size());
-
-        if (response.DataBuffer) {
+        try {
             out.Write(
-                response.DataBuffer.get(),
-                response.RequestBytes);
+                response.HeaderBuffer.Data(),
+                response.HeaderBuffer.Size());
+
+            if (response.DataBuffer) {
+                out.Write(
+                    response.DataBuffer.get(),
+                    response.RequestBytes);
+            }
+        } catch (...) {
+            UnregisterRequest(
+                response.RequestContext,
+                MakeError(E_CANCELLED, CurrentExceptionMessage()));
+            throw;
         }
 
+        CompleteResponse(response);
+    }
+
+    void CompleteResponse(TServerResponse& response) override
+    {
         UnregisterRequest(response.RequestContext, response.Error);
     }
 
@@ -113,6 +129,18 @@ public:
 
     void ProcessException(std::exception_ptr e) override
     {
+        TVector<TRequestContextPtr> requests;
+        with_lock (RequestsLock) {
+            for (auto& request: RequestsInFlight) {
+                requests.emplace_back(&request);
+            }
+        }
+
+        const auto error = MakeError(E_CANCELLED, "NBD connection was closed");
+        for (const auto& request: requests) {
+            UnregisterRequest(request, error);
+        }
+
         ErrorHandler->ProcessException(e);
     }
 
@@ -576,9 +604,25 @@ void TServerHandler::ProcessRequests(
                     requestCtx->MetricRequest,
                     *requestCtx->CallContext);
 
-                auto requestData = DeviceHandler->AllocateBuffer(request.Length);
-                if (request.Length) {
-                    in.ReadOrFail(requestData.get(), request.Length);
+                TStorageBuffer requestData;
+                try {
+                    requestData = DeviceHandler->AllocateBuffer(request.Length);
+                    if (request.Length) {
+                        in.ReadOrFail(requestData.get(), request.Length);
+                    }
+                } catch (...) {
+                    auto error =
+                        MakeError(E_CANCELLED, CurrentExceptionMessage());
+                    TBufferRequestWriter response;
+                    WriteGenericError(
+                        response,
+                        request.Handle,
+                        GetNbdErrorCode(error.GetCode()), error.GetMessage());
+                    ctx->SendResponse(MakeIntrusive<TServerResponse>(
+                        requestCtx,
+                        std::move(error),
+                        request.Length, std::move(response.Buffer())));
+                    throw;
                 }
 
                 ctx->ExecuteSimple(
@@ -649,25 +693,29 @@ void TServerHandler::ProcessReadRequest(
         << " offset:" << request.From
         << " length:" << request.Length);
 
-    auto responseData = DeviceHandler->AllocateBuffer(request.Length);
-
+    TStorageBuffer responseData;
     NProto::TError error;
-    if (request.Length) {
-        auto guardedSgList = TGuardedSgList({
-            { responseData.get(), request.Length }
-        });
+    try {
+        responseData = DeviceHandler->AllocateBuffer(request.Length);
+        if (request.Length) {
+            auto guardedSgList = TGuardedSgList({
+                { responseData.get(), request.Length }
+            });
 
-        auto future = DeviceHandler->Read(
-            requestCtx->CallContext,
-            request.From,
-            request.Length,
-            guardedSgList,
-            Options.CheckpointId);
+            auto future = DeviceHandler->Read(
+                requestCtx->CallContext,
+                request.From,
+                request.Length,
+                guardedSgList,
+                Options.CheckpointId);
 
-        const auto& response = ctx->WaitFor(future);
-        error = response.GetError();
+            const auto& response = ctx->WaitFor(future);
+            error = response.GetError();
 
-        guardedSgList.Close();
+            guardedSgList.Close();
+        }
+    } catch (...) {
+        error = MakeError(E_FAIL, CurrentExceptionMessage());
     }
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
@@ -722,22 +770,26 @@ void TServerHandler::ProcessWriteRequest(
         << " length:" << request.Length);
 
     NProto::TError error;
-    if (request.Length) {
-        auto guardedSgList = TGuardedSgList({
-            { requestData.get(), request.Length }
-        });
+    try {
+        if (request.Length) {
+            auto guardedSgList = TGuardedSgList({
+                { requestData.get(), request.Length }
+            });
 
-        auto future = DeviceHandler->Write(
-            requestCtx->CallContext,
-            request.From,
-            request.Length,
-            guardedSgList);
+            auto future = DeviceHandler->Write(
+                requestCtx->CallContext,
+                request.From,
+                request.Length,
+                guardedSgList);
 
-        const auto& response = ctx->WaitFor(future);
-        error = response.GetError();
+            const auto& response = ctx->WaitFor(future);
+            error = response.GetError();
 
-        guardedSgList.Close();
-        requestData.reset();
+            guardedSgList.Close();
+            requestData.reset();
+        }
+    } catch (...) {
+        error = MakeError(E_FAIL, CurrentExceptionMessage());
     }
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
@@ -780,14 +832,18 @@ void TServerHandler::ProcessZeroRequest(
         << " length:" << request.Length);
 
     NProto::TError error;
-    if (request.Length) {
-        auto future = DeviceHandler->Zero(
-            requestCtx->CallContext,
-            request.From,
-            request.Length);
+    try {
+        if (request.Length) {
+            auto future = DeviceHandler->Zero(
+                requestCtx->CallContext,
+                request.From,
+                request.Length);
 
-        const auto& response = ctx->WaitFor(future);
-        error = response.GetError();
+            const auto& response = ctx->WaitFor(future);
+            error = response.GetError();
+        }
+    } catch (...) {
+        error = MakeError(E_FAIL, CurrentExceptionMessage());
     }
 
     ServerStats->ResponseSent(requestCtx->MetricRequest, *requestCtx->CallContext);
@@ -846,7 +902,9 @@ TRequestContextPtr TServerHandler::RegisterRequest(
         requestCtx->MetricRequest,
         *requestCtx->CallContext);
 
-    RequestsInFlight.PushBack(requestCtx.Get());
+    with_lock (RequestsLock) {
+        RequestsInFlight.PushBack(requestCtx.Get());
+    }
 
     return requestCtx;
 }
@@ -855,7 +913,13 @@ void TServerHandler::UnregisterRequest(
     const TRequestContextPtr& requestCtx,
     const NProto::TError& error)
 {
-    requestCtx->Unlink();
+    if (requestCtx->Completed.exchange(true)) {
+        return;
+    }
+
+    with_lock (RequestsLock) {
+        requestCtx->Unlink();
+    }
 
     ServerStats->RequestCompleted(
         Log,
@@ -869,6 +933,7 @@ size_t TServerHandler::CollectRequests(
 {
     ui64 now = GetCycleCount();
     size_t count = 0;
+    TGuard<TAdaptiveLock> guard(RequestsLock);
     for (auto& request : RequestsInFlight) {
         ++count;
         auto requestTime = request.CallContext->CalcRequestTime(now);

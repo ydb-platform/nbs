@@ -5,6 +5,8 @@
 #include "critical_event.h"
 #include "histogram.h"
 
+#include <cloud/storage/core/libs/diagnostics/io_depth_tracker.h>
+
 #include <util/datetime/base.h>
 #include <util/system/types.h>
 
@@ -156,6 +158,8 @@ using TSimpleStats = TStats<ui64>;
 struct TCompleteStats {
     TSimpleStats SimpleStats;
     TCriticalEvents CriticalEvents;
+    // This source snapshot is not part of additive completion counters.
+    std::optional<TIoDepthSnapshot> IoDepth;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

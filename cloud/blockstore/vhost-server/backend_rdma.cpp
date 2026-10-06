@@ -26,6 +26,13 @@
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <util/generic/yexception.h>
+#include <util/system/guard.h>
+#include <util/system/spinlock.h>
+
+#include <atomic>
+#include <memory>
+
 namespace NCloud::NBlockStore::NVHostServer {
 
 using namespace NCloud::NBlockStore;
@@ -38,6 +45,20 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui32 REQUEST_TIMEOUT_MSEC = 86400000;
+
+static_assert(
+    VHD_BDEV_READ < 2 && VHD_BDEV_WRITE < 2 && VHD_BDEV_READ != VHD_BDEV_WRITE);
+
+struct TRdmaRequestContext
+{
+    vhd_io* Io = nullptr;
+    TCpuCycles StartCycles = 0;
+    ui32 Lane = 0;
+    std::shared_ptr<TIoDepthTracker> IoDepth;
+    std::atomic<bool> Finished = false;
+};
+
+using TRdmaRequestContextPtr = std::shared_ptr<TRdmaRequestContext>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -133,12 +154,18 @@ private:
     TString ClientId;
     ICompletionStatsPtr CompletionStats;
     TSimpleStats CompletionStatsData;
+    TAdaptiveLock CompletionStatsLock;
+    const TIoDepthClock IoDepthClock;
+    std::shared_ptr<TIoDepthTracker> IoDepth;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
 
 public:
-    explicit TRdmaBackend(ILoggingServicePtr logging);
+    TRdmaBackend(
+        ILoggingServicePtr logging,
+        IStorageProviderPtr storageProvider,
+        TIoDepthClock ioDepthClock);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -148,22 +175,25 @@ public:
         vhd_request_queue* queue,
         TSimpleStats& queueStats) override;
     std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
+    std::optional<TIoDepthSnapshot> GetIoDepthStats() override;
 
 private:
-    void ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles);
-    void ProcessWriteRequest(struct vhd_io* io, TCpuCycles startCycles);
-    void CompleteRequest(
-        struct vhd_io* io,
-        TCpuCycles startCycles,
-        bool isError);
+    void ProcessReadRequest(TRdmaRequestContextPtr context);
+    void ProcessWriteRequest(TRdmaRequestContextPtr context);
+    void CompleteRequest(TRdmaRequestContextPtr context, bool isError);
     IBlockStorePtr CreateDataClient(IStoragePtr storage);
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRdmaBackend::TRdmaBackend(ILoggingServicePtr logging)
+TRdmaBackend::TRdmaBackend(
+    ILoggingServicePtr logging,
+    IStorageProviderPtr storageProvider,
+    TIoDepthClock ioDepthClock)
     : Logging{std::move(logging)}
+    , StorageProvider{std::move(storageProvider)}
     , CompletionStats(CreateCompletionStats())
+    , IoDepthClock{std::move(ioDepthClock)}
 {
     Log = Logging->CreateLog("RDMA");
 }
@@ -171,6 +201,8 @@ TRdmaBackend::TRdmaBackend(ILoggingServicePtr logging)
 vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 {
     STORAGE_INFO("Initializing RDMA backend");
+
+    IoDepth = std::make_shared<TIoDepthTracker>(2, IoDepthClock);
 
     Scheduler = CreateScheduler();
     Timer = CreateWallClockTimer();
@@ -186,21 +218,23 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     SectorsToBlockShift = MostSignificantBit(BlockSize) - VHD_SECTOR_SHIFT;
 
-    auto rdmaClientConfig = std::make_shared<TClientConfig>();
-    rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
-    rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
-    rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
+    if (!StorageProvider) {
+        auto rdmaClientConfig = std::make_shared<TClientConfig>();
+        rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
+        rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
+        rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
-    auto monitoring = NCloud::CreateMonitoringServiceStub();
-    RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
-        Logging,
-        std::move(monitoring),
-        std::move(rdmaClientConfig));
+        auto monitoring = NCloud::CreateMonitoringServiceStub();
+        RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
+            Logging,
+            std::move(monitoring),
+            std::move(rdmaClientConfig));
 
-    StorageProvider = NStorage::CreateRdmaStorageProvider(
-        CreateServerStatsStub(),
-        RdmaClient,
-        NStorage::ERdmaTaskQueueOpt::DontUse);
+        StorageProvider = NStorage::CreateRdmaStorageProvider(
+            CreateServerStatsStub(),
+            RdmaClient,
+            NStorage::ERdmaTaskQueueOpt::DontUse);
+    }
 
     Volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     Volume.SetBlockSize(BlockSize);
@@ -289,7 +323,9 @@ void TRdmaBackend::Start()
     STORAGE_INFO("Starting RDMA backend");
 
     Scheduler->Start();
-    RdmaClient->Start();
+    if (RdmaClient) {
+        RdmaClient->Start();
+    }
 
     auto accessMode = ReadOnly ? NProto::VOLUME_ACCESS_READ_ONLY
                                : NProto::VOLUME_ACCESS_READ_WRITE;
@@ -305,8 +341,21 @@ void TRdmaBackend::Stop()
 {
     STORAGE_INFO("Stopping RDMA backend");
 
-    RdmaClient->Stop();
+    if (RdmaClient) {
+        RdmaClient->Stop();
+    }
     Scheduler->Stop();
+
+    if (IoDepth) {
+        const auto snapshot = IoDepth->Snapshot();
+        for (const auto& lane: snapshot.Lanes) {
+            if (lane.Current) {
+                IoDepth->MarkDiscontinuity();
+                STORAGE_ERROR("RDMA depth has unfinished requests after drain");
+                break;
+            }
+        }
+    }
 }
 
 void TRdmaBackend::ProcessQueue(
@@ -322,22 +371,37 @@ void TRdmaBackend::ProcessQueue(
 
         struct vhd_bdev_io* bio = vhd_get_bdev_io(req.io);
         const TCpuCycles now = GetCycleCount();
-        switch (bio->type) {
-            case VHD_BDEV_READ:
-                ProcessReadRequest(req.io, now);
-                ++queueStats.Submitted;
-                break;
-            case VHD_BDEV_WRITE:
-                ProcessWriteRequest(req.io, now);
-                ++queueStats.Submitted;
-                break;
-            default:
+        if (bio->type != VHD_BDEV_READ && bio->type != VHD_BDEV_WRITE) {
                 STORAGE_ERROR(
                     "Unexpected vhost request type: "
                     << static_cast<int>(bio->type));
                 vhd_complete_bio(req.io, VHD_BDEV_IOERR);
                 ++queueStats.SubFailed;
-                break;
+            continue;
+        }
+
+        auto context = std::make_shared<TRdmaRequestContext>();
+        context->Io = req.io;
+        context->StartCycles = now;
+        context->Lane = bio->type;
+        context->IoDepth = IoDepth;
+        context->IoDepth->Started(context->Lane);
+
+        // Subscribe may complete inline; begin the parent before calling the
+        // durable client and finish it only after the final retry result.
+        try {
+            if (bio->type == VHD_BDEV_READ) {
+                ProcessReadRequest(context);
+            } else {
+                ProcessWriteRequest(context);
+            }
+            ++queueStats.Submitted;
+        } catch (...) {
+            STORAGE_ERROR(
+                "RDMA request processing failed: "
+                << CurrentExceptionMessage());
+            ++queueStats.SubFailed;
+            CompleteRequest(context, true);
         }
     }
 }
@@ -345,6 +409,15 @@ void TRdmaBackend::ProcessQueue(
 std::optional<TSimpleStats> TRdmaBackend::GetCompletionStats(TDuration timeout)
 {
     return CompletionStats->Get(timeout);
+}
+
+std::optional<TIoDepthSnapshot> TRdmaBackend::GetIoDepthStats()
+{
+    if (!IoDepth) {
+        return std::nullopt;
+    }
+
+    return IoDepth->Snapshot();
 }
 
 TSgList ConvertVhdSgList(const vhd_sglist& vhdSglist)
@@ -358,9 +431,9 @@ TSgList ConvertVhdSgList(const vhd_sglist& vhdSglist)
     return sgList;
 }
 
-void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
+void TRdmaBackend::ProcessReadRequest(TRdmaRequestContextPtr context)
 {
-    auto* bio = vhd_get_bdev_io(io);
+    auto* bio = vhd_get_bdev_io(context->Io);
 
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     auto requestId = CreateRequestId();
@@ -385,24 +458,29 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
     auto future =
         DataClient->ReadBlocksLocal(std::move(callContext), std::move(request));
     future.Subscribe(
-        [this, io, requestId, startCycles](const auto& future)
+        [this, context = std::move(context), requestId](const auto& future)
         {
-            const auto& response = future.GetValue();
-            auto& error = response.GetError();
-            STORAGE_DEBUG(
-                "READ[%lu] Code=%d, Message=%s",
-                requestId,
-                error.GetCode(),
-                error.GetMessage().c_str());
-            CompleteRequest(io, startCycles, HasError(error));
+            bool isError = true;
+            try {
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                STORAGE_DEBUG(
+                    "READ[%lu] Code=%d, Message=%s",
+                    requestId,
+                    error.GetCode(),
+                    error.GetMessage().c_str());
+                isError = HasError(error);
+            } catch (...) {
+                STORAGE_ERROR(
+                    "RDMA read future failed: " << CurrentExceptionMessage());
+            }
+            CompleteRequest(context, isError);
         });
 }
 
-void TRdmaBackend::ProcessWriteRequest(
-    struct vhd_io* io,
-    TCpuCycles startCycles)
+void TRdmaBackend::ProcessWriteRequest(TRdmaRequestContextPtr context)
 {
-    auto* bio = vhd_get_bdev_io(io);
+    auto* bio = vhd_get_bdev_io(context->Io);
 
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     auto requestId = CreateRequestId();
@@ -427,51 +505,75 @@ void TRdmaBackend::ProcessWriteRequest(
     auto future =
         DataClient->WriteBlocksLocal(std::move(callContext), std::move(request));
     future.Subscribe(
-        [this, io, requestId, startCycles](const auto& future)
+        [this, context = std::move(context), requestId](const auto& future)
         {
-            const auto& response = future.GetValue();
-            auto& error = response.GetError();
-            STORAGE_DEBUG(
-                "WRITE[%lu] Code=%d, Message=%s",
-                requestId,
-                error.GetCode(),
-                error.GetMessage().c_str());
-            CompleteRequest(io, startCycles, HasError(error));
+            bool isError = true;
+            try {
+                const auto& response = future.GetValue();
+                const auto& error = response.GetError();
+                STORAGE_DEBUG(
+                    "WRITE[%lu] Code=%d, Message=%s",
+                    requestId,
+                    error.GetCode(),
+                    error.GetMessage().c_str());
+                isError = HasError(error);
+            } catch (...) {
+                STORAGE_ERROR(
+                    "RDMA write future failed: " << CurrentExceptionMessage());
+            }
+            CompleteRequest(context, isError);
         });
 }
 
-void TRdmaBackend::CompleteRequest(
-    struct vhd_io* io,
-    TCpuCycles startCycles,
-    bool isError)
+void TRdmaBackend::CompleteRequest(TRdmaRequestContextPtr context, bool isError)
 {
-    auto* bio = vhd_get_bdev_io(io);
-
-    ++CompletionStatsData.Completed;
-
-    if (!isError) {
-        const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
-        CompletionStatsData.Requests[bio->type].Count += 1;
-        CompletionStatsData.Requests[bio->type].Bytes += bytes;
-        CompletionStatsData.Sizes[bio->type].Increment(bytes);
-        CompletionStatsData.Times[bio->type].Increment(
-            GetCycleCount() - startCycles);
-    } else {
-        CompletionStatsData.Requests[bio->type].Errors += 1;
+    if (context->Finished.exchange(true)) {
+        context->IoDepth->MarkDiscontinuity();
+        return;
     }
 
-    vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
+    auto* io = context->Io;
+    auto* bio = vhd_get_bdev_io(io);
 
-    CompletionStats->Sync(CompletionStatsData);
+    {
+        TGuard<TAdaptiveLock> guard(CompletionStatsLock);
+        ++CompletionStatsData.Completed;
+
+        if (!isError) {
+            const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
+            CompletionStatsData.Requests[bio->type].Count += 1;
+            CompletionStatsData.Requests[bio->type].Bytes += bytes;
+            CompletionStatsData.Sizes[bio->type].Increment(bytes);
+            CompletionStatsData.Times[bio->type].Increment(
+                GetCycleCount() - context->StartCycles);
+        } else {
+            CompletionStatsData.Requests[bio->type].Errors += 1;
+        }
+
+        CompletionStats->Sync(CompletionStatsData);
+    }
+
+    const bool completed = context->IoDepth->Completed(context->Lane);
+    Y_DEBUG_ABORT_UNLESS(completed);
+
+    // Releasing the guest request can unblock drain and backend destruction.
+    // Do not access this or the bio after this call.
+    vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
 }
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBackendPtr CreateRdmaBackend(ILoggingServicePtr logging)
+IBackendPtr CreateRdmaBackend(
+    ILoggingServicePtr logging,
+    IStorageProviderPtr storageProvider,
+    TIoDepthClock ioDepthClock)
 {
-    return std::make_shared<TRdmaBackend>(std::move(logging));
+    return std::make_shared<TRdmaBackend>(
+        std::move(logging),
+        std::move(storageProvider),
+        std::move(ioDepthClock));
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

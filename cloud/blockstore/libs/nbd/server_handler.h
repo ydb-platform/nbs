@@ -20,6 +20,8 @@
 #include <util/stream/input.h>
 #include <util/stream/output.h>
 
+#include <atomic>
+
 namespace NCloud::NBlockStore::NBD {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -30,6 +32,7 @@ struct TRequestContext
 {
     TCallContextPtr CallContext;
     TMetricRequest MetricRequest;
+    std::atomic<bool> Completed = false;
 
     TRequestContext(ui64 requestId, EBlockStoreRequest requestType)
         : CallContext(MakeIntrusive<TCallContext>(requestId))
@@ -96,6 +99,8 @@ struct IServerHandler
     virtual void SendResponse(
         IOutputStream& out,
         TServerResponse& response) = 0;
+
+    virtual void CompleteResponse(TServerResponse& response) = 0;
 
     virtual void ProcessRequests(
         IServerContextPtr ctx,

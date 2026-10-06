@@ -1,10 +1,15 @@
 #include "server.h"
 
+#include "backend.h"
 #include "backend_aio.h"
+#include "backend_null.h"
+#include "backend_rdma.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryptor.h>
+#include <cloud/blockstore/libs/service/storage_provider.h>
+#include <cloud/blockstore/libs/service/storage_test.h>
 
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -20,6 +25,7 @@
 #include <library/cpp/threading/future/subscription/wait_all.h>
 
 #include <util/generic/hash_set.h>
+#include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
@@ -29,7 +35,10 @@
 
 #include <vhost/blockdev.h>
 
+#include <atomic>
+#include <exception>
 #include <span>
+#include <thread>
 
 IOutputStream& operator<<(
     IOutputStream& out,
@@ -152,6 +161,8 @@ public:
 
     NCloud::ILoggingServicePtr Logging;
     std::shared_ptr<IServer> Server;
+    IBackendPtr Backend;
+    std::atomic<ui64> NowNs = 0;
     TVector<TTempFileHandle> Files;
     IEncryptorPtr Encryptor;
 
@@ -179,9 +190,9 @@ public:
 
     void StartServer(bool addNonExistingDevice = false)
     {
-        Server = CreateServer(
-            Logging,
-            CreateAioBackend(Encryptor, Logging, ThreadCount));
+        Backend = CreateAioBackend(
+            Encryptor, Logging, ThreadCount, [this] { return NowNs.load(); });
+        Server = CreateServer(Logging, Backend);
 
         Options.Layout.reserve(ChunkCount);
         Files.reserve(ChunkCount);
@@ -212,9 +223,9 @@ public:
 
     void StartServerWithSplitDevices()
     {
-        Server = CreateServer(
-            Logging,
-            CreateAioBackend(Encryptor, Logging, ThreadCount));
+        Backend = CreateAioBackend(
+            Encryptor, Logging, ThreadCount, [this] { return NowNs.load(); });
+        Server = CreateServer(Logging, Backend);
 
         // H - header
         // D - device
@@ -292,6 +303,7 @@ public:
             Server->Stop();
             Server.reset();
         }
+        Backend.reset();
         Files.clear();
         Options.Layout.clear();
     }
@@ -576,6 +588,11 @@ TEST_P(TServerTest, ShouldResponseWithEIOOnRequestsToNonExistingDevice)
         EXPECT_EQ(status.size(), writeOp.GetValueSync());
         EXPECT_EQ(VIRTIO_BLK_S_IOERR, status[0]);
     }
+
+    const auto depth = Backend->GetIoDepthStats();
+    ASSERT_TRUE(depth);
+    EXPECT_EQ(0u, depth->Lanes[VHD_BDEV_WRITE].Current);
+    EXPECT_TRUE(depth->Continuous);
 }
 
 TEST_P(TServerTest, ShouldWriteToSplitDevices)
@@ -1084,6 +1101,12 @@ TEST_P(TServerTest, ShouldStatEncryptorErrors)
     EXPECT_EQ(readCount + splittedReads, stats.Dequeued);
     EXPECT_EQ(readCount + splittedReads, stats.Submitted);
     EXPECT_EQ(readCount + writeCount, stats.EncryptorErrors);
+
+    const auto depth = Backend->GetIoDepthStats();
+    ASSERT_TRUE(depth);
+    EXPECT_EQ(0u, depth->Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(0u, depth->Lanes[VHD_BDEV_WRITE].Current);
+    EXPECT_TRUE(depth->Continuous);
 }
 
 TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
@@ -1556,5 +1579,565 @@ INSTANTIATE_TEST_SUITE_P(
                           << "_tc" << std::get<4>(info.param);
         return std::string(name);
     });
+
+namespace {
+
+class TBlockingDecryptEncryptor final: public IEncryptor
+{
+private:
+    const IEncryptorPtr Impl;
+    NThreading::TPromise<void> Entered = NThreading::NewPromise();
+    NThreading::TPromise<void> Released = NThreading::NewPromise();
+
+public:
+    explicit TBlockingDecryptEncryptor(IEncryptorPtr impl)
+        : Impl(std::move(impl))
+    {}
+
+    NProto::TError Encrypt(
+        TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
+    {
+        return Impl->Encrypt(src, dst, blockIndex);
+    }
+
+    NProto::TError Decrypt(
+        TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
+    {
+        Entered.TrySetValue();
+        Released.GetFuture().Wait();
+        return Impl->Decrypt(src, dst, blockIndex);
+    }
+
+    bool WaitEntered()
+    {
+        return Entered.GetFuture().Wait(TDuration::Seconds(5));
+    }
+
+    void Release()
+    {
+        Released.TrySetValue();
+    }
+};
+
+class TIoDepthAioServerTest: public TServerTest
+{
+public:
+    void CheckPendingRead(bool compound)
+    {
+        auto encryptor = std::make_shared<TBlockingDecryptEncryptor>(Encryptor);
+        Encryptor = encryptor;
+        StartServer();
+
+        // Always release the worker before TearDown, including failed asserts.
+        Y_DEFER
+        {
+            encryptor->Release();
+        };
+
+        const ui64 startBlock = compound ? BlocksPerChunk / 2 : 0;
+        const ui64 bytes = compound ? ChunkByteCount : BlockSize;
+        for (ui64 i = 0; i < bytes / BlockSize; ++i) {
+            ASSERT_TRUE(SaveRawBlock(startBlock + i, TString(BlockSize, 'X')));
+        }
+
+        const auto hdr = Hdr(
+            Memory,
+            {.type = VIRTIO_BLK_T_IN, .sector = startBlock * SectorsPerBlock});
+        const auto data = Memory.Allocate(bytes, BlockSize);
+        const auto status = Memory.Allocate(1);
+        auto future = Client.WriteAsync(QueueIndex, {hdr}, {data, status});
+
+        ASSERT_TRUE(encryptor->WaitEntered());
+        EXPECT_FALSE(future.HasValue());
+        NowNs.store(2'000'000'000ULL);
+
+        const auto pending = Backend->GetIoDepthStats();
+        ASSERT_TRUE(pending);
+        EXPECT_TRUE(pending->Continuous);
+        EXPECT_EQ(1u, pending->Lanes[VHD_BDEV_READ].Current);
+        EXPECT_EQ(2'000'000u, pending->Lanes[VHD_BDEV_READ].IntegralUs);
+        EXPECT_EQ(0u, pending->Lanes[VHD_BDEV_WRITE].Current);
+
+        encryptor->Release();
+        ASSERT_TRUE(future.Wait(TDuration::Seconds(5)));
+        EXPECT_EQ(bytes + status.size(), future.GetValueSync());
+        EXPECT_EQ(VIRTIO_BLK_S_OK, status[0]);
+
+        const auto completed = Backend->GetIoDepthStats();
+        ASSERT_TRUE(completed);
+        EXPECT_EQ(0u, completed->Lanes[VHD_BDEV_READ].Current);
+        EXPECT_EQ(2'000'000u, completed->Lanes[VHD_BDEV_READ].IntegralUs);
+        EXPECT_EQ(pending->Generation, completed->Generation);
+        EXPECT_TRUE(completed->Continuous);
+
+        Server->Stop();
+        Server.reset();
+        Client.DeInit();
+        const auto drained = Backend->GetIoDepthStats();
+        ASSERT_TRUE(drained);
+        EXPECT_EQ(0u, drained->Lanes[VHD_BDEV_READ].Current);
+        EXPECT_TRUE(drained->Continuous);
+    }
+};
+
+class TTestRdmaStorageProvider final: public IStorageProvider
+{
+private:
+    const IStoragePtr Storage;
+
+public:
+    explicit TTestRdmaStorageProvider(IStoragePtr storage)
+        : Storage(std::move(storage))
+    {}
+
+    NThreading::TFuture<IStoragePtr> CreateStorage(
+        const NProto::TVolume& volume,
+        const TString& clientId, NProto::EVolumeAccessMode accessMode) override
+    {
+        Y_UNUSED(volume);
+        Y_UNUSED(clientId);
+        Y_UNUSED(accessMode);
+        return NThreading::MakeFuture<IStoragePtr>(Storage);
+    }
+};
+
+class TIoDepthRdmaServerTest: public testing::Test
+{
+public:
+    const TString SocketPath = MakeTempName();
+    const ui32 BlockSize = 4_KB;
+    std::atomic<ui64> NowNs = 0;
+    std::atomic<ui32> ReadAttempts = 0;
+    ILoggingServicePtr Logging;
+    std::shared_ptr<TTestStorage> Storage = std::make_shared<TTestStorage>();
+    IBackendPtr Backend;
+    std::shared_ptr<IServer> Server;
+    NVHost::TClient Client{SocketPath, {.QueueCount = 1}};
+    TMonotonicBufferResource Memory;
+
+    NThreading::TPromise<NProto::TReadBlocksLocalResponse> ReadResponse =
+        NThreading::NewPromise<NProto::TReadBlocksLocalResponse>();
+    NThreading::TPromise<NProto::TReadBlocksLocalResponse> RetryResponse =
+        NThreading::NewPromise<NProto::TReadBlocksLocalResponse>();
+    NThreading::TPromise<NProto::TWriteBlocksLocalResponse> WriteResponse =
+        NThreading::NewPromise<NProto::TWriteBlocksLocalResponse>();
+    NThreading::TPromise<void> ReadArrived = NThreading::NewPromise();
+    NThreading::TPromise<void> RetryArrived = NThreading::NewPromise();
+    NThreading::TPromise<void> WriteArrived = NThreading::NewPromise();
+
+    void SetUp() override
+    {
+        Logging =
+            CreateLoggingService("console", {.FiltrationLevel = TLOG_DEBUG});
+        Storage->DoAllocations = true;
+        Storage->ReadBlocksLocalHandler = [this](auto, auto)
+        {
+            if (++ReadAttempts == 1) {
+                ReadArrived.TrySetValue();
+                return ReadResponse.GetFuture();
+            }
+            RetryArrived.TrySetValue();
+            return RetryResponse.GetFuture();
+        };
+        Storage->WriteBlocksLocalHandler = [this](auto, auto)
+        {
+            WriteArrived.TrySetValue();
+            return WriteResponse.GetFuture();
+        };
+    }
+
+    void StartServer()
+    {
+        Backend = CreateRdmaBackend(
+            Logging,
+            std::make_shared<TTestRdmaStorageProvider>(Storage),
+            [this] { return NowNs.load(); });
+        Server = CreateServer(Logging, Backend);
+        TOptions options{
+            .SocketPath = SocketPath,
+            .DiskId = "io-depth-rdma-test",
+            .Serial = "io-depth-rdma-test",
+            .DeviceBackend = "rdma",
+            .Layout =
+                {{.DevicePath = "rdma://localhost:10020/test-device",
+                  .ByteCount = 1_MB}},
+            .NoSync = true,
+            .NoChmod = true,
+            .BlockSize = BlockSize,
+            .QueueCount = 1};
+        Server->Start(options);
+        ASSERT_TRUE(Client.Init());
+        Memory = TMonotonicBufferResource{Client.GetMemory()};
+    }
+
+    void TearDown() override
+    {
+        // Resolve every test gate before drain, including an assertion failure.
+        NProto::TReadBlocksLocalResponse read;
+        *read.MutableError() = MakeError(E_CANCELLED);
+        ReadResponse.TrySetValue(read);
+        RetryResponse.TrySetValue(read);
+        NProto::TWriteBlocksLocalResponse write;
+        *write.MutableError() = MakeError(E_CANCELLED);
+        WriteResponse.TrySetValue(write);
+        if (Server) {
+            Client.DeInit();
+            Server->Stop();
+            Server.reset();
+        }
+        Backend.reset();
+    }
+
+    struct TPendingRequest
+    {
+        std::span<char> Status;
+        NThreading::TFuture<ui32> Future;
+    };
+
+    TPendingRequest Send(bool write)
+    {
+        const auto hdr =
+            Hdr(Memory,
+                {.type = static_cast<ui32>(
+                     write ? VIRTIO_BLK_T_OUT : VIRTIO_BLK_T_IN)});
+        const auto data = Memory.Allocate(BlockSize, BlockSize);
+        const auto status = Memory.Allocate(1);
+        if (write) {
+            memset(data.data(), 'W', data.size());
+            return {status, Client.WriteAsync(0, {hdr, data}, {status})};
+        }
+        return {status, Client.WriteAsync(0, {hdr}, {data, status})};
+    }
+
+    TIoDepthSnapshot Snapshot()
+    {
+        auto result = Backend->GetIoDepthStats();
+        EXPECT_TRUE(result);
+        return result ? *result : TIoDepthSnapshot{};
+    }
+
+    void CompleteRead(bool error = false)
+    {
+        NProto::TReadBlocksLocalResponse response;
+        if (error) {
+            *response.MutableError() = MakeError(E_IO);
+        }
+        ReadResponse.SetValue(std::move(response));
+    }
+};
+
+class TNoCompletionBackend final: public IBackend
+{
+public:
+    ui64 NowNs = 0;
+    TIoDepthTracker Depth{
+        2,
+        [this]
+        {
+            return NowNs;
+        }};
+
+    vhd_bdev_info Init(const TOptions&) override
+    {
+        return {};
+    }
+
+    void Start() override
+    {}
+
+    void Stop() override
+    {}
+
+    void ProcessQueue(ui32, vhd_request_queue*, TSimpleStats&) override
+    {}
+
+    std::optional<TSimpleStats> GetCompletionStats(TDuration) override
+    {
+        return std::nullopt;
+    }
+
+    std::optional<TIoDepthSnapshot> GetIoDepthStats() override
+    {
+        return Depth.Snapshot();
+    }
+};
+
+}   // namespace
+
+TEST_P(TIoDepthAioServerTest, ShouldKeepReadActiveDuringDecrypt)
+{
+    CheckPendingRead(false);
+}
+
+TEST_P(TIoDepthAioServerTest, ShouldCountCompoundReadAsOneParent)
+{
+    CheckPendingRead(true);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ,
+    TIoDepthAioServerTest,
+    testing::Values(
+        TTestParams{NProto::ENCRYPTION_AES_XTS, 1, 4_KB, false, 2}));
+
+TEST_F(TIoDepthRdmaServerTest, ShouldMeasureReadWithoutCompletions)
+{
+    StartServer();
+    auto request = Send(false);
+    ASSERT_TRUE(ReadArrived.GetFuture().Wait(TDuration::Seconds(5)));
+
+    NowNs.store(60'000'000'000ULL);
+    const auto pending = Snapshot();
+    EXPECT_EQ(1u, pending.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(60'000'000u, pending.Lanes[VHD_BDEV_READ].IntegralUs);
+    EXPECT_EQ(0u, pending.Lanes[VHD_BDEV_WRITE].Current);
+    EXPECT_FALSE(request.Future.HasValue());
+
+    const auto stats = Server->GetStats({});
+    EXPECT_EQ(0u, stats.SimpleStats.Completed);
+    ASSERT_TRUE(stats.IoDepth);
+    EXPECT_EQ(60'000'000u, stats.IoDepth->Lanes[VHD_BDEV_READ].IntegralUs);
+
+    CompleteRead();
+    ASSERT_TRUE(request.Future.Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(VIRTIO_BLK_S_OK, request.Status[0]);
+    const auto completed = Snapshot();
+    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(60'000'000u, completed.Lanes[VHD_BDEV_READ].IntegralUs);
+    EXPECT_EQ(pending.Generation, completed.Generation);
+    EXPECT_TRUE(completed.Continuous);
+
+    Server->Stop();
+    Server.reset();
+    Client.DeInit();
+    EXPECT_EQ(0u, Snapshot().Lanes[VHD_BDEV_READ].Current);
+}
+
+TEST_F(TIoDepthRdmaServerTest, ShouldSeparateDirectionsAndFinishErrors)
+{
+    StartServer();
+    auto read = Send(false);
+    ASSERT_TRUE(ReadArrived.GetFuture().Wait(TDuration::Seconds(5)));
+    NowNs.store(1'000'000'000ULL);
+    auto write = Send(true);
+    ASSERT_TRUE(WriteArrived.GetFuture().Wait(TDuration::Seconds(5)));
+    NowNs.store(3'000'000'000ULL);
+
+    const auto pending = Snapshot();
+    EXPECT_EQ(1u, pending.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(1u, pending.Lanes[VHD_BDEV_WRITE].Current);
+    EXPECT_EQ(3'000'000u, pending.Lanes[VHD_BDEV_READ].IntegralUs);
+    EXPECT_EQ(2'000'000u, pending.Lanes[VHD_BDEV_WRITE].IntegralUs);
+
+    CompleteRead(true);
+    NProto::TWriteBlocksLocalResponse response;
+    *response.MutableError() = MakeError(E_IO);
+    WriteResponse.SetValue(response);
+    ASSERT_TRUE(read.Future.Wait(TDuration::Seconds(5)));
+    ASSERT_TRUE(write.Future.Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(VIRTIO_BLK_S_IOERR, read.Status[0]);
+    EXPECT_EQ(VIRTIO_BLK_S_IOERR, write.Status[0]);
+    const auto completed = Snapshot();
+    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_WRITE].Current);
+    EXPECT_TRUE(completed.Continuous);
+}
+
+TEST_F(TIoDepthRdmaServerTest, ShouldCountRetriesAsOneParent)
+{
+    StartServer();
+    auto request = Send(false);
+    ASSERT_TRUE(ReadArrived.GetFuture().Wait(TDuration::Seconds(5)));
+    NowNs.store(2'000'000'000ULL);
+    NProto::TReadBlocksLocalResponse rejected;
+    *rejected.MutableError() = MakeError(E_REJECTED);
+    ReadResponse.SetValue(rejected);
+    ASSERT_TRUE(RetryArrived.GetFuture().Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(2u, ReadAttempts.load());
+    EXPECT_FALSE(request.Future.HasValue());
+
+    NowNs.store(5'000'000'000ULL);
+    const auto pending = Snapshot();
+    EXPECT_EQ(1u, pending.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(5'000'000u, pending.Lanes[VHD_BDEV_READ].IntegralUs);
+    RetryResponse.SetValue(NProto::TReadBlocksLocalResponse{});
+    ASSERT_TRUE(request.Future.Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(VIRTIO_BLK_S_OK, request.Status[0]);
+    EXPECT_EQ(0u, Snapshot().Lanes[VHD_BDEV_READ].Current);
+}
+
+TEST_F(TIoDepthRdmaServerTest, ShouldFinishFinalErrorAfterRetry)
+{
+    StartServer();
+    auto request = Send(false);
+    ASSERT_TRUE(ReadArrived.GetFuture().Wait(TDuration::Seconds(5)));
+    NowNs.store(1'000'000'000ULL);
+    NProto::TReadBlocksLocalResponse rejected;
+    *rejected.MutableError() = MakeError(E_REJECTED);
+    ReadResponse.SetValue(rejected);
+    ASSERT_TRUE(RetryArrived.GetFuture().Wait(TDuration::Seconds(5)));
+    NowNs.store(4'000'000'000ULL);
+    EXPECT_EQ(1u, Snapshot().Lanes[VHD_BDEV_READ].Current);
+    NProto::TReadBlocksLocalResponse failed;
+    *failed.MutableError() = MakeError(E_IO);
+    RetryResponse.SetValue(failed);
+    ASSERT_TRUE(request.Future.Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(VIRTIO_BLK_S_IOERR, request.Status[0]);
+    const auto completed = Snapshot();
+    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(4'000'000u, completed.Lanes[VHD_BDEV_READ].IntegralUs);
+    EXPECT_TRUE(completed.Continuous);
+}
+
+TEST_F(TIoDepthRdmaServerTest, ShouldDrainPendingReadBeforeStop)
+{
+    StartServer();
+    auto request = Send(false);
+    ASSERT_TRUE(ReadArrived.GetFuture().Wait(TDuration::Seconds(5)));
+    auto stopStarted = NThreading::NewPromise();
+    auto stopped = NThreading::NewPromise();
+    std::thread stopper(
+        [this, stopStarted, stopped]() mutable
+        {
+            stopStarted.SetValue();
+            Server->Stop();
+            stopped.SetValue();
+        });
+    Y_DEFER
+    {
+        NProto::TReadBlocksLocalResponse cancelled;
+        *cancelled.MutableError() = MakeError(E_CANCELLED);
+        ReadResponse.TrySetValue(cancelled);
+        stopper.join();
+        Server.reset();
+        Client.DeInit();
+    };
+    ASSERT_TRUE(stopStarted.GetFuture().Wait(TDuration::Seconds(5)));
+    EXPECT_FALSE(stopped.GetFuture().HasValue());
+    NowNs.store(3'000'000'000ULL);
+    EXPECT_EQ(1u, Snapshot().Lanes[VHD_BDEV_READ].Current);
+    CompleteRead();
+    ASSERT_TRUE(stopped.GetFuture().Wait(TDuration::Seconds(5)));
+    ASSERT_TRUE(request.Future.Wait(TDuration::Seconds(5)));
+    const auto drained = Snapshot();
+    EXPECT_EQ(0u, drained.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(3'000'000u, drained.Lanes[VHD_BDEV_READ].IntegralUs);
+    EXPECT_TRUE(drained.Continuous);
+}
+
+TEST_F(TIoDepthRdmaServerTest, ShouldKeepOldCompletionInItsGeneration)
+{
+    StartServer();
+    auto request = Send(false);
+    ASSERT_TRUE(ReadArrived.GetFuture().Wait(TDuration::Seconds(5)));
+    const auto oldSnapshot = Snapshot();
+
+    auto replacement = CreateRdmaBackend(
+        Logging,
+        std::make_shared<TTestRdmaStorageProvider>(Storage),
+        [this] { return NowNs.load(); });
+    TOptions options{
+        .SocketPath = SocketPath,
+        .Serial = "replacement",
+        .Layout =
+            {{.DevicePath = "rdma://localhost:10020/test-device",
+              .ByteCount = 1_MB}},
+        .BlockSize = BlockSize,
+        .QueueCount = 1};
+    replacement->Init(options);
+    const auto newSnapshot = replacement->GetIoDepthStats();
+    ASSERT_TRUE(newSnapshot);
+    EXPECT_NE(oldSnapshot.Generation, newSnapshot->Generation);
+
+    NowNs.store(2'000'000'000ULL);
+    CompleteRead();
+    ASSERT_TRUE(request.Future.Wait(TDuration::Seconds(5)));
+    const auto oldCompleted = Snapshot();
+    EXPECT_EQ(oldSnapshot.Generation, oldCompleted.Generation);
+    EXPECT_EQ(0u, oldCompleted.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(2'000'000u, oldCompleted.Lanes[VHD_BDEV_READ].IntegralUs);
+
+    const auto replacementAfter = replacement->GetIoDepthStats();
+    ASSERT_TRUE(replacementAfter);
+    EXPECT_EQ(newSnapshot->Generation, replacementAfter->Generation);
+    EXPECT_EQ(0u, replacementAfter->Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(0u, replacementAfter->Lanes[VHD_BDEV_READ].IntegralUs);
+    EXPECT_TRUE(replacementAfter->Continuous);
+}
+
+TEST_F(TIoDepthRdmaServerTest, ShouldFinishExceptionalStorageFuture)
+{
+    StartServer();
+    auto request = Send(false);
+    ASSERT_TRUE(ReadArrived.GetFuture().Wait(TDuration::Seconds(5)));
+    NowNs.store(1'000'000'000ULL);
+    ReadResponse.SetException(std::make_exception_ptr(TServiceError(E_IO)));
+    ASSERT_TRUE(request.Future.Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(VIRTIO_BLK_S_IOERR, request.Status[0]);
+    const auto completed = Snapshot();
+    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(1'000'000u, completed.Lanes[VHD_BDEV_READ].IntegralUs);
+    EXPECT_TRUE(completed.Continuous);
+}
+
+TEST_F(TIoDepthRdmaServerTest, ShouldHandleInlineCompletion)
+{
+    Storage->ReadBlocksLocalHandler = [](auto, auto)
+    {
+        return NThreading::MakeFuture(NProto::TReadBlocksLocalResponse{});
+    };
+    StartServer();
+    auto request = Send(false);
+    ASSERT_TRUE(request.Future.Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(VIRTIO_BLK_S_OK, request.Status[0]);
+    const auto completed = Snapshot();
+    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_TRUE(completed.Continuous);
+}
+
+TEST_F(TIoDepthRdmaServerTest, ShouldFinishSynchronousStorageException)
+{
+    Storage->ReadBlocksLocalHandler =
+        [](auto, auto) -> NThreading::TFuture<NProto::TReadBlocksLocalResponse>
+    {
+        throw TServiceError(E_IO);
+    };
+    StartServer();
+    auto request = Send(false);
+    ASSERT_TRUE(request.Future.Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(VIRTIO_BLK_S_IOERR, request.Status[0]);
+    EXPECT_EQ(0u, Snapshot().Lanes[VHD_BDEV_READ].Current);
+    EXPECT_TRUE(Snapshot().Continuous);
+}
+
+TEST(TIoDepthServerTest, ShouldRefreshDepthWithoutCompletionStats)
+{
+    auto backend = std::make_shared<TNoCompletionBackend>();
+    auto server = CreateServer(CreateLoggingService("console"), backend);
+    backend->Depth.Started(VHD_BDEV_READ);
+    backend->NowNs = 5'000'000'000ULL;
+    TSimpleStats previous;
+    previous.Completed = 7;
+
+    const auto first = server->GetStats(previous);
+    EXPECT_EQ(7u, first.SimpleStats.Completed);
+    ASSERT_TRUE(first.IoDepth);
+    EXPECT_EQ(1u, first.IoDepth->Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(5'000'000u, first.IoDepth->Lanes[VHD_BDEV_READ].IntegralUs);
+
+    backend->NowNs = 9'000'000'000ULL;
+    const auto second = server->GetStats(previous);
+    EXPECT_EQ(7u, second.SimpleStats.Completed);
+    ASSERT_TRUE(second.IoDepth);
+    EXPECT_EQ(9'000'000u, second.IoDepth->Lanes[VHD_BDEV_READ].IntegralUs);
+    EXPECT_EQ(first.IoDepth->Generation, second.IoDepth->Generation);
+    EXPECT_TRUE(second.IoDepth->Continuous);
+}
+
+TEST(TIoDepthServerTest, ShouldDistinguishUnsupportedBackendFromIdle)
+{
+    auto backend = CreateNullBackend(CreateLoggingService("console"));
+    EXPECT_FALSE(backend->GetIoDepthStats());
+}
 
 }   // namespace NCloud::NBlockStore::NVHostServer

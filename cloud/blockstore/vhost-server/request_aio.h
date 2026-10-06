@@ -3,6 +3,7 @@
 #include "stats.h"
 
 #include <cloud/blockstore/libs/encryption/encryptor.h>
+#include <cloud/storage/core/libs/diagnostics/io_depth_tracker.h>
 #include <cloud/contrib/vhost/include/vhost/blockdev.h>
 #include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/contrib/vhost/include/vhost/types.h>
@@ -67,6 +68,10 @@ struct TAioRequest
     bool Unaligned = false;
     ui32 BufferCount = 0;
 
+    // The backend owns the tracker and drains requests before destroying it.
+    TIoDepthTracker* IoDepth = nullptr;
+    ui32 IoDepthLane = 0;
+
     // Should be last field in the struct.
     iovec Data[/* Bio->sglist.nbuffers */];
 
@@ -75,8 +80,11 @@ struct TAioRequest
         size_t allocatedBufferSize,
         ui32 blockSize,
         vhd_io* io,
-        TCpuCycles submitTs);
+        TCpuCycles submitTs,
+        TIoDepthTracker* ioDepth = nullptr);
     static TAioRequestHolder FromIocb(iocb* cb);
+
+    void FinishIoDepth();
 
     // If the data contains a single buffer, then the data can be accessed using
     // this method.
@@ -88,7 +96,8 @@ private:
         ui32 blockSize,
         ui32 bufferCount,
         vhd_io* io,
-        TCpuCycles submitTs);
+        TCpuCycles submitTs,
+        TIoDepthTracker* ioDepth);
 };
 
 // Cross-device sub IO request.
@@ -115,24 +124,33 @@ struct TAioCompoundRequest
     size_t BufferSize;
     std::unique_ptr<char, TFreeDeleter> Buffer;
 
+    TIoDepthTracker* IoDepth = nullptr;
+    ui32 IoDepthLane = 0;
+
     TAioCompoundRequest(
         ui32 inflight,
         ui32 blockSize,
         vhd_io* io,
         size_t bufferSize,
-        TCpuCycles submitTs);
+        TCpuCycles submitTs,
+        TIoDepthTracker* ioDepth = nullptr);
 
     static TAioCompoundRequestHolder CreateNew(
         ui32 inflight,
         ui32 blockSize,
         vhd_io* io,
         size_t bufferSize,
-        TCpuCycles submitTs);
+        TCpuCycles submitTs,
+        TIoDepthTracker* ioDepth = nullptr);
+
+    void FinishIoDepth();
 
     [[nodiscard]] TBlockDataRef GetData() const;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
+
+using TCompleteBioFn = void (*)(vhd_io* io, vhd_bdev_io_result status);
 
 void PrepareIO(
     TLog& log,
@@ -141,9 +159,9 @@ void PrepareIO(
     vhd_io* io,
     TVector<iocb*>& batch,
     TCpuCycles now,
-    TSimpleStats& queueStats);
-
-using TCompleteBioFn = void (*)(vhd_io* io, vhd_bdev_io_result status);
+    TSimpleStats& queueStats,
+    TIoDepthTracker* ioDepth = nullptr,
+    TCompleteBioFn completeBio = vhd_complete_bio);
 
 // Accounts the completion of a cross-device subrequest. The last one to
 // complete finishes the parent request via completeBio.

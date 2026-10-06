@@ -75,6 +75,10 @@ private:
     // in the backend. Includes requests waiting in Limiter::Acquire.
     std::atomic<size_t> ActiveRequests = 0;
 
+    // Backend completion only enqueues a response. Drain also waits until the
+    // send coroutine has finalized metrics and released connection capacity.
+    std::atomic<bool> SendFinished = false;
+
     std::atomic_flag ShuttingDown = false;
     TPromise<void> DrainResult = NewPromise<void>();
 
@@ -252,12 +256,14 @@ private:
 
         ShutDown();
         ReleaseRequest(InFlightBytes);
+        SendFinished.store(true, std::memory_order_seq_cst);
         TryCompleteDrain();
     }
 
     void DoSendResponse(TCont* c, TServerResponse& response)
     {
         if (IsShutdownError(response.Error)) {
+            Handler->CompleteResponse(response);
             return;
         }
 
@@ -297,17 +303,21 @@ private:
     void CompleteRequest()
     {
         const auto previous =
-            ActiveRequests.fetch_sub(1, std::memory_order_acq_rel);
+            ActiveRequests.fetch_sub(1, std::memory_order_seq_cst);
         Y_ABORT_UNLESS(previous != 0);
 
-        if (previous == 1 && IsShuttingDown()) {
-            DrainResult.TrySetValue();
+        if (previous == 1) {
+            TryCompleteDrain();
         }
     }
 
     void TryCompleteDrain()
     {
-        if (ActiveRequests.load(std::memory_order_acquire) == 0) {
+        // A single order across both gates prevents the final backend and Send
+        // from each observing the other gate's old value and missing drain.
+        if (SendFinished.load(std::memory_order_seq_cst) &&
+            ActiveRequests.load(std::memory_order_seq_cst) == 0)
+        {
             DrainResult.TrySetValue();
         }
     }

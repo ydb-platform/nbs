@@ -218,18 +218,15 @@ TCompleteStats TServer::GetStats(const TSimpleStats& prevStats)
 {
     auto completionStats =
         Backend->GetCompletionStats(COMPLETION_STATS_WAIT_DURATION);
-    if (!completionStats) {
-        return TCompleteStats{
-            .SimpleStats{prevStats},
-            .CriticalEvents{TakeAccumulatedCriticalEvents()}};
-    }
-
     TCompleteStats result{
-        .SimpleStats{*completionStats},
-        .CriticalEvents = TakeAccumulatedCriticalEvents()};
+        .SimpleStats{completionStats ? *completionStats : prevStats},
+        .CriticalEvents = TakeAccumulatedCriticalEvents(),
+        .IoDepth = Backend->GetIoDepthStats()};
 
-    for (ui32 i = 0; i != Queues.size(); ++i) {
-        result.SimpleStats += QueueStats[i];
+    if (completionStats) {
+        for (ui32 i = 0; i != Queues.size(); ++i) {
+            result.SimpleStats += QueueStats[i];
+        }
     }
 
     return result;

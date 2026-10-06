@@ -145,6 +145,227 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         Y_UNUSED(GetCyclesPerMillisecond());
     }
 
+    Y_UNIT_TEST(ShouldTrackPendingLocalIoPerVolume)
+    {
+        ui64 nowNs = 0;
+        auto monitoring = CreateMonitoringServiceStub();
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer(), [&] { return nowNs; });
+        Mount(volumeStats, "read-disk", "read-client", "instance");
+        Mount(volumeStats, "write-disk", "write-client", "instance");
+        auto readVolume =
+            volumeStats->GetVolumeInfo("read-disk", "read-client");
+        auto writeVolume =
+            volumeStats->GetVolumeInfo("write-disk", "write-client");
+        const auto readStarted = readVolume->RequestStarted(
+            EBlockStoreRequest::ReadBlocksLocal, 4096);
+        const auto writeStarted = writeVolume->RequestStarted(
+            EBlockStoreRequest::WriteBlocksLocal, 4096);
+
+        nowNs = 60'000'000'000ULL;
+        volumeStats->UpdateStats(false);
+        const auto read = readVolume->GetIoDepthSnapshot();
+        const auto write = writeVolume->GetIoDepthSnapshot();
+        const auto readLane = static_cast<ui32>(EBlockStoreRequest::ReadBlocks);
+        const auto writeLane =
+            static_cast<ui32>(EBlockStoreRequest::WriteBlocks);
+        UNIT_ASSERT(read && write);
+        UNIT_ASSERT(read->Continuous && write->Continuous);
+        UNIT_ASSERT(!(read->Generation == write->Generation));
+        UNIT_ASSERT_VALUES_EQUAL(read->Lanes[readLane].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(read->Lanes[readLane].IntegralUs, 60'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(read->Lanes[writeLane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(write->Lanes[writeLane].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            write->Lanes[writeLane].IntegralUs, 60'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(write->Lanes[readLane].Current, 0);
+
+        auto readCounters = monitoring->GetCounters()
+                                ->GetSubgroup("counters", "blockstore")
+                                ->GetSubgroup("component", "server_volume")
+                                ->GetSubgroup("host", "cluster")
+                                ->GetSubgroup("volume", "read-disk")
+                                ->GetSubgroup("instance", "instance")
+                                ->GetSubgroup("cloud", DefaultCloudId)
+                                ->GetSubgroup("folder", DefaultFolderId)
+                                ->GetSubgroup("type", "ssd")
+                                ->GetSubgroup("request", "ReadBlocks");
+        UNIT_ASSERT_VALUES_EQUAL(
+            readCounters->GetCounter("Count", true)->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            readCounters->GetCounter("IoDepthCurrent")->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            readCounters->GetCounter("IoDepthTimeUs", true)->Val(), 60'000'000);
+
+        readVolume->RequestCompleted(
+            EBlockStoreRequest::ReadBlocksLocal,
+            readStarted,
+            {},
+            {},
+            {},
+            4096,
+            EDiagnosticsErrorKind::ErrorFatal,
+            NCloud::NProto::EF_NONE, false, 0);
+        writeVolume->RequestCompleted(
+            EBlockStoreRequest::WriteBlocksLocal,
+            writeStarted,
+            {},
+            {},
+            {},
+            4096,
+            EDiagnosticsErrorKind::Success, NCloud::NProto::EF_NONE, false, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            readVolume->GetIoDepthSnapshot()->Lanes[readLane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            writeVolume->GetIoDepthSnapshot()->Lanes[writeLane].Current, 0);
+    }
+
+    Y_UNIT_TEST(ShouldKeepOldCompletionsInTheirIoDepthGeneration)
+    {
+        ui64 nowNs = 0;
+        auto volumeStats = CreateVolumeStats(
+            CreateMonitoringServiceStub(),
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer(), [&] { return nowNs; });
+        Mount(volumeStats, "disk", "client", "instance");
+        auto oldVolume = volumeStats->GetVolumeInfo("disk", "client");
+        const auto oldStarted =
+            oldVolume->RequestStarted(EBlockStoreRequest::ReadBlocks, 4096);
+
+        nowNs = 1'000'000'000;
+        volumeStats->AlterVolume("disk", "new-cloud", "new-folder");
+        auto newVolume = volumeStats->GetVolumeInfo("disk", "client");
+        const auto newStarted =
+            newVolume->RequestStarted(EBlockStoreRequest::ReadBlocks, 4096);
+        UNIT_ASSERT(oldVolume != newVolume);
+        UNIT_ASSERT(
+            !(oldVolume->GetIoDepthSnapshot()->Generation ==
+              newVolume->GetIoDepthSnapshot()->Generation));
+
+        nowNs = 2'000'000'000;
+        oldVolume->RequestCompleted(
+            EBlockStoreRequest::ReadBlocks,
+            oldStarted,
+            {},
+            {},
+            {},
+            4096,
+            EDiagnosticsErrorKind::Success, NCloud::NProto::EF_NONE, false, 0);
+        const auto lane = static_cast<ui32>(EBlockStoreRequest::ReadBlocks);
+        const auto oldSnapshot = oldVolume->GetIoDepthSnapshot();
+        const auto newSnapshot = newVolume->GetIoDepthSnapshot();
+        UNIT_ASSERT(oldSnapshot->Continuous && newSnapshot->Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(oldSnapshot->Lanes[lane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            oldSnapshot->Lanes[lane].IntegralUs, 2'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(newSnapshot->Lanes[lane].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            newSnapshot->Lanes[lane].IntegralUs, 1'000'000);
+
+        newVolume->RequestCompleted(
+            EBlockStoreRequest::ReadBlocks,
+            newStarted,
+            {},
+            {},
+            {},
+            4096,
+            EDiagnosticsErrorKind::Success, NCloud::NProto::EF_NONE, false, 0);
+    }
+
+    Y_UNIT_TEST(ShouldCollectZeroBlocksIoDepthWithoutMixingWritePolicy)
+    {
+        for (const bool skipZero: {false, true}) {
+            for (const auto mediaKind:
+                 {NCloud::NProto::STORAGE_MEDIA_SSD,
+                  NCloud::NProto::STORAGE_MEDIA_SSD_MIRROR3})
+            {
+                ui64 nowNs = 0;
+                auto monitoring = CreateMonitoringServiceStub();
+                NProto::TDiagnosticsConfig config;
+                config.SetSkipReportingZeroBlocksMetricsForYDBBasedDisks(
+                    skipZero);
+                auto volumeStats = CreateVolumeStats(
+                    monitoring,
+                    std::make_shared<TDiagnosticsConfig>(config),
+                    {},
+                    EVolumeStatsType::EServerStats,
+                    CreateWallClockTimer(), [&] { return nowNs; });
+                Mount(volumeStats, "disk", "client", "instance", mediaKind);
+                auto volume = volumeStats->GetVolumeInfo("disk", "client");
+                const auto writeStarted = volume->RequestStarted(
+                    EBlockStoreRequest::WriteBlocks, 4096);
+                const auto zeroStarted = volume->RequestStarted(
+                    EBlockStoreRequest::ZeroBlocks, 4096);
+                nowNs = 3'000'000'000;
+                const auto snapshot = volume->GetIoDepthSnapshot();
+                const auto writeLane =
+                    static_cast<ui32>(EBlockStoreRequest::WriteBlocks);
+                const auto zeroLane =
+                    static_cast<ui32>(EBlockStoreRequest::ZeroBlocks);
+                const bool includeZero =
+                    !skipZero || IsDiskRegistryMediaKind(mediaKind);
+                const auto directions = volume->GetIoDepthByDirection();
+                UNIT_ASSERT(directions);
+                UNIT_ASSERT(directions->Continuous);
+                UNIT_ASSERT(snapshot->Generation == directions->Generation);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    snapshot->TimestampNs, directions->TimestampNs);
+                UNIT_ASSERT_VALUES_EQUAL(directions->Read.Current, 0);
+                UNIT_ASSERT_VALUES_EQUAL(directions->Read.IntegralUs, 0);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    directions->Write.Current, includeZero ? 2 : 1);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    directions->Write.IntegralUs,
+                    includeZero ? 6'000'000 : 3'000'000);
+                UNIT_ASSERT(snapshot->Continuous);
+                UNIT_ASSERT_VALUES_EQUAL(snapshot->Lanes[writeLane].Current, 1);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    snapshot->Lanes[writeLane].IntegralUs, 3'000'000);
+                UNIT_ASSERT_VALUES_EQUAL(snapshot->Lanes[zeroLane].Current, 1);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    snapshot->Lanes[zeroLane].IntegralUs, 3'000'000);
+
+                for (const auto& request:
+                     {std::pair{EBlockStoreRequest::WriteBlocks, writeStarted},
+                      std::pair{EBlockStoreRequest::ZeroBlocks, zeroStarted}})
+                {
+                    volume->RequestCompleted(
+                        request.first,
+                        request.second,
+                        {},
+                        {},
+                        {},
+                        4096,
+                        EDiagnosticsErrorKind::Success,
+                        NCloud::NProto::EF_NONE, false, 0);
+                }
+                const auto completed = volume->GetIoDepthSnapshot();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    completed->Lanes[writeLane].Current, 0);
+                UNIT_ASSERT_VALUES_EQUAL(completed->Lanes[zeroLane].Current, 0);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    completed->Lanes[zeroLane].IntegralUs, 3'000'000);
+                const auto completedDirections =
+                    volume->GetIoDepthByDirection();
+                UNIT_ASSERT_VALUES_EQUAL(completedDirections->Write.Current, 0);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    completedDirections->Write.IntegralUs,
+                    includeZero ? 6'000'000 : 3'000'000);
+
+                TLabelKeeper keeper;
+                volumeStats->GetUserCounters()->Append(
+                    TInstant::Now(), &keeper);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    keeper.GetValue("compute.cloud_id.folder_id.disk.instance."
+                                    "disk.write_ops"), includeZero ? "2" : "1");
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldTrackRequestsPerVolume)
     {
         auto monitoring = CreateMonitoringServiceStub();
@@ -940,6 +1161,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         auto durationInCycles = DurationToCyclesSafe(requestDuration);
         auto now = GetCycleCount();
 
+        volume->RequestStarted(EBlockStoreRequest::WriteBlocks, 1_MB);
         volume->RequestCompleted(
             EBlockStoreRequest::WriteBlocks,
             now - Min(now, durationInCycles),
@@ -1001,6 +1223,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             DurationToCyclesSafe(TDuration::MilliSeconds(10));
         for (ui32 i = 0; i < 5; ++i) {
             now = GetCycleCount();
+            volume->RequestStarted(EBlockStoreRequest::WriteBlocks, 1_MB);
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 now - Min(now, fastRequestCyclesCount),
@@ -1035,6 +1258,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             DurationToCyclesSafe(TDuration::MilliSeconds(110));
         for (ui32 i = 0; i < 20; ++i) {
             now = GetCycleCount();
+            volume->RequestStarted(EBlockStoreRequest::WriteBlocks, 1_MB);
             volume->RequestCompleted(
                 EBlockStoreRequest::WriteBlocks,
                 now - Min(now, slowRequestCyclesCount),
@@ -1144,6 +1368,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             TDuration::Zero(),
             volumeInfos[1]->GetPossiblePostponeDuration());
 
+        volumeInfos[1]->RequestStarted(EBlockStoreRequest::WriteBlocks, 1024);
         volumeInfos[1]->RequestCompleted(
             EBlockStoreRequest::WriteBlocks,
             timer->Now().MicroSeconds(),
@@ -1215,6 +1440,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         timer->AdvanceTime(TDuration::Seconds(15));
 
+        volumeInfo->RequestStarted(EBlockStoreRequest::WriteBlocks, 1024);
         volumeInfo->RequestCompleted(
             EBlockStoreRequest::WriteBlocks,
             timer->Now().MicroSeconds(),
@@ -1527,6 +1753,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         // Force downtime: a completed request whose measured duration exceeds
         // the downtime threshold (requestStarted set far in the past in cycle
         // terms), same trick as the DownDisks tests above.
+        volumeInfo->RequestStarted(EBlockStoreRequest::WriteBlocks, 1024);
         volumeInfo->RequestCompleted(
             EBlockStoreRequest::WriteBlocks,
             timer->Now().MicroSeconds(),
@@ -1607,6 +1834,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 1_MB);
         auto durationInCycles = DurationToCyclesSafe(requestDuration);
         auto now = GetCycleCount();
+        volumeInfo->RequestStarted(EBlockStoreRequest::WriteBlocks, 1_MB);
         volumeInfo->RequestCompleted(
             EBlockStoreRequest::WriteBlocks,
             now - Min(now, durationInCycles),

@@ -9,9 +9,11 @@
 #include <cloud/blockstore/libs/client/durable.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
@@ -20,6 +22,7 @@
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/io_depth_tracker.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
@@ -290,13 +293,58 @@ static const TStorageOptions DefaultStorageOptions = {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TIoDepthServerStats
+{
+    std::atomic<ui64> NowNs = 0;
+    TIoDepthTracker Depth{
+        BlockStoreRequestsCount,
+        [this]
+        {
+            return NowNs.load();
+        }};
+    std::atomic<ui32> CompletedCount = 0;
+    std::atomic<bool> Balanced = true;
+    TPromise<void> FirstCompletion = NewPromise<void>();
+    std::shared_ptr<TTestServerStats> Stats =
+        std::make_shared<TTestServerStats>();
+
+    TIoDepthServerStats()
+    {
+        Stats->RequestStartedHandler =
+            [this](
+                TLog&, TMetricRequest& request, TCallContext&, const TString&)
+        {
+            if (IsNonLocalReadWriteRequest(request.RequestType)) {
+                Depth.Started(static_cast<ui32>(request.RequestType));
+            }
+        };
+        Stats->RequestCompletedHandler =
+            [this](
+                TLog&,
+                TMetricRequest& request, TCallContext&, const NProto::TError&)
+        {
+            if (IsNonLocalReadWriteRequest(request.RequestType)) {
+                if (!Depth.Completed(static_cast<ui32>(request.RequestType))) {
+                    Balanced = false;
+                }
+                if (CompletedCount.fetch_add(1) == 0) {
+                    FirstCompletion.SetValue();
+                }
+            }
+        };
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 std::unique_ptr<TBootstrap> CreateBootstrap(
     TNetworkAddress connectAddress,
     IStoragePtr storage,
     const TStorageOptions& options = DefaultStorageOptions,
     TServerConfig serverConfig = Default<TServerConfig>(),
     IBlockStorePtr grpcClientEndpoint = nullptr,
-    IErrorHandlerPtr errorHandler = nullptr)
+    IErrorHandlerPtr errorHandler = nullptr,
+    IServerStatsPtr serverStats = nullptr)
 {
     const ui32 clientThreadsCount = 1;
 
@@ -315,9 +363,8 @@ std::unique_ptr<TBootstrap> CreateBootstrap(
         CreateDefaultDeviceHandlerFactory(),
         logging,
         std::move(storage),
-        CreateServerStatsStub(),
-        std::move(errorHandler),
-        options);
+        serverStats ? std::move(serverStats) : CreateServerStatsStub(),
+        std::move(errorHandler), options);
 
     auto client = CreateClient(
         logging,
@@ -1029,6 +1076,133 @@ Y_UNIT_TEST_SUITE(TServerTest)
         bootstrap->Stop();
     }
 
+    Y_UNIT_TEST(ShouldKeepIoDepthPendingUntilEndpointDrain)
+    {
+        TIoDepthServerStats stats;
+        TManualEvent arrived;
+        auto completed = NewPromise<NProto::TZeroBlocksResponse>();
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ZeroBlocksHandler = [&](auto, auto)
+        {
+            arrived.Signal();
+            return completed.GetFuture();
+        };
+        TPortManager portManager;
+        TNetworkAddress address(portManager.GetPort());
+        auto bootstrap = CreateBootstrap(
+            address,
+            storage,
+            DefaultStorageOptions,
+            Default<TServerConfig>(), nullptr, nullptr, stats.Stats);
+        bool stopped = false;
+        Y_DEFER
+        {
+            if (!completed.GetFuture().HasValue()) {
+                completed.SetValue({});
+            }
+            if (!stopped) {
+                bootstrap->Stop();
+            }
+        };
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->SetBlocksCount(42);
+        auto response = bootstrap->GetClientEndpoint()->ZeroBlocks(
+            MakeIntrusive<TCallContext>(), std::move(request));
+        UNIT_ASSERT(arrived.WaitT(TDuration::Seconds(5)));
+
+        stats.NowNs = 60'000'000'000ULL;
+        const auto lane = static_cast<ui32>(EBlockStoreRequest::ZeroBlocks);
+        const auto pending = stats.Depth.Snapshot();
+        UNIT_ASSERT(pending.Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(pending.Lanes[lane].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(pending.Lanes[lane].IntegralUs, 60'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 0);
+
+        auto drain = bootstrap->StopEndpointAsync();
+        UNIT_ASSERT(!drain.Wait(TDuration::MilliSeconds(100)));
+        stats.NowNs = 61'000'000'000ULL;
+        NProto::TZeroBlocksResponse failed;
+        *failed.MutableError() = MakeError(E_IO, "final storage failure");
+        completed.SetValue(failed);
+        error = drain.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT(response.Wait(TDuration::Seconds(5)));
+        stats.FirstCompletion.GetFuture().GetValue(TDuration::Seconds(5));
+
+        const auto final = stats.Depth.Snapshot();
+        UNIT_ASSERT(stats.Balanced.load());
+        UNIT_ASSERT(final.Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(final.Lanes[lane].Current, 0);
+        UNIT_ASSERT(final.Lanes[lane].IntegralUs >= 60'000'000);
+        UNIT_ASSERT(final.Lanes[lane].IntegralUs <= 61'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 1);
+        bootstrap->Stop();
+        stopped = true;
+    }
+
+    Y_UNIT_TEST(ShouldCancelIoDepthAndCompleteDrainAfterDisconnect)
+    {
+        TIoDepthServerStats stats;
+        TManualEvent arrived;
+        auto completed = NewPromise<NProto::TZeroBlocksResponse>();
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ZeroBlocksHandler = [&](auto, auto)
+        {
+            arrived.Signal();
+            return completed.GetFuture();
+        };
+        TPortManager portManager;
+        TNetworkAddress address(portManager.GetPort());
+        auto bootstrap = CreateBootstrap(
+            address,
+            storage,
+            DefaultStorageOptions,
+            Default<TServerConfig>(), nullptr, nullptr, stats.Stats);
+        bool stopped = false;
+        Y_DEFER
+        {
+            if (!completed.GetFuture().HasValue()) {
+                completed.SetValue({});
+            }
+            if (!stopped) {
+                bootstrap->Stop();
+            }
+        };
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->SetBlocksCount(42);
+        auto response = bootstrap->GetClientEndpoint()->ZeroBlocks(
+            MakeIntrusive<TCallContext>(), std::move(request));
+        UNIT_ASSERT(arrived.WaitT(TDuration::Seconds(5)));
+        stats.NowNs = 5'000'000'000ULL;
+        const auto lane = static_cast<ui32>(EBlockStoreRequest::ZeroBlocks);
+        UNIT_ASSERT_VALUES_EQUAL(stats.Depth.Snapshot().Lanes[lane].Current, 1);
+
+        bootstrap->GetClientEndpoint()->Stop();
+        stats.FirstCompletion.GetFuture().GetValue(TDuration::Seconds(5));
+        const auto cancelled = stats.Depth.Snapshot();
+        UNIT_ASSERT_VALUES_EQUAL(cancelled.Lanes[lane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(cancelled.Lanes[lane].IntegralUs, 5'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 1);
+
+        auto drain = bootstrap->StopEndpointAsync();
+        completed.SetValue({});
+        error = drain.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT(response.Wait(TDuration::Seconds(5)));
+        const auto final = stats.Depth.Snapshot();
+        UNIT_ASSERT(stats.Balanced.load());
+        UNIT_ASSERT(final.Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(final.Lanes[lane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(final.Lanes[lane].IntegralUs, 5'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 1);
+        bootstrap->Stop();
+        stopped = true;
+    }
+
     Y_UNIT_TEST(ShouldDrainRequestsBeforeEndpointRestart)
     {
         const ui32 startIndex = 0;
@@ -1176,7 +1350,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
     Y_UNIT_TEST(ShouldCompleteDrainIfRequestFinishesBeforeSendShutdown)
     {
+        TIoDepthServerStats stats;
         TManualEvent requestStarted;
+        TManualEvent responseProduced;
+        stats.Stats->ResponseSentHandler = [&](auto&, auto&)
+        {
+            responseProduced.Signal();
+        };
         auto requestCompleted = NewPromise<NProto::TZeroBlocksResponse>();
         std::atomic<size_t> requestCount = 0;
 
@@ -1197,9 +1377,6 @@ Y_UNIT_TEST_SUITE(TServerTest)
         };
 
         auto errorHandler = std::make_shared<TBlockingErrorHandler>();
-        Y_DEFER {
-            errorHandler->ContinueSend.Signal();
-        };
 
         TPortManager portManager;
         auto port = portManager.GetPort(9001);
@@ -1214,7 +1391,17 @@ Y_UNIT_TEST_SUITE(TServerTest)
             DefaultStorageOptions,
             serverConfig,
             nullptr,
-            errorHandler);
+            errorHandler,
+            stats.Stats);
+        bool stopped = false;
+        Y_DEFER
+        {
+            requestCompleted.TrySetValue({});
+            errorHandler->ContinueSend.Signal();
+            if (!stopped) {
+                bootstrap->Stop();
+            }
+        };
 
         auto error = bootstrap->Start();
         UNIT_ASSERT_C(!HasError(error), error);
@@ -1228,16 +1415,35 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         UNIT_ASSERT(requestStarted.WaitT(TDuration::Seconds(5)));
 
-        bootstrap->GetClientEndpoint()->Stop();
+        const auto lane = static_cast<ui32>(EBlockStoreRequest::ZeroBlocks);
+        UNIT_ASSERT_VALUES_EQUAL(stats.Depth.Snapshot().Lanes[lane].Current, 1);
+        stats.NowNs = 2'000'000'000ULL;
+
+        // Start StopEndpoint before blocking Send. Otherwise StopEndpoint's
+        // task itself cannot run on the connection's blocked executor.
+        auto drain = bootstrap->StopEndpointAsync();
         UNIT_ASSERT(
             errorHandler->SendStopping.WaitT(TDuration::Seconds(5)));
+        bootstrap->GetClientEndpoint()->Stop();
 
         requestCompleted.SetValue({});
+        UNIT_ASSERT(responseProduced.WaitT(TDuration::Seconds(5)));
 
-        // The backend runs on another executor. Keep Send blocked until it has
-        // enqueued the response and decremented ActiveRequests.
-        Sleep(TDuration::MilliSeconds(100));
+        // The worker can finish on another executor, but Send has not yet
+        // completed its connection cleanup. That must keep drain pending.
+        UNIT_ASSERT(!drain.Wait(TDuration::MilliSeconds(100)));
         errorHandler->ContinueSend.Signal();
+        error = drain.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+        const auto drained = stats.Depth.Snapshot();
+        UNIT_ASSERT(stats.Balanced.load());
+        UNIT_ASSERT(drained.Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(drained.Lanes[lane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(drained.Lanes[lane].IntegralUs, 2'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 1);
+
+        error = bootstrap->StartEndpoint();
+        UNIT_ASSERT_C(!HasError(error), error);
 
         auto secondClientEndpoint = bootstrap->GetClient()->CreateEndpoint(
             connectAddress,
@@ -1261,6 +1467,7 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         secondClientEndpoint->Stop();
         bootstrap->Stop();
+        stopped = true;
     }
 
     Y_UNIT_TEST(ShouldDrainRequestsBeforeMountingNewConnection)

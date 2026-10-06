@@ -9,8 +9,11 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats_test.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
+
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/io_depth_tracker.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -90,9 +93,23 @@ private:
     IOutputStream& Out;
 
 public:
+    IServerHandler* Handler = nullptr;
+    bool Deferred = false;
+    bool ForwardResponses = true;
+    TVector<ITaskPtr> PendingTasks;
+    TServerResponsePtr LastResponse;
+
     TServerContext(IOutputStream& out)
         : Out(out)
     {}
+
+    void ExecutePending()
+    {
+        auto tasks = std::move(PendingTasks);
+        for (auto& task: tasks) {
+            task->Execute();
+        }
+    }
 
     void Start() override
     {
@@ -110,7 +127,11 @@ public:
 
     void Enqueue(ITaskPtr task) override
     {
+        if (Deferred) {
+            PendingTasks.push_back(std::move(task));
+        } else {
         task->Execute();
+        }
     }
 
     const NProto::TReadBlocksLocalResponse& WaitFor(
@@ -133,6 +154,14 @@ public:
 
     void SendResponse(TServerResponsePtr response) override
     {
+        LastResponse = response;
+        if (Handler) {
+            if (ForwardResponses) {
+                Handler->SendResponse(Out, *response);
+            }
+            return;
+        }
+
         Out.Write(response->HeaderBuffer.Data(), response->HeaderBuffer.Size());
 
         if (response->DataBuffer) {
@@ -297,6 +326,103 @@ TExportInfo NegotiateClient(
     return result;
 }
 
+class TIoDepthHandlerFixture
+{
+public:
+    ui64 NowNs = 0;
+    TIoDepthTracker Depth{
+        BlockStoreRequestsCount,
+        [this]
+        {
+            return NowNs;
+        }};
+    ui32 CompletedCount = 0;
+    ui32 ErrorCount = 0;
+    bool Balanced = true;
+    std::shared_ptr<TTestStorage> Storage = std::make_shared<TTestStorage>();
+    std::shared_ptr<TTestServerStats> Stats =
+        std::make_shared<TTestServerStats>();
+    IServerHandlerPtr Handler;
+    TStringStream Replies;
+    TStringStream Requests;
+    TIntrusivePtr<TServerContext> Context;
+
+    TIoDepthHandlerFixture()
+    {
+        Storage->DoAllocations = true;
+        SetupStorage(*Storage);
+        Stats->RequestStartedHandler =
+            [this](
+                TLog&, TMetricRequest& request, TCallContext&, const TString&)
+        {
+            if (IsNonLocalReadWriteRequest(request.RequestType)) {
+                Depth.Started(static_cast<ui32>(request.RequestType));
+            }
+        };
+        Stats->RequestCompletedHandler = [this](
+                                             TLog&,
+                                             TMetricRequest& request,
+                                             TCallContext&,
+                                             const NProto::TError& error)
+        {
+            if (IsNonLocalReadWriteRequest(request.RequestType)) {
+                Balanced &=
+                    Depth.Completed(static_cast<ui32>(request.RequestType));
+                ++CompletedCount;
+                ErrorCount += HasError(error);
+            }
+        };
+        TStorageOptions options;
+        options.DiskId = DefaultDiskId;
+        options.BlockSize = DefaultBlockSize;
+        options.BlocksCount = DefaultBlocksCount;
+        Handler = CreateServerHandlerFactory(
+                      CreateDefaultDeviceHandlerFactory(),
+                      CreateLoggingService("console", {TLOG_DEBUG}),
+                      Storage, Stats, CreateErrorHandlerStub(), options)
+                      ->CreateHandler();
+        NegotiateClient(*Handler, Replies, Requests);
+        Context = MakeIntrusive<TServerContext>(Replies);
+        Context->Handler = Handler.get();
+        Context->Deferred = true;
+    }
+
+    void Accept(ui32 command, bool completePayload = true)
+    {
+        TRequest request{};
+        request.Magic = NBD_REQUEST_MAGIC;
+        request.Type = command;
+        request.Handle = 1;
+        request.Length = DefaultBlockSize;
+        TRequestWriter writer(Requests);
+        if (command == NBD_CMD_WRITE) {
+            if (completePayload) {
+                writer.WriteRequest(request, TString(request.Length, 'a'));
+            } else {
+                TStringStream encoded;
+                TRequestWriter encodedWriter(encoded);
+                encodedWriter.WriteRequest(
+                    request, TString(request.Length, 'a'));
+                const auto& bytes = encoded.Str();
+                Requests.Write(bytes.data(), bytes.size() - request.Length);
+            }
+        } else {
+            writer.WriteRequest(request);
+        }
+        Handler->ProcessRequests(Context, Requests, Replies, nullptr);
+    }
+};
+
+class TThrowingIoDepthOutput final: public IOutputStream
+{
+    void DoWrite(const void*, size_t) override
+    {
+        ythrow yexception() << "response write failed";
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 void ProcessRequests(
     IServerHandler& handler,
     TStringStream& in,
@@ -460,6 +586,130 @@ void ProcessUnalignedRequests(
 
 Y_UNIT_TEST_SUITE(TServerHandlerTest)
 {
+    Y_UNIT_TEST(ShouldAccumulateIoDepthWhileRequestTaskIsPending)
+    {
+        for (const auto& command:
+             {std::pair{NBD_CMD_READ, EBlockStoreRequest::ReadBlocks},
+              std::pair{NBD_CMD_WRITE, EBlockStoreRequest::WriteBlocks},
+              std::pair{NBD_CMD_WRITE_ZEROES, EBlockStoreRequest::ZeroBlocks}})
+        {
+            TIoDepthHandlerFixture fixture;
+            fixture.Accept(command.first);
+            fixture.NowNs = 60'000'000'000ULL;
+            const auto lane = static_cast<ui32>(command.second);
+            const auto pending = fixture.Depth.Snapshot();
+            UNIT_ASSERT_VALUES_EQUAL(pending.Lanes[lane].Current, 1);
+            UNIT_ASSERT_VALUES_EQUAL(
+                pending.Lanes[lane].IntegralUs, 60'000'000);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 0);
+
+            fixture.Context->ExecutePending();
+            const auto completed = fixture.Depth.Snapshot();
+            UNIT_ASSERT(completed.Continuous);
+            UNIT_ASSERT_VALUES_EQUAL(completed.Lanes[lane].Current, 0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                completed.Lanes[lane].IntegralUs, 60'000'000);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCompleteIoDepthForStorageFailureAndException)
+    {
+        for (const ui32 failure: {0, 1, 2}) {
+            TIoDepthHandlerFixture fixture;
+            fixture.Storage->ReadBlocksLocalHandler = [failure](auto, auto)
+                -> TFuture<NProto::TReadBlocksLocalResponse>
+            {
+                if (failure == 1) {
+                    ythrow yexception() << "storage read failed";
+                }
+                if (failure == 2) {
+                    auto promise =
+                        NewPromise<NProto::TReadBlocksLocalResponse>();
+                    promise.SetException(std::make_exception_ptr(
+                        yexception() << "future failed"));
+                    return promise.GetFuture();
+                }
+                NProto::TReadBlocksLocalResponse response;
+                *response.MutableError() = MakeError(E_IO, "read failure");
+                return MakeFuture(response);
+            };
+            fixture.Accept(NBD_CMD_READ);
+            fixture.NowNs = 1'000'000'000;
+            fixture.Context->ExecutePending();
+            const auto snapshot = fixture.Depth.Snapshot();
+            const auto lane = static_cast<ui32>(EBlockStoreRequest::ReadBlocks);
+            UNIT_ASSERT(snapshot.Continuous);
+            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].Current, 0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                snapshot.Lanes[lane].IntegralUs, 1'000'000);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.ErrorCount, 1);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCompleteIoDepthWhenResponseWriteThrows)
+    {
+        TIoDepthHandlerFixture fixture;
+        fixture.Context->ForwardResponses = false;
+        fixture.Accept(NBD_CMD_READ);
+        fixture.NowNs = 1'000'000'000;
+        fixture.Context->ExecutePending();
+        UNIT_ASSERT(fixture.Context->LastResponse);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 0);
+
+        TThrowingIoDepthOutput output;
+        UNIT_ASSERT_EXCEPTION(
+            fixture.Handler->SendResponse(
+                output, *fixture.Context->LastResponse), yexception);
+        const auto snapshot = fixture.Depth.Snapshot();
+        UNIT_ASSERT(fixture.Balanced);
+        const auto lane = static_cast<ui32>(EBlockStoreRequest::ReadBlocks);
+        UNIT_ASSERT(snapshot.Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].IntegralUs, 1'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
+        fixture.Handler->CompleteResponse(*fixture.Context->LastResponse);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
+        UNIT_ASSERT(fixture.Depth.Snapshot().Continuous);
+    }
+
+    Y_UNIT_TEST(ShouldCompleteIoDepthForTruncatedWritePayload)
+    {
+        TIoDepthHandlerFixture fixture;
+        UNIT_ASSERT_EXCEPTION(fixture.Accept(NBD_CMD_WRITE, false), yexception);
+        fixture.NowNs = 1'000'000'000;
+        fixture.Context->ExecutePending();
+        const auto snapshot = fixture.Depth.Snapshot();
+        UNIT_ASSERT(fixture.Balanced);
+        const auto lane = static_cast<ui32>(EBlockStoreRequest::WriteBlocks);
+        UNIT_ASSERT(snapshot.Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.ErrorCount, 1);
+    }
+
+    Y_UNIT_TEST(ShouldCancelIoDepthOnceBeforeLateTaskCompletion)
+    {
+        TIoDepthHandlerFixture fixture;
+        fixture.Accept(NBD_CMD_READ);
+        fixture.NowNs = 1'000'000'000;
+        fixture.Handler->ProcessException(
+            std::make_exception_ptr(yexception() << "connection closed"));
+        const auto lane = static_cast<ui32>(EBlockStoreRequest::ReadBlocks);
+        const auto cancelled = fixture.Depth.Snapshot();
+        UNIT_ASSERT_VALUES_EQUAL(cancelled.Lanes[lane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(cancelled.Lanes[lane].IntegralUs, 1'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
+
+        fixture.NowNs = 2'000'000'000;
+        fixture.Context->ExecutePending();
+        UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
+        UNIT_ASSERT(fixture.Depth.Snapshot().Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(
+            fixture.Depth.Snapshot().Lanes[lane].Current, 0);
+    }
+
     Y_UNIT_TEST(ShouldNegotiateClient)
     {
         auto storage = std::make_shared<TTestStorage>();

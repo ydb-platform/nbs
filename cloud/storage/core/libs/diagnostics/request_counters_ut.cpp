@@ -117,6 +117,7 @@ struct TRequestCountersOptions
     EHistogramCounterOptions HistogramCounterOptions =
         EHistogramCounterOption::ReportMultipleCounters;
     TVector<TSizeInterval> ExecutionTimeSizeClasses;
+    TIoDepthClock IoDepthClock;
 };
 
 auto MakeRequestCounters(TRequestCountersOptions options = {})
@@ -129,7 +130,7 @@ auto MakeRequestCounters(TRequestCountersOptions options = {})
         IsStartEndpointRequest,
         options.Options,
         options.HistogramCounterOptions,
-        options.ExecutionTimeSizeClasses);
+        options.ExecutionTimeSizeClasses, std::move(options.IoDepthClock));
 }
 
 auto MakeRequestCountersPtr(TRequestCountersOptions options = {})
@@ -142,7 +143,7 @@ auto MakeRequestCountersPtr(TRequestCountersOptions options = {})
         IsStartEndpointRequest,
         options.Options,
         options.HistogramCounterOptions,
-        options.ExecutionTimeSizeClasses);
+        options.ExecutionTimeSizeClasses, std::move(options.IoDepthClock));
 }
 
 }   // namespace
@@ -155,6 +156,199 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
     {
         // NHPTimer warmup, see issue #2830 for more information
         Y_UNUSED(GetCyclesPerMillisecond());
+    }
+
+    Y_UNIT_TEST(ShouldAccumulateIoDepthWithoutCompletedRequests)
+    {
+        ui64 nowNs = 0;
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoDepth,
+             .IoDepthClock = [&]
+             {
+                 return nowNs;
+             }});
+        counters.Register(*monitoring->GetCounters());
+
+        auto read =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+        auto write =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+        const auto started = counters.RequestStarted(ReadRequestType, 4096);
+
+        nowNs = 5'000'000'000;
+        counters.UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("IoDepthCurrent")->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            read->GetCounter("IoDepthTimeUs", true)->Val(), 5'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Count", true)->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(write->GetCounter("IoDepthCurrent")->Val(), 0);
+
+        nowNs = 10'000'000'000ULL;
+        counters.UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            read->GetCounter("IoDepthTimeUs", true)->Val(), 10'000'000);
+
+        counters.RequestCompleted(
+            ReadRequestType,
+            started,
+            TDuration::Zero(),
+            TDuration::Zero(),
+            TDuration::Zero(),
+            4096,
+            EDiagnosticsErrorKind::ErrorFatal,
+            NCloud::NProto::EF_NONE, false, ECalcMaxTime::ENABLE, 0);
+        nowNs = 12'000'000'000ULL;
+        counters.UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("IoDepthCurrent")->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            read->GetCounter("IoDepthTimeUs", true)->Val(), 10'000'000);
+        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Errors", true)->Val(), 1);
+        UNIT_ASSERT(counters.GetIoDepthSnapshot()->Continuous);
+    }
+
+    Y_UNIT_TEST(ShouldNotCreateIoDepthCountersWhenDisabled)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters();
+        counters.Register(*monitoring->GetCounters());
+        auto read =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+
+        UNIT_ASSERT(!counters.GetIoDepthSnapshot());
+        UNIT_ASSERT(!read->FindCounter("IoDepthCurrent"));
+        UNIT_ASSERT(!read->FindCounter("IoDepthTimeUs"));
+    }
+
+    Y_UNIT_TEST(ShouldKeepIoDepthEpochAcrossCounterRegistration)
+    {
+        ui64 nowNs = 0;
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoDepth,
+             .IoDepthClock = [&]
+             {
+                 return nowNs;
+             }});
+        counters.Register(*monitoring->GetCounters());
+        counters.RequestStarted(ReadRequestType, 4096);
+        const auto first = counters.GetIoDepthSnapshot();
+
+        nowNs = 1'000'000'000;
+        auto rebound = monitoring->GetCounters()->GetSubgroup("labels", "new");
+        counters.Register(*rebound);
+        counters.UpdateStats(false);
+        const auto second = counters.GetIoDepthSnapshot();
+
+        UNIT_ASSERT(first->Generation == second->Generation);
+        UNIT_ASSERT(second->Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(second->Lanes[ReadRequestType].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            rebound->GetSubgroup("request", "ReadBlocks")
+                ->GetCounter("IoDepthTimeUs", true)
+                ->Val(), 1'000'000);
+    }
+
+    Y_UNIT_TEST(ShouldTrackIoDepthOncePerSubscriber)
+    {
+        ui64 nowNs = 0;
+        auto monitoring = CreateMonitoringServiceStub();
+        TRequestCountersOptions options{
+            .Options = TRequestCounters::EOption::ReportIoDepth,
+            .IoDepthClock = [&]
+            {
+                return nowNs;
+            }};
+        auto counters = MakeRequestCountersPtr(options);
+        auto subscriber = MakeRequestCountersPtr(options);
+        counters->Register(*monitoring->GetCounters());
+        subscriber->Register(
+            *monitoring->GetCounters()->GetSubgroup("source", "subscriber"));
+        counters->Subscribe(subscriber);
+
+        const auto started = counters->RequestStarted(ReadRequestType, 4096);
+        nowNs = 1'000'000'000;
+        UNIT_ASSERT_VALUES_EQUAL(
+            counters->GetIoDepthSnapshot()->Lanes[ReadRequestType].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            subscriber->GetIoDepthSnapshot()->Lanes[ReadRequestType].Current,
+            1);
+        counters->RequestCompleted(
+            ReadRequestType,
+            started,
+            TDuration::Zero(),
+            TDuration::Zero(),
+            TDuration::Zero(),
+            4096,
+            EDiagnosticsErrorKind::Success,
+            NCloud::NProto::EF_NONE, false, ECalcMaxTime::ENABLE, 0);
+        for (const auto& source: {counters, subscriber}) {
+            const auto snapshot = source->GetIoDepthSnapshot();
+            UNIT_ASSERT(snapshot->Continuous);
+            UNIT_ASSERT_VALUES_EQUAL(
+                snapshot->Lanes[ReadRequestType].Current, 0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                snapshot->Lanes[ReadRequestType].IntegralUs, 1'000'000);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepCommonIoDepthIndependentOfExternalCompletionBatches)
+    {
+        ui64 nowNs = 0;
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoDepth,
+             .IoDepthClock = [&]
+             {
+                 return nowNs;
+             }});
+        counters.Register(*monitoring->GetCounters());
+        const auto firstStarted =
+            counters.RequestStarted(ReadRequestType, 4096);
+        const auto first = counters.GetIoDepthSnapshot();
+
+        nowNs = 1'000'000'000;
+        counters.BatchCompleted(ReadRequestType, 0, 0, 0, {}, {});
+        counters.BatchCompleted(ReadRequestType, 1, 4096, 0, {}, {});
+        const auto afterExternal = counters.GetIoDepthSnapshot();
+        UNIT_ASSERT(afterExternal->Continuous);
+        UNIT_ASSERT(first->Generation == afterExternal->Generation);
+        UNIT_ASSERT_VALUES_EQUAL(
+            afterExternal->Lanes[ReadRequestType].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            afterExternal->Lanes[ReadRequestType].IntegralUs, 1'000'000);
+
+        auto finish = [&](ui64 started)
+        {
+            counters.RequestCompleted(
+                ReadRequestType,
+                started,
+                {},
+                {},
+                {},
+                4096,
+                EDiagnosticsErrorKind::Success,
+                NCloud::NProto::EF_NONE, false, ECalcMaxTime::ENABLE, 0);
+        };
+        nowNs = 2'000'000'000;
+        finish(firstStarted);
+        nowNs = 3'000'000'000;
+        const auto fallbackStarted =
+            counters.RequestStarted(ReadRequestType, 4096);
+        nowNs = 4'000'000'000;
+        const auto fallback = counters.GetIoDepthSnapshot();
+        UNIT_ASSERT(fallback->Continuous);
+        UNIT_ASSERT(first->Generation == fallback->Generation);
+        UNIT_ASSERT_VALUES_EQUAL(fallback->Lanes[ReadRequestType].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            fallback->Lanes[ReadRequestType].IntegralUs, 3'000'000);
+        nowNs = 5'000'000'000;
+        finish(fallbackStarted);
+        const auto final = counters.GetIoDepthSnapshot();
+        UNIT_ASSERT(final->Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(final->Lanes[ReadRequestType].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            final->Lanes[ReadRequestType].IntegralUs, 4'000'000);
     }
 
     Y_UNIT_TEST(ShouldTrackRequestsInProgress)

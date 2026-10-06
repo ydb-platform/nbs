@@ -30,6 +30,7 @@ public:
         vhd_request_queue* queue,
         TSimpleStats& queueStats) override;
     std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
+    std::optional<TIoDepthSnapshot> GetIoDepthStats() override;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -93,6 +94,11 @@ std::optional<TSimpleStats> TNullBackend::GetCompletionStats(TDuration timeout)
 {
     Y_UNUSED(timeout);
     return {};
+}
+
+std::optional<TIoDepthSnapshot> TNullBackend::GetIoDepthStats()
+{
+    return std::nullopt;
 }
 
 }   // namespace

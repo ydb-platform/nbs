@@ -1,5 +1,6 @@
 #pragma once
 
+#include "io_depth_tracker.h"
 #include "public.h"
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -9,6 +10,8 @@
 #include <util/datetime/base.h>
 #include <util/generic/flags.h>
 
+#include <memory>
+#include <optional>
 #include <span>
 
 namespace NCloud {
@@ -39,6 +42,7 @@ public:
         OnlyStartEndpointRequests        = (1 << 5),
         ThrottlingHistogramsDisabled     = (1 << 6),
         DisaggregatedCountersDisabled    = (1 << 7),
+        ReportIoDepth                    = (1 << 9),
     };
 
     using TRequestType = TDiagnosticsRequestType;
@@ -59,6 +63,7 @@ private:
 
     THolder<TSpecialCounters> SpecialCounters;
     TVector<TStatCounters> CountersByRequest;
+    std::unique_ptr<TIoDepthTracker> IoDepthTracker;
     TVector<TRequestCountersPtr> Subscribers;
 
 public:
@@ -70,7 +75,8 @@ public:
         std::function<bool(TRequestType)> isStartEndpointRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<TSizeInterval>& executionTimeSizeClasses);
+        const TVector<TSizeInterval>& executionTimeSizeClasses,
+        TIoDepthClock ioDepthClock = {});
     ~TRequestCounters();
 
     void Register(NMonitoring::TDynamicCounters& counters);
@@ -124,6 +130,8 @@ public:
     );
 
     void UpdateStats(bool updatePercentiles = false);
+
+    std::optional<TIoDepthSnapshot> GetIoDepthSnapshot();
 
 private:
     void RequestStartedImpl(

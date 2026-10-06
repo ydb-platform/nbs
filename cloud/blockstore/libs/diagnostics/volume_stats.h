@@ -9,11 +9,13 @@
 #include <cloud/blockstore/libs/service/request.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/io_depth_tracker.h>
 
 #include <util/datetime/base.h>
 #include <util/generic/ptr.h>
 #include <util/generic/string.h>
 
+#include <optional>
 #include <span>
 
 namespace NCloud::NBlockStore {
@@ -33,12 +35,36 @@ enum class EVolumeStatsType
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TVolumeIoDepthSnapshot
+{
+    TGUID Generation;
+    ui64 TimestampNs = 0;
+    bool Continuous = true;
+    TIoDepthLaneSnapshot Read;
+    TIoDepthLaneSnapshot Write;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct IVolumeInfo
 {
     virtual ~IVolumeInfo() = default;
 
     virtual const NProto::TVolume& GetInfo() const = 0;
     virtual TDuration GetPossiblePostponeDuration() const = 0;
+
+    // Raw per-request-type lanes; ZeroBlocks is separate from WriteBlocks.
+    virtual std::optional<TIoDepthSnapshot> GetIoDepthSnapshot()
+    {
+        return std::nullopt;
+    }
+
+    // Write includes ZeroBlocks according to this volume's reporting policy.
+    // Both directions and metadata belong to one observation of this source.
+    virtual std::optional<TVolumeIoDepthSnapshot> GetIoDepthByDirection()
+    {
+        return std::nullopt;
+    }
 
     virtual ui64 RequestStarted(
         EBlockStoreRequest requestType,
@@ -161,13 +187,15 @@ IVolumeStatsPtr CreateVolumeStats(
     TDiagnosticsConfigPtr diagnosticsConfig,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
-    ITimerPtr timer);
+    ITimerPtr timer,
+    TIoDepthClock ioDepthClock = {});
 
 IVolumeStatsPtr CreateVolumeStats(
     IMonitoringServicePtr monitoring,
     TDuration inactiveClientsTimeout,
     EVolumeStatsType type,
-    ITimerPtr timer);
+    ITimerPtr timer,
+    TIoDepthClock ioDepthClock = {});
 
 IVolumeStatsPtr CreateVolumeStatsStub();
 

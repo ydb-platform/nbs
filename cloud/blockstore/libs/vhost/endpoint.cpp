@@ -7,6 +7,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/folder/path.h>
+#include <util/generic/yexception.h>
 #include <util/string/builder.h>
 #include <util/system/datetime.h>
 
@@ -264,22 +265,32 @@ void TEndpoint::ProcessRequest(TVhostRequestPtr vhostRequest)
 template <typename TMethod>
 void TEndpoint::ProcessRequest(TRequestPtr request)
 {
-    auto future = TMethod::Execute(
-        *DeviceHandler,
-        request->CallContext,
-        *request->VhostRequest);
+    try {
+        auto future = TMethod::Execute(
+            *DeviceHandler,
+            request->CallContext,
+            *request->VhostRequest);
 
-    auto weakPtr = weak_from_this();
-    future.Apply(
-        [weakPtr, req = std::move(request)](const auto& f)
-        {
-            const auto& response = f.GetValue();
-            if (auto p = weakPtr.lock()) {
-                p->CompleteRequest(*req, response.GetError());
-                p->UnregisterRequest(*req);
-            }
-            return f.GetValue();
-        });
+        auto weakPtr = weak_from_this();
+        future.Subscribe(
+            [weakPtr, req = request](const auto& f)
+            {
+                NProto::TError error;
+                try {
+                    error = f.GetValue().GetError();
+                } catch (...) {
+                    error = MakeError(E_FAIL, CurrentExceptionMessage());
+                }
+
+                if (auto p = weakPtr.lock()) {
+                    p->CompleteRequest(*req, error);
+                    p->UnregisterRequest(*req);
+                }
+            });
+    } catch (...) {
+        CompleteRequest(*request, MakeError(E_FAIL, CurrentExceptionMessage()));
+        UnregisterRequest(*request);
+    }
 }
 
 TRequestPtr TEndpoint::RegisterRequest(TVhostRequestPtr vhostRequest)

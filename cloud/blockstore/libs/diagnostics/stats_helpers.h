@@ -13,6 +13,7 @@ TRequestCounters MakeRequestCounters(
     ITimerPtr timer,
     TRequestCounters::EOptions options,
     EHistogramCounterOptions histogramCounterOptions,
-    const TVector<TSizeInterval>& executionTimeSizeClasses);
+    const TVector<TSizeInterval>& executionTimeSizeClasses,
+    TIoDepthClock ioDepthClock = {});
 
 }   // namespace NCloud::NBlockStore

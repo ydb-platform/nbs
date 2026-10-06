@@ -6,6 +6,7 @@
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/strbuf.h>
+#include <util/generic/yexception.h>
 #include <util/string/builder.h>
 #include <util/system/datetime.h>
 #include <util/system/sanitizers.h>
@@ -13,6 +14,7 @@
 #include <algorithm>
 #include <memory>
 #include <span>
+#include <utility>
 
 namespace NCloud::NBlockStore::NVHostServer {
 namespace {
@@ -24,7 +26,7 @@ bool IsBrokenDevice(const TAioDevice& device)
     return !device.File.IsOpen();
 }
 
-void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
+void AccountDiscardedRequest(vhd_io* io, TSimpleStats& queueStats)
 {
     ++queueStats.SubFailed;
     auto* bio = vhd_get_bdev_io(io);
@@ -33,8 +35,6 @@ void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
     auto& requestStat = queueStats.Requests[bio->type];
     requestStat.Errors += 1;
     requestStat.Bytes += bytes;
-
-    vhd_complete_bio(io, VHD_BDEV_IOERR);
 }
 
 size_t TotalVhdBuffersSize(const std::span<vhd_buffer>& buffers)
@@ -68,13 +68,23 @@ template <bool DoDecrypt>
                 continue;
             }
 
-            auto err = encryptor.Decrypt(srcRef, dstRef, startSector + i);
+            NProto::TError err;
+            try {
+                err = encryptor.Decrypt(srcRef, dstRef, startSector + i);
+            } catch (...) {
+                return MakeError(E_FAIL, CurrentExceptionMessage());
+            }
             if (HasError(err)) {
                 // Something went wrong inside the decryption operation.
                 return err;
             }
         } else {
-            auto err = encryptor.Encrypt(srcRef, dstRef, startSector + i);
+            NProto::TError err;
+            try {
+                err = encryptor.Encrypt(srcRef, dstRef, startSector + i);
+            } catch (...) {
+                return MakeError(E_FAIL, CurrentExceptionMessage());
+            }
             if (HasError(err)) {
                 // Something went wrong inside the encryption operation.
                 return err;
@@ -97,14 +107,15 @@ template <bool DoDecrypt>
     return {};
 }
 
-void PrepareCompoundIO(
+bool PrepareCompoundIO(
     IEncryptor* encryptor,
     TLog& Log,
     const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
     TCpuCycles now,
-    TSimpleStats& queueStats)
+    TSimpleStats& queueStats,
+    TIoDepthTracker* ioDepth)
 {
     auto* bio = vhd_get_bdev_io(io);
     const ui64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
@@ -130,8 +141,8 @@ void PrepareCompoundIO(
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
 
     if (std::any_of(it, end, IsBrokenDevice)) {
-        DiscardRequest(io, queueStats);
-        return;
+        AccountDiscardedRequest(io, queueStats);
+        return false;
     }
 
     STORAGE_DEBUG(
@@ -150,7 +161,8 @@ void PrepareCompoundIO(
         it->BlockSize,
         io,
         totalBytes,
-        now);
+        now,
+        ioDepth);
 
     if (bio->type == VHD_BDEV_WRITE) {
         const bool success = SgListCopyWithOptionalEncryption(
@@ -161,10 +173,16 @@ void PrepareCompoundIO(
             bio->first_sector);
         if (!success) {
             ++queueStats.EncryptorErrors;
-            vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
-            return;
+            return false;
         }
     }
+
+    // Publish the parent only after all subrequests are prepared. If any
+    // preparation allocation throws, the holders release every object and
+    // PrepareIO finishes the logical request once.
+    TVector<TAioSubRequestHolder> subRequests;
+    subRequests.reserve(deviceCount);
+    batch.reserve(batch.size() + deviceCount);
 
     ui64 deviceOffset = logicalOffset - it->StartOffset;
     char* ptr = req->Buffer.get();
@@ -195,17 +213,23 @@ void PrepareCompoundIO(
         // ownership among all subrequests.
         subRequest->data = req.get();
 
-        NSan::Release(subRequest.get());
-        batch.push_back(subRequest.release());
+        subRequests.push_back(std::move(subRequest));
 
         ptr += count;
         totalBytes -= count;
         deviceOffset = 0;
     }
 
+    for (auto& subRequest: subRequests) {
+        NSan::Release(subRequest.get());
+        batch.push_back(subRequest.get());
+        subRequest.release();
+    }
+
     // Ownership transferred to subrequests.
     NSan::Release(req.get());
     req.release();
+    return true;
 }
 
 }   // namespace
@@ -302,14 +326,17 @@ bool SgListCopyWithOptionalEncryption(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void PrepareIO(
+namespace {
+
+bool PrepareIOImpl(
     TLog& Log,
     IEncryptor* encryptor,
     const TVector<TAioDevice>& devices,
     vhd_io* io,
     TVector<iocb*>& batch,
     TCpuCycles now,
-    TSimpleStats& queueStats)
+    TSimpleStats& queueStats,
+    TIoDepthTracker* ioDepth)
 {
     auto* bio = vhd_get_bdev_io(io);
     const ui64 logicalOffset = bio->first_sector * VHD_SECTOR_SIZE;
@@ -328,8 +355,8 @@ void PrepareIO(
 
     if (device.EndOffset < logicalOffset + totalBytes) {
         // The request is cross-device, so we split it into two.
-        PrepareCompoundIO(encryptor, Log, devices, io, batch, now, queueStats);
-        return;
+        return PrepareCompoundIO(
+            encryptor, Log, devices, io, batch, now, queueStats, ioDepth);
     }
 
     STORAGE_DEBUG(
@@ -344,8 +371,8 @@ void PrepareIO(
         !device.File.IsOpen());
 
     if (IsBrokenDevice(device)) {
-        DiscardRequest(io, queueStats);
-        return;
+        AccountDiscardedRequest(io, queueStats);
+        return false;
     }
 
     auto buffers =
@@ -374,7 +401,8 @@ void PrepareIO(
         needToAllocateBuffer ? totalBytes : 0,
         device.BlockSize,
         io,
-        now);
+        now,
+        ioDepth);
 
     if (needToAllocateBuffer) {
         req->Unaligned = !isAllBuffersAligned;
@@ -387,8 +415,7 @@ void PrepareIO(
                 bio->first_sector);
             if (!success) {
                 ++queueStats.EncryptorErrors;
-                vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
-                return;
+                return false;
             }
         }
         // Instead of multiple buffers, we have allocated one large buffer.
@@ -420,7 +447,48 @@ void PrepareIO(
     STORAGE_DEBUG("Prepared IO request with addr: %p", req.get());
 
     NSan::Release(req.get());
-    batch.push_back(req.release());
+    batch.push_back(req.get());
+    req.release();
+    return true;
+}
+
+}   // namespace
+
+void PrepareIO(
+    TLog& Log,
+    IEncryptor* encryptor,
+    const TVector<TAioDevice>& devices,
+    vhd_io* io,
+    TVector<iocb*>& batch,
+    TCpuCycles now,
+    TSimpleStats& queueStats,
+    TIoDepthTracker* ioDepth, TCompleteBioFn completeBio)
+{
+    const auto lane = vhd_get_bdev_io(io)->type;
+    Y_DEBUG_ABORT_UNLESS(lane == VHD_BDEV_READ || lane == VHD_BDEV_WRITE);
+
+    if (ioDepth) {
+        ioDepth->Started(lane);
+    }
+
+    bool prepared = false;
+    try {
+        prepared = PrepareIOImpl(
+            Log, encryptor, devices, io, batch, now, queueStats, ioDepth);
+    } catch (...) {
+        ++queueStats.SubFailed;
+        STORAGE_ERROR(
+            "Preparing AIO request failed: " << CurrentExceptionMessage());
+    }
+
+    if (!prepared) {
+        if (ioDepth) {
+            const bool completed = ioDepth->Completed(lane);
+            Y_DEBUG_ABORT_UNLESS(completed);
+        }
+
+        completeBio(io, VHD_BDEV_IOERR);
+    }
 }
 
 void CompleteCompoundRequestImpl(
@@ -476,6 +544,7 @@ void CompleteCompoundRequestImpl(
             stats.Sizes[bio->type].Increment(bytes);
         }
 
+        req->FinishIoDepth();
         completeBio(req->Io, status);
     }
 }
@@ -500,12 +569,15 @@ TAioRequest::TAioRequest(
         ui32 blockSize,
         ui32 bufferCount,
         vhd_io* io,
-        TCpuCycles submitTs)
+        TCpuCycles submitTs,
+        TIoDepthTracker* ioDepth)
     : iocb()
     , Io(io)
     , SubmitTs(submitTs)
     , BufferAllocated(allocatedBufferSize != 0)
     , BufferCount(bufferCount)
+    , IoDepth(ioDepth)
+    , IoDepthLane(vhd_get_bdev_io(io)->type)
 {
     if (allocatedBufferSize) {
         Data[0].iov_len = allocatedBufferSize;
@@ -519,7 +591,8 @@ TAioRequestHolder TAioRequest::CreateNew(
     size_t allocatedBufferSize,
     ui32 blockSize,
     vhd_io* io,
-    TCpuCycles submitTs)
+    TCpuCycles submitTs,
+    TIoDepthTracker* ioDepth)
 {
     const size_t totalSize = sizeof(TAioRequest) + sizeof(iovec) * bufferCount;
     return TAioRequestHolder{new (std::calloc(1, totalSize)) TAioRequest(
@@ -527,7 +600,16 @@ TAioRequestHolder TAioRequest::CreateNew(
         blockSize,
         bufferCount,
         io,
-        submitTs)};
+        submitTs,
+        ioDepth)};
+}
+
+void TAioRequest::FinishIoDepth()
+{
+    if (auto* tracker = std::exchange(IoDepth, nullptr)) {
+        const bool completed = tracker->Completed(IoDepthLane);
+        Y_DEBUG_ABORT_UNLESS(completed);
+    }
 }
 
 // static
@@ -585,7 +667,8 @@ TAioCompoundRequest::TAioCompoundRequest(
         ui32 blockSize,
         vhd_io* io,
         size_t bufferSize,
-        TCpuCycles submitTs)
+        TCpuCycles submitTs,
+        TIoDepthTracker* ioDepth)
     : Inflight(inflight)
     , Io(io)
     , SubmitTs(submitTs)
@@ -593,6 +676,8 @@ TAioCompoundRequest::TAioCompoundRequest(
     , Buffer{
           static_cast<char*>(std::aligned_alloc(blockSize, bufferSize)),
       }
+    , IoDepth(ioDepth)
+    , IoDepthLane(vhd_get_bdev_io(io)->type)
 {}
 
 // static
@@ -601,14 +686,24 @@ std::unique_ptr<TAioCompoundRequest> TAioCompoundRequest::CreateNew(
     ui32 blockSize,
     vhd_io* io,
     size_t bufferSize,
-    TCpuCycles submitTs)
+    TCpuCycles submitTs,
+    TIoDepthTracker* ioDepth)
 {
     return std::make_unique<TAioCompoundRequest>(
         inflight,
         blockSize,
         io,
         bufferSize,
-        submitTs);
+        submitTs,
+        ioDepth);
+}
+
+void TAioCompoundRequest::FinishIoDepth()
+{
+    if (auto* tracker = std::exchange(IoDepth, nullptr)) {
+        const bool completed = tracker->Completed(IoDepthLane);
+        Y_DEBUG_ABORT_UNLESS(completed);
+    }
 }
 
 TBlockDataRef TAioCompoundRequest::GetData() const

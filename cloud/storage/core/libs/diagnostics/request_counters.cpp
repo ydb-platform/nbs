@@ -387,6 +387,8 @@ struct TRequestCounters::TStatCounters
     TDynamicCounters::TCounterPtr MaxRequestBytes;
     TDynamicCounters::TCounterPtr InProgress;
     TDynamicCounters::TCounterPtr MaxInProgress;
+    TDynamicCounters::TCounterPtr IoDepthCurrent;
+    TDynamicCounters::TCounterPtr IoDepthTimeUs;
     TDynamicCounters::TCounterPtr InProgressBytes;
     TDynamicCounters::TCounterPtr MaxInProgressBytes;
     TDynamicCounters::TCounterPtr PostponedQueueSize;
@@ -498,7 +500,8 @@ struct TRequestCounters::TStatCounters
         bool isReadWriteRequest,
         bool reportDataPlaneHistogram,
         bool reportControlPlaneHistogram,
-        bool throttlingHistogramsDisabled)
+        bool throttlingHistogramsDisabled,
+        bool reportIoDepth)
     {
         CountersGroup = std::move(countersGroup);
         auto& counters = *CountersGroup;
@@ -516,6 +519,11 @@ struct TRequestCounters::TStatCounters
 
         if (IsReadWriteRequest) {
             RequestBytes = counters.GetCounter("RequestBytes", true);
+
+            if (reportIoDepth) {
+                IoDepthCurrent = counters.GetCounter("IoDepthCurrent", false);
+                IoDepthTimeUs = counters.GetCounter("IoDepthTimeUs", true);
+            }
         }
     }
 
@@ -922,7 +930,8 @@ TRequestCounters::TRequestCounters(
         std::function<bool(TRequestType)> isStartEndpointRequestType,
         EOptions options,
         EHistogramCounterOptions histogramCounterOptions,
-        const TVector<TSizeInterval>& executionTimeSizeClasses)
+        const TVector<TSizeInterval>& executionTimeSizeClasses,
+        TIoDepthClock ioDepthClock)
     : RequestType2Name(std::move(requestType2Name))
     , IsReadWriteRequestType(std::move(isReadWriteRequestType))
     , IsStartEndpointRequestType(std::move(isStartEndpointRequestType))
@@ -930,6 +939,12 @@ TRequestCounters::TRequestCounters(
 {
     if (Options & EOption::AddSpecialCounters) {
         SpecialCounters = MakeHolder<TSpecialCounters>();
+    }
+
+    if (Options & EOption::ReportIoDepth) {
+        IoDepthTracker = std::make_unique<TIoDepthTracker>(
+            requestCount,
+            std::move(ioDepthClock));
     }
 
     CountersByRequest.reserve(requestCount);
@@ -971,7 +986,8 @@ void TRequestCounters::Register(TDynamicCounters& counters)
                 IsReadWriteRequestType(t),
                 Options & EOption::ReportDataPlaneHistogram,
                 Options & EOption::ReportControlPlaneHistogram,
-                Options & EOption::ThrottlingHistogramsDisabled);
+                Options & EOption::ThrottlingHistogramsDisabled,
+                Options & EOption::ReportIoDepth);
 
             // ReadWrite counters are usually the most important ones so let's
             // report zeroes for them instead of not reporting anything at all
@@ -1137,6 +1153,10 @@ void TRequestCounters::BatchCompleted(
     std::span<TSizeBucket> sizeHist)
 {
     if (ShouldReport(requestType)) {
+        // External completion batches have no start/pending timeline. Their
+        // depth belongs to the external backend source, independently of this
+        // common tracker. Source selection and full-window coverage are done by
+        // the consumer; neither reconstruct nor invalidate common depth here.
         AccessRequestStats(requestType).BatchCompleted(
             count,
             bytes,
@@ -1157,11 +1177,23 @@ void TRequestCounters::BatchCompleted(
 
 void TRequestCounters::UpdateStats(bool updatePercentiles)
 {
-    for (auto& statCounters: CountersByRequest) {
+    const auto ioDepth = GetIoDepthSnapshot();
+
+    for (TRequestType t = 0; t < CountersByRequest.size(); ++t) {
+        auto& statCounters = CountersByRequest[t];
+
         if (AtomicGet(statCounters.FullyInitialized)) {
             statCounters.UpdateStats(updatePercentiles);
+
+            if (ioDepth && statCounters.IoDepthTimeUs) {
+                const auto& lane = ioDepth->Lanes[t];
+
+                *statCounters.IoDepthCurrent = lane.Current;
+                *statCounters.IoDepthTimeUs = lane.IntegralUs;
+            }
         }
     }
+
     // NOTE subscribers are updated by their owners
 }
 
@@ -1170,6 +1202,9 @@ void TRequestCounters::RequestStartedImpl(
     ui64 requestBytes)
 {
     if (ShouldReport(requestType)) {
+        if (IoDepthTracker && IsReadWriteRequestType(requestType)) {
+            IoDepthTracker->Started(requestType);
+        }
         AccessRequestStats(requestType).Started(requestBytes);
     }
     NotifySubscribers(
@@ -1199,6 +1234,12 @@ void TRequestCounters::RequestCompletedImpl(
 
     if (ShouldReport(requestType)) {
         auto& statCounters = AccessRequestStats(requestType);
+
+        if (IoDepthTracker && IsReadWriteRequestType(requestType)) {
+            const bool completed = IoDepthTracker->Completed(requestType);
+            Y_DEBUG_ABORT_UNLESS(completed);
+        }
+
         statCounters.Completed(requestBytes);
         statCounters.AddStats(
             totalTime,
@@ -1249,6 +1290,15 @@ bool TRequestCounters::ShouldReport(TRequestType requestType) const
     }
 
     return true;
+}
+
+std::optional<TIoDepthSnapshot> TRequestCounters::GetIoDepthSnapshot()
+{
+    if (IoDepthTracker) {
+        return IoDepthTracker->Snapshot();
+    }
+
+    return std::nullopt;
 }
 
 template<typename TMethod, typename... TArgs>
