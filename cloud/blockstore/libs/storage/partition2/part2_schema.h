@@ -191,7 +191,7 @@ struct TPartitionSchema
         struct BlobMeta
             : public Column<3, NKikimr::NScheme::NTypeIds::String>
         {
-            using Type = NProto::TBlobMeta;
+            using Type = NProto::TBlobMeta2;
         };
 
         struct BlockMask

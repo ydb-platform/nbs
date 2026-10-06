@@ -295,7 +295,7 @@ private:
             DescribeRange(blob.Blocks).c_str());
 
         // write blob meta
-        NProto::TBlobMeta blobMeta;
+        NProto::TBlobMeta2 blobMeta;
 
         auto& mixedBlocks = *blobMeta.MutableMixedBlocks();
         mixedBlocks.MutableBlocks()->Reserve(blob.Blocks.size());
@@ -364,7 +364,7 @@ private:
         Y_ABORT_UNLESS(skipped < blob.BlockRange.Size());
 
         // write blob meta
-        NProto::TBlobMeta blobMeta;
+        NProto::TBlobMeta2 blobMeta;
 
         auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
         mergedBlocks.SetStart(blob.BlockRange.Start);
@@ -429,7 +429,7 @@ private:
             DescribeFreshRange(blob.Blocks).c_str());
 
         // write blob meta
-        NProto::TBlobMeta blobMeta;
+        NProto::TBlobMeta2 blobMeta;
 
         auto& mixedBlocks = *blobMeta.MutableMixedBlocks();
         mixedBlocks.MutableBlocks()->Reserve(blob.Blocks.size());
@@ -830,7 +830,7 @@ private:
             db.WriteBlockMask(kv.first, blockMask);
 
             if (IsBlockMaskFull(blockMask, MaxBlocksInBlob)) {
-                NProto::TBlobMeta blobMeta;
+                NProto::TBlobMeta2 blobMeta;
                 if (kv.second.BlobMeta) {
                     blobMeta = kv.second.BlobMeta.GetRef();
                 } else if (kv.second.RecreatedBlobMeta) {

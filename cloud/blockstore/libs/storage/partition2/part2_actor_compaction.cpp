@@ -60,7 +60,7 @@ void FillRangeCompactionInfos(
     TVector<TRangeCompactionInfo>& infos,
     const TVector<TPartialBlobId>& blobsToReadBlobMetas,
     const TVector<TPartialBlobId>& blobsToReadBlockMasks,
-    const TVector<NProto::TBlobMeta>& blobMetas,
+    const TVector<NProto::TBlobMeta2>& blobMetas,
     const TVector<TBlockMask>& blockMasks)
 {
     for (size_t i = 0; i < blobsToReadBlobMetas.size(); ++i) {
@@ -1497,7 +1497,7 @@ private:
     TriggerGarbageOrIgnoringZeroedCompactionIfNeeded(
         bool isIgnoringZeroedCompaction) const
     {
-        if (!Config->GetV1GarbageCompactionEnabled()) {
+        if (!Config->GetV2GarbageCompactionEnabled()) {
             return std::nullopt;
         }
 
@@ -1687,7 +1687,7 @@ void FillBlobsInfo(
         blobsToReadBlobMetas);
 
     TVector<TBlockMask> blockMasks(args.BlobsToReadBlockMasks.size());
-    TVector<NProto::TBlobMeta> blobMetas(args.BlobsToReadBlobMetas.size());
+    TVector<NProto::TBlobMeta2> blobMetas(args.BlobsToReadBlobMetas.size());
     if (!ReadBlobsInfo(
             db,
             blobsToOutputIndices,

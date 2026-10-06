@@ -20,7 +20,7 @@ struct IBlobsIndexVisitor
     virtual bool Visit(
         ui64 commitId,
         ui64 blobId,
-        const NProto::TBlobMeta& blobMeta,
+        const NProto::TBlobMeta2& blobMeta,
         const TStringBuf blockMask) = 0;
 };
 

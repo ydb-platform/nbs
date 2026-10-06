@@ -3765,7 +3765,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetIgnoringZeroedCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(20);
         config.SetCompactionRangeGarbageThreshold(200);
@@ -3900,7 +3900,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetIgnoringZeroedCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(20);
         config.SetCompactionRangeGarbageThreshold(999999);
@@ -3990,7 +3990,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetIgnoringZeroedCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(999999);
         config.SetCompactionRangeGarbageThreshold(200);
@@ -4077,7 +4077,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetIgnoringZeroedCompactionEnabled(
             ignoringZeroedCompactionEnabled);
         config.SetCompactionGarbageThreshold(20);
@@ -4225,7 +4225,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetIgnoringZeroedCompactionEnabled(
             ignoringZeroedCompactionEnabled);
         config.SetCompactionGarbageThreshold(999999);
@@ -4439,7 +4439,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         ui32 expectedExecTime)
     {
         auto config = DefaultConfig();
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetEnableDynamicGarbageCompactionThrottling(true);
         config.SetThrottleGarbageCompactionBelowFillPercentage(
             throttleBelowFillPercentage);
@@ -12138,7 +12138,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(999999999);
         config.SetCompactionRangeGarbageThreshold(999999999);
         config.SetAllocationUnitSSD(4);
@@ -12332,7 +12332,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetBatchCompactionEnabled(true);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(diskGarbageThreshold);
         config.SetCompactionRangeGarbageThreshold(rangeGarbageThreshold);
         config.SetCompactionRangeCountPerRun(rangeCountPerRun);
@@ -12482,7 +12482,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         auto config = DefaultConfig();
         config.SetWriteBlobThreshold(1_MB);
         config.SetBatchCompactionEnabled(true);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(99999);
         config.SetCompactionRangeGarbageThreshold(280);
         config.SetCompactionRangeCountPerRun(1);
@@ -13157,7 +13157,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(999999999);
         config.SetCompactionRangeGarbageThreshold(999999999);
         config.SetAllocationUnitSSD(4);
@@ -13262,7 +13262,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
     {
         auto config = DefaultConfig();
         config.SetHDDCompactionType(NProto::CT_LOAD);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(20);
         config.SetCompactionRangeGarbageThreshold(999999999);
         config.SetSSDMaxBlobsPerUnit(999999999);
@@ -13567,7 +13567,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         auto config = DefaultConfig();
         config.SetBatchCompactionEnabled(true);
         config.SetGarbageCompactionRangeCountPerRun(3);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetCompactionGarbageThreshold(20);
         config.SetCompactionRangeGarbageThreshold(999999);
 
@@ -13666,7 +13666,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         auto config = DefaultConfig();
         config.SetBatchCompactionEnabled(true);
         config.SetForcedCompactionRangeCountPerRun(3);
-        config.SetV1GarbageCompactionEnabled(false);
+        config.SetV2GarbageCompactionEnabled(false);
 
         auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
 
@@ -13770,7 +13770,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         auto config = DefaultConfig();
         config.SetBatchCompactionEnabled(true);
         config.SetForcedCompactionRangeCountPerRun(3);
-        config.SetV1GarbageCompactionEnabled(false);
+        config.SetV2GarbageCompactionEnabled(false);
 
         auto runtime = PrepareTestActorRuntime(config, MaxPartitionBlocksCount);
 
@@ -14207,7 +14207,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         auto config = DefaultConfig();
         config.SetBatchCompactionEnabled(true);
         config.SetForcedCompactionRangeCountPerRun(rangesPerRun);
-        config.SetV1GarbageCompactionEnabled(false);
+        config.SetV2GarbageCompactionEnabled(false);
         config.SetWriteBlobThreshold(15_KB);
         config.SetIncrementalCompactionEnabled(true);
 
@@ -17261,7 +17261,7 @@ Y_UNIT_TEST_SUITE(TPartition2Test)
         config.SetCleanupThreshold(1000);
         config.SetSSDMaxBlobsPerRange(1000);
         config.SetFlushThreshold(1000_MB);
-        config.SetV1GarbageCompactionEnabled(true);
+        config.SetV2GarbageCompactionEnabled(true);
         config.SetIgnoringZeroedCompactionEnabled(ignoringZeroedCompactionEnabled);
         config.SetCompactionGarbageThreshold(999999);
         config.SetCompactionRangeGarbageThreshold(20);

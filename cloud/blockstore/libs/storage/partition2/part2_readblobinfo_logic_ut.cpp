@@ -48,9 +48,9 @@ void AssertOutputIndex(
     }
 }
 
-NProto::TBlobMeta MakeMergedBlobMeta(ui32 start, ui32 end, ui32 skipped)
+NProto::TBlobMeta2 MakeMergedBlobMeta(ui32 start, ui32 end, ui32 skipped)
 {
-    NProto::TBlobMeta meta;
+    NProto::TBlobMeta2 meta;
     auto& mergedBlocks = *meta.MutableMergedBlocks();
     mergedBlocks.SetStart(start);
     mergedBlocks.SetEnd(end);
@@ -133,7 +133,7 @@ Y_UNIT_TEST_SUITE(TReadBlobsInfoTest)
         executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
 
         TPartialBlobId sharedBlob;
-        NProto::TBlobMeta sharedBlobMeta;
+        NProto::TBlobMeta2 sharedBlobMeta;
         TBlockMask sharedBlockMask;
 
         sharedBlobMeta = MakeMergedBlobMeta(10, 20, 3);
@@ -153,7 +153,7 @@ Y_UNIT_TEST_SUITE(TReadBlobsInfoTest)
             {sharedBlob});
 
         TVector<TBlockMask> blockMasks(1);
-        TVector<NProto::TBlobMeta> blobMetas(1);
+        TVector<NProto::TBlobMeta2> blobMetas(1);
 
         executor.ReadTx(
             [&](TPartitionDatabaseWithCounters db)

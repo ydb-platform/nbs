@@ -103,11 +103,11 @@ TPartialBlobId MoveToDataChannel(TPartialBlobId blobId)
         blobId.PartId());
 }
 
-NProto::TBlobMeta MakeMixedBlobMeta(
+NProto::TBlobMeta2 MakeMixedBlobMeta(
     const TVector<ui32>& blocks,
     const TVector<ui64>& commitIds = {})
 {
-    NProto::TBlobMeta meta;
+    NProto::TBlobMeta2 meta;
     auto& mixedBlocks = *meta.MutableMixedBlocks();
     for (ui32 blockIndex: blocks) {
         mixedBlocks.AddBlocks(blockIndex);
@@ -118,9 +118,9 @@ NProto::TBlobMeta MakeMixedBlobMeta(
     return meta;
 }
 
-NProto::TBlobMeta MakeMergedBlobMeta(ui32 start, ui32 end, ui32 skipped = 0)
+NProto::TBlobMeta2 MakeMergedBlobMeta(ui32 start, ui32 end, ui32 skipped = 0)
 {
-    NProto::TBlobMeta meta;
+    NProto::TBlobMeta2 meta;
     auto& mergedBlocks = *meta.MutableMergedBlocks();
     mergedBlocks.SetStart(start);
     mergedBlocks.SetEnd(end);
@@ -133,8 +133,8 @@ struct TMixedAndMergedBlobsSetup
     TPartialBlobId MixedBlobId;
     TPartialBlobId MergedBlobId;
     ui64 DeletionCommitId = 0;
-    NProto::TBlobMeta MixedBlobMeta;
-    NProto::TBlobMeta MergedBlobMeta;
+    NProto::TBlobMeta2 MixedBlobMeta;
+    NProto::TBlobMeta2 MergedBlobMeta;
 };
 
 TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
@@ -705,11 +705,11 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                     !HasMixedBlock(db, 2, setup.MixedBlobId.CommitId()));
                 UNIT_ASSERT(!HasMergedBlob(db, setup.MergedBlobId, 10, 13));
 
-                TMaybe<NProto::TBlobMeta> mixedBlobMeta;
+                TMaybe<NProto::TBlobMeta2> mixedBlobMeta;
                 UNIT_ASSERT(db.ReadBlobMeta(setup.MixedBlobId, mixedBlobMeta));
                 UNIT_ASSERT(!mixedBlobMeta.Defined());
 
-                TMaybe<NProto::TBlobMeta> mergedBlobMeta;
+                TMaybe<NProto::TBlobMeta2> mergedBlobMeta;
                 UNIT_ASSERT(
                     db.ReadBlobMeta(setup.MergedBlobId, mergedBlobMeta));
                 UNIT_ASSERT(!mergedBlobMeta.Defined());
@@ -1134,7 +1134,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                             tc.EndIndex));
                         UNIT_ASSERT(!HasGarbageBlob(db, blobId));
 
-                        TMaybe<NProto::TBlobMeta> blobMeta;
+                        TMaybe<NProto::TBlobMeta2> blobMeta;
                         UNIT_ASSERT(db.ReadBlobMeta(blobId, blobMeta));
                         UNIT_ASSERT(blobMeta.Defined());
                     }
@@ -1155,7 +1155,7 @@ Y_UNIT_TEST_SUITE(TCleanupTransactionTest)
                             HasMixedBlock(db, tc.BlockIndices[0], commitId));
                         UNIT_ASSERT(!HasGarbageBlob(db, blobId));
 
-                        TMaybe<NProto::TBlobMeta> blobMeta;
+                        TMaybe<NProto::TBlobMeta2> blobMeta;
                         UNIT_ASSERT(db.ReadBlobMeta(blobId, blobMeta));
                         UNIT_ASSERT(blobMeta.Defined());
                     }

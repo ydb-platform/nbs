@@ -162,13 +162,13 @@ public:
 
     void WriteBlobMeta(
         const TPartialBlobId& blobId,
-        const NProto::TBlobMeta& blobMeta);
+        const NProto::TBlobMeta2& blobMeta);
 
     void DeleteBlobMeta(const TPartialBlobId& blobId);
 
     bool ReadBlobMeta(
         const TPartialBlobId& blobId,
-        TMaybe<NProto::TBlobMeta>& blobMeta);
+        TMaybe<NProto::TBlobMeta2>& blobMeta);
 
     bool ReadNewBlobs(
         TVector<TPartialBlobId>& blobIds,
@@ -185,7 +185,7 @@ public:
     bool ReadBlobInfo(
         const TPartialBlobId& blobId,
         TMaybe<TBlockMask>& blockMask,
-        TMaybe<NProto::TBlobMeta>& blobMeta);
+        TMaybe<NProto::TBlobMeta2>& blobMeta);
 
     bool FindBlocksInBlobsIndex(
         IExtendedBlocksIndexVisitor& visitor,

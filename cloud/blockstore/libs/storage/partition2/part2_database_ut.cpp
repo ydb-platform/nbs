@@ -113,7 +113,7 @@ struct TTestBlobVisitor final
     bool Visit(
         ui64 commitId,
         ui64 blobId,
-        const NProto::TBlobMeta& blobMeta,
+        const NProto::TBlobMeta2& blobMeta,
         const TStringBuf blockMask) override
     {
         Y_UNUSED(commitId);
@@ -582,7 +582,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         });
 
         auto minCommitId = executor.WriteTx([&] (TPartitionDatabase db) {
-            NProto::TBlobMeta blobMeta;
+            NProto::TBlobMeta2 blobMeta;
             auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
             mergedBlocks.SetStart(0);
             mergedBlocks.SetEnd(1023);
@@ -592,7 +592,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
-            NProto::TBlobMeta blobMeta;
+            NProto::TBlobMeta2 blobMeta;
             auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
             mergedBlocks.SetStart(1024);
             mergedBlocks.SetEnd(2047);
@@ -602,7 +602,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
-            NProto::TBlobMeta blobMeta;
+            NProto::TBlobMeta2 blobMeta;
             auto& mergedBlocks = *blobMeta.MutableMergedBlocks();
             mergedBlocks.SetStart(2048);
             mergedBlocks.SetEnd(3071);
@@ -896,7 +896,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         skipMask2.Set(31, skipMask2.Size());
 
         executor.WriteTx([&] (TPartitionDatabase db) {
-            NProto::TBlobMeta meta;
+            NProto::TBlobMeta2 meta;
 
             auto* mb = meta.MutableMergedBlocks();
             mb->SetStart(range1.Start);
@@ -908,7 +908,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
         });
 
         executor.WriteTx([&] (TPartitionDatabase db) {
-            NProto::TBlobMeta meta;
+            NProto::TBlobMeta2 meta;
 
             auto* mb = meta.MutableMergedBlocks();
             mb->SetStart(range2.Start);

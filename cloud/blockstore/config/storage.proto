@@ -575,7 +575,7 @@ message TStorageServiceConfig
     optional uint32 SSDV2MaxBlobsPerRange = 167;
     optional uint32 HDDV2MaxBlobsPerRange = 168;
 
-    // Enables incremental compaction for v1 tablets.
+    // Enables incremental compaction.
     optional bool IncrementalCompactionEnabled = 169;
     // Compaction in partition v1 will generate sparse merged blobs instead of
     // mixed blobs if this flag is set.
@@ -1734,4 +1734,7 @@ message TStorageServiceConfig
     // the per-disk mixed-block percentage trigger. Zero removes this minimum.
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
+
+    // Enables approximate garbage compaction for partition v2.
+    optional bool V2GarbageCompactionEnabled = 542;
 }

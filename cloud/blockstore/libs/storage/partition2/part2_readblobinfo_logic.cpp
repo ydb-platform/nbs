@@ -18,11 +18,11 @@ void ReadBlobInfo(
     ui64 tabletId,
     const TOutputIndex& outputIndex,
     TVector<TBlockMask>& blockMasks,
-    TVector<NProto::TBlobMeta>& blobMetas,
+    TVector<NProto::TBlobMeta2>& blobMetas,
     bool& ready)
 {
     TMaybe<TBlockMask> mask;
-    TMaybe<NProto::TBlobMeta> meta;
+    TMaybe<NProto::TBlobMeta2> meta;
     if (!db.ReadBlobInfo(blobId, mask, meta)) {
         ready = false;
         return;
@@ -44,10 +44,10 @@ void ReadBlobMeta(
     const TPartialBlobId& blobId,
     ui64 tabletId,
     const TOutputIndex& outputIndex,
-    TVector<NProto::TBlobMeta>& blobMetas,
+    TVector<NProto::TBlobMeta2>& blobMetas,
     bool& ready)
 {
-    TMaybe<NProto::TBlobMeta> meta;
+    TMaybe<NProto::TBlobMeta2> meta;
     if (!db.ReadBlobMeta(blobId, meta)) {
         ready = false;
         return;
@@ -134,7 +134,7 @@ bool ReadBlobsInfo(
     const TBlobId2IndexMap& blobsToOutputIndices,
     ui64 tabletId,
     TVector<TBlockMask>& blockMasks,
-    TVector<NProto::TBlobMeta>& blobMetas)
+    TVector<NProto::TBlobMeta2>& blobMetas)
 {
     bool ready = true;
 
@@ -165,13 +165,13 @@ template bool ReadBlobsInfo<TNoOpCounter>(
     const TBlobId2IndexMap& blobsToOutputIndices,
     ui64 tabletId,
     TVector<TBlockMask>& blockMasks,
-    TVector<NProto::TBlobMeta>& blobMetas);
+    TVector<NProto::TBlobMeta2>& blobMetas);
 
 template bool ReadBlobsInfo<TMethodCallCounter>(
     TPartitionDatabaseWithCounters& db,
     const TBlobId2IndexMap& blobsToOutputIndices,
     ui64 tabletId,
     TVector<TBlockMask>& blockMasks,
-    TVector<NProto::TBlobMeta>& blobMetas);
+    TVector<NProto::TBlobMeta2>& blobMetas);
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

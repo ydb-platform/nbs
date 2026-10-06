@@ -1140,7 +1140,7 @@ bool TPartitionActor::PrepareReadBlocks(
 
             const auto& value = std::get<TBlobMark>(mark);
 
-            TMaybe<NProto::TBlobMeta> meta;
+            TMaybe<NProto::TBlobMeta2> meta;
             auto blobId = MakePartialBlobId(value.BlobId);
             if (db.ReadBlobMeta(blobId, meta)) {
                 Y_ABORT_UNLESS(meta.Defined(),

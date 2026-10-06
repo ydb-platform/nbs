@@ -58,7 +58,7 @@ public:
     bool Visit(
         ui64 commitId,
         ui64 blobId,
-        const NProto::TBlobMeta& blobMeta,
+        const NProto::TBlobMeta2& blobMeta,
         const TStringBuf blockMask) override
     {
         Args.LastReadBlobId = MakePartialBlobId(commitId, blobId);
@@ -81,7 +81,7 @@ private:
     void OnBlob(
         ui64 commitId,
         ui64 blobId,
-        const NProto::TBlobMeta& blobMeta,
+        const NProto::TBlobMeta2& blobMeta,
         const TStringBuf blockMask)
     {
         Y_UNUSED(blockMask);
