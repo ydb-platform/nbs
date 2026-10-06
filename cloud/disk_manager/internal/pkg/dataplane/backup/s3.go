@@ -1,12 +1,14 @@
 package backup
 
 import (
+	"bytes"
 	"context"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
 
+	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
@@ -38,6 +40,17 @@ func NewS3(
 	kek []byte,
 ) (*S3, error) {
 
+	if len(kekID) == 0 {
+		return nil, errors.NewNonRetriableErrorf("kek id is empty")
+	}
+
+	// A key file written by an editor is 32 bytes plus a trailing
+	// newline. A file that is already 32 bytes is kept as-is: its
+	// first or last byte may itself be whitespace.
+	if len(kek) != keySize {
+		kek = bytes.TrimSpace(kek)
+	}
+
 	if len(kek) != keySize {
 		return nil, errors.NewNonRetriableErrorf(
 			"kek %v has size %v, expected %v",
@@ -68,7 +81,26 @@ func (s *S3) NewEncryptedDEK() ([]byte, error) {
 		return nil, errors.NewRetriableError(err)
 	}
 
-	return seal(s.kek, dek, nil)
+	return seal(s.kek, dek, []byte(s.kekID))
+}
+
+func (s *S3) EnsureEncryptedDEK(
+	ctx context.Context,
+	execCtx tasks.ExecutionContext,
+	encryptedDEK *[]byte,
+) error {
+
+	if len(*encryptedDEK) != 0 {
+		return nil
+	}
+
+	dek, err := s.NewEncryptedDEK()
+	if err != nil {
+		return err
+	}
+
+	*encryptedDEK = dek
+	return execCtx.SaveState(ctx)
 }
 
 func (s *S3) PutObject(

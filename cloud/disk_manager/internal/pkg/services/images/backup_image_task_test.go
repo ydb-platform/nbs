@@ -1,6 +1,7 @@
 package images
 
 import (
+	"bytes"
 	"encoding/json"
 	"testing"
 	"time"
@@ -49,6 +50,7 @@ func TestBackupImageTask(t *testing.T) {
 	storage := resources_mocks.NewStorageMock()
 	scheduler := tasks_mocks.NewSchedulerMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
+	var scheduledDEK []byte
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
 	storage.On("ImageBackupScheduled", mock.Anything, "image1").Return(nil)
@@ -60,6 +62,8 @@ func TestBackupImageTask(t *testing.T) {
 		"dataplane.BackupSnapshotData",
 		"",
 		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotDataRequest) bool {
+			dek := request.EncryptedDek
+			scheduledDEK = append([]byte(nil), dek...)
 			return request.SnapshotId == "image1" &&
 				len(request.EncryptedDek) != 0
 		}),
@@ -91,6 +95,8 @@ func TestBackupImageTask(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 	require.Equal(t, "dataplane1", task.state.DataplaneTaskID)
+	require.Equal(t, task.state.EncryptedDek, scheduledDEK)
+	execCtx.AssertNumberOfCalls(t, "SaveState", 2)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
 	object, err := backupS3.GetObject(
@@ -114,4 +120,82 @@ func TestBackupImageTask(t *testing.T) {
 		},
 		meta,
 	)
+}
+
+func TestBackupImageTaskReusesEncryptedDEK(t *testing.T) {
+	ctx := test.NewContext()
+
+	s3, err := test.NewS3Client()
+	require.NoError(t, err)
+
+	exists, err := s3.BucketExists(ctx, backupTestBucket)
+	require.NoError(t, err)
+	if !exists {
+		err = s3.CreateBucket(ctx, backupTestBucket)
+		require.NoError(t, err)
+	}
+
+	image := &resources.ImageMeta{
+		ID:    "image1",
+		Ready: true,
+	}
+
+	storage := resources_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	execCtx := tasks_mocks.NewExecutionContextMock()
+
+	backupS3, err := backup.NewS3(
+		s3,
+		backupTestBucket,
+		t.Name(),
+		"kek1",
+		make([]byte, 32),
+	)
+	require.NoError(t, err)
+
+	preset, err := backupS3.NewEncryptedDEK()
+	require.NoError(t, err)
+
+	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
+	storage.On(
+		"ImageBackupScheduled",
+		mock.Anything,
+		"image1",
+	).Return(nil)
+	execCtx.On("GetTaskID").Return("backup1")
+	execCtx.On("SaveState", mock.Anything).Return(nil)
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"dataplane.BackupSnapshotData",
+		"",
+		mock.MatchedBy(func(
+			request *dataplane_protos.BackupSnapshotDataRequest,
+		) bool {
+			return request.SnapshotId == "image1" &&
+				bytes.Equal(request.EncryptedDek, preset)
+		}),
+	).Return("dataplane1", nil)
+	scheduler.On(
+		"WaitTask",
+		mock.Anything,
+		execCtx,
+		"dataplane1",
+	).Return(&empty.Empty{}, nil)
+
+	task := &backupImageTask{
+		scheduler: scheduler,
+		storage:   storage,
+		backupS3:  backupS3,
+		request:   &protos.BackupImageRequest{ImageId: "image1"},
+		state: &protos.BackupImageTaskState{
+			EncryptedDek: preset,
+		},
+	}
+
+	err = task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	require.Equal(t, preset, task.state.EncryptedDek)
+	execCtx.AssertNumberOfCalls(t, "SaveState", 1)
+	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 }

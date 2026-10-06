@@ -170,6 +170,11 @@ func readBackupChunkMap(
 	err = proto.Unmarshal(object.Data, chunkMap)
 	require.NoError(t, err)
 
+	raw, err := follower.getRawObject(ctx, backup.ChunkMapKey(snapshotID))
+	require.NoError(t, err)
+	require.NotEqual(t, object.Data, raw.Data)
+	require.Equal(t, "kek1", *raw.Metadata["Key-Id"])
+
 	return chunkMap
 }
 
@@ -666,6 +671,28 @@ func TestBackupSnapshotDataTaskFailsOnDeletedSnapshot(t *testing.T) {
 
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, queue)
+}
+
+func TestBackupSnapshotDataTaskRejectsBadDEK(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage, closeFunc := newStorage(t, ctx)
+	defer closeFunc()
+
+	follower := newTestFollower(t, ctx)
+	createSnapshotWithChunk(t, ctx, storage, "snap1")
+
+	execCtx := newBackupExecutionContext(ctx)
+	task := newBackupSnapshotDataTask(storage, follower, "snap1")
+	task.request.EncryptedDek = []byte("bad")
+
+	err := task.Run(ctx, execCtx)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+	require.Zero(t, task.state.EnqueuedChunkCount)
 
 	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)

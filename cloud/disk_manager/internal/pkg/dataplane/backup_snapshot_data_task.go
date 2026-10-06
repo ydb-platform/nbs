@@ -44,6 +44,14 @@ func (t *backupSnapshotDataTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	// A DEK that cannot be opened fails the chunk copier on every
+	// chunk and leaves those queue rows unfinished, so this task
+	// interrupts forever. Reject it before anything is enqueued.
+	err := t.backupS3.CheckEncryptedDEK(t.request.EncryptedDek)
+	if err != nil {
+		return err
+	}
+
 	snapshotID := t.request.SnapshotId
 
 	meta, err := t.storage.CheckSnapshotReady(ctx, snapshotID)

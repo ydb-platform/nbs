@@ -64,10 +64,15 @@ func open(
 }
 
 func (s *S3) openDEK(encryptedDEK []byte) (cipher.AEAD, error) {
-	dek, err := open(s.kek, encryptedDEK, nil)
+	dek, err := open(s.kek, encryptedDEK, []byte(s.kekID))
 	if err != nil {
 		return nil, err
 	}
 
 	return newAEAD(dek)
+}
+
+func (s *S3) CheckEncryptedDEK(encryptedDEK []byte) error {
+	_, err := s.openDEK(encryptedDEK)
+	return err
 }
