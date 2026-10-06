@@ -1,12 +1,14 @@
 LIBRARY()
 
 SRCS(
+    request.cpp
     server.cpp
 )
 
 PEERDIR(
     cloud/fastshard/journal/iface
     cloud/fastshard/protos
+    cloud/fastshard/sn/iface
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/coroutine
