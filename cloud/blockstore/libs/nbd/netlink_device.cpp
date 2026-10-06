@@ -47,11 +47,22 @@ struct TNbdStatusResponse {
     }
 };
 
-using TNbdConfigureRequest = TNetlinkRequest<
-    TNetlinkAttribute<NBD_ATTR_INDEX, ui32>,
+template <typename... TPrefix>
+using TNbdConnectRequest = TNetlinkRequest<
+    TPrefix...,
     TNetlinkAttribute<NBD_ATTR_SIZE_BYTES, ui64>,
     TNetlinkAttribute<NBD_ATTR_BLOCK_SIZE_BYTES, ui64>,
     TNetlinkAttribute<NBD_ATTR_SERVER_FLAGS, ui64>,
+    TNetlinkAttribute<NBD_ATTR_TIMEOUT, ui64>,
+    TNetlinkAttribute<NBD_ATTR_DEAD_CONN_TIMEOUT, ui64>,
+    TNetlinkAttribute<NBD_ATTR_SOCKETS,
+        TNetlinkAttribute<NBD_SOCK_ITEM,
+            TNetlinkAttribute<NBD_SOCK_FD, ui32>>>>;
+
+using TNbdIndexAttribute = TNetlinkAttribute<NBD_ATTR_INDEX, ui32>;
+
+using TNbdReconfigureRequest = TNetlinkRequest<
+    TNetlinkAttribute<NBD_ATTR_INDEX, ui32>,
     TNetlinkAttribute<NBD_ATTR_TIMEOUT, ui64>,
     TNetlinkAttribute<NBD_ATTR_DEAD_CONN_TIMEOUT, ui64>,
     TNetlinkAttribute<NBD_ATTR_SOCKETS,
@@ -63,17 +74,7 @@ using TNbdResizeRequest = TNetlinkRequest<
     TNetlinkAttribute<NBD_ATTR_SIZE_BYTES, ui64>,
     TNetlinkAttribute<NBD_ATTR_BLOCK_SIZE_BYTES, ui64>>;
 
-using TNbdConfigureFreeRequest = TNetlinkRequest<
-    TNetlinkAttribute<NBD_ATTR_SIZE_BYTES, ui64>,
-    TNetlinkAttribute<NBD_ATTR_BLOCK_SIZE_BYTES, ui64>,
-    TNetlinkAttribute<NBD_ATTR_SERVER_FLAGS, ui64>,
-    TNetlinkAttribute<NBD_ATTR_TIMEOUT, ui64>,
-    TNetlinkAttribute<NBD_ATTR_DEAD_CONN_TIMEOUT, ui64>,
-    TNetlinkAttribute<NBD_ATTR_SOCKETS,
-        TNetlinkAttribute<NBD_SOCK_ITEM,
-            TNetlinkAttribute<NBD_SOCK_FD, ui32>>>>;
-
-struct TNbdConfigureResponse {
+struct TNbdConnectResponse {
     TNetlinkHeader Header;
     ::nlattr IndexAttr;
     ui32 Index;
@@ -133,8 +134,10 @@ public:
     TString GetPath() const override;
 
 private:
-    TFuture<NProto::TError> Configure();
-    TFuture<NProto::TError> ConfigureFree();
+    TFuture<NProto::TError> ConnectOrReconfigure();
+    TFuture<NProto::TError> Reconfigure();
+    template <typename... TPrefix>
+    TFuture<NProto::TError> Connect(TPrefix... prefix);
     TFuture<NProto::TError> Disconnect();
 
     TString GetDevice() const;
@@ -186,14 +189,18 @@ TFuture<NProto::TError> TNetlinkDevice::Start()
             self->ConnectSocket();
             if (self->DevicePath) {
                 self->ParseIndex();
-                return self->Configure();
+                return self->ConnectOrReconfigure();
             }
-            return self->ConfigureFree();
+            return self->Connect();
         }).Apply([self = shared_from_this()](const auto& result) {
             try {
+                if (!HasError(result.GetValue())) {
+                    auto& Log = self->Log;
+                    STORAGE_INFO("connect " << self->GetDevice());
+                }
                 return result.GetValue();
             } catch (const std::exception& e) {
-                return self->MakeNetlinkError("configure", e);
+                return self->MakeNetlinkError("connect", e);
             }
         });
 
@@ -217,55 +224,56 @@ TFuture<NProto::TError> TNetlinkDevice::Stop(bool deleteDevice)
 }
 
 // query device status and connect or reconfigure it
-TFuture<NProto::TError> TNetlinkDevice::Configure()
+TFuture<NProto::TError> TNetlinkDevice::ConnectOrReconfigure()
 {
-    return
-        NNetlink::Send<TNbdStatusResponse>(
+    STORAGE_INFO("query " << GetDevice());
+    return NNetlink::Send<TNbdStatusResponse>(
             Executor,
             TNbdStatusRequest(
                 FamilyId,
                 NBD_CMD_STATUS,
                 *DeviceIndex))
         .Apply([self = shared_from_this()](const auto& result) {
-            const auto& status = result.GetValue();
-            const auto& info = self->Handler->GetExportInfo();
-            auto& Log = self->Log;
-            STORAGE_INFO("query " << self->GetDevice());
-            return NNetlink::Send(
-                self->Executor,
-                TNbdConfigureRequest(
-                    self->FamilyId,
-                    status.Msg.Connected ? NBD_CMD_RECONFIGURE
-                                         : NBD_CMD_CONNECT,
-                    *self->DeviceIndex,
-                    static_cast<ui64>(info.Size),
-                    static_cast<ui64>(info.MinBlockSize),
-                    static_cast<ui64>(info.Flags),
-                    self->RequestTimeout.Seconds(),
-                    self->ConnectionTimeout.Seconds(),
-                    TNetlinkAttribute<
-                        NBD_SOCK_ITEM,
-                        TNetlinkAttribute<NBD_SOCK_FD, ui32>>(
-                        static_cast<ui32>(self->Socket))));
-        }).Apply([self = shared_from_this()](const auto& result) {
-            result.TryRethrow();
-            auto& Log = self->Log;
-            STORAGE_INFO("configure " << self->GetDevice());
-            return MakeError(S_OK);
+            if (result.GetValue().Msg.Connected) {
+                return self->Reconfigure();
+            }
+            return self->Connect(TNbdIndexAttribute(*self->DeviceIndex));
         });
 }
 
-// connect any free device
-TFuture<NProto::TError> TNetlinkDevice::ConfigureFree()
+TFuture<NProto::TError> TNetlinkDevice::Reconfigure()
+{
+    // kernel handles size changes before socket replacement, so queue freeze
+    // can block on io waiting for reconnect. reconnect first, then resize to
+    // apply size change that could have been missed due to restart
+    return NNetlink::Send(
+            Executor,
+            TNbdReconfigureRequest(
+                FamilyId,
+                NBD_CMD_RECONFIGURE,
+                *DeviceIndex,
+                RequestTimeout.Seconds(),
+                ConnectionTimeout.Seconds(),
+                    TNetlinkAttribute<
+                        NBD_SOCK_ITEM,
+                        TNetlinkAttribute<NBD_SOCK_FD, ui32>>(
+                        static_cast<ui32>(Socket))))
+        .Apply([self = shared_from_this()](const auto& result) {
+            result.TryRethrow();
+            return self->Resize(self->Handler->GetExportInfo().Size);
+        });
+}
+
+template <typename... TPrefix>
+TFuture<NProto::TError> TNetlinkDevice::Connect(TPrefix... prefix)
 {
     const auto& info = Handler->GetExportInfo();
-
-    return
-        NNetlink::Send<TNbdConfigureResponse>(
+    return NNetlink::Send<TNbdConnectResponse>(
             Executor,
-            TNbdConfigureFreeRequest(
+            TNbdConnectRequest<TPrefix...>(
                 FamilyId,
                 NBD_CMD_CONNECT,
+                prefix...,
                 static_cast<ui64>(info.Size),
                 static_cast<ui64>(info.MinBlockSize),
                 static_cast<ui64>(info.Flags),
@@ -277,8 +285,6 @@ TFuture<NProto::TError> TNetlinkDevice::ConfigureFree()
                     static_cast<ui32>(Socket))))
         .Apply([self = shared_from_this()](const auto& result) {
             self->DeviceIndex = result.GetValue().Msg.Index;
-            auto& Log = self->Log;
-            STORAGE_INFO("configure " << self->GetDevice());
             return MakeError(S_OK);
         });
 }
@@ -307,9 +313,7 @@ TFuture<NProto::TError> TNetlinkDevice::Disconnect()
 TFuture<NProto::TError> TNetlinkDevice::Resize(ui64 deviceSizeInBytes)
 {
     const auto& info = Handler->GetExportInfo();
-
-    return
-        NNetlink::Send(
+    return NNetlink::Send(
             Executor,
             TNbdResizeRequest(
                 FamilyId,
