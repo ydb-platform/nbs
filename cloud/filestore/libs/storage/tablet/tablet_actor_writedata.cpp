@@ -40,10 +40,7 @@ void TIndexTabletActor::HandleWriteData(
                   << ", Payload size: " << msg->GetPayload(0).size();
             ReportWriteDataRequestWithBufferAndPayload(error.Str());
         } else {
-            // Conversion to TRcBuf flattens the rope if it contains
-            // multiple buffers. No copy is made when ExternalDataChannel is
-            // enabled in the IC settings as the payload is already a single
-            // buffer.
+            // Copy payload to buffer only when it is not contigious
             TRope rope = msg->GetPayload(0);
             if (rope.IsContiguous()) {
                 payload = rope.operator TRcBuf();
