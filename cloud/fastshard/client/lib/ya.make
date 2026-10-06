@@ -20,6 +20,7 @@ PEERDIR(
     cloud/fastshard/sn/iface
 
     cloud/storage/core/libs/common
+    cloud/storage/core/libs/diagnostics
     cloud/storage/core/protos
 
     library/cpp/getopt

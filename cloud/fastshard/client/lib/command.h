@@ -5,6 +5,7 @@
 #include <cloud/fastshard/sn/iface/storage_node.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -47,7 +48,8 @@ protected:
     // response as protobuf text instead of the human-readable output.
     bool Proto = false;
 
-    bool Verbose = false;
+    TString VerboseLevel;
+    ELogPriority LogLevel = TLOG_WARNING;
 
     // Print connect / round trip times of the request to stderr.
     bool Timing = false;
@@ -66,6 +68,9 @@ protected:
     NLastGetopt::TOpts Opts;
 
     TString ProgramName;
+
+    ILoggingServicePtr Logging;
+    TLog Log;
 
     // Preset by tests; otherwise a TCP client to Host:Port is created
     // inside the fiber right before DoExecute, reporting into Metrics.
@@ -179,7 +184,7 @@ protected:
         }
 
         if (HasError(response)) {
-            Cerr << FormatError(response.GetError()) << Endl;
+            STORAGE_ERROR(FormatError(response.GetError()));
             return false;
         }
 

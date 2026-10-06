@@ -33,7 +33,9 @@ everything else that needs the real silk runtime.
    `WriteLogRecord`, or the request protobuf with `--proto`
  * `--output` - file to write to instead of stdout: page data for
    `ReadPages`, or the response protobuf with `--proto`
- * `--verbose` - enable silk debug logging
+ * `--verbose [LEVEL]` - log level of the client: `error`, `warn` (default),
+  `info`, `debug` or `trace`; bare `--verbose` means `debug`. `debug` and
+  `trace` also enable silk debug logging
  * `--timing` - print connect and round trip times (in ms) to stderr. The
    connection is opened lazily inside the call, so the round trip excludes
    the connect time
