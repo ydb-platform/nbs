@@ -1619,10 +1619,10 @@ private:
         const ui64 diskMixedBlockCount =
             State.GetCompactionMap().GetMixedBlocksCountPerDisk();
         const ui64 diskTotalBlockCount =
-            State.GetCompactionMap().GetTotalBlocksCountPerDisk();
+            State.GetCompactionMap().GetStoredBlocksCountPerDisk();
         const ui64 perDiskCompactionStartBytes =
-            isSSD ? Config->GetSSDMixedBlocksPerDiskCompactionStartBytes()
-                  : Config->GetHDDMixedBlocksPerDiskCompactionStartBytes();
+            isSSD ? Config->GetMixedBlocksCompactionMinStoredBlocksSSD()
+                  : Config->GetMixedBlocksCompactionMinStoredBlocksHDD();
         const ui64 totalBytesStored =
             diskTotalBlockCount * State.GetBlockSize();
         const bool enoughBytesStored =
@@ -1630,21 +1630,21 @@ private:
 
         // All stored blocks have the same size, so this is also the mixed
         // bytes percentage, including overwritten blocks still stored in blobs.
-        const ui32 diskMixedBlocksPercentage =
+        const ui32 mixedBlocksPercentage =
             enoughBytesStored
                 ? GetPercentage(diskMixedBlockCount, diskTotalBlockCount)
                 : 0;
 
         const ui64 maxMixedBlocksPercentage =
-            isSSD ? Config->GetSSDMaxMixedBlocksPercentage()
-                  : Config->GetHDDMaxMixedBlocksPercentage();
+            isSSD ? Config->GetMaxMixedBlocksCompactionThresholdPercentageSSD()
+                  : Config->GetMaxMixedBlocksCompactionThresholdPercentageHDD();
 
-        const bool diskMixedBlocksPercentageOverThreshold =
+        const bool mixedBlocksPercentageOverThreshold =
             maxMixedBlocksPercentage > 0 &&
-            diskMixedBlocksPercentage >= maxMixedBlocksPercentage;
+            mixedBlocksPercentage >= maxMixedBlocksPercentage;
 
         if (!rangeMixedBlockCountOverThreshold &&
-            !diskMixedBlocksPercentageOverThreshold)
+            !mixedBlocksPercentageOverThreshold)
         {
             return std::nullopt;
         }
@@ -1660,7 +1660,7 @@ private:
         return TTriggerInfo(
             rangeMixedBytesCount,
             threshold,
-            diskMixedBlocksPercentage,
+            mixedBlocksPercentage,
             maxMixedBlocksPercentage,
             TEvPartitionPrivate::MixedBlocksCountCompaction,
             triggerKind,

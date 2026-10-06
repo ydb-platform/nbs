@@ -682,39 +682,39 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         const ui32 range1 = range0 + RangeSize;
         const ui32 range2 = GetGroupIndex(1);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, map.GetTotalBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(0, map.GetStoredBlocksCountPerDisk());
         UNIT_ASSERT_VALUES_EQUAL(0, map.GetMixedBlocksCountPerDisk());
         map.Update(range0, 3, 100, 80, 0, 10, false);
         map.Update(range1, 3, 200, 100, 0, 20, false);
         map.Update(range2, 3, 300, 100, 0, 30, false);
-        UNIT_ASSERT_VALUES_EQUAL(600, map.GetTotalBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(600, map.GetStoredBlocksCountPerDisk());
         UNIT_ASSERT_VALUES_EQUAL(60, map.GetMixedBlocksCountPerDisk());
 
         // Repeating an update must not count the same stored blocks twice.
         map.Update(range0, 3, 100, 80, 0, 10, false);
-        UNIT_ASSERT_VALUES_EQUAL(600, map.GetTotalBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(600, map.GetStoredBlocksCountPerDisk());
         UNIT_ASSERT_VALUES_EQUAL(60, map.GetMixedBlocksCountPerDisk());
 
         // Compacted ranges still contribute to the total stored byte count.
         map.Update(range1, 1, 100, 100, 0, 0, true);
         map.Update(range2, 0, 0, 0, 0, 0, false);
-        UNIT_ASSERT_VALUES_EQUAL(200, map.GetTotalBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(200, map.GetStoredBlocksCountPerDisk());
         UNIT_ASSERT_VALUES_EQUAL(10, map.GetMixedBlocksCountPerDisk());
 
         // The disk totals must agree with the saturated range counters.
         map.Update(range2, 3, Max<ui32>(), 100, 0, Max<ui32>(), false);
         UNIT_ASSERT_VALUES_EQUAL(
             200 + Max<ui16>(),
-            map.GetTotalBlocksCountPerDisk());
+            map.GetStoredBlocksCountPerDisk());
         UNIT_ASSERT_VALUES_EQUAL(
             10 + Max<ui16>(),
             map.GetMixedBlocksCountPerDisk());
 
         map.Clear();
-        UNIT_ASSERT_VALUES_EQUAL(0, map.GetTotalBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(0, map.GetStoredBlocksCountPerDisk());
         UNIT_ASSERT_VALUES_EQUAL(0, map.GetMixedBlocksCountPerDisk());
         map.Update(range0, 1, 80, 80, 0, 5, false);
-        UNIT_ASSERT_VALUES_EQUAL(80, map.GetTotalBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(80, map.GetStoredBlocksCountPerDisk());
         UNIT_ASSERT_VALUES_EQUAL(5, map.GetMixedBlocksCountPerDisk());
     }
 
@@ -734,7 +734,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(range0).MixedBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(0, map.Get(range1).MixedBlockCount);
         UNIT_ASSERT_VALUES_EQUAL(0, map.GetMixedBlocksCountPerDisk());
-        UNIT_ASSERT_VALUES_EQUAL(200, map.GetTotalBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(200, map.GetStoredBlocksCountPerDisk());
         UNIT_ASSERT_VALUES_EQUAL(
             0,
             map.GetTopByMixedBlockCount().Stat.MixedBlockCount);
@@ -817,7 +817,7 @@ Y_UNIT_TEST_SUITE(TCompactionMapTest)
                 {2 * RangeSize, {3, 3000, 0, 0, 0, 0, false, 0}},
             },
             &used);
-        UNIT_ASSERT_VALUES_EQUAL(6000, map.GetTotalBlocksCountPerDisk());
+        UNIT_ASSERT_VALUES_EQUAL(6000, map.GetStoredBlocksCountPerDisk());
 
         {
             const auto stat = map.Get(0);

@@ -180,7 +180,7 @@ struct TCompactionMap::TImpl
 
     ui32 NonEmptyRangeCount = 0;
     ui64 MixedBlocksCountPerDisk = 0;
-    ui64 TotalBlocksCountPerDisk = 0;
+    ui64 StoredBlocksCountPerDisk = 0;
 
     TImpl(ui32 rangeSize, ICompactionPolicyPtr policy)
         : RangeSize(rangeSize)
@@ -485,8 +485,8 @@ struct TCompactionMap::TImpl
 
             MixedBlocksCountPerDisk -= prev.MixedBlockCount;
             MixedBlocksCountPerDisk += group->Stats[index].MixedBlockCount;
-            TotalBlocksCountPerDisk -= prev.BlockCount;
-            TotalBlocksCountPerDisk += group->Stats[index].BlockCount;
+            StoredBlocksCountPerDisk -= prev.BlockCount;
+            StoredBlocksCountPerDisk += group->Stats[index].BlockCount;
         }
 
         return group;
@@ -584,9 +584,9 @@ struct TCompactionMap::TImpl
         return MixedBlocksCountPerDisk;
     }
 
-    ui64 GetTotalBlocksCountPerDisk() const
+    ui64 GetStoredBlocksCountPerDisk() const
     {
-        return TotalBlocksCountPerDisk;
+        return StoredBlocksCountPerDisk;
     }
 };
 
@@ -695,7 +695,7 @@ void TCompactionMap::Clear()
     Impl->GroupByGarbageIgnoringZeroed.Clear();
     Impl->GroupByMixedBlockCount.Clear();
     Impl->MixedBlocksCountPerDisk = 0;
-    Impl->TotalBlocksCountPerDisk = 0;
+    Impl->StoredBlocksCountPerDisk = 0;
     Impl->Groups.Clear();
 }
 
@@ -1000,9 +1000,9 @@ ui64 TCompactionMap::GetMixedBlocksCountPerDisk() const
     return Impl->GetMixedBlocksCountPerDisk();
 }
 
-ui64 TCompactionMap::GetTotalBlocksCountPerDisk() const
+ui64 TCompactionMap::GetStoredBlocksCountPerDisk() const
 {
-    return Impl->GetTotalBlocksCountPerDisk();
+    return Impl->GetStoredBlocksCountPerDisk();
 }
 
 ui32 TCompactionMap::GetRangeStart(ui32 blockIndex) const

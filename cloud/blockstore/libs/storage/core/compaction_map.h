@@ -97,7 +97,7 @@ public:
     TVector<ui32> GetNonEmptyRanges() const;
     ui32 GetNonEmptyRangeCount() const;
     ui64 GetMixedBlocksCountPerDisk() const;
-    ui64 GetTotalBlocksCountPerDisk() const;
+    ui64 GetStoredBlocksCountPerDisk() const;
     ui32 GetRangeStart(ui32 blockIndex) const;
     ui32 GetRangeIndex(ui32 blockIndex) const;
     ui32 GetRangeIndex(TBlockRange32 blockRange) const;
