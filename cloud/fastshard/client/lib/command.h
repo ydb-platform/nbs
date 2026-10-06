@@ -138,20 +138,31 @@ protected:
         TResponse (IStorageNode::*method)(TRequest),
         TRequest request)
     {
+        bool needAcquire = false;
+        TString deviceUUID;
+
         if constexpr (requires { request.GetDeviceUUID(); }) {
-            if (Acquire) {
-                const TString deviceUUID = request.GetDeviceUUID();
-                TResponse response;
-                *response.MutableError() = AcquireDevice(deviceUUID);
-                if (HasError(response)) {
-                    return response;
-                }
-                response = TimedCall(method, std::move(request));
-                ReleaseDevice(deviceUUID);
-                return response;
+            needAcquire = Acquire;
+            deviceUUID = request.GetDeviceUUID();
+        }
+
+        if (needAcquire) {
+            auto error = AcquireDevice(deviceUUID);
+            if (HasError(error)) {
+                return TErrorResponse(std::move(error));
             }
         }
-        return TimedCall(method, std::move(request));
+
+        const TInstant started = TInstant::Now();
+        TResponse response = ((*Client).*method)(std::move(request));
+        CallTime = TInstant::Now() - started;
+        Called = true;
+
+        if (needAcquire) {
+            ReleaseDevice(deviceUUID);
+        }
+
+        return response;
     }
 
     IInputStream& GetInputStream();
@@ -176,18 +187,6 @@ protected:
     }
 
 private:
-    template <typename TRequest, typename TResponse>
-    TResponse TimedCall(
-        TResponse (IStorageNode::*method)(TRequest),
-        TRequest request)
-    {
-        const TInstant started = TInstant::Now();
-        TResponse response = ((*Client).*method)(std::move(request));
-        CallTime = TInstant::Now() - started;
-        Called = true;
-        return response;
-    }
-
     NCloud::NProto::TError AcquireDevice(const TString& deviceUUID);
     void ReleaseDevice(const TString& deviceUUID);
 
