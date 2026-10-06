@@ -3,8 +3,8 @@
 #include <cloud/blockstore/libs/diagnostics/critical_events.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
-#include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 #include <cloud/blockstore/libs/storage/disk_agent/journalled_device_adapter.h>
+#include <cloud/blockstore/libs/storage/disk_agent/model/device_client.h>
 
 #include <cloud/fastshard/journal/impl/device_page_store.h>
 #include <cloud/fastshard/journal/impl/journal.h>
@@ -23,7 +23,6 @@
 #include <contrib/ydb/library/actors/core/log.h>
 
 #include <util/generic/hash.h>
-#include <util/generic/hash_set.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -54,11 +53,19 @@ void CopyHeaders(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TJournalledDeviceConfig
+{
+    NProto::TDeviceConfig Device;
+    NProto::TJournalConfig Journal;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TJournalledDeviceSpec
 {
-    // Empty when the journal is disabled: there is nothing to format then.
     NProto::TJournalConfig Config;
     ui32 BlockSize = 0;
+
     NJournalled::IJournalledDevicePtr Device;
 };
 
@@ -335,11 +342,12 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
     TExecutorPtr executor,
     TDeviceClientPtr deviceClient,
     const TDiskAgentConfig& agentConfig,
-    const NProto::TDeviceConfig& device,
-    const NProto::TJournalConfig& journalConfig)
+    const TJournalledDeviceConfig& config)
 {
-    const ui32 blockSize = device.GetBlockSize();
-    const ui64 blockCount = device.GetBlocksCount();
+    const ui32 blockSize = config.Device.GetBlockSize();
+    const ui64 blockCount = config.Device.GetBlocksCount();
+    const auto& uuid = config.Device.GetDeviceUUID();
+
     if (!blockSize) {
         return MakeError(E_ARGUMENT, "the device block size is zero");
     }
@@ -348,16 +356,16 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
         // No journal: the whole device holds the data, writes go straight to it.
         return NJournalled::CreateJournalledDeviceV1(CreateDeviceAdapter(
             std::move(timer),
-            device.GetDeviceUUID(),
-            device.GetBlockSize(),
+            uuid,
+            blockSize,
             std::move(deviceClient),
             {.FirstBlockIndex = 0, .BlockCount = blockCount}));
     }
 
     // The device is split into three parts: the journal metadata, the journal
     // data and the data itself.
-    const ui64 logMetaSize = journalConfig.GetLogMetaSize();
-    const ui64 logDataSize = journalConfig.GetLogDataSize();
+    const ui64 logMetaSize = config.Journal.GetLogMetaSize();
+    const ui64 logDataSize = config.Journal.GetLogDataSize();
 
     if (logMetaSize % blockSize || logDataSize % blockSize) {
         return MakeError(
@@ -404,7 +412,7 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "Journalled device " << device.GetDeviceUUID().Quote() << ": journal "
+        "Journalled device " << uuid.Quote() << ": journal "
             << "metadata " << FormatByteSize(logMetaBlockCount * blockSize)
             << ", journal data "
             << FormatByteSize(logDataBlockCount * blockSize) << ", data "
@@ -415,7 +423,7 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
     {
         return CreateDeviceAdapter(
             timer,
-            device.GetDeviceUUID(),
+            uuid,
             blockSize,
             deviceClient,
             {.FirstBlockIndex = firstBlockIndex,
@@ -449,7 +457,7 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
         std::move(executor),
         std::move(journal),
         std::move(dataStore),
-        device.GetDeviceUUID());
+        uuid);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -492,22 +500,23 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
             "the disk agent state is not initialized");
     }
 
-    THashSet<TString> journalledIds;
-    for (const auto& [id, journalConfig]: journalledDevices) {
-        journalledIds.insert(id);
-    }
+    auto journalConfigs = journalledDevices;
 
-    TVector<NProto::TDeviceConfig> configs;
+    TVector<TJournalledDeviceConfig> configs;
     for (const auto& config: State->GetDevices()) {
-        if (journalledIds.contains(config.GetDeviceUUID())) {
-            configs.push_back(config);
-            journalledIds.erase(config.GetDeviceUUID());
+        auto it = journalConfigs.find(config.GetDeviceUUID());
+        if (it != journalConfigs.end()) {
+            configs.emplace_back(
+                TJournalledDeviceConfig{
+                    .Device = config,
+                    .Journal = it->second});
+            journalConfigs.erase(it);
         }
     }
 
-    if (!journalledIds.empty()) {
+    if (!journalConfigs.empty()) {
         TStringBuilder missing;
-        for (const auto& id: journalledIds) {
+        for (const auto& [id, _]: journalConfigs) {
             missing << (missing.empty() ? "" : ", ") << id.Quote();
         }
 
@@ -528,8 +537,7 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
     auto timer = CreateWallClockTimer();
 
     for (const auto& config: configs) {
-        const auto& uuid = config.GetDeviceUUID();
-        const auto& journalConfig = journalledDevices.at(uuid);
+        const auto& uuid = config.Device.GetDeviceUUID();
 
         auto [device, error] = CreateJournalledDevice(
             ctx,
@@ -538,8 +546,7 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
             Executor,
             State->GetDeviceClient(),
             *AgentConfig,
-            config,
-            journalConfig);
+            config);
 
         if (HasError(error)) {
             ReportDiskAgentJournalledDeviceCreationError(
@@ -552,9 +559,9 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
             uuid,
             TJournalledDeviceSpec{
                 .Config = AgentConfig->GetJournalEnabled()
-                              ? journalConfig
+                              ? config.Journal
                               : NProto::TJournalConfig{},
-                .BlockSize = config.GetBlockSize(),
+                .BlockSize = config.Device.GetBlockSize(),
                 .Device = std::move(device)});
     }
 
