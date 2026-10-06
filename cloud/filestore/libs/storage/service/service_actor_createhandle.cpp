@@ -35,13 +35,16 @@ private:
     IRequestStatsPtr RequestStats;
     IProfileLogPtr ProfileLog;
 
+    const TDuration ShardPhaseDelay;
+
 public:
     TCreateHandleActor(
         TRequestInfoPtr requestInfo,
         NProto::TCreateHandleRequest createHandleRequest,
         TString logTag,
         IRequestStatsPtr requestStats,
-        IProfileLogPtr profileLog);
+        IProfileLogPtr profileLog,
+        TDuration shardPhaseDelay);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -55,6 +58,10 @@ private:
         const TActorContext& ctx);
 
     void CreateHandleInShard(const TActorContext& ctx);
+
+    void HandleWakeup(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
@@ -73,12 +80,14 @@ TCreateHandleActor::TCreateHandleActor(
         NProto::TCreateHandleRequest createHandleRequest,
         TString logTag,
         IRequestStatsPtr requestStats,
-        IProfileLogPtr profileLog)
+        IProfileLogPtr profileLog,
+        TDuration shardPhaseDelay)
     : RequestInfo(std::move(requestInfo))
     , CreateHandleRequest(std::move(createHandleRequest))
     , LogTag(std::move(logTag))
     , RequestStats(std::move(requestStats))
     , ProfileLog(std::move(profileLog))
+    , ShardPhaseDelay(shardPhaseDelay)
 {
 }
 
@@ -193,6 +202,18 @@ void TCreateHandleActor::HandleCreateHandleResponse(
         return;
     }
 
+    if (Y_UNLIKELY(ShardPhaseDelay)) {
+        ctx.Schedule(ShardPhaseDelay, new TEvents::TEvWakeup());
+        return;
+    }
+    CreateHandleInShard(ctx);
+}
+
+void TCreateHandleActor::HandleWakeup(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
     CreateHandleInShard(ctx);
 }
 
@@ -235,6 +256,7 @@ STFUNC(TCreateHandleActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(
             TEvService::TEvCreateHandleResponse,
@@ -337,7 +359,8 @@ void TStorageServiceActor::HandleCreateHandle(
         std::move(msg->Record),
         filestore.GetFileSystemId(),
         session->RequestStats,
-        ProfileLog);
+        ProfileLog,
+        StorageConfig->GetArtificialShardPhaseDelay());
 
     NCloud::Register(ctx, std::move(actor));
 }

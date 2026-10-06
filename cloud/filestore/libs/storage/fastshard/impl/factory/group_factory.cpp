@@ -1,6 +1,6 @@
 #include "group_factory.h"
 
-#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_quorum.h>
+#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
 
 #include <cloud/fastshard/sn/client/client.h>
 

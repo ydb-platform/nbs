@@ -100,12 +100,15 @@ public:
             const auto& peer = headers.GetInternal().GetPeer();
             const auto diskId = GetDiskId(*request);
 
-            if (Activity) {
+            // only a mount: an unmount or a describe leaving a row behind
+            // would read as a disk mounted from that peer
+            if (Activity &&
+                TMethod::BlockStoreRequest == EBlockStoreRequest::MountVolume)
+            {
                 Activity->Record(
                     peer,
                     diskId,
                     headers.GetClientId(),
-                    TMethod::BlockStoreRequest,
                     Timer->Now());
             }
 

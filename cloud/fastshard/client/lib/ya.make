@@ -6,6 +6,7 @@ SRCS(
     app.cpp
     command.cpp
     factory.cpp
+    format_device.cpp
     read_journal_tail.cpp
     read_pages.cpp
     release_devices.cpp

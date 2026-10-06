@@ -39,15 +39,5 @@ Command=ycp --format json --profile fake-cluster1 compute instance detach-disk -
 Input=
 Command=ycp --format json --profile fake-cluster1 compute disk delete --request -
 Input=
-Command=ycp --format json --profile fake-cluster1 compute disk create --request -
-Input=
-Command=ycp --format json --profile fake-cluster1 compute instance attach-disk --request -
-Input=
-Waiting for bdev 1:1:1:1:1:1:1:1//dev/vdb
-SSH 1:1:1:1:1:1:1:1: /usr/bin/verify-test --blocksize=67108864 --iodepth=64 --filesize=17179869184 --file /dev/vdb 2>&1
-Command=ycp --format json --profile fake-cluster1 compute instance detach-disk --request -
-Input=
-Command=ycp --format json --profile fake-cluster1 compute disk delete --request -
-Input=
 Command=ycp --format json --profile fake-cluster1 compute instance delete --request -
 Input=

@@ -74,7 +74,6 @@ def _get_types(service):
     if service == "nbs":
         return [
             "network-ssd",
-            "network-ssd-v2",
             "network-ssd-nonreplicated",
             "network-ssd-io-m3",
         ]

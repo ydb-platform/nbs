@@ -930,4 +930,8 @@ message TStorageConfig
 
     // Limits the number of tablet data channels used for writes.
     optional uint32 MaxUsedDataChannelCount = 547;
+
+    // Delays the shard phase of name-addressed GetNodeAttr/CreateHandle in
+    // the service (leader -> shard). In ms. Must be only used in tests!
+    optional uint32 ArtificialShardPhaseDelay = 548;
 }
