@@ -75,59 +75,6 @@ void CompleteRequestImpl(
     vhd_complete_bio(req->Io, status);
 }
 
-void CompleteCompoundRequestImpl(
-    TLog& log,
-    IEncryptor* encryptor,
-    TAioSubRequestHolder sub,
-    vhd_bdev_io_result status,
-    TAtomicStats& stats)
-{
-    auto* req = sub->GetParentRequest();
-
-    req->Errors += status != VHD_BDEV_SUCCESS;
-
-    if (req->Inflight.fetch_sub(1) == 1) {
-        // This is the last subrequest. Take ownership of the parent request and
-        // release it when leave the scope.
-        auto holder = sub->TakeParentRequest();
-
-        auto* bio = vhd_get_bdev_io(req->Io);
-        const ui64 bytes =
-            static_cast<ui64>(bio->total_sectors) * VHD_SECTOR_SIZE;
-
-        auto& requestStat = stats.Requests[bio->type];
-        requestStat.Errors += req->Errors != 0;
-        requestStat.Count += 1;
-        requestStat.Bytes += bytes;
-
-        requestStat.AddIoSize(bytes);
-
-        if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
-            TBlockDataRef data = req->GetData();
-            NSan::Unpoison(data.data(), data.size());
-            const bool success = SgListCopyWithOptionalDecryption(
-                log,
-                data,
-                bio->sglist,
-                encryptor,
-                bio->first_sector);
-            if (!success) {
-                status = VHD_BDEV_IOERR;
-                stats.EncryptorErrors++;
-            }
-        }
-
-        const TCpuCycles now = GetCycleCount();
-
-        if (status == VHD_BDEV_SUCCESS) {
-            stats.Times[bio->type].Increment(now - req->SubmitTs);
-            stats.Sizes[bio->type].Increment(bytes);
-        }
-
-        vhd_complete_bio(req->Io, status);
-    }
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 class TAioBackend final: public IBackend
@@ -420,8 +367,7 @@ void TAioBackend::ProcessQueue(
                     Log,
                     Encryptor.get(),
                     TAioSubRequest::FromIocb(batch[0]),
-                    VHD_BDEV_IOERR,
-                    stats);
+                    VHD_BDEV_IOERR, stats, vhd_complete_bio);
             } else {
                 CompleteRequestImpl(
                     Log,
@@ -488,10 +434,7 @@ void TAioBackend::CompleteCompoundRequest(
     {
         CompleteCompoundRequestImpl(
             Log,
-            Encryptor.get(),
-            std::move(sub),
-            result,
-            stats);
+            Encryptor.get(), std::move(sub), result, stats, vhd_complete_bio);
         stats.Completed += 1;
     };
 

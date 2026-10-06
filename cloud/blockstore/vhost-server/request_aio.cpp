@@ -3,10 +3,12 @@
 #include "critical_event.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/strbuf.h>
 #include <util/string/builder.h>
+#include <util/system/datetime.h>
 #include <util/system/sanitizers.h>
 
 #include <algorithm>
@@ -27,7 +29,7 @@ void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
 {
     ++queueStats.SubFailed;
     auto* bio = vhd_get_bdev_io(io);
-    const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
+    const ui64 bytes = static_cast<ui64>(bio->total_sectors) * VHD_SECTOR_SIZE;
 
     auto& requestStat = queueStats.Requests[bio->type];
     requestStat.Errors += 1;
@@ -420,6 +422,64 @@ void PrepareIO(
 
     NSan::Release(req.get());
     batch.push_back(req.release());
+}
+
+void CompleteCompoundRequestImpl(
+    TLog& log,
+    IEncryptor* encryptor,
+    TAioSubRequestHolder sub,
+    vhd_bdev_io_result status, TAtomicStats& stats, TCompleteBioFn completeBio)
+{
+    auto* req = sub->GetParentRequest();
+
+    req->Errors += status != VHD_BDEV_SUCCESS;
+
+    if (req->Inflight.fetch_sub(1) == 1) {
+        // This is the last subrequest. Take ownership of the parent request and
+        // release it when leave the scope.
+        auto holder = sub->TakeParentRequest();
+
+        // The last subrequest may succeed after an earlier one failed. The
+        // whole request fails if any of its subrequests failed.
+        if (req->Errors.load() != 0) {
+            status = VHD_BDEV_IOERR;
+        }
+
+        auto* bio = vhd_get_bdev_io(req->Io);
+        const ui64 bytes =
+            static_cast<ui64>(bio->total_sectors) * VHD_SECTOR_SIZE;
+
+        auto& requestStat = stats.Requests[bio->type];
+        requestStat.Errors += req->Errors != 0;
+        requestStat.Count += status == VHD_BDEV_SUCCESS;
+        requestStat.Bytes += bytes;
+
+        // Keep IoSize aligned with Count: account the parent once after all
+        // device results are known, before optional read decryption.
+        if (status == VHD_BDEV_SUCCESS) {
+            requestStat.AddIoSize(bytes);
+        }
+
+        if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
+            TBlockDataRef data = req->GetData();
+            NSan::Unpoison(data.data(), data.size());
+            const bool success = SgListCopyWithOptionalDecryption(
+                log, data, bio->sglist, encryptor, bio->first_sector);
+            if (!success) {
+                status = VHD_BDEV_IOERR;
+                stats.EncryptorErrors++;
+            }
+        }
+
+        const TCpuCycles now = GetCycleCount();
+
+        if (status == VHD_BDEV_SUCCESS) {
+            stats.Times[bio->type].Increment(now - req->SubmitTs);
+            stats.Sizes[bio->type].Increment(bytes);
+        }
+
+        completeBio(req->Io, status);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

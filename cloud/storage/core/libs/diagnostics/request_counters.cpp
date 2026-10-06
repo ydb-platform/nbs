@@ -29,6 +29,73 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Both sensors remain ordinary counters for lookup/debugging. Monitoring
+// exports them through Accept: the count member publishes one immutable
+// snapshot of the pair and the byte member does not publish a second,
+// independently read value. Direct Val(), OutputPlainText and external
+// ResetCounters are raw counter access, not the coherent export protocol.
+class TIoSizeCounterPair final: public TCounterForPtr
+{
+private:
+    class TBytesCounter final: public TCounterForPtr
+    {
+    public:
+        TBytesCounter()
+            : TCounterForPtr(true)
+        {}
+
+        void Accept(
+            const TString&, const TString&, ICountableConsumer&) const override
+        {}
+    };
+
+    const TDynamicCounters::TCounterPtr Bytes = MakeIntrusive<TBytesCounter>();
+    mutable TMutex Lock;
+
+public:
+    TIoSizeCounterPair()
+        : TCounterForPtr(true)
+    {}
+
+    const TDynamicCounters::TCounterPtr& GetBytesCounter() const
+    {
+        return Bytes;
+    }
+
+    void AddRequest(ui64 bytes)
+    {
+        auto guard = Guard(Lock);
+        Inc();
+        Bytes->Add(bytes);
+    }
+
+    void Accept(
+        const TString& labelName,
+        const TString& labelValue, ICountableConsumer& consumer) const override
+    {
+        if (!IsVisible(Visibility(), consumer.Visibility())) {
+            return;
+        }
+
+        TCounterForPtr countSnapshot(ForDerivative(), Visibility());
+        TCounterForPtr bytesSnapshot(
+            Bytes->ForDerivative(), Bytes->Visibility());
+        {
+            auto guard = Guard(Lock);
+            countSnapshot.Set(Val());
+            bytesSnapshot.Set(Bytes->Val());
+        }
+
+        // Snapshot pointers are valid for these synchronous callbacks only. No
+        // writer lock is held while the consumer encodes or otherwise reads
+        // them.
+        consumer.OnCounter(labelName, labelValue, &countSnapshot);
+        consumer.OnCounter(labelName, "IoSizeBytes", &bytesSnapshot);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TDerived>
 struct THistBase
 {
@@ -377,8 +444,7 @@ struct TRequestCounters::TStatCounters
     TIntrusivePtr<TDynamicCounters> CountersGroup;
 
     TDynamicCounters::TCounterPtr Count;
-    TDynamicCounters::TCounterPtr IoSizeCount;
-    TDynamicCounters::TCounterPtr IoSizeBytes;
+    TIntrusivePtr<TIoSizeCounterPair> IoSize;
     TDynamicCounters::TCounterPtr MaxCount;
     TDynamicCounters::TCounterPtr UnalignedCount;
     TDynamicCounters::TCounterPtr Time;
@@ -521,8 +587,21 @@ struct TRequestCounters::TStatCounters
         }
 
         if (IsReadWriteRequest && reportIoSize) {
-            IoSizeCount = counters.GetCounter("IoSizeCount", true);
-            IoSizeBytes = counters.GetCounter("IoSizeBytes", true);
+            auto pair = counters.GetNamedCounterPair(
+                "sensor",
+                "IoSizeCount",
+                "IoSizeBytes",
+                []
+                {
+                    auto count = MakeIntrusive<TIoSizeCounterPair>();
+                    return TDynamicCounters::TCounterPair{
+                        count,
+                        count->GetBytesCounter()};
+                });
+            IoSize = VerifyDynamicCast<TIoSizeCounterPair*>(pair.first.Get());
+            Y_ABORT_UNLESS(
+                IoSize->GetBytesCounter() == pair.second,
+                "IoSize counters must share the same snapshot pair");
         }
     }
 
@@ -683,9 +762,8 @@ struct TRequestCounters::TStatCounters
         } else {
             Count->Inc();
 
-            if (IoSizeCount) {
-                IoSizeCount->Inc();
-                IoSizeBytes->Add(logicalRequestBytes.value_or(requestBytes));
+            if (IoSize) {
+                IoSize->AddRequest(logicalRequestBytes.value_or(requestBytes));
             }
         }
 

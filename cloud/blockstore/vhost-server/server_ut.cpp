@@ -42,6 +42,7 @@
 #include <cstring>
 #include <mutex>
 #include <span>
+#include <thread>
 
 IOutputStream& operator<<(
     IOutputStream& out,
@@ -1107,6 +1108,357 @@ class TRdmaBlockAlignmentTest: public TRdmaServerTest
 {
 };
 
+class TConcurrentRdmaCompletionStats final: public ICompletionStats
+{
+private:
+    TTestRdmaCompletionStats Impl;
+    std::atomic<ui32> ActivePublishers = 0;
+
+public:
+    std::atomic<bool> ConcurrentPublication = false;
+
+    std::optional<TSimpleStats> Get(TDuration timeout) override
+    {
+        return Impl.Get(timeout);
+    }
+
+    void Sync(const TSimpleStats& stats) override
+    {
+        if (ActivePublishers.fetch_add(1) != 0) {
+            ConcurrentPublication = true;
+        }
+
+        // Widen the publication window without protecting the backend's data.
+        // The backend must serialize writers before invoking this interface.
+        std::this_thread::yield();
+        Impl.Sync(stats);
+        ActivePublishers.fetch_sub(1);
+    }
+
+    void Sync(const TAtomicStats& stats) override
+    {
+        TSimpleStats snapshot;
+        snapshot += stats;
+        Sync(snapshot);
+    }
+};
+
+class TRdmaConcurrentServerTest: public testing::TestWithParam<ui32>
+{
+private:
+    static constexpr ui32 BlockSize = 4096;
+    static constexpr ui32 Rounds = 32;
+    static constexpr ui32 RequestsPerRound = 4;
+
+    const ui32 QueueCount = GetParam();
+    const TString SocketPath = "concurrent_rdma_server_ut.vhost";
+    NVHost::TClient Client{SocketPath, {.QueueCount = QueueCount}};
+    TMonotonicBufferResource Memory;
+    std::shared_ptr<IServer> Server;
+
+    struct TRequest
+    {
+        bool Read = false;
+        bool Success = false;
+        std::span<char> Header;
+        std::span<char> Data;
+        std::span<char> Status;
+    };
+
+public:
+    void TearDown() override
+    {
+        if (Server) {
+            Client.DeInit();
+            Server->Stop();
+        }
+    }
+
+    void RunConcurrentRequests()
+    {
+        auto logging = NCloud::CreateLoggingService(
+            "console",
+            {.FiltrationLevel = TLOG_CRIT});
+        auto storage = std::make_shared<TTestStorage>();
+        auto completionStats =
+            std::make_shared<TConcurrentRdmaCompletionStats>();
+        std::atomic<ui64> readAttempts = 0;
+        std::atomic<ui64> writeAttempts = 0;
+
+        std::mutex pendingMutex;
+        std::condition_variable pendingChanged;
+        TVector<std::function<void()>> pending;
+        bool stopCompletions = false;
+
+        const auto enqueueCompletion = [&](std::function<void()> complete)
+        {
+            {
+                std::lock_guard<std::mutex> guard(pendingMutex);
+                pending.push_back(std::move(complete));
+            }
+            pendingChanged.notify_one();
+        };
+
+        storage->ReadBlocksLocalHandler = [&](auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            ++readAttempts;
+            EXPECT_EQ(BlockSize, request->GetBlockSize());
+            EXPECT_EQ(1u, request->GetBlocksCount());
+            EXPECT_EQ(0u, request->GetStartIndex());
+            auto promise =
+                NThreading::NewPromise<NProto::TReadBlocksLocalResponse>();
+            enqueueCompletion(
+                [promise, request]() mutable
+                {
+                    auto guard = request->Sglist.Acquire();
+                    EXPECT_TRUE(guard);
+                    if (guard) {
+                        EXPECT_EQ(BlockSize, SgListGetSize(guard.Get()));
+                        for (const auto& buffer: guard.Get()) {
+                            std::memset(
+                                const_cast<char*>(buffer.Data()),
+                                'r', buffer.Size());
+                        }
+                    }
+                    promise.SetValue(NProto::TReadBlocksLocalResponse{});
+                });
+            return promise.GetFuture();
+        };
+        storage->WriteBlocksLocalHandler = [&](auto callContext, auto request)
+        {
+            Y_UNUSED(callContext);
+            ++writeAttempts;
+            EXPECT_EQ(BlockSize, request->GetBlockSize());
+            EXPECT_EQ(1u, request->BlocksCount);
+            EXPECT_EQ(0u, request->GetStartIndex());
+            auto promise =
+                NThreading::NewPromise<NProto::TWriteBlocksLocalResponse>();
+            enqueueCompletion(
+                [promise, request]() mutable
+                {
+                    auto guard = request->Sglist.Acquire();
+                    EXPECT_TRUE(guard);
+                    if (guard) {
+                        EXPECT_EQ(BlockSize, SgListGetSize(guard.Get()));
+                        for (const auto& buffer: guard.Get()) {
+                            EXPECT_EQ(
+                                TString(buffer.Size(), 'x'),
+                                TString(buffer.Data(), buffer.Size()));
+                        }
+                    }
+                    promise.SetValue(NProto::TWriteBlocksLocalResponse{});
+                });
+            return promise.GetFuture();
+        };
+
+        auto provider = std::make_shared<TTestRdmaStorageProvider>(storage);
+        Server = CreateServer(
+            logging, CreateRdmaBackend(logging, provider, completionStats));
+        TOptions options{
+            .SocketPath = SocketPath,
+            .Serial = "concurrent_rdma_server_ut",
+            .NoSync = true,
+            .NoChmod = true,
+            .BlockSize = BlockSize,
+            .QueueCount = QueueCount,
+        };
+        options.DeviceBackend = "rdma";
+        options.Layout = {{
+            .DevicePath = "rdma://127.0.0.1:10020/test-device",
+            .ByteCount = 128_KB,
+        }};
+        Server->Start(options);
+        ASSERT_TRUE(Client.Init());
+        Memory = TMonotonicBufferResource{Client.GetMemory()};
+
+        // Allocate in the main thread. Each producer then owns one queue and
+        // separate buffers, reused only after every request in its round ends.
+        TVector<std::array<TRequest, RequestsPerRound>> requests(QueueCount);
+        for (auto& queue: requests) {
+            for (ui32 i = 0; i != RequestsPerRound; ++i) {
+                auto& request = queue[i];
+                request.Read = i % 2 == 0;
+                request.Success = i < 2;
+                const ui64 bytes = !request.Success && request.Read
+                                       ? VHD_SECTOR_SIZE
+                                       : BlockSize;
+                request.Header = Hdr(
+                    Memory,
+                    {
+                        .type = static_cast<ui32>(
+                            request.Read ? VIRTIO_BLK_T_IN : VIRTIO_BLK_T_OUT),
+                        .sector = !request.Success && !request.Read ? 1u : 0u,
+                    });
+                request.Data = Memory.Allocate(bytes, BlockSize);
+                request.Status = Memory.Allocate(1);
+                ASSERT_FALSE(request.Header.empty());
+                ASSERT_EQ(bytes, request.Data.size());
+                ASSERT_EQ(1u, request.Status.size());
+            }
+        }
+
+        std::atomic<bool> start = false;
+        std::atomic<bool> stopReader = false;
+        std::atomic<ui64> snapshotsRead = 0;
+
+        // Successful requests complete on this worker, independently of the
+        // queue threads rejecting short lengths and misaligned offsets.
+        std::thread completer(
+            [&]
+            {
+                for (;;) {
+                    std::function<void()> complete;
+                    {
+                        std::unique_lock<std::mutex> guard(pendingMutex);
+                        pendingChanged.wait(
+                            guard,
+                            [&]
+                            { return stopCompletions || !pending.empty(); });
+                        if (pending.empty()) {
+                            break;
+                        }
+                        complete = std::move(pending.back());
+                        pending.pop_back();
+                    }
+                    complete();
+                    std::this_thread::yield();
+                }
+            });
+        std::thread reader(
+            [&]
+            {
+                while (!start.load()) {
+                    std::this_thread::yield();
+                }
+                ui64 previousCompleted = 0;
+                do {
+                    const auto snapshot =
+                        completionStats->Get(TDuration::Zero());
+                    EXPECT_TRUE(snapshot.has_value());
+                    if (snapshot) {
+                        EXPECT_LE(previousCompleted, snapshot->Completed);
+                        previousCompleted = snapshot->Completed;
+                        ui64 completed = 0;
+                        for (const auto type: {VHD_BDEV_READ, VHD_BDEV_WRITE}) {
+                            const auto& counters = snapshot->Requests[type];
+                            EXPECT_EQ(counters.Count, counters.IoSizeCount);
+                            EXPECT_EQ(
+                                counters.Count * BlockSize,
+                                counters.IoSizeBytes);
+                            EXPECT_EQ(counters.IoSizeBytes, counters.Bytes);
+                            ui64 sizesCount = 0;
+                            snapshot->Sizes[type].IterateBuckets(
+                                [&](ui64, ui64, ui64 count)
+                                { sizesCount += count; });
+                            ui64 timesCount = 0;
+                            snapshot->Times[type].IterateBuckets(
+                                [&](ui64, ui64, ui64 count)
+                                { timesCount += count; });
+                            EXPECT_EQ(counters.Count, sizesCount);
+                            EXPECT_EQ(counters.Count, timesCount);
+                            completed += counters.Count + counters.Errors;
+                        }
+                        EXPECT_EQ(completed, snapshot->Completed);
+                        ++snapshotsRead;
+                    }
+                    std::this_thread::yield();
+                } while (!stopReader.load());
+            });
+        TVector<std::thread> producers;
+        for (ui32 queueIndex = 0; queueIndex != QueueCount; ++queueIndex) {
+            producers.emplace_back(
+                [&, queueIndex]
+                {
+                    while (!start.load()) {
+                        std::this_thread::yield();
+                    }
+                    for (ui32 round = 0; round != Rounds; ++round) {
+                        std::array<NThreading::TFuture<ui32>, RequestsPerRound>
+                            operations;
+                        for (ui32 i = 0; i != RequestsPerRound; ++i) {
+                            auto& request = requests[queueIndex][i];
+                            std::memset(
+                                request.Data.data(), 'x', request.Data.size());
+                            request.Status[0] = static_cast<char>(0xff);
+                            operations[i] =
+                                request.Read
+                                    ? Client.WriteAsync(
+                                          queueIndex,
+                                          {request.Header},
+                                          {request.Data, request.Status})
+                                    : Client.WriteAsync(
+                                          queueIndex,
+                                          {request.Header, request.Data},
+                                          {request.Status});
+                        }
+                        for (ui32 i = 0; i != RequestsPerRound; ++i) {
+                            const auto& request = requests[queueIndex][i];
+                            const bool ready =
+                                operations[i].Wait(TDuration::Seconds(10));
+                            EXPECT_TRUE(ready);
+                            if (!ready) {
+                                return;
+                            }
+                            EXPECT_EQ(
+                                request.Read ? request.Data.size() + 1 : 1,
+                                operations[i].GetValue());
+                            EXPECT_EQ(
+                                request.Success ? VIRTIO_BLK_S_OK
+                                                : VIRTIO_BLK_S_IOERR,
+                                static_cast<ui8>(request.Status[0]));
+                            if (request.Read) {
+                                EXPECT_EQ(
+                                    TString(
+                                        request.Data.size(),
+                                        request.Success ? 'r' : 'x'),
+                                    TString(
+                                        request.Data.data(),
+                                        request.Data.size()));
+                            }
+                        }
+                    }
+                });
+        }
+        start = true;
+        for (auto& producer: producers) {
+            producer.join();
+        }
+
+        // Keep the completion worker and handler captures alive until all
+        // queues have stopped, including requests left pending after a timeout.
+        Client.DeInit();
+        Server->Stop();
+        Server.reset();
+
+        {
+            std::lock_guard<std::mutex> guard(pendingMutex);
+            stopCompletions = true;
+        }
+        pendingChanged.notify_one();
+        completer.join();
+        stopReader = true;
+        reader.join();
+
+        EXPECT_GT(snapshotsRead.load(), 0u);
+        EXPECT_FALSE(completionStats->ConcurrentPublication.load());
+        const auto snapshot = completionStats->Get(TDuration::Zero());
+        ASSERT_TRUE(snapshot.has_value());
+        const ui64 requestsPerType = static_cast<ui64>(QueueCount) * Rounds;
+        EXPECT_EQ(RequestsPerRound * requestsPerType, snapshot->Completed);
+        EXPECT_EQ(requestsPerType, readAttempts.load());
+        EXPECT_EQ(requestsPerType, writeAttempts.load());
+        for (const auto type: {VHD_BDEV_READ, VHD_BDEV_WRITE}) {
+            const auto& counters = snapshot->Requests[type];
+            EXPECT_EQ(requestsPerType, counters.Count);
+            EXPECT_EQ(requestsPerType, counters.Errors);
+            EXPECT_EQ(requestsPerType * BlockSize, counters.Bytes);
+            EXPECT_EQ(requestsPerType, counters.IoSizeCount);
+            EXPECT_EQ(requestsPerType * BlockSize, counters.IoSizeBytes);
+        }
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1290,6 +1642,16 @@ INSTANTIATE_TEST_SUITE_P(
         testing::Values(ui32{4096}),
         testing::Values(false, true), testing::Values(size_t{1})));
 
+TEST_P(
+    TRdmaConcurrentServerTest,
+    ShouldSerializeRejectedRequestsAndAsyncCompletionsWithSnapshots)
+{
+    ASSERT_NO_FATAL_FAILURE(RunConcurrentRequests());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    IoSize, TRdmaConcurrentServerTest, testing::Values(ui32{1}, ui32{8}));
+
 TEST_P(TServerTest, ShouldGetDeviceID)
 {
     StartServer();
@@ -1331,10 +1693,10 @@ TEST_P(TAioIoSizeTest, ShouldTrackIoSizeForFailedCompoundAio)
     const auto stats = GetStats(2).SimpleStats;
     ASSERT_EQ(2u, stats.Completed);
     const auto& read = stats.Requests[0];
-    // Compound requests follow the existing Count policy even on an error.
-    EXPECT_EQ(1u, read.Count);
-    EXPECT_EQ(1u, read.IoSizeCount);
-    EXPECT_EQ(RequestSize, read.IoSizeBytes);
+    // A failed parent is excluded after aggregating all device results.
+    EXPECT_EQ(0u, read.Count);
+    EXPECT_EQ(0u, read.IoSizeCount);
+    EXPECT_EQ(0u, read.IoSizeBytes);
     EXPECT_EQ(1u, read.Errors);
     EXPECT_EQ(RequestSize, read.Bytes);
 }

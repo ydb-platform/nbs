@@ -15,7 +15,7 @@
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_rdma.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
-#include <cloud/contrib/vhost/include/vhost/server.h>
+
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -24,7 +24,11 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
 
+#include <cloud/contrib/vhost/include/vhost/server.h>
+
 #include <library/cpp/protobuf/util/pb_io.h>
+
+#include <mutex>
 
 namespace NCloud::NBlockStore::NVHostServer {
 
@@ -132,6 +136,7 @@ private:
     NProto::TVolume Volume;
     TString ClientId;
     ICompletionStatsPtr CompletionStats;
+    std::mutex CompletionStatsMutex;
     TSimpleStats CompletionStatsData;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
@@ -477,28 +482,35 @@ void TRdmaBackend::CompleteRequest(
 {
     auto* bio = vhd_get_bdev_io(io);
 
-    ++CompletionStatsData.Completed;
+    {
+        // Requests may complete on different queue or storage callback threads.
+        // Serialize the entire update and publication, including histograms.
+        std::lock_guard<std::mutex> guard(CompletionStatsMutex);
 
-    if (!isError) {
-        const ui64 bytes =
-            static_cast<ui64>(bio->total_sectors) * VHD_SECTOR_SIZE;
-        auto& requestStat = CompletionStatsData.Requests[bio->type];
+        ++CompletionStatsData.Completed;
 
-        requestStat.Count += 1;
-        requestStat.Bytes += bytes;
+        if (!isError) {
+            const ui64 bytes =
+                static_cast<ui64>(bio->total_sectors) * VHD_SECTOR_SIZE;
+            auto& requestStat = CompletionStatsData.Requests[bio->type];
 
-        requestStat.AddIoSize(bytes);
+            requestStat.Count += 1;
+            requestStat.Bytes += bytes;
 
-        CompletionStatsData.Sizes[bio->type].Increment(bytes);
-        CompletionStatsData.Times[bio->type].Increment(
-            GetCycleCount() - startCycles);
-    } else {
-        CompletionStatsData.Requests[bio->type].Errors += 1;
+            requestStat.AddIoSize(bytes);
+
+            CompletionStatsData.Sizes[bio->type].Increment(bytes);
+            CompletionStatsData.Times[bio->type].Increment(
+                GetCycleCount() - startCycles);
+        } else {
+            CompletionStatsData.Requests[bio->type].Errors += 1;
+        }
+
+        CompletionStats->Sync(CompletionStatsData);
     }
 
+    // Publish before notifying the client; completion must not hold our lock.
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
-
-    CompletionStats->Sync(CompletionStatsData);
 }
 
 }   // namespace
