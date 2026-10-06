@@ -356,7 +356,7 @@ public:
     TFuture<NCloud::NProto::TError> EraseBelow(ui64 key) override;
 
 private:
-    TRestoreResult RestoreFromPages(const TVector<TString>& pages);
+    TRestoreResult RestoreFromPages(const TVector<TStringBuf>& pages);
 
     NCloud::NProto::TError OnEntryWritten(
         ui64 key,
@@ -434,7 +434,10 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
                         << MaxPagesPerReadRequest << " pages in "
                         << FormatDuration(readDone - started));
 
-            TVector<TString> pages;
+            TVector<TVector<TBuffer>> reads;
+            reads.reserve(futures.size());
+
+            TVector<TStringBuf> pages;
             pages.reserve(self->PageCount);
 
             for (auto& future: futures) {
@@ -443,7 +446,8 @@ TFuture<IKeyBufferStore::TRestoreResult> TDeviceKeyBufferStore::Restore()
                     return TRestoreResult(result.GetError());
                 }
 
-                for (const auto& page: result.GetResult()) {
+                const auto& read = reads.emplace_back(result.ExtractResult());
+                for (const auto& page: read) {
                     pages.emplace_back(page.Data(), page.Size());
                 }
             }
@@ -582,7 +586,7 @@ TFuture<NCloud::NProto::TError> TDeviceKeyBufferStore::EraseBelow(ui64 key)
 }
 
 IKeyBufferStore::TRestoreResult TDeviceKeyBufferStore::RestoreFromPages(
-    const TVector<TString>& pages)
+    const TVector<TStringBuf>& pages)
 {
     struct TCandidate
     {
