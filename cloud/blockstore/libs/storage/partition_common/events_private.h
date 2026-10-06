@@ -8,7 +8,7 @@
 #include <cloud/blockstore/libs/storage/core/disk_counters.h>
 #include <cloud/blockstore/libs/storage/core/metrics.h>
 #include <cloud/blockstore/libs/storage/core/public.h>
-#include <cloud/blockstore/libs/storage/core/transaction.h>
+#include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/blob_markers.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 #include <cloud/blockstore/libs/storage/partition_common/model/group_downtimes.h>

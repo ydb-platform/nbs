@@ -1,6 +1,6 @@
 #include "commit_queue.h"
 
-#include <cloud/blockstore/libs/storage/core/transaction.h>
+#include <cloud/blockstore/libs/storage/core/tablet.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
