@@ -349,7 +349,8 @@ public:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ui64 responseSent, std::optional<ui64> logicalRequestBytes) override
+        ui64 responseSent,
+        std::optional<ui64> logicalRequestBytes) override
     {
         VolumeBase->BusyIdleCalc.OnRequestCompleted();
         VolumeBase->PerfCalc.OnRequestCompleted(
@@ -371,20 +372,20 @@ public:
             VolumeBase->ThrottlerRejects.Add(1);
         }
 
-        return RequestCounters
-            .RequestCompleted(
-                static_cast<TRequestCounters::TRequestType>(
-                    TranslateLocalRequestType(requestType)),
-                requestStarted,
-                postponedTime,
-                backoffTime,
-                shapingTime,
-                requestBytes,
-                errorKind,
-                errorFlags,
-                unaligned,
-                ECalcMaxTime::ENABLE, responseSent, logicalRequestBytes)
-            .Time;
+        return RequestCounters.RequestCompleted(
+            static_cast<TRequestCounters::TRequestType>(
+                TranslateLocalRequestType(requestType)),
+            requestStarted,
+            postponedTime,
+            backoffTime,
+            shapingTime,
+            requestBytes,
+            errorKind,
+            errorFlags,
+            unaligned,
+            ECalcMaxTime::ENABLE,
+            responseSent,
+            logicalRequestBytes).Time;
     }
 
     void AddIncompleteStats(

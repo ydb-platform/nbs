@@ -299,7 +299,9 @@ TExportInfo NegotiateClient(
 void ProcessRequests(
     IServerHandler& handler,
     TStringStream& in,
-    TStringStream& out, ui32 length = 4 * 1024, bool expectSuccess = true)
+    TStringStream& out,
+    ui32 length = 4*1024,
+    bool expectSuccess = true)
 {
     TRequestReader reader(in);
     TRequestWriter writer(out);
@@ -645,11 +647,13 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
         bool mixedLengths = false;
         ui64 logicalBytes = DefaultBlockSize;
 
-        serverStats->PrepareMetricRequestHandler =
-            [&](TMetricRequest& metricRequest,
-                TString clientId,
-                TString diskId,
-                ui64 startIndex, ui64 requestBytes, bool unaligned)
+        serverStats->PrepareMetricRequestHandler = [&] (
+            TMetricRequest& metricRequest,
+            TString clientId,
+            TString diskId,
+            ui64 startIndex,
+            ui64 requestBytes,
+            bool unaligned)
         {
             Y_UNUSED(clientId);
 

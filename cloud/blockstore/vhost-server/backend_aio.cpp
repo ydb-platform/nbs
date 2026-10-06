@@ -367,7 +367,9 @@ void TAioBackend::ProcessQueue(
                     Log,
                     Encryptor.get(),
                     TAioSubRequest::FromIocb(batch[0]),
-                    VHD_BDEV_IOERR, stats, vhd_complete_bio);
+                    VHD_BDEV_IOERR,
+                    stats,
+                    vhd_complete_bio);
             } else {
                 CompleteRequestImpl(
                     Log,
@@ -434,7 +436,11 @@ void TAioBackend::CompleteCompoundRequest(
     {
         CompleteCompoundRequestImpl(
             Log,
-            Encryptor.get(), std::move(sub), result, stats, vhd_complete_bio);
+            Encryptor.get(),
+            std::move(sub),
+            result,
+            stats,
+            vhd_complete_bio);
         stats.Completed += 1;
     };
 

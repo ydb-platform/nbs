@@ -53,7 +53,9 @@ public:
     bool FailDecrypt = false;
 
     NProto::TError Encrypt(
-        TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
+        TBlockDataRef src,
+        TBlockDataRef dst,
+        ui64 blockIndex) override
     {
         Y_UNUSED(blockIndex);
         std::memcpy(const_cast<char*>(dst.Data()), src.Data(), src.Size());
@@ -61,7 +63,9 @@ public:
     }
 
     NProto::TError Decrypt(
-        TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
+        TBlockDataRef src,
+        TBlockDataRef dst,
+        ui64 blockIndex) override
     {
         Y_UNUSED(blockIndex);
         ++DecryptCount;
@@ -162,13 +166,19 @@ public:
     }
 
     TVector<TAioSubRequestHolder> PrepareCompoundIO(
-        virtio_blk_io& bio, IEncryptor* encryptor = nullptr)
+        virtio_blk_io& bio,
+        IEncryptor* encryptor = nullptr)
     {
         TVector<iocb*> batch;
         TSimpleStats queueStats;
         PrepareIO(
             Log,
-            encryptor, Devices, &bio.io, batch, GetCycleCount(), queueStats);
+            encryptor,
+            Devices,
+            &bio.io,
+            batch,
+            GetCycleCount(),
+            queueStats);
 
         TVector<TAioSubRequestHolder> subs;
         for (iocb* cb: batch) {
@@ -180,10 +190,16 @@ public:
     void CompleteSubRequest(
         TAioSubRequestHolder& sub,
         vhd_bdev_io_result status,
-        TAtomicStats& stats, IEncryptor* encryptor = nullptr)
+        TAtomicStats& stats,
+        IEncryptor* encryptor = nullptr)
     {
         CompleteCompoundRequestImpl(
-            Log, encryptor, std::move(sub), status, stats, CompleteBio);
+            Log,
+            encryptor,
+            std::move(sub),
+            status,
+            stats,
+            CompleteBio);
     }
 };
 
@@ -831,8 +847,9 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
         std::array<size_t, 3> order{0, 1, 2};
         do {
             SCOPED_TRACE(
-                TStringBuilder() << "failed part: " << failedPart << ", order: "
-                                 << order[0] << order[1] << order[2]);
+                TStringBuilder() << "failed part: " << failedPart
+                                 << ", order: " << order[0] << order[1]
+                                 << order[2]);
 
             CompletedBios.clear();
 

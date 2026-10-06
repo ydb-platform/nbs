@@ -460,7 +460,9 @@ void TServerStats::RequestCompleted(
             req.RequestBytes,
             errorKind,
             errorFlags,
-            req.Unaligned, responseSentCycles, req.LogicalRequestBytes);
+            req.Unaligned,
+            responseSentCycles,
+            req.LogicalRequestBytes);
 
         if (calcMaxTime == ECalcMaxTime::DISABLE) {
             maxTimeSuppressedMessage = ", Warning! MaxTime calculation suppressed";

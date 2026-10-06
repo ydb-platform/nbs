@@ -73,7 +73,9 @@ void AddRequestStats(
             request.ErrorKind,
             NCloud::NProto::EF_NONE,
             request.Aligned,
-            ECalcMaxTime::ENABLE, responseSent, request.LogicalRequestBytes);
+            ECalcMaxTime::ENABLE,
+            responseSent,
+            request.LogicalRequestBytes);
     }
 }
 

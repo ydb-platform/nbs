@@ -1,5 +1,4 @@
 #include "stats.h"
-
 #include "critical_event.h"
 
 #include <library/cpp/json/json_reader.h>

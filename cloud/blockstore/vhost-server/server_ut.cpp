@@ -29,7 +29,9 @@
 #include <util/generic/size_literals.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
+#include <util/system/condvar.h>
 #include <util/system/file.h>
+#include <util/system/mutex.h>
 #include <util/system/tempfile.h>
 #include <util/system/thread.h>
 
@@ -37,10 +39,7 @@
 
 #include <array>
 #include <atomic>
-#include <chrono>
-#include <condition_variable>
 #include <cstring>
-#include <mutex>
 #include <span>
 #include <thread>
 
@@ -504,8 +503,8 @@ public:
 class TTestRdmaCompletionStats final: public ICompletionStats
 {
 private:
-    std::mutex Mutex;
-    std::condition_variable Changed;
+    TMutex Mutex;
+    TCondVar Changed;
     TSimpleStats Snapshot;
 
 public:
@@ -513,18 +512,18 @@ public:
     {
         Y_UNUSED(timeout);
 
-        std::lock_guard<std::mutex> guard(Mutex);
+        TGuard<TMutex> guard(Mutex);
         return Snapshot;
     }
 
     void Sync(const TSimpleStats& stats) override
     {
         {
-            std::lock_guard<std::mutex> guard(Mutex);
+            TGuard<TMutex> guard(Mutex);
             Snapshot = stats;
         }
 
-        Changed.notify_all();
+        Changed.BroadCast();
     }
 
     void Sync(const TAtomicStats& stats) override
@@ -536,11 +535,11 @@ public:
 
     std::optional<TSimpleStats> WaitForCompleted(ui64 expectedCompleted)
     {
-        std::unique_lock<std::mutex> guard(Mutex);
+        TGuard<TMutex> guard(Mutex);
 
-        const bool ready = Changed.wait_for(
-            guard,
-            std::chrono::seconds(10),
+        const bool ready = Changed.WaitT(
+            Mutex,
+            TDuration::Seconds(10),
             [&] { return Snapshot.Completed >= expectedCompleted; });
 
         if (!ready) {
@@ -825,8 +824,8 @@ private:
         std::function<void(NProto::TError)> Complete;
     };
 
-    std::mutex PartsMutex;
-    std::condition_variable PartsChanged;
+    TMutex PartsMutex;
+    TCondVar PartsChanged;
     TVector<TPendingPart> Parts;
     std::array<std::shared_ptr<TTestStorage>, 2> Storages;
 
@@ -842,18 +841,18 @@ private:
         };
 
         {
-            std::lock_guard<std::mutex> guard(PartsMutex);
+            TGuard<TMutex> guard(PartsMutex);
             Parts.push_back(std::move(part));
         }
-        PartsChanged.notify_all();
+        PartsChanged.BroadCast();
     }
 
     std::optional<std::array<TPendingPart, 2>> WaitForParts(size_t offset)
     {
-        std::unique_lock<std::mutex> guard(PartsMutex);
-        if (!PartsChanged.wait_for(
-                guard,
-                std::chrono::seconds(10),
+        TGuard<TMutex> guard(PartsMutex);
+        if (!PartsChanged.WaitT(
+                PartsMutex,
+                TDuration::Seconds(10),
                 [&] { return Parts.size() >= offset + 2; }))
         {
             return std::nullopt;
@@ -867,7 +866,7 @@ public:
     {
         TVector<TPendingPart> parts;
         {
-            std::lock_guard<std::mutex> guard(PartsMutex);
+            TGuard<TMutex> guard(PartsMutex);
             parts = Parts;
         }
         for (const auto& part: parts) {
@@ -1011,7 +1010,7 @@ public:
 
         size_t partsOffset = 0;
         {
-            std::lock_guard<std::mutex> guard(PartsMutex);
+            TGuard<TMutex> guard(PartsMutex);
             partsOffset = Parts.size();
         }
 
@@ -1095,7 +1094,7 @@ public:
         EXPECT_EQ(expectedCount, counters.IoSizeCount);
         EXPECT_EQ(success ? requestBytes : 0, counters.IoSizeBytes);
 
-        std::lock_guard<std::mutex> guard(PartsMutex);
+        TGuard<TMutex> guard(PartsMutex);
         EXPECT_EQ(partsOffset + (retry ? 4 : 2), Parts.size());
     }
 };
@@ -1185,18 +1184,18 @@ public:
         std::atomic<ui64> readAttempts = 0;
         std::atomic<ui64> writeAttempts = 0;
 
-        std::mutex pendingMutex;
-        std::condition_variable pendingChanged;
+        TMutex pendingMutex;
+        TCondVar pendingChanged;
         TVector<std::function<void()>> pending;
         bool stopCompletions = false;
 
         const auto enqueueCompletion = [&](std::function<void()> complete)
         {
             {
-                std::lock_guard<std::mutex> guard(pendingMutex);
+                TGuard<TMutex> guard(pendingMutex);
                 pending.push_back(std::move(complete));
             }
-            pendingChanged.notify_one();
+            pendingChanged.Signal();
         };
 
         storage->ReadBlocksLocalHandler = [&](auto callContext, auto request)
@@ -1310,9 +1309,9 @@ public:
                 for (;;) {
                     std::function<void()> complete;
                     {
-                        std::unique_lock<std::mutex> guard(pendingMutex);
-                        pendingChanged.wait(
-                            guard,
+                        TGuard<TMutex> guard(pendingMutex);
+                        pendingChanged.WaitI(
+                            pendingMutex,
                             [&]
                             { return stopCompletions || !pending.empty(); });
                         if (pending.empty()) {
@@ -1432,10 +1431,10 @@ public:
         Server.reset();
 
         {
-            std::lock_guard<std::mutex> guard(pendingMutex);
+            TGuard<TMutex> guard(pendingMutex);
             stopCompletions = true;
         }
-        pendingChanged.notify_one();
+        pendingChanged.Signal();
         completer.join();
         stopReader = true;
         reader.join();

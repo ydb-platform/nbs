@@ -1127,11 +1127,13 @@ Y_UNIT_TEST_SUITE(TServerTest)
         ui32 completedCounter = 0;
         bool failRequests = false;
 
-        serverStats->PrepareMetricRequestHandler =
-            [&](TMetricRequest& metricRequest,
-                TString clientId,
-                TString diskId,
-                ui64 startIndex, ui64 requestBytes, bool unaligned)
+        serverStats->PrepareMetricRequestHandler = [&] (
+            TMetricRequest& metricRequest,
+            TString clientId,
+            TString diskId,
+            ui64 startIndex,
+            ui64 requestBytes,
+            bool unaligned)
         {
             Y_UNUSED(clientId);
 

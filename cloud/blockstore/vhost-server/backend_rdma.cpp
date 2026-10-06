@@ -15,7 +15,7 @@
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service_local/storage_rdma.h>
 #include <cloud/blockstore/public/api/protos/volume.pb.h>
-
+#include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -24,11 +24,9 @@
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/rdma/iface/client.h>
 
-#include <cloud/contrib/vhost/include/vhost/server.h>
-
 #include <library/cpp/protobuf/util/pb_io.h>
 
-#include <mutex>
+#include <util/system/mutex.h>
 
 namespace NCloud::NBlockStore::NVHostServer {
 
@@ -136,14 +134,14 @@ private:
     NProto::TVolume Volume;
     TString ClientId;
     ICompletionStatsPtr CompletionStats;
-    std::mutex CompletionStatsMutex;
+    TMutex CompletionStatsMutex;
     TSimpleStats CompletionStatsData;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
 
 public:
-    explicit TRdmaBackend(
+    TRdmaBackend(
         ILoggingServicePtr logging,
         IStorageProviderPtr storageProvider,
         ICompletionStatsPtr completionStats);
@@ -206,13 +204,15 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
         rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
         auto monitoring = NCloud::CreateMonitoringServiceStub();
-
         RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
-            Logging, std::move(monitoring), std::move(rdmaClientConfig));
+            Logging,
+            std::move(monitoring),
+            std::move(rdmaClientConfig));
 
         StorageProvider = NStorage::CreateRdmaStorageProvider(
             CreateServerStatsStub(),
-            RdmaClient, NStorage::ERdmaTaskQueueOpt::DontUse);
+            RdmaClient,
+            NStorage::ERdmaTaskQueueOpt::DontUse);
     }
 
     Volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
@@ -225,9 +225,10 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
         DevicePath devicePath("rdma");
         auto error = devicePath.Parse(chunk.DevicePath);
         STORAGE_VERIFY_C(
-            !HasError(error),
-            TWellKnownEntityTypes::ENDPOINT,
-            ClientId, "device parse error: " << error.GetMessage());
+                !HasError(error),
+                TWellKnownEntityTypes::ENDPOINT,
+                ClientId,
+                "device parse error: " << error.GetMessage());
 
         auto* device = Volume.MutableDevices()->Add();
         device->SetDeviceUUID(devicePath.Uuid);
@@ -268,6 +269,7 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
         .total_blocks = totalBytes / BlockSize,
         .features = ReadOnly ? VHD_BDEV_F_READONLY : 0,
         .pte_flush_byte_threshold = options.PteFlushByteThreshold};
+
 }
 
 IBlockStorePtr TRdmaBackend::CreateDataClient(IStoragePtr storage)
@@ -485,7 +487,7 @@ void TRdmaBackend::CompleteRequest(
     {
         // Requests may complete on different queue or storage callback threads.
         // Serialize the entire update and publication, including histograms.
-        std::lock_guard<std::mutex> guard(CompletionStatsMutex);
+        TGuard<TMutex> guard(CompletionStatsMutex);
 
         ++CompletionStatsData.Completed;
 

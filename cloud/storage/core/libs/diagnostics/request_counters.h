@@ -146,7 +146,8 @@ private:
         EDiagnosticsErrorKind errorKind,
         ui32 errorFlags,
         bool unaligned,
-        ECalcMaxTime calcMaxTime, std::optional<ui64> logicalRequestBytes);
+        ECalcMaxTime calcMaxTime,
+        std::optional<ui64> logicalRequestBytes);
 
     bool ShouldReport(TRequestType requestType) const;
 

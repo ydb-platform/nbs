@@ -3,7 +3,6 @@
 #include "critical_event.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
-
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <util/generic/strbuf.h>
@@ -428,7 +427,9 @@ void CompleteCompoundRequestImpl(
     TLog& log,
     IEncryptor* encryptor,
     TAioSubRequestHolder sub,
-    vhd_bdev_io_result status, TAtomicStats& stats, TCompleteBioFn completeBio)
+    vhd_bdev_io_result status,
+    TAtomicStats& stats,
+    TCompleteBioFn completeBio)
 {
     auto* req = sub->GetParentRequest();
 
@@ -464,7 +465,11 @@ void CompleteCompoundRequestImpl(
             TBlockDataRef data = req->GetData();
             NSan::Unpoison(data.data(), data.size());
             const bool success = SgListCopyWithOptionalDecryption(
-                log, data, bio->sglist, encryptor, bio->first_sector);
+                log,
+                data,
+                bio->sglist,
+                encryptor,
+                bio->first_sector);
             if (!success) {
                 status = VHD_BDEV_IOERR;
                 stats.EncryptorErrors++;
