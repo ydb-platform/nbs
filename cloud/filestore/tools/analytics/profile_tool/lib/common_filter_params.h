@@ -19,10 +19,11 @@ namespace NCloud::NFileStore::NProfileTool {
 class TCommonFilterParams
 {
 private:
-    const TInstant ReferenceTime = TInstant::Now();
+    const TInstant ReferenceTime;
 
 public:
-    explicit TCommonFilterParams(NLastGetopt::TOpts& opts);
+    explicit TCommonFilterParams(NLastGetopt::TOpts& opts,
+                                 TInstant referenceTime = TInstant::Now());
 
     TMaybe<TString> GetFileSystemId(
         const NLastGetopt::TOptsParseResultException& parseResult) const;

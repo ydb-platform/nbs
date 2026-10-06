@@ -5,8 +5,131 @@
 
 namespace NCloud::NFileStore::NProfileTool {
 
+namespace {
+
+void AssertGrafanaRange(TStringBuf json, TStringBuf now, TStringBuf since,
+                        TStringBuf until)
+{
+    NLastGetopt::TOpts opts;
+    const TCommonFilterParams params(opts, TInstant::ParseIso8601(now));
+    const TString argument = TString("--grafana-range=") + json;
+    const char* argv[] = {"profile-tool", argument.c_str()};
+    const NLastGetopt::TOptsParseResultException parsed(&opts, std::size(argv),
+                                                        argv);
+    UNIT_ASSERT_VALUES_EQUAL_C(params.GetUntil(parsed).GetRef(),
+                               TInstant::ParseIso8601(until), json);
+    UNIT_ASSERT_VALUES_EQUAL_C(params.GetSince(parsed).GetRef(),
+                               TInstant::ParseIso8601(since), json);
+    UNIT_ASSERT_VALUES_EQUAL_C(params.GetUntil(parsed).GetRef(),
+                               TInstant::ParseIso8601(until), json);
+}
+
+}   // namespace
+
 Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
 {
+    Y_UNIT_TEST(ShouldParseCopiedGrafanaRanges)
+    {
+        constexpr TStringBuf now = "2026-10-06T14:46:30.146Z";
+        AssertGrafanaRange(
+            R"({"from":"2026-10-06T14:31:30.146Z","to":"2026-10-06T14:46:30.146Z"})",
+            now, "2026-10-06T14:31:30.146Z", now);
+        AssertGrafanaRange(R"({"from":"now-2d","to":"now"})", now,
+                           "2026-10-04T14:46:30.146Z", now);
+        AssertGrafanaRange(R"({"from":"now-15m","to":"now"})", now,
+                           "2026-10-06T14:31:30.146Z", now);
+        AssertGrafanaRange(R"({"from":"now-1h","to":"now"})", now,
+                           "2026-10-06T13:46:30.146Z", now);
+        AssertGrafanaRange(R"({"from":"now-6M","to":"now"})", now,
+                           "2026-04-06T14:46:30.146Z", now);
+    }
+
+    Y_UNIT_TEST(ShouldClampGrafanaCalendarOffsets)
+    {
+        AssertGrafanaRange(
+            R"({"from":"now-1M","to":"now"})", "2026-03-31T14:46:30.146Z",
+            "2026-02-28T14:46:30.146Z", "2026-03-31T14:46:30.146Z");
+        AssertGrafanaRange(
+            R"({"from":"now-1M","to":"now"})", "2024-03-31T14:46:30.146Z",
+            "2024-02-29T14:46:30.146Z", "2024-03-31T14:46:30.146Z");
+        AssertGrafanaRange(
+            R"({"from":"now-1y","to":"now"})", "2024-02-29T14:46:30.146Z",
+            "2023-02-28T14:46:30.146Z", "2024-02-29T14:46:30.146Z");
+        AssertGrafanaRange(
+            R"({"from":"now","to":"now+1M"})", "2026-01-31T14:46:30.146Z",
+            "2026-01-31T14:46:30.146Z", "2026-02-28T14:46:30.146Z");
+        AssertGrafanaRange(
+            R"({"from":"now-1Q","to":"now"})", "2026-05-31T14:46:30.146Z",
+            "2026-02-28T14:46:30.146Z", "2026-05-31T14:46:30.146Z");
+    }
+
+    Y_UNIT_TEST(ShouldUseSameNowForBothGrafanaBounds)
+    {
+        constexpr TStringBuf now = "2026-10-06T14:46:30.146Z";
+        AssertGrafanaRange(R"({"from":"now-1h","to":"now-15m"})", now,
+                           "2026-10-06T13:46:30.146Z",
+                           "2026-10-06T14:31:30.146Z");
+        AssertGrafanaRange(R"({"from":"now","to":"now"})", now, now, now);
+        AssertGrafanaRange(
+            R"({"to":"now-15m", "from":"2026-10-06T15:00:00+02:00"})", now,
+            "2026-10-06T13:00:00Z", "2026-10-06T14:31:30.146Z");
+        AssertGrafanaRange(R"({"from":"now-6M+1d","to":"now+1s"})", now,
+                           "2026-04-07T14:46:30.146Z",
+                           "2026-10-06T14:46:31.146Z");
+        AssertGrafanaRange(R"({"from":"now-1w","to":"now"})", now,
+                           "2026-09-29T14:46:30.146Z", now);
+    }
+
+    Y_UNIT_TEST(ShouldRejectInvalidGrafanaRanges)
+    {
+        for (const auto json: {
+                 "", "not json", "[]", "null", "{}", R"({"from":"now"})",
+                 R"({"to":"now"})", R"({"from":123,"to":"now"})",
+                 R"({"from":"now","to":null})",
+                 R"({"from":"now","to":"now"})junk",
+            R"({"from":"bad","to":"now"})", R"({"from":"now","to":"bad"})",
+                 R"({"from":"now+1s","to":"now"})",
+                 R"({"from":"now-1x","to":"now"})",
+                 R"({"from":"now--1h","to":"now"})",
+                 R"({"from":"now-1","to":"now"})",
+                 R"({"from":"now-99999y","to":"now"})",
+                 R"({"from":"now-18446744073709551616s","to":"now"})",
+                 R"({"from":"now-18446744073709551615d","to":"now"})",
+                 R"({"from":"now","to":"now+18446744073709551615M"})",
+             })
+        {
+            NLastGetopt::TOpts opts;
+            const TCommonFilterParams params(opts);
+            const char* argv[] = {"profile-tool", "--grafana-range", json};
+            const NLastGetopt::TOptsParseResultException parsed(
+                &opts, std::size(argv), argv);
+            UNIT_ASSERT_EXCEPTION(params.GetSince(parsed),
+                                  NLastGetopt::TUsageException);
+            UNIT_ASSERT_EXCEPTION(params.GetUntil(parsed),
+                                  NLastGetopt::TUsageException);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectConflictingTimeFilters)
+    {
+        for (const auto option: {"--since=now", "--until=now"}) {
+            NLastGetopt::TOpts opts;
+            const TCommonFilterParams params(opts);
+            const char* argv[] = {
+                "profile-tool",
+                "--grafana-range",
+                R"({"from":"now-1h","to":"now"})",
+                option,
+            };
+            const NLastGetopt::TOptsParseResultException parsed(
+                &opts, std::size(argv), argv);
+            UNIT_ASSERT_EXCEPTION(params.GetSince(parsed),
+                                  NLastGetopt::TUsageException);
+            UNIT_ASSERT_EXCEPTION(params.GetUntil(parsed),
+                                  NLastGetopt::TUsageException);
+        }
+    }
+
     Y_UNIT_TEST(ShouldParseSystemdTimestamps)
     {
         NLastGetopt::TOpts opts;
