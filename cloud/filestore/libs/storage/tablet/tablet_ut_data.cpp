@@ -10049,8 +10049,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 << rebootTracker.GetGenerationCount());
     }
 
-    TABLET_TEST(ShouldPassDataAsPayload)
-    {
+    void ShouldPassDataAsPayload(TTestEnvConfig testEnvConfig, ui32 dataSize) {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetExternalReadDataPayload(true);
         storageConfig.SetExternalWriteDataPayloadEnabled(true);
@@ -10072,11 +10071,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
         ui64 handle = CreateHandle(tablet, id);
 
-        auto data = GenerateValidateData(1_KB);
+        auto data = GenerateValidateData(dataSize);
         tablet.WriteData(handle, 0, data.size(), data.c_str());
         tablet.Flush();
 
-        auto response = tablet.ReadData(handle, 0, 1_KB);
+        auto response = tablet.ReadData(handle, 0, dataSize);
         const auto& buffer = response->Record.GetBuffer();
         UNIT_ASSERT(buffer.empty());
         UNIT_ASSERT_VALUES_EQUAL(data.size(), response->Record.GetLength());
@@ -10243,6 +10242,13 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         const auto stats = tablet.GetStorageStats()->Record.GetStats();
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetMixedBlobsCount());
         UNIT_ASSERT_VALUES_EQUAL(0, stats.GetUsedNodesCount());
+
+    TABLET_TEST(ShouldPassDataAsPayloadTest)
+    {
+        std::vector<ui32> dataSizes = {124, 1_KB, 64_KB, 100_KB, 256_KB};
+        for(auto dataSize : dataSizes) {
+            ShouldPassDataAsPayload(testEnvConfig, dataSize);
+        }
     }
 }
 
