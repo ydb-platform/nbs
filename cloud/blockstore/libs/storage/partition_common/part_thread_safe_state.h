@@ -10,10 +10,13 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
 #include <cloud/blockstore/libs/storage/partition_common/part_counters_wrapper.h>
 
+#include <contrib/ydb/library/actors/core/monotonic.h>
+
 #include <util/system/spinlock.h>
 
 #include <atomic>
 #include <memory>
+#include <optional>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -72,6 +75,12 @@ class TPartitionThreadSafeState
     using TTxPtr = std::unique_ptr<ITransactionBase>;
 
 public:
+    struct TFreshWriteInfo
+    {
+        ui64 CommitId;
+        TInstant Timestamp;
+    };
+
     TResourceMetricsQueue ResourceMetricsQueue;
     TThreadSafePartCounters PartCounters;
     TThreadSafePartStats PartStats;
@@ -95,6 +104,14 @@ private:
 
     ui32 Generation = 0;
     ui32 LastCommitId = 0;
+
+    struct TFreshWriteTimeAnchor
+    {
+        TInstant Timestamp;
+        NActors::TMonotonic Monotonic;
+    };
+
+    std::optional<TFreshWriteTimeAnchor> FreshWriteTimeAnchor;
 
     TBarriers TrimFreshLogBarriers;
     TCommitQueue CommitQueue;
@@ -146,7 +163,9 @@ public:
     ui64 GenerateCommitId();
     ui64 GetLastCommitId() const;
 
-    ui64 StartFreshWrite(ui64 blockCount);
+    TFreshWriteInfo StartFreshWrite(
+        const NActors::TActorContext& ctx,
+        ui64 blockCount);
     void FinishFreshWrite(
         const NActors::TActorContext& ctx,
         ui64 commitId,
@@ -241,6 +260,7 @@ public:
 private:
     ui64 GenerateCommitIdImpl();
     ui64 GetLastCommitIdImpl() const;
+    TInstant GetFreshWriteTimestamp(const NActors::TActorContext& ctx);
 
     void ExecuteTxs(
         const NActors::TActorContext& ctx,
