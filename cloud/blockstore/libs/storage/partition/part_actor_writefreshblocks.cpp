@@ -245,7 +245,7 @@ void TPartitionActor::HandleAddFreshBlocks(
         }
     }
 
-    State->AddFreshBlob(msg->CommitId, msg->BlobSize);
+    State->AddFreshBlob(msg->CommitId, msg->BlobSize, msg->Timestamp);
 
     if (FreshBlocksWriter) {
         SharedState->UnflushedFreshBlocksCount.fetch_sub(removedBlocksCount);

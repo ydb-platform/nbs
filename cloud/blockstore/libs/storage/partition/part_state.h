@@ -462,7 +462,7 @@ public:
     //
 
 public:
-    void AddFreshBlob(ui64 commitId, ui64 blobSize);
+    void AddFreshBlob(ui64 commitId, ui64 blobSize, TInstant timestamp);
 
     //
     // Fresh Blocks

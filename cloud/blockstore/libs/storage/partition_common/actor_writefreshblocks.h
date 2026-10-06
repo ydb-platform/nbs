@@ -99,6 +99,7 @@ private:
     TString BlobContent;
     ui64 BlobSize = 0;
     TPartialBlobId BlobId;
+    TInstant Timestamp;
 
     TVector<IProfileLog::TBlockInfo> AffectedBlockInfos;
 
@@ -125,7 +126,7 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
-    NProto::TError BuildBlobContentAndComputeDigest();
+    NProto::TError BuildBlobContentAndComputeDigest(TInstant timestamp);
 
     void WriteBlob(const NActors::TActorContext& ctx);
     void AddBlocks(const NActors::TActorContext& ctx);

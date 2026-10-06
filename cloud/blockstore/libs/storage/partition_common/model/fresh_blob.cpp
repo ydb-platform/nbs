@@ -23,7 +23,8 @@ namespace {
 TString BuildFreshBlobContent(
     const TVector<TBlockRange32>& blockRanges,
     const TVector<TGuardHolder>& guardHolders,
-    bool isZero)
+    bool isZero,
+    TInstant timestamp)
 {
     TString result;
     TStringOutput so(result);
@@ -42,6 +43,7 @@ TString BuildFreshBlobContent(
         meta.AddEndIndices(blockRange.End);
     }
     meta.SetIsZero(isZero);
+    meta.SetTimestamp(timestamp.MicroSeconds());
 
     const TProtobufSize protoSize = meta.ByteSize();
     Save(&so, protoSize);
@@ -69,14 +71,17 @@ TString BuildFreshBlobContent(
 
 TString BuildWriteFreshBlocksBlobContent(
     const TVector<TBlockRange32>& blockRanges,
-    const TVector<TGuardHolder>& guardHolders)
+    const TVector<TGuardHolder>& guardHolders,
+    TInstant timestamp)
 {
-    return BuildFreshBlobContent(blockRanges, guardHolders, false);
+    return BuildFreshBlobContent(blockRanges, guardHolders, false, timestamp);
 }
 
-TString BuildZeroFreshBlocksBlobContent(TBlockRange32 blockRange)
+TString BuildZeroFreshBlocksBlobContent(
+    TBlockRange32 blockRange,
+    TInstant timestamp)
 {
-    return BuildFreshBlobContent({ blockRange }, {}, true);
+    return BuildFreshBlobContent({blockRange}, {}, true, timestamp);
 }
 
 NProto::TError ParseFreshBlobContent(
@@ -84,7 +89,8 @@ NProto::TError ParseFreshBlobContent(
     TPartialBlobId blobId,
     ui32 blockSize,
     const TString& buffer,
-    TVector<TOwningFreshBlock>& result)
+    TVector<TOwningFreshBlock>& result,
+    TInstant& timestamp)
 {
     TStringInput si(buffer);
 
@@ -108,6 +114,8 @@ NProto::TError ParseFreshBlobContent(
     }
 
     offset += protoSize;
+
+    timestamp = TInstant::MicroSeconds(meta.GetTimestamp());
 
     for (ui32 i = 0; i < meta.StartIndicesSize(); ++i) {
         ui32 start = meta.GetStartIndices(i);
