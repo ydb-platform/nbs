@@ -355,15 +355,16 @@ void TIndexTabletActor::ExecuteTx_WriteData(
         });
 
     for (ui64 b = args.ByteRange.FirstAlignedBlock();
-            b < args.ByteRange.FirstAlignedBlock() + args.ByteRange.AlignedBlockCount();
-            ++b)
+         b < args.ByteRange.FirstAlignedBlock() +
+                 args.ByteRange.AlignedBlockCount();
+         ++b)
     {
         WriteFreshBlock(
             *db,
             args.NodeId,
             args.CommitId,
             b,
-            args.Buffer->GetBlock(b - args.ByteRange.FirstAlignedBlock()));
+            {b - args.ByteRange.FirstAlignedBlock(), args.Buffer});
     }
 
     if (args.ByteRange.UnalignedHeadLength()) {

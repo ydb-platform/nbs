@@ -15,6 +15,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/block.h>
 #include <cloud/filestore/libs/storage/tablet/model/channels.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
+#include <cloud/filestore/libs/storage/tablet/model/fresh_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/internal_request_id.h>
 #include <cloud/filestore/libs/storage/tablet/model/mixed_blocks.h>
 #include <cloud/filestore/libs/storage/tablet/model/node_access_stats.h>
@@ -1187,6 +1188,13 @@ public:
         ui64 commitId,
         ui32 blockIndex,
         TStringBuf blockData);
+
+    void WriteFreshBlock(
+        IIndexTabletDatabase& db,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        TBlockDataHolder freshBlock);
 
     void MarkFreshBlocksDeleted(
         IIndexTabletDatabase& db,
