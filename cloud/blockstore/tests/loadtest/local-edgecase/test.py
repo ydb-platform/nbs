@@ -16,8 +16,6 @@ def default_storage_config_patch(tablet_version=1):
         storage.BlockDigestsEnabled = True
         storage.UseTestBlockDigestGenerator = True
         storage.DigestedBlocksPercentage = 100
-        storage.DumpBlockCommitIdsIntoProfileLog = True
-        storage.DumpBlobUpdatesIntoProfileLog = True
 
     return storage
 
@@ -30,7 +28,6 @@ def storage_config_with_batching(tablet_version=1):
     if tablet_version == 2:
         storage.BlockDigestsEnabled = True
         storage.DigestedBlocksPercentage = 100
-        storage.DumpBlockCommitIdsIntoProfileLog = True
 
     return storage
 

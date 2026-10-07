@@ -20,8 +20,6 @@ def default_storage_config(tablet_version, backups_folder):
     if tablet_version == 2:
         storage.BlockDigestsEnabled = True
         storage.DigestedBlocksPercentage = 100
-        storage.DumpBlockCommitIdsIntoProfileLog = True
-        storage.DumpBlobUpdatesIntoProfileLog = True
 
     storage.TabletBootInfoBackupFilePath = \
         backups_folder + "/tablet_boot_info_backup.txt"

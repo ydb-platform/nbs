@@ -216,13 +216,10 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
             NProto::ECompactionType,                                           \
             NProto::CT_DEFAULT                                                )\
     xxx(CompactionGarbageThreshold,         ui32,      20                     )\
-    xxx(CompactionGarbageBlobLimit,         ui32,      100                    )\
-    xxx(CompactionGarbageBlockLimit,        ui32,      10240                  )\
     xxx(CompactionRangeGarbageThreshold,    ui32,      200                    )\
     xxx(MaxAffectedBlocksPerCompaction,     ui32,      8192                   )\
     xxx(V1GarbageCompactionEnabled,         bool,      false                  )\
     xxx(IgnoringZeroedCompactionEnabled,    bool,      false                  )\
-    xxx(OptimizeForShortRanges,             bool,      false                  )\
     xxx(MaxCompactionDelay,                 TDuration, TDuration::Zero()      )\
     xxx(MinCompactionDelay,                 TDuration, TDuration::Zero()      )\
     xxx(MaxCompactionExecTimePerSecond,     TDuration, TDuration::Zero()      )\
@@ -257,13 +254,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(MaxCleanupExecTimePerSecond,            TDuration, TDuration::Zero()  )\
     xxx(CleanupScoreHistorySize,                ui32,      10                 )\
     xxx(CleanupQueueBytesLimitForThrottling,    ui64,      100_MB             )\
-    /* measured in overwritten blocks */                                       \
-    xxx(UpdateBlobsThreshold,                   ui32,      100                )\
     xxx(MaxBlobsToCleanup,                      ui32,      100                )\
                                                                                \
     xxx(CollectGarbageThreshold,       ui32,      10                          )\
-    xxx(RunV2SoftGcAtStartup,                   bool,      false              )\
-    xxx(DontEnqueueCollectGarbageUponPartitionStartup,  bool,      false      )\
     xxx(HiveLockExpireTimeout,         TDuration, Seconds(30)                 )\
     xxx(TabletRebootCoolDownIncrement, TDuration, MSeconds(500)               )\
     xxx(TabletRebootCoolDownMax,       TDuration, Seconds(30)                 )\
@@ -275,10 +268,8 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(PipeClientMaxRetryTime,        TDuration, Seconds(4)                  )\
     xxx(FlushBlobSizeThreshold,        ui32,      4_MB                        )\
     xxx(CompactionRetryTimeout,        TDuration, Seconds(1)                  )\
-    xxx(CleanupRetryTimeout,           TDuration, Seconds(1)                  )\
     xxx(MaxReadWriteRangeSize,         ui64,      4_GB                        )\
     xxx(MaxBlobRangeSize,              ui32,      128_MB                      )\
-    xxx(MaxRangesPerBlob,              ui32,      8                           )\
     xxx(MaxBlobSize,                   ui32,      4_MB                        )\
     xxx(InactiveClientsTimeout,        TDuration, Seconds(9)                  )\
     xxx(AttachedDiskDestructionTimeout,TDuration, Minutes(1)                  )\
@@ -424,11 +415,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(FreshChannelCountSSD,                           ui32,   1             )\
     xxx(FreshChannelCountHDD,                           ui32,   1             )\
                                                                                \
-    xxx(ZoneBlockCount,                            ui32,   32 * MaxBlocksCount)\
-    xxx(HotZoneRequestCountFactor,                 ui32,   10                 )\
-    xxx(ColdZoneRequestCountFactor,                ui32,   5                  )\
-    xxx(BlockListCacheSizePercentage,              ui32,   100                )\
-                                                                               \
     xxx(WriteRequestBatchingEnabled,               bool,      false           )\
                                                                                \
     xxx(FreshChannelWriteRequestsEnabled,          bool,      false           )\
@@ -440,8 +426,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(BlockDigestsEnabled,                            bool,   false         )\
     xxx(UseTestBlockDigestGenerator,                    bool,   false         )\
     xxx(DigestedBlocksPercentage,                       ui32,   1             )\
-                                                                               \
-    xxx(IndexStructuresConversionAttemptInterval,   TDuration,  Seconds(10)   )\
                                                                                \
     xxx(NonReplicatedDiskRecyclingPeriod,           TDuration,  Minutes(10)   )\
     xxx(NonReplicatedDiskRepairTimeout,             TDuration,  Minutes(10)   )\
@@ -512,12 +496,6 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(InitialPullDelay,                          TDuration, Minutes(10)     )\
                                                                                \
     xxx(LogicalUsedBlocksUpdateBlockCount,         ui32,      128'000'000     )\
-                                                                               \
-    xxx(DumpBlockCommitIdsIntoProfileLog,          bool,      false           )\
-    xxx(DumpBlobUpdatesIntoProfileLog,             bool,      false           )\
-                                                                               \
-    /* NBS-2451 */                                                             \
-    xxx(EnableConversionIntoMixedIndexV2,          bool,      false           )\
                                                                                \
     xxx(StatsUploadDiskCount,                      ui32,      1000            )\
     xxx(StatsUploadMaxRowsPerTx,                   ui32,      10000           )\

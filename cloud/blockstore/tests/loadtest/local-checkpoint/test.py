@@ -13,16 +13,9 @@ def default_storage_config_patch():
 
     storage.InactiveClientsTimeout = 10000
 
-    storage.ZoneBlockCount = 2048
-    storage.HotZoneRequestCountFactor = 2
-    storage.ColdZoneRequestCountFactor = 1
-    storage.DontEnqueueCollectGarbageUponPartitionStartup = True
-
     storage.BlockDigestsEnabled = True
     storage.UseTestBlockDigestGenerator = True
     storage.DigestedBlocksPercentage = 100
-    storage.DumpBlockCommitIdsIntoProfileLog = True
-    storage.DumpBlobUpdatesIntoProfileLog = True
     storage.CheckpointAwareCleanupEnabled = True
 
     return storage

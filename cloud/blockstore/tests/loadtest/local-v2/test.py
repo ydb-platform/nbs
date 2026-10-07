@@ -13,12 +13,6 @@ def default_storage_config_patch():
 
     storage.InactiveClientsTimeout = 10000
 
-    storage.ZoneBlockCount = 2048
-    storage.HotZoneRequestCountFactor = 2
-    storage.ColdZoneRequestCountFactor = 1
-    storage.DontEnqueueCollectGarbageUponPartitionStartup = True
-    storage.OptimizeForShortRanges = True
-
     storage.BlockDigestsEnabled = True
 
     return storage

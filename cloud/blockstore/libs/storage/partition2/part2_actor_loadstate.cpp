@@ -236,8 +236,8 @@ void TPartitionActor::CompleteLoadState(
         Config->GetSSDMaxBlobsPerUnit() :
         Config->GetHDDMaxBlobsPerUnit();
     ui32 maxBlobsPerRange = mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD ?
-        Config->GetSSDMaxBlobsPerRange() :
-        Config->GetHDDMaxBlobsPerRange();
+        Config->GetSSDV2MaxBlobsPerRange() :
+        Config->GetHDDV2MaxBlobsPerRange();
 
     SharedState->Init(SelfId(), Executor()->Generation(), 0);
 
