@@ -2945,166 +2945,195 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(b.Cache.IsDrained());
     }
 
-    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodes)
+    struct TShouldHandleConcurrentReadsAndWritesAcrossNodesTest: TBootstrap
     {
-        constexpr size_t ThreadCount = 16;
-        constexpr ui64 MaxRequestSize = 8_KB;
-        constexpr ui64 FileSize = 256_KB;
-        constexpr TDuration TestDuration = TDuration::Seconds(5);
+        static constexpr size_t ClientThreadCount = 16;
+        static constexpr ui64 MaxRequestSize = 8_KB;
+        static constexpr ui64 FileSize = 256_KB;
+        static constexpr TDuration TestDuration = TDuration::Seconds(5);
 
         // Incoming write iovecs are borrowed by the cache. Keep one buffer per
         // thread alive through cache teardown so that a timed-out request
         // cannot retain a dangling pointer.
-        TVector<TString> writeBuffers(ThreadCount);
+        TVector<TString> WriteBuffers;
+        std::atomic<bool> StopRequested = false;
 
-        TBootstrap b(
-            {.MaxWriteRequestsCount = 2,
-             .ZeroCopyWriteEnabled = true,
-             .DoNotCheckWriteDataRequestBuffer = true,
-             .LogDataOperations = false,
-             .ThreadCount = 4});
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest()
+            : TBootstrap(
+                  {.MaxWriteRequestsCount = 2,
+                   .ZeroCopyWriteEnabled = true,
+                   .DoNotCheckWriteDataRequestBuffer = true,
+                   .LogDataOperations = false,
+                   .ThreadCount = 4})
+            , WriteBuffers(ClientThreadCount)
+        {}
 
-        std::latch start{ThreadCount + 1};
-        std::atomic<bool> stopRequested = false;
-        const TInstant deadline = TInstant::Now() + TestDuration;
-
-        TVector<std::exception_ptr> errors(ThreadCount);
-        TVector<std::thread> threads;
-        threads.reserve(ThreadCount);
-
-        for (size_t i = 0; i < ThreadCount; i++) {
-            threads.emplace_back(
-                [&, i]
-                {
-                    const ui64 nodeId = i + 1;
-                    const ui64 handle = nodeId + NodeToHandleOffset;
-                    TTestData expectedData;
-
-                    const auto readAndValidate = [&](ui64 offset, ui64 length)
-                    {
-                        auto request =
-                            std::make_shared<NProto::TReadDataRequest>();
-
-                        request->SetNodeId(nodeId);
-                        request->SetHandle(handle);
-                        request->SetOffset(offset);
-                        request->SetLength(length);
-
-                        const auto response =
-                            b.Cache.ReadData(b.CallContext, std::move(request))
-                                .GetValue(WaitTimeout);
-
-                        if (HasError(response)) {
-                            ythrow yexception()
-                                << "ReadData failed for @" << nodeId << ": "
-                                << FormatError(response.GetError());
-                        }
-
-                        const auto expected =
-                            expectedData.Read(nodeId, offset, length);
-                        const auto actual = response.GetBuffer().substr(
-                            response.GetBufferOffset());
-
-                        if (expected != actual) {
-                            ythrow yexception()
-                                << "Data mismatch while reading @" << nodeId
-                                << " at offset " << offset << " and length "
-                                << length << ". Expected: " << expected.Quote()
-                                << ", actual: " << actual.Quote();
-                        }
-                    };
-
-                    start.arrive_and_wait();
-
-                    try {
-                        while (!stopRequested && TInstant::Now() < deadline) {
-                            const ui64 offset = RandomNumber(FileSize);
-                            const ui64 length =
-                                RandomNumber(
-                                    Min(MaxRequestSize, FileSize - offset)) +
-                                1;
-
-                            if (RandomNumber(2u) == 0) {
-                                auto& buffer = writeBuffers[i];
-                                buffer = NUnitTest::RandomString(
-                                    length,
-                                    RandomNumber<ui32>());
-
-                                auto request = std::make_shared<
-                                    NProto::TWriteDataRequest>();
-
-                                request->SetNodeId(nodeId);
-                                request->SetHandle(handle);
-                                request->SetOffset(offset);
-
-                                auto* iovec = request->AddIovecs();
-                                iovec->SetBase(
-                                    reinterpret_cast<ui64>(buffer.data()));
-                                iovec->SetLength(buffer.size());
-
-                                const auto response =
-                                    b.Cache
-                                        .WriteData(
-                                            b.CallContext,
-                                            std::move(request))
-                                        .GetValue(WaitTimeout);
-
-                                if (HasError(response)) {
-                                    ythrow yexception()
-                                        << "WriteData failed for @" << nodeId
-                                        << ": "
-                                        << FormatError(response.GetError());
-                                }
-
-                                expectedData.Write(nodeId, offset, buffer);
-                            } else {
-                                readAndValidate(offset, length);
-                            }
-                        }
-
-                        const auto error =
-                            b.Cache.FlushNodeData(nodeId).GetValue(WaitTimeout);
-
-                        if (HasError(error)) {
-                            ythrow yexception()
-                                << "Flush failed for @" << nodeId << ": "
-                                << FormatError(error);
-                        }
-
-                        const auto expected = expectedData.ReadAll(nodeId);
-                        const auto actual = b.FlushedData.ReadAll(nodeId);
-                        if (expected != actual) {
-                            ythrow yexception()
-                                << "Flushed data mismatch for @" << nodeId
-                                << ". Expected: " << expected.Quote()
-                                << ", actual: " << actual.Quote();
-                        }
-
-                        for (ui64 offset = 0; offset < FileSize;
-                             offset += MaxRequestSize)
-                        {
-                            readAndValidate(
-                                offset,
-                                Min(MaxRequestSize, FileSize - offset));
-                        }
-                    } catch (...) {
-                        errors[i] = std::current_exception();
-                        stopRequested = true;
-                    }
-                });
+        ~TShouldHandleConcurrentReadsAndWritesAcrossNodesTest()
+        {
+            // Tear down the cache before the derived class's buffers.
+            Cache = {};
         }
 
-        start.arrive_and_wait();
+        void ReadAndValidate(
+            ui64 nodeId,
+            ui64 offset,
+            ui64 length,
+            const TTestData& expectedData)
+        {
+            auto request = std::make_shared<NProto::TReadDataRequest>();
 
-        for (auto& thread: threads) {
-            thread.join();
+            request->SetNodeId(nodeId);
+            request->SetHandle(nodeId + NodeToHandleOffset);
+            request->SetOffset(offset);
+            request->SetLength(length);
+
+            const auto response =
+                Cache.ReadData(CallContext, std::move(request))
+                    .GetValue(WaitTimeout);
+
+            // UNIT_ASSERT aborts on worker threads. Use a catchable exception
+            // so Run() can report the failure on the main test thread.
+            Y_ENSURE(
+                !HasError(response),
+                "ReadData failed for @" << nodeId << ": "
+                                        << FormatError(response.GetError()));
+
+            const auto expected = expectedData.Read(nodeId, offset, length);
+            const auto actual =
+                response.GetBuffer().substr(response.GetBufferOffset());
+
+            Y_ENSURE(
+                expected == actual,
+                "Data mismatch while reading @"
+                    << nodeId << " at offset " << offset << " and length "
+                    << length << ". Expected: " << expected.Quote()
+                    << ", actual: " << actual.Quote());
         }
 
-        for (const auto& error: errors) {
-            if (error) {
-                std::rethrow_exception(error);
+        void WriteAndTrack(
+            ui64 nodeId,
+            ui64 offset,
+            ui64 length,
+            TString& buffer,
+            TTestData& expectedData)
+        {
+            buffer = NUnitTest::RandomString(length, RandomNumber<ui32>());
+
+            auto request = std::make_shared<NProto::TWriteDataRequest>();
+
+            request->SetNodeId(nodeId);
+            request->SetHandle(nodeId + NodeToHandleOffset);
+            request->SetOffset(offset);
+
+            auto* iovec = request->AddIovecs();
+            iovec->SetBase(reinterpret_cast<ui64>(buffer.data()));
+            iovec->SetLength(buffer.size());
+
+            const auto response =
+                Cache.WriteData(CallContext, std::move(request))
+                    .GetValue(WaitTimeout);
+
+            Y_ENSURE(
+                !HasError(response),
+                "WriteData failed for @" << nodeId << ": "
+                                         << FormatError(response.GetError()));
+
+            expectedData.Write(nodeId, offset, buffer);
+        }
+
+        void FlushAndValidate(ui64 nodeId, const TTestData& expectedData)
+        {
+            const auto error =
+                Cache.FlushNodeData(nodeId).GetValue(WaitTimeout);
+
+            Y_ENSURE(
+                !HasError(error),
+                "Flush failed for @" << nodeId << ": " << FormatError(error));
+
+            const auto expected = expectedData.ReadAll(nodeId);
+            const auto actual = FlushedData.ReadAll(nodeId);
+            Y_ENSURE(
+                expected == actual,
+                "Flushed data mismatch for @"
+                    << nodeId << ". Expected: " << expected.Quote()
+                    << ", actual: " << actual.Quote());
+
+            for (ui64 offset = 0; offset < FileSize; offset += MaxRequestSize) {
+                ReadAndValidate(
+                    nodeId,
+                    offset,
+                    Min(MaxRequestSize, FileSize - offset),
+                    expectedData);
             }
         }
+
+        void RunClient(size_t clientIndex, TInstant deadline)
+        {
+            const ui64 nodeId = clientIndex + 1;
+            TTestData expectedData;
+
+            while (!StopRequested && TInstant::Now() < deadline) {
+                const ui64 offset = RandomNumber(FileSize);
+                const ui64 length =
+                    RandomNumber(Min(MaxRequestSize, FileSize - offset)) + 1;
+
+                if (RandomNumber(2u) == 0) {
+                    WriteAndTrack(
+                        nodeId,
+                        offset,
+                        length,
+                        WriteBuffers[clientIndex],
+                        expectedData);
+                } else {
+                    ReadAndValidate(nodeId, offset, length, expectedData);
+                }
+            }
+
+            FlushAndValidate(nodeId, expectedData);
+        }
+
+        void Run()
+        {
+            std::latch start{ClientThreadCount + 1};
+            const TInstant deadline = TInstant::Now() + TestDuration;
+
+            TVector<std::exception_ptr> errors(ClientThreadCount);
+            TVector<std::thread> threads;
+            threads.reserve(ClientThreadCount);
+
+            for (size_t i = 0; i < ClientThreadCount; i++) {
+                threads.emplace_back(
+                    [&, i]
+                    {
+                        start.arrive_and_wait();
+
+                        try {
+                            RunClient(i, deadline);
+                        } catch (...) {
+                            errors[i] = std::current_exception();
+                            StopRequested = true;
+                        }
+                    });
+            }
+
+            start.arrive_and_wait();
+
+            for (auto& thread: threads) {
+                thread.join();
+            }
+
+            for (const auto& error: errors) {
+                if (error) {
+                    std::rethrow_exception(error);
+                }
+            }
+        }
+    };
+
+    Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodes)
+    {
+        TShouldHandleConcurrentReadsAndWritesAcrossNodesTest test;
+        test.Run();
     }
 
     Y_UNIT_TEST(ShouldSupportStateFileResize)
