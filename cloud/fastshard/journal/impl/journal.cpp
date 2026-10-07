@@ -31,6 +31,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 constexpr ui64 MetadataKey = Max<ui64>();
+constexpr ui64 MinLogMetaPageCount = 3;
 
 ui64 PageCountOf(const NCloud::NProto::TDevicePageGroupRef& ref)
 {
@@ -1037,6 +1038,55 @@ NCloud::NProto::TError TJournal::FillPageGroups(
     return {};
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+class TJournalFactory final: public IJournalFactory
+{
+private:
+    const ILoggingServicePtr Logging;
+    const TExecutorPtr Executor;
+    const IDevicePtr LogMetaDevice;
+    const IDevicePtr LogDataDevice;
+    const ui64 LogMetaPageCount;
+    const ui64 LogDataPageCount;
+    const ui64 DataPageCount;
+    const ui32 PageSize;
+
+public:
+    TJournalFactory(
+        ILoggingServicePtr logging,
+        TExecutorPtr executor,
+        IDevicePtr logMetaDevice,
+        IDevicePtr logDataDevice,
+        ui64 logMetaPageCount,
+        ui64 logDataPageCount,
+        ui64 dataPageCount,
+        ui32 pageSize)
+        : Logging(std::move(logging))
+        , Executor(std::move(executor))
+        , LogMetaDevice(std::move(logMetaDevice))
+        , LogDataDevice(std::move(logDataDevice))
+        , LogMetaPageCount(logMetaPageCount)
+        , LogDataPageCount(logDataPageCount)
+        , DataPageCount(dataPageCount)
+        , PageSize(pageSize)
+    {}
+
+    IJournalPtr CreateJournal() override
+    {
+        return NJournalled::CreateJournal(
+            Logging,
+            Executor,
+            CreateDeviceKeyBufferStore(
+                Logging,
+                LogMetaDevice,
+                LogMetaPageCount,
+                PageSize),
+            CreateDevicePageStore(LogDataDevice, LogDataPageCount, PageSize),
+            DataPageCount);
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1054,6 +1104,52 @@ IJournalPtr CreateJournal(
         std::move(metaStore),
         std::move(dataStore),
         devicePageCount);
+}
+
+TResultOrError<IJournalFactoryPtr> CreateJournalFactory(
+    ILoggingServicePtr logging,
+    TExecutorPtr executor,
+    IDevicePtr logMetaDevice,
+    IDevicePtr logDataDevice,
+    ui64 logMetaPageCount,
+    ui64 logDataPageCount,
+    ui64 dataPageCount,
+    ui32 pageSize)
+{
+    if (logMetaPageCount < MinLogMetaPageCount) {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "the journal metadata of " << logMetaPageCount
+                << " pages is below the minimum of " << MinLogMetaPageCount);
+    }
+
+    if (logDataPageCount < 1) {
+        return MakeError(E_ARGUMENT, "the journal data has no pages");
+    }
+
+    if (logMetaPageCount >= logDataPageCount ||
+        logDataPageCount >= dataPageCount)
+    {
+        return MakeError(
+            E_ARGUMENT,
+            TStringBuilder()
+                << "the journal metadata (" << logMetaPageCount
+                << " pages) must be smaller than the journal data ("
+                << logDataPageCount << " pages), which must be smaller "
+                << "than the data (" << dataPageCount << " pages)");
+    }
+
+    IJournalFactoryPtr factory = std::make_shared<TJournalFactory>(
+        std::move(logging),
+        std::move(executor),
+        std::move(logMetaDevice),
+        std::move(logDataDevice),
+        logMetaPageCount,
+        logDataPageCount,
+        dataPageCount,
+        pageSize);
+    return factory;
 }
 
 }   // namespace NCloud::NJournalled

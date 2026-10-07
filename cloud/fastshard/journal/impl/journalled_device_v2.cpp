@@ -148,9 +148,11 @@ class TJournalledDeviceV2 final
 private:
     const ILoggingServicePtr Logging;
     const TExecutorPtr Executor;
-    const IJournalPtr Journal;
+    const IJournalFactoryPtr JournalFactory;
     const IDevicePtr DataStore;
     const TString DeviceUUID;
+
+    IJournalPtr Journal;
 
     TLog Log;
 
@@ -169,12 +171,12 @@ public:
     TJournalledDeviceV2(
         ILoggingServicePtr logging,
         TExecutorPtr executor,
-        IJournalPtr journal,
+        IJournalFactoryPtr journalFactory,
         IDevicePtr dataStore,
         TString deviceUUID)
         : Logging(std::move(logging))
         , Executor(std::move(executor))
-        , Journal(std::move(journal))
+        , JournalFactory(std::move(journalFactory))
         , DataStore(std::move(dataStore))
         , DeviceUUID(std::move(deviceUUID))
         , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
@@ -225,6 +227,7 @@ public:
             [weakSelf = weak_from_this()](const auto&)
             {
                 if (auto self = weakSelf.lock()) {
+                    self->Journal.reset();
                     self->StartingOrStopping.store(false);
                 }
                 return NProto::TError();
@@ -342,6 +345,8 @@ private:
         STORAGE_INFO("restoring the journal on " << DeviceUUID.Quote());
 
         const TInstant started = TInstant::Now();
+
+        Journal = JournalFactory->CreateJournal();
 
         auto response = Executor->ExtractResponse(Journal->Restore());
         if (HasError(response)) {
@@ -497,14 +502,14 @@ private:
 IJournalledDevicePtr CreateJournalledDeviceV2(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
-    IJournalPtr journal,
+    IJournalFactoryPtr journalFactory,
     IDevicePtr dataStore,
     TString deviceUUID)
 {
     return std::make_shared<TJournalledDeviceV2>(
         std::move(logging),
         std::move(executor),
-        std::move(journal),
+        std::move(journalFactory),
         std::move(dataStore),
         std::move(deviceUUID));
 }

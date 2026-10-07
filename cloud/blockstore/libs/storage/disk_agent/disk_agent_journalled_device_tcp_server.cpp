@@ -383,13 +383,7 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
     const ui64 logMetaBlockCount = logMetaSize / blockSize;
     const ui64 logDataBlockCount = logDataSize / blockSize;
 
-    // The key buffer store needs a couple of pages for its superblock and at
-    // least one for the entries.
-    constexpr ui64 MinLogMetaBlockCount = 3;
-
-    if (logMetaBlockCount < MinLogMetaBlockCount || logDataBlockCount < 1 ||
-        logMetaBlockCount + logDataBlockCount >= blockCount)
-    {
+    if (logMetaBlockCount + logDataBlockCount >= blockCount) {
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
@@ -400,28 +394,6 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
 
     const ui64 dataBlockCount =
         blockCount - logMetaBlockCount - logDataBlockCount;
-
-    if (logMetaBlockCount >= logDataBlockCount ||
-        logDataBlockCount >= dataBlockCount)
-    {
-        return MakeError(
-            E_ARGUMENT,
-            TStringBuilder()
-                << "the journal metadata (" << logMetaBlockCount
-                << " blocks) must be smaller than the journal data ("
-                << logDataBlockCount << " blocks), which must be smaller "
-                << "than the data (" << dataBlockCount << " blocks)");
-    }
-
-    LOG_INFO_S(
-        ctx,
-        TBlockStoreComponents::DISK_AGENT,
-        "Journalled device " << uuid.Quote() << ": journal "
-            << "metadata " << FormatByteSize(logMetaBlockCount * blockSize)
-            << ", journal data "
-            << FormatByteSize(logDataBlockCount * blockSize) << ", data "
-            << FormatByteSize(dataBlockCount * blockSize) << ", block size "
-            << blockSize);
 
     auto createAdapter = [&](ui64 firstBlockIndex, ui64 regionBlockCount)
     {
@@ -434,32 +406,40 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
              .BlockCount = regionBlockCount});
     };
 
-    auto logMetaStore = NJournalled::CreateDeviceKeyBufferStore(
-        logging,
-        createAdapter(0, logMetaBlockCount),
-        logMetaBlockCount,
-        blockSize);
-
-    auto logDataStore = NJournalled::CreateDevicePageStore(
-        createAdapter(logMetaBlockCount, logDataBlockCount),
-        logDataBlockCount,
-        blockSize);
-
+    auto logMetaDevice = createAdapter(0, logMetaBlockCount);
+    auto logDataDevice = createAdapter(logMetaBlockCount, logDataBlockCount);
     auto dataStore = createAdapter(
         logMetaBlockCount + logDataBlockCount,
         dataBlockCount);
 
-    auto journal = NJournalled::CreateJournal(
+    auto [journalFactory, error] = NJournalled::CreateJournalFactory(
         logging,
         executor,
-        std::move(logMetaStore),
-        std::move(logDataStore),
-        dataBlockCount);
+        logMetaDevice,
+        logDataDevice,
+        logMetaBlockCount,
+        logDataBlockCount,
+        dataBlockCount,
+        blockSize);
+
+    if (HasError(error)) {
+        return error;
+    }
+
+    LOG_INFO_S(
+        ctx,
+        TBlockStoreComponents::DISK_AGENT,
+        "Journalled device " << uuid.Quote() << ": journal "
+            << "metadata " << FormatByteSize(logMetaBlockCount * blockSize)
+            << ", journal data "
+            << FormatByteSize(logDataBlockCount * blockSize) << ", data "
+            << FormatByteSize(dataBlockCount * blockSize) << ", block size "
+            << blockSize);
 
     return NJournalled::CreateJournalledDeviceV2(
         std::move(logging),
         std::move(executor),
-        std::move(journal),
+        std::move(journalFactory),
         std::move(dataStore),
         uuid);
 }

@@ -416,12 +416,30 @@ struct TTestDevice final: public IDevice
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Hands out the journal it is given on every start, or a new one each time
+// without it. Keeps every journal it has handed out.
+struct TTestJournalFactory final: public IJournalFactory
+{
+    std::shared_ptr<TTestJournal> Journal;
+    TVector<std::shared_ptr<TTestJournal>> Journals;
+
+    IJournalPtr CreateJournal() override
+    {
+        auto journal = Journal ? Journal : std::make_shared<TTestJournal>();
+        Journals.push_back(journal);
+        return journal;
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 struct TFixture: public NUnitTest::TBaseFixture
 {
     ILoggingServicePtr Logging;
     TExecutorPtr Executor;
 
     std::shared_ptr<TTestJournal> Journal;
+    std::shared_ptr<TTestJournalFactory> JournalFactory;
     std::shared_ptr<TTestDevice> DataStore;
 
     IJournalledDevicePtr Device;
@@ -439,10 +457,14 @@ struct TFixture: public NUnitTest::TBaseFixture
         Journal = std::make_shared<TTestJournal>();
         DataStore = std::make_shared<TTestDevice>();
 
+        // the same journal on every start, the tests track its state
+        JournalFactory = std::make_shared<TTestJournalFactory>();
+        JournalFactory->Journal = Journal;
+
         Device = CreateJournalledDeviceV2(
             Logging,
             Executor,
-            Journal,
+            JournalFactory,
             DataStore,
             TString{DefaultDeviceUUID});
     }
@@ -1171,6 +1193,48 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         Journal->ReadPromise.reset();
         response = ReadPages(MakeReadRequest({{10, 1}}));
         UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+    }
+
+    Y_UNIT_TEST_F(ShouldTakeAFreshJournalOnEveryStart, TFixture)
+    {
+        // the factory hands out a new journal every time
+        auto factory = std::make_shared<TTestJournalFactory>();
+        const auto& journals = factory->Journals;
+
+        auto device = CreateJournalledDeviceV2(
+            Logging,
+            Executor,
+            factory,
+            DataStore,
+            TString{DefaultDeviceUUID});
+
+        auto error = device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(1, journals.size());
+
+        // a start of a started device takes no journal
+        error = device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(1, journals.size());
+
+        error = device->Stop().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        error = device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(2, journals.size());
+
+        // the requests go to the journal of the latest start
+        const auto response =
+            device->ReadPages(MakeReadRequest({{10, 1}})).GetValueSync();
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(0, journals[0]->GetReadRequests().size());
+        UNIT_ASSERT_VALUES_EQUAL(1, journals[1]->GetReadRequests().size());
+        UNIT_ASSERT_VALUES_EQUAL(1, journals[0]->GetRestoreCount());
+        UNIT_ASSERT_VALUES_EQUAL(1, journals[1]->GetRestoreCount());
+
+        error = device->Stop().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
     }
 
     Y_UNIT_TEST_F(ShouldStopFlushCycle, TFixture)

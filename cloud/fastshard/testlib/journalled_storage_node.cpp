@@ -47,24 +47,26 @@ TJournalledStorageNode::TJournalledStorageNode(
     , LogDataDevice(CreateInMemoryDevice(Layout.PageSize))
     , DataDevice(CreateInMemoryDevice(Layout.PageSize))
 {
-    auto journal = CreateJournal(
+    auto [journalFactory, error] = CreateJournalFactory(
         Logging,
         Executor,
-        CreateDeviceKeyBufferStore(
-            Logging,
-            LogMetaDevice,
-            Layout.LogMetaPageCount,
-            Layout.PageSize),
-        CreateDevicePageStore(
-            LogDataDevice,
-            Layout.LogDataPageCount,
-            Layout.PageSize),
-        Layout.DataPageCount);
+        LogMetaDevice,
+        LogDataDevice,
+        Layout.LogMetaPageCount,
+        Layout.LogDataPageCount,
+        Layout.DataPageCount,
+        Layout.PageSize);
+
+    Y_ABORT_UNLESS(
+        !HasError(error),
+        "%s: %s",
+        DeviceUUID.c_str(),
+        FormatError(error).c_str());
 
     Device = CreateJournalledDeviceV2(
         Logging,
         Executor,
-        std::move(journal),
+        std::move(journalFactory),
         DataDevice,
         DeviceUUID);
 }
