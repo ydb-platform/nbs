@@ -6,6 +6,8 @@
 #include "block.h"
 #include "layer.h"
 
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
+
 #include <util/generic/map.h>
 #include <util/generic/maybe.h>
 #include <util/generic/strbuf.h>
@@ -15,23 +17,36 @@ namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TBlockDataHolder
+{
+    size_t BufferBlockIndex;
+    IBlockBufferPtr BlockBuffer;
+
+    TStringBuf GetBlockData() const
+    {
+        return BlockBuffer->GetBlock(BufferBlockIndex);
+    }
+};
+
 class TFreshBlocks
 {
-    using TFreshBlockMap = TMap<TBlock, TStringBuf, TBlockCompare>;
+    using TFreshBlockMap = TMap<TBlock, TBlockDataHolder, TBlockCompare>;
 
 private:
-    IAllocator* Allocator;
     TFreshBlockMap Blocks;
 
 public:
-    TFreshBlocks(IAllocator* allocator);
-
-    ~TFreshBlocks();
-
-    size_t GetBlocksCount() const
+    [[nodiscard]] size_t GetBlocksCount() const
     {
         return Blocks.size();
     }
+
+    bool AddBlock(
+        ui64 nodeId,
+        ui32 blockIndex,
+        TBlockDataHolder blockData,
+        ui64 minCommitId,
+        ui64 maxCommitId = InvalidCommitId);
 
     bool AddBlock(
         ui64 nodeId,
@@ -74,10 +89,6 @@ public:
         ui32 blockIndex,
         ui32 blocksCount,
         ui64 commitId) const;
-
-private:
-    TStringBuf AllocateBlock(TStringBuf content, ui32 blockSize);
-    void ReleaseBlock(TStringBuf content);
 };
 
 }   // namespace NCloud::NFileStore::NStorage
