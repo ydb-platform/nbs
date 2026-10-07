@@ -69,6 +69,7 @@ struct TMeasurements
     ui64 WireBytes = 0;
     ui64 QuotaDelays = 0;
     std::vector<ui64> Samples;
+    std::vector<ui64> CompletionSamples;
 
     void Print(const char* kind, ui64 extra = 0)
     {
@@ -77,6 +78,12 @@ struct TMeasurements
             return Samples.empty() ? 0. :
                 Samples[std::min(Samples.size() - 1,
                     static_cast<size_t>(p * Samples.size()))] / 1000.;
+        };
+        std::sort(CompletionSamples.begin(), CompletionSamples.end());
+        auto completionPercentile = [&](double p) {
+            return CompletionSamples.empty() ? 0. : CompletionSamples[
+                std::min(CompletionSamples.size() - 1,
+                    static_cast<size_t>(p * CompletionSamples.size()))] / 1000.;
         };
         rusage u{};
         getrusage(RUSAGE_SELF, &u);
@@ -87,6 +94,8 @@ struct TMeasurements
             << ",\"ns_per_op\":" << static_cast<double>(ElapsedNs) / Count
             << ",\"p50_us\":" << percentile(.50)
             << ",\"p99_us\":" << percentile(.99)
+            << ",\"completion_p50_us\":" << completionPercentile(.50)
+            << ",\"completion_p99_us\":" << completionPercentile(.99)
             << ",\"cpu_seconds\":" << Cpu
             << ",\"cpu_us_per_op\":" << Cpu * 1e6 / Count
             << ",\"server_cpu_seconds\":" << ServerCpu
@@ -99,7 +108,8 @@ struct TMeasurements
     }
 };
 
-TMeasurements Measure(double seconds, const std::function<void()>& op)
+TMeasurements Measure(double seconds, const std::function<void()>& op,
+                      const std::function<void()>& beginMeasurement = {})
 {
     const auto warmUntil = Ns() + 1000000000;
     do {
@@ -107,6 +117,7 @@ TMeasurements Measure(double seconds, const std::function<void()>& op)
     } while (Ns() < warmUntil);
     TMeasurements result;
     result.Samples.reserve(1 << 20);
+    if (beginMeasurement) beginMeasurement();
     const auto cpu = CpuSeconds();
     const auto begin = Ns();
     const auto until = begin + static_cast<ui64>(seconds * 1e9);
@@ -196,7 +207,10 @@ void Split(bool enabled, ui32 parts, double seconds)
     counters.Register(*registry);
     std::vector<char> buffer(parts * 16 * 4096);
     TGuardedSgList sglist{TSgList{TBlockDataRef(buffer.data(), buffer.size())}};
-    ui64 lastNodes = 0, wireBytes = 0;
+    ui64 lastNodes = 0, wireBytes = 0, sampleIndex = 0;
+    bool measuring = false;
+    std::vector<ui64> completionSamples;
+    completionSamples.reserve(1 << 20);
     auto op = [&] {
         const auto started = GetCycleCount();
         auto context = CreateCallContext();
@@ -208,7 +222,12 @@ void Split(bool enabled, ui32 parts, double seconds)
         request->SetBlockSize(4096);
         request->Sglist = sglist;
         const auto before = leaf->Calls;
+        const bool sample = measuring && ((sampleIndex++ & 63) == 0);
+        const auto responseStarted = sample ? Ns() : 0;
         auto response = service->ReadBlocksLocal(context, request).GetValueSync();
+        if (sample && completionSamples.size() < (1 << 20)) {
+            completionSamples.push_back(Ns() - responseStarted);
+        }
         Y_ENSURE(!response.GetError().GetCode());
         Y_ENSURE(leaf->Calls - before == parts, "split path was not exercised");
         if (enabled) {
@@ -225,9 +244,39 @@ void Split(bool enabled, ui32 parts, double seconds)
             }
         }
     };
-    auto result = Measure(seconds, op);
+    auto result = Measure(seconds, op, [&] { measuring = true; });
+    result.CompletionSamples = std::move(completionSamples);
     result.WireBytes = wireBytes;
     result.Print("split-service", lastNodes);
+}
+
+// Synthetic graph timestamps isolate quota-containing graph CPU cost;
+// these durations are not actual sleeps or disk response measurements.
+void Graph(ui32 parts, double seconds)
+{
+    ui64 wireBytes = 0, nodes = 0;
+    auto op = [&] {
+        const auto started = GetCycleCount();
+        const auto tick = DurationToCyclesSafe(TDuration::MilliSeconds(1));
+        const auto finished = started + tick * 100;
+        TLatencyOperation parent(true, started);
+        for (ui32 i = 0; i < parts; ++i) {
+            TLatencyOperation child(false, started);
+            child.AddQuota(started, started + tick * 80,
+                BSProto::TLatencyDiagnostics::PROFILE_LIMIT);
+            parent.AddChild(started, finished, child.FinishLeaf(finished));
+        }
+        const auto graph = parent.Finish(finished);
+        const auto latency = ReplayLatencyGraph(graph,
+            CyclesToDurationSafe(finished - started));
+        const auto expected = CyclesToDurationSafe(tick * 20).MicroSeconds();
+        Y_ENSURE(latency && latency->MicroSeconds() + 4 >= expected &&
+            latency->MicroSeconds() <= expected + 4, "quota replay changed");
+        if (!wireBytes) { wireBytes = graph.ByteSizeLong(); nodes = graph.NodesSize(); }
+    };
+    auto result = Measure(seconds, op);
+    result.WireBytes = wireBytes;
+    result.Print("quota-graph-composition", nodes);
 }
 
 void Quota(bool enabled, ui32 pressure, double seconds)
@@ -408,7 +457,8 @@ int main(int argc, char** argv)
         } else {
             const bool enabled = FromString<ui32>(argv[2]);
             const double seconds = FromString<double>(argv[4]);
-            if (mode == "split") Split(enabled, FromString<ui32>(argv[3]), seconds);
+            if (mode == "graph") Graph(FromString<ui32>(argv[3]), seconds);
+            else if (mode == "split") Split(enabled, FromString<ui32>(argv[3]), seconds);
             else if (mode == "quota") Quota(enabled, FromString<ui32>(argv[3]), seconds);
             else if (mode == "fifo") Fifo(enabled, FromString<ui32>(argv[3]), seconds);
             else if (mode == "checkpoint") Checkpoint(enabled, argv[3], seconds);

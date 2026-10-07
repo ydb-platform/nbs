@@ -4,78 +4,98 @@
 
 namespace NCloud::NBlockStore {
 
-TMaybe<TDuration> ReplayLatencyGraph(
-    const NProto::TLatencyDiagnostics& diagnostics, TDuration totalTime)
+namespace {
+struct TGraphInfo
 {
-    if (!diagnostics.HasVersion() ||
-        diagnostics.GetVersion() != LatencyVersion ||
-        !diagnostics.HasComplete() || !diagnostics.GetComplete() ||
-        !diagnostics.HasTotalUs() || !diagnostics.HasExclusion() ||
-        diagnostics.NodesSize() == 0 ||
-        diagnostics.NodesSize() > MaxLatencyNodes ||
-        diagnostics.GetTotalUs() > totalTime.MicroSeconds())
+    bool HasQuota = false;
+    size_t Edges = 0;
+    ui64 MaxEnd = 0;
+};
+
+// Validate observed timestamps and topology without allocating replay buffers.
+// A dependency always refers to an earlier, already validated node.
+TMaybe<TGraphInfo> ValidateGraph(
+    const NProto::TLatencyDiagnostics& graph, TDuration totalTime)
+{
+    if (!graph.HasVersion() || graph.GetVersion() != LatencyVersion ||
+        !graph.HasComplete() || !graph.GetComplete() ||
+        !graph.HasTotalUs() || !graph.HasExclusion() ||
+        !graph.NodesSize() || graph.NodesSize() > MaxLatencyNodes ||
+        graph.GetTotalUs() > totalTime.MicroSeconds())
     {
         return {};
     }
-
-    TVector<ui64> observedEnds;
-    TVector<ui64> adjustedEnds;
-    observedEnds.reserve(diagnostics.NodesSize());
-    adjustedEnds.reserve(diagnostics.NodesSize());
-    ui64 observedFinish = 0;
-    ui64 adjustedFinish = 0;
-    size_t edges = 0;
-    for (const auto& node: diagnostics.GetNodes()) {
+    TGraphInfo info;
+    ui32 index = 0;
+    for (const auto& node: graph.GetNodes()) {
         if (!node.HasStartUs() || !node.HasDurationUs() || !node.HasKind() ||
             (node.GetKind() != NProto::TLatencyDiagnostics::SERVICE &&
              node.GetKind() != NProto::TLatencyDiagnostics::QUOTA) ||
             (node.GetKind() == NProto::TLatencyDiagnostics::QUOTA &&
              (!node.HasQuotaReason() ||
-              (node.GetQuotaReason() !=
-                   NProto::TLatencyDiagnostics::PROFILE_IOPS &&
-               node.GetQuotaReason() !=
-                   NProto::TLatencyDiagnostics::PROFILE_BANDWIDTH &&
-               node.GetQuotaReason() !=
-                   NProto::TLatencyDiagnostics::PROFILE_BURST &&
-               node.GetQuotaReason() !=
-                   NProto::TLatencyDiagnostics::PROFILE_LIMIT))) ||
-            node.GetStartUs() > diagnostics.GetTotalUs() ||
-            node.GetDurationUs() > diagnostics.GetTotalUs() - node.GetStartUs())
+              (node.GetQuotaReason() != NProto::TLatencyDiagnostics::PROFILE_IOPS &&
+               node.GetQuotaReason() != NProto::TLatencyDiagnostics::PROFILE_BANDWIDTH &&
+               node.GetQuotaReason() != NProto::TLatencyDiagnostics::PROFILE_BURST &&
+               node.GetQuotaReason() != NProto::TLatencyDiagnostics::PROFILE_LIMIT))) ||
+            node.GetStartUs() > graph.GetTotalUs() ||
+            node.GetDurationUs() > graph.GetTotalUs() - node.GetStartUs())
         {
             return {};
         }
-        ui64 observedReady = 0;
-        ui64 adjustedReady = 0;
-        edges += node.DependenciesSize();
-        if (edges > MaxLatencyEdges) {
+        info.Edges += node.DependenciesSize();
+        if (info.Edges > MaxLatencyEdges) {
             return {};
         }
         for (const auto dependency: node.GetDependencies()) {
-            if (dependency >= observedEnds.size()) {
-                return {};   // cycle, forward edge or missing node
+            if (dependency >= index) {
+                return {};
             }
-            observedReady = std::max(observedReady, observedEnds[dependency]);
+            const auto& preceding = graph.GetNodes(dependency);
+            if (preceding.GetStartUs() + preceding.GetDurationUs() > node.GetStartUs()) {
+                return {};
+            }
+        }
+        info.HasQuota |= node.GetKind() == NProto::TLatencyDiagnostics::QUOTA;
+        info.MaxEnd = std::max(info.MaxEnd, node.GetStartUs() + node.GetDurationUs());
+        ++index;
+    }
+    return info;
+}
+}   // namespace
+
+TMaybe<TDuration> ReplayLatencyGraph(
+    const NProto::TLatencyDiagnostics& diagnostics, TDuration totalTime)
+{
+    const auto info = ValidateGraph(diagnostics, totalTime);
+    if (!info) {
+        return {};
+    }
+    // Every path consists entirely of SERVICE time. Removing quota changes
+    // nothing, including launch gaps, parallel joins and the response tail.
+    if (!info->HasQuota) {
+        return totalTime;
+    }
+    TVector<ui64> adjustedEnds;
+    adjustedEnds.reserve(diagnostics.NodesSize());
+    ui64 adjustedFinish = 0;
+    for (const auto& node: diagnostics.GetNodes()) {
+        ui64 observedReady = 0;
+        ui64 adjustedReady = 0;
+        for (const auto dependency: node.GetDependencies()) {
+            const auto& preceding = diagnostics.GetNodes(dependency);
+            observedReady = std::max(observedReady,
+                preceding.GetStartUs() + preceding.GetDurationUs());
             adjustedReady = std::max(adjustedReady, adjustedEnds[dependency]);
         }
-        if (observedReady > node.GetStartUs()) {
-            return {};
-        }
-        const ui64 launchDelay = node.GetStartUs() - observedReady;
-        const ui64 duration =
-            node.GetKind() == NProto::TLatencyDiagnostics::QUOTA
-                ? 0
-                : node.GetDurationUs();
-        // Every adjusted term is bounded by its observed counterpart.
-        const ui64 adjustedEnd = adjustedReady + launchDelay + duration;
-        const ui64 observedEnd = node.GetStartUs() + node.GetDurationUs();
-        observedEnds.push_back(observedEnd);
+        const ui64 duration = node.GetKind() == NProto::TLatencyDiagnostics::QUOTA
+            ? 0 : node.GetDurationUs();
+        const ui64 adjustedEnd = adjustedReady +
+            (node.GetStartUs() - observedReady) + duration;
         adjustedEnds.push_back(adjustedEnd);
-        observedFinish = std::max(observedFinish, observedEnd);
         adjustedFinish = std::max(adjustedFinish, adjustedEnd);
     }
-    // Keep the response tail and all time outside the producer's boundary.
     return TDuration::MicroSeconds(
-        totalTime.MicroSeconds() - observedFinish + adjustedFinish);
+        totalTime.MicroSeconds() - info->MaxEnd + adjustedFinish);
 }
 
 namespace {
@@ -112,6 +132,15 @@ ui32 AddNode(
     }
     return index;
 }
+ui32 AddNode(
+    NProto::TLatencyDiagnostics& graph, ui64 start, ui64 duration,
+    ui32 dependency, NProto::TLatencyDiagnostics::EKind kind =
+        NProto::TLatencyDiagnostics::SERVICE)
+{
+    const ui32 index = AddNode(graph, start, duration, TVector<ui32>{}, kind);
+    graph.MutableNodes(index)->AddDependencies(dependency);
+    return index;
+}
 }   // namespace
 
 TLatencyOperation::TLatencyOperation(bool parallel, ui64 started)
@@ -142,26 +171,40 @@ void TLatencyOperation::AddChild(ui64 started, ui64 finished,
                                  const NProto::TLatencyDiagnostics& graph)
 {
     std::lock_guard lock(Lock);
-    // Validate before copying untrusted wire data; total retained memory and
-    // work are bounded across every child, not merely for each child alone.
-    if (!Complete || started < Started || finished < started ||
-        !ReplayLatencyGraph(graph,
-                            TDuration::MicroSeconds(Micros(started, finished))))
-    {
+    if (!Complete || started < Started || finished < started) {
         Complete = false;
         return;
     }
-    size_t edges = 0;
-    for (const auto& node: graph.GetNodes()) {
-        edges += node.DependenciesSize() + 1;
+    const auto info = ValidateGraph(
+        graph, TDuration::MicroSeconds(Micros(started, finished)));
+    if (!info) {
+        Complete = false;
+        return;
     }
+    // Keep the existing aggregate limits, including root and tail edges,
+    // before retaining any untrusted data or compacting quota-free children.
     Nodes += graph.NodesSize() + 1;
-    Edges += edges;
+    Edges += info->Edges + graph.NodesSize();
     if (Nodes + 2 > MaxLatencyNodes || Edges + Nodes > MaxLatencyEdges) {
         Complete = false;
         return;
     }
-    Children.push_back({started, finished, graph});
+    const ui32 first = ChildNodes.size();
+    if (info->HasQuota) {
+        for (const auto& node: graph.GetNodes()) {
+            ChildNodes.push_back({node.GetStartUs(), node.GetDurationUs(),
+                static_cast<ui32>(ChildDependencies.size()),
+                static_cast<ui32>(node.DependenciesSize()), node.GetKind(),
+                node.GetQuotaReason(), node.HasQuotaReason()});
+            for (ui32 dependency: node.GetDependencies()) {
+                ChildDependencies.push_back(dependency);
+                ChildNodes[first + dependency].Terminal = false;
+            }
+        }
+    }
+    ChildrenOrdered &= Children.empty() || started >= Children.back().Started;
+    Children.push_back({started, finished, info->MaxEnd, first,
+        static_cast<ui32>(ChildNodes.size() - first)});
 }
 
 void TLatencyOperation::AddQuota(
@@ -209,7 +252,7 @@ NProto::TLatencyDiagnostics TLatencyOperation::FinishLeaf(
         const ui64 start = Micros(Started, quota.Started);
         const ui64 end = Micros(Started, quota.Finished);
         auto index = AddNode(graph, cursor, start - cursor, dependency);
-        index = AddNode(graph, start, end - start, {index},
+        index = AddNode(graph, start, end - start, index,
                         NProto::TLatencyDiagnostics::QUOTA);
         graph.MutableNodes(index)->SetQuotaReason(quota.Reason);
         dependency = {index};
@@ -229,46 +272,64 @@ NProto::TLatencyDiagnostics TLatencyOperation::Finish(ui64 finished) const
     if (!graph.GetComplete()) {
         return graph;
     }
-    auto children = Children;
-    std::sort(
-        children.begin(), children.end(),
-        [](const auto& a, const auto& b) { return a.Started < b.Started; });
-    ui32 previous = AddNode(graph, 0, 0, {});
+    // Sort only indices when callbacks arrived out of launch order. Never
+    // copy a child graph, and avoid even this allocation for ordered children.
+    TVector<ui32> order;
+    if (!ChildrenOrdered && (!Parallel || !ChildNodes.empty())) {
+        order.reserve(Children.size());
+        for (ui32 i = 0; i < Children.size(); ++i) order.push_back(i);
+        std::sort(order.begin(), order.end(), [&](ui32 a, ui32 b) {
+            return Children[a].Started < Children[b].Started;
+        });
+    }
     ui64 previousEnd = 0;
-    TVector<ui32> sinks;
-    for (const auto& child: children) {
+    for (size_t i = 0; i < Children.size(); ++i) {
+        const auto& child = Children[order.empty() ? i : order[i]];
         const ui64 start = Micros(Started, child.Started);
         const ui64 end = Micros(Started, child.Finished);
-        if (child.Finished > finished || (!Parallel && start < previousEnd)) {
+        if (child.Finished > finished || (!Parallel && start < previousEnd) ||
+            child.MaxEnd > end - start)
+        {
             graph.SetComplete(false);
             return graph;
         }
-        const ui32 offset = graph.NodesSize();
-        TVector<bool> terminal(child.Graph.NodesSize(), true);
-        ui64 maxEnd = 0;
-        for (const auto& node: child.Graph.GetNodes()) {
-            auto* dst = graph.AddNodes();
-            *dst = node;
-            dst->SetStartUs(start + node.GetStartUs());
-            dst->ClearDependencies();
-            if (!node.DependenciesSize()) {
-                dst->AddDependencies(Parallel ? 0 : previous);
-            }
-            for (auto dependency: node.GetDependencies()) {
-                dst->AddDependencies(offset + dependency);
-                terminal[dependency] = false;
-            }
-            maxEnd = std::max(maxEnd, node.GetStartUs() + node.GetDurationUs());
-        }
-        TVector<ui32> dependencies;
-        for (ui32 i = 0; i < terminal.size(); ++i) {
-            if (terminal[i]) {
-                dependencies.push_back(offset + i);
-            }
-        }
-        previous =
-            AddNode(graph, start + maxEnd, end - start - maxEnd, dependencies);
         previousEnd = end;
+    }
+    if (ChildNodes.empty()) {
+        // A validated quota-free scope is equivalent to one SERVICE span at
+        // every enclosing boundary. There is no quota to shift its critical path.
+        AddNode(graph, 0, graph.GetTotalUs(), TVector<ui32>{});
+        return graph;
+    }
+    graph.MutableNodes()->Reserve(ChildNodes.size() + Children.size() + 2);
+    ui32 previous = AddNode(graph, 0, 0, TVector<ui32>{});
+    TVector<ui32> sinks;
+    sinks.reserve(Children.size());
+    for (size_t i = 0; i < Children.size(); ++i) {
+        const auto& child = Children[order.empty() ? i : order[i]];
+        const ui64 start = Micros(Started, child.Started);
+        const ui64 end = Micros(Started, child.Finished);
+        if (!child.NodeCount) {
+            previous = AddNode(graph, start, end - start, Parallel ? 0 : previous);
+        } else {
+            const ui32 offset = graph.NodesSize();
+            TVector<ui32> dependencies;
+            for (ui32 n = 0; n < child.NodeCount; ++n) {
+                const auto& node = ChildNodes[child.FirstNode + n];
+                auto* dst = graph.AddNodes();
+                dst->SetStartUs(start + node.StartUs);
+                dst->SetDurationUs(node.DurationUs);
+                dst->SetKind(node.Kind);
+                if (node.HasQuotaReason) dst->SetQuotaReason(node.QuotaReason);
+                if (!node.DependencyCount) dst->AddDependencies(Parallel ? 0 : previous);
+                for (ui32 d = 0; d < node.DependencyCount; ++d) {
+                    dst->AddDependencies(offset + ChildDependencies[node.FirstDependency + d]);
+                }
+                if (node.Terminal) dependencies.push_back(offset + n);
+            }
+            previous = AddNode(graph, start + child.MaxEnd,
+                               end - start - child.MaxEnd, dependencies);
+        }
         sinks.push_back(previous);
     }
     ui64 last = 0;
@@ -276,10 +337,12 @@ NProto::TLatencyDiagnostics TLatencyOperation::Finish(ui64 finished) const
         const auto& node = graph.GetNodes(sink);
         last = std::max(last, node.GetStartUs() + node.GetDurationUs());
     }
-    AddNode(graph, last, graph.GetTotalUs() - last,
-            Parallel ? sinks : TVector<ui32>{previous});
+    if (Parallel) {
+        AddNode(graph, last, graph.GetTotalUs() - last, sinks);
+    } else {
+        AddNode(graph, last, graph.GetTotalUs() - last, previous);
+    }
     // Child exclusions do not establish the origin of the outer operation.
-    // Only an explicit rejection at that operation's boundary can do that.
     return graph;
 }
 

@@ -29,7 +29,23 @@ class TLatencyOperation
     {
         ui64 Started;
         ui64 Finished;
-        NProto::TLatencyDiagnostics Graph;
+        ui64 MaxEnd;
+        ui32 FirstNode;
+        ui32 NodeCount;
+    };
+
+    // Retain the supported timing fields without per-node protobuf objects.
+    // Dependencies use child-local indices until the response is assembled.
+    struct TNode
+    {
+        ui64 StartUs;
+        ui64 DurationUs;
+        ui32 FirstDependency;
+        ui32 DependencyCount;
+        NProto::TLatencyDiagnostics::EKind Kind;
+        NProto::TLatencyDiagnostics::EQuotaReason QuotaReason;
+        bool HasQuotaReason;
+        bool Terminal = true;
     };
 
     struct TQuota
@@ -43,6 +59,9 @@ class TLatencyOperation
     const bool Parallel;
     mutable std::mutex Lock;
     TVector<TChild> Children;
+    TVector<TNode> ChildNodes;
+    TVector<ui32> ChildDependencies;
+    bool ChildrenOrdered = true;
     TVector<TQuota> Quota;
     size_t Nodes = 0;
     size_t Edges = 0;
@@ -103,8 +122,10 @@ void FinishLatency(const TLatencyOperationPtr& operation, TResponse& response)
 template <typename TResponse>
 TResponse WithLatencyLeaf(const TCallContextPtr& context, TResponse response)
 {
-    if (auto operation = StartLatency(context)) {
-        *response.MutableHeaders()->MutableLatency() = operation->FinishLeaf();
+    if (context && context->IsLatencyEnabled()) {
+        // This leaf finishes synchronously; no shared lifetime is needed.
+        TLatencyOperation operation;
+        *response.MutableHeaders()->MutableLatency() = operation.FinishLeaf();
     }
     return response;
 }
