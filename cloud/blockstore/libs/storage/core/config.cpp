@@ -306,7 +306,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
      * CompactionRangeSize / (MaxBandwidth / BlockSize / 8000) = 70            \
      */                                                                        \
     xxx(SSDMaxBlobsPerRange,                ui32,      70                     )\
-    xxx(SSDV2MaxBlobsPerRange,              ui32,      20                     )\
+    xxx(SSDV2MaxBlobsPerRange,              ui32,      70                     )\
                                                                                \
     xxx(AllocationUnitHDD,                  ui32,      256                    )\
     xxx(HDDUnitReadBandwidth,               ui32,      30                     )\
@@ -324,7 +324,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     /* TODO: properly calculate def value for this param for network-hdd disks \
      */                                                                        \
     xxx(HDDMaxBlobsPerRange,                ui32,      70                     )\
-    xxx(HDDV2MaxBlobsPerRange,              ui32,      20                     )\
+    xxx(HDDV2MaxBlobsPerRange,              ui32,      70                     )\
                                                                                \
     xxx(SSDMaxBlobsPerUnit,                 ui32,      0                      )\
     xxx(HDDMaxBlobsPerUnit,                 ui32,      0                      )\
