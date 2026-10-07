@@ -167,6 +167,7 @@ struct TTestJournalledDevice final: public IJournalledDevice
 {
     const TString Name;
     NProto::TError StartError;
+    NProto::TError StopError;
 
     ui32 StartCount = 0;
     ui32 StopCount = 0;
@@ -184,7 +185,7 @@ struct TTestJournalledDevice final: public IJournalledDevice
     TFuture<NProto::TError> Stop() final
     {
         ++StopCount;
-        return MakeFuture<NProto::TError>();
+        return MakeFuture(StopError);
     }
 
     [[nodiscard]] auto ReadPages(NProto::TReadPagesRequest /*request*/)
@@ -513,6 +514,10 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, call.Ranges.size());
         UNIT_ASSERT_VALUES_EQUAL(0, call.Ranges[0].FirstPageNo);
         UNIT_ASSERT_VALUES_EQUAL(logMetaBlockCount, call.Ranges[0].PageCount);
+
+        // the device is restarted over the zeroed metadata
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->StopCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->StartCount);
     }
 
     Y_UNIT_TEST_F(ShouldFormatWholeDevice, TFixture)
@@ -553,6 +558,10 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
 
         UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->ZeroPagesCalls.size());
+
+        // nothing to wipe, so the device is not restarted either
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[1]->StopCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[1]->StartCount);
     }
 
     Y_UNIT_TEST_F(ShouldReportFormatErrors, TFixture)
@@ -562,6 +571,40 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         const auto error = FormatDevice(Configs[0].DeviceUUID, true);
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
         UNIT_ASSERT_VALUES_EQUAL("zero failed", error.GetMessage());
+
+        // the pages may be zeroed in part, so the device stays stopped
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->StopCount);
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->StartCount);
+    }
+
+    Y_UNIT_TEST_F(ShouldNotFormatDeviceThatFailsToStop, TFixture)
+    {
+        Devices[0]->StopError = MakeError(E_REJECTED, "stop failed");
+
+        const auto error = FormatDevice(Configs[0].DeviceUUID, false);
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            error.GetCode(),
+            FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL("stop failed", error.GetMessage());
+
+        // the device keeps running, so its pages are left alone
+        UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->ZeroPagesCalls.size());
+        UNIT_ASSERT_VALUES_EQUAL(0, Devices[0]->StartCount);
+    }
+
+    Y_UNIT_TEST_F(ShouldReportDeviceThatFailsToStartAfterFormat, TFixture)
+    {
+        Devices[0]->StartError = MakeError(E_IO, "start failed");
+
+        const auto error = FormatDevice(Configs[0].DeviceUUID, false);
+        UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL("start failed", error.GetMessage());
+
+        // the pages were zeroed before the start was attempted
+        UNIT_ASSERT_VALUES_EQUAL(1, DeviceManager->ZeroPagesCalls.size());
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->StopCount);
+        UNIT_ASSERT_VALUES_EQUAL(1, Devices[0]->StartCount);
     }
 
     Y_UNIT_TEST_F(ShouldStartAndStopDevices, TFixture)

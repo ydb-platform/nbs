@@ -14,6 +14,47 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TFuture<NProto::TFormatDeviceResponse> OnPagesZeroedWhileFormatting(
+    const TFuture<NProto::TError>& future,
+    const IJournalledDevicePtr& journalledDevice)
+{
+    const auto error =
+        SafeExecute<NProto::TError>([&] { return future.GetValue(); });
+
+    // the metadata may be zeroed in part, so the device stays stopped until
+    // a format succeeds
+    if (HasError(error)) {
+        return MakeFuture<NProto::TFormatDeviceResponse>(TErrorResponse(error));
+    }
+
+    return journalledDevice->Start().Apply(
+        [](const auto& future)
+        {
+            NProto::TFormatDeviceResponse response;
+            *response.MutableError() = future.GetValue();
+            return response;
+        });
+}
+
+TFuture<NProto::TFormatDeviceResponse> OnDeviceStoppedWhileFormatting(
+    const TFuture<NProto::TError>& future,
+    const IDevicePtr& device,
+    IJournalledDevicePtr journalledDevice,
+    TPageRangeRef region)
+{
+    const auto& stopError = future.GetValue();
+    if (HasError(stopError)) {
+        return MakeFuture<NProto::TFormatDeviceResponse>(
+            TErrorResponse(stopError));
+    }
+
+    return device->ZeroPages({region}).Apply(
+        [journalledDevice = std::move(journalledDevice)](const auto& future)
+        { return OnPagesZeroedWhileFormatting(future, journalledDevice); });
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TJournalledDeviceHandler final: public IServerBackend
 {
 private:
@@ -113,14 +154,19 @@ public:
             region,
             config.BlockSize);
 
-        return device->ZeroPages({region}).Apply(
-            [](const auto& future)
+        // The journalled device is stopped while the pages are zeroed and
+        // started again over them, so it takes a fresh journal restored from
+        // the empty metadata.
+        return spec->Device->Stop().Apply(
+            [device = std::move(device),
+             journalledDevice = spec->Device,
+             region](const auto& future)
             {
-                NProto::TFormatDeviceResponse response;
-                *response.MutableError() = SafeExecute<NProto::TError>(
-                    [&] { return future.GetValue(); });
-
-                return response;
+                return OnDeviceStoppedWhileFormatting(
+                    future,
+                    device,
+                    journalledDevice,
+                    region);
             });
     }
 
