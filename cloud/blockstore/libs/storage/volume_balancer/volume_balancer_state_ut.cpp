@@ -462,6 +462,71 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         }
     }
 
+    Y_UNIT_TEST(ShouldSelectLightestVolumeWhenEnabledWithPreemptionTypeNone)
+    {
+        TVolumeBalancerState state(
+            CreateStorageConfig(
+                NProto::PREEMPTION_NONE,
+                /*volumeBalancerEnabled=*/true,
+                70,
+                /*featuresConfig=*/nullptr),
+            CreateSwitch(true));
+        TInstant now = TInstant::Seconds(0);
+
+        TVector<NProto::TVolumeBalancerDiskStats> vols{
+            CreateVolumeStats("vol0", "", "", true),
+            CreateVolumeStats("vol1", "", "", true)};
+
+        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+        perfMap["vol0"] = 10;
+        perfMap["vol1"] = 1;
+
+        state.UpdateVolumeStats(vols, std::move(perfMap), 80, now);
+
+        UNIT_ASSERT_VALUES_EQUAL("vol1", state.GetVolumeToPush());
+        UNIT_ASSERT(!state.GetVolumeToPull());
+    }
+
+    Y_UNIT_TEST(ShouldNotPreemptWhenVolumeBalancerSwitchIsDisabled)
+    {
+        auto storageConfig = CreateStorageConfig(
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
+            70,
+            /*featuresConfig=*/nullptr);
+
+        TVolumeBalancerState state(storageConfig, CreateSwitch(false));
+        TInstant now = TInstant::Seconds(0);
+
+        TVolumeBalancerState::TPerfGuaranteesMap perfMap;
+        perfMap["vol0"] = 10;
+        perfMap["vol1"] = 1;
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats("vol0", "", "", true),
+                CreateVolumeStats("vol1", "", "", true)};
+
+            state.UpdateVolumeStats(vols, perfMap, 80, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+
+        {
+            TVector<NProto::TVolumeBalancerDiskStats> vols{
+                CreateVolumeStats("vol0", "", "", false),
+                CreateVolumeStats("vol1", "", "", false)};
+
+            state.UpdateVolumeStats(vols, perfMap, 40, now);
+            now += storageConfig->GetInitialPullDelay();
+            state.UpdateVolumeStats(vols, std::move(perfMap), 40, now);
+
+            UNIT_ASSERT(!state.GetVolumeToPush());
+            UNIT_ASSERT(!state.GetVolumeToPull());
+        }
+    }
+
     Y_UNIT_TEST(ShouldNotMoveNonKikimrDisks)
     {
         TVector<NProto::EStorageMediaKind> kinds {
