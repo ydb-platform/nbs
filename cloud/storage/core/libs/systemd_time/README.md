@@ -30,8 +30,9 @@ uses today's date in the selected timezone; an omitted time means midnight.
 Pass the optional `now` and `timeZone` arguments to use a fixed reference time
 and default timezone. Two-digit years use the usual 1969–2068 window.
 
-Relative spans accept the units in systemd.time, including months of 30.44 days
-and years of 365.25 days; unitless components mean seconds. Repeated times at a
+Relative spans accept the units in systemd.time, including months of 30.4375 days
+(2,629,800 seconds) and years of 365.25 days, so `12month` equals `1y`.
+Unitless components mean seconds. Repeated times at a
 DST transition select the earlier occurrence. Skipped times shift forward by
 the size of the gap, matching `library/cpp/timezone_conversion`. Day keywords
 use calendar days, so they handle days shorter or longer than 24 hours.

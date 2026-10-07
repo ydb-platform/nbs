@@ -186,7 +186,7 @@ bool TryParseGrafanaTimestamp(
             continue;
         }
         if (unit == 'M' || unit == 'Q' || unit == 'y') {
-            // Grafana uses calendar months, unlike systemd's fixed 30.44 days.
+            // Grafana uses calendar months, unlike systemd's fixed 30.4375 days.
             const ui64 monthsPerUnit = unit == 'y' ? 12 : unit == 'Q' ? 3 : 1;
             if (count > 120000 / monthsPerUnit) {
                 return false;
