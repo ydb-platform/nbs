@@ -382,8 +382,12 @@ public:
             }
         }
 
-        // by the difference: a host still in use is never removed and added
-        // back, so a scrape cannot catch it missing
+        for (const auto& host: hosts) {
+            *CountersGroup->GetSubgroup("cell", host.CellId)
+                 ->GetSubgroup("cell_host", host.Fqdn)
+                 ->GetCounter("CellMount") = 1;
+        }
+
         for (const auto& shown: ShownServingCellHosts) {
             const bool cellInUse = AnyOf(
                 hosts,
@@ -394,12 +398,6 @@ public:
                 CountersGroup->GetSubgroup("cell", shown.CellId)
                     ->RemoveSubgroup("cell_host", shown.Fqdn);
             }
-        }
-
-        for (const auto& host: hosts) {
-            *CountersGroup->GetSubgroup("cell", host.CellId)
-                 ->GetSubgroup("cell_host", host.Fqdn)
-                 ->GetCounter("CellMount") = 1;
         }
 
         ShownServingCellHosts = std::move(hosts);

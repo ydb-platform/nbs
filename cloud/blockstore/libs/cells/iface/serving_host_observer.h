@@ -10,12 +10,11 @@ namespace NCloud::NBlockStore::NCells {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IServingCellHostObserver: public ICellConnectionObserver
+struct IServingCellHostObserver
+    : public ICellConnectionObserver
 {
-    // the volume is mounted, so it is known to the volume stats
     virtual void Attach(const TString& diskId) = 0;
 
-    // the volume is unmounted
     virtual void Detach() = 0;
 };
 
