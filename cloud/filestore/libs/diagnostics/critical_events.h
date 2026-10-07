@@ -31,7 +31,6 @@ namespace NCloud::NFileStore{
     xxx(DeferredNodeDestructionLimitExceeded)                                  \
     xxx(ReceivedNodeOpErrorFromShard)                                          \
     xxx(LocalFsMaxSessionNodesInUse)                                           \
-    xxx(LocalFsMaxSessionFileHandlesInUse)                                     \
     xxx(LocalFsMissingHandleNode)                                              \
     xxx(ShardStatsRetrievalTimeout)                                            \
     xxx(CreateNodeRequestResponseMismatchInShard)                              \
