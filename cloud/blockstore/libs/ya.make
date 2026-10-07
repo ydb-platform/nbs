@@ -37,7 +37,6 @@ RECURSE(
     spdk
     storage
     storage/init
-    storage/perf
     storage/protos
     throttling
     validation
