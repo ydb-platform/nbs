@@ -559,7 +559,8 @@ void TIndexTabletActor::CompleteTx_AddBlob(
     }
 
     auto response =
-        std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>(args.Error);
+        std::make_unique<TEvIndexTabletPrivate::TEvAddBlobResponse>(
+            std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 
     EnqueueCollectGarbageIfNeeded(ctx);

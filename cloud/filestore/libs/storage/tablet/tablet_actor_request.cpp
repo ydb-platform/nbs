@@ -84,7 +84,8 @@ bool TIndexTabletActor::AcceptRequestNoSession(
     }
 
     if (FAILED(error.GetCode())) {
-        auto response = std::make_unique<typename TMethod::TResponse>(error);
+        auto response =
+            std::make_unique<typename TMethod::TResponse>(std::move(error));
         NCloud::Reply(ctx, *ev, std::move(response));
         return false;
     }
