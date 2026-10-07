@@ -1,6 +1,6 @@
 #include "group_downtimes.h"
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -22,4 +22,4 @@ void TGroupDowntimes::RegisterSuccess(TInstant now, ui32 groupId)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

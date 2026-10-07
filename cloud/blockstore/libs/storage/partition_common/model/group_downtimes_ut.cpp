@@ -4,7 +4,7 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -81,4 +81,4 @@ Y_UNIT_TEST_SUITE(TGroupDowntimesTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

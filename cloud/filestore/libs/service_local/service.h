@@ -17,6 +17,7 @@ IFileStoreServicePtr CreateLocalFileStore(
     ITimerPtr timer,
     ISchedulerPtr scheduler,
     ILoggingServicePtr logging,
+    NMonitoring::TDynamicCountersPtr counters,
     IFileIOServicePtr fileIOService,
     ITaskQueuePtr taskQueue,
     IProfileLogPtr profileLog);

@@ -347,7 +347,7 @@ TJournal::TJournal(
     , MetaStore(std::move(metaStore))
     , DataStore(std::move(dataStore))
     , DevicePageCount(devicePageCount)
-    , Log(Logging->CreateLog("JOURNAL"))
+    , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
 {}
 
 TFuture<TResultOrError<ui64>> TJournal::Restore()

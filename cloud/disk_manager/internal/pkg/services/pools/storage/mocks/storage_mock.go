@@ -204,6 +204,16 @@ func (s *StorageMock) RetireBaseDisk(
 	return args.Get(0).([]storage.RebaseInfo), args.Error(1)
 }
 
+func (s *StorageMock) RetireBaseDiskUsingBaseDiskAsSource(
+	ctx context.Context,
+	baseDiskID string,
+	useImageSize uint64,
+) ([]storage.RebaseInfo, error) {
+
+	args := s.Called(ctx, baseDiskID, useImageSize)
+	return args.Get(0).([]storage.RebaseInfo), args.Error(1)
+}
+
 func (s *StorageMock) IsBaseDiskRetired(
 	ctx context.Context,
 	baseDiskID string,

@@ -64,9 +64,9 @@ struct TResponseEvent
     {}
 
     template <typename ...Args>
-    TResponseEvent(const NProto::TError& error, Args&& ...args)
+    TResponseEvent(NProto::TError error, Args&& ...args)
         : TArgs(std::forward<Args>(args)...)
-        , Error(error)
+        , Error(std::move(error))
     {}
 
     const NProto::TError& GetError() const
@@ -124,10 +124,10 @@ struct TProtoResponseEvent
         TProtoResponseEvent::Record = std::forward<T>(proto);
     }
 
-    TProtoResponseEvent(const NProto::TError& error)
+    TProtoResponseEvent(NProto::TError error)
     {
         if (error.GetCode() != 0 || !error.GetMessage().empty()) {
-            *TProtoResponseEvent::Record.MutableError() = error;
+            *TProtoResponseEvent::Record.MutableError() = std::move(error);
         }
     }
 

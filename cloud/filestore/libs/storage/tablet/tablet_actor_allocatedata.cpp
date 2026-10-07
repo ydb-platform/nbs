@@ -253,7 +253,8 @@ void TIndexTabletActor::CompleteTx_AllocateData(
 
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvAllocateDataResponse>(args.Error);
+    auto response = std::make_unique<TEvService::TEvAllocateDataResponse>(
+        std::move(args.Error));
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 

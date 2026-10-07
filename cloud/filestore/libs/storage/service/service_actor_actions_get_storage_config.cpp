@@ -97,7 +97,8 @@ void TGetStorageConfigActionActor::HandleError(
     const TActorContext& ctx,
     NProto::TError error)
 {
-    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(error);
+    auto response = std::make_unique<TEvService::TEvExecuteActionResponse>(
+        std::move(error));
     google::protobuf::util::MessageToJsonString(
         NProtoPrivate::TGetStorageConfigResponse(),
         response->Record.MutableOutput()

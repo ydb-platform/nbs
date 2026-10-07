@@ -6,6 +6,7 @@ SRCS(
 
 PEERDIR(
     cloud/filestore/libs/storage/api
+    cloud/filestore/libs/storage/disk_registry_proxy/impl
     cloud/filestore/libs/storage/service
     cloud/filestore/libs/storage/ss_proxy
     cloud/filestore/libs/storage/tablet

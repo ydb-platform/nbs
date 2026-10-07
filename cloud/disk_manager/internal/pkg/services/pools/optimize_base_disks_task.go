@@ -122,13 +122,9 @@ func (t *optimizeBaseDisksTask) ensureResourcesToOptimizeCollected(
 				)
 			}
 
-			// TODO(https://github.com/ydb-platform/nbs/issues/6684):
-			// setting capacity to 0 may cause a race. If a slot is acquired
-			// on an idle disk between ConfigurePool and RetireBaseDisk, the
-			// retire triggers a rebase that creates a new base disk with srcDisk=nil.
-			// The scheduler (takeBaseDisksToSchedule) never picks it up: no SrcDisk
-			// for the global path, and capacity=0 excludes the pool from the per-pool
-			// path. The rebase task retries indefinitely, hanging the optimization.
+			// A disk may acquire an overlay before retirement. Idle cleanup
+			// explicitly uses that disk as source, keeping its replacement
+			// schedulable even when the pool capacity becomes zero.
 			newCapacity := uint32(0)
 			if poolInfo.Capacity > reduction {
 				newCapacity = poolInfo.Capacity - reduction
@@ -287,6 +283,11 @@ func (t *optimizeBaseDisksTask) Run(
 			"",
 			&protos.RetireBaseDiskRequest{
 				BaseDiskId: baseDiskID,
+				// Required for TTL cleanup: a concurrent acquire can make this disk
+				// busy after pool capacity is reduced to zero. Use it as source so
+				// the global scheduling path can pick up its replacement.
+				// See https://github.com/ydb-platform/nbs/issues/6684.
+				UseBaseDiskAsSrc: true,
 			},
 		)
 		if err != nil {

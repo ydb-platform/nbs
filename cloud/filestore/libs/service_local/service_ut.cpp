@@ -15,6 +15,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
@@ -307,6 +308,8 @@ struct TTestBootstrap
     ISchedulerPtr Scheduler = CreateScheduler();
     ITaskQueuePtr TaskQueue = CreateTaskQueueStub();
     IFileIOServicePtr AIOService = CreateAIOService();
+    NMonitoring::TDynamicCountersPtr Counters =
+        MakeIntrusive<NMonitoring::TDynamicCounters>();
 
     TTempDirectoryPtr Cwd;
     TLocalFileStoreConfigPtr Config;
@@ -337,6 +340,7 @@ struct TTestBootstrap
             Timer,
             Scheduler,
             Logging,
+            Counters,
             AIOService,
             TaskQueue,
             nullptr   // no profile log
@@ -365,6 +369,7 @@ struct TTestBootstrap
             Timer,
             Scheduler,
             Logging,
+            Counters,
             AIOService,
             TaskQueue,
             nullptr   // no profile log
@@ -1398,6 +1403,73 @@ Y_UNIT_TEST_SUITE(LocalFileStore)
         bootstrap.DestroyHandle(handles[0]);
         bootstrap.CreateHandle(nodes[1], "", TCreateHandleArgs::RDNLY)
             .GetHandle();
+    }
+
+    Y_UNIT_TEST(ShouldCountSessionFileHandleLimitRejections)
+    {
+        constexpr ui32 maxHandles = 2;
+        constexpr ui32 maxNodes = 4;
+
+        TTestBootstrap bootstrap("fs", "client", {}, maxNodes, maxHandles);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<i64>(maxHandles),
+            bootstrap.Counters->GetCounter("MaxHandlePerSessionCount")
+                ->Val());
+        auto rejected = bootstrap.Counters->GetCounter(
+            "SessionFileHandleLimitRejectedCount",
+            true /* derivative */);
+        UNIT_ASSERT_VALUES_EQUAL(0, rejected->Val());
+
+        TVector<ui64> nodes;
+        for (ui32 i = 0; i < maxNodes; i++) {
+            nodes.push_back(
+                CreateFile(bootstrap, RootNodeId, ToString(i), 0755));
+        }
+
+        // node limit: E_FS_NOSPC from TryInsertNode, not a handle rejection
+        auto nodeLimitResponse = bootstrap.AssertCreateHandleFailed(
+            RootNodeId,
+            "new",
+            TCreateHandleArgs::CREATE);
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_FS_NOSPC,
+            nodeLimitResponse.GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, rejected->Val());
+
+        for (ui32 i = 0; i < maxHandles; i++) {
+            bootstrap.CreateHandle(nodes[i], "", TCreateHandleArgs::RDNLY);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(0, rejected->Val());
+
+        for (ui32 i = maxHandles; i < maxNodes; i++) {
+            bootstrap.AssertCreateHandleFailed(
+                nodes[i],
+                "",
+                TCreateHandleArgs::RDNLY);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<i64>(i - maxHandles + 1),
+                rejected->Val());
+        }
+
+        // another filesystem and session share the same counter
+        bootstrap.CreateFileStore("fs2", "cloud", "folder", 100500, 500100);
+        bootstrap.Headers.SessionId =
+            bootstrap.CreateSession("fs2", "client2", "")
+                .GetSession()
+                .GetSessionId();
+        for (ui32 i = 0; i <= maxHandles; i++) {
+            auto node = CreateFile(bootstrap, RootNodeId, ToString(i), 0755);
+            if (i < maxHandles) {
+                bootstrap.CreateHandle(node, "", TCreateHandleArgs::RDNLY);
+            } else {
+                bootstrap.AssertCreateHandleFailed(
+                    node,
+                    "",
+                    TCreateHandleArgs::RDNLY);
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(3, rejected->Val());
     }
 
     Y_UNIT_TEST(ShouldCreateFileNode)

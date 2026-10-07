@@ -15,6 +15,10 @@ using TLocalFileStoreConfigPtr = std::shared_ptr<TLocalFileStoreConfig>;
 class TLocalFileSystem;
 using TLocalFileSystemPtr = std::shared_ptr<TLocalFileSystem>;
 
+struct TLocalFileSystemCounters;
+using TLocalFileSystemCountersPtr =
+    std::shared_ptr<TLocalFileSystemCounters>;
+
 class TSession;
 using TSessionPtr = std::shared_ptr<TSession>;
 

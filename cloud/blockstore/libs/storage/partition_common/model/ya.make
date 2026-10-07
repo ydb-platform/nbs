@@ -13,14 +13,12 @@ SRCS(
     fresh_blob.cpp
     group_downtimes.cpp
     operation_status.cpp
-    part_counters_wrapper.cpp
     resource_metrics_updates_queue.cpp
 )
 
 PEERDIR(
     cloud/blockstore/libs/common
     cloud/blockstore/libs/diagnostics
-    cloud/blockstore/libs/storage/core
     cloud/blockstore/libs/storage/protos
     cloud/blockstore/libs/storage/protos_ydb
     cloud/blockstore/public/api/protos
