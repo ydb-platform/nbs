@@ -16,14 +16,11 @@ struct TProfileLogFile
 // Prefer a .YYYY-MM-DDTHH:MM suffix (UTC); stat the file only as a fallback.
 TMaybe<TInstant> GetProfileLogEndTime(const TString& path);
 
-// A single-file list is always returned unchanged.
-// Selection allows 300 seconds of drift on both sides of the query interval.
-// For the widened valid interval, until < first end selects only the first file, and
-// since > last start (the preceding file's end) selects only the last file.
-// Files are supplied in processing order. Each starts at the preceding file's
-// end; the first has no lower bound.
-// Selection uses metadata only. Unknown bounds are unbounded; reversed
-// intervals are retained.
+// Files must be sorted by EndTime. Each starts at the preceding file's end;
+// the first is unbounded below and the last is unbounded above.
+// Selection uses metadata only, allowing 300 seconds of drift on each side.
+// Unknown bounds are unbounded. Since >= until returns an empty list;
+// otherwise a single-file list is always retained.
 TVector<TProfileLogFile> SelectProfileLogFiles(
     TVector<TProfileLogFile> files,
     const TMaybe<TInstant>& since,

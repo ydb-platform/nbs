@@ -38,46 +38,21 @@ TVector<TProfileLogFile> SelectProfileLogFiles(
     if (files.size() <= 1) {
         return files;
     }
-    // Widen only file selection; per-request time filters remain exact.
-    const auto drift = TDuration::Seconds(300);
-    const auto selectionSince =
-        since ? TMaybe<TInstant>(*since - drift) : Nothing();
-    const auto selectionUntil =
-        until ? TMaybe<TInstant>(*until + drift) : Nothing();
-    if (selectionSince && selectionUntil && *selectionSince >= *selectionUntil) {
+    if (since && until && *since >= *until) {
         return {};
     }
 
-    // Return only the first file if until precedes its end.
-    if (selectionUntil && files.front().EndTime &&
-        *selectionUntil < *files.front().EndTime)
-    {
-        files.resize(1);
-        return files;
-    }
-
-    // Return only the last file if since follows its start.
-    const auto& lastStart = files[files.size() - 2].EndTime;
-    if (selectionSince && lastStart && *selectionSince > *lastStart) {
-        files.front() = std::move(files.back());
-        files.resize(1);
-        return files;
-    }
-
+    const auto drift = TDuration::Seconds(300);
     size_t selected = 0;
     TMaybe<TInstant> previousEnd;
     for (size_t i = 0; i < files.size(); ++i) {
-        const auto& file = files[i];
+        // Preserve the original bounds before compacting the vector.
         const auto start = previousEnd;
-        // Update even for excluded files: the chain precedes interval
-        // filtering.
-        previousEnd = file.EndTime;
-        const bool reversed = start && file.EndTime && *start > *file.EndTime;
-        if (reversed ||
-            ((!selectionSince || !file.EndTime ||
-              *file.EndTime >= *selectionSince) &&
-             (!selectionUntil || !start || *start <= *selectionUntil)))
-        {
+        previousEnd = files[i].EndTime;
+        const auto end = i + 1 < files.size() ? previousEnd : Nothing();
+        const bool afterSince = !since || !end || *end + drift >= *since;
+        const bool beforeUntil = !until || !start || *start <= *until + drift;
+        if (afterSince && beforeUntil) {
             if (selected != i) {
                 files[selected] = std::move(files[i]);
             }
