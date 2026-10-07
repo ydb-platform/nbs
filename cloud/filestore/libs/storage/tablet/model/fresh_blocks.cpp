@@ -45,8 +45,10 @@ bool TFreshBlocks::AddBlock(
     ui64 maxCommitId)
 {
     Y_ABORT_UNLESS(blockSize >= blockData.size());
-    TString buffer(blockSize, 0);
-    memcpy(buffer.Detach(), blockData.data(), blockData.size());
+    TString buffer;
+    buffer.reserve(blockSize);
+    buffer.append(blockData);
+    buffer.resize(blockSize, 0);
     auto blockBuffer = CreateBlockBuffer(
         {blockIndex * blockSize, blockSize, blockSize},
         std::move(buffer));
