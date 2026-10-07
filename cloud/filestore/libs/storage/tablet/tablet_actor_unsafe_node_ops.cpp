@@ -843,7 +843,7 @@ void TIndexTabletActor::CompleteTx_UnsafeCreateHandle(
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvUnsafeCreateHandleResponse>(
-            args.Error);
+            std::move(args.Error));
 
     LOG_INFO(
         ctx,

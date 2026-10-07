@@ -125,7 +125,8 @@ void TIndexTabletActor::CompleteTx_RemoveNodeXAttr(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvRemoveNodeXAttrResponse>(args.Error);
+    auto response = std::make_unique<TEvService::TEvRemoveNodeXAttrResponse>(
+        std::move(args.Error));
     CompleteResponse<TEvService::TRemoveNodeXAttrMethod>(
         response->Record,
         args.RequestInfo->CallContext,

@@ -219,7 +219,7 @@ public:
         if (HasError(error)) {
             Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TReadDataResponse response;
-            *response.MutableError() = error;
+            *response.MutableError() = std::move(error);
             return MakeFuture(std::move(response));
         }
 
@@ -317,7 +317,7 @@ public:
         if (HasError(error)) {
             Y_DEBUG_ABORT_UNLESS(false, "%s", error.GetMessage().c_str());
             NProto::TWriteDataResponse response;
-            *response.MutableError() = error;
+            *response.MutableError() = std::move(error);
             return MakeFuture(std::move(response));
         }
 

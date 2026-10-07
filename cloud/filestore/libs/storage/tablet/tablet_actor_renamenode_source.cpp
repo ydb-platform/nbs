@@ -559,7 +559,7 @@ void TIndexTabletActor::CompleteTx_PrepareRenameNodeInSource(
 
         using TResponse =
             TEvIndexTabletPrivate::TEvPrepareRenameNodeInSourceResponse;
-        auto response = std::make_unique<TResponse>(args.Error);
+        auto response = std::make_unique<TResponse>(std::move(args.Error));
         response->OpLogEntryId = args.OpLogEntry.GetEntryId();
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
