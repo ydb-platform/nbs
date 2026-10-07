@@ -21,6 +21,7 @@ PEERDIR(
     cloud/storage/core/protos
 
     library/cpp/coroutine/listener
+    library/cpp/threading/future
 )
 
 END()

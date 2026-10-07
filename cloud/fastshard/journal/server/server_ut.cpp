@@ -1016,8 +1016,11 @@ struct TServiceFixture: public NUnitTest::TBaseFixture
                      Logging,
                      Executor,
                      std::make_shared<TInMemoryDeviceManager>(),
-                     TNetworkAddress{Port},
-                     false,   // journalEnabled
+                     TServerConfig{
+                         .ListenAddress = TNetworkAddress{Port},
+                         .JournalEnabled = false,
+                         .RestoreConcurrency = 1,
+                     },
                      {{.DeviceUUID = DeviceUUID,
                        .BlocksCount = 1024,
                        .BlockSize = DefaultBlockSize}})

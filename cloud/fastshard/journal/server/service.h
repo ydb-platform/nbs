@@ -41,6 +41,7 @@ struct TJournalledDeviceSpec
 
 IServerBackendPtr CreateService(
     IDeviceManagerPtr deviceManager,
-    TVector<TJournalledDeviceSpec> journalledDevices);
+    TVector<TJournalledDeviceSpec> journalledDevices,
+    ui32 restoreConcurrency);
 
 }   // namespace NCloud::NJournalled

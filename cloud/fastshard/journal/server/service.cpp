@@ -3,17 +3,26 @@
 #include "device_manager.h"
 
 #include <cloud/fastshard/journal/iface/journalled_device.h>
-
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
+
+#include <library/cpp/threading/future/async_semaphore.h>
 
 #include <util/generic/algorithm.h>
 #include <util/string/builder.h>
+
+#include <functional>
 
 namespace NCloud::NJournalled {
 
 using namespace NThreading;
 
 namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TDeviceOperation = std::function<TFuture<void>(
+    const TString& uuid,
+    const IJournalledDevicePtr& device)>;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -42,53 +51,53 @@ private:
     const IDeviceManagerPtr DeviceManager;
     const THashMap<TString, TJournalledDeviceSpec> Devices;
     const TVector<const TJournalledDeviceSpec*> SortedDevices;
+    const ui32 RestoreConcurrency;
 
 public:
     TJournalledDeviceHandler(
         IDeviceManagerPtr deviceManager,
-        THashMap<TString, TJournalledDeviceSpec> devices)
+        THashMap<TString, TJournalledDeviceSpec> devices,
+        ui32 restoreConcurrency)
         : DeviceManager(std::move(deviceManager))
         , Devices(std::move(devices))
         , SortedDevices(SortDevices(Devices))
+        , RestoreConcurrency(restoreConcurrency)
     {}
 
     // IServerBackend
 
     void Start() override
     {
-        TVector<TFuture<NProto::TError>> futures;
-        futures.reserve(Devices.size());
+        auto future = RunOnDevices(
+            RestoreConcurrency,
+            [](const TString& uuid, const IJournalledDevicePtr& device)
+            {
+                return device->Start().Apply(
+                    [uuid](const auto& future)
+                    {
+                        auto error = ExtractResponse(future);
+                        if (HasError(error)) {
+                            ReportJournalledDeviceCreationError(
+                                TStringBuilder()
+                                << "unable to start device " << uuid.Quote()
+                                << ": " << FormatError(error));
+                        }
+                    });
+            });
 
-        for (const auto& [uuid, spec]: Devices) {
-            auto future = spec.Device->Start().Apply(
-                [uuid](const auto& future)
-                {
-                    auto error = ExtractResponse(future);
-                    if (HasError(error)) {
-                        ReportJournalledDeviceCreationError(
-                            TStringBuilder()
-                            << "unable to start device " << uuid.Quote() << ": "
-                            << FormatError(error));
-                    }
-                    return error;
-                });
-
-            futures.push_back(std::move(future));
-        }
-
-        WaitAll(futures).Wait();
+        future.Wait();
     }
 
     void Stop() override
     {
-        TVector<TFuture<NProto::TError>> futures;
-        futures.reserve(Devices.size());
+        auto future = RunOnDevices(
+            Devices.size(),
+            [](const TString& /*uuid*/, const IJournalledDevicePtr& device)
+            {
+                return device->Stop().IgnoreResult();
+            });
 
-        for (const auto& [uuid, spec]: Devices) {
-            futures.push_back(spec.Device->Stop());
-        }
-
-        WaitAll(futures).Wait();
+        future.Wait();
     }
 
     [[nodiscard]] auto AcquireDevices(NProto::TAcquireDevicesRequest request)
@@ -235,6 +244,41 @@ public:
     }
 
 private:
+    // Runs an operation on every device with at most |limit| of them in
+    // flight: each device that completes lets the next one in.
+    TFuture<void> RunOnDevices(size_t limit, TDeviceOperation operation) const
+    {
+        if (Devices.empty()) {
+            return MakeFuture();
+        }
+
+        auto semaphore = TAsyncSemaphore::Make(Max<size_t>(limit, 1));
+
+        TVector<TFuture<void>> futures;
+        futures.reserve(Devices.size());
+
+        for (const auto& [uuid, spec]: Devices) {
+            auto future = semaphore->AcquireAsync().Apply(
+                [uuid, device = spec.Device, operation](const auto& acquired)
+                {
+                    //
+                    // Hold the slot until the operation completes; an
+                    // operation that throws gives it back right away
+                    //
+
+                    auto release = acquired.GetValue()->MakeAutoRelease();
+                    auto future = operation(uuid, device);
+                    future.Subscribe(release.DeferRelease());
+
+                    return future;
+                });
+
+            futures.push_back(std::move(future));
+        }
+
+        return WaitAll(futures);
+    }
+
     TResultOrError<IJournalledDevicePtr> GetDevice(
         const TString& deviceUUID,
         const TString& clientId,
@@ -286,7 +330,8 @@ private:
 
 IServerBackendPtr CreateService(
     IDeviceManagerPtr deviceManager,
-    TVector<TJournalledDeviceSpec> journalledDevices)
+    TVector<TJournalledDeviceSpec> journalledDevices,
+    ui32 restoreConcurrency)
 {
     THashMap<TString, TJournalledDeviceSpec> deviceMap;
     for (auto device: journalledDevices) {
@@ -296,7 +341,8 @@ IServerBackendPtr CreateService(
 
     return std::make_shared<TJournalledDeviceHandler>(
         std::move(deviceManager),
-        std::move(deviceMap));
+        std::move(deviceMap),
+        restoreConcurrency);
 }
 
 }   // namespace NCloud::NJournalled

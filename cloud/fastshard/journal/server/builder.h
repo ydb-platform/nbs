@@ -15,14 +15,22 @@ namespace NCloud::NJournalled {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TServerConfig
+{
+    TNetworkAddress ListenAddress;
+    bool JournalEnabled = false;
+    ui32 RestoreConcurrency = 1;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TServerBuilder
 {
 private:
     ILoggingServicePtr Logging;
     TExecutorPtr Executor;
     IDeviceManagerPtr DeviceManager;
-    const TNetworkAddress ListenAddress;
-    const bool JournalEnabled;
+    TServerConfig ServerConfig;
     TVector<TJournalledDeviceConfig> DeviceConfigs;
 
 public:
@@ -30,8 +38,7 @@ public:
         ILoggingServicePtr logging,
         TExecutorPtr executor,
         IDeviceManagerPtr deviceManager,
-        const TNetworkAddress& listenAddress,
-        bool journalEnabled,
+        TServerConfig serverConfig,
         TVector<TJournalledDeviceConfig> deviceConfigs);
 
     // Devices that fail to be created are reported and skipped; throws
