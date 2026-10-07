@@ -1,4 +1,5 @@
 #include <cloud/storage/core/libs/systemd_time/timestamp.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NSystemdTime {
@@ -93,6 +94,27 @@ Y_UNIT_TEST_SUITE(TTimestampParser)
         AssertParse("70-01-01 UTC", "1970-01-01T00:00:00Z");
         AssertParse("2400-02-29 UTC", "2400-02-29T00:00:00Z");
         AssertParse("9999-12-31 23:59:59 UTC", "9999-12-31T23:59:59Z");
+    }
+
+    Y_UNIT_TEST(CalendarFractionTruncation)
+    {
+        AssertParse("11:12:13.1234567", "2012-11-23T03:12:13.123456Z");
+        AssertParse(
+            "2012-11-23T11:12:13.123456789Z",
+            "2012-11-23T11:12:13.123456Z");
+        AssertParse(
+            "2012-11-23T11:12:13.123456789+02:00",
+            "2012-11-23T09:12:13.123456Z");
+        AssertParse(
+            "2018-08-09 07:06:05.123456789123456789123456789",
+            "2018-08-08T23:06:05.123456Z");
+        AssertParse(
+            "2012-11-23 23:59:59.999999999999999999999999999 UTC",
+            "2012-11-23T23:59:59.999999Z");
+        AssertParse("1970-01-01T00:00:00.0000009Z", "1970-01-01T00:00:00Z");
+        AssertParse(
+            "2012-11-23 11:12:13.1234567 UTC +1s",
+            "2012-11-23T11:12:14.123456Z");
     }
 
     Y_UNIT_TEST(RelativeTimeUnits)
@@ -239,7 +261,8 @@ Y_UNIT_TEST_SUITE(TTimestampParser)
                  "11:12:60",
                  "11:12.5",
                  "11:12:13.",
-                 "11:12:13.1234567",
+                 "11:12:13.1234567x",
+                 "11:12:13.1234567.8",
                  "2012-11-23T11:12+25:00",
                  "2012-11-23T11:12+01:60",
                  "2012-11-23T11:12+0100",

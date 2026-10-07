@@ -314,15 +314,16 @@ bool ParseAbsolute(
                     return false;
                 }
                 if (input.SkipPrefix(".")) {
-                    ui64 fraction;
-                    size_t digits;
-                    if (!ReadNumber(input, fraction, digits) || digits > 6) {
+                    size_t digits = 0;
+                    while (digits < input.size() && IsAsciiDigit(input[digits]))
+                    {
+                        ++digits;
+                    }
+                    if (!digits) {
                         return false;
                     }
-                    microseconds = fraction;
-                    for (; digits < 6; ++digits) {
-                        microseconds *= 10;
-                    }
+                    microseconds = ScaleFraction(input.Head(digits), Second);
+                    input.Skip(digits);
                 }
             }
             if (hour > 23 || minute > 59 || second > 59) {

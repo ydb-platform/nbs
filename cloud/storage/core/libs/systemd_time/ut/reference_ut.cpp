@@ -1,4 +1,5 @@
 #include <cloud/storage/core/libs/systemd_time/timestamp.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NSystemdTime {
@@ -258,7 +259,6 @@ Y_UNIT_TEST_SUITE(TChronoReferenceCases)
                  "today - 1s + 5m",
                  "2018/08/12 01:02:03.1234",
                  "2018/08/12 01:02:03",
-                 "2018-08-09 07:06:05.123456789123456789123456789",
                  "+1000000000d 100s",
                  "+100s 1000000000d",
                  "2018-08-09 07:06:05.123 4",

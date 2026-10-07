@@ -16,9 +16,8 @@ if (NSystemdTime::TryParseTimestamp("30min ago", timestamp)) {
 Supported inputs include dates with two-digit or four-digit years, optional
 times, time-only inputs, optional English weekdays (validated against the date),
 `now`, `today`, `yesterday`, `tomorrow`, relative spans (`+2h30min`, `5s ago`,
-`1day left`), and Unix epoch seconds (`@1395716396`). Seconds can have up to six
-fractional digits in calendar timestamps; epoch seconds and relative spans
-truncate fractions below microsecond precision.
+`1day left`), and Unix epoch seconds (`@1395716396`). Calendar timestamps, epoch
+seconds, and relative spans all truncate fractions below microsecond precision.
 
 Timezones may be `UTC`, `Z`, IANA names such as `Asia/Tokyo` and `CET`, or numeric
 offsets (`+05`, `-0530`, `+05:30`). Directly attached offsets must use `Z` or
