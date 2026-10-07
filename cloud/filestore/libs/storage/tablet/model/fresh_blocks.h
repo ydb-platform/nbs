@@ -6,8 +6,6 @@
 #include "block.h"
 #include "layer.h"
 
-#include <cloud/filestore/libs/storage/model/block_buffer.h>
-
 #include <util/generic/map.h>
 #include <util/generic/maybe.h>
 #include <util/generic/strbuf.h>
@@ -16,17 +14,6 @@
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-struct TBlockDataHolder
-{
-    size_t BufferBlockIndex;
-    IBlockBufferPtr BlockBuffer;
-
-    TStringBuf GetBlockData() const
-    {
-        return BlockBuffer->GetBlock(BufferBlockIndex);
-    }
-};
 
 class TFreshBlocks
 {
