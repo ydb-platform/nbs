@@ -656,6 +656,10 @@ public:
     // still being built happens now.
     void CompleteSetup()
     {
+        // before the flag goes up: until then no move can finish, so this
+        // cannot overtake the report a move makes
+        ReportServingHost(GetHost());
+
         with_lock (Lock) {
             BindingInstalled = true;
         }
@@ -671,6 +675,13 @@ public:
     }
 
 private:
+    void ReportServingHost(const TString& fqdn)
+    {
+        if (Observer) {
+            Observer->OnServingHostChanged(fqdn);
+        }
+    }
+
     // The hosts a move away must not land on. Under Lock.
     THashSet<TString> HostsToAvoidLocked()
     {
@@ -843,6 +854,8 @@ private:
                     << "transport switching did not start: "
                     << CurrentExceptionMessage());
         }
+
+        ReportServingHost(binding->HostConfig.GetFqdn());
 
         auto self = shared_from_this();
         const bool targetDead =

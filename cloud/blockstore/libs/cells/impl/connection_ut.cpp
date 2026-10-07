@@ -266,6 +266,7 @@ struct TTestGrpcClient: public NClient::IMultiHostClient
 struct TTestObserver: public ICellConnectionObserver
 {
     TVector<TString> Reported;
+    TVector<TString> ServingHosts;
 
     // runs on the thread that completes the mount, which is also the one
     // that acts on the response - a way for a test to get between the two
@@ -277,6 +278,11 @@ struct TTestObserver: public ICellConnectionObserver
         if (OnReported) {
             OnReported(fqdn);
         }
+    }
+
+    void OnServingHostChanged(TString fqdn) noexcept override
+    {
+        ServingHosts.push_back(std::move(fqdn));
     }
 };
 
@@ -1541,6 +1547,22 @@ Y_UNIT_TEST_SUITE(TCellConnectionTest)
             static_cast<int>(NProto::NO_ENCRYPTION),
             static_cast<int>(mount.GetEncryptionSpec().GetMode()));
         UNIT_ASSERT(mount.GetForceDisableEncryption());
+    }
+
+    Y_UNIT_TEST(ShouldReportServingHostOnConnectAndAfterEveryMove)
+    {
+        TTestEnv env(NProto::CELL_DATA_TRANSPORT_GRPC, false, 0, true);
+
+        auto connection = env.Connect("host-a");
+        UNIT_ASSERT_VALUES_EQUAL(
+            TVector<TString>{"host-a"},
+            env.Observer->ServingHosts);
+
+        env.Pool->SetHostAlive("host-a", false);
+        UNIT_ASSERT_VALUES_EQUAL("host-b", connection->GetHost());
+        UNIT_ASSERT_VALUES_EQUAL(
+            (TVector<TString>{"host-a", "host-b"}),
+            env.Observer->ServingHosts);
     }
 }
 
