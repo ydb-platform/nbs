@@ -1,6 +1,6 @@
 #include "operation_status.h"
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 using namespace NJson;
 
@@ -24,4 +24,4 @@ void DumpOperationState(IOutputStream& out, const TOperationState& op)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

@@ -104,7 +104,6 @@ struct TPartitionStateOptions
     ui32 MixedIndexCacheSize = 0;
     ui64 AllocationUnit = 10000;
     ui32 MaxBlobsPerUnit = 100;
-    ui64 MaxMixedBytesPerUnit = 0;
 };
 
 TPartitionState MakeState(
@@ -129,7 +128,6 @@ TPartitionState MakeState(
         options.MixedIndexCacheSize,
         options.AllocationUnit,
         options.MaxBlobsPerUnit,
-        options.MaxMixedBytesPerUnit,
         10,   // maxBlobsPerRange,
         1,    // compactionRangeCountPerRun
         std::move(threadSafeState),
@@ -830,8 +828,6 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         ui64 allocationUnit,
         ui32 maxBlobsPerUnit,
         ui32 maxBlobsPerDisk,
-        ui64 maxMixedBytesPerUnit = 0,
-        ui64 maxMixedBlocksPerDisk = 0,
         ui32 blockSize = DefaultBlockSize)
     {
         auto config = DefaultConfig(1, diskSize / blockSize);
@@ -843,12 +839,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
                 .MixedIndexCacheSize = 1,
                 .AllocationUnit = allocationUnit,
                 .MaxBlobsPerUnit = maxBlobsPerUnit,
-                .MaxMixedBytesPerUnit = maxMixedBytesPerUnit,
             });
         UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
-        UNIT_ASSERT_VALUES_EQUAL(
-            maxMixedBlocksPerDisk,
-            state.GetMaxMixedBlocksPerDisk());
     }
 
     Y_UNIT_TEST(CheckMaxBlobsPerDisk)
@@ -860,7 +852,7 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         CheckMaxBlobsPerDisk(10_GB, 32_GB, 100, 32);
         CheckMaxBlobsPerDisk(32_GB, 256_GB, 800, 100);
         CheckMaxBlobsPerDisk(48_GB, 256_GB, 800, 150);
-        CheckMaxBlobsPerDisk(48_GB, 32_GB, 100, 150, 0, 0, 16_KB);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 100, 150, 16_KB);
     }
 
     Y_UNIT_TEST(ShouldRoundMaxBlobsPerDiskUp)
@@ -890,34 +882,8 @@ Y_UNIT_TEST_SUITE(TPartitionStateTest)
         CheckMaxBlobsPerDisk(1_MB, 0, 1, 256);
         CheckMaxBlobsPerDisk(1_MB, 1, 2, 512);
         CheckMaxBlobsPerDisk(1_MB, DefaultBlockSize - 1, 3, 768);
-        CheckMaxBlobsPerDisk(1_MB, 4_KB, 1, 64, 0, 0, 16_KB);
+        CheckMaxBlobsPerDisk(1_MB, 4_KB, 1, 64, 16_KB);
         CheckMaxBlobsPerDisk(32_GB, 1, Max<ui32>(), Max<ui32>());
-
-        // Mixed bytes per unit are capped by the allocation unit.
-        CheckMaxBlobsPerDisk(1_MB, 0, 0, 0, 1_MB, 0);
-        CheckMaxBlobsPerDisk(1_MB, 1_KB, 0, 0, 1_MB, 256);
-        CheckMaxBlobsPerDisk(1_MB, 4_KB, 0, 0, 1_MB, 64, 16_KB);
-    }
-
-    Y_UNIT_TEST(CheckMaxMixedBlocksPerDisk)
-    {
-        CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0, 100 * DefaultBlockSize, 1000);
-        CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0, 0, 0);
-        CheckMaxBlobsPerDisk(10_GB, 32_GB, 0, 0, 100 * DefaultBlockSize, 32);
-        CheckMaxBlobsPerDisk(16_GB, 32_GB, 0, 0, 100 * DefaultBlockSize, 50);
-        CheckMaxBlobsPerDisk(48_GB, 32_GB, 0, 0, 100 * DefaultBlockSize, 150);
-        CheckMaxBlobsPerDisk(10_GB, 32_GB, 0, 0, 0, 0);
-        CheckMaxBlobsPerDisk(
-            320_GB,
-            32_GB,
-            0,
-            0,
-            8_GB,
-            80_GB / DefaultBlockSize);
-        CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0, 1_MB, 640, 16_KB);
-        CheckMaxBlobsPerDisk(16_GB, 32_GB, 0, 0, 1_MB, 32, 16_KB);
-        CheckMaxBlobsPerDisk(10_GB, 32_GB, 0, 0, 1, 1);
-        CheckMaxBlobsPerDisk(32_GB, 32_GB, 0, 0, DefaultBlockSize + 1, 2);
     }
 
     Y_UNIT_TEST(ShouldTrackCleanupQueueBlockCount)

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cloud/blockstore/libs/service/request.h>
-
 #include <util/datetime/base.h>
 #include <util/digest/multi.h>
 #include <util/generic/hash.h>
@@ -17,8 +15,6 @@ namespace NCloud::NBlockStore::NCells {
 // keyed by who they came from - the sending host (peer), disk and client. The
 // request only carries the target cell id, not the source cell, so the source
 // cell cannot be shown; the peer host identifies where a request came from.
-// Deliberately not a strict open/close counter: an Unmount is not guaranteed
-// (a client can crash, a connection can move), so a paired counter would leak.
 // A row is dropped once it has not been seen for the TTL - pruned both on a
 // snapshot and, amortized, on record, so the table stays bounded even if the
 // mon page is never opened.
@@ -49,9 +45,6 @@ public:
         TString DiskId;
         TString ClientId;
         TInstant LastSeen;
-        ui64 Mounts = 0;
-        ui64 Unmounts = 0;
-        ui64 Describes = 0;
     };
 
     // rows unseen for this long are pruned
@@ -61,7 +54,6 @@ public:
         const TString& peer,
         const TString& diskId,
         const TString& clientId,
-        EBlockStoreRequest request,
         TInstant now);
 
     // the rows still within the TTL at `now`, most-recently-seen first;

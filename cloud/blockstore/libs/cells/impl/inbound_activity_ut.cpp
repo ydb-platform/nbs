@@ -12,25 +12,20 @@ Y_UNIT_TEST_SUITE(TCellInboundActivityTest)
         const auto now = TInstant::Seconds(100);
 
         activity.Record(
-            "peer-a", "disk-1", "client-x",
-            EBlockStoreRequest::MountVolume, now);
+            "peer-a", "disk-1", "client-x", now);
         activity.Record(
-            "peer-a", "disk-1", "client-x",
-            EBlockStoreRequest::MountVolume, now);
+            "peer-a", "disk-1", "client-x", now);
         activity.Record(
-            "peer-b", "disk-2", "client-y",
-            EBlockStoreRequest::UnmountVolume, now);
+            "peer-b", "disk-2", "client-y", now);
 
         auto rows = activity.Snapshot(now);
         UNIT_ASSERT_VALUES_EQUAL(2, rows.size());
 
-        // rows for the same source collapse and their counters add up
+        // rows for the same source collapse into one
         const auto* a = FindIfPtr(
             rows, [](const auto& row) { return row.Peer == "peer-a"; });
         UNIT_ASSERT(a);
         UNIT_ASSERT_VALUES_EQUAL("disk-1", a->DiskId);
-        UNIT_ASSERT_VALUES_EQUAL(2, a->Mounts);
-        UNIT_ASSERT_VALUES_EQUAL(0, a->Unmounts);
     }
 
     Y_UNIT_TEST(ShouldPruneRowsPastTheTtl)
@@ -39,8 +34,7 @@ Y_UNIT_TEST_SUITE(TCellInboundActivityTest)
         const auto start = TInstant::Seconds(100);
 
         activity.Record(
-            "peer-a", "disk-1", "client-x",
-            EBlockStoreRequest::MountVolume, start);
+            "peer-a", "disk-1", "client-x", start);
 
         // still within the TTL
         UNIT_ASSERT_VALUES_EQUAL(

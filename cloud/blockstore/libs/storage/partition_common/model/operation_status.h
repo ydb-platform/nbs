@@ -4,7 +4,7 @@
 
 #include <util/datetime/base.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -33,4 +33,4 @@ NJson::TJsonValue ToJson(const TOperationState& op);
 
 void DumpOperationState(IOutputStream& out, const TOperationState& op);
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

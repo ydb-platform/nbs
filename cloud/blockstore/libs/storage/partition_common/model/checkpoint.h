@@ -1,6 +1,5 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/core/tablet.h>
 #include <cloud/blockstore/libs/storage/protos/part.pb.h>
 
 #include <util/datetime/base.h>
@@ -12,7 +11,13 @@
 
 #include <utility>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NJson {
+
+class TJsonValue;
+
+}   // namespace NJson
+
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -44,7 +49,7 @@ struct TCheckpoint
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TCheckpointStore
+class TPartitionCheckpointStore
 {
     struct ExtractKey
     {
@@ -123,38 +128,4 @@ public:
     bool Empty() const;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TCheckpointsInFlight
-{
-    using TTxPtr = std::unique_ptr<ITransactionBase>;
-    using TTxQueue = TDeque<std::pair<TTxPtr, ui64>>;
-
-    struct TCheckpointTransactionToCommitId
-    {
-        TTxPtr Transaction;
-        ui64 CommitId;
-    };
-
-private:
-    THashMap<TString, TCheckpointTransactionToCommitId> PendingTransactions;
-    TCheckpointQueue CommitIdQueue;
-
-public:
-    bool AddTx(const TString& checkpointId, TTxPtr transaction);
-    bool AddTx(const TString& checkpointId, TTxPtr transaction, ui64 commitId);
-
-    TTxPtr GetTx(const TString& checkpointId, ui64 commitId);
-    TTxPtr GetTx(ui64 commitId);
-
-    void PopTx(const TString& checkpointId);
-
-    [[nodiscard]] bool HasCheckpoint(const TString& checkpointId) const;
-
-    void GetCommitIds(TVector<ui64>& commitIds) const;
-
-    [[nodiscard]] ui64 GetMinCommitId() const;
-    [[nodiscard]] ui64 GetMaxCommitId() const;
-};
-
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

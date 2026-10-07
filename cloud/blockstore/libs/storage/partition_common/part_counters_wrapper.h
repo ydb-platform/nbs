@@ -8,7 +8,7 @@
 
 #include <memory>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -70,4 +70,4 @@ public:
 
 using TThreadSafePartStatsPtr = std::shared_ptr<TThreadSafePartStats>;
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

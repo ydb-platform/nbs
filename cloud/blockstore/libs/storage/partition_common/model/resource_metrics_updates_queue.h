@@ -5,7 +5,7 @@
 #include <util/datetime/base.h>
 #include <util/thread/lfstack.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 struct TUpdateWriteThroughput
 {
@@ -108,4 +108,4 @@ public:
 
 using TResourceMetricsQueuePtr = std::shared_ptr<TResourceMetricsQueue>;
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage
