@@ -21,6 +21,11 @@ ui32 TIndexTabletState::GetQuotaCount() const
     return Impl->Quotas.GetQuotaCount();
 }
 
+ui64 TIndexTabletState::GetQuotasHash() const
+{
+    return Impl->Quotas.GetQuotasHash();
+}
+
 const NProto::TQuota* TIndexTabletState::FindQuota(ui32 quotaId) const
 {
     return Impl->Quotas.FindQuota(quotaId);
@@ -59,6 +64,30 @@ void TIndexTabletState::DeleteQuota(IIndexTabletDatabase& db, ui32 quotaId)
     db.DeleteQuota(quotaId);
     db.DeleteQuotaUsage(quotaId);
     Impl->Quotas.RemoveQuota(quotaId);
+}
+
+void TIndexTabletState::ReconcileQuotas(
+    IIndexTabletDatabase& db,
+    const TVector<NProto::TQuota>& quotas)
+{
+    THashSet<ui32> seen;
+    seen.reserve(quotas.size());
+
+    for (const auto& quota: quotas) {
+        seen.insert(quota.GetQuotaId());
+        db.WriteQuota(quota);
+        Impl->Quotas.UpdateQuota(quota);
+    }
+
+    // anything left locally that main no longer knows about
+    for (const auto& existing: Impl->Quotas.GetQuotas()) {
+        const auto quotaId = existing.GetQuotaId();
+        if (!seen.contains(quotaId)) {
+            db.DeleteQuota(quotaId);
+            db.DeleteQuotaUsage(quotaId);
+            Impl->Quotas.RemoveQuota(quotaId);
+        }
+    }
 }
 
 void TIndexTabletState::LoadQuotaUsages(const TVector<TQuotaUsage>& usages)

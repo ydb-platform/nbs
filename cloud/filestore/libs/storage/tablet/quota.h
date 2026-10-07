@@ -27,6 +27,11 @@ public:
     [[nodiscard]] TVector<NProto::TQuota> GetQuotas() const;
     [[nodiscard]] ui32 GetQuotaCount() const;
 
+    // Order-independent digest of the current quota definitions (QuotaId +
+    // MaxBytes + MaxNodes only) - lets a shard cheaply tell whether its
+    // local Quotas table is out of sync with main's.
+    [[nodiscard]] ui64 GetQuotasHash() const;
+
     void LoadUsage(const TQuotaUsage& usage);
 
     // Returns the updated usage, or nullptr for quotaId == 0 (a no-op).

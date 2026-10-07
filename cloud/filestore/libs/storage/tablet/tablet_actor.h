@@ -173,6 +173,10 @@ private:
     TInstant CachedStatsFetchingStartTs;
     TInstant CachedAggregateStatsTs;
 
+    // Guards against spawning overlapping TFetchQuotasActor instances while
+    // a mismatch is already being reconciled - see HandleGetStorageStats.
+    bool QuotasFetchInProgress = false;
+
     const IProfileLogPtr ProfileLog;
     const ITraceSerializerPtr TraceSerializer;
     const TSystemCountersPtr SystemCounters;
@@ -842,6 +846,15 @@ private:
 
     void HandleAggregateStatsCompleted(
         const TEvIndexTabletPrivate::TEvAggregateStatsCompleted::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    // Spawns a worker that fetches the current quota list from main and
+    // reconciles this tablet's local Quotas table against it - see
+    // HandleGetStorageStats' MainQuotasHash check.
+    void RegisterFetchQuotasActor(const NActors::TActorContext& ctx);
+
+    void HandleQuotasFetched(
+        const TEvIndexTabletPrivate::TEvQuotasFetched::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandleShardRequestCompleted(
