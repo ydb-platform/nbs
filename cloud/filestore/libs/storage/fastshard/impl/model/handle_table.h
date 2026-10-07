@@ -1,7 +1,6 @@
 #pragma once
 
 #include "component.h"
-#include "format_page.h"
 #include "page_store.h"
 #include "persistent_hash_table.h"
 
@@ -59,8 +58,6 @@ public:
     {
         return Handles->GetSlotCount() + NodeId2HandleCount->GetSlotCount();
     }
-
-    NProto::TError AllocateHandle(ui64* handle) const;
 
     NProto::TError Put(THandleSlot handle, TWriteContext& writeContext);
 
