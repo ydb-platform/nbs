@@ -66,8 +66,6 @@ class TFindBytesAccessCommand final
 {
 private:
     const TCommonFilterParams CommonFilterParams;
-    TMaybe<TInstant> Since;
-    TMaybe<TInstant> Until;
 
     ui64 Start = 0;
     ui64 Count = 0;
@@ -123,18 +121,18 @@ public:
                 handle.GetRef());
         }
 
-        Until = CommonFilterParams.GetUntil(parseResult);
-        if (Until.Defined()) {
+        const auto until = CommonFilterParams.GetUntil(parseResult);
+        if (until.Defined()) {
             filter = CreateRequestFilterUntil(
                 std::move(filter),
-                Until.GetRef().MicroSeconds());
+                until.GetRef().MicroSeconds());
         }
 
-        Since = CommonFilterParams.GetSince(parseResult);
-        if (Since.Defined()) {
+        const auto since = CommonFilterParams.GetSince(parseResult);
+        if (since.Defined()) {
             filter = CreateRequestFilterSince(
                 std::move(filter),
-                Since.GetRef().MicroSeconds());
+                since.GetRef().MicroSeconds());
         }
 
         const auto fileSystemId = CommonFilterParams.GetFileSystemId(parseResult);
@@ -160,7 +158,7 @@ public:
                 std::move(requestTypes)));
 
         ProfileLogFiles =
-            SelectProfileLogFiles(std::move(ProfileLogFiles), Since, Until);
+            SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
 
         return true;
     }

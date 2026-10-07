@@ -57,8 +57,6 @@ class TDumpEventsCommand final
 {
 private:
     const TCommonFilterParams CommonFilterParams;
-    TMaybe<TInstant> Since;
-    TMaybe<TInstant> Until;
 
     IRequestFilterPtr Filter = CreateRequestFilterAccept();
 
@@ -162,18 +160,18 @@ public:
                 std::move(systemRequests));
         }
 
-        Until = CommonFilterParams.GetUntil(parseResult);
-        if (Until.Defined()) {
+        const auto until = CommonFilterParams.GetUntil(parseResult);
+        if (until.Defined()) {
             Filter = CreateRequestFilterUntil(
                 std::move(Filter),
-                Until.GetRef().MicroSeconds());
+                until.GetRef().MicroSeconds());
         }
 
-        Since = CommonFilterParams.GetSince(parseResult);
-        if (Since.Defined()) {
+        const auto since = CommonFilterParams.GetSince(parseResult);
+        if (since.Defined()) {
             Filter = CreateRequestFilterSince(
                 std::move(Filter),
-                Since.GetRef().MicroSeconds());
+                since.GetRef().MicroSeconds());
         }
 
         const auto fileSystemId =
@@ -185,7 +183,7 @@ public:
         }
 
         ProfileLogFiles =
-            SelectProfileLogFiles(std::move(ProfileLogFiles), Since, Until);
+            SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
 
         return true;
     }
