@@ -3103,11 +3103,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     void DoTestSoftBackpressureWriteThrottling(
         const TFileSystemConfig& tabletConfig,
         const TTestEnvConfig& testEnvConfig,
-        bool softBackpressureEnabled)
+        bool softBackpressureEnabled,
+        NProto::TStorageConfig storageConfig = {})
     {
         const ui32 block = tabletConfig.BlockSize;
 
-        NProto::TStorageConfig storageConfig;
         storageConfig.SetThrottlingEnabled(true);
         storageConfig.SetMultipleStageRequestThrottlingEnabled(true);
         if (softBackpressureEnabled) {
@@ -9454,7 +9454,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
                 << rebootTracker.GetGenerationCount());
     }
 
-    void ShouldPassDataAsPayload(TTestEnvConfig testEnvConfig, ui32 dataSize) {
+    void ShouldPassDataAsPayload(
+        const TFileSystemConfig& tabletConfig,
+        const TTestEnvConfig& testEnvConfig,
+        ui32 dataSize)
+    {
         NProto::TStorageConfig storageConfig;
         storageConfig.SetExternalReadDataPayload(true);
         storageConfig.SetExternalWriteDataPayloadEnabled(true);
@@ -9494,8 +9498,22 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     {
         std::vector<ui32> dataSizes = {124, 1_KB, 64_KB, 100_KB, 256_KB};
         for(auto dataSize : dataSizes) {
-            ShouldPassDataAsPayload(testEnvConfig, dataSize);
+            ShouldPassDataAsPayload(tabletConfig, testEnvConfig, dataSize);
         }
+    }
+
+    TABLET_TEST_16K(ShouldThrottleWritesWithExternalPayload)
+    {
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetExternalReadDataPayload(true);
+        storageConfig.SetExternalWriteDataPayloadEnabled(true);
+
+
+        DoTestSoftBackpressureWriteThrottling(
+            tabletConfig,
+            testEnvConfig,
+            true,
+            storageConfig);
     }
 }
 
