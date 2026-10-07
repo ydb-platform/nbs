@@ -464,8 +464,6 @@ public:
     [[nodiscard]] double GetFakeTxPageFaultsProbability() const;
     [[nodiscard]] TDuration GetArtificialShardPhaseDelay() const;
 
-    [[nodiscard]] bool GetFanoutStatsCollectionInShardsDisabled() const;
-
     [[nodiscard]] bool GetEnableLoadActor() const;
 
     ui32 GetMaxNodeDiagnosticEntries() const;

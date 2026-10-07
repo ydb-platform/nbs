@@ -409,8 +409,6 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(FakeTxPageFaultsProbability,                   double,   0            )\
     xxx(ArtificialShardPhaseDelay,                     TDuration, {}          )\
                                                                                \
-    xxx(FanoutStatsCollectionInShardsDisabled,         bool,    false         )\
-                                                                               \
     xxx(EnableLoadActor,                               bool,    false         )\
     xxx(MaxNodeDiagnosticEntries,                      ui32,    0             )\
     xxx(NodeAccessCountHalfLife,                  TDuration,   {}             )\
