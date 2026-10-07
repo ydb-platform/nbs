@@ -18,6 +18,7 @@ SRCS(
     tablet_ut_data_allocate.cpp
     tablet_ut_data_truncate.cpp
     tablet_ut_data_zerorange.cpp
+    tablet_ut_external_payload.cpp
     tablet_ut_handles.cpp
     tablet_ut_monitoring.cpp
     tablet_ut_nodes.cpp

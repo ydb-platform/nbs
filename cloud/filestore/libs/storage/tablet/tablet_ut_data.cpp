@@ -3103,11 +3103,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
     void DoTestSoftBackpressureWriteThrottling(
         const TFileSystemConfig& tabletConfig,
         const TTestEnvConfig& testEnvConfig,
-        bool softBackpressureEnabled,
-        NProto::TStorageConfig storageConfig = {})
+        bool softBackpressureEnabled)
     {
         const ui32 block = tabletConfig.BlockSize;
 
+        NProto::TStorageConfig storageConfig;
         storageConfig.SetThrottlingEnabled(true);
         storageConfig.SetMultipleStageRequestThrottlingEnabled(true);
         if (softBackpressureEnabled) {
@@ -9452,68 +9452,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             "Expected at least 2 different generations due to tablet reboot, "
             "got "
                 << rebootTracker.GetGenerationCount());
-    }
-
-    void ShouldPassDataAsPayload(
-        const TFileSystemConfig& tabletConfig,
-        const TTestEnvConfig& testEnvConfig,
-        ui32 dataSize)
-    {
-        NProto::TStorageConfig storageConfig;
-        storageConfig.SetExternalReadDataPayload(true);
-        storageConfig.SetExternalWriteDataPayloadEnabled(true);
-
-        TTestEnv env(testEnvConfig, storageConfig);
-
-        ui32 nodeIdx = env.AddDynamicNode();
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        TIndexTabletClient tablet(
-            env.GetRuntime(),
-            nodeIdx,
-            tabletId,
-            tabletConfig,
-            true /*updateConfig*/,
-            storageConfig);
-        tablet.InitSession("client", "session");
-
-        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
-        ui64 handle = CreateHandle(tablet, id);
-
-        auto data = GenerateValidateData(dataSize);
-        tablet.WriteData(handle, 0, data.size(), data.c_str());
-        tablet.Flush();
-
-        auto response = tablet.ReadData(handle, 0, dataSize);
-        const auto& buffer = response->Record.GetBuffer();
-        UNIT_ASSERT(buffer.empty());
-        UNIT_ASSERT_VALUES_EQUAL(data.size(), response->Record.GetLength());
-        UNIT_ASSERT_VALUES_EQUAL(1, response->GetPayloadCount());
-        auto& payload = response->GetPayload(0);
-        UNIT_ASSERT_VALUES_EQUAL(data.size(), payload.size());
-        UNIT_ASSERT_VALUES_EQUAL(data, payload.ConvertToString());
-    }
-
-    TABLET_TEST(ShouldPassDataAsPayloadTest)
-    {
-        std::vector<ui32> dataSizes = {124, 1_KB, 64_KB, 100_KB, 256_KB};
-        for(auto dataSize : dataSizes) {
-            ShouldPassDataAsPayload(tabletConfig, testEnvConfig, dataSize);
-        }
-    }
-
-    TABLET_TEST_16K(ShouldThrottleWritesWithExternalPayload)
-    {
-        NProto::TStorageConfig storageConfig;
-        storageConfig.SetExternalReadDataPayload(true);
-        storageConfig.SetExternalWriteDataPayloadEnabled(true);
-
-
-        DoTestSoftBackpressureWriteThrottling(
-            tabletConfig,
-            testEnvConfig,
-            true,
-            storageConfig);
     }
 }
 
