@@ -24,7 +24,7 @@ bool IsBrokenDevice(const TAioDevice& device)
     return !device.File.IsOpen();
 }
 
-void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
+void DiscardRequest(vhd_io* io, TSimpleStats& queueStats, TCpuCycles started)
 {
     ++queueStats.SubFailed;
     auto* bio = vhd_get_bdev_io(io);
@@ -34,6 +34,8 @@ void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
     requestStat.Errors += 1;
     requestStat.Bytes += bytes;
 
+    queueStats.RecordLatency(
+        bio->type == VHD_BDEV_WRITE, bytes, GetCycleCount() - started, true);
     vhd_complete_bio(io, VHD_BDEV_IOERR);
 }
 
@@ -130,7 +132,7 @@ void PrepareCompoundIO(
     Y_DEBUG_ABORT_UNLESS(deviceCount > 1);
 
     if (std::any_of(it, end, IsBrokenDevice)) {
-        DiscardRequest(io, queueStats);
+        DiscardRequest(io, queueStats, now);
         return;
     }
 
@@ -161,6 +163,9 @@ void PrepareCompoundIO(
             bio->first_sector);
         if (!success) {
             ++queueStats.EncryptorErrors;
+            queueStats.RecordLatency(
+                true, bio->total_sectors * VHD_SECTOR_SIZE,
+                GetCycleCount() - now, true);
             vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
             return;
         }
@@ -344,7 +349,7 @@ void PrepareIO(
         !device.File.IsOpen());
 
     if (IsBrokenDevice(device)) {
-        DiscardRequest(io, queueStats);
+        DiscardRequest(io, queueStats, now);
         return;
     }
 
@@ -387,6 +392,9 @@ void PrepareIO(
                 bio->first_sector);
             if (!success) {
                 ++queueStats.EncryptorErrors;
+                queueStats.RecordLatency(
+                    true, bio->total_sectors * VHD_SECTOR_SIZE,
+                    GetCycleCount() - now, true);
                 vhd_complete_bio(req->Io, VHD_BDEV_IOERR);
                 return;
             }
@@ -476,6 +484,9 @@ void CompleteCompoundRequestImpl(
             stats.Sizes[bio->type].Increment(bytes);
         }
 
+        stats.RecordLatency(
+            bio->type == VHD_BDEV_WRITE, bytes, now - req->SubmitTs,
+            status != VHD_BDEV_SUCCESS);
         completeBio(req->Io, status);
     }
 }

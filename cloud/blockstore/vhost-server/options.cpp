@@ -8,6 +8,7 @@
 #include <util/string/cast.h>
 #include <util/string/join.h>
 #include <util/string/split.h>
+#include <util/system/env.h>
 
 using namespace NLastGetopt;
 
@@ -30,8 +31,16 @@ void CheckOneOf(
 
 void TOptions::Parse(int argc, char** argv)
 {
+    LatencySli = TLatencySliConfig::Parse(GetEnv("NBS_LATENCY_SLI_CONFIG"));
+
     TOpts opts;
     opts.AddHelpOption();
+
+    opts.AddLongOption("latency-sli", "Manual latency SLI size thresholds")
+        .RequiredArgument("STR")
+        .Handler1T<TString>([this](const auto& value) {
+            LatencySli = TLatencySliConfig::Parse(value);
+        });
 
     opts.AddLongOption('s', "socket-path")
         .Required()

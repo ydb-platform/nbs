@@ -5,6 +5,9 @@
 #include "critical_event.h"
 #include "histogram.h"
 
+#include <cloud/blockstore/libs/common/latency_sli.h>
+#include <util/datetime/cputimer.h>
+
 #include <util/datetime/base.h>
 #include <util/system/types.h>
 
@@ -33,6 +36,9 @@ struct TRequestStats
     T Bytes = {};
     T Errors = {};
     T Unaligned = {};
+    T LatencyGood = {};
+    T LatencyBad = {};
+    T LatencyUnknown = {};
 
     TRequestStats() = default;
 
@@ -42,6 +48,9 @@ struct TRequestStats
         , Bytes{rhs.Bytes}
         , Errors{rhs.Errors}
         , Unaligned{rhs.Unaligned}
+        , LatencyGood{rhs.LatencyGood}
+        , LatencyBad{rhs.LatencyBad}
+        , LatencyUnknown{rhs.LatencyUnknown}
     {}
 
     template <typename U>
@@ -51,6 +60,9 @@ struct TRequestStats
         Bytes = rhs.Bytes;
         Errors = rhs.Errors;
         Unaligned = rhs.Unaligned;
+        LatencyGood = rhs.LatencyGood;
+        LatencyBad = rhs.LatencyBad;
+        LatencyUnknown = rhs.LatencyUnknown;
 
         return *this;
     }
@@ -62,6 +74,9 @@ struct TRequestStats
         Bytes += rhs.Bytes;
         Errors += rhs.Errors;
         Unaligned += rhs.Unaligned;
+        LatencyGood += rhs.LatencyGood;
+        LatencyBad += rhs.LatencyBad;
+        LatencyUnknown += rhs.LatencyUnknown;
 
         return *this;
     }
@@ -74,6 +89,9 @@ TRequestStats<T> operator-(TRequestStats<T> lhs, TRequestStats<T>& rhs) noexcept
     lhs.Bytes -= rhs.Bytes;
     lhs.Errors -= rhs.Errors;
     lhs.Unaligned -= rhs.Unaligned;
+    lhs.LatencyGood -= rhs.LatencyGood;
+    lhs.LatencyBad -= rhs.LatencyBad;
+    lhs.LatencyUnknown -= rhs.LatencyUnknown;
 
     return lhs;
 }
@@ -92,6 +110,41 @@ struct TStats
     std::array<TTimeHistogram<T>, 2> Times = {};
     std::array<TSizeHistogram<T>, 2> Sizes = {};
 
+    // Set once before workers start; never copied into monitoring snapshots.
+    const TLatencySliConfig* LatencySli = nullptr;
+    // Stamped only when the completion thread copies a monitoring snapshot.
+    ui64 CompletionSnapshotCycles = 0;
+
+    void SetLatencySli(const TLatencySliConfig& config)
+    {
+        LatencySli = config.Enabled ? &config : nullptr;
+    }
+
+    void RecordLatency(
+        bool write,
+        ui64 bytes,
+        ui64 elapsedCycles,
+        bool failed)
+    {
+        if (!LatencySli) {
+            return;
+        }
+        // AIO and direct-agent RDMA have no volume throttler. Retries and
+        // device waits are included in the original request's elapsed time.
+        const auto result = LatencySli->Classify(
+            write, bytes, CyclesToDurationSafe(elapsedCycles).MicroSeconds(),
+            0, failed);
+        auto& stats = Requests[write];
+        auto& counter = result == ELatencySliResult::Good ? stats.LatencyGood
+                      : result == ELatencySliResult::Bad ? stats.LatencyBad
+                                                        : stats.LatencyUnknown;
+        if constexpr (std::is_same_v<T, std::atomic<ui64>>) {
+            counter.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            ++counter;
+        }
+    }
+
     TStats() = default;
 
     template <typename U>
@@ -105,6 +158,7 @@ struct TStats
         , Requests{rhs.Requests[0], rhs.Requests[1]}
         , Times{rhs.Times[0], rhs.Times[1]}
         , Sizes{rhs.Sizes[0], rhs.Sizes[1]}
+        , CompletionSnapshotCycles{rhs.CompletionSnapshotCycles}
     {}
 
     template <typename U>
@@ -119,6 +173,7 @@ struct TStats
         Requests = rhs.Requests;
         Times = rhs.Times;
         Sizes = rhs.Sizes;
+        CompletionSnapshotCycles = rhs.CompletionSnapshotCycles;
 
         return *this;
     }
@@ -156,6 +211,7 @@ using TSimpleStats = TStats<ui64>;
 struct TCompleteStats {
     TSimpleStats SimpleStats;
     TCriticalEvents CriticalEvents;
+    bool Fresh = true;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -180,6 +236,7 @@ void DumpStats(
     TSimpleStats& old,
     TDuration elapsed,
     IOutputStream& stream,
-    ui64 cyclesPerMs);
+    ui64 cyclesPerMs,
+    const TLatencySliConfig* latencySli = nullptr);
 
 }   // namespace NCloud::NBlockStore::NVHostServer

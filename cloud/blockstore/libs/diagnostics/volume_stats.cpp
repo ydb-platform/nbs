@@ -1,5 +1,7 @@
 #include "volume_stats.h"
 
+#include "latency_sli.h"
+
 #include "config.h"
 #include "stats_helpers.h"
 #include "user_counter.h"
@@ -262,6 +264,7 @@ private:
     const TRealInstanceId RealInstanceId;
 
     TRequestCounters RequestCounters;
+    std::unique_ptr<TLatencySliCounters> LatencySli;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
     struct TServingCellHost
@@ -339,6 +342,11 @@ public:
               executionTimeSizeClasses))
         , AvailabilityLastUpdateTime(VolumeBase->Timer->Now())
     {}
+
+    TLatencySliCounters* GetLatencySli() const override
+    {
+        return LatencySli.get();
+    }
 
     bool IsPinned() const noexcept
     {
@@ -1291,6 +1299,13 @@ private:
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
         info->CountersGroup = countersGroup;
+
+        auto latencySliConfig = DiagnosticsConfig->GetLatencySliConfig(
+            volumeConfig.GetStorageMediaKind());
+        if (latencySliConfig.Enabled && Type == EVolumeStatsType::EServerStats) {
+            info->LatencySli = std::make_unique<TLatencySliCounters>(
+                std::move(latencySliConfig), *countersGroup);
+        }
 
         // Register the cumulative counters in the narrow component=sli_volume
         // tree (see AvailabilityCounters comment).

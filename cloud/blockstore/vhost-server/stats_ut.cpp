@@ -18,6 +18,59 @@ using namespace NCloud::NBlockStore::NVHostServer;
 
 Y_UNIT_TEST_SUITE(TStatsTest)
 {
+    Y_UNIT_TEST(ShouldPreserveCaptureTimeWhenPickingUpALateSnapshot)
+    {
+        auto completion = CreateCompletionStats();
+        UNIT_ASSERT(!completion->Get(TDuration::Zero()));
+        TSimpleStats producer;
+        producer.Requests[0].LatencyGood = 1;
+        const auto beforeCapture = GetCycleCount();
+        completion->Sync(producer);
+        const auto afterCapture = GetCycleCount();
+        auto snapshot = completion->Get(TDuration::Zero());
+        UNIT_ASSERT(snapshot);
+        UNIT_ASSERT(snapshot->CompletionSnapshotCycles >= beforeCapture);
+        UNIT_ASSERT(snapshot->CompletionSnapshotCycles <= afterCapture);
+        UNIT_ASSERT_VALUES_EQUAL(1, snapshot->Requests[0].LatencyGood);
+    }
+
+    Y_UNIT_TEST(ShouldDumpCumulativeLatencyDecisions)
+    {
+        using namespace NCloud;
+        using namespace NCloud::NBlockStore;
+        auto config = TLatencySliConfig::Parse("1;0:1:8193:1000");
+        TAtomicStats producer;
+        producer.SetLatencySli(config);
+        producer.RecordLatency(false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(500)), false);
+        producer.RecordLatency(false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(1500)), false);
+        producer.RecordLatency(false, 4096, DurationToCyclesSafe(TDuration::MicroSeconds(500)), true);
+        producer.RecordLatency(true, 4096, 0, false);
+        TSimpleStats previous;
+        TCompleteStats complete;
+        complete.SimpleStats += producer;
+        TStringStream stream;
+        DumpStats(complete, previous, TDuration::Seconds(1), stream,
+            GetCyclesPerMillisecond(), &config);
+        NJson::TJsonValue first;
+        NJson::ReadJsonTree(stream.Str(), &first, true);
+        UNIT_ASSERT_VALUES_EQUAL(1, first["read"]["latency_good"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(2, first["read"]["latency_bad"].GetUInteger());
+        UNIT_ASSERT_VALUES_EQUAL(1, first["write"]["latency_unknown"].GetUInteger());
+        UNIT_ASSERT(first["latency_sli"]["fresh"].GetBoolean());
+        TStringStream next;
+        complete.Fresh = false;
+        DumpStats(complete, previous, TDuration::Seconds(1), next,
+            GetCyclesPerMillisecond(), &config);
+        NJson::TJsonValue second;
+        NJson::ReadJsonTree(next.Str(), &second, true);
+        UNIT_ASSERT_VALUES_EQUAL(1, second["read"]["latency_good"].GetUInteger());
+        UNIT_ASSERT(!second["latency_sli"]["fresh"].GetBoolean());
+        UNIT_ASSERT_VALUES_EQUAL(first["latency_sli"]["epoch"].GetString(),
+            second["latency_sli"]["epoch"].GetString());
+        UNIT_ASSERT_VALUES_EQUAL(first["latency_sli"]["sequence"].GetUInteger() + 1,
+            second["latency_sli"]["sequence"].GetUInteger());
+    }
+
     Y_UNIT_TEST(ShouldDumpStats)
     {
         constexpr ui64 cyclesPerSecond = 2000000000;

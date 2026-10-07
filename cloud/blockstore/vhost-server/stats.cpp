@@ -5,6 +5,7 @@
 #include <library/cpp/json/json_writer.h>
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/guid.h>
 #include <util/stream/output.h>
 #include <util/system/event.h>
 
@@ -57,6 +58,7 @@ public:
         CompletionStats.Times = stats.Times;
         CompletionStats.Sizes = stats.Sizes;
 
+        CompletionStats.CompletionSnapshotCycles = GetCycleCount();
         NeedUpdateCompletionStats = false;
         CompletionStatsEvent.Signal();
     }
@@ -75,6 +77,7 @@ public:
         std::ranges::copy(stats.Times, CompletionStats.Times.begin());
         std::ranges::copy(stats.Sizes, CompletionStats.Sizes.begin());
 
+        CompletionStats.CompletionSnapshotCycles = GetCycleCount();
         NeedUpdateCompletionStats = false;
         CompletionStatsEvent.Signal();
     }
@@ -150,7 +153,8 @@ void DumpStats(
     TSimpleStats& old,
     TDuration elapsed,
     IOutputStream& stream,
-    ui64 cyclesPerMs)
+    ui64 cyclesPerMs,
+    const TLatencySliConfig* latencySli)
 {
     const auto & stats = completeStats.SimpleStats;
 
@@ -171,6 +175,13 @@ void DumpStats(
         write("errors", r.Errors);
         write("unaligned", r.Unaligned);
 
+        if (latencySli && latencySli->Enabled) {
+            // Cumulative, disjoint counts: a skipped snapshot loses no data.
+            write("latency_good", stats.Requests[kind].LatencyGood);
+            write("latency_bad", stats.Requests[kind].LatencyBad);
+            write("latency_unknown", stats.Requests[kind].LatencyUnknown);
+        }
+
         WriteTimes(buf, stats.Times[kind], old.Times[kind], cyclesPerMs);
         WriteSizes(buf, stats.Sizes[kind], old.Sizes[kind]);
 
@@ -178,6 +189,22 @@ void DumpStats(
     };
 
     buf.BeginObject();
+
+    if (latencySli && latencySli->Enabled) {
+        static const TString epoch = CreateGuidAsString();
+        static ui64 sequence = 0;
+        buf.WriteKey("latency_sli");
+        buf.BeginObject();
+        write("version", 1);
+        write("sequence", ++sequence);
+        buf.WriteKey("epoch");
+        buf.WriteString(epoch);
+        buf.WriteKey("config");
+        buf.WriteString(latencySli->Serialize());
+        buf.WriteKey("fresh");
+        buf.WriteBool(completeStats.Fresh);
+        buf.EndObject();
+    }
 
     write("elapsed_ms", elapsed.MilliSeconds());
     write("dequeued", stats.Dequeued - old.Dequeued);

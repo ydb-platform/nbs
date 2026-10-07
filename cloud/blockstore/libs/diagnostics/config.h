@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/blockstore/libs/common/latency_sli.h>
+
 #include <cloud/blockstore/config/diagnostics.pb.h>
 
 #include <cloud/storage/core/libs/common/size_interval.h>
@@ -132,6 +134,8 @@ public:
     TDiagnosticsConfig(NProto::TDiagnosticsConfig diagnosticsConfig = {});
 
     [[nodiscard]] const NProto::TDiagnosticsConfig& GetConfigProto() const;
+
+    TLatencySliConfig GetLatencySliConfig(ui32 mediaKind) const;
 
     NProto::EHostNameScheme GetHostNameScheme() const;
     TString GetBastionNameSuffix() const;

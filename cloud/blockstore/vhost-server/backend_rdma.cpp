@@ -133,6 +133,7 @@ private:
     TString ClientId;
     ICompletionStatsPtr CompletionStats;
     TSimpleStats CompletionStatsData;
+    TLatencySliConfig LatencySli;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
@@ -176,6 +177,8 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
     Timer = CreateWallClockTimer();
 
     ClientId = options.ClientId;
+    LatencySli = options.LatencySli;
+    CompletionStatsData.SetLatencySli(LatencySli);
     ReadOnly = options.ReadOnly;
 
     BlockSize = options.BlockSize;
@@ -460,6 +463,13 @@ void TRdmaBackend::CompleteRequest(
         CompletionStatsData.Requests[bio->type].Errors += 1;
     }
 
+    if (LatencySli.Enabled) {
+        CompletionStatsData.RecordLatency(
+            bio->type == VHD_BDEV_WRITE,
+            bio->total_sectors * VHD_SECTOR_SIZE,
+            GetCycleCount() - startCycles,
+            isError);
+    }
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
 
     CompletionStats->Sync(CompletionStatsData);

@@ -97,6 +97,7 @@ private:
 
     TVector<vhd_request_queue*> Queues;
     std::unique_ptr<TAtomicStats[]> QueueStats;
+    TLatencySliConfig LatencySli;
 
     TVector<std::thread> QueueThreads;
 
@@ -128,6 +129,7 @@ void TServer::Start(const TOptions& options)
 
     SocketPath = options.SocketPath;
 
+    LatencySli = options.LatencySli;
     Info = Backend->Init(options);
 
     for (ui32 i = 0; i != options.QueueCount; ++i) {
@@ -221,12 +223,17 @@ TCompleteStats TServer::GetStats(const TSimpleStats& prevStats)
     if (!completionStats) {
         return TCompleteStats{
             .SimpleStats{prevStats},
-            .CriticalEvents{TakeAccumulatedCriticalEvents()}};
+            .CriticalEvents{TakeAccumulatedCriticalEvents()},
+            .Fresh = false};
     }
 
+    const auto captured = completionStats->CompletionSnapshotCycles;
+    const auto now = GetCycleCount();
     TCompleteStats result{
         .SimpleStats{*completionStats},
-        .CriticalEvents = TakeAccumulatedCriticalEvents()};
+        .CriticalEvents = TakeAccumulatedCriticalEvents(),
+        .Fresh = captured && now >= captured &&
+            now - captured <= DurationToCyclesSafe(COMPLETION_STATS_WAIT_DURATION)};
 
     for (ui32 i = 0; i != Queues.size(); ++i) {
         result.SimpleStats += QueueStats[i];
@@ -242,6 +249,7 @@ void TServer::QueueThreadFunc(ui32 queueIndex)
     vhd_request_queue* queue = Queues[queueIndex];
 
     TSimpleStats queueStats;
+    queueStats.SetLatencySli(LatencySli);
 
     for (;;) {
         int ret = vhd_run_queue(queue);

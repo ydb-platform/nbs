@@ -1,6 +1,8 @@
 #include "options.h"
 
 #include <library/cpp/testing/unittest/registar.h>
+#include <util/generic/scope.h>
+#include <util/system/env.h>
 
 namespace NCloud::NBlockStore::NVHostServer {
 
@@ -8,6 +10,31 @@ namespace NCloud::NBlockStore::NVHostServer {
 
 Y_UNIT_TEST_SUITE(TOptionsTest)
 {
+    Y_UNIT_TEST(ShouldReadLatencySliEnvironmentAndAllowExplicitOverride)
+    {
+        const auto previous = GetEnv("NBS_LATENCY_SLI_CONFIG");
+        Y_SCOPE_EXIT(previous) {
+            SetEnv("NBS_LATENCY_SLI_CONFIG", previous);
+        };
+        SetEnv("NBS_LATENCY_SLI_CONFIG", "1;0:1:8193:1000");
+        TVector<TString> params{
+            "binary-path", "--socket-path", "vhost.sock", "--serial", "id",
+            "--device", "disk:1048576:0"};
+        auto parse = [&] {
+            TVector<char*> argv;
+            for (auto& value: params) {
+                argv.push_back(value.Detach());
+            }
+            TOptions options;
+            options.Parse(argv.size(), argv.data());
+            return options;
+        };
+        UNIT_ASSERT_VALUES_EQUAL("1;0:1:8193:1000", parse().LatencySli.Serialize());
+        params.push_back("--latency-sli");
+        params.push_back("1;1:1:8193:2000");
+        UNIT_ASSERT_VALUES_EQUAL("1;1:1:8193:2000", parse().LatencySli.Serialize());
+    }
+
     Y_UNIT_TEST(ShouldParseOptions)
     {
         TOptions options;
