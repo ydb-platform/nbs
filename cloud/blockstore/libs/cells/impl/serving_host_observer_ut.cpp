@@ -69,6 +69,56 @@ Y_UNIT_TEST_SUITE(TServingCellHostObserverTest)
         observer->OnServingHostChanged("host-3");
         UNIT_ASSERT_VALUES_EQUAL(0, cellMount("host-3"));
     }
+
+    Y_UNIT_TEST(ShouldKeepServingHostWhileAnotherEndpointIsAttached)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        NProto::TVolume volume;
+        volume.SetDiskId("disk");
+        volume.SetCloudId("cloud");
+        volume.SetFolderId("folder");
+        volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+        volumeStats->MountVolume(volume, "client", "instance");
+
+        auto cellMount = [&] () -> i64 {
+            auto cell = monitoring->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "disk")
+                ->GetSubgroup("instance", "instance")
+                ->GetSubgroup("cloud", "cloud")
+                ->GetSubgroup("folder", "folder")
+                ->GetSubgroup("type", "ssd")
+                ->FindSubgroup("cell", "cell");
+            auto host = cell ? cell->FindSubgroup("cell_host", "host-1")
+                             : nullptr;
+            auto counter = host ? host->FindCounter("CellMount") : nullptr;
+            return counter ? counter->Val() : 0;
+        };
+
+        // a local VM migration: the old and the new endpoint of the same disk
+        // and client, each with its own connection
+        auto oldEndpoint =
+            CreateServingCellHostObserver(volumeStats, "cell", "client");
+        auto newEndpoint =
+            CreateServingCellHostObserver(volumeStats, "cell", "client");
+
+        oldEndpoint->OnServingHostChanged("host-1");
+        oldEndpoint->Attach("disk");
+        newEndpoint->OnServingHostChanged("host-1");
+        newEndpoint->Attach("disk");
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount());
+
+        oldEndpoint->Detach();
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount());
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NCells

@@ -156,6 +156,7 @@ struct IVolumeStats
     virtual void SetServingCellHost(
         const TString& diskId,
         const TString& clientId,
+        ui64 connectionId,
         const TString& cellId,
         const TString& fqdn) = 0;
 };

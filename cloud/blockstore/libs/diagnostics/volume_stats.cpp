@@ -259,12 +259,12 @@ private:
 
     // the per-instance group; the serving cell host hangs off it
     TDynamicCountersPtr CountersGroup;
-    // under TVolumeStats::Lock for writing. A disk and its -copy share this
-    // instance while a session switches between them, so the physical disk
-    // that set the host is kept: only it may clear it
-    TString ServingDiskId;
-    TString ServingCellId;
-    TString ServingCellHost;
+    // under TVolumeStats::Lock for writing. Endpoints of the same disk and
+    // client - a local VM migration, a switch to the -copy - share this
+    // instance, each through its own cell connection: a host is shown while
+    // any of them goes through it
+    THashMap<ui64, std::pair<TString, TString>> ServingConnections;
+    THashSet<TString> ShownServingCellIds;
 
     // Cumulative per-volume availability counters (derivative/RATE, seconds).
     // Nested: ObservedSeconds >= AvailableSeconds >= HealthySeconds. Consumers
@@ -335,44 +335,42 @@ public:
     }
 
     void SetServingCellHost(
-        const TString& diskId,
+        ui64 connectionId,
         const TString& cellId,
         const TString& fqdn)
+    {
+        if (fqdn) {
+            ServingConnections[connectionId] = {cellId, fqdn};
+        } else {
+            ServingConnections.erase(connectionId);
+        }
+        ShowServingCellHosts();
+    }
+
+    void CarryServingCellHostFrom(const TVolumeInfo& other)
+    {
+        ServingConnections = other.ServingConnections;
+        ShowServingCellHosts();
+    }
+
+    void ShowServingCellHosts()
     {
         if (!CountersGroup) {
             return;
         }
 
-        // the session switched away from this disk has nothing left to clear
-        if (!fqdn && diskId != ServingDiskId) {
-            return;
+        for (const auto& cellId: ShownServingCellIds) {
+            CountersGroup->RemoveSubgroup("cell", cellId);
         }
+        ShownServingCellIds.clear();
 
-        if (ServingCellId) {
-            CountersGroup->RemoveSubgroup("cell", ServingCellId);
+        for (const auto& [_, cellHost]: ServingConnections) {
+            const auto& [cellId, fqdn] = cellHost;
+            *CountersGroup->GetSubgroup("cell", cellId)
+                 ->GetSubgroup("cell_host", fqdn)
+                 ->GetCounter("CellMount") = 1;
+            ShownServingCellIds.insert(cellId);
         }
-        ServingDiskId.clear();
-        ServingCellId.clear();
-        ServingCellHost.clear();
-
-        if (!fqdn) {
-            return;
-        }
-
-        *CountersGroup->GetSubgroup("cell", cellId)
-             ->GetSubgroup("cell_host", fqdn)
-             ->GetCounter("CellMount") = 1;
-        ServingDiskId = diskId;
-        ServingCellId = cellId;
-        ServingCellHost = fqdn;
-    }
-
-    void CarryServingCellHostFrom(const TVolumeInfo& other)
-    {
-        SetServingCellHost(
-            other.ServingDiskId,
-            other.ServingCellId,
-            other.ServingCellHost);
     }
 
     ui64 RequestStarted(
@@ -1166,6 +1164,7 @@ public:
     void SetServingCellHost(
         const TString& diskId,
         const TString& clientId,
+        ui64 connectionId,
         const TString& cellId,
         const TString& fqdn) override
     {
@@ -1174,7 +1173,7 @@ public:
         TWriteGuard guard(Lock);
 
         if (auto info = GetVolumeInfoImpl(diskId, clientId)) {
-            info->SetServingCellHost(diskId, cellId, fqdn);
+            info->SetServingCellHost(connectionId, cellId, fqdn);
         }
     }
 
@@ -1473,11 +1472,13 @@ struct TVolumeStatsStub final
     void SetServingCellHost(
         const TString& diskId,
         const TString& clientId,
+        ui64 connectionId,
         const TString& cellId,
         const TString& fqdn) override
     {
         Y_UNUSED(diskId);
         Y_UNUSED(clientId);
+        Y_UNUSED(connectionId);
         Y_UNUSED(cellId);
         Y_UNUSED(fqdn);
     }

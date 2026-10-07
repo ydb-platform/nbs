@@ -4,18 +4,26 @@
 
 #include <util/system/spinlock.h>
 
+#include <atomic>
+
 namespace NCloud::NBlockStore::NCells {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-class TServingCellHostObserver final: public IServingCellHostObserver
+std::atomic<ui64> LastConnectionId = 0;
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TServingCellHostObserver final
+    : public IServingCellHostObserver
 {
 private:
     const IVolumeStatsPtr VolumeStats;
     const TString CellId;
     const TString ClientId;
+    const ui64 ConnectionId = ++LastConnectionId;
 
     TAdaptiveLock Lock;
     TString DiskId;   // empty until attached
@@ -64,7 +72,12 @@ private:
     void SetServingCellHostLocked(const TString& fqdn)
     {
         if (DiskId) {
-            VolumeStats->SetServingCellHost(DiskId, ClientId, CellId, fqdn);
+            VolumeStats->SetServingCellHost(
+                DiskId,
+                ClientId,
+                ConnectionId,
+                CellId,
+                fqdn);
         }
     }
 };
