@@ -259,7 +259,10 @@ private:
 
     // the per-instance group; the serving cell host hangs off it
     TDynamicCountersPtr CountersGroup;
-    TAdaptiveLock ServingCellLock;
+    // under TVolumeStats::Lock for writing. A disk and its -copy share this
+    // instance while a session switches between them, so the physical disk
+    // that set the host is kept: only it may clear it
+    TString ServingDiskId;
     TString ServingCellId;
     TString ServingCellHost;
 
@@ -331,40 +334,45 @@ public:
         return VolumeBase->PostponeTimePredictor->GetPossiblePostponeDuration();
     }
 
-    void SetServingCellHost(const TString& cellId, const TString& fqdn)
+    void SetServingCellHost(
+        const TString& diskId,
+        const TString& cellId,
+        const TString& fqdn)
     {
-        with_lock (ServingCellLock) {
-            if (!CountersGroup) {
-                return;
-            }
-
-            if (ServingCellId) {
-                CountersGroup->RemoveSubgroup("cell", ServingCellId);
-            }
-            ServingCellId.clear();
-            ServingCellHost.clear();
-
-            if (!fqdn) {
-                return;
-            }
-
-            *CountersGroup->GetSubgroup("cell", cellId)
-                 ->GetSubgroup("cell_host", fqdn)
-                 ->GetCounter("CellMount") = 1;
-            ServingCellId = cellId;
-            ServingCellHost = fqdn;
+        if (!CountersGroup) {
+            return;
         }
+
+        // the session switched away from this disk has nothing left to clear
+        if (!fqdn && diskId != ServingDiskId) {
+            return;
+        }
+
+        if (ServingCellId) {
+            CountersGroup->RemoveSubgroup("cell", ServingCellId);
+        }
+        ServingDiskId.clear();
+        ServingCellId.clear();
+        ServingCellHost.clear();
+
+        if (!fqdn) {
+            return;
+        }
+
+        *CountersGroup->GetSubgroup("cell", cellId)
+             ->GetSubgroup("cell_host", fqdn)
+             ->GetCounter("CellMount") = 1;
+        ServingDiskId = diskId;
+        ServingCellId = cellId;
+        ServingCellHost = fqdn;
     }
 
-    void CarryServingCellHostFrom(TVolumeInfo& other)
+    void CarryServingCellHostFrom(const TVolumeInfo& other)
     {
-        TString cellId;
-        TString fqdn;
-        with_lock (other.ServingCellLock) {
-            cellId = other.ServingCellId;
-            fqdn = other.ServingCellHost;
-        }
-        SetServingCellHost(cellId, fqdn);
+        SetServingCellHost(
+            other.ServingDiskId,
+            other.ServingCellId,
+            other.ServingCellHost);
     }
 
     ui64 RequestStarted(
@@ -1161,10 +1169,12 @@ public:
         const TString& cellId,
         const TString& fqdn) override
     {
-        TReadGuard guard(Lock);
+        // a write lock: rare, and it keeps a relabel carrying the host over
+        // out of the way
+        TWriteGuard guard(Lock);
 
         if (auto info = GetVolumeInfoImpl(diskId, clientId)) {
-            info->SetServingCellHost(cellId, fqdn);
+            info->SetServingCellHost(diskId, cellId, fqdn);
         }
     }
 

@@ -2633,6 +2633,55 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
         volumeStats->SetServingCellHost("test", "client-1", {}, {});
         UNIT_ASSERT(!findCell("ssd", "cell-a"));
     }
+
+    Y_UNIT_TEST(ShouldNotLetTheSwitchedAwayDiskClearServingCellHost)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto cellMount = [&] () -> i64
+        {
+            auto group = monitoring
+                ->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test")
+                ->GetSubgroup("instance", "instance-1")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", "hdd")
+                ->FindSubgroup("cell", "cell-a");
+            auto host = group ? group->FindSubgroup("cell_host", "host-1")
+                              : nullptr;
+            auto counter = host ? host->FindCounter("CellMount") : nullptr;
+            return counter ? counter->Val() : 0;
+        };
+
+        Mount(
+            volumeStats,
+            "test",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+
+        // a session switch: the copy's endpoint comes up first, the old one
+        // goes away after it - both land on the same instance
+        volumeStats->SetServingCellHost(
+            "test-copy",
+            "client-1",
+            "cell-a",
+            "host-1");
+        volumeStats->SetServingCellHost("test", "client-1", {}, {});
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount());
+
+        volumeStats->SetServingCellHost("test-copy", "client-1", {}, {});
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount());
+    }
 }
 
 }   // namespace NCloud::NBlockStore
