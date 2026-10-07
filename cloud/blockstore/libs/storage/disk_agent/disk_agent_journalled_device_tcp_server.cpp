@@ -97,18 +97,43 @@ public:
 
     // IServerBackend
 
-    void Start() override
+    TFuture<NCloud::NProto::TError> Start() override
     {
+        TVector<TFuture<NCloud::NProto::TError>> futures;
+        futures.reserve(Devices.size());
+
         for (const auto& [uuid, spec]: Devices) {
-            spec.Device->Start();
+            auto future = spec.Device->Start().Apply(
+                [uuid](const auto& future)
+                {
+                    auto error = ExtractResponse(future);
+                    if (HasError(error)) {
+                        ReportDiskAgentJournalledDeviceCreationError(
+                            TStringBuilder()
+                                << "unable to start: " << FormatError(error),
+                            {{"device", uuid}});
+                    }
+                    return error;
+                });
+
+            futures.push_back(std::move(future));
         }
+
+        return WaitAll(futures).Apply([](const auto&)
+                                      { return NProto::TError(); });
     }
 
-    void Stop() override
+    TFuture<NCloud::NProto::TError> Stop() override
     {
+        TVector<TFuture<NCloud::NProto::TError>> futures;
+        futures.reserve(Devices.size());
+
         for (const auto& [uuid, spec]: Devices) {
-            spec.Device->Stop();
+            futures.push_back(spec.Device->Stop());
         }
+
+        return WaitAll(futures).Apply([](const auto&)
+                                      { return NProto::TError(); });
     }
 
     [[nodiscard]] auto AcquireDevices(
