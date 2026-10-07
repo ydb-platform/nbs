@@ -54,9 +54,8 @@ TMaybe<TInstant> ParseTimestamp(
             now,
             NDatetime::GetUtcTimeZone()))
     {
-        Cerr << "Failed to parse time format: " << res << Endl;
-        Cerr << "Parameter \"" << label << "\" will be ignored" << Endl;
-        return {};
+        ythrow NLastGetopt::TUsageException()
+            << "Invalid --" << label << " timestamp: " << res;
     }
 
     return ts;

@@ -388,11 +388,31 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
                                  until.GetRef());
     }
 
-    Y_UNIT_TEST(ShouldIgnoreInvalidAndMissingTimestamps)
+    Y_UNIT_TEST(ShouldRejectInvalidTimestamps)
+    {
+        for (const auto input: {"invalid", "2h", "", "2026-02-30T12:00:00Z"}) {
+            NLastGetopt::TOpts opts;
+            const TCommonFilterParams params(opts);
+            const char* argv[] = {
+                "profile-tool", "--since", input, "--until", input};
+            const NLastGetopt::TOptsParseResultException parsed(
+                &opts, std::size(argv), argv);
+            UNIT_ASSERT_EXCEPTION_CONTAINS(
+                params.GetSince(parsed),
+                NLastGetopt::TUsageException,
+                TString("Invalid --since timestamp: ") + input);
+            UNIT_ASSERT_EXCEPTION_CONTAINS(
+                params.GetUntil(parsed),
+                NLastGetopt::TUsageException,
+                TString("Invalid --until timestamp: ") + input);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldAllowMissingTimestamps)
     {
         NLastGetopt::TOpts opts;
         const TCommonFilterParams params(opts);
-        const char* argv[] = {"profile-tool", "--since", "invalid"};
+        const char* argv[] = {"profile-tool"};
         const NLastGetopt::TOptsParseResultException parsed(
             &opts, std::size(argv), argv);
         UNIT_ASSERT(!params.GetSince(parsed));
