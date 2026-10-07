@@ -48,6 +48,7 @@ SRCS(
     service_actor_writedata.cpp
     service_actor_xattr.cpp
     service_state.cpp
+    shard_creation_state_companion.cpp
     tablet_action_actor.cpp
 )
 
