@@ -1,0 +1,14 @@
+{
+  "comparison": "Optimized implementation: diagnostics disabled vs enabled; split service with synchronous no-I/O leaf.",
+  "start_utc": "2026-10-07T14:17:19Z",
+  "repeats": 5,
+  "seconds": 2.0,
+  "warmup_seconds": 1,
+  "source_commit": "42378ebafb32b61d9a6887baa4361ac21f583730",
+  "binary_sha256": "fe906314fa7dbd892097b056742b41e8270b0567d8bf7ac5e2ab7fa86dbc4993",
+  "harness_sha256": "97ccef49aee1a19b84382d4973dc83cd351266e7f904acf8c7a717f3989e6bab",
+  "component_cpu": "20",
+  "completion_scope": "completion_p50/p99 measures service invocation to resolved future; p50/p99 also includes preparation and classification.",
+  "completed_runs": 30,
+  "end_utc": "2026-10-07T14:18:52Z"
+}

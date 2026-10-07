@@ -1,0 +1,14 @@
+{
+  "source_commit": "42378ebafb32b61d9a6887baa4361ac21f583730",
+  "passed": 71,
+  "failed": 0,
+  "classes": {
+    "TDeviceHandlerTest": 21,
+    "TLatencyOperationTest": 15,
+    "TSplitRequestServiceTest": 13,
+    "TDurableClientTest": 22
+  },
+  "randomized_nested_scenarios": 300,
+  "wire_version": 2,
+  "legacy_wire_version_is_unknown": true
+}

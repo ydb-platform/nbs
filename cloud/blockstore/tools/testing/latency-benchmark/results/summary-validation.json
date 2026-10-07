@@ -1,0 +1,14 @@
+{
+  "source_commit": "42378ebafb32b61d9a6887baa4361ac21f583730",
+  "smoke_runs": 32,
+  "comparison_runs": 160,
+  "control_runs": 30,
+  "selected_tests_passed": 71,
+  "randomized_nested_scenarios": 300,
+  "comparison_endpoint_runs": 60,
+  "endpoint_unknown_operations": 0,
+  "quota_checksums_match": true,
+  "binary_and_source_provenance_match": true,
+  "comparison": "Frozen graph v1 at f41128ab56 versus compact summary v2 at 42378ebafb",
+  "limitations": "Release binaries; identical workloads and timers, with the summary API adapter recorded separately. Synthetic quota-graph composition uses virtual timestamps without real waits. Split uses real service with synchronous no-I/O leaf. Quota uses simulated time; FIFO isolated weak_ptr/invalidation loop; durable checkpoint uses real fsync. Endpoint uses null or hot local-file AIO, not a production volume actor."
+}
