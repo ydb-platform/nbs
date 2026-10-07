@@ -2,7 +2,7 @@
 
 #include "time_range.h"
 
-#include <library/cpp/eventlog/dumper/evlogdump.h>
+#include <library/cpp/eventlog/iterator.h>
 
 #include <util/folder/dirut.h>
 #include <util/generic/algorithm.h>
@@ -75,6 +75,7 @@ int TCommand::ProcessProfileLogs(IEventProcessor& processor)
             Cerr << "Reading " << file.Path << " " << file.EndTime << "\n";
         }
         const auto result = ProcessProfileLog(file.Path, processor, ignoreErrors);
+        Cout.Flush();
         if (result) {
             return result;
         }
@@ -87,23 +88,32 @@ int TCommand::ProcessProfileLog(
     IEventProcessor& processor,
     bool ignoreErrors)
 {
-    int result = 1;
-    try {
-        const char* args[] = {"", path.c_str()};
-        result = IterateEventLog(NEvClass::Factory(), &processor, 2, args);
-    } catch (const yexception& error) {
-        Cerr << "Error reading profile log " << path << ": " << error.what()
-             << Endl;
-        if (!ignoreErrors) {
-            throw;
+    processor.SetOptions(TEvent::TOutputOptions{});
+    NEventLog::TOptions options;
+    options.FileName = path;
+    THolder<NEventLog::IIterator> iterator;
+    for (;;) {
+        TConstEventPtr event;
+        try {
+            if (!iterator) {
+                iterator = NEventLog::CreateIterator(options, NEvClass::Factory());
+            }
+            event = iterator->Next();
+        } catch (const yexception& error) {
+            Cerr << "Error reading profile log " << path << ": " << error.what()
+                 << Endl;
+            if (ignoreErrors) {
+                Cerr << "Skipping unreadable remainder of profile log: " << path
+                     << Endl;
+                return 0;
+            }
+            return 1;
+        }
+        // Processing and output failures must propagate even with ignore-errors.
+        if (!event || !processor.CheckedProcessEvent(event.Get())) {
+            return 0;
         }
     }
-    if (result != 0 && ignoreErrors) {
-        Cerr << "Skipping unreadable remainder of profile log: " << path
-             << Endl;
-        return 0;
-    }
-    return result;
 }
 
 bool TCommand::Init(NLastGetopt::TOptsParseResultException& parseResult)

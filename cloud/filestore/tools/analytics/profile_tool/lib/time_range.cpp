@@ -47,12 +47,16 @@ TVector<TProfileLogFile> SelectProfileLogFiles(
     if (selectionSince && selectionUntil && *selectionSince >= *selectionUntil) {
         return {};
     }
+
+    // Return only the first file if until precedes its end.
     if (selectionUntil && files.front().EndTime &&
         *selectionUntil < *files.front().EndTime)
     {
         files.resize(1);
         return files;
     }
+
+    // Return only the last file if since follows its start.
     const auto& lastStart = files[files.size() - 2].EndTime;
     if (selectionSince && lastStart && *selectionSince > *lastStart) {
         files.front() = std::move(files.back());
@@ -64,13 +68,7 @@ TVector<TProfileLogFile> SelectProfileLogFiles(
     TMaybe<TInstant> previousEnd;
     for (size_t i = 0; i < files.size(); ++i) {
         const auto& file = files[i];
-        auto start = previousEnd;
-        if (i == 0 && file.EndTime) {
-            const auto day = TDuration::Seconds(86400);
-            start = *file.EndTime >= TInstant::Seconds(86400)
-                        ? *file.EndTime - day
-                        : TInstant::Zero();
-        }
+        const auto start = previousEnd;
         // Update even for excluded files: the chain precedes interval
         // filtering.
         previousEnd = file.EndTime;

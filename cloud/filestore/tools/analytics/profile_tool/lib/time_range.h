@@ -21,7 +21,7 @@ TMaybe<TInstant> GetProfileLogEndTime(const TString& path);
 // For the widened valid interval, until < first end selects only the first file, and
 // since > last start (the preceding file's end) selects only the last file.
 // Files are supplied in processing order. Each starts at the preceding file's
-// end; the first starts 86400 seconds before its end (clamped at the epoch).
+// end; the first has no lower bound.
 // Selection uses metadata only. Unknown bounds are unbounded; reversed
 // intervals are retained.
 TVector<TProfileLogFile> SelectProfileLogFiles(
