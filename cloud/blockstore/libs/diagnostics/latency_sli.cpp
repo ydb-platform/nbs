@@ -129,7 +129,7 @@ TLatencyCounts EvaluateLatency(
 TMaybe<TDuration> CalculateLatency(
     const NProto::TLatencyDiagnostics& diagnostics, TDuration totalTime)
 {
-    return ReplayLatencyGraph(diagnostics, totalTime);
+    return ReadLatencySummary(diagnostics, totalTime);
 }
 
 TLatencyCounts EvaluateLatency(

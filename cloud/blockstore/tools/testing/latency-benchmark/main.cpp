@@ -236,10 +236,10 @@ void Split(bool enabled, ui32 parts, double seconds)
                 NCloud::NProto::STORAGE_MEDIA_SSD_NONREPLICATED,
                 EBlockStoreRequest::ReadBlocksLocal, buffer.size(),
                 CyclesToDurationSafe(GetCycleCount() - started), &graph, true);
-            Y_ENSURE(!result.Unknown && result.Good == 1, "incomplete timing graph");
+            Y_ENSURE(!result.Unknown && result.Good == 1, "incomplete timing summary");
             counters.Add(result);
             if (!wireBytes) {
-                lastNodes = graph.NodesSize();
+                lastNodes = 0;
                 wireBytes = graph.ByteSizeLong();
             }
         }
@@ -267,12 +267,12 @@ void Graph(ui32 parts, double seconds)
             parent.AddChild(started, finished, child.FinishLeaf(finished));
         }
         const auto graph = parent.Finish(finished);
-        const auto latency = ReplayLatencyGraph(graph,
+        const auto latency = ReadLatencySummary(graph,
             CyclesToDurationSafe(finished - started));
         const auto expected = CyclesToDurationSafe(tick * 20).MicroSeconds();
         Y_ENSURE(latency && latency->MicroSeconds() + 4 >= expected &&
             latency->MicroSeconds() <= expected + 4, "quota replay changed");
-        if (!wireBytes) { wireBytes = graph.ByteSizeLong(); nodes = graph.NodesSize(); }
+        if (!wireBytes) { wireBytes = graph.ByteSizeLong(); nodes = 0; }
     };
     auto result = Measure(seconds, op);
     result.WireBytes = wireBytes;

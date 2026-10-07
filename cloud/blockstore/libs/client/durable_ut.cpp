@@ -7,6 +7,7 @@
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/latency.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service_test.h>
 
@@ -86,6 +87,41 @@ struct TTestLogBackend final
 
 Y_UNIT_TEST_SUITE(TDurableClientTest)
 {
+    Y_UNIT_TEST(ShouldComposeLatencySummariesAcrossRetries)
+    {
+        for (bool missingFirstSummary: {false, true}) {
+            auto client = std::make_shared<TTestService>();
+            ui32 attempts = 0;
+            client->ReadBlocksHandler = [&](std::shared_ptr<NProto::TReadBlocksRequest> request) {
+                UNIT_ASSERT_VALUES_EQUAL(request->GetHeaders().GetLatencyVersion(), LatencyVersion);
+                TLatencyOperation leaf;
+                NProto::TReadBlocksResponse response;
+                if (++attempts == 1) response.MutableError()->SetCode(E_REJECTED);
+                if (!missingFirstSummary || attempts != 1) {
+                    *response.MutableHeaders()->MutableLatency() = leaf.FinishLeaf();
+                }
+                return MakeFuture(std::move(response));
+            };
+            auto config = std::make_shared<TClientAppConfig>();
+            auto scheduler = std::make_shared<TTestScheduler>();
+            auto durable = CreateDurableClient(
+                config, client, CreateRetryPolicy(config, NProto::STORAGE_MEDIA_DEFAULT),
+                CreateLoggingService("console"), CreateCpuCycleTimer(), scheduler,
+                CreateRequestStatsStub(), CreateVolumeStatsStub());
+            auto context = MakeIntrusive<TCallContext>();
+            context->EnableLatency();
+            const ui64 started = GetCycleCount();
+            auto future = durable->ReadBlocks(context, std::make_shared<NProto::TReadBlocksRequest>());
+            scheduler->RunAllScheduledTasks();
+            const auto& response = future.GetValue(TDuration::Seconds(5));
+            UNIT_ASSERT(!HasError(response));
+            UNIT_ASSERT_VALUES_EQUAL(attempts, 2);
+            const auto latency = ReadLatencySummary(response.GetHeaders().GetLatency(),
+                CyclesToDurationSafe(GetCycleCount() - started));
+            UNIT_ASSERT_VALUES_EQUAL(latency.Defined(), !missingFirstSummary);
+        }
+    }
+
     Y_UNIT_TEST(ShouldRetryUndeliveredRequests)
     {
         auto client = std::make_shared<TTestService>();

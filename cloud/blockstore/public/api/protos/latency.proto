@@ -4,22 +4,18 @@ package NCloud.NBlockStore.NProto;
 
 option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/public/api/protos";
 
-// Diagnostic execution graph, independent of legacy processing-stage times.
-// Nodes are non-overlapping pieces of work/wait on each dependency chain,
-// in topological order. StartUs is relative to the producer's input boundary.
+// Version 2 summarizes one complete execution scope. TotalUs is observed time;
+// AdjustedUs preserves service work and gaps while removing only confirmed
+// purchased-profile waits, including their effect on parallel critical paths.
 message TLatencyDiagnostics
 {
     optional uint32 Version = 1;
     optional bool Complete = 2;
     optional uint64 TotalUs = 3;
 
-    enum EKind
-    {
-        SERVICE = 0;
-        // Only a wait proven to come from the original disk performance
-        // profile (IOPS, bandwidth or profile burst), never storage pressure.
-        QUOTA = 1;
-    }
+    // Version 1 carried an execution graph. Never reinterpret that wire field.
+    reserved 4;
+    reserved "Nodes";
 
     enum EQuotaReason
     {
@@ -27,19 +23,8 @@ message TLatencyDiagnostics
         PROFILE_IOPS = 1;
         PROFILE_BANDWIDTH = 2;
         PROFILE_BURST = 3;
-        // Combined IOPS/bandwidth/burst budget of the original profile.
         PROFILE_LIMIT = 4;
     }
-
-    message TNode
-    {
-        optional uint64 StartUs = 1;
-        optional uint64 DurationUs = 2;
-        optional EKind Kind = 3;
-        repeated uint32 Dependencies = 4;
-        optional EQuotaReason QuotaReason = 5;
-    }
-    repeated TNode Nodes = 4;
 
     enum EExclusion
     {
@@ -51,4 +36,5 @@ message TLatencyDiagnostics
     // A confirmed origin, supplied by trusted NBS instrumentation. A generic
     // cancellation/throttling error code is not sufficient evidence.
     optional EExclusion Exclusion = 5;
+    optional uint64 AdjustedUs = 6;
 }

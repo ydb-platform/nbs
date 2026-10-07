@@ -11,7 +11,7 @@ args=p.parse_args();args.output.mkdir(parents=True,exist_ok=True)
 if (args.output/'raw.jsonl').exists():raise RuntimeError('choose fresh output directory')
 meta=dict(comparison='Optimized implementation: diagnostics disabled vs enabled; split service with synchronous no-I/O leaf.',
  start_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),repeats=args.repeats,seconds=args.seconds,warmup_seconds=1,
- source_commit='f41128ab568c1cd34d7d2d9e3c37384d5214fa47',binary_sha256=hashlib.sha256(args.binary.read_bytes()).hexdigest(),
+ source_commit=runner.command(['git','rev-parse','HEAD'],cwd=runner.ROOT).strip(),binary_sha256=hashlib.sha256(args.binary.read_bytes()).hexdigest(),
  harness_sha256=hashlib.sha256((HERE/'main.cpp').read_bytes()).hexdigest(),component_cpu=runner.COMPONENT_CPU,
  completion_scope='completion_p50/p99 measures service invocation to resolved future; p50/p99 also includes preparation and classification.')
 (args.output/'metadata.json').write_text(json.dumps(meta,indent=2)+'\n')

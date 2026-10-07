@@ -57,18 +57,20 @@ def main():
  if raw.exists():raise RuntimeError('choose a fresh output directory')
  modes={m:SimpleNamespace(binary=getattr(args,m+'_binary'),server=getattr(args,m+'_server'),io_seconds=args.io_seconds) for m in ('baseline','optimized')}
  for m in modes:(args.output/m).mkdir()
- meta=dict(comparison='Original vs optimized, latency diagnostics enabled in both; checkpoint durable in both.',
-  prototype_commit='7ece625356c54c8249212ab9cb16411a448a80b2',baseline_benchmark_commit='ad5b4fbf41750da37527cecef8f4920929ced9d9',
+ meta=dict(comparison='Frozen optimized graph v1 vs compact summary v2, diagnostics enabled in both; checkpoint durable in both.',
+  prototype_commit='7ece625356c54c8249212ab9cb16411a448a80b2',baseline_benchmark_commit='f41128ab568c1cd34d7d2d9e3c37384d5214fa47',
   checkout_head=runner.command(['git','rev-parse','HEAD'],cwd=runner.ROOT).strip(),
   start_utc=time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime()),repeats=args.repeats,
   io_seconds=args.io_seconds,component_seconds=args.component_seconds,warmup_seconds=1,
   binary_hashes={m:{k:hashlib.sha256(getattr(v,k).read_bytes()).hexdigest() for k in ('binary','server')} for m,v in modes.items()},
   harness_sha256=hashlib.sha256((HERE/'main.cpp').read_bytes()).hexdigest(),
+  baseline_harness_sha256=hashlib.sha256(runner.command(['git','show','f41128ab568c1cd34d7d2d9e3c37384d5214fa47:cloud/blockstore/tools/testing/latency-benchmark/main.cpp'],cwd=runner.ROOT).encode()).hexdigest(),
+  harness_changes='Only the summary reader API and removal of the graph node-count accessor; workload and timers unchanged.',
   compare_sha256=hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
   uname=runner.command(['uname','-a']).strip(),lscpu=runner.command(['lscpu']),initial_background=runner.background(),
   server_cpus=runner.SERVER_CPUS,client_cpus=runner.CLIENT_CPUS,component_cpu=runner.COMPONENT_CPU,
   completion_scope='Split response timer spans service invocation to resolved future, sampled 1/64; loop p50/p99 also includes request preparation and classification. Vhost p50/p99 spans submit to client-observed completion, sampled 1/8.',
-  scope='Release binaries; same updated C++ harness for both. Synthetic quota-graph composition uses virtual timestamps without real waits. Split uses real service with synchronous no-I/O leaf. Quota uses simulated time; FIFO isolated weak_ptr/invalidation loop; durable checkpoint uses real fsync. Endpoint uses null or hot local-file AIO, not a production volume actor.')
+  scope='Release binaries; identical workloads and timers, with the summary API adapter recorded separately. Synthetic quota-graph composition uses virtual timestamps without real waits. Split uses real service with synchronous no-I/O leaf. Quota uses simulated time; FIFO isolated weak_ptr/invalidation loop; durable checkpoint uses real fsync. Endpoint uses null or hot local-file AIO, not a production volume actor.')
  (args.output/'metadata.json').write_text(json.dumps(meta,indent=2)+'\n')
  jobs=[]
  for rep in range(args.repeats):

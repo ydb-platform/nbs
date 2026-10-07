@@ -28,8 +28,8 @@ struct TLatencyCounts
     ui64 ClientLimit = 0;
 };
 
-// Replays the observed DAG with QUOTA durations removed. Work, dependency
-// edges, launch gaps and the tail to the final response remain unchanged.
+// Reads the producer's quota-adjusted summary and adds the observer's time
+// outside that scope. Missing or incompatible evidence remains unknown.
 TMaybe<TDuration> CalculateLatency(
     const NProto::TLatencyDiagnostics& diagnostics, TDuration totalTime);
 

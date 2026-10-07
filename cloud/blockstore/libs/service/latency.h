@@ -13,58 +13,45 @@
 
 namespace NCloud::NBlockStore {
 
-inline constexpr ui32 LatencyVersion = 1;
-inline constexpr size_t MaxLatencyNodes = 4096;
-inline constexpr size_t MaxLatencyEdges = 16384;
+inline constexpr ui32 LatencyVersion = 2;
+inline constexpr size_t MaxLatencyChildren = 4096;
+inline constexpr size_t MaxLatencyQuotaIntervals = 2048;
 
-TMaybe<TDuration> ReplayLatencyGraph(const NProto::TLatencyDiagnostics& graph,
-                                     TDuration total);
+// Include the observer's transport/queue/tail time outside the producer scope.
+// Missing, incompatible or inconsistent summaries have no usable latency.
+TMaybe<TDuration> ReadLatencySummary(
+    const NProto::TLatencyDiagnostics& summary, TDuration total);
 
-// One observed execution scope. Parallel children fork from the scope entry;
-// sequential children depend on the preceding child's completion. All local
-// gaps and transport time remain SERVICE work. No legacy clocks are changed.
+// Children are either independent parallel branches or sequential attempts.
+// A child exports observed and adjusted duration; its internal dependency
+// structure has already been resolved at its own boundary.
 class TLatencyOperation
 {
     struct TChild
     {
         ui64 Started;
         ui64 Finished;
-        ui64 MaxEnd;
-        ui32 FirstNode;
-        ui32 NodeCount;
-    };
-
-    // Retain the supported timing fields without per-node protobuf objects.
-    // Dependencies use child-local indices until the response is assembled.
-    struct TNode
-    {
-        ui64 StartUs;
-        ui64 DurationUs;
-        ui32 FirstDependency;
-        ui32 DependencyCount;
-        NProto::TLatencyDiagnostics::EKind Kind;
-        NProto::TLatencyDiagnostics::EQuotaReason QuotaReason;
-        bool HasQuotaReason;
-        bool Terminal = true;
+        ui64 RemovedUs;
     };
 
     struct TQuota
     {
         ui64 Started;
         ui64 Finished;
-        NProto::TLatencyDiagnostics::EQuotaReason Reason;
     };
 
     const ui64 Started;
     const bool Parallel;
     mutable std::mutex Lock;
+    // Parallel callbacks reduce directly into these scalars without allocation.
+    bool HasChildren = false;
+    ui64 LastChildFinished = 0;
+    ui64 AdjustedChildFinishUs = 0;
+    // Sequential attempts retain only bounds, to validate out-of-order callbacks.
     TVector<TChild> Children;
-    TVector<TNode> ChildNodes;
-    TVector<ui32> ChildDependencies;
     bool ChildrenOrdered = true;
     TVector<TQuota> Quota;
-    size_t Nodes = 0;
-    size_t Edges = 0;
+    bool QuotaOrdered = true;
     bool Complete = true;
 
 public:
@@ -72,7 +59,7 @@ public:
                                ui64 started = GetCycleCount());
     ui64 GetStartedCycles() const;
     void AddChild(ui64 started, ui64 finished,
-                  const NProto::TLatencyDiagnostics& graph);
+                  const NProto::TLatencyDiagnostics& summary);
     void AddQuota(ui64 started, ui64 finished,
                   NProto::TLatencyDiagnostics::EQuotaReason reason);
     void EndQuota(ui64 finished);

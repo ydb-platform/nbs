@@ -33,7 +33,7 @@ public:
 
     template <typename T>
     void Record(TStats<T>& stats, int type, ui64 bytes, TCpuCycles elapsed,
-                bool success, const NProto::TLatencyDiagnostics* graph) const
+                bool success, const NProto::TLatencyDiagnostics* summary) const
     {
         if (!Enabled || type < 0 || type >= 2) {
             return;
@@ -43,7 +43,7 @@ public:
             MediaKind,
             type == 1 ? EBlockStoreRequest::WriteBlocks
                       : EBlockStoreRequest::ReadBlocks, bytes,
-            CyclesToDurationSafe(elapsed), graph, success);
+            CyclesToDurationSafe(elapsed), summary, success);
         auto& counts = stats.LatencyCounters[type];
         counts.Good += result.Good;
         counts.Bad += result.Bad;
@@ -60,17 +60,14 @@ public:
         if (!Enabled || type < 0 || type >= 2) {
             return;
         }
-        NProto::TLatencyDiagnostics graph;
-        graph.SetVersion(LatencyVersion);
-        graph.SetComplete(true);
-        graph.SetTotalUs(CyclesToDurationSafe(elapsed).MicroSeconds());
-        graph.SetExclusion(NProto::TLatencyDiagnostics::NONE);
-        auto* node = graph.AddNodes();
-        node->SetKind(NProto::TLatencyDiagnostics::SERVICE);
-        node->SetStartUs(0);
-        node->SetDurationUs(graph.GetTotalUs());
+        NProto::TLatencyDiagnostics summary;
+        summary.SetVersion(LatencyVersion);
+        summary.SetComplete(true);
+        summary.SetTotalUs(CyclesToDurationSafe(elapsed).MicroSeconds());
+        summary.SetExclusion(NProto::TLatencyDiagnostics::NONE);
+        summary.SetAdjustedUs(summary.GetTotalUs());
         Record(stats, type, bytes, elapsed,
-               completion == ELatencyCompletion::Success, &graph);
+               completion == ELatencyCompletion::Success, &summary);
     }
 };
 }   // namespace NCloud::NBlockStore::NVHostServer
