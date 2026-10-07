@@ -1188,6 +1188,13 @@ public:
         ui32 blockIndex,
         TStringBuf blockData);
 
+    void WriteFreshBlocks(
+        IIndexTabletDatabase& db,
+        ui64 nodeId,
+        ui64 commitId,
+        const TByteRange& byteRange,
+        IBlockBufferPtr blockBuffer);
+
     void MarkFreshBlocksDeleted(
         IIndexTabletDatabase& db,
         ui64 nodeId,

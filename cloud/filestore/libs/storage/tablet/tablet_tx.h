@@ -2333,6 +2333,8 @@ struct TTxIndexTablet
         ui64 NodeId = InvalidNodeId;
         TMaybe<INodeIndexTabletDatabase::TNode> Node;
 
+        std::unique_ptr<IIndexTabletDatabase> Db;
+
         TWriteData(
                 TRequestInfoPtr requestInfo,
                 const ui32 writeBlobThreshold,

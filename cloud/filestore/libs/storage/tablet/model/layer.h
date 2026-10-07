@@ -2,6 +2,8 @@
 
 #include "block.h"
 
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 /**
@@ -46,7 +48,7 @@ struct IFreshBlockVisitor
 {
     virtual ~IFreshBlockVisitor() = default;
 
-    virtual void Accept(const TBlock& block, TStringBuf blockData) = 0;
+    virtual void Accept(const TBlock& block, std::pair<TStringBuf, IBlockBufferPtr> blockData) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

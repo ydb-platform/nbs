@@ -11,13 +11,15 @@
 #include <util/generic/strbuf.h>
 #include <util/memory/alloc.h>
 
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
+
 namespace NCloud::NFileStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
 class TFreshBlocks
 {
-    using TFreshBlockMap = TMap<TBlock, TStringBuf, TBlockCompare>;
+    using TFreshBlockMap = TMap<TBlock, std::pair<TStringBuf, IBlockBufferPtr>, TBlockCompare>;
 
 private:
     IAllocator* Allocator;
@@ -37,6 +39,15 @@ public:
         ui64 nodeId,
         ui32 blockIndex,
         TStringBuf blockData,
+        ui32 blockSize,
+        ui64 minCommitId,
+        ui64 maxCommitId = InvalidCommitId);
+
+    bool AddBlock(
+        ui64 nodeId,
+        ui32 blockIndex,
+        TStringBuf blockData,
+        IBlockBufferPtr blockBuffer,
         ui32 blockSize,
         ui64 minCommitId,
         ui64 maxCommitId = InvalidCommitId);

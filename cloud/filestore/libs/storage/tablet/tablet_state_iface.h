@@ -7,6 +7,8 @@
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/public/api/protos/node.pb.h>
 
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
+
 namespace NCloud::NProto {
 
 class TTabletStorageInfo;
@@ -465,6 +467,11 @@ public:
         ui64 commitId,
         ui32 blockIndex,
         TStringBuf blockData) = 0;
+    virtual void WriteFreshBlocks(
+        ui64 nodeId,
+        ui64 commitId,
+        const TByteRange& byteRange,
+        IBlockBufferPtr blockBuffer) = 0;
     virtual void MarkFreshBlockDeleted(
         ui64 nodeId,
         ui64 minCommitId,

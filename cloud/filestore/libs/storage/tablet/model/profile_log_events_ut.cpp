@@ -237,19 +237,26 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
     Y_UNIT_TEST(ShouldAddBlobsInfoForMixedBlob)
     {
         const ui32 blockSize = 4096;
+        TString content1 = "content_1";
+        TString content2 = "content_2";
+        TString content3 = "content_3";
+        TString emptyContent = "";
         const auto oldBlobFirst = TMixedBlob(
             MakePartialBlobId(1, 1),
             {TBlock(1, 3, 0, 0), TBlock(1, 5, 0, 0), TBlock(3, 6, 0, 0)},
-            "content_1");
+            {{TStringBuf(content1.data(), content1.size()), nullptr}});
         const auto oldBlobSecond = TMixedBlob(
             MakePartialBlobId(1, 3),
             {TBlock(3, 10, 0, 0), TBlock(7, 5, 0, 0), TBlock(7, 6, 0, 0)},
-            "content_2");
-        const auto emptyBlob = TMixedBlob(MakePartialBlobId(1, 3), {}, "");
+            {{TStringBuf(content2.data(), content2.size()), nullptr}});
+        const auto emptyBlob = TMixedBlob(
+            MakePartialBlobId(1, 3),
+            {},
+            {{TStringBuf(emptyContent.data(), emptyContent.size()), nullptr}});
         const auto newBlob = TMixedBlob(
             MakePartialBlobId(2, 1),
             {TBlock(1, 10, 0, 0)},
-            "content_3");
+            {{TStringBuf(content3.data(), content3.size()), nullptr}});
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         AddBlobsInfo(

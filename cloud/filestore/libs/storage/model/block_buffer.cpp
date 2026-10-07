@@ -10,15 +10,16 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TBuffer>
 class TBlockBuffer final
     : public IBlockBuffer
 {
 private:
     const TByteRange ByteRange;
-    TString Buffer;
+    TBuffer Buffer;
 
 public:
-    TBlockBuffer(TByteRange byteRange, TString buffer)
+    TBlockBuffer(TByteRange byteRange, TBuffer buffer)
         : ByteRange(byteRange)
         , Buffer(std::move(buffer))
     {
@@ -125,15 +126,22 @@ public:
 
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange)
 {
-    return std::make_shared<TBlockBuffer>(
+    return std::make_shared<TBlockBuffer<TString>>(
         byteRange,
         TString(byteRange.Length, 0));
 }
 
+
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TString buffer)
 {
     Y_ABORT_UNLESS(buffer.size() == byteRange.Length);
-    return std::make_shared<TBlockBuffer>(byteRange, std::move(buffer));
+    return std::make_shared<TBlockBuffer<TString>>(byteRange, std::move(buffer));
+}
+
+IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TRcBuf buffer)
+{
+    Y_ABORT_UNLESS(buffer.size() == byteRange.Length);
+    return std::make_shared<TBlockBuffer<TRcBuf>>(byteRange, std::move(buffer));
 }
 
 IBlockBufferPtr CreateLazyBlockBuffer(TByteRange byteRange)
