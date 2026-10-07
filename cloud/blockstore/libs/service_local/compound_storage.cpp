@@ -5,12 +5,17 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/storage.h>
+
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist_block_range.h>
 
-#include <util/generic/algorithm.h>
 #include <library/cpp/deprecated/atomic/atomic.h>
+
+#include <util/generic/algorithm.h>
 #include <util/system/yassert.h>
+
+#include <exception>
+#include <optional>
 
 namespace NCloud::NBlockStore::NServer {
 
@@ -24,6 +29,19 @@ template <typename TResponse>
 TFuture<TResponse> FutureErrorResponse(ui32 code, TString message)
 {
     return MakeFuture(ErrorResponse<TResponse>(code, std::move(message)));
+}
+
+template <typename TExecute>
+auto ExecuteStorage(TExecute&& execute)
+{
+    using TResponse = typename decltype(execute())::value_type;
+    try {
+        return execute();
+    } catch (...) {
+        // Account for this child through the same completion path and continue
+        // dispatching the other children without abandoning active requests.
+        return MakeErrorFuture<TResponse>(std::current_exception());
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -181,17 +199,28 @@ struct TGenericBlocksCtx
 
     void OnResponse(const NProto::TError& error)
     {
+        if (AccountResponse(error)) {
+            Complete();
+        }
+    }
+
+protected:
+    bool AccountResponse(const NProto::TError& error)
+    {
         if (HasError(error)) {
             with_lock (Lock) {
                 LastError.CopyFrom(error);
             }
         }
 
-        if (AtomicDecrement(RemainingRequests) == 0) {
-            R response;
-            response.MutableError()->Swap(&LastError);
-            Promise.SetValue(std::move(response));
-        }
+        return AtomicDecrement(RemainingRequests) == 0;
+    }
+
+    void Complete()
+    {
+        R response;
+        response.MutableError()->Swap(&LastError);
+        Promise.SetValue(std::move(response));
     }
 };
 
@@ -203,12 +232,22 @@ using TZeroBlocksCtx = TGenericBlocksCtx<NProto::TZeroBlocksResponse>;
 template <typename R>
 struct TLocalBlocksCtx : TGenericBlocksCtx<R>
 {
-    TGuardedSgList::TGuard Guard;
+    std::optional<TGuardedSgList::TGuard> Guard;
 
     TLocalBlocksCtx(ui32 count, TGuardedSgList::TGuard guard)
         : TGenericBlocksCtx<R>(count)
         , Guard(std::move(guard))
     {}
+
+    void OnResponse(const NProto::TError& error)
+    {
+        if (this->AccountResponse(error)) {
+            // SetValue runs subscribers inline. They may close the parent's
+            // sglist and release its memory, so relinquish access first.
+            Guard.reset();
+            this->Complete();
+        }
+    }
 };
 
 using TReadBlocksLocalCtx = TLocalBlocksCtx<NProto::TReadBlocksLocalResponse>;
@@ -351,9 +390,12 @@ TFuture<NProto::TZeroBlocksResponse> TCompoundStorage::ZeroBlocks(
 
         Y_ABORT_UNLESS(storageBlockRange.BlockRange.Size() == totalBlockCount);
 
-        return Storages[storageBlockRange.Storage]->ZeroBlocks(
-            std::move(callContext),
-            std::move(request));
+        return ExecuteStorage(
+            [&]
+            {
+                return Storages[storageBlockRange.Storage]->ZeroBlocks(
+                    std::move(callContext), std::move(request));
+            });
     }
 
     auto requestContext = std::make_shared<TZeroBlocksCtx>(count);
@@ -365,12 +407,20 @@ TFuture<NProto::TZeroBlocksResponse> TCompoundStorage::ZeroBlocks(
         subRequest->SetStartIndex(storageBlockRange.BlockRange.Start);
         subRequest->SetBlocksCount(storageBlockRange.BlockRange.Size());
 
-        Storages[storageBlockRange.Storage]->ZeroBlocks(
-            callContext,
-            std::move(subRequest)
-        ).Subscribe([=] (const auto& future) {
-            requestContext->OnResponse(future.GetValue().GetError());
-        });
+        ExecuteStorage(
+            [&]
+            {
+                return Storages[storageBlockRange.Storage]->ZeroBlocks(
+                    callContext, std::move(subRequest));
+            })
+            .Subscribe(
+                [requestContext](const auto& future)
+                {
+                    const auto response =
+                        SafeExecute<NProto::TZeroBlocksResponse>(
+                            [&] { return future.GetValue(); });
+                    requestContext->OnResponse(response.GetError());
+                });
     }
 
     return requestContext->Promise;
@@ -416,9 +466,12 @@ TFuture<NProto::TReadBlocksLocalResponse> TCompoundStorage::ReadBlocksLocal(
 
         Y_ABORT_UNLESS(storageBlockRange.BlockRange.Size() == totalBlockCount);
 
-        return Storages[storageBlockRange.Storage]->ReadBlocksLocal(
-            std::move(callContext),
-            std::move(request));
+        return ExecuteStorage(
+            [&]
+            {
+                return Storages[storageBlockRange.Storage]->ReadBlocksLocal(
+                    std::move(callContext), std::move(request));
+            });
     }
 
     TSgListBlockRange src(guard.Get(), BlockSize);
@@ -437,14 +490,22 @@ TFuture<NProto::TReadBlocksLocalResponse> TCompoundStorage::ReadBlocksLocal(
         subRequest->SetStartIndex(startIndex);
         subRequest->SetBlocksCount(blockCount);
         subRequest->SetBlockSize(request->GetBlockSize());
-        subRequest->Sglist.SetSgList(src.Next(blockCount));
+        subRequest->Sglist = request->Sglist.Create(src.Next(blockCount));
 
-        Storages[storageBlockRange.Storage]->ReadBlocksLocal(
-            callContext,
-            std::move(subRequest)
-        ).Subscribe([=] (const auto& future) {
-            requestContext->OnResponse(future.GetValue().GetError());
-        });
+        ExecuteStorage(
+            [&]
+            {
+                return Storages[storageBlockRange.Storage]->ReadBlocksLocal(
+                    callContext, std::move(subRequest));
+            })
+            .Subscribe(
+                [requestContext](const auto& future)
+                {
+                    const auto response =
+                        SafeExecute<NProto::TReadBlocksLocalResponse>(
+                            [&] { return future.GetValue(); });
+                    requestContext->OnResponse(response.GetError());
+                });
     }
 
     return requestContext->Promise;
@@ -490,9 +551,12 @@ TFuture<NProto::TWriteBlocksLocalResponse> TCompoundStorage::WriteBlocksLocal(
 
         Y_ABORT_UNLESS(storageBlockRange.BlockRange.Size() == totalBlockCount);
 
-        return Storages[storageBlockRange.Storage]->WriteBlocksLocal(
-            std::move(callContext),
-            std::move(request));
+        return ExecuteStorage(
+            [&]
+            {
+                return Storages[storageBlockRange.Storage]->WriteBlocksLocal(
+                    std::move(callContext), std::move(request));
+            });
     }
 
     TSgListBlockRange dst(guard.Get(), BlockSize);
@@ -511,14 +575,22 @@ TFuture<NProto::TWriteBlocksLocalResponse> TCompoundStorage::WriteBlocksLocal(
         subRequest->SetStartIndex(startIndex);
         subRequest->SetBlockSize(request->GetBlockSize());
         subRequest->BlocksCount = blockCount;
-        subRequest->Sglist.SetSgList(dst.Next(blockCount));
+        subRequest->Sglist = request->Sglist.Create(dst.Next(blockCount));
 
-        Storages[storageBlockRange.Storage]->WriteBlocksLocal(
-            callContext,
-            std::move(subRequest)
-        ).Subscribe([=] (const auto& future) {
-            requestContext->OnResponse(future.GetValue().GetError());
-        });
+        ExecuteStorage(
+            [&]
+            {
+                return Storages[storageBlockRange.Storage]->WriteBlocksLocal(
+                    callContext, std::move(subRequest));
+            })
+            .Subscribe(
+                [requestContext](const auto& future)
+                {
+                    const auto response =
+                        SafeExecute<NProto::TWriteBlocksLocalResponse>(
+                            [&] { return future.GetValue(); });
+                    requestContext->OnResponse(response.GetError());
+                });
     }
 
     return requestContext->Promise;
@@ -530,9 +602,14 @@ TFuture<NProto::TError> TCompoundStorage::EraseDevice(
     auto context = std::make_shared<TEraseDeviceCtx>(Storages.size());
 
     for (auto& storage: Storages) {
-        storage->EraseDevice(method).Subscribe([=] (auto& future) {
-            context->OnResponse(future.GetValue());
-        });
+        ExecuteStorage([&] { return storage->EraseDevice(method); })
+            .Subscribe(
+                [context](const auto& future)
+                {
+                    const auto error = SafeExecute<NProto::TError>(
+                        [&] { return future.GetValue(); });
+                    context->OnResponse(error);
+                });
     }
 
     return context->Promise;

@@ -364,7 +364,8 @@ public:
 
     explicit TIoDepthHandlerFixture(
         std::shared_ptr<TTestStorage> storage =
-            std::make_shared<TTestStorage>())
+            std::make_shared<TTestStorage>(),
+        IErrorHandlerPtr errorHandler = nullptr)
         : Storage(std::move(storage))
     {
         Storage->DoAllocations = true;
@@ -397,7 +398,10 @@ public:
         Handler = CreateServerHandlerFactory(
                       CreateDefaultDeviceHandlerFactory(),
                       CreateLoggingService("console", {TLOG_DEBUG}),
-                      Storage, Stats, CreateErrorHandlerStub(), options)
+                      Storage,
+                      Stats,
+                      errorHandler ? std::move(errorHandler)
+                                   : CreateErrorHandlerStub(), options)
                       ->CreateHandler();
         NegotiateClient(*Handler, Replies, Requests);
         Context = MakeIntrusive<TServerContext>(Replies);
@@ -436,6 +440,17 @@ class TThrowingIoDepthOutput final: public IOutputStream
     void DoWrite(const void*, size_t) override
     {
         ythrow yexception() << "response write failed";
+    }
+};
+
+class TCountingErrorHandler final: public IErrorHandler
+{
+public:
+    std::atomic<ui32> Notifications = 0;
+
+    void ProcessException(std::exception_ptr) override
+    {
+        ++Notifications;
     }
 };
 
@@ -868,6 +883,48 @@ Y_UNIT_TEST_SUITE(TServerHandlerTest)
         UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].Current, 0);
         UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
         UNIT_ASSERT_VALUES_EQUAL(fixture.ErrorCount, 1);
+    }
+
+    Y_UNIT_TEST(ShouldNotifyRecoveryOnceWithoutCompletingIoDepth)
+    {
+        for (const bool sendResponse: {false, true}) {
+            auto errors = std::make_shared<TCountingErrorHandler>();
+            TIoDepthHandlerFixture fixture(std::make_shared<TTestStorage>(),
+                                           errors);
+            fixture.Context->ForwardResponses = sendResponse;
+            fixture.Accept(NBD_CMD_READ);
+            fixture.NowNs = 1'000'000'000;
+            const auto exception =
+                std::make_exception_ptr(yexception() << "invalid next header");
+
+            std::array<std::thread, 4> notifiers;
+            for (auto& notifier: notifiers) {
+                notifier = std::thread(
+                    [&] { fixture.Handler->NotifyException(exception); });
+            }
+            for (auto& notifier: notifiers) {
+                notifier.join();
+            }
+            UNIT_ASSERT_VALUES_EQUAL(errors->Notifications.load(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 0);
+            const auto lane = static_cast<ui32>(EBlockStoreRequest::ReadBlocks);
+            UNIT_ASSERT_VALUES_EQUAL(
+                fixture.Depth.Snapshot().Lanes[lane].Current, 1);
+
+            fixture.Context->ExecutePending();
+            fixture.Handler->ProcessException(exception);
+            fixture.Handler->ProcessException(exception);
+            fixture.Handler->NotifyException(exception);
+            UNIT_ASSERT_VALUES_EQUAL(errors->Notifications.load(), 1);
+            UNIT_ASSERT(fixture.Balanced);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.CompletedCount, 1);
+            UNIT_ASSERT_VALUES_EQUAL(fixture.ErrorCount, !sendResponse);
+            const auto snapshot = fixture.Depth.Snapshot();
+            UNIT_ASSERT(snapshot.Continuous);
+            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].Current, 0);
+            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].IntegralUs,
+                                     1'000'000);
+        }
     }
 
     Y_UNIT_TEST(ShouldCancelIoDepthOnceBeforeLateTaskCompletion)

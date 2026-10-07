@@ -15,7 +15,10 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <array>
+#include <atomic>
 #include <exception>
+#include <optional>
+#include <thread>
 
 namespace NCloud::NBlockStore {
 
@@ -669,6 +672,184 @@ Y_UNIT_TEST_SUITE(TDeviceHandlerTest)
             for (const auto& scenario: ModificationFailureScenarios) {
                 CheckModificationFailure(scenario, asynchronous, true);
             }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCloseUnalignedReadBufferBeforeRelease)
+    {
+        auto counters = SetupCriticalEvents();
+        enum class ECompletion
+        {
+            Success,
+            ErrorResponse,
+            SynchronousException,
+            AsynchronousException,
+        };
+        for (auto completion: {ECompletion::Success, ECompletion::ErrorResponse,
+                               ECompletion::SynchronousException,
+                               ECompletion::AsynchronousException})
+        {
+            auto storage = std::make_shared<TTestStorageWithTrackedBuffers>();
+            auto promise = NewPromise<NProto::TReadBlocksLocalResponse>();
+            TGuardedSgList retained;
+            ui32 buffersReleased = 0;
+            bool accessClosedBeforeRelease = false;
+            storage->BufferReleaseHandler = [&]
+            {
+                accessClosedBeforeRelease = !retained.Acquire();
+                ++buffersReleased;
+            };
+
+            const TServiceError exception(
+                MakeError(E_REJECTED, "unaligned read failure"));
+            NProto::TReadBlocksLocalResponse expectedResponse;
+            expectedResponse.MutableHeaders()->MutableThrottler()->SetDelay(
+                123);
+            expectedResponse.SetUnencryptedBlockMask("mask");
+            if (completion == ECompletion::ErrorResponse) {
+                *expectedResponse.MutableError() =
+                    MakeError(E_IO, "original read error");
+            }
+            storage->ReadBlocksLocalHandler =
+                [&](TCallContextPtr,
+                    std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+            {
+                retained = request->Sglist;
+                if (completion == ECompletion::SynchronousException) {
+                    throw exception;
+                }
+                if (completion == ECompletion::AsynchronousException) {
+                    return promise.GetFuture();
+                }
+                if (auto guard = request->Sglist.Acquire()) {
+                    for (const auto& block: guard.Get()) {
+                        memset(const_cast<char*>(block.Data()), 'r',
+                               block.Size());
+                    }
+                }
+                promise.SetValue(expectedResponse);
+                return promise.GetFuture();
+            };
+
+            auto deviceHandler =
+                CreateDeviceHandlerFactoryForTesting(DefaultBlockSize)
+                    ->CreateDeviceHandler(TDeviceHandlerParams{
+                        .Storage = storage,
+                        .BlockSize = DefaultBlockSize,
+                        .StorageMediaKind = NProto::STORAGE_MEDIA_SSD});
+            auto callerBuffer = TString(3, '0');
+            TGuardedSgList callerSgList(
+                {{callerBuffer.data(), callerBuffer.size()}});
+            auto future = deviceHandler->Read(MakeIntrusive<TCallContext>(), 1,
+                                              callerBuffer.size(), callerSgList,
+                                              {});
+            if (completion == ECompletion::AsynchronousException) {
+                UNIT_ASSERT(!future.IsReady());
+                UNIT_ASSERT_VALUES_EQUAL(0, buffersReleased);
+                promise.SetException(std::make_exception_ptr(exception));
+            }
+            UNIT_ASSERT(future.IsReady());
+            if (completion == ECompletion::SynchronousException ||
+                completion == ECompletion::AsynchronousException)
+            {
+                expectedResponse = TErrorResponse(exception);
+            } else {
+                // Observing the shared storage future must preserve its value.
+                UNIT_ASSERT_VALUES_EQUAL(
+                    expectedResponse.SerializeAsString(),
+                    promise.GetFuture().GetValue().SerializeAsString());
+            }
+            UNIT_ASSERT_VALUES_EQUAL(expectedResponse.SerializeAsString(),
+                                     future.GetValue().SerializeAsString());
+            UNIT_ASSERT_VALUES_EQUAL(
+                completion == ECompletion::Success ? "rrr" : "000",
+                callerBuffer);
+            UNIT_ASSERT_VALUES_EQUAL(1, buffersReleased);
+            UNIT_ASSERT(accessClosedBeforeRelease);
+            UNIT_ASSERT(!retained.Acquire());
+            UNIT_ASSERT(callerSgList.Acquire());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldWaitForStorageAccessBeforeReleasingUnalignedReadBuffer)
+    {
+        auto counters = SetupCriticalEvents();
+        for (bool exceptional: {false, true}) {
+            auto storage = std::make_shared<TTestStorageWithTrackedBuffers>();
+            auto promise = NewPromise<NProto::TReadBlocksLocalResponse>();
+            TGuardedSgList retained;
+            std::atomic<ui32> buffersReleased = 0;
+            std::atomic<bool> accessClosedBeforeRelease = false;
+            storage->BufferReleaseHandler = [&]
+            {
+                accessClosedBeforeRelease.store(!retained.Acquire());
+                ++buffersReleased;
+            };
+            storage->ReadBlocksLocalHandler =
+                [&](TCallContextPtr,
+                    std::shared_ptr<NProto::TReadBlocksLocalRequest> request)
+            {
+                retained = request->Sglist;
+                return promise.GetFuture();
+            };
+            auto deviceHandler =
+                CreateDeviceHandlerFactoryForTesting(DefaultBlockSize)
+                    ->CreateDeviceHandler(TDeviceHandlerParams{
+                        .Storage = storage,
+                        .BlockSize = DefaultBlockSize,
+                        .StorageMediaKind = NProto::STORAGE_MEDIA_SSD});
+            auto callerBuffer = TString(3, '0');
+            TGuardedSgList callerSgList(
+                {{callerBuffer.data(), callerBuffer.size()}});
+            auto future = deviceHandler->Read(MakeIntrusive<TCallContext>(), 1,
+                                              callerBuffer.size(), callerSgList,
+                                              {});
+            UNIT_ASSERT(!future.IsReady());
+            std::optional<TGuardedSgList::TGuard> storageAccess(
+                retained.Acquire());
+            UNIT_ASSERT(*storageAccess);
+            for (const auto& block: storageAccess->Get()) {
+                memset(const_cast<char*>(block.Data()), 'r', block.Size());
+            }
+            const TServiceError exception(
+                MakeError(E_REJECTED, "pending unaligned read failure"));
+            NProto::TReadBlocksLocalResponse response;
+            response.MutableHeaders()->MutableThrottler()->SetDelay(123);
+            std::thread completion(
+                [&]
+                {
+                    if (exceptional) {
+                        promise.SetException(
+                            std::make_exception_ptr(exception));
+                    } else {
+                        promise.SetValue(response);
+                    }
+                });
+
+            const bool storageCompleted =
+                promise.GetFuture().Wait(TDuration::Seconds(5));
+            const bool completedWhileAccessHeld =
+                future.Wait(TDuration::MilliSeconds(100));
+            const auto releasedWhileAccessHeld = buffersReleased.load();
+            // Release access and join before asserting: failure must not leave
+            // the completion thread waiting in Close during test unwinding.
+            storageAccess.reset();
+            completion.join();
+
+            UNIT_ASSERT(storageCompleted);
+            UNIT_ASSERT(!completedWhileAccessHeld);
+            UNIT_ASSERT_VALUES_EQUAL(0, releasedWhileAccessHeld);
+            UNIT_ASSERT(future.IsReady());
+            if (exceptional) {
+                response = TErrorResponse(exception);
+            }
+            UNIT_ASSERT_VALUES_EQUAL(response.SerializeAsString(),
+                                     future.GetValue().SerializeAsString());
+            UNIT_ASSERT_VALUES_EQUAL(exceptional ? "000" : "rrr", callerBuffer);
+            UNIT_ASSERT_VALUES_EQUAL(1, buffersReleased.load());
+            UNIT_ASSERT(accessClosedBeforeRelease.load());
+            UNIT_ASSERT(!retained.Acquire());
+            UNIT_ASSERT(callerSgList.Acquire());
         }
     }
 

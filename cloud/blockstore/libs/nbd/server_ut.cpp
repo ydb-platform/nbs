@@ -73,6 +73,19 @@ public:
     }
 };
 
+class TRecoveryErrorHandler final: public IErrorHandler
+{
+public:
+    std::atomic<ui32> Notifications = 0;
+    TManualEvent RecoveryScheduled;
+
+    void ProcessException(std::exception_ptr) override
+    {
+        ++Notifications;
+        RecoveryScheduled.Signal();
+    }
+};
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool BuffersFilledWithSingleChar(const TSgList& buffers, char sym)
@@ -450,6 +463,11 @@ public:
     void ProcessException(std::exception_ptr exception) override
     {
         Handler->ProcessException(std::move(exception));
+    }
+
+    void NotifyException(std::exception_ptr exception) override
+    {
+        Handler->NotifyException(std::move(exception));
     }
 
     size_t CollectRequests(
@@ -1282,6 +1300,142 @@ Y_UNIT_TEST_SUITE(TServerTest)
             UNIT_ASSERT(snapshot.Continuous);
             UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[lane].Current, 0);
         }
+    }
+
+    Y_UNIT_TEST(ShouldNotifyRecoveryWhileReadResponseIsBlocked)
+    {
+        TIoDepthServerStats stats;
+        auto errors = std::make_shared<TRecoveryErrorHandler>();
+        auto storage = std::make_shared<TTestStorage>();
+        storage->ReadBlocksLocalHandler = [](auto, auto request)
+        {
+            if (auto guard = request->Sglist.Acquire()) {
+                for (const auto& block: guard.Get()) {
+                    memset(const_cast<char*>(block.Data()), 'a', block.Size());
+                }
+            }
+            return MakeFuture<NProto::TReadBlocksLocalResponse>();
+        };
+        storage->ZeroBlocksHandler = [](auto, auto)
+        {
+            return MakeFuture<NProto::TZeroBlocksResponse>();
+        };
+        auto logging = CreateLoggingService("console", {TLOG_DEBUG});
+        const ui32 responseBytes = NBD_MAX_BUFFER_SIZE;
+        auto options = DefaultStorageOptions;
+        options.BlocksCount = 2 * responseBytes / options.BlockSize;
+        auto createFactory = [&](IErrorHandlerPtr errorHandler)
+        {
+            return CreateServerHandlerFactory(
+                CreateDefaultDeviceHandlerFactory(), logging, storage,
+                stats.Stats, std::move(errorHandler), options);
+        };
+        TServerConfig config;
+        config.LimiterEnabled = true;
+        // Limiter blocks the next admission after its threshold is exceeded.
+        config.MaxInFlightBytesPerThread = responseBytes - 1;
+        auto server = CreateServer(logging, config);
+        TPortManager portManager;
+        TNetworkAddress address(portManager.GetPort());
+        logging->Start();
+        server->Start();
+        Y_DEFER
+        {
+            server->Stop();
+            logging->Stop();
+        };
+        auto error = server->StartEndpoint(address, createFactory(errors))
+                         .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        TSocket socket(address, TDuration::Seconds(5));
+        socket.SetSocketTimeout(5);
+        socket.SetInputBuffer(1024);
+        TSocketInput input(socket);
+        TSocketOutput output(socket);
+        auto client = CreateClientHandler(logging);
+        UNIT_ASSERT(client->NegotiateClient(input, output));
+
+        TRequest request{};
+        request.Magic = NBD_REQUEST_MAGIC;
+        request.Type = NBD_CMD_READ;
+        request.Handle = 1;
+        request.Length = responseBytes;
+        TRequestWriter writer(output);
+        writer.WriteRequest(request);
+
+        // Consume only the reply header. A 32 MiB body cannot fit in the tiny
+        // peer receive buffer, so the real Send coroutine remains in WriteI.
+        TRequestReader reader(input);
+        TSimpleReply reply;
+        UNIT_ASSERT(reader.ReadSimpleReply(reply));
+        UNIT_ASSERT_VALUES_EQUAL(reply.Handle, 1);
+        UNIT_ASSERT(reply.Error == NBD_SUCCESS);
+        stats.NowNs = 1'000'000'000;
+        const auto readLane = static_cast<ui32>(EBlockStoreRequest::ReadBlocks);
+        UNIT_ASSERT_VALUES_EQUAL(stats.Depth.Snapshot().Lanes[readLane].Current,
+                                 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 0);
+
+        // Leave the body unread and submit a malformed next request header.
+        // Recovery must be notified before Send can reach the stop marker.
+        output.Write(TString(sizeof(ui32), '\0'));
+        UNIT_ASSERT(errors->RecoveryScheduled.WaitT(TDuration::Seconds(5)));
+        UNIT_ASSERT_VALUES_EQUAL(errors->Notifications.load(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(stats.Depth.Snapshot().Lanes[readLane].Current,
+                                 1);
+
+        // EndpointManager's scheduled recovery closes the listener/socket and
+        // waits for StopEndpoint drain before reopening it. Simulate that
+        // sequence without closing or draining the stalled peer ourselves.
+        stats.NowNs = 2'000'000'000;
+        error = server->StopEndpoint(address).GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT_VALUES_EQUAL(errors->Notifications.load(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.ErrorCount.load(), 1);
+        const auto cancelled = stats.Depth.Snapshot();
+        UNIT_ASSERT(cancelled.Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(cancelled.Lanes[readLane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(cancelled.Lanes[readLane].IntegralUs,
+                                 2'000'000);
+
+        error = server
+                    ->StartEndpoint(address,
+                                    createFactory(CreateErrorHandlerStub()))
+                    .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+        TSocket restartedSocket(address, TDuration::Seconds(5));
+        restartedSocket.SetSocketTimeout(5);
+        TSocketInput restartedInput(restartedSocket);
+        TSocketOutput restartedOutput(restartedSocket);
+        auto restartedClient = CreateClientHandler(logging);
+        UNIT_ASSERT(
+            restartedClient->NegotiateClient(restartedInput, restartedOutput));
+
+        // The old read exceeded the limiter threshold. This request can
+        // complete only if the failed Send released its connection capacity.
+        request.Type = NBD_CMD_WRITE_ZEROES;
+        request.Handle = 2;
+        request.Length = DefaultBlockSize;
+        TRequestWriter restartedWriter(restartedOutput);
+        restartedWriter.WriteRequest(request);
+        TRequestReader restartedReader(restartedInput);
+        UNIT_ASSERT(restartedReader.ReadSimpleReply(reply));
+        UNIT_ASSERT_VALUES_EQUAL(reply.Handle, 2);
+        UNIT_ASSERT(reply.Error == NBD_SUCCESS);
+        error = server->StopEndpoint(address).GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
+        UNIT_ASSERT(stats.Balanced.load());
+        UNIT_ASSERT_VALUES_EQUAL(errors->Notifications.load(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(stats.CompletedCount.load(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(stats.ErrorCount.load(), 1);
+        const auto drained = stats.Depth.Snapshot();
+        const auto zeroLane = static_cast<ui32>(EBlockStoreRequest::ZeroBlocks);
+        UNIT_ASSERT(drained.Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(drained.Lanes[readLane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(drained.Lanes[zeroLane].Current, 0);
     }
 
     Y_UNIT_TEST(ShouldFinishIoDepthForPendingExceptionalStorage)

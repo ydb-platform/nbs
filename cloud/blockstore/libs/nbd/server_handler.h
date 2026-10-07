@@ -108,6 +108,9 @@ struct IServerHandler
         IOutputStream& out,
         TCont* cont) = 0;
 
+    // Notify recovery immediately without finalizing responses that Send can
+    // still deliver. ProcessException cancels requests after sending stops.
+    virtual void NotifyException(std::exception_ptr e) = 0;
     virtual void ProcessException(std::exception_ptr e) = 0;
 };
 

@@ -3,6 +3,8 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 
+#include <util/generic/noncopyable.h>
+
 #include <exception>
 
 namespace NCloud::NBlockStore {
@@ -50,6 +52,22 @@ auto ExecuteSafely(TExecute&& execute)
         return MakeErrorFuture<TResponse>(std::current_exception());
     }
 }
+
+struct TGuardedRequestBuffer final: TNonCopyable
+{
+    TStorageBuffer Buffer;
+    TGuardedSgList SgList;
+
+    TGuardedRequestBuffer(TStorageBuffer buffer, TGuardedSgList sgList)
+        : Buffer(std::move(buffer))
+        , SgList(std::move(sgList))
+    {}
+
+    ~TGuardedRequestBuffer()
+    {
+        SgList.Close();
+    }
+};
 
 }   // namespace
 
@@ -685,19 +703,27 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
             TErrorResponse(sgListOrError.GetError()));
     }
 
-    auto alignedRequest = Backend->ExecuteReadRequest(
-        std::move(ctx),
-        blocksInfo.MakeAligned(),
-        sgList.Create(sgListOrError.ExtractResult()),
-        std::move(checkpointId));
+    auto readBuffer = std::make_shared<TGuardedRequestBuffer>(
+        std::move(buffer),
+        sgList.CreateDepender(sgListOrError.ExtractResult()));
+    auto alignedRequest = ExecuteSafely(
+        [&]
+        {
+            return Backend->ExecuteReadRequest(
+                std::move(ctx), blocksInfo.MakeAligned(), readBuffer->SgList,
+                std::move(checkpointId));
+        });
 
     return alignedRequest.Apply(
-        [sgList = std::move(sgList),
-         buffer = std::move(buffer),
+        [sgList = std::move(sgList), readBuffer = std::move(readBuffer),
          beginOffset = blocksInfo.BeginOffset](
             const TFuture<NProto::TReadBlocksLocalResponse>& future)
         {
-            const auto& response = future.GetValue();
+            // Stop storage access before copying from or releasing the owned
+            // buffer, including exceptional and synchronous failure paths.
+            readBuffer->SgList.Close();
+            const auto response = SafeExecute<NProto::TReadBlocksLocalResponse>(
+                [&] { return future.GetValue(); });
             if (HasError(response)) {
                 return response;
             }
@@ -705,7 +731,8 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
             if (auto guard = sgList.Acquire()) {
                 const auto& dstSgList = guard.Get();
                 auto size = SgListGetSize(dstSgList);
-                TBlockDataRef srcBuf(buffer.get() + beginOffset, size);
+                TBlockDataRef srcBuf(readBuffer->Buffer.get() + beginOffset,
+                                     size);
                 auto cpSize = SgListCopy({srcBuf}, dstSgList);
                 Y_ABORT_UNLESS(cpSize == size);
                 return response;

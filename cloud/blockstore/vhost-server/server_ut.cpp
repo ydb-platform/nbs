@@ -6,10 +6,12 @@
 #include "backend_rdma.h"
 
 #include <cloud/blockstore/libs/common/iovector.h>
+#include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/encryption/encryption_key.h>
 #include <cloud/blockstore/libs/encryption/encryptor.h>
 #include <cloud/blockstore/libs/service/storage_provider.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
+#include <cloud/blockstore/libs/service_local/compound_storage.h>
 
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
@@ -1746,11 +1748,12 @@ public:
         };
     }
 
-    void StartServer()
+    void StartServer(IStoragePtr compoundStorage = {})
     {
         Backend = CreateRdmaBackend(
             Logging,
-            std::make_shared<TTestRdmaStorageProvider>(Storage),
+            std::make_shared<TTestRdmaStorageProvider>(
+                compoundStorage ? compoundStorage : Storage),
             [this] { return NowNs.load(); });
         Server = CreateServer(Logging, Backend);
         TOptions options{
@@ -1765,6 +1768,13 @@ public:
             .NoChmod = true,
             .BlockSize = BlockSize,
             .QueueCount = 1};
+        if (compoundStorage) {
+            options.Layout = {
+                {.DevicePath = "rdma://localhost:10020/first-device",
+                 .ByteCount = BlockSize},
+                {.DevicePath = "rdma://localhost:10020/second-device",
+                 .ByteCount = BlockSize}};
+        }
         Server->Start(options);
         ASSERT_TRUE(Client.Init());
         Memory = TMonotonicBufferResource{Client.GetMemory()};
@@ -1794,13 +1804,13 @@ public:
         NThreading::TFuture<ui32> Future;
     };
 
-    TPendingRequest Send(bool write)
+    TPendingRequest Send(bool write, ui32 blockCount = 1)
     {
         const auto hdr =
             Hdr(Memory,
                 {.type = static_cast<ui32>(
                      write ? VIRTIO_BLK_T_OUT : VIRTIO_BLK_T_IN)});
-        const auto data = Memory.Allocate(BlockSize, BlockSize);
+        const auto data = Memory.Allocate(BlockSize * blockCount, BlockSize);
         const auto status = Memory.Allocate(1);
         if (write) {
             memset(data.data(), 'W', data.size());
@@ -2078,6 +2088,81 @@ TEST_F(TIoDepthRdmaServerTest, ShouldFinishExceptionalStorageFuture)
     EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
     EXPECT_EQ(1'000'000u, completed.Lanes[VHD_BDEV_READ].IntegralUs);
     EXPECT_TRUE(completed.Continuous);
+}
+
+TEST_F(TIoDepthRdmaServerTest, ShouldFinishCompoundReadWithExceptionalChild)
+{
+    auto compound =
+        NServer::CreateCompoundStorage({Storage, Storage}, {1, 2}, BlockSize,
+                                       "io-depth-rdma-test",
+                                       {}, CreateServerStatsStub());
+    StartServer(compound);
+    auto request = Send(false, 2);
+    ASSERT_TRUE(RetryArrived.GetFuture().Wait(TDuration::Seconds(5)));
+    NowNs = 1'000'000'000ULL;
+    ReadResponse.SetException(std::make_exception_ptr(TServiceError(E_IO)));
+    EXPECT_FALSE(request.Future.HasValue());
+    EXPECT_EQ(1u, Snapshot().Lanes[VHD_BDEV_READ].Current);
+
+    NowNs = 2'000'000'000ULL;
+    RetryResponse.SetValue(NProto::TReadBlocksLocalResponse{});
+    ASSERT_TRUE(request.Future.Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(VIRTIO_BLK_S_IOERR, request.Status[0]);
+    const auto completed = Snapshot();
+    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(2'000'000u, completed.Lanes[VHD_BDEV_READ].IntegralUs);
+    EXPECT_TRUE(completed.Continuous);
+    NowNs = 3'000'000'000ULL;
+    EXPECT_EQ(2'000'000u, Snapshot().Lanes[VHD_BDEV_READ].IntegralUs);
+    Server->Stop();
+    Server.reset();
+    Client.DeInit();
+}
+
+TEST_F(TIoDepthRdmaServerTest, ShouldFinishCompoundWriteWithExceptionalChild)
+{
+    auto second = NThreading::NewPromise<NProto::TWriteBlocksLocalResponse>();
+    auto arrived = NThreading::NewPromise<void>();
+    auto attempts = std::make_shared<std::atomic<ui32>>(0);
+    Storage->WriteBlocksLocalHandler =
+        [first = WriteResponse, second, arrived, attempts](auto, auto) mutable
+    {
+        if (attempts->fetch_add(1) == 0) {
+            return first.GetFuture();
+        }
+        arrived.TrySetValue();
+        return second.GetFuture();
+    };
+    Y_DEFER
+    {
+        second.TrySetValue(
+            NProto::TWriteBlocksLocalResponse(TErrorResponse(E_CANCELLED)));
+    };
+    auto compound =
+        NServer::CreateCompoundStorage({Storage, Storage}, {1, 2}, BlockSize,
+                                       "io-depth-rdma-test",
+                                       {}, CreateServerStatsStub());
+    StartServer(compound);
+    auto request = Send(true, 2);
+    ASSERT_TRUE(arrived.GetFuture().Wait(TDuration::Seconds(5)));
+    NowNs = 1'000'000'000ULL;
+    WriteResponse.SetException(std::make_exception_ptr(TServiceError(E_IO)));
+    EXPECT_FALSE(request.Future.HasValue());
+    EXPECT_EQ(1u, Snapshot().Lanes[VHD_BDEV_WRITE].Current);
+
+    NowNs = 2'000'000'000ULL;
+    second.SetValue(NProto::TWriteBlocksLocalResponse{});
+    ASSERT_TRUE(request.Future.Wait(TDuration::Seconds(5)));
+    EXPECT_EQ(VIRTIO_BLK_S_IOERR, request.Status[0]);
+    const auto completed = Snapshot();
+    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_WRITE].Current);
+    EXPECT_EQ(2'000'000u, completed.Lanes[VHD_BDEV_WRITE].IntegralUs);
+    EXPECT_TRUE(completed.Continuous);
+    NowNs = 3'000'000'000ULL;
+    EXPECT_EQ(2'000'000u, Snapshot().Lanes[VHD_BDEV_WRITE].IntegralUs);
+    Server->Stop();
+    Server.reset();
+    Client.DeInit();
 }
 
 TEST_F(TIoDepthRdmaServerTest, ShouldHandleInlineCompletion)

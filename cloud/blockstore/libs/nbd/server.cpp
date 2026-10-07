@@ -69,8 +69,8 @@ private:
 
     TContLockFreeQueue<TServerResponsePtr> ResponseQueue;
 
-    // Receive and Send run on the same executor. Report a receive failure only
-    // after Send has finalized the responses queued before the stop marker.
+    // Receive and Send run on the same executor. Notify recovery immediately,
+    // but cancel remaining requests only after sending has stopped.
     std::exception_ptr ReceiveException;
 
     size_t InFlightBytes = 0;
@@ -218,6 +218,7 @@ private:
                 STORAGE_INFO("lost connection with client, failed to receive: "
                     << CurrentExceptionMessage());
                 ReceiveException = std::current_exception();
+                Handler->NotifyException(ReceiveException);
             }
         }
 

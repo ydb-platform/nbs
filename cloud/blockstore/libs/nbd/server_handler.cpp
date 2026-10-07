@@ -57,6 +57,7 @@ private:
 
     TIntrusiveList<TRequestContext> RequestsInFlight;
     TAdaptiveLock RequestsLock;
+    std::atomic<bool> ExceptionNotified = false;
 
     bool StructuredReply = false;
     bool UseNbsErrors = false;
@@ -129,6 +130,13 @@ public:
     size_t CollectRequests(
         const TIncompleteRequestsCollector& collector) override;
 
+    void NotifyException(std::exception_ptr e) override
+    {
+        if (!ExceptionNotified.exchange(true)) {
+            ErrorHandler->ProcessException(std::move(e));
+        }
+    }
+
     void ProcessException(std::exception_ptr e) override
     {
         TVector<TRequestContextPtr> requests;
@@ -143,7 +151,7 @@ public:
             UnregisterRequest(request, error);
         }
 
-        ErrorHandler->ProcessException(e);
+        NotifyException(std::move(e));
     }
 
 private:
