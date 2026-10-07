@@ -11,7 +11,7 @@ namespace NCloud::NFileStore::NFuse::NWriteBackCache {
 class TTestWriteBackCache
 {
 private:
-    // Keeps this wrapper movable even though its thread pools are not.
+    // Keeps this wrapper movable even though its thread pool is not.
     class TImpl;
 
     std::unique_ptr<TImpl> Impl;
@@ -20,7 +20,7 @@ public:
     TTestWriteBackCache();
 
     // A zero thread count executes all stages synchronously. A positive count
-    // creates separate submission, session, and completion thread pools.
+    // creates one thread pool shared by submission, session, and completion.
     // Session handlers used with asynchronous execution should return errors
     // in their responses instead of throwing: exceptions raised on worker
     // threads are not guaranteed to reach the initiating test thread.

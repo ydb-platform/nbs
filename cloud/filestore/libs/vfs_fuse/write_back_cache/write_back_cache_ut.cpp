@@ -164,7 +164,8 @@ struct TBootstrapArgs
     ui64 CacheCapacityBytes = DefaultCacheCapacityBytes;
     bool LogDataOperations = true;
 
-    // Number of threads in each asynchronous TTestWriteBackCache stage.
+    // Total number of threads shared by asynchronous submission, session
+    // handling, and completion in TTestWriteBackCache.
     // Zero selects synchronous execution. Asynchronous session handlers should
     // report failures in responses instead of throwing assertions on worker
     // threads, where they may not reach the initiating test thread.
@@ -2906,6 +2907,42 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
         UNIT_ASSERT(HasError(future.GetValueSync()));
         UNIT_ASSERT_VALUES_EQUAL(103, b.Cache.GetMaxWrittenOffset(1));
         UNIT_ASSERT_VALUES_EQUAL(1, b.SessionWriteDataHandlerCalled.load());
+    }
+
+    Y_UNIT_TEST(ShouldProcessRequestsWithSingleWorker)
+    {
+        TBootstrap b({.ThreadCount = 1});
+
+        const auto writeResponse =
+            b.WriteToCache(1, 0, "ABC").GetValue(WaitTimeout);
+        UNIT_ASSERT_C(
+            !HasError(writeResponse),
+            FormatError(writeResponse.GetError()));
+
+        auto readResponse =
+            b.ReadFromCache(1, 0, 3).GetValue(WaitTimeout);
+        UNIT_ASSERT_C(
+            !HasError(readResponse),
+            FormatError(readResponse.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "ABC",
+            readResponse.GetBuffer().substr(readResponse.GetBufferOffset()));
+
+        auto error = b.Cache.FlushNodeData(1).GetValue(WaitTimeout);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL("ABC", b.FlushedData.ReadAll(1));
+
+        readResponse = b.ReadFromCache(1, 0, 3).GetValue(WaitTimeout);
+        UNIT_ASSERT_C(
+            !HasError(readResponse),
+            FormatError(readResponse.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(
+            "ABC",
+            readResponse.GetBuffer().substr(readResponse.GetBufferOffset()));
+
+        error = b.Cache.Drain().GetValue(WaitTimeout);
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT(b.Cache.IsDrained());
     }
 
     Y_UNIT_TEST(ShouldHandleConcurrentReadsAndWritesAcrossNodes)

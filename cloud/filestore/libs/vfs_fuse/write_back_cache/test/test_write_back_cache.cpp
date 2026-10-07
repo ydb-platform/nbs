@@ -100,9 +100,7 @@ class TTestWriteBackCache::TImpl
 private:
     const bool AsyncExecution;
 
-    TThreadPool SubmissionThreadPool{TThreadPoolParams("WBCSubmission")};
-    TThreadPool SessionThreadPool{TThreadPoolParams("WBCSession")};
-    TThreadPool CompletionThreadPool{TThreadPoolParams("WBCCompletion")};
+    TThreadPool ThreadPool{TThreadPoolParams("WBCTest")};
 
     TWriteBackCache Cache;
 
@@ -114,7 +112,7 @@ private:
             [this, promise](const TFuture<T>& completed) mutable noexcept
             {
                 AddOrExecute(
-                    CompletionThreadPool,
+                    ThreadPool,
                     [promise,
                      completed = TFuture<T>(completed)]() mutable noexcept
                     {
@@ -140,7 +138,7 @@ private:
 
         return CompleteAsync(AsyncOrExecute(
             std::forward<TCallable>(callable),
-            SubmissionThreadPool));
+            ThreadPool));
     }
 
 public:
@@ -148,13 +146,11 @@ public:
         : AsyncExecution(threadCount != 0)
     {
         if (AsyncExecution) {
-            SubmissionThreadPool.Start(threadCount);
-            SessionThreadPool.Start(threadCount);
-            CompletionThreadPool.Start(threadCount);
+            ThreadPool.Start(threadCount);
 
             args.Session = std::make_shared<TAsyncFileStore>(
                 std::move(args.Session),
-                SessionThreadPool);
+                ThreadPool);
         }
 
         Cache = TWriteBackCache(std::move(args));
@@ -162,9 +158,7 @@ public:
 
     ~TImpl()
     {
-        SubmissionThreadPool.Stop();
-        SessionThreadPool.Stop();
-        CompletionThreadPool.Stop();
+        ThreadPool.Stop();
     }
 
     TFuture<NProto::TError> Drain()
