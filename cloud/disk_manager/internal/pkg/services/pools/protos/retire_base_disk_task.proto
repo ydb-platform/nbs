@@ -14,6 +14,9 @@ message RetireBaseDiskRequest {
     string BaseDiskId = 1;
     types.Disk SrcDisk = 2;
     uint64 UseImageSize = 4;
+    // Use the retiring disk as source; mutually exclusive with SrcDisk.
+    // Requires HoldBaseDisksWithInflightDependents on the executing worker.
+    bool UseBaseDiskAsSrc = 5;
 }
 
 message RetireBaseDiskTaskState {

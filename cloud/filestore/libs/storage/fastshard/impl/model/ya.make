@@ -27,7 +27,7 @@ PEERDIR(
 PEERDIR(
     cloud/filestore/libs/service
     cloud/filestore/libs/storage/fastshard/iface
-    cloud/filestore/libs/storage/fastshard/sn/quorum
+    cloud/filestore/libs/storage/fastshard/storage_group
     cloud/filestore/libs/storage/model
 
     cloud/filestore/public/api/protos

@@ -7,7 +7,7 @@
 #include <util/system/spinlock.h>
 #include <util/system/types.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 // Thread safe
 class TGroupDowntimes {
@@ -29,4 +29,4 @@ public:
 
 using TGroupDowntimesPtr = std::shared_ptr<TGroupDowntimes>;
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

@@ -930,4 +930,18 @@ message TStorageConfig
 
     // Limits the number of tablet data channels used for writes.
     optional uint32 MaxUsedDataChannelCount = 547;
+
+    // Delays the shard phase of name-addressed GetNodeAttr/CreateHandle in
+    // the service (leader -> shard). In ms. Must be only used in tests!
+    optional uint32 ArtificialShardPhaseDelay = 548;
+
+    // Disk registry tablet that manages the fast shard devices.
+    optional uint64 FastShardDiskRegistryTabletId = 549;
+
+    // Hive owner key of that tablet, looked up when the tablet id is unset.
+    optional uint64 FastShardDiskRegistryOwner = 550;
+    optional uint64 FastShardDiskRegistryOwnerIdx = 551;
+
+    // Timeout for the lookup (in milliseconds).
+    optional uint32 FastShardDiskRegistryLookupTimeout = 552;
 }

@@ -171,7 +171,7 @@ public:
         , Journal(std::move(journal))
         , DataStore(std::move(dataStore))
         , DeviceUUID(std::move(deviceUUID))
-        , Log(Logging->CreateLog("JOURNALLED_DEVICE"))
+        , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
     {}
 
     void Start() override

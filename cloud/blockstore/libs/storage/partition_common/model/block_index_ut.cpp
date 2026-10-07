@@ -1,14 +1,14 @@
 #include "block_index.h"
 
+#include <cloud/blockstore/libs/storage/model/public.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-const ui32 InvalidBlockIndex = Max<ui32>();
 
 TFreshBlock FindBlock(const TBlockIndex& index, ui32 blockIndex, ui64 commitId)
 {
@@ -81,4 +81,4 @@ Y_UNIT_TEST_SUITE(TPartition1BlockIndexTest)
     }
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

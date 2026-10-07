@@ -3,7 +3,7 @@
 #include <util/generic/set.h>
 #include <util/generic/vector.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -41,4 +41,4 @@ public:
     void GetCommitIds(TVector<ui64>& result) const;
 };
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

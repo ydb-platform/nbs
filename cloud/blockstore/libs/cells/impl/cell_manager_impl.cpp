@@ -82,7 +82,8 @@ TCellsSnapshot TCellManager::GetSnapshot()
                 .Connections = static_cast<ui32>(status.Connections)});
         }
     }
-    snapshot.InboundActivity = InboundActivity->Snapshot(Bootstrap.Timer->Now());
+    snapshot.Taken = Bootstrap.Timer->Now();
+    snapshot.InboundActivity = InboundActivity->Snapshot(snapshot.Taken);
     if (Bootstrap.Connections) {
         snapshot.Mounts = GetCellMounts(*Bootstrap.Connections);
     }

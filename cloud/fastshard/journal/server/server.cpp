@@ -1,5 +1,9 @@
 #include "server.h"
 
+#include "request.h"
+
+#include <cloud/fastshard/sn/iface/storage_node.h>
+
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/coroutine/queue.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -20,16 +24,6 @@ using namespace NThreading;
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
-
-#define STORAGE_JOURNALLED_DEVICE_SERVER(xxx, ...) \
-    xxx(AcquireDevices, __VA_ARGS__)               \
-    xxx(ReleaseDevices, __VA_ARGS__)               \
-    xxx(ReadPages, __VA_ARGS__)                    \
-    xxx(WriteLogRecord, __VA_ARGS__)               \
-    xxx(ReadJournalTail, __VA_ARGS__)              \
-    xxx(AdvanceLsnLowWatermark, __VA_ARGS__)
-
-// STORAGE_JOURNALLED_DEVICE_SERVER
 
 template <
     typename TProtoRequest,
@@ -75,7 +69,7 @@ struct TServerMethod
     };                                                         \
     // STORAGE_DECLARE_METHOD
 
-STORAGE_JOURNALLED_DEVICE_SERVER(STORAGE_DECLARE_METHOD)
+SN_METHODS(STORAGE_DECLARE_METHOD)
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -138,11 +132,10 @@ class TServer final
 {
 private:
     const TNetworkAddress ListenAddress;
-    const ILoggingServicePtr Logging;
     const TExecutorPtr Executor;
     const IServerBackendPtr Backend;
+    const TLog Log;
 
-    TLog Log;
     std::optional<TContListener> Listener;
 
     TVector<TConnectionPtr> Connections;
@@ -173,7 +166,7 @@ private:
     void OnExit(TConnectionPtr conn);
 
     auto ReadDeviceProtocolRequest(TContIO& io)
-        -> NProto::TDeviceProtocolRequest;
+        -> std::optional<NProto::TDeviceProtocolRequest>;
 
     void HandleRequest(
         NProto::TDeviceProtocolRequest& request,
@@ -193,6 +186,10 @@ private:
         try {
             auto& proto = TMethod::MutableProto(request);
 
+            STORAGE_TRACE(
+                TMethod::Name << " #" << requestId
+                              << " received: " << DescribeRequest(proto));
+
             future = TMethod::Execute(*Backend, std::move(proto));
         } catch (...) {
             STORAGE_ERROR(
@@ -202,12 +199,22 @@ private:
         }
 
         future.Subscribe(
-            [conn, requestId](const auto& future)
+            [Log = Log, conn, requestId](const auto& future)
             {
                 NProto::TDeviceProtocolResponse response;
                 response.SetRequestId(requestId);
-                TMethod::MutableProto(response).CopyFrom(
+
+                auto& proto = TMethod::MutableProto(response);
+                proto.CopyFrom(
                     SafeExecute<TResponse>([&] { return future.GetValue(); }));
+
+                const bool failed = HasError(proto.GetError());
+
+                STORAGE_LOG(
+                    failed ? TLOG_ERR : TLOG_RESOURCES,
+                    TMethod::Name << " #" << requestId
+                                  << (failed ? " failed: " : " completed: ")
+                                  << FormatError(proto.GetError()));
 
                 conn->ResponseQueue.Enqueue(std::move(response));
             });
@@ -222,15 +229,13 @@ TServer::TServer(
     TExecutorPtr executor,
     IServerBackendPtr backend)
     : ListenAddress(listenAddress)
-    , Logging(std::move(logging))
     , Executor(std::move(executor))
     , Backend(std::move(backend))
+    , Log(logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
 {}
 
 void TServer::Start()
 {
-    Log = Logging->CreateLog("DEVICE_SERVER");
-
     Backend->Start();
 
     auto future = Executor->Execute([this] { StartListen(); });
@@ -325,11 +330,13 @@ void TServer::Receive(TConnectionPtr conn)
     try {
         TContIO io(conn->Socket, RunningCont());
 
-        for (;;) {
-            auto request = ReadDeviceProtocolRequest(io);
-
-            HandleRequest(request, conn);
+        while (auto request = ReadDeviceProtocolRequest(io)) {
+            HandleRequest(*request, conn);
         }
+
+        STORAGE_DEBUG(
+            "connection closed by peer "
+            << PrintHostAndPort(*NAddr::GetPeerAddr(conn->Socket)));
     } catch (...) {
         STORAGE_ERROR("Receive: " << CurrentExceptionMessage());
     }
@@ -381,10 +388,18 @@ void TServer::OnExit(TConnectionPtr conn)
 }
 
 auto TServer::ReadDeviceProtocolRequest(TContIO& io)
-    -> NProto::TDeviceProtocolRequest
+    -> std::optional<NProto::TDeviceProtocolRequest>
 {
     ui32 wireSize = 0;
-    io.LoadOrFail(&wireSize, sizeof(wireSize));
+    const size_t headerSize = io.Load(&wireSize, sizeof(wireSize));
+    if (headerSize == 0) {
+        // The peer closed the connection
+        return std::nullopt;
+    }
+
+    Y_ENSURE(
+        headerSize == sizeof(wireSize),
+        "truncated request header: " << headerSize << " bytes");
 
     const ui32 size = InetToHost(wireSize);
 
@@ -415,6 +430,10 @@ void TServer::HandleRequest(
         }
         case ERequestCase::kReleaseDevices: {
             ProcessRequest<TReleaseDevicesMethod>(conn, std::move(request));
+            break;
+        }
+        case ERequestCase::kFormatDevice: {
+            ProcessRequest<TFormatDeviceMethod>(conn, std::move(request));
             break;
         }
         case ERequestCase::kReadPages: {
