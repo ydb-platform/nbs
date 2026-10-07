@@ -151,13 +151,14 @@ bool TryApplyGrafanaOffset(
         {'d', 86400},
         {'w', 604800},
     };
+
     for (const auto& entry: units) {
         if (entry.Unit != unit) {
             continue;
         }
         const ui64 reference = current.MicroSeconds();
-        const ui64 available = subtract ? reference :
-            TInstant::Max().MicroSeconds() - reference;
+        const ui64 available =
+            subtract ? reference : TInstant::Max().MicroSeconds() - reference;
         const ui64 multiplier = entry.Seconds * 1000000;
         if (count > available / multiplier) {
             return false;
@@ -221,7 +222,8 @@ bool TryParseGrafanaTimestamp(
             continue;
         }
         if (unit == 'M' || unit == 'Q' || unit == 'y') {
-            // Grafana uses calendar months, unlike systemd's fixed 30.4375 days.
+            // Grafana uses calendar months, unlike systemd's fixed 30.4375
+            // days.
             const ui64 monthsPerUnit = unit == 'y' ? 12 : unit == 'Q' ? 3 : 1;
             if (count > 120000 / monthsPerUnit) {
                 return false;
@@ -276,21 +278,12 @@ TTimeRange ParseGrafanaRange(
     }
     TInstant since;
     TInstant until;
-    if (!TryParseGrafanaTimestamp(
-            json["from"].GetString(),
-            now,
-            false,
-            since))
+    if (!TryParseGrafanaTimestamp(json["from"].GetString(), now, false, since))
     {
         ythrow NLastGetopt::TUsageException()
             << "Invalid --grafana-range \"from\": " << json["from"].GetString();
     }
-    if (!TryParseGrafanaTimestamp(
-            json["to"].GetString(),
-            now,
-            true,
-            until))
-    {
+    if (!TryParseGrafanaTimestamp(json["to"].GetString(), now, true, until)) {
         ythrow NLastGetopt::TUsageException()
             << "Invalid --grafana-range \"to\": " << json["to"].GetString();
     }
@@ -340,14 +333,14 @@ TCommonFilterParams::TCommonFilterParams(
             "Since timestamp, used for filtering. "
             "Format: systemd.time timestamp (e.g. '2026-10-01T12:00:00Z', "
             "'today', '-2h', '30min ago'; omitted timezone defaults to "
-            "UTC). ")
+            "UTC).")
         .RequiredArgument("STR");
 
     opts.AddLongOption(
             UntilLabel.data(),
             "Until timestamp, used for filtering. "
             "Format: systemd.time timestamp (e.g. '2026-10-01T12:00:00Z', "
-            "'now', '+1h'; omitted timezone defaults to UTC). ")
+            "'now', '+1h'; omitted timezone defaults to UTC).")
         .RequiredArgument("STR");
 }
 

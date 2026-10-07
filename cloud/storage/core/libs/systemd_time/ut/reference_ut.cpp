@@ -5,9 +5,10 @@
 namespace NSystemdTime {
 namespace {
 
-// Expectations follow systemd.time, including fractional seconds and unitless
-// relative spans. Timestamp modifiers are supported, with instants before the
-// Unix epoch rejected because TInstant has an unsigned representation.
+// Cases adapted from chrono-systemd-time to this parser's documented behavior.
+// Covers systemd-style calendar and relative timestamps plus parser extensions
+// such as epoch spans and timestamp modifiers. Instants before the Unix epoch
+// are rejected because TInstant has an unsigned representation.
 
 TInstant At(
     const cctz::civil_second& civil,
@@ -41,7 +42,7 @@ void AssertReject(TStringBuf input)
 
 }   // namespace
 
-Y_UNIT_TEST_SUITE(TChronoReferenceCases)
+Y_UNIT_TEST_SUITE(TChronoAdaptedCases)
 {
     Y_UNIT_TEST(CalendarFormats)
     {

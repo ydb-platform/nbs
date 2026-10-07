@@ -28,8 +28,9 @@ private:
     const TInstant ReferenceTime;
 
 public:
-    explicit TCommonFilterParams(NLastGetopt::TOpts& opts,
-                                 TInstant referenceTime = TInstant::Now());
+    explicit TCommonFilterParams(
+        NLastGetopt::TOpts& opts,
+        TInstant referenceTime = TInstant::Now());
 
     TMaybe<TString> GetFileSystemId(
         const NLastGetopt::TOptsParseResultException& parseResult) const;

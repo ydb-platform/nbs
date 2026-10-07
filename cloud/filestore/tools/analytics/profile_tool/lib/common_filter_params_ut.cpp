@@ -8,20 +8,29 @@ namespace NCloud::NFileStore::NProfileTool {
 
 namespace {
 
-void AssertGrafanaRange(TStringBuf json, TStringBuf now, TStringBuf since,
-                        TStringBuf until)
+void AssertGrafanaRange(
+    TStringBuf json,
+    TStringBuf now,
+    TStringBuf since,
+    TStringBuf until)
 {
     NLastGetopt::TOpts opts;
     const TCommonFilterParams params(opts, TInstant::ParseIso8601(now));
     const TString argument = TString("--grafana-range=") + json;
     const char* argv[] = {"profile-tool", argument.c_str()};
-    const NLastGetopt::TOptsParseResultException parsed(&opts, std::size(argv),
-                                                        argv);
+    const NLastGetopt::TOptsParseResultException parsed(
+        &opts,
+        std::size(argv),
+        argv);
     const auto range = params.GetTimeRange(parsed);
-    UNIT_ASSERT_VALUES_EQUAL_C(range.Until.GetRef(),
-                               TInstant::ParseIso8601(until), json);
-    UNIT_ASSERT_VALUES_EQUAL_C(range.Since.GetRef(),
-                               TInstant::ParseIso8601(since), json);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        range.Until.GetRef(),
+        TInstant::ParseIso8601(until),
+        json);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        range.Since.GetRef(),
+        TInstant::ParseIso8601(since),
+        json);
 }
 
 }   // namespace
@@ -34,6 +43,7 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
         // It is already January 2 in Tokyo, so omitted dates and day keywords
         // must also use UTC, not just timestamps with an explicit date.
         const auto now = TInstant::ParseIso8601("2023-01-01T23:30:00Z");
+
         const struct
         {
             const char* Input;
@@ -48,6 +58,7 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             {"2023-01-01 10:00:00 Asia/Tokyo", "2023-01-01T01:00:00Z"},
             {"today Asia/Tokyo", "2023-01-01T15:00:00Z"},
         };
+
         for (const auto& example: cases) {
             NLastGetopt::TOpts opts;
             const TCommonFilterParams params(opts, now);
@@ -59,13 +70,19 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
                 example.Input,
             };
             const NLastGetopt::TOptsParseResultException parsed(
-                &opts, std::size(argv), argv);
+                &opts,
+                std::size(argv),
+                argv);
             const auto expected = TInstant::ParseIso8601(example.Expected);
             const auto range = params.GetTimeRange(parsed);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                range.Since.GetRef(), expected, example.Input);
+                range.Since.GetRef(),
+                expected,
+                example.Input);
             UNIT_ASSERT_VALUES_EQUAL_C(
-                range.Until.GetRef(), expected, example.Input);
+                range.Until.GetRef(),
+                expected,
+                example.Input);
         }
     }
 
@@ -84,15 +101,29 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
         constexpr TStringBuf now = "2026-10-06T14:46:30.146Z";
         AssertGrafanaRange(
             R"({"from":"2026-10-06T14:31:30.146Z","to":"2026-10-06T14:46:30.146Z"})",
-            now, "2026-10-06T14:31:30.146Z", now);
-        AssertGrafanaRange(R"({"from":"now-2d","to":"now"})", now,
-                           "2026-10-04T14:46:30.146Z", now);
-        AssertGrafanaRange(R"({"from":"now-15m","to":"now"})", now,
-                           "2026-10-06T14:31:30.146Z", now);
-        AssertGrafanaRange(R"({"from":"now-1h","to":"now"})", now,
-                           "2026-10-06T13:46:30.146Z", now);
-        AssertGrafanaRange(R"({"from":"now-6M","to":"now"})", now,
-                           "2026-04-06T14:46:30.146Z", now);
+            now,
+            "2026-10-06T14:31:30.146Z",
+            now);
+        AssertGrafanaRange(
+            R"({"from":"now-2d","to":"now"})",
+            now,
+            "2026-10-04T14:46:30.146Z",
+            now);
+        AssertGrafanaRange(
+            R"({"from":"now-15m","to":"now"})",
+            now,
+            "2026-10-06T14:31:30.146Z",
+            now);
+        AssertGrafanaRange(
+            R"({"from":"now-1h","to":"now"})",
+            now,
+            "2026-10-06T13:46:30.146Z",
+            now);
+        AssertGrafanaRange(
+            R"({"from":"now-6M","to":"now"})",
+            now,
+            "2026-04-06T14:46:30.146Z",
+            now);
     }
 
     Y_UNIT_TEST(ShouldRoundGrafanaBoundsInUtc)
@@ -245,37 +276,56 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
     Y_UNIT_TEST(ShouldClampGrafanaCalendarOffsets)
     {
         AssertGrafanaRange(
-            R"({"from":"now-1M","to":"now"})", "2026-03-31T14:46:30.146Z",
-            "2026-02-28T14:46:30.146Z", "2026-03-31T14:46:30.146Z");
+            R"({"from":"now-1M","to":"now"})",
+            "2026-03-31T14:46:30.146Z",
+            "2026-02-28T14:46:30.146Z",
+            "2026-03-31T14:46:30.146Z");
         AssertGrafanaRange(
-            R"({"from":"now-1M","to":"now"})", "2024-03-31T14:46:30.146Z",
-            "2024-02-29T14:46:30.146Z", "2024-03-31T14:46:30.146Z");
+            R"({"from":"now-1M","to":"now"})",
+            "2024-03-31T14:46:30.146Z",
+            "2024-02-29T14:46:30.146Z",
+            "2024-03-31T14:46:30.146Z");
         AssertGrafanaRange(
-            R"({"from":"now-1y","to":"now"})", "2024-02-29T14:46:30.146Z",
-            "2023-02-28T14:46:30.146Z", "2024-02-29T14:46:30.146Z");
+            R"({"from":"now-1y","to":"now"})",
+            "2024-02-29T14:46:30.146Z",
+            "2023-02-28T14:46:30.146Z",
+            "2024-02-29T14:46:30.146Z");
         AssertGrafanaRange(
-            R"({"from":"now","to":"now+1M"})", "2026-01-31T14:46:30.146Z",
-            "2026-01-31T14:46:30.146Z", "2026-02-28T14:46:30.146Z");
+            R"({"from":"now","to":"now+1M"})",
+            "2026-01-31T14:46:30.146Z",
+            "2026-01-31T14:46:30.146Z",
+            "2026-02-28T14:46:30.146Z");
         AssertGrafanaRange(
-            R"({"from":"now-1Q","to":"now"})", "2026-05-31T14:46:30.146Z",
-            "2026-02-28T14:46:30.146Z", "2026-05-31T14:46:30.146Z");
+            R"({"from":"now-1Q","to":"now"})",
+            "2026-05-31T14:46:30.146Z",
+            "2026-02-28T14:46:30.146Z",
+            "2026-05-31T14:46:30.146Z");
     }
 
     Y_UNIT_TEST(ShouldUseSameNowForBothGrafanaBounds)
     {
         constexpr TStringBuf now = "2026-10-06T14:46:30.146Z";
-        AssertGrafanaRange(R"({"from":"now-1h","to":"now-15m"})", now,
-                           "2026-10-06T13:46:30.146Z",
-                           "2026-10-06T14:31:30.146Z");
+        AssertGrafanaRange(
+            R"({"from":"now-1h","to":"now-15m"})",
+            now,
+            "2026-10-06T13:46:30.146Z",
+            "2026-10-06T14:31:30.146Z");
         AssertGrafanaRange(R"({"from":"now","to":"now"})", now, now, now);
         AssertGrafanaRange(
-            R"({"to":"now-15m", "from":"2026-10-06T15:00:00+02:00"})", now,
-            "2026-10-06T13:00:00Z", "2026-10-06T14:31:30.146Z");
-        AssertGrafanaRange(R"({"from":"now-6M+1d","to":"now+1s"})", now,
-                           "2026-04-07T14:46:30.146Z",
-                           "2026-10-06T14:46:31.146Z");
-        AssertGrafanaRange(R"({"from":"now-1w","to":"now"})", now,
-                           "2026-09-29T14:46:30.146Z", now);
+            R"({"to":"now-15m", "from":"2026-10-06T15:00:00+02:00"})",
+            now,
+            "2026-10-06T13:00:00Z",
+            "2026-10-06T14:31:30.146Z");
+        AssertGrafanaRange(
+            R"({"from":"now-6M+1d","to":"now+1s"})",
+            now,
+            "2026-04-07T14:46:30.146Z",
+            "2026-10-06T14:46:31.146Z");
+        AssertGrafanaRange(
+            R"({"from":"now-1w","to":"now"})",
+            now,
+            "2026-09-29T14:46:30.146Z",
+            now);
     }
 
     Y_UNIT_TEST(ShouldCheckGrafanaFixedOffsetBounds)
@@ -289,27 +339,40 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             TInstant InvalidNow;
         } cases[] = {
             {R"({"from":"now-1s","to":"now"})",
-             TInstant::Seconds(1), TInstant::Zero(), TInstant::Seconds(1),
+             TInstant::Seconds(1),
+             TInstant::Zero(),
+             TInstant::Seconds(1),
              TInstant::MicroSeconds(999999)},
             {R"({"from":"now","to":"now+1s"})",
              TInstant::Max() - TDuration::Seconds(1),
-             TInstant::Max() - TDuration::Seconds(1), TInstant::Max(),
+             TInstant::Max() - TDuration::Seconds(1),
+             TInstant::Max(),
              TInstant::Max() - TDuration::MicroSeconds(999999)},
         };
+
         for (const auto& example: cases) {
             NLastGetopt::TOpts opts;
             const TCommonFilterParams params(opts, example.Now);
-            const char* argv[] = {"profile-tool", "--grafana-range", example.Json};
+            const char* argv[] = {
+                "profile-tool",
+                "--grafana-range",
+                example.Json};
             const NLastGetopt::TOptsParseResultException parsed(
-                &opts, std::size(argv), argv);
+                &opts,
+                std::size(argv),
+                argv);
             const auto range = params.GetTimeRange(parsed);
             UNIT_ASSERT_VALUES_EQUAL(range.Since.GetRef(), example.Since);
             UNIT_ASSERT_VALUES_EQUAL(range.Until.GetRef(), example.Until);
 
             NLastGetopt::TOpts invalidOpts;
-            const TCommonFilterParams invalidParams(invalidOpts, example.InvalidNow);
+            const TCommonFilterParams invalidParams(
+                invalidOpts,
+                example.InvalidNow);
             const NLastGetopt::TOptsParseResultException invalidParsed(
-                &invalidOpts, std::size(argv), argv);
+                &invalidOpts,
+                std::size(argv),
+                argv);
             UNIT_ASSERT_EXCEPTION(
                 invalidParams.GetTimeRange(invalidParsed),
                 NLastGetopt::TUsageException);
@@ -362,9 +425,12 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             const TCommonFilterParams params(opts);
             const char* argv[] = {"profile-tool", "--grafana-range", json};
             const NLastGetopt::TOptsParseResultException parsed(
-                &opts, std::size(argv), argv);
-            UNIT_ASSERT_EXCEPTION(params.GetTimeRange(parsed),
-                                  NLastGetopt::TUsageException);
+                &opts,
+                std::size(argv),
+                argv);
+            UNIT_ASSERT_EXCEPTION(
+                params.GetTimeRange(parsed),
+                NLastGetopt::TUsageException);
         }
     }
 
@@ -380,9 +446,12 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
                 option,
             };
             const NLastGetopt::TOptsParseResultException parsed(
-                &opts, std::size(argv), argv);
-            UNIT_ASSERT_EXCEPTION(params.GetTimeRange(parsed),
-                                  NLastGetopt::TUsageException);
+                &opts,
+                std::size(argv),
+                argv);
+            UNIT_ASSERT_EXCEPTION(
+                params.GetTimeRange(parsed),
+                NLastGetopt::TUsageException);
         }
     }
 
@@ -398,13 +467,16 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             "@1395716396",
         };
         const NLastGetopt::TOptsParseResultException parsed(
-            &opts, std::size(argv), argv);
+            &opts,
+            std::size(argv),
+            argv);
         const auto range = params.GetTimeRange(parsed);
         UNIT_ASSERT_VALUES_EQUAL(
             range.Since.GetRef(),
             TInstant::ParseIso8601("2012-11-23T11:12:13Z"));
-        UNIT_ASSERT_VALUES_EQUAL(range.Until.GetRef(),
-                                 TInstant::Seconds(1395716396));
+        UNIT_ASSERT_VALUES_EQUAL(
+            range.Until.GetRef(),
+            TInstant::Seconds(1395716396));
     }
 
     Y_UNIT_TEST(ShouldShareReferenceTimeForRelativeFilters)
@@ -413,12 +485,15 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
         const TCommonFilterParams params(opts);
         const char* argv[] = {"profile-tool", "--since=-1h", "--until=now"};
         const NLastGetopt::TOptsParseResultException parsed(
-            &opts, std::size(argv), argv);
+            &opts,
+            std::size(argv),
+            argv);
         const auto range = params.GetTimeRange(parsed);
         UNIT_ASSERT(range.Since);
         UNIT_ASSERT(range.Until);
         UNIT_ASSERT_VALUES_EQUAL(
-            *range.Until - *range.Since, TDuration::Hours(1));
+            *range.Until - *range.Since,
+            TDuration::Hours(1));
         const auto repeated = params.GetTimeRange(parsed);
         UNIT_ASSERT_VALUES_EQUAL(repeated.Since.GetRef(), range.Since.GetRef());
         UNIT_ASSERT_VALUES_EQUAL(repeated.Until.GetRef(), range.Until.GetRef());
@@ -432,7 +507,9 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
                 const TCommonFilterParams params(opts);
                 const char* argv[] = {"profile-tool", option, input};
                 const NLastGetopt::TOptsParseResultException parsed(
-                    &opts, std::size(argv), argv);
+                    &opts,
+                    std::size(argv),
+                    argv);
                 UNIT_ASSERT_EXCEPTION_CONTAINS(
                     params.GetTimeRange(parsed),
                     NLastGetopt::TUsageException,
@@ -447,7 +524,9 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
         const TCommonFilterParams params(opts);
         const char* argv[] = {"profile-tool"};
         const NLastGetopt::TOptsParseResultException parsed(
-            &opts, std::size(argv), argv);
+            &opts,
+            std::size(argv),
+            argv);
         const auto range = params.GetTimeRange(parsed);
         UNIT_ASSERT(!range.Since);
         UNIT_ASSERT(!range.Until);
@@ -461,7 +540,9 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
             const TCommonFilterParams params(opts, now);
             const char* argv[] = {"profile-tool", option};
             const NLastGetopt::TOptsParseResultException parsed(
-                &opts, std::size(argv), argv);
+                &opts,
+                std::size(argv),
+                argv);
             const auto range = params.GetTimeRange(parsed);
             if (TStringBuf(option).StartsWith("--since")) {
                 UNIT_ASSERT_VALUES_EQUAL(range.Since.GetRef(), now);
