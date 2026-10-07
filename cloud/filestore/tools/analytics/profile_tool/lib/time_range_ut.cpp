@@ -3,7 +3,6 @@
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/system/fstat.h>
-#include <util/system/fs.h>
 #include <util/system/tempfile.h>
 
 #include <chrono>
@@ -161,8 +160,7 @@ Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
             const auto end = GetProfileLogEndTime(input.Name());
             UNIT_ASSERT_VALUES_EQUAL(*end, expected);
         }
-        UNIT_ASSERT_EXCEPTION(
-            GetProfileLogEndTime(base.Name() + ".missing"), TFileError);
+        UNIT_ASSERT(!GetProfileLogEndTime(base.Name() + ".missing"));
     }
 }
 

@@ -1,7 +1,6 @@
 #include "time_range.h"
 
 #include <util/folder/dirut.h>
-#include <util/system/fs.h>
 #include <util/system/fstat.h>
 
 namespace NCloud::NFileStore::NProfileTool {
@@ -20,7 +19,7 @@ TMaybe<TInstant> GetProfileLogEndTime(const TString& path)
     }
     const TFileStat stat(path);
     if (stat.IsNull()) {
-        ythrow TFileError() << "Failed to stat profile log " << path;
+        return Nothing();
     }
     TMaybe<TInstant> endTime;
     if (stat.MTime >= 0) {

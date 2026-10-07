@@ -14,6 +14,7 @@ struct TProfileLogFile
 };
 
 // Prefer a .YYYY-MM-DDTHH:MM suffix (UTC); stat the file only as a fallback.
+// Return Nothing() if stat fails or the modification time is before the epoch.
 TMaybe<TInstant> GetProfileLogEndTime(const TString& path);
 
 // Files must be sorted by EndTime. Each starts at the preceding file's end;
