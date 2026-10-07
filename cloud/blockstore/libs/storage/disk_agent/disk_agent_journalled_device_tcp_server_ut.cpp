@@ -6,10 +6,14 @@
 #include <cloud/blockstore/libs/storage/disk_agent/testlib/test_env.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
+#include <cloud/blockstore/libs/diagnostics/critical_events.h>
+#include <cloud/blockstore/libs/diagnostics/critical_events_init.h>
+
 #include <cloud/fastshard/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/proto_helpers.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/protobuf/util/pb_io.h>
 
 #include <util/folder/tempdir.h>
@@ -64,6 +68,19 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         TFile file(device.GetPath(), EOpenModeFlag::CreateNew);
         file.Resize(device.GetFileSize());
+    }
+
+    // Fills the superblock slots of the journal metadata, the first two
+    // blocks of the device, with garbage: the journal cannot restore from
+    // them.
+    void BreakJournalMetadata(const NProto::TFileDeviceArgs& device)
+    {
+        const TString garbage(2 * device.GetBlockSize(), 'g');
+
+        TFile file(
+            device.GetPath(),
+            EOpenModeFlag::OpenExisting | EOpenModeFlag::WrOnly);
+        file.Pwrite(garbage.data(), garbage.size(), 0);
     }
 
     void InitFileDevices()
@@ -392,6 +409,107 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTcpServerTest)
         {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldReportADeviceThatFailsToStart, TFixture)
+    {
+        const TString clientId = "client-id";
+        const TString uuid = FileDevices[0].GetDeviceId();
+        const TString brokenUuid = FileDevices[1].GetDeviceId();
+
+        for (auto& device: FileDevices) {
+            device.MutableJournalConfig()->SetLogMetaSize(16 * 4_KB);
+            device.MutableJournalConfig()->SetLogDataSize(256 * 4_KB);
+        }
+
+        BreakJournalMetadata(FileDevices[1]);
+
+        auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+        InitCriticalEventsCounter(counters);
+
+        auto startErrors = counters->GetCounter(
+            "AppCriticalEvents/JournalledDeviceCreationError",
+            true);
+
+        auto config = CreateDiskAgentConfig();
+        config.SetJournalEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime).With(std::move(config)).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        // the broken device is the only one reported
+        UNIT_ASSERT_VALUES_EQUAL(1, startErrors->Val());
+
+        TTestClient client{Port};
+
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            auto& proto = *request.MutableAcquireDevices();
+            proto.MutableHeaders()->SetClientId(clientId);
+            *proto.MutableDeviceUUIDs()->Add() = uuid;
+            *proto.MutableDeviceUUIDs()->Add() = brokenUuid;
+            client.Send(request);
+        }
+
+        Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+        {
+            const auto response = client.Receive();
+            const auto& error = response.GetAcquireDevices().GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        ui64 requestId = 0;
+
+        const auto writeLogRecord = [&](const TString& deviceUUID)
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(++requestId);
+
+            auto& proto = *request.MutableWriteLogRecord();
+            proto.MutableHeaders()->SetClientId(clientId);
+            proto.SetDeviceUUID(deviceUUID);
+            proto.SetLogSequenceNumber(1);
+
+            auto& group = *proto.MutablePageGroups()->Add();
+            group.SetFirstPageNo(0x10);
+            group.MutableContent()->Add()->resize(DefaultBlockSize, 'A');
+
+            client.Send(request);
+
+            Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+            auto response = client.Receive();
+            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::kWriteLogRecord,
+                response.GetResponseCase());
+
+            return response.GetWriteLogRecord().GetError();
+        };
+
+        // the broken device rejects the requests, the others serve them
+        {
+            const auto error = writeLogRecord(brokenUuid);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_IO,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_STRING_CONTAINS(error.GetMessage(), "failed to restore");
+        }
+
+        {
+            const auto error = writeLogRecord(uuid);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
                 error.GetCode(),
                 FormatError(error));
         }

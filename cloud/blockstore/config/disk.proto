@@ -409,6 +409,11 @@ message TDiskAgentConfig
 
     // Enables the journal for Journalled Devices.
     optional bool JournalEnabled = 50;
+
+    // How many Journalled Devices restore their journals at once when the
+    // TCP server starts. A restore holds the whole journal metadata of its
+    // device in memory until it is parsed.
+    optional uint32 JournalRestoreConcurrency = 51;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

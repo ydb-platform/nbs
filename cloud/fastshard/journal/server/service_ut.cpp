@@ -265,7 +265,10 @@ struct TFixture: public NUnitTest::TBaseFixture
             specs.push_back({.Device = std::move(device), .Config = config});
         }
 
-        Service = CreateService(DeviceManager, std::move(specs));
+        Service = CreateService(
+            DeviceManager,
+            std::move(specs),
+            1);   // restoreConcurrency
     }
 
     i64 CriticalEventCount(const TString& name) const

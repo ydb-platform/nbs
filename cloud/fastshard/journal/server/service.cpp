@@ -6,6 +6,9 @@
 
 #include <util/string/builder.h>
 
+#include <atomic>
+#include <functional>
+
 namespace NCloud::NJournalled {
 
 using namespace NThreading;
@@ -14,59 +17,123 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TNamedDevice
+{
+    TString UUID;
+    IJournalledDevicePtr Device;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+using TDeviceOperation =
+    std::function<TFuture<NProto::TError>(const TNamedDevice& device)>;
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Runs an operation on every device with at most |limit| of them in flight
+class TDeviceOperationWindow
+    : public std::enable_shared_from_this<TDeviceOperationWindow>
+{
+private:
+    const TVector<TNamedDevice> Devices;
+    const TDeviceOperation Operation;
+
+    std::atomic<size_t> NextIndex = 0;
+    std::atomic<size_t> CompletedCount = 0;
+    TPromise<NProto::TError> AllCompleted = NewPromise<NProto::TError>();
+
+public:
+    TDeviceOperationWindow(
+            TVector<TNamedDevice> devices,
+            TDeviceOperation operation)
+        : Devices(std::move(devices))
+        , Operation(std::move(operation))
+    {}
+
+    TFuture<NProto::TError> Run(size_t limit)
+    {
+        if (Devices.empty()) {
+            return MakeFuture<NProto::TError>();
+        }
+
+        const size_t inFlight = Min(Max<size_t>(limit, 1), Devices.size());
+        for (size_t i = 0; i < inFlight; ++i) {
+            RunNext();
+        }
+
+        return AllCompleted.GetFuture();
+    }
+
+private:
+    void RunNext()
+    {
+        const size_t index = NextIndex.fetch_add(1);
+        if (index >= Devices.size()) {
+            return;
+        }
+
+        Operation(Devices[index]).Subscribe(
+            [self = shared_from_this()](const auto&)
+            {
+                if (self->CompletedCount.fetch_add(1) + 1 ==
+                    self->Devices.size())
+                {
+                    self->AllCompleted.SetValue(NProto::TError());
+                    return;
+                }
+
+                self->RunNext();
+            });
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TJournalledDeviceHandler final: public IServerBackend
 {
 private:
     const IDeviceManagerPtr DeviceManager;
     const THashMap<TString, TJournalledDeviceSpec> Devices;
+    const ui32 RestoreConcurrency;
 
 public:
     TJournalledDeviceHandler(
         IDeviceManagerPtr deviceManager,
-        THashMap<TString, TJournalledDeviceSpec> devices)
+        THashMap<TString, TJournalledDeviceSpec> devices,
+        ui32 restoreConcurrency)
         : DeviceManager(std::move(deviceManager))
         , Devices(std::move(devices))
+        , RestoreConcurrency(restoreConcurrency)
     {}
 
     // IServerBackend
 
     TFuture<NProto::TError> Start() override
     {
-        TVector<TFuture<NProto::TError>> futures;
-        futures.reserve(Devices.size());
-
-        for (const auto& [uuid, spec]: Devices) {
-            auto future = spec.Device->Start().Apply(
-                [uuid](const auto& future)
-                {
-                    auto error = ExtractResponse(future);
-                    if (HasError(error)) {
-                        ReportJournalledDeviceCreationError(
-                            TStringBuilder()
-                            << "unable to start device " << uuid.Quote() << ": "
-                            << FormatError(error));
-                    }
-                    return error;
-                });
-
-            futures.push_back(std::move(future));
-        }
-
-        return WaitAll(futures).Apply([](const auto&)
-                                      { return NProto::TError(); });
+        return RunOnDevices(
+            RestoreConcurrency,
+            [](const TNamedDevice& device)
+            {
+                return device.Device->Start().Apply(
+                    [uuid = device.UUID](const auto& future)
+                    {
+                        auto error = ExtractResponse(future);
+                        if (HasError(error)) {
+                            ReportJournalledDeviceCreationError(
+                                TStringBuilder()
+                                << "unable to start device " << uuid.Quote()
+                                << ": " << FormatError(error));
+                        }
+                        return error;
+                    });
+            });
     }
 
     TFuture<NProto::TError> Stop() override
     {
-        TVector<TFuture<NProto::TError>> futures;
-        futures.reserve(Devices.size());
-
-        for (const auto& [uuid, spec]: Devices) {
-            futures.push_back(spec.Device->Stop());
-        }
-
-        return WaitAll(futures).Apply([](const auto&)
-                                      { return NProto::TError(); });
+        return RunOnDevices(
+            Devices.size(),
+            [](const TNamedDevice& device) { return device.Device->Stop(); });
     }
 
     [[nodiscard]] auto AcquireDevices(NProto::TAcquireDevicesRequest request)
@@ -190,6 +257,23 @@ public:
     }
 
 private:
+    TFuture<NProto::TError> RunOnDevices(
+        size_t limit,
+        TDeviceOperation operation) const
+    {
+        TVector<TNamedDevice> devices;
+        devices.reserve(Devices.size());
+        for (const auto& [uuid, spec]: Devices) {
+            devices.push_back({.UUID = uuid, .Device = spec.Device});
+        }
+
+        auto window = std::make_shared<TDeviceOperationWindow>(
+            std::move(devices),
+            std::move(operation));
+
+        return window->Run(limit);
+    }
+
     TResultOrError<NJournalled::IJournalledDevicePtr> GetDevice(
         const TString& deviceUUID,
         const TString& clientId,
@@ -241,7 +325,8 @@ private:
 
 IServerBackendPtr CreateService(
     IDeviceManagerPtr deviceManager,
-    TVector<TJournalledDeviceSpec> journalledDevices)
+    TVector<TJournalledDeviceSpec> journalledDevices,
+    ui32 restoreConcurrency)
 {
     THashMap<TString, TJournalledDeviceSpec> deviceMap;
     for (auto device: journalledDevices) {
@@ -251,7 +336,8 @@ IServerBackendPtr CreateService(
 
     return std::make_shared<TJournalledDeviceHandler>(
         std::move(deviceManager),
-        std::move(deviceMap));
+        std::move(deviceMap),
+        restoreConcurrency);
 }
 
 }   // namespace NCloud::NJournalled

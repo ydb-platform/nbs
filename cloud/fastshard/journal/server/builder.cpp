@@ -151,12 +151,14 @@ TServerBuilder::TServerBuilder(
     IDeviceManagerPtr deviceManager,
     const TNetworkAddress& listenAddress,
     bool journalEnabled,
+    ui32 restoreConcurrency,
     TVector<TJournalledDeviceConfig> deviceConfigs)
     : Logging(std::move(logging))
     , Executor(std::move(executor))
     , DeviceManager(std::move(deviceManager))
     , ListenAddress(listenAddress)
     , JournalEnabled(journalEnabled)
+    , RestoreConcurrency(restoreConcurrency)
     , DeviceConfigs(std::move(deviceConfigs))
 {}
 
@@ -207,7 +209,10 @@ IStartablePtr TServerBuilder::Build()
         ListenAddress,
         std::move(Logging),
         std::move(Executor),
-        CreateService(std::move(DeviceManager), std::move(devices)));
+        CreateService(
+            std::move(DeviceManager),
+            std::move(devices),
+            RestoreConcurrency));
 }
 
 }   // namespace NCloud::NJournalled
