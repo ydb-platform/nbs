@@ -1,0 +1,42 @@
+{
+  "commit": "7ece625356c54c8249212ab9cb16411a448a80b2",
+  "branch": "codex/latency-sli-benchmark",
+  "submodule": "b0e01de94fe8e2a4913c4652e21ecfec923ca795 cloud/contrib/vhost (b0e01de)",
+  "uname": "Linux c8r3r3kjgk3sphmdn00r 5.4.0-125-generic #141-Ubuntu SMP Wed Aug 10 13:42:03 UTC 2022 x86_64 x86_64 x86_64 GNU/Linux",
+  "lscpu": "Architecture:                    x86_64\nCPU op-mode(s):                  32-bit, 64-bit\nByte Order:                      Little Endian\nAddress sizes:                   40 bits physical, 48 bits virtual\nCPU(s):                          32\nOn-line CPU(s) list:             0-31\nThread(s) per core:              2\nCore(s) per socket:              8\nSocket(s):                       2\nNUMA node(s):                    2\nVendor ID:                       GenuineIntel\nCPU family:                      6\nModel:                           85\nModel name:                      Intel Xeon Processor (Cascadelake)\nStepping:                        6\nCPU MHz:                         1995.312\nBogoMIPS:                        3990.62\nVirtualization:                  VT-x\nHypervisor vendor:               KVM\nVirtualization type:             full\nL1d cache:                       512 KiB\nL1i cache:                       512 KiB\nL2 cache:                        64 MiB\nL3 cache:                        32 MiB\nNUMA node0 CPU(s):               0-15\nNUMA node1 CPU(s):               16-31\nVulnerability Itlb multihit:     KVM: Mitigation: Split huge pages\nVulnerability L1tf:              Mitigation; PTE Inversion; VMX conditional cache flushes, SMT vulnerable\nVulnerability Mds:               Mitigation; Clear CPU buffers; SMT Host state unknown\nVulnerability Meltdown:          Mitigation; PTI\nVulnerability Mmio stale data:   Mitigation; Clear CPU buffers; SMT Host state unknown\nVulnerability Spec store bypass: Mitigation; Speculative Store Bypass disabled via prctl and seccomp\nVulnerability Spectre v1:        Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:        Mitigation; Enhanced IBRS, IBPB conditional, RSB filling\nVulnerability Srbds:             Not affected\nVulnerability Tsx async abort:   Not affected\nFlags:                           fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq vmx ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault invpcid_single pti ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid avx512f avx512dq rdseed adx smap clflushopt clwb avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 arat pku ospke avx512_vnni md_clear arch_capabilities\n",
+  "server_cpus": "16,17",
+  "client_cpus": "18,19",
+  "component_cpu": "20",
+  "flags": "release -r; no sanitizers; diagnostics off/on, same binary",
+  "comparison": "Marginal cost of enabling diagnostics on this prototype; does not measure disabled prototype vs main.",
+  "harness_sha256": "f1c763e86a6f69d0c8f6aac28c421c5ef18d7c5b46788e61b899410eca7c8dd9",
+  "runner_sha256": "37913b627e3503126e29cca5809bbf5b784aaa440227930f1c58ae02cf4f82c7",
+  "cpu_topology": {
+    "16": "16-17",
+    "17": "16-17",
+    "18": "18-19",
+    "19": "18-19",
+    "20": "20-21"
+  },
+  "repeats": 5,
+  "io_seconds": 5.0,
+  "component_seconds": 3.0,
+  "warmup_seconds": 1,
+  "start_time_utc": "2026-10-07T10:07:41Z",
+  "binary_sha256": "ed4303859f543fe454e12403cd4367e9b1beb25a37e465040a25c0e4866b4e48",
+  "server_sha256": "0f67f403a250d0c57dc7ff4e73fd63c0dbf86c21990f97350e8e06a8db0ca617",
+  "sampling": "Components sample 1/64 operation durations; endpoint samples 1/8 observed completions, capped at 1048576 samples. p99 includes client observation delay.",
+  "scope": "External vhost with null or local-file AIO; CPU-only split service with synchronous graph-emitting leaf; simulated-time production quota policy; unknown FIFO invalidation loop; real persistent batch tracker.",
+  "checkpoint_off_means": "Latency batch validation enabled but no persistence; on adds file+directory fsync.",
+  "fifo_scope": "Isolated cost of the actor weak_ptr locking and invalidation loop over graph objects; baseline is loop/harness overhead, not a full volume actor.",
+  "initial_background": {
+    "loadavg": [
+      17.25,
+      20.6,
+      21.04
+    ],
+    "compiler_processes": 16
+  },
+  "end_time_utc": "2026-10-07T10:19:45Z",
+  "completed_runs": 140
+}

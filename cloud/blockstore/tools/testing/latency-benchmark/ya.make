@@ -1,0 +1,15 @@
+PROGRAM(latency-benchmark)
+
+SRCS(main.cpp)
+
+PEERDIR(
+    cloud/blockstore/libs/diagnostics
+    cloud/blockstore/libs/service
+    cloud/blockstore/libs/storage/volume/model
+    cloud/contrib/vhost
+    cloud/storage/core/libs/vhost-client
+)
+
+ADDINCL(cloud/contrib/vhost)
+
+END()
