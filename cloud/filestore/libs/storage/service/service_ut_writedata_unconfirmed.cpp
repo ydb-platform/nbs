@@ -821,7 +821,7 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
     // Error handling and fallback tests
     // =========================================================================
 
-    Y_UNIT_TEST(ShouldFallbackOnGenerateBlobIdsError)
+    Y_UNIT_TEST(ShouldReturnGenerateBlobIdsError)
     {
         TTestSetup setup;
         auto& runtime = setup.GetRuntime();
@@ -831,36 +831,172 @@ Y_UNIT_TEST_SUITE(TWriteDataUnconfirmedTest)
         error.SetMessage("test error");
 
         bool errorInjected = false;
+        ui32 fallbackWriteDataRequests = 0;
         runtime.SetEventFilter(
             [&](auto& runtime, auto& event)
             {
                 Y_UNUSED(runtime);
-                if (event->GetTypeRewrite() ==
-                        TEvIndexTablet::EvGenerateBlobIdsResponse &&
-                    !errorInjected)
-                {
-                    errorInjected = true;
-                    auto* msg = event->template Get<
-                        TEvIndexTablet::TEvGenerateBlobIdsResponse>();
-                    msg->Record.MutableError()->CopyFrom(error);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTablet::EvGenerateBlobIdsResponse: {
+                        if (!errorInjected) {
+                            errorInjected = true;
+                            auto* msg = event->template Get<
+                                TEvIndexTablet::TEvGenerateBlobIdsResponse>();
+                            msg->Record.MutableError()->CopyFrom(error);
+                        }
+                        break;
+                    }
+                    case TEvService::EvWriteDataRequest: {
+                        if (event->Recipient ==
+                            MakeIndexTabletProxyServiceId()) {
+                            ++fallbackWriteDataRequests;
+                        }
+                        break;
+                    }
                 }
                 return false;
             });
 
         TString data = GenerateValidateData(256_KB);
-        WriteData(setup, 0, data);
-
-        UNIT_ASSERT_VALUES_EQUAL_C(
+        const auto response = setup.Service->SendAndRecvWriteData(
+            setup.Headers,
+            setup.FileSystemId,
+            setup.NodeId,
+            setup.Handle,
             0,
-            runtime.GetCounter(TEvIndexTablet::EvConfirmAddDataRequest),
-            "ConfirmAddData should not be called when GenerateBlobIds fails");
+            data);
+        UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL("test error", response->GetErrorReason());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            runtime.GetCounter(TEvIndexTablet::EvAddDataRequest));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            runtime.GetCounter(TEvIndexTablet::EvConfirmAddDataRequest));
+        UNIT_ASSERT_VALUES_EQUAL(0, fallbackWriteDataRequests);
+
+        WriteData(setup, 0, data);
 
         const auto actualResponse = ReadData(setup, 0, data.size());
         const auto actual = actualResponse->Record.GetBuffer();
         UNIT_ASSERT_VALUES_EQUAL_C(
             CityHash64(data),
             CityHash64(actual),
-            "Data mismatch after fallback");
+            "Data mismatch after retry");
+    }
+
+    Y_UNIT_TEST(ShouldUseConfirmedFlowWhileUnconfirmedRecoveryIsNotReady)
+    {
+        TTestSetup setup;
+        auto& runtime = setup.GetRuntime();
+        const auto tabletId =
+            setup.Service->GetFileStoreInfo(setup.FileSystemId)
+                ->Record.GetFileStore()
+                .GetMainTabletId();
+
+        TString data = GenerateValidateData(256_KB);
+        WriteData(setup, 0, data);
+
+        // Leave an unconfirmed blob behind so that the rebooted tablet has to
+        // recover it.
+        const TString unconfirmedData = GenerateValidateData(DefaultBlockSize);
+        TIndexTabletClient tablet(runtime, setup.NodeIdx, tabletId);
+        tablet.InitSession("tablet-client", "tablet-session");
+        const ui64 tabletHandle = CreateHandle(tablet, setup.NodeId);
+        auto gbi = tablet.GenerateBlobIds(
+            setup.NodeId,
+            tabletHandle,
+            data.size(),
+            unconfirmedData.size());
+        UNIT_ASSERT(gbi->Record.GetUnconfirmedFlowEnabled());
+        UNIT_ASSERT_VALUES_EQUAL(1, gbi->Record.BlobsSize());
+        {
+            const auto blobId =
+                LogoBlobIDFromLogoBlobID(gbi->Record.GetBlobs(0).GetBlobId());
+            const auto proxy =
+                MakeBlobStorageProxyID(gbi->Record.GetBlobs(0).GetBSGroupId());
+            runtime.Send(CreateEventForBSProxy(
+                runtime.AllocateEdgeActor(proxy.NodeId()),
+                proxy,
+                new TEvBlobStorage::TEvPut(
+                    blobId,
+                    unconfirmedData,
+                    TInstant::Max(),
+                    NKikimrBlobStorage::UserData),
+                blobId.Cookie()));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(100));
+        }
+
+        TAutoPtr<IEventHandle> heldConfirmBlobsCompleted;
+        ui32 fallbackWriteDataRequests = 0;
+        runtime.SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::EvConfirmBlobsCompleted: {
+                        if (!heldConfirmBlobsCompleted) {
+                            heldConfirmBlobsCompleted = event.Release();
+                            return true;
+                        }
+                        break;
+                    }
+                    case TEvService::EvWriteDataRequest: {
+                        if (event->Recipient ==
+                            MakeIndexTabletProxyServiceId()) {
+                            ++fallbackWriteDataRequests;
+                        }
+                        break;
+                    }
+                }
+                return false;
+            });
+
+        tablet.RebootTablet();
+        runtime.DispatchEvents(
+            TDispatchOptions{
+                .CustomFinalCondition = [&]()
+                { return !!heldConfirmBlobsCompleted; }},
+            TDuration::Seconds(1));
+        UNIT_ASSERT(heldConfirmBlobsCompleted);
+
+        setup.Headers =
+            setup.Service->InitSession(setup.FileSystemId, "client");
+        setup.Handle = setup.Service
+                           ->CreateHandle(
+                               setup.Headers,
+                               setup.FileSystemId,
+                               setup.NodeId,
+                               "",
+                               TCreateHandleArgs::RDWR)
+                           ->Record.GetHandle();
+
+        // The write doesn't overlap with the unconfirmed one, so it should go
+        // through the confirmed three-stage flow without any fallbacks.
+        runtime.ClearCounters();
+        WriteData(setup, data.size() + unconfirmedData.size(), data);
+        UNIT_ASSERT_C(
+            runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsRequest) >= 1,
+            "GenerateBlobIds should be called");
+        UNIT_ASSERT_C(
+            runtime.GetCounter(TEvIndexTablet::EvAddDataRequest) >= 1,
+            "AddData should be called");
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            runtime.GetCounter(TEvIndexTablet::EvConfirmAddDataRequest));
+        UNIT_ASSERT_VALUES_EQUAL(0, fallbackWriteDataRequests);
+
+        runtime.SetEventFilter(TTestActorRuntimeBase::DefaultFilterFunc);
+        runtime.Send(heldConfirmBlobsCompleted.Release(), setup.NodeIdx);
+        runtime.DispatchEvents({}, TDuration::Seconds(1));
+
+        const TString expected = data + unconfirmedData + data;
+        const auto actualResponse = ReadData(setup, 0, expected.size());
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            CityHash64(expected),
+            CityHash64(actualResponse->Record.GetBuffer()),
+            "Data mismatch after recovery");
     }
 
     Y_UNIT_TEST(ShouldFallbackOnWriteBlobError)

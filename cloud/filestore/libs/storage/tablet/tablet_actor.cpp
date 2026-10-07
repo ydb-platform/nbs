@@ -663,6 +663,77 @@ NProto::TError TIndexTabletActor::IsDataOperationAllowed() const
     return {};
 }
 
+NProto::TError TIndexTabletActor::CheckUnconfirmedDataOverlap(
+    ui64 nodeId,
+    const TByteRange& range) const
+{
+    if (!UnconfirmedRecoveryReady) {
+        if (HasDataOverlapWithUnconfirmed(nodeId, range)) {
+            return MakeError(
+                E_REJECTED,
+                "write overlaps with unconfirmed recovery data");
+        }
+    }
+
+    return {};
+}
+
+NProto::TError TIndexTabletActor::ForceLoadRangeIfNeeded(
+    ui64 nodeId,
+    const TByteRange& range)
+{
+    if (CompactionStateLoadStatus.Finished) {
+        return {};
+    }
+
+    const ui32 limitInQueue =
+        Config->GetMaxOutOfOrderCompactionMapLoadRequestsInQueue();
+    auto& s = CompactionStateLoadStatus;
+
+    bool reject = false;
+
+    for (ui64 b = range.FirstBlock();
+         b < range.FirstBlock() + range.BlockCount();
+         ++b)
+    {
+        const auto rangeId = GetMixedRangeIndex(nodeId, b);
+
+        if (rangeId > s.MaxLoadedInOrderRangeId &&
+            !s.LoadedOutOfOrderRangeIds.contains(rangeId))
+        {
+            reject = true;
+
+            bool shouldEnqueue = true;
+            ui32 oooRequestsInQueue = 0;
+            for (const auto& req: s.LoadQueue) {
+                if (!req.OutOfOrder) {
+                    continue;
+                }
+
+                if (req.FirstRangeId == rangeId) {
+                    shouldEnqueue = false;
+                    break;
+                }
+
+                if (++oooRequestsInQueue == limitInQueue) {
+                    shouldEnqueue = false;
+                    break;
+                }
+            }
+
+            if (shouldEnqueue) {
+                s.LoadQueue.push_back({rangeId, 1, true});
+            }
+        }
+    }
+
+    if (reject) {
+        return MakeError(E_REJECTED, "compaction state not loaded yet");
+    }
+
+    return {};
+}
+
 bool TIndexTabletActor::IsInUnconfirmedCreateHandleGracePeriod(
     const TActorContext& ctx) const
 {

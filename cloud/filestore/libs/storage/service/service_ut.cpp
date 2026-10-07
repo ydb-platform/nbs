@@ -2776,8 +2776,13 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TString data(4_KB, 'A');
         service.WriteData(headers, fs, nodeId, handle, 0, data);
-        auto readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
+        auto readDataResult = service.SendAndRecvReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            0,
+            data.size());
         UNIT_ASSERT_VALUES_EQUAL(
             error.GetCode(),
             readDataResult->GetError().GetCode());
@@ -3490,7 +3495,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         runtime.ClearCounters();
     }
 
-    void CheckGenerateBlobIdsError(ui32 errorCode, bool expectFallback)
+    void CheckGenerateBlobIdsError(ui32 errorCode)
     {
         TTestEnv env;
 
@@ -3547,36 +3552,25 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             handle,
             0,
             data);
-        if (expectFallback) {
-            UNIT_ASSERT(!HasError(writeDataResult->GetError()));
-            auto readDataResult =
-                service.ReadData(headers, fs, nodeId, handle, 0, data.size());
-            UNIT_ASSERT_VALUES_EQUAL(data, readDataResult->Record.GetBuffer());
-        } else {
-            UNIT_ASSERT_VALUES_EQUAL(
-                error.GetCode(),
-                writeDataResult->GetError().GetCode());
-        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            error.GetCode(),
+            writeDataResult->GetError().GetCode());
         auto& runtime = env.GetRuntime();
         // clang-format off
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsResponse));
-        UNIT_ASSERT_VALUES_EQUAL(
-            expectFallback ? 3 : 1,
-            runtime.GetCounter(TEvService::EvWriteDataResponse));
+        UNIT_ASSERT_VALUES_EQUAL(1, runtime.GetCounter(TEvService::EvWriteDataResponse));
         // clang-format on
         runtime.ClearCounters();
     }
 
     Y_UNIT_TEST(ShouldReturnGenerateBlobIdsError)
     {
-        CheckGenerateBlobIdsError(E_REJECTED, false /* expectFallback */);
+        CheckGenerateBlobIdsError(E_REJECTED);
     }
 
-    Y_UNIT_TEST(ShouldFallbackToWriteDataOnBlobStorageError)
+    Y_UNIT_TEST(ShouldReturnGenerateBlobIdsOutOfSpaceError)
     {
-        CheckGenerateBlobIdsError(
-            E_FS_OUT_OF_SPACE,
-            true /* expectFallback */);
+        CheckGenerateBlobIdsError(E_FS_OUT_OF_SPACE);
     }
 
     Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)

@@ -620,6 +620,10 @@ private:
         bool validateHandle);
 
     NProto::TError IsDataOperationAllowed() const;
+    NProto::TError CheckUnconfirmedDataOverlap(
+        ui64 nodeId,
+        const TByteRange& range) const;
+    NProto::TError ForceLoadRangeIfNeeded(ui64 nodeId, const TByteRange& range);
     bool IsInUnconfirmedCreateHandleGracePeriod(
         const NActors::TActorContext& ctx) const;
     bool NeedsNodeDestructionDeferral(

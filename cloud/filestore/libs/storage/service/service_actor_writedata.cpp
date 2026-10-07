@@ -321,15 +321,7 @@ private:
         InFlightRequest->Complete(ctx.Now(), error);
 
         if (HasError(error)) {
-            // The tablet reports an inability to allocate a blob id as
-            // E_FS_OUT_OF_SPACE. The regular WriteData path can still use
-            // fresh data, so retry it there.
-            if (error.GetCode() == E_FS_OUT_OF_SPACE) {
-                LogFallbackToWriteData(ctx, error);
-                WriteData(ctx, true /* isFallback */);
-            } else {
-                HandleError(ctx, error);
-            }
+            HandleError(ctx, error);
             return;
         }
 
