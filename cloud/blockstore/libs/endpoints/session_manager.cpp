@@ -280,6 +280,12 @@ public:
 
     void PinVolumeInfo(const TString& diskId, const TString& clientId)
     {
+        // on every mount, not once: without durable pinning the VolumeInfo can
+        // be trimmed and built again by a later mount, losing the host
+        if (CellHostObserver) {
+            CellHostObserver->Attach(diskId);
+        }
+
         // One-time pinning of the VolumeInfo object until the disk is unmounted
         // or the object is destroyed
         if (VolumeInfoPin.AtomicLoad() != nullptr) {
@@ -288,10 +294,6 @@ public:
         auto pin = VolumeStats->PinVolumeInfo(diskId, clientId);
 
         VolumeInfoPin.AtomicStore(pin);
-
-        if (CellHostObserver) {
-            CellHostObserver->Attach(diskId);
-        }
     }
 
     void UnpinVolumeInfo()

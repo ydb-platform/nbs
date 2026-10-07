@@ -2653,7 +2653,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
-        auto cellMount = [&] (const TString& fqdn) -> i64
+        auto counter = [&] (const TString& fqdn)
         {
             auto group = monitoring
                 ->GetCounters()
@@ -2668,8 +2668,12 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 ->FindSubgroup("cell", "cell-a");
             auto host = group ? group->FindSubgroup("cell_host", fqdn)
                               : nullptr;
-            auto counter = host ? host->FindCounter("CellMount") : nullptr;
-            return counter ? counter->Val() : 0;
+            return host ? host->FindCounter("CellMount") : nullptr;
+        };
+        auto cellMount = [&] (const TString& fqdn) -> i64
+        {
+            auto c = counter(fqdn);
+            return c ? c->Val() : 0;
         };
 
         Mount(
@@ -2687,6 +2691,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             1,
             "cell-a",
             "host-1");
+        const auto shown = counter("host-1");
         volumeStats->SetServingCellHost(
             "test",
             "client-1",
@@ -2694,6 +2699,8 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
             "cell-a",
             "host-1");
         UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-1"));
+        // a host still in use stays as it is, never dropped and added back
+        UNIT_ASSERT_EQUAL(shown, counter("host-1"));
 
         // the new connection moves to another host
         volumeStats->SetServingCellHost(
@@ -2712,6 +2719,36 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
 
         volumeStats->SetServingCellHost("test", "client-1", 2, {}, {});
         UNIT_ASSERT_VALUES_EQUAL(0, cellMount("host-2"));
+    }
+
+    Y_UNIT_TEST(ShouldRelabelDiskWithDoubleCopySuffix)
+    {
+        auto volumeStats = CreateVolumeStats(
+            CreateMonitoringServiceStub(),
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        // kept under disk-copy, and a relabel must look it up there again
+        // rather than strip the suffix a second time
+        Mount(
+            volumeStats,
+            "disk-copy-copy",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+        Mount(
+            volumeStats,
+            "disk-copy-copy",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto info = volumeStats->GetVolumeInfo("disk-copy-copy", "client-1");
+        UNIT_ASSERT(info);
+        UNIT_ASSERT_EQUAL(
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            info->GetInfo().GetStorageMediaKind());
     }
 }
 

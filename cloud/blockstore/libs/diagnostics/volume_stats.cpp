@@ -22,6 +22,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/system/rwlock.h>
@@ -257,14 +258,28 @@ private:
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
+    struct TServingCellHost
+    {
+        TString CellId;
+        TString Fqdn;
+
+        bool operator==(const TServingCellHost& other) const = default;
+    };
+
+    struct TServingConnection
+    {
+        ui64 ConnectionId = 0;
+        TServingCellHost Host;
+    };
+
     // the per-instance group; the serving cell host hangs off it
     TDynamicCountersPtr CountersGroup;
     // under TVolumeStats::Lock for writing. Endpoints of the same disk and
     // client - a local VM migration, a switch to the -copy - share this
     // instance, each through its own cell connection: a host is shown while
-    // any of them goes through it
-    THashMap<ui64, std::pair<TString, TString>> ServingConnections;
-    THashSet<TString> ShownServingCellIds;
+    // any of them goes through it. Two at most in practice, hence vectors
+    TVector<TServingConnection> ServingConnections;
+    TVector<TServingCellHost> ShownServingCellHosts;
 
     // Cumulative per-volume availability counters (derivative/RATE, seconds).
     // Nested: ObservedSeconds >= AvailableSeconds >= HealthySeconds. Consumers
@@ -339,10 +354,11 @@ public:
         const TString& cellId,
         const TString& fqdn)
     {
+        EraseIf(
+            ServingConnections,
+            [&](const auto& c) { return c.ConnectionId == connectionId; });
         if (fqdn) {
-            ServingConnections[connectionId] = {cellId, fqdn};
-        } else {
-            ServingConnections.erase(connectionId);
+            ServingConnections.push_back({connectionId, {cellId, fqdn}});
         }
         ShowServingCellHosts();
     }
@@ -359,18 +375,34 @@ public:
             return;
         }
 
-        for (const auto& cellId: ShownServingCellIds) {
-            CountersGroup->RemoveSubgroup("cell", cellId);
+        TVector<TServingCellHost> hosts;
+        for (const auto& connection: ServingConnections) {
+            if (!IsIn(hosts, connection.Host)) {
+                hosts.push_back(connection.Host);
+            }
         }
-        ShownServingCellIds.clear();
 
-        for (const auto& [_, cellHost]: ServingConnections) {
-            const auto& [cellId, fqdn] = cellHost;
-            *CountersGroup->GetSubgroup("cell", cellId)
-                 ->GetSubgroup("cell_host", fqdn)
-                 ->GetCounter("CellMount") = 1;
-            ShownServingCellIds.insert(cellId);
+        // by the difference: a host still in use is never removed and added
+        // back, so a scrape cannot catch it missing
+        for (const auto& shown: ShownServingCellHosts) {
+            const bool cellInUse = AnyOf(
+                hosts,
+                [&](const auto& h) { return h.CellId == shown.CellId; });
+            if (!cellInUse) {
+                CountersGroup->RemoveSubgroup("cell", shown.CellId);
+            } else if (!IsIn(hosts, shown)) {
+                CountersGroup->GetSubgroup("cell", shown.CellId)
+                    ->RemoveSubgroup("cell_host", shown.Fqdn);
+            }
         }
+
+        for (const auto& host: hosts) {
+            *CountersGroup->GetSubgroup("cell", host.CellId)
+                 ->GetSubgroup("cell_host", host.Fqdn)
+                 ->GetCounter("CellMount") = 1;
+        }
+
+        ShownServingCellHosts = std::move(hosts);
     }
 
     ui64 RequestStarted(
@@ -645,8 +677,8 @@ public:
     {
         bool inserted = false;
 
-        volume.SetDiskId(NStorage::GetLogicalDiskId(volume.GetDiskId()));
-
+        // the disk id is already logical: normalizing it again would turn a
+        // disk-copy-copy into a disk on a relabel
         auto volumeIt = Volumes.find(volume.GetDiskId());
         if (volumeIt == Volumes.end()) {
             volumeIt = Volumes.emplace(
@@ -683,14 +715,15 @@ public:
     {
         TWriteGuard guard(Lock);
 
-        const auto& diskId = NStorage::GetLogicalDiskId(volume.GetDiskId());
+        auto logicalVolume = volume;
+        logicalVolume.SetDiskId(NStorage::GetLogicalDiskId(volume.GetDiskId()));
         auto [it, _] = ClientVolumeToRealInstance.try_emplace(
-            {clientId, diskId},
+            {clientId, logicalVolume.GetDiskId()},
             clientId,
             instanceId);
 
         return MountVolumeImpl(
-            volume,
+            std::move(logicalVolume),
             it->second,
             0 /* pinCountForNewInstance */);
     }
