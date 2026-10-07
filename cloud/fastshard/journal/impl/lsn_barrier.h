@@ -41,6 +41,9 @@ public:
     };
 
 public:
+    // Sets the lsn, also below the current one. The guards held keep their
+    // barriers and are released as usual.
+    void Init(ui64 lsn);
     void Advance(ui64 lsn);
 
     [[nodiscard]] TGuard Acquire();

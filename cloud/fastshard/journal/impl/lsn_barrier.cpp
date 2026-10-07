@@ -39,6 +39,14 @@ void TLsnBarrier::TGuard::Release()
 
 ////////////////////////////////////////////////////////////////////////////////
 
+void TLsnBarrier::Init(ui64 lsn)
+{
+    std::lock_guard lock(Lock);
+
+    // guards taken before are released against the map later, so it keeps them
+    CurrentLsn = lsn;
+}
+
 void TLsnBarrier::Advance(ui64 lsn)
 {
     std::lock_guard lock(Lock);

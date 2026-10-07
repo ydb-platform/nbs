@@ -48,6 +48,35 @@ Y_UNIT_TEST_SUITE(TLsnBarrierTest)
         UNIT_ASSERT_VALUES_EQUAL(20, GetCurrentLsn(barrier));
     }
 
+    Y_UNIT_TEST(ShouldInitLsnBelowTheCurrentOne)
+    {
+        TLsnBarrier barrier;
+
+        barrier.Advance(20);
+        barrier.Init(10);
+        UNIT_ASSERT_VALUES_EQUAL(10, GetCurrentLsn(barrier));
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+
+        barrier.Advance(15);
+        UNIT_ASSERT_VALUES_EQUAL(15, GetCurrentLsn(barrier));
+    }
+
+    Y_UNIT_TEST(ShouldKeepTheBarriersHeldAcrossInit)
+    {
+        TLsnBarrier barrier;
+
+        barrier.Advance(10);
+        auto guard = barrier.Acquire();
+
+        barrier.Init(20);
+        UNIT_ASSERT_VALUES_EQUAL(20, GetCurrentLsn(barrier));
+        UNIT_ASSERT_VALUES_EQUAL(10, barrier.GetBarrierLsn());
+
+        // the guard taken before Init releases its barrier as usual
+        guard.Release();
+        UNIT_ASSERT_VALUES_EQUAL(20, barrier.GetBarrierLsn());
+    }
+
     Y_UNIT_TEST(ShouldReportCurrentLsnWhenNothingAcquired)
     {
         TLsnBarrier barrier;

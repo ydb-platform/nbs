@@ -7,6 +7,7 @@
 #include <cloud/fastshard/journal/iface/device.h>
 #include <cloud/fastshard/journal/iface/journalled_device.h>
 
+#include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/verify.h>
 #include <cloud/storage/core/libs/coroutine/executor.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -151,17 +152,22 @@ private:
     const IDevicePtr DataStore;
     const TString DeviceUUID;
 
-    // Taken from the factory on construction and anew on every Start.
     IJournalPtr Journal;
 
     TLog Log;
 
     TLsnBarrier IndexedLsnBarrier;
 
-    std::atomic_bool ShouldStop = false;
-    std::atomic_bool RestoreFailed = false;
+    // The device serves requests and runs the flush cycle only while started.
+    std::atomic_bool Started = false;
 
-    TPromise<NProto::TError> FlushCycleStopped;
+    // Held by a Start or a Stop for as long as it runs.
+    std::atomic_bool StartingOrStopping = false;
+
+    // Set by the flush cycle once it exits, created anew by every Start.
+    TPromise<void> FlushCycleStopped;
+
+    std::atomic<ui64> InflightCount = 0;
 
 public:
     TJournalledDeviceV2(
@@ -175,25 +181,67 @@ public:
         , JournalFactory(std::move(journalFactory))
         , DataStore(std::move(dataStore))
         , DeviceUUID(std::move(deviceUUID))
-        , Journal(JournalFactory->CreateJournal())
         , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
     {}
 
     TFuture<NProto::TError> Start() override
     {
-        return Execute<NProto::TError>([](auto& self)
+        if (StartingOrStopping.exchange(true)) {
+            return MakeFuture(MakeError(
+                E_REJECTED,
+                TStringBuilder() << "the device " << DeviceUUID.Quote()
+                                 << " is being started or stopped"));
+        }
+
+        if (Started.load()) {
+            StartingOrStopping.store(false);
+            return MakeFuture<NProto::TError>();
+        }
+
+        return Execute<NProto::TError>([](auto& self) mutable
                                        { return self.DoStart(); });
     }
 
     TFuture<NProto::TError> Stop() override
     {
-        ShouldStop.store(true);
+        if (StartingOrStopping.exchange(true)) {
+            return MakeFuture(MakeError(
+                E_REJECTED,
+                TStringBuilder() << "the device " << DeviceUUID.Quote()
+                                 << " is being started or stopped"));
+        }
 
-        if (!FlushCycleStopped.Initialized()) {
+        if (!Started.load()) {
+            StartingOrStopping.store(false);
             return MakeFuture<NProto::TError>();
         }
 
-        return FlushCycleStopped.GetFuture();
+        // FlushCycleStopped was set up before Started, and no Start can
+        // replace it while StartingOrStopping is held
+        auto flushCycleStopped = FlushCycleStopped.GetFuture();
+
+        // the flush cycle exits and the requests are rejected from now on
+        Started.store(false);
+
+        // TODO(#6956): We should wait for the requests in flight to complete
+        // here. For now Start and Stop are only used around FormatDevice, and
+        // the caller is expected to wait for its requests in flight on its own,
+        // so the ones left are only reported.
+        if (const auto inflight = InflightCount.load()) {
+            STORAGE_ERROR(
+                "The device " << DeviceUUID.Quote() << " is stopped with "
+                              << inflight << " requests in flight");
+        }
+
+        return flushCycleStopped.Apply(
+            [weakSelf = weak_from_this()](const auto&)
+            {
+                if (auto self = weakSelf.lock()) {
+                    self->Journal.reset();
+                    self->StartingOrStopping.store(false);
+                }
+                return NProto::TError();
+            });
     }
 
     TFuture<NCloud::NProto::TReadPagesResponse> ReadPages(
@@ -204,7 +252,7 @@ public:
                 TErrorResponse(std::move(error)));
         }
 
-        return Execute<NCloud::NProto::TReadPagesResponse>(
+        return ExecuteRequest<NCloud::NProto::TReadPagesResponse>(
             [request = std::move(request)](auto& self) mutable
             { return self.DoReadPages(std::move(request)); });
     }
@@ -217,7 +265,7 @@ public:
                 TErrorResponse(std::move(error)));
         }
 
-        return Execute<NCloud::NProto::TWriteLogRecordResponse>(
+        return ExecuteRequest<NCloud::NProto::TWriteLogRecordResponse>(
             [request = std::move(request)](auto& self) mutable
             { return self.DoWriteLogRecord(std::move(request)); });
     }
@@ -230,7 +278,7 @@ public:
                 TErrorResponse(std::move(error)));
         }
 
-        return Execute<NCloud::NProto::TReadJournalTailResponse>(
+        return ExecuteRequest<NCloud::NProto::TReadJournalTailResponse>(
             [request = std::move(request)](auto& self) mutable
             {
                 return self.Executor->ExtractResponse(
@@ -247,7 +295,7 @@ public:
                 TErrorResponse(std::move(error)));
         }
 
-        return Execute<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
+        return ExecuteRequest<NCloud::NProto::TAdvanceLsnLowWatermarkResponse>(
             [request = std::move(request)](auto& self) mutable
             {
                 return self.Executor->ExtractResponse(
@@ -271,11 +319,11 @@ private:
                                  << ", this is " << DeviceUUID.Quote());
         }
 
-        if (RestoreFailed.load()) {
+        if (!Started.load()) {
             return MakeError(
                 E_IO,
-                TStringBuilder() << "the journal on " << DeviceUUID.Quote()
-                                 << " failed to restore");
+                TStringBuilder() << "the device " << DeviceUUID.Quote()
+                                 << " is not started");
         }
 
         return {};
@@ -298,23 +346,53 @@ private:
             });
     }
 
+    template <typename T, typename F>
+    TFuture<T> ExecuteRequest(F func)
+    {
+        InflightCount.fetch_add(1);
+
+        return Execute<T>(
+            [func = std::move(func)](auto& self) mutable -> T
+            {
+                Y_DEFER {
+                    self.InflightCount.fetch_sub(1);
+                };
+
+                return func(self);
+            });
+    }
+
     NCloud::NProto::TError DoStart()
     {
+        Y_DEFER {
+            StartingOrStopping.store(false);
+        };
+
+        STORAGE_DEBUG("Restoring the journal on " << DeviceUUID.Quote());
+
+        const TInstant started = TInstant::Now();
+
         Journal = JournalFactory->CreateJournal();
 
         auto response = Executor->ExtractResponse(Journal->Restore());
         if (HasError(response)) {
             STORAGE_ERROR(
-                "unable to restore the journal on "
+                "Unable to restore the journal on "
                 << DeviceUUID.Quote() << ": "
                 << FormatError(response.GetError()));
-            RestoreFailed.store(true);
             return response.GetError();
         }
 
-        IndexedLsnBarrier.Advance(response.GetResult());
+        STORAGE_DEBUG(
+            "Restored the journal on "
+            << DeviceUUID.Quote() << " in "
+            << FormatDuration(TInstant::Now() - started)
+            << ", last indexed lsn " << response.GetResult());
 
-        FlushCycleStopped = NewPromise<NProto::TError>();
+        IndexedLsnBarrier.Init(response.GetResult());
+
+        FlushCycleStopped = NewPromise<void>();
+        Started.store(true);
         ScheduleFlushCycle();
         return {};
     }
@@ -377,12 +455,11 @@ private:
 
     void ScheduleFlushCycle()
     {
-        Executor->Execute(
-            [weakSelf = weak_from_this()]()
+        Execute<NProto::TError>(
+            [](auto& self) mutable
             {
-                if (auto self = weakSelf.lock()) {
-                    self->RunFlushCycle();
-                }
+                self.RunFlushCycle();
+                return NProto::TError();
             });
     }
 
@@ -391,12 +468,12 @@ private:
         ui64 maxAllowedLsn = IndexedLsnBarrier.GetBarrierLsn();
         ui64 lastFlushedLsn = 0;
 
-        while (!ShouldStop.load()) {
+        while (Started.load()) {
             auto future = Journal->GetRecordToFlush(maxAllowedLsn);
             auto response = Executor->ExtractResponse(future);
             if (HasError(response)) {
                 STORAGE_ERROR(
-                    "unable to get the next record to flush: "
+                    "Unable to get the next record to flush: "
                     << FormatError(response.GetError()));
                 break;
             }
@@ -415,7 +492,7 @@ private:
                 auto writeError = Executor->WaitFor(writeFuture);
                 if (HasError(writeError)) {
                     STORAGE_ERROR(
-                        "unable to flush the record with lsn "
+                        "Unable to flush the record with lsn "
                         << lsn << ": " << FormatError(writeError));
                     break;
                 }
@@ -425,8 +502,8 @@ private:
             lastFlushedLsn = lsn;
         }
 
-        if (ShouldStop.load()) {
-            FlushCycleStopped.SetValue(NProto::TError());
+        if (!Started.load()) {
+            FlushCycleStopped.SetValue();
             return;
         }
 
@@ -434,7 +511,7 @@ private:
         const auto& response = Executor->WaitFor(future);
         if (HasError(response)) {
             STORAGE_ERROR(
-                "unable to cleanup flushed records up to lsn "
+                "Unable to cleanup flushed records up to lsn "
                 << lastFlushedLsn << ": " << FormatError(response));
         }
 
