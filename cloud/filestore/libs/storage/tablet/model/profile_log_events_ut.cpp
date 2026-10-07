@@ -240,16 +240,14 @@ Y_UNIT_TEST_SUITE(TProfileLogEvent)
         const auto oldBlobFirst = TMixedBlob(
             MakePartialBlobId(1, 1),
             {TBlock(1, 3, 0, 0), TBlock(1, 5, 0, 0), TBlock(3, 6, 0, 0)},
-            "content_1");
+            {});
         const auto oldBlobSecond = TMixedBlob(
             MakePartialBlobId(1, 3),
             {TBlock(3, 10, 0, 0), TBlock(7, 5, 0, 0), TBlock(7, 6, 0, 0)},
-            "content_2");
-        const auto emptyBlob = TMixedBlob(MakePartialBlobId(1, 3), {}, "");
-        const auto newBlob = TMixedBlob(
-            MakePartialBlobId(2, 1),
-            {TBlock(1, 10, 0, 0)},
-            "content_3");
+            {});
+        const auto emptyBlob = TMixedBlob(MakePartialBlobId(1, 3), {}, {});
+        const auto newBlob =
+            TMixedBlob(MakePartialBlobId(2, 1), {TBlock(1, 10, 0, 0)}, {});
 
         NProto::TProfileLogRequestInfo profileLogRequest;
         AddBlobsInfo(
