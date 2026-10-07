@@ -2961,8 +2961,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheTest)
             {.MaxWriteRequestsCount = 2,
              .ZeroCopyWriteEnabled = true,
              .DoNotCheckWriteDataRequestBuffer = true,
+             .LogDataOperations = false,
              .ThreadCount = 4});
-        b.Log.CloseLog();
 
         std::latch start{ThreadCount + 1};
         std::atomic<bool> stopRequested = false;

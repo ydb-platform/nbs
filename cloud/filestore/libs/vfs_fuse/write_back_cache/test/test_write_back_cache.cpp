@@ -104,22 +104,21 @@ private:
 
     TWriteBackCache Cache;
 
+    // Complete futures returned by WriteBackCache asynchronously to mimic
+    // the real completion queue.
     template <typename T>
-    TFuture<T> CompleteAsync(TFuture<T> future)
+    TFuture<T> CompleteAsync(const TFuture<T>& future)
     {
         auto promise = NewPromise<T>();
         future.Subscribe(
-            [this, promise](const TFuture<T>& completed) mutable noexcept
+            [this, promise](TFuture<T> completed) mutable
             {
                 AddOrExecute(
                     ThreadPool,
-                    [promise,
-                     completed = TFuture<T>(completed)]() mutable noexcept
+                    [promise = std::move(promise),
+                     completed = std::move(completed)]() mutable
                     {
                         try {
-                            if (completed.HasException()) {
-                                completed.TryRethrow();
-                            }
                             promise.TrySetValue(completed.ExtractValue());
                         } catch (...) {
                             promise.TrySetException(std::current_exception());
