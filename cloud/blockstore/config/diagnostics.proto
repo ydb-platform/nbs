@@ -6,6 +6,7 @@ option go_package = "github.com/ydb-platform/nbs/cloud/blockstore/config";
 
 import "cloud/storage/core/config/opentelemetry_client.proto";
 import "cloud/storage/core/protos/diagnostics.proto";
+import "cloud/storage/core/protos/media.proto";
 import "cloud/storage/core/protos/trace.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -297,4 +298,20 @@ message TDiagnosticsConfig
     // Selects the critical event metrics to report.
     optional EVolumeCriticalEventsReportingMode
         VolumeCriticalEventsReportingMode = 60;
+
+    // Shadow metrics only: no effect on request execution or throttling.
+    optional bool EnableLatencySli = 61 [default = false];
+
+    message TLatencySliThreshold
+    {
+        optional NCloud.NProto.EStorageMediaKind MediaKind = 1;
+        optional bool Write = 2;
+        // Original request size, in bytes, in [StartBytes, EndBytes).
+        optional uint64 StartBytes = 3;
+        optional uint64 EndBytes = 4;
+        optional uint64 ThresholdUs = 5;
+    }
+
+    // Entered manually. Missing/invalid/overlapping intervals yield Unknown.
+    repeated TLatencySliThreshold LatencySliThresholds = 62;
 }

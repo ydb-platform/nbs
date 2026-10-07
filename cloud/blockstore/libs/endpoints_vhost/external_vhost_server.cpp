@@ -284,6 +284,27 @@ TChild SpawnChild(
     const TString& binaryPath,
     TVector<TString> args)
 {
+    // Use an environment extension so older external binaries can still run:
+    // they ignore the setting and their operations are reported as Unknown.
+    TString latencySliEnv;
+    for (size_t i = 0; i + 1 < args.size(); ++i) {
+        if (args[i] == "--latency-sli") {
+            latencySliEnv = "NBS_LATENCY_SLI_CONFIG=" + args[i + 1];
+            args.erase(args.begin() + i, args.begin() + i + 2);
+            break;
+        }
+    }
+    TVector<char*> qenv;
+    if (latencySliEnv) {
+        for (char** entry = environ; *entry; ++entry) {
+            if (!TStringBuf(*entry).StartsWith("NBS_LATENCY_SLI_CONFIG=")) {
+                qenv.push_back(*entry);
+            }
+        }
+        qenv.push_back(latencySliEnv.Detach());
+        qenv.push_back(nullptr);
+    }
+
     args.push_back("--blockstore-service-pid=" + ToString(::getpid()));
 
     TPipe stdOut;
@@ -330,7 +351,11 @@ TChild SpawnChild(
         }
         qargs.emplace_back();
 
-        ::execvp(binaryPath.c_str(), qargs.data());
+        if (qenv) {
+            ::execvpe(binaryPath.c_str(), qargs.data(), qenv.data());
+        } else {
+            ::execvp(binaryPath.c_str(), qargs.data());
+        }
     }
 
     int err = errno;
@@ -1070,6 +1095,13 @@ private:
             "--wait-after-parent-exit",
             ToString(VhostServerTimeoutAfterParentExit.Seconds()).c_str()
         };
+
+        const auto latencySli = ServerStats->GetLatencySliConfig(
+            volume.GetStorageMediaKind());
+        if (latencySli.Enabled) {
+            args.emplace_back("--latency-sli");
+            args.emplace_back(latencySli.Serialize());
+        }
 
         if (epType == EEndpointType::Rdma) {
             args.emplace_back("--client-id");

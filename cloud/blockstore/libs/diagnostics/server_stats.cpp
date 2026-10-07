@@ -3,6 +3,7 @@
 #include "config.h"
 #include "dumpable.h"
 #include "hostname.h"
+#include "latency_sli.h"
 #include "probes.h"
 #include "profile_log.h"
 #include "request_stats.h"
@@ -50,6 +51,7 @@ class TServerStats final
 private:
     const IDumpablePtr Config;
     const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const bool LatencySliEnabled;
     const IProfileLogPtr ProfileLog;
     const IRequestStatsPtr RequestStats;
     const IVolumeStatsPtr VolumeStats;
@@ -87,6 +89,12 @@ public:
         const TString& diskId,
         const TString& cloudId,
         const TString& folderId) override;
+
+    TLatencySliConfig GetLatencySliConfig(ui32 mediaKind) const override
+    {
+        return DiagnosticsConfig ? DiagnosticsConfig->GetLatencySliConfig(mediaKind)
+                                 : TLatencySliConfig{};
+    }
 
     ui32 GetBlockSize(const TString& diskId) const override;
 
@@ -200,6 +208,8 @@ TServerStats::TServerStats(
         TString requestInstanceId)
     : Config(std::move(config))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
+    , LatencySliEnabled(DiagnosticsConfig &&
+                        DiagnosticsConfig->GetConfigProto().GetEnableLatencySli())
     , ProfileLog(std::move(profileLog))
     , RequestStats(std::move(requestStats))
     , VolumeStats(std::move(volumeStats))
@@ -283,6 +293,7 @@ void TServerStats::PrepareMetricRequest(
     metricRequest.DiskId = std::move(diskId);
     metricRequest.StartIndex = startIndex;
     metricRequest.RequestBytes = requestBytes;
+    metricRequest.OriginalRequestBytes = requestBytes;
     metricRequest.Unaligned = unaligned;
 
     if (metricRequest.DiskId) {
@@ -443,6 +454,30 @@ void TServerStats::RequestCompleted(
         responseSentCycles,
         req.AccessMode,
         req.MountMode);
+
+    if (LatencySliEnabled && req.VolumeInfo && !req.CellRequest) {
+        const auto type = TranslateLocalRequestType(req.RequestType);
+        if (type == EBlockStoreRequest::ReadBlocks ||
+            type == EBlockStoreRequest::WriteBlocks)
+        {
+            if (auto* sli = req.VolumeInfo->GetLatencySli()) {
+                const bool valid = started &&
+                    (!responseSentCycles || responseSentCycles >= started);
+                const auto elapsed = responseSentCycles && valid
+                    ? CyclesToDurationSafe(responseSentCycles - started)
+                    : requestTime;
+                // Reuse the existing accumulated throttler time. Backoff,
+                // shaping and predicted postponement remain in the latency.
+                sli->Complete(
+                    type == EBlockStoreRequest::WriteBlocks,
+                    req.OriginalRequestBytes,
+                    elapsed.MicroSeconds(),
+                    postponedTime.MicroSeconds(),
+                    HasError(error),
+                    valid);
+            }
+        }
+    }
 
     ui32 blockSize = DefaultBlockSize;
 

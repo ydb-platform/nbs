@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cloud/blockstore/public/api/protos/encryption.pb.h>
+#include <cloud/blockstore/libs/common/latency_sli.h>
 #include <cloud/storage/core/libs/common/affinity.h>
 
 #include <util/datetime/base.h>
@@ -22,6 +23,7 @@ struct TDeviceChunk
 
 struct TOptions
 {
+    TLatencySliConfig LatencySli;
     TString SocketPath;
     TString DiskId;
     TString Serial;

@@ -105,7 +105,7 @@ struct TFixture
     TString ClientId = "client";
     TString DiskId = "volume";
 
-    TFixture()
+    TFixture(bool latencySli = false)
     {
         auto monitoring = CreateMonitoringServiceStub();
 
@@ -113,15 +113,24 @@ struct TFixture
             ->GetSubgroup("counters", "blockstore")
             ->GetSubgroup("component", "server");
 
+        NProto::TDiagnosticsConfig proto;
+        proto.SetEnableLatencySli(latencySli);
+        auto* row = proto.AddLatencySliThresholds();
+        row->SetMediaKind(NProto::STORAGE_MEDIA_SSD_LOCAL);
+        row->SetStartBytes(1);
+        row->SetEndBytes(8193);
+        row->SetThresholdUs(1000);
+        auto config = std::make_shared<TDiagnosticsConfig>(proto);
         auto volumeStats = CreateVolumeStats(
             Monitoring,
+            config,
             {},
             EVolumeStatsType::EServerStats,
             CreateWallClockTimer());
 
         ServerStats = CreateServerStats(
             std::make_shared<TTestDumpable>(),
-            std::make_shared<TDiagnosticsConfig>(),
+            config,
             Monitoring,
             CreateProfileLogStub(),
             CreateServerRequestStats(
@@ -155,6 +164,64 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TEndpointStatsTest)
 {
+    Y_UNIT_TEST(ShouldProtectLatencyBatches)
+    {
+        TFixture f(true);
+        TEndpointStats reader{f.ClientId, f.DiskId, f.ServerStats};
+        auto group = f.Monitoring->GetCounters()->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume")->GetSubgroup("host", "cluster")
+            ->GetSubgroup("volume", f.DiskId)->GetSubgroup("instance", "instance")
+            ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
+            ->GetSubgroup("type", "ssd_local")->GetSubgroup("request", "ReadBlocks");
+        auto snapshot = [&](ui64 sequence, ui64 good, bool fresh = true) {
+            return NJson::TJsonMap{
+                {"latency_sli", NJson::TJsonMap{
+                    {"version", ui64(1)}, {"epoch", "process-1"},
+                    {"sequence", sequence}, {"fresh", fresh},
+                    {"config", "1;0:1:8193:1000"}}},
+                {"read", NJson::TJsonMap{
+                    {"count", ui64(1)}, {"latency_good", good},
+                    {"latency_bad", ui64(0)}, {"latency_unknown", ui64(0)}}},
+                {"write", NJson::TJsonMap{
+                    {"latency_good", ui64(0)}, {"latency_bad", ui64(0)},
+                    {"latency_unknown", ui64(0)}}}};
+        };
+        reader.Update(snapshot(1, 5));
+        reader.Update(snapshot(1, 5)); // duplicate
+        reader.Update(snapshot(2, 7));
+        reader.Update(snapshot(1, 5)); // out of order
+        UNIT_ASSERT_VALUES_EQUAL(7, group->GetCounter("LatencyGoodOps", true)->Val());
+        reader.Update(snapshot(3, 9, false)); // stale completion snapshot
+        reader.Update(snapshot(4, 11)); // gap: four operations become Unknown
+        UNIT_ASSERT_VALUES_EQUAL(4, group->GetCounter("LatencyUnknownOps", true)->Val());
+        auto mismatched = snapshot(5, 12);
+        mismatched["latency_sli"]["config"] = "1;0:1:8193:2000";
+        reader.Update(mismatched);
+        reader.Update(snapshot(6, 1)); // reset: no unsigned subtraction
+        reader.Update(snapshot(7, 2));
+        UNIT_ASSERT_VALUES_EQUAL(8, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(6, group->GetCounter("LatencyUnknownOps", true)->Val());
+        auto otherEpoch = snapshot(8, 999);
+        otherEpoch["latency_sli"]["epoch"] = "another-process";
+        reader.Update(otherEpoch);
+        UNIT_ASSERT_VALUES_EQUAL(8, group->GetCounter("LatencyTotalOps", true)->Val());
+        // A restarted child owns a fresh stats pipe and a new reader.
+        TEndpointStats restarted{f.ClientId, f.DiskId, f.ServerStats};
+        restarted.Update(snapshot(1, 3));
+        UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyGoodOps", true)->Val());
+        auto legacy = NJson::TJsonMap{{"read", NJson::TJsonMap{
+            {"count", ui64(2)}, {"errors", ui64(1)}}}};
+        restarted.Update(legacy);
+        UNIT_ASSERT_VALUES_EQUAL(9, group->GetCounter("LatencyUnknownOps", true)->Val());
+        auto missing = snapshot(2, 4);
+        missing["read"].EraseValue("latency_good");
+        restarted.Update(missing);
+        restarted.Update(snapshot(3, 5)); // rebaseline, do not replay old Good
+        restarted.Update(snapshot(4, 6));
+        UNIT_ASSERT_VALUES_EQUAL(12, group->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(11, group->GetCounter("LatencyUnknownOps", true)->Val());
+    }
+
     Y_UNIT_TEST_F(ShouldCalcMaxValues, TFixture)
     {
         TEndpointStats stats {ClientId, DiskId, ServerStats};

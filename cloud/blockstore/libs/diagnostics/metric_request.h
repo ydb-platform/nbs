@@ -25,6 +25,8 @@ struct TMetricRequest
     NCloud::NProto::EStorageMediaKind MediaKind =
         NCloud::NProto::STORAGE_MEDIA_HDD;
     ui64 RequestBytes = 0;
+    // The endpoint's original length, before unaligned I/O is expanded.
+    ui64 OriginalRequestBytes = 0;
     TInstant RequestTimestamp;
     bool Unaligned = false;
     bool CellRequest = false;

@@ -284,6 +284,20 @@ TDuration GetDowntimeThreshold(
     }
 }
 
+TLatencySliConfig TDiagnosticsConfig::GetLatencySliConfig(ui32 mediaKind) const
+{
+    TLatencySliConfig result;
+    result.Enabled = DiagnosticsConfig.GetEnableLatencySli();
+    for (const auto& row: DiagnosticsConfig.GetLatencySliThresholds()) {
+        if (row.HasMediaKind() && ui32(row.GetMediaKind()) == mediaKind) {
+            result.Thresholds[row.GetWrite()].push_back({
+                row.GetStartBytes(), row.GetEndBytes(), row.GetThresholdUs()});
+        }
+    }
+    result.Validate();
+    return result;
+}
+
 }   // namespace NCloud::NBlockStore
 
 ////////////////////////////////////////////////////////////////////////////////
