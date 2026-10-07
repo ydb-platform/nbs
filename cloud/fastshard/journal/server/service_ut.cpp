@@ -12,7 +12,12 @@
 
 #include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/algorithm.h>
 #include <util/generic/vector.h>
+#include <util/string/printf.h>
+
+#include <optional>
+#include <utility>
 
 namespace NCloud::NJournalled {
 
@@ -168,6 +173,10 @@ struct TTestJournalledDevice final: public IJournalledDevice
     const TString Name;
     NProto::TError StartError;
 
+    // When set, Start does not complete until CompleteStart is called.
+    bool DeferStart = false;
+    std::optional<TPromise<NProto::TError>> StartPromise;
+
     ui32 StartCount = 0;
     ui32 StopCount = 0;
 
@@ -178,7 +187,21 @@ struct TTestJournalledDevice final: public IJournalledDevice
     TFuture<NProto::TError> Start() final
     {
         ++StartCount;
-        return MakeFuture(StartError);
+
+        if (!DeferStart) {
+            return MakeFuture(StartError);
+        }
+
+        UNIT_ASSERT_C(!StartPromise, Name + " is already starting");
+        StartPromise = NewPromise<NProto::TError>();
+        return StartPromise->GetFuture();
+    }
+
+    void CompleteStart()
+    {
+        UNIT_ASSERT_C(StartPromise, Name + " is not starting");
+        auto promise = *std::exchange(StartPromise, std::nullopt);
+        promise.SetValue(StartError);
     }
 
     TFuture<NProto::TError> Stop() final
@@ -265,7 +288,67 @@ struct TFixture: public NUnitTest::TBaseFixture
             specs.push_back({.Device = std::move(device), .Config = config});
         }
 
-        Service = CreateService(DeviceManager, std::move(specs));
+        Service = CreateService(
+            DeviceManager,
+            std::move(specs),
+            std::size(Configs)   // restoreConcurrency
+        );
+    }
+
+    // Creates a service over |count| devices that complete their start only
+    // when told to.
+    auto CreateDeferredStartService(ui32 count, ui32 restoreConcurrency)
+        -> std::pair<
+            IServerBackendPtr,
+            TVector<std::shared_ptr<TTestJournalledDevice>>>
+    {
+        TVector<std::shared_ptr<TTestJournalledDevice>> devices;
+        TVector<TJournalledDeviceSpec> specs;
+
+        for (ui32 i = 0; i != count; ++i) {
+            auto config = Configs[0];
+            config.DeviceUUID = Sprintf("deferred-%02u", i);
+
+            auto device =
+                std::make_shared<TTestJournalledDevice>(config.DeviceUUID);
+            device->DeferStart = true;
+
+            devices.push_back(device);
+            specs.push_back({.Device = std::move(device), .Config = config});
+        }
+
+        auto service =
+            CreateService(DeviceManager, std::move(specs), restoreConcurrency);
+
+        return {std::move(service), std::move(devices)};
+    }
+
+    using TTestDevices = TVector<std::shared_ptr<TTestJournalledDevice>>;
+
+    static size_t StartingCount(const TTestDevices& devices)
+    {
+        return CountIf(
+            devices,
+            [](const auto& device) { return device->StartPromise.has_value(); });
+    }
+
+    static size_t StartedCount(const TTestDevices& devices)
+    {
+        return CountIf(
+            devices,
+            [](const auto& device) { return device->StartCount != 0; });
+    }
+
+    // The service starts the devices in no particular order, so the tests
+    // complete whichever device is starting.
+    static void CompleteAnyStart(const TTestDevices& devices)
+    {
+        auto it = FindIf(
+            devices,
+            [](const auto& device) { return device->StartPromise.has_value(); });
+
+        UNIT_ASSERT_C(it != devices.end(), "no device is starting");
+        (*it)->CompleteStart();
     }
 
     i64 CriticalEventCount(const TString& name) const
@@ -591,6 +674,97 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         for (const auto& device: Devices) {
             UNIT_ASSERT_VALUES_EQUAL_C(1, device->StopCount, device->Name);
         }
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreJournalsWithLimitedConcurrency, TFixture)
+    {
+        constexpr ui32 DeviceCount = 8;
+        constexpr ui32 RestoreConcurrency = 3;
+
+        auto [service, devices] =
+            CreateDeferredStartService(DeviceCount, RestoreConcurrency);
+
+        auto future = service->Start();
+
+        // Only RestoreConcurrency devices restore at once
+
+        UNIT_ASSERT_VALUES_EQUAL(RestoreConcurrency, StartingCount(devices));
+        UNIT_ASSERT_VALUES_EQUAL(RestoreConcurrency, StartedCount(devices));
+        UNIT_ASSERT(!future.HasValue());
+
+        // Each device that completes lets the next one in
+
+        for (ui32 i = 0; i != DeviceCount; ++i) {
+            CompleteAnyStart(devices);
+
+            const ui32 completed = i + 1;
+            const ui32 expectedStarted =
+                Min(DeviceCount, completed + RestoreConcurrency);
+
+            UNIT_ASSERT_VALUES_EQUAL_C(expectedStarted, StartedCount(devices), i);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedStarted - completed,
+                StartingCount(devices),
+                i);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                completed == DeviceCount,
+                future.HasValue(),
+                i);
+        }
+
+        for (const auto& device: devices) {
+            UNIT_ASSERT_VALUES_EQUAL_C(1, device->StartCount, device->Name);
+        }
+
+        const auto error = future.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+    }
+
+    Y_UNIT_TEST_F(ShouldRestoreAtLeastOneJournalAtOnce, TFixture)
+    {
+        // A zero concurrency would never start anything, so it is taken as
+        // one
+
+        auto [service, devices] = CreateDeferredStartService(2, 0);
+
+        auto future = service->Start();
+
+        UNIT_ASSERT_VALUES_EQUAL(1, StartingCount(devices));
+        UNIT_ASSERT_VALUES_EQUAL(1, StartedCount(devices));
+
+        CompleteAnyStart(devices);
+        UNIT_ASSERT_VALUES_EQUAL(1, StartingCount(devices));
+        UNIT_ASSERT_VALUES_EQUAL(2, StartedCount(devices));
+        UNIT_ASSERT(!future.HasValue());
+
+        CompleteAnyStart(devices);
+        UNIT_ASSERT(future.HasValue());
+    }
+
+    Y_UNIT_TEST_F(ShouldReportDevicesThatFailToRestore, TFixture)
+    {
+        // A failed restore does not hold the others back: the next device is
+        // let in and the start completes successfully
+
+        constexpr ui32 DeviceCount = 3;
+
+        auto [service, devices] = CreateDeferredStartService(DeviceCount, 1);
+        devices[0]->StartError = MakeError(E_IO, "restore failed");
+
+        auto future = service->Start();
+
+        for (ui32 i = 0; i != DeviceCount; ++i) {
+            CompleteAnyStart(devices);
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(DeviceCount, StartedCount(devices));
+
+        const auto error = future.GetValue();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            CriticalEventCount("JournalledDeviceCreationError"));
     }
 }
 

@@ -114,8 +114,10 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "Starting journalled device TCP server on " << address.Quote()
-                                                    << "...");
+        "Starting journalled device TCP server on "
+            << address.Quote() << ", restoring up to "
+            << AgentConfig->GetJournalRestoreConcurrency()
+            << " journals at once...");
 
     try {
         const auto listenAddress = CreateNetworkAddress(address);
@@ -126,6 +128,7 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
             deviceManager,
             listenAddress,
             AgentConfig->GetJournalEnabled(),
+            AgentConfig->GetJournalRestoreConcurrency(),
             std::move(configs)).Build();
 
         Executor->Start();

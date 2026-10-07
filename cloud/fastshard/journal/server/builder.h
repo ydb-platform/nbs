@@ -23,6 +23,7 @@ private:
     IDeviceManagerPtr DeviceManager;
     const TNetworkAddress ListenAddress;
     const bool JournalEnabled;
+    const ui32 RestoreConcurrency;
     TVector<TJournalledDeviceConfig> DeviceConfigs;
 
 public:
@@ -32,10 +33,12 @@ public:
         IDeviceManagerPtr deviceManager,
         const TNetworkAddress& listenAddress,
         bool journalEnabled,
+        ui32 restoreConcurrency,
         TVector<TJournalledDeviceConfig> deviceConfigs);
 
     // Devices that fail to be created are reported and skipped; throws
-    // TServiceError if none of them could be created.
+    // TServiceError if none of them could be created. The server starts the
+    // devices with at most |restoreConcurrency| of them restoring at once.
     IStartablePtr Build();
 };
 

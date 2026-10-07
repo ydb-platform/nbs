@@ -950,6 +950,7 @@ struct TServiceFixture: public NUnitTest::TBaseFixture
                      std::make_shared<TInMemoryDeviceManager>(),
                      TNetworkAddress{Port},
                      false,   // journalEnabled
+                     1,       // restoreConcurrency
                      {{.DeviceUUID = DeviceUUID,
                        .BlocksCount = 1024,
                        .BlockSize = DefaultBlockSize}})

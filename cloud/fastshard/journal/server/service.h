@@ -37,8 +37,12 @@ struct TJournalledDeviceSpec
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// The devices are started with at most |restoreConcurrency| of them in flight,
+// as a restore holds the whole journal metadata of its device in memory until
+// it is parsed.
 IServerBackendPtr CreateService(
     IDeviceManagerPtr deviceManager,
-    TVector<TJournalledDeviceSpec> journalledDevices);
+    TVector<TJournalledDeviceSpec> journalledDevices,
+    ui32 restoreConcurrency);
 
 }   // namespace NCloud::NJournalled

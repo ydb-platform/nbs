@@ -109,6 +109,7 @@ struct TFixture: public NUnitTest::TBaseFixture
                    DeviceManager,
                    TNetworkAddress{0},   // the server is never started
                    journalEnabled,
+                   1,   // restoreConcurrency
                    std::move(configs))
             .Build();
     }
