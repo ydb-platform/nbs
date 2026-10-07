@@ -1,6 +1,7 @@
 #include <cloud/blockstore/libs/storage/testlib/test_env.h>
 
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
+#include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_ut.h>
 
 #include <cloud/storage/core/libs/features/features_config.h>
 
@@ -126,9 +127,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
                 70,
-                CreateFeatureConfig("Balancer", {}, true)
-            )
-        );
+                CreateFeatureConfig("Balancer", {}, true)),
+            CreateDiagnosticsConfig());
         TInstant now = TInstant::Seconds(0);
 
         TVector<NProto::TVolumeBalancerDiskStats> vols {
@@ -151,9 +151,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_LEAST_HEAVY,
                 70,
-                CreateFeatureConfig("Balancer", {}, true)
-            )
-        );
+                CreateFeatureConfig("Balancer", {}, true)),
+            CreateDiagnosticsConfig());
         TInstant now = TInstant::Seconds(0);
 
         TVector<NProto::TVolumeBalancerDiskStats> vols {
@@ -176,9 +175,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
                 70,
-                CreateFeatureConfig("Balancer", {}, true)
-            )
-        );
+                CreateFeatureConfig("Balancer", {}, true)),
+            CreateDiagnosticsConfig());
         TInstant now = TInstant::Seconds(0);
 
         TVector<NProto::TVolumeBalancerDiskStats> vols {
@@ -202,7 +200,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateDiagnosticsConfig());
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -249,7 +247,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             CreateFeatureConfig("Balancer", {{"cloudid1", "folderid1"}}, true));
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateDiagnosticsConfig());
 
         TInstant now = TInstant::Seconds(0);
 
@@ -275,7 +273,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateDiagnosticsConfig());
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -340,7 +338,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         auto overlappingPullDelay =
             storageConfig->GetInitialPullDelay() + TDuration::Seconds(10);
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateDiagnosticsConfig());
         TInstant now = TInstant::Seconds(0);
 
         // Push vol0
@@ -401,9 +399,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
                 70,
-                CreateFeatureConfig("Balancer", {}, true)
-            )
-        );
+                CreateFeatureConfig("Balancer", {}, true)),
+            CreateDiagnosticsConfig());
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -450,9 +447,8 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
                 70,
-                CreateFeatureConfig("Balancer", {}, true)
-            )
-        );
+                CreateFeatureConfig("Balancer", {}, true)),
+            CreateDiagnosticsConfig());
 
         for (ui32 i = 0; i < kinds.size(); ++i) {
             TInstant now = TInstant::Seconds(0);
