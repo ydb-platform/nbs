@@ -134,6 +134,42 @@ bool TryRoundGrafanaTimestamp(
     return true;
 }
 
+bool TryApplyGrafanaOffset(
+    TInstant& current,
+    char unit,
+    ui64 count,
+    bool subtract)
+{
+    static constexpr struct
+    {
+        char Unit;
+        ui64 Seconds;
+    } units[] = {
+        {'s', 1},
+        {'m', 60},
+        {'h', 3600},
+        {'d', 86400},
+        {'w', 604800},
+    };
+    for (const auto& entry: units) {
+        if (entry.Unit != unit) {
+            continue;
+        }
+        const ui64 reference = current.MicroSeconds();
+        const ui64 available = subtract ? reference :
+            TInstant::Max().MicroSeconds() - reference;
+        const ui64 multiplier = entry.Seconds * 1000000;
+        if (count > available / multiplier) {
+            return false;
+        }
+        const ui64 offset = count * multiplier;
+        current = TInstant::MicroSeconds(
+            subtract ? reference - offset : reference + offset);
+        return true;
+    }
+    return false;
+}
+
 bool TryParseGrafanaTimestamp(
     TStringBuf input,
     TInstant now,
@@ -147,7 +183,6 @@ bool TryParseGrafanaTimestamp(
     auto current = now;
     const auto utc = NDatetime::GetUtcTimeZone();
     while (!input.empty()) {
-        const auto operation = input;
         const char sign = input.front();
         if (sign != '+' && sign != '-' && sign != '/') {
             return false;
@@ -211,31 +246,13 @@ bool TryParseGrafanaTimestamp(
             current = TInstant::Seconds(
                           utc.lookup(shifted).pre.time_since_epoch().count()) +
                       TDuration::MicroSeconds(current.MicroSecondsOfSecond());
-        } else {
-            if (unit != 's' && unit != 'm' && unit != 'h' && unit != 'd' &&
-                unit != 'w')
-            {
-                return false;
-            }
-            if (!NSystemdTime::TryParseTimestamp(
-                    operation.Head(operation.size() - input.size()),
-                    current,
-                    current,
-                    utc))
-            {
-                return false;
-            }
+        } else if (!TryApplyGrafanaOffset(current, unit, count, sign == '-')) {
+            return false;
         }
     }
     result = current;
     return true;
 }
-
-struct TTimeRange
-{
-    TInstant Since;
-    TInstant Until;
-};
 
 TTimeRange ParseGrafanaRange(
     const NLastGetopt::TOptsParseResultException& parseResult,
@@ -257,12 +274,13 @@ TTimeRange ParseGrafanaRange(
             << "--grafana-range requires a JSON object with string fields "
                "\"from\" and \"to\"";
     }
-    TTimeRange range;
+    TInstant since;
+    TInstant until;
     if (!TryParseGrafanaTimestamp(
             json["from"].GetString(),
             now,
             false,
-            range.Since))
+            since))
     {
         ythrow NLastGetopt::TUsageException()
             << "Invalid --grafana-range \"from\": " << json["from"].GetString();
@@ -271,16 +289,16 @@ TTimeRange ParseGrafanaRange(
             json["to"].GetString(),
             now,
             true,
-            range.Until))
+            until))
     {
         ythrow NLastGetopt::TUsageException()
             << "Invalid --grafana-range \"to\": " << json["to"].GetString();
     }
-    if (range.Since > range.Until) {
+    if (since > until) {
         ythrow NLastGetopt::TUsageException()
             << "--grafana-range \"from\" must not be later than \"to\"";
     }
-    return range;
+    return {since, until};
 }
 
 }   // namespace
@@ -351,22 +369,16 @@ TMaybe<ui64> TCommonFilterParams::GetHandle(
     return Parse<ui64>(HandleLabel, parseResult);
 }
 
-TMaybe<TInstant> TCommonFilterParams::GetSince(
+TTimeRange TCommonFilterParams::GetTimeRange(
     const NLastGetopt::TOptsParseResultException& parseResult) const
 {
     if (parseResult.Has(GrafanaRangeLabel.data())) {
-        return ParseGrafanaRange(parseResult, ReferenceTime).Since;
+        return ParseGrafanaRange(parseResult, ReferenceTime);
     }
-    return ParseTimestamp(SinceLabel, parseResult, ReferenceTime);
-}
-
-TMaybe<TInstant> TCommonFilterParams::GetUntil(
-    const NLastGetopt::TOptsParseResultException& parseResult) const
-{
-    if (parseResult.Has(GrafanaRangeLabel.data())) {
-        return ParseGrafanaRange(parseResult, ReferenceTime).Until;
-    }
-    return ParseTimestamp(UntilLabel, parseResult, ReferenceTime);
+    return {
+        ParseTimestamp(SinceLabel, parseResult, ReferenceTime),
+        ParseTimestamp(UntilLabel, parseResult, ReferenceTime),
+    };
 }
 
 }   // namespace NCloud::NFileStore::NProfileTool

@@ -16,6 +16,12 @@ namespace NCloud::NFileStore::NProfileTool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTimeRange
+{
+    TMaybe<TInstant> Since;
+    TMaybe<TInstant> Until;
+};
+
 class TCommonFilterParams
 {
 private:
@@ -31,9 +37,7 @@ public:
         const NLastGetopt::TOptsParseResultException& parseResult) const;
     TMaybe<ui64> GetHandle(
         const NLastGetopt::TOptsParseResultException& parseResult) const;
-    TMaybe<TInstant> GetSince(
-        const NLastGetopt::TOptsParseResultException& parseResult) const;
-    TMaybe<TInstant> GetUntil(
+    TTimeRange GetTimeRange(
         const NLastGetopt::TOptsParseResultException& parseResult) const;
 };
 
