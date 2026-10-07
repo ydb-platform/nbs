@@ -15,14 +15,22 @@ namespace NCloud::NJournalled {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TServerConfig
+{
+    TNetworkAddress ListenAddress;
+    bool JournalEnabled;
+    ui32 RestoreConcurrency;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TServerBuilder
 {
 private:
     ILoggingServicePtr Logging;
     TExecutorPtr Executor;
     IDeviceManagerPtr DeviceManager;
-    const TNetworkAddress ListenAddress;
-    const bool JournalEnabled;
+    TServerConfig ServerConfig;
     TVector<TJournalledDeviceConfig> DeviceConfigs;
 
 public:
@@ -30,12 +38,12 @@ public:
         ILoggingServicePtr logging,
         TExecutorPtr executor,
         IDeviceManagerPtr deviceManager,
-        const TNetworkAddress& listenAddress,
-        bool journalEnabled,
+        TServerConfig serverConfig,
         TVector<TJournalledDeviceConfig> deviceConfigs);
 
     // Devices that fail to be created are reported and skipped; throws
-    // TServiceError if none of them could be created.
+    // TServiceError if none of them could be created. The server starts the
+    // devices with at most |RestoreConcurrency| of them restoring at once.
     IStartablePtr Build();
 };
 

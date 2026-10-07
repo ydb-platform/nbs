@@ -107,8 +107,12 @@ struct TFixture: public NUnitTest::TBaseFixture
                    Logging,
                    Executor,
                    DeviceManager,
-                   TNetworkAddress{0},   // the server is never started
-                   journalEnabled,
+                   TServerConfig{
+                       // the server is never started
+                       .ListenAddress = TNetworkAddress{0},
+                       .JournalEnabled = journalEnabled,
+                       .RestoreConcurrency = 1,
+                   },
                    std::move(configs))
             .Build();
     }
