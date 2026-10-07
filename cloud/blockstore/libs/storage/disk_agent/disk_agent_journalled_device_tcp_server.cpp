@@ -96,18 +96,22 @@ public:
 
     // IServerBackend
 
-    void Start() override
+    TFuture<NCloud::NProto::TError> Start() override
     {
         for (const auto& [uuid, spec]: Devices) {
-            spec.Device->Start();
+            spec.Device->Start().Wait();
         }
+
+        return MakeFuture<NCloud::NProto::TError>();
     }
 
-    void Stop() override
+    TFuture<NCloud::NProto::TError> Stop() override
     {
         for (const auto& [uuid, spec]: Devices) {
-            spec.Device->Stop();
+            spec.Device->Stop().Wait();
         }
+
+        return MakeFuture<NCloud::NProto::TError>();
     }
 
     [[nodiscard]] auto AcquireDevices(

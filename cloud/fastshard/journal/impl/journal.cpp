@@ -467,7 +467,7 @@ TResultOrError<ui64> TJournal::RestoreFrom(TVector<TKeyBuffer> buffers)
 
     LogRecordChain.InitLastErasedLsn(headLsn);
     LogPageIndex.InitLastIndexedLsn(headLsn);
-    FlushedLsnBarrier.Advance(headLsn);
+    FlushedLsnBarrier.Init(headLsn);
 
     //
     // Rebuild the page store allocation and the chain

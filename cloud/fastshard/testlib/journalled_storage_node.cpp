@@ -73,7 +73,7 @@ void TJournalledStorageNode::Start()
 {
     Y_ABORT_UNLESS(!Started, "%s is started", DeviceUUID.c_str());
 
-    Device->Start();
+    Device->Start().Wait();
     Started = true;
 }
 
@@ -83,7 +83,7 @@ void TJournalledStorageNode::Stop()
         return;
     }
 
-    Device->Stop();
+    Device->Stop().Wait();
     Started = false;
 }
 

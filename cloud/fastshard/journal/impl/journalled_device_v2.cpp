@@ -16,6 +16,7 @@
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
+#include <util/generic/scope.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NJournalled {
@@ -155,9 +156,13 @@ private:
 
     TLsnBarrier IndexedLsnBarrier;
 
-    std::atomic_bool ShouldStop = false;
-    std::atomic_bool RestoreFailed = false;
+    // The device serves requests and runs the flush cycle only while started.
+    std::atomic_bool Started = false;
 
+    // Held by a Start or a Stop for as long as it runs.
+    std::atomic_bool StartingOrStopping = false;
+
+    // Set by the flush cycle once it exits, created anew by every Start.
     TPromise<void> FlushCycleStopped;
 
 public:
@@ -175,35 +180,55 @@ public:
         , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
     {}
 
-    void Start() override
+    TFuture<NProto::TError> Start() override
     {
-        auto future = Executor->Execute(
-            [weakSelf = weak_from_this()]()
-            {
-                auto self = weakSelf.lock();
-                if (!self) {
-                    return MakeError(E_FAIL, "TJournalledDevice is destroyed");
-                }
-
-                return self->DoStart();
-            });
-
-        auto error = future.GetValueSync();
-        if (HasError(error)) {
-            STORAGE_ERROR(
-                "unable to restore the journal on " << DeviceUUID << ": "
-                                                    << FormatError(error));
-            RestoreFailed.store(true);
+        if (StartingOrStopping.exchange(true)) {
+            return MakeFuture(MakeError(
+                E_REJECTED,
+                TStringBuilder() << "the device " << DeviceUUID.Quote()
+                                 << " is being started or stopped"));
         }
+
+        if (Started.load()) {
+            StartingOrStopping.store(false);
+            return MakeFuture<NProto::TError>();
+        }
+
+        return Execute<NProto::TError>([](auto& self) mutable
+                                       { return self.DoStart(); });
     }
 
-    void Stop() override
+    TFuture<NProto::TError> Stop() override
     {
-        ShouldStop.store(true);
-
-        if (FlushCycleStopped.Initialized()) {
-            FlushCycleStopped.GetFuture().Wait();
+        if (StartingOrStopping.exchange(true)) {
+            return MakeFuture(MakeError(
+                E_REJECTED,
+                TStringBuilder() << "the device " << DeviceUUID.Quote()
+                                 << " is being started or stopped"));
         }
+
+        if (!Started.load()) {
+            StartingOrStopping.store(false);
+            return MakeFuture<NProto::TError>();
+        }
+
+        // FlushCycleStopped was set up before Started, and no Start can
+        // replace it while StartingOrStopping is held
+        auto flushCycleStopped = FlushCycleStopped.GetFuture();
+
+        // the flush cycle exits and the requests are rejected from now on
+        Started.store(false);
+
+        // TODO: we must wait for all inflight requests completed
+
+        return flushCycleStopped.Apply(
+            [weakSelf = weak_from_this()](const auto&)
+            {
+                if (auto self = weakSelf.lock()) {
+                    self->StartingOrStopping.store(false);
+                }
+                return NProto::TError();
+            });
     }
 
     TFuture<NCloud::NProto::TReadPagesResponse> ReadPages(
@@ -281,11 +306,11 @@ private:
                                  << ", this is " << DeviceUUID.Quote());
         }
 
-        if (RestoreFailed.load()) {
+        if (!Started.load()) {
             return MakeError(
                 E_IO,
-                TStringBuilder() << "the journal on " << DeviceUUID.Quote()
-                                 << " failed to restore");
+                TStringBuilder() << "the device " << DeviceUUID.Quote()
+                                 << " is not started");
         }
 
         return {};
@@ -299,7 +324,7 @@ private:
             {
                 auto self = weakSelf.lock();
                 if (!self) {
-                    return ErrorResponse<T>(
+                    return TErrorResponse(
                         E_FAIL,
                         "TJournalledDevice is destroyed");
                 }
@@ -310,12 +335,20 @@ private:
 
     NCloud::NProto::TError DoStart()
     {
+        Y_DEFER {
+            StartingOrStopping.store(false);
+        };
+
         STORAGE_INFO("restoring the journal on " << DeviceUUID.Quote());
 
         const TInstant started = TInstant::Now();
 
         auto response = Executor->ExtractResponse(Journal->Restore());
         if (HasError(response)) {
+            STORAGE_ERROR(
+                "unable to restore the journal on "
+                << DeviceUUID.Quote() << ": "
+                << FormatError(response.GetError()));
             return response.GetError();
         }
 
@@ -325,11 +358,11 @@ private:
             << FormatDuration(TInstant::Now() - started)
             << ", last indexed lsn " << response.GetResult());
 
-        IndexedLsnBarrier.Advance(response.GetResult());
+        IndexedLsnBarrier.Init(response.GetResult());
 
         FlushCycleStopped = NewPromise<void>();
+        Started.store(true);
         ScheduleFlushCycle();
-
         return {};
     }
 
@@ -391,15 +424,11 @@ private:
 
     void ScheduleFlushCycle()
     {
-        Executor->Execute(
-            [weakSelf = weak_from_this()]()
+        Execute<NProto::TError>(
+            [](auto& self) mutable
             {
-                auto self = weakSelf.lock();
-                if (!self) {
-                    return;
-                }
-
-                self->RunFlushCycle();
+                self.RunFlushCycle();
+                return NProto::TError();
             });
     }
 
@@ -408,7 +437,7 @@ private:
         ui64 maxAllowedLsn = IndexedLsnBarrier.GetBarrierLsn();
         ui64 lastFlushedLsn = 0;
 
-        while (!ShouldStop.load()) {
+        while (Started.load()) {
             auto future = Journal->GetRecordToFlush(maxAllowedLsn);
             auto response = Executor->ExtractResponse(future);
             if (HasError(response)) {
@@ -442,7 +471,7 @@ private:
             lastFlushedLsn = lsn;
         }
 
-        if (ShouldStop.load()) {
+        if (!Started.load()) {
             FlushCycleStopped.SetValue();
             return;
         }

@@ -236,7 +236,7 @@ TServer::TServer(
 
 void TServer::Start()
 {
-    Backend->Start();
+    Backend->Start().Wait();
 
     auto future = Executor->Execute([this] { StartListen(); });
     future.GetValueSync();
@@ -247,7 +247,7 @@ void TServer::Stop()
     auto future = Executor->Execute([this] { StopImpl(); });
     future.Wait();
 
-    Backend->Stop();
+    Backend->Stop().Wait();
 }
 
 // TContListener::ICallBack

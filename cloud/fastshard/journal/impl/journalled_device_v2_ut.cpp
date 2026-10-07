@@ -19,6 +19,7 @@
 #include <util/system/mutex.h>
 
 #include <functional>
+#include <optional>
 
 namespace NCloud::NJournalled {
 
@@ -192,6 +193,14 @@ struct TTestJournal final: public IJournal
 
     TResultOrError<ui64> RestoreResponse = 0;
 
+    // when set, the restore completes once the promise is set
+    std::optional<TPromise<TResultOrError<ui64>>> RestorePromise;
+    TManualEvent RestoreStarted;
+
+    // when set, the read completes once the promise is set
+    std::optional<TPromise<NCloud::NProto::TReadPagesResponse>> ReadPromise;
+    mutable TManualEvent ReadStarted;
+
     TReadHandler ReadHandler = [] (const auto& request) {
         Y_UNUSED(request);
         return NCloud::NProto::TReadPagesResponse();
@@ -214,7 +223,11 @@ struct TTestJournal final: public IJournal
         with_lock (Mutex) {
             ++RestoreCount;
         }
+        RestoreStarted.Signal();
 
+        if (RestorePromise) {
+            return RestorePromise->GetFuture();
+        }
         return MakeFuture(RestoreResponse);
     }
 
@@ -232,7 +245,11 @@ struct TTestJournal final: public IJournal
         with_lock (Mutex) {
             ReadRequests.push_back(request);
         }
+        ReadStarted.Signal();
 
+        if (ReadPromise) {
+            return ReadPromise->GetFuture();
+        }
         return MakeFuture(ReadHandler(request));
     }
 
@@ -432,7 +449,7 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {
-        Device->Stop();
+        Device->Stop().Wait();
         Executor->Stop();
         Logging->Stop();
     }
@@ -458,13 +475,25 @@ struct TFixture: public NUnitTest::TBaseFixture
     }
 };
 
+// The device serves the requests only once started.
+struct TStartedFixture: public TFixture
+{
+    void SetUp(NUnitTest::TTestContext& context) override
+    {
+        TFixture::SetUp(context);
+
+        const auto error = Device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 {
-    Y_UNIT_TEST_F(ShouldReadAllPagesFromTheJournal, TFixture)
+    Y_UNIT_TEST_F(ShouldReadAllPagesFromTheJournal, TStartedFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -487,7 +516,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetReadRequests().size());
     }
 
-    Y_UNIT_TEST_F(ShouldReadAllPagesFromTheDataStore, TFixture)
+    Y_UNIT_TEST_F(ShouldReadAllPagesFromTheDataStore, TStartedFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -518,7 +547,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(7, response.GetLastAckedLogSequenceNumber());
     }
 
-    Y_UNIT_TEST_F(ShouldRequestOnlyMissingPagesFromTheDataStore, TFixture)
+    Y_UNIT_TEST_F(ShouldRequestOnlyMissingPagesFromTheDataStore, TStartedFixture)
     {
         // the journal covers the middle of the requested range
 
@@ -548,7 +577,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(100, response.GetLastAckedLogSequenceNumber());
     }
 
-    Y_UNIT_TEST_F(ShouldRequestMissingPagesForEveryPageGroupRef, TFixture)
+    Y_UNIT_TEST_F(ShouldRequestMissingPagesForEveryPageGroupRef, TStartedFixture)
     {
         // the first journal group covers the tail of the first ref and goes
         // beyond it, the second one covers the head of the second ref
@@ -577,7 +606,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             DescribeGroups(response));
     }
 
-    Y_UNIT_TEST_F(ShouldIgnoreEmptyJournalPageGroups, TFixture)
+    Y_UNIT_TEST_F(ShouldIgnoreEmptyJournalPageGroups, TStartedFixture)
     {
         // a page group without content covers nothing
 
@@ -605,7 +634,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             DescribeGroups(response));
     }
 
-    Y_UNIT_TEST_F(ShouldSkipEmptyPageGroupRefs, TFixture)
+    Y_UNIT_TEST_F(ShouldSkipEmptyPageGroupRefs, TStartedFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -628,7 +657,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL("20:[D20,D21]", DescribeGroups(response));
     }
 
-    Y_UNIT_TEST_F(ShouldShapeTheResponseAfterTheRequest, TFixture)
+    Y_UNIT_TEST_F(ShouldShapeTheResponseAfterTheRequest, TStartedFixture)
     {
         // the journal holds a wider page group than the requested one
 
@@ -653,7 +682,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetReadRequests().size());
     }
 
-    Y_UNIT_TEST_F(ShouldFailIfTheDataStoreReturnsMorePagesThanAsked, TFixture)
+    Y_UNIT_TEST_F(ShouldFailIfTheDataStoreReturnsMorePagesThanAsked, TStartedFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -678,7 +707,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             "the device returned 4 pages, expected 2");
     }
 
-    Y_UNIT_TEST_F(ShouldFailIfTheDataStoreMissesAPage, TFixture)
+    Y_UNIT_TEST_F(ShouldFailIfTheDataStoreMissesAPage, TStartedFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -703,7 +732,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             "the device returned 0 pages, expected 1");
     }
 
-    Y_UNIT_TEST_F(ShouldHandleJournalReadError, TFixture)
+    Y_UNIT_TEST_F(ShouldHandleJournalReadError, TStartedFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -723,7 +752,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetReadRequests().size());
     }
 
-    Y_UNIT_TEST_F(ShouldHandleDataStoreReadError, TFixture)
+    Y_UNIT_TEST_F(ShouldHandleDataStoreReadError, TStartedFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -745,7 +774,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
             "device is broken");
     }
 
-    Y_UNIT_TEST_F(ShouldRejectARequestForAnotherDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectARequestForAnotherDevice, TStartedFixture)
     {
         constexpr TStringBuf otherUUID = "another-device";
 
@@ -783,7 +812,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
     }
 
-    Y_UNIT_TEST_F(ShouldRejectARequestWithNoDeviceUUID, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectARequestWithNoDeviceUUID, TStartedFixture)
     {
         auto response = ReadPages(MakeReadRequest({{10, 4}}, ""));
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response.GetError().GetCode());
@@ -815,7 +844,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
     }
 
-    Y_UNIT_TEST_F(ShouldServeARequestForThisDevice, TFixture)
+    Y_UNIT_TEST_F(ShouldServeARequestForThisDevice, TStartedFixture)
     {
         Journal->ReadHandler = [] (const auto& request) {
             Y_UNUSED(request);
@@ -856,11 +885,11 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         Journal->AddRecordToFlush(MakeRecord(2, 20, 1));
         Journal->AddRecordToFlush(MakeRecord(3, 30, 3));
 
-        Device->Start();
+        Device->Start().Wait();
         UNIT_ASSERT_VALUES_EQUAL(1, Journal->GetRestoreCount());
 
         WaitForAllRecordsToBeFlushed();
-        Device->Stop();
+        Device->Stop().Wait();
 
         const auto writes = DataStore->GetWriteRequests();
         UNIT_ASSERT_VALUES_EQUAL(3, writes.size());
@@ -898,9 +927,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         Journal->RestoreResponse = 1;
         Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
 
-        Device->Start();
+        Device->Start().Wait();
         WaitForAllRecordsToBeFlushed();
-        Device->Stop();
+        Device->Stop().Wait();
 
         // the record has been written twice: the failed attempt and the retry
 
@@ -926,14 +955,14 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         Journal->AddRecordToFlush(MakeRecord(2, 20, 1));
         Journal->AddRecordToFlush(MakeRecord(3, 30, 3));
 
-        Device->Start();
+        Device->Start().Wait();
 
         // the first cycle flushes lsn 1 and 2 and stops at lsn 3, the second
         // one finds nothing to flush at all
 
         WaitForFlushCycle();
         WaitForFlushCycle();
-        Device->Stop();
+        Device->Stop().Wait();
 
         const auto writes = DataStore->GetWriteRequests();
         UNIT_ASSERT_VALUES_EQUAL(2, writes.size());
@@ -951,13 +980,13 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         Journal->RestoreResponse = MakeError(E_IO, "journal is broken");
         Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
 
-        Device->Start();
+        Device->Start().Wait();
 
         const auto readResponse = ReadPages(MakeReadRequest({{10, 4}}));
         UNIT_ASSERT_VALUES_EQUAL(E_IO, readResponse.GetError().GetCode());
         UNIT_ASSERT_STRING_CONTAINS(
             readResponse.GetError().GetMessage(),
-            "failed to restore");
+            "is not started");
 
         UNIT_ASSERT_VALUES_EQUAL(
             E_IO,
@@ -981,7 +1010,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
                 .GetError()
                 .GetCode());
 
-        Device->Stop();
+        Device->Stop().Wait();
 
         // neither the requests nor the flush cycle got to the journal or the
         // data store
@@ -992,11 +1021,163 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetCleanupCount());
     }
 
+    Y_UNIT_TEST_F(ShouldRejectRequestsBeforeStartAndAfterStop, TFixture)
+    {
+        auto response = ReadPages(MakeReadRequest({{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            response.GetError().GetMessage(),
+            "is not started");
+
+        auto error = Device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        response = ReadPages(MakeReadRequest({{10, 1}}));
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+
+        error = Device->Stop().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        response = ReadPages(MakeReadRequest({{10, 1}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, response.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST_F(ShouldIgnoreStartOfAStartedDevice, TFixture)
+    {
+        auto error = Device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        error = Device->Start().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(1, Journal->GetRestoreCount());
+    }
+
+    Y_UNIT_TEST_F(ShouldIgnoreStopOfAStoppedDevice, TFixture)
+    {
+        auto error = Device->Stop().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        error = Device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        error = Device->Stop().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        error = Device->Stop().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+    }
+
+    Y_UNIT_TEST_F(ShouldRestartAfterStop, TFixture)
+    {
+        for (ui32 i = 1; i <= 3; ++i) {
+            auto error = Device->Start().GetValueSync();
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(i, Journal->GetRestoreCount());
+
+            const auto response = ReadPages(MakeReadRequest({{10, 1}}));
+            UNIT_ASSERT_C(
+                !HasError(response),
+                FormatError(response.GetError()));
+
+            error = Device->Stop().GetValueSync();
+            UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        }
+
+        // the flush cycle runs again after a restart; the empty cycles of
+        // the earlier starts have signaled the event already
+        Journal->AllRecordsFlushed.Reset();
+        Journal->RestoreResponse = 1;
+        Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
+
+        const auto error = Device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        WaitForAllRecordsToBeFlushed();
+        UNIT_ASSERT_VALUES_EQUAL(1, Journal->GetFlushedLsns().size());
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectAStartOrStopWhileStarting, TFixture)
+    {
+        Journal->RestorePromise = NewPromise<TResultOrError<ui64>>();
+
+        auto started = Device->Start();
+        UNIT_ASSERT(Journal->RestoreStarted.WaitT(TDuration::Seconds(30)));
+        UNIT_ASSERT(!started.HasValue());
+
+        auto error = Device->Start().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            error.GetCode(),
+            FormatError(error));
+
+        error = Device->Stop().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            E_REJECTED,
+            error.GetCode(),
+            FormatError(error));
+
+        Journal->RestorePromise->SetValue(0);
+        error = started.GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(1, Journal->GetRestoreCount());
+
+        const auto response = ReadPages(MakeReadRequest({{10, 1}}));
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+    }
+
+    Y_UNIT_TEST_F(ShouldStartAgainAfterAFailedStart, TFixture)
+    {
+        Journal->RestoreResponse = MakeError(E_IO, "journal is broken");
+
+        auto error = Device->Start().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
+
+        Journal->RestoreResponse = 0;
+
+        error = Device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(2, Journal->GetRestoreCount());
+
+        const auto response = ReadPages(MakeReadRequest({{10, 1}}));
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+    }
+
+    Y_UNIT_TEST_F(ShouldCompleteAReadInFlightAcrossARestart, TFixture)
+    {
+        auto error = Device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        // the read holds the indexed lsn barrier while it waits for the
+        // journal
+        Journal->ReadPromise = NewPromise<NCloud::NProto::TReadPagesResponse>();
+        auto read = Device->ReadPages(MakeReadRequest({{10, 1}}));
+        UNIT_ASSERT(Journal->ReadStarted.WaitT(TDuration::Seconds(30)));
+        UNIT_ASSERT(!read.HasValue());
+
+        error = Device->Stop().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        error = Device->Start().GetValueSync();
+        UNIT_ASSERT_C(!HasError(error), FormatError(error));
+
+        // the read releases its barrier after the restart
+        Journal->ReadPromise->SetValue(
+            MakeReadResponse({MakeGroup(10, 1, "J")}));
+        auto response = read.GetValueSync();
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL("10:[J10]", DescribeGroups(response));
+
+        // the restarted device serves the requests
+        Journal->ReadPromise.reset();
+        response = ReadPages(MakeReadRequest({{10, 1}}));
+        UNIT_ASSERT_C(!HasError(response), FormatError(response.GetError()));
+    }
+
     Y_UNIT_TEST_F(ShouldStopFlushCycle, TFixture)
     {
-        Device->Start();
+        Device->Start().Wait();
         WaitForAllRecordsToBeFlushed();
-        Device->Stop();
+        Device->Stop().Wait();
 
         const auto cleanupCount = Journal->GetCleanupCount();
 
