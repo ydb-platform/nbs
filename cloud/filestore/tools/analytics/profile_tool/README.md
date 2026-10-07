@@ -19,6 +19,7 @@ Profile log fills in three places:
 | ```--handle```         | ui64      | Handle id, output events which used specified handle id |
 | ```--since```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events from this timestamp |
 | ```--until```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events strictly before given timestamp |
+| ```--grafana-range```  | JSON | Time range copied from Grafana, with string fields `from` and `to`; cannot be combined with `--since` or `--until` |
 
 `--since` and `--until` also accept systemd-style timestamps such as `today`,
 `now`, and `-2h`. An omitted timezone defaults to UTC, matching the original
@@ -26,6 +27,18 @@ ISO 8601 parsing and absolute timestamps in `--grafana-range`. Date-only,
 time-only, and day keywords such as `today` also use UTC unless a timezone is
 specified explicitly. For example, `2023-01-01T10:00:00` means
 `2023-01-01T10:00:00Z` on every machine.
+
+`--grafana-range` accepts absolute ISO 8601 timestamps and relative expressions
+such as `now-15m`. Offsets support `s`, `m`, `h`, `d`, `w`, `M`, `Q`, and `y`.
+Appending `/unit` rounds `from` to the start of that period and `to` to its final
+millisecond (for example, `23:59:59.999` for `/d`). The same units are supported
+for rounding. For example, `--grafana-range='{"from":"now-1M/M","to":"now-1M/M"}'`
+selects the previous calendar month, and `'{"from":"now/d","to":"now/d"}'`
+selects today. Calendar arithmetic and rounding use UTC, with weeks starting
+on Sunday. Fiscal quarter `/fQ` and fiscal year `/fy` rounding are also supported,
+using a January fiscal-year start. Copied JSON does not carry Grafana's timezone,
+week-start preference, or fiscal-year start month; copy absolute timestamps to
+preserve ranges based on other settings.
 
 ## Options for particular commands
 

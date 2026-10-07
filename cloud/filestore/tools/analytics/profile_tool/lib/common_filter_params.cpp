@@ -62,7 +62,84 @@ TMaybe<TInstant> ParseTimestamp(
     return ts;
 }
 
-bool TryParseGrafanaTimestamp(TStringBuf input, TInstant now, TInstant& result)
+bool TryRoundGrafanaTimestamp(
+    TInstant current,
+    char unit,
+    bool roundUp,
+    TInstant& result)
+{
+    const auto utc = NDatetime::GetUtcTimeZone();
+    const cctz::time_point<cctz::seconds> reference{
+        cctz::seconds(current.Seconds())};
+    const auto civil = utc.lookup(reference).cs;
+    cctz::civil_second start;
+    cctz::civil_second end;
+    switch (unit) {
+        case 's':
+            start = civil;
+            end = start + 1;
+            break;
+        case 'm':
+            start = cctz::civil_second(cctz::civil_minute(civil));
+            end = cctz::civil_second(cctz::civil_minute(civil) + 1);
+            break;
+        case 'h':
+            start = cctz::civil_second(cctz::civil_hour(civil));
+            end = cctz::civil_second(cctz::civil_hour(civil) + 1);
+            break;
+        case 'd':
+            start = cctz::civil_second(cctz::civil_day(civil));
+            end = cctz::civil_second(cctz::civil_day(civil) + 1);
+            break;
+        case 'w': {
+            // Copied ranges omit Grafana's locale/week-start preference.
+            const auto day = cctz::prev_weekday(
+                cctz::civil_day(civil) + 1,
+                cctz::weekday::sunday);
+            start = cctz::civil_second(day);
+            end = cctz::civil_second(day + 7);
+            break;
+        }
+        case 'M':
+            start = cctz::civil_second(cctz::civil_month(civil));
+            end = cctz::civil_second(cctz::civil_month(civil) + 1);
+            break;
+        case 'Q': {
+            const cctz::civil_month month(
+                civil.year(),
+                (civil.month() - 1) / 3 * 3 + 1);
+            start = cctz::civil_second(month);
+            end = cctz::civil_second(month + 3);
+            break;
+        }
+        case 'y':
+            start = cctz::civil_second(cctz::civil_year(civil));
+            end = cctz::civil_second(cctz::civil_year(civil) + 1);
+            break;
+        default:
+            return false;
+    }
+
+    // Grafana's endOf() uses millisecond precision.
+    const auto seconds =
+        utc.lookup(roundUp ? end : start).pre.time_since_epoch().count() -
+        (roundUp ? 1 : 0);
+    const ui64 fraction = roundUp ? 999000 : 0;
+    if (seconds < 0 ||
+        static_cast<ui64>(seconds) >
+            (TInstant::Max().MicroSeconds() - fraction) / 1000000)
+    {
+        return false;
+    }
+    result = TInstant::MicroSeconds(seconds * 1000000ULL + fraction);
+    return true;
+}
+
+bool TryParseGrafanaTimestamp(
+    TStringBuf input,
+    TInstant now,
+    bool roundUp,
+    TInstant& result)
 {
     if (!input.SkipPrefix("now")) {
         return TInstant::TryParseIso8601(input, result);
@@ -73,7 +150,7 @@ bool TryParseGrafanaTimestamp(TStringBuf input, TInstant now, TInstant& result)
     while (!input.empty()) {
         const auto operation = input;
         const char sign = input.front();
-        if (sign != '+' && sign != '-') {
+        if (sign != '+' && sign != '-' && sign != '/') {
             return false;
         }
         input.Skip(1);
@@ -81,16 +158,34 @@ bool TryParseGrafanaTimestamp(TStringBuf input, TInstant now, TInstant& result)
         while (digits < input.size() && IsAsciiDigit(input[digits])) {
             ++digits;
         }
-        ui64 count;
-        if (!digits || !TryFromString(input.Head(digits), count)) {
+        ui64 count = 1;
+        if ((!digits && sign != '/') ||
+            (digits && !TryFromString(input.Head(digits), count)))
+        {
             return false;
         }
         input.Skip(digits);
+        // Copied JSON omits the fiscal-year start month. Use Grafana's
+        // January default, so fiscal quarters/years match calendar periods.
+        if (sign == '/' && input.SkipPrefix("f")) {
+            if (input.empty() || (input.front() != 'Q' && input.front() != 'y'))
+            {
+                return false;
+            }
+        }
         if (input.empty()) {
             return false;
         }
         const char unit = input.front();
         input.Skip(1);
+        if (sign == '/') {
+            if (count != 1 ||
+                !TryRoundGrafanaTimestamp(current, unit, roundUp, current))
+            {
+                return false;
+            }
+            continue;
+        }
         if (unit == 'M' || unit == 'Q' || unit == 'y') {
             // Grafana uses calendar months, unlike systemd's fixed 30.44 days.
             const ui64 monthsPerUnit = unit == 'y' ? 12 : unit == 'Q' ? 3 : 1;
@@ -164,11 +259,21 @@ TTimeRange ParseGrafanaRange(
                "\"from\" and \"to\"";
     }
     TTimeRange range;
-    if (!TryParseGrafanaTimestamp(json["from"].GetString(), now, range.Since)) {
+    if (!TryParseGrafanaTimestamp(
+            json["from"].GetString(),
+            now,
+            false,
+            range.Since))
+    {
         ythrow NLastGetopt::TUsageException()
             << "Invalid --grafana-range \"from\": " << json["from"].GetString();
     }
-    if (!TryParseGrafanaTimestamp(json["to"].GetString(), now, range.Until)) {
+    if (!TryParseGrafanaTimestamp(
+            json["to"].GetString(),
+            now,
+            true,
+            range.Until))
+    {
         ythrow NLastGetopt::TUsageException()
             << "Invalid --grafana-range \"to\": " << json["to"].GetString();
     }
@@ -200,7 +305,10 @@ TCommonFilterParams::TCommonFilterParams(
             "Accepts ISO 8601 or now with +/- offsets in s, m, h, d, w, M, Q, "
             "y "
             "(e.g. '{\"from\":\"now-15m\",\"to\":\"now\"}'). "
-            "Relative calendar arithmetic uses UTC. "
+            "Supports /unit rounding in s, m, h, d, w, M, Q, y: start of "
+            "period for from, final millisecond for to. "
+            "Fiscal /fQ and /fy rounding assumes a January fiscal-year start. "
+            "Calendar arithmetic and rounding use UTC; weeks start Sunday. "
             "Cannot be combined with --since or --until.")
         .RequiredArgument("JSON");
 

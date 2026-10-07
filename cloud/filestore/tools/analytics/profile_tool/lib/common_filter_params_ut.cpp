@@ -95,6 +95,153 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
                            "2026-04-06T14:46:30.146Z", now);
     }
 
+    Y_UNIT_TEST(ShouldRoundGrafanaBoundsInUtc)
+    {
+        const NTesting::TScopedEnvironment timezone("TZ", "Asia/Tokyo");
+
+        const struct
+        {
+            const char* Expression;
+            const char* Since;
+            const char* Until;
+        } cases[] = {
+            {"now/s", "2026-10-06T23:46:30Z", "2026-10-06T23:46:30.999Z"},
+            {"now/m", "2026-10-06T23:46:00Z", "2026-10-06T23:46:59.999Z"},
+            {"now/h", "2026-10-06T23:00:00Z", "2026-10-06T23:59:59.999Z"},
+            {"now/d", "2026-10-06T00:00:00Z", "2026-10-06T23:59:59.999Z"},
+            {"now/w", "2026-10-04T00:00:00Z", "2026-10-10T23:59:59.999Z"},
+            {"now/M", "2026-10-01T00:00:00Z", "2026-10-31T23:59:59.999Z"},
+            {"now/Q", "2026-10-01T00:00:00Z", "2026-12-31T23:59:59.999Z"},
+            {"now/y", "2026-01-01T00:00:00Z", "2026-12-31T23:59:59.999Z"},
+            {"now/1d", "2026-10-06T00:00:00Z", "2026-10-06T23:59:59.999Z"},
+        };
+
+        for (const auto& example: cases) {
+            const TString json = TString("{\"from\":\"") + example.Expression +
+                                 "\",\"to\":\"" + example.Expression + "\"}";
+            AssertGrafanaRange(
+                json,
+                "2026-10-06T23:46:30.146789Z",
+                example.Since,
+                example.Until);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldParseStandardGrafanaSelectorRanges)
+    {
+        constexpr TStringBuf now = "2026-10-06T14:46:30.146Z";
+
+        const struct
+        {
+            const char* Json;
+            TStringBuf Since;
+            TStringBuf Until;
+        } cases[] = {
+            {R"({"from":"now-1d/d","to":"now-1d/d"})",
+             "2026-10-05T00:00:00Z",
+             "2026-10-05T23:59:59.999Z"},
+            {R"({"from":"now-2d/d","to":"now-2d/d"})",
+             "2026-10-04T00:00:00Z",
+             "2026-10-04T23:59:59.999Z"},
+            {R"({"from":"now-7d/d","to":"now-7d/d"})",
+             "2026-09-29T00:00:00Z",
+             "2026-09-29T23:59:59.999Z"},
+            {R"({"from":"now-1w/w","to":"now-1w/w"})",
+             "2026-09-27T00:00:00Z",
+             "2026-10-03T23:59:59.999Z"},
+            {R"({"from":"now-1M/M","to":"now-1M/M"})",
+             "2026-09-01T00:00:00Z",
+             "2026-09-30T23:59:59.999Z"},
+            {R"({"from":"now-1Q/fQ","to":"now-1Q/fQ"})",
+             "2026-07-01T00:00:00Z",
+             "2026-09-30T23:59:59.999Z"},
+            {R"({"from":"now-1y/y","to":"now-1y/y"})",
+             "2025-01-01T00:00:00Z",
+             "2025-12-31T23:59:59.999Z"},
+            {R"({"from":"now/d","to":"now/d"})",
+             "2026-10-06T00:00:00Z",
+             "2026-10-06T23:59:59.999Z"},
+            {R"({"from":"now/d","to":"now"})", "2026-10-06T00:00:00Z", now},
+            {R"({"from":"now/w","to":"now/w"})",
+             "2026-10-04T00:00:00Z",
+             "2026-10-10T23:59:59.999Z"},
+            {R"({"from":"now/w","to":"now"})", "2026-10-04T00:00:00Z", now},
+            {R"({"from":"now/M","to":"now/M"})",
+             "2026-10-01T00:00:00Z",
+             "2026-10-31T23:59:59.999Z"},
+            {R"({"from":"now/M","to":"now"})", "2026-10-01T00:00:00Z", now},
+            {R"({"from":"now/y","to":"now/y"})",
+             "2026-01-01T00:00:00Z",
+             "2026-12-31T23:59:59.999Z"},
+            {R"({"from":"now/y","to":"now"})", "2026-01-01T00:00:00Z", now},
+            {R"({"from":"now/fQ","to":"now"})", "2026-10-01T00:00:00Z", now},
+            {R"({"from":"now/fQ","to":"now/fQ"})",
+             "2026-10-01T00:00:00Z",
+             "2026-12-31T23:59:59.999Z"},
+            {R"({"from":"now/fy","to":"now"})", "2026-01-01T00:00:00Z", now},
+            {R"({"from":"now/fy","to":"now/fy"})",
+             "2026-01-01T00:00:00Z",
+             "2026-12-31T23:59:59.999Z"},
+        };
+
+        for (const auto& example: cases) {
+            AssertGrafanaRange(example.Json, now, example.Since, example.Until);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldParseRoundedGrafanaPresets)
+    {
+        AssertGrafanaRange(
+            R"({"from":"now-1d/d","to":"now-1d/d"})",
+            "2026-01-01T14:46:30.146Z",
+            "2025-12-31T00:00:00Z",
+            "2025-12-31T23:59:59.999Z");
+        AssertGrafanaRange(
+            R"({"from":"now-1M/M","to":"now-1M/M"})",
+            "2024-03-31T14:46:30.146Z",
+            "2024-02-01T00:00:00Z",
+            "2024-02-29T23:59:59.999Z");
+        AssertGrafanaRange(
+            R"({"from":"now-1M/M","to":"now-1M/M"})",
+            "2026-03-31T14:46:30.146Z",
+            "2026-02-01T00:00:00Z",
+            "2026-02-28T23:59:59.999Z");
+        AssertGrafanaRange(
+            R"({"from":"now/w","to":"now/w"})",
+            "2026-10-04T00:00:00Z",
+            "2026-10-04T00:00:00Z",
+            "2026-10-10T23:59:59.999Z");
+        AssertGrafanaRange(
+            R"({"from":"now-1w/w","to":"now-1w/w"})",
+            "2026-01-03T23:59:59.999Z",
+            "2025-12-21T00:00:00Z",
+            "2025-12-27T23:59:59.999Z");
+        AssertGrafanaRange(
+            R"({"from":"now/d","to":"now"})",
+            "2026-10-06T14:46:30.146Z",
+            "2026-10-06T00:00:00Z",
+            "2026-10-06T14:46:30.146Z");
+        AssertGrafanaRange(
+            R"({"from":"now/s","to":"now/s"})",
+            "1970-01-01T00:00:00Z",
+            "1970-01-01T00:00:00Z",
+            "1970-01-01T00:00:00.999Z");
+    }
+
+    Y_UNIT_TEST(ShouldApplyGrafanaRoundingInOrder)
+    {
+        AssertGrafanaRange(
+            R"({"from":"now/d+8h","to":"now/d-8h"})",
+            "2026-10-06T14:46:30.146Z",
+            "2026-10-06T08:00:00Z",
+            "2026-10-06T15:59:59.999Z");
+        AssertGrafanaRange(
+            R"({"from":"now/M+1d/d","to":"now/M+1d/d"})",
+            "2026-10-06T14:46:30.146Z",
+            "2026-10-02T00:00:00Z",
+            "2026-11-01T23:59:59.999Z");
+    }
+
     Y_UNIT_TEST(ShouldClampGrafanaCalendarOffsets)
     {
         AssertGrafanaRange(
@@ -133,16 +280,40 @@ Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
 
     Y_UNIT_TEST(ShouldRejectInvalidGrafanaRanges)
     {
-        for (const auto json: {
-                 "", "not json", "[]", "null", "{}", R"({"from":"now"})",
-                 R"({"to":"now"})", R"({"from":123,"to":"now"})",
+        for (const auto json:
+             {
+                 "",
+                 "not json",
+                 "[]",
+                 "null",
+                 "{}",
+                 R"({"from":"now"})",
+                 R"({"to":"now"})",
+                 R"({"from":123,"to":"now"})",
                  R"({"from":"now","to":null})",
                  R"({"from":"now","to":"now"})junk",
-            R"({"from":"bad","to":"now"})", R"({"from":"now","to":"bad"})",
+            R"({"from":"bad","to":"now"})",
+                 R"({"from":"now","to":"bad"})",
                  R"({"from":"now+1s","to":"now"})",
                  R"({"from":"now-1x","to":"now"})",
                  R"({"from":"now--1h","to":"now"})",
                  R"({"from":"now-1","to":"now"})",
+                 R"({"from":"now/","to":"now"})",
+                 R"({"from":"now//d","to":"now"})",
+                 R"({"from":"now/2d","to":"now"})",
+                 R"({"from":"now/0d","to":"now"})",
+                 R"({"from":"now/0.5d","to":"now"})",
+                 R"({"from":"now/1","to":"now"})",
+                 R"({"from":"now/1dextra","to":"now"})",
+                 R"({"from":"now/x","to":"now"})",
+                 R"({"from":"now/f","to":"now"})",
+                 R"({"from":"now/fd","to":"now"})",
+                 R"({"from":"now/fq","to":"now"})",
+                 R"({"from":"now/2fQ","to":"now"})",
+                 R"({"from":"now/fQextra","to":"now"})",
+                 R"({"from":"now","to":"now/f"})",
+                 R"({"from":"now","to":"now/x"})",
+                 R"({"from":"now/d","to":"now-1d/d"})",
                  R"({"from":"now-99999y","to":"now"})",
                  R"({"from":"now-18446744073709551616s","to":"now"})",
                  R"({"from":"now-18446744073709551615d","to":"now"})",
