@@ -96,6 +96,17 @@ NProtoPrivate::TFileSystemShardCreationState MakeState(
     return MakeState(version, createdShards, 0, MakeShardConfigs());
 }
 
+std::unique_ptr<NCloud::TCompressedBitmap> LoadCreatedShardBitmap(
+    const NProtoPrivate::TFileSystemShardCreationState& state)
+{
+    auto result = LoadCompressedBitmap(
+        state.GetCreatedShardBitmap(),
+        state.GetCreatedShardBitmap().GetBitCount(),
+        MaxShardCount);
+    UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+    return result.ExtractResult();
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 enum ETestEvents
@@ -332,6 +343,105 @@ Y_UNIT_TEST_SUITE(TShardCreationStateCompanionTest)
         UNIT_ASSERT(companion.IsShardCreated(1));
         UNIT_ASSERT(companion.IsShardCreated(3));
         UNIT_ASSERT_VALUES_EQUAL(11, companion.GetShardCreationStateVersion());
+    }
+
+    Y_UNIT_TEST(ShouldSendUpdatedShardCreationState)
+    {
+        TActorSystem runtime;
+        runtime.Start();
+
+        const auto sender = runtime.AllocateEdgeActor();
+        const auto tabletProxy = runtime.AllocateEdgeActor();
+        runtime.RegisterService(MakeIndexTabletProxyServiceId(), tabletProxy);
+
+        const auto actorId =
+            runtime.Register(new TActorWithCompanion(MakeState(42, {1})));
+
+        runtime.Send(new IEventHandle(
+            actorId,
+            sender,
+            new TEvUpdateShardCreatedState(3)));
+
+        auto request = runtime.GrabEdgeEvent<
+            TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>(
+            tabletProxy);
+
+        const auto& record = request->Get()->Record;
+        UNIT_ASSERT_VALUES_EQUAL(FileSystemId, record.GetFileSystemId());
+        UNIT_ASSERT(record.HasShardCreationState());
+
+        const auto& state = record.GetShardCreationState();
+        UNIT_ASSERT_VALUES_EQUAL(42, state.GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetBaseShardCount());
+        UNIT_ASSERT_VALUES_EQUAL(ShardCount, state.GetTargetShardCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            CalculateShardCreationTargetHashForTest(0, MakeShardConfigs()),
+            state.GetTargetShardConfigHash());
+        UNIT_ASSERT_VALUES_EQUAL(
+            ShardCount,
+            state.GetCreatedShardBitmap().GetBitCount());
+
+        const auto bitmap = LoadCreatedShardBitmap(state);
+        UNIT_ASSERT_VALUES_EQUAL(2, bitmap->Count());
+        UNIT_ASSERT(!bitmap->Test(0));
+        UNIT_ASSERT(bitmap->Test(1));
+        UNIT_ASSERT(!bitmap->Test(2));
+        UNIT_ASSERT(bitmap->Test(3));
+    }
+
+    Y_UNIT_TEST(ShouldResendMergedBitmapAfterCasConflict)
+    {
+        TActorSystem runtime;
+        runtime.Start();
+
+        const auto sender = runtime.AllocateEdgeActor();
+        const auto tabletProxy = runtime.AllocateEdgeActor();
+        runtime.RegisterService(MakeIndexTabletProxyServiceId(), tabletProxy);
+
+        const auto actorId =
+            runtime.Register(new TActorWithCompanion(MakeState(42, {})));
+
+        runtime.Send(new IEventHandle(
+            actorId,
+            sender,
+            new TEvUpdateShardCreatedState(3)));
+
+        auto request = runtime.GrabEdgeEvent<
+            TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>(
+            tabletProxy);
+
+        {
+            const auto& state = request->Get()->Record.GetShardCreationState();
+            UNIT_ASSERT_VALUES_EQUAL(42, state.GetVersion());
+
+            const auto bitmap = LoadCreatedShardBitmap(state);
+            UNIT_ASSERT_VALUES_EQUAL(1, bitmap->Count());
+            UNIT_ASSERT(!bitmap->Test(1));
+            UNIT_ASSERT(bitmap->Test(3));
+        }
+
+        runtime.Send(new IEventHandle(
+            actorId,
+            sender,
+            new TEvMergeShardCreationState(MakeState(43, {1}))));
+
+        request = runtime.GrabEdgeEvent<
+            TEvIndexTablet::TEvUnsafeChangeTabletStateRequest>(
+            tabletProxy);
+
+        const auto& state = request->Get()->Record.GetShardCreationState();
+        UNIT_ASSERT_VALUES_EQUAL(43, state.GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetBaseShardCount());
+        UNIT_ASSERT_VALUES_EQUAL(ShardCount, state.GetTargetShardCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            CalculateShardCreationTargetHashForTest(0, MakeShardConfigs()),
+            state.GetTargetShardConfigHash());
+
+        const auto bitmap = LoadCreatedShardBitmap(state);
+        UNIT_ASSERT_VALUES_EQUAL(2, bitmap->Count());
+        UNIT_ASSERT(bitmap->Test(1));
+        UNIT_ASSERT(!bitmap->Test(2));
+        UNIT_ASSERT(bitmap->Test(3));
     }
 
     Y_UNIT_TEST(ShouldRejectMergingDifferentTarget)
