@@ -414,6 +414,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.NodeId,
         args.Node->MinCommitId,
         args.CommitId,

@@ -510,6 +510,7 @@ void TIndexTabletActor::ExecuteTx_PrepareRenameNodeInSource(
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.ParentNode->NodeId,
         args.ParentNode->MinCommitId,
         args.CommitId,
@@ -753,6 +754,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
     } else {
         RemoveNodeRef(
             *db,
+            args.FileSystemEvents,
             args.Request.GetNodeId(),
             args.ChildRef->MinCommitId,
             args.CommitId,
@@ -783,6 +785,7 @@ void TIndexTabletActor::ExecuteTx_CommitRenameNodeInSource(
             // create source ref to target node
             CreateNodeRef(
                 *db,
+                args.FileSystemEvents,
                 args.Request.GetNodeId(),
                 args.CommitId,
                 args.Request.GetName(),

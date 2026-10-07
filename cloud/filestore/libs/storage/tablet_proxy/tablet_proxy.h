@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
@@ -13,6 +14,7 @@ namespace NCloud::NFileStore::NStorage {
 
 NActors::IActorPtr CreateIndexTabletProxy(
     TStorageConfigPtr config,
-    ITraceSerializerPtr traceSerializer);
+    ITraceSerializerPtr traceSerializer,
+    IFileSystemEventHandlerPtr fileSystemEventHandler);
 
 }   // namespace NCloud::NFileStore::NStorage

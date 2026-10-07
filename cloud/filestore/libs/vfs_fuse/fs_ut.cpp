@@ -312,7 +312,8 @@ struct TBootstrap
             CreateProfileLogStub(),
             Session,
             std::move(fileMapMemoryLimiter),
-            std::move(persistentStateManager));
+            std::move(persistentStateManager),
+            nullptr /* multiFileSystemEventHandler */);
     }
 
     NMonitoring::TDynamicCountersPtr GetFileSystemStatsCounters() const

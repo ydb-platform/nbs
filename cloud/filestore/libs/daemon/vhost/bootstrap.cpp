@@ -642,7 +642,8 @@ void TBootstrapVhost::InitEndpoints()
             ModuleStatsRegistry,
             FsCountersProvider,
             ProfileLog,
-            std::move(persistentState)),
+            std::move(persistentState),
+            MultiFileSystemEventHandler),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
             .MaxQueueSize =
