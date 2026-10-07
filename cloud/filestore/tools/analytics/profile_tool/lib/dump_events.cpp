@@ -182,8 +182,10 @@ public:
                 fileSystemId.GetRef());
         }
 
-        ProfileLogFiles =
-            SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
+        if (!parseResult.Has("all-files")) {
+            ProfileLogFiles =
+                SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
+        }
 
         return true;
     }

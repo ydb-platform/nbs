@@ -157,8 +157,10 @@ public:
                 filter,
                 std::move(requestTypes)));
 
-        ProfileLogFiles =
-            SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
+        if (!parseResult.Has("all-files")) {
+            ProfileLogFiles =
+                SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
+        }
 
         return true;
     }

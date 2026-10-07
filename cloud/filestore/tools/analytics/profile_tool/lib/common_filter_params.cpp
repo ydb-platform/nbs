@@ -55,6 +55,13 @@ TMaybe<TInstant> Parse(
 TCommonFilterParams::TCommonFilterParams(NLastGetopt::TOpts& opts)
 {
     opts.AddLongOption(
+            "all-files",
+            "Read every input file instead of pruning by estimated time ranges "
+            "(dated filenames assume UTC end times, otherwise mtime is used); "
+            "since/until still filter individual requests")
+        .NoArgument();
+
+    opts.AddLongOption(
             FileSystemIdLabel.data(),
             "FileSystemId, used for filtering")
         .RequiredArgument("STR");

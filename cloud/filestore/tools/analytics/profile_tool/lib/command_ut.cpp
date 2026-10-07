@@ -1,5 +1,6 @@
 #include "command.h"
 #include "common_filter_params.h"
+#include "factory.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
 #include <library/cpp/eventlog/eventlog.h>
@@ -133,6 +134,34 @@ void WriteProfileLog(const TString& path)
 
 Y_UNIT_TEST_SUITE(TCommandTest)
 {
+    Y_UNIT_TEST(ShouldBypassFilePruningWhenAllFilesRequested)
+    {
+        TTempDir directory;
+        TTempFileHandle oldFile(
+            directory.Name() + "/profile.log.1970-01-01T00:16");
+        TTempFileHandle currentFile(directory.Name() + "/profile.log");
+        WriteProfileLog(oldFile.Name());
+        WriteProfileLog(currentFile.Name());
+        oldFile.Resize(oldFile.GetLength() - 1);
+        SetModificationTime(currentFile.Name(), 3000);
+
+        for (const auto* name: {"dumpevents", "findbytesaccess"}) {
+            TVector<const char*> args = {
+                name, "--profile-log", oldFile.Name().c_str(),
+                currentFile.Name().c_str(),
+                "--since", "1970-01-01T00:38:21Z",
+                "--until", "1970-01-01T00:41:40Z"};
+            if (TStringBuf(name) == "findbytesaccess") {
+                args.insert(args.end(), {"--start", "0", "--count", "1"});
+            }
+            // The old, truncated log is outside the estimated time range.
+            UNIT_ASSERT_VALUES_EQUAL(GetCommand(name)->Run(args.size(), args.data()), 0);
+            args.push_back("--all-files");
+            // Reading it now must expose its error; pruning would hide it.
+            UNIT_ASSERT_VALUES_EQUAL(GetCommand(name)->Run(args.size(), args.data()), 1);
+        }
+    }
+
     Y_UNIT_TEST(ShouldProcessLogsWithoutCommonFilterParams)
     {
         TTempFileHandle input;

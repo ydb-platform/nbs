@@ -19,6 +19,34 @@ Profile log fills in three places:
 | ```--handle```         | ui64      | Handle id, output events which used specified handle id |
 | ```--since```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events from this timestamp |
 | ```--until```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events strictly before given timestamp |
+| ```--all-files```      | Flag      | For DumpEvents and FindBytesAccess, read all input files without pruning by estimated file times; per-request time filters still apply |
+
+## Multiple files and estimated time ranges
+
+`dumpevents` and `findbytesaccess` can skip files using estimated time ranges
+before reading their contents. The filename heuristic comes from deployment
+rotation examples supplied when multi-file support was introduced, such as
+`nfs-vhost-profile.log.2026-09-26T10:25`. This is not a repository-defined log
+format or a guarantee about every deployment's rotation configuration.
+
+The tool interprets a `.YYYY-MM-DDTHH:MM` suffix as the file's **end time in UTC**,
+with zero seconds. It uses filesystem modification time when the suffix is absent
+or invalid. Files are sorted by these estimated end times; each file starts at
+the previous file's end. The first is unbounded below and the last unbounded
+above. Selection allows 300 seconds of drift on each side of the requested range.
+
+Local-time suffixes, suffixes denoting file start times, changed mtimes, gaps in
+the supplied rotation chain, or out-of-order records can make these estimates
+incorrect and cause matching records to be skipped. Use `--all-files` when the
+assumptions do not hold or when checking completeness:
+
+```sh
+./filestore-profile-tool dumpevents --profile-log /var/log/nfs/nfs-vhost-profile.log* --since 2026-09-26T10:00:00Z --until 2026-09-26T11:00:00Z --all-files
+```
+
+`--all-files` preserves file ordering and reads every supplied file, subject to
+normal read-error handling. The exact per-request `--since` and `--until` filters
+still apply; only the file-pruning optimization is disabled.
 
 ## Options for particular commands
 
