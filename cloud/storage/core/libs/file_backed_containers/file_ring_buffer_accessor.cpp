@@ -20,34 +20,6 @@ NProto::TError MakeError(TString message)
     return MakeError(E_FAIL, std::move(message));
 }
 
-NProto::TError ValidateHeader(
-    const TFileRingBufferHeader& header,
-    size_t rawDataSize)
-{
-    auto error =
-        TFileRingBufferValidator::ValidateHeaderLayout(header, rawDataSize);
-
-    if (HasError(error)) {
-        return error;
-    }
-
-    if (header.ReadPos > header.DataCapacity) {
-        return MakeError(Sprintf(
-            "Invalid file ring buffer read position %lu (expected <= %lu)",
-            header.ReadPos,
-            header.DataCapacity));
-    }
-
-    if (header.WritePos > header.DataCapacity) {
-        return MakeError(Sprintf(
-            "Invalid file ring buffer write position %lu (expected <= %lu)",
-            header.WritePos,
-            header.DataCapacity));
-    }
-
-    return {};
-}
-
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -399,8 +371,7 @@ EValidationStatus TFileRingBufferAccessor::DoValidateAndInitialize()
         // Memory mapping is done in multiples of the page size, which is a
         // multiple of 8 bytes on all supported platforms.
         // Therefore, the raw data address should be aligned to 8 bytes.
-        LastValidationError =
-            MakeError("Buffer is not aligned to 8 bytes");
+        LastValidationError = MakeError("Buffer is not aligned to 8 bytes");
         return EValidationStatus::Failed;
     }
 
@@ -427,7 +398,9 @@ EValidationStatus TFileRingBufferAccessor::DoValidateAndInitialize()
         return EValidationStatus::NotInitialized;
     }
 
-    LastValidationError = ValidateHeader(*Header, RawData.size());
+    LastValidationError =
+        TFileRingBufferValidator::ValidateHeaderLayout(*Header, RawData.size());
+
     if (HasError(LastValidationError)) {
         return EValidationStatus::Failed;
     }

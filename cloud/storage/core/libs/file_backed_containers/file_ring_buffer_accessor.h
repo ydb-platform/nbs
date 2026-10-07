@@ -21,7 +21,9 @@ enum class EFileRingBufferAccessorValidationMode
     // validation
     Normal,
 
-    // Header and DataProcessor will be initialized even if validation fails.
+    // Header remains accessible when available. DataProcessor, RawMetadata and
+    // Capabilities are initialized if the header layout is valid, even if
+    // positions or checksums are invalid.
     // This mode is intended for repairing corrupted state.
     Debug
 };
@@ -46,8 +48,8 @@ enum class EFileRingBufferAccessorValidationStatus
     // - DataProcessor, RawMetadata and Capabilities will not be initialized.
     // When EFileRingBufferAccessorValidationMode == Debug:
     // - Header will be accessible if file length >= header size
-    // - DataProcessor, RawMetadata, Capabilities will be initialized if header
-    //   is successfully validated (but data may be corrupted)
+    // - DataProcessor, RawMetadata and Capabilities will be initialized if the
+    //   header layout is valid, even if positions or data are corrupted
     Failed
 };
 

@@ -518,6 +518,10 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         header.WritePos = capacity;
         b.AssertValidateSuccess();
 
+        // The end of the data region is a valid implicit slack marker.
+        header.WritePos = 0;
+        b.AssertValidateSuccess();
+
         header.ReadPos = 1;
         header.WritePos = 1;
         b.AssertValidateSuccess();
@@ -779,6 +783,32 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
             header->ReadPos,
             header->WritePos - 1);
         UNIT_ASSERT(HasError(error));
+
+        // Disabling checksums must not bypass bounds validation, including
+        // either empty-buffer shortcut.
+        const ui64 invalidPos = header->DataCapacity + 8;
+        for (ui64 writePos: {ui64{0}, invalidPos}) {
+            error = structuralValidator.ValidateData(
+                *dataProcessor,
+                header->DataCapacity,
+                invalidPos,
+                writePos);
+            UNIT_ASSERT(HasError(error));
+            UNIT_ASSERT_STRING_CONTAINS(
+                error.GetMessage(),
+                "Invalid file ring buffer read position");
+        }
+
+        error = structuralValidator.ValidateData(
+            *dataProcessor,
+            header->DataCapacity,
+            0,
+            invalidPos);
+
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_STRING_CONTAINS(
+            error.GetMessage(),
+            "Invalid file ring buffer write position");
     }
 
     Y_UNIT_TEST(ShouldOptionallySkipSlackMarkerChecksumValidation)
@@ -889,6 +919,43 @@ Y_UNIT_TEST_SUITE(TFileRingBufferAccessorTest)
         UNIT_ASSERT(b.Accessor.GetHeader() != nullptr);
         UNIT_ASSERT(b.Accessor.GetDataProcessor() != nullptr);
         UNIT_ASSERT(!b.Accessor.GetRawMetadata().empty());
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldInitializeDataOnPositionValidationFailureInDebugMode)
+    {
+        TBootstrap b(true);
+        b.Execute(
+            [](TFileRingBuffer& rb)
+            {
+                UNIT_ASSERT(rb.PushBack("ABC").Pushed);
+                UNIT_ASSERT(rb.SetMetadata("123").Updated);
+            },
+            ver);
+        b.AssertValidateSuccess();
+
+        auto& header = b.RawDataHeader();
+        const ui64 invalidPos = header.DataCapacity + 8;
+
+        for (bool corruptReadPos: {true, false}) {
+            header.ReadPos = corruptReadPos ? invalidPos : 0;
+            header.WritePos = corruptReadPos ? 0 : invalidPos;
+            b.AssertValidateFailed(
+                corruptReadPos ? "Invalid file ring buffer read position"
+                               : "Invalid file ring buffer write position");
+
+            UNIT_ASSERT(b.Accessor.GetHeader() != nullptr);
+            const auto* dataProcessor = b.Accessor.GetDataProcessor();
+            UNIT_ASSERT(dataProcessor != nullptr);
+            const auto* payload = dataProcessor->GetEntryDataPtr(0, 3);
+            UNIT_ASSERT(payload != nullptr);
+            UNIT_ASSERT_VALUES_EQUAL("ABC", TString(payload, 3));
+
+            const auto metadata = b.Accessor.GetRawMetadata();
+            UNIT_ASSERT_VALUES_EQUAL(b.MetadataCapacity, metadata.size());
+            UNIT_ASSERT_VALUES_EQUAL("123", TString(metadata.data(), 3));
+            UNIT_ASSERT(
+                b.Accessor.GetCapabilities().MaxAllocationByteCount > 0);
+        }
     }
 }
 
