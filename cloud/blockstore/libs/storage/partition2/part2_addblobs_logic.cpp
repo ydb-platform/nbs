@@ -474,6 +474,9 @@ private:
 
         const auto skipped = blob.SkipMask.Count();
         Y_ABORT_UNLESS(skipped < blob.BlockRange.Size());
+        Y_ABORT_UNLESS(
+            blob.CommitIds.size() == 1 ||
+            blob.CommitIds.size() == blob.BlockRange.Size() - skipped);
 
         // write blob meta
         NProto::TBlobMeta2 blobMeta;
@@ -482,7 +485,16 @@ private:
         mergedBlocks.SetStart(blob.BlockRange.Start);
         mergedBlocks.SetEnd(blob.BlockRange.End);
         SetSkippedBlockIds(mergedBlocks, blob.SkipMask);
-        mergedBlocks.SetCommitId(blob.CommitId);
+        const bool singleCommitId = AllOf(
+            blob.CommitIds,
+            [&](ui64 commitId) { return commitId == blob.CommitIds.front(); });
+        if (singleCommitId) {
+            mergedBlocks.AddCommitIds(blob.CommitIds.front());
+        } else {
+            mergedBlocks.MutableCommitIds()->Assign(
+                blob.CommitIds.begin(),
+                blob.CommitIds.end());
+        }
 
         for (ui32 checksum: blob.Checksums) {
             blobMeta.AddBlockChecksums(checksum);
@@ -513,7 +525,7 @@ private:
             blob.BlobId,
             blob.BlockRange,
             blob.SkipMask,
-            blob.CommitId);
+            blob.CommitIds);
 
         // update counters
         State.IncrementMergedBlobsCount(1);

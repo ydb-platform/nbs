@@ -303,9 +303,11 @@ void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
                 blocks.back().first);
 
             TBlockMask skipMask;
+            TVector<ui64> commitIds;
+            commitIds.reserve(blocks.size());
             ui32 blockIndex = blockRange.Start;
             for (const auto& [storedBlockIndex, mark]: blocks) {
-                Y_UNUSED(mark);
+                commitIds.push_back(mark.CommitId);
                 while (blockIndex < storedBlockIndex) {
                     skipMask.Set(blockIndex - blockRange.Start);
                     ++blockIndex;
@@ -318,7 +320,7 @@ void TPromoteCompactionActor::AddBlobs(const TActorContext& ctx)
                 blockRange,
                 std::move(skipMask),
                 TVector<ui32>(),   // checksums
-                ScanResult.MaxCommitId);
+                std::move(commitIds));
         }
     }
 

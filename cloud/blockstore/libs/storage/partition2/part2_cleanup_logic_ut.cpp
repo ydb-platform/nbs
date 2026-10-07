@@ -143,7 +143,7 @@ TMixedAndMergedBlobsSetup SetupMixedAndMergedBlobs(
             db.WriteCleanupQueue(setup.MixedBlobId, deletionCommitId);
 
             setup.MergedBlobId = executor.MakeBlobId(4);
-            setup.MergedBlobMeta.MutableMergedBlocks()->SetCommitId(
+            setup.MergedBlobMeta.MutableMergedBlocks()->AddCommitIds(
                 setup.MergedBlobId.CommitId());
             db.WriteMergedBlocks(
                 setup.MergedBlobId,
@@ -365,6 +365,35 @@ Y_UNIT_TEST_SUITE(TVerifyRecreatedBlobMetaTest)
                 UNIT_ASSERT(result.Ready);
                 UNIT_ASSERT(!HasError(result.Error));
             });
+    }
+
+    Y_UNIT_TEST(ShouldVerifyMergedCommitIdLists)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+        for (const auto& commitIds:
+             {TVector<ui64>{10}, TVector<ui64>{10, 20, 30}})
+        {
+            auto blobMeta = MakeMergedBlobMeta(10, 12);
+            blobMeta.MutableMergedBlocks()->MutableCommitIds()->Assign(
+                commitIds.begin(), commitIds.end());
+            auto recreatedBlobMeta = blobMeta;
+            executor.ReadTx(
+                [&](TPartitionDatabase db)
+                {
+                    auto result = VerifyRecreatedBlobMeta(
+                        db, TPartialBlobId(1, 0), blobMeta, recreatedBlobMeta);
+                    UNIT_ASSERT(result.Ready);
+                    UNIT_ASSERT(!HasError(result.Error));
+
+                    recreatedBlobMeta.MutableMergedBlocks()->SetCommitIds(
+                        0, 11);
+                    result = VerifyRecreatedBlobMeta(
+                        db, TPartialBlobId(1, 0), blobMeta, recreatedBlobMeta);
+                    UNIT_ASSERT(result.Ready);
+                    UNIT_ASSERT(HasError(result.Error));
+                });
+        }
     }
 
     Y_UNIT_TEST(ShouldRejectMismatchedMergedBlocks)

@@ -139,10 +139,17 @@ public:
         const TBlockMask& skipMask,
         ui64 commitId);
 
-    void DeleteMergedBlocks(
+    // Commit IDs follow blob offsets, excluding skipped blocks. A single ID
+    // applies to every block in the blob.
+    void WriteMergedBlocks(
         const TPartialBlobId& blobId,
         const TBlockRange32& blockRange,
-        ui64 commitId);
+        const TBlockMask& skipMask,
+        const TVector<ui64>& commitIds);
+
+    void DeleteMergedBlocks(
+        const TPartialBlobId& blobId,
+        const TBlockRange32& blockRange);
 
     bool FindMergedBlocks(
         IBlocksIndexVisitor& visitor,

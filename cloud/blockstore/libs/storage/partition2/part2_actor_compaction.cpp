@@ -765,7 +765,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                        ui32 blobsSkipped,
                        ui32 blocksSkipped,
                        EChannelDataKind channelDataKind,
-                       ui64 commitId)
+                       const TVector<ui64>& commitIds)
     {
         Y_UNUSED(channelDataKind);
 
@@ -784,7 +784,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
             range,
             skipMask,
             std::move(ensuredBlockChecksums),
-            commitId);
+            commitIds);
         mergedBlobCompactionInfos.push_back({blobsSkipped, blocksSkipped});
     };
 
@@ -798,7 +798,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 rc.BlobsSkippedByCompaction,
                 rc.BlocksSkippedByCompaction,
                 rc.ChannelDataKind,
-                rc.CommitId);
+                rc.DataBlobCommitIds);
         }
 
         if (rc.ZeroBlobId) {
@@ -818,7 +818,7 @@ void TCompactionActor::AddBlobs(const TActorContext& ctx)
                 blobsSkipped,
                 blocksSkipped,
                 rc.ChannelDataKind,
-                rc.CommitId);
+                rc.ZeroBlobCommitIds);
         }
 
         if (rc.DataBlobId && rc.ZeroBlobId) {

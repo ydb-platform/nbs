@@ -239,7 +239,8 @@ message TBlobMeta2
         uint32 Start = 1;
         uint32 End = 2;
         bytes SkippedBlockIds = 3;
-        uint64 CommitId = 4;
+        // One shared commit ID or one per block, in blob offset order.
+        repeated uint64 CommitIds = 4;
     }
 
     oneof Blocks
@@ -290,4 +291,12 @@ message TCheckpointMeta
     uint64 DateCreated = 4;
     TPartitionStats Stats = 5;
     uint64 DateDeleted = 6;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TPartCommitIdList
+{
+    // One shared commit ID or one per block, in blob offset order.
+    repeated uint64 CommitIds = 1;
 }

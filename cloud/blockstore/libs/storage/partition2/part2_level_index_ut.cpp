@@ -2,6 +2,8 @@
 
 #include "part2_events_private.h"
 
+#include <cloud/blockstore/libs/storage/partition2/model/block_mask.h>
+
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
@@ -18,7 +20,9 @@
 #include <cloud/storage/core/libs/tablet/blob_id.h>
 
 #include <contrib/ydb/core/base/blobstorage.h>
+#include <contrib/ydb/core/protos/tx_proxy.pb.h>
 #include <contrib/ydb/core/testlib/basics/storage.h>
+#include <contrib/ydb/library/mkql_proto/protos/minikql.pb.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
@@ -295,12 +299,199 @@ TVector<TVector<ui32>> TestBlobFormation(EAddBlobMode mode)
     return actualBlobs;
 }
 
+TString ReadPersistedStringColumn(
+    TPartitionClient& partition,
+    TStringBuf table, TStringBuf key, TStringBuf column)
+{
+    auto request = std::make_unique<TEvTablet::TEvLocalMKQL>();
+    request->Record.MutableProgram()->MutableProgram()->SetText(
+        TStringBuilder() << "((let row (SelectRow '" << table << " " << key
+                         << " '('" << column
+                         << "))) (return (AsList (SetResult 'row row))))");
+    partition.SendToPipe(std::move(request));
+    const auto response =
+        partition.RecvResponse<TEvTablet::TEvLocalMKQLResponse>();
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        NKikimrProto::OK,
+        response->Record.GetStatus(), response->Record.DebugString());
+
+    const auto* value =
+        &response->Record.GetExecutionEngineEvaluatedResponse().GetValue();
+    // The result and selected row/column are wrapped in structs and optionals.
+    while (!value->HasBytes()) {
+        if (value->HasOptional()) {
+            value = &value->GetOptional();
+        } else {
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                1, value->StructSize(), value->DebugString());
+            value = &value->GetStruct(0);
+        }
+    }
+    return value->GetBytes();
+}
+
+void AssertPersistedMergedCommitIds(
+    TPartitionClient& partition,
+    const TPartialBlobId& blobId,
+    const TBlockRange32& range,
+    const TMap<ui32, ui64>& expectedCommitIds, bool sharedCommitId)
+{
+    NProto::TBlobMeta2 meta;
+    UNIT_ASSERT(meta.ParseFromString(ReadPersistedStringColumn(
+        partition,
+        "BlobsIndex",
+        TStringBuilder() << "'('('CommitId (Uint64 '" << blobId.CommitId()
+                         << ")) '('BlobId (Uint64 '" << blobId.UniqueId()
+                         << ")))", "BlobMeta")));
+    UNIT_ASSERT(meta.HasMergedBlocks());
+    const auto& mergedBlocks = meta.GetMergedBlocks();
+    UNIT_ASSERT_VALUES_EQUAL(range.Start, mergedBlocks.GetStart());
+    UNIT_ASSERT_VALUES_EQUAL(range.End, mergedBlocks.GetEnd());
+
+    NProto::TPartCommitIdList list;
+    UNIT_ASSERT(list.ParseFromString(ReadPersistedStringColumn(
+        partition,
+        "MergedBlocksIndex",
+        TStringBuilder() << "'('('RangeEnd (Uint32 '" << range.End
+                         << ")) '('BlobCommitId (Uint64 '" << blobId.CommitId()
+                         << ")) '('BlobId (Uint64 '" << blobId.UniqueId()
+                         << ")))", "CommitIdList")));
+    const size_t expectedSize = sharedCommitId ? 1 : expectedCommitIds.size();
+    UNIT_ASSERT_VALUES_EQUAL(expectedSize, list.CommitIdsSize());
+    UNIT_ASSERT_VALUES_EQUAL(expectedSize, mergedBlocks.CommitIdsSize());
+    size_t offset = 0;
+    for (const auto& [blockIndex, commitId]: expectedCommitIds) {
+        Y_UNUSED(blockIndex);
+        const size_t commitOffset = sharedCommitId ? 0 : offset++;
+        UNIT_ASSERT_VALUES_EQUAL(commitId, list.GetCommitIds(commitOffset));
+        UNIT_ASSERT_VALUES_EQUAL(
+            commitId, mergedBlocks.GetCommitIds(commitOffset));
+    }
+    const auto skipMask = GetSkippedBlockMask(mergedBlocks);
+    for (ui32 i = 0; i < range.Size(); ++i) {
+        UNIT_ASSERT_VALUES_EQUAL(
+            !expectedCommitIds.contains(range.Start + i), skipMask.Get(i));
+    }
+}
+
+void TestPersistedMergedCommitIds(bool compact, bool sharedCommitId)
+{
+    constexpr ui32 R = MaxBlocksCount;
+    auto config = DefaultConfig();
+    config.SetFreshChannelWriteRequestsEnabled(true);
+    config.SetL0RangeSizeV2(4 * R * DefaultBlockSize);
+    config.SetL1RangeSizeV2(2 * R * DefaultBlockSize);
+    config.SetL1PromotedBlobExpectedSize(16_MB);
+    config.SetMergedPromotedBlobExpectedSize(16_MB);
+    auto runtime = PrepareTestActorRuntime(config, 2 * R);
+    TPartitionClient partition(*runtime);
+    partition.WaitReady();
+
+    TMap<ui32, ui64> expectedCommitIds;
+    TMaybe<TPartialBlobId> mergedBlobId;
+    TMaybe<TBlockRange32> mergedRange;
+    ui32 mergedBlobsAdded = 0;
+    runtime->SetObserverFunc(
+        [&](TAutoPtr<IEventHandle>& event)
+        {
+            if (event->GetTypeRewrite() ==
+                TEvPartitionPrivate::EvAddBlobsRequest) {
+                const auto* request =
+                    event->Get<TEvPartitionPrivate::TEvAddBlobsRequest>();
+                if (request->Mode == ADD_FLUSH_RESULT) {
+                    for (const auto& blob: request->L0Blobs) {
+                        for (size_t i = 0; i < blob.BlockIndices.size(); ++i) {
+                            expectedCommitIds[blob.BlockIndices[i]] =
+                                blob.CommitIds[i];
+                        }
+                    }
+                }
+                if (!request->MergedBlobs.empty()) {
+                    UNIT_ASSERT_VALUES_EQUAL(1, request->MergedBlobs.size());
+                    const auto& blob = request->MergedBlobs.front();
+                    mergedBlobId = blob.BlobId;
+                    mergedRange = blob.BlockRange;
+                    ++mergedBlobsAdded;
+                }
+            }
+            return TTestActorRuntime::DefaultObserverFunc(event);
+        });
+
+    if (sharedCommitId) {
+        partition.WriteBlocks(TBlockRange32::MakeClosedInterval(1, 6), 'a');
+    } else {
+        partition.WriteBlocks(1, 'a');
+        partition.WriteBlocks(3, 'b');
+        partition.WriteBlocks(6, 'c');
+    }
+    partition.Flush();
+    UNIT_ASSERT_VALUES_EQUAL(sharedCommitId ? 6 : 3, expectedCommitIds.size());
+    if (!sharedCommitId) {
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            expectedCommitIds.at(1), expectedCommitIds.at(3));
+        UNIT_ASSERT_VALUES_UNEQUAL(
+            expectedCommitIds.at(3), expectedCommitIds.at(6));
+    }
+
+    for (auto source:
+         {EPromoteCompactionSource::L0, EPromoteCompactionSource::L1})
+    {
+        auto request = std::make_unique<
+            TEvPartitionPrivate::TEvPromoteCompactionRequest>();
+        request->Source = source;
+        request->RangeIndex = 0;
+        partition.SendToPipe(std::move(request));
+        const auto response = partition.RecvResponse<
+            TEvPartitionPrivate::TEvPromoteCompactionResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+    }
+    UNIT_ASSERT_VALUES_EQUAL(1, mergedBlobsAdded);
+    UNIT_ASSERT(mergedBlobId && mergedRange);
+    AssertPersistedMergedCommitIds(
+        partition,
+        *mergedBlobId, *mergedRange, expectedCommitIds, sharedCommitId);
+
+    if (compact) {
+        const auto promotedBlobId = *mergedBlobId;
+        partition.Compaction();
+        UNIT_ASSERT_VALUES_EQUAL(2, mergedBlobsAdded);
+        UNIT_ASSERT_VALUES_UNEQUAL(promotedBlobId, *mergedBlobId);
+        AssertPersistedMergedCommitIds(
+            partition,
+            *mergedBlobId, *mergedRange, expectedCommitIds, sharedCommitId);
+    }
+    partition.RebootTablet();
+    partition.WaitReady();
+    AssertPersistedMergedCommitIds(
+        partition,
+        *mergedBlobId, *mergedRange, expectedCommitIds, sharedCommitId);
+    for (const auto& [blockIndex, commitId]: expectedCommitIds) {
+        Y_UNUSED(commitId);
+        const char content = sharedCommitId || blockIndex == 1 ? 'a'
+                             : blockIndex == 3                 ? 'b'
+                                                               : 'c';
+        AssertReadBlockContent(partition, blockIndex, content);
+    }
+}
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
 {
+    Y_UNIT_TEST(ShouldPersistCommitIdsDuringPromotion)
+    {
+        TestPersistedMergedCommitIds(false, false);
+        TestPersistedMergedCommitIds(false, true);
+    }
+
+    Y_UNIT_TEST(ShouldPersistCommitIdsDuringMergedCompaction)
+    {
+        TestPersistedMergedCommitIds(true, false);
+        TestPersistedMergedCommitIds(true, true);
+    }
+
     Y_UNIT_TEST(ShouldFormMergedAndL1SizedBlobsDuringFlush)
     {
         constexpr ui32 R = MaxBlocksCount;
@@ -888,9 +1079,9 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        ui64 maxPromotedBlockCommitId = 0;
+        TMap<ui32, ui64> promotedBlockCommitIds;
         TVector<TBlockRange32> mergedRanges;
-        TVector<ui64> mergedCommitIds;
+        TVector<TVector<ui64>> mergedCommitIds;
         TMap<ui32, TLogoBlobID> mergedBlobIds;
         ui64 sysBytesRead = 0;
         ui64 sysBytesWritten = 0;
@@ -915,10 +1106,9 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
 
                     if (!request->L1Blobs.empty()) {
                         for (const auto& blob: request->L1Blobs) {
-                            for (ui64 commitId: blob.CommitIds) {
-                                maxPromotedBlockCommitId = Max(
-                                    maxPromotedBlockCommitId,
-                                    commitId);
+                            for (size_t i = 0; i < blob.CommitIds.size(); ++i) {
+                                promotedBlockCommitIds[blob.BlockIndices[i]] =
+                                    blob.CommitIds[i];
                             }
                         }
                     } else {
@@ -939,12 +1129,13 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
                             UNIT_ASSERT_VALUES_EQUAL(
                                 (rangeIndex + 1) * MergedRangeBlockCount - 1,
                                 blob.BlockRange.End);
-                            UNIT_ASSERT_VALUES_UNEQUAL(
-                                blob.BlobId.CommitId(),
-                                blob.CommitId);
+                            for (ui64 commitId: blob.CommitIds) {
+                                UNIT_ASSERT_VALUES_UNEQUAL(
+                                    blob.BlobId.CommitId(), commitId);
+                            }
 
                             mergedRanges.push_back(blob.BlockRange);
-                            mergedCommitIds.push_back(blob.CommitId);
+                            mergedCommitIds.push_back(blob.CommitIds);
                             mergedBlobIds.emplace(
                                 rangeIndex,
                                 MakeBlobId(TestTabletId, blob.BlobId));
@@ -1033,11 +1224,15 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
                 BlockCount - 1),
             mergedRanges[1]);
         UNIT_ASSERT_VALUES_EQUAL(2, mergedCommitIds.size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            maxPromotedBlockCommitId,
+        ASSERT_VECTORS_EQUAL(
+            (TVector<ui64>{
+                promotedBlockCommitIds.at(0),
+                promotedBlockCommitIds.at(MergedRangeBlockCount - 1)}),
             mergedCommitIds[0]);
-        UNIT_ASSERT_VALUES_EQUAL(
-            maxPromotedBlockCommitId,
+        ASSERT_VECTORS_EQUAL(
+            (TVector<ui64>{
+                promotedBlockCommitIds.at(MergedRangeBlockCount),
+                promotedBlockCommitIds.at(BlockCount - 1)}),
             mergedCommitIds[1]);
 
         AssertDescribeBlockContent(
@@ -1083,9 +1278,9 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         TPartitionClient partition(*runtime);
         partition.WaitReady();
 
-        ui64 promotedCommitId = 0;
+        TVector<ui64> promotedCommitIds;
         ui64 newerL0CommitId = 0;
-        ui64 compactedCommitId = 0;
+        TVector<ui64> compactedCommitIds;
         ui32 flushCount = 0;
 
         runtime->SetObserverFunc(
@@ -1114,9 +1309,10 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
                         !request->MergedBlobs.empty())
                     {
                         for (const auto& blob: request->MergedBlobs) {
-                            promotedCommitId = Max(
-                                promotedCommitId,
-                                blob.CommitId);
+                            promotedCommitIds.insert(
+                                promotedCommitIds.end(),
+                                blob.CommitIds.begin(),
+                                blob.CommitIds.end());
                         }
                     } else if (
                         request->Mode ==
@@ -1125,8 +1321,8 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
                         UNIT_ASSERT_VALUES_EQUAL(
                             1,
                             request->MergedBlobs.size());
-                        compactedCommitId =
-                            request->MergedBlobs.front().CommitId;
+                        compactedCommitIds =
+                            request->MergedBlobs.front().CommitIds;
                     }
                 }
 
@@ -1158,11 +1354,12 @@ Y_UNIT_TEST_SUITE(TPartition2LevelIndexTest)
         partition.Flush();
         partition.Compaction();
 
-        UNIT_ASSERT(promotedCommitId);
+        UNIT_ASSERT_VALUES_EQUAL(2, promotedCommitIds.size());
         UNIT_ASSERT(newerL0CommitId);
-        UNIT_ASSERT(compactedCommitId);
-        UNIT_ASSERT_VALUES_EQUAL(promotedCommitId, compactedCommitId);
-        UNIT_ASSERT(compactedCommitId < newerL0CommitId);
+        ASSERT_VECTORS_EQUAL(promotedCommitIds, compactedCommitIds);
+        for (ui64 commitId: compactedCommitIds) {
+            UNIT_ASSERT(commitId < newerL0CommitId);
+        }
 
         AssertReadBlockContent(partition, 0, 'b');
         AssertReadBlockContent(partition, 1, 's');

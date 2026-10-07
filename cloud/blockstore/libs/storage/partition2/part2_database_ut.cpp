@@ -69,6 +69,8 @@ struct TTestBlockVisitor final
 {
     TStringBuilder Result;
     THashMap<TPartialBlobId, TBlockRange32, TPartialBlobIdHash> BlobToRange;
+    THashMap<TPartialBlobId, NProto::TBlobMeta2, TPartialBlobIdHash> BlobToMeta;
+    TVector<ui16> BlobOffsets;
 
     bool Visit(
         const TPartialBlobId& blobId,
@@ -77,6 +79,7 @@ struct TTestBlockVisitor final
         BlobToRange[blobId] = TBlockRange32::MakeClosedInterval(
             blobMeta.GetMergedBlocks().GetStart(),
             blobMeta.GetMergedBlocks().GetEnd());
+        BlobToMeta[blobId] = blobMeta;
         return true;
     }
 
@@ -87,7 +90,7 @@ struct TTestBlockVisitor final
         ui16 blobOffset) override
     {
         Y_UNUSED(blobId);
-        Y_UNUSED(blobOffset);
+        BlobOffsets.push_back(blobOffset);
 
         if (Result) {
             Result << " ";
@@ -769,7 +772,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
                     true,   // precharge
                     MaxBlocksCount
                 ));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:2 #2:2 #2:4 #3:4 #4:4 #1:5 #2:5 #3:5 #4:5 #5:5 #4:3 #5:3");
+                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:2 #2:2 #2:4 #3:4 #4:4 #4:3 #5:3 #1:5 #2:5 #3:5 #4:5 #5:5");
             }
         });
     }
@@ -815,11 +818,8 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
                 ASSERT_MAP_EQUAL(expectedContent, visitor.BlobToRange);
             });
 
-        executor.WriteTx(
-            [&](TPartitionDatabase db)
-            {
-                db.DeleteMergedBlocks(blobId, blockRange, blocksCommitId);
-            });
+        executor.WriteTx([&](TPartitionDatabase db)
+                         { db.DeleteMergedBlocks(blobId, blockRange); });
 
         executor.ReadTx(
             [&](TPartitionDatabase db)
@@ -833,6 +833,138 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
                     MaxBlocksCount));
                 UNIT_ASSERT(!visitor.Result);
                 UNIT_ASSERT(visitor.BlobToRange.empty());
+            });
+    }
+
+    Y_UNIT_TEST(ShouldStoreSingleMergedCommitId)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+        const auto blobId = executor.MakeBlobId(3);
+        const auto range = TBlockRange32::WithLength(10, 3);
+
+        for (const auto& commitIds:
+             {TVector<ui64>{42}, TVector<ui64>{42, 42, 42}})
+        {
+            executor.WriteTx(
+                [&](TPartitionDatabase db)
+                { db.WriteMergedBlocks(blobId, range, {}, commitIds); });
+
+            executor.ReadTx(
+                [&](TPartitionDatabase db)
+                {
+                    using TTable = TPartitionSchema::MergedBlocksIndex;
+                    auto it = db.Table<TTable>().Range().Select();
+                    UNIT_ASSERT(it.IsReady() && it.IsValid());
+                    const auto list = it.GetValue<TTable::CommitIdList>();
+                    UNIT_ASSERT_VALUES_EQUAL(1, list.CommitIdsSize());
+                    UNIT_ASSERT_VALUES_EQUAL(42, list.GetCommitIds(0));
+                    UNIT_ASSERT(it.Next());
+                    UNIT_ASSERT(!it.IsValid());
+
+                    TTestBlockVisitor visitor;
+                    UNIT_ASSERT(db.FindMergedBlocks(
+                        visitor, visitor, range, true, MaxBlocksCount, 42));
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        "#10:42 #11:42 #12:42", visitor.Result);
+                    const auto& meta =
+                        visitor.BlobToMeta.at(blobId).GetMergedBlocks();
+                    UNIT_ASSERT_VALUES_EQUAL(1, meta.CommitIdsSize());
+                    UNIT_ASSERT_VALUES_EQUAL(42, meta.GetCommitIds(0));
+                });
+        }
+    }
+
+    Y_UNIT_TEST(ShouldFindMergedBlocksWithIndividualCommitIds)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+        const auto blobId = executor.MakeBlobId(5);
+        const auto range = TBlockRange32::MakeClosedInterval(10, 18);
+        const TVector<ui64> commitIds{50, 20, 40, 10, 30};
+        TBlockMask skipMask;
+        for (ui32 pos: {0, 2, 5, 7}) {
+            skipMask.Set(pos);
+        }
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { db.WriteMergedBlocks(blobId, range, skipMask, commitIds); });
+
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                using TTable = TPartitionSchema::MergedBlocksIndex;
+                auto it = db.Table<TTable>().Range().Select();
+                UNIT_ASSERT(it.IsReady() && it.IsValid());
+                const auto list = it.GetValue<TTable::CommitIdList>();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    commitIds.size(), list.CommitIdsSize());
+                for (size_t i = 0; i < commitIds.size(); ++i) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        commitIds[i], list.GetCommitIds(i));
+                }
+
+                TTestBlockVisitor visitor;
+                UNIT_ASSERT(db.FindMergedBlocks(
+                    visitor, visitor, range, true, MaxBlocksCount, 35));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#13:20 #16:10 #18:30", visitor.Result);
+                ASSERT_VECTORS_EQUAL(
+                    (TVector<ui16>{1, 3, 4}), visitor.BlobOffsets);
+                const auto& meta =
+                    visitor.BlobToMeta.at(blobId).GetMergedBlocks();
+                UNIT_ASSERT_VALUES_EQUAL(
+                    commitIds.size(), meta.CommitIdsSize());
+                for (size_t i = 0; i < commitIds.size(); ++i) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        commitIds[i], meta.GetCommitIds(i));
+                }
+
+                TTestBlockVisitor partialVisitor;
+                UNIT_ASSERT(db.FindMergedBlocks(
+                    partialVisitor,
+                    TBlockRange32::MakeClosedInterval(14, 18),
+                    false, MaxBlocksCount, 35));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#16:10 #18:30", partialVisitor.Result);
+                ASSERT_VECTORS_EQUAL(
+                    (TVector<ui16>{3, 4}), partialVisitor.BlobOffsets);
+
+                TTestBlockVisitor sparseVisitor;
+                UNIT_ASSERT(db.FindMergedBlocks(
+                    sparseVisitor,
+                    TVector<ui32>{11, 13, 14, 18}, MaxBlocksCount));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#11:50 #13:20 #14:40 #18:30", sparseVisitor.Result);
+                ASSERT_VECTORS_EQUAL(
+                    (TVector<ui16>{0, 1, 2, 4}), sparseVisitor.BlobOffsets);
+
+                TTestBlockVisitor snapshotVisitor;
+                UNIT_ASSERT(db.FindMergedBlocks(
+                    snapshotVisitor,
+                    TVector<ui32>{11, 13, 14, 18}, MaxBlocksCount, 35));
+                UNIT_ASSERT_VALUES_EQUAL(
+                    "#13:20 #18:30", snapshotVisitor.Result);
+                ASSERT_VECTORS_EQUAL(
+                    (TVector<ui16>{1, 4}), snapshotVisitor.BlobOffsets);
+
+                TTestBlockVisitor futureVisitor;
+                UNIT_ASSERT(db.FindMergedBlocks(
+                    futureVisitor,
+                    futureVisitor, range, true, MaxBlocksCount, 9));
+                UNIT_ASSERT(!futureVisitor.Result);
+            });
+
+        executor.WriteTx([&](TPartitionDatabase db)
+                         { db.DeleteMergedBlocks(blobId, range); });
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                TTestBlockVisitor visitor;
+                UNIT_ASSERT(db.FindMergedBlocks(
+                    visitor, visitor, range, true, MaxBlocksCount));
+                UNIT_ASSERT(!visitor.Result);
+                UNIT_ASSERT(visitor.BlobToMeta.empty());
             });
     }
 
@@ -888,14 +1020,8 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
                 ASSERT_MAP_EQUAL(expectedContent, visitor.BlobToRange);
             });
 
-        executor.WriteTx(
-            [&](TPartitionDatabase db)
-            {
-                db.DeleteMergedBlocks(
-                    blobId1,
-                    blockRange,
-                    blocksCommitId);
-            });
+        executor.WriteTx([&](TPartitionDatabase db)
+                         { db.DeleteMergedBlocks(blobId1, blockRange); });
 
         executor.ReadTx(
             [&](TPartitionDatabase db)
@@ -1021,7 +1147,7 @@ Y_UNIT_TEST_SUITE(TPartition2DatabaseTest)
                     TVector<ui32>{1, 3, 5},
                     MaxBlocksCount
                 ));
-                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:2 #3:4 #1:5 #3:5 #5:5 #5:3");
+                UNIT_ASSERT_VALUES_EQUAL(visitor.Result, "#1:2 #3:4 #5:3 #1:5 #3:5 #5:5");
             }
         });
     }

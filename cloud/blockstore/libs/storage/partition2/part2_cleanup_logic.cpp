@@ -168,10 +168,17 @@ TVerifyBlocksMetaResult VerifyMergedBlocksMeta(
             GetSkippedBlockCount(recreatedMergedBlocks);
     }
 
+    const bool sameCommitIds = std::equal(
+        originalMergedBlocks.GetCommitIds().begin(),
+        originalMergedBlocks.GetCommitIds().end(),
+        recreatedMergedBlocks.GetCommitIds().begin(),
+        recreatedMergedBlocks.GetCommitIds().end());
+
     bool ok =
         originalMergedBlocks.GetStart() == recreatedMergedBlocks.GetStart() &&
         originalMergedBlocks.GetEnd() == recreatedMergedBlocks.GetEnd() &&
-        skippedBlocksMatch;
+        skippedBlocksMatch &&
+        sameCommitIds;
 
     if (!ok) {
         auto error = MakeError(E_ARGUMENT, "Mismatched merged blocks");
@@ -370,10 +377,7 @@ void ExecuteCleanupTransaction(
             auto blockRange = TBlockRange32::MakeClosedInterval(
                 mergedBlocks.GetStart(),
                 mergedBlocks.GetEnd());
-            db.DeleteMergedBlocks(
-                item.BlobId,
-                blockRange,
-                mergedBlocks.GetCommitId());
+            db.DeleteMergedBlocks(item.BlobId, blockRange);
 
             ++mergedBlobsCount;
             if (!IsDeletionMarker(item.BlobId)) {

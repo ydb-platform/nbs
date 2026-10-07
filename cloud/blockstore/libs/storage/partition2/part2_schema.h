@@ -137,44 +137,44 @@ struct TPartitionSchema
         {
         };
 
-        struct CommitId
-            : public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
-        {
-        };
-
         struct BlobId
-            : public Column<4, NKikimr::NScheme::NTypeIds::Uint64>
+            : public Column<3, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
         // Deprecated.
         struct HoleMask
-            : public Column<5, NKikimr::NScheme::NTypeIds::String>
+            : public Column<4, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = TStringBuf;    // THoleMask
         };
 
         struct SkipMask
-            : public Column<6, NKikimr::NScheme::NTypeIds::String>
+            : public Column<5, NKikimr::NScheme::NTypeIds::String>
         {
             using Type = TStringBuf;    // TBlockMask
         };
 
         struct BlobCommitId
-            : public Column<7, NKikimr::NScheme::NTypeIds::Uint64>
+            : public Column<6, NKikimr::NScheme::NTypeIds::Uint64>
         {
         };
 
-        using TKey = TableKey<RangeEnd, CommitId, BlobCommitId, BlobId>;
+        struct CommitIdList
+            : public Column<7, NKikimr::NScheme::NTypeIds::String>
+        {
+            using Type = NProto::TPartCommitIdList;
+        };
+
+        using TKey = TableKey<RangeEnd, BlobCommitId, BlobId>;
         using TColumns = TableColumns<
             RangeStart,
             RangeEnd,
-            CommitId,
             BlobId,
             HoleMask,
             SkipMask,
-            BlobCommitId
-        >;
+            BlobCommitId,
+            CommitIdList>;
 
         using StoragePolicy = TStoragePolicy<IndexChannel>;
         using CompactionPolicy = TCompactionPolicy<ECompactionPolicy::IndexTable>;

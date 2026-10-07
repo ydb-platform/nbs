@@ -401,6 +401,57 @@ Y_UNIT_TEST_SUITE(TAddBlobsLogicTest)
         UNIT_ASSERT_VALUES_EQUAL(3, mergedRangeStat.BlockCount);
     }
 
+    Y_UNIT_TEST(ShouldAddMergedBlobsWithCommitIdLists)
+    {
+        for (const auto& commitIds:
+             {TVector<ui64>{10, 10, 10}, TVector<ui64>{10, 20, 30}})
+        {
+            auto state = MakeState();
+            TTestExecutor executor;
+            executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+            const auto blobId = executor.MakeBlobId(3);
+            const auto range = TBlockRange32::MakeClosedInterval(8, 11);
+            TBlockMask skipMask;
+            skipMask.Set(1);
+
+            auto args = MakeArgs(
+                executor.CommitId(),
+                {},
+                {{blobId, range, skipMask, {}, commitIds}});
+            RunExecute(executor, state, args, MakeCommitId(0, 50));
+
+            const auto blobMeta = ReadBlobMeta(executor, blobId);
+            UNIT_ASSERT(blobMeta);
+            const auto& mergedBlocks = blobMeta->GetMergedBlocks();
+            const size_t expectedSize =
+                commitIds.front() == commitIds.back() ? 1 : commitIds.size();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedSize, mergedBlocks.CommitIdsSize());
+            for (size_t i = 0; i < expectedSize; ++i) {
+                UNIT_ASSERT_VALUES_EQUAL(
+                    commitIds[i], mergedBlocks.GetCommitIds(i));
+            }
+
+            executor.ReadTx(
+                [&](TPartitionDatabase db)
+                {
+                    TBlockVisitor visitor;
+                    UNIT_ASSERT(db.FindMergedBlocks(
+                        visitor, range, false, MaxBlocksInBlob));
+                    UNIT_ASSERT_VALUES_EQUAL(3, visitor.Records.size());
+                    const TVector<ui32> blockIndices{8, 10, 11};
+                    for (size_t i = 0; i < visitor.Records.size(); ++i) {
+                        const auto& record = visitor.Records[i];
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            blockIndices[i], record.BlockIndex);
+                        UNIT_ASSERT_VALUES_EQUAL(commitIds[i], record.CommitId);
+                        UNIT_ASSERT_VALUES_EQUAL(blobId, record.BlobId);
+                        UNIT_ASSERT_VALUES_EQUAL(i, record.BlobOffset);
+                    }
+                });
+        }
+    }
+
     Y_UNIT_TEST(ShouldMoveFreshAndL0BlobsIntoIndexes)
     {
         auto state = MakeState();

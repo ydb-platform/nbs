@@ -45,7 +45,9 @@ struct TChecksumFixup
 struct TRangeCompactionInfo
 {
     const TBlockRange32 BlockRange;
-    const ui64 CommitId;
+    // Commit IDs follow offsets in each resulting blob, excluding skipped blocks.
+    const TVector<ui64> DataBlobCommitIds;
+    const TVector<ui64> ZeroBlobCommitIds;
     const TPartialBlobId OriginalBlobId;
     const TPartialBlobId DataBlobId;
     const TBlockMask DataBlobSkipMask;
@@ -67,7 +69,8 @@ struct TRangeCompactionInfo
 
     TRangeCompactionInfo(
             TBlockRange32 blockRange,
-            ui64 commitId,
+            TVector<ui64> dataBlobCommitIds,
+            TVector<ui64> zeroBlobCommitIds,
             TPartialBlobId originalBlobId,
             TPartialBlobId dataBlobId,
             TBlockMask dataBlobSkipMask,

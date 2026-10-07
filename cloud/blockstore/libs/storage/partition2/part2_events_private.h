@@ -83,7 +83,8 @@ struct TAddMergedBlob
     const TBlockRange32 BlockRange;
     const TBlockMask SkipMask;
     const TVector<ui32> Checksums;
-    const ui64 CommitId;
+    // One shared commit ID or one per block, in blob offset order.
+    const TVector<ui64> CommitIds;
 
     TAddMergedBlob(
             const TPartialBlobId& blobId,
@@ -91,11 +92,25 @@ struct TAddMergedBlob
             const TBlockMask& skipMask,
             TVector<ui32> checksums,
             ui64 commitId = 0)
+        : TAddMergedBlob(
+              blobId,
+              blockRange,
+              skipMask,
+              std::move(checksums),
+              TVector<ui64>{commitId ? commitId : blobId.CommitId()})
+    {}
+
+    TAddMergedBlob(
+            const TPartialBlobId& blobId,
+            const TBlockRange32& blockRange,
+            const TBlockMask& skipMask,
+            TVector<ui32> checksums,
+            TVector<ui64> commitIds)
         : BlobId(blobId)
         , BlockRange(blockRange)
         , SkipMask(skipMask)
         , Checksums(std::move(checksums))
-        , CommitId(commitId ? commitId : blobId.CommitId())
+        , CommitIds(std::move(commitIds))
     {}
 };
 
@@ -175,7 +190,7 @@ struct TAffectedBlob
     {
         TBlockRange32 BlockRange;
         TString SkippedBlockIds;
-        ui64 CommitId = 0;
+        TVector<ui64> CommitIds;
     };
 
     ui8 CompactionRangeCount = 0;

@@ -475,34 +475,57 @@ void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
     const TBlockMask& skipMask,
     ui64 commitId)
 {
+    WriteMergedBlocks(blobId, blockRange, skipMask, TVector<ui64>{commitId});
+}
+
+template <typename TCounters>
+void TPartitionDatabaseImpl<TCounters>::WriteMergedBlocks(
+    const TPartialBlobId& blobId,
+    const TBlockRange32& blockRange,
+    const TBlockMask& skipMask,
+    const TVector<ui64>& commitIds)
+{
     using TTable = TPartitionSchema::MergedBlocksIndex;
+
+    const ui32 blocksCount = blockRange.Size() -
+        (skipMask & GetFullBlockMask(blockRange.Size())).Count();
+    Y_ABORT_UNLESS(blocksCount);
+    Y_ABORT_UNLESS(
+        commitIds.size() == 1 || commitIds.size() == blocksCount);
+
+    NProto::TPartCommitIdList commitIdList;
+    const bool singleCommitId = AllOf(
+        commitIds,
+        [&](ui64 commitId) { return commitId == commitIds.front(); });
+    if (singleCommitId) {
+        commitIdList.AddCommitIds(commitIds.front());
+    } else {
+        commitIdList.MutableCommitIds()->Assign(
+            commitIds.begin(), commitIds.end());
+    }
 
     auto value = Table<TTable>().Key(
         blockRange.End,
-        ReverseCommitId(commitId),
         blobId.CommitId(),
         blobId.UniqueId());
 
-    value.Update(NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start));
-
-    if (!skipMask.Empty()) {
-        value.Update(
-            NIceDb::TUpdate<TTable::SkipMask>(BlockMaskAsString(skipMask)));
-    }
+    value.Update(
+        NIceDb::TUpdate<TTable::RangeStart>(blockRange.Start),
+        NIceDb::TUpdate<TTable::SkipMask>(
+            skipMask.Empty() ? TStringBuf() : BlockMaskAsString(skipMask)),
+        NIceDb::TUpdate<TTable::CommitIdList>(commitIdList));
 }
 
 template <typename TCounters>
 void TPartitionDatabaseImpl<TCounters>::DeleteMergedBlocks(
     const TPartialBlobId& blobId,
-    const TBlockRange32& blockRange,
-    ui64 commitId)
+    const TBlockRange32& blockRange)
 {
     using TTable = TPartitionSchema::MergedBlocksIndex;
 
     Table<TTable>()
         .Key(
             blockRange.End,
-            ReverseCommitId(commitId),
             blobId.CommitId(),
             blobId.UniqueId())
         .Delete();
@@ -552,14 +575,16 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
 
         // if there is no intersection - just skip range
         if (start <= end) {
-            ui64 commitId =
-                ReverseCommitId(it.template GetValue<TTable::CommitId>());
-            if (commitId <= maxCommitId) {
+            const auto commitIdList =
+                it.template GetValue<TTable::CommitIdList>();
+            if (AnyOf(
+                    commitIdList.GetCommitIds(),
+                    [&](ui64 commitId) { return commitId <= maxCommitId; }))
+            {
                 const ui64 blobCommitId =
-                    it.template GetValueOrDefault<TTable::BlobCommitId>();
+                    it.template GetValue<TTable::BlobCommitId>();
                 auto blobId = MakePartialBlobId(
-                    blobCommitId ? blobCommitId : commitId,
-                    it.template GetValue<TTable::BlobId>());
+                    blobCommitId, it.template GetValue<TTable::BlobId>());
 
                 const auto holeMask = BlockMaskFromString(
                     it.template GetValueOrDefault<TTable::HoleMask>());
@@ -567,11 +592,18 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                 const auto skipMask = BlockMaskFromString(
                     it.template GetValueOrDefault<TTable::SkipMask>());
 
+                const bool singleCommitId = commitIdList.CommitIdsSize() == 1;
+                const ui32 blocksCount = range.Size() -
+                    (skipMask & GetFullBlockMask(range.Size())).Count();
+                Y_ABORT_UNLESS(
+                    singleCommitId || commitIdList.CommitIdsSize() == blocksCount);
+
                 NProto::TBlobMeta2 blobMeta;
                 blobMeta.MutableMergedBlocks()->SetStart(range.Start);
                 blobMeta.MutableMergedBlocks()->SetEnd(range.End);
                 SetSkippedBlockIds(*blobMeta.MutableMergedBlocks(), skipMask);
-                blobMeta.MutableMergedBlocks()->SetCommitId(commitId);
+                *blobMeta.MutableMergedBlocks()->MutableCommitIds() =
+                    commitIdList.GetCommitIds();
 
                 if (!blobsVisitor.Visit(blobId, std::move(blobMeta))) {
                     return true;   // interrupted
@@ -594,8 +626,10 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                     }
 
                     ui16 blobOffset = pos - skipped;
+                    const ui64 commitId = commitIdList.GetCommitIds(
+                        singleCommitId ? 0 : blobOffset);
 
-                    if (holeMask.Get(blobOffset)) {
+                    if (holeMask.Get(blobOffset) || commitId > maxCommitId) {
                         continue;
                     }
 
@@ -674,14 +708,16 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
 
             // if there is no intersection - just skip range
             if (start != end) {
-                ui64 commitId =
-                    ReverseCommitId(it.template GetValue<TTable::CommitId>());
-                if (commitId <= maxCommitId) {
+                const auto commitIdList =
+                    it.template GetValue<TTable::CommitIdList>();
+                if (AnyOf(
+                        commitIdList.GetCommitIds(),
+                        [&](ui64 commitId) { return commitId <= maxCommitId; }))
+                {
                     const ui64 blobCommitId =
-                        it.template GetValueOrDefault<TTable::BlobCommitId>();
+                        it.template GetValue<TTable::BlobCommitId>();
                     auto blobId = MakePartialBlobId(
-                        blobCommitId ? blobCommitId : commitId,
-                        it.template GetValue<TTable::BlobId>());
+                        blobCommitId, it.template GetValue<TTable::BlobId>());
 
                     const auto holeMask = BlockMaskFromString(
                         it.template GetValueOrDefault<TTable::HoleMask>());
@@ -689,29 +725,38 @@ bool TPartitionDatabaseImpl<TCounters>::FindMergedBlocks(
                     const auto skipMask = BlockMaskFromString(
                         it.template GetValueOrDefault<TTable::SkipMask>());
 
-                    ui32 skipped = 0;
-                    for (ui32 blockIndex = range.Start; blockIndex < *start;
-                         ++blockIndex)
-                    {
-                        ui16 pos = blockIndex - range.Start;
-                        skipped += skipMask.Get(pos);
-                    }
+                    const bool singleCommitId =
+                        commitIdList.CommitIdsSize() == 1;
+                    const ui32 blocksCount = range.Size() -
+                        (skipMask & GetFullBlockMask(range.Size())).Count();
+                    Y_ABORT_UNLESS(
+                        singleCommitId || commitIdList.CommitIdsSize() == blocksCount);
 
-                    for (auto it = start; it != end; ++it) {
-                        ui16 pos = *it - range.Start;
+                    ui32 skipped = 0;
+                    ui32 nextPos = 0;
+                    for (auto blockIt = start; blockIt != end; ++blockIt) {
+                        ui16 pos = *blockIt - range.Start;
+                        // Account for skipped blocks between requested indices.
+                        while (nextPos < pos) {
+                            skipped += skipMask.Get(nextPos++);
+                        }
 
                         if (skipMask.Get(pos)) {
-                            ++skipped;
                             continue;
                         }
 
                         ui16 blobOffset = pos - skipped;
+                        const ui64 commitId = commitIdList.GetCommitIds(
+                            singleCommitId ? 0 : blobOffset);
 
-                        if (holeMask.Get(blobOffset)) {
+                        if (holeMask.Get(blobOffset) || commitId > maxCommitId)
+                        {
                             continue;
                         }
 
-                        if (!visitor.Visit(*it, commitId, blobId, blobOffset)) {
+                        if (!visitor.Visit(
+                                *blockIt, commitId, blobId, blobOffset))
+                        {
                             return true;   // interrupted
                         }
                     }

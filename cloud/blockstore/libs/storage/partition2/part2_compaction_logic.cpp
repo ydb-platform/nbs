@@ -37,7 +37,8 @@ using namespace NKikimr;
 
 TRangeCompactionInfo::TRangeCompactionInfo(
     TBlockRange32 blockRange,
-    ui64 commitId,
+    TVector<ui64> dataBlobCommitIds,
+    TVector<ui64> zeroBlobCommitIds,
     TPartialBlobId originalBlobId,
     TPartialBlobId dataBlobId,
     TBlockMask dataBlobSkipMask,
@@ -53,7 +54,8 @@ TRangeCompactionInfo::TRangeCompactionInfo(
     TAffectedBlocks affectedBlocks,
     TVector<TChecksumFixup> checksumFixups)
     : BlockRange(blockRange)
-    , CommitId(commitId)
+    , DataBlobCommitIds(std::move(dataBlobCommitIds))
+    , ZeroBlobCommitIds(std::move(zeroBlobCommitIds))
     , OriginalBlobId(originalBlobId)
     , DataBlobId(dataBlobId)
     , DataBlobSkipMask(dataBlobSkipMask)
@@ -206,8 +208,13 @@ public:
         auto& ab = Args.AffectedBlobs[blobId];
 
         const auto& mergedBlocks = blobMeta.GetMergedBlocks();
-        ab.MaxCommitIdInCompactionRange = mergedBlocks.GetCommitId();
-        ab.MinCommitIdInCompactionRange = mergedBlocks.GetCommitId();
+        Y_ABORT_UNLESS(mergedBlocks.CommitIdsSize());
+        ab.MaxCommitIdInCompactionRange = *MaxElement(
+            mergedBlocks.GetCommitIds().begin(),
+            mergedBlocks.GetCommitIds().end());
+        ab.MinCommitIdInCompactionRange = *MinElement(
+            mergedBlocks.GetCommitIds().begin(),
+            mergedBlocks.GetCommitIds().end());
         ab.CompactionRangeCount =
             CompactionMap.GetRangeIndex(mergedBlocks.GetEnd()) -
             CompactionMap.GetRangeIndex(mergedBlocks.GetStart()) + 1;
@@ -219,7 +226,9 @@ public:
                 mergedBlocks.GetEnd());
         ab.MergedBlobsSpecificInfo->SkippedBlockIds =
             mergedBlocks.GetSkippedBlockIds();
-        ab.MergedBlobsSpecificInfo->CommitId = mergedBlocks.GetCommitId();
+        ab.MergedBlobsSpecificInfo->CommitIds.assign(
+            mergedBlocks.GetCommitIds().begin(),
+            mergedBlocks.GetCommitIds().end());
 
         return true;
     }
@@ -280,16 +289,6 @@ TCompactionBlockCounts CountDataAndZeroBlocks(
     }
 
     return counts;
-}
-
-ui64 GetMaxCommitId(
-    const TVector<TTxPartition::TRangeCompaction::TBlockMark>& blockMarks)
-{
-    ui64 maxCommitId = 0;
-    for (const auto& mark: blockMarks) {
-        maxCommitId = Max(maxCommitId, mark.CommitId);
-    }
-    return maxCommitId;
 }
 
 struct TCompactionResultBlobIds
@@ -489,6 +488,8 @@ struct TBuildBlobContentAndMasksResult
     TVector<ui32> ZeroBlocks;
     TBlockMask DataBlobSkipMask;
     TBlockMask ZeroBlobSkipMask;
+    TVector<ui64> DataBlobCommitIds;
+    TVector<ui64> ZeroBlobCommitIds;
     TVector<TChecksumFixup> ChecksumFixups;
 };
 
@@ -508,6 +509,7 @@ TBuildBlobContentAndMasksResult BuildBlobContentAndMasks(
     for (auto& mark: args.BlockMarks) {
         if (mark.CommitId) {
             if (mark.BlockContent) {
+                result.DataBlobCommitIds.push_back(mark.CommitId);
                 Y_ABORT_UNLESS(IsDeletionMarker(mark.BlobId));
                 requests.emplace_back(
                     mark.BlobId,
@@ -532,6 +534,7 @@ TBuildBlobContentAndMasksResult BuildBlobContentAndMasks(
                         blockIndex - args.BlockRange.Start);
                 }
             } else if (!IsDeletionMarker(mark.BlobId)) {
+                result.DataBlobCommitIds.push_back(mark.CommitId);
                 const auto proxy = tabletStorageInfo.BSProxyIDForChannel(
                     mark.BlobId.Channel(),
                     mark.BlobId.Generation());
@@ -565,6 +568,7 @@ TBuildBlobContentAndMasksResult BuildBlobContentAndMasks(
                         blockIndex - args.BlockRange.Start);
                 }
             } else {
+                result.ZeroBlobCommitIds.push_back(mark.CommitId);
                 result.DataBlobSkipMask.Set(blockIndex - args.BlockRange.Start);
                 result.ZeroBlocks.push_back(blockIndex);
             }
@@ -692,7 +696,8 @@ void RecreateBlobMetas(TTxPartition::TRangeCompaction& args, ui64 commitId)
             mergedBlocks->SetStart(info.BlockRange.Start);
             mergedBlocks->SetEnd(info.BlockRange.End);
             mergedBlocks->SetSkippedBlockIds(info.SkippedBlockIds);
-            mergedBlocks->SetCommitId(info.CommitId);
+            mergedBlocks->MutableCommitIds()->Assign(
+                info.CommitIds.begin(), info.CommitIds.end());
             continue;
         }
 
@@ -822,7 +827,8 @@ void CompleteRangeCompaction(
 
     rangeCompactionInfos.emplace_back(
         args.BlockRange,
-        GetMaxCommitId(args.BlockMarks),
+        std::move(buildBlobContentResult.DataBlobCommitIds),
+        std::move(buildBlobContentResult.ZeroBlobCommitIds),
         patchingResult.PatchingCandidate,
         patchingResult.DataBlobId,
         buildBlobContentResult.DataBlobSkipMask,

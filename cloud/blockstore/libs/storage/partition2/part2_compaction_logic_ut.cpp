@@ -202,6 +202,61 @@ TPrepareCompleteResult RunPrepareAndComplete(
 
 Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
 {
+    Y_UNIT_TEST(ShouldPreserveMergedCommitIdListDuringCompaction)
+    {
+        auto state = MakeState();
+        TTestExecutor executor;
+        executor.WriteTx([](TPartitionDatabase db) { db.InitSchema(); });
+        TPartialBlobId blobId;
+        const auto range = TBlockRange32::MakeClosedInterval(0, 3);
+        const TVector<ui64> commitIds{10, 30, 20};
+        TBlockMask skipMask;
+        skipMask.Set(1);
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                blobId = executor.MakeBlobId(3);
+                db.WriteMergedBlocks(blobId, range, skipMask, commitIds);
+            });
+
+        TTxPartition::TRangeCompaction args(0, range);
+        THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlockMasks;
+        THashSet<TPartialBlobId, TPartialBlobIdHash> blobsToReadBlobMetas;
+        bool ready = true;
+        executor.ReadTx(
+            [&](TPartitionDatabase db)
+            {
+                PrepareRangeCompaction(
+                    *MakeStorageConfig(),
+                    0,
+                    25,
+                    TTestExecutor::TabletId,
+                    false,   // readBlockMaskOnCompactionOptimizationEnabled
+                    true,    // useRecreatedBlobMetasOnCleanup
+                    ready,
+                    db,
+                    state, args, blobsToReadBlockMasks, blobsToReadBlobMetas);
+            });
+
+        UNIT_ASSERT(ready);
+        const auto& affectedBlob = args.AffectedBlobs.at(blobId);
+        UNIT_ASSERT_VALUES_EQUAL(10, affectedBlob.MinCommitIdInCompactionRange);
+        UNIT_ASSERT_VALUES_EQUAL(30, affectedBlob.MaxCommitIdInCompactionRange);
+        RecreateBlobMetas(args, 25);
+        UNIT_ASSERT(affectedBlob.RecreatedBlobMeta);
+        const auto& mergedBlocks =
+            affectedBlob.RecreatedBlobMeta->GetMergedBlocks();
+        UNIT_ASSERT_VALUES_EQUAL(range.Start, mergedBlocks.GetStart());
+        UNIT_ASSERT_VALUES_EQUAL(range.End, mergedBlocks.GetEnd());
+        UNIT_ASSERT_VALUES_EQUAL(1, GetSkippedBlockCount(mergedBlocks));
+        UNIT_ASSERT_VALUES_EQUAL(
+            commitIds.size(), mergedBlocks.CommitIdsSize());
+        for (size_t i = 0; i < commitIds.size(); ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                commitIds[i], mergedBlocks.GetCommitIds(i));
+        }
+    }
+
     // PrepareRangeCompaction: blob goes into blobsToReadBlockMasks when
     // read-block-mask optimization is disabled, regardless of blob range count.
     Y_UNIT_TEST(PrepareAddsToBlockMasksWhenOptimizationDisabled)
@@ -667,7 +722,7 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
         UNIT_ASSERT(rangeCompactionInfos[0].ChecksumFixups.empty());
     }
 
-    Y_UNIT_TEST(CompleteUsesMaximumCompactedCommitIdForMergedBlob)
+    Y_UNIT_TEST(CompletePreservesCommitIdsForMergedZeroBlob)
     {
         auto state = MakeState();
         auto storageInfo = MakeStorageInfo(1);
@@ -699,12 +754,68 @@ Y_UNIT_TEST_SUITE(TRangeCompactionLogicTest)
             0);
 
         UNIT_ASSERT_VALUES_EQUAL(1, rangeCompactionInfos.size());
-        UNIT_ASSERT_VALUES_EQUAL(
-            newerCommitId,
-            rangeCompactionInfos[0].CommitId);
-        UNIT_ASSERT_VALUES_UNEQUAL(
-            compactionCommitId,
-            rangeCompactionInfos[0].CommitId);
+        const auto& result = rangeCompactionInfos[0];
+        UNIT_ASSERT(!result.DataBlobId);
+        UNIT_ASSERT(result.DataBlobCommitIds.empty());
+        UNIT_ASSERT(result.ZeroBlobId);
+        ASSERT_VECTORS_EQUAL(
+            (TVector<ui64>{olderCommitId, newerCommitId}),
+            result.ZeroBlobCommitIds);
+    }
+
+    Y_UNIT_TEST(CompletePreservesCommitIdsForMergedDataAndZeroBlobs)
+    {
+        auto state = MakeState();
+        auto storageInfo = MakeStorageInfo(1);
+        TTxPartition::TRangeCompaction args(
+            0,
+            TBlockRange32::MakeClosedInterval(10, 19));
+        const TPartialBlobId sourceBlobId(0, 1, 0, DefaultBlockSize, 0, 0);
+
+        args.GetBlockMark(11).CommitId = 10;
+        args.GetBlockMark(11).BlockContent = TString(DefaultBlockSize, 'a');
+        args.GetBlockMark(12).CommitId = 50;
+        args.GetBlockMark(14).CommitId = 30;
+        args.GetBlockMark(14).BlobId = sourceBlobId;
+        args.GetBlockMark(16).CommitId = 20;
+        args.GetBlockMark(18).CommitId = 40;
+        args.GetBlockMark(18).BlockContent = TString(DefaultBlockSize, 'b');
+
+        TVector<TBlobCompactionRequest> requests;
+        TVector<TRangeCompactionInfo> rangeCompactionInfos;
+        CompleteRangeCompaction(
+            false,
+            0,
+            MakeCommitId(0, 100),
+            TTestExecutor::TabletId,
+            false,
+            storageInfo,
+            state,
+            args,
+            requests,
+            rangeCompactionInfos,
+            0);
+
+        UNIT_ASSERT_VALUES_EQUAL(1, rangeCompactionInfos.size());
+        const auto& result = rangeCompactionInfos[0];
+        UNIT_ASSERT(result.DataBlobId);
+        UNIT_ASSERT(result.ZeroBlobId);
+        ASSERT_VECTORS_EQUAL(
+            (TVector<ui64>{10, 30, 40}),
+            result.DataBlobCommitIds);
+        ASSERT_VECTORS_EQUAL(
+            (TVector<ui64>{50, 20}),
+            result.ZeroBlobCommitIds);
+        ASSERT_VECTORS_EQUAL((TVector<ui32>{12, 16}), result.ZeroBlocks);
+        UNIT_ASSERT_VALUES_EQUAL(3, requests.size());
+        for (ui32 offset = 0; offset < args.BlockRange.Size(); ++offset) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                offset != 1 && offset != 4 && offset != 8,
+                result.DataBlobSkipMask.Get(offset));
+            UNIT_ASSERT_VALUES_EQUAL(
+                offset != 2 && offset != 6,
+                result.ZeroBlobSkipMask.Get(offset));
+        }
     }
 
     // PrepareRangeCompaction + CompleteRangeCompaction: merged blobs get
@@ -895,7 +1006,7 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         skipMask.Set(0, 11);
         ab.MergedBlobsSpecificInfo->SkippedBlockIds =
             TString(BlockMaskAsString(skipMask));
-        ab.MergedBlobsSpecificInfo->CommitId = 42;
+        ab.MergedBlobsSpecificInfo->CommitIds = {42};
         args.AffectedBlobs.emplace(blobId, std::move(ab));
 
         RecreateBlobMetas(args, CommitId);
@@ -910,7 +1021,8 @@ Y_UNIT_TEST_SUITE(TRecreateBlobMetasTest)
         UNIT_ASSERT_VALUES_EQUAL(10u, mergedBlocks.GetStart());
         UNIT_ASSERT_VALUES_EQUAL(20u, mergedBlocks.GetEnd());
         UNIT_ASSERT_VALUES_EQUAL(11u, GetSkippedBlockCount(mergedBlocks));
-        UNIT_ASSERT_VALUES_EQUAL(42u, mergedBlocks.GetCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(1, mergedBlocks.CommitIdsSize());
+        UNIT_ASSERT_VALUES_EQUAL(42u, mergedBlocks.GetCommitIds(0));
     }
 
     Y_UNIT_TEST(ShouldRecreateMixedBlobMetaWhenFullyAvailable)
