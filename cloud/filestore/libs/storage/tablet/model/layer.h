@@ -46,7 +46,7 @@ struct IFreshBlockVisitor
 {
     virtual ~IFreshBlockVisitor() = default;
 
-    virtual void Accept(const TBlock& block, TStringBuf blockData) = 0;
+    virtual void Accept(const TBlock& block, const TBlockDataHolder& blockData) = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

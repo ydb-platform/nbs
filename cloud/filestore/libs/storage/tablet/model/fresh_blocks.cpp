@@ -149,7 +149,7 @@ TMaybe<TFreshBlock> TFreshBlocks::FindBlock(
 void TFreshBlocks::FindBlocks(IFreshBlockVisitor& visitor) const
 {
     for (const auto& [block, freshBlock]: Blocks) {
-        visitor.Accept(block, freshBlock.GetBlockData());
+        visitor.Accept(block, freshBlock);
     }
 }
 
@@ -157,7 +157,7 @@ void TFreshBlocks::FindBlocks(IFreshBlockVisitor& visitor, ui64 commitId) const
 {
     for (const auto& [block, freshBlock]: Blocks) {
         if (VisibleCommitId(commitId, block.MinCommitId, block.MaxCommitId)) {
-            visitor.Accept(block, freshBlock.GetBlockData());
+            visitor.Accept(block, freshBlock);
         }
     }
 }
@@ -172,7 +172,7 @@ void TFreshBlocks::FindBlocks(
     auto end = Blocks.lower_bound(BlockKey(nodeId, blockIndex + blocksCount));
 
     for (auto it = start; it != end; ++it) {
-        visitor.Accept(it->first, it->second.GetBlockData());
+        visitor.Accept(it->first, it->second);
     }
 }
 
@@ -190,7 +190,7 @@ void TFreshBlocks::FindBlocks(
         const auto& block = it->first;
 
         if (VisibleCommitId(commitId, block.MinCommitId, block.MaxCommitId)) {
-            visitor.Accept(block, it->second.GetBlockData());
+            visitor.Accept(block, it->second);
         }
     }
 }
