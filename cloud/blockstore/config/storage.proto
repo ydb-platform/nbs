@@ -1722,7 +1722,7 @@ message TStorageServiceConfig
 
     // Track concurrent writes when updating compaction range statistics.
     optional bool CompactionStatsTrackerEnabled = 537;
-    
+
     // Maximum percentage of mixed bytes relative to all mixed and merged bytes
     // stored on the disk. Reaching this threshold triggers mixed-block-count
     // compaction once the minimum stored byte count below is reached.
