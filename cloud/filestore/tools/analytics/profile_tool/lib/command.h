@@ -8,6 +8,8 @@ class IEventProcessor;
 
 namespace NCloud::NFileStore::NProfileTool {
 
+void PrintProfileLogProgress(const TProfileLogFile& file);
+
 ////////////////////////////////////////////////////////////////////////////////
 
 class TCommand

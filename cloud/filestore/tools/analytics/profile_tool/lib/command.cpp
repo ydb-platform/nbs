@@ -25,6 +25,15 @@ TProfileLogFile MakeProfileLogFile(TString path)
 
 }   // namespace
 
+void PrintProfileLogProgress(const TProfileLogFile& file)
+{
+    Cerr << "Reading " << file.Path;
+    if (file.EndTime) {
+        Cerr << " " << *file.EndTime;
+    }
+    Cerr << Endl;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TCommand::TCommand()
@@ -77,7 +86,7 @@ int TCommand::ProcessProfileLogs(IEventProcessor& processor)
 {
     for (const auto& file: ProfileLogFiles) {
         if (ProfileLogFiles.size() > 1) {
-            Cerr << "Reading " << file.Path << " " << file.EndTime << "\n";
+            PrintProfileLogProgress(file);
         }
         const auto result = ProcessProfileLog(file.Path, processor, IgnoreErrors);
         Cout.Flush();

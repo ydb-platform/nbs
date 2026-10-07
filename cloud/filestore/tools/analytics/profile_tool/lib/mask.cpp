@@ -189,7 +189,7 @@ void TMaskSensitiveData::MaskSensitiveData(
     TSelfFlushLogFrame logFrame(eventLog);
     for (const auto& file: in) {
         if (in.size() > 1) {
-            Cerr << "Reading " << file.Path << " " << file.EndTime << "\n";
+            PrintProfileLogProgress(file);
         }
 
         NEventLog::TOptions options;
