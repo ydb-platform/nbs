@@ -78,7 +78,10 @@ struct TFixture: public NUnitTest::TBaseFixture
             device.SetDeviceId(uuid);
             device.SetPoolName("journalled");
             device.MutableJournalConfig()->SetEnabled(true);
-            // large enough for the journal parts to hold a few pages each
+            // the journal parts hold a few pages each and leave most of the
+            // device to the data, as the journal requires
+            device.MutableJournalConfig()->SetLogMetaSize(16 * 4_KB);
+            device.MutableJournalConfig()->SetLogDataSize(64 * 4_KB);
             device.SetFileSize(4_MB);
 
             PrepareFile(device);
@@ -453,6 +456,171 @@ Y_UNIT_TEST_SUITE(TDiskAgentJournalledDeviceTest)
         {
             UNIT_ASSERT_VALUES_EQUAL_C(
                 E_BS_INVALID_SESSION,
+                error.GetCode(),
+                FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldResetTheJournalOnFormat, TFixture)
+    {
+        const TString clientId = "client-id";
+        const TString uuid = FileDevices[0].GetDeviceId();
+
+        // the format is about the journal, so the agent keeps one
+        auto config = CreateDiskAgentConfig();
+        config.SetJournalEnabled(true);
+
+        auto env = TTestEnvBuilder(*Runtime).With(std::move(config)).Build();
+
+        TDiskAgentClient diskAgent(*Runtime);
+        diskAgent.WaitReady();
+
+        TTestClient client{Port};
+
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            auto& proto = *request.MutableAcquireDevices();
+            proto.MutableHeaders()->SetClientId(clientId);
+            *proto.MutableDeviceUUIDs()->Add() = uuid;
+            client.Send(request);
+        }
+
+        Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+        {
+            const auto response = client.Receive();
+            const auto& error = response.GetAcquireDevices().GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        ui64 requestId = 0;
+
+        const auto send = [&](NCloud::NProto::TDeviceProtocolRequest request)
+        {
+            request.SetRequestId(++requestId);
+            client.Send(request);
+
+            Runtime->DispatchEvents(TDispatchOptions(), 10ms);
+
+            auto response = client.Receive();
+            UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+            return response;
+        };
+
+        const auto writeLogRecord = [&]()
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            auto& proto = *request.MutableWriteLogRecord();
+            proto.MutableHeaders()->SetClientId(clientId);
+            proto.SetDeviceUUID(uuid);
+            proto.SetLogSequenceNumber(1);
+
+            auto& group = *proto.MutablePageGroups()->Add();
+            group.SetFirstPageNo(0x10);
+            group.MutableContent()->Add()->resize(DefaultBlockSize, 'A');
+
+            const auto response = send(request);
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::kWriteLogRecord,
+                response.GetResponseCase());
+
+            return response.GetWriteLogRecord().GetError();
+        };
+
+        const auto advanceLsnLowWatermark = [&](ui64 lsn)
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            auto& proto = *request.MutableAdvanceLsnLowWatermark();
+            proto.MutableHeaders()->SetClientId(clientId);
+            proto.SetDeviceUUID(uuid);
+            proto.SetLsnLowWatermark(lsn);
+
+            const auto response = send(request);
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::
+                    kAdvanceLsnLowWatermark,
+                response.GetResponseCase());
+
+            return response.GetAdvanceLsnLowWatermark().GetError();
+        };
+
+        // the lsn low watermark the journal keeps in its metadata
+        const auto readLsnLowWatermark = [&]()
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            auto& proto = *request.MutableReadJournalTail();
+            proto.MutableHeaders()->SetClientId(clientId);
+            proto.SetDeviceUUID(uuid);
+
+            const auto response = send(request);
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::kReadJournalTail,
+                response.GetResponseCase());
+
+            const auto& error = response.GetReadJournalTail().GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+
+            return response.GetReadJournalTail().GetLsnLowWatermark();
+        };
+
+        const auto formatDevice = [&]()
+        {
+            NCloud::NProto::TDeviceProtocolRequest request;
+            auto& proto = *request.MutableFormatDevice();
+            proto.MutableHeaders()->SetClientId(clientId);
+            proto.SetDeviceUUID(uuid);
+
+            const auto response = send(request);
+            UNIT_ASSERT_EQUAL(
+                NProto::TDeviceProtocolResponse::ResponseCase::kFormatDevice,
+                response.GetResponseCase());
+
+            return response.GetFormatDevice().GetError();
+        };
+
+        // the client acks the record it wrote, the journal persists that in
+        // its metadata
+        {
+            const auto error = writeLogRecord();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        {
+            const auto error = advanceLsnLowWatermark(1);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(1, readLsnLowWatermark());
+
+        // the format restarts the device over the zeroed metadata, so the
+        // journal starts over
+        {
+            const auto error = formatDevice();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, readLsnLowWatermark());
+
+        // the restarted device serves the requests, from the first lsn again
+        {
+            const auto error = writeLogRecord();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
                 error.GetCode(),
                 FormatError(error));
         }

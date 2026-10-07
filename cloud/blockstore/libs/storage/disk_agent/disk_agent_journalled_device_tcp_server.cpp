@@ -71,6 +71,62 @@ struct TJournalledDeviceSpec
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TFuture<NCloud::NProto::TFormatDeviceResponse> OnZeroBlocksWhileFormatting(
+    const TFuture<NProto::TZeroBlocksResponse>& future,
+    const NJournalled::IJournalledDevicePtr& device)
+{
+    using TResponse = NCloud::NProto::TFormatDeviceResponse;
+
+    const auto zeroResponse = SafeExecute<NProto::TZeroBlocksResponse>(
+        [&] { return future.GetValue(); });
+
+    // the metadata may be zeroed in part, so the device stays stopped until
+    // a format succeeds
+    if (HasError(zeroResponse.GetError())) {
+        return MakeFuture<TResponse>(TErrorResponse(zeroResponse.GetError()));
+    }
+
+    return device->Start().Apply(
+        [](const auto& future)
+        {
+            TResponse response;
+            *response.MutableError() = future.GetValue();
+            return response;
+        });
+}
+
+TFuture<NCloud::NProto::TFormatDeviceResponse> OnStopDeviceWhileFormatting(
+    const TFuture<NCloud::NProto::TError>& future,
+    NJournalled::IJournalledDevicePtr device,
+    const TStorageAdapterPtr& adapter,
+    const ITimerPtr& timer,
+    ui64 logMetaBlockCount,
+    ui32 blockSize)
+{
+    using TResponse = NCloud::NProto::TFormatDeviceResponse;
+
+    const auto& stopError = future.GetValue();
+    if (HasError(stopError)) {
+        return MakeFuture<TResponse>(TErrorResponse(stopError));
+    }
+
+    auto zeroRequest = std::make_shared<NProto::TZeroBlocksRequest>();
+    zeroRequest->SetStartIndex(0);
+    zeroRequest->SetBlocksCount(logMetaBlockCount);
+
+    auto zeroed = adapter->ZeroBlocks(
+        timer->Now(),
+        MakeIntrusive<TCallContext>(),
+        std::move(zeroRequest),
+        blockSize);
+
+    return zeroed.Apply(
+        [device = std::move(device)](const auto& future)
+        { return OnZeroBlocksWhileFormatting(future, device); });
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TJournalledDeviceHandler final: public IServerBackend
 {
 private:
@@ -201,32 +257,27 @@ public:
                 TErrorResponse(accessError));
         }
 
-        auto zeroRequest = std::make_shared<NProto::TZeroBlocksRequest>();
-        zeroRequest->SetStartIndex(0);
-        zeroRequest->SetBlocksCount(logMetaBlockCount);
+        using TResponse = NCloud::NProto::TFormatDeviceResponse;
 
-        auto future = storageAdapter->ZeroBlocks(
-            Timer->Now(),
-            MakeIntrusive<TCallContext>(),
-            std::move(zeroRequest),
-            spec->BlockSize);
+        auto device = spec->Device;
+        auto adapter = storageAdapter;
+        const ui32 blockSize = spec->BlockSize;
 
-        return future.Apply(
-            [](const auto& future)
+        return device->Stop().Apply(
+            [device, adapter, timer = Timer, logMetaBlockCount, blockSize](
+                const auto& future) -> TFuture<TResponse>
             {
-                const auto zeroResponse =
-                    SafeExecute<NProto::TZeroBlocksResponse>(
-                        [&] { return future.GetValue(); });
-
-                NCloud::NProto::TFormatDeviceResponse response;
-                *response.MutableError() = zeroResponse.GetError();
-
-                return response;
+                return OnStopDeviceWhileFormatting(
+                    future,
+                    device,
+                    adapter,
+                    timer,
+                    logMetaBlockCount,
+                    blockSize);
             });
     }
 
-    [[nodiscard]] auto ReadPages(
-        NCloud::NProto::TReadPagesRequest request)
+    [[nodiscard]] auto ReadPages(NCloud::NProto::TReadPagesRequest request)
         -> TFuture<NCloud::NProto::TReadPagesResponse> final
     {
         auto [device, error] = GetDevice(
@@ -322,8 +373,10 @@ private:
 
         const auto* spec = Devices.FindPtr(deviceUUID);
         if (!spec) {
-            return MakeError(E_NOT_FOUND, TStringBuilder()
-                << "Device " << deviceUUID.Quote() << " not found");
+            return MakeError(
+                E_NOT_FOUND,
+                TStringBuilder()
+                    << "Device " << deviceUUID.Quote() << " not found");
         }
 
         auto [storageAdapter, error] =
@@ -357,7 +410,8 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
     }
 
     if (!agentConfig.GetJournalEnabled()) {
-        // No journal: the whole device holds the data, writes go straight to it.
+        // No journal: the whole device holds the data, writes go straight to
+        // it.
         return NJournalled::CreateJournalledDeviceV1(CreateDeviceAdapter(
             std::move(timer),
             uuid,
@@ -375,9 +429,8 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
         return MakeError(
             E_ARGUMENT,
             TStringBuilder()
-                << "the journal parts " << logMetaSize << " and "
-                << logDataSize << " bytes are not multiples of the block size "
-                << blockSize);
+                << "the journal parts " << logMetaSize << " and " << logDataSize
+                << " bytes are not multiples of the block size " << blockSize);
     }
 
     const ui64 logMetaBlockCount = logMetaSize / blockSize;
@@ -408,9 +461,8 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
 
     auto logMetaDevice = createAdapter(0, logMetaBlockCount);
     auto logDataDevice = createAdapter(logMetaBlockCount, logDataBlockCount);
-    auto dataStore = createAdapter(
-        logMetaBlockCount + logDataBlockCount,
-        dataBlockCount);
+    auto dataStore =
+        createAdapter(logMetaBlockCount + logDataBlockCount, dataBlockCount);
 
     auto [journalFactory, error] = NJournalled::CreateJournalFactory(
         logging,
@@ -429,7 +481,8 @@ TResultOrError<NJournalled::IJournalledDevicePtr> CreateJournalledDevice(
     LOG_INFO_S(
         ctx,
         TBlockStoreComponents::DISK_AGENT,
-        "Journalled device " << uuid.Quote() << ": journal "
+        "Journalled device "
+            << uuid.Quote() << ": journal "
             << "metadata " << FormatByteSize(logMetaBlockCount * blockSize)
             << ", journal data "
             << FormatByteSize(logDataBlockCount * blockSize) << ", data "
