@@ -71,6 +71,8 @@ message TFileStoreFeatures
     uint32 AvailabilityTrackingInterval = 53;
     uint32 AsyncHandleOperationDrainPeriod = 54;
     uint32 AsyncHandleOperationBatchSize = 55;
+
+    reserved 56;
 }
 
 message TFileStore
