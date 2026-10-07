@@ -55,11 +55,6 @@ TMaybe<TInstant> Parse(
 TCommonFilterParams::TCommonFilterParams(NLastGetopt::TOpts& opts)
 {
     opts.AddLongOption(
-            "ignore-errors",
-            "Report log read errors and continue with the next file")
-        .NoArgument();
-
-    opts.AddLongOption(
             FileSystemIdLabel.data(),
             "FileSystemId, used for filtering")
         .RequiredArgument("STR");

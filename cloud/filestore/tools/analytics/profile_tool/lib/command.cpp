@@ -42,6 +42,12 @@ TCommand::TCommand()
                 ProfileLogFiles.push_back(MakeProfileLogFile(std::move(path)));
             });
 
+    Opts.AddLongOption(
+            "ignore-errors",
+            "Report log read errors and continue with the next file")
+        .NoArgument()
+        .StoreTrue(&IgnoreErrors);
+
     Opts.SetFreeArgDefaultTitle("PROFILE_LOG", "Additional profile log files");
 }
 
@@ -69,12 +75,11 @@ const NLastGetopt::TOpts& TCommand::GetOpts() const
 
 int TCommand::ProcessProfileLogs(IEventProcessor& processor)
 {
-    const bool ignoreErrors = OptsParseResult.GetRef().Has("ignore-errors");
     for (const auto& file: ProfileLogFiles) {
         if (ProfileLogFiles.size() > 1) {
             Cerr << "Reading " << file.Path << " " << file.EndTime << "\n";
         }
-        const auto result = ProcessProfileLog(file.Path, processor, ignoreErrors);
+        const auto result = ProcessProfileLog(file.Path, processor, IgnoreErrors);
         Cout.Flush();
         if (result) {
             return result;

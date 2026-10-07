@@ -12,6 +12,9 @@ namespace NCloud::NFileStore::NProfileTool {
 
 class TCommand
 {
+private:
+    bool IgnoreErrors = false;
+
 protected:
     NLastGetopt::TOpts Opts;
     TMaybe<NLastGetopt::TOptsParseResultException> OptsParseResult;

@@ -68,6 +68,22 @@ public:
     }
 };
 
+class TReadWithoutFiltersCommand: public TCommand
+{
+public:
+    TCountingProcessor Processor;
+
+    bool Init(NLastGetopt::TOptsParseResultException&) override
+    {
+        return true;
+    }
+
+    int Execute() override
+    {
+        return ProcessProfileLogs(Processor);
+    }
+};
+
 class TReadTestCommand: public TCommand
 {
     const TCommonFilterParams CommonFilterParams{Opts};
@@ -117,6 +133,20 @@ void WriteProfileLog(const TString& path)
 
 Y_UNIT_TEST_SUITE(TCommandTest)
 {
+    Y_UNIT_TEST(ShouldProcessLogsWithoutCommonFilterParams)
+    {
+        TTempFileHandle input;
+        WriteProfileLog(input.Name());
+        const char* args[] = {
+            "test", "--profile-log", input.Name().c_str(), "--ignore-errors"};
+        for (const bool ignoreErrors: {false, true}) {
+            TReadWithoutFiltersCommand command;
+            UNIT_ASSERT_VALUES_EQUAL(command.Run(ignoreErrors ? 4 : 3, args), 0);
+            UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems.size(), 1);
+            UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems[0], input.Name());
+        }
+    }
+
     Y_UNIT_TEST(ShouldPropagateProcessingFailures)
     {
         TTempFileHandle first;
