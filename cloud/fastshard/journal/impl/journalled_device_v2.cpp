@@ -147,9 +147,12 @@ class TJournalledDeviceV2 final
 private:
     const ILoggingServicePtr Logging;
     const TExecutorPtr Executor;
-    const IJournalPtr Journal;
+    const IJournalFactoryPtr JournalFactory;
     const IDevicePtr DataStore;
     const TString DeviceUUID;
+
+    // Taken from the factory on construction and anew on every Start.
+    IJournalPtr Journal;
 
     TLog Log;
 
@@ -164,14 +167,15 @@ public:
     TJournalledDeviceV2(
         ILoggingServicePtr logging,
         TExecutorPtr executor,
-        IJournalPtr journal,
+        IJournalFactoryPtr journalFactory,
         IDevicePtr dataStore,
         TString deviceUUID)
         : Logging(std::move(logging))
         , Executor(std::move(executor))
-        , Journal(std::move(journal))
+        , JournalFactory(std::move(journalFactory))
         , DataStore(std::move(dataStore))
         , DeviceUUID(std::move(deviceUUID))
+        , Journal(JournalFactory->CreateJournal())
         , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
     {}
 
@@ -296,6 +300,8 @@ private:
 
     NCloud::NProto::TError DoStart()
     {
+        Journal = JournalFactory->CreateJournal();
+
         auto response = Executor->ExtractResponse(Journal->Restore());
         if (HasError(response)) {
             STORAGE_ERROR(
@@ -445,14 +451,14 @@ private:
 IJournalledDevicePtr CreateJournalledDeviceV2(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
-    IJournalPtr journal,
+    IJournalFactoryPtr journalFactory,
     IDevicePtr dataStore,
     TString deviceUUID)
 {
     return std::make_shared<TJournalledDeviceV2>(
         std::move(logging),
         std::move(executor),
-        std::move(journal),
+        std::move(journalFactory),
         std::move(dataStore),
         std::move(deviceUUID));
 }

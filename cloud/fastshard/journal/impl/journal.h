@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/fastshard/journal/iface/public.h>
 #include <cloud/fastshard/protos/device.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -63,11 +64,37 @@ struct IJournal
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct IJournalFactory
+{
+    virtual ~IJournalFactory() = default;
+
+    [[nodiscard]] virtual IJournalPtr CreateJournal() = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TJournalConfig
+{
+    ui64 LogMetaPageCount = 0;
+    ui64 LogDataPageCount = 0;
+    ui64 DataPageCount = 0;
+    ui32 PageSize = 0;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 IJournalPtr CreateJournal(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
     IKeyBufferStorePtr metaStore,
     IDevicePageStorePtr dataStore,
     ui64 devicePageCount);
+
+TResultOrError<IJournalFactoryPtr> CreateJournalFactory(
+    ILoggingServicePtr logging,
+    TExecutorPtr executor,
+    IDevicePtr logMetaDevice,
+    IDevicePtr logDataDevice,
+    TJournalConfig config);
 
 }   // namespace NCloud::NJournalled

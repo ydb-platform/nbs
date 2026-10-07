@@ -235,11 +235,14 @@ Y_UNIT_TEST_SUITE(TServerBuilderTest)
             invalidCount,
             CriticalEventCount("JournalledDeviceCreationError"));
 
-        // only the valid device is created
+        // the journal factory checks the layout over the devices already
+        // created, so the invalid layouts drop theirs; the valid device
+        // gets its three parts
+        ui32 validDeviceCalls = 0;
         for (const auto& call: DeviceManager->CreateDeviceCalls) {
-            UNIT_ASSERT_VALUES_EQUAL("valid", call.DeviceUUID);
+            validDeviceCalls += call.DeviceUUID == "valid";
         }
-        UNIT_ASSERT_VALUES_EQUAL(3, DeviceManager->CreateDeviceCalls.size());
+        UNIT_ASSERT_VALUES_EQUAL(3, validDeviceCalls);
     }
 
     Y_UNIT_TEST_F(ShouldFailIfNoDeviceCanBeCreated, TFixture)

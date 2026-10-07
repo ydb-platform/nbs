@@ -16,7 +16,7 @@ namespace NCloud::NJournalled {
 IJournalledDevicePtr CreateJournalledDeviceV2(
     ILoggingServicePtr logging,
     TExecutorPtr executor,
-    IJournalPtr journal,
+    IJournalFactoryPtr journalFactory,
     IDevicePtr dataStore,
     TString deviceUUID);
 
