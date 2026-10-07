@@ -1,12 +1,14 @@
 #pragma once
 
-#include <cloud/blockstore/libs/storage/partition/model/checkpoint.h>
-#include <cloud/blockstore/libs/storage/partition/model/commit_queue.h>
-#include <cloud/blockstore/libs/storage/partition/model/group_downtimes.h>
-#include <cloud/blockstore/libs/storage/partition/model/part_counters_wrapper.h>
-#include <cloud/blockstore/libs/storage/partition/model/resource_metrics_updates_queue.h>
+#include "checkpoints_in_flight.h"
+#include "commit_queue.h"
+
 #include <cloud/blockstore/libs/storage/model/requests_in_progress.h>
 #include <cloud/blockstore/libs/storage/partition_common/drain_actor_companion.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/checkpoint.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/group_downtimes.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/resource_metrics_updates_queue.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_counters_wrapper.h>
 
 #include <util/system/spinlock.h>
 
@@ -70,10 +72,10 @@ class TPartitionThreadSafeState
     using TTxPtr = std::unique_ptr<ITransactionBase>;
 
 public:
-    NPartition::TResourceMetricsQueue ResourceMetricsQueue;
-    NPartition::TThreadSafePartCounters PartCounters;
-    NPartition::TThreadSafePartStats PartStats;
-    NPartition::TGroupDowntimes GroupDowntimes;
+    TResourceMetricsQueue ResourceMetricsQueue;
+    TThreadSafePartCounters PartCounters;
+    TThreadSafePartStats PartStats;
+    TGroupDowntimes GroupDowntimes;
 
     // UnflushedFreshBlobByteCount is the physical size of encoded fresh blobs,
     // while UnflushedFreshBlocksCount is the logical number of fresh blocks,
@@ -94,12 +96,12 @@ private:
     ui32 Generation = 0;
     ui32 LastCommitId = 0;
 
-    NPartition::TBarriers TrimFreshLogBarriers;
-    NPartition::TCommitQueue CommitQueue;
+    TBarriers TrimFreshLogBarriers;
+    TCommitQueue CommitQueue;
 
-    NPartition::TCommitQueueWithCallback FreshWritesCommitQueue;
+    TCommitQueueWithCallback FreshWritesCommitQueue;
 
-    NPartition::TCheckpointsInFlight CheckpointsInFlight;
+    TCheckpointsInFlight CheckpointsInFlight;
 
     std::atomic<ui64> FreshBlocksInFlight = 0;
 
@@ -121,17 +123,17 @@ public:
         ui32 generation,
         ui32 lastCommitId);
 
-    NPartition::TResourceMetricsQueuePtr GetResourceMetricsQueue()
+    TResourceMetricsQueuePtr GetResourceMetricsQueue()
     {
         return {shared_from_this(), &ResourceMetricsQueue};
     }
 
-    NPartition::TThreadSafePartCountersPtr GetPartCounters()
+    TThreadSafePartCountersPtr GetPartCounters()
     {
         return {shared_from_this(), &PartCounters};
     }
 
-    NPartition::TGroupDowntimesPtr GetGroupDowntimes()
+    TGroupDowntimesPtr GetGroupDowntimes()
     {
         return {shared_from_this(), &GroupDowntimes};
     }
@@ -153,46 +155,40 @@ public:
 
     auto GetTrimFreshLogBarriers()
     {
-        return TConstObjectGuard<NPartition::TBarriers, TAdaptiveLock>(
-            StateLock,
-            TrimFreshLogBarriers);
+        return TConstObjectGuard<TBarriers, TAdaptiveLock>(
+            StateLock, TrimFreshLogBarriers);
     }
 
     auto AccessTrimFreshLogBarriers()
     {
-        return TObjectGuard<NPartition::TBarriers, TAdaptiveLock>(
-            StateLock,
-            TrimFreshLogBarriers);
+        return TObjectGuard<TBarriers, TAdaptiveLock>(
+            StateLock, TrimFreshLogBarriers);
     }
 
     ui64 GetTrimFreshLogToCommitId() const;
 
     auto GetCommitQueue()
     {
-        return TConstObjectGuard<NPartition::TCommitQueue, TAdaptiveLock>(
-            StateLock,
-            CommitQueue);
+        return TConstObjectGuard<TCommitQueue, TAdaptiveLock>(
+            StateLock, CommitQueue);
     }
 
     auto AccessCommitQueue()
     {
-        return TObjectGuard<NPartition::TCommitQueue, TAdaptiveLock>(
-            StateLock,
-            CommitQueue);
+        return TObjectGuard<TCommitQueue, TAdaptiveLock>(
+            StateLock, CommitQueue);
     }
 
     auto GetCheckpointsInFlight()
     {
-        return TConstObjectGuard<
-            NPartition::TCheckpointsInFlight,
-            TAdaptiveLock>(StateLock, CheckpointsInFlight);
+        return TConstObjectGuard<TCheckpointsInFlight, TAdaptiveLock>(
+            StateLock, CheckpointsInFlight);
     }
 
     auto AccessCheckpointsInFlight()
     {
-        return TObjectGuard<NPartition::TCheckpointsInFlight, TAdaptiveLock>(
-            StateLock,
-            CheckpointsInFlight);
+        return TObjectGuard<TCheckpointsInFlight, TAdaptiveLock>(
+            StateLock, CheckpointsInFlight);
     }
 
     void WaitCommitForCompaction(
@@ -201,8 +197,7 @@ public:
         ui64 commitId);
 
     void WaitFreshWritesToComplete(
-        NPartition::TCommitQueueCallback callback,
-        ui64 commitId);
+        TCommitQueueCallback callback, ui64 commitId);
 
     void WaitCommitForCheckpoint(
         const NActors::TActorContext& ctx,
@@ -253,7 +248,7 @@ private:
 
     void ProcessCommitQueueImpl(
         TVector<std::unique_ptr<ITransactionBase>>& txs,
-        TVector<NPartition::TCommitQueueCallback>& callbacks);
+        TVector<TCommitQueueCallback>& callbacks);
 
     void CollectCheckpointQueueTransactions(
         TVector<std::unique_ptr<ITransactionBase>>& txs);

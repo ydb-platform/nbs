@@ -1,6 +1,6 @@
 #include "group_factory.h"
 
-#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group_quorum.h>
+#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_quorum.h>
 
 #include <cloud/fastshard/sn/client/client.h>
 
@@ -43,7 +43,7 @@ struct TStorageGroupFactory: IStorageGroupFactory
             groupConfig.PageSize = config.GetPageSize();
         }
 
-        if (sg.GetType() == NProtoPrivate::TStorageGroup::E_SG_QUORUM_MIRROR) {
+        if (sg.GetType() == NProto::FAST_SHARD_STORAGE_QUORUM_MIRROR) {
             return CreateQuorumMirroredStorageGroup(
                 std::move(groupConfig),
                 std::move(devices),

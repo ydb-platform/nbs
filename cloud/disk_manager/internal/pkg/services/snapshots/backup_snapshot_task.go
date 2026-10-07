@@ -14,16 +14,17 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type backupSnapshotTask struct {
-	scheduler  tasks.Scheduler
-	storage    resources.Storage
-	followerS3 *backup.FollowerS3
-	request    *protos.BackupSnapshotRequest
-	state      *protos.BackupSnapshotTaskState
+	scheduler tasks.Scheduler
+	storage   resources.Storage
+	backupS3  *backup.S3
+	request   *protos.BackupSnapshotRequest
+	state     *protos.BackupSnapshotTaskState
 }
 
 func (t *backupSnapshotTask) Save() ([]byte, error) {
@@ -74,10 +75,10 @@ func (t *backupSnapshotTask) Run(
 		return errors.NewNonRetriableError(err)
 	}
 
-	err = t.followerS3.PutObject(
+	err = t.backupS3.PutObject(
 		ctx,
 		backup.SnapshotMetaKey(meta.Disk.DiskId, snapshotID),
-		data,
+		persistence.S3Object{Data: data},
 	)
 	if err != nil {
 		return err
@@ -91,9 +92,9 @@ func (t *backupSnapshotTask) Run(
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
-		"dataplane.ScheduleBackupChunksTasks",
+		"dataplane.BackupSnapshotData",
 		"",
-		&dataplane_protos.ScheduleBackupChunksTasksRequest{
+		&dataplane_protos.BackupSnapshotDataRequest{
 			SnapshotId: snapshotID,
 		},
 	)

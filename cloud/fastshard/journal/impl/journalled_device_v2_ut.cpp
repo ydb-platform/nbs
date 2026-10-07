@@ -946,18 +946,48 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         UNIT_ASSERT_VALUES_EQUAL(2, flushedLsns[1]);
     }
 
-    Y_UNIT_TEST_F(ShouldNotStartWhenJournalRestoreFails, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectRequestsWhenJournalRestoreFails, TFixture)
     {
         Journal->RestoreResponse = MakeError(E_IO, "journal is broken");
         Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
 
-        UNIT_ASSERT_EXCEPTION_CONTAINS(
-            Device->Start(),
-            yexception,
-            "journal is broken");
+        Device->Start();
 
-        // the flush cycle has not been started
+        const auto readResponse = ReadPages(MakeReadRequest({{10, 4}}));
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, readResponse.GetError().GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            readResponse.GetError().GetMessage(),
+            "failed to restore");
 
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            Device->WriteLogRecord(MakeWriteRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            Device->ReadJournalTail(MakeTailRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_IO,
+            Device
+                ->AdvanceLsnLowWatermark(MakeAdvanceRequest(DefaultDeviceUUID))
+                .GetValueSync()
+                .GetError()
+                .GetCode());
+
+        Device->Stop();
+
+        // neither the requests nor the flush cycle got to the journal or the
+        // data store
+
+        UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetReadRequests().size());
+        UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetReadRequests().size());
         UNIT_ASSERT_VALUES_EQUAL(0, DataStore->GetWriteRequests().size());
         UNIT_ASSERT_VALUES_EQUAL(0, Journal->GetCleanupCount());
     }

@@ -7,7 +7,6 @@
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
-#include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
@@ -84,6 +83,36 @@ IBlockStorePtr CreateGrpcDataEndpoint(
     const TCellHostConfig& hostConfig,
     const IBlockStorePtr& controlService);
 
+void NoteMount(
+    TCellConnection& connection,
+    const TString& diskId,
+    const TString& clientId,
+    const TString& tabletHost);
+
+void NoteUnmount(TCellConnection& connection, const TString& diskId);
+
+// what carries a binding's data right now
+TString DescribeDataTransport(
+    const THostBinding& binding,
+    const ITransportSwitcherPtr& switcher)
+{
+    const auto& hostConfig = binding.HostConfig;
+    switch (hostConfig.GetTransport()) {
+        case NProto::CELL_DATA_TRANSPORT_GRPC:
+            return "grpc";
+        case NProto::CELL_DATA_TRANSPORT_RDMA:
+            // until the switcher is in, the data goes the fallback way
+            if (hostConfig.GetGrpcDataFallbackEnabled() &&
+                (!switcher || !switcher->IsPreferredActive()))
+            {
+                return "grpc fallback";
+            }
+            return "rdma";
+        default:
+            return "unknown";
+    }
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Handed out by GetService(). Holds the connection alive - the caller above
@@ -123,21 +152,70 @@ public:
         TCallContextPtr callContext,
         std::shared_ptr<typename TMethod::TRequest> request)
     {
-        if constexpr (
-            std::is_same_v<TMethod, TBlockStoreMountVolumeMethod> ||
-            std::is_same_v<TMethod, TBlockStoreUnmountVolumeMethod>)
-        {
-            // marks the request as an inter-cell forward, so the receiving
-            // host's forward service can let it past authorization - see the
-            // inter-cell-forward design. Describe carries its own cell id
-            // through the describe path already
-            request->MutableHeaders()->SetCellId(CellId);
-        }
-
         return TMethod::Execute(
             Impl.get(),
             std::move(callContext),
             std::move(request));
+    }
+
+    // the mounted disk is noted on the answer, not on the request: a mount
+    // that fails, or one that has since been unmounted, is not ours
+    TFuture<NProto::TMountVolumeResponse> MountVolume(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TMountVolumeRequest> request) override
+    {
+        // marks the request as an inter-cell forward, so the receiving host's
+        // forward service can let it past authorization - see the
+        // inter-cell-forward design. Describe carries its own cell id through
+        // the describe path already
+        request->MutableHeaders()->SetCellId(CellId);
+
+        // the data is encrypted on this side, before it leaves for the cell
+        request->MutableEncryptionSpec()->Clear();
+        request->SetForceDisableEncryption(true);
+
+        auto diskId = request->GetDiskId();
+        auto clientId = request->GetHeaders().GetClientId();
+        return Impl->MountVolume(std::move(callContext), std::move(request))
+            .Apply(
+                [connection = std::weak_ptr<TCellConnection>(Connection),
+                 diskId = std::move(diskId),
+                 clientId = std::move(clientId)](const auto& f)
+                {
+                    const auto& response = f.GetValue();
+                    if (!HasError(response)) {
+                        if (auto self = connection.lock()) {
+                            NoteMount(
+                                *self,
+                                diskId,
+                                clientId,
+                                response.GetTabletHost());
+                        }
+                    }
+                    return response;
+                });
+    }
+
+    TFuture<NProto::TUnmountVolumeResponse> UnmountVolume(
+        TCallContextPtr callContext,
+        std::shared_ptr<NProto::TUnmountVolumeRequest> request) override
+    {
+        request->MutableHeaders()->SetCellId(CellId);
+
+        auto diskId = request->GetDiskId();
+        return Impl->UnmountVolume(std::move(callContext), std::move(request))
+            .Apply(
+                [connection = std::weak_ptr<TCellConnection>(Connection),
+                 diskId = std::move(diskId)](const auto& f)
+                {
+                    const auto& response = f.GetValue();
+                    if (!HasError(response)) {
+                        if (auto self = connection.lock()) {
+                            NoteUnmount(*self, diskId);
+                        }
+                    }
+                    return response;
+                });
     }
 };
 
@@ -188,6 +266,11 @@ private:
     mutable TAdaptiveLock Lock;
     THostBindingPtr Binding;
     ui64 LastGeneration = 0;
+
+    // the disk mounted through this connection
+    TString MountedDiskId;
+    TString MountedClientId;
+    TString MountedTabletHost;
 
     // Why a host is no good for this connection. Kept apart because each
     // is taken back by its own kind of news: rdma coming up says nothing
@@ -270,6 +353,50 @@ public:
         with_lock (Lock) {
             return Binding->HostConfig.GetFqdn();
         }
+    }
+
+    void NoteMount(
+        const TString& diskId,
+        const TString& clientId,
+        const TString& tabletHost)
+    {
+        with_lock (Lock) {
+            MountedDiskId = diskId;
+            MountedClientId = clientId;
+            MountedTabletHost = tabletHost;
+        }
+    }
+
+    void NoteUnmount(const TString& diskId)
+    {
+        with_lock (Lock) {
+            if (MountedDiskId == diskId) {
+                MountedDiskId.clear();
+                MountedClientId.clear();
+                MountedTabletHost.clear();
+            }
+        }
+    }
+
+    TCellMountStatus GetMountStatus() const
+    {
+        THostBindingPtr binding;
+        ITransportSwitcherPtr switcher;
+        TCellMountStatus status;
+        with_lock (Lock) {
+            binding = Binding;
+            switcher = binding->Switcher;
+            status.DiskId = MountedDiskId;
+            status.ClientId = MountedClientId;
+            status.TabletHost = MountedTabletHost;
+        }
+
+        // the switcher is asked outside the lock, so its lock and ours are
+        // never held together
+        status.CellId = Pool->GetCellId();
+        status.Host = binding->HostConfig.GetFqdn();
+        status.DataTransport = DescribeDataTransport(*binding, switcher);
+        return status;
     }
 
     IBlockStorePtr GetService() override
@@ -608,7 +735,7 @@ private:
         // tail gives that channel back
         auto self = shared_from_this();
 
-        TFuture<NClient::IMultiClientEndpointPtr> channel;
+        TFuture<IBlockStorePtr> channel;
         try {
             channel = Pool->AcquireControlChannel(fqdn);
         } catch (...) {
@@ -628,9 +755,9 @@ private:
 
     void OnChannelAcquired(
         TString fqdn,
-        const NClient::IMultiClientEndpointPtr& endpoint)
+        const IBlockStorePtr& controlService)
     {
-        if (!endpoint) {
+        if (!controlService) {
             AbortMigration(fqdn, "no control channel", true);
             return;
         }
@@ -638,10 +765,6 @@ private:
         TResultOrError<THostBindingPtr> built = MakeError(E_FAIL);
         try {
             auto hostConfig = Pool->MakeHostConfig(fqdn);
-            auto controlService = endpoint->CreateClientEndpoint(
-                ClientConfig->GetClientId(),
-                ClientConfig->GetInstanceId());
-
             built = BuildHostBinding(Bootstrap, hostConfig, controlService);
         } catch (...) {
             AbortMigration(fqdn, CurrentExceptionMessage(), true);
@@ -813,6 +936,20 @@ private:
         return !avoidance || !avoidance->InForce(Bootstrap.Timer->Now());
     }
 };
+
+void NoteMount(
+    TCellConnection& connection,
+    const TString& diskId,
+    const TString& clientId,
+    const TString& tabletHost)
+{
+    connection.NoteMount(diskId, clientId, tabletHost);
+}
+
+void NoteUnmount(TCellConnection& connection, const TString& diskId)
+{
+    connection.NoteUnmount(diskId);
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -988,7 +1125,7 @@ void TCellConnection::InstallBinding(const THostBindingPtr& binding)
     }
 
     binding->Sink = CreateDetachableTarget(DataRouter);
-    binding->Switcher = StartTransportSwitching(
+    auto switcher = StartTransportSwitching(
         binding->Sink,
         binding->DataEndpoint,
         [bootstrap = Bootstrap, hostConfig](
@@ -1006,6 +1143,11 @@ void TCellConnection::InstallBinding(const THostBindingPtr& binding)
         TTransportSwitcherConfig{
             .SettleTime = hostConfig.GetRdmaSettleTime(),
         });
+
+    // the binding may already be current, and the mon page reads it
+    with_lock (Lock) {
+        binding->Switcher = std::move(switcher);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1018,10 +1160,12 @@ IBlockStorePtr CreateGrpcDataEndpoint(
     const TCellHostConfig& hostConfig,
     const IBlockStorePtr& controlService)
 {
-    // a channel of its own, so that it dies with the endpoint rather than
-    // being shared by everyone talking to this host
+    // The cell's ports are control ports, which take only the control
+    // service, so the data goes through that service too - but on a
+    // connection apart from the control one, so that bulk I/O cannot hold
+    // back the pings that judge whether the host is alive.
     const auto securePort = hostConfig.GetSecureGrpcPort();
-    auto endpoint = bootstrap.GrpcClient->CreateDataEndpoint(
+    auto endpoint = bootstrap.GrpcClient->CreateIOEndpoint(
         hostConfig.GetFqdn(),
         securePort ? securePort : hostConfig.GetGrpcPort(),
         securePort != 0);
@@ -1074,6 +1218,58 @@ TResultOrError<THostBindingPtr> BuildHostBinding(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+class TCellConnectionRegistry
+{
+private:
+    TAdaptiveLock Lock;
+    TVector<std::weak_ptr<TCellConnection>> Connections;
+
+public:
+    void Add(const TCellConnectionPtr& connection)
+    {
+        with_lock (Lock) {
+            // dropped here as well, so the list stays bounded even if the
+            // mon page is never opened
+            EraseIf(Connections, [] (const auto& c) { return c.expired(); });
+            Connections.push_back(connection);
+        }
+    }
+
+    TVector<TCellMountStatus> GetMounts()
+    {
+        TVector<TCellConnectionPtr> live;
+        with_lock (Lock) {
+            EraseIf(Connections, [] (const auto& c) { return c.expired(); });
+            for (const auto& weak: Connections) {
+                if (auto connection = weak.lock()) {
+                    live.push_back(std::move(connection));
+                }
+            }
+        }
+
+        TVector<TCellMountStatus> mounts;
+        for (const auto& connection: live) {
+            auto status = connection->GetMountStatus();
+            if (status.DiskId) {
+                mounts.push_back(std::move(status));
+            }
+        }
+        return mounts;
+    }
+};
+
+TCellConnectionRegistryPtr CreateCellConnectionRegistry()
+{
+    return std::make_shared<TCellConnectionRegistry>();
+}
+
+TVector<TCellMountStatus> GetCellMounts(TCellConnectionRegistry& registry)
+{
+    return registry.GetMounts();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TCellConnectionFuture CreateCellConnection(
     TCellHostPoolPtr pool,
     TCellHostConfig hostConfig,
@@ -1092,18 +1288,14 @@ TCellConnectionFuture CreateCellConnection(
          observer = std::move(observer),
          fqdn = std::move(fqdn)](const auto& f) mutable -> TCellConnectionFuture
         {
-            auto controlEndpoint = f.GetValue();
-            if (!controlEndpoint) {
+            auto controlService = f.GetValue();
+            if (!controlService) {
                 pool->ReleaseControlChannel(fqdn);
                 return MakeFuture(TResultOrError<ICellConnectionPtr>(MakeError(
                     E_REJECTED,
                     TStringBuilder()
                         << "Can't set up a control channel to " << fqdn)));
             }
-
-            auto controlService = controlEndpoint->CreateClientEndpoint(
-                clientConfig->GetClientId(),
-                clientConfig->GetInstanceId());
 
             auto controlRouter = CreateEndpointRouter(controlService);
             auto dataRouter = CreateEndpointRouter(controlService);
@@ -1117,6 +1309,7 @@ TCellConnectionFuture CreateCellConnection(
             }
             built.GetResult()->ChannelEpoch = pool->GetChannelEpoch(fqdn);
 
+            auto registry = bootstrap.Connections;
             auto connection = std::make_shared<TCellConnection>(
                 pool,
                 std::move(bootstrap),
@@ -1150,6 +1343,10 @@ TCellConnectionFuture CreateCellConnection(
 
             // last: from here on callbacks may act on their own
             connection->CompleteSetup();
+
+            if (registry) {
+                registry->Add(connection);
+            }
 
             return MakeFuture(
                 TResultOrError<ICellConnectionPtr>(std::move(connection)));

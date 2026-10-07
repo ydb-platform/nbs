@@ -49,6 +49,7 @@ type Config struct {
 	NodeID                           string
 	VendorVersion                    string
 	VMMode                           bool
+	OfflineResize                    bool
 	MonPort                          uint
 	NbsHost                          string
 	NbsPort                          uint
@@ -266,13 +267,15 @@ func NewDriver(cfg Config) (*Driver, error) {
 
 	csi.RegisterIdentityServer(
 		grpcServer,
-		newIdentityService(cfg.DriverName, cfg.VendorVersion))
+		newIdentityService(cfg.DriverName, cfg.VendorVersion, cfg.VMMode, cfg.OfflineResize))
 
 	csi.RegisterControllerServer(
 		grpcServer,
 		newNBSServerControllerService(
 			clients.nbsClients[0],
-			clients.nfsFilestoreClient))
+			clients.nfsFilestoreClient,
+			cfg.VMMode,
+			cfg.OfflineResize))
 
 	csi.RegisterNodeServer(
 		grpcServer,
@@ -294,6 +297,7 @@ func NewDriver(cfg Config) (*Driver, error) {
 			cfg.StartEndpointRequestTimeout,
 			cfg.NfsVhostReplicaCountUsed,
 			cfg.NbsServerReplicaCountUsed,
+			cfg.OfflineResize,
 		))
 
 	return &Driver{
@@ -358,6 +362,8 @@ func GetVolumeId(req interface{}) string {
 	case *csi.NodeUnpublishVolumeRequest:
 		return r.VolumeId
 	case *csi.NodeExpandVolumeRequest:
+		return r.VolumeId
+	case *csi.ControllerExpandVolumeRequest:
 		return r.VolumeId
 	case *csi.CreateVolumeRequest:
 		// Per CSI spec, the VolumeId is provided in the Name field

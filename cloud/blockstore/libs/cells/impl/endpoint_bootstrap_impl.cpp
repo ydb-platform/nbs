@@ -1,8 +1,8 @@
 #include "endpoint_bootstrap_impl.h"
 
 #include <cloud/blockstore/libs/cells/iface/config.h>
+#include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
-#include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
 
 namespace NCloud::NBlockStore::NCells {
@@ -15,8 +15,7 @@ auto TCellCellHostEndpointBootstrap::SetupHostGrpcEndpoint(
     const TBootstrap& bootstrap,
     const TCellHostConfig& config) -> TGrpcEndpointBootstrapFuture
 {
-    auto endpoint = CreateMultiClientEndpoint(
-        bootstrap.GrpcClient,
+    auto endpoint = bootstrap.GrpcClient->CreateEndpoint(
         config.GetFqdn(),
         config.GetSecureGrpcPort() ? config.GetSecureGrpcPort() : config.GetGrpcPort(),
         config.GetSecureGrpcPort() != 0);

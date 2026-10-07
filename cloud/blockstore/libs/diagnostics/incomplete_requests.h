@@ -2,8 +2,11 @@
 
 #include "public.h"
 
+#include "metric_request.h"
+
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <cloud/storage/core/protos/media.pb.h>
 
@@ -12,6 +15,7 @@
 #include <util/generic/vector.h>
 
 #include <array>
+#include <functional>
 
 namespace NCloud::NBlockStore {
 
@@ -19,9 +23,7 @@ namespace NCloud::NBlockStore {
 
 using TIncompleteRequestsCollector = std::function<void(
     TCallContext& callContext,
-    IVolumeInfoPtr volumeInfo,
-    NCloud::NProto::EStorageMediaKind mediaKind,
-    EBlockStoreRequest requestType,
+    const TMetricRequest& metricRequest,
     TRequestTime time)>;
 
 ////////////////////////////////////////////////////////////////////////////////

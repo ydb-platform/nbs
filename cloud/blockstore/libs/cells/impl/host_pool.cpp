@@ -1,6 +1,7 @@
 #include "host_pool.h"
 
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/service.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -446,9 +447,7 @@ TCellHostEndpoints TCellHostPool::GetDescribeEndpoints(
                         continue;
                     }
 
-                    auto endpoint = future.GetValue()->CreateClientEndpoint(
-                        clientConfig->GetClientId(),
-                        clientConfig->GetInstanceId());
+                    auto endpoint = future.GetValue();
 
                     --count;
                     result.emplace_back(
@@ -526,7 +525,7 @@ void TCellHostPool::PingSweep()
     {
         TString Fqdn;
         ui64 Epoch;
-        NClient::IMultiClientEndpointPtr Endpoint;
+        IBlockStorePtr Endpoint;
     };
 
     TVector<TTarget> targets;

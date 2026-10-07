@@ -808,20 +808,8 @@ message TStorageDevice
 
 message TStorageGroup
 {
-    enum EStorageGroupType
-    {
-        // Mirrors every write into all devices and waits for all of them.
-        // Reads are served by a single device, round-robin.
-        E_SG_MIRROR = 0;
-
-        // Mirrors every write into all devices but acks after n/m write acks.
-        // Reads are served by any device that has caught up to the last
-        // quorum-acked record.
-        E_SG_QUORUM_MIRROR = 1;
-    };
-
     repeated TStorageDevice Devices = 1;
-    EStorageGroupType Type = 2;
+    NProto.EFastShardStorageKind Type = 2;
 }
 
 message TPersistentFastShardConfig
@@ -1017,6 +1005,8 @@ message TUnsafeGetNodeResponse
     // Optional error, set only if error happened.
     NCloud.NProto.TError Error = 1;
     NProto.TNodeAttr Node = 2;
+    // Commit id of the last modification of the node
+    uint64 CommitId = 3;
 }
 
 message TUnsafeCreateNodeRefRequest
@@ -1390,6 +1380,17 @@ message TUnlinkNodeInShardRequest
 
     // Original request that caused this unlink.
     NProto.TUnlinkNodeRequest OriginalRequest = 6;
+
+    // This flag indicates that the external node is unlinked and that directory
+    // creation in shards is enabled. It also means that the node in the leader
+    // is unlinked after the node in the shard is unlinked. The field is
+    // optional to allow requests created by the previous version
+    // to be replayed.
+    // This field is introduced because a TUnlinkNodeInShardRequest may be
+    // created while directory creation in shards is disabled and replayed after
+    // it is enabled. Thus, we need to persist how the request should be
+    // processed at the time it is created.
+    optional bool ShouldUnlockUponCompletion = 7;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

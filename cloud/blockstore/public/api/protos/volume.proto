@@ -2,7 +2,7 @@ syntax = "proto3";
 
 import "cloud/blockstore/public/api/protos/encryption.proto";
 import "cloud/blockstore/public/api/protos/headers.proto";
-import "cloud/blockstore/public/api/protos/rdma.proto";
+import "cloud/blockstore/public/api/protos/endpoint.proto";
 import "cloud/blockstore/public/api/protos/volume_throttling.proto";
 import "cloud/storage/core/protos/error.proto";
 import "cloud/storage/core/protos/media.proto";
@@ -132,7 +132,7 @@ message TDevice
     // Device name.
     string DeviceName = 6;
     // RDMA endpoint.
-    TRdmaEndpoint RdmaEndpoint = 7;
+    TEndpoint RdmaEndpoint = 7;
     // Physical offset in bytes.
     uint64 PhysicalOffset = 8;
     // Node that agent is running on.

@@ -30,6 +30,18 @@ struct TTarget: public TTestService
             ++Mounts;
             return MakeFuture(NProto::TMountVolumeResponse());
         };
+        UnmountVolumeHandler =
+            [] (std::shared_ptr<NProto::TUnmountVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TUnmountVolumeResponse());
+        };
+        DescribeVolumeHandler =
+            [] (std::shared_ptr<NProto::TDescribeVolumeRequest> request)
+        {
+            Y_UNUSED(request);
+            return MakeFuture(NProto::TDescribeVolumeResponse());
+        };
     }
 };
 
@@ -115,7 +127,39 @@ Y_UNIT_TEST_SUITE(TCellForwardServiceTest)
         UNIT_ASSERT_VALUES_EQUAL(1, rows.size());
         UNIT_ASSERT_VALUES_EQUAL("peer-1", rows[0].Peer);
         UNIT_ASSERT_VALUES_EQUAL("disk-42", rows[0].DiskId);
-        UNIT_ASSERT_VALUES_EQUAL(1, rows[0].Mounts);
+    }
+
+    Y_UNIT_TEST(ShouldRecordOnlyMountsAsInboundActivity)
+    {
+        TEnv env;
+
+        auto headers = [] (auto& request)
+        {
+            auto& h = *request->MutableHeaders();
+            h.SetCellId("cell-7");
+            h.MutableInternal()->SetRequestSource(
+                NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL);
+            h.MutableInternal()->SetPeer("peer-1");
+            request->SetDiskId("disk-42");
+        };
+
+        auto unmount = std::make_shared<NProto::TUnmountVolumeRequest>();
+        headers(unmount);
+        env.Service->UnmountVolume(MakeIntrusive<TCallContext>(), unmount);
+
+        auto describe = std::make_shared<NProto::TDescribeVolumeRequest>();
+        headers(describe);
+        env.Service->DescribeVolume(MakeIntrusive<TCallContext>(), describe);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            env.Activity->Snapshot(env.Timer->Now()).size());
+
+        env.Mount(
+            NCloud::NProto::SOURCE_SECURE_CONTROL_CHANNEL, "cell-7", "disk-42");
+        UNIT_ASSERT_VALUES_EQUAL(
+            1,
+            env.Activity->Snapshot(env.Timer->Now()).size());
     }
 }
 

@@ -28,6 +28,11 @@ private:
     TRelaxedExtendedEventCounterWithTimeStats<> ReleaseHandleRequestCounter;
     TRelaxedExtendedEventCounterWithTimeStats<> AcquireBarrierRequestCounter;
 
+    TRelaxedCounter OperationalStateActiveCounter;
+    TRelaxedCounter OperationalStateStoppingCounter;
+    TRelaxedCounter OperationalStateInactiveCounter;
+    TRelaxedCounter OperationalStateFailedCounter;
+
 public:
     void FlushStarted() override
     {
@@ -126,8 +131,7 @@ public:
 
                 },
             .FlushRequests = CreateMetrics(
-                [self]() -> const auto&
-                { return self->FlushRequestCounter; }),
+                [self]() -> const auto& { return self->FlushRequestCounter; }),
             .FlushAllRequests = CreateMetrics(
                 [self]() -> const auto&
                 { return self->FlushAllRequestCounter; }),
@@ -137,11 +141,41 @@ public:
             .AcquireBarrierRequests = CreateMetrics(
                 [self]() -> const auto&
                 { return self->AcquireBarrierRequestCounter; }),
+            .OperationalState =
+                {
+                    .Active = CreateMetric(
+                        [self]
+                        { return self->OperationalStateActiveCounter.Get(); }),
+                    .Stopping = CreateMetric(
+                        [self]
+                        {
+                            return self->OperationalStateStoppingCounter.Get();
+                        }),
+                    .Inactive = CreateMetric(
+                        [self]
+                        {
+                            return self->OperationalStateInactiveCounter.Get();
+                        }),
+                    .Failed = CreateMetric(
+                        [self]
+                        { return self->OperationalStateFailedCounter.Get(); }),
+                },
         };
     }
 
-    void UpdateStats(const TMaxInProgressDurations& values) override
+    void UpdateStats(
+        EOperationalState state,
+        const TMaxInProgressDurations& values) override
     {
+        OperationalStateActiveCounter.Set(
+            static_cast<i64>(state == EOperationalState::Active));
+        OperationalStateStoppingCounter.Set(
+            static_cast<i64>(state == EOperationalState::Stopping));
+        OperationalStateInactiveCounter.Set(
+            static_cast<i64>(state == EOperationalState::Inactive));
+        OperationalStateFailedCounter.Set(
+            static_cast<i64>(state == EOperationalState::Failed));
+
         FlushEventCounter.Update();
         BarrierEventCounter.Update(values.ActiveBarrier);
         FlushRequestCounter.Update(values.FlushRequest);
@@ -305,6 +339,30 @@ void TWriteBackCacheStateMetrics::Register(
     helper("FlushAllRequests", FlushAllRequests);
     helper("ReleaseHandleRequests", ReleaseHandleRequests);
     helper("AcquireBarrierRequests", AcquireBarrierRequests);
+
+    aggregatableMetricsRegistry.Register(
+        {CreateLabel("state", "Active"), CreateSensor("OperationalState")},
+        OperationalState.Active,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    aggregatableMetricsRegistry.Register(
+        {CreateLabel("state", "Stopping"), CreateSensor("OperationalState")},
+        OperationalState.Stopping,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    aggregatableMetricsRegistry.Register(
+        {CreateLabel("state", "Inactive"), CreateSensor("OperationalState")},
+        OperationalState.Inactive,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
+
+    aggregatableMetricsRegistry.Register(
+        {CreateLabel("state", "Failed"), CreateSensor("OperationalState")},
+        OperationalState.Failed,
+        EAggregationType::AT_SUM,
+        EMetricType::MT_ABSOLUTE);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

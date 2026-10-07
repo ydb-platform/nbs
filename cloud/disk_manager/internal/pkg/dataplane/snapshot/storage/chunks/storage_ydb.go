@@ -109,6 +109,54 @@ func (s *StorageYDB) ReadChunk(
 	return nil
 }
 
+func (s *StorageYDB) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+) (chunkBlob ChunkBlob, err error) {
+
+	defer s.metrics.StatOperation(metrics.OperationReadChunkBlob)(&err)
+
+	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%[1]v";
+		declare $shard_id as Uint64;
+		declare $chunk_id as Utf8;
+
+		select data, checksum, compression from %[2]v
+		where shard_id = $shard_id and
+			chunk_id = $chunk_id and
+			referer = "";
+	`, s.tablesPath, s.tableName),
+		persistence.ValueParam(
+			"$shard_id",
+			persistence.Uint64Value(makeShardID(chunkID)),
+		),
+		persistence.ValueParam("$chunk_id", persistence.UTF8Value(chunkID)),
+	)
+	if err != nil {
+		return ChunkBlob{}, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return ChunkBlob{}, errors.NewNonRetriableErrorf(
+			"chunk not found: %v",
+			chunkID,
+		)
+	}
+
+	err = res.ScanNamed(
+		persistence.OptionalWithDefault("data", &chunkBlob.Data),
+		persistence.OptionalWithDefault("checksum", &chunkBlob.Checksum),
+		persistence.OptionalWithDefault("compression", &chunkBlob.Compression),
+	)
+	if err != nil {
+		return ChunkBlob{}, err
+	}
+
+	return chunkBlob, nil
+}
+
 func (s *StorageYDB) WriteChunk(
 	ctx context.Context,
 	referer string,

@@ -32,11 +32,6 @@ TVector<ui32> TIndexTabletState::GetChannels(EChannelDataKind kind) const
     return Impl->Channels.GetChannels(kind);
 }
 
-TVector<ui32> TIndexTabletState::GetUnwritableChannels() const
-{
-    return Impl->Channels.GetUnwritableChannels();
-}
-
 TVector<ui32> TIndexTabletState::GetChannelsToMove(ui32 percentageThreshold) const
 {
     return Impl->Channels.GetChannelsToMove(percentageThreshold);

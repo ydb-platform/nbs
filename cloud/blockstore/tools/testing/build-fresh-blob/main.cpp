@@ -1,4 +1,4 @@
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob_test.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob_test.h>
 #include <cloud/blockstore/libs/storage/partition2/model/fresh_blob_test.h>
 
 #include <util/system/file.h>
@@ -10,7 +10,7 @@ int main(int argc, char** argv)
     Y_UNUSED(argv);
 
     {
-        using namespace NCloud::NBlockStore::NStorage::NPartition;
+        using namespace NCloud::NBlockStore::NStorage;
 
         const auto buffers = GetBuffers(4096);
         const auto blockRanges = GetBlockRanges();
@@ -29,7 +29,7 @@ int main(int argc, char** argv)
     }
 
     {
-        using namespace NCloud::NBlockStore::NStorage::NPartition;
+        using namespace NCloud::NBlockStore::NStorage;
 
         const auto blob = BuildZeroFreshBlocksBlobContent(
             ZeroFreshBlocksRange

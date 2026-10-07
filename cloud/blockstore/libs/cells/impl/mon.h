@@ -19,17 +19,20 @@ NActors::IActorPtr CreateCellsMonActor(
     ICellManagerPtr cellManager,
     TDiagnosticsConfigPtr diagnosticsConfig);
 
-// Renders the plain page: search form, config, outbound and inbound tables.
+// Renders the plain page: summary, search form, a panel per cell, intercell
+// mounts, inbound, config.
 void RenderCellsPage(
     IOutputStream& out,
     const TCellsConfig& config,
-    const TCellsSnapshot& snapshot);
+    const TCellsSnapshot& snapshot,
+    const TDiagnosticsConfig& diagnosticsConfig);
 
 // Renders the search form and the per-cell search result table.
 void RenderCellsSearchResult(
     IOutputStream& out,
     const TVector<TCellDescribeResult>& results,
     const TDiagnosticsConfig& diagnosticsConfig,
+    const TString& localCellId,
     const TString& diskId);
 
 }   // namespace NCloud::NBlockStore::NCells

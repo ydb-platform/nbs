@@ -663,6 +663,11 @@ private:
             }
         }
 
+        if constexpr (std::is_same<TMethod, TStartEndpointMethod>()) {
+            MetricRequest.AccessMode = Request->GetVolumeAccessMode();
+            MetricRequest.MountMode = Request->GetVolumeMountMode();
+        }
+
         AppCtx.ServerStats->PrepareMetricRequest(
             MetricRequest,
             std::move(clientId),
@@ -1255,18 +1260,18 @@ size_t TServer::CollectRequests(const TIncompleteRequestsCollector& collector)
     size_t count = 0;
     for (auto& executor: Executors) {
         const auto now = GetCycleCount();
-        executor->RequestsInFlight.ForEach([&](const auto* handler) {
-            auto requestTime = handler->CallContext->CalcRequestTime(now);
-            if (requestTime) {
-                collector(
-                    *handler->CallContext,
-                    handler->MetricRequest.VolumeInfo,
-                    handler->MetricRequest.MediaKind,
-                    handler->MetricRequest.RequestType,
-                    requestTime);
-            }
-            ++count;
-        });
+        executor->RequestsInFlight.ForEach(
+            [&](const auto* handler)
+            {
+                auto requestTime = handler->CallContext->CalcRequestTime(now);
+                if (requestTime) {
+                    collector(
+                        *handler->CallContext,
+                        handler->MetricRequest,
+                        requestTime);
+                }
+                ++count;
+            });
     }
     return count;
 }

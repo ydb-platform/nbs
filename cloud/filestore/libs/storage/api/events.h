@@ -64,9 +64,9 @@ struct TResponseEvent
     {}
 
     template <typename ...Args>
-    TResponseEvent(const NProto::TError& error, Args&& ...args)
+    TResponseEvent(NProto::TError error, Args&& ...args)
         : TArgs(std::forward<Args>(args)...)
-        , Error(error)
+        , Error(std::move(error))
     {}
 
     const NProto::TError& GetError() const

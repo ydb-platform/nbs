@@ -107,7 +107,7 @@ TDeviceConfig Device(
     ui64 totalSize = DefaultDeviceSize,
     TString transportId = {},
     NProto::EDeviceState state = NProto::DEVICE_STATE_ONLINE,
-    NProto::TRdmaEndpoint rdmaEndpoint = {});
+    NProto::TEndpoint rdmaEndpoint = {});
 
 TDeviceConfig Device(
     TString name,

@@ -85,6 +85,7 @@ namespace {
 
 const TString VhostMetricsComponent = "client";
 const TString ServerMetricsComponent = "server";
+const TString LocalServiceMetricsComponent = "local_service";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -454,10 +455,6 @@ void TBootstrapVhost::InitComponents()
                 Configs->VhostServiceConfig->GetEndpointStorageType());
     }
 
-    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
-        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
-    }
-
     switch (Configs->Options->Service) {
         case NDaemon::EServiceKind::Local:
         case NDaemon::EServiceKind::Kikimr:
@@ -556,6 +553,9 @@ void TBootstrapVhost::InitEndpoints()
             Timer,
             Scheduler,
             Logging,
+            FilestoreCounters->GetSubgroup(
+                "component",
+                LocalServiceMetricsComponent),
             FileIOService,
             ThreadPool,
             ProfileLog);

@@ -630,12 +630,33 @@ void TIndexTabletActor::CompleteTx_ConfigureAsShard(
         JoinSeq(",", GetFileSystem().GetShardFileSystemIds()).c_str(),
         JoinSeq(",", GetFileSystem().GetFileShardFileSystemIds()).c_str());
 
-    RegisterFileStore(ctx);
+    const bool broken = CurrentState == STATE_ADAPTER_BROKEN;
+    if (!broken) {
+        RegisterFileStore(ctx);
+    }
 
     auto response =
         std::make_unique<TEvIndexTablet::TEvConfigureAsShardResponse>();
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+
+    if (broken) {
+        //
+        // The running FastShard was created from the old config; only a
+        // restart creates a new one from the repaired config and retries
+        // its init.
+        //
+
+        LOG_INFO(
+            ctx,
+            TFileStoreComponents::TABLET,
+            "%s Suiciding after reconfiguration in BROKEN state to retry"
+            " FastShard init with the new config",
+            LogTag.c_str());
+
+        Suicide(ctx);
+        return;
+    }
 
     if (args.IsFastShard != GetFileSystem().GetIsFastShard()) {
         LOG_INFO(

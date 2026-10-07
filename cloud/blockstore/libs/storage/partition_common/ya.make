@@ -10,7 +10,9 @@ SRCS(
     actor_loadfreshblobs.cpp
     actor_trimfreshlog.cpp
     actor_writefreshblocks.cpp
+    checkpoints_in_flight.cpp
     commit_ids_state.cpp
+    commit_queue.cpp
     drain_actor_companion.cpp
     fresh_blocks_companion_initfreshblocks.cpp
     fresh_blocks_companion.cpp
@@ -20,6 +22,7 @@ SRCS(
     io_companion.cpp
     long_running_operation_companion.cpp
     part_channels_state.cpp
+    part_counters_wrapper.cpp
     part_fresh_blocks_state.cpp
     part_thread_safe_state.cpp
 )
@@ -28,7 +31,6 @@ PEERDIR(
     cloud/blockstore/libs/diagnostics
     cloud/blockstore/libs/kikimr
     cloud/blockstore/libs/storage/core
-    cloud/blockstore/libs/storage/partition/model
     cloud/blockstore/libs/storage/partition_common/model
     cloud/storage/core/libs/common
     cloud/storage/core/libs/kikimr

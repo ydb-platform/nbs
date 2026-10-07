@@ -69,6 +69,7 @@ namespace {
     xxx(KickOutOldClientsEnabled,           bool,       false                 )\
     xxx(UseOneSubmissionThreadPerAIOServiceEnabled,     bool,       false     )\
     xxx(JournalledDeviceTcpServerListenAddress,      TString,          ""     )\
+    xxx(JournalEnabled,                     bool,       false                 )\
 // BLOCKSTORE_AGENT_CONFIG
 
 // clang-format on

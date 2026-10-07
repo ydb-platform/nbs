@@ -47,12 +47,28 @@ func (t *retireBaseDiskTask) Run(
 	baseDiskID := t.request.BaseDiskId
 	selfTaskID := execCtx.GetTaskID()
 
-	rebaseInfos, err := t.storage.RetireBaseDisk(
-		ctx,
-		baseDiskID,
-		t.request.SrcDisk,
-		t.request.UseImageSize,
-	)
+	var rebaseInfos []storage.RebaseInfo
+	var err error
+	if t.request.UseBaseDiskAsSrc {
+		if t.request.SrcDisk != nil {
+			return errors.NewNonRetriableErrorf(
+				"UseBaseDiskAsSrc and SrcDisk cannot both be specified",
+			)
+		}
+
+		rebaseInfos, err = t.storage.RetireBaseDiskUsingBaseDiskAsSource(
+			ctx,
+			baseDiskID,
+			t.request.UseImageSize,
+		)
+	} else {
+		rebaseInfos, err = t.storage.RetireBaseDisk(
+			ctx,
+			baseDiskID,
+			t.request.SrcDisk,
+			t.request.UseImageSize,
+		)
+	}
 	if err != nil {
 		return err
 	}

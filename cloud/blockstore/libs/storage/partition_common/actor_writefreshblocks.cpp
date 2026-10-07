@@ -3,7 +3,7 @@
 #include <cloud/blockstore/libs/diagnostics/block_digest.h>
 #include <cloud/blockstore/libs/storage/core/block_handler.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
-#include <cloud/blockstore/libs/storage/partition/model/fresh_blob.h>
+#include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob.h>
 
 #include <cloud/storage/core/libs/common/verify.h>
 
@@ -12,8 +12,6 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
-
-using namespace NPartition;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 

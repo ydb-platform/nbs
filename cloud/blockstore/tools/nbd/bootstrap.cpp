@@ -27,6 +27,7 @@
 #include <cloud/blockstore/libs/service/service_null.h>
 #include <cloud/blockstore/libs/service/storage.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
+#include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
@@ -110,6 +111,7 @@ void TBootstrap::Init()
 
     Timer = CreateWallClockTimer();
     Scheduler = CreateScheduler();
+    LongRunningTaskExecutor = CreateLongRunningTaskExecutor("LongRunning");
 
     const auto& logConfig = ClientConfig->GetLogConfig();
     const auto& monConfig = ClientConfig->GetMonitoringConfig();
@@ -279,14 +281,16 @@ void TBootstrap::Start()
                     listenAddress,
                     Options->ConnectDevicePath,
                     Options->RequestTimeout,
-                    Options->ConnectionTimeout);
+                    Options->ConnectionTimeout,
+                    LongRunningTaskExecutor);
             } else {
                 NbdDevice = CreateFreeNetlinkDevice(
                     Logging,
                     listenAddress,
                     TString(DEVICE_PREFIX),
                     Options->RequestTimeout,
-                    Options->ConnectionTimeout);
+                    Options->ConnectionTimeout,
+                    LongRunningTaskExecutor);
             }
         } else if (Options->ConnectDevicePath) {
             // The only case we want kernel to retry requests is when the socket
@@ -315,7 +319,8 @@ void TBootstrap::Start()
 void TBootstrap::Stop()
 {
     if (NbdDevice) {
-        NbdDevice->Stop(true);
+        NbdDevice->Stop(true).GetValueSync();
+        NbdDevice.reset();
     }
 
     switch (Options->DeviceMode) {

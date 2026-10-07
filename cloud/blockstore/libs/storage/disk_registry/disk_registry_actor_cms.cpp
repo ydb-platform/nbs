@@ -1,6 +1,7 @@
 #include "disk_registry_actor.h"
 
 #include <cloud/blockstore/libs/storage/api/service.h>
+#include <cloud/storage/core/libs/common/backoff_delay_provider.h>
 
 namespace NCloud::NBlockStore::NStorage {
 
@@ -13,6 +14,12 @@ namespace {
 class TCmsRequestActor final
     : public TActorBootstrapped<TCmsRequestActor>
 {
+    enum ECmsRequestActorWakeupTag
+    {
+        Retry = 1,
+        Timeout,
+    };
+
 private:
     const TActorId Owner;
     const TRequestInfoPtr RequestInfo;
@@ -23,11 +30,18 @@ private:
 
     std::unique_ptr<TEvService::TEvCmsActionResponse> Response;
 
+    TBackoffDelayProvider CmsSubrequestTimeout{
+        TDuration::Seconds(1),
+        TDuration::Seconds(300)};
+
+    TDuration RequestTimeout;
+
 public:
     TCmsRequestActor(
         const TActorId& owner,
         TRequestInfoPtr requestInfo,
-        google::protobuf::RepeatedPtrField<NProto::TAction> requests);
+        google::protobuf::RepeatedPtrField<NProto::TAction> requests,
+        TDuration requestTimeout);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -52,6 +66,10 @@ private:
         const TEvDiskRegistryPrivate::TEvUpdateCmsHostDeviceStateResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandlePurgeDeviceResponse(
+        const TEvDiskRegistryPrivate::TEvPurgeDeviceCmsResponse::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandleUpdateCmsHostStateResponse(
         const TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse::TPtr& ev,
         const TActorContext& ctx);
@@ -64,25 +82,36 @@ private:
         const TEvDiskRegistry::TEvGetDependentDisksResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleWakeup(
+        const TEvents::TEvWakeup::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
 };
 
 TCmsRequestActor::TCmsRequestActor(
-        const TActorId& owner,
-        TRequestInfoPtr requestInfo,
-        google::protobuf::RepeatedPtrField<NProto::TAction> requests)
+    const TActorId& owner,
+    TRequestInfoPtr requestInfo,
+    google::protobuf::RepeatedPtrField<NProto::TAction> requests,
+    TDuration requestTimeout)
     : Owner(owner)
     , RequestInfo(std::move(requestInfo))
     , Requests(std::move(requests))
     , Response(std::make_unique<TEvService::TEvCmsActionResponse>())
+    , RequestTimeout(requestTimeout)
 {}
 
 void TCmsRequestActor::Bootstrap(const TActorContext& ctx)
 {
     SendNextRequest(ctx);
 
+    if (RequestTimeout > TDuration::Zero()) {
+        ctx.Schedule(
+            RequestTimeout,
+            new TEvents::TEvWakeup(ECmsRequestActorWakeupTag::Timeout));
+    }
     Become(&TThis::StateWork);
 }
 
@@ -128,6 +157,18 @@ void TCmsRequestActor::SendNextRequest(const TActorContext& ctx)
                 Owner,
                 std::move(request));
 
+            break;
+        }
+
+        case NProto::TAction_EType::TAction_EType_PURGE_DEVICE: {
+            using TRequest = TEvDiskRegistryPrivate::TEvPurgeDeviceCmsRequest;
+            auto request = std::make_unique<TRequest>(
+                action.GetHost(),
+                action.GetDevice(),
+                /*customMessage=*/TString(),
+                action.GetDryRun());
+
+            NCloud::Send(ctx, Owner, std::move(request));
             break;
         }
 
@@ -220,8 +261,17 @@ void TCmsRequestActor::HandleCmsActionResponse(
     const TResponse& response,
     const TActorContext& ctx)
 {
+    const auto& error = response.GetError();
+    if (GetErrorKind(error) == EErrorKind::ErrorRetriable) {
+        ctx.Schedule(
+            CmsSubrequestTimeout.GetDelayAndIncrease(),
+            new TEvents::TEvWakeup(ECmsRequestActorWakeupTag::Retry));
+        return;
+    }
+    CmsSubrequestTimeout.Reset();
+
     auto& result = *Response->Record.MutableActionResults()->Add();
-    *result.MutableResult() = response.GetError();
+    *result.MutableResult() = error;
     result.SetTimeout(response.Timeout.Seconds());
     for (auto& diskId: response.DependentDiskIds) {
         *result.AddDependentDisks() = std::move(diskId);
@@ -267,11 +317,44 @@ void TCmsRequestActor::HandleUpdateHostDeviceStateResponse(
     HandleCmsActionResponse(*ev->Get(), ctx);
 }
 
+void TCmsRequestActor::HandlePurgeDeviceResponse(
+    const TEvDiskRegistryPrivate::TEvPurgeDeviceCmsResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    HandleCmsActionResponse(*ev->Get(), ctx);
+}
+
 void TCmsRequestActor::HandleGetDependentDisksResponse(
     const TEvDiskRegistry::TEvGetDependentDisksResponse::TPtr& ev,
     const TActorContext& ctx)
 {
     HandleCmsActionResponseProto(*ev->Get(), ctx);
+}
+
+void TCmsRequestActor::HandleWakeup(
+    const TEvents::TEvWakeup::TPtr& ev,
+    const TActorContext& ctx)
+{
+    switch (ev->Get()->Tag) {
+        case ECmsRequestActorWakeupTag::Retry:
+            SendNextRequest(ctx);
+            break;
+
+        case ECmsRequestActorWakeupTag::Timeout: {
+            while (CurrentRequest != Requests.size()) {
+                auto& result = *Response->Record.MutableActionResults()->Add();
+
+                *result.MutableResult() =
+                    MakeError(E_TIMEOUT, "request failed to meet the deadline");
+
+                ++CurrentRequest;
+            }
+            ReplyAndDie(ctx);
+            break;
+        }
+        default:
+            break;
+    }
 }
 
 void TCmsRequestActor::HandlePoisonPill(
@@ -296,6 +379,10 @@ STFUNC(TCmsRequestActor::StateWork)
             HandleUpdateHostDeviceStateResponse);
 
         HFunc(
+            TEvDiskRegistryPrivate::TEvPurgeDeviceCmsResponse,
+            HandlePurgeDeviceResponse);
+
+        HFunc(
             TEvDiskRegistryPrivate::TEvUpdateCmsHostStateResponse,
             HandleUpdateCmsHostStateResponse);
 
@@ -306,6 +393,8 @@ STFUNC(TCmsRequestActor::StateWork)
         HFunc(
             TEvDiskRegistry::TEvGetDependentDisksResponse,
             HandleGetDependentDisksResponse);
+
+        HFunc(TEvents::TEvWakeup, HandleWakeup);
 
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
@@ -331,11 +420,17 @@ void TDiskRegistryActor::HandleCmsAction(
         ev->Cookie,
         MakeIntrusive<TCallContext>());
 
+    const auto& msg = ev->Get()->Record;
+
+    auto requestTimeout =
+        TDuration::MilliSeconds(msg.GetHeaders().GetRequestTimeout());
+
     auto actor = NCloud::Register<TCmsRequestActor>(
         ctx,
         SelfId(),
         std::move(requestInfo),
-        ev->Get()->Record.GetActions());
+        msg.GetActions(),
+        requestTimeout);
 
     Actors.insert(actor);
 }

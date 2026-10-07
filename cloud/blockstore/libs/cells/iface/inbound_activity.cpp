@@ -17,7 +17,6 @@ void TCellInboundActivity::Record(
     const TString& peer,
     const TString& diskId,
     const TString& clientId,
-    EBlockStoreRequest request,
     TInstant now)
 {
     with_lock (Lock) {
@@ -35,20 +34,6 @@ void TCellInboundActivity::Record(
         row.DiskId = diskId;
         row.ClientId = clientId;
         row.LastSeen = now;
-
-        switch (request) {
-            case EBlockStoreRequest::MountVolume:
-                ++row.Mounts;
-                break;
-            case EBlockStoreRequest::UnmountVolume:
-                ++row.Unmounts;
-                break;
-            case EBlockStoreRequest::DescribeVolume:
-                ++row.Describes;
-                break;
-            default:
-                break;
-        }
     }
 }
 

@@ -380,7 +380,7 @@ TDeviceKeyBufferStore::TDeviceKeyBufferStore(
     , PageSize(pageSize)
     , ChunkCapacity(pageSize - EntryHeaderSize)
     , Pages(CreateDevicePageStore(Device, PageCount, PageSize))
-    , Log(logging->CreateLog("KEY_BUFFER_STORE"))
+    , Log(logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
 {
     // the superblock slots are never given to an entry
     auto error = Pages->AllocateAt(

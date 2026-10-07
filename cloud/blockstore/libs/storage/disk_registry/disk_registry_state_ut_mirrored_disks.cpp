@@ -21,6 +21,8 @@
 
 namespace NCloud::NBlockStore::NStorage {
 
+using namespace NDiskRegistryStateTest;
+
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -43,11 +45,95 @@ void NotifyDisks(
     }
 }
 
+std::unique_ptr<TDiskRegistryState> CreateStateWithUnavailableReplicaAgent(
+    NProto::TStorageServiceConfig storageConfig,
+    TDeque<TAutomaticallyReplacedDeviceInfo> automaticallyReplacedDevices = {})
+{
+    auto agentConfig1 = AgentConfig(
+        1,
+        {
+            Device("dev-1", "uuid-1", "rack-1"),
+            Device("dev-2", "uuid-2", "rack-1"),
+            Device("dev-3", "uuid-3", "rack-1"),
+        });
+
+    auto agentConfig2 = AgentConfig(
+        2,
+        NProto::AGENT_STATE_UNAVAILABLE,
+        {
+            Device("dev-4", "uuid-4", "rack-2"),
+            Device("dev-5", "uuid-5", "rack-2"),
+            Device("dev-6", "uuid-6", "rack-2"),
+        });
+
+    auto agentConfig3 = AgentConfig(
+        3,
+        {
+            Device("dev-7", "uuid-7", "rack-3"),
+            Device("dev-8", "uuid-8", "rack-3"),
+            Device("dev-9", "uuid-9", "rack-3"),
+        });
+
+    auto agentConfig4 = AgentConfig(
+        4,
+        {
+            Device("dev-10", "uuid-10", "rack-4"),
+            Device("dev-11", "uuid-11", "rack-4"),
+            Device("dev-12", "uuid-12", "rack-4"),
+        });
+
+    TVector<NProto::TDiskConfig> disks = {
+        Disk("disk-1/0", {"uuid-1", "uuid-2"}, NProto::DISK_STATE_ONLINE),
+        Disk("disk-1/1", {"uuid-4", "uuid-5"}, NProto::DISK_STATE_ONLINE),
+        Disk("disk-1/2", {"uuid-7", "uuid-8"}, NProto::DISK_STATE_ONLINE),
+    };
+
+    for (auto& disk: disks) {
+        disk.SetMasterDiskId("disk-1");
+    }
+
+    disks.push_back(Disk("disk-1", {}, NProto::DISK_STATE_ONLINE));
+    disks.back().SetReplicaCount(2);
+
+    auto builder = TDiskRegistryStateBuilder();
+    builder.AutomaticallyReplacedDevices =
+        std::move(automaticallyReplacedDevices);
+
+    return builder
+        .WithKnownAgents({
+            agentConfig1,
+            agentConfig2,
+            agentConfig3,
+            agentConfig4,
+        })
+        .WithStorageConfig(std::move(storageConfig))
+        .WithDisks(std::move(disks))
+        .WithPlacementGroups({SpreadPlacementGroup(
+            "disk-1/g",
+            {"disk-1/0", "disk-1/1", "disk-1/2"})})
+        .Build();
+}
+
+TVector<TString> GetReplicaDeviceIds(
+    const TDiskRegistryState& state,
+    ui32 replicaIndex)
+{
+    TDiskInfo diskInfo;
+    auto error = state.GetDiskInfo("disk-1", diskInfo);
+    UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+    const auto& devices = replicaIndex == 0
+                              ? diskInfo.Devices
+                              : diskInfo.Replicas[replicaIndex - 1];
+
+    TVector<TString> ids;
+    for (const auto& d: devices) {
+        ids.push_back(d.GetDeviceUUID());
+    }
+    return ids;
+}
+
 }   // namespace
-
-////////////////////////////////////////////////////////////////////////////////
-
-using namespace NDiskRegistryStateTest;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -4379,6 +4465,403 @@ Y_UNIT_TEST_SUITE(TDiskRegistryStateMirroredDisksTest)
 
         executor.WriteTx([&](TDiskRegistryDatabase db)
                          { state.DeallocateDisk(db, "disk-1"); });
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotAddReplacementDeviceToPendingCleanupUponPostponedReplacement)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto agentConfig1 = AgentConfig(
+            1,
+            {
+                Device("dev-1", "uuid-1", "rack-1"),
+                Device("dev-2", "uuid-2", "rack-1"),
+                Device("dev-3", "uuid-3", "rack-1"),
+            });
+
+        auto agentConfig2 = AgentConfig(
+            2,
+            {
+                Device("dev-4", "uuid-4", "rack-2"),
+                Device("dev-5", "uuid-5", "rack-2"),
+                Device("dev-6", "uuid-6", "rack-2"),
+            });
+
+        auto agentConfig3 = AgentConfig(
+            3,
+            {
+                Device("dev-7", "uuid-7", "rack-3"),
+                Device("dev-8", "uuid-8", "rack-3"),
+                Device("dev-9", "uuid-9", "rack-3"),
+            });
+
+        auto agentConfig4 = AgentConfig(
+            4,
+            {
+                Device("dev-10", "uuid-10", "rack-4"),
+                Device("dev-11", "uuid-11", "rack-4"),
+                Device("dev-12", "uuid-12", "rack-4"),
+            });
+
+        auto agentConfig5 = AgentConfig(
+            5,
+            {
+                Device("dev-13", "uuid-13", "rack-5"),
+                Device("dev-14", "uuid-14", "rack-5"),
+                Device("dev-15", "uuid-15", "rack-5"),
+            });
+
+        auto agentConfig6 = AgentConfig(
+            6,
+            {
+                Device("dev-16", "uuid-16", "rack-6"),
+                Device("dev-17", "uuid-17", "rack-6"),
+                Device("dev-18", "uuid-18", "rack-6"),
+            });
+
+        TVector<NProto::TDiskConfig> disks = {
+            Disk("disk-1/0", {"uuid-1", "uuid-2"}, NProto::DISK_STATE_ONLINE),
+            Disk("disk-1/1", {"uuid-4", "uuid-5"}, NProto::DISK_STATE_ONLINE),
+            Disk("disk-1/2", {"uuid-7", "uuid-8"}, NProto::DISK_STATE_ONLINE),
+        };
+
+        for (auto& disk: disks) {
+            disk.SetMasterDiskId("disk-1");
+        }
+
+        disks.push_back(Disk("disk-1", {}, NProto::DISK_STATE_ONLINE));
+        disks.back().SetReplicaCount(2);
+
+        auto storageConfig = CreateDefaultStorageConfigProto();
+        storageConfig.SetLimitMirrorDisksDeviceReplacementsPerRowEnabled(true);
+        auto statePtr = TDiskRegistryStateBuilder()
+                            .WithKnownAgents({
+                                agentConfig1,
+                                agentConfig2,
+                                agentConfig3,
+                                agentConfig4,
+                                agentConfig5,
+                                agentConfig6,
+                            })
+                            .WithStorageConfig(std::move(storageConfig))
+                            .WithDisks(std::move(disks))
+                            .WithPlacementGroups({SpreadPlacementGroup(
+                                "disk-1/g",
+                                {"disk-1/0", "disk-1/1", "disk-1/2"})})
+                            .Build();
+
+        TDiskRegistryState& state = *statePtr;
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto rootGroup =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
+
+        auto serverGroup = rootGroup->GetSubgroup("component", "server");
+        InitCriticalEventsCounter(serverGroup);
+
+        auto pendingCleanupFailures = serverGroup->FindCounter(
+            "AppImpossibleEvents/DiskRegistryInsertToPendingCleanupFailed");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, pendingCleanupFailures->Val());
+
+        const auto changeStateTs = Now();
+
+        auto setAgentUnavailable = [&](const NProto::TAgentConfig& agent)
+        {
+            executor.WriteTx(
+                [&](TDiskRegistryDatabase db) mutable
+                {
+                    TVector<TString> affectedDisks;
+                    auto error = state.UpdateAgentState(
+                        db,
+                        agent.GetAgentId(),
+                        NProto::AGENT_STATE_UNAVAILABLE,
+                        changeStateTs,
+                        "unreachable",
+                        affectedDisks);
+
+                    UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+                });
+        };
+
+        // Devices of disk-1/0 are replaced immediately. Both rows now have a
+        // recent replacement.
+        setAgentUnavailable(agentConfig1);
+
+        TDiskInfo diskInfo;
+        auto error = state.GetDiskInfo("disk-1", diskInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Devices.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-10",
+            diskInfo.Devices[0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-11",
+            diskInfo.Devices[1].GetDeviceUUID());
+        UNIT_ASSERT(!state.HasPendingCleanup("disk-1/0"));
+
+        // Replacement of disk-1/1 devices is postponed since there are recent
+        // replacements in the same rows.
+        setAgentUnavailable(agentConfig2);
+
+        diskInfo = {};
+        error = state.GetDiskInfo("disk-1", diskInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Replicas[0].size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-4",
+            diskInfo.Replicas[0][0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-5",
+            diskInfo.Replicas[0][1].GetDeviceUUID());
+        UNIT_ASSERT(!state.HasPendingCleanup("disk-1/1"));
+
+        // Postponed replacements happen after the volume has been notified.
+        executor.WriteTx([&](TDiskRegistryDatabase db) mutable
+                         { NotifyDisks(state, db, changeStateTs); });
+
+        diskInfo = {};
+        error = state.GetDiskInfo("disk-1", diskInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Replicas[0].size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-13",
+            diskInfo.Replicas[0][0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-14",
+            diskInfo.Replicas[0][1].GetDeviceUUID());
+        auto deviceReplacementIds = diskInfo.DeviceReplacementIds;
+        Sort(deviceReplacementIds);
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-10", "uuid-11", "uuid-13", "uuid-14"}),
+            deviceReplacementIds);
+
+        // Replaced devices are dirty, allocated replacement devices are not.
+        TVector<TString> dirtyDevices;
+        for (const auto& d: state.GetDirtyDevices()) {
+            dirtyDevices.push_back(d.GetDeviceUUID());
+        }
+        Sort(dirtyDevices);
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-1", "uuid-2", "uuid-4", "uuid-5"}),
+            dirtyDevices);
+
+        // Replaced devices belong to an unavailable agent and can't be erased,
+        // so there must be no pending cleanup. Allocated replacement devices
+        // must never get there.
+        UNIT_ASSERT(!state.HasPendingCleanup("disk-1/1"));
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
+                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(0, pendingCleanupFailures->Val());
+        UNIT_ASSERT(state.HasPendingCleanup("disk-1"));
+
+        // All erasable devices of disk-1 are tracked by the pending cleanup of
+        // the master disk.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                auto disksWithCompletedCleanup = state.MarkDevicesAsClean(
+                    changeStateTs,
+                    db,
+                    TVector<TString>{
+                        "uuid-7",
+                        "uuid-8",
+                        "uuid-10",
+                        "uuid-11",
+                        "uuid-13",
+                        "uuid-14"});
+                ASSERT_VECTORS_EQUAL(
+                    TVector<TString>{"disk-1"},
+                    disksWithCompletedCleanup);
+            });
+
+        UNIT_ASSERT(!state.HasPendingCleanup("disk-1"));
+        UNIT_ASSERT(!state.HasPendingCleanup("disk-1/1"));
+    }
+
+    Y_UNIT_TEST(
+        ShouldNotAddReplacementDeviceToPendingCleanupUponReplacementAfterRestart)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        auto statePtr = CreateStateWithUnavailableReplicaAgent(
+            CreateDefaultStorageConfigProto());
+
+        TDiskRegistryState& state = *statePtr;
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto rootGroup =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
+
+        auto serverGroup = rootGroup->GetSubgroup("component", "server");
+        InitCriticalEventsCounter(serverGroup);
+
+        auto pendingCleanupFailures = serverGroup->FindCounter(
+            "AppImpossibleEvents/DiskRegistryInsertToPendingCleanupFailed");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, pendingCleanupFailures->Val());
+
+        const auto now = Now();
+
+        executor.WriteTx([&](TDiskRegistryDatabase db) mutable
+                         { state.ReplaceBrokenDevicesAfterRestart(now, db); });
+
+        TDiskInfo diskInfo;
+        auto error = state.GetDiskInfo("disk-1", diskInfo);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, error.GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(2, diskInfo.Replicas[0].size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-10",
+            diskInfo.Replicas[0][0].GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(
+            "uuid-11",
+            diskInfo.Replicas[0][1].GetDeviceUUID());
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-10", "uuid-11"}),
+            diskInfo.DeviceReplacementIds);
+
+        TVector<TString> dirtyDevices;
+        for (const auto& d: state.GetDirtyDevices()) {
+            dirtyDevices.push_back(d.GetDeviceUUID());
+        }
+        Sort(dirtyDevices);
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-4", "uuid-5"}),
+            dirtyDevices);
+
+        UNIT_ASSERT(!state.HasPendingCleanup("disk-1/1"));
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db)
+            {
+                UNIT_ASSERT_SUCCESS(state.MarkDiskForCleanup(db, "disk-1"));
+                UNIT_ASSERT_SUCCESS(state.DeallocateDisk(db, "disk-1"));
+            });
+
+        UNIT_ASSERT_VALUES_EQUAL(0, pendingCleanupFailures->Val());
+        UNIT_ASSERT(state.HasPendingCleanup("disk-1"));
+    }
+
+    Y_UNIT_TEST(ShouldReplaceBrokenDevicesAfterRestartIfLimitIsDisabled)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        // Models a rollback: the replacements were postponed while the per-row
+        // limit was enabled, and the tablet restarts with the limit disabled.
+        auto statePtr = CreateStateWithUnavailableReplicaAgent(
+            CreateDefaultStorageConfigProto());
+        TDiskRegistryState& state = *statePtr;
+
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable
+            { state.ReplaceBrokenDevicesAfterRestart(Now(), db); });
+
+        // The disk doesn't stay degraded.
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-10", "uuid-11"}),
+            GetReplicaDeviceIds(state, 1));
+
+        TDiskInfo diskInfo;
+        UNIT_ASSERT_SUCCESS(state.GetDiskInfo("disk-1", diskInfo));
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-10", "uuid-11"}),
+            diskInfo.DeviceReplacementIds);
+
+        TVector<TString> dirtyDevices;
+        for (const auto& d: state.GetDirtyDevices()) {
+            dirtyDevices.push_back(d.GetDeviceUUID());
+        }
+        Sort(dirtyDevices);
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-4", "uuid-5"}),
+            dirtyDevices);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2,
+            state.GetAutomaticallyReplacedDevices().size());
+        UNIT_ASSERT(state.GetDisksToReallocate().contains("disk-1"));
+    }
+
+    Y_UNIT_TEST(ShouldRestoreAutomaticReplacementRateLimitAfterRestart)
+    {
+        TTestExecutor executor;
+        executor.WriteTx([&](TDiskRegistryDatabase db) { db.InitSchema(); });
+
+        const auto now = Now();
+
+        auto storageConfig = CreateDefaultStorageConfigProto();
+        storageConfig.SetLimitMirrorDisksDeviceReplacementsPerRowEnabled(true);
+        storageConfig.SetMaxAutomaticDeviceReplacementsPerHour(2);
+
+        // Two automatic replacements happened within the last hour before the
+        // restart. Deliberately not sorted by time.
+        auto statePtr = CreateStateWithUnavailableReplicaAgent(
+            std::move(storageConfig),
+            {
+                {.DeviceId = "uuid-3",
+                 .ReplacementTs = now - TDuration::Minutes(10)},
+                {.DeviceId = "uuid-9",
+                 .ReplacementTs = now - TDuration::Minutes(50)},
+            });
+        TDiskRegistryState& state = *statePtr;
+
+        auto monitoring = CreateMonitoringServiceStub();
+        auto rootGroup =
+            monitoring->GetCounters()->GetSubgroup("counters", "blockstore");
+
+        auto serverGroup = rootGroup->GetSubgroup("component", "server");
+        InitCriticalEventsCounter(serverGroup);
+
+        auto rateLimitExceeded = serverGroup->FindCounter(
+            "AppCriticalEvents/MirroredDiskDeviceReplacementRateLimitExceeded");
+
+        UNIT_ASSERT_VALUES_EQUAL(0, rateLimitExceeded->Val());
+
+        // The limit is exhausted by the replacements made before the restart.
+        executor.WriteTx([&](TDiskRegistryDatabase db) mutable
+                         { state.ReplaceBrokenDevicesAfterRestart(now, db); });
+
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-4", "uuid-5"}),
+            GetReplicaDeviceIds(state, 1));
+        UNIT_ASSERT_VALUES_EQUAL(2, rateLimitExceeded->Val());
+
+        // The oldest replacement is out of the window: one more replacement
+        // is allowed.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable {
+                state.ReplaceBrokenDevicesAfterRestart(
+                    now + TDuration::Minutes(20),
+                    db);
+            });
+
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-10", "uuid-5"}),
+            GetReplicaDeviceIds(state, 1));
+        UNIT_ASSERT_VALUES_EQUAL(3, rateLimitExceeded->Val());
+
+        // All previous replacements are out of the window.
+        executor.WriteTx(
+            [&](TDiskRegistryDatabase db) mutable {
+                state.ReplaceBrokenDevicesAfterRestart(
+                    now + TDuration::Hours(2),
+                    db);
+            });
+
+        ASSERT_VECTORS_EQUAL(
+            TVector<TString>({"uuid-10", "uuid-11"}),
+            GetReplicaDeviceIds(state, 1));
+        UNIT_ASSERT_VALUES_EQUAL(3, rateLimitExceeded->Val());
     }
 }
 

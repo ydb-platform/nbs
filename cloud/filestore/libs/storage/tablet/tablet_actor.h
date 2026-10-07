@@ -155,6 +155,7 @@ class TIndexTabletActor final
         STATE_ADAPTER,
         STATE_ZOMBIE,
         STATE_BROKEN,
+        STATE_ADAPTER_BROKEN,
         STATE_MAX,
     };
 
@@ -520,8 +521,7 @@ private:
         NProto::TProfileLogRequestInfo profileLogRequest,
         ui64 requestId,
         ui64 opLogEntryId,
-        TUnlinkNodeInShardResult result,
-        bool shouldUnlockUponCompletion);
+        TUnlinkNodeInShardResult result);
 
     void RegisterRenameNodeInDestinationActor(
         const NActors::TActorContext& ctx,
@@ -947,6 +947,7 @@ private:
     STFUNC(StateAdapterInit);
     STFUNC(StateZombie);
     STFUNC(StateBroken);
+    STFUNC(StateAdapterBroken);
 
     void RegisterFileStore(const NActors::TActorContext& ctx);
     void UnregisterFileStore(const NActors::TActorContext& ctx);

@@ -33,16 +33,16 @@ private:
     THashSet<ui64> NodesWithBackpressure;
 
 public:
-    struct TAddRequestResult
+    struct TAllocPendingRequestResult
     {
-        std::unique_ptr<TPendingWriteDataRequest> PendingRequest = nullptr;
-        std::unique_ptr<TCachedWriteDataRequest> CachedRequest = nullptr;
+        TPendingWriteDataRequest* Request = nullptr;
         bool Failed = false;
+        bool StorageIsFull = false;
     };
 
-    struct TProcessPendingRequestResult
+    struct TGetNextReadyCachedRequestResult
     {
-        std::unique_ptr<TCachedWriteDataRequest> CachedRequest = nullptr;
+        std::unique_ptr<TCachedWriteDataRequest> Request = nullptr;
         bool Failed = false;
     };
 
@@ -75,36 +75,34 @@ public:
     ui64 GetMaxUnflushedSequenceId() const;
 
     /**
-     * Adds a WriteData request to the persistent storage.
-     *
-     * Returns result with non-empty TAddRequestResult::CachedRequest if the
-     * request has been successfully stored in the storage.
-     *
-     * Returns result with non-empty TAddRequestResult::PendingRequest if the
-     * the storage is full or backpressure is in effect, and the request has
-     * been added to the pending queue.
-     *
-     * Returns result with TAddRequestResult::Failed == true if the storage is
-     * in failed state.
+     * Creates a pending WriteData request and adds it to the pending queue.
+     * The returned object must outlive its presence in the queue and must
+     * leave via TryProcessPendingRequest/TryPopFrontPendingRequest/Remove;
+     * destroying it while queued unlinks silently but leaks metrics.
      */
-    [[nodiscard]] TAddRequestResult AddRequest(
+    [[nodiscard]] std::unique_ptr<TPendingWriteDataRequest> AddRequest(
         std::shared_ptr<NProto::TWriteDataRequest> request);
 
     /**
-     * Takes front request from the pending queue and tries to store it into
-     * the persistent storage.
+     * Tries to allocate buffer in the persistent storage for the front
+     * unallocated pending request.
      *
-     * Returns result with non-empty TProcessPendingRequestResult::CachedRequest
-     * if the front request has been successfully stored in the storage.
-     *
-     * Returns result with empty TProcessPendingRequestResult::CachedRequest and
-     * TAddRequestResult::Failed == false if the storage is full, backpressure
-     * is in effect or the pending queue is empty.
-     *
-     * Returns result with empty TProcessPendingRequestResult::CachedRequest and
-     * TAddRequestResult::Failed == true if the storage is in failed state.
+     * Returns an empty result if the queue is empty, the storage is full or
+     * backpressure is in effect. Sets Failed on a storage error.
      */
-    [[nodiscard]] TProcessPendingRequestResult TryProcessPendingRequest();
+    [[nodiscard]] TAllocPendingRequestResult TryAllocPendingRequest();
+
+    /**
+     * Examines the lowest-sequence allocated request awaiting commit.
+     *
+     * If serialization is complete, commits its allocation, removes the pending
+     * request from its lifecycle queue, creates a cached request, registers it
+     * in the unflushed queue, and returns it.
+     *
+     * Returns an empty result if there are no allocated requests or the first
+     * request is not serialized yet. Sets Failed on a storage error.
+     */
+    [[nodiscard]] TGetNextReadyCachedRequestResult GetNextReadyCachedRequest();
 
     // Takes and removes front request from the pending queue.
     // Returns the removed request or nullptr if there are no pending requests.
@@ -151,11 +149,6 @@ public:
     void UpdateStats() const;
 
 private:
-    TProcessPendingRequestResult TryStoreRequestInPersistentStorage(
-        ui64 sequenceId,
-        TInstant time,
-        const NProto::TWriteDataRequest& request);
-
     // Access methods that triggers stats update
     void PendingRequestsPushBack(TPendingWriteDataRequest* request);
     void PendingRequestsRemove(TPendingWriteDataRequest* request);

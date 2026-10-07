@@ -115,6 +115,20 @@ struct TFixture
         return CmsAction(std::move(action));
     }
 
+    auto PurgeDevice(
+        const TString& agentId,
+        const TString& path,
+        bool dryRun = false)
+    {
+        NProto::TAction action;
+        action.SetHost(agentId);
+        action.SetType(NProto::TAction::PURGE_DEVICE);
+        action.SetDevice(path);
+        action.SetDryRun(dryRun);
+
+        return DiskRegistry->CmsAction(TVector{std::move(action)});
+    }
+
     void ShouldRestoreCMSTimeoutAfterReboot(auto removeAction)
     {
         const auto agent = CreateAgentConfig("agent-1", {
@@ -560,6 +574,48 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             NProto::EDeviceState::DEVICE_STATE_ONLINE);
 
         DiskRegistry->AllocateDisk("vol1", 10_GB);
+    }
+
+    Y_UNIT_TEST_F(ShouldPurgeDeviceUponCmsRequest, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {
+                Device("dev-1", "uuid-1", "rack-1", 10_GB),
+                Device("dev-2", "uuid-2", "rack-1", 10_GB),
+            });
+
+        SetUpRuntime(TTestRuntimeBuilder().WithAgents({agent}).Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
+        WaitForSecureErase(*Runtime, {agent});
+
+        DiskRegistry->AllocateDisk("vol1", 10_GB);
+
+        {
+            auto response = PurgeDevice("agent-1", "dev-1", /*dryRun=*/true);
+
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
+            const auto& result = response->Record.GetActionResults(0);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, result.GetTimeout());
+            UNIT_ASSERT_VALUES_EQUAL(0, result.DependentDisksSize());
+        }
+
+        {
+            auto response = PurgeDevice("agent-1", "dev-1");
+
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
+            const auto& result = response->Record.GetActionResults(0);
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, result.GetResult().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL(0, result.GetTimeout());
+            UNIT_ASSERT_VALUES_EQUAL(1, result.DependentDisksSize());
+            UNIT_ASSERT_VALUES_EQUAL("vol1", result.GetDependentDisks(0));
+        }
     }
 
     Y_UNIT_TEST_F(ShouldFailCmsRequestIfDiskRegistryRestarts, TFixture)
@@ -2001,11 +2057,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TVector<TString>({"dev-1"}),
             response->Record.GetPathsToAttach());
 
+        TAutoPtr<IEventHandle> attachPathsResponse;
         Runtime->SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
                 if (event->GetTypeRewrite() ==
-                    TEvDiskAgent::EvAttachPathsResponse) {
+                    TEvDiskAgent::EvAttachPathsResponse)
+                {
+                    UNIT_ASSERT(!attachPathsResponse);
+                    attachPathsResponse.Swap(event);
+
                     return TTestActorRuntime::EEventAction::DROP;
                 }
 
@@ -2021,7 +2082,13 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             TVector<TString>({"dev-1", "dev-2"}),
             response->Record.GetPathsToAttach());
 
+        UNIT_ASSERT(attachPathsResponse);
         Runtime->SetObserverFunc(TTestActorRuntimeBase::DefaultObserverFunc);
+
+        Runtime->Send(attachPathsResponse);
+        Runtime->DispatchEvents({}, TDuration::MilliSeconds(10));
+
+        UNIT_ASSERT(!attachPathsResponse);
 
         RemoveDevice("agent-1", "dev-2");
 
@@ -2189,7 +2256,7 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
         UNIT_ASSERT_VALUES_EQUAL(0, detachPathWithDependentDisk->Val());
     }
 
-    Y_UNIT_TEST_F(ShouldRejectedCmsRequestsWhenInFlightLimitExceeded, TFixture)
+    Y_UNIT_TEST_F(ShouldRetryCmsRequestsWhenInFlightLimitExceeded, TFixture)
     {
         const auto agent = CreateAgentConfig(
             "agent-1",
@@ -2215,12 +2282,16 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
             return TVector<NProto::TAction>{action};
         };
 
-        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions());
-        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions());
-        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions());
-        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions());
+        NProto::THeaders headers;
+        headers.SetRequestTimeout(TDuration::Seconds(10).MilliSeconds());
+
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
 
         int rejectedCount = 0;
+        int timeoutCount = 0;
         for (int i = 0; i < 4; ++i) {
             auto response = DiskRegistry->RecvCmsActionResponse();
             UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
@@ -2228,12 +2299,205 @@ Y_UNIT_TEST_SUITE(TDiskRegistryTest)
                 response->Record.GetActionResults(0).GetResult().GetCode();
             if (code == E_REJECTED) {
                 ++rejectedCount;
+            } else if (code == E_TIMEOUT) {
+                ++timeoutCount;
             }
         }
 
         UNIT_ASSERT_C(
-            rejectedCount >= 3,
-            "Expected at least 3 rejected responses, got: " << rejectedCount);
+            rejectedCount == 0,
+            "Expected at 0 rejected responses, got: " << rejectedCount);
+
+        UNIT_ASSERT_C(
+            timeoutCount == 0,
+            "Expected at 0 timeout responses, got: " << timeoutCount);
+    }
+
+    Y_UNIT_TEST_F(ShouldRetryCmsRequestsUntilTimeoutExceeded, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetMaxInFlightCmsRequests(1);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
+
+        auto makeRemoveHostActions = [&]()
+        {
+            NProto::TAction action;
+            action.SetHost("agent-1");
+            action.SetType(NProto::TAction::REMOVE_HOST);
+            return TVector<NProto::TAction>{action};
+        };
+
+        NProto::THeaders headers;
+        headers.SetRequestTimeout(TDuration::MilliSeconds(1).MilliSeconds());
+
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+
+        int rejectedCount = 0;
+        int timeoutCount = 0;
+        for (int i = 0; i < 4; ++i) {
+            auto response = DiskRegistry->RecvCmsActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
+            const auto code =
+                response->Record.GetActionResults(0).GetResult().GetCode();
+            if (code == E_REJECTED) {
+                ++rejectedCount;
+            } else if (code == E_TIMEOUT) {
+                ++timeoutCount;
+            }
+        }
+
+        UNIT_ASSERT_C(
+            rejectedCount == 0,
+            "Expected at 0 rejected responses, got: " << rejectedCount);
+
+        UNIT_ASSERT_C(
+            timeoutCount == 3,
+            "Expected at 3 timeout responses, got: " << timeoutCount);
+    }
+
+    Y_UNIT_TEST_F(
+        ShouldRetryCmsRequestsUntilTimeoutExceededNActionsInRequest,
+        TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetMaxInFlightCmsRequests(1);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
+
+        auto makeRemoveHostActions = [&](size_t nReqs)
+        {
+            TVector<NProto::TAction> actions;
+            actions.reserve(nReqs);
+            for (size_t i = 0; i < nReqs; ++i) {
+                NProto::TAction action;
+                action.SetHost("agent-1");
+                action.SetType(NProto::TAction::REMOVE_HOST);
+                actions.emplace_back(std::move(action));
+            }
+            return actions;
+        };
+
+        NProto::THeaders headers;
+        headers.SetRequestTimeout(TDuration::MilliSeconds(1).MilliSeconds());
+
+        size_t nReqs = 5;
+        DiskRegistry->SendCmsActionRequest(
+            makeRemoveHostActions(nReqs),
+            headers);
+        DiskRegistry->SendCmsActionRequest(
+            makeRemoveHostActions(nReqs),
+            headers);
+
+        int rejectedCount = 0;
+        int timeoutCount = 0;
+
+        for (int i = 0; i < 2; ++i) {
+            auto response = DiskRegistry->RecvCmsActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(
+                nReqs,
+                response->Record.ActionResultsSize());
+
+            for (size_t i = 0; i < nReqs; ++i) {
+                const auto code =
+                    response->Record.GetActionResults(i).GetResult().GetCode();
+                if (code == E_REJECTED) {
+                    ++rejectedCount;
+                } else if (code == E_TIMEOUT) {
+                    ++timeoutCount;
+                }
+            }
+        }
+
+        UNIT_ASSERT_C(
+            rejectedCount == 0,
+            "Expected at 0 rejected responses, got: " << rejectedCount);
+
+        UNIT_ASSERT_C(
+            timeoutCount == 5,
+            "Expected at 5 timeout responses, got: " << timeoutCount);
+    }
+
+    Y_UNIT_TEST_F(ShouldProcessAllRequestsDueToZeroTimeout, TFixture)
+    {
+        const auto agent = CreateAgentConfig(
+            "agent-1",
+            {Device("dev-1", "uuid-1", "rack-1", 10_GB)});
+
+        NProto::TStorageServiceConfig config;
+        config.SetMaxInFlightCmsRequests(1);
+
+        SetUpRuntime(
+            TTestRuntimeBuilder().WithAgents({agent}).With(config).Build());
+
+        DiskRegistry->SetWritableState(true);
+        DiskRegistry->UpdateConfig(CreateRegistryConfig(0, {agent}));
+
+        RegisterAgents(*Runtime, 1);
+        WaitForAgents(*Runtime, 1);
+
+        auto makeRemoveHostActions = [&]()
+        {
+            NProto::TAction action;
+            action.SetHost("agent-1");
+            action.SetType(NProto::TAction::REMOVE_HOST);
+            return TVector<NProto::TAction>{action};
+        };
+
+        NProto::THeaders headers;
+        headers.SetRequestTimeout(TDuration::Seconds(0).MilliSeconds());
+
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+        DiskRegistry->SendCmsActionRequest(makeRemoveHostActions(), headers);
+
+        int rejectedCount = 0;
+        int timeoutCount = 0;
+        for (int i = 0; i < 4; ++i) {
+            auto response = DiskRegistry->RecvCmsActionResponse();
+            UNIT_ASSERT_VALUES_EQUAL(1, response->Record.ActionResultsSize());
+            const auto code =
+                response->Record.GetActionResults(0).GetResult().GetCode();
+            if (code == E_REJECTED) {
+                ++rejectedCount;
+            } else if (code == E_TIMEOUT) {
+                ++timeoutCount;
+            }
+        }
+
+        UNIT_ASSERT_C(
+            rejectedCount == 0,
+            "Expected at 0 rejected responses, got: " << rejectedCount);
+
+        UNIT_ASSERT_C(
+            timeoutCount == 0,
+            "Expected at 0 timeout responses, got: " << timeoutCount);
     }
 }
 

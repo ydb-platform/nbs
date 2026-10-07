@@ -218,9 +218,7 @@ public:
                 if (requestTime) {
                     collector(
                         *request.CallContext,
-                        request.MetricRequest.VolumeInfo,
-                        request.MetricRequest.MediaKind,
-                        request.MetricRequest.RequestType,
+                        request.MetricRequest,
                         requestTime);
                 }
             }

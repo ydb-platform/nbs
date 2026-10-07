@@ -155,6 +155,7 @@ private:
     TLsnBarrier IndexedLsnBarrier;
 
     std::atomic_bool ShouldStop = false;
+    std::atomic_bool RestoreFailed = false;
 
     TPromise<void> FlushCycleStopped;
 
@@ -170,7 +171,7 @@ public:
         , Journal(std::move(journal))
         , DataStore(std::move(dataStore))
         , DeviceUUID(std::move(deviceUUID))
-        , Log(Logging->CreateLog("JOURNALLED_DEVICE"))
+        , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
     {}
 
     void Start() override
@@ -187,7 +188,12 @@ public:
             });
 
         auto error = future.GetValueSync();
-        Y_ENSURE(!HasError(error), FormatError(error));
+        if (HasError(error)) {
+            STORAGE_ERROR(
+                "unable to restore the journal on " << DeviceUUID << ": "
+                                                    << FormatError(error));
+            RestoreFailed.store(true);
+        }
     }
 
     void Stop() override
@@ -272,6 +278,13 @@ private:
                 TStringBuilder() << "the request is addressed to device "
                                  << request.GetDeviceUUID().Quote()
                                  << ", this is " << DeviceUUID.Quote());
+        }
+
+        if (RestoreFailed.load()) {
+            return MakeError(
+                E_IO,
+                TStringBuilder() << "the journal on " << DeviceUUID.Quote()
+                                 << " failed to restore");
         }
 
         return {};

@@ -14,16 +14,17 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
 type backupImageTask struct {
-	scheduler  tasks.Scheduler
-	storage    resources.Storage
-	followerS3 *backup.FollowerS3
-	request    *protos.BackupImageRequest
-	state      *protos.BackupImageTaskState
+	scheduler tasks.Scheduler
+	storage   resources.Storage
+	backupS3  *backup.S3
+	request   *protos.BackupImageRequest
+	state     *protos.BackupImageTaskState
 }
 
 func (t *backupImageTask) Save() ([]byte, error) {
@@ -67,10 +68,10 @@ func (t *backupImageTask) Run(
 		return errors.NewNonRetriableError(err)
 	}
 
-	err = t.followerS3.PutObject(
+	err = t.backupS3.PutObject(
 		ctx,
 		backup.ImageMetaKey(imageID),
-		data,
+		persistence.S3Object{Data: data},
 	)
 	if err != nil {
 		return err
@@ -80,9 +81,9 @@ func (t *backupImageTask) Run(
 
 	taskID, err := t.scheduler.ScheduleTask(
 		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
-		"dataplane.ScheduleBackupChunksTasks",
+		"dataplane.BackupSnapshotData",
 		"",
-		&dataplane_protos.ScheduleBackupChunksTasksRequest{
+		&dataplane_protos.BackupSnapshotDataRequest{
 			SnapshotId: imageID,
 		},
 	)

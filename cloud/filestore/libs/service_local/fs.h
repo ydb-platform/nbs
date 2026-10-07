@@ -18,6 +18,8 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
+
 #include <util/datetime/base.h>
 #include <util/generic/hash.h>
 #include <util/generic/list.h>
@@ -83,6 +85,21 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Counters shared by all TLocalFileSystem instances of a local service
+struct TLocalFileSystemCounters
+{
+    // Configured limit on file handles per session
+    const NMonitoring::TDynamicCounters::TCounterPtr MaxHandlePerSessionCount;
+
+    // CreateHandle requests rejected because the session handle table is full
+    const NMonitoring::TDynamicCounters::TCounterPtr
+        SessionFileHandleLimitRejectedCount;
+
+    explicit TLocalFileSystemCounters(NMonitoring::TDynamicCounters& counters);
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TLocalFileSystem final
     : public std::enable_shared_from_this<TLocalFileSystem>
 {
@@ -96,9 +113,11 @@ private:
     const ISchedulerPtr Scheduler;
     const ILoggingServicePtr Logging;
     const IFileIOServicePtr FileIOService;
+    const TLocalFileSystemCountersPtr Counters;
 
     NProto::TFileStore Store;
     TLog Log;
+    TLogThrottler HandleLimitLogThrottler{TDuration::Seconds(1)};
 
     TSessionList SessionsList;
     THashMap<TString, TSessionList::iterator> SessionsById;
@@ -121,7 +140,8 @@ public:
         ITimerPtr timer,
         ISchedulerPtr scheduler,
         ILoggingServicePtr logging,
-        IFileIOServicePtr fileIOService);
+        IFileIOServicePtr fileIOService,
+        TLocalFileSystemCountersPtr counters);
 
 #define FILESTORE_DECLARE_METHOD_SYNC(name, ...)                               \
     NProto::T##name##Response name(                                            \

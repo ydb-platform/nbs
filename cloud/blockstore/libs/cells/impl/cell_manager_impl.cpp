@@ -6,7 +6,6 @@
 
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
-#include <cloud/blockstore/libs/client/multiclient_endpoint.h>
 #include <cloud/blockstore/libs/client_rdma/rdma_client.h>
 #include <cloud/blockstore/libs/diagnostics/config.h>
 #include <cloud/blockstore/libs/server/config.h>
@@ -83,7 +82,11 @@ TCellsSnapshot TCellManager::GetSnapshot()
                 .Connections = static_cast<ui32>(status.Connections)});
         }
     }
-    snapshot.InboundActivity = InboundActivity->Snapshot(Bootstrap.Timer->Now());
+    snapshot.Taken = Bootstrap.Timer->Now();
+    snapshot.InboundActivity = InboundActivity->Snapshot(snapshot.Taken);
+    if (Bootstrap.Connections) {
+        snapshot.Mounts = GetCellMounts(*Bootstrap.Connections);
+    }
     return snapshot;
 }
 
@@ -251,7 +254,8 @@ ICellManagerPtr CreateCellManager(
         .RdmaClient = std::move(rdmaClient),
         .LocalService = std::move(localService),
         .RdmaTaskQueue = std::move(rdmaTaskQueue),
-        .EndpointsSetup = CreateCellHostEndpointBootstrap()};
+        .EndpointsSetup = CreateCellHostEndpointBootstrap(),
+        .Connections = CreateCellConnectionRegistry()};
 
     return std::make_shared<TCellManager>(std::move(config), bootstrap);
 }

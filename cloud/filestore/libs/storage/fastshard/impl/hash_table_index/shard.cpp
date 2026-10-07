@@ -13,8 +13,8 @@
 #include <cloud/filestore/libs/storage/fastshard/impl/model/page_store.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_bitmap.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_hash_table.h>
-#include <cloud/filestore/libs/storage/fastshard/sn/factory/group_factory.h>
-#include <cloud/filestore/libs/storage/fastshard/sn/quorum/storage_group.h>
+#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
+#include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_factory.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
 
@@ -568,7 +568,7 @@ void DumpLayoutComponentsJson(
         writer.BeginObject();
         writer.WriteKey("type");
         writer.WriteString(
-            NProtoPrivate::TStorageGroup::EStorageGroupType_Name(
+            NProto::EFastShardStorageKind_Name(
                 group.GetType()));
         writer.WriteKey("devices");
         writer.BeginList();
@@ -623,7 +623,7 @@ void DumpLayoutComponentsHtml(
             deviceRows.push_back({
                 {"GROUP_NO", ToString(groupNo)},
                 {"GROUP_TYPE",
-                 NProtoPrivate::TStorageGroup::EStorageGroupType_Name(
+                 NProto::EFastShardStorageKind_Name(
                      group.GetType())},
                 {"HOST", device.GetHost()},
                 {"PORT", ToString(device.GetPort())},

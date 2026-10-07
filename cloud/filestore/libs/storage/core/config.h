@@ -179,6 +179,7 @@ public:
 
     ui32 GetHDDMediaKindOverride() const;
     ui32 GetMinChannelCount() const;
+    ui32 GetMaxUsedDataChannelCount() const;
 
     ui32 GetMaxResponseBytes() const;
     ui32 GetMaxResponseEntries() const;
@@ -434,6 +435,10 @@ public:
     [[nodiscard]] ui32 GetFastShardServerPort() const;
     [[nodiscard]] bool GetFastShardRuntimeEnabled() const;
     [[nodiscard]] bool GetFastShardExtendedVerificationEnabled() const;
+    [[nodiscard]] ui64 GetFastShardDiskRegistryTabletId() const;
+    [[nodiscard]] ui64 GetFastShardDiskRegistryOwner() const;
+    [[nodiscard]] ui64 GetFastShardDiskRegistryOwnerIdx() const;
+    [[nodiscard]] TDuration GetFastShardDiskRegistryLookupTimeout() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 
@@ -456,6 +461,7 @@ public:
     [[nodiscard]] bool GetExternalWriteDataPayloadEnabled() const;
 
     [[nodiscard]] double GetFakeTxPageFaultsProbability() const;
+    [[nodiscard]] TDuration GetArtificialShardPhaseDelay() const;
 
     [[nodiscard]] bool GetFanoutStatsCollectionInShardsDisabled() const;
 

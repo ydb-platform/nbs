@@ -289,7 +289,7 @@ Linux:ext3|Linux:ZFS)
 	test_check $ctime1 -lt $ctime2
         ;;
 *)
-	test_check $ctime1 -eq $ctime2
+	test_check $ctime1 -eq $ctime2	# POSIX leaves ctime update for (-1, -1) optional, filestore follows Linux
         ;;
 esac
 expect 0 unlink ${n0}
@@ -304,7 +304,7 @@ Linux:ext3|Linux:ZFS)
 	test_check $ctime1 -lt $ctime2
         ;;
 *)
-	test_check $ctime1 -eq $ctime2
+	test_check $ctime1 -eq $ctime2	# POSIX leaves ctime update for (-1, -1) optional, filestore follows Linux
         ;;
 esac
 expect 0 rmdir ${n0}
@@ -319,7 +319,7 @@ Linux:ext3|Linux:ZFS)
 	test_check $ctime1 -lt $ctime2
         ;;
 *)
-	test_check $ctime1 -eq $ctime2
+	test_check $ctime1 -eq $ctime2	# POSIX leaves ctime update for (-1, -1) optional, filestore follows Linux
         ;;
 esac
 expect 0 unlink ${n0}
@@ -334,7 +334,7 @@ Linux:ext3|Linux:ZFS)
 	test_check $ctime1 -lt $ctime2
         ;;
 *)
-	test_check $ctime1 -eq $ctime2
+	test_check $ctime1 -eq $ctime2	# POSIX leaves ctime update for (-1, -1) optional, filestore follows Linux
         ;;
 esac
 expect 0 unlink ${n0}

@@ -530,6 +530,11 @@ public:
         const TString& address,
         bool secureEndpoint);
 
+    std::shared_ptr<grpc::Channel> CreateTcpSocketChannel(
+        const TString& address,
+        bool secureEndpoint,
+        const grpc::ChannelArguments& args);
+
     std::shared_ptr<grpc::Channel> CreateUnixSocketChannel(
         const TString& unixSocketPath,
         const grpc::ChannelArguments& args);
@@ -586,6 +591,7 @@ private:
     TAdaptiveLock EndpointLock;
 
     THashMap<std::pair<TString, bool>, IBlockStorePtr> Cache;
+    THashMap<TString, IBlockStorePtr> IOEndpoints;
 
 public:
     using TClientBase::TClientBase;
@@ -605,6 +611,9 @@ public:
             for (auto& [key, endpoint]: Cache) {
                 endpoint.reset();
             }
+            for (auto& [address, endpoint]: IOEndpoints) {
+                endpoint.reset();
+            }
         }
     };
 
@@ -614,6 +623,11 @@ public:
         bool isSecure) override;
 
     IBlockStorePtr CreateDataEndpoint(
+        const TString& host,
+        ui32 port,
+        bool isSecure) override;
+
+    IBlockStorePtr CreateIOEndpoint(
         const TString& host,
         ui32 port,
         bool isSecure) override;
@@ -679,6 +693,17 @@ std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
     const TString& address,
     bool secureEndpoint)
 {
+    return CreateTcpSocketChannel(
+        address,
+        secureEndpoint,
+        CreateChannelArguments());
+}
+
+std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
+    const TString& address,
+    bool secureEndpoint,
+    const grpc::ChannelArguments& args)
+{
     auto credentials = CreateTcpClientChannelCredentials(
         secureEndpoint,
         *Config,
@@ -686,10 +711,7 @@ std::shared_ptr<grpc::Channel> TClientBase::CreateTcpSocketChannel(
 
     STORAGE_INFO("Connect to " << address);
 
-    return CreateCustomChannel(
-        address,
-        credentials,
-        CreateChannelArguments());
+    return CreateCustomChannel(address, credentials, args);
 }
 
 std::shared_ptr<grpc::Channel> TClientBase::CreateUnixSocketChannel(
@@ -1201,6 +1223,39 @@ IBlockStorePtr TMultiHostClient::CreateDataEndpoint(
             NProto::TBlockStoreDataService::NewStub(std::move(channel)));
 
         Cache.emplace(make_pair(address, true), endpoint);
+        return endpoint;
+    }
+}
+
+IBlockStorePtr TMultiHostClient::CreateIOEndpoint(
+    const TString& host,
+    ui32 port,
+    bool isSecure)
+{
+    with_lock (EndpointLock) {
+        Y_ENSURE(port);
+        auto address = Join(":", host, port);
+
+        if (auto it = IOEndpoints.find(address); it != IOEndpoints.end()) {
+            return it->second;
+        }
+
+        // otherwise gRPC may hand this channel the connection it already
+        // keeps to the same address for the control endpoint
+        auto args = CreateChannelArguments();
+        args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, 1);
+
+        auto channel = CreateTcpSocketChannel(address, isSecure, args);
+        if (!channel) {
+            STORAGE_THROW_SERVICE_ERROR(E_FAIL)
+                << "could not start gRPC client";
+        }
+
+        auto endpoint = std::make_shared<TEndpoint<TMultiHostClient>>(
+            shared_from_this(),
+            NProto::TBlockStoreService::NewStub(std::move(channel)));
+
+        IOEndpoints.emplace(address, endpoint);
         return endpoint;
     }
 }

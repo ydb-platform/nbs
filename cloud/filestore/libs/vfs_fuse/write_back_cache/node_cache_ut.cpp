@@ -172,8 +172,27 @@ struct TBootstrap
         request->SetOffset(offset);
         *request->MutableBuffer() = std::move(data);
 
-        auto res = RequestManager.AddRequest(std::move(request));
-        return std::move(res.CachedRequest);
+        auto pendingRequest = RequestManager.AddRequest(std::move(request));
+        auto allocResult = RequestManager.TryAllocPendingRequest();
+
+        UNIT_ASSERT(!allocResult.Failed);
+        UNIT_ASSERT(pendingRequest.get() == allocResult.Request);
+
+        pendingRequest->SerializeToAllocation();
+
+        auto nextReadyCacheResultResult =
+            RequestManager.GetNextReadyCachedRequest();
+
+        UNIT_ASSERT(!nextReadyCacheResultResult.Failed);
+
+        auto cachedRequest = std::move(nextReadyCacheResultResult.Request);
+        UNIT_ASSERT(cachedRequest);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            pendingRequest->GetSequenceId(),
+            cachedRequest->GetSequenceId());
+
+        return cachedRequest;
     }
 
     TString GetCachedData(

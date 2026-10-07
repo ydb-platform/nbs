@@ -246,6 +246,8 @@ void TIndexTabletState::LoadState(
     }
 
     LoadChannels();
+    Impl->Channels.SetMaxUsedDataChannelCount(
+        config.GetMaxUsedDataChannelCount());
 
     Impl->RangeIdHasher = CreateHasher(fileSystem);
     Impl->ThrottlingPolicy.Reset(throttlerConfig);

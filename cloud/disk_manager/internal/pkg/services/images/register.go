@@ -24,7 +24,7 @@ func RegisterForExecution(
 	nbsFactory nbs.Factory,
 	poolService pools.Service,
 	cellSelector cells.CellSelector,
-	followerS3 *backup.FollowerS3,
+	backupS3 *backup.S3,
 ) error {
 
 	deletedImageExpirationTimeout, err := time.ParseDuration(
@@ -98,12 +98,12 @@ func RegisterForExecution(
 		return err
 	}
 
-	if followerS3 != nil {
+	if backupS3 != nil {
 		err = taskRegistry.RegisterForExecution("images.BackupImage", func() tasks.Task {
 			return &backupImageTask{
-				scheduler:  taskScheduler,
-				storage:    storage,
-				followerS3: followerS3,
+				scheduler: taskScheduler,
+				storage:   storage,
+				backupS3:  backupS3,
 			}
 		})
 		if err != nil {

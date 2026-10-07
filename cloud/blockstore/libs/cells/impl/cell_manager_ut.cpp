@@ -14,6 +14,7 @@
 #include <cloud/blockstore/libs/server/server.h>
 #include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/service_test.h>
+#include <cloud/blockstore/libs/service/storage.h>
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
@@ -415,7 +416,14 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 
         auto cfg = TCellConfigBuilder("abc", true)
             .AddCell("xyz", 9001, 0, 1, 1, {"host-alpha"})
+            .AddCell("uvw", 9001, 0, 1, 1, {"host-gamma"})
             .Build();
+        // pinged, so its hosts' liveness means something; uvw is not
+        cfg.MutableCells(0)->SetHostMigrationEnabled(true);
+        // the host overrides the cell's transport
+        cfg.MutableCells(0)->SetTransport(NProto::CELL_DATA_TRANSPORT_RDMA);
+        cfg.MutableCells(0)->MutableHosts(0)->SetTransport(
+            NProto::CELL_DATA_TRANSPORT_GRPC);
         auto config = std::make_shared<TCellsConfig>(std::move(cfg));
         Y_UNUSED(testContext);
 
@@ -423,19 +431,77 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         snapshot.HostStatuses["xyz"].push_back(
             {.Fqdn = "host-alpha", .Alive = true, .Warm = false,
              .Connections = 0});
+        snapshot.HostStatuses["uvw"].push_back(
+            {.Fqdn = "host-gamma", .Alive = true, .Warm = false,
+             .Connections = 0});
+        snapshot.Mounts.push_back(
+            {.DiskId = "disk-1",
+             .ClientId = "client-1",
+             .CellId = "xyz",
+             .Host = "host-alpha",
+             .DataTransport = "grpc fallback",
+             .TabletHost = "host-beta"});
 
         TStringStream out;
-        RenderCellsPage(out, *config, snapshot);
+        RenderCellsPage(out, *config, snapshot, TDiagnosticsConfig());
         const auto html = out.Str();
 
-        // one page: search form, config, outbound and inbound sections
-        UNIT_ASSERT_STRING_CONTAINS(html, "action");
-        UNIT_ASSERT_STRING_CONTAINS(html, "Volume");
-        UNIT_ASSERT_STRING_CONTAINS(html, "xyz");
-        UNIT_ASSERT_STRING_CONTAINS(html, "host-alpha");
-        UNIT_ASSERT_STRING_CONTAINS(html, "Cells config");
-        UNIT_ASSERT_STRING_CONTAINS(html, "Outbound host status");
-        UNIT_ASSERT_STRING_CONTAINS(html, "Inbound inter-cell connections");
+        UNIT_ASSERT_STRING_CONTAINS(html, "this node: abc");
+        UNIT_ASSERT_STRING_CONTAINS(html, "name='Volume'");
+        UNIT_ASSERT_STRING_CONTAINS(html, "value='search'");
+
+        // a healthy cell folds away, its heading already says it is fine
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<details class='panel panel-success'>"
+            "<summary class='panel-heading'><strong>xyz</strong>");
+        UNIT_ASSERT_STRING_CONTAINS(html, "1 / 1 alive");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<span class='label label-default'>default: rdma</span>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<td>host-alpha</td><td><span class='label label-success'>"
+            "alive</span></td><td><span class='badge'>0</span></td>"
+            "<td>grpc</td><td>9001</td>");
+
+        // a host nobody pings is not vouched for: its cell is neither green
+        // nor folded
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<details class='panel panel-default' open>"
+            "<summary class='panel-heading'><strong>uvw</strong>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<td>host-gamma</td><td><span class='label label-default'>"
+            "not probed</span></td>");
+
+        // the summary counts what has no one-line heading of its own
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<div class='stat'>1</div>"
+            "<small class='text-muted'>intercell mounts</small>");
+
+        // a remote mount names the host it goes through, linked to the disk
+        // there, what carries its data now and where its tablet is
+        UNIT_ASSERT_STRING_CONTAINS(html, "Intercell mounts");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<a href='http://host-alpha:8766/blockstore/service?action=search"
+            "&amp;Volume=disk-1' target='_blank' rel='noopener'>host-alpha</a>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<span class='label label-warning'>grpc fallback</span>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<a href='http://host-beta:8766/blockstore/service?action=search"
+            "&amp;Volume=disk-1' target='_blank' rel='noopener'>host-beta</a> "
+            "<span class='label label-warning'>elsewhere</span>");
+
+        UNIT_ASSERT_STRING_CONTAINS(html, "Inbound");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<summary class='panel-heading'><strong>Cells config</strong>");
     }
 
     Y_UNIT_TEST(ShouldRenderSearchResultLinks)
@@ -461,26 +527,37 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 
         TStringStream out;
         RenderCellsSearchResult(
-            out, results, TDiagnosticsConfig(), "disk-x");
+            out, results, TDiagnosticsConfig(), "own", "disk-x");
         const auto html = out.Str();
 
-        UNIT_ASSERT_STRING_CONTAINS(html, "disk-x");
-        // a remote hit links to the responding host's mon port, with the
-        // action that triggers the search on the target service page
+        // a remote hit links the disk to the responding host's mon port, with
+        // the action that triggers the search on the target service page, in
+        // a new tab
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "http://host-a:8766/blockstore/service?action=search"
-            "&amp;Volume=disk-x");
-        // the local hit links relative to /blockstore/Cells so the Viewer node
+            "<td><a href='http://host-a:8766/blockstore/service?action=search"
+            "&amp;Volume=disk-x' target='_blank' rel='noopener'>disk-x</a>"
+            "</td><td>host-a</td>"
+            "<td><span class='label label-success'>found</span></td>");
+        // the local hit links relative to /blockstore/cells so the Viewer node
         // prefix survives; no leading slash, no http://host:port
         UNIT_ASSERT_STRING_CONTAINS(
             html,
-            "<a href='service?action=search&amp;Volume=disk-x'>"
-            "localhost</a>");
-        UNIT_ASSERT_STRING_CONTAINS(html, "not found");
-        UNIT_ASSERT_STRING_CONTAINS(html, "unavailable");
+            "<td>local (own)</td><td><a href='service?action=search"
+            "&amp;Volume=disk-x' target='_blank' rel='noopener'>disk-x</a>"
+            "</td><td>localhost</td>");
         UNIT_ASSERT_STRING_CONTAINS(
-            html, "migration destination copy on host-m");
+            html,
+            "<span class='label label-default'>not found</span>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<span class='label label-warning'>unavailable</span>");
+        UNIT_ASSERT_STRING_CONTAINS(
+            html,
+            "<td></td><td>host-m</td>"
+            "<td><span class='label label-info'>migration copy</span></td>");
+        // the form keeps what was searched for
+        UNIT_ASSERT_STRING_CONTAINS(html, "value='disk-x'");
     }
 
     Y_UNIT_TEST(ShouldEncodeSpecialCharsInSearchLink)
@@ -492,7 +569,7 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
 
         TStringStream out;
         RenderCellsSearchResult(
-            out, results, TDiagnosticsConfig(), "disk#a&b");
+            out, results, TDiagnosticsConfig(), "own", "disk#a&b");
         const auto html = out.Str();
 
         // the id is url-encoded before html-escaping, so '#'/'&' cannot
@@ -545,6 +622,241 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             E_INVALID_STATE,
             result.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldServeGrpcDataThroughControlPort)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+
+        auto service = std::make_shared<TTestService>();
+        ui32 zeroBlocksCount = 0;
+        service->ZeroBlocksHandler =
+            [&] (auto request) {
+                Y_UNUSED(request);
+                ++zeroBlocksCount;
+                return MakeFuture<NProto::TZeroBlocksResponse>();
+            };
+        TString written;
+        service->WriteBlocksHandler =
+            [&] (auto request) {
+                for (const auto& block: request->GetBlocks().GetBuffers()) {
+                    written += block;
+                }
+                return MakeFuture<NProto::TWriteBlocksResponse>();
+            };
+
+        TTestContext testContext;
+
+        auto server = TTestServerBuilder(testContext)
+            .SetPort(port)
+            .SetCellId("xyz")
+            .BuildServer(service);
+
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell(
+                "xyz",  // cellid
+                port,   // port
+                0,      // secure port
+                1,      // describe volume host count
+                1,      // min cell connections
+                {"localhost"})
+            .Build();
+        // the same gRPC data endpoint the rdma transport falls back to
+        cfg.MutableCells(0)->SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
+
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        auto cellManager = CreateCellManager(
+            config,
+            testContext.Timer,
+            testContext.Scheduler,
+            testContext.Logging,
+            testContext.Monitoring,
+            testContext.TraceSerializer,
+            testContext.ServerStats,
+            CreateClientCertificateProvider(config),
+            nullptr,
+            CreateLocalService());
+
+        server->Start();
+        cellManager->Start();
+        Y_DEFER {
+            cellManager->Stop();
+            server->Stop();
+        };
+
+        auto connectionOrError = cellManager
+            ->CreateConnection(
+                "xyz",
+                {},
+                std::make_shared<TClientAppConfig>(),
+                nullptr)
+            .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(
+            !HasError(connectionOrError),
+            connectionOrError.GetError());
+
+        // as a session sends it
+        auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+        request->MutableHeaders()->SetClientId("client");
+
+        auto storage = connectionOrError.GetResult()->GetStorage();
+        auto response =
+            storage->ZeroBlocks(MakeIntrusive<TCallContext>(), request)
+                .GetValue(TDuration::Seconds(5));
+
+        // the cell's control port only takes the control service
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(1, zeroBlocksCount);
+
+        // as a gRPC-IPC session sends it: with what its own server filled in
+        request->MutableHeaders()->MutableInternal()->SetRequestSource(
+            NProto::SOURCE_FD_DATA_CHANNEL);
+        response = storage->ZeroBlocks(MakeIntrusive<TCallContext>(), request)
+                       .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(2, zeroBlocksCount);
+
+        const ui32 blockSize = 4096;
+        TString data(blockSize, 'x');
+        auto writeRequest =
+            std::make_shared<NProto::TWriteBlocksLocalRequest>();
+        writeRequest->MutableHeaders()->SetClientId("client");
+        writeRequest->MutableHeaders()->MutableInternal()->SetRequestSource(
+            NProto::SOURCE_FD_DATA_CHANNEL);
+        writeRequest->BlocksCount = 1;
+        writeRequest->SetBlockSize(blockSize);
+        writeRequest->Sglist =
+            TGuardedSgList({TBlockDataRef(data.data(), data.size())});
+        auto writeResponse =
+            storage
+                ->WriteBlocksLocal(MakeIntrusive<TCallContext>(), writeRequest)
+                .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(writeResponse), writeResponse.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(data, written);
+    }
+
+    Y_UNIT_TEST(ShouldListRemoteMounts)
+    {
+        TPortManager portManager;
+        ui16 port = portManager.GetPort(9001);
+
+        auto service = std::make_shared<TTestService>();
+        service->MountVolumeHandler =
+            [&] (auto request) {
+                NProto::TMountVolumeResponse response;
+                if (request->GetDiskId() == "bad-disk") {
+                    *response.MutableError() = MakeError(E_NOT_FOUND);
+                }
+                response.SetTabletHost("localhost");
+                response.MutableVolume()->SetDiskId(request->GetDiskId());
+                return MakeFuture(std::move(response));
+            };
+        service->UnmountVolumeHandler =
+            [&] (auto request) {
+                Y_UNUSED(request);
+                return MakeFuture(NProto::TUnmountVolumeResponse());
+            };
+
+        TTestContext testContext;
+
+        auto server = TTestServerBuilder(testContext)
+            .SetPort(port)
+            .SetCellId("xyz")
+            .BuildServer(service);
+
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell(
+                "xyz",  // cellid
+                port,   // port
+                0,      // secure port
+                1,      // describe volume host count
+                1,      // min cell connections
+                {"localhost"})
+            .Build();
+        cfg.MutableCells(0)->SetTransport(NProto::CELL_DATA_TRANSPORT_GRPC);
+
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        auto cellManager = CreateCellManager(
+            config,
+            testContext.Timer,
+            testContext.Scheduler,
+            testContext.Logging,
+            testContext.Monitoring,
+            testContext.TraceSerializer,
+            testContext.ServerStats,
+            CreateClientCertificateProvider(config),
+            nullptr,
+            CreateLocalService());
+
+        server->Start();
+        cellManager->Start();
+        Y_DEFER {
+            cellManager->Stop();
+            server->Stop();
+        };
+
+        auto connectionOrError = cellManager
+            ->CreateConnection(
+                "xyz",
+                {},
+                std::make_shared<TClientAppConfig>(),
+                nullptr)
+            .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(
+            !HasError(connectionOrError),
+            connectionOrError.GetError());
+        auto connection = connectionOrError.ExtractResult();
+
+        // nothing mounted through it yet
+        UNIT_ASSERT_VALUES_EQUAL(0, cellManager->GetSnapshot().Mounts.size());
+
+        auto mount = [&] (const TString& diskId)
+        {
+            auto request = std::make_shared<NProto::TMountVolumeRequest>();
+            request->SetDiskId(diskId);
+            request->MutableHeaders()->SetClientId("client-1");
+            return connection->GetService()
+                ->MountVolume(MakeIntrusive<TCallContext>(), request)
+                .GetValue(TDuration::Seconds(5));
+        };
+
+        // a failed mount is not listed
+        UNIT_ASSERT(HasError(mount("bad-disk")));
+        UNIT_ASSERT_VALUES_EQUAL(0, cellManager->GetSnapshot().Mounts.size());
+
+        auto response = mount("disk-1");
+        UNIT_ASSERT_C(!HasError(response), response.GetError());
+
+        auto mounts = cellManager->GetSnapshot().Mounts;
+        UNIT_ASSERT_VALUES_EQUAL(1, mounts.size());
+        UNIT_ASSERT_VALUES_EQUAL("disk-1", mounts[0].DiskId);
+        UNIT_ASSERT_VALUES_EQUAL("client-1", mounts[0].ClientId);
+        UNIT_ASSERT_VALUES_EQUAL("xyz", mounts[0].CellId);
+        UNIT_ASSERT_VALUES_EQUAL("localhost", mounts[0].Host);
+        UNIT_ASSERT_VALUES_EQUAL("grpc", mounts[0].DataTransport);
+        UNIT_ASSERT_VALUES_EQUAL("localhost", mounts[0].TabletHost);
+
+        auto request = std::make_shared<NProto::TUnmountVolumeRequest>();
+        request->SetDiskId("disk-1");
+        request->MutableHeaders()->SetClientId("client-1");
+        auto unmountResponse =
+            connection->GetService()
+                ->UnmountVolume(MakeIntrusive<TCallContext>(), request)
+                .GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(
+            !HasError(unmountResponse),
+            unmountResponse.GetError());
+        UNIT_ASSERT_VALUES_EQUAL(0, cellManager->GetSnapshot().Mounts.size());
+
+        UNIT_ASSERT(!HasError(mount("disk-1")));
+        UNIT_ASSERT_VALUES_EQUAL(1, cellManager->GetSnapshot().Mounts.size());
+
+        // the mount is gone with its connection
+        connection.reset();
+        UNIT_ASSERT_VALUES_EQUAL(0, cellManager->GetSnapshot().Mounts.size());
     }
 }
 

@@ -46,29 +46,51 @@ class TPendingWriteDataRequest
     , public TIntrusiveListItem<TPendingWriteDataRequest, THandleStateTag>
 {
 private:
+    friend class TWriteDataRequestManager;
+
     std::shared_ptr<NProto::TWriteDataRequest> Request;
 
     NThreading::TPromise<NProto::TWriteDataResponse> Promise =
         NThreading::NewPromise<NProto::TWriteDataResponse>();
 
+    // Private fields accessed directly by TWriteDataRequestManager
+    char* AllocationPtr = nullptr;
+    size_t AllocationByteCount = 0;
+    bool Serialized = false;
+
 public:
     TPendingWriteDataRequest(
         ui64 sequenceId,
         TInstant time,
-        std::shared_ptr<NProto::TWriteDataRequest> request)
-        : TWriteDataRequestBase(sequenceId, time)
-        , Request(std::move(request))
-    {}
+        std::shared_ptr<NProto::TWriteDataRequest> request);
 
     const NProto::TWriteDataRequest& GetRequest() const
     {
         return *Request;
     }
 
+    ui64 GetNodeId() const
+    {
+        return Request->GetNodeId();
+    }
+
+    ui64 GetHandle() const
+    {
+        return Request->GetHandle();
+    }
+
     NThreading::TPromise<NProto::TWriteDataResponse>& AccessPromise()
     {
         return Promise;
     }
+
+    bool HasAllocation() const
+    {
+        return AllocationPtr != nullptr;
+    }
+
+    // Serializes the request into its persistent storage allocation.
+    void SerializeToAllocation();
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,6 +129,9 @@ public:
                   allocationPtr))
         , SerializedData(serializedData)
     {}
+
+    static std::unique_ptr<TCachedWriteDataRequest>
+    CreateFromAllocation(ui64 sequenceId, TInstant time, TStringBuf allocation);
 
     const void* GetAllocationPtr() const
     {

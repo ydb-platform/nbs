@@ -9,6 +9,7 @@
 #include <silk/fibers/mutex.h>
 #include <silk/util/logger.h>
 
+#include <util/datetime/base.h>
 #include <util/generic/scope.h>
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
@@ -163,9 +164,14 @@ public:
         // connection attempts.
         //
 
+        const TInstant started = TInstant::Now();
         int fd = OpenTcp(Host, Port);
-        if (fd >= 0 && Metrics) {
-            Metrics->ConnectionsCreated.fetch_add(1);
+        if (Metrics) {
+            Metrics->ConnectTimeUs.fetch_add(
+                (TInstant::Now() - started).MicroSeconds());
+            if (fd >= 0) {
+                Metrics->ConnectionsCreated.fetch_add(1);
+            }
         }
         return {.Fd = fd, .Used = false};
     }

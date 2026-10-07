@@ -1,0 +1,1047 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="906" viewBox="0 0 1300 906" font-family="DejaVu Sans, Arial, sans-serif" font-size="13">
+<style>.rec .valinfo{display:none} .rec:hover .valinfo{display:inline} .rec .info{display:none} .rec:hover .info{display:inline} .rec:hover .device rect{stroke:#d9480f;stroke-width:3} .rec:hover .data rect{stroke:#d9480f;stroke-width:3;fill:#e6d3ff} .rec:hover .meta rect,.rec:hover .chain rect,.rec:hover .value rect{stroke:#d9480f;stroke-width:3} text{fill:#222} .h{font-size:16px;font-weight:bold} .s{font-size:11px;fill:#444} .v{font-size:14px;font-weight:bold}</style>
+<defs><marker id="arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#555"/></marker></defs>
+<rect width="1300" height="906" fill="#fff"/>
+<text x="24" y="34" class="h" font-size="20">JOURNAL</text>
+<rect x="1064" y="52" width="212" height="198" rx="6" fill="#f4f4f4" stroke="#bbb"/>
+<text x="1064" y="44" class="h">Log Record</text>
+<text x="1064" y="272" class="h">Record state</text>
+<rect x="1064" y="280" width="212" height="40" rx="6" fill="#f4f4f4" stroke="#bbb"/>
+<text x="1064" y="352" class="h">Tooltip</text>
+<rect x="1064" y="360" width="212" height="121" rx="6" fill="#f4f4f4" stroke="#bbb"/>
+<text x="24" y="140" class="h">Log chain</text>
+<line x1="84" y1="177.0" x2="110" y2="177.0" stroke="#555" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="none"/>
+<line x1="172" y1="177.0" x2="198" y2="177.0" stroke="#555" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="none"/>
+<line x1="260" y1="177.0" x2="286" y2="177.0" stroke="#555" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="none"/>
+<line x1="348" y1="177.0" x2="374" y2="177.0" stroke="#555" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="none"/>
+<line x1="436" y1="177.0" x2="462" y2="177.0" stroke="#555" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="none"/>
+<line x1="524" y1="177.0" x2="550" y2="177.0" stroke="#555" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="none"/>
+<line x1="612" y1="177.0" x2="638" y2="177.0" stroke="#555" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="none"/>
+<line x1="700" y1="177.0" x2="726" y2="177.0" stroke="#555" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="5,4"/>
+<line x1="788" y1="177.0" x2="814" y2="177.0" stroke="#555" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="none"/>
+<line x1="876" y1="177.0" x2="902" y2="177.0" stroke="#555" stroke-width="1.5" marker-end="url(#arr)" stroke-dasharray="5,4"/>
+<text x="24" y="240" class="h">Log meta</text>
+<rect x="180" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="184" y="264" font-size="10" fill="#444">4</text>
+<rect x="336" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="340" y="264" font-size="10" fill="#444">8</text>
+<rect x="453" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="457" y="264" font-size="10" fill="#444">11</text>
+<rect x="531" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="535" y="264" font-size="10" fill="#444">13</text>
+<rect x="609" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="613" y="264" font-size="10" fill="#444">15</text>
+<rect x="687" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="691" y="264" font-size="10" fill="#444">17</text>
+<rect x="726" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="730" y="264" font-size="10" fill="#444">18</text>
+<rect x="765" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="769" y="264" font-size="10" fill="#444">19</text>
+<rect x="843" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="847" y="264" font-size="10" fill="#444">21</text>
+<rect x="882" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="886" y="264" font-size="10" fill="#444">22</text>
+<rect x="921" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="925" y="264" font-size="10" fill="#444">23</text>
+<rect x="960" y="252" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="964" y="264" font-size="10" fill="#444">24</text>
+<rect x="24" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="28" y="303" font-size="10" fill="#444">25</text>
+<rect x="63" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="67" y="303" font-size="10" fill="#444">26</text>
+<rect x="102" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="106" y="303" font-size="10" fill="#444">27</text>
+<rect x="141" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="145" y="303" font-size="10" fill="#444">28</text>
+<rect x="180" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="184" y="303" font-size="10" fill="#444">29</text>
+<rect x="219" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="223" y="303" font-size="10" fill="#444">30</text>
+<rect x="258" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="262" y="303" font-size="10" fill="#444">31</text>
+<rect x="297" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="301" y="303" font-size="10" fill="#444">32</text>
+<rect x="336" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="340" y="303" font-size="10" fill="#444">33</text>
+<rect x="375" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="379" y="303" font-size="10" fill="#444">34</text>
+<rect x="414" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="418" y="303" font-size="10" fill="#444">35</text>
+<rect x="453" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="457" y="303" font-size="10" fill="#444">36</text>
+<rect x="492" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="496" y="303" font-size="10" fill="#444">37</text>
+<rect x="531" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="535" y="303" font-size="10" fill="#444">38</text>
+<rect x="570" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="574" y="303" font-size="10" fill="#444">39</text>
+<rect x="609" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="613" y="303" font-size="10" fill="#444">40</text>
+<rect x="648" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="652" y="303" font-size="10" fill="#444">41</text>
+<rect x="687" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="691" y="303" font-size="10" fill="#444">42</text>
+<rect x="726" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="730" y="303" font-size="10" fill="#444">43</text>
+<rect x="765" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="769" y="303" font-size="10" fill="#444">44</text>
+<rect x="804" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="808" y="303" font-size="10" fill="#444">45</text>
+<rect x="843" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="847" y="303" font-size="10" fill="#444">46</text>
+<rect x="882" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="886" y="303" font-size="10" fill="#444">47</text>
+<rect x="921" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="925" y="303" font-size="10" fill="#444">48</text>
+<rect x="960" y="291" width="34" height="34" rx="4" fill="#d9d9d9" stroke="#777"/>
+<text x="964" y="303" font-size="10" fill="#444">49</text>
+<text x="24" y="360" class="h">Log data</text>
+<rect x="102" y="372" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="106" y="384" font-size="10" fill="#444">2</text>
+<rect x="180" y="372" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="384" font-size="10" fill="#444">4</text>
+<rect x="297" y="372" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="384" font-size="10" fill="#444">7</text>
+<rect x="375" y="372" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="384" font-size="10" fill="#444">9</text>
+<rect x="453" y="372" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="384" font-size="10" fill="#444">11</text>
+<rect x="570" y="372" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="384" font-size="10" fill="#444">14</text>
+<rect x="687" y="372" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="384" font-size="10" fill="#444">17</text>
+<rect x="726" y="372" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="384" font-size="10" fill="#444">18</text>
+<rect x="804" y="372" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="808" y="384" font-size="10" fill="#444">20</text>
+<rect x="882" y="372" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="384" font-size="10" fill="#444">22</text>
+<rect x="24" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="28" y="423" font-size="10" fill="#444">25</text>
+<rect x="63" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="67" y="423" font-size="10" fill="#444">26</text>
+<rect x="141" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="145" y="423" font-size="10" fill="#444">28</text>
+<rect x="180" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="423" font-size="10" fill="#444">29</text>
+<rect x="297" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="423" font-size="10" fill="#444">32</text>
+<rect x="336" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="423" font-size="10" fill="#444">33</text>
+<rect x="414" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="418" y="423" font-size="10" fill="#444">35</text>
+<rect x="492" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="423" font-size="10" fill="#444">37</text>
+<rect x="570" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="423" font-size="10" fill="#444">39</text>
+<rect x="609" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="613" y="423" font-size="10" fill="#444">40</text>
+<rect x="726" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="423" font-size="10" fill="#444">43</text>
+<rect x="765" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="423" font-size="10" fill="#444">44</text>
+<rect x="804" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="808" y="423" font-size="10" fill="#444">45</text>
+<rect x="843" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="847" y="423" font-size="10" fill="#444">46</text>
+<rect x="882" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="423" font-size="10" fill="#444">47</text>
+<rect x="921" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="423" font-size="10" fill="#444">48</text>
+<rect x="960" y="411" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="423" font-size="10" fill="#444">49</text>
+<rect x="24" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="28" y="462" font-size="10" fill="#444">50</text>
+<rect x="63" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="67" y="462" font-size="10" fill="#444">51</text>
+<rect x="102" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="106" y="462" font-size="10" fill="#444">52</text>
+<rect x="141" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="145" y="462" font-size="10" fill="#444">53</text>
+<rect x="180" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="462" font-size="10" fill="#444">54</text>
+<rect x="219" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="223" y="462" font-size="10" fill="#444">55</text>
+<rect x="258" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="262" y="462" font-size="10" fill="#444">56</text>
+<rect x="297" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="462" font-size="10" fill="#444">57</text>
+<rect x="336" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="462" font-size="10" fill="#444">58</text>
+<rect x="375" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="462" font-size="10" fill="#444">59</text>
+<rect x="414" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="418" y="462" font-size="10" fill="#444">60</text>
+<rect x="453" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="462" font-size="10" fill="#444">61</text>
+<rect x="492" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="462" font-size="10" fill="#444">62</text>
+<rect x="531" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="535" y="462" font-size="10" fill="#444">63</text>
+<rect x="570" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="462" font-size="10" fill="#444">64</text>
+<rect x="609" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="613" y="462" font-size="10" fill="#444">65</text>
+<rect x="648" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="652" y="462" font-size="10" fill="#444">66</text>
+<rect x="687" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="462" font-size="10" fill="#444">67</text>
+<rect x="726" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="462" font-size="10" fill="#444">68</text>
+<rect x="765" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="462" font-size="10" fill="#444">69</text>
+<rect x="804" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="808" y="462" font-size="10" fill="#444">70</text>
+<rect x="843" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="847" y="462" font-size="10" fill="#444">71</text>
+<rect x="882" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="462" font-size="10" fill="#444">72</text>
+<rect x="921" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="462" font-size="10" fill="#444">73</text>
+<rect x="960" y="450" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="462" font-size="10" fill="#444">74</text>
+<rect x="24" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="28" y="501" font-size="10" fill="#444">75</text>
+<rect x="63" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="67" y="501" font-size="10" fill="#444">76</text>
+<rect x="102" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="106" y="501" font-size="10" fill="#444">77</text>
+<rect x="141" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="145" y="501" font-size="10" fill="#444">78</text>
+<rect x="180" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="501" font-size="10" fill="#444">79</text>
+<rect x="219" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="223" y="501" font-size="10" fill="#444">80</text>
+<rect x="258" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="262" y="501" font-size="10" fill="#444">81</text>
+<rect x="297" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="501" font-size="10" fill="#444">82</text>
+<rect x="336" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="501" font-size="10" fill="#444">83</text>
+<rect x="375" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="501" font-size="10" fill="#444">84</text>
+<rect x="414" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="418" y="501" font-size="10" fill="#444">85</text>
+<rect x="453" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="501" font-size="10" fill="#444">86</text>
+<rect x="492" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="501" font-size="10" fill="#444">87</text>
+<rect x="531" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="535" y="501" font-size="10" fill="#444">88</text>
+<rect x="570" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="501" font-size="10" fill="#444">89</text>
+<rect x="609" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="613" y="501" font-size="10" fill="#444">90</text>
+<rect x="648" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="652" y="501" font-size="10" fill="#444">91</text>
+<rect x="687" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="501" font-size="10" fill="#444">92</text>
+<rect x="726" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="501" font-size="10" fill="#444">93</text>
+<rect x="765" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="501" font-size="10" fill="#444">94</text>
+<rect x="804" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="808" y="501" font-size="10" fill="#444">95</text>
+<rect x="843" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="847" y="501" font-size="10" fill="#444">96</text>
+<rect x="882" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="501" font-size="10" fill="#444">97</text>
+<rect x="921" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="501" font-size="10" fill="#444">98</text>
+<rect x="960" y="489" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="501" font-size="10" fill="#444">99</text>
+<text x="24" y="558" class="h">Data store</text>
+<rect x="24" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="28" y="582" font-size="10" fill="#444">0</text>
+<rect x="63" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="67" y="582" font-size="10" fill="#444">1</text>
+<rect x="180" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="582" font-size="10" fill="#444">4</text>
+<rect x="219" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="223" y="582" font-size="10" fill="#444">5</text>
+<rect x="258" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="262" y="582" font-size="10" fill="#444">6</text>
+<rect x="297" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="582" font-size="10" fill="#444">7</text>
+<rect x="336" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="582" font-size="10" fill="#444">8</text>
+<rect x="375" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="582" font-size="10" fill="#444">9</text>
+<rect x="414" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="418" y="582" font-size="10" fill="#444">10</text>
+<rect x="453" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="582" font-size="10" fill="#444">11</text>
+<rect x="492" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="582" font-size="10" fill="#444">12</text>
+<rect x="531" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="535" y="582" font-size="10" fill="#444">13</text>
+<rect x="570" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="582" font-size="10" fill="#444">14</text>
+<rect x="609" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="613" y="582" font-size="10" fill="#444">15</text>
+<rect x="648" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="652" y="582" font-size="10" fill="#444">16</text>
+<rect x="687" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="582" font-size="10" fill="#444">17</text>
+<rect x="726" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="582" font-size="10" fill="#444">18</text>
+<rect x="765" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="582" font-size="10" fill="#444">19</text>
+<rect x="843" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="847" y="582" font-size="10" fill="#444">21</text>
+<rect x="882" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="582" font-size="10" fill="#444">22</text>
+<rect x="921" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="582" font-size="10" fill="#444">23</text>
+<rect x="960" y="570" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="582" font-size="10" fill="#444">24</text>
+<rect x="24" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="28" y="621" font-size="10" fill="#444">25</text>
+<rect x="63" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="67" y="621" font-size="10" fill="#444">26</text>
+<rect x="102" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="106" y="621" font-size="10" fill="#444">27</text>
+<rect x="141" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="145" y="621" font-size="10" fill="#444">28</text>
+<rect x="180" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="621" font-size="10" fill="#444">29</text>
+<rect x="297" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="621" font-size="10" fill="#444">32</text>
+<rect x="336" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="621" font-size="10" fill="#444">33</text>
+<rect x="375" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="621" font-size="10" fill="#444">34</text>
+<rect x="414" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="418" y="621" font-size="10" fill="#444">35</text>
+<rect x="453" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="621" font-size="10" fill="#444">36</text>
+<rect x="492" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="621" font-size="10" fill="#444">37</text>
+<rect x="531" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="535" y="621" font-size="10" fill="#444">38</text>
+<rect x="570" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="621" font-size="10" fill="#444">39</text>
+<rect x="609" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="613" y="621" font-size="10" fill="#444">40</text>
+<rect x="648" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="652" y="621" font-size="10" fill="#444">41</text>
+<rect x="687" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="621" font-size="10" fill="#444">42</text>
+<rect x="726" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="621" font-size="10" fill="#444">43</text>
+<rect x="765" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="621" font-size="10" fill="#444">44</text>
+<rect x="843" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="847" y="621" font-size="10" fill="#444">46</text>
+<rect x="882" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="621" font-size="10" fill="#444">47</text>
+<rect x="921" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="621" font-size="10" fill="#444">48</text>
+<rect x="960" y="609" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="621" font-size="10" fill="#444">49</text>
+<rect x="24" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="28" y="660" font-size="10" fill="#444">50</text>
+<rect x="63" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="67" y="660" font-size="10" fill="#444">51</text>
+<rect x="102" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="106" y="660" font-size="10" fill="#444">52</text>
+<rect x="141" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="145" y="660" font-size="10" fill="#444">53</text>
+<rect x="180" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="660" font-size="10" fill="#444">54</text>
+<rect x="258" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="262" y="660" font-size="10" fill="#444">56</text>
+<rect x="297" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="660" font-size="10" fill="#444">57</text>
+<rect x="336" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="660" font-size="10" fill="#444">58</text>
+<rect x="375" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="660" font-size="10" fill="#444">59</text>
+<rect x="414" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="418" y="660" font-size="10" fill="#444">60</text>
+<rect x="453" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="660" font-size="10" fill="#444">61</text>
+<rect x="492" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="660" font-size="10" fill="#444">62</text>
+<rect x="531" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="535" y="660" font-size="10" fill="#444">63</text>
+<rect x="570" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="660" font-size="10" fill="#444">64</text>
+<rect x="609" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="613" y="660" font-size="10" fill="#444">65</text>
+<rect x="648" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="652" y="660" font-size="10" fill="#444">66</text>
+<rect x="687" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="660" font-size="10" fill="#444">67</text>
+<rect x="726" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="660" font-size="10" fill="#444">68</text>
+<rect x="765" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="660" font-size="10" fill="#444">69</text>
+<rect x="882" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="660" font-size="10" fill="#444">72</text>
+<rect x="921" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="660" font-size="10" fill="#444">73</text>
+<rect x="960" y="648" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="660" font-size="10" fill="#444">74</text>
+<rect x="24" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="28" y="699" font-size="10" fill="#444">75</text>
+<rect x="63" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="67" y="699" font-size="10" fill="#444">76</text>
+<rect x="102" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="106" y="699" font-size="10" fill="#444">77</text>
+<rect x="141" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="145" y="699" font-size="10" fill="#444">78</text>
+<rect x="180" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="699" font-size="10" fill="#444">79</text>
+<rect x="219" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="223" y="699" font-size="10" fill="#444">80</text>
+<rect x="258" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="262" y="699" font-size="10" fill="#444">81</text>
+<rect x="297" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="699" font-size="10" fill="#444">82</text>
+<rect x="336" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="699" font-size="10" fill="#444">83</text>
+<rect x="375" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="699" font-size="10" fill="#444">84</text>
+<rect x="453" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="699" font-size="10" fill="#444">86</text>
+<rect x="492" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="699" font-size="10" fill="#444">87</text>
+<rect x="531" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="535" y="699" font-size="10" fill="#444">88</text>
+<rect x="570" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="699" font-size="10" fill="#444">89</text>
+<rect x="609" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="613" y="699" font-size="10" fill="#444">90</text>
+<rect x="648" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="652" y="699" font-size="10" fill="#444">91</text>
+<rect x="687" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="699" font-size="10" fill="#444">92</text>
+<rect x="726" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="699" font-size="10" fill="#444">93</text>
+<rect x="765" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="699" font-size="10" fill="#444">94</text>
+<rect x="804" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="808" y="699" font-size="10" fill="#444">95</text>
+<rect x="843" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="847" y="699" font-size="10" fill="#444">96</text>
+<rect x="882" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="699" font-size="10" fill="#444">97</text>
+<rect x="921" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="699" font-size="10" fill="#444">98</text>
+<rect x="960" y="687" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="699" font-size="10" fill="#444">99</text>
+<rect x="141" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="145" y="738" font-size="10" fill="#444">103</text>
+<rect x="180" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="738" font-size="10" fill="#444">104</text>
+<rect x="219" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="223" y="738" font-size="10" fill="#444">105</text>
+<rect x="258" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="262" y="738" font-size="10" fill="#444">106</text>
+<rect x="297" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="738" font-size="10" fill="#444">107</text>
+<rect x="336" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="738" font-size="10" fill="#444">108</text>
+<rect x="375" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="738" font-size="10" fill="#444">109</text>
+<rect x="414" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="418" y="738" font-size="10" fill="#444">110</text>
+<rect x="453" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="738" font-size="10" fill="#444">111</text>
+<rect x="492" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="738" font-size="10" fill="#444">112</text>
+<rect x="531" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="535" y="738" font-size="10" fill="#444">113</text>
+<rect x="570" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="738" font-size="10" fill="#444">114</text>
+<rect x="687" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="738" font-size="10" fill="#444">117</text>
+<rect x="726" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="738" font-size="10" fill="#444">118</text>
+<rect x="765" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="738" font-size="10" fill="#444">119</text>
+<rect x="804" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="808" y="738" font-size="10" fill="#444">120</text>
+<rect x="843" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="847" y="738" font-size="10" fill="#444">121</text>
+<rect x="882" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="738" font-size="10" fill="#444">122</text>
+<rect x="921" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="738" font-size="10" fill="#444">123</text>
+<rect x="960" y="726" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="738" font-size="10" fill="#444">124</text>
+<rect x="24" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="28" y="777" font-size="10" fill="#444">125</text>
+<rect x="63" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="67" y="777" font-size="10" fill="#444">126</text>
+<rect x="102" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="106" y="777" font-size="10" fill="#444">127</text>
+<rect x="141" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="145" y="777" font-size="10" fill="#444">128</text>
+<rect x="180" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="777" font-size="10" fill="#444">129</text>
+<rect x="258" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="262" y="777" font-size="10" fill="#444">131</text>
+<rect x="297" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="777" font-size="10" fill="#444">132</text>
+<rect x="336" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="777" font-size="10" fill="#444">133</text>
+<rect x="375" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="777" font-size="10" fill="#444">134</text>
+<rect x="414" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="418" y="777" font-size="10" fill="#444">135</text>
+<rect x="453" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="777" font-size="10" fill="#444">136</text>
+<rect x="492" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="777" font-size="10" fill="#444">137</text>
+<rect x="531" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="535" y="777" font-size="10" fill="#444">138</text>
+<rect x="570" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="777" font-size="10" fill="#444">139</text>
+<rect x="648" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="652" y="777" font-size="10" fill="#444">141</text>
+<rect x="687" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="777" font-size="10" fill="#444">142</text>
+<rect x="726" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="777" font-size="10" fill="#444">143</text>
+<rect x="765" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="777" font-size="10" fill="#444">144</text>
+<rect x="804" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="808" y="777" font-size="10" fill="#444">145</text>
+<rect x="843" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="847" y="777" font-size="10" fill="#444">146</text>
+<rect x="882" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="777" font-size="10" fill="#444">147</text>
+<rect x="921" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="777" font-size="10" fill="#444">148</text>
+<rect x="960" y="765" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="777" font-size="10" fill="#444">149</text>
+<rect x="63" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="67" y="816" font-size="10" fill="#444">151</text>
+<rect x="102" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="106" y="816" font-size="10" fill="#444">152</text>
+<rect x="141" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="145" y="816" font-size="10" fill="#444">153</text>
+<rect x="180" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="816" font-size="10" fill="#444">154</text>
+<rect x="219" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="223" y="816" font-size="10" fill="#444">155</text>
+<rect x="258" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="262" y="816" font-size="10" fill="#444">156</text>
+<rect x="297" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="816" font-size="10" fill="#444">157</text>
+<rect x="336" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="816" font-size="10" fill="#444">158</text>
+<rect x="375" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="816" font-size="10" fill="#444">159</text>
+<rect x="414" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="418" y="816" font-size="10" fill="#444">160</text>
+<rect x="453" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="816" font-size="10" fill="#444">161</text>
+<rect x="492" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="816" font-size="10" fill="#444">162</text>
+<rect x="531" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="535" y="816" font-size="10" fill="#444">163</text>
+<rect x="570" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="816" font-size="10" fill="#444">164</text>
+<rect x="687" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="816" font-size="10" fill="#444">167</text>
+<rect x="726" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="816" font-size="10" fill="#444">168</text>
+<rect x="765" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="816" font-size="10" fill="#444">169</text>
+<rect x="804" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="808" y="816" font-size="10" fill="#444">170</text>
+<rect x="843" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="847" y="816" font-size="10" fill="#444">171</text>
+<rect x="882" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="816" font-size="10" fill="#444">172</text>
+<rect x="921" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="816" font-size="10" fill="#444">173</text>
+<rect x="960" y="804" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="816" font-size="10" fill="#444">174</text>
+<rect x="24" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="28" y="855" font-size="10" fill="#444">175</text>
+<rect x="63" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="67" y="855" font-size="10" fill="#444">176</text>
+<rect x="102" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="106" y="855" font-size="10" fill="#444">177</text>
+<rect x="141" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="145" y="855" font-size="10" fill="#444">178</text>
+<rect x="180" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="184" y="855" font-size="10" fill="#444">179</text>
+<rect x="258" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="262" y="855" font-size="10" fill="#444">181</text>
+<rect x="297" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="301" y="855" font-size="10" fill="#444">182</text>
+<rect x="336" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="340" y="855" font-size="10" fill="#444">183</text>
+<rect x="375" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="379" y="855" font-size="10" fill="#444">184</text>
+<rect x="414" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="418" y="855" font-size="10" fill="#444">185</text>
+<rect x="453" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="457" y="855" font-size="10" fill="#444">186</text>
+<rect x="492" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="496" y="855" font-size="10" fill="#444">187</text>
+<rect x="531" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="535" y="855" font-size="10" fill="#444">188</text>
+<rect x="570" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="574" y="855" font-size="10" fill="#444">189</text>
+<rect x="687" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="691" y="855" font-size="10" fill="#444">192</text>
+<rect x="726" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="730" y="855" font-size="10" fill="#444">193</text>
+<rect x="765" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="769" y="855" font-size="10" fill="#444">194</text>
+<rect x="804" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="808" y="855" font-size="10" fill="#444">195</text>
+<rect x="843" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="847" y="855" font-size="10" fill="#444">196</text>
+<rect x="882" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="886" y="855" font-size="10" fill="#444">197</text>
+<rect x="921" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="925" y="855" font-size="10" fill="#444">198</text>
+<rect x="960" y="843" width="34" height="34" rx="4" fill="#e8e8e8" stroke="#777"/>
+<text x="964" y="855" font-size="10" fill="#444">199</text>
+<g class="rec" id="rec-lsn-1">
+  <g class="chain">
+  <rect x="24" y="152" width="60" height="50" rx="6" fill="#9ec5e8" stroke="#777"/>
+  <text x="54.0" y="173" text-anchor="middle" class="v">lsn 1</text>
+  <text x="54.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 0</text>
+  </g>
+  <g class="meta">
+  <rect x="141" y="252" width="34" height="34" rx="4" fill="#9ec5e8" stroke="#777"/>
+  <text x="145" y="264" font-size="10" fill="#444">3</text>
+  <text x="158.0" y="279" text-anchor="middle" class="v">1</text>
+  </g>
+  <g class="data">
+  <rect x="24" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="28" y="384" font-size="10" fill="#444">0</text>
+  <rect x="63" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="67" y="384" font-size="10" fill="#444">1</text>
+  </g>
+  <g class="device">
+  <rect x="102" y="570" width="34" height="34" rx="4" fill="#9ec5e8" stroke="#777"/>
+  <text x="106" y="582" font-size="10" fill="#444">2</text>
+  <rect x="141" y="570" width="34" height="34" rx="4" fill="#9ec5e8" stroke="#777"/>
+  <text x="145" y="582" font-size="10" fill="#444">3</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 1</text>
+  <text x="1076" y="96">PrevLsn: 0</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 2</text>
+  <text x="1092" y="162">Location: First 0, Count 2</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#9ec5e8" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">flushed</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-2">
+  <g class="chain">
+  <rect x="112" y="152" width="60" height="50" rx="6" fill="#9ec5e8" stroke="#777"/>
+  <text x="142.0" y="173" text-anchor="middle" class="v">lsn 2</text>
+  <text x="142.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 1</text>
+  </g>
+  <g class="meta">
+  <rect x="24" y="252" width="34" height="34" rx="4" fill="#9ec5e8" stroke="#777"/>
+  <text x="28" y="264" font-size="10" fill="#444">0</text>
+  <text x="41.0" y="279" text-anchor="middle" class="v">2</text>
+  </g>
+  <g class="data">
+  <rect x="141" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="145" y="384" font-size="10" fill="#444">3</text>
+  </g>
+  <g class="device">
+  <rect x="804" y="570" width="34" height="34" rx="4" fill="#9ec5e8" stroke="#777"/>
+  <text x="808" y="582" font-size="10" fill="#444">20</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 2</text>
+  <text x="1076" y="96">PrevLsn: 1</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 20</text>
+  <text x="1092" y="162">Location: First 3, Count 1</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#9ec5e8" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">flushed</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-3">
+  <g class="value"><rect x="24" y="52" width="220" height="36" rx="6" fill="#f4f4f4" stroke="#bbb"/><text x="36" y="75" class="v">LastFlushedLsn = 3</text>  <g class="valinfo">
+  <text x="1076" y="382" class="v">LastFlushedLsn</text>
+  <text x="1076" y="402" font-size="11">Records up to this lsn are on the</text>
+  <text x="1076" y="417" font-size="11">device already. It is the flush</text>
+  <text x="1076" y="432" font-size="11">barrier: a read pins it, so the</text>
+  <text x="1076" y="447" font-size="11">records past it stay in the journal</text>
+  <text x="1076" y="462" font-size="11">until the read is done.</text>
+  </g>
+  </g>
+  <g class="chain">
+  <rect x="200" y="152" width="60" height="50" rx="6" fill="#9ec5e8" stroke="#777"/>
+  <text x="230.0" y="173" text-anchor="middle" class="v">lsn 3</text>
+  <text x="230.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 2</text>
+  </g>
+  <g class="meta">
+  <rect x="297" y="252" width="34" height="34" rx="4" fill="#9ec5e8" stroke="#777"/>
+  <text x="301" y="264" font-size="10" fill="#444">7</text>
+  <text x="314.0" y="279" text-anchor="middle" class="v">3</text>
+  </g>
+  <g class="data">
+  <rect x="219" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="223" y="384" font-size="10" fill="#444">5</text>
+  <rect x="258" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="262" y="384" font-size="10" fill="#444">6</text>
+  <rect x="336" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="340" y="384" font-size="10" fill="#444">8</text>
+  </g>
+  <g class="device">
+  <rect x="219" y="609" width="34" height="34" rx="4" fill="#9ec5e8" stroke="#777"/>
+  <text x="223" y="621" font-size="10" fill="#444">30</text>
+  <rect x="258" y="609" width="34" height="34" rx="4" fill="#9ec5e8" stroke="#777"/>
+  <text x="262" y="621" font-size="10" fill="#444">31</text>
+  <rect x="804" y="609" width="34" height="34" rx="4" fill="#9ec5e8" stroke="#777"/>
+  <text x="808" y="621" font-size="10" fill="#444">45</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 3</text>
+  <text x="1076" y="96">PrevLsn: 2</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 30</text>
+  <text x="1092" y="162">Location: First 5, Count 2</text>
+  <text x="1092" y="184">PageNo: 45</text>
+  <text x="1092" y="206">Location: First 8, Count 1</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#9ec5e8" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">flushed</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-5">
+  <g class="chain">
+  <rect x="288" y="152" width="60" height="50" rx="6" fill="#a8d5a2" stroke="#777"/>
+  <text x="318.0" y="173" text-anchor="middle" class="v">lsn 5</text>
+  <text x="318.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 3</text>
+  </g>
+  <g class="meta">
+  <rect x="63" y="252" width="34" height="34" rx="4" fill="#a8d5a2" stroke="#777"/>
+  <text x="67" y="264" font-size="10" fill="#444">1</text>
+  <text x="80.0" y="279" text-anchor="middle" class="v">5</text>
+  </g>
+  <g class="data">
+  <rect x="414" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="418" y="384" font-size="10" fill="#444">10</text>
+  </g>
+  <g class="device">
+  <rect x="219" y="648" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="223" y="660" font-size="10" fill="#444">55</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 5</text>
+  <text x="1076" y="96">PrevLsn: 3</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 55</text>
+  <text x="1092" y="162">Location: First 10, Count 1</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#a8d5a2" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">indexed</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-8">
+  <g class="meta">
+  <rect x="492" y="252" width="34" height="34" rx="4" fill="#f2a09a" stroke="#777"/>
+  <text x="496" y="264" font-size="10" fill="#444">12</text>
+  <text x="509.0" y="279" text-anchor="middle" class="v">8</text>
+  </g>
+  <g class="data">
+  <rect x="492" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="496" y="384" font-size="10" fill="#444">12</text>
+  <rect x="531" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="535" y="384" font-size="10" fill="#444">13</text>
+  </g>
+  <g class="device">
+  <rect x="609" y="804" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="613" y="816" font-size="10" fill="#444">165</text>
+  <rect x="648" y="804" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="652" y="816" font-size="10" fill="#444">166</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 8</text>
+  <text x="1076" y="96">PrevLsn: 4</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 165</text>
+  <text x="1092" y="162">Location: First 12, Count 2</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#f2a09a" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">stranded</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-6">
+  <g class="chain">
+  <rect x="376" y="152" width="60" height="50" rx="6" fill="#a8d5a2" stroke="#777"/>
+  <text x="406.0" y="173" text-anchor="middle" class="v">lsn 6</text>
+  <text x="406.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 5</text>
+  </g>
+  <g class="meta">
+  <rect x="375" y="252" width="34" height="34" rx="4" fill="#a8d5a2" stroke="#777"/>
+  <text x="379" y="264" font-size="10" fill="#444">9</text>
+  <text x="392.0" y="279" text-anchor="middle" class="v">6</text>
+  </g>
+  <g class="data">
+  <rect x="609" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="613" y="384" font-size="10" fill="#444">15</text>
+  <rect x="648" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="652" y="384" font-size="10" fill="#444">16</text>
+  </g>
+  <g class="device">
+  <rect x="804" y="648" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="808" y="660" font-size="10" fill="#444">70</text>
+  <rect x="843" y="648" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="847" y="660" font-size="10" fill="#444">71</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 6</text>
+  <text x="1076" y="96">PrevLsn: 5</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 70</text>
+  <text x="1092" y="162">Location: First 15, Count 2</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#a8d5a2" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">indexed</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-7">
+  <g class="value"><rect x="260" y="52" width="220" height="36" rx="6" fill="#f4f4f4" stroke="#bbb"/><text x="272" y="75" class="v">LsnLowWatermark = 7</text>  <g class="valinfo">
+  <text x="1076" y="382" class="v">LsnLowWatermark</text>
+  <text x="1076" y="402" font-size="11">The user no longer needs the</text>
+  <text x="1076" y="417" font-size="11">records up to this lsn - they may be</text>
+  <text x="1076" y="432" font-size="11">flushed to the device and dropped</text>
+  <text x="1076" y="447" font-size="11">from the journal. Persisted in the</text>
+  <text x="1076" y="462" font-size="11">journal metadata.</text>
+  </g>
+  </g>
+  <g class="chain">
+  <rect x="464" y="152" width="60" height="50" rx="6" fill="#a8d5a2" stroke="#777"/>
+  <text x="494.0" y="173" text-anchor="middle" class="v">lsn 7</text>
+  <text x="494.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 6</text>
+  </g>
+  <g class="meta">
+  <rect x="102" y="252" width="34" height="34" rx="4" fill="#a8d5a2" stroke="#777"/>
+  <text x="106" y="264" font-size="10" fill="#444">2</text>
+  <text x="119.0" y="279" text-anchor="middle" class="v">7</text>
+  </g>
+  <g class="data">
+  <rect x="765" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="769" y="384" font-size="10" fill="#444">19</text>
+  </g>
+  <g class="device">
+  <rect x="414" y="687" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="418" y="699" font-size="10" fill="#444">85</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 7</text>
+  <text x="1076" y="96">PrevLsn: 6</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 85</text>
+  <text x="1092" y="162">Location: First 19, Count 1</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#a8d5a2" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">indexed</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-11">
+  <g class="meta">
+  <rect x="219" y="252" width="34" height="34" rx="4" fill="#f2a09a" stroke="#777"/>
+  <text x="223" y="264" font-size="10" fill="#444">5</text>
+  <text x="236.0" y="279" text-anchor="middle" class="v">11</text>
+  </g>
+  <g class="data">
+  <rect x="843" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="847" y="384" font-size="10" fill="#444">21</text>
+  </g>
+  <g class="device">
+  <rect x="219" y="843" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="223" y="855" font-size="10" fill="#444">180</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 11</text>
+  <text x="1076" y="96">PrevLsn: 8</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 180</text>
+  <text x="1092" y="162">Location: First 21, Count 1</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#f2a09a" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">stranded</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-9">
+  <g class="chain">
+  <rect x="552" y="152" width="60" height="50" rx="6" fill="#a8d5a2" stroke="#777"/>
+  <text x="582.0" y="173" text-anchor="middle" class="v">lsn 9</text>
+  <text x="582.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 7</text>
+  </g>
+  <g class="meta">
+  <rect x="570" y="252" width="34" height="34" rx="4" fill="#a8d5a2" stroke="#777"/>
+  <text x="574" y="264" font-size="10" fill="#444">14</text>
+  <text x="587.0" y="279" text-anchor="middle" class="v">9</text>
+  </g>
+  <g class="data">
+  <rect x="921" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="925" y="384" font-size="10" fill="#444">23</text>
+  <rect x="960" y="372" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="964" y="384" font-size="10" fill="#444">24</text>
+  <rect x="102" y="411" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="106" y="423" font-size="10" fill="#444">27</text>
+  </g>
+  <g class="device">
+  <rect x="24" y="726" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="28" y="738" font-size="10" fill="#444">100</text>
+  <rect x="63" y="726" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="67" y="738" font-size="10" fill="#444">101</text>
+  <rect x="102" y="726" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="106" y="738" font-size="10" fill="#444">102</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 9</text>
+  <text x="1076" y="96">PrevLsn: 7</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 100</text>
+  <text x="1092" y="162">Location: First 23, Count 2</text>
+  <text x="1092" y="184">PageNo: 102</text>
+  <text x="1092" y="206">Location: First 27, Count 1</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#a8d5a2" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">indexed</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-12">
+  <g class="value"><rect x="496" y="52" width="220" height="36" rx="6" fill="#f4f4f4" stroke="#bbb"/><text x="508" y="75" class="v">LastAckedLsn = 12</text>  <g class="valinfo">
+  <text x="1076" y="382" class="v">LastAckedLsn</text>
+  <text x="1076" y="402" font-size="11">The last indexed record, acked to</text>
+  <text x="1076" y="417" font-size="11">the writer. Every record up to it is</text>
+  <text x="1076" y="432" font-size="11">chained and its pages can be read</text>
+  <text x="1076" y="447" font-size="11">from the journal.</text>
+  </g>
+  </g>
+  <g class="chain">
+  <rect x="640" y="152" width="60" height="50" rx="6" fill="#a8d5a2" stroke="#777"/>
+  <text x="670.0" y="173" text-anchor="middle" class="v">lsn 12</text>
+  <text x="670.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 9</text>
+  </g>
+  <g class="meta">
+  <rect x="258" y="252" width="34" height="34" rx="4" fill="#a8d5a2" stroke="#777"/>
+  <text x="262" y="264" font-size="10" fill="#444">6</text>
+  <text x="275.0" y="279" text-anchor="middle" class="v">12</text>
+  </g>
+  <g class="data">
+  <rect x="219" y="411" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="223" y="423" font-size="10" fill="#444">30</text>
+  <rect x="258" y="411" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="262" y="423" font-size="10" fill="#444">31</text>
+  </g>
+  <g class="device">
+  <rect x="609" y="726" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="613" y="738" font-size="10" fill="#444">115</text>
+  <rect x="648" y="726" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="652" y="738" font-size="10" fill="#444">116</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 12</text>
+  <text x="1076" y="96">PrevLsn: 9</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 115</text>
+  <text x="1092" y="162">Location: First 30, Count 2</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#a8d5a2" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">indexed</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-14">
+  <g class="chain">
+  <rect x="728" y="152" width="60" height="50" rx="6" fill="#f5e08a" stroke="#777"/>
+  <text x="758.0" y="173" text-anchor="middle" class="v">lsn 14</text>
+  <text x="758.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 13</text>
+  </g>
+  <g class="meta">
+  <rect x="804" y="252" width="34" height="34" rx="4" fill="#f5e08a" stroke="#777"/>
+  <text x="808" y="264" font-size="10" fill="#444">20</text>
+  <text x="821.0" y="279" text-anchor="middle" class="v">14</text>
+  </g>
+  <g class="data">
+  <rect x="375" y="411" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="379" y="423" font-size="10" fill="#444">34</text>
+  <rect x="453" y="411" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="457" y="423" font-size="10" fill="#444">36</text>
+  </g>
+  <g class="device">
+  <rect x="219" y="765" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="223" y="777" font-size="10" fill="#444">130</text>
+  <rect x="609" y="765" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="613" y="777" font-size="10" fill="#444">140</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 14</text>
+  <text x="1076" y="96">PrevLsn: 13</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 130</text>
+  <text x="1092" y="162">Location: First 34, Count 1</text>
+  <text x="1092" y="184">PageNo: 140</text>
+  <text x="1092" y="206">Location: First 36, Count 1</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#f5e08a" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">pending</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-15">
+  <g class="chain">
+  <rect x="816" y="152" width="60" height="50" rx="6" fill="#f5e08a" stroke="#777"/>
+  <text x="846.0" y="173" text-anchor="middle" class="v">lsn 15</text>
+  <text x="846.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 14</text>
+  </g>
+  <g class="meta">
+  <rect x="414" y="252" width="34" height="34" rx="4" fill="#f5e08a" stroke="#777"/>
+  <text x="418" y="264" font-size="10" fill="#444">10</text>
+  <text x="431.0" y="279" text-anchor="middle" class="v">15</text>
+  </g>
+  <g class="data">
+  <rect x="531" y="411" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="535" y="423" font-size="10" fill="#444">38</text>
+  </g>
+  <g class="device">
+  <rect x="24" y="804" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="28" y="816" font-size="10" fill="#444">150</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 15</text>
+  <text x="1076" y="96">PrevLsn: 14</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 150</text>
+  <text x="1092" y="162">Location: First 38, Count 1</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#f5e08a" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">pending</text>
+  </g>
+</g>
+<g class="rec" id="rec-lsn-17">
+  <g class="chain">
+  <rect x="904" y="152" width="60" height="50" rx="6" fill="#f5e08a" stroke="#777"/>
+  <text x="934.0" y="173" text-anchor="middle" class="v">lsn 17</text>
+  <text x="934.0" y="192" text-anchor="middle" font-size="10" fill="#444">prev 16</text>
+  </g>
+  <g class="meta">
+  <rect x="648" y="252" width="34" height="34" rx="4" fill="#f5e08a" stroke="#777"/>
+  <text x="652" y="264" font-size="10" fill="#444">16</text>
+  <text x="665.0" y="279" text-anchor="middle" class="v">17</text>
+  </g>
+  <g class="data">
+  <rect x="648" y="411" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="652" y="423" font-size="10" fill="#444">41</text>
+  <rect x="687" y="411" width="34" height="34" rx="4" fill="#b9b3d6" stroke="#777"/>
+  <text x="691" y="423" font-size="10" fill="#444">42</text>
+  </g>
+  <g class="device">
+  <rect x="609" y="843" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="613" y="855" font-size="10" fill="#444">190</text>
+  <rect x="648" y="843" width="34" height="34" rx="4" fill="#d0d0d0" stroke="#777"/>
+  <text x="652" y="855" font-size="10" fill="#444">191</text>
+  </g>
+  <g class="info">
+  <text x="1076" y="74">Lsn: 17</text>
+  <text x="1076" y="96">PrevLsn: 16</text>
+  <text x="1076" y="118">PageMappings:</text>
+  <text x="1092" y="140">PageNo: 190</text>
+  <text x="1092" y="162">Location: First 41, Count 2</text>
+  <rect x="1064" y="280" width="212" height="40" rx="6" fill="#f5e08a" stroke="#777"/>
+  <text x="1170.0" y="305" text-anchor="middle" class="v">pending</text>
+  </g>
+</g>
+</svg>

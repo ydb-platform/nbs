@@ -1,9 +1,12 @@
 #include "request_stats.h"
 
+#include "start_endpoint_test.h"
+
 #include <cloud/storage/core/libs/common/format.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
+#include <cloud/storage/core/libs/diagnostics/weighted_percentile.h>
 
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
@@ -60,6 +63,103 @@ void AddRequestStats(
             0,
             accessMode,
             mountMode);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+IRequestStatsPtr CreateStartEndpointStats(
+    NMonitoring::TDynamicCountersPtr counters,
+    bool isServer,
+    bool useMsUnits = false)
+{
+    auto timer = std::make_shared<TTestTimer>();
+    EHistogramCounterOptions histogramOptions =
+        EHistogramCounterOption::ReportMultipleCounters;
+    if (useMsUnits) {
+        histogramOptions |= EHistogramCounterOption::UseMsUnitsForTimeHistogram;
+    }
+    if (isServer) {
+        return CreateServerRequestStats(
+            std::move(counters),
+            std::move(timer),
+            histogramOptions,
+            {});
+    }
+    return CreateClientRequestStats(
+        std::move(counters),
+        std::move(timer),
+        histogramOptions);
+}
+
+NMonitoring::TDynamicCountersPtr FindStartEndpointCounters(
+    const NMonitoring::TDynamicCountersPtr& counters,
+    const TString& mountLabel,
+    const TString& accessLabel)
+{
+    auto mountGroup = counters->FindSubgroup("mount_mode", mountLabel);
+    UNIT_ASSERT_C(mountGroup, mountLabel);
+    auto accessGroup = mountGroup->FindSubgroup("access_mode", accessLabel);
+    UNIT_ASSERT_C(accessGroup, accessLabel);
+    auto requestGroup = accessGroup->FindSubgroup("request", "StartEndpoint");
+    UNIT_ASSERT(requestGroup);
+    return requestGroup;
+}
+
+NMonitoring::TDynamicCountersPtr FindStartEndpointTimePercentiles(
+    const NMonitoring::TDynamicCountersPtr& counters,
+    bool useMsUnits)
+{
+    auto percentiles = counters->FindSubgroup("percentiles", "Time");
+    UNIT_ASSERT(percentiles);
+    if (!useMsUnits) {
+        constexpr size_t ExpectedUnitsSubgroupCount = 1;
+        UNIT_ASSERT_VALUES_EQUAL(
+            ExpectedUnitsSubgroupCount,
+            percentiles->ReadSnapshot().size());
+        percentiles = percentiles->FindSubgroup("units", "usec");
+        UNIT_ASSERT(percentiles);
+    }
+    const auto& percentileNames = NCloud::GetDefaultPercentileNames();
+    UNIT_ASSERT_VALUES_EQUAL(
+        percentileNames.size(),
+        percentiles->ReadSnapshot().size());
+    for (const auto& name: percentileNames) {
+        UNIT_ASSERT_C(percentiles->FindCounter(name), name);
+    }
+    return percentiles;
+}
+
+ui64 ReadCounter(
+    const NMonitoring::TDynamicCountersPtr& counters,
+    const TString& name)
+{
+    auto counter = counters->FindCounter(name);
+    UNIT_ASSERT_C(counter, name);
+    return counter->Val();
+}
+
+void AssertStartEndpointCounter(
+    const NMonitoring::TDynamicCountersPtr& counters,
+    const TStartEndpointMode& mode,
+    const TString& counterName,
+    ui64 expected)
+{
+    auto total = counters->FindSubgroup("request", "StartEndpoint");
+    UNIT_ASSERT(total);
+    UNIT_ASSERT_VALUES_EQUAL(expected, ReadCounter(total, counterName));
+
+    for (const auto* mount: {"local", "remote"}) {
+        for (const auto* access: {"read_write", "read_only"}) {
+            const bool selected = TString(mount) == mode.MountLabel &&
+                                  TString(access) == mode.AccessLabel;
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                selected ? expected : 0,
+                ReadCounter(
+                    FindStartEndpointCounters(counters, mount, access),
+                    counterName),
+                counterName << ": " << mount << "/" << access);
+        }
     }
 }
 
@@ -315,9 +415,10 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
 
         {
             const auto totalTime = TDuration::Seconds(15);
+            TMetricRequest metricRequest{EBlockStoreRequest::WriteBlocks};
+            metricRequest.MediaKind = NCloud::NProto::STORAGE_MEDIA_DEFAULT;
             requestStats->AddIncompleteStats(
-                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
-                EBlockStoreRequest::WriteBlocks,
+                metricRequest,
                 TRequestTime{
                     .TotalTime = totalTime,
                     .ExecutionTime = totalTime},
@@ -925,6 +1026,360 @@ Y_UNIT_TEST_SUITE(TRequestStatsTest)
             auto p100 = classPercentiles->GetCounter("100");
 
             UNIT_ASSERT_VALUES_EQUAL(300, us2ms(p100->Val()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRegisterCombinedStartEndpointModes)
+    {
+        const auto checkCase = [&](bool isServer, bool useMsUnits)
+        {
+            auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+            auto requestStats =
+                CreateStartEndpointStats(counters, isServer, useMsUnits);
+
+            UNIT_ASSERT(!counters->FindSubgroup("access_mode", "read_write"));
+            UNIT_ASSERT(!counters->FindSubgroup("access_mode", "read_only"));
+
+            const auto checkMode = [&](const TStartEndpointMode& mode)
+            {
+                auto mountGroup =
+                    counters->FindSubgroup("mount_mode", mode.MountLabel);
+                UNIT_ASSERT(mountGroup);
+                UNIT_ASSERT(
+                    !mountGroup->FindSubgroup("request", "StartEndpoint"));
+                UNIT_ASSERT(!mountGroup->FindCounter("HwProblems"));
+
+                auto accessGroup =
+                    mountGroup->FindSubgroup("access_mode", mode.AccessLabel);
+                UNIT_ASSERT(accessGroup);
+                UNIT_ASSERT(accessGroup->FindCounter("HwProblems"));
+
+                auto requestGroup = FindStartEndpointCounters(
+                    counters,
+                    mode.MountLabel,
+                    mode.AccessLabel);
+                UNIT_ASSERT(
+                    FindStartEndpointTimePercentiles(requestGroup, useMsUnits));
+            };
+
+            for (const auto& mode: StartEndpointModes) {
+                checkMode(mode);
+            }
+        };
+
+        for (const bool isServer: {false, true}) {
+            for (const bool useMsUnits: {false, true}) {
+                checkCase(isServer, useMsUnits);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTrackStartEndpointByMountAndAccessMode)
+    {
+        const auto checkCase =
+            [&](bool isServer, bool useMsUnits, const TStartEndpointMode& mode)
+        {
+            auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+            auto requestStats =
+                CreateStartEndpointStats(counters, isServer, useMsUnits);
+
+            auto start = [&]
+            {
+                return requestStats->RequestStarted(
+                    NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+                    EBlockStoreRequest::StartEndpoint,
+                    0,
+                    mode.AccessMode,
+                    mode.MountMode);
+            };
+            auto complete = [&](ui64 started, EDiagnosticsErrorKind error)
+            {
+                requestStats->RequestCompleted(
+                    NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+                    EBlockStoreRequest::StartEndpoint,
+                    started - DurationToCyclesSafe(TDuration::Seconds(1)),
+                    TDuration::MilliSeconds(100),
+                    TDuration::MilliSeconds(200),
+                    TDuration::MilliSeconds(300),
+                    0,
+                    error,
+                    NCloud::NProto::EF_HW_PROBLEMS_DETECTED,
+                    false,
+                    ECalcMaxTime::ENABLE,
+                    0,
+                    mode.AccessMode,
+                    mode.MountMode);
+            };
+
+            const auto successful = start();
+            const auto failed = start();
+            AssertStartEndpointCounter(counters, mode, "InProgress", 2);
+            AssertStartEndpointCounter(counters, mode, "Count", 0);
+            AssertStartEndpointCounter(counters, mode, "Errors", 0);
+
+            complete(successful, EDiagnosticsErrorKind::Success);
+            AssertStartEndpointCounter(counters, mode, "InProgress", 1);
+            AssertStartEndpointCounter(counters, mode, "Count", 1);
+            AssertStartEndpointCounter(counters, mode, "Errors", 0);
+
+            complete(failed, EDiagnosticsErrorKind::ErrorFatal);
+            AssertStartEndpointCounter(counters, mode, "InProgress", 0);
+            AssertStartEndpointCounter(counters, mode, "Count", 1);
+            AssertStartEndpointCounter(counters, mode, "Errors", 1);
+            AssertStartEndpointCounter(counters, mode, "Errors/Fatal", 1);
+
+            requestStats->UpdateStats(false);
+            AssertStartEndpointCounter(counters, mode, "MaxInProgress", 2);
+            auto selected = FindStartEndpointCounters(
+                counters,
+                mode.MountLabel,
+                mode.AccessLabel);
+            auto percentiles =
+                FindStartEndpointTimePercentiles(selected, useMsUnits);
+            UNIT_ASSERT(percentiles);
+            UNIT_ASSERT_VALUES_EQUAL(0, ReadCounter(percentiles, "100"));
+
+            requestStats->UpdateStats(true);
+            const auto checkModeMetrics =
+                [&](const char* mount, const char* access)
+            {
+                const bool selectedMode = TString(mount) == mode.MountLabel &&
+                                          TString(access) == mode.AccessLabel;
+                auto group = FindStartEndpointCounters(counters, mount, access);
+                auto timePercentiles =
+                    FindStartEndpointTimePercentiles(group, useMsUnits);
+                UNIT_ASSERT(timePercentiles);
+                for (const auto* name: {"50", "90", "99", "99.9", "100"}) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        selectedMode,
+                        ReadCounter(timePercentiles, name) > 0);
+                }
+                for (const auto* name: {"MaxTime", "MaxTotalTime", "Time"}) {
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        selectedMode,
+                        ReadCounter(group, name) > 0);
+                }
+                auto modeGroup = counters->FindSubgroup("mount_mode", mount)
+                                     ->FindSubgroup("access_mode", access);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    selectedMode ? 1 : 0,
+                    ReadCounter(modeGroup, "HwProblems"));
+            };
+
+            for (const auto* mount: {"local", "remote"}) {
+                for (const auto* access: {"read_write", "read_only"}) {
+                    checkModeMetrics(mount, access);
+                }
+            }
+            UNIT_ASSERT(ReadCounter(selected, "MaxTime") >= 400'000);
+            UNIT_ASSERT(ReadCounter(selected, "MaxTotalTime") >= 1'000'000);
+            UNIT_ASSERT(ReadCounter(selected, "Time") >= 2'000'000);
+            UNIT_ASSERT_VALUES_EQUAL(1, ReadCounter(counters, "HwProblems"));
+            auto total = counters->FindSubgroup("request", "StartEndpoint");
+            UNIT_ASSERT(total);
+            UNIT_ASSERT(ReadCounter(total, "MaxTime") >= 400'000);
+            UNIT_ASSERT(ReadCounter(total, "MaxTotalTime") >= 1'000'000);
+            UNIT_ASSERT(ReadCounter(total, "Time") >= 2'000'000);
+            UNIT_ASSERT(
+                ReadCounter(
+                    FindStartEndpointTimePercentiles(total, useMsUnits),
+                    "100") > 0);
+        };
+
+        for (const bool isServer: {false, true}) {
+            for (const bool useMsUnits: {false, true}) {
+                for (const auto& mode: AllStartEndpointModes) {
+                    checkCase(isServer, useMsUnits, mode);
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTrackIncompleteStartEndpointByMountAndAccessMode)
+    {
+        const auto checkCase = [&](bool isServer,
+                                   const TStartEndpointMode& mode,
+                                   ECalcMaxTime calcMaxTime)
+        {
+            auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+            auto requestStats = CreateStartEndpointStats(counters, isServer);
+            requestStats->RequestStarted(
+                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+                EBlockStoreRequest::StartEndpoint,
+                0,
+                mode.AccessMode,
+                mode.MountMode);
+            TMetricRequest metricRequest{EBlockStoreRequest::StartEndpoint};
+            metricRequest.MediaKind = NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+            metricRequest.AccessMode = mode.AccessMode;
+            metricRequest.MountMode = mode.MountMode;
+            requestStats->AddIncompleteStats(
+                metricRequest,
+                {.TotalTime = TDuration::Seconds(20),
+                 .ExecutionTime = TDuration::Seconds(12)},
+                calcMaxTime);
+
+            const auto checkUpdatedStats = [&](bool updatePercentiles)
+            {
+                requestStats->UpdateStats(updatePercentiles);
+                AssertStartEndpointCounter(
+                    counters,
+                    mode,
+                    "MaxTime",
+                    calcMaxTime == ECalcMaxTime::ENABLE
+                        ? TDuration::Seconds(12).MicroSeconds()
+                        : 0);
+                AssertStartEndpointCounter(
+                    counters,
+                    mode,
+                    "MaxTotalTime",
+                    TDuration::Seconds(20).MicroSeconds());
+                AssertStartEndpointCounter(counters, mode, "InProgress", 1);
+                AssertStartEndpointCounter(counters, mode, "Count", 0);
+                AssertStartEndpointCounter(counters, mode, "Errors", 0);
+                AssertStartEndpointCounter(counters, mode, "Time", 0);
+            };
+
+            for (const bool updatePercentiles: {false, true}) {
+                checkUpdatedStats(updatePercentiles);
+            }
+        };
+
+        for (const bool isServer: {false, true}) {
+            for (const auto& mode: AllStartEndpointModes) {
+                for (const auto calcMaxTime:
+                     {ECalcMaxTime::ENABLE, ECalcMaxTime::DISABLE})
+                {
+                    checkCase(isServer, mode, calcMaxTime);
+                }
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepOtherRequestsOutOfStartEndpointModeCounters)
+    {
+        const auto checkCase = [&](bool isServer)
+        {
+            auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+            auto requestStats = CreateStartEndpointStats(counters, isServer);
+            AddRequestStats(
+                *requestStats,
+                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+                EBlockStoreRequest::KickEndpoint,
+                {{.RequestTime = TDuration::Seconds(1)}},
+                NProto::VOLUME_ACCESS_READ_ONLY,
+                NProto::VOLUME_MOUNT_REMOTE);
+            TMetricRequest metricRequest{EBlockStoreRequest::KickEndpoint};
+            metricRequest.MediaKind = NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+            metricRequest.AccessMode = NProto::VOLUME_ACCESS_READ_ONLY;
+            metricRequest.MountMode = NProto::VOLUME_MOUNT_REMOTE;
+            requestStats->AddIncompleteStats(
+                metricRequest,
+                {.TotalTime = TDuration::Seconds(20),
+                 .ExecutionTime = TDuration::Seconds(12)},
+                ECalcMaxTime::ENABLE);
+            requestStats->UpdateStats(true);
+
+            auto kickCounters =
+                counters->FindSubgroup("request", "KickEndpoint");
+            UNIT_ASSERT(kickCounters);
+            UNIT_ASSERT_VALUES_EQUAL(1, ReadCounter(kickCounters, "Count"));
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDuration::Seconds(20).MicroSeconds(),
+                ReadCounter(kickCounters, "MaxTotalTime"));
+            for (const auto* name:
+                 {"Count", "Errors", "InProgress", "MaxTime", "MaxTotalTime"})
+            {
+                AssertStartEndpointCounter(
+                    counters,
+                    StartEndpointModes[0],
+                    name,
+                    0);
+            }
+        };
+
+        for (const bool isServer: {false, true}) {
+            checkCase(isServer);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldCountUnknownStartEndpointAccessModeAsReadWrite)
+    {
+        const auto checkCase = [&](bool isServer,
+                                   NProto::EVolumeMountMode mountMode,
+                                   NProto::EVolumeAccessMode unknownAccessMode)
+        {
+            auto counters = MakeIntrusive<NMonitoring::TDynamicCounters>();
+            auto requestStats = CreateStartEndpointStats(counters, isServer);
+            const TStartEndpointMode expectedMode{
+                mountMode,
+                unknownAccessMode,
+                mountMode == NProto::VOLUME_MOUNT_LOCAL ? "local" : "remote",
+                "read_write"};
+
+            const auto started = requestStats->RequestStarted(
+                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+                EBlockStoreRequest::StartEndpoint,
+                0,
+                unknownAccessMode,
+                mountMode);
+            AssertStartEndpointCounter(counters, expectedMode, "InProgress", 1);
+
+            TMetricRequest metricRequest{EBlockStoreRequest::StartEndpoint};
+            metricRequest.MediaKind = NCloud::NProto::STORAGE_MEDIA_DEFAULT;
+            metricRequest.AccessMode = unknownAccessMode;
+            metricRequest.MountMode = mountMode;
+            requestStats->AddIncompleteStats(
+                metricRequest,
+                {.TotalTime = TDuration::Seconds(20),
+                 .ExecutionTime = TDuration::Seconds(12)},
+                ECalcMaxTime::ENABLE);
+            requestStats->UpdateStats(false);
+            AssertStartEndpointCounter(
+                counters,
+                expectedMode,
+                "MaxTime",
+                TDuration::Seconds(12).MicroSeconds());
+            AssertStartEndpointCounter(
+                counters,
+                expectedMode,
+                "MaxTotalTime",
+                TDuration::Seconds(20).MicroSeconds());
+            AssertStartEndpointCounter(counters, expectedMode, "Count", 0);
+
+            requestStats->RequestCompleted(
+                NCloud::NProto::STORAGE_MEDIA_DEFAULT,
+                EBlockStoreRequest::StartEndpoint,
+                started - DurationToCyclesSafe(TDuration::Seconds(1)),
+                TDuration::MilliSeconds(0),
+                TDuration::MilliSeconds(0),
+                TDuration::MilliSeconds(0),
+                0,
+                EDiagnosticsErrorKind::Success,
+                NCloud::NProto::EF_NONE,
+                false,
+                ECalcMaxTime::ENABLE,
+                0,
+                unknownAccessMode,
+                mountMode);
+            requestStats->UpdateStats(false);
+            AssertStartEndpointCounter(counters, expectedMode, "InProgress", 0);
+            AssertStartEndpointCounter(counters, expectedMode, "Count", 1);
+            AssertStartEndpointCounter(counters, expectedMode, "Errors", 0);
+        };
+
+        for (const bool isServer: {false, true}) {
+            for (const auto mountMode:
+                 {NProto::VOLUME_MOUNT_LOCAL, NProto::VOLUME_MOUNT_REMOTE})
+            {
+                for (const auto unknownAccessMode:
+                     {static_cast<NProto::EVolumeAccessMode>(1000),
+                      NProto::EVolumeAccessMode_INT_MIN_SENTINEL_DO_NOT_USE_,
+                      NProto::EVolumeAccessMode_INT_MAX_SENTINEL_DO_NOT_USE_})
+                {
+                    checkCase(isServer, mountMode, unknownAccessMode);
+                }
+            }
         }
     }
 }

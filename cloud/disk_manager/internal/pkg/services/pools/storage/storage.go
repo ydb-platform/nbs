@@ -147,10 +147,21 @@ type Storage interface {
 		limit int,
 	) error
 
+	// A nil srcDisk keeps image-based replacement semantics.
 	RetireBaseDisk(
 		ctx context.Context,
 		baseDiskID string,
 		srcDisk *types.Disk,
+		useImageSize uint64,
+	) ([]RebaseInfo, error)
+
+	// Retire the disk identified by baseDiskID, using that same disk as source
+	// for newly generated replacements. Resolve that disk's ID and zone
+	// inside the retirement transaction.
+	// Requires HoldBaseDisksWithInflightDependents on this storage instance.
+	RetireBaseDiskUsingBaseDiskAsSource(
+		ctx context.Context,
+		baseDiskID string,
 		useImageSize uint64,
 	) ([]RebaseInfo, error)
 

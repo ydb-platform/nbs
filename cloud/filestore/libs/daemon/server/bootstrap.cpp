@@ -51,6 +51,7 @@ namespace {
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString ServerMetricsComponent = "server";
+const TString LocalServiceMetricsComponent = "local_service";
 
 }   // namespace
 
@@ -167,10 +168,6 @@ void TBootstrapServer::InitComponents()
         });
     }
 
-    if (Configs->ServerConfig->GetRefreshCertsPeriod()) {
-        LongRunningTaskExecutor = CreateLongRunningTaskExecutor("CertRefresh");
-    }
-
     if (!Configs->ServerConfig->GetSecurePort()) {
         CertificateProvider = CreateCertificateProviderStub();
     } else {
@@ -258,6 +255,9 @@ void TBootstrapServer::InitLocalService()
         Timer,
         Scheduler,
         Logging,
+        FilestoreCounters->GetSubgroup(
+            "component",
+            LocalServiceMetricsComponent),
         FileIOService,
         ThreadPool,
         nullptr   // no profile log

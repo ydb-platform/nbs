@@ -109,7 +109,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
     Y_UNIT_TEST(ShouldSetGuestKeepCacheProperly)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetGuestKeepCacheAllowed(true);
+        storageConfig.SetGuestCachingType(NProto::GCT_ANY_READ);
+        storageConfig.SetWriteBlobThreshold(4_KB);
         TTestEnv env({}, storageConfig);
         auto registry = env.GetRegistry();
 
@@ -132,26 +133,23 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
         UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::WRNLY)
                          ->Record.GetGuestKeepCache());
 
-        // GuestKeepCache should not be set if there is already a write handle
+        // An open write handle does not prevent keeping the cache as long as
+        // the file is not modified
         id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test2"));
-        UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::WRNLY)
-                         ->Record.GetGuestKeepCache());
-        UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
-                         ->Record.GetGuestKeepCache());
-        UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
-                         ->Record.GetGuestKeepCache());
-        UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDWR)
-                         ->Record.GetGuestKeepCache());
-
-        // But when the write handle is closed the keep cache should be set
-        id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test3"));
         auto writeHandle =
             CreateHandle(tablet, id, {}, TCreateHandleArgs::WRNLY);
-        UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
-                         ->Record.GetGuestKeepCache());
-        tablet.DestroyHandle(writeHandle);
         UNIT_ASSERT(tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
                         ->Record.GetGuestKeepCache());
+
+        // The first write extends the file, the second one overwrites it in
+        // place. Both should lead to the cache invalidation
+        for (ui32 i = 0; i < 2; ++i) {
+            tablet.WriteData(writeHandle, 0, 4_KB, 'a');
+            UNIT_ASSERT(!tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
+                             ->Record.GetGuestKeepCache());
+            UNIT_ASSERT(tablet.CreateHandle(id, TCreateHandleArgs::RDNLY)
+                            ->Record.GetGuestKeepCache());
+        }
 
         tablet.SendRequest(tablet.CreateUpdateCounters());
         env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
@@ -161,14 +159,14 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
             {{{"filesystem", "test"},
               {"sensor", "GuestKeepCacheSet"},
               {"request", "CreateHandle"}},
-             2},
+             4},
         });
     }
 
     Y_UNIT_TEST(ShouldSetGuestKeepCacheBasedOnMtime)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetGuestKeepCacheAllowed(true);
+        storageConfig.SetGuestCachingType(NProto::GCT_ANY_READ);
         TTestEnv env({}, storageConfig);
         auto registry = env.GetRegistry();
 
@@ -1131,9 +1129,8 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Handles)
     Y_UNIT_TEST(ShouldSetGuestKeepCacheProperlyForOffloadedNodes)
     {
         NProto::TStorageConfig storageConfig;
-        storageConfig.SetGuestKeepCacheAllowed(true);
-        storageConfig.SetSessionHandleOffloadedStatsCapacity(2);
         storageConfig.SetGuestCachingType(NProto::GCT_ANY_READ);
+        storageConfig.SetSessionHandleOffloadedStatsCapacity(2);
         TTestEnv env({}, storageConfig);
         auto registry = env.GetRegistry();
 

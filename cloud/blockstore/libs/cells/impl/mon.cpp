@@ -20,7 +20,10 @@
 #include <library/cpp/monlib/service/pages/templates.h>
 #include <library/cpp/string_utils/quote/quote.h>
 
+#include <util/generic/algorithm.h>
+#include <util/generic/hash_set.h>
 #include <util/generic/utility.h>
+#include <util/string/builder.h>
 #include <util/stream/str.h>
 
 namespace NCloud::NBlockStore::NCells {
@@ -71,87 +74,130 @@ struct TEvPrivate
 
 ////////////////////////////////////////////////////////////////////////////////
 
-void RenderSearchForm(IOutputStream& out)
+// the id is url-encoded, or a '#'/'&' in it would truncate or split the
+// Volume query parameter
+TString VolumeSearchPath(const TString& diskId)
 {
-    HTML(out) {
-        TAG(TH3) { out << "Find a disk"; }
-        out << "<form method='GET'>"
-            << "<input type='text' name='Volume'/>"
-            << "<input type='hidden' name='action' value='search'/>"
-            << "<input class='btn btn-primary' type='submit' value='Search'/>"
-            << "</form>";
-    }
+    return "service?action=search&Volume=" + CGIEscapeRet(diskId);
 }
 
-void RenderSearchResultTable(
+// the disk's page on a remote host, under the deployment's hostname scheme
+// (bastion, viewer, ...)
+TString RemoteVolumeSearchUrl(
+    const TString& fqdn,
+    const TString& diskId,
+    const TDiagnosticsConfig& diagnosticsConfig)
+{
+    return GetExternalHostUrl(fqdn, EHostService::Nbs, diagnosticsConfig) +
+           "blockstore/" + VolumeSearchPath(diskId);
+}
+
+void RenderLink(IOutputStream& out, const TString& url, const TString& text)
+{
+    out << "<a href='" << EncodeHtmlPcdata(url)
+        << "' target='_blank' rel='noopener'>" << EncodeHtmlPcdata(text)
+        << "</a>";
+}
+
+// a few rules bootstrap does not have; everything else is its classes, and
+// folding is plain <details>, so the page needs no script of its own
+constexpr TStringBuf PageStyle =
+    "<style>"
+    ".cells-page summary{cursor:pointer}"
+    ".cells-page .stat{font-size:24px}"
+    ".cells-page .panel>table{margin-bottom:0}"
+    "</style>";
+
+void RenderLabel(IOutputStream& out, TStringBuf kind, const TString& text)
+{
+    out << "<span class='label label-" << kind << "'>"
+        << EncodeHtmlPcdata(text) << "</span>";
+}
+
+void RenderSearchPanel(
     IOutputStream& out,
+    const TString& diskId,
+    const TString& resultHtml)
+{
+    out << "<div class='panel panel-default'>"
+        << "<div class='panel-heading'>"
+        << "<h3 class='panel-title'>Search volume</h3></div>"
+        << "<div class='panel-body'>"
+        << "<form method='GET' class='form-inline'>"
+        << "<div class='input-group'>"
+        << "<span class='input-group-addon'>Volume</span>"
+        << "<input type='text' class='form-control' name='Volume' value='"
+        << EncodeHtmlPcdata(diskId) << "'/>"
+        << "<span class='input-group-btn'>"
+        << "<button class='btn btn-primary' type='submit'>Search</button>"
+        << "</span></div>"
+        << "<input type='hidden' name='action' value='search'/>"
+        << "</form>" << resultHtml << "</div></div>";
+}
+
+TString RenderSearchResultTable(
     const TVector<TCellDescribeResult>& results,
     const TDiagnosticsConfig& diagnosticsConfig,
+    const TString& localCellId,
     const TString& diskId)
 {
+    TStringStream out;
     HTML(out) {
         TAG(TH4) { out << "Search result for " << EncodeHtmlPcdata(diskId); }
-        TABLE_CLASS("table table-condensed") {
+        TABLE_CLASS("table table-bordered") {
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "Cell"; }
-                    TABLEH() { out << "Disk found on"; }
+                    TABLEH() { out << "Volume"; }
+                    TABLEH() { out << "Host"; }
+                    TABLEH() { out << "Status"; }
                 }
             }
             TABLEBODY() {
                 for (const auto& result: results) {
                     TABLER() {
                         TABLED() {
-                            out << (result.CellId
-                                        ? EncodeHtmlPcdata(*result.CellId)
-                                        : TString("local"));
+                            if (result.CellId) {
+                                out << EncodeHtmlPcdata(*result.CellId);
+                            } else {
+                                out << "local ("
+                                    << EncodeHtmlPcdata(localCellId) << ")";
+                            }
                         }
                         TABLED() {
+                            if (result.Status == ECellDescribeStatus::Found) {
+                                // the local disk is on this same node: linked
+                                // relative to /blockstore/cells so the Viewer
+                                // node prefix is preserved
+                                RenderLink(
+                                    out,
+                                    result.CellId
+                                        ? RemoteVolumeSearchUrl(
+                                              result.Fqdn,
+                                              diskId,
+                                              diagnosticsConfig)
+                                        : VolumeSearchPath(diskId),
+                                    diskId);
+                            }
+                        }
+                        TABLED() { out << EncodeHtmlPcdata(result.Fqdn); }
+                        TABLED() {
                             switch (result.Status) {
-                                case ECellDescribeStatus::Found: {
-                                    // url-encode the id before html-escaping it,
-                                    // or a '#'/'&' in the id would truncate or
-                                    // split the Volume query parameter
-                                    const auto encodedDiskId =
-                                        EncodeHtmlPcdata(CGIEscapeRet(diskId));
-                                    out << "<a href='";
-                                    if (result.CellId) {
-                                        // reachable url under the deployment's
-                                        // hostname scheme (bastion, viewer, ...);
-                                        // html-escape it too, it embeds the fqdn
-                                        out << EncodeHtmlPcdata(
-                                                   GetExternalHostUrl(
-                                                       result.Fqdn,
-                                                       EHostService::Nbs,
-                                                       diagnosticsConfig))
-                                            << "blockstore/service?action=search"
-                                               "&amp;Volume="
-                                            << encodedDiskId;
-                                    } else {
-                                        // the local disk is on this same node;
-                                        // link relative to /blockstore/Cells so
-                                        // the Viewer node prefix is preserved
-                                        out << "service?action=search"
-                                               "&amp;Volume="
-                                            << encodedDiskId;
-                                    }
-                                    out << "'>"
-                                        << EncodeHtmlPcdata(result.Fqdn)
-                                        << "</a>";
+                                case ECellDescribeStatus::Found:
+                                    RenderLabel(out, "success", "found");
                                     break;
-                                }
                                 case ECellDescribeStatus::MigrationDestination:
-                                    out << "migration destination copy on "
-                                        << EncodeHtmlPcdata(result.Fqdn);
+                                    RenderLabel(out, "info", "migration copy");
                                     break;
                                 case ECellDescribeStatus::NotFound:
-                                    out << "not found";
+                                    RenderLabel(out, "default", "not found");
                                     break;
                                 case ECellDescribeStatus::Unavailable:
-                                    out << "unavailable (not connected)";
+                                    RenderLabel(out, "warning", "unavailable");
                                     break;
                                 case ECellDescribeStatus::Failed:
-                                    out << "lookup failed: "
+                                    RenderLabel(out, "danger", "failed");
+                                    out << " "
                                         << EncodeHtmlPcdata(
                                                FormatError(result.Error));
                                     break;
@@ -162,100 +208,291 @@ void RenderSearchResultTable(
             }
         }
     }
+    return out.Str();
 }
 
-void RenderConfig(IOutputStream& out, const TCellsConfig& config)
+void RenderStat(IOutputStream& out, size_t value, TStringBuf caption)
 {
-    HTML(out) {
-        TAG(TH3) { out << "Cells config"; }
+    out << "<div class='col-sm-3'><div class='well well-sm'>"
+        << "<div class='stat'>" << value << "</div>"
+        << "<small class='text-muted'>" << caption << "</small>"
+        << "</div></div>";
+}
+
+// cells need no tile: each one's panel heading below is its summary
+void RenderSummary(IOutputStream& out, const TCellsSnapshot& snapshot)
+{
+    THashSet<TString> peers;
+    for (const auto& row: snapshot.InboundActivity) {
+        peers.insert(row.Peer);
     }
-    config.DumpHtml(out);
 
-    for (const auto& [cellId, cellConfig]: config.GetCells()) {
-        HTML(out) {
-            TAG(TH4) { out << "Cell " << cellId; }
-        }
-        cellConfig->DumpHtml(out);
+    out << "<div class='row'>";
+    RenderStat(out, snapshot.Mounts.size(), "intercell mounts");
+    RenderStat(out, peers.size(), "inbound peers");
+    out << "</div>";
+}
 
-        HTML(out) {
-            TABLE_CLASS("table table-condensed") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Host"; }
-                        TABLEH() { out << "GrpcPort"; }
-                        TABLEH() { out << "SecureGrpcPort"; }
-                        TABLEH() { out << "RdmaPort"; }
-                    }
+TString DescribeTransport(
+    NProto::ECellDataTransport transport,
+    bool grpcDataFallbackEnabled)
+{
+    switch (transport) {
+        case NProto::CELL_DATA_TRANSPORT_GRPC:
+            return "grpc";
+        case NProto::CELL_DATA_TRANSPORT_RDMA:
+            return grpcDataFallbackEnabled ? "rdma + grpc fallback" : "rdma";
+        default:
+            return "unknown";
+    }
+}
+
+TString FormatPort(ui32 port)
+{
+    return port ? ToString(port) : TString("&mdash;");
+}
+
+void RenderCell(
+    IOutputStream& out,
+    const TString& cellId,
+    const TCellConfig& cellConfig,
+    const TVector<TCellHostStatus>& statuses)
+{
+    const auto alive = static_cast<ui32>(
+        CountIf(statuses, [](const auto& s) { return s.Alive; }));
+    const auto total = static_cast<ui32>(statuses.size());
+
+    // without pings a host is alive only in the sense that nothing has said
+    // otherwise, so such a cell is never shown as healthy
+    const bool probed = cellConfig.GetHostMigrationEnabled();
+
+    TStringBuf health = "warning";
+    if (!total || (alive == total && !probed)) {
+        health = "default";
+    } else if (alive == total) {
+        health = "success";
+    } else if (!alive) {
+        health = "danger";
+    }
+
+    // a healthy cell folds away: its heading already says all there is
+    out << "<details class='panel panel-" << health << "'"
+        << (health == "success" ? "" : " open") << ">"
+        << "<summary class='panel-heading'><strong>"
+        << EncodeHtmlPcdata(cellId) << "</strong> ";
+    // a host can override it, see the hosts' own column
+    RenderLabel(
+        out,
+        "default",
+        "default: " + DescribeTransport(
+                          cellConfig.GetTransport(),
+                          cellConfig.GetGrpcDataFallbackEnabled()));
+    out << " ";
+    if (probed) {
+        RenderLabel(
+            out,
+            health,
+            TStringBuilder() << alive << " / " << total << " alive");
+    } else {
+        RenderLabel(out, "default", "not probed");
+    }
+    out << "</summary>";
+
+    HTML(out) {
+        TABLE_CLASS("table table-striped table-condensed") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Host"; }
+                    TABLEH() { out << "State"; }
+                    TABLEH() { out << "Connections"; }
+                    TABLEH() { out << "Transport"; }
+                    TABLEH() { out << "gRPC"; }
+                    TABLEH() { out << "Secure gRPC"; }
+                    TABLEH() { out << "RDMA"; }
                 }
-                TABLEBODY() {
-                    for (const auto& [fqdn, host]: cellConfig->GetHosts()) {
-                        Y_UNUSED(fqdn);
-                        TABLER() {
-                            TABLED() {
-                                out << EncodeHtmlPcdata(host.GetFqdn());
+            }
+            TABLEBODY() {
+                for (const auto& status: statuses) {
+                    // a host found by discovery takes the cell's ports
+                    NProto::TCellHostConfig proto;
+                    proto.SetFqdn(status.Fqdn);
+                    const auto* known =
+                        cellConfig.GetHosts().FindPtr(status.Fqdn);
+                    const auto host =
+                        known ? *known : TCellHostConfig(proto, cellConfig);
+
+                    TABLER() {
+                        TABLED() { out << EncodeHtmlPcdata(status.Fqdn); }
+                        TABLED() {
+                            if (!status.Alive) {
+                                RenderLabel(out, "danger", "down");
+                            } else if (!probed) {
+                                RenderLabel(out, "default", "not probed");
+                            } else {
+                                RenderLabel(out, "success", "alive");
                             }
-                            TABLED() { out << host.GetGrpcPort(); }
-                            TABLED() { out << host.GetSecureGrpcPort(); }
-                            TABLED() { out << host.GetRdmaPort(); }
+                            if (status.Warm) {
+                                out << " ";
+                                RenderLabel(out, "info", "warm");
+                            }
                         }
+                        TABLED() {
+                            out << "<span class='badge'>"
+                                << status.Connections << "</span>";
+                        }
+                        TABLED() {
+                            out << DescribeTransport(
+                                host.GetTransport(),
+                                host.GetGrpcDataFallbackEnabled());
+                        }
+                        TABLED() { out << FormatPort(host.GetGrpcPort()); }
+                        TABLED() {
+                            out << FormatPort(host.GetSecureGrpcPort());
+                        }
+                        TABLED() { out << FormatPort(host.GetRdmaPort()); }
                     }
                 }
             }
         }
     }
+    out << "</details>";
 }
 
-void RenderOutbound(
+void RenderCells(
     IOutputStream& out,
+    const TCellsConfig& config,
     const THashMap<TString, TVector<TCellHostStatus>>& hostStatuses)
 {
     HTML(out) {
-        TAG(TH3) { out << "Outbound host status"; }
+        TAG(TH3) { out << "Cells"; }
     }
-    for (const auto& [cellId, statuses]: hostStatuses) {
-        HTML(out) {
-            TAG(TH4) { out << "Cell " << cellId; }
-            TABLE_CLASS("table table-condensed") {
-                TABLEHEAD() {
-                    TABLER() {
-                        TABLEH() { out << "Host"; }
-                        TABLEH() { out << "Alive"; }
-                        TABLEH() { out << "Warm"; }
-                        TABLEH() { out << "Connections"; }
-                    }
+
+    TVector<TString> cellIds;
+    for (const auto& [cellId, cellConfig]: config.GetCells()) {
+        Y_UNUSED(cellConfig);
+        cellIds.push_back(cellId);
+    }
+    Sort(cellIds);
+
+    const TVector<TCellHostStatus> none;
+    for (const auto& cellId: cellIds) {
+        const auto* statuses = hostStatuses.FindPtr(cellId);
+        RenderCell(
+            out,
+            cellId,
+            *config.GetCells().at(cellId),
+            statuses ? *statuses : none);
+    }
+}
+
+TStringBuf TransportLabelKind(const TString& transport)
+{
+    if (transport == "rdma") {
+        return "success";
+    }
+    if (transport == "grpc fallback") {
+        return "warning";
+    }
+    return "default";
+}
+
+void RenderMounts(
+    IOutputStream& out,
+    const TVector<TCellMountStatus>& mounts,
+    const TDiagnosticsConfig& diagnosticsConfig)
+{
+    out << "<h3>Intercell mounts <small>disks this node serves through other "
+           "cells</small></h3>";
+    if (mounts.empty()) {
+        out << "<p class='text-muted'>None.</p>";
+        return;
+    }
+
+    HTML(out) {
+        TABLE_SORTABLE_CLASS("table table-striped table-condensed") {
+            TABLEHEAD() {
+                TABLER() {
+                    TABLEH() { out << "Disk"; }
+                    TABLEH() { out << "Client"; }
+                    TABLEH() { out << "Cell"; }
+                    TABLEH() { out << "Host"; }
+                    TABLEH() { out << "Transport"; }
+                    TABLEH() { out << "Tablet"; }
                 }
-                TABLEBODY() {
-                    for (const auto& status: statuses) {
-                        TABLER() {
-                            TABLED() {
-                                out << EncodeHtmlPcdata(status.Fqdn);
+            }
+            TABLEBODY() {
+                for (const auto& mount: mounts) {
+                    TABLER() {
+                        TABLED() { out << EncodeHtmlPcdata(mount.DiskId); }
+                        TABLED() { out << EncodeHtmlPcdata(mount.ClientId); }
+                        TABLED() { out << EncodeHtmlPcdata(mount.CellId); }
+                        TABLED() {
+                            RenderLink(
+                                out,
+                                RemoteVolumeSearchUrl(
+                                    mount.Host,
+                                    mount.DiskId,
+                                    diagnosticsConfig),
+                                mount.Host);
+                        }
+                        TABLED() {
+                            RenderLabel(
+                                out,
+                                TransportLabelKind(mount.DataTransport),
+                                mount.DataTransport);
+                        }
+                        TABLED() {
+                            // empty when the cell is older than the field
+                            if (mount.TabletHost == mount.Host) {
+                                out << "<span class='text-muted'>"
+                                       "same host</span>";
+                            } else if (mount.TabletHost) {
+                                RenderLink(
+                                    out,
+                                    RemoteVolumeSearchUrl(
+                                        mount.TabletHost,
+                                        mount.DiskId,
+                                        diagnosticsConfig),
+                                    mount.TabletHost);
+                                out << " ";
+                                RenderLabel(out, "warning", "elsewhere");
                             }
-                            TABLED() { out << (status.Alive ? "yes" : "no"); }
-                            TABLED() { out << (status.Warm ? "yes" : "no"); }
-                            TABLED() { out << status.Connections; }
                         }
                     }
                 }
             }
         }
     }
+}
+
+TString FormatAgo(TDuration age)
+{
+    if (age < TDuration::Minutes(1)) {
+        return TStringBuilder() << age.Seconds() << " s ago";
+    }
+    return TStringBuilder() << age.Minutes() << " min ago";
 }
 
 void RenderInbound(
     IOutputStream& out,
-    const TVector<TCellInboundActivity::TRow>& rows)
+    const TVector<TCellInboundActivity::TRow>& rows,
+    TInstant now)
 {
+    out << "<h3>Inbound <small>other cells mounting disks here, last "
+        << TCellInboundActivity::Ttl.Minutes() << " min</small></h3>";
+    if (rows.empty()) {
+        out << "<p class='text-muted'>None.</p>";
+        return;
+    }
+
     HTML(out) {
-        TAG(TH3) { out << "Inbound inter-cell connections"; }
-        TABLE_SORTABLE_CLASS("table table-condensed") {
+        TABLE_SORTABLE_CLASS("table table-striped table-condensed") {
             TABLEHEAD() {
                 TABLER() {
                     TABLEH() { out << "Peer"; }
-                    TABLEH() { out << "DiskId"; }
-                    TABLEH() { out << "ClientId"; }
-                    TABLEH() { out << "Mounts"; }
-                    TABLEH() { out << "Unmounts"; }
-                    TABLEH() { out << "Describes"; }
+                    TABLEH() { out << "Disk"; }
+                    TABLEH() { out << "Client"; }
+                    TABLEH() { out << "Last mount"; }
                 }
             }
             TABLEBODY() {
@@ -264,9 +501,7 @@ void RenderInbound(
                         TABLED() { out << EncodeHtmlPcdata(row.Peer); }
                         TABLED() { out << EncodeHtmlPcdata(row.DiskId); }
                         TABLED() { out << EncodeHtmlPcdata(row.ClientId); }
-                        TABLED() { out << row.Mounts; }
-                        TABLED() { out << row.Unmounts; }
-                        TABLED() { out << row.Describes; }
+                        TABLED() { out << FormatAgo(now - row.LastSeen); }
                     }
                 }
             }
@@ -274,9 +509,23 @@ void RenderInbound(
     }
 }
 
+void RenderConfig(IOutputStream& out, const TCellsConfig& config)
+{
+    out << "<details class='panel panel-default'>"
+        << "<summary class='panel-heading'><strong>Cells config</strong> "
+        << "<span class='text-muted'>raw</span></summary>"
+        << "<div class='panel-body'>";
+    config.DumpHtml(out);
+    for (const auto& [cellId, cellConfig]: config.GetCells()) {
+        out << "<h4>" << EncodeHtmlPcdata(cellId) << "</h4>";
+        cellConfig->DumpHtml(out);
+    }
+    out << "</div></details>";
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
-// The /blockstore/Cells page. Renders the manager's snapshot on a plain open;
+// The /blockstore/cells page. Renders the manager's snapshot on a plain open;
 // delegates a disk search to the manager's SearchVolume and renders the result
 // once its future completes, so the mon thread never waits on RPCs.
 class TCellsMonActor final
@@ -300,7 +549,7 @@ public:
         if (mon) {
             auto* root = mon->RegisterIndexPage("blockstore", "BlockStore");
             mon->RegisterActorPage(
-                root, "Cells", "Cells", false, ctx.ActorSystem(), SelfId());
+                root, "cells", "Cells", false, ctx.ActorSystem(), SelfId());
         }
         Become(&TThis::StateWork);
     }
@@ -328,7 +577,11 @@ private:
         }
 
         TStringStream out;
-        RenderCellsPage(out, *CellManager->Config, CellManager->GetSnapshot());
+        RenderCellsPage(
+            out,
+            *CellManager->Config,
+            CellManager->GetSnapshot(),
+            *DiagnosticsConfig);
 
         ctx.Send(
             ev->Sender,
@@ -374,7 +627,11 @@ private:
 
         TStringStream out;
         RenderCellsSearchResult(
-            out, msg->Results, *DiagnosticsConfig, msg->DiskId);
+            out,
+            msg->Results,
+            *DiagnosticsConfig,
+            CellManager->Config->GetCellId(),
+            msg->DiskId);
 
         ctx.Send(
             msg->ReplyTo,
@@ -391,22 +648,38 @@ private:
 void RenderCellsPage(
     IOutputStream& out,
     const TCellsConfig& config,
-    const TCellsSnapshot& snapshot)
+    const TCellsSnapshot& snapshot,
+    const TDiagnosticsConfig& diagnosticsConfig)
 {
-    RenderSearchForm(out);
+    out << PageStyle << "<div class='cells-page'>"
+        << "<h2>Cells <span class='label label-primary'>this node: "
+        << EncodeHtmlPcdata(config.GetCellId()) << "</span></h2>";
+    RenderSummary(out, snapshot);
+    RenderSearchPanel(out, {}, {});
+    RenderCells(out, config, snapshot.HostStatuses);
+    RenderMounts(out, snapshot.Mounts, diagnosticsConfig);
+    RenderInbound(out, snapshot.InboundActivity, snapshot.Taken);
     RenderConfig(out, config);
-    RenderOutbound(out, snapshot.HostStatuses);
-    RenderInbound(out, snapshot.InboundActivity);
+    out << "</div>";
 }
 
 void RenderCellsSearchResult(
     IOutputStream& out,
     const TVector<TCellDescribeResult>& results,
     const TDiagnosticsConfig& diagnosticsConfig,
+    const TString& localCellId,
     const TString& diskId)
 {
-    RenderSearchForm(out);
-    RenderSearchResultTable(out, results, diagnosticsConfig, diskId);
+    out << PageStyle << "<div class='cells-page'>";
+    RenderSearchPanel(
+        out,
+        diskId,
+        RenderSearchResultTable(
+            results,
+            diagnosticsConfig,
+            localCellId,
+            diskId));
+    out << "</div>";
 }
 
 ////////////////////////////////////////////////////////////////////////////////
