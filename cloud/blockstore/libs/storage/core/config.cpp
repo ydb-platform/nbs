@@ -416,6 +416,7 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CleanupQueueBytesFeatureMaxValue,                 ui32,   10          )\
                                                                                \
     xxx(DiskSpaceScoreThrottlingEnabled,                bool,   false         )\
+    xxx(QuotaDelayAccountingEnabled,                    bool,   false         )\
                                                                                \
     xxx(MaxWriteCostMultiplier,                         ui32,   10            )\
     xxx(ChannelFreeSpaceThreshold,                      ui32,   25            )\

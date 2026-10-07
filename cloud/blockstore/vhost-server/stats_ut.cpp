@@ -550,29 +550,4 @@ Y_UNIT_TEST_SUITE(TStatsTest)
             recordsPerThread,
             snapshot->LatencyCounters[readRequest].Skipped);
     }
-
-    Y_UNIT_TEST(ShouldAdjustLatencyForShaping)
-    {
-        constexpr ui64 cyclesPerSecond = 2000000000;
-        SetCyclesPerSecond(cyclesPerSecond);
-
-        UNIT_ASSERT_VALUES_EQUAL(
-            DurationToCyclesSafe(TDuration::MilliSeconds(7)),
-            AdjustLatencyForShaping(
-                DurationToCyclesSafe(TDuration::MilliSeconds(12)),
-                TDuration::MilliSeconds(5),
-                false));
-        UNIT_ASSERT_VALUES_EQUAL(
-            0,
-            AdjustLatencyForShaping(
-                DurationToCyclesSafe(TDuration::MilliSeconds(3)),
-                TDuration::MilliSeconds(5),
-                false));
-        UNIT_ASSERT_VALUES_EQUAL(
-            DurationToCyclesSafe(TDuration::MilliSeconds(12)),
-            AdjustLatencyForShaping(
-                DurationToCyclesSafe(TDuration::MilliSeconds(12)),
-                TDuration::MilliSeconds(5),
-                true));
-    }
 }

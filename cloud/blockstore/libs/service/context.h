@@ -14,11 +14,12 @@ private:
     TAtomic SilenceRetriableErrors = false;
     TAtomic HasUncountableRejects = false;
 
-    // Latency accounting cannot reconstruct wall-clock execution time when
-    // several subrequests add overlapping waits to this shared context. This
-    // marker is deliberately separate from the legacy timing fields: existing
-    // request metrics keep their current summed-wait semantics.
-    TAtomic HasParallelSubRequests = false;
+    // Throttler delay attributed to the original performance profile of the
+    // disk, as reported by responses. Kept apart from the Postponed stage,
+    // which also contains delays caused by the service itself.
+    TAtomic QuotaDelayMicroSeconds = 0;
+    TAtomic QuotaDelayUnknown = false;
+    TAtomic QuotaRejected = false;
 
 public:
     TCallContext(ui64 requestId = 0);
@@ -29,8 +30,21 @@ public:
     bool GetHasUncountableRejects() const;
     void SetHasUncountableRejects();
 
-    bool GetHasParallelSubRequests() const;
-    void SetHasParallelSubRequests();
+    TDuration GetQuotaDelay() const;
+    void SetQuotaDelay(TDuration d);
+
+    // Set when some throttler delay was reported without its quota part.
+    bool GetQuotaDelayUnknown() const;
+
+    // Set when an attempt was rejected because of the original profile.
+    bool GetQuotaRejected() const;
+
+    // Accounts the throttler info of one response. quotaDelay is Nothing()
+    // when the response did not carry it.
+    void AccountThrottlerQuota(
+        TMaybe<TDuration> quotaDelay,
+        TDuration throttlerDelay,
+        bool quotaRejected);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

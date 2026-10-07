@@ -444,10 +444,20 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsClassificationTest)
         UNIT_ASSERT(!outcome.CountGood);
     }
 
-    Y_UNIT_TEST(ShouldSkipExplicitThrottlingRejection)
+    Y_UNIT_TEST(ShouldCountThrottlingRejectionAsBad)
     {
-        CheckSkipped(MakeError(E_BS_THROTTLED));
-        CheckSkipped(MakeError(E_REJECTED, "Throttled"));
+        CheckFinalFailureIsBad(E_BS_THROTTLED);
+
+        auto ladder = MakeLadder();
+        auto outcome = ClassifyLatencyOutcome(
+            &ladder,
+            MakeError(E_REJECTED, "Throttled"),
+            false,
+            4_KB,
+            TDuration::MilliSeconds(1));
+        UNIT_ASSERT(!outcome.CountSkipped);
+        UNIT_ASSERT(outcome.CountTotal);
+        UNIT_ASSERT(!outcome.CountGood);
     }
 
     Y_UNIT_TEST(ShouldSkipOperationRejectedByCheckpoint)

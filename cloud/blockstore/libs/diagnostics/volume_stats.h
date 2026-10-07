@@ -13,6 +13,7 @@
 #include <library/cpp/logger/log.h>
 
 #include <util/datetime/base.h>
+#include <util/generic/maybe.h>
 #include <util/generic/ptr.h>
 #include <util/generic/string.h>
 
@@ -88,15 +89,17 @@ struct IVolumeInfo
     // not call this method: only an endpoint that owns the complete logical
     // operation (after splitting and retries) may do so. Appended after all
     // legacy methods and defaulted to preserve existing implementations.
+    // quotaDelay is the part of the wait caused by the original performance
+    // profile of the disk, Nothing() if it could not be measured.
+    // quotaRejected means some attempt was rejected because of that profile.
     virtual void RecordLatencyCompletion(
         EBlockStoreRequest,
-        ui64,
-        TDuration,
-        TDuration,
-        TDuration,
-        ui64,
+        ui64 /*requestStarted*/,
+        TMaybe<TDuration> /*quotaDelay*/,
+        bool /*quotaRejected*/,
+        ui64 /*requestBytes*/,
         const NProto::TError&,
-        ui64)
+        ui64 /*responseSent*/)
     {}
 
     // Versioned aggregate producers (currently external vhost) report an

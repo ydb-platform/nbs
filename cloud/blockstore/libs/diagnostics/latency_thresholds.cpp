@@ -231,8 +231,10 @@ TLatencyThresholdOutcome ClassifyLatencyOutcome(
     // operation has executed, so a final E_ARGUMENT at this boundary is a
     // service failure unless the endpoint recorded a known pre-execution
     // rejection explicitly.
-    if (errorKind == EDiagnosticsErrorKind::ErrorThrottling ||
-        errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint ||
+    // A throttling rejection is not excluded either: only the caller knows
+    // whether the purchased performance profile caused it (such operations
+    // never reach this function); otherwise it is the service's fault.
+    if (errorKind == EDiagnosticsErrorKind::ErrorWriteRejectedByCheckpoint ||
         error.GetCode() == E_CANCELLED)
     {
         return {.CountSkipped = true};

@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -837,24 +838,22 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             FormatError(result.GetError()));
     }
 
-    Y_UNIT_TEST(ShouldMarkOnlyParallelSplitRequestsForLatency)
+    Y_UNIT_TEST(ShouldNotSumQuotaDelaysOfParallelParts)
     {
         TTestEnvironment env;
         env.MountVolume();
         TTestBlockStore& testBlockStore = *env.Storage;
 
-        const TString splitData = "aabbccddeeffgghhjjkk";
-        auto splitContext = MakeIntrusive<TCallContext>();
-        auto splitRequest = std::make_shared<NProto::TWriteBlocksRequest>();
-        env.SetupRequest(
-            splitRequest,
-            TBlockRange64::WithLength(1, 10),
-            splitData);
+        const TString data = "aabbccddeeffgghhjjkk";
+        auto callContext = MakeIntrusive<TCallContext>();
+        // Accounted by an earlier attempt of the same logical request.
+        callContext->SetQuotaDelay(TDuration::MilliSeconds(5));
 
-        auto splitFuture = env.SplitRequestService->WriteBlocks(
-            splitContext,
-            std::move(splitRequest));
-        UNIT_ASSERT(splitContext->GetHasParallelSubRequests());
+        auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+        env.SetupRequest(request, TBlockRange64::WithLength(1, 10), data);
+        auto future = env.SplitRequestService->WriteBlocks(
+            callContext,
+            std::move(request));
 
         auto* firstPart = testBlockStore.WriteBlocksPromises.FindPtr(
             TBlockRange64::WithLength(1, 5));
@@ -862,29 +861,33 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             TBlockRange64::WithLength(6, 5));
         UNIT_ASSERT(firstPart);
         UNIT_ASSERT(secondPart);
-        firstPart->Promise.SetValue(NProto::TWriteBlocksResponse());
-        secondPart->Promise.SetValue(NProto::TWriteBlocksResponse());
+
+        // Both parts finish together; the first waited 80ms for the quota and
+        // the second 30ms. Without the quota the request would still wait for
+        // the second part, so only 30ms may be excluded, not 110ms.
+        const auto completePart = [&](auto* part, TDuration quotaDelay)
+        {
+            NProto::TWriteBlocksResponse response;
+            auto& throttler = *response.MutableHeaders()->MutableThrottler();
+            throttler.SetDelay(quotaDelay.MicroSeconds());
+            throttler.SetQuotaDelay(quotaDelay.MicroSeconds());
+            // Done by the volume client for every response.
+            AccountThrottlerQuota(*callContext, throttler, quotaDelay);
+            part->Promise.SetValue(std::move(response));
+        };
+        completePart(firstPart, TDuration::MilliSeconds(80));
+        completePart(secondPart, TDuration::MilliSeconds(30));
+
         UNIT_ASSERT_VALUES_EQUAL(
             S_OK,
-            splitFuture.GetValueSync().GetError().GetCode());
+            future.GetValueSync().GetError().GetCode());
 
-        auto directContext = MakeIntrusive<TCallContext>();
-        auto directRequest = std::make_shared<NProto::TWriteBlocksRequest>();
-        const auto directRange = TBlockRange64::WithLength(0, 3);
-        env.SetupRequest(directRequest, directRange, "aabbcc");
-
-        auto directFuture = env.SplitRequestService->WriteBlocks(
-            directContext,
-            std::move(directRequest));
-        UNIT_ASSERT(!directContext->GetHasParallelSubRequests());
-
-        auto* directPart =
-            testBlockStore.WriteBlocksPromises.FindPtr(directRange);
-        UNIT_ASSERT(directPart);
-        directPart->Promise.SetValue(NProto::TWriteBlocksResponse());
-        UNIT_ASSERT_VALUES_EQUAL(
-            S_OK,
-            directFuture.GetValueSync().GetError().GetCode());
+        const auto quotaDelay = callContext->GetQuotaDelay();
+        UNIT_ASSERT_C(
+            quotaDelay >= TDuration::MilliSeconds(34) &&
+                quotaDelay <= TDuration::MilliSeconds(36),
+            quotaDelay);
+        UNIT_ASSERT(!callContext->GetQuotaDelayUnknown());
     }
 
     Y_UNIT_TEST(ShouldForwardRequestIfSplittingIsNotRequired)

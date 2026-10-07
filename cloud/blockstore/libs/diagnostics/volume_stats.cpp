@@ -526,9 +526,8 @@ public:
     void RecordLatencyCompletion(
         EBlockStoreRequest requestType,
         ui64 requestStarted,
-        TDuration,
-        TDuration,
-        TDuration shapingTime,
+        TMaybe<TDuration> quotaDelay,
+        bool quotaRejected,
         ui64 requestBytes,
         const NProto::TError& error,
         ui64 responseSent) override
@@ -542,6 +541,14 @@ public:
             return;
         }
 
+        // Without the quota part of the throttler delay neither a fast nor a
+        // failed operation can be judged fairly. An operation the original
+        // performance profile rejected is the client's own excess load.
+        if (!quotaDelay || quotaRejected) {
+            *LatencyThresholdsSkippedOpsCounter += 1;
+            return;
+        }
+
         // NBD records responseSent immediately after the device future is
         // resolved and before writing the reply to the transport. Embedded
         // vhost invokes this hook before publishing completion to the
@@ -550,14 +557,12 @@ public:
         const ui64 elapsedCycles = completed > requestStarted
             ? completed - requestStarted
             : 0;
-        // Retry backoff and generic postponed time remain part of the
-        // service-side latency: the caller is still waiting, and Postponed is
-        // not specific to quota enforcement. Shaping is the one explicit
-        // delay imposed by the configured performance quota, so only it is
-        // excluded from this latency contract.
-        const ui64 shapingCycles = DurationToCyclesSafe(shapingTime);
-        const ui64 measuredCycles = elapsedCycles > shapingCycles
-            ? elapsedCycles - shapingCycles
+        // Only the wait the original performance profile would have caused
+        // is excluded. Shaping, retry backoff and throttling caused by
+        // backpressure or volatile limits remain service latency.
+        const ui64 quotaCycles = DurationToCyclesSafe(*quotaDelay);
+        const ui64 measuredCycles = elapsedCycles > quotaCycles
+            ? elapsedCycles - quotaCycles
             : 0;
 
         const auto mediaKind = VolumeBase->Volume.GetStorageMediaKind();

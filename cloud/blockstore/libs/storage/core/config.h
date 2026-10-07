@@ -356,6 +356,7 @@ public:
     ui32 GetFreshByteCountHardLimit() const;
     ui64 GetFreshLogicalBlocksByteCountHardLimit() const;
     bool GetDiskSpaceScoreThrottlingEnabled() const;
+    bool GetQuotaDelayAccountingEnabled() const;
 
     TDuration GetStatsUploadInterval() const;
 

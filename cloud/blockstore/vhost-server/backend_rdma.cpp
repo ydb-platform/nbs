@@ -10,7 +10,6 @@
 #include <cloud/blockstore/libs/diagnostics/server_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/rdma/helper.h>
-#include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service.h>
 #include <cloud/blockstore/libs/service/storage.h>
@@ -158,7 +157,6 @@ private:
     void CompleteRequest(
         struct vhd_io* io,
         TCpuCycles startCycles,
-        const TCallContext* callContext,
         const NProto::TError& error);
     IBlockStorePtr CreateDataClient(IStoragePtr storage);
 };
@@ -372,10 +370,6 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
     auto request = std::make_shared<NProto::TReadBlocksLocalRequest>();
     auto requestId = CreateRequestId();
     auto callContext = MakeIntrusive<TCallContext>(requestId);
-    TCallContextPtr latencyCallContext;
-    if (LatencyTracker.IsEnabled()) {
-        latencyCallContext = callContext;
-    }
 
     auto* reqHeaders = request->MutableHeaders();
     reqHeaders->SetRequestId(requestId);
@@ -396,7 +390,7 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
     auto future =
         DataClient->ReadBlocksLocal(std::move(callContext), std::move(request));
     future.Subscribe(
-        [this, io, requestId, startCycles, latencyCallContext](const auto& future)
+        [this, io, requestId, startCycles](const auto& future)
         {
             const auto& response = future.GetValue();
             auto& error = response.GetError();
@@ -405,7 +399,7 @@ void TRdmaBackend::ProcessReadRequest(struct vhd_io* io, TCpuCycles startCycles)
                 requestId,
                 error.GetCode(),
                 error.GetMessage().c_str());
-            CompleteRequest(io, startCycles, latencyCallContext.Get(), error);
+            CompleteRequest(io, startCycles, error);
         });
 }
 
@@ -418,10 +412,6 @@ void TRdmaBackend::ProcessWriteRequest(
     auto request = std::make_shared<NProto::TWriteBlocksLocalRequest>();
     auto requestId = CreateRequestId();
     auto callContext = MakeIntrusive<TCallContext>(requestId);
-    TCallContextPtr latencyCallContext;
-    if (LatencyTracker.IsEnabled()) {
-        latencyCallContext = callContext;
-    }
 
     auto* reqHeaders = request->MutableHeaders();
     reqHeaders->SetRequestId(requestId);
@@ -442,7 +432,7 @@ void TRdmaBackend::ProcessWriteRequest(
     auto future =
         DataClient->WriteBlocksLocal(std::move(callContext), std::move(request));
     future.Subscribe(
-        [this, io, requestId, startCycles, latencyCallContext](const auto& future)
+        [this, io, requestId, startCycles](const auto& future)
         {
             const auto& response = future.GetValue();
             auto& error = response.GetError();
@@ -451,14 +441,13 @@ void TRdmaBackend::ProcessWriteRequest(
                 requestId,
                 error.GetCode(),
                 error.GetMessage().c_str());
-            CompleteRequest(io, startCycles, latencyCallContext.Get(), error);
+            CompleteRequest(io, startCycles, error);
         });
 }
 
 void TRdmaBackend::CompleteRequest(
     struct vhd_io* io,
     TCpuCycles startCycles,
-    const TCallContext* callContext,
     const NProto::TError& error)
 {
     auto* bio = vhd_get_bdev_io(io);
@@ -479,17 +468,13 @@ void TRdmaBackend::CompleteRequest(
     }
 
     if (LatencyTracker.IsEnabled()) {
-        Y_DEBUG_ABORT_UNLESS(callContext);
-        const TCpuCycles elapsed = completed - startCycles;
-        const TCpuCycles latency = AdjustLatencyForShaping(
-            elapsed,
-            callContext->Time(EProcessingStage::Shaping),
-            callContext->GetHasParallelSubRequests());
+        // There is no volume throttler on this path, so the whole elapsed
+        // time is service time.
         LatencyTracker.Record(
             CompletionStatsData,
             bio->type,
             bytes,
-            latency,
+            completed - startCycles,
             error);
     }
 

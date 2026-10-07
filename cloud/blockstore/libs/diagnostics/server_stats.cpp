@@ -609,22 +609,13 @@ void TServerStats::RecordLatencyCompletion(
         return;
     }
 
-    auto shapingTime = callContext.Time(EProcessingStage::Shaping);
-    if (shapingTime && callContext.GetHasParallelSubRequests()) {
-        // Parallel parts add their shaping delays to one shared context. The
-        // sum is not the amount by which shaping extended the logical
-        // request: intervals may overlap or be hidden behind useful work in
-        // another part. Use the full elapsed time instead. This keeps the
-        // operation in the sample and can only make the verdict conservative.
-        shapingTime = TDuration::Zero();
-    }
-
     req.VolumeInfo->RecordLatencyCompletion(
         req.RequestType,
         callContext.GetRequestStartedCycles(),
-        TDuration::Zero(),   // generic postponed time remains in latency
-        TDuration::Zero(),   // retry backoff remains in latency
-        shapingTime,
+        callContext.GetQuotaDelayUnknown()
+            ? Nothing()
+            : TMaybe<TDuration>(callContext.GetQuotaDelay()),
+        callContext.GetQuotaRejected(),
         requestBytes,
         error,
         callContext.GetResponseSentCycles());

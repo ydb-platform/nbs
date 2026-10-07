@@ -1,6 +1,7 @@
 #include "context.h"
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/utility.h>
 #include <util/system/yassert.h>
 
 namespace NCloud::NBlockStore {
@@ -31,14 +32,42 @@ void TCallContext::SetHasUncountableRejects()
     AtomicSet(HasUncountableRejects, true);
 }
 
-bool TCallContext::GetHasParallelSubRequests() const
+TDuration TCallContext::GetQuotaDelay() const
 {
-    return AtomicGet(HasParallelSubRequests);
+    return TDuration::MicroSeconds(AtomicGet(QuotaDelayMicroSeconds));
 }
 
-void TCallContext::SetHasParallelSubRequests()
+void TCallContext::SetQuotaDelay(TDuration d)
 {
-    AtomicSet(HasParallelSubRequests, true);
+    AtomicSet(QuotaDelayMicroSeconds, d.MicroSeconds());
+}
+
+bool TCallContext::GetQuotaDelayUnknown() const
+{
+    return AtomicGet(QuotaDelayUnknown);
+}
+
+bool TCallContext::GetQuotaRejected() const
+{
+    return AtomicGet(QuotaRejected);
+}
+
+void TCallContext::AccountThrottlerQuota(
+    TMaybe<TDuration> quotaDelay,
+    TDuration throttlerDelay,
+    bool quotaRejected)
+{
+    if (quotaDelay) {
+        AtomicAdd(
+            QuotaDelayMicroSeconds,
+            Min(*quotaDelay, throttlerDelay).MicroSeconds());
+    } else if (throttlerDelay) {
+        AtomicSet(QuotaDelayUnknown, true);
+    }
+
+    if (quotaRejected) {
+        AtomicSet(QuotaRejected, true);
+    }
 }
 
 TCallContextPtr ToBlockStoreCallContext(TCallContextBasePtr callContext)

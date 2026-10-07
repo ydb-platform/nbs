@@ -19,24 +19,6 @@ enum class ELatencyCompletion
     Skipped,
 };
 
-inline TCpuCycles AdjustLatencyForShaping(
-    TCpuCycles elapsedCycles,
-    TDuration shapingTime,
-    bool hasParallelSubRequests)
-{
-    // Parallel parts contribute only a sum of shaping durations. It is not
-    // the amount by which shaping extended the logical request, so judging
-    // the full elapsed time is the conservative choice.
-    if (hasParallelSubRequests) {
-        return elapsedCycles;
-    }
-
-    const ui64 shapingCycles = DurationToCyclesSafe(shapingTime);
-    return elapsedCycles > shapingCycles
-        ? elapsedCycles - shapingCycles
-        : 0;
-}
-
 // Classifies final logical read/write completions at the endpoint boundary.
 // This is service-side latency, not full delivery time observed inside the VM.
 // The selected ladder is copied at endpoint startup and is never refreshed in

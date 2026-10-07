@@ -2861,9 +2861,8 @@ void SendRequest(
     volume->RecordLatencyCompletion(
         requestType,
         requestStarted,
-        TDuration::Zero(),   // postponedTime
-        TDuration::Zero(),   // backoffTime
-        TDuration::Zero(),   // shapingTime
+        TDuration::Zero(),   // quotaDelay
+        false,               // quotaRejected
         requestBytes,
         error,
         requestStarted + durationInCycles);   // responseSent
@@ -2885,9 +2884,8 @@ void SendRequestWithFreshCompletion(
     volume->RecordLatencyCompletion(
         requestType,
         now - Min(now, durationInCycles),
-        TDuration::Zero(),   // postponedTime
-        TDuration::Zero(),   // backoffTime
-        TDuration::Zero(),   // shapingTime
+        TDuration::Zero(),   // quotaDelay
+        false,               // quotaRejected
         requestBytes,
         error,
         0);
@@ -2916,20 +2914,19 @@ void SendRequestWithResponseDelay(
     volume->RecordLatencyCompletion(
         requestType,
         requestStarted,
-        TDuration::Zero(),   // postponedTime
-        TDuration::Zero(),   // backoffTime
-        TDuration::Zero(),   // shapingTime
+        TDuration::Zero(),   // quotaDelay
+        false,               // quotaRejected
         requestBytes,
         error,
         responseSent);
 }
 
-void SendRequestWithWaits(
+void SendRequestWithQuotaDelay(
     IVolumeInfoPtr volume,
     TDuration elapsed,
-    TDuration postponed,
-    TDuration backoff,
-    TDuration shaping)
+    TMaybe<TDuration> quotaDelay,
+    bool quotaRejected = false,
+    NProto::TError error = {})
 {
     const auto completed = GetCycleCount();
     const auto elapsedCycles = DurationToCyclesSafe(elapsed);
@@ -2937,11 +2934,10 @@ void SendRequestWithWaits(
     volume->RecordLatencyCompletion(
         EBlockStoreRequest::WriteBlocks,
         completed - Min(completed, elapsedCycles),
-        postponed,
-        backoff,
-        shaping,
+        quotaDelay,
+        quotaRejected,
         4_KB,
-        {},
+        error,
         completed);
 }
 
@@ -3072,12 +3068,13 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, skipped->Val());
 
-        // Throttled operations are excluded entirely, not counted as bad.
-        SendRequest(
+        // Operations rejected by the original performance profile are
+        // excluded entirely, not counted as bad.
+        SendRequestWithQuotaDelay(
             volume,
-            EBlockStoreRequest::WriteBlocks,
-            4_KB,
             TDuration::MilliSeconds(1),
+            TDuration::Zero(),
+            true,
             MakeError(E_BS_THROTTLED));
         UNIT_ASSERT_VALUES_EQUAL(3, total->Val());
         UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
@@ -3137,7 +3134,7 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
         UNIT_ASSERT_VALUES_EQUAL(1, good->Val());
     }
 
-    Y_UNIT_TEST(ShouldSubtractOnlyShapingAndClampAtZero)
+    Y_UNIT_TEST(ShouldSubtractOnlyQuotaDelayAndSkipUnknownQuota)
     {
         auto monitoring = CreateMonitoringServiceStub();
         auto config = std::make_shared<TDiagnosticsConfig>(
@@ -3171,37 +3168,60 @@ Y_UNIT_TEST_SUITE(TVolumeStatsLatencyThresholdsTest)
             ->GetSubgroup("type", "network-ssd");
         auto total = counters->GetCounter("LatencyTotalOps");
         auto good = counters->GetCounter("LatencyGoodOps");
+        auto skipped = counters->GetCounter("LatencyThresholdsSkippedOps");
 
-        // Postponed and retry backoff remain visible to the caller. Even
-        // though their sum would leave only 5ms, only shaping is excluded,
-        // so the judged latency is 75ms and the operation is bad.
-        SendRequestWithWaits(
+        // The wait the original performance profile caused is the client's
+        // own load: 30ms - 25ms leaves a good 5ms.
+        SendRequestWithQuotaDelay(
             volume,
-            TDuration::MilliSeconds(100),
-            TDuration::MilliSeconds(40),
             TDuration::MilliSeconds(30),
             TDuration::MilliSeconds(25));
 
-        // Explicit shaping is imposed by the configured performance quota.
-        // Removing 25ms from a 30ms wall-clock latency leaves a good 5ms.
-        SendRequestWithWaits(
+        // Everything else, including shaping, backpressure throttling and
+        // retry backoff, is service latency: 100ms - 25ms is bad.
+        SendRequestWithQuotaDelay(
             volume,
-            TDuration::MilliSeconds(30),
-            TDuration::MilliSeconds(100),
             TDuration::MilliSeconds(100),
             TDuration::MilliSeconds(25));
 
-        // Inconsistent/rounded shaping totals must never underflow into a
-        // huge duration. More shaping than elapsed time clamps to zero.
-        SendRequestWithWaits(
+        // Inconsistent/rounded totals must never underflow into a huge
+        // duration. More quota delay than elapsed time clamps to zero.
+        SendRequestWithQuotaDelay(
             volume,
             TDuration::MilliSeconds(5),
-            TDuration::Zero(),
-            TDuration::Zero(),
             TDuration::MilliSeconds(9));
 
         UNIT_ASSERT_VALUES_EQUAL(3, total->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(0, skipped->Val());
+
+        // Throttler wait with an unknown cause could hide a service delay,
+        // and a fast result must not be counted as good.
+        SendRequestWithQuotaDelay(volume, TDuration::MilliSeconds(1), Nothing());
+
+        // Rejected because the client exceeded its own profile.
+        SendRequestWithQuotaDelay(
+            volume,
+            TDuration::MilliSeconds(1),
+            TDuration::Zero(),
+            true,
+            MakeError(E_BS_THROTTLED, "Throttled"));
+
+        UNIT_ASSERT_VALUES_EQUAL(3, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, skipped->Val());
+
+        // Rejected although the original profile had room: service fault.
+        SendRequestWithQuotaDelay(
+            volume,
+            TDuration::MilliSeconds(1),
+            TDuration::Zero(),
+            false,
+            MakeError(E_BS_THROTTLED, "Throttled"));
+
+        UNIT_ASSERT_VALUES_EQUAL(4, total->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, good->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, skipped->Val());
     }
 
     Y_UNIT_TEST(ShouldPublishConfigGaugeOnlyAfterMonitoringIsReady)

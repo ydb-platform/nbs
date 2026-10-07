@@ -12,6 +12,9 @@
 
 #include <library/cpp/testing/unittest/registar.h>
 
+#include <util/generic/deque.h>
+#include <util/generic/vector.h>
+
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -150,10 +153,184 @@ struct TTabletThrottlerPolicyAlwaysPostpone: public ITabletThrottlerPolicy
     }
 };
 
+//////////////////////////////////////////////////////////////////////////////
+
+struct TScriptedThrottlerPolicy: public ITabletThrottlerPolicy
+{
+    TDeque<TMaybe<TDuration>> Delays;
+    TMaybe<TQuotaReference> QuotaReference;
+    ui32 QuotaReferenceRegistrations = 0;
+
+    bool TryPostpone(
+        TInstant ts,
+        const TThrottlingRequestInfo& requestInfo) override
+    {
+        Y_UNUSED(ts, requestInfo);
+        return true;
+    }
+
+    TMaybe<TDuration> SuggestDelay(
+        TInstant ts,
+        TDuration queueTime,
+        const TThrottlingRequestInfo& requestInfo) override
+    {
+        Y_UNUSED(ts, queueTime, requestInfo);
+        UNIT_ASSERT(!Delays.empty());
+        auto delay = Delays.front();
+        Delays.pop_front();
+        return delay;
+    }
+
+    void OnPostponedEvent(
+        TInstant ts,
+        const TThrottlingRequestInfo& requestInfo) override
+    {
+        Y_UNUSED(ts, requestInfo);
+    }
+
+    TMaybe<TQuotaReference> RegisterQuotaReference(
+        TInstant ts,
+        const TThrottlingRequestInfo& requestInfo) override
+    {
+        Y_UNUSED(ts, requestInfo);
+        ++QuotaReferenceRegistrations;
+        return QuotaReference;
+    }
+};
+
+//////////////////////////////////////////////////////////////////////////////
+
+struct TThrottledRequests
+{
+    TVector<TCallContextBasePtr> CallContexts;
+    TVector<ETabletThrottlerStatus> Statuses;
+};
+
+// TEvPing carries a request (its cookie is the index of the call context),
+// TEvFlushLog starts flushing. The flush scheduled by the throttler itself is
+// ignored to keep the test deterministic.
+class TActorWithQuotaThrottler final: public TActor<TActorWithQuotaThrottler>
+{
+private:
+    ITabletThrottlerPtr Throttler;
+    TThrottledRequests& Requests;
+
+public:
+    explicit TActorWithQuotaThrottler(TThrottledRequests& requests)
+        : TActor(&TThis::StateWork)
+        , Requests(requests)
+    {}
+
+    void ResetThrottler(ITabletThrottlerPtr throttler)
+    {
+        Throttler = std::move(throttler);
+    }
+
+    STRICT_STFUNC(
+        StateWork, HFunc(NActors::TEvents::TEvPing, HandleRequest);
+        HFunc(NActors::TEvents::TEvFlushLog, HandleFlush);
+        IgnoreFunc(NActors::TEvents::TEvWakeup));
+
+    void HandleRequest(
+        const NActors::TEvents::TEvPing::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        const ui64 index = ev->Cookie;
+        auto callContext = Requests.CallContexts[index];
+        Requests.Statuses[index] = Throttler->Throttle(
+            ctx,
+            callContext,
+            TThrottlingRequestInfo{.ByteCount = 4096},
+            [ev]() -> NActors::IEventHandlePtr
+            { return NActors::IEventHandlePtr(ev.Release()); },
+            "TestMethod");
+    }
+
+    void HandleFlush(
+        const NActors::TEvents::TEvFlushLog::TPtr& ev,
+        const NActors::TActorContext& ctx)
+    {
+        Y_UNUSED(ev);
+        Throttler->StartFlushing(ctx);
+    }
+};
+
 }   // namespace
 
 Y_UNIT_TEST_SUITE(TTabletThrottlerTest)
 {
+    Y_UNIT_TEST(ShouldReportQuotaDelay)
+    {
+        TTabletThrottlerLoggerStub logger;
+        TScriptedThrottlerPolicy policy;
+        TThrottledRequests requests;
+        for (ui64 i = 0; i < 3; ++i) {
+            requests.CallContexts.push_back(
+                MakeIntrusive<TCallContextBase>(i));
+            requests.Statuses.push_back(ETabletThrottlerStatus::ADVANCED);
+        }
+
+        auto actor = std::make_unique<TActorWithQuotaThrottler>(requests);
+        actor->ResetThrottler(CreateTabletThrottler(*actor, logger, policy));
+
+        TTestActorRuntimeBase runtime;
+        runtime.Initialize();
+        const auto senderId = runtime.AllocateEdgeActor();
+        const auto actorId = runtime.Register(actor.release());
+
+        const auto send = [&](NActors::IEventBase* event, ui64 cookie = 0)
+        {
+            runtime.Send(TAutoPtr<IEventHandle>(
+                new IEventHandle(actorId, senderId, event, 0, cookie)));
+        };
+
+        // The original profile would have delayed the request for 10ms, but
+        // it actually waited longer, e.g. because of backpressure.
+        policy.QuotaReference = TQuotaReference{
+            .Delay = TDuration::MilliSeconds(10)};
+        policy.Delays = {TDuration::Seconds(1), TDuration::Zero()};
+        send(new NActors::TEvents::TEvPing(), 0);
+        UNIT_ASSERT_EQUAL(
+            ETabletThrottlerStatus::POSTPONED,
+            requests.Statuses[0]);
+
+        Sleep(TDuration::MilliSeconds(20));
+        send(new NActors::TEvents::TEvFlushLog());
+        UNIT_ASSERT_EQUAL(ETabletThrottlerStatus::ADVANCED, requests.Statuses[0]);
+        // The reference is registered once per request, not per redelivery.
+        UNIT_ASSERT_VALUES_EQUAL(1, policy.QuotaReferenceRegistrations);
+        const auto& postponed = *requests.CallContexts[0];
+        UNIT_ASSERT(
+            postponed.Time(EProcessingStage::Postponed) >=
+            TDuration::MilliSeconds(20));
+        UNIT_ASSERT(postponed.GetThrottlerQuotaDelay());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MilliSeconds(10),
+            *postponed.GetThrottlerQuotaDelay());
+        UNIT_ASSERT(!postponed.GetThrottlerQuotaRejected());
+
+        // The original profile would have rejected the request too.
+        policy.QuotaReference = TQuotaReference{.Rejected = true};
+        policy.Delays = {Nothing()};
+        send(new NActors::TEvents::TEvPing(), 1);
+        UNIT_ASSERT_EQUAL(ETabletThrottlerStatus::REJECTED, requests.Statuses[1]);
+        const auto& rejected = *requests.CallContexts[1];
+        UNIT_ASSERT(rejected.GetThrottlerQuotaDelay());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            *rejected.GetThrottlerQuotaDelay());
+        UNIT_ASSERT(rejected.GetThrottlerQuotaRejected());
+
+        // The policy does not measure the quota delay.
+        policy.QuotaReference = Nothing();
+        policy.Delays = {TDuration::Zero()};
+        send(new NActors::TEvents::TEvPing(), 2);
+        UNIT_ASSERT_EQUAL(ETabletThrottlerStatus::ADVANCED, requests.Statuses[2]);
+        const auto& unmeasured = *requests.CallContexts[2];
+        UNIT_ASSERT(!unmeasured.GetThrottlerQuotaDelay());
+        UNIT_ASSERT(!unmeasured.GetThrottlerQuotaRejected());
+    }
+
     /**
      * Scenario that caused a crash:
      * 1. A request is present in the postponed queue

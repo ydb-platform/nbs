@@ -13,7 +13,9 @@
 
 #include <library/cpp/threading/hot_swap/hot_swap.h>
 
+#include <util/datetime/cputimer.h>
 #include <util/generic/hash.h>
+#include <util/system/datetime.h>
 #include <util/system/spinlock.h>
 
 using namespace NThreading;
@@ -173,6 +175,14 @@ private:
     TAdaptiveLock Lock;
     size_t SubResponseReceived = 0;
 
+    // Parts run in parallel and each adds its quota delay to the shared call
+    // context. Without the quota delays the request would have finished when
+    // the latest part finishing at (end - its quota delay) did.
+    TCallContextPtr CallContext;
+    TDuration QuotaDelayBefore;
+    ui64 EndCycles = 0;
+    ui64 QuotaFreeEndCycles = 0;
+
 public:
     explicit TCompositeRequest(std::shared_ptr<TRequest> request)
         : Request(std::move(request))
@@ -193,16 +203,12 @@ public:
             return MakeFuture(std::move(response));
         }
 
-        // All parts share one call context and execute concurrently. Their
-        // stage waits are accumulated independently and may overlap in wall
-        // time, so latency accounting must not subtract the sum as if the
-        // waits were sequential. Legacy request timings intentionally retain
-        // their existing behavior.
-        if (subRequests.size() > 1 && callContext) {
-            callContext->SetHasParallelSubRequests();
-        }
-
         SubResponses.resize(subRequests.size());
+
+        CallContext = callContext;
+        if (CallContext) {
+            QuotaDelayBefore = CallContext->GetQuotaDelay();
+        }
 
         // Acquire the future before subscribing to sub-request callbacks.
         // A sub-request can be completed synchronously and swapped with another
@@ -234,6 +240,11 @@ private:
         const bool hasError = HasError(response.GetError());
         TPromise<TResponse> promise;
 
+        const ui64 now = GetCycleCount();
+        const auto& throttler = response.GetHeaders().GetThrottler();
+        const ui64 quotaCycles = DurationToCyclesSafe(
+            TDuration::MicroSeconds(throttler.GetQuotaDelay()));
+
         // Access Promise field with lock.
         with_lock (Lock) {
             ++SubResponseReceived;
@@ -243,11 +254,21 @@ private:
                 return;
             }
 
+            EndCycles = Max(EndCycles, now);
+            QuotaFreeEndCycles =
+                Max(QuotaFreeEndCycles, now - Min(now, quotaCycles));
+
             const bool isLastResponse =
                 SubResponseReceived == SubResponses.size();
 
             if (!isLastResponse && !hasError) {
                 return;
+            }
+
+            if (isLastResponse && CallContext) {
+                CallContext->SetQuotaDelay(
+                    QuotaDelayBefore +
+                    CyclesToDurationSafe(EndCycles - QuotaFreeEndCycles));
             }
 
             promise.Swap(Promise);
