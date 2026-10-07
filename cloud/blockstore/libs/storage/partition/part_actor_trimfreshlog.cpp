@@ -18,6 +18,10 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TPartitionActor::EnqueueTrimFreshLogIfNeeded(const TActorContext& ctx)
 {
+    if (AreBackgroundOperationsStopped(ctx.Now())) {
+        return;
+    }
+
     if (State->GetTrimFreshLogState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
@@ -127,6 +131,7 @@ void TPartitionActor::HandleTrimFreshLog(
         trimFreshLogToCommitId,
         nextPerGenerationCounter);
 
+    TrimInSmallBlobsRemovalMode = IsCheckSmallBlobsRemovedModeActive(ctx.Now());
     State->AccessTrimFreshLogState().SetStatus(
         EOperationStatus::Started,
         ctx.Now());
@@ -175,7 +180,12 @@ void TPartitionActor::HandleTrimFreshLogCompleted(
 
         State->RegisterTrimFreshLogSuccess();
         State->SetLastTrimFreshLogToCommitId(msg->CommitId);
+        const ui64 freshBlobs = State->GetUntrimmedFreshBlobCount();
         State->TrimFreshBlobs(msg->CommitId);
+        if (TrimInSmallBlobsRemovalMode) {
+            PartCounters->Cumulative.BlobsTrimmedInCheckSmallBlobsRemovedMode
+                .Increment(freshBlobs - State->GetUntrimmedFreshBlobCount());
+        }
     }
 
     State->AccessTrimFreshLogState().SetStatus(

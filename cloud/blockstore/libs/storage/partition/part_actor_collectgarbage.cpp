@@ -580,6 +580,13 @@ STFUNC(TCollectGarbageHardActor::StateWork)
 
 void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
 {
+    // Startup GC must still complete even when the removal timeout expires.
+    if (AreBackgroundOperationsStopped(ctx.Now()) &&
+        State->GetStartupGcExecuted())
+    {
+        return;
+    }
+
     if (State->GetCollectGarbageState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
@@ -591,9 +598,10 @@ void TPartitionActor::EnqueueCollectGarbageIfNeeded(const TActorContext& ctx)
         size_t pendingBlobs = State->GetGarbageQueue().GetNewBlobsCount(commitId)
                             + State->GetGarbageQueue().GetGarbageBlobsCount(commitId);
 
-        if (pendingBlobs < Config->GetCollectGarbageThreshold() &&
-            State->GetStartupGcExecuted())
-        {
+        const size_t threshold = IsCheckSmallBlobsRemovedModeActive(ctx.Now())
+                                     ? 1
+                                     : Config->GetCollectGarbageThreshold();
+        if (pendingBlobs < threshold && State->GetStartupGcExecuted()) {
             // not ready
             return;
         }
@@ -679,6 +687,8 @@ void TPartitionActor::HandleCollectGarbage(
     // use tablet generation as record generation
     const ui32 recordGeneration = Executor()->Generation();
 
+    CollectGarbageInSmallBlobsRemovalMode =
+        IsCheckSmallBlobsRemovedModeActive(ctx.Now());
     if (State->CollectGarbageHardRequested) {
         State->CollectGarbageHardRequested = false;
 

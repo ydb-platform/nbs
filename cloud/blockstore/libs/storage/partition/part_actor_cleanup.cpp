@@ -23,6 +23,10 @@ LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
 {
+    if (AreBackgroundOperationsStopped(ctx.Now())) {
+        return;
+    }
+
     if (State->GetCleanupState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
@@ -53,7 +57,9 @@ void TPartitionActor::EnqueueCleanupIfNeeded(const TActorContext& ctx)
 
     if (!State->HasBlobCountToCleanupReachedThreshold(
             cleanupCommitId,
-            Config->GetCleanupThreshold()))
+            IsCheckSmallBlobsRemovedModeActive(ctx.Now())
+                ? 1
+                : Config->GetCleanupThreshold()))
     {
         // Not ready
         return;
@@ -182,15 +188,12 @@ void TPartitionActor::HandleCleanup(
 
     const bool checkpointAware = State->IsCheckpointAwareCleanupEnabled();
     auto tx = CreateTx<TCleanup>(
-        requestInfo,
-        cleanupCommitId,
-        IsUseRecreatedBlobMetasOnCleanupEnabled(),
-        IsVerifyRecreatedBlobMetasOnCleanupEnabled(),
-        std::move(cleanupQueue),
+        requestInfo, cleanupCommitId, IsUseRecreatedBlobMetasOnCleanupEnabled(),
+        IsVerifyRecreatedBlobMetasOnCleanupEnabled(), std::move(cleanupQueue),
         checkpointAware,
         checkpointAware ? State->GetMinCheckpointCommitId() : InvalidCommitId,
-        checkpointAware ? State->GetMaxCheckpointCommitId() : InvalidCommitId);
-
+        checkpointAware ? State->GetMaxCheckpointCommitId() : InvalidCommitId,
+        IsCheckSmallBlobsRemovedModeActive(ctx.Now()));
     ExecuteTx(ctx, std::move(tx));
 }
 
@@ -272,6 +275,14 @@ void TPartitionActor::CompleteCleanup(
         }
     }
 
+    if (args.InSmallBlobsRemovalMode) {
+        ui64 blobs = 0;
+        for (const auto& item: args.CleanupQueue) {
+            blobs += !IsDeletionMarker(item.BlobId);
+        }
+        PartCounters->Cumulative.BlobsCleanedUpInCheckSmallBlobsRemovedMode
+            .Increment(blobs);
+    }
     const auto d = CyclesToDurationSafe(args.RequestInfo->GetExecCycles());
     State->SetLastCleanupExecTime(d, ctx.Now());
     UpdateCPUUsageStat(ctx.Now(), args.RequestInfo->GetExecCycles());

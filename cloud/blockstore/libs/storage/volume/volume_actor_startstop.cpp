@@ -23,6 +23,7 @@
 #include <contrib/ydb/core/base/tablet.h>
 #include <contrib/ydb/core/tablet/tablet_setup.h>
 
+#include <util/generic/algorithm.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -190,6 +191,7 @@ void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
                 return;
             }
             case EPartitionsStartedReason::STARTED_FOR_GC: {
+                DisableCheckSmallBlobsRemoved(ctx);
                 PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
                 return;
             }
@@ -517,14 +519,27 @@ void TVolumeActor::StartPartitionsImpl(const TActorContext& ctx)
 
 void TVolumeActor::StartPartitionsForUse(const TActorContext& ctx)
 {
-    StartPartitionsImpl(ctx);
+    DisableCheckSmallBlobsRemoved(ctx);
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
+    StartPartitionsImpl(ctx);
 }
 
 void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)
 {
-    StartPartitionsImpl(ctx);
+    ++SmallBlobsRemovalGeneration;
+    GCCompletedPartitions.clear();
+    SmallBlobsRemovalPartitions.clear();
+    SmallBlobsRemovedPartitions.clear();
+    SmallBlobsRemovalEnabled =
+        Config->GetCheckSmallBlobsRemovedEnabled() ||
+        Config->IsCheckSmallBlobsRemovedFeatureEnabled(
+            State->GetConfig().GetCloudId(),
+            State->GetConfig().GetFolderId(),
+            State->GetConfig().GetDiskId());
+    SmallBlobsRemovalDeadline =
+        ctx.Now() + Config->GetCheckSmallBlobsRemovedTimeout();
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_GC;
+    StartPartitionsImpl(ctx);
 }
 
 void TVolumeActor::HandleGracefulShutdown(
@@ -583,6 +598,11 @@ void TVolumeActor::StopPartitions(
         }
         return;
     }
+
+    ++SmallBlobsRemovalGeneration;
+    SmallBlobsRemovalPartitions.clear();
+    SmallBlobsRemovedPartitions.clear();
+    SmallBlobsRemovalEnabled = false;
 
     for (const auto& [checkpointId, _]:
          State->GetCheckpointStore().GetActiveCheckpoints())
@@ -827,6 +847,9 @@ void TVolumeActor::HandleBootExternalResponse(
     auto siblingCount = State->GetPartitions().size();
     auto selfId = SelfId();
     auto volumeTabletId = TabletID();
+    const bool checkSmallBlobsRemoved = SmallBlobsRemovalEnabled &&
+        PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC;
+    const auto smallBlobsRemovalDeadline = SmallBlobsRemovalDeadline;
 
     auto factory = [=](
                        const TActorId& owner,
@@ -849,7 +872,9 @@ void TVolumeActor::HandleBootExternalResponse(
                        partitionIndex,
                        siblingCount,
                        selfId,
-                       volumeTabletId)
+                       volumeTabletId,
+                       checkSmallBlobsRemoved,
+                       smallBlobsRemovalDeadline)
                 .release();
         } else {
             return NPartition2::CreatePartitionTablet(
@@ -954,6 +979,27 @@ void TVolumeActor::HandleTabletStatus(
                     WrapWithFollowerActorIfNeeded(ctx, std::move(actorStack));
             }
             partition->SetStarted(std::move(actorStack));
+
+            if (PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC &&
+                VolumeSelfCounters)
+            {
+                VolumeSelfCounters->Cumulative.PartitionsStartedForGcCount.Increment(1);
+            }
+            if (partition->StorageInfo->TabletType == TTabletTypes::BlockStorePartition) {
+                if (SmallBlobsRemovalEnabled &&
+                    PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC)
+                {
+                    SmallBlobsRemovalPartitions[partition->TabletId] = msg->TabletUser;
+                    Erase(GCCompletedPartitions, partition->TabletId);
+                    SmallBlobsRemovedPartitions.erase(partition->TabletId);
+                    ScheduleCheckSmallBlobsRemoved(ctx);
+                } else {
+                    // A client may attach while the partition is still booting.
+                    NCloud::Send<TEvPartition::TEvDisableCheckSmallBlobsRemoved>(
+                        ctx,
+                        msg->TabletUser);
+                }
+            }
 
             if (freshBlocksWriterId) {
                 NCloud::Send<NFreshBlocksWriter::TEvFreshBlocksWriter::

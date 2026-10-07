@@ -441,6 +441,10 @@ TFlushedCommitIds BuildFlushedCommitIdsFromChannel(
 
 void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
 {
+    if (AreBackgroundOperationsStopped(ctx.Now())) {
+        return;
+    }
+
     if (State->GetFlushState().GetOperationState().Status != EOperationStatus::Idle) {
         // already enqueued
         return;
@@ -453,9 +457,12 @@ void TPartitionActor::EnqueueFlushIfNeeded(const TActorContext& ctx)
 
     const bool shouldFlush =
         !State->IsLoadStateFinished() ||
-        freshBlockByteCount >= Config->GetFlushThreshold() ||
-        freshBlobCount >= Config->GetFreshBlobCountFlushThreshold() ||
-        freshBlobByteCount >= Config->GetFreshBlobByteCountFlushThreshold();
+        (IsCheckSmallBlobsRemovedModeActive(ctx.Now())
+             ? (freshBlockByteCount || freshBlobCount || freshBlobByteCount)
+             : (freshBlockByteCount >= Config->GetFlushThreshold() ||
+                freshBlobCount >= Config->GetFreshBlobCountFlushThreshold() ||
+                freshBlobByteCount >=
+                    Config->GetFreshBlobByteCountFlushThreshold()));
 
     if (!shouldFlush) {
         return;
@@ -543,6 +550,8 @@ void TPartitionActor::HandleFlush(
         return;
     }
 
+    FlushInSmallBlobsRemovalMode =
+        IsCheckSmallBlobsRemovedModeActive(ctx.Now());
     bool stateTransitionOk =
         State->AccessFlushState().SetStarted(commitId, requestInfo, ctx.Now());
     STORAGE_VERIFY_C(
@@ -602,7 +611,9 @@ void TPartitionActor::StartFlush(const TActorContext& ctx)
     TVector<TFlushBlocksVisitor::TBlob> blobs;
     {
         ui32 flushBlobSizeThreshold = Config->GetFlushBlobSizeThreshold();
-        if (State->GetUnflushedFreshBlobCount() > 0) {
+        if (State->GetUnflushedFreshBlobCount() > 0 ||
+            IsCheckSmallBlobsRemovedModeActive(ctx.Now()))
+        {
             // ignore flushBlobSizeThreshold when there are any fresh blobs
             // to prevent situation, when some blocks were not flushed
             // but get trimmed in the future
@@ -786,6 +797,10 @@ void TPartitionActor::HandleFlushCompleted(
                 i.BlockCount);
         }
 
+        if (FlushInSmallBlobsRemovalMode) {
+            PartCounters->Cumulative.BlobsFlushInCheckSmallBlobsRemovedMode
+                .Increment(msg->FlushedFreshBlobCommitIds.size());
+        }
         ui64 flushedFreshBlobByteCount = 0;
 
         for (const ui64& freshBlobCommitId: msg->FlushedFreshBlobCommitIds) {

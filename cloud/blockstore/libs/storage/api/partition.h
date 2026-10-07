@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include "stats_service.h"
+
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/kikimr/components.h>
 #include <cloud/blockstore/libs/kikimr/events.h>
@@ -11,17 +13,17 @@ namespace NCloud::NBlockStore::NStorage::NPartition {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_PARTITION_REQUESTS(xxx, ...)                                \
-    xxx(WaitReady,                                                 __VA_ARGS__)\
-    xxx(StatPartition,                                             __VA_ARGS__)\
+    xxx(WaitReady, __VA_ARGS__)                                                \
+    xxx(StatPartition, __VA_ARGS__)                                            \
     /* Waits until there are no more in-flight write requests. */              \
-    xxx(Drain,                                                     __VA_ARGS__)\
+    xxx(Drain, __VA_ARGS__)                                                    \
     /* Waits for current in-flight writes to finish and does not affect any    \
      * requests that come after. */                                            \
-    xxx(WaitForInFlightWrites,                                     __VA_ARGS__)\
+    xxx(WaitForInFlightWrites, __VA_ARGS__)                                    \
     /* Block range for writing requests. Wait for current in-flight writes     \
      * which overlap that range to finish and reply. Lock can be released by   \
      * sending a TEvReleaseRange message. */                                   \
-    xxx(LockAndDrainRange,                                        __VA_ARGS__) \
+    xxx(LockAndDrainRange, __VA_ARGS__)                                        \
 // BLOCKSTORE_PARTITION_REQUESTS
 
 // requests forwarded from service to partition
@@ -137,6 +139,16 @@ struct TEvPartition
     // Garbage collector finish report
     //
 
+    struct TCheckSmallBlobsRemovedRequest
+    {
+    };
+
+    struct TCheckSmallBlobsRemovedResponse
+    {
+        bool Removed = false;
+        std::unique_ptr<TEvStatsService::TVolumePartCounters> FinalCounters;
+    };
+
     struct TGarbageCollectorCompleted
     {
         const ui64 TabletId;
@@ -177,6 +189,10 @@ struct TEvPartition
 
         EvReleaseRange = EvBegin + 15,
 
+        EvCheckSmallBlobsRemovedRequest = EvBegin + 16,
+        EvCheckSmallBlobsRemovedResponse = EvBegin + 17,
+        EvDisableCheckSmallBlobsRemoved = EvBegin + 18,
+
         EvEnd
     };
 
@@ -184,6 +200,17 @@ struct TEvPartition
         "EvEnd expected to be < TBlockStoreEvents::PARTITION_END");
 
     BLOCKSTORE_PARTITION_REQUESTS(BLOCKSTORE_DECLARE_EVENTS)
+
+    using TEvCheckSmallBlobsRemovedRequest = TRequestEvent<
+        TCheckSmallBlobsRemovedRequest,
+        EvCheckSmallBlobsRemovedRequest>;
+    using TEvCheckSmallBlobsRemovedResponse = TResponseEvent<
+        TCheckSmallBlobsRemovedResponse,
+        EvCheckSmallBlobsRemovedResponse>;
+
+
+    using TEvDisableCheckSmallBlobsRemoved =
+        TRequestEvent<TEmpty, EvDisableCheckSmallBlobsRemoved>;
 
     using TEvReleaseRange = TRequestEvent<TReleaseRange, EvReleaseRange>;
 

@@ -1045,6 +1045,11 @@ STFUNC(TVolumeActor::StateInit)
 {
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
+        HFunc(TEvVolumePrivate::TEvCheckSmallBlobsRemoved,
+              HandleCheckSmallBlobsRemoved);
+        HFunc(TEvPartition::TEvCheckSmallBlobsRemovedResponse,
+              HandleCheckSmallBlobsRemovedResponse);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
@@ -1107,6 +1112,11 @@ STFUNC(TVolumeActor::StateWork)
 {
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
+        HFunc(TEvVolumePrivate::TEvCheckSmallBlobsRemoved,
+              HandleCheckSmallBlobsRemoved);
+        HFunc(TEvPartition::TEvCheckSmallBlobsRemovedResponse,
+              HandleCheckSmallBlobsRemovedResponse);
+
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvents::TEvPoisonTaken, HandlePoisonTaken);
         HFunc(TEvents::TEvWakeup, HandleWakeup);
@@ -1280,6 +1290,8 @@ STFUNC(TVolumeActor::StateZombie)
 {
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
+        IgnoreFunc(TEvVolumePrivate::TEvCheckSmallBlobsRemoved);
+        IgnoreFunc(TEvPartition::TEvCheckSmallBlobsRemovedResponse);
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 

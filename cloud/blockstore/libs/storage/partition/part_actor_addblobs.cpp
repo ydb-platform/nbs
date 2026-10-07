@@ -837,6 +837,14 @@ private:
                     blobMeta = kv.second.RecreatedBlobMeta.GetRef();
                 }
 
+                const auto kind =
+                    IsDeletionMarker(kv.first)
+                        ? EChannelDataKind::System
+                        : State.GetChannelDataKind(kv.first.Channel());
+                const bool isMixed =
+                    State.ShouldUseBlobChannelDataKindForCounters()
+                        ? kind == EChannelDataKind::Mixed
+                        : blobMeta.HasMixedBlocks();
                 bool inserted = State.GetCleanupQueue().Add(
                     {kv.first, DeletionCommitId, std::move(blobMeta)});
 
@@ -846,6 +854,13 @@ private:
                     TabletId,
                     "Cleanup queue: blob already in cleanup queue");
                 if (inserted) {
+                    if (!IsDeletionMarker(kv.first)) {
+                        if (kind == EChannelDataKind::Fresh) {
+                            ++Args.FreshBlobsMadeObsolete;
+                        } else if (isMixed) {
+                            ++Args.MixedBlobsMadeObsolete;
+                        }
+                    }
                     db.WriteCleanupQueue(kv.first, DeletionCommitId);
                 }
             }
@@ -1031,6 +1046,14 @@ void TPartitionActor::CompleteAddBlobs(
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
     RemoveTransaction(*args.RequestInfo);
 
+    if (args.Mode == ADD_COMPACTION_RESULT &&
+        CompactionsInSmallBlobsRemovalMode.contains(args.CommitId))
+    {
+        PartCounters->Cumulative.MixedBlobsCompactedInCheckSmallBlobsRemovedMode
+            .Increment(args.MixedBlobsMadeObsolete);
+        PartCounters->Cumulative.FreshBlobsCompactedInCheckSmallBlobsRemovedMode
+            .Increment(args.FreshBlobsMadeObsolete);
+    }
     State->GetCleanupQueue().ReleaseBarrier(args.DeletionCommitId);
 
     EnqueueCompactionIfNeeded(ctx);

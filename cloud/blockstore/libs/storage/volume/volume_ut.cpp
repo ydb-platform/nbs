@@ -8803,6 +8803,229 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
 
     }
 
+    void ShouldWaitForSmallBlobsAndReportFinalCounters(
+        bool pullStatistics,
+        ui32 partitions = 1)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetCheckSmallBlobsRemovedEnabled(true);
+        config.SetCheckSmallBlobsRemovedCheckInterval(10);
+        config.SetUsePullSchemeForVolumeStatistics(pullStatistics);
+        auto runtime = PrepareTestActorRuntime(config);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig(
+            0, 0, 0, 0, false, 1,
+            NCloud::NProto::STORAGE_MEDIA_HYBRID,
+            1024, "vol0", "cloud", "folder", partitions);
+        auto client = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            false);
+        volume.AddClient(client);
+        volume.RemoveClient(client.GetClientId());
+
+        bool stopped = false;
+        THashSet<TActorId> gcBootstrappers;
+        bool countersForwarded = false;
+        bool allowResponse = false;
+        TAutoPtr<IEventHandle> finalResponse;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() == TEvBootstrapper::EvStatus &&
+                    event->Get<TEvBootstrapper::TEvStatus>()->Status == TEvBootstrapper::STARTED)
+                {
+                    gcBootstrappers.insert(event->Sender);
+                }
+                if (event->GetTypeRewrite() == TEvPartition::EvCheckSmallBlobsRemovedResponse &&
+                    !allowResponse)
+                {
+                    auto* response = event->Get<TEvPartition::TEvCheckSmallBlobsRemovedResponse>();
+                    if (response->Removed && !finalResponse) {
+                        UNIT_ASSERT(response->FinalCounters);
+                        response->FinalCounters->DiskCounters->Cumulative
+                            .BlobsFlushInCheckSmallBlobsRemovedMode.Increment(17);
+                        finalResponse = event.Release();
+                        return true;
+                    }
+                    // Leave the other partitions free to report completion.
+                    return finalResponse && event->Sender == finalResponse->Sender;
+                }
+                if (event->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters &&
+                    event->Recipient == MakeStorageStatsServiceId())
+                {
+                    const auto* counters = event->Get<TEvStatsService::TEvVolumePartCounters>();
+                    if (counters->DiskCounters->Cumulative
+                            .BlobsFlushInCheckSmallBlobsRemovedMode.Value == 17)
+                    {
+                        countersForwarded = true;
+                    }
+                }
+                if (event->GetTypeRewrite() == TEvBootstrapper::EvStop &&
+                    gcBootstrappers.contains(event->Recipient))
+                {
+                    stopped = true;
+                }
+                return false;
+            });
+        volume.RebootTablet();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(finalResponse);
+        UNIT_ASSERT(!stopped);
+        allowResponse = true;
+        runtime->Send(finalResponse.Release());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(stopped);
+        UNIT_ASSERT(countersForwarded);
+    }
+
+    Y_UNIT_TEST(ShouldReportFinalSmallBlobCountersWithPushStatistics)
+    {
+        ShouldWaitForSmallBlobsAndReportFinalCounters(false);
+    }
+
+    Y_UNIT_TEST(ShouldReportFinalSmallBlobCountersWithPullStatistics)
+    {
+        ShouldWaitForSmallBlobsAndReportFinalCounters(true);
+    }
+
+    Y_UNIT_TEST(ShouldWaitForSmallBlobsFromEveryPartition)
+    {
+        ShouldWaitForSmallBlobsAndReportFinalCounters(false, 2);
+    }
+
+    Y_UNIT_TEST(ShouldStillWaitForStartupGcAfterSmallBlobsAreRemoved)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetCheckSmallBlobsRemovedEnabled(true);
+        config.SetCheckSmallBlobsRemovedCheckInterval(10);
+        auto runtime = PrepareTestActorRuntime(config);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        auto client = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            false);
+        volume.AddClient(client);
+        volume.RemoveClient(client.GetClientId());
+
+        bool smallBlobsRemoved = false;
+        bool stopped = false;
+        THashSet<TActorId> gcBootstrappers;
+        bool allowGc = false;
+        TAutoPtr<IEventHandle> startupGc;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() == TEvBootstrapper::EvStatus &&
+                    event->Get<TEvBootstrapper::TEvStatus>()->Status == TEvBootstrapper::STARTED)
+                {
+                    gcBootstrappers.insert(event->Sender);
+                }
+                if (event->GetTypeRewrite() == TEvPartition::EvGarbageCollectorCompleted &&
+                    !allowGc)
+                {
+                    if (!startupGc) {
+                        startupGc = event.Release();
+                    }
+                    return true;
+                }
+                if (event->GetTypeRewrite() == TEvPartition::EvCheckSmallBlobsRemovedResponse) {
+                    smallBlobsRemoved |= event->Get<
+                        TEvPartition::TEvCheckSmallBlobsRemovedResponse>()->Removed;
+                }
+                if (event->GetTypeRewrite() == TEvBootstrapper::EvStop &&
+                    gcBootstrappers.contains(event->Recipient))
+                {
+                    stopped = true;
+                }
+                return false;
+            });
+        volume.RebootTablet();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(startupGc);
+        UNIT_ASSERT(smallBlobsRemoved);
+        UNIT_ASSERT(!stopped);
+        allowGc = true;
+        runtime->Send(startupGc.Release());
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(stopped);
+    }
+
+    Y_UNIT_TEST(ShouldDisableSmallBlobRemovalWhenClientAttaches)
+    {
+        NProto::TStorageServiceConfig config;
+        config.SetCheckSmallBlobsRemovedEnabled(true);
+        config.SetCheckSmallBlobsRemovedCheckInterval(10);
+        auto runtime = PrepareTestActorRuntime(config);
+        TVolumeClient volume(*runtime);
+        volume.UpdateVolumeConfig();
+        auto client = CreateVolumeClientInfo(
+            NProto::VOLUME_ACCESS_READ_WRITE,
+            NProto::VOLUME_MOUNT_LOCAL,
+            false);
+        volume.AddClient(client);
+        volume.RemoveClient(client.GetClientId());
+
+        bool disabled = false;
+        bool stopped = false;
+        THashSet<TActorId> gcBootstrappers;
+        bool allowResponse = false;
+        bool countersForwarded = false;
+        TAutoPtr<IEventHandle> finalResponse;
+        runtime->SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& event) {
+                if (event->GetTypeRewrite() == TEvBootstrapper::EvStatus &&
+                    event->Get<TEvBootstrapper::TEvStatus>()->Status == TEvBootstrapper::STARTED)
+                {
+                    gcBootstrappers.insert(event->Sender);
+                }
+                if (event->GetTypeRewrite() == TEvPartition::EvCheckSmallBlobsRemovedResponse &&
+                    !allowResponse)
+                {
+                    auto* response = event->Get<TEvPartition::TEvCheckSmallBlobsRemovedResponse>();
+                    if (response->Removed && !finalResponse) {
+                        UNIT_ASSERT(response->FinalCounters);
+                        response->FinalCounters->DiskCounters->Cumulative
+                            .BlobsFlushInCheckSmallBlobsRemovedMode.Increment(13);
+                        finalResponse = event.Release();
+                    }
+                    return true;
+                }
+                if (event->GetTypeRewrite() == TEvStatsService::EvVolumePartCounters &&
+                    event->Recipient == MakeStorageStatsServiceId())
+                {
+                    const auto* counters = event->Get<TEvStatsService::TEvVolumePartCounters>();
+                    countersForwarded |= counters->DiskCounters->Cumulative
+                        .BlobsFlushInCheckSmallBlobsRemovedMode.Value == 13;
+                }
+                if (event->GetTypeRewrite() == TEvPartition::EvDisableCheckSmallBlobsRemoved) {
+                    disabled = true;
+                }
+                if (event->GetTypeRewrite() == TEvBootstrapper::EvStop &&
+                    gcBootstrappers.contains(event->Recipient))
+                {
+                    stopped = true;
+                }
+                return false;
+            });
+        volume.RebootTablet();
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(finalResponse);
+        UNIT_ASSERT(!stopped);
+        volume.AddClient(client);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(disabled);
+        UNIT_ASSERT(!stopped);
+        // The old response must not stop partitions now used by the client.
+        allowResponse = true;
+        runtime->Send(finalResponse.Release());
+        volume.WaitReady();
+        volume.WriteBlocks(TBlockRange64::WithLength(0, 1), client.GetClientId());
+        runtime->AdvanceCurrentTime(UpdateCountersInterval);
+        runtime->DispatchEvents({}, TDuration::Seconds(1));
+        UNIT_ASSERT(countersForwarded);
+        UNIT_ASSERT(!stopped);
+    }
+
     Y_UNIT_TEST(PartitionsShouldntStopAfterGcCompletedMsg)
     {
         auto runtime = PrepareTestActorRuntime();

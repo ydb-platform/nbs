@@ -332,6 +332,8 @@ struct TTxPartition
         const TVector<TBlobCompactionInfo> MixedBlobCompactionInfos;
         const TVector<TBlobCompactionInfo> MergedBlobCompactionInfos;
 
+        ui64 MixedBlobsMadeObsolete = 0;
+        ui64 FreshBlobsMadeObsolete = 0;
         ui64 DeletionCommitId = 0;
 
         TAddBlobs(
@@ -669,27 +671,26 @@ struct TTxPartition
 
         TVector<NProto::TBlobMeta> BlobsMeta;
 
+        bool InSmallBlobsRemovalMode = false;
         ui64 ReadBlobMetasCount = 0;
         ui64 BlobsSkipped = 0;
 
-        TCleanup(
-            TRequestInfoPtr requestInfo,
-            ui64 commitId,
-            bool useRecreatedBlobMeta,
-            bool verifyRecreatedBlobMetasOnCleanup,
-            TVector<TCleanupQueueItem> cleanupQueue,
-            bool checkpointAware,
-            ui64 minCheckpointCommitId,
-            ui64 maxCheckpointCommitId)
+        TCleanup(TRequestInfoPtr requestInfo, ui64 commitId,
+                 bool useRecreatedBlobMeta,
+                 bool verifyRecreatedBlobMetasOnCleanup,
+                 TVector<TCleanupQueueItem> cleanupQueue, bool checkpointAware,
+                 ui64 minCheckpointCommitId, ui64 maxCheckpointCommitId,
+                 bool inSmallBlobsRemovalMode = false)
             : RequestInfo(std::move(requestInfo))
             , CommitId(commitId)
             , UseRecreatedBlobMeta(useRecreatedBlobMeta)
-            , VerifyRecreatedBlobMetasOnCleanup(
-                  verifyRecreatedBlobMetasOnCleanup)
+            ,
+            VerifyRecreatedBlobMetasOnCleanup(verifyRecreatedBlobMetasOnCleanup)
             , CleanupQueue(std::move(cleanupQueue))
             , CheckpointAware(checkpointAware)
             , MinCheckpointCommitId(minCheckpointCommitId)
             , MaxCheckpointCommitId(maxCheckpointCommitId)
+            , InSmallBlobsRemovalMode(inSmallBlobsRemovalMode)
         {}
 
         void Clear()

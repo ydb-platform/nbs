@@ -45,22 +45,25 @@ constexpr double GetMetricsMultiplicator(
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_CACHED_COUNTERS(xxx, ...)                                   \
-    xxx(MixedBytesCount,                                           __VA_ARGS__)\
-    xxx(MergedBytesCount,                                          __VA_ARGS__)\
-    xxx(FreshBytesCount,                                           __VA_ARGS__)\
-    xxx(UsedBytesCount,                                            __VA_ARGS__)\
-    xxx(LogicalUsedBytesCount,                                     __VA_ARGS__)\
-    xxx(BytesCount,                                                __VA_ARGS__)\
-    xxx(CheckpointBytes,                                           __VA_ARGS__)\
-    xxx(CompactionScore,                                           __VA_ARGS__)\
-    xxx(CompactionGarbageScore,                                    __VA_ARGS__)\
-    xxx(CompactionIgnoringZeroedScore,                             __VA_ARGS__)\
-    xxx(CleanupQueueBytes,                                         __VA_ARGS__)\
-    xxx(GarbageQueueBytes,                                         __VA_ARGS__)\
-    xxx(ChannelHistorySize,                                        __VA_ARGS__)\
-    xxx(UnconfirmedBlobCount,                                      __VA_ARGS__)\
-    xxx(ConfirmedBlobCount,                                        __VA_ARGS__)\
-    xxx(NewlyZeroedBlocks,                                         __VA_ARGS__)\
+    xxx(MixedBytesCount, __VA_ARGS__)                                          \
+    xxx(MergedBytesCount, __VA_ARGS__)                                         \
+    xxx(FreshBytesCount, __VA_ARGS__)                                          \
+    xxx(FreshBlobs, __VA_ARGS__)                                               \
+    xxx(MixedBlobs, __VA_ARGS__)                                               \
+    xxx(UsedBytesCount, __VA_ARGS__)                                           \
+    xxx(LogicalUsedBytesCount, __VA_ARGS__)                                    \
+    xxx(BytesCount, __VA_ARGS__)                                               \
+    xxx(CheckpointBytes, __VA_ARGS__)                                          \
+    xxx(CompactionScore, __VA_ARGS__)                                          \
+    xxx(CompactionGarbageScore, __VA_ARGS__)                                   \
+    xxx(CompactionIgnoringZeroedScore, __VA_ARGS__)                            \
+    xxx(CleanupQueueBytes, __VA_ARGS__)                                        \
+    xxx(GarbageQueueBytes, __VA_ARGS__)                                        \
+    xxx(ChannelHistorySize, __VA_ARGS__)                                       \
+    xxx(UnconfirmedBlobCount, __VA_ARGS__)                                     \
+    xxx(ConfirmedBlobCount, __VA_ARGS__)                                       \
+    xxx(NewlyZeroedBlocks, __VA_ARGS__)
+
 // BLOCKSTORE_CACHED_COUNTERS
 
 ////////////////////////////////////////////////////////////////////////////////

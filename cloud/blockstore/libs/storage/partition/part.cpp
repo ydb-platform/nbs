@@ -11,32 +11,21 @@ using namespace NKikimr;
 ////////////////////////////////////////////////////////////////////////////////
 
 IActorPtr CreatePartitionTablet(
-    const TActorId& owner,
-    TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
-    IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    const TActorId& owner, TTabletStorageInfoPtr storage,
+    TStorageConfigConstPtr config, TDiagnosticsConfigConstPtr diagnosticsConfig,
+    IProfileLogPtr profileLog, IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,
-    EStorageAccessMode storageAccessMode,
-    ui32 partitionIndex,
-    ui32 siblingCount,
-    const NActors::TActorId& volumeActorId,
-    ui64 volumeTabletId)
+    EStorageAccessMode storageAccessMode, ui32 partitionIndex,
+    ui32 siblingCount, const NActors::TActorId& volumeActorId,
+    ui64 volumeTabletId, bool checkSmallBlobsRemoved,
+    TInstant smallBlobsRemovalDeadline)
 {
     return std::make_unique<TPartitionActor>(
-        owner,
-        std::move(storage),
-        std::move(config),
-        std::move(diagnosticsConfig),
-        std::move(profileLog),
-        std::move(blockDigestGenerator),
-        std::move(partitionConfig),
-        storageAccessMode,
-        partitionIndex,
-        siblingCount,
-        volumeActorId,
-        volumeTabletId);
+        owner, std::move(storage), std::move(config),
+        std::move(diagnosticsConfig), std::move(profileLog),
+        std::move(blockDigestGenerator), std::move(partitionConfig),
+        storageAccessMode, partitionIndex, siblingCount, volumeActorId,
+        volumeTabletId, checkSmallBlobsRemoved, smallBlobsRemovalDeadline);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -422,6 +422,8 @@ message TCachedPartStats
     uint32 ConfirmedBlobCount = 14;
     uint32 CompactionIgnoringZeroedScore = 15;
     uint32 NewlyZeroedBlocks = 16;
+    uint64 FreshBlobs = 17;
+    uint64 MixedBlobs = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -53,32 +53,26 @@ const TString PartitionTransactions[] = {
 };
 
 TPartitionActor::TPartitionActor(
-    const TActorId& owner,
-    TTabletStorageInfoPtr storage,
-    TStorageConfigConstPtr config,
-    TDiagnosticsConfigConstPtr diagnosticsConfig,
-    IProfileLogPtr profileLog,
-    IBlockDigestGeneratorPtr blockDigestGenerator,
+    const TActorId& owner, TTabletStorageInfoPtr storage,
+    TStorageConfigConstPtr config, TDiagnosticsConfigConstPtr diagnosticsConfig,
+    IProfileLogPtr profileLog, IBlockDigestGeneratorPtr blockDigestGenerator,
     NProto::TPartitionConfig partitionConfig,
-    EStorageAccessMode storageAccessMode,
-    ui32 partitionIndex,
-    ui32 siblingCount,
-    const TActorId& volumeActorId,
-    ui64 volumeTabletId)
+    EStorageAccessMode storageAccessMode, ui32 partitionIndex,
+    ui32 siblingCount, const TActorId& volumeActorId, ui64 volumeTabletId,
+    bool checkSmallBlobsRemoved, TInstant smallBlobsRemovalDeadline)
     : TActor(&TThis::StateBoot)
     , TTabletBase(owner, std::move(storage), &TransactionTimeTracker)
     , Config(std::move(config))
     , PartitionConfig(std::move(partitionConfig))
-    , FreshBlocksWriterEnabled(
-          Config->GetFreshBlocksWriterEnabled() ||
-          Config->IsFreshBlocksWriterFeatureEnabled(
-              PartitionConfig.GetCloudId(),
-              PartitionConfig.GetFolderId(),
-              PartitionConfig.GetDiskId()))
-    , VolumeLabels(MakeVolumeLabels(
-          PartitionConfig.GetDiskId(),
-          PartitionConfig.GetCloudId(),
-          PartitionConfig.GetFolderId()))
+    ,
+    FreshBlocksWriterEnabled(
+        Config->GetFreshBlocksWriterEnabled() ||
+        Config->IsFreshBlocksWriterFeatureEnabled(PartitionConfig.GetCloudId(),
+                                                  PartitionConfig.GetFolderId(),
+                                                  PartitionConfig.GetDiskId()))
+    , VolumeLabels(MakeVolumeLabels(PartitionConfig.GetDiskId(),
+                                    PartitionConfig.GetCloudId(),
+                                    PartitionConfig.GetFolderId()))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , ProfileLog(std::move(profileLog))
     , BlockDigestGenerator(std::move(blockDigestGenerator))
@@ -88,13 +82,12 @@ TPartitionActor::TPartitionActor(
     , ChannelHistorySize(CalcChannelHistorySize())
     , BlobCodec(NBlockCodecs::Codec(Config->GetBlobCompressionCodec()))
     , VolumeTabletId(volumeTabletId)
-    , LogTitle(
-          StartTime,
-          TLogTitle::TPartition{
-              .TabletId = TabletID(),
-              .DiskId = PartitionConfig.GetDiskId(),
-              .PartitionIndex = partitionIndex,
-              .PartitionCount = siblingCount})
+    , LogTitle(StartTime,
+               TLogTitle::TPartition{.TabletId = TabletID(),
+                                     .DiskId = PartitionConfig.GetDiskId(),
+                                     .PartitionIndex = partitionIndex,
+                                     .PartitionCount = siblingCount})
+    , SmallBlobsRemovalState(checkSmallBlobsRemoved, smallBlobsRemovalDeadline)
     , TransactionTimeTracker(PartitionTransactions)
 {
     SharedState = std::make_shared<TPartitionThreadSafeState>(
@@ -134,6 +127,9 @@ void TPartitionActor::DefaultSignalTabletActive(const TActorContext& ctx)
 void TPartitionActor::Activate(const TActorContext& ctx)
 {
     BecomeAux(ctx, STATE_WORK);
+
+    SmallBlobsRemovalState.Activate(ctx.Now(),
+                                    Config->GetCheckSmallBlobsRemovedTimeout());
 
     // allow pipes to connect
     SignalTabletActive(ctx);
@@ -1126,6 +1122,10 @@ STFUNC(TPartitionActor::StateBoot)
 
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvCheckSmallBlobsRemovedRequest,
+              HandleCheckSmallBlobsRemoved);
+        HFunc(TEvPartition::TEvDisableCheckSmallBlobsRemoved,
+              HandleDisableCheckSmallBlobsRemoved);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
@@ -1156,6 +1156,10 @@ STFUNC(TPartitionActor::StateInit)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvCheckSmallBlobsRemovedRequest,
+              HandleCheckSmallBlobsRemoved);
+        HFunc(TEvPartition::TEvDisableCheckSmallBlobsRemoved,
+              HandleDisableCheckSmallBlobsRemoved);
 
         IgnoreFunc(TEvTabletPipe::TEvServerConnected);
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
@@ -1204,6 +1208,10 @@ STFUNC(TPartitionActor::StateWork)
     UpdateActorStatsSampled(ActorContext());
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
+        HFunc(TEvPartition::TEvCheckSmallBlobsRemovedRequest,
+              HandleCheckSmallBlobsRemoved);
+        HFunc(TEvPartition::TEvDisableCheckSmallBlobsRemoved,
+              HandleDisableCheckSmallBlobsRemoved);
 
         HFunc(TEvTablet::TEvCheckBlobstorageStatusResult, HandleCheckBlobstorageStatusResult);
 
@@ -1313,6 +1321,8 @@ STFUNC(TPartitionActor::StateZombie)
         IgnoreFunc(TEvTabletPipe::TEvServerDisconnected);
 
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateCounters);
+        IgnoreFunc(TEvPartition::TEvDisableCheckSmallBlobsRemoved);
+        HFunc(TEvPartition::TEvCheckSmallBlobsRemovedRequest, HandleCheckSmallBlobsRemoved);
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateResourceMetrics);
         IgnoreFunc(TEvPartitionPrivate::TEvUpdateYellowState);
         IgnoreFunc(TEvPartitionPrivate::TEvSendBackpressureReport);

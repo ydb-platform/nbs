@@ -76,6 +76,8 @@ TPartitionStatisticsCounters TPartitionActor::ExtractPartCounters(
     PartCounters->Simple.FreshBytesCount.Set(
         State->GetUnflushedFreshBlocksCount() * State->GetBlockSize());
 
+    PartCounters->Simple.FreshBlobs.Set(State->GetUntrimmedFreshBlobCount());
+    PartCounters->Simple.MixedBlobs.Set(State->GetMixedBlobsCount());
     PartCounters->Simple.UntrimmedFreshBlobBytesCount.Set(
         State->GetUntrimmedFreshBlobByteCount());
 
@@ -249,6 +251,81 @@ void TPartitionActor::RejectGetPartCountersRequest(
         *ev,
         std::make_unique<TEvPartitionCommonPrivate::TEvGetPartCountersResponse>(
             MakeError(E_REJECTED)));
+}
+
+bool TPartitionActor::IsCheckSmallBlobsRemovedModeActive(TInstant now) const
+{
+    return SmallBlobsRemovalState.IsActive(now);
+}
+
+bool TPartitionActor::AreBackgroundOperationsStopped(TInstant now) const
+{
+    return SmallBlobsRemovalState.IsStopped(now);
+}
+
+void TPartitionActor::HandleCheckSmallBlobsRemoved(
+    const TEvPartition::TEvCheckSmallBlobsRemovedRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    if (CurrentState == STATE_ZOMBIE) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvPartition::TEvCheckSmallBlobsRemovedResponse>(
+                MakeError(E_REJECTED)));
+        return;
+    }
+    auto response =
+        std::make_unique<TEvPartition::TEvCheckSmallBlobsRemovedResponse>();
+    response->Removed = AreBackgroundOperationsStopped(ctx.Now());
+    if (CurrentState == STATE_WORK) {
+        // Reconsider operations whose dependencies have just become ready.
+        EnqueueFlushIfNeeded(ctx);
+        EnqueueTrimFreshLogIfNeeded(ctx);
+        EnqueueCompactionIfNeeded(ctx);
+        EnqueueCleanupIfNeeded(ctx);
+        EnqueueCollectGarbageIfNeeded(ctx);
+
+        response->Removed = SmallBlobsRemovalState.IsReady(
+            ctx.Now(),
+            {State->GetFlushState().GetOperationState().Status,
+             State->GetTrimFreshLogState().Status,
+             State->GetCompactionState(ECompactionType::Tablet).Status,
+             State->GetCompactionState(ECompactionType::Forced).Status,
+             State->GetCleanupState().Status,
+             State->GetCollectGarbageState().Status});
+        if (response->Removed) {
+            SmallBlobsRemovalState.Finish();
+            auto counters = ExtractPartCounters(ctx);
+            response->FinalCounters =
+                std::make_unique<TEvStatsService::TVolumePartCounters>(
+                    State->GetConfig().GetDiskId(),
+                    std::move(counters.PartCounters),
+                    counters.DiffSysCpuConsumption, counters.UserCpuConsumption,
+                    !State->GetCheckpoints().IsEmpty(),
+                    std::move(counters.OffsetLoadMetrics),
+                    std::move(counters.Metrics));
+        }
+    }
+    NCloud::Reply(ctx, *ev, std::move(response));
+}
+
+void TPartitionActor::HandleDisableCheckSmallBlobsRemoved(
+    const TEvPartition::TEvDisableCheckSmallBlobsRemoved::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    if (!SmallBlobsRemovalState.IsEnabled()) {
+        return;
+    }
+    SmallBlobsRemovalState.Disable();
+    if (CurrentState == STATE_WORK) {
+        EnqueueFlushIfNeeded(ctx);
+        EnqueueTrimFreshLogIfNeeded(ctx);
+        EnqueueCompactionIfNeeded(ctx);
+        EnqueueCleanupIfNeeded(ctx);
+        EnqueueCollectGarbageIfNeeded(ctx);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition

@@ -1292,6 +1292,7 @@ private:
     TPartitionState& State;
 
     TRangeStat TopRangeStat;
+    bool CheckSmallBlobsRemovedMode = false;
     TRangeStat TopByBlobCount;
     TRangeStat TopGarbageRangeStat;
     TRangeStat TopByGarbageIgnoringZeroed;
@@ -1369,6 +1370,11 @@ public:
                 },
             });
         }
+    }
+
+    void SetCheckSmallBlobsRemovedMode(bool enabled)
+    {
+        CheckSmallBlobsRemovedMode = enabled;
     }
 
     [[nodiscard]] std::optional<TTriggerInfo> TriggerCompactionIfNeeded() const
@@ -1455,9 +1461,10 @@ private:
     TriggerBlobCountCompactionIfNeeded() const
     {
         const ui64 blobCount = State.GetTotalBlobsCount();
-        if (!State.GetMaxBlobsPerDisk() ||
-            blobCount <= State.GetMaxBlobsPerDisk() +
-                             State.GetCleanupQueue().GetCount() ||
+        if ((!CheckSmallBlobsRemovedMode &&
+             (!State.GetMaxBlobsPerDisk() ||
+              blobCount <= State.GetMaxBlobsPerDisk() +
+                               State.GetCleanupQueue().GetCount())) ||
             TopByBlobCount.BlobCount < 2)
         {
             return std::nullopt;
@@ -1872,6 +1879,10 @@ TDuration TPartitionActor::ComputeGarbageCompactionExecTime(
 
 void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 {
+    if (AreBackgroundOperationsStopped(ctx.Now())) {
+        return;
+    }
+
     // Sending compaction request in non-work state can lead to rejection, which
     // means that subsequent calls of this function will be ignored.
     if (CurrentState != STATE_WORK) {
@@ -1895,6 +1906,8 @@ void TPartitionActor::EnqueueCompactionIfNeeded(const TActorContext& ctx)
 
     auto now = ctx.Now();
     TCompactionTriggerer triggerer(Config, *State, now);
+    triggerer.SetCheckSmallBlobsRemovedMode(
+        IsCheckSmallBlobsRemovedModeActive(now));
 
     auto info = triggerer.TriggerCompactionIfNeeded();
     if (!info) {
@@ -2143,6 +2156,9 @@ void TPartitionActor::HandleCompaction(
         ranges.emplace_back(rangeIdx, blockRange);
     }
 
+    if (IsCheckSmallBlobsRemovedModeActive(ctx.Now())) {
+        CompactionsInSmallBlobsRemovalMode.insert(commitId);
+    }
     State->GetCompactionState(compactionType)
         .SetStatus(EOperationStatus::Started, ctx.Now());
 
@@ -2231,6 +2247,7 @@ void TPartitionActor::HandleCompactionCompleted(
 
     const auto compactionStartedTs =
         State->GetCompactionState(msg->CompactionType).Timestamp;
+    CompactionsInSmallBlobsRemovalMode.erase(commitId);
     State->GetCompactionState(msg->CompactionType)
         .SetStatus(EOperationStatus::Idle, ctx.Now());
 

@@ -92,5 +92,6 @@ RECURSE(
 )
 
 RECURSE_FOR_TESTS(
+    small_blobs_removal_ut
     ut
 )

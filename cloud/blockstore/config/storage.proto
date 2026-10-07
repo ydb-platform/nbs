@@ -1734,4 +1734,14 @@ message TStorageServiceConfig
     // the per-disk mixed-block percentage trigger. Zero removes this minimum.
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
+
+    // Drain small blobs when partitions are started for garbage collection.
+    optional bool CheckSmallBlobsRemovedEnabled = 542;
+
+    // Maximum duration of small blob removal, in milliseconds.
+    optional uint32 CheckSmallBlobsRemovedTimeout = 543;
+
+    // Interval between volume readiness checks, in milliseconds.
+    optional uint32 CheckSmallBlobsRemovedCheckInterval = 544;
+
 }

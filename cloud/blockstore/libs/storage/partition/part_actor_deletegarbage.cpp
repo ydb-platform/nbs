@@ -101,6 +101,10 @@ void TPartitionActor::CompleteDeleteGarbage(
 {
     TRequestScope timer(*args.RequestInfo);
 
+    if (CollectGarbageInSmallBlobsRemovalMode) {
+        PartCounters->Cumulative.BlobsDeletedInCheckSmallBlobsRemovedMode
+            .Increment(args.GarbageBlobs.size());
+    }
     auto response =
         std::make_unique<TEvPartitionPrivate::TEvDeleteGarbageResponse>();
     response->ExecCycles = args.RequestInfo->GetExecCycles();

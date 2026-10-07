@@ -124,6 +124,13 @@ public:
     // construction.
     TStorageConfigControlsPtr GetStorageConfigControls() const;
 
+    bool GetCheckSmallBlobsRemovedEnabled() const;
+    TDuration GetCheckSmallBlobsRemovedTimeout() const;
+    TDuration GetCheckSmallBlobsRemovedCheckInterval() const;
+    bool IsCheckSmallBlobsRemovedFeatureEnabled(const TString& cloudId,
+                                                const TString& folderId,
+                                                const TString& diskId) const;
+
     void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig);
 
     void SetVolumePreemptionType(

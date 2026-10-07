@@ -141,6 +141,11 @@ public:
         : TabletID(tabletID)
     {}
 
+    [[nodiscard]] ui64 GetUntrimmedFreshBlobCount() const
+    {
+        return UntrimmedFreshBlobByteCountByCommitId.size();
+    }
+
     [[nodiscard]] ui64 GetUntrimmedFreshBlobByteCount() const
     {
         return UntrimmedFreshBlobByteCount;

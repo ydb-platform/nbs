@@ -133,6 +133,13 @@ struct TSimpleDiskCounters
         ECounterExpirationPolicy::Permanent};
 
     // BlobStorage based
+    TCounter FreshBlobs{EPublishingPolicy::Repl,
+                        TSimpleCounter::ECounterType::Generic,
+                        ECounterExpirationPolicy::Permanent};
+    TCounter MixedBlobs{EPublishingPolicy::Repl,
+                        TSimpleCounter::ECounterType::Generic,
+                        ECounterExpirationPolicy::Permanent};
+
     TCounter MixedBytesCount{
         EPublishingPolicy::Repl,
         TSimpleCounter::ECounterType::Generic,
@@ -269,6 +276,8 @@ struct TSimpleDiskCounters
         ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TSimpleDiskCounters::FreshBlobs>(),
+        MakeMeta<&TSimpleDiskCounters::MixedBlobs>(),
         MakeMeta<&TSimpleDiskCounters::BytesCount>(),
         MakeMeta<&TSimpleDiskCounters::IORequestsInFlight>(),
 
@@ -320,6 +329,31 @@ struct TCumulativeDiskCounters
     using TMeta = TMemberMeta<TCounter TCumulativeDiskCounters::*>;
 
     // BlobStorage based
+    TCounter BlobsFlushInCheckSmallBlobsRemovedMode{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter BlobsTrimmedInCheckSmallBlobsRemovedMode{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter MixedBlobsCompactedInCheckSmallBlobsRemovedMode{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter FreshBlobsCompactedInCheckSmallBlobsRemovedMode{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter BlobsCleanedUpInCheckSmallBlobsRemovedMode{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+    TCounter BlobsDeletedInCheckSmallBlobsRemovedMode{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
     TCounter BytesWritten{
         EPublishingPolicy::Repl,
         TCumulativeCounter::ECounterType::Generic,
@@ -436,6 +470,18 @@ struct TCumulativeDiskCounters
         ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
+        MakeMeta<
+            &TCumulativeDiskCounters::BlobsFlushInCheckSmallBlobsRemovedMode>(),
+        MakeMeta<&TCumulativeDiskCounters::
+                     BlobsTrimmedInCheckSmallBlobsRemovedMode>(),
+        MakeMeta<&TCumulativeDiskCounters::
+                     MixedBlobsCompactedInCheckSmallBlobsRemovedMode>(),
+        MakeMeta<&TCumulativeDiskCounters::
+                     FreshBlobsCompactedInCheckSmallBlobsRemovedMode>(),
+        MakeMeta<&TCumulativeDiskCounters::
+                     BlobsCleanedUpInCheckSmallBlobsRemovedMode>(),
+        MakeMeta<&TCumulativeDiskCounters::
+                     BlobsDeletedInCheckSmallBlobsRemovedMode>(),
         MakeMeta<&TCumulativeDiskCounters::BytesWritten>(),
         MakeMeta<&TCumulativeDiskCounters::BytesRead>(),
         MakeMeta<&TCumulativeDiskCounters::SysBytesWritten>(),
@@ -452,10 +498,13 @@ struct TCumulativeDiskCounters
         MakeMeta<&TCumulativeDiskCounters::CompactionByBlobCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByGarbageBlocksPerDisk>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionByIgnoringZeroedPerRange>(),
+        MakeMeta<
+            &TCumulativeDiskCounters::CompactionByIgnoringZeroedPerRange>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionByIgnoringZeroedPerDisk>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionByMixedBlockCountPerRange>(),
-        MakeMeta<&TCumulativeDiskCounters::CompactionByMixedBlockCountPerDisk>(),
+        MakeMeta<
+            &TCumulativeDiskCounters::CompactionByMixedBlockCountPerRange>(),
+        MakeMeta<
+            &TCumulativeDiskCounters::CompactionByMixedBlockCountPerDisk>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionTxTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionReadBlobsTime>(),
         MakeMeta<&TCumulativeDiskCounters::CompactionWriteBlobsTime>(),
@@ -780,6 +829,11 @@ struct TVolumeSelfCumulativeCounters
     using TMeta = TMemberMeta<TCounter TVolumeSelfCumulativeCounters::*>;
 
     // Common
+    TCounter PartitionsStartedForGcCount{
+        EPublishingPolicy::Repl,
+        TCumulativeCounter::ECounterType::Generic,
+        ECounterExpirationPolicy::Permanent};
+
     TCounter ThrottlerRejectedRequests{
         EPublishingPolicy::All,
         TCumulativeCounter::ECounterType::Generic,
@@ -806,6 +860,7 @@ struct TVolumeSelfCumulativeCounters
         ECounterExpirationPolicy::Permanent};
 
     static constexpr TMeta AllCounters[] = {
+        MakeMeta<&TVolumeSelfCumulativeCounters::PartitionsStartedForGcCount>(),
         MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerRejectedRequests>(),
         MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerPostponedRequests>(),
         MakeMeta<&TVolumeSelfCumulativeCounters::ThrottlerSkippedRequests>(),

@@ -220,6 +220,9 @@ NProto::TLinkedDiskFillBandwidth GetBandwidth(
     xxx(CompactionGarbageBlockLimit,        ui32,      10240                  )\
     xxx(CompactionRangeGarbageThreshold,    ui32,      200                    )\
     xxx(MaxAffectedBlocksPerCompaction,     ui32,      8192                   )\
+    xxx(CheckSmallBlobsRemovedEnabled,     bool,      false                  )\
+    xxx(CheckSmallBlobsRemovedTimeout,     TDuration, TDuration::Minutes(5)  )\
+    xxx(CheckSmallBlobsRemovedCheckInterval, TDuration, TDuration::Seconds(1))\
     xxx(V1GarbageCompactionEnabled,         bool,      false                  )\
     xxx(IgnoringZeroedCompactionEnabled,    bool,      false                  )\
     xxx(OptimizeForShortRanges,             bool,      false                  )\
@@ -795,10 +798,11 @@ BLOCKSTORE_STORAGE_CONFIG(BLOCKSTORE_STORAGE_DECLARE_CONFIG)
     xxx(UseRecreatedBlobMetasOnCleanup)                                        \
     xxx(DynamicGarbageCompactionThrottling)                                    \
     xxx(MixedBlocksFilter)                                                     \
+    xxx(CheckSmallBlobsRemoved)                                                \
     xxx(CheckpointAwareCleanup)                                                \
     xxx(CompactionStatsTracker)                                                \
     xxx(MixedBlocksCountCompactionSSD)                                         \
-    xxx(MixedBlocksCountCompactionHDD)                                         \
+    xxx(MixedBlocksCountCompactionHDD)
 
 // BLOCKSTORE_BINARY_FEATURES
 

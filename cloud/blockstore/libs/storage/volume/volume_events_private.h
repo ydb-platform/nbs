@@ -547,6 +547,7 @@ struct TEvVolumePrivate
         EvCreateLinkFinished,
         EvDiskRegistryDeviceOperationStarted,
         EvDiskRegistryDeviceOperationFinished,
+        EvCheckSmallBlobsRemoved,
 
         EvEnd
     };
@@ -555,6 +556,9 @@ struct TEvVolumePrivate
         "EvEnd expected to be < TBlockStorePrivateEvents::VOLUME_END");
 
     BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
+
+    using TEvCheckSmallBlobsRemoved =
+        TRequestEvent<TEmpty, EvCheckSmallBlobsRemoved>;
 
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
 

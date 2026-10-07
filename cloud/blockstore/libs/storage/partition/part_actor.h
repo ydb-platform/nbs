@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include "model/small_blobs_removal_state.h"
 #include "part_counters.h"
 #include "part_events_private.h"
 #include "part_state.h"
@@ -143,6 +144,12 @@ private:
 
     NKikimr::TTabletCountersWithTxTypes* Counters = nullptr;
 
+    TSmallBlobsRemovalState SmallBlobsRemovalState;
+    bool FlushInSmallBlobsRemovalMode = false;
+    bool TrimInSmallBlobsRemovalMode = false;
+    bool CollectGarbageInSmallBlobsRemovalMode = false;
+    THashSet<ui64> CompactionsInSmallBlobsRemovalMode;
+
     bool UpdateCountersScheduled = false;
     bool UpdateYellowStateScheduled = false;
     TInstant ReassignRequestSentTs;
@@ -189,18 +196,15 @@ private:
 
 public:
     TPartitionActor(
-        const NActors::TActorId& owner,
-        NKikimr::TTabletStorageInfoPtr storage,
+        const NActors::TActorId& owner, NKikimr::TTabletStorageInfoPtr storage,
         TStorageConfigConstPtr config,
-        TDiagnosticsConfigConstPtr diagnosticsConfig,
-        IProfileLogPtr profileLog,
+        TDiagnosticsConfigConstPtr diagnosticsConfig, IProfileLogPtr profileLog,
         IBlockDigestGeneratorPtr blockDigestGenerator,
         NProto::TPartitionConfig partitionConfig,
-        EStorageAccessMode storageAccessMode,
-        ui32 partitionIndex,
-        ui32 siblingCount,
-        const NActors::TActorId& volumeActorId,
-        ui64 volumeTabletId);
+        EStorageAccessMode storageAccessMode, ui32 partitionIndex,
+        ui32 siblingCount, const NActors::TActorId& volumeActorId,
+        ui64 volumeTabletId, bool checkSmallBlobsRemoved = false,
+        TInstant smallBlobsRemovalDeadline = {});
     ~TPartitionActor() override;
 
     static constexpr ui32 LogComponent = TBlockStoreComponents::PARTITION;
@@ -213,6 +217,15 @@ protected:
     void DefaultSignalTabletActive(const NActors::TActorContext& ctx) override;
 
 private:
+    bool IsCheckSmallBlobsRemovedModeActive(TInstant now) const;
+    bool AreBackgroundOperationsStopped(TInstant now) const;
+    void HandleCheckSmallBlobsRemoved(
+        const TEvPartition::TEvCheckSmallBlobsRemovedRequest::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleDisableCheckSmallBlobsRemoved(
+        const TEvPartition::TEvDisableCheckSmallBlobsRemoved::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void Activate(const NActors::TActorContext& ctx);
     void Suicide(const NActors::TActorContext& ctx);
     void BecomeAux(const NActors::TActorContext& ctx, EState state);

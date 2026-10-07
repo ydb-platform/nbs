@@ -414,6 +414,21 @@ private:
     ui64 PartitionRestartCounter = 0;
 
     TVector<ui64> GCCompletedPartitions;
+    bool SmallBlobsRemovalEnabled = false;
+    bool SmallBlobsRemovalCheckScheduled = false;
+    ui64 SmallBlobsRemovalGeneration = 0;
+    TInstant SmallBlobsRemovalDeadline;
+    THashMap<ui64, NActors::TActorId> SmallBlobsRemovalPartitions;
+    THashSet<ui64> SmallBlobsRemovedPartitions;
+
+    void ScheduleCheckSmallBlobsRemoved(const NActors::TActorContext& ctx);
+    void DisableCheckSmallBlobsRemoved(const NActors::TActorContext& ctx);
+    void HandleCheckSmallBlobsRemoved(
+        const TEvVolumePrivate::TEvCheckSmallBlobsRemoved::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void HandleCheckSmallBlobsRemovedResponse(
+        const NPartition::TEvPartition::TEvCheckSmallBlobsRemovedResponse::TPtr&
+            ev, const NActors::TActorContext& ctx);
 
     std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
 

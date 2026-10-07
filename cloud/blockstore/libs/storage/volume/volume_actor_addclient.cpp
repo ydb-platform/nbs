@@ -668,6 +668,12 @@ void TVolumeActor::CompleteAddClient(
         return;
     }
 
+    if (SmallBlobsRemovalEnabled &&
+        PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_GC)
+    {
+        StartPartitionsIfNeeded(ctx);
+    }
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::VOLUME,
