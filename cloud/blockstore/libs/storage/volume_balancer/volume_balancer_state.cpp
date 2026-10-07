@@ -123,7 +123,7 @@ void TVolumeBalancerState::RenderLocalVolumes(TStringStream& out) const
                         TABLED() { out << v.first; }
                         TABLED() {
                             const bool enabled =
-                                IsVolumePreemptible(v.first, v.second);
+                                IsPreemptionEnabled(v.first, v.second);
                             out << (enabled ? "Yes" : "No");
                         }
                         TABLED() {
@@ -238,7 +238,7 @@ void TVolumeBalancerState::UpdateVolumeToPush()
 
     ui64 value = moveMostHeavy ? 0 : Max<ui64>();
     for (auto v = Volumes.begin(); v != Volumes.end(); ++v) {
-        if (!IsVolumePreemptible(v->first, v->second)) {
+        if (!IsVolumePreemptibleToPush(v->first, v->second)) {
             continue;
         }
 
@@ -261,33 +261,34 @@ void TVolumeBalancerState::UpdateVolumeToPull(TInstant now)
     VolumeToPull = {};
 
     for (const auto& v: Volumes) {
-        if (!v.second.IsLocal &&
-            v.second.PreemptionSource == NProto::EPreemptionSource::SOURCE_BALANCER &&
-            v.second.NextPullAttempt <= now &&
-            !VolumesInProgress.count(v.first))
-        {
+        if (IsVolumePreemptibleToPull(v.first, v.second, now)) {
             VolumeToPull = v.first;
             return;
         }
     }
-
 }
 
-bool TVolumeBalancerState::IsVolumePreemptible(
+bool TVolumeBalancerState::IsPreemptionEnabled(
     const TString& diskId,
     const TVolumeInfo& volume) const
 {
-    const bool isFeatureEnabledForFolder = StorageConfig->IsBalancerFeatureEnabled(
-        volume.CloudId,
-        volume.FolderId,
-        diskId);
+    const bool isFeatureEnabledForFolder =
+        StorageConfig->IsBalancerFeatureEnabled(
+            volume.CloudId,
+            volume.FolderId,
+            diskId);
 
     const bool configuredOn =
         isFeatureEnabledForFolder || StorageConfig->GetVolumeBalancerEnabled();
 
-    const bool balancerEnabled = configuredOn && GetEnabled() &&
-                                 VolumeBalancerSwitch->IsBalancerEnabled();
+    return configuredOn && GetEnabled() &&
+           VolumeBalancerSwitch->IsBalancerEnabled();
+}
 
+bool TVolumeBalancerState::IsVolumePreemptibleToPush(
+    const TString& diskId,
+    const TVolumeInfo& volume) const
+{
     // NProto::STORAGE_MEDIA_DEFAULT means that volume mounting
     // is still in progress and will change to something else
     // as soon as it completes.
@@ -295,10 +296,19 @@ bool TVolumeBalancerState::IsVolumePreemptible(
         (volume.MediaKind != NProto::STORAGE_MEDIA_DEFAULT) &&
         !IsDiskRegistryMediaKind(volume.MediaKind);
 
-    return volume.IsLocal &&
-        balancerEnabled &&
-        isSuitableMediaKind &&
-        !VolumesInProgress.count(diskId);
+    return IsPreemptionEnabled(diskId, volume) && volume.IsLocal &&
+           isSuitableMediaKind && !VolumesInProgress.count(diskId);
+}
+
+bool TVolumeBalancerState::IsVolumePreemptibleToPull(
+    const TString& diskId,
+    const TVolumeInfo& volume,
+    TInstant now) const
+{
+    return IsPreemptionEnabled(diskId, volume) && !volume.IsLocal &&
+           volume.PreemptionSource ==
+               NProto::EPreemptionSource::SOURCE_BALANCER &&
+           volume.NextPullAttempt <= now && !VolumesInProgress.count(diskId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

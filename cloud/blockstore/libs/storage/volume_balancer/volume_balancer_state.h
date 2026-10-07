@@ -118,9 +118,18 @@ private:
     void UpdateVolumeToPush();
     void UpdateVolumeToPull(TInstant now);
 
-    bool IsVolumePreemptible(
+    bool IsPreemptionEnabled(
         const TString& diskId,
         const TVolumeInfo& volume) const;
+
+    bool IsVolumePreemptibleToPush(
+        const TString& diskId,
+        const TVolumeInfo& volume) const;
+
+    bool IsVolumePreemptibleToPull(
+        const TString& diskId,
+        const TVolumeInfo& volume,
+        TInstant now) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage
