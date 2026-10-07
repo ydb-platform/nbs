@@ -20,6 +20,13 @@ Profile log fills in three places:
 | ```--since```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events from this timestamp |
 | ```--until```          | Timestamp | [ISO 8601:2004 format](https://www.iso.org/standard/40874.html), output all events strictly before given timestamp |
 
+`--since` and `--until` also accept systemd-style timestamps such as `today`,
+`now`, and `-2h`. An omitted timezone defaults to UTC, matching the original
+ISO 8601 parsing and absolute timestamps in `--grafana-range`. Date-only,
+time-only, and day keywords such as `today` also use UTC unless a timezone is
+specified explicitly. For example, `2023-01-01T10:00:00` means
+`2023-01-01T10:00:00Z` on every machine.
+
 ## Options for particular commands
 
 ### DumpEvents

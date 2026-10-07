@@ -48,7 +48,12 @@ TMaybe<TInstant> ParseTimestamp(
 
     const auto res = parseResult.Get<TString>(label.data());
     TInstant ts;
-    if (!NSystemdTime::TryParseTimestamp(res, ts, now)) {
+    if (!NSystemdTime::TryParseTimestamp(
+            res,
+            ts,
+            now,
+            NDatetime::GetUtcTimeZone()))
+    {
         Cerr << "Failed to parse time format: " << res << Endl;
         Cerr << "Parameter \"" << label << "\" will be ignored" << Endl;
         return {};
@@ -210,14 +215,14 @@ TCommonFilterParams::TCommonFilterParams(
             "Since timestamp, used for filtering. "
             "Format: systemd.time timestamp (e.g. '2026-10-01T12:00:00Z', "
             "'today', '-2h', '30min ago'; omitted timezone defaults to "
-            "local). ")
+            "UTC). ")
         .RequiredArgument("STR");
 
     opts.AddLongOption(
             UntilLabel.data(),
             "Until timestamp, used for filtering. "
             "Format: systemd.time timestamp (e.g. '2026-10-01T12:00:00Z', "
-            "'now', '+1h'; omitted timezone defaults to local). ")
+            "'now', '+1h'; omitted timezone defaults to UTC). ")
         .RequiredArgument("STR");
 }
 

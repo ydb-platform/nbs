@@ -1,6 +1,7 @@
 #include "common_filter_params.h"
 
 #include <library/cpp/getopt/small/last_getopt.h>
+#include <library/cpp/testing/common/scope.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 namespace NCloud::NFileStore::NProfileTool {
@@ -28,6 +29,56 @@ void AssertGrafanaRange(TStringBuf json, TStringBuf now, TStringBuf since,
 
 Y_UNIT_TEST_SUITE(TCommonFilterParamsTest)
 {
+    Y_UNIT_TEST(ShouldDefaultTimeFiltersToUtc)
+    {
+        const NTesting::TScopedEnvironment timezone("TZ", "Asia/Tokyo");
+        // It is already January 2 in Tokyo, so omitted dates and day keywords
+        // must also use UTC, not just timestamps with an explicit date.
+        const auto now = TInstant::ParseIso8601("2023-01-01T23:30:00Z");
+        const struct
+        {
+            const char* Input;
+            const char* Expected;
+        } cases[] = {
+            {"2023-01-01T10:00:00", "2023-01-01T10:00:00Z"},
+            {"2023-01-01", "2023-01-01T00:00:00Z"},
+            {"10:00", "2023-01-01T10:00:00Z"},
+            {"today", "2023-01-01T00:00:00Z"},
+            {"tomorrow", "2023-01-02T00:00:00Z"},
+            {"2023-01-01T10:00:00+09:00", "2023-01-01T01:00:00Z"},
+            {"2023-01-01 10:00:00 Asia/Tokyo", "2023-01-01T01:00:00Z"},
+            {"today Asia/Tokyo", "2023-01-01T15:00:00Z"},
+        };
+        for (const auto& example: cases) {
+            NLastGetopt::TOpts opts;
+            const TCommonFilterParams params(opts, now);
+            const char* argv[] = {
+                "profile-tool",
+                "--since",
+                example.Input,
+                "--until",
+                example.Input,
+            };
+            const NLastGetopt::TOptsParseResultException parsed(
+                &opts, std::size(argv), argv);
+            const auto expected = TInstant::ParseIso8601(example.Expected);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                params.GetSince(parsed).GetRef(), expected, example.Input);
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                params.GetUntil(parsed).GetRef(), expected, example.Input);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDefaultZonelessGrafanaTimestampsToUtc)
+    {
+        const NTesting::TScopedEnvironment timezone("TZ", "Asia/Tokyo");
+        AssertGrafanaRange(
+            R"({"from":"2023-01-01T10:00:00","to":"2023-01-01T11:00:00"})",
+            "2023-01-01T23:30:00Z",
+            "2023-01-01T10:00:00Z",
+            "2023-01-01T11:00:00Z");
+    }
+
     Y_UNIT_TEST(ShouldParseCopiedGrafanaRanges)
     {
         constexpr TStringBuf now = "2026-10-06T14:46:30.146Z";
