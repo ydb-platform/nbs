@@ -34,6 +34,7 @@ PEERDIR(
     cloud/storage/core/libs/diagnostics
     cloud/storage/core/libs/features
 
+    library/cpp/monlib/dynamic_counters
     library/cpp/protobuf/util
 
     contrib/libs/protobuf

@@ -4,6 +4,16 @@ namespace NCloud::NFileStore {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+TLocalFileSystemCounters::TLocalFileSystemCounters(
+        NMonitoring::TDynamicCounters& counters)
+    : MaxHandlePerSessionCount(counters.GetCounter("MaxHandlePerSessionCount"))
+    , SessionFileHandleLimitRejectedCount(counters.GetCounter(
+          "SessionFileHandleLimitRejectedCount",
+          true /* derivative */))
+{}
+
+////////////////////////////////////////////////////////////////////////////////
+
 TLocalFileSystem::TLocalFileSystem(
         TLocalFileStoreConfigPtr config,
         NProto::TFileStore store,
@@ -12,7 +22,8 @@ TLocalFileSystem::TLocalFileSystem(
         ITimerPtr timer,
         ISchedulerPtr scheduler,
         ILoggingServicePtr logging,
-        IFileIOServicePtr fileIOService)
+        IFileIOServicePtr fileIOService,
+        TLocalFileSystemCountersPtr counters)
     : Config(std::move(config))
     , RootPath(std::move(root))
     , StatePath(std::move(statePath))
@@ -20,6 +31,7 @@ TLocalFileSystem::TLocalFileSystem(
     , Scheduler(std::move(scheduler))
     , Logging(std::move(logging))
     , FileIOService(std::move(fileIOService))
+    , Counters(std::move(counters))
     , Store(std::move(store))
 {
     Log = Logging->CreateLog(Store.GetFileSystemId());

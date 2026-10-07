@@ -6,6 +6,8 @@ import logging
 import signal
 import subprocess
 import tempfile
+import fcntl
+import struct
 
 from concurrent.futures import ThreadPoolExecutor, wait
 from itertools import count
@@ -22,6 +24,8 @@ import yatest.common as common
 
 
 BLOCK_SIZE = 4096
+NBD_REQUEST_TIMEOUT_SECONDS = 10
+BLKGETSIZE64 = 0x80081272
 
 
 @pytest.fixture(autouse=True)
@@ -37,7 +41,6 @@ def sockets_dir():
 
 @pytest.fixture(name='ydb')
 def start_ydb_cluster():
-
     daemon = start_ydb()
     yield daemon
     daemon.stop()
@@ -45,7 +48,6 @@ def start_ydb_cluster():
 
 @pytest.fixture(name='nbs')
 def start_nbs_daemon(ydb, tmp_path, sockets_dir):
-
     cfg = NbsConfigurator(ydb)
     cfg.generate_default_nbs_configs()
 
@@ -57,7 +59,7 @@ def start_nbs_daemon(ydb, tmp_path, sockets_dir):
 
     server_config.NbdEnabled = True
     server_config.NbdNetlink = True
-    server_config.NbdRequestTimeout = 10000            # 10s
+    server_config.NbdRequestTimeout = NBD_REQUEST_TIMEOUT_SECONDS * 1000
     server_config.NbdConnectionTimeout = 86400 * 1000  # 24h
     server_config.NbdDevicePrefix = "/dev/nbd"
 
@@ -76,48 +78,53 @@ def start_nbs_daemon(ydb, tmp_path, sockets_dir):
     daemon.stop()
 
 
-@pytest.fixture(name='bdev')
-def mount_nbd_device(nbs, sockets_dir):
-    test_disk_id = "vol0"
+@pytest.fixture(name='volume')
+def create_volume(nbs, sockets_dir):
+    disk_id = "vol0"
     nbd_device = "/dev/nbd0"
     client_id = common.context.test_name
+    blocks_count = 1024 ** 3 // BLOCK_SIZE
 
     cli = CreateTestClient(f"localhost:{nbs.port}")
 
-    cli.create_volume(
-        disk_id=test_disk_id,
-        block_size=BLOCK_SIZE,
-        blocks_count=1024 ** 3 // BLOCK_SIZE,
-        storage_media_kind=STORAGE_MEDIA_SSD)
-
-    socket_path = str(sockets_dir / f"{test_disk_id}.nbd.sock")
-
-    cli.start_endpoint(
-        unix_socket_path=socket_path,
-        disk_id=test_disk_id,
-        ipc_type=IPC_NBD,
-        access_mode=VOLUME_ACCESS_READ_WRITE,
-        client_id=client_id,
-        seq_number=0,
-        persistent=True,
-        nbdDeviceFile=nbd_device,
-    )
-
     try:
-        fd = os.open(nbd_device, os.O_RDWR | os.O_DIRECT)
-        try:
-            yield fd
-        finally:
-            os.close(fd)
-    finally:
-        cli.stop_endpoint(
+        cli.create_volume(
+            disk_id=disk_id,
+            block_size=BLOCK_SIZE,
+            blocks_count=blocks_count,
+            storage_media_kind=STORAGE_MEDIA_SSD)
+
+        socket_path = str(sockets_dir / f"{disk_id}.nbd.sock")
+
+        cli.start_endpoint(
             unix_socket_path=socket_path,
-            disk_id=test_disk_id,
+            disk_id=disk_id,
+            ipc_type=IPC_NBD,
+            access_mode=VOLUME_ACCESS_READ_WRITE,
             client_id=client_id,
+            seq_number=0,
+            persistent=True,
+            nbdDeviceFile=nbd_device,
         )
 
+        try:
+            fd = os.open(nbd_device, os.O_RDWR | os.O_DIRECT)
+            try:
+                yield fd, cli, disk_id, socket_path, blocks_count
+            finally:
+                os.close(fd)
+        finally:
+            cli.stop_endpoint(
+                unix_socket_path=socket_path,
+                disk_id=disk_id,
+                client_id=client_id,
+            )
+    finally:
+        cli.close()
 
-def test_ydb_outage(ydb, bdev):
+
+def test_ydb_outage(ydb, volume):
+    fd, *_ = volume
 
     def make_block(byte):
         return byte * BLOCK_SIZE
@@ -127,12 +134,12 @@ def test_ydb_outage(ydb, bdev):
          ThreadPoolExecutor(max_workers=1) as executor:
 
         def write_block():
-            written = os.pwrite(bdev, wbuf, 0)
+            written = os.pwrite(fd, wbuf, 0)
             assert written == BLOCK_SIZE
 
         def read_block():
             rbuf[:] = make_block(b"\xbe")
-            received = os.preadv(bdev, [rbuf], 0)
+            received = os.preadv(fd, [rbuf], 0)
             assert received == BLOCK_SIZE
 
         # Verify that the initially empty disk reads as zeros.
@@ -207,3 +214,90 @@ def test_ydb_outage(ydb, bdev):
             i + 1,
             time.monotonic() - t0,
         )
+
+
+def get_device_size(fd):
+    return struct.unpack("=Q", fcntl.ioctl(fd, BLKGETSIZE64, bytes(8)))[0]
+
+
+def test_restore_resized_endpoint_with_pending_io(nbs, volume):
+    fd, cli, disk_id, socket_path, old_blocks_count = volume
+    new_blocks_count = 2 * old_blocks_count
+    old_size = old_blocks_count * BLOCK_SIZE
+    new_size = new_blocks_count * BLOCK_SIZE
+
+    with mmap.mmap(-1, BLOCK_SIZE) as wbuf, \
+         mmap.mmap(-1, BLOCK_SIZE) as rbuf, \
+         ThreadPoolExecutor(max_workers=1) as executor:
+
+        def write_block(offset=0):
+            assert os.pwrite(fd, wbuf, offset) == BLOCK_SIZE
+
+        def read_block(offset=0):
+            rbuf[:] = b"\xbe" * BLOCK_SIZE
+            assert os.preadv(fd, [rbuf], offset) == BLOCK_SIZE
+
+        expected = b"\x42" * BLOCK_SIZE
+        assert get_device_size(fd) == old_size
+        wbuf[:] = expected
+        write_block()
+        read_block()
+        assert rbuf[:] == expected
+
+        # Do not refresh endpoint, just resize the volume. Restart should
+        # install new socket and only then update geometry.
+        cli.resize_volume(
+            disk_id=disk_id,
+            blocks_count=new_blocks_count,
+            channels_count=0,
+            config_version=0)
+        common.wait_for(
+            lambda: (cli.describe_volume(disk_id).BlocksCount == new_blocks_count),
+            timeout=30,
+            fail_message="volume resize")
+        assert get_device_size(fd) == old_size
+
+        logging.info("Suspending NBS and submitting a direct read")
+        os.kill(nbs.pid, signal.SIGSTOP)
+
+        try:
+            # Keep issuing requests until NBS gets fully suspended.
+            freeze_deadline = time.monotonic() + 10
+            while True:
+                assert time.monotonic() < freeze_deadline, "I/O did not freeze"
+                future = executor.submit(read_block)
+                done, _ = wait([future], timeout=1)
+                if not done:
+                    break
+                future.result()
+                assert rbuf[:] == expected
+
+            # Wait for requests to time out.
+            done, _ = wait([future], timeout=2*NBD_REQUEST_TIMEOUT_SECONDS)
+            if done:
+                future.result()
+                raise AssertionError("The read completed before NBS recovery")
+
+            logging.info("Killing NBS and restoring persistent endpoints")
+            nbs.kill()
+            nbs.start()
+
+        finally:
+            if nbs.is_alive():
+                os.kill(nbs.pid, signal.SIGCONT)
+
+        # Wait for endpoint restoration.
+        future.result(timeout=120)
+        assert rbuf[:] == expected
+        common.wait_for(
+            lambda: any(x.UnixSocketPath == socket_path for x in cli.list_endpoints()),
+            timeout=120,
+            fail_message="automatic endpoint restoration")
+
+        # Verify new capacity and I/O beyond the old size boundary.
+        assert get_device_size(fd) == new_size
+        expected = b"\xa5" * BLOCK_SIZE
+        wbuf[:] = expected
+        write_block(offset=old_size)
+        read_block(offset=old_size)
+        assert rbuf[:] == expected

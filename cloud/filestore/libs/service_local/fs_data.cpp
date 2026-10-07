@@ -80,7 +80,18 @@ NProto::TCreateHandleResponse TLocalFileSystem::CreateHandle(
     auto [handleId, error] =
         session->InsertHandle(std::move(handle), nodeId, flags);
     if (HasError(error)) {
-        ReportLocalFsMaxSessionFileHandlesInUse();
+        // InsertHandle returns E_FS_NOSPC only when the session handle table
+        // is full
+        if (error.GetCode() == E_FS_NOSPC) {
+            Counters->SessionFileHandleLimitRejectedCount->Inc();
+            STORAGE_WARN_T(
+                HandleLimitLogThrottler,
+                "Session file handle limit reached, ClientId="
+                << GetClientId(request)
+                << ", SessionId=" << GetSessionId(request)
+                << ", MaxHandlePerSessionCount="
+                << Config->GetMaxHandlePerSessionCount());
+        }
         return TErrorResponse(error);
     }
 
