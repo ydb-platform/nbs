@@ -10,7 +10,7 @@ using namespace NActors;
 
 IActorPtr CreateVolumeBalancerActor(
     TStorageConfigConstPtr storageConfig,
-    TDiagnosticsConfigPtr diagnosticsConfig,
+    TDiagnosticsConfigConstPtr diagnosticsConfig,
     IVolumeStatsPtr volumeStats,
     NCloud::NStorage::IStatsFetcherPtr statFetcher,
     IVolumeBalancerSwitchPtr volumeBalancerSwitch,

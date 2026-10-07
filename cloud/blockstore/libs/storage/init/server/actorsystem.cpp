@@ -360,7 +360,7 @@ public:
 
         auto volumeBalancerService = CreateVolumeBalancerActor(
             storageConfig,
-            Args.DiagnosticsConfig,
+            config->GetDiagnosticsConfig(),
             Args.VolumeStats,
             Args.StatsFetcher,
             Args.VolumeBalancerSwitch,

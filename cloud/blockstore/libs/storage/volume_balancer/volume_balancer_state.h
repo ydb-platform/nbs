@@ -60,7 +60,7 @@ public:
 
 private:
     TStorageConfigConstPtr StorageConfig;
-    const TDiagnosticsConfigPtr DiagnosticsConfig;
+    const TDiagnosticsConfigConstPtr DiagnosticsConfig;
 
     ui64 CpuLack = 0;
 
@@ -82,7 +82,7 @@ private:
 public:
     TVolumeBalancerState(
         TStorageConfigConstPtr storageConfig,
-        TDiagnosticsConfigPtr diagnosticsConfig);
+        TDiagnosticsConfigConstPtr diagnosticsConfig);
 
     TString GetVolumeToPush() const;
     TString GetVolumeToPull() const;

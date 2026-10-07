@@ -28,7 +28,7 @@ TVolumeBalancerState::TVolumeInfo::TVolumeInfo(TDuration pullInterval)
 
 TVolumeBalancerState::TVolumeBalancerState(
     TStorageConfigConstPtr storageConfig,
-    TDiagnosticsConfigPtr diagnosticsConfig)
+    TDiagnosticsConfigConstPtr diagnosticsConfig)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
     , InitialVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
@@ -83,10 +83,10 @@ void TVolumeBalancerState::UpdateVolumeStats(
 
         if (info.IsLocal) {
             TYdbDiskLoadCounters currentLoadCounters{
-                v.GetReadBlobCount(),
-                v.GetWriteBlobCount(),
-                v.GetReadBlobBytes(),
-                v.GetWriteBlobBytes(),
+                .ReadBlobCount = v.GetReadBlobCount(),
+                .WriteBlobCount = v.GetWriteBlobCount(),
+                .ReadBlobBytes = v.GetReadBlobBytes(),
+                .WriteBlobBytes = v.GetWriteBlobBytes(),
             };
 
             info.Cost = CalculateCost(info, currentLoadCounters);
@@ -346,7 +346,7 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCost(
     const auto perfSettings =
         GetPerfSettings(*DiagnosticsConfig, info.MediaKind);
 
-    if (!perfSettings.WriteIops || !perfSettings.ReadIops) {
+    if (!perfSettings.Write.Iops || !perfSettings.Read.Iops) {
         // Unable to calculate cost: CostPerIO is undefined for 0 maxIops
         return std::nullopt;
     }
@@ -357,16 +357,16 @@ std::optional<TDuration> TVolumeBalancerState::CalculateCost(
     const TDuration writeCost =
         expectedParallelism *
         CostPerIO(
-            perfSettings.WriteIops,
-            perfSettings.WriteBandwidth,
+            perfSettings.Write.Iops,
+            perfSettings.Write.Bandwidth,
             currentLoad.WriteBlobBytes - last.WriteBlobBytes,
             currentLoad.WriteBlobCount - last.WriteBlobCount);
 
     const TDuration readCost =
         expectedParallelism *
         CostPerIO(
-            perfSettings.ReadIops,
-            perfSettings.ReadBandwidth,
+            perfSettings.Read.Iops,
+            perfSettings.Read.Bandwidth,
             currentLoad.ReadBlobBytes - last.ReadBlobBytes,
             currentLoad.ReadBlobCount - last.ReadBlobCount);
 
