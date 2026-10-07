@@ -1,0 +1,40 @@
+{
+  "comparison": "Original vs optimized, latency diagnostics enabled in both; checkpoint durable in both.",
+  "prototype_commit": "7ece625356c54c8249212ab9cb16411a448a80b2",
+  "baseline_benchmark_commit": "ad5b4fbf41750da37527cecef8f4920929ced9d9",
+  "checkout_head": "f41128ab568c1cd34d7d2d9e3c37384d5214fa47",
+  "start_utc": "2026-10-07T11:34:07Z",
+  "repeats": 5,
+  "io_seconds": 5.0,
+  "component_seconds": 3.0,
+  "warmup_seconds": 1,
+  "binary_hashes": {
+    "baseline": {
+      "binary": "b94ffde6b78ef183f266b013028a3605c193164207e303d190ad84398102e652",
+      "server": "75e11ea969fb5aca31107fab29eab1939e653213490b0e06a4fcf55ea3e871d3"
+    },
+    "optimized": {
+      "binary": "cc3f2b0bbfa417e5ae21ae648f7e43104abfd138ffcfb0069a51e7c8d7ddd19b",
+      "server": "68d9b31b25682ba45c67b207698862c65e099617420b5a3de74348688c41c664"
+    }
+  },
+  "harness_sha256": "de5f93d2f37973ab9042710bd84d5c5216c4ed952c27674a92c015518d3d4c4c",
+  "compare_sha256": "11d826b8d8ec4c6541c71881e2ae9addcd8c80da9d34c1c7ccddfaba7be84013",
+  "uname": "Linux c8r3r3kjgk3sphmdn00r 5.4.0-125-generic #141-Ubuntu SMP Wed Aug 10 13:42:03 UTC 2022 x86_64 x86_64 x86_64 GNU/Linux",
+  "lscpu": "Architecture:                    x86_64\nCPU op-mode(s):                  32-bit, 64-bit\nByte Order:                      Little Endian\nAddress sizes:                   40 bits physical, 48 bits virtual\nCPU(s):                          32\nOn-line CPU(s) list:             0-31\nThread(s) per core:              2\nCore(s) per socket:              8\nSocket(s):                       2\nNUMA node(s):                    2\nVendor ID:                       GenuineIntel\nCPU family:                      6\nModel:                           85\nModel name:                      Intel Xeon Processor (Cascadelake)\nStepping:                        6\nCPU MHz:                         1995.312\nBogoMIPS:                        3990.62\nVirtualization:                  VT-x\nHypervisor vendor:               KVM\nVirtualization type:             full\nL1d cache:                       512 KiB\nL1i cache:                       512 KiB\nL2 cache:                        64 MiB\nL3 cache:                        32 MiB\nNUMA node0 CPU(s):               0-15\nNUMA node1 CPU(s):               16-31\nVulnerability Itlb multihit:     KVM: Mitigation: Split huge pages\nVulnerability L1tf:              Mitigation; PTE Inversion; VMX conditional cache flushes, SMT vulnerable\nVulnerability Mds:               Mitigation; Clear CPU buffers; SMT Host state unknown\nVulnerability Meltdown:          Mitigation; PTI\nVulnerability Mmio stale data:   Mitigation; Clear CPU buffers; SMT Host state unknown\nVulnerability Spec store bypass: Mitigation; Speculative Store Bypass disabled via prctl and seccomp\nVulnerability Spectre v1:        Mitigation; usercopy/swapgs barriers and __user pointer sanitization\nVulnerability Spectre v2:        Mitigation; Enhanced IBRS, IBPB conditional, RSB filling\nVulnerability Srbds:             Not affected\nVulnerability Tsx async abort:   Not affected\nFlags:                           fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ht syscall nx pdpe1gb rdtscp lm constant_tsc rep_good nopl xtopology nonstop_tsc cpuid tsc_known_freq pni pclmulqdq vmx ssse3 fma cx16 pcid sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch cpuid_fault invpcid_single pti ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow vnmi flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 avx2 smep bmi2 erms invpcid avx512f avx512dq rdseed adx smap clflushopt clwb avx512cd avx512bw avx512vl xsaveopt xsavec xgetbv1 arat pku ospke avx512_vnni md_clear arch_capabilities\n",
+  "initial_background": {
+    "loadavg": [
+      18.24,
+      29.11,
+      32.09
+    ],
+    "compiler_processes": 16
+  },
+  "server_cpus": "16,17",
+  "client_cpus": "18,19",
+  "component_cpu": "20",
+  "completion_scope": "Split response timer spans service invocation to resolved future, sampled 1/64; loop p50/p99 also includes request preparation and classification. Vhost p50/p99 spans submit to client-observed completion, sampled 1/8.",
+  "scope": "Release binaries; same updated C++ harness for both. Synthetic quota-graph composition uses virtual timestamps without real waits. Split uses real service with synchronous no-I/O leaf. Quota uses simulated time; FIFO isolated weak_ptr/invalidation loop; durable checkpoint uses real fsync. Endpoint uses null or hot local-file AIO, not a production volume actor.",
+  "completed_runs": 160,
+  "end_utc": "2026-10-07T11:47:36Z"
+}
