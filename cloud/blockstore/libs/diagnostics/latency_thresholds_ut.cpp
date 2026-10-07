@@ -620,7 +620,7 @@ Y_UNIT_TEST_SUITE(TLatencyThresholdsClassificationTest)
             good += outcome.CountGood ? 1 : 0;
         }
 
-        UNIT_ASSERT_VALUES_EQUAL(4u, total);
+        UNIT_ASSERT_VALUES_EQUAL(5u, total);
         UNIT_ASSERT_VALUES_EQUAL(2u, good);
         UNIT_ASSERT(good <= total);
     }
