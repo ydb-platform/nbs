@@ -6,11 +6,15 @@
 #include "histogram.h"
 
 #include <util/datetime/base.h>
+#include <util/system/mutex.h>
+#include <util/system/spinlock.h>
 #include <util/system/types.h>
 
 #include <array>
 #include <atomic>
 #include <optional>
+#include <type_traits>
+#include <utility>
 
 class IOutputStream;
 
@@ -31,26 +35,49 @@ struct TRequestStats
 {
     T Count = {};
     T Bytes = {};
+    T IoSizeCount = {};
+    T IoSizeBytes = {};
     T Errors = {};
     T Unaligned = {};
 
     TRequestStats() = default;
 
+    TRequestStats(const TRequestStats& rhs) noexcept
+        : TRequestStats()
+    {
+        *this = rhs;
+    }
+
     template <typename U>
     explicit TRequestStats(const TRequestStats<U>& rhs) noexcept
-        : Count{rhs.Count}
-        , Bytes{rhs.Bytes}
-        , Errors{rhs.Errors}
-        , Unaligned{rhs.Unaligned}
-    {}
+        : Count{static_cast<ui64>(rhs.Count)}
+        , Bytes{static_cast<ui64>(rhs.Bytes)}
+        , Errors{static_cast<ui64>(rhs.Errors)}
+        , Unaligned{static_cast<ui64>(rhs.Unaligned)}
+    {
+        const auto [count, bytes] = rhs.GetIoSize();
+        IoSizeCount = count;
+        IoSizeBytes = bytes;
+    }
+
+    TRequestStats& operator=(const TRequestStats& rhs) noexcept
+    {
+        return operator= <T>(rhs);
+    }
 
     template <typename U>
     TRequestStats& operator=(const TRequestStats<U>& rhs) noexcept
     {
-        Count = rhs.Count;
-        Bytes = rhs.Bytes;
-        Errors = rhs.Errors;
-        Unaligned = rhs.Unaligned;
+        Count = static_cast<ui64>(rhs.Count);
+        Bytes = static_cast<ui64>(rhs.Bytes);
+        Errors = static_cast<ui64>(rhs.Errors);
+        Unaligned = static_cast<ui64>(rhs.Unaligned);
+
+        const auto [count, bytes] = rhs.GetIoSize();
+        with_lock (IoSizeLock) {
+            IoSizeCount = count;
+            IoSizeBytes = bytes;
+        }
 
         return *this;
     }
@@ -63,8 +90,38 @@ struct TRequestStats
         Errors += rhs.Errors;
         Unaligned += rhs.Unaligned;
 
+        const auto [count, bytes] = rhs.GetIoSize();
+        with_lock (IoSizeLock) {
+            IoSizeCount += count;
+            IoSizeBytes += bytes;
+        }
+
         return *this;
     }
+
+    void AddIoSize(ui64 bytes) noexcept
+    {
+        with_lock (IoSizeLock) {
+            IoSizeCount += 1;
+            IoSizeBytes += bytes;
+        }
+    }
+
+    [[nodiscard]] std::pair<ui64, ui64> GetIoSize() const noexcept
+    {
+        auto guard = Guard(IoSizeLock);
+        return {IoSizeCount, IoSizeBytes};
+    }
+
+private:
+    // AIO completion workers and the snapshot thread share the atomic stats.
+    // Both counters must be updated and copied under the same lock. Plain stats
+    // are owned by one thread and do not need synchronization.
+    mutable std::conditional_t<
+        std::is_same_v<T, std::atomic<ui64>>,
+        TAdaptiveLock,
+        TFakeMutex>
+        IoSizeLock;
 };
 
 template <typename T>
@@ -72,6 +129,9 @@ TRequestStats<T> operator-(TRequestStats<T> lhs, TRequestStats<T>& rhs) noexcept
 {
     lhs.Count -= rhs.Count;
     lhs.Bytes -= rhs.Bytes;
+    const auto [count, bytes] = rhs.GetIoSize();
+    lhs.IoSizeCount -= count;
+    lhs.IoSizeBytes -= bytes;
     lhs.Errors -= rhs.Errors;
     lhs.Unaligned -= rhs.Unaligned;
 

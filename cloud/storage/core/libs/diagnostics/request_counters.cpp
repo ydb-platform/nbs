@@ -29,6 +29,73 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Both sensors remain ordinary counters for lookup/debugging. Monitoring
+// exports them through Accept: the count member publishes one immutable
+// snapshot of the pair and the byte member does not publish a second,
+// independently read value. Direct Val(), OutputPlainText and external
+// ResetCounters are raw counter access, not the coherent export protocol.
+class TIoSizeCounterPair final: public TCounterForPtr
+{
+private:
+    class TBytesCounter final: public TCounterForPtr
+    {
+    public:
+        TBytesCounter()
+            : TCounterForPtr(true)
+        {}
+
+        void Accept(
+            const TString&, const TString&, ICountableConsumer&) const override
+        {}
+    };
+
+    const TDynamicCounters::TCounterPtr Bytes = MakeIntrusive<TBytesCounter>();
+    mutable TMutex Lock;
+
+public:
+    TIoSizeCounterPair()
+        : TCounterForPtr(true)
+    {}
+
+    const TDynamicCounters::TCounterPtr& GetBytesCounter() const
+    {
+        return Bytes;
+    }
+
+    void AddRequest(ui64 bytes)
+    {
+        auto guard = Guard(Lock);
+        Inc();
+        Bytes->Add(bytes);
+    }
+
+    void Accept(
+        const TString& labelName,
+        const TString& labelValue, ICountableConsumer& consumer) const override
+    {
+        if (!IsVisible(Visibility(), consumer.Visibility())) {
+            return;
+        }
+
+        TCounterForPtr countSnapshot(ForDerivative(), Visibility());
+        TCounterForPtr bytesSnapshot(
+            Bytes->ForDerivative(), Bytes->Visibility());
+        {
+            auto guard = Guard(Lock);
+            countSnapshot.Set(Val());
+            bytesSnapshot.Set(Bytes->Val());
+        }
+
+        // Snapshot pointers are valid for these synchronous callbacks only. No
+        // writer lock is held while the consumer encodes or otherwise reads
+        // them.
+        consumer.OnCounter(labelName, labelValue, &countSnapshot);
+        consumer.OnCounter(labelName, "IoSizeBytes", &bytesSnapshot);
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
 template <typename TDerived>
 struct THistBase
 {
@@ -377,6 +444,7 @@ struct TRequestCounters::TStatCounters
     TIntrusivePtr<TDynamicCounters> CountersGroup;
 
     TDynamicCounters::TCounterPtr Count;
+    TIntrusivePtr<TIoSizeCounterPair> IoSize;
     TDynamicCounters::TCounterPtr MaxCount;
     TDynamicCounters::TCounterPtr UnalignedCount;
     TDynamicCounters::TCounterPtr Time;
@@ -498,7 +566,8 @@ struct TRequestCounters::TStatCounters
         bool isReadWriteRequest,
         bool reportDataPlaneHistogram,
         bool reportControlPlaneHistogram,
-        bool throttlingHistogramsDisabled)
+        bool throttlingHistogramsDisabled,
+        bool reportIoSize)
     {
         CountersGroup = std::move(countersGroup);
         auto& counters = *CountersGroup;
@@ -516,6 +585,24 @@ struct TRequestCounters::TStatCounters
 
         if (IsReadWriteRequest) {
             RequestBytes = counters.GetCounter("RequestBytes", true);
+        }
+
+        if (IsReadWriteRequest && reportIoSize) {
+            auto pair = counters.GetNamedCounterPair(
+                "sensor",
+                "IoSizeCount",
+                "IoSizeBytes",
+                []
+                {
+                    auto count = MakeIntrusive<TIoSizeCounterPair>();
+                    return TDynamicCounters::TCounterPair{
+                        count,
+                        count->GetBytesCounter()};
+                });
+            IoSize = VerifyDynamicCast<TIoSizeCounterPair*>(pair.first.Get());
+            Y_ABORT_UNLESS(
+                IoSize->GetBytesCounter() == pair.second,
+                "IoSize counters must share the same snapshot pair");
         }
     }
 
@@ -665,7 +752,8 @@ struct TRequestCounters::TStatCounters
         ui64 requestBytes,
         EDiagnosticsErrorKind errorKind,
         bool unaligned,
-        ECalcMaxTime calcMaxTime)
+        ECalcMaxTime calcMaxTime,
+        std::optional<ui64> logicalRequestBytes)
     {
         const bool failed = errorKind != EDiagnosticsErrorKind::Success
             && (errorKind != EDiagnosticsErrorKind::ErrorSilent
@@ -675,6 +763,10 @@ struct TRequestCounters::TStatCounters
             Errors->Inc();
         } else {
             Count->Inc();
+
+            if (IoSize) {
+                IoSize->AddRequest(logicalRequestBytes.value_or(requestBytes));
+            }
         }
 
         switch (errorKind) {
@@ -971,7 +1063,8 @@ void TRequestCounters::Register(TDynamicCounters& counters)
                 IsReadWriteRequestType(t),
                 Options & EOption::ReportDataPlaneHistogram,
                 Options & EOption::ReportControlPlaneHistogram,
-                Options & EOption::ThrottlingHistogramsDisabled);
+                Options & EOption::ThrottlingHistogramsDisabled,
+                Options & EOption::ReportIoSize);
 
             // ReadWrite counters are usually the most important ones so let's
             // report zeroes for them instead of not reporting anything at all
@@ -1009,7 +1102,8 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
     ui32 errorFlags,
     bool unaligned,
     ECalcMaxTime calcMaxTime,
-    ui64 responseSent)
+    ui64 responseSent,
+    std::optional<ui64> logicalRequestBytes)
 {
     const ui64 requestCompleted = GetCycleCount();
     const TDuration totalTime =
@@ -1034,7 +1128,8 @@ TRequestCounters::TRequestTime TRequestCounters::RequestCompleted(
         errorKind,
         errorFlags,
         unaligned,
-        calcMaxTime);
+        calcMaxTime,
+        logicalRequestBytes);
 
     return {.ExecutionTime = execTime, .Time = totalTime};
 }
@@ -1191,7 +1286,8 @@ void TRequestCounters::RequestCompletedImpl(
     EDiagnosticsErrorKind errorKind,
     ui32 errorFlags,
     bool unaligned,
-    ECalcMaxTime calcMaxTime)
+    ECalcMaxTime calcMaxTime,
+    std::optional<ui64> logicalRequestBytes)
 {
     if (SpecialCounters) {
         SpecialCounters->AddStats(errorKind, errorFlags);
@@ -1211,7 +1307,8 @@ void TRequestCounters::RequestCompletedImpl(
             requestBytes,
             errorKind,
             unaligned,
-            calcMaxTime);
+            calcMaxTime,
+            logicalRequestBytes);
     }
     NotifySubscribers(
         &TRequestCounters::RequestCompletedImpl,
@@ -1227,7 +1324,8 @@ void TRequestCounters::RequestCompletedImpl(
         errorKind,
         errorFlags,
         unaligned,
-        calcMaxTime);
+        calcMaxTime,
+        logicalRequestBytes);
 }
 
 bool TRequestCounters::ShouldReport(TRequestType requestType) const

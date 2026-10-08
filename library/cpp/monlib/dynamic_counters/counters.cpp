@@ -70,6 +70,41 @@ TDynamicCounters::TCounterPtr TDynamicCounters::GetNamedCounter(const TString& n
     return AsCounterRef(GetNamedCounterImpl<false, TCounterForPtr>(name, value, derivative, vis));
 }
 
+TDynamicCounters::TCounterPair TDynamicCounters::GetNamedCounterPair(
+    const TString& name,
+    const TString& firstValue,
+    const TString& secondValue,
+    const std::function<TCounterPair()>& createCounters)
+{
+    Y_ABORT_UNLESS(firstValue != secondValue, "Counter pair names must differ");
+    auto guard = LockForUpdate("GetNamedCounterPair", name, firstValue);
+    const TChildId firstKey(name, firstValue);
+    const TChildId secondKey(name, secondValue);
+    const auto first = Counters.find(firstKey);
+    const auto second = Counters.find(secondKey);
+    Y_ABORT_UNLESS(
+        (first == Counters.end()) == (second == Counters.end()),
+        "Both counter pair members must be registered together");
+
+    if (first != Counters.end()) {
+        return {AsCounterRef(first->second), AsCounterRef(second->second)};
+    }
+
+    auto result = createCounters();
+    Y_ABORT_UNLESS(
+        result.first && result.second, "Counter pair must be non-null");
+    Y_ABORT_UNLESS(
+        result.first != result.second, "Counter pair members must differ");
+    const auto inserted = Counters.emplace(firstKey, result.first).first;
+    try {
+        Counters.emplace(secondKey, result.second);
+    } catch (...) {
+        Counters.erase(inserted);
+        throw;
+    }
+    return result;
+}
+
 THistogramPtr TDynamicCounters::GetHistogram(const TString& value, IHistogramCollectorPtr collector, bool derivative, EVisibility vis) {
     return GetNamedHistogram("sensor", value, std::move(collector), derivative, vis);
 }
@@ -319,4 +354,3 @@ TDynamicCounters::TCountablePtr TDynamicCounters::FindNamedCounterImpl(const TSt
     auto it = Counters.find({name, value});
     return it != Counters.end() ? it->second : nullptr;
 }
-

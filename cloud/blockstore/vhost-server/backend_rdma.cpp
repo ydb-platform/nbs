@@ -26,6 +26,8 @@
 
 #include <library/cpp/protobuf/util/pb_io.h>
 
+#include <util/system/mutex.h>
+
 namespace NCloud::NBlockStore::NVHostServer {
 
 using namespace NCloud::NBlockStore;
@@ -132,13 +134,17 @@ private:
     NProto::TVolume Volume;
     TString ClientId;
     ICompletionStatsPtr CompletionStats;
+    TMutex CompletionStatsMutex;
     TSimpleStats CompletionStatsData;
     bool ReadOnly = false;
     ui32 BlockSize = 0;
     ui32 SectorsToBlockShift = 0;
 
 public:
-    explicit TRdmaBackend(ILoggingServicePtr logging);
+    TRdmaBackend(
+        ILoggingServicePtr logging,
+        IStorageProviderPtr storageProvider,
+        ICompletionStatsPtr completionStats);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -161,9 +167,14 @@ private:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TRdmaBackend::TRdmaBackend(ILoggingServicePtr logging)
+TRdmaBackend::TRdmaBackend(
+    ILoggingServicePtr logging,
+    IStorageProviderPtr storageProvider, ICompletionStatsPtr completionStats)
     : Logging{std::move(logging)}
-    , CompletionStats(CreateCompletionStats())
+    , StorageProvider{std::move(storageProvider)}
+    , CompletionStats{
+          completionStats ? std::move(completionStats)
+                          : CreateCompletionStats()}
 {
     Log = Logging->CreateLog("RDMA");
 }
@@ -186,21 +197,23 @@ vhd_bdev_info TRdmaBackend::Init(const TOptions& options)
 
     SectorsToBlockShift = MostSignificantBit(BlockSize) - VHD_SECTOR_SHIFT;
 
-    auto rdmaClientConfig = std::make_shared<TClientConfig>();
-    rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
-    rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
-    rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
+    if (!StorageProvider) {
+        auto rdmaClientConfig = std::make_shared<TClientConfig>();
+        rdmaClientConfig->QueueSize = options.RdmaClient.QueueSize;
+        rdmaClientConfig->MaxBufferSize = options.RdmaClient.MaxBufferSize;
+        rdmaClientConfig->AlignedDataEnabled = options.RdmaClient.AlignedData;
 
-    auto monitoring = NCloud::CreateMonitoringServiceStub();
-    RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
-        Logging,
-        std::move(monitoring),
-        std::move(rdmaClientConfig));
+        auto monitoring = NCloud::CreateMonitoringServiceStub();
+        RdmaClient = NCloud::NBlockStore::NRdma::CreateRdmaClient(
+            Logging,
+            std::move(monitoring),
+            std::move(rdmaClientConfig));
 
-    StorageProvider = NStorage::CreateRdmaStorageProvider(
-        CreateServerStatsStub(),
-        RdmaClient,
-        NStorage::ERdmaTaskQueueOpt::DontUse);
+        StorageProvider = NStorage::CreateRdmaStorageProvider(
+            CreateServerStatsStub(),
+            RdmaClient,
+            NStorage::ERdmaTaskQueueOpt::DontUse);
+    }
 
     Volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
     Volume.SetBlockSize(BlockSize);
@@ -289,7 +302,10 @@ void TRdmaBackend::Start()
     STORAGE_INFO("Starting RDMA backend");
 
     Scheduler->Start();
-    RdmaClient->Start();
+
+    if (RdmaClient) {
+        RdmaClient->Start();
+    }
 
     auto accessMode = ReadOnly ? NProto::VOLUME_ACCESS_READ_ONLY
                                : NProto::VOLUME_ACCESS_READ_WRITE;
@@ -305,7 +321,10 @@ void TRdmaBackend::Stop()
 {
     STORAGE_INFO("Stopping RDMA backend");
 
-    RdmaClient->Stop();
+    if (RdmaClient) {
+        RdmaClient->Stop();
+    }
+
     Scheduler->Stop();
 }
 
@@ -316,12 +335,30 @@ void TRdmaBackend::ProcessQueue(
 {
     Y_UNUSED(queueIndex);
 
+    const ui64 sectorsPerBlock = BlockSize / VHD_SECTOR_SIZE;
+
     vhd_request req;
     while (vhd_dequeue_request(queue, &req)) {
         ++queueStats.Dequeued;
 
         struct vhd_bdev_io* bio = vhd_get_bdev_io(req.io);
         const TCpuCycles now = GetCycleCount();
+
+        // Reject partial blocks before converting sectors to block indices.
+        if ((bio->type == VHD_BDEV_READ || bio->type == VHD_BDEV_WRITE) &&
+            (bio->first_sector % sectorsPerBlock != 0 ||
+             bio->total_sectors % sectorsPerBlock != 0))
+        {
+            STORAGE_ERROR(
+                "Unaligned vhost request: type="
+                << static_cast<int>(bio->type) << ", first_sector="
+                << bio->first_sector << ", total_sectors=" << bio->total_sectors
+                << ", block_size=" << BlockSize);
+            CompleteRequest(req.io, now, true);
+            ++queueStats.Submitted;
+            continue;
+        }
+
         switch (bio->type) {
             case VHD_BDEV_READ:
                 ProcessReadRequest(req.io, now);
@@ -447,31 +484,48 @@ void TRdmaBackend::CompleteRequest(
 {
     auto* bio = vhd_get_bdev_io(io);
 
-    ++CompletionStatsData.Completed;
+    {
+        // Requests may complete on different queue or storage callback threads.
+        // Serialize the entire update and publication, including histograms.
+        TGuard<TMutex> guard(CompletionStatsMutex);
 
-    if (!isError) {
-        const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
-        CompletionStatsData.Requests[bio->type].Count += 1;
-        CompletionStatsData.Requests[bio->type].Bytes += bytes;
-        CompletionStatsData.Sizes[bio->type].Increment(bytes);
-        CompletionStatsData.Times[bio->type].Increment(
-            GetCycleCount() - startCycles);
-    } else {
-        CompletionStatsData.Requests[bio->type].Errors += 1;
+        ++CompletionStatsData.Completed;
+
+        if (!isError) {
+            const ui64 bytes =
+                static_cast<ui64>(bio->total_sectors) * VHD_SECTOR_SIZE;
+            auto& requestStat = CompletionStatsData.Requests[bio->type];
+
+            requestStat.Count += 1;
+            requestStat.Bytes += bytes;
+
+            requestStat.AddIoSize(bytes);
+
+            CompletionStatsData.Sizes[bio->type].Increment(bytes);
+            CompletionStatsData.Times[bio->type].Increment(
+                GetCycleCount() - startCycles);
+        } else {
+            CompletionStatsData.Requests[bio->type].Errors += 1;
+        }
+
+        CompletionStats->Sync(CompletionStatsData);
     }
 
+    // Publish before notifying the client; completion must not hold our lock.
     vhd_complete_bio(io, isError ? VHD_BDEV_IOERR : VHD_BDEV_SUCCESS);
-
-    CompletionStats->Sync(CompletionStatsData);
 }
 
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
-IBackendPtr CreateRdmaBackend(ILoggingServicePtr logging)
+IBackendPtr CreateRdmaBackend(
+    ILoggingServicePtr logging,
+    IStorageProviderPtr storageProvider, ICompletionStatsPtr completionStats)
 {
-    return std::make_shared<TRdmaBackend>(std::move(logging));
+    return std::make_shared<TRdmaBackend>(
+        std::move(logging),
+        std::move(storageProvider), std::move(completionStats));
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

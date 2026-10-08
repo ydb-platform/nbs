@@ -28,7 +28,7 @@ void DiscardRequest(vhd_io* io, TSimpleStats& queueStats)
 {
     ++queueStats.SubFailed;
     auto* bio = vhd_get_bdev_io(io);
-    const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
+    const ui64 bytes = static_cast<ui64>(bio->total_sectors) * VHD_SECTOR_SIZE;
 
     auto& requestStat = queueStats.Requests[bio->type];
     requestStat.Errors += 1;
@@ -447,12 +447,19 @@ void CompleteCompoundRequestImpl(
         }
 
         auto* bio = vhd_get_bdev_io(req->Io);
-        const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
+        const ui64 bytes =
+            static_cast<ui64>(bio->total_sectors) * VHD_SECTOR_SIZE;
 
         auto& requestStat = stats.Requests[bio->type];
         requestStat.Errors += req->Errors != 0;
         requestStat.Count += status == VHD_BDEV_SUCCESS;
         requestStat.Bytes += bytes;
+
+        // Keep IoSize aligned with Count: account the parent once after all
+        // device results are known, before optional read decryption.
+        if (status == VHD_BDEV_SUCCESS) {
+            requestStat.AddIoSize(bytes);
+        }
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
             TBlockDataRef data = req->GetData();
