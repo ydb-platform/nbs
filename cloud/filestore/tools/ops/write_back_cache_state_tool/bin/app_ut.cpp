@@ -1,5 +1,9 @@
 #include "app.h"
 
+#include <cloud/filestore/tools/ops/write_back_cache_state_tool/lib/file_lock.h>
+
+#include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
+
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/tempdir.h>
@@ -61,6 +65,18 @@ void ReadJson(const TString& json, NProto::TStateFileDump& state)
 {
     TStringInput input(json);
     ReadStateFileDumpJson(input, state);
+}
+
+void CreateStateFile(const TFsPath& path)
+{
+    path.Parent().MkDirs();
+    TFile(path.GetPath(), CreateNew | RdWr);
+    TFileRingBuffer ringBuffer(
+        path.GetPath(),
+        64,
+        8,
+        EFileRingBufferVersion::V6);
+    UNIT_ASSERT(ringBuffer.Validate());
 }
 
 }   // namespace
@@ -133,9 +149,7 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateToolAppTest)
         TStringStream output;
         WriteStateFileDumpJson(state, output);
         const auto json = output.Str();
-        UNIT_ASSERT_STRING_CONTAINS(
-            json,
-            "\"18446744073709551615\"");
+        UNIT_ASSERT_STRING_CONTAINS(json, "\"18446744073709551615\"");
 
         NProto::TStateFileDump parsed;
         ReadJson(json, parsed);
@@ -169,6 +183,68 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateToolAppTest)
 
         UNIT_ASSERT_EXCEPTION(AppMain(options), yexception);
         UNIT_ASSERT_VALUES_EQUAL("state", TFileInput(stateFile).ReadAll());
+    }
+
+    Y_UNIT_TEST(ShouldNotOverwriteOtherStateFileWithDumpOutput)
+    {
+        TTempDir tempDir;
+        const auto stateFile =
+            tempDir.Path() / "fs" / "session-1" / "write_back_cache";
+        const auto otherStateFile =
+            tempDir.Path() / "fs" / "session-2" / "write_back_cache";
+        CreateStateFile(stateFile);
+        CreateStateFile(otherStateFile);
+        const auto state = TFileInput(stateFile).ReadAll();
+        const auto otherState = TFileInput(otherStateFile).ReadAll();
+
+        TFile owner(otherStateFile.GetPath(), OpenExisting | RdOnly);
+        const auto acquired = TryLock(owner, /* exclusive = */ true);
+        UNIT_ASSERT_C(!HasError(acquired), FormatError(acquired.GetError()));
+        UNIT_ASSERT(acquired.GetResult());
+
+        const auto hardLink = tempDir.Path() / "hard-link";
+        const auto symlink = tempDir.Path() / "symlink";
+        UNIT_ASSERT(
+            NFs::HardLink(otherStateFile.GetPath(), hardLink.GetPath()));
+        UNIT_ASSERT(NFs::SymLink(otherStateFile.GetPath(), symlink.GetPath()));
+
+        TOptions options;
+        options.Command = ECommand::Dump;
+        options.StateFile = stateFile.GetPath();
+        for (const auto& outputFile:
+             {otherStateFile, hardLink, symlink, stateFile})
+        {
+            options.OutputFile = outputFile.GetPath();
+            UNIT_ASSERT_EXCEPTION(AppMain(options), yexception);
+            UNIT_ASSERT_VALUES_EQUAL(state, TFileInput(stateFile).ReadAll());
+            UNIT_ASSERT_VALUES_EQUAL(
+                otherState,
+                TFileInput(otherStateFile).ReadAll());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldWriteDumpToNewOutputFile)
+    {
+        TTempDir tempDir;
+        const auto stateFile = tempDir.Path() / "write_back_cache";
+        CreateStateFile(stateFile);
+        const auto state = TFileInput(stateFile).ReadAll();
+
+        const auto outputFile = tempDir.Path() / "dump.json";
+        TOptions options;
+        options.Command = ECommand::Dump;
+        options.StateFile = stateFile.GetPath();
+        options.OutputFile = outputFile.GetPath();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, AppMain(options));
+        NProto::TStateFileDump dump;
+        ReadJson(TFileInput(outputFile).ReadAll(), dump);
+        UNIT_ASSERT(!dump.GetIsCorrupted());
+        UNIT_ASSERT(dump.HasHeader());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<ui32>(EFileRingBufferVersion::V6),
+            dump.GetHeader().GetVersion());
+        UNIT_ASSERT_VALUES_EQUAL(state, TFileInput(stateFile).ReadAll());
     }
 }
 

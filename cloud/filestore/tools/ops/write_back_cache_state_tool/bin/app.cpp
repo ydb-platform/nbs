@@ -12,7 +12,6 @@
 #include <util/string/builder.h>
 
 #include <google/protobuf/util/json_util.h>
-#include <sys/stat.h>
 
 namespace NCloud::NFileStore::NWriteBackCacheStateTool {
 
@@ -40,27 +39,11 @@ void WriteJson(const T& proto, IOutputStream& output)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-bool AreSameFile(const TFile& lhs, const TFile& rhs)
-{
-    if (lhs.GetHandle() == rhs.GetHandle()) {
-        return true;
-    }
-
-    struct stat lhsStat = {};
-    struct stat rhsStat = {};
-    return ::fstat(lhs.GetHandle(), &lhsStat) == 0 &&
-           ::fstat(rhs.GetHandle(), &rhsStat) == 0 &&
-           lhsStat.st_dev == rhsStat.st_dev && lhsStat.st_ino == rhsStat.st_ino;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TApp
 {
 private:
     const TOptions Options;
     NProto::TStateFileDump PatchState;
-    TFile OutputFile;
 
 public:
     explicit TApp(const TOptions& options)
@@ -97,10 +80,9 @@ private:
             Cout << '\n';
             Cout.Flush();
         } else {
-            OutputFile.Resize(0);
-            OutputFile.Seek(0, sSet);
-
-            TOFStream stream(OutputFile);
+            // Require a new file so output cannot overwrite any state file.
+            TFile outputFile(Options.OutputFile, CreateNew | WrOnly | Seq);
+            TOFStream stream(outputFile);
             WriteJson(proto, stream);
             stream << '\n';
             stream.Finish();
@@ -115,37 +97,6 @@ private:
             TIFStream stream(Options.InputFile);
             ReadStateFileDumpJson(stream, proto);
         }
-    }
-
-    void OpenOutputFile(bool createNew = false)
-    {
-        if (!Options.OutputFile.empty()) {
-            OutputFile = TFile(
-                Options.OutputFile,
-                (createNew ? CreateNew : OpenAlways) | WrOnly | Seq);
-        }
-    }
-
-    bool OutputTargetsFile(const TFile& file) const
-    {
-        return !Options.OutputFile.empty() &&
-               (file.GetName() == Options.OutputFile ||
-                (OutputFile.IsOpen() && AreSameFile(file, OutputFile)));
-    }
-
-    bool OutputTargetsListedFile(const NProto::TStateFileList& stateFiles) const
-    {
-        if (Options.OutputFile.empty()) {
-            return false;
-        }
-
-        for (const auto& stateFile: stateFiles.GetFiles()) {
-            if (stateFile.GetFilePath() == Options.OutputFile) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     TResultOrError<TFile> LocateAndOpenStateFile(bool readOnly)
@@ -217,21 +168,6 @@ private:
             return 1;
         }
 
-        if (Options.Command == ECommand::Dump) {
-            if (OutputTargetsFile(stateFile)) {
-                Cerr << "Refusing to overwrite the state file with dump "
-                        "output\n";
-                return 1;
-            }
-
-            OpenOutputFile();
-            if (OutputTargetsFile(stateFile)) {
-                Cerr << "Refusing to overwrite the state file with dump "
-                        "output\n";
-                return 1;
-            }
-        }
-
         return (this->*action)(accessor);
     }
 
@@ -246,14 +182,6 @@ private:
         }
 
         const auto& stateFileList = stateFileListOrError.GetResult();
-        if (OutputTargetsListedFile(stateFileList)) {
-            Cerr << "Refusing to overwrite a state file with list output\n";
-            return 1;
-        }
-
-        // A new output inode cannot alias a state file discovered above.
-        OpenOutputFile(/* createNew = */ true);
-
         PrintJson(stateFileList);
         return 0;
     }

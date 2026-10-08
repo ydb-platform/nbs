@@ -29,8 +29,8 @@ Other options:
 
 - `-I`, `--input`: read patch JSON from a file instead of standard input.
 - `-O`, `--output`: write `list` or `dump` JSON to a file instead of standard
-  output. `list` requires a new output file; `dump` refuses to overwrite the
-  selected state file.
+  output. Both commands require a new output file to prevent overwriting state
+  files.
 - `--unsafe-ignore-lock`: continue when the advisory state-file lock cannot be
   acquired.
 - `--unsafe-ignore-corruption`: allow `patch` to attempt recovery of a corrupt
