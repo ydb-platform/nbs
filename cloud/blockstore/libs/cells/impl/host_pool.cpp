@@ -216,8 +216,10 @@ bool TCellHostPool::ApplyLiveness(
 
         // a discovered host that nobody holds and that stopped answering
         // occupies a slot without earning it
+        bool erased = false;
         if (!channel->Configured && !alive && channel->RefCount == 0) {
             Channels.erase(fqdn);
+            erased = true;
         }
 
         if (transition && alive) {
@@ -226,7 +228,10 @@ bool TCellHostPool::ApplyLiveness(
             PruneRetainedDiscoveredLocked();
         }
 
-        UpdateGaugesLocked();
+        // not on every ping: the sweep repeats the verdict for every host
+        if (transition || erased) {
+            UpdateHostsUnavailableLocked();
+        }
     }
 
     // before the watchers run: notifying one starts a migration that logs
@@ -403,16 +408,10 @@ void TCellHostPool::TopUpWarmChannelsLocked()
     }
 }
 
-void TCellHostPool::UpdateGaugesLocked()
+void TCellHostPool::UpdateHostsUnavailableLocked()
 {
-    ui64 unavailable = 0;
-    ui64 connections = 0;
-    for (const auto& [_, channel]: Channels) {
-        unavailable += !channel.Alive;
-        connections += channel.RefCount;
-    }
-    *Counters.HostsUnavailable = unavailable;
-    *Counters.Connections = connections;
+    *Counters.HostsUnavailable =
+        CountIf(Channels, [](const auto& c) { return !c.second.Alive; });
 }
 
 void TCellHostPool::PruneRetainedDiscoveredLocked()
@@ -457,7 +456,7 @@ TCellHostPool::AcquireControlChannel(const TString& fqdn)
     with_lock (Lock) {
         auto future = EnsureChannelLocked(fqdn);
         Channels[fqdn].RefCount++;
-        UpdateGaugesLocked();
+        Counters.Connections->Inc();
         return future;
     }
 }
@@ -552,6 +551,7 @@ void TCellHostPool::ReleaseControlChannel(const TString& fqdn)
         auto& channel = it->second;
         if (channel.RefCount) {
             --channel.RefCount;
+            Counters.Connections->Dec();
         }
 
         // Configured hosts stay warm. A discovered one normally lives only as
@@ -562,9 +562,8 @@ void TCellHostPool::ReleaseControlChannel(const TString& fqdn)
             CountLiveChannelsLocked(fqdn) >= Config->GetMinCellConnections())
         {
             Channels.erase(it);
+            UpdateHostsUnavailableLocked();
         }
-
-        UpdateGaugesLocked();
     }
 }
 

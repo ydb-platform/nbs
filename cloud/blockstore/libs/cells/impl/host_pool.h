@@ -198,7 +198,7 @@ private:
     // Warms configured hosts until MinCellConnections channels are live.
     void TopUpWarmChannelsLocked();
     void PruneRetainedDiscoveredLocked();
-    void UpdateGaugesLocked();
+    void UpdateHostsUnavailableLocked();
     [[nodiscard]] size_t CountLiveChannelsLocked(
         const TString& except) const;
 
