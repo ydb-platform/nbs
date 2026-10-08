@@ -302,13 +302,13 @@ func (s *storageYDB) ChunksBackupCompleted(
 	return err
 }
 
-func (s *storageYDB) ClearCompletedBackupChunkQueueEntries(
+func (s *storageYDB) ClearCompletedBackupChunks(
 	ctx context.Context,
 	snapshotID string,
 	limit int,
 ) (cleared int, err error) {
 
-	defer s.metrics.StatOperation("ClearCompletedBackupChunkQueueEntries")(&err)
+	defer s.metrics.StatOperation("ClearCompletedBackupChunks")(&err)
 
 	res, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1

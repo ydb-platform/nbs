@@ -1779,7 +1779,7 @@ func TestBackupChunkQueue(t *testing.T) {
 	require.EqualValues(t, 0, length)
 }
 
-func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
+func TestClearCompletedBackupChunks(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
@@ -1814,7 +1814,7 @@ func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
 	require.EqualValues(t, 2, completed)
 
 	for _, expected := range []int{1, 1, 0} {
-		cleared, err := f.storage.ClearCompletedBackupChunkQueueEntries(
+		cleared, err := f.storage.ClearCompletedBackupChunks(
 			f.ctx,
 			"snap1",
 			1, // limit
@@ -1830,7 +1830,7 @@ func TestClearCompletedBackupChunkQueueEntries(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, completed)
 
-	cleared, err := f.storage.ClearCompletedBackupChunkQueueEntries(
+	cleared, err := f.storage.ClearCompletedBackupChunks(
 		f.ctx,
 		"snap2",
 		10, // limit

@@ -227,7 +227,7 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 	chunkMap := readBackupChunkMap(t, ctx, follower, "snap1")
 	require.Equal(t, []string{chunk0, ""}, chunkMap.ChunkIds)
 
-	cleared, err := storage.ClearCompletedBackupChunkQueueEntries(ctx, "snap1", 10)
+	cleared, err := storage.ClearCompletedBackupChunks(ctx, "snap1", 10)
 	require.NoError(t, err)
 	require.Zero(t, cleared)
 

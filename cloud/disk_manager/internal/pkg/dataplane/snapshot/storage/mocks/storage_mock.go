@@ -306,7 +306,7 @@ func (s *StorageMock) ChunksBackupCompleted(
 	return args.Error(0)
 }
 
-func (s *StorageMock) ClearCompletedBackupChunkQueueEntries(
+func (s *StorageMock) ClearCompletedBackupChunks(
 	ctx context.Context,
 	snapshotID string,
 	limit int,

@@ -185,7 +185,7 @@ type Storage interface {
 
 	// Returns the number of cleared entries: limit, or fewer if there are no
 	// more completed entries of the snapshot.
-	ClearCompletedBackupChunkQueueEntries(
+	ClearCompletedBackupChunks(
 		ctx context.Context,
 		snapshotID string,
 		limit int,

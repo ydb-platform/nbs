@@ -63,7 +63,7 @@ func (t *backupSnapshotDataTask) Run(
 		return err
 	}
 
-	return t.clearCompletedBackupChunkQueueEntries(ctx, snapshotID)
+	return t.clearCompletedBackupChunks(ctx, snapshotID)
 }
 
 func (t *backupSnapshotDataTask) Cancel(
@@ -215,13 +215,13 @@ func (t *backupSnapshotDataTask) waitForChunksBackupCompleted(
 	return nil
 }
 
-func (t *backupSnapshotDataTask) clearCompletedBackupChunkQueueEntries(
+func (t *backupSnapshotDataTask) clearCompletedBackupChunks(
 	ctx context.Context,
 	snapshotID string,
 ) error {
 
 	for {
-		cleared, err := t.storage.ClearCompletedBackupChunkQueueEntries(
+		cleared, err := t.storage.ClearCompletedBackupChunks(
 			ctx,
 			snapshotID,
 			t.batchSize,
