@@ -8,6 +8,7 @@
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
 
 #include <util/generic/scope.h>
+#include <util/generic/algorithm.h>
 #include <util/string/builder.h>
 
 #include <atomic>
@@ -277,6 +278,36 @@ public:
         return Execute<NProto::TFormatDeviceResponse>(
             [req = std::move(request)](auto& self) mutable
             { return self.DoFormatDevice(std::move(req)); });
+    }
+
+    [[nodiscard]] auto ListDevices(NProto::TListDevicesRequest request)
+        -> TFuture<NProto::TListDevicesResponse> final
+    {
+        Y_UNUSED(request);
+
+        TVector<TString> uuids;
+        uuids.reserve(DeviceSpecs.size());
+        for (const auto& [uuid, spec]: DeviceSpecs) {
+            uuids.push_back(uuid);
+        }
+        Sort(uuids);
+
+        NProto::TListDevicesResponse response;
+
+        for (const auto& uuid: uuids) {
+            const auto& config = DeviceSpecs.at(uuid).Config;
+            const ui64 deviceSize = config.BlocksCount * config.BlockSize;
+
+            auto& info = *response.AddDevices();
+            info.SetDeviceUUID(uuid);
+            info.SetBlockSize(config.BlockSize);
+            info.SetLogMetaSize(config.LogMetaSize);
+            info.SetLogDataSize(config.LogDataSize);
+            info.SetDataSize(
+                deviceSize - config.LogMetaSize - config.LogDataSize);
+        }
+
+        return MakeFuture(std::move(response));
     }
 
     [[nodiscard]] auto ReadPages(NProto::TReadPagesRequest request)

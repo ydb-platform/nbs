@@ -112,6 +112,45 @@ message TFormatDeviceResponse
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// ListDevices request/response.
+
+message TListDevicesRequest
+{
+    // Headers.
+    TDeviceRequestHeaders Headers = 1;
+}
+
+message TDeviceInfo
+{
+    // UUID of the device.
+    string DeviceUUID = 1;
+
+    // Journal metadata size, in bytes.
+    uint64 LogMetaSize = 2;
+
+    // Journal data size, in bytes.
+    uint64 LogDataSize = 3;
+
+    // Data size, in bytes: the device minus the journal parts.
+    uint64 DataSize = 4;
+
+    // Block size of the device, in bytes.
+    uint32 BlockSize = 5;
+}
+
+message TListDevicesResponse
+{
+    // Headers.
+    TDeviceResponseHeaders Headers = 1;
+
+    // Optional error, set only if error happened.
+    TError Error = 2;
+
+    // All the devices served by the storage node.
+    repeated TDeviceInfo Devices = 3;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Read request/response.
 
 message TDevicePageGroupRef
@@ -281,6 +320,7 @@ message TDeviceProtocolRequest
         TReadJournalTailRequest ReadJournalTail = 6;
         TAdvanceLsnLowWatermarkRequest AdvanceLsnLowWatermark = 7;
         TFormatDeviceRequest FormatDevice = 8;
+        TListDevicesRequest ListDevices = 9;
     }
 }
 
@@ -299,5 +339,6 @@ message TDeviceProtocolResponse
         TReadJournalTailResponse ReadJournalTail = 7;
         TAdvanceLsnLowWatermarkResponse AdvanceLsnLowWatermark = 8;
         TFormatDeviceResponse FormatDevice = 9;
+        TListDevicesResponse ListDevices = 10;
     }
 }
