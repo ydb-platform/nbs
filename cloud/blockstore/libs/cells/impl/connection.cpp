@@ -587,6 +587,7 @@ public:
         // here ever holds both
         auto picked = Pool->PickHostExcept(except);
         if (HasError(picked)) {
+            Pool->GetCounters().NoMigrationTarget->Inc();
             STORAGE_WARN(
                 "[" << GetHost() << "] this host cannot serve us, and there "
                     << "is nowhere to move: "
@@ -814,6 +815,7 @@ private:
         const TString& reason,
         bool channelAcquired)
     {
+        Pool->GetCounters().MigrationFailures->Inc();
         STORAGE_WARN(
             "[" << GetHost() << "] can't move to " << fqdn << ": " << reason
                 << ", staying where we are");
@@ -855,6 +857,7 @@ private:
                     << CurrentExceptionMessage());
         }
 
+        Pool->GetCounters().Migrations->Inc();
         ReportServingHost(binding->HostConfig.GetFqdn());
 
         auto self = shared_from_this();
