@@ -69,10 +69,6 @@ the ring buffer. `MetadataChecksum` and `DataChecksum` can only be changed to
 their corresponding calculated checksum. Entry sizes, entry identity/order,
 request size, request-info presence, and payload contents cannot be changed.
 
-Entry data and headers are flushed before new ring-buffer boundaries are
-published. A reported I/O failure still leaves the mapped file in an uncertain
-state; do not retry blindly—run `check` and create a fresh dump first.
-
 Example recovery scenarios:
 
 1. Clear all entries by setting both `ReadPos` and `WritePos` to zero.
