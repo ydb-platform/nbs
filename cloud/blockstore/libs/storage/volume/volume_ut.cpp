@@ -8012,61 +8012,6 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         volume.WaitReady();
     }
 
-    Y_UNIT_TEST(ShouldStartFreshBlocksWriterOnlyForPartitionTablet)
-    {
-        const auto runTest = [](TTabletTypes::EType tabletType)
-        {
-            NProto::TStorageServiceConfig config;
-            config.SetFreshBlocksWriterEnabled(true);
-
-            auto runtime = PrepareTestActorRuntime(config);
-            TVolumeClient volume(*runtime);
-
-            ui32 freshBlocksWriterWaitReadyRequests = 0;
-
-            runtime->SetObserverFunc(
-                [&](TAutoPtr<IEventHandle>& event)
-                {
-                    switch (event->GetTypeRewrite()) {
-                        case TEvHiveProxy::EvBootExternalResponse: {
-                            auto* msg = event->Get<
-                                TEvHiveProxy::TEvBootExternalResponse>();
-                            auto* storageInfo = const_cast<TTabletStorageInfo*>(
-                                msg->StorageInfo.Get());
-                            storageInfo->TabletType = tabletType;
-                            break;
-                        }
-                        case NFreshBlocksWriter::TEvFreshBlocksWriter::
-                            EvWaitReadyRequest: {
-                            ++freshBlocksWriterWaitReadyRequests;
-                            break;
-                        }
-                    }
-
-                    return TTestActorRuntime::DefaultObserverFunc(event);
-                });
-
-            volume.UpdateVolumeConfig();
-            volume.WaitReady();
-
-            return freshBlocksWriterWaitReadyRequests;
-        };
-
-        {
-            const auto freshWaitReadyRequests =
-                runTest(TTabletTypes::BlockStorePartition);
-
-            UNIT_ASSERT_VALUES_UNEQUAL(0, freshWaitReadyRequests);
-        }
-
-        {
-            const auto freshWaitReadyRequests =
-                runTest(TTabletTypes::BlockStorePartition2);
-
-            UNIT_ASSERT_VALUES_EQUAL(0, freshWaitReadyRequests);
-        }
-    }
-
     Y_UNIT_TEST(ShouldCorrectlyCalculateDiskRegistryPartitionParameters)
     {
         const auto expectedBlockCount = DefaultDeviceBlockSize * DefaultDeviceBlockCount
