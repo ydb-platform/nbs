@@ -46,7 +46,9 @@ void TStorageServiceActor::Bootstrap(const TActorContext& ctx)
     LastCpuWaitTs = ctx.Monotonic();
     ServiceState = NProto::SERVICE_STATE_RUNNING;
 
-    ReadDataActorPool.Initialize(ctx, InitialReadDataActorPoolSize);
+    if (StorageConfig->GetEnablePreallocatedDataActors()) {
+        ReadDataActorPool.Initialize(ctx, InitialReadDataActorPoolSize);
+    }
 
     RegisterPages(ctx);
     RegisterCounters(ctx);
@@ -99,6 +101,10 @@ void TStorageServiceActor::RegisterCounters(const NActors::TActorContext& ctx)
     auto ssdCounters = serviceCounters->GetSubgroup("type", "ssd");
     SsdFileSystemCount = hddCounters->GetCounter("FileSystemCount", false);
     SsdTabletCount = hddCounters->GetCounter("TabletCount", false);
+
+    ReadDataActorPoolSize =
+        serviceCounters->GetCounter("ReadDataActorPoolSize");
+    ReadDataActorPoolSize->Set(ReadDataActorPool.GetSize());
 }
 
 void TStorageServiceActor::ScheduleUpdateStats(const NActors::TActorContext& ctx)

@@ -33,6 +33,11 @@ public:
         TInFlightRequestStoragePtr inFlightRequests);
     ~TReadDataActorPool();
 
+    size_t GetSize() const
+    {
+        return AllActors.size();
+    }
+
     TReadDataActorPool(const TReadDataActorPool&) = delete;
     TReadDataActorPool& operator=(const TReadDataActorPool&) = delete;
 
