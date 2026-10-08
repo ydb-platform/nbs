@@ -1734,4 +1734,7 @@ message TStorageServiceConfig
     // the per-disk mixed-block percentage trigger. Zero removes this minimum.
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
+
+    // Enables volume balancer preemption mechanism.
+    optional bool VolumeBalancerEnabled = 542;
 }

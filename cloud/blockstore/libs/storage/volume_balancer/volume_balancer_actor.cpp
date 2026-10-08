@@ -2,7 +2,6 @@
 
 #include "volume_balancer_events_private.h"
 
-#include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
 #include <cloud/blockstore/libs/kikimr/helpers.h>
 #include <cloud/blockstore/libs/service/request_helpers.h>
@@ -141,25 +140,25 @@ STFUNC(TRemoteVolumeStatActor::StateWork)
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeBalancerActor::TVolumeBalancerActor(
-        TStorageConfigConstPtr storageConfig,
-        IVolumeStatsPtr volumeStats,
-        NCloud::NStorage::IStatsFetcherPtr statsFetcher,
-        IVolumeBalancerSwitchPtr volumeBalancerSwitch,
-        TActorId serviceActorId)
+    TStorageConfigConstPtr storageConfig,
+    IVolumeStatsPtr volumeStats,
+    NCloud::NStorage::IStatsFetcherPtr statsFetcher,
+    IVolumeBalancerSwitchPtr volumeBalancerSwitch,
+    TActorId serviceActorId)
     : StorageConfig(std::move(storageConfig))
     , VolumeStats(std::move(volumeStats))
     , StatsFetcher(std::move(statsFetcher))
-    , VolumeBalancerSwitch(std::move(volumeBalancerSwitch))
     , ServiceActorId(serviceActorId)
-    , State(std::make_unique<TVolumeBalancerState>(StorageConfig))
-{
-}
+    , State(
+          std::make_unique<TVolumeBalancerState>(
+              StorageConfig,
+              std::move(volumeBalancerSwitch)))
+{}
 
 void TVolumeBalancerActor::Bootstrap(const TActorContext& ctx)
 {
     LastCpuWaitTs = ctx.Monotonic();
 
-    SendConfigSubscriptionRequest(ctx);
     RegisterPages(ctx);
     RegisterCounters(ctx);
     Become(&TThis::StateWork);
@@ -192,11 +191,6 @@ void TVolumeBalancerActor::RegisterCounters(const TActorContext& ctx)
     CpuWaitCounter = serverCounters->GetCounter("CpuWait", false);
 
     ctx.Schedule(Timeout, new TEvents::TEvWakeup);
-}
-
-bool TVolumeBalancerActor::IsBalancerEnabled() const
-{
-    return State->GetEnabled() && VolumeBalancerSwitch->IsBalancerEnabled();
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -243,22 +237,6 @@ void TVolumeBalancerActor::SendVolumeToHive(
     PushCount->Add(1);
 
     State->SetVolumeInProgress(volume);
-}
-
-void TVolumeBalancerActor::SendConfigSubscriptionRequest(
-    const TActorContext& ctx)
-{
-    auto req = std::make_unique<
-        TEvConfigsDispatcher::TEvSetConfigSubscriptionRequest>();
-    auto blockstoreConfig =
-        static_cast<ui32>(NKikimrConsole::TConfigItem::BlockstoreConfigItem);
-    req->ConfigItemKinds = {
-        blockstoreConfig,
-    };
-    NCloud::Send(
-        ctx,
-        NConsole::MakeConfigsDispatcherID(ctx.SelfID.NodeId()),
-        std::move(req));
 }
 
 bool TVolumeBalancerActor::IsMaxInProgressLimitReached() const
@@ -342,7 +320,7 @@ void TVolumeBalancerActor::HandleGetVolumeStatsResponse(
             *CpuWaitCounter,
             ctx.Now());
 
-        if (IsBalancerEnabled() && !IsMaxInProgressLimitReached()) {
+        if (!IsMaxInProgressLimitReached()) {
             if (auto vol = State->GetVolumeToPush()) {
                 SendVolumeToHive(ctx, std::move(vol));
             } else if (auto vol = State->GetVolumeToPull()) {
@@ -419,45 +397,6 @@ void TVolumeBalancerActor::HandleConfigureVolumeBalancerRequest(
     }
 }
 
-void TVolumeBalancerActor::HandleConfigSubscriptionResponse(
-    const TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_UNUSED(ev);
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME_BALANCER,
-        "Subscribed to config changes");
-}
-
-void TVolumeBalancerActor::HandleConfigNotificationRequest(
-    const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    const auto& record = ev->Get()->Record;
-    auto response =
-        std::make_unique<TEvConsole::TEvConfigNotificationResponse>(record);
-    NCloud::Reply(ctx, *ev, std::move(response));
-
-    const auto& config = record.GetConfig();
-
-    if (!config.HasBlockstoreConfig() ||
-        !config.GetBlockstoreConfig().HasVolumePreemptionType())
-    {
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::VOLUME_BALANCER,
-            "VolumePreemptionType is not present in ConfigDispatcher "
-            "notification");
-        return;
-    }
-
-    auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
-        config.GetBlockstoreConfig().GetVolumePreemptionType());
-
-    State->OverrideVolumePreemptionTypeIfPossible(volumePreemptionType);
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 STFUNC(TVolumeBalancerActor::StateWork)
@@ -470,13 +409,6 @@ STFUNC(TVolumeBalancerActor::StateWork)
         HFunc(TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest, HandleConfigureVolumeBalancerRequest);
 
         HFunc(NMon::TEvHttpInfo, HandleHttpInfo);
-
-        HFunc(
-            TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse,
-            HandleConfigSubscriptionResponse);
-        HFunc(
-            TEvConsole::TEvConfigNotificationRequest,
-            HandleConfigNotificationRequest);
 
         default:
             HandleUnexpectedEvent(

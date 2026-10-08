@@ -365,9 +365,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
                     EnableNodeBrokerDeltaProtocol: false
                     EnableVPatch: false
                 }
-                BlockstoreConfig {
-                    VolumePreemptionType: PREEMPTION_MOVE_LEAST_HEAVY
-                }
                 NamedConfigs {
                     Name: "Cloud.NBS.LogConfig"
                     Config: "DefaultLevel: 7"
@@ -403,9 +400,6 @@ Y_UNIT_TEST_SUITE(TConfigInitializerTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 useYamlConfig ? localThreshold : 42,
                 ci.StorageConfig->GetWriteBlobThreshold());
-            UNIT_ASSERT_EQUAL(
-                NProto::PREEMPTION_MOVE_LEAST_HEAVY,
-                ci.StorageConfig->GetVolumePreemptionType());
             UNIT_ASSERT_VALUES_EQUAL(
                 useYamlConfig,
                 config.GetFeatureFlags().GetEnableNodeBrokerDeltaProtocol());

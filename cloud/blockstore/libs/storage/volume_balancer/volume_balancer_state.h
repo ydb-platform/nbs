@@ -60,13 +60,14 @@ private:
 
     bool IsEnabled = true;
 
-    const NProto::EVolumePreemptionType InitialVolumePreemptionType;
-    NProto::EVolumePreemptionType OverridenVolumePreemptionType;
-
     TDuration PullDelayResetTimespan;
 
+    IVolumeBalancerSwitchPtr VolumeBalancerSwitch;
+
 public:
-    TVolumeBalancerState(TStorageConfigConstPtr storageConfig);
+    TVolumeBalancerState(
+        TStorageConfigConstPtr storageConfig,
+        IVolumeBalancerSwitchPtr volumeBalancerSwitch);
 
     TString GetVolumeToPush() const;
     TString GetVolumeToPull() const;
@@ -86,24 +87,7 @@ public:
 
     bool GetEnabled() const
     {
-        return GetVolumePreemptionType() != NProto::PREEMPTION_NONE &&
-               IsEnabled;
-    }
-
-    void OverrideVolumePreemptionTypeIfPossible(
-        NProto::EVolumePreemptionType volumePreemptionType)
-    {
-        OverridenVolumePreemptionType = volumePreemptionType;
-    }
-
-    NProto::EVolumePreemptionType GetVolumePreemptionType() const
-    {
-        // We prioritize Immediate Control Board overriden configs over
-        // Config Dispatcher ones
-        return StorageConfig->GetVolumePreemptionType() ==
-                       InitialVolumePreemptionType
-                   ? OverridenVolumePreemptionType
-                   : StorageConfig->GetVolumePreemptionType();
+        return IsEnabled;
     }
 
     void SetVolumeInProgress(TString volume)
@@ -130,9 +114,18 @@ private:
     void UpdateVolumeToPush();
     void UpdateVolumeToPull(TInstant now);
 
-    bool IsVolumePreemptible(
+    bool IsPreemptionEnabled(
         const TString& diskId,
         const TVolumeInfo& volume) const;
+
+    bool IsVolumePreemptibleToPush(
+        const TString& diskId,
+        const TVolumeInfo& volume) const;
+
+    bool IsVolumePreemptibleToPull(
+        const TString& diskId,
+        const TVolumeInfo& volume,
+        TInstant now) const;
 };
 
 }   // namespace NCloud::NBlockStore::NStorage

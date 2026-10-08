@@ -2,6 +2,8 @@
 
 #include <cloud/blockstore/libs/storage/volume_balancer/volume_balancer_state.h>
 
+#include <cloud/blockstore/libs/diagnostics/volume_balancer_switch.h>
+
 #include <cloud/storage/core/libs/features/features_config.h>
 
 #include <library/cpp/testing/unittest/registar.h>
@@ -23,11 +25,13 @@ using TVolumeUsage = std::pair<ui64, ui64>;
 
 TStorageConfigPtr CreateStorageConfig(
     NProto::EVolumePreemptionType type,
+    bool volumeBalancerEnabled,
     ui32 cpuLackThreshold,
     NFeatures::TFeaturesConfigPtr featuresConfig)
 {
     NProto::TStorageServiceConfig storageConfig;
     storageConfig.SetVolumePreemptionType(type);
+    storageConfig.SetVolumeBalancerEnabled(volumeBalancerEnabled);
     storageConfig.SetCpuLackThreshold(cpuLackThreshold);
     if (!featuresConfig) {
         NProto::TFeaturesConfig config;
@@ -51,11 +55,17 @@ NFeatures::TFeaturesConfigPtr CreateFeatureConfig(
                 *feature->MutableBlacklist()->MutableCloudIds()->Add() = c.first;
                 *feature->MutableBlacklist()->MutableFolderIds()->Add() = c.second;
             }
+            // All but blacklisted
+            feature->SetCloudProbability(1);
+            feature->SetFolderProbability(1);
         } else {
             for (const auto& c: list) {
                 *feature->MutableWhitelist()->MutableCloudIds()->Add() = c.first;
                 *feature->MutableWhitelist()->MutableFolderIds()->Add() = c.second;
             }
+            // None but whitelisted
+            feature->SetCloudProbability(0);
+            feature->SetFolderProbability(0);
         }
     }
     return std::make_shared<NFeatures::TFeaturesConfig>(config);
@@ -114,6 +124,15 @@ NProto::TVolumeBalancerDiskStats CreateVolumeStats(
     return stats;
 }
 
+IVolumeBalancerSwitchPtr CreateSwitch(bool enabled)
+{
+    auto volumeBalancerSwitch = CreateVolumeBalancerSwitch();
+    if (enabled) {
+        volumeBalancerSwitch->EnableVolumeBalancer();
+    }
+    return volumeBalancerSwitch;
+}
+
 }  // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -125,9 +144,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                /*volumeBalancerEnabled=*/true,
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
-            )
+            ),
+            CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
 
@@ -150,9 +171,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_LEAST_HEAVY,
+                /*volumeBalancerEnabled=*/true,
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
-            )
+            ),
+            CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
 
@@ -175,9 +198,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                /*volumeBalancerEnabled=*/true,
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
-            )
+            ),
+            CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
 
@@ -199,10 +224,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     {
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -245,11 +271,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     Y_UNIT_TEST(ShouldNotSelectVolumeFromBlacklistedCloud)
     {
         auto storageConfig = CreateStorageConfig(
-            NProto::PREEMPTION_NONE,
+            NProto::PREEMPTION_MOVE_MOST_HEAVY,
             70,
             CreateFeatureConfig("Balancer", {{"cloudid1", "folderid1"}}, true));
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
 
         TInstant now = TInstant::Seconds(0);
 
@@ -272,10 +298,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     {
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         {
@@ -319,6 +346,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
     {
         auto storageConfig = CreateStorageConfig(
             NProto::PREEMPTION_MOVE_MOST_HEAVY,
+            /*volumeBalancerEnabled=*/true,
             70,
             CreateFeatureConfig("Balancer", {}, true));
 
@@ -340,7 +368,7 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         auto overlappingPullDelay =
             storageConfig->GetInitialPullDelay() + TDuration::Seconds(10);
 
-        TVolumeBalancerState state(storageConfig);
+        TVolumeBalancerState state(storageConfig, CreateSwitch(true));
         TInstant now = TInstant::Seconds(0);
 
         // Push vol0
@@ -400,9 +428,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                /*volumeBalancerEnabled=*/true,
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
-            )
+            ),
+            CreateSwitch(true)
         );
         TInstant now = TInstant::Seconds(0);
 
@@ -449,9 +479,11 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerStateTest)
         TVolumeBalancerState state(
             CreateStorageConfig(
                 NProto::PREEMPTION_MOVE_MOST_HEAVY,
+                /*volumeBalancerEnabled=*/true,
                 70,
                 CreateFeatureConfig("Balancer", {}, true)
-            )
+            ),
+            CreateSwitch(true)
         );
 
         for (ui32 i = 0; i < kinds.size(); ++i) {
