@@ -635,15 +635,8 @@ bool TVolumeActor::CheckReadWriteBlockRange(const TBlockRange64& range) const
         .Contains(range);
 }
 
-bool TVolumeActor::IsFreshBlocksWriterEnabled(ui64 partTabletId) const
+bool TVolumeActor::IsFreshBlocksWriterEnabled() const
 {
-    const auto* part = State->GetPartition(partTabletId);
-    if (!part ||
-        part->StorageInfo->TabletType != TTabletTypes::BlockStorePartition)
-    {
-        return false;
-    }
-
     return Config->GetFreshBlocksWriterEnabled() ||
            Config->IsFreshBlocksWriterFeatureEnabled(
                State->GetConfig().GetCloudId(),

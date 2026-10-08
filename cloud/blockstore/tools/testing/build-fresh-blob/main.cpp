@@ -1,5 +1,4 @@
 #include <cloud/blockstore/libs/storage/partition_common/model/fresh_blob_test.h>
-#include <cloud/blockstore/libs/storage/partition2/model/fresh_blob_test.h>
 
 #include <util/system/file.h>
 

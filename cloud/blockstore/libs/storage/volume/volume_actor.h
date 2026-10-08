@@ -746,7 +746,7 @@ private:
     void ReplyToServiceStatisticsCollectorActor(
         const NActors::TActorContext& ctx);
 
-    bool IsFreshBlocksWriterEnabled(ui64 partTabletId) const;
+    bool IsFreshBlocksWriterEnabled() const;
 
 private:
     STFUNC(StateBoot);
