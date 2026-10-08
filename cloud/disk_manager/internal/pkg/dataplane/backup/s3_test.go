@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -39,7 +40,7 @@ func TestNewS3WithoutKek(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 
 	err = backupS3.PutObject(
-		nil,
+		context.Background(),
 		"chunks/chunk1",
 		[]byte("dek"),
 		persistence.S3Object{Data: []byte("abc")},
