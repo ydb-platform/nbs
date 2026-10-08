@@ -402,7 +402,7 @@ void TReadDataActor::HandleDescribeDataResponse(
         msg->Record);
     InFlightRequest->Complete(ctx.Now(), error);
 
-    if (FAILED(msg->GetStatus())) {
+    if (HasError(error)) {
         HandleError(ctx, error);
         return;
     }
