@@ -282,6 +282,7 @@ bool TIndexTabletActor::ReadNodesToRemoveForSessionHandles(
 
 void TIndexTabletActor::DestroySessionHandlesAndRemoveNodes(
     IIndexTabletDatabase& db,
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
     const TActorContext& ctx,
     TSession* session,
     ui64 commitId,
@@ -321,6 +322,7 @@ void TIndexTabletActor::DestroySessionHandlesAndRemoveNodes(
 
             const bool removed = DeferNodeDestructionOrRemoveNode(
                 db,
+                fileSystemEvents,
                 ctx,
                 *it,
                 commitId,
@@ -713,6 +715,7 @@ bool TIndexTabletActor::ShouldDeferNodeDestruction(
 
 bool TIndexTabletActor::DeferNodeDestructionOrRemoveNode(
     IIndexTabletDatabase& db,
+    TVector<NProto::TFileSystemEvent>& fileSystemEvents,
     const TActorContext& ctx,
     const INodeIndexTabletDatabase::TNode& node,
     ui64 commitId,
@@ -729,7 +732,12 @@ bool TIndexTabletActor::DeferNodeDestructionOrRemoveNode(
         return false;
     }
 
-    auto e = RemoveNode(db, node, node.MinCommitId, commitId);
+    auto e = RemoveNode(
+        db,
+        fileSystemEvents,
+        node,
+        node.MinCommitId,
+        commitId);
     if (HasError(e)) {
         WriteOrphanNode(db, TStringBuilder()
             << operation << ": RemoveNode: " << node.NodeId
@@ -1068,6 +1076,7 @@ void TIndexTabletActor::HandleSessionDisconnected(
         LogTag.c_str(),
         ev->Sender.ToString().c_str());
 
+    FileSystemEventClients.erase(ev->Sender);
     OrphanSession(ev->Sender, ctx.Now());
 }
 
@@ -1090,6 +1099,7 @@ void TIndexTabletActor::HandleSessionDisconnectedInWork(
     // from this client connection. Unconfirmed data keeps this actor id from
     // GenerateBlobIds, so clean it up when the pipe disconnects.
     DeleteUnconfirmedDataForPipeServer(msg.ServerId, ctx);
+    FileSystemEventClients.erase(msg.ServerId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

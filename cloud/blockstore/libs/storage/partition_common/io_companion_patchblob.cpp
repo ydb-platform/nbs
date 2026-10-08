@@ -366,17 +366,14 @@ void TIOCompanion::HandlePatchBlobCompleted(
             0,
             "HandlePatchBlobCompleted: invalid blob id received");
     } else {
-        ResourceMetricsQueue->Push(
-            NPartition::TUpdateWriteThroughput(
-                ctx.Now(),
-                patchedChannel,
-                patchedGroup,
-                msg->PatchedBlobId.BlobSize()));
+        ResourceMetricsQueue->Push(TUpdateWriteThroughput(
+            ctx.Now(),
+            patchedChannel,
+            patchedGroup,
+            msg->PatchedBlobId.BlobSize()));
     }
     ResourceMetricsQueue->Push(
-        NPartition::TUpdateNetworkStat(
-            ctx.Now(),
-            msg->PatchedBlobId.BlobSize()));
+        TUpdateNetworkStat(ctx.Now(), msg->PatchedBlobId.BlobSize()));
 
     PartCounters->Access(
         [&](auto& counters)

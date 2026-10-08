@@ -2465,7 +2465,10 @@ func (s *storageYDB) takeBaseDisksToSchedule(
 		for _, disk := range scheduling {
 			if disk.ImageID == config.imageID && disk.ZoneID == config.zoneID {
 				alreadyScheduling = true
-				baseDisks = append(baseDisks, disk)
+				// Disks with SrcDisk were already added by the global path above.
+				if disk.SrcDisk == nil {
+					baseDisks = append(baseDisks, disk)
+				}
 			}
 		}
 
@@ -3332,6 +3335,7 @@ func (s *storageYDB) retireBaseDisk(
 	baseDiskID string,
 	srcDisk *types.Disk,
 	useImageSize uint64,
+	useBaseDiskAsSrc bool,
 ) ([]RebaseInfo, error) {
 
 	tx, err := session.BeginRWTransaction(ctx)
@@ -3348,6 +3352,23 @@ func (s *storageYDB) retireBaseDisk(
 	if found == nil || found.isDoomed() {
 		// Already retired.
 		return nil, tx.Commit(ctx)
+	}
+
+	// Enforce source holding only for the new explicit mode. Preserve legacy
+	// RetireBaseDisk source behavior for existing size-optimization callers.
+	// Keep the check after the already-retired shortcut to preserve idempotency.
+	if useBaseDiskAsSrc {
+		if !s.holdBaseDisksWithInflightDependents {
+			// No DB mutations preceded this static config error; defer rolls back.
+			return nil, errors.NewNonRetriableErrorf(
+				"UseBaseDiskAsSrc requires HoldBaseDisksWithInflightDependents=true",
+			)
+		}
+
+		srcDisk = &types.Disk{
+			ZoneId: found.zoneID,
+			DiskId: found.id,
+		}
 	}
 
 	// Base disk that |srcDisk| refers to, nil if |srcDisk| is not a base disk

@@ -13,6 +13,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 
+#include <library/cpp/monlib/dynamic_counters/counters.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/path.h>
@@ -271,6 +272,8 @@ struct TTestBootstrap
     ISchedulerPtr Scheduler = CreateScheduler();
     ITaskQueuePtr TaskQueue = CreateTaskQueueStub();
     IFileIOServicePtr AIOService = CreateAIOService();
+    NMonitoring::TDynamicCountersPtr Counters =
+        MakeIntrusive<NMonitoring::TDynamicCounters>();
 
     TTempDirectoryPtr Cwd;
     IFileStoreServicePtr Store;
@@ -286,6 +289,7 @@ struct TTestBootstrap
             Timer,
             Scheduler,
             Logging,
+            Counters,
             AIOService,
             TaskQueue,
             nullptr   // no profile log
@@ -302,6 +306,7 @@ struct TTestBootstrap
             Timer,
             Scheduler,
             Logging,
+            Counters,
             AIOService,
             TaskQueue,
             nullptr   // no profile log

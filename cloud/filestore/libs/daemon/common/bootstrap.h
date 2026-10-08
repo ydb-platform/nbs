@@ -82,6 +82,7 @@ protected:
     NCloud::NStorage::IStatsFetcherPtr StatsFetcher;
     ITaskQueuePtr LongRunningTaskExecutor;
     ICertificateProviderPtr CertificateProvider;
+    IMultiFileSystemEventHandlerPtr MultiFileSystemEventHandler;
 
 public:
     TBootstrapCommon(

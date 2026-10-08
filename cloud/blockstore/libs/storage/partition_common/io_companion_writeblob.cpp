@@ -426,18 +426,17 @@ void TIOCompanion::HandleWriteBlobCompleted(
     ui32 channel = msg->BlobId.Channel();
     ui32 groupId = Info()->GroupFor(channel, msg->BlobId.Generation());
     ResourceMetricsQueue->Push(
-        NPartition::TUpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize()));
+        TUpdateNetworkStat(ctx.Now(), msg->BlobId.BlobSize()));
     if (groupId == Max<ui32>()) {
         Y_DEBUG_ABORT_UNLESS(
             0,
             "HandleWriteBlobCompleted: invalid blob id received");
     } else {
-        ResourceMetricsQueue->Push(
-            NPartition::TUpdateWriteThroughput(
-                ctx.Now(),
-                channel,
-                groupId,
-                msg->BlobId.BlobSize()));
+        ResourceMetricsQueue->Push(TUpdateWriteThroughput(
+            ctx.Now(),
+            channel,
+            groupId,
+            msg->BlobId.BlobSize()));
     }
 
     PartCounters->Access([&](auto& counters) {

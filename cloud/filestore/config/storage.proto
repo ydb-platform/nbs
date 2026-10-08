@@ -855,9 +855,9 @@ message TStorageConfig
     // Enables injecting of errors in TIndexTabletDatabase. Must be only used in tests!
     optional double FakeTxPageFaultsProbability = 527;
 
-    // When this flag is enabled, TAggregateStatsActor does not poll all shards.
-    // Instead, it requests aggregate statistics only from the main tablet.
-    optional bool FanoutStatsCollectionInShardsDisabled = 528;
+    // Deprecated.
+    optional bool FanoutStatsCollectionInShardsDisabled = 528
+        [deprecated = true];
 
     // Enable silk regardless of other config parameters. Required for
     // persistent fastshard to work.
@@ -934,4 +934,18 @@ message TStorageConfig
     // Delays the shard phase of name-addressed GetNodeAttr/CreateHandle in
     // the service (leader -> shard). In ms. Must be only used in tests!
     optional uint32 ArtificialShardPhaseDelay = 548;
+
+    // Disk registry tablet that manages the fast shard devices.
+    optional uint64 FastShardDiskRegistryTabletId = 549;
+
+    // Hive owner key of that tablet, looked up when the tablet id is unset.
+    optional uint64 FastShardDiskRegistryOwner = 550;
+    optional uint64 FastShardDiskRegistryOwnerIdx = 551;
+
+    // Timeout for the lookup (in milliseconds).
+    optional uint32 FastShardDiskRegistryLookupTimeout = 552;
+
+    // If set to true, the tablet sends FileSystemEvents (InvalidateNode,
+    // InvalidateNodeRef) to its clients upon Node and NodeRef changes.
+    optional bool FileSystemEventsEnabled = 553;
 }

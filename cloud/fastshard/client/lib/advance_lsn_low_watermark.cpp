@@ -18,6 +18,8 @@ public:
     explicit TAdvanceLsnLowWatermarkCommand(IStorageNodePtr client)
         : TCommand(std::move(client))
     {
+        AddAcquireOption();
+
         Opts.AddLongOption("device-uuid", "device whose watermark is advanced")
             .RequiredArgument("STR")
             .StoreResult(&DeviceUUID);

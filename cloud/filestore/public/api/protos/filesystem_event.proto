@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package NCloud.NFileStore.NProto;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/filestore/public/api/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+// FileSystem event. Sent by the tablet to some of the clients that hold pipes
+// to it.
+
+message TFileSystemEvent
+{
+    // Node attributes changed or the node was removed.
+    message TInvalidateNode
+    {
+        uint64 NodeId = 1;
+    }
+
+    // Directory entry was created or removed.
+    message TInvalidateNodeRef
+    {
+        // Parent directory NodeId.
+        uint64 NodeId = 1;
+
+        // Entry name.
+        bytes Name = 2;
+    }
+
+    // Main FileSystem identifier.
+    string FileSystemId = 1;
+
+    // Exactly one of the invalidations is set.
+    TInvalidateNode InvalidateNode = 2;
+    TInvalidateNodeRef InvalidateNodeRef = 3;
+}

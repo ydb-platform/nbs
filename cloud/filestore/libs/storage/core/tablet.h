@@ -255,6 +255,7 @@ protected:
         ns::T##name& args)                                                     \
     {                                                                          \
         UpdateInMemoryIndexState(args);                                        \
+        SendTxFileSystemEvents(ctx, args);                                     \
         CompleteTx_##name(ctx, args);                                          \
     }                                                                          \
 // FILESTORE_IMPLEMENT_COMMON_TRANSACTION

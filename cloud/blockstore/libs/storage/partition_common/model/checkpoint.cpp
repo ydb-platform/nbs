@@ -3,7 +3,7 @@
 #include <library/cpp/json/json_value.h>
 #include <library/cpp/protobuf/json/proto2json.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -23,7 +23,7 @@ NJson::TJsonValue TCheckpoint::AsJson() const
     return json;
 }
 
-bool TCheckpointStore::Add(const TCheckpoint& checkpoint)
+bool TPartitionCheckpointStore::Add(const TCheckpoint& checkpoint)
 {
     if (AddCheckpointMapping(checkpoint)) {
         Items.insert_unique(checkpoint);
@@ -33,7 +33,7 @@ bool TCheckpointStore::Add(const TCheckpoint& checkpoint)
     return false;
 }
 
-void TCheckpointStore::Add(TVector<TCheckpoint>& checkpoints)
+void TPartitionCheckpointStore::Add(TVector<TCheckpoint>& checkpoints)
 {
     for (const auto& checkpoint: checkpoints) {
         bool success = Add(checkpoint);
@@ -41,7 +41,8 @@ void TCheckpointStore::Add(TVector<TCheckpoint>& checkpoints)
     }
 }
 
-bool TCheckpointStore::AddCheckpointMapping(const TCheckpoint& checkpoint)
+bool TPartitionCheckpointStore::AddCheckpointMapping(
+    const TCheckpoint& checkpoint)
 {
     if (Items.find(checkpoint.CheckpointId) == Items.end()) {
         return CheckpointId2CommitId.try_emplace(checkpoint.CheckpointId, checkpoint.CommitId).second;
@@ -49,12 +50,13 @@ bool TCheckpointStore::AddCheckpointMapping(const TCheckpoint& checkpoint)
     return false;
 }
 
-void TCheckpointStore::SetCheckpointMappings(const THashMap<TString, ui64>& checkpointId2CommitId)
+void TPartitionCheckpointStore::SetCheckpointMappings(
+    const THashMap<TString, ui64>& checkpointId2CommitId)
 {
     CheckpointId2CommitId = checkpointId2CommitId;
 }
 
-bool TCheckpointStore::Delete(const TString& checkpointId)
+bool TPartitionCheckpointStore::Delete(const TString& checkpointId)
 {
     auto it = Items.find(checkpointId);
     if (it != Items.end()) {
@@ -67,12 +69,15 @@ bool TCheckpointStore::Delete(const TString& checkpointId)
     return false;
 }
 
-bool TCheckpointStore::DeleteCheckpointMapping(const TString& checkpointId)
+bool TPartitionCheckpointStore::DeleteCheckpointMapping(
+    const TString& checkpointId)
 {
     return CheckpointId2CommitId.erase(checkpointId);
 }
 
-ui64 TCheckpointStore::GetCommitId(const TString& checkpointId, bool allowCheckpointWithoutData) const
+ui64 TPartitionCheckpointStore::GetCommitId(
+    const TString& checkpointId,
+    bool allowCheckpointWithoutData) const
 {
     auto it = Items.find(checkpointId);
     if (it != Items.end()) {
@@ -86,7 +91,8 @@ ui64 TCheckpointStore::GetCommitId(const TString& checkpointId, bool allowCheckp
     return 0;
 }
 
-TString TCheckpointStore::GetIdempotenceId(const TString& checkpointId) const
+TString TPartitionCheckpointStore::GetIdempotenceId(
+    const TString& checkpointId) const
 {
     auto it = Items.find(checkpointId);
     if (it != Items.end()) {
@@ -95,7 +101,7 @@ TString TCheckpointStore::GetIdempotenceId(const TString& checkpointId) const
     return {};
 }
 
-TVector<TCheckpoint> TCheckpointStore::Get() const
+TVector<TCheckpoint> TPartitionCheckpointStore::Get() const
 {
     TVector<TCheckpoint> result(Reserve(Items.size()));
     for (const auto& checkpoint: Items) {
@@ -104,7 +110,7 @@ TVector<TCheckpoint> TCheckpointStore::Get() const
     return result;
 }
 
-const TCheckpoint* TCheckpointStore::GetLast() const
+const TCheckpoint* TPartitionCheckpointStore::GetLast() const
 {
     const TCheckpoint* last = nullptr;
 
@@ -117,12 +123,12 @@ const TCheckpoint* TCheckpointStore::GetLast() const
     return last;
 }
 
-const THashMap<TString, ui64>& TCheckpointStore::GetMapping() const
+const THashMap<TString, ui64>& TPartitionCheckpointStore::GetMapping() const
 {
     return CheckpointId2CommitId;
 }
 
-ui64 TCheckpointStore::GetMinCommitId() const
+ui64 TPartitionCheckpointStore::GetMinCommitId() const
 {
     if (CommitIds.empty()) {
         return Max();
@@ -130,7 +136,7 @@ ui64 TCheckpointStore::GetMinCommitId() const
     return CommitIds.front();
 }
 
-ui64 TCheckpointStore::GetMaxCommitId() const
+ui64 TPartitionCheckpointStore::GetMaxCommitId() const
 {
     if (CommitIds.empty()) {
         return 0;
@@ -138,14 +144,14 @@ ui64 TCheckpointStore::GetMaxCommitId() const
     return CommitIds.back();
 }
 
-void TCheckpointStore::GetCommitIds(TVector<ui64>& result) const
+void TPartitionCheckpointStore::GetCommitIds(TVector<ui64>& result) const
 {
     for (ui64 commitId: CommitIds) {
         result.push_back(commitId);
     }
 }
 
-NJson::TJsonValue TCheckpointStore::AsJson() const
+NJson::TJsonValue TPartitionCheckpointStore::AsJson() const
 {
     NJson::TJsonValue json;
     for (const auto& checkpoint: Items) {
@@ -154,13 +160,13 @@ NJson::TJsonValue TCheckpointStore::AsJson() const
     return json;
 }
 
-void TCheckpointStore::InsertCommitId(ui64 commitId)
+void TPartitionCheckpointStore::InsertCommitId(ui64 commitId)
 {
     auto it = LowerBound(CommitIds.begin(), CommitIds.end(), commitId);
     CommitIds.insert(it, commitId);
 }
 
-bool TCheckpointStore::RemoveCommitId(ui64 commitId)
+bool TPartitionCheckpointStore::RemoveCommitId(ui64 commitId)
 {
     auto it = LowerBound(CommitIds.begin(), CommitIds.end(), commitId);
     if (it != CommitIds.end() && *it == commitId) {
@@ -195,114 +201,4 @@ bool TCheckpointQueue::Empty() const
     return Queue.empty();
 }
 
-////////////////////////////////////////////////////////////////////////////////
-
-bool TCheckpointsInFlight::AddTx(
-    const TString& checkpointId,
-    TTxPtr transaction)
-{
-    return AddTx(checkpointId, std::move(transaction), 0);
-}
-
-bool TCheckpointsInFlight::AddTx(
-    const TString& checkpointId,
-    TTxPtr transaction,
-    ui64 commitId)
-{
-    bool inserted = PendingTransactions
-                        .emplace(
-                            checkpointId,
-                            TCheckpointTransactionToCommitId{
-                                .Transaction = std::move(transaction),
-                                .CommitId = commitId})
-                        .second;
-    if (!inserted) {
-        return false;
-    }
-
-    // CommitId can be 0 if it is a DeleteCheckpoint transaction.
-    if (commitId) {
-        CommitIdQueue.Enqueue(checkpointId, commitId);
-    }
-
-    return true;
-}
-
-TCheckpointsInFlight::TTxPtr TCheckpointsInFlight::GetTx(
-    const TString& checkpointId,
-    ui64 commitId)
-{
-    auto it = PendingTransactions.find(checkpointId);
-    if (it != PendingTransactions.end()) {
-        auto& [tx, txCommitId] = it->second;
-
-        if (txCommitId < commitId) {
-            return std::move(tx);
-        }
-    }
-    return {};
-}
-
-TCheckpointsInFlight::TTxPtr TCheckpointsInFlight::GetTx(ui64 commitId)
-{
-    TString checkpointId;
-    while (checkpointId = CommitIdQueue.Dequeue(commitId)) {
-        auto tx = GetTx(checkpointId, commitId);
-        if (tx) {
-            return tx;
-        }
-    }
-    return {};
-}
-
-void TCheckpointsInFlight::PopTx(const TString& checkpointId)
-{
-    auto it = PendingTransactions.find(checkpointId);
-    if (it != PendingTransactions.end()) {
-        PendingTransactions.erase(it);
-    }
-}
-
-bool TCheckpointsInFlight::HasCheckpoint(const TString& checkpointId) const
-{
-    return PendingTransactions.contains(checkpointId);
-}
-
-void TCheckpointsInFlight::GetCommitIds(TVector<ui64>& commitIds) const
-{
-    for (const auto& [_, txPair]: PendingTransactions) {
-        const auto& txCommitId = txPair.CommitId;
-        if (!txCommitId) {
-            continue;
-        }
-        commitIds.push_back(txCommitId);
-    }
-}
-
-ui64 TCheckpointsInFlight::GetMinCommitId() const
-{
-    ui64 minCommitId = Max<ui64>();
-    for (const auto& [_, txPair]: PendingTransactions) {
-        const auto& txCommitId = txPair.CommitId;
-        if (!txCommitId) {
-            continue;
-        }
-        minCommitId = Min(minCommitId, txCommitId);
-    }
-    return minCommitId;
-}
-
-ui64 TCheckpointsInFlight::GetMaxCommitId() const
-{
-    ui64 maxCommitId = 0;
-    for (const auto& [_, txPair]: PendingTransactions) {
-        const auto& txCommitId = txPair.CommitId;
-        if (!txCommitId) {
-            continue;
-        }
-        maxCommitId = Max(maxCommitId, txCommitId);
-    }
-    return maxCommitId;
-}
-
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

@@ -85,7 +85,8 @@ void TIndexTabletActor::CompleteTx_CreateCheckpoint(
     // TODO(#1146) checkpoint-related tables are not yet supported
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(args.Error);
+    auto response = std::make_unique<TEvService::TEvCreateCheckpointResponse>(
+        std::move(args.Error));
     CompleteResponse<TEvService::TCreateCheckpointMethod>(
         response->Record,
         args.RequestInfo->CallContext,

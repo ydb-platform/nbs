@@ -1,6 +1,6 @@
 #include "part_counters_wrapper.h"
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -26,4 +26,4 @@ NProto::TPartitionStats TThreadSafePartStats::Swap(
     return retStats;
 }
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

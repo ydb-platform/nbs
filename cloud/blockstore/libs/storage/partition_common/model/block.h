@@ -5,7 +5,7 @@
 #include <util/generic/strbuf.h>
 #include <util/generic/string.h>
 
-namespace NCloud::NBlockStore::NStorage::NPartition {
+namespace NCloud::NBlockStore::NStorage {
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -68,4 +68,4 @@ struct TOwningFreshBlock
     }
 };
 
-}   // namespace NCloud::NBlockStore::NStorage::NPartition
+}   // namespace NCloud::NBlockStore::NStorage

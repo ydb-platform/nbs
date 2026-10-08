@@ -11,6 +11,7 @@
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
 #include <cloud/filestore/libs/server/probes.h>
 #include <cloud/filestore/libs/server/server.h>
+#include <cloud/filestore/libs/service/filesystem_event.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/factory/shard_factory.h>
 #include <cloud/filestore/libs/storage/init/actorsystem.h>
@@ -72,6 +73,7 @@ TBootstrapCommon::TBootstrapCommon(
     , LogComponent(std::move(logComponent))
     , ModuleFactories(std::move(moduleFactories))
     , UserCounters(std::move(userCounters))
+    , MultiFileSystemEventHandler(CreateMultiFileSystemEventHandler())
 {
 }
 
@@ -323,6 +325,7 @@ void TBootstrapCommon::InitActorSystem()
     args.StatsFetcher = StatsFetcher;
     args.ModuleFactories = ModuleFactories;
     args.FastShardServer = FastShardServer;
+    args.FileSystemEventHandler = MultiFileSystemEventHandler;
     args.FastShardFactory = NStorage::NFastShard::CreateFileSystemShardFactory(
         Configs->StorageConfig->GetFastShardRuntimeEnabled());
 

@@ -23,6 +23,8 @@ public:
     explicit TWriteLogRecordCommand(IStorageNodePtr client)
         : TCommand(std::move(client))
     {
+        AddAcquireOption();
+
         Opts.AddLongOption("device-uuid", "device to write to")
             .RequiredArgument("STR")
             .StoreResult(&DeviceUUID);
