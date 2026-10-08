@@ -12,4 +12,6 @@ message SnapshotStorageBackupConfig {
     required persistence.S3Config S3Config = 1;
     required string S3Bucket = 2;
     optional string S3KeyPrefix = 3;
+    optional string KekFile = 4;
+    optional string KekId = 5;
 }
