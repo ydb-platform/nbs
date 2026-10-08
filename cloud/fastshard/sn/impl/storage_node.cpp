@@ -207,6 +207,14 @@ public:
         return {};
     }
 
+    NCloud::NProto::TListDevicesResponse ListDevices(
+        NCloud::NProto::TListDevicesRequest request) override
+    {
+        // The file has no device UUID, so there is nothing to list.
+        Y_UNUSED(request);
+        return {};
+    }
+
     NCloud::NProto::TReadPagesResponse ReadPages(
         NCloud::NProto::TReadPagesRequest request) override
     {

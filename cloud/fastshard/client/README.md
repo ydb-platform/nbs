@@ -39,7 +39,8 @@ everything else that needs the real silk runtime.
  * `--timing` - print connect and round trip times (in ms) to stderr. The
    connection is opened lazily inside the call, so the round trip excludes
    the connect time
- * `--acquire` - every command except `AcquireDevices` / `ReleaseDevices`:
+ * `--acquire` - every command with a device: not `AcquireDevices`,
+   `ReleaseDevices` or `ListDevices`;
    acquire the device of the request (with the same headers and generation
    0) before sending it and release it afterwards. If the acquire fails the
    request is not sent; the release is attempted even when the request
@@ -77,6 +78,12 @@ Prints `OK`.
 Zeroes the journal metadata, so the journal restores as empty. A device
 without a journal is left untouched unless `--whole-device` is given, which
 zeroes all of the device's blocks. Prints `OK`.
+
+### ListDevices
+
+No options. Prints one line per device served by the storage node: the
+`DeviceUUID`, the `BlockSize` and the `LogMetaSize`, `LogDataSize` and
+`DataSize` of its parts, all in bytes.
 
 ### ReadPages
 

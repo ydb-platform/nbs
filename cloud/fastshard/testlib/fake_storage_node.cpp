@@ -49,6 +49,15 @@ NCloud::NProto::TFormatDeviceResponse TFakeStorageNode::FormatDevice(
     }
 }
 
+NCloud::NProto::TListDevicesResponse TFakeStorageNode::ListDevices(
+    NCloud::NProto::TListDevicesRequest request)
+{
+    with_lock (Lock) {
+        ListCalls.push_back(std::move(request));
+        return PopResponse(ListRespQueue, ListResp);
+    }
+}
+
 NCloud::NProto::TReadPagesResponse TFakeStorageNode::ReadPages(
     NCloud::NProto::TReadPagesRequest request)
 {

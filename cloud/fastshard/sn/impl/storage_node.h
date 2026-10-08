@@ -13,6 +13,7 @@ namespace NCloud::NFastShard {
  *
  * Semantics:
  *   - AcquireDevices, ReleaseDevices, FormatDevice are stubbed and return S_OK.
+ *   - ListDevices returns an empty list, as the file has no device UUID.
  *   - There is no journal, so ReadJournalTail returns an empty record
  *     list and AdvanceLsnLowWatermark is a no-op; both return S_OK.
  *   - WriteLogRecord writes every page in every TDevicePageGroup

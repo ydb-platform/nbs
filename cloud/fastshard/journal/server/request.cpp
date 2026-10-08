@@ -60,6 +60,13 @@ TString DescribeRequest(const NProto::TFormatDeviceRequest& request)
     return out;
 }
 
+TString DescribeRequest(const NProto::TListDevicesRequest& request)
+{
+    TStringBuilder out;
+    OutHeaders(out.Out, request);
+    return out;
+}
+
 TString DescribeRequest(const NProto::TReadPagesRequest& request)
 {
     TStringBuilder out;

@@ -3,6 +3,7 @@
 #include "acquire_devices.h"
 #include "advance_lsn_low_watermark.h"
 #include "format_device.h"
+#include "list_devices.h"
 #include "read_journal_tail.h"
 #include "read_pages.h"
 #include "release_devices.h"

@@ -25,6 +25,9 @@ struct IServerBackend : public IJournalledDevice
     [[nodiscard]] virtual auto FormatDevice(
         NProto::TFormatDeviceRequest request)
         -> NThreading::TFuture<NProto::TFormatDeviceResponse> = 0;
+
+    [[nodiscard]] virtual auto ListDevices(NProto::TListDevicesRequest request)
+        -> NThreading::TFuture<NProto::TListDevicesResponse> = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
