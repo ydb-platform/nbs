@@ -40,14 +40,18 @@ NProto::EStateFileType GetFileType(const TString& fileName)
     return NProto::EStateFileType::Unknown;
 }
 
-NProto::TStateFileInfo GetStateFileInfo(const TFsPath& path)
+TResultOrError<NProto::TStateFileInfo> GetStateFileInfo(const TFsPath& path)
 {
     // Probe with an exclusive lock so IsLocked also reflects concurrent
     // read-only tool invocations, which hold shared locks.
     TFile file(
         path.GetPath(),
         EOpenModeFlag::OpenExisting | EOpenModeFlag::RdOnly);
-    const bool isLocked = !TryLock(file, EFileLockType::Exclusive);
+
+    const auto lockOrError = TryLock(file, /* exclusive = */ true);
+    if (HasError(lockOrError)) {
+        return lockOrError.GetError();
+    }
 
     NProto::TStateFileInfo res;
     res.SetFilePath(path.GetPath());
@@ -55,7 +59,7 @@ NProto::TStateFileInfo GetStateFileInfo(const TFsPath& path)
     res.SetSessionId(path.Parent().GetName());
     res.SetFileType(GetFileType(path.GetName()));
     res.SetFileSize(static_cast<ui64>(file.GetLength()));
-    res.SetIsLocked(isLocked);
+    res.SetIsLocked(!lockOrError.GetResult());
 
     return res;
 }
@@ -83,16 +87,7 @@ public:
 
     TResultOrError<NProto::TStateFileList> ListStateFiles() override
     {
-        try {
-            return ListStateFilesImpl();
-        } catch (...) {
-            return MakeError(
-                E_IO,
-                Sprintf(
-                    "Failed to list state files in '%s': %s",
-                    StateDir.c_str(),
-                    CurrentExceptionMessage().c_str()));
-        }
+        return ListStateFiles({}, {}, Nothing());
     }
 
     TResultOrError<TFile> LocateAndOpenStateFile(
@@ -105,26 +100,12 @@ public:
             return MakeError(E_ARGUMENT, "Filesystem ID must not be empty");
         }
 
-        auto stateFileListOrError = ListStateFiles();
+        auto stateFileListOrError = ListStateFiles(fsId, sessionId, fileType);
         if (HasError(stateFileListOrError)) {
             return stateFileListOrError.GetError();
         }
 
-        const auto& stateFileList = stateFileListOrError.GetResult();
-
-        TVector<TString> candidates;
-        for (const auto& stateFile: stateFileList.GetFiles()) {
-            if (stateFile.GetFileSystemId() != fsId) {
-                continue;
-            }
-            if (!sessionId.empty() && stateFile.GetSessionId() != sessionId) {
-                continue;
-            }
-            if (fileType && stateFile.GetFileType() != *fileType) {
-                continue;
-            }
-            candidates.push_back(stateFile.GetFilePath());
-        }
+        const auto& candidates = stateFileListOrError.GetResult().GetFiles();
 
         if (candidates.empty()) {
             return MakeError(
@@ -144,7 +125,7 @@ public:
                     sessionId.c_str()));
         }
 
-        const auto& path = candidates.front();
+        const auto& path = candidates.Get(0).GetFilePath();
         try {
             const auto accessMode =
                 readOnly ? EOpenModeFlag::RdOnly : EOpenModeFlag::RdWr;
@@ -160,7 +141,27 @@ public:
     }
 
 private:
-    TResultOrError<NProto::TStateFileList> ListStateFilesImpl()
+    TResultOrError<NProto::TStateFileList> ListStateFiles(
+        const TString& fsId,
+        const TString& sessionId,
+        TMaybe<NProto::EStateFileType> fileType)
+    {
+        try {
+            return ListStateFilesImpl(fsId, sessionId, fileType);
+        } catch (...) {
+            return MakeError(
+                E_IO,
+                Sprintf(
+                    "Failed to list state files in '%s': %s",
+                    StateDir.c_str(),
+                    CurrentExceptionMessage().c_str()));
+        }
+    }
+
+    TResultOrError<NProto::TStateFileList> ListStateFilesImpl(
+        const TString& fsId,
+        const TString& sessionId,
+        TMaybe<NProto::EStateFileType> fileType)
     {
         const TFsPath stateDir(StateDir);
 
@@ -197,6 +198,10 @@ private:
         stateDir.List(fsDirs);
 
         for (const auto& fsDir: fsDirs) {
+            if (!fsId.empty() && fsDir.GetName() != fsId) {
+                continue;
+            }
+
             const TFileStat fsDirStat(fsDir);
             if (fsDirStat.IsNull()) {
                 const int error = LastSystemError();
@@ -222,6 +227,10 @@ private:
             TVector<TFsPath> sessionDirs;
             fsDir.List(sessionDirs);
             for (const auto& sessionDir: sessionDirs) {
+                if (!sessionId.empty() && sessionDir.GetName() != sessionId) {
+                    continue;
+                }
+
                 const TFileStat sessionDirStat(sessionDir);
                 if (sessionDirStat.IsNull()) {
                     const int error = LastSystemError();
@@ -247,6 +256,12 @@ private:
                 TVector<TFsPath> stateFilePaths;
                 sessionDir.List(stateFilePaths);
                 for (const auto& stateFilePath: stateFilePaths) {
+                    if (fileType &&
+                        GetFileType(stateFilePath.GetName()) != *fileType)
+                    {
+                        continue;
+                    }
+
                     const TFileStat stateFileStat(stateFilePath);
                     if (stateFileStat.IsNull()) {
                         const int error = LastSystemError();
@@ -269,7 +284,11 @@ private:
                                 stateFilePath.GetPath().c_str()));
                     }
 
-                    stateFiles.push_back(GetStateFileInfo(stateFilePath));
+                    auto stateFileOrError = GetStateFileInfo(stateFilePath);
+                    if (HasError(stateFileOrError)) {
+                        return stateFileOrError.GetError();
+                    }
+                    stateFiles.push_back(stateFileOrError.ExtractResult());
                 }
             }
         }

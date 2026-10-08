@@ -10,7 +10,6 @@
 #include <util/generic/string.h>
 #include <util/generic/vector.h>
 #include <util/stream/file.h>
-#include <util/system/file_lock.h>
 #include <util/system/sysstat.h>
 
 namespace NCloud::NFileStore::NWriteBackCacheStateTool {
@@ -218,19 +217,60 @@ Y_UNIT_TEST_SUITE(TStateFileLocatorTest)
             CreateStateFile(tempDir.Path(), "fs-1", "session-1");
         auto locator = CreateStateFileLocator(tempDir.Name());
 
-        {
-            TFileLock lock(stateFile.GetPath(), EFileLockType::Shared);
-            UNIT_ASSERT(lock.TryAcquire());
-            UNIT_ASSERT(GetOnlyFile(locator->ListStateFiles()).GetIsLocked());
-        }
+        for (const bool exclusive: {false, true}) {
+            TFile owner(stateFile.GetPath(), OpenExisting | RdOnly);
+            const auto acquired = TryLock(owner, exclusive);
+            UNIT_ASSERT_C(!HasError(acquired), FormatError(acquired.GetError()));
+            UNIT_ASSERT(acquired.GetResult());
 
-        {
-            TFileLock lock(stateFile.GetPath(), EFileLockType::Exclusive);
-            UNIT_ASSERT(lock.TryAcquire());
+            TFile contender(stateFile.GetPath(), OpenExisting | RdOnly);
+            const auto busy = TryLock(contender, true /* exclusive */);
+            UNIT_ASSERT_C(!HasError(busy), FormatError(busy.GetError()));
+            UNIT_ASSERT(!busy.GetResult());
             UNIT_ASSERT(GetOnlyFile(locator->ListStateFiles()).GetIsLocked());
         }
 
         UNIT_ASSERT(!GetOnlyFile(locator->ListStateFiles()).GetIsLocked());
+    }
+
+    Y_UNIT_TEST(ShouldReturnErrorForInvalidLockHandle)
+    {
+        TFile file;
+        const auto result = TryLock(file, true /* exclusive */);
+        UNIT_ASSERT(HasError(result));
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, result.GetError().GetCode());
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreUnrelatedPathsWhenLocatingStateFile)
+    {
+        for (const auto& unrelatedPath: {
+                 "fs-2/session-1/not-a-file",
+                 "fs-1/session-2/not-a-file",
+                 "fs-1/session-1/directory_handles_storage"})
+        {
+            TTempDir tempDir;
+            const auto stateFile =
+                CreateStateFile(tempDir.Path(), "fs-1", "session-1");
+
+            const auto invalidPath = tempDir.Path() / unrelatedPath;
+            invalidPath.MkDirs();
+            AssertInvalidStructure(tempDir.Path(), invalidPath);
+
+            auto locator = CreateStateFileLocator(tempDir.Name());
+            const auto found = locator->LocateAndOpenStateFile(
+                "fs-1",
+                "session-1",
+                NProto::EStateFileType::WriteBackCache,
+                true);
+
+            UNIT_ASSERT_C(!HasError(found), FormatError(found.GetError()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                stateFile.GetPath(),
+                found.GetResult().GetName());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "state",
+                TFileInput(found.GetResult()).ReadAll());
+        }
     }
 
     Y_UNIT_TEST(ShouldLocateBySessionAndRejectAmbiguousOrMissingState)
@@ -269,7 +309,9 @@ Y_UNIT_TEST_SUITE(TStateFileLocatorTest)
             TFileError);
         {
             TFile file = found.GetResult();
-            UNIT_ASSERT(TryLock(file, EFileLockType::Shared));
+            const auto acquired = TryLock(file, false /* exclusive */);
+            UNIT_ASSERT_C(!HasError(acquired), FormatError(acquired.GetError()));
+            UNIT_ASSERT(acquired.GetResult());
         }
 
         auto foundUnknown = locator->LocateAndOpenStateFile(
