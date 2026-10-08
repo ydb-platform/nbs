@@ -1368,6 +1368,9 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             [](auto& state) { state.ClearHeader(); },
             "does not contain a state file header");
         check(
+            [](auto& state) { state.MutableHeader()->ClearWritePos(); },
+            "Patch is missing required fields");
+        check(
             [](auto& state)
             {
                 auto* header = state.MutableHeader();
@@ -1483,7 +1486,11 @@ Y_UNIT_TEST_SUITE(TStateFileProcessorTest)
             "Changing request size");
         check(
             [](auto& state)
-            { state.MutableEntries(1)->MutableWriteDataRequestInfo(); },
+            {
+                state.MutableEntries(1)
+                    ->MutableWriteDataRequestInfo()
+                    ->CopyFrom(state.GetEntries(0).GetWriteDataRequestInfo());
+            },
             "request data presence");
         check(
             [](auto& state)
