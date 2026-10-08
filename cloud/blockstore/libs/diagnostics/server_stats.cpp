@@ -462,17 +462,18 @@ void TServerStats::RequestCompleted(
         {
             if (auto* sli = req.VolumeInfo->GetLatencySli()) {
                 const bool valid = started &&
+                    !callContext.GetQuotaDelayUnknown() &&
                     (!responseSentCycles || responseSentCycles >= started);
                 const auto elapsed = responseSentCycles && valid
                     ? CyclesToDurationSafe(responseSentCycles - started)
                     : requestTime;
-                // Reuse the existing accumulated throttler time. Backoff,
-                // shaping and predicted postponement remain in the latency.
+                // Exclude only the original performance profile quota wait.
+                // Backpressure, shaping and retry backoff remain in latency.
                 sli->Complete(
                     type == EBlockStoreRequest::WriteBlocks,
                     req.OriginalRequestBytes,
                     elapsed.MicroSeconds(),
-                    postponedTime.MicroSeconds(),
+                    callContext.GetQuotaDelay().MicroSeconds(),
                     HasError(error),
                     valid);
             }

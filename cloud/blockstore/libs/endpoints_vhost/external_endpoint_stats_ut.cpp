@@ -172,7 +172,7 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
             ->GetSubgroup("component", "server_volume")->GetSubgroup("host", "cluster")
             ->GetSubgroup("volume", f.DiskId)->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
-            ->GetSubgroup("type", "ssd_local")->GetSubgroup("request", "ReadBlocks");
+            ->GetSubgroup("type", "ssd_local");
         auto snapshot = [&](ui64 sequence, ui64 good, bool fresh = true) {
             return NJson::TJsonMap{
                 {"latency_sli", NJson::TJsonMap{

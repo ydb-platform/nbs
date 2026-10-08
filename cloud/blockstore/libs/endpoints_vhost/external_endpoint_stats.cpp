@@ -116,7 +116,7 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
             if (counters) {
                 // Old producers have separate size/time histograms, which
                 // cannot establish a per-request latency SLI decision.
-                counters->Add(write, 0, 0,
+                counters->Add(0, 0,
                     value["count"].GetUInteger() + value["errors"].GetUInteger());
             }
             continue;
@@ -135,7 +135,7 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
             // Do not turn an unsigned reset/underflow into a huge delta.
             // Re-establish a baseline; this batch cannot be classified.
             if (counters) {
-                counters->Add(write, 0, 0,
+                counters->Add(0, 0,
                     value["count"].GetUInteger() + value["errors"].GetUInteger());
             }
             LatencyNeedsBaseline[write] = !present;
@@ -154,9 +154,9 @@ void TEndpointStats::UpdateLatency(const NJson::TJsonValue& stats)
             // After a gap, preserve coverage without attributing old data to
             // the current observation window. No history is retained.
             if (matching && sequence == LatencySequence + 1) {
-                counters->Add(write, good, bad, unknown);
+                counters->Add(good, bad, unknown);
             } else {
-                counters->Add(write, 0, 0, good + bad + unknown);
+                counters->Add(0, 0, good + bad + unknown);
             }
         }
     }

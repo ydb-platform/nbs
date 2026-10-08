@@ -14,4 +14,9 @@ message TThrottlerInfo
 
     // Time spent by a request in the shaping queue in us.
     uint64 ShapingDelay = 2;
+
+    // The part of Delay in us that the original performance profile of the
+    // disk alone would have imposed. Unset means it was not measured, which
+    // differs from zero when Delay is non-zero.
+    optional uint64 QuotaDelay = 3;
 }

@@ -33,14 +33,17 @@ namespace {
 template <typename TMethod>
 void StoreThrottlerDelay(
     typename TMethod::TResponse& response,
-    TDuration delay,
-    TDuration shapingDelay)
+    const TCallContext& callContext)
 {
     if constexpr (RequiresThrottling<TMethod>) {
-        response.Record.MutableHeaders()->MutableThrottler()->SetDelay(
-            delay.MicroSeconds());
-        response.Record.MutableHeaders()->MutableThrottler()->SetShapingDelay(
-            shapingDelay.MicroSeconds());
+        const auto delay = callContext.Time(EProcessingStage::Postponed);
+        auto& throttler = *response.Record.MutableHeaders()->MutableThrottler();
+        throttler.SetDelay(delay.MicroSeconds());
+        throttler.SetShapingDelay(
+            callContext.Time(EProcessingStage::Shaping).MicroSeconds());
+        if (const auto quotaDelay = callContext.GetThrottlerQuotaDelay()) {
+            throttler.SetQuotaDelay(quotaDelay->MicroSeconds());
+        }
     }
 }
 
@@ -57,10 +60,7 @@ void RejectVolumeRequest(
     auto response =
         std::make_unique<typename TMethod::TResponse>(std::move(error));
 
-    StoreThrottlerDelay<TMethod>(
-        *response,
-        callContext.Time(EProcessingStage::Postponed),
-        callContext.Time(EProcessingStage::Shaping));
+    StoreThrottlerDelay<TMethod>(*response, callContext);
 
     NCloud::Send(ctx, caller, std::move(response), callerCookie);
 }
@@ -323,10 +323,7 @@ void TVolumeActor::FillResponse(
             GetCycleCount());
     }
 
-    StoreThrottlerDelay<TMethod>(
-        response,
-        callContext.Time(EProcessingStage::Postponed),
-        callContext.Time(EProcessingStage::Shaping));
+    StoreThrottlerDelay<TMethod>(response, callContext);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

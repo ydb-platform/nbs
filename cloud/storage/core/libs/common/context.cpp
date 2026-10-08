@@ -82,6 +82,22 @@ void TCallContextBase::SetResponseSentCycles(ui64 cycles)
     AtomicSet(ResponseSentCycles, cycles);
 }
 
+TMaybe<TDuration> TCallContextBase::GetThrottlerQuotaDelay() const
+{
+    const auto us = AtomicGet(ThrottlerQuotaDelayMicroSeconds);
+    if (us < 0) {
+        return Nothing();
+    }
+    return TDuration::MicroSeconds(us);
+}
+
+void TCallContextBase::SetThrottlerQuotaDelay(TMaybe<TDuration> d)
+{
+    AtomicSet(
+        ThrottlerQuotaDelayMicroSeconds,
+        d ? static_cast<TAtomicBase>(d->MicroSeconds()) : -1);
+}
+
 void TCallContextBase::Postpone(ui64 nowCycles)
 {
     Y_DEBUG_ABORT_UNLESS(

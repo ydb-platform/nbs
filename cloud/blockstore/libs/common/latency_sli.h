@@ -37,16 +37,16 @@ struct TLatencySliConfig
         bool write,
         ui64 bytes,
         ui64 elapsedUs,
-        ui64 postponedUs,
+        ui64 quotaDelayUs,
         bool failed,
         bool validTiming = true) const
     {
-        if (!validTiming || postponedUs > elapsedUs) {
+        if (!validTiming || quotaDelayUs > elapsedUs) {
             return ELatencySliResult::Unknown;
         }
         for (const auto& row: Thresholds[write]) {
             if (bytes >= row.StartBytes && bytes < row.EndBytes) {
-                return !failed && elapsedUs - postponedUs <= row.ThresholdUs
+                return !failed && elapsedUs - quotaDelayUs <= row.ThresholdUs
                            ? ELatencySliResult::Good
                            : ELatencySliResult::Bad;
             }

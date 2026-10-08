@@ -5,6 +5,9 @@
 #include <library/cpp/deprecated/atomic/atomic.h>
 #include <library/cpp/lwtrace/shuttle.h>
 
+#include <util/datetime/base.h>
+#include <util/generic/maybe.h>
+
 namespace NCloud {
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -44,6 +47,9 @@ private:
     // Used only in tablet throttler.
     TInstant PostponeTs = TInstant::Zero();
 
+    // Set by the tablet throttler. Negative means not measured.
+    TAtomic ThrottlerQuotaDelayMicroSeconds = -1;
+
 public:
     ui64 RequestId;
     NLWTrace::TOrbit LWOrbit;
@@ -61,6 +67,11 @@ public:
 
     ui64 GetResponseSentCycles() const;
     void SetResponseSentCycles(ui64 cycles);
+
+    // The part of the tablet throttler delay attributed to the original
+    // performance profile. Nothing() means it was not measured.
+    TMaybe<TDuration> GetThrottlerQuotaDelay() const;
+    void SetThrottlerQuotaDelay(TMaybe<TDuration> d);
 
     void Postpone(ui64 nowCycles);
     TDuration Advance(ui64 nowCycles);

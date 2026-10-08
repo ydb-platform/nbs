@@ -135,5 +135,30 @@ ui32 CalculateWriteRequestBlockCount(
     return request.GetBlocksCount();
 }
 
+////////////////////////////////////////////////////////////////////////////////
+
+void AccountThrottlerQuota(
+    TCallContext& callContext,
+    const NCloud::NProto::TThrottlerInfo& throttler,
+    TDuration throttlerDelay)
+{
+    callContext.AccountThrottlerQuota(
+        throttler.HasQuotaDelay()
+            ? TMaybe<TDuration>(
+                  TDuration::MicroSeconds(throttler.GetQuotaDelay()))
+            : Nothing(),
+        throttlerDelay);
+}
+
+void FillThrottlerQuota(
+    const TCallContext& callContext,
+    NCloud::NProto::TThrottlerInfo& throttler)
+{
+    if (!callContext.GetQuotaDelayUnknown()) {
+        throttler.SetQuotaDelay(callContext.GetQuotaDelay().MicroSeconds());
+    } else {
+        throttler.ClearQuotaDelay();
+    }
+}
 
 }   // namespace NCloud::NBlockStore
