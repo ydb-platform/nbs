@@ -56,6 +56,7 @@ TString DescribeRequest(const NProto::TFormatDeviceRequest& request)
     TStringBuilder out;
     OutHeaders(out.Out, request);
     OutDeviceUUID(out.Out, request);
+    out << ", whole device: " << request.GetWholeDevice();
     return out;
 }
 
