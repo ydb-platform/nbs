@@ -49,6 +49,8 @@ struct TFileSystemShardStats
     ui64 TotalHandleCount = 0;
     ui64 UsedPageCount = 0;
     ui64 TotalPageCount = 0;
+    ui64 LastNodeId = 0;
+    ui64 LastHandleId = 0;
 };
 
 struct IFileSystemShard
