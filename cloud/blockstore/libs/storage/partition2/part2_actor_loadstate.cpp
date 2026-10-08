@@ -178,7 +178,7 @@ void TPartitionActor::CompleteLoadState(
         Config->GetOptimizeForShortRanges()
             ? EOptimizationMode::OptimizeForShortRanges
             : EOptimizationMode::OptimizeForLongRanges,
-        BuildCompactionPolicy(args.Meta->GetConfig(), *Config, SiblingCount),
+        BuildCompactionPolicy(args.Meta->GetConfig(), *Config),
         bpConfig,
         fsConfig,
         indexCachingConfig,
