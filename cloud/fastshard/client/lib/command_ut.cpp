@@ -242,6 +242,19 @@ TEST(TFastShardClientTest, ShouldFormatDevice)
 
     ASSERT_EQ(1u, f.Storage->FormatCalls.size());
     EXPECT_EQ("d1", f.Storage->FormatCalls[0].GetDeviceUUID());
+    EXPECT_FALSE(f.Storage->FormatCalls[0].GetWholeDevice());
+    EXPECT_EQ("OK\n", f.Output->Str());
+}
+
+TEST(TFastShardClientTest, ShouldFormatWholeDevice)
+{
+    TFixture f;
+    EXPECT_TRUE(
+        f.Run("formatdevice", {"--device-uuid", "d1", "--whole-device"}));
+
+    ASSERT_EQ(1u, f.Storage->FormatCalls.size());
+    EXPECT_EQ("d1", f.Storage->FormatCalls[0].GetDeviceUUID());
+    EXPECT_TRUE(f.Storage->FormatCalls[0].GetWholeDevice());
     EXPECT_EQ("OK\n", f.Output->Str());
 }
 

@@ -65,6 +65,7 @@ struct TJournalledDeviceSpec
 {
     NProto::TJournalConfig Config;
     ui32 BlockSize = 0;
+    ui64 BlocksCount = 0;
 
     NJournalled::IJournalledDevicePtr Device;
 };
@@ -182,10 +183,13 @@ public:
                 TErrorResponse(error));
         }
 
-        const ui64 logMetaBlockCount =
-            spec->Config.GetLogMetaSize() / spec->BlockSize;
+        // Only the journal metadata is wiped by default.
+        const ui64 blocksCount =
+            request.GetWholeDevice()
+                ? spec->BlocksCount
+                : spec->Config.GetLogMetaSize() / spec->BlockSize;
 
-        if (!logMetaBlockCount) {
+        if (!blocksCount) {
             return MakeFuture(NCloud::NProto::TFormatDeviceResponse());
         }
 
@@ -199,7 +203,7 @@ public:
 
         auto zeroRequest = std::make_shared<NProto::TZeroBlocksRequest>();
         zeroRequest->SetStartIndex(0);
-        zeroRequest->SetBlocksCount(logMetaBlockCount);
+        zeroRequest->SetBlocksCount(blocksCount);
 
         auto future = storageAdapter->ZeroBlocks(
             Timer->Now(),
@@ -562,6 +566,7 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
                               ? config.Journal
                               : NProto::TJournalConfig{},
                 .BlockSize = config.Device.GetBlockSize(),
+                .BlocksCount = config.Device.GetBlocksCount(),
                 .Device = std::move(device)});
     }
 

@@ -71,9 +71,12 @@ Prints `OK`.
 ### FormatDevice
 
  * `--device-uuid` - device whose journal is wiped; **mandatory**
+ * `--whole-device` - zero the whole device instead of the journal metadata
+   only
 
 Zeroes the journal metadata, so the journal restores as empty. A device
-without a journal is left untouched. Prints `OK`.
+without a journal is left untouched unless `--whole-device` is given, which
+zeroes all of the device's blocks. Prints `OK`.
 
 ### ReadPages
 
