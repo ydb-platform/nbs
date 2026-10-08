@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -236,17 +237,27 @@ func run(
 			return err
 		}
 
+		kekFile := backupConfig.GetKekFile()
+		kekID := backupConfig.GetKekId()
 		var kek []byte
-		kek, err = os.ReadFile(backupConfig.GetKekFile())
-		if err != nil {
-			return err
+		if len(kekFile) != 0 || len(kekID) != 0 {
+			if len(kekFile) == 0 || len(kekID) == 0 {
+				return fmt.Errorf(
+					"set kek file and kek id together",
+				)
+			}
+
+			kek, err = os.ReadFile(kekFile)
+			if err != nil {
+				return err
+			}
 		}
 
 		backupS3, err = backup.NewS3(
 			s3Client,
 			backupConfig.GetS3Bucket(),
 			backupConfig.GetS3KeyPrefix(),
-			backupConfig.GetKekId(),
+			kekID,
 			kek,
 		)
 		if err != nil {

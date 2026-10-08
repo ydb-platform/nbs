@@ -39,6 +39,14 @@ func NewS3(
 	kek []byte,
 ) (*S3, error) {
 
+	if len(kekID) == 0 && len(kek) == 0 {
+		return &S3{
+			s3:        s3,
+			bucket:    bucket,
+			keyPrefix: keyPrefix,
+		}, nil
+	}
+
 	if len(kekID) == 0 {
 		return nil, errors.NewNonRetriableErrorf("kek id is empty")
 	}
@@ -74,6 +82,12 @@ func NewS3(
 }
 
 func (s *S3) NewEncryptedDEK() ([]byte, error) {
+	if s.kek == nil {
+		return nil, errors.NewNonRetriableErrorf(
+			"kek is not configured",
+		)
+	}
+
 	dek := make([]byte, keySize)
 	_, err := rand.Read(dek)
 	if err != nil {
@@ -84,6 +98,16 @@ func (s *S3) NewEncryptedDEK() ([]byte, error) {
 }
 
 func (s *S3) EnsureEncryptedDEK(encryptedDEK []byte) ([]byte, error) {
+	if s.kek == nil {
+		if len(encryptedDEK) != 0 {
+			return nil, errors.NewNonRetriableErrorf(
+				"dek is set but kek is not configured",
+			)
+		}
+
+		return nil, nil
+	}
+
 	if len(encryptedDEK) != 0 {
 		return encryptedDEK, nil
 	}
@@ -97,6 +121,16 @@ func (s *S3) PutObject(
 	encryptedDEK []byte,
 	object persistence.S3Object,
 ) error {
+
+	if s.kek == nil {
+		if len(encryptedDEK) != 0 {
+			return errors.NewNonRetriableErrorf(
+				"dek is set but kek is not configured",
+			)
+		}
+
+		return s.s3.PutObject(ctx, s.bucket, s.Key(key), object)
+	}
 
 	dek, err := s.decryptDEK(encryptedDEK)
 	if err != nil {
@@ -135,6 +169,19 @@ func (s *S3) GetObject(
 	object, err := s.s3.GetObject(ctx, s.bucket, s.Key(key))
 	if err != nil {
 		return persistence.S3Object{}, err
+	}
+
+	if s.kek == nil {
+		kekID := object.Metadata[kekIDMetadataKey]
+		if kekID != nil {
+			err = errors.NewNonRetriableErrorf(
+				"object %v is encrypted",
+				key,
+			)
+			return persistence.S3Object{}, err
+		}
+
+		return object, nil
 	}
 
 	kekID := object.Metadata[kekIDMetadataKey]

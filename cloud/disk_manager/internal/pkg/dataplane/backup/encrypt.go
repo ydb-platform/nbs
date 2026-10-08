@@ -73,6 +73,16 @@ func (s *S3) decryptDEK(encryptedDEK []byte) (cipher.AEAD, error) {
 }
 
 func (s *S3) CheckEncryptedDEK(encryptedDEK []byte) error {
+	if s.kek == nil {
+		if len(encryptedDEK) != 0 {
+			return errors.NewNonRetriableErrorf(
+				"dek is set but kek is not configured",
+			)
+		}
+
+		return nil
+	}
+
 	_, err := s.decryptDEK(encryptedDEK)
 	return err
 }

@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -16,6 +17,38 @@ func TestNewS3FailsOnWrongKekSize(t *testing.T) {
 
 func TestNewS3FailsOnEmptyKekID(t *testing.T) {
 	_, err := NewS3(nil, "bucket", "", "", make([]byte, keySize))
+	require.Error(t, err)
+}
+
+func TestNewS3WithoutKek(t *testing.T) {
+	backupS3, err := NewS3(nil, "bucket", "", "", nil)
+	require.NoError(t, err)
+
+	dek, err := backupS3.EnsureEncryptedDEK(nil)
+	require.NoError(t, err)
+	require.Empty(t, dek)
+	require.NoError(t, backupS3.CheckEncryptedDEK(nil))
+
+	_, err = backupS3.NewEncryptedDEK()
+	require.Error(t, err)
+
+	err = backupS3.CheckEncryptedDEK([]byte("dek"))
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	_, err = backupS3.EnsureEncryptedDEK([]byte("dek"))
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	err = backupS3.PutObject(
+		nil,
+		"chunks/chunk1",
+		[]byte("dek"),
+		persistence.S3Object{Data: []byte("abc")},
+	)
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+}
+
+func TestNewS3FailsWhenOnlyKekIDIsSet(t *testing.T) {
+	_, err := NewS3(nil, "bucket", "", "kek1", nil)
 	require.Error(t, err)
 }
 

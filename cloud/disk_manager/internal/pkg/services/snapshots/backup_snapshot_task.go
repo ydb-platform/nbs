@@ -83,7 +83,7 @@ func (t *backupSnapshotTask) Run(
 		return err
 	}
 
-	if generated {
+	if generated && len(t.state.EncryptedDek) != 0 {
 		err = execCtx.SaveState(ctx)
 		if err != nil {
 			return err
