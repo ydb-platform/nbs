@@ -30,8 +30,10 @@
 #include <util/system/tempfile.h>
 
 #include <chrono>
+#include <fcntl.h>
 #include <latch>
 #include <thread>
+#include <unistd.h>
 
 namespace NCloud::NBlockStore {
 
@@ -241,6 +243,8 @@ struct TTestSysFs final: ISysFs
     THashMap<TString, NProto::TNVMeDevice> AddrToDevice;
 
     std::function<TString(const TString&)> GetVfioDeviceForPCIDeviceImpl;
+    std::function<TFileHandle(const TString&)> OpenVfioGroupForPCIDeviceImpl;
+    std::function<void(const TString&, const TString&)> BindPCIDeviceToDriverImpl;
 
     auto GetDriverForPCIDevice(const TString& pciAddr) -> TString final
     {
@@ -251,6 +255,9 @@ struct TTestSysFs final: ISysFs
         const TString& pciAddr,
         const TString& driverName) final
     {
+        if (BindPCIDeviceToDriverImpl) {
+            BindPCIDeviceToDriverImpl(pciAddr, driverName);
+        }
         AddrToDriver[pciAddr] = driverName;
     }
 
@@ -272,6 +279,13 @@ struct TTestSysFs final: ISysFs
         return GetVfioDeviceForPCIDeviceImpl
                    ? GetVfioDeviceForPCIDeviceImpl(pciAddr)
                    : TString{};
+    }
+
+    auto OpenVfioGroupForPCIDevice(const TString& pciAddr) -> TFileHandle final
+    {
+        return OpenVfioGroupForPCIDeviceImpl
+                   ? OpenVfioGroupForPCIDeviceImpl(pciAddr)
+                   : TFileHandle("/dev/null", OpenExisting | RdWr);
     }
 
     [[nodiscard]] auto IsVfioDevSupported() const -> bool final
@@ -867,6 +881,127 @@ Y_UNIT_TEST_SUITE(TLocalNVMeServiceTest)
         }
 
         UNIT_ASSERT_VALUES_EQUAL("nvme", SysFs->AddrToDriver[pciAddr]);
+    }
+
+    Y_UNIT_TEST_F(ShouldNotReleaseDeviceIfVfioGroupCannotBeOpened, TFixture)
+    {
+        SetProviderReady();
+        const auto [devices, error] = ListNVMeDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        const auto& device = Devices[0];
+        const auto& pciAddr = device.GetPCIAddress();
+        const auto& serialNumber = device.GetSerialNumber();
+
+        SysFs->GetVfioDeviceForPCIDeviceImpl =
+            [](const TString&) { return TString("vfio0"); };
+
+        const auto acquireResult =
+            Service->AcquireNVMeDevice(serialNumber, EmptyIdempotenceId)
+                .GetValueSync();
+        UNIT_ASSERT_C(
+            !HasError(acquireResult),
+            FormatError(acquireResult.GetError()));
+
+        for (ui32 code:
+             {ui32(E_PRECONDITION_FAILED), MAKE_SYSTEM_ERROR(EACCES)})
+        {
+            SysFs->OpenVfioGroupForPCIDeviceImpl =
+                [&](const TString& addr) -> TFileHandle
+            {
+                UNIT_ASSERT_VALUES_EQUAL(pciAddr, addr);
+                ythrow TServiceError(code) << "VFIO group cannot be opened";
+            };
+
+            const auto releaseError =
+                Service->ReleaseNVMeDevice(serialNumber, EmptyIdempotenceId)
+                    .GetValueSync();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                code,
+                releaseError.GetCode(),
+                FormatError(releaseError));
+            if (code == E_PRECONDITION_FAILED) {
+                UNIT_ASSERT_EQUAL(
+                    EErrorKind::ErrorFatal,
+                    GetErrorKind(releaseError));
+            }
+            UNIT_ASSERT_VALUES_EQUAL("vfio-pci", SysFs->AddrToDriver[pciAddr]);
+            UNIT_ASSERT_VALUES_EQUAL(
+                0,
+                NVMeManager->GetSanitizeInfo("/dev/nvme0").Count);
+            const auto state = LoadStateFromCache();
+            UNIT_ASSERT_VALUES_EQUAL(1, state.AcquiredDevicesSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                serialNumber,
+                state.GetAcquiredDevices(0).GetSerialNumber());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldHoldVfioGroupUntilDeviceIsRebound, TFixture)
+    {
+        SetProviderReady();
+        const auto [devices, error] = ListNVMeDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        const auto& device = Devices[0];
+        const auto& pciAddr = device.GetPCIAddress();
+        SysFs->AddrToDriver[pciAddr] = "vfio-pci";
+
+        // The pipe reports EOF once the service closes its guard fd.
+        int fds[2];
+        UNIT_ASSERT_VALUES_EQUAL(0, ::pipe2(fds, O_NONBLOCK | O_CLOEXEC));
+        TFileHandle reader(fds[0]);
+        TFileHandle writer(fds[1]);
+        SysFs->OpenVfioGroupForPCIDeviceImpl =
+            [&](const TString&) { return TFileHandle(writer.Duplicate()); };
+        SysFs->BindPCIDeviceToDriverImpl =
+            [&](const TString& addr, const TString& driver)
+        {
+            UNIT_ASSERT_VALUES_EQUAL(pciAddr, addr);
+            UNIT_ASSERT_VALUES_EQUAL("nvme", driver);
+            writer.Close();
+            char data;
+            UNIT_ASSERT_VALUES_EQUAL(-1, reader.Read(&data, 1));
+            UNIT_ASSERT_VALUES_EQUAL(EAGAIN, errno);
+        };
+
+        auto future = Service->ReleaseNVMeDevice(
+            device.GetSerialNumber(),
+            EmptyIdempotenceId);
+        NVMeManager->WaitSanitizeRequested();
+        char data;
+        UNIT_ASSERT_VALUES_EQUAL(0, reader.Read(&data, 1));
+        NVMeManager->UpdateSanitizeStatus("/dev/nvme0", MakeError(S_OK), 100.0);
+        const auto releaseError = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            releaseError.GetCode(),
+            FormatError(releaseError));
+    }
+
+    Y_UNIT_TEST_F(ShouldSkipVfioGroupCheckForNVMeDriver, TFixture)
+    {
+        SetProviderReady();
+        const auto [devices, error] = ListNVMeDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        SysFs->OpenVfioGroupForPCIDeviceImpl =
+            [](const TString&) -> TFileHandle
+        {
+            UNIT_FAIL("VFIO group must not be opened for the nvme driver");
+            return {};
+        };
+
+        auto future = Service->ReleaseNVMeDevice(
+            Devices[0].GetSerialNumber(),
+            EmptyIdempotenceId);
+        NVMeManager->WaitSanitizeRequested();
+        NVMeManager->UpdateSanitizeStatus("/dev/nvme0", MakeError(S_OK), 100.0);
+        const auto releaseError = future.GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            releaseError.GetCode(),
+            FormatError(releaseError));
     }
 
     Y_UNIT_TEST_F(ShouldRetryListDevicesError, TFixture)
