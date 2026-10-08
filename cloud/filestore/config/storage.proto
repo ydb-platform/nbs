@@ -944,4 +944,7 @@ message TStorageConfig
 
     // Timeout for the lookup (in milliseconds).
     optional uint32 FastShardDiskRegistryLookupTimeout = 552;
+
+    // Enables pre-allocated actors for reading / writing data
+    optional bool EnablePreallocatedDataActors = 553;
 }

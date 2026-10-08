@@ -474,6 +474,8 @@ public:
     ui32 GetMaxSlowestRequestsEntries() const;
 
     TDuration GetNodeLatencyHalfLife() const;
+
+    bool GetEnablePreallocatedDataActors() const;
 };
 
 }   // namespace NCloud::NFileStore::NStorage

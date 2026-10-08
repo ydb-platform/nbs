@@ -1476,32 +1476,64 @@ void TStorageServiceActor::HandleReadData(
             msg->Record.GetIovecs());
     }
 
-    auto request = std::make_unique<TEvStartReadData>(
-        std::move(msg->Record),
-        filestore.GetFileSystemId(),
-        filestore.GetBlockSize(),
-        filestore.GetFeatures().GetReadBlobDisabled(),
-        session->RequestStats,
-        ev->Sender,
-        ev->Cookie,
-        std::move(msg->CallContext),
-        std::move(checksumCalcInfo),
-        startTime,
-        GenerateRequestCookie(),
-        session->ClientId,
-        std::move(shardState),
-        session->MediaKind,
-        useTwoStageRead,
-        // UseCustomReadDataResponseParser is deprecated and not compatible with
-        // ExternalReadDataPayload
-        filestore.GetFeatures().GetUseCustomReadDataResponseParser() &&
-            !filestore.GetFeatures().GetExternalReadDataPayload(),
-        filestore.GetFeatures().GetZeroCopyReadEnabled());
+    if (StorageConfig->GetEnablePreallocatedDataActors()) {
+        auto request = std::make_unique<TEvStartReadData>(
+            std::move(msg->Record),
+            filestore.GetFileSystemId(),
+            filestore.GetBlockSize(),
+            filestore.GetFeatures().GetReadBlobDisabled(),
+            session->RequestStats,
+            ev->Sender,
+            ev->Cookie,
+            std::move(msg->CallContext),
+            std::move(checksumCalcInfo),
+            startTime,
+            GenerateRequestCookie(),
+            session->ClientId,
+            std::move(shardState),
+            session->MediaKind,
+            useTwoStageRead,
+            // UseCustomReadDataResponseParser is deprecated and not compatible with
+            // ExternalReadDataPayload
+            filestore.GetFeatures().GetUseCustomReadDataResponseParser() &&
+                !filestore.GetFeatures().GetExternalReadDataPayload(),
+            filestore.GetFeatures().GetZeroCopyReadEnabled());
 
-    NCloud::Send(
-        ctx,
-        ReadDataActorPool.GetOrCreateActor(ctx),
-        std::move(request));
+        NCloud::Send(
+            ctx,
+            ReadDataActorPool.GetOrCreateActor(ctx),
+            std::move(request));
+    } else {
+        auto actor = std::make_unique<TReadDataActor>(
+            ProfileLog,
+            TraceSerializer,
+            InFlightRequests,
+            ctx.SelfID);
+
+        actor->Initialize(
+            std::move(msg->Record),
+            filestore.GetFileSystemId(),
+            filestore.GetBlockSize(),
+            filestore.GetFeatures().GetReadBlobDisabled(),
+            session->RequestStats,
+            ev->Sender,
+            ev->Cookie,
+            std::move(msg->CallContext),
+            std::move(checksumCalcInfo),
+            startTime,
+            GenerateRequestCookie(),
+            session->ClientId,
+            std::move(shardState),
+            session->MediaKind,
+            useTwoStageRead,
+            // UseCustomReadDataResponseParser is deprecated and not compatible
+            // with ExternalReadDataPayload
+            filestore.GetFeatures().GetUseCustomReadDataResponseParser() &&
+                !filestore.GetFeatures().GetExternalReadDataPayload(),
+            filestore.GetFeatures().GetZeroCopyReadEnabled());
+
+        NCloud::Register(ctx, std::move(actor));
+    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage

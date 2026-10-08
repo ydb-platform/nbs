@@ -82,6 +82,8 @@ private:
     TCounterPtr SsdFileSystemCount;
     TCounterPtr SsdTabletCount;
 
+    TCounterPtr ReadDataActorPoolSize;
+
     NProto::EServiceState ServiceState = NProto::SERVICE_STATE_UNKNOWN;
 
     TMonotonic LastCpuWaitTs;
