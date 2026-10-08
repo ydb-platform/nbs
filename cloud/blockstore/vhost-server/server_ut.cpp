@@ -29,6 +29,7 @@
 #include <util/generic/hash_set.h>
 #include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
+#include <util/generic/yexception.h>
 #include <util/random/random.h>
 #include <util/string/builder.h>
 #include <util/system/file.h>
@@ -71,6 +72,14 @@ ui8 GetFillChar(size_t block)
     return AllowedChars[block % strlen(AllowedChars)];
 }
 
+template <typename THist>
+ui64 GetTotalCount(const THist& hist)
+{
+    ui64 total = 0;
+    hist.IterateBuckets([&](ui64, ui64, ui64 count) { total += count; });
+    return total;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 const TString DefaultEncryptionKey("1234567890123456789012345678901");
@@ -92,6 +101,7 @@ public:
     enum class EBehaviour
     {
         ReturnError,
+        ThrowException,
         EncryptToAllZeroes,
     };
 
@@ -114,6 +124,9 @@ public:
             case EBehaviour::ReturnError: {
                 return MakeError(E_FAIL, "Oh no!");
             }
+            case EBehaviour::ThrowException: {
+                ythrow yexception() << "test encryption failure";
+            }
             case EBehaviour::EncryptToAllZeroes:{
                 memset(const_cast<char*>(dst.Data()), 0, dst.Size());
                 return {};
@@ -129,6 +142,9 @@ public:
         Y_UNUSED(src);
         Y_UNUSED(dst);
         Y_UNUSED(blockIndex);
+        if (Behaviour == EBehaviour::ThrowException) {
+            ythrow yexception() << "test decryption failure";
+        }
         return MakeError(E_NOT_IMPLEMENTED);
     }
 };
@@ -189,6 +205,8 @@ public:
                 CreateAesXtsEncryptor(TEncryptionKey(DefaultEncryptionKey));
         }
     }
+
+    void CheckStatEncryptorErrors(TMockEncryptor::EBehaviour behaviour);
 
     void StartServer(bool addNonExistingDevice = false)
     {
@@ -1032,21 +1050,20 @@ TEST_P(TServerTest, ShouldReadAndWriteMultipleBuffers)
     }
 }
 
-TEST_P(TServerTest, ShouldStatEncryptorErrors)
+void TServerTest::CheckStatEncryptorErrors(TMockEncryptor::EBehaviour behaviour)
 {
     if (EncryptionMode != NProto::EEncryptionMode::ENCRYPTION_AES_XTS) {
         return;
     }
 
-    Encryptor = std::make_shared<TMockEncryptor>(
-        TMockEncryptor::EBehaviour::ReturnError);
+    Encryptor = std::make_shared<TMockEncryptor>(behaviour);
     StartServer();
 
-    // Fill storage with random data
+    // Every sector must contain nonzero data to exercise decryption.
     {
-        TString randomBlock = MakeRandomPattern(BlockSize);
+        TString block(BlockSize, 'R');
         for (size_t i = 0; i < TotalBlockCount; ++i) {
-            ASSERT_TRUE(SaveRawBlock(i, randomBlock));
+            ASSERT_TRUE(SaveRawBlock(i, block));
         }
     }
 
@@ -1094,7 +1111,15 @@ TEST_P(TServerTest, ShouldStatEncryptorErrors)
 
     // validate stats
     const auto splittedReads = (BlocksPerRequest - 1) * (ChunkCount - 1);
-    const auto completeStats = GetStats(readCount + splittedReads);
+    const auto completeStats = GetStats(
+        [&](const TCompleteStats& stats)
+        {
+            const auto& simple = stats.SimpleStats;
+            return simple.Completed == readCount + splittedReads &&
+                   simple.EncryptorErrors == readCount + writeCount &&
+                   simple.Requests[VHD_BDEV_READ].Errors == readCount &&
+                   simple.Requests[VHD_BDEV_WRITE].Errors == writeCount;
+        });
     const auto& stats = completeStats.SimpleStats;
 
     EXPECT_EQ(0u, stats.CompFailed);
@@ -1103,12 +1128,29 @@ TEST_P(TServerTest, ShouldStatEncryptorErrors)
     EXPECT_EQ(readCount + splittedReads, stats.Dequeued);
     EXPECT_EQ(readCount + splittedReads, stats.Submitted);
     EXPECT_EQ(readCount + writeCount, stats.EncryptorErrors);
+    EXPECT_EQ(readCount, stats.Requests[VHD_BDEV_READ].Errors);
+    EXPECT_EQ(writeCount, stats.Requests[VHD_BDEV_WRITE].Errors);
+    for (auto type: {VHD_BDEV_READ, VHD_BDEV_WRITE}) {
+        EXPECT_EQ(0u, stats.Requests[type].Count);
+        EXPECT_EQ(0u, GetTotalCount(stats.Times[type]));
+        EXPECT_EQ(0u, GetTotalCount(stats.Sizes[type]));
+    }
 
     const auto depth = Backend->GetIoDepthStats();
     ASSERT_TRUE(depth);
     EXPECT_EQ(0u, depth->Lanes[VHD_BDEV_READ].Current);
     EXPECT_EQ(0u, depth->Lanes[VHD_BDEV_WRITE].Current);
     EXPECT_TRUE(depth->Continuous);
+}
+
+TEST_P(TServerTest, ShouldStatEncryptorErrors)
+{
+    CheckStatEncryptorErrors(TMockEncryptor::EBehaviour::ReturnError);
+}
+
+TEST_P(TServerTest, ShouldStatThrowingEncryptorErrors)
+{
+    CheckStatEncryptorErrors(TMockEncryptor::EBehaviour::ThrowException);
 }
 
 TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
@@ -1140,9 +1182,12 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
 
     // validate stats
     const auto completeStats = GetStats(
-        [](const TCompleteStats& stats) {
-            return stats.CriticalEvents.size() != 0 &&
-                   stats.SimpleStats.EncryptorErrors != 0;
+        [writeCount](const TCompleteStats& stats)
+        {
+            return stats.CriticalEvents.size() == writeCount &&
+                   stats.SimpleStats.EncryptorErrors == writeCount &&
+                   stats.SimpleStats.Requests[VHD_BDEV_WRITE].Errors ==
+                       writeCount;
         });
     const auto& stats = completeStats.SimpleStats;
 
@@ -1152,6 +1197,19 @@ TEST_P(TServerTest, ShouldStatAllZeroesBlocks)
     EXPECT_EQ(0u, stats.Dequeued);
     EXPECT_EQ(0u, stats.Submitted);
     EXPECT_EQ(writeCount, stats.EncryptorErrors);
+    EXPECT_EQ(writeCount, stats.Requests[VHD_BDEV_WRITE].Errors);
+    EXPECT_EQ(0u, stats.Requests[VHD_BDEV_READ].Errors);
+    for (auto type: {VHD_BDEV_READ, VHD_BDEV_WRITE}) {
+        EXPECT_EQ(0u, stats.Requests[type].Count);
+        EXPECT_EQ(0u, GetTotalCount(stats.Times[type]));
+        EXPECT_EQ(0u, GetTotalCount(stats.Sizes[type]));
+    }
+
+    const auto depth = Backend->GetIoDepthStats();
+    ASSERT_TRUE(depth);
+    EXPECT_EQ(0u, depth->Lanes[VHD_BDEV_READ].Current);
+    EXPECT_EQ(0u, depth->Lanes[VHD_BDEV_WRITE].Current);
+    EXPECT_TRUE(depth->Continuous);
 
     // validate crit events
     EXPECT_EQ(writeCount, completeStats.CriticalEvents.size());

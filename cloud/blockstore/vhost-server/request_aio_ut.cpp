@@ -1118,10 +1118,20 @@ TEST_P(TRequestAIOTest, ShouldIncludeFailedEncryptionTimeInIoDepth)
             ASSERT_EQ(1u, CompletedBios.size());
             EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
             EXPECT_EQ(1u, queueStats.EncryptorErrors);
+            EXPECT_EQ(1u, queueStats.Requests[VHD_BDEV_WRITE].Errors);
+            EXPECT_EQ(0u, queueStats.Requests[VHD_BDEV_WRITE].Count);
+            EXPECT_EQ(0u, queueStats.Requests[VHD_BDEV_READ].Errors);
+            EXPECT_EQ(0u, queueStats.Requests[VHD_BDEV_READ].Count);
+            EXPECT_EQ(0u, queueStats.SubFailed);
+            EXPECT_EQ(0u, GetTotalCount(queueStats.Times[VHD_BDEV_WRITE]));
+            EXPECT_EQ(0u, GetTotalCount(queueStats.Sizes[VHD_BDEV_WRITE]));
+            EXPECT_EQ(0u, GetTotalCount(queueStats.Times[VHD_BDEV_READ]));
+            EXPECT_EQ(0u, GetTotalCount(queueStats.Sizes[VHD_BDEV_READ]));
 
             nowNs = 5'000'000'000ULL;
             const auto snapshot = ioDepth.Snapshot();
             EXPECT_EQ(0u, snapshot.Lanes[VHD_BDEV_WRITE].Current);
+            EXPECT_EQ(0u, snapshot.Lanes[VHD_BDEV_READ].Current);
             EXPECT_EQ(3'000'000u, snapshot.Lanes[VHD_BDEV_WRITE].IntegralUs);
             EXPECT_TRUE(snapshot.Continuous);
         }
@@ -1190,9 +1200,6 @@ TEST_P(TRequestAIOTest, ShouldFinishCompoundIoDepthOnDecryptionException)
 {
     InitDevices(1_MB);
 
-    ui64 nowNs = 0;
-    TIoDepthTracker ioDepth(2, [&nowNs] { return nowNs; });
-
     const ui64 size = 16_KB;
     TVector<char> guest(size, 'G');
     std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
@@ -1204,33 +1211,51 @@ TEST_P(TRequestAIOTest, ShouldFinishCompoundIoDepthOnDecryptionException)
             .total_sectors = size / VHD_SECTOR_SIZE,
             .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
 
-    TIoDepthTestEncryptor encryptor;
-    encryptor.OnDecrypt = [&]() -> NProto::TError
-    {
-        EXPECT_EQ(1u, ioDepth.Snapshot().Lanes[VHD_BDEV_READ].Current);
-        nowNs = 3'000'000'000ULL;
-        ythrow yexception() << "test decryption failure";
-    };
+    for (bool throwException: {false, true}) {
+        SCOPED_TRACE(TStringBuilder() << "exception: " << throwException);
+        CompletedBios.clear();
+        ui64 nowNs = 0;
+        TIoDepthTracker ioDepth(2, [&nowNs] { return nowNs; });
+        TAtomicStats stats;
+        TIoDepthTestEncryptor encryptor;
+        encryptor.OnDecrypt = [&]() -> NProto::TError
+        {
+            EXPECT_EQ(1u, ioDepth.Snapshot().Lanes[VHD_BDEV_READ].Current);
+            EXPECT_EQ(0u, stats.Requests[VHD_BDEV_READ].Count.load());
+            EXPECT_EQ(0u, stats.Requests[VHD_BDEV_READ].Errors.load());
+            nowNs = 3'000'000'000ULL;
+            if (throwException) {
+                ythrow yexception() << "test decryption failure";
+            }
+            return MakeError(E_FAIL, "test decryption failure");
+        };
 
-    auto subs = PrepareCompoundIO(bio, &encryptor, &ioDepth);
-    ASSERT_EQ(2u, subs.size());
-    auto* parent = subs[0]->GetParentRequest();
-    std::memset(parent->Buffer.get(), 'R', parent->BufferSize);
+        auto subs = PrepareCompoundIO(bio, &encryptor, &ioDepth);
+        ASSERT_EQ(2u, subs.size());
+        auto* parent = subs[0]->GetParentRequest();
+        std::memset(parent->Buffer.get(), 'R', parent->BufferSize);
 
-    TAtomicStats stats;
-    nowNs = 1'000'000'000ULL;
-    CompleteSubRequest(subs[0], VHD_BDEV_SUCCESS, stats, &encryptor);
-    nowNs = 2'000'000'000ULL;
-    CompleteSubRequest(subs[1], VHD_BDEV_SUCCESS, stats, &encryptor);
+        nowNs = 1'000'000'000ULL;
+        CompleteSubRequest(subs[0], VHD_BDEV_SUCCESS, stats, &encryptor);
+        ExpectNoSuccessStats(stats, VHD_BDEV_READ);
+        EXPECT_EQ(0u, stats.Requests[VHD_BDEV_READ].Errors.load());
+        nowNs = 2'000'000'000ULL;
+        CompleteSubRequest(subs[1], VHD_BDEV_SUCCESS, stats, &encryptor);
 
-    ASSERT_EQ(1u, CompletedBios.size());
-    EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
-    EXPECT_EQ(1u, stats.EncryptorErrors.load());
+        ASSERT_EQ(1u, CompletedBios.size());
+        EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
+        EXPECT_EQ(1u, stats.EncryptorErrors.load());
+        EXPECT_EQ(1u, stats.Requests[VHD_BDEV_READ].Errors.load());
+        ExpectNoSuccessStats(stats, VHD_BDEV_READ);
+        EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].Errors.load());
+        ExpectNoSuccessStats(stats, VHD_BDEV_WRITE);
 
-    const auto completed = ioDepth.Snapshot();
-    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
-    EXPECT_EQ(3'000'000u, completed.Lanes[VHD_BDEV_READ].IntegralUs);
-    EXPECT_TRUE(completed.Continuous);
+        const auto completed = ioDepth.Snapshot();
+        EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
+        EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_WRITE].Current);
+        EXPECT_EQ(3'000'000u, completed.Lanes[VHD_BDEV_READ].IntegralUs);
+        EXPECT_TRUE(completed.Continuous);
+    }
 }
 
 INSTANTIATE_TEST_SUITE_P(

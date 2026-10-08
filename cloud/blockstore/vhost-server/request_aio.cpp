@@ -173,6 +173,7 @@ bool PrepareCompoundIO(
             bio->first_sector);
         if (!success) {
             ++queueStats.EncryptorErrors;
+            ++queueStats.Requests[VHD_BDEV_WRITE].Errors;
             return false;
         }
     }
@@ -415,6 +416,7 @@ bool PrepareIOImpl(
                 bio->first_sector);
             if (!success) {
                 ++queueStats.EncryptorErrors;
+                ++queueStats.Requests[VHD_BDEV_WRITE].Errors;
                 return false;
             }
         }
@@ -518,8 +520,6 @@ void CompleteCompoundRequestImpl(
         const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
         auto& requestStat = stats.Requests[bio->type];
-        requestStat.Errors += req->Errors != 0;
-        requestStat.Count += status == VHD_BDEV_SUCCESS;
         requestStat.Bytes += bytes;
 
         if (bio->type == VHD_BDEV_READ && status == VHD_BDEV_SUCCESS) {
@@ -539,6 +539,8 @@ void CompleteCompoundRequestImpl(
 
         const TCpuCycles now = GetCycleCount();
 
+        requestStat.Errors += status != VHD_BDEV_SUCCESS;
+        requestStat.Count += status == VHD_BDEV_SUCCESS;
         if (status == VHD_BDEV_SUCCESS) {
             stats.Times[bio->type].Increment(now - req->SubmitTs);
             stats.Sizes[bio->type].Increment(bytes);

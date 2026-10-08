@@ -42,8 +42,6 @@ void CompleteRequestImpl(
     const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
     auto& requestStat = stats.Requests[bio->type];
-    requestStat.Errors += status != VHD_BDEV_SUCCESS;
-    requestStat.Count += status == VHD_BDEV_SUCCESS;
     requestStat.Bytes += bytes;
     requestStat.Unaligned += req->Unaligned;
 
@@ -66,6 +64,8 @@ void CompleteRequestImpl(
 
     const TCpuCycles now = GetCycleCount();
 
+    requestStat.Errors += status != VHD_BDEV_SUCCESS;
+    requestStat.Count += status == VHD_BDEV_SUCCESS;
     if (status == VHD_BDEV_SUCCESS) {
         stats.Times[bio->type].Increment(now - req->SubmitTs);
         stats.Sizes[bio->type].Increment(bytes);

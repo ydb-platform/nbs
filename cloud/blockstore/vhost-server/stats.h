@@ -33,6 +33,7 @@ struct TRequestStats
 {
     T Count = {};
     T Bytes = {};
+    // Failed logical requests, including encryption and decryption failures.
     T Errors = {};
     T Unaligned = {};
 
@@ -88,6 +89,7 @@ struct TStats
     T SubFailed = {};
     T Completed = {};
     T CompFailed = {};
+    // Diagnostic subset of directional Errors; do not add it to request errors.
     T EncryptorErrors = {};
 
     std::array<TRequestStats<T>, 2> Requests = {};

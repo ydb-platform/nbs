@@ -67,8 +67,7 @@ void BatchCompleted(
         request,
         requestStats["count"].GetUInteger(),
         requestStats["bytes"].GetUInteger(),
-        requestStats["errors"].GetUInteger() +
-            requestStats["encryptor_errors"].GetUInteger(),
+        requestStats["errors"].GetUInteger(),
         times,
         sizes);
 }
