@@ -6,6 +6,7 @@ RECURSE(
     init
     model
     perf
+    query
     service
     ss_proxy
     tablet
