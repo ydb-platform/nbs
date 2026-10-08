@@ -125,13 +125,15 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         UNIT_ASSERT(config.GetLatencySliConfig(NProto::STORAGE_MEDIA_HDD).Thresholds[0].empty());
     }
 
-    Y_UNIT_TEST(ShouldUseSameCompletenessRulesForFailures)
+    Y_UNIT_TEST(ShouldCountFailuresWithoutCompleteTimingOrThresholds)
     {
         auto config = TLatencySliConfig::Parse("1;0:1:8193:100");
         for (bool failed: {false, true}) {
-            UNIT_ASSERT(config.Classify(false, 4096, 100, 101, failed) == ELatencySliResult::Unknown);
-            UNIT_ASSERT(config.Classify(false, 4096, 100, 0, failed, false) == ELatencySliResult::Unknown);
-            UNIT_ASSERT(config.Classify(true, 4096, 100, 0, failed) == ELatencySliResult::Unknown);
+            const auto expected = failed ? ELatencySliResult::Bad
+                                         : ELatencySliResult::Unknown;
+            UNIT_ASSERT(config.Classify(false, 4096, 100, 101, failed) == expected);
+            UNIT_ASSERT(config.Classify(false, 4096, 100, 0, failed, false) == expected);
+            UNIT_ASSERT(config.Classify(true, 4096, 100, 0, failed) == expected);
         }
         UNIT_ASSERT(config.Classify(false, 4096, 1000, 900, false) == ELatencySliResult::Good);
         UNIT_ASSERT(config.Classify(false, 4096, 1, 0, true) == ELatencySliResult::Bad);
@@ -170,9 +172,11 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         f.Complete(500, 600);
         f.Complete(500, 0, E_REJECTED, false, 99999);
         f.Complete(500, 0, S_OK, false, 4096, false, false);
-        UNIT_ASSERT_VALUES_EQUAL(4, f.Read->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(4, f.Read->GetCounter("LatencyTotalOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(3, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
+        f.Complete(500, 0, E_REJECTED, false, 4096, false, false);
+        f.Complete(2000, 1500, E_REJECTED, false, 4096, false, true, 0, 0, 0, Nothing(), false);
+        UNIT_ASSERT_VALUES_EQUAL(7, f.Read->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(7, f.Read->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, f.Read->GetCounter("LatencyGoodOps", true)->Val());
     }
 

@@ -41,12 +41,15 @@ struct TLatencySliConfig
         bool failed,
         bool validTiming = true) const
     {
+        if (failed) {
+            return ELatencySliResult::Bad;
+        }
         if (!validTiming || quotaDelayUs > elapsedUs) {
             return ELatencySliResult::Unknown;
         }
         for (const auto& row: Thresholds[write]) {
             if (bytes >= row.StartBytes && bytes < row.EndBytes) {
-                return !failed && elapsedUs - quotaDelayUs <= row.ThresholdUs
+                return elapsedUs - quotaDelayUs <= row.ThresholdUs
                            ? ELatencySliResult::Good
                            : ELatencySliResult::Bad;
             }
