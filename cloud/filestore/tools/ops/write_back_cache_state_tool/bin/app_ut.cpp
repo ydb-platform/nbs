@@ -153,6 +153,8 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateToolAppTest)
 
         NProto::TStateFileDump parsed;
         ReadJson(json, parsed);
+        UNIT_ASSERT(!parsed.HasActualMetadataChecksum());
+        UNIT_ASSERT(!parsed.GetEntries(0).HasActualDataChecksum());
         UNIT_ASSERT_VALUES_EQUAL(
             Max<ui64>(),
             parsed.GetEntries(0).GetWriteDataRequestInfo().GetNodeId());
