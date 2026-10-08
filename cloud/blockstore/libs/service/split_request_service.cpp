@@ -1,5 +1,9 @@
 #include "split_request_service.h"
 
+#include "parallel_quota.h"
+
+#include <util/datetime/cputimer.h>
+
 #include "service.h"
 #include "service_method.h"
 
@@ -173,6 +177,10 @@ private:
     TAdaptiveLock Lock;
     size_t SubResponseReceived = 0;
 
+    TCallContextPtr LatencyContext;
+    TDuration QuotaDelayBefore;
+    TParallelQuota ParallelQuota;
+
 public:
     explicit TCompositeRequest(std::shared_ptr<TRequest> request)
         : Request(std::move(request))
@@ -194,6 +202,11 @@ public:
         }
 
         SubResponses.resize(subRequests.size());
+        if (callContext) {
+            LatencyContext = callContext;
+            QuotaDelayBefore = callContext->GetQuotaDelay();
+            ParallelQuota.Start = GetCycleCount();
+        }
 
         // Acquire the future before subscribing to sub-request callbacks.
         // A sub-request can be completed synchronously and swapped with another
@@ -224,6 +237,11 @@ private:
 
         const bool hasError = HasError(response.GetError());
         TPromise<TResponse> promise;
+        const ui64 completed = LatencyContext ? GetCycleCount() : 0;
+        const auto& throttler = response.GetHeaders().GetThrottler();
+        const ui64 quotaCycles = LatencyContext && throttler.GetQuotaDelay()
+            ? DurationToCyclesSafe(TDuration::MicroSeconds(throttler.GetQuotaDelay()))
+            : 0;
 
         // Access Promise field with lock.
         with_lock (Lock) {
@@ -234,6 +252,10 @@ private:
                 return;
             }
 
+            if (LatencyContext) {
+                ParallelQuota.Add(completed, quotaCycles);
+            }
+
             const bool isLastResponse =
                 SubResponseReceived == SubResponses.size();
 
@@ -241,17 +263,41 @@ private:
                 return;
             }
 
+            if (LatencyContext) {
+                const auto quotaCycles = ParallelQuota.GetDelay();
+                if (isLastResponse && quotaCycles) {
+                    LatencyContext->SetQuotaDelay(QuotaDelayBefore +
+                        CyclesToDurationSafe(*quotaCycles));
+                } else {
+                    // Early failure has no complete fork/join timing.
+                    LatencyContext->SetQuotaDelayUnknown();
+                }
+            }
             promise.Swap(Promise);
         }
         // Reply to client without lock.
 
-        if constexpr (TBlockStoreMethodTraits<TRequest>::IsReadRequest()) {
-            promise.SetValue(
-                hasError ? std::move(response)
-                         : MergeReadResponses(SubResponses));
-        } else {
-            promise.SetValue(std::move(response));
+        auto result = [&] {
+            if constexpr (TBlockStoreMethodTraits<TRequest>::IsReadRequest()) {
+                return hasError ? std::move(response) : MergeReadResponses(SubResponses);
+            } else {
+                return std::move(response);
+            }
+        }();
+        if (LatencyContext) {
+            const auto quota = ParallelQuota.GetDelay();
+            if (LatencyContext->GetQuotaDelayUnknown()) {
+                if (result.GetHeaders().GetThrottler().HasQuotaDelay()) {
+                    result.MutableHeaders()->MutableThrottler()->ClearQuotaDelay();
+                }
+            } else if (*quota) {
+                result.MutableHeaders()->MutableThrottler()->SetQuotaDelay(
+                    CyclesToDurationSafe(*quota).MicroSeconds());
+            } else if (result.GetHeaders().GetThrottler().HasQuotaDelay()) {
+                result.MutableHeaders()->MutableThrottler()->SetQuotaDelay(0);
+            }
         }
+        promise.SetValue(std::move(result));
 
         if constexpr (TBlockStoreMethodTraits<TRequest>::IsLocalRequest()) {
             if (hasError) {

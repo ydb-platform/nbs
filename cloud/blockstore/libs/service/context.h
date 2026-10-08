@@ -14,6 +14,12 @@ private:
     TAtomic SilenceRetriableErrors = false;
     TAtomic HasUncountableRejects = false;
 
+    // Throttler delay attributed to the original performance profile of the
+    // disk, as reported by responses. Kept apart from the Postponed stage,
+    // which also contains delays caused by the service itself.
+    TAtomic QuotaDelayMicroSeconds = 0;
+    TAtomic QuotaDelayUnknown = false;
+
 public:
     TCallContext(ui64 requestId = 0);
 
@@ -22,6 +28,23 @@ public:
 
     bool GetHasUncountableRejects() const;
     void SetHasUncountableRejects();
+
+    TDuration GetQuotaDelay() const;
+    void SetQuotaDelay(TDuration d);
+
+    // Set when some throttler delay was reported without its quota part.
+    bool GetQuotaDelayUnknown() const;
+
+    void SetQuotaDelayUnknown()
+    {
+        AtomicSet(QuotaDelayUnknown, true);
+    }
+
+    // Accounts the throttler info of one response. quotaDelay is Nothing()
+    // when the response did not carry it.
+    void AccountThrottlerQuota(
+        TMaybe<TDuration> quotaDelay,
+        TDuration throttlerDelay);
 };
 
 ////////////////////////////////////////////////////////////////////////////////

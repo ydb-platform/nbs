@@ -57,14 +57,15 @@ struct TFixture
             ->GetSubgroup("volume", "disk")->GetSubgroup("instance", "instance")
             ->GetSubgroup("cloud", "")->GetSubgroup("folder", "")
             ->GetSubgroup("type", "ssd_nonrepl");
-        Read = group->GetSubgroup("request", "ReadBlocks");
-        Write = group->GetSubgroup("request", "WriteBlocks");
+        Read = group;
+        Write = group;
     }
 
     void Complete(ui64 elapsedUs, ui64 postponedUs = 0, ui32 error = S_OK,
                   bool write = false, ui64 bytes = 4096, bool cell = false,
                   bool valid = true, ui64 backoff = 0, ui64 shaping = 0,
-                  ui64 originalBytes = 0)
+                  ui64 originalBytes = 0, TMaybe<ui64> quotaUs = Nothing(),
+                  bool quotaKnown = true)
     {
         TMetricRequest metric{write ? EBlockStoreRequest::WriteBlocksLocal
                                     : EBlockStoreRequest::ReadBlocksLocal};
@@ -81,6 +82,10 @@ struct TFixture
         ctx->SetResponseSentCycles(valid ? start + DurationToCyclesSafe(
             TDuration::MicroSeconds(elapsedUs)) : 0);
         ctx->AddTime(EProcessingStage::Postponed, TDuration::MicroSeconds(postponedUs));
+        ctx->AccountThrottlerQuota(
+            quotaKnown ? TMaybe<TDuration>(TDuration::MicroSeconds(
+                quotaUs.GetOrElse(postponedUs))) : Nothing(),
+            TDuration::MicroSeconds(postponedUs));
         ctx->AddTime(EProcessingStage::Backoff, TDuration::MicroSeconds(backoff));
         ctx->AddTime(EProcessingStage::Shaping, TDuration::MicroSeconds(shaping));
         ctx->SetSilenceRetriableErrors(true);
@@ -141,10 +146,10 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         f.Complete(1500, 0, S_OK, false, 4096, false, true, 600, 600);
         f.Complete(1500, 0, S_OK, true);
         f.Complete(500, 0, S_OK, false, 4096, true); // forwarded cell
-        UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, f.Read->GetCounter("LatencyGoodOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyBadOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(4, f.Read->GetCounter("LatencyTotalOps", true)->Val());
-        UNIT_ASSERT_VALUES_EQUAL(1, f.Write->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(5, f.Read->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, f.Write->GetCounter("LatencyGoodOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldUseOriginalUnalignedLengthWithoutChangingLegacyBytes)
@@ -169,6 +174,20 @@ Y_UNIT_TEST_SUITE(TLatencySliTest)
         UNIT_ASSERT_VALUES_EQUAL(4, f.Read->GetCounter("LatencyTotalOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(3, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
         UNIT_ASSERT_VALUES_EQUAL(0, f.Read->GetCounter("LatencyGoodOps", true)->Val());
+    }
+
+    Y_UNIT_TEST(ShouldSubtractQuotaOnlyAndReportMissingAttribution)
+    {
+        TFixture f;
+        f.Complete(2000, 1500, S_OK, false, 4096, false, true, 0, 0, 0, 500);
+        f.Complete(2000, 1500, S_OK, true, 4096, false, true, 0, 0, 0, 1500);
+        f.Complete(2000, 1500, S_OK, false, 4096, false, true, 0, 0, 0, Nothing(), false);
+        // Known zero quota wait must not be confused with missing attribution.
+        f.Complete(2000, 1500, S_OK, false, 4096, false, true, 0, 0, 0, 0);
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyGoodOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(2, f.Read->GetCounter("LatencyBadOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(3, f.Read->GetCounter("LatencyTotalOps", true)->Val());
+        UNIT_ASSERT_VALUES_EQUAL(1, f.Read->GetCounter("LatencyUnknownOps", true)->Val());
     }
 
     Y_UNIT_TEST(ShouldBeDisabledByDefaultAndLeaveClientStatsUsable)

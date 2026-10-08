@@ -1,4 +1,8 @@
 #include "split_request_service.h"
+#include "parallel_quota.h"
+#include "request_helpers.h"
+
+#include <util/system/datetime.h>
 
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
@@ -837,6 +841,54 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             FormatError(result.GetError()));
     }
 
+    Y_UNIT_TEST(ShouldAggregateParallelQuotaAtOriginalCompletion)
+    {
+        for (bool failEarly: {false, true}) {
+            TTestEnvironment env;
+            env.MountVolume();
+            auto context = MakeIntrusive<TCallContext>();
+            context->SetQuotaDelay(TDuration::MilliSeconds(5));
+            auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+            env.SetupRequest(request, TBlockRange64::WithLength(1, 10),
+                "aabbccddeeffgghhjjkk");
+            auto future = env.SplitRequestService->WriteBlocks(context, request);
+            auto* first = env.Storage->WriteBlocksPromises.FindPtr(
+                TBlockRange64::WithLength(1, 5));
+            auto* second = env.Storage->WriteBlocksPromises.FindPtr(
+                TBlockRange64::WithLength(6, 5));
+            UNIT_ASSERT(first && second);
+            Sleep(TDuration::MilliSeconds(100));
+            const auto complete = [&](auto* part, ui64 quotaMs, bool failed) {
+                NProto::TWriteBlocksResponse response;
+                auto& throttler = *response.MutableHeaders()->MutableThrottler();
+                throttler.SetQuotaDelay(quotaMs * 1000);
+                AccountThrottlerQuota(*context, throttler,
+                    TDuration::MilliSeconds(quotaMs));
+                if (failed) {
+                    *response.MutableError() = MakeError(E_REJECTED);
+                }
+                part->Promise.SetValue(std::move(response));
+            };
+            complete(first, 80, failEarly);
+            if (failEarly) {
+                UNIT_ASSERT(future.HasValue());
+                UNIT_ASSERT(context->GetQuotaDelayUnknown());
+            }
+            complete(second, 30, false);
+            const auto& response = future.GetValueSync();
+            if (!failEarly) {
+                UNIT_ASSERT(!context->GetQuotaDelayUnknown());
+                UNIT_ASSERT(context->GetQuotaDelay().MicroSeconds() >= 34998 &&
+                    context->GetQuotaDelay().MicroSeconds() <= 35002);
+                UNIT_ASSERT(response.GetHeaders().GetThrottler().GetQuotaDelay() >= 29998 &&
+                    response.GetHeaders().GetThrottler().GetQuotaDelay() <= 30002);
+            } else {
+                UNIT_ASSERT_VALUES_EQUAL(E_REJECTED, response.GetError().GetCode());
+                UNIT_ASSERT(!response.GetHeaders().GetThrottler().HasQuotaDelay());
+            }
+        }
+    }
+
     Y_UNIT_TEST(ShouldForwardRequestIfSplittingIsNotRequired)
     {
         TTestEnvironment env;
@@ -982,6 +1034,39 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
                 FormatError(result.GetError()));
 
         }
+    }
+}
+
+Y_UNIT_TEST_SUITE(TParallelQuotaTest)
+{
+    Y_UNIT_TEST(ShouldChooseLatestQuotaFreeCompletionInEitherOrder)
+    {
+        for (bool reverse: {false, true}) {
+            TParallelQuota q{.Start = 100};
+            q.Add(reverse ? 118 : 120, reverse ? 0 : 10);
+            q.Add(reverse ? 120 : 118, reverse ? 10 : 0);
+            UNIT_ASSERT_VALUES_EQUAL(2, *q.GetDelay());
+        }
+    }
+
+    Y_UNIT_TEST(ShouldNotSumOverlappingWaits)
+    {
+        TParallelQuota q{.Start = 100};
+        q.Add(120, 10);
+        q.Add(119, 10);
+        UNIT_ASSERT_VALUES_EQUAL(10, *q.GetDelay());
+        q.Add(121, 0);
+        UNIT_ASSERT_VALUES_EQUAL(0, *q.GetDelay());
+    }
+
+    Y_UNIT_TEST(ShouldRejectImpossibleTiming)
+    {
+        TParallelQuota q{.Start = 100};
+        q.Add(110, 11);
+        UNIT_ASSERT(!q.GetDelay());
+        TParallelQuota backwards{.Start = 100};
+        backwards.Add(99, 0);
+        UNIT_ASSERT(!backwards.GetDelay());
     }
 }
 

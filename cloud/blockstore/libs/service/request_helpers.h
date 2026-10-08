@@ -7,6 +7,7 @@
 
 #include <cloud/storage/core/libs/common/helpers.h>
 #include <cloud/storage/core/libs/common/random.h>
+#include <cloud/storage/core/protos/throttler.pb.h>
 
 #include <util/generic/string.h>
 #include <util/stream/output.h>
@@ -387,5 +388,18 @@ consteval bool ShouldBeThrottled()
 {
     return IsReadWriteRequest(GetBlockStoreRequest<T>());
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Accounts the quota part of throttlerDelay reported in a response header.
+void AccountThrottlerQuota(
+    TCallContext& callContext,
+    const NCloud::NProto::TThrottlerInfo& throttler,
+    TDuration throttlerDelay);
+
+// Reports the quota delay accounted in callContext in a response header.
+void FillThrottlerQuota(
+    const TCallContext& callContext,
+    NCloud::NProto::TThrottlerInfo& throttler);
 
 }   // namespace NCloud::NBlockStore

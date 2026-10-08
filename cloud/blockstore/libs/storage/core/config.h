@@ -362,6 +362,7 @@ public:
     [[nodiscard]] ui32 GetFreshByteCountHardLimitSSD() const;
     ui64 GetFreshLogicalBlocksByteCountHardLimit() const;
     bool GetDiskSpaceScoreThrottlingEnabled() const;
+    bool GetQuotaDelayAccountingEnabled() const;
 
     TDuration GetStatsUploadInterval() const;
 

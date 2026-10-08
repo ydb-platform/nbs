@@ -16,7 +16,7 @@ private:
         NMonitoring::TDynamicCounters::TCounterPtr Total;
         NMonitoring::TDynamicCounters::TCounterPtr Unknown;
     };
-    std::array<TCounters, 2> Counters;
+    TCounters Counters;
 
 public:
     TLatencySliCounters(
@@ -24,15 +24,11 @@ public:
         NMonitoring::TDynamicCounters& group)
         : Config(std::move(config))
     {
-        for (size_t write = 0; write < Counters.size(); ++write) {
-            auto request = group.GetSubgroup(
-                "request", write ? "WriteBlocks" : "ReadBlocks");
-            Counters[write] = {
-                request->GetCounter("LatencyGoodOps", true),
-                request->GetCounter("LatencyBadOps", true),
-                request->GetCounter("LatencyTotalOps", true),
-                request->GetCounter("LatencyUnknownOps", true)};
-        }
+        Counters = {
+            group.GetCounter("LatencyGoodOps", true),
+            group.GetCounter("LatencyBadOps", true),
+            group.GetCounter("LatencyTotalOps", true),
+            group.GetCounter("LatencyUnknownOps", true)};
     }
 
     const TLatencySliConfig& GetConfig() const
@@ -40,9 +36,9 @@ public:
         return Config;
     }
 
-    void Add(bool write, ui64 good, ui64 bad, ui64 unknown)
+    void Add(ui64 good, ui64 bad, ui64 unknown)
     {
-        auto& c = Counters[write];
+        auto& c = Counters;
         if (good) {
             c.Good->Add(good);
         }
@@ -61,13 +57,13 @@ public:
         bool write,
         ui64 bytes,
         ui64 elapsedUs,
-        ui64 postponedUs,
+        ui64 quotaDelayUs,
         bool failed,
         bool validTiming)
     {
         const auto result = Config.Classify(
-            write, bytes, elapsedUs, postponedUs, failed, validTiming);
-        Add(write, result == ELatencySliResult::Good,
+            write, bytes, elapsedUs, quotaDelayUs, failed, validTiming);
+        Add(result == ELatencySliResult::Good,
             result == ELatencySliResult::Bad,
             result == ELatencySliResult::Unknown);
     }
