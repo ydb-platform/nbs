@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"fmt"
 
-	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
@@ -18,7 +17,7 @@ import (
 const (
 	keySize = 32
 
-	keyIDMetadataKey        = "Key-Id"
+	kekIDMetadataKey        = "Key-Id"
 	encryptedDEKMetadataKey = "Encrypted-Dek"
 )
 
@@ -81,26 +80,15 @@ func (s *S3) NewEncryptedDEK() ([]byte, error) {
 		return nil, errors.NewRetriableError(err)
 	}
 
-	return seal(s.kek, dek, []byte(s.kekID))
+	return encrypt(s.kek, dek, []byte(s.kekID))
 }
 
-func (s *S3) EnsureEncryptedDEK(
-	ctx context.Context,
-	execCtx tasks.ExecutionContext,
-	encryptedDEK *[]byte,
-) error {
-
-	if len(*encryptedDEK) != 0 {
-		return nil
+func (s *S3) EnsureEncryptedDEK(encryptedDEK []byte) ([]byte, error) {
+	if len(encryptedDEK) != 0 {
+		return encryptedDEK, nil
 	}
 
-	dek, err := s.NewEncryptedDEK()
-	if err != nil {
-		return err
-	}
-
-	*encryptedDEK = dek
-	return execCtx.SaveState(ctx)
+	return s.NewEncryptedDEK()
 }
 
 func (s *S3) PutObject(
@@ -110,12 +98,12 @@ func (s *S3) PutObject(
 	object persistence.S3Object,
 ) error {
 
-	dek, err := s.openDEK(encryptedDEK)
+	dek, err := s.decryptDEK(encryptedDEK)
 	if err != nil {
 		return err
 	}
 
-	data, err := seal(dek, object.Data, []byte(key))
+	data, err := encrypt(dek, object.Data, []byte(key))
 	if err != nil {
 		return err
 	}
@@ -128,7 +116,7 @@ func (s *S3) PutObject(
 	}
 
 	kekID := s.kekID
-	metadata[keyIDMetadataKey] = &kekID
+	metadata[kekIDMetadataKey] = &kekID
 	encodedDEK := base64.StdEncoding.EncodeToString(encryptedDEK)
 	metadata[encryptedDEKMetadataKey] = &encodedDEK
 
@@ -149,7 +137,7 @@ func (s *S3) GetObject(
 		return persistence.S3Object{}, err
 	}
 
-	kekID := object.Metadata[keyIDMetadataKey]
+	kekID := object.Metadata[kekIDMetadataKey]
 	if kekID == nil || *kekID != s.kekID {
 		return persistence.S3Object{}, errors.NewNonRetriableErrorf(
 			"object %v is not encrypted by kek %v",
@@ -171,18 +159,18 @@ func (s *S3) GetObject(
 		return persistence.S3Object{}, errors.NewNonRetriableError(err)
 	}
 
-	dek, err := s.openDEK(encryptedDEK)
+	dek, err := s.decryptDEK(encryptedDEK)
 	if err != nil {
 		return persistence.S3Object{}, err
 	}
 
-	object.Data, err = open(dek, object.Data, []byte(key))
+	object.Data, err = decrypt(dek, object.Data, []byte(key))
 	if err != nil {
 		return persistence.S3Object{}, err
 	}
 
 	// PutObject added these. The caller stored only its own fields.
-	delete(object.Metadata, keyIDMetadataKey)
+	delete(object.Metadata, kekIDMetadataKey)
 	delete(object.Metadata, encryptedDEKMetadataKey)
 	return object, nil
 }

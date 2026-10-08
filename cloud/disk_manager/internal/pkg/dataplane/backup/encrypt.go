@@ -24,7 +24,7 @@ func newAEAD(key []byte) (cipher.AEAD, error) {
 	return aead, nil
 }
 
-func seal(
+func encrypt(
 	aead cipher.AEAD,
 	plaintext []byte,
 	additionalData []byte,
@@ -40,7 +40,7 @@ func seal(
 	return append(iv, sealed...), nil
 }
 
-func open(
+func decrypt(
 	aead cipher.AEAD,
 	ciphertext []byte,
 	additionalData []byte,
@@ -63,8 +63,8 @@ func open(
 	return plaintext, nil
 }
 
-func (s *S3) openDEK(encryptedDEK []byte) (cipher.AEAD, error) {
-	dek, err := open(s.kek, encryptedDEK, []byte(s.kekID))
+func (s *S3) decryptDEK(encryptedDEK []byte) (cipher.AEAD, error) {
+	dek, err := decrypt(s.kek, encryptedDEK, []byte(s.kekID))
 	if err != nil {
 		return nil, err
 	}
@@ -73,6 +73,6 @@ func (s *S3) openDEK(encryptedDEK []byte) (cipher.AEAD, error) {
 }
 
 func (s *S3) CheckEncryptedDEK(encryptedDEK []byte) error {
-	_, err := s.openDEK(encryptedDEK)
+	_, err := s.decryptDEK(encryptedDEK)
 	return err
 }
