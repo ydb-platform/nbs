@@ -646,6 +646,16 @@ NCloud::NProto::TError ValidatePatch(
         }
 
         if (retainedEntries.Contains(i) && !newEntry.GetFreeFlag() &&
+            newEntry.GetTag() >
+                static_cast<ui32>(ECachedWriteDataRequestTag::Max))
+        {
+            return MakeArgumentError(Sprintf(
+                "Invalid write request tag %u at entry position %lu",
+                newEntry.GetTag(),
+                newEntry.GetEntryPos()));
+        }
+
+        if (retainedEntries.Contains(i) && !newEntry.GetFreeFlag() &&
             newEntry.HasWriteDataRequestMetadata())
         {
             const auto& request = newEntry.GetWriteDataRequestMetadata();

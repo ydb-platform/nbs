@@ -1657,6 +1657,9 @@ Y_UNIT_TEST_SUITE(TStateFileEditorTest)
             [](auto& state) { state.MutableEntries(0)->SetTag(Max<ui32>()); },
             "exceeds the maximal value");
         check(
+            [](auto& state) { state.MutableEntries(0)->SetTag(3); },
+            "Invalid write request tag");
+        check(
             [](auto& state)
             {
                 auto* requestInfo =
