@@ -24,7 +24,6 @@ void WriteJson(const T& proto, IOutputStream& output)
 {
     google::protobuf::util::JsonPrintOptions options;
     options.add_whitespace = true;
-    options.always_print_primitive_fields = true;
     options.preserve_proto_field_names = true;
 
     TString json;
