@@ -158,7 +158,7 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TEndpointStatsTest)
 {
-    Y_UNIT_TEST_F(ShouldConsumeDumpedErrorsOncePerDirection, TFixture)
+    Y_UNIT_TEST_F(ShouldConsumeDumpedStatsOncePerDirection, TFixture)
     {
         TEndpointStats stats{ClientId, DiskId, ServerStats};
 
@@ -190,6 +190,13 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
         current.Requests[1].Errors = 1 + 1;   // disk + encrypt
         current.EncryptorErrors = 2 + 1;
 
+        // At 100 cycles/ms, the low-range bucket midpoints below produce
+        // read durations of 1000/1200us and write durations of 1100/1200us.
+        completeStats.SimpleStats.Times[0].Increment(100, 3);
+        completeStats.SimpleStats.Times[0].Increment(120, 1);
+        completeStats.SimpleStats.Times[1].Increment(110, 2);
+        completeStats.SimpleStats.Times[1].Increment(120, 1);
+
         auto dump = [&]
         {
             TStringStream stream;
@@ -198,7 +205,7 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
                 previousStats,
                 1s,
                 stream,
-                1'000'000);
+                100);
             NJson::TJsonValue value;
             NJson::ReadJsonTree(stream.Str(), &value, true);
             UNIT_ASSERT(value.Has("encryptor_errors"));
@@ -226,6 +233,9 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
                     UNIT_ASSERT_VALUES_EQUAL(
                         current.Requests[kind].Errors,
                         request->GetCounter("Errors", true)->Val());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        kind == 0 ? 4200 : 3400,
+                        request->GetCounter("Time", true)->Val());
                 }
             }
         };
@@ -237,6 +247,12 @@ Y_UNIT_TEST_SUITE(TEndpointStatsTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 3,
                 value["encryptor_errors"].GetUInteger());
+            UNIT_ASSERT_VALUES_EQUAL(
+                1000,
+                value["read"]["times"][0][0].GetUInteger());
+            UNIT_ASSERT_VALUES_EQUAL(
+                3,
+                value["read"]["times"][0][1].GetUInteger());
             consume(value);
         }
 

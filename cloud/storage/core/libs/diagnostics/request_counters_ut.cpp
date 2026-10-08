@@ -351,6 +351,92 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             final->Lanes[ReadRequestType].IntegralUs, 4'000'000);
     }
 
+    Y_UNIT_TEST(ShouldAccumulateBatchRequestTimeAndNotifySubscribers)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters();
+        counters.Register(*monitoring->GetCounters());
+
+        auto subscriberGroup =
+            monitoring->GetCounters()->GetSubgroup("source", "subscriber");
+        auto subscriber = MakeRequestCountersPtr();
+        subscriber->Register(*subscriberGroup);
+        counters.Subscribe(subscriber);
+
+        auto checkTime = [&](ui64 expectedCount, ui64 expectedTimeUs)
+        {
+            for (const auto& group:
+                 {monitoring->GetCounters(), subscriberGroup})
+            {
+                auto read = group->GetSubgroup("request", "ReadBlocks");
+                auto write = group->GetSubgroup("request", "WriteBlocks");
+                UNIT_ASSERT_VALUES_EQUAL(
+                    read->GetCounter("Count", true)->Val(),
+                    expectedCount);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    read->GetCounter("Time", true)->Val(),
+                    expectedTimeUs);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    write->GetCounter("Count", true)->Val(),
+                    0);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    write->GetCounter("Time", true)->Val(),
+                    0);
+            }
+        };
+
+        TVector<TRequestCounters::TTimeBucket> timeHist{
+            {TDuration::MicroSeconds(100), 3},
+            {TDuration::MicroSeconds(250), 2}};
+        counters.BatchCompleted(ReadRequestType, 5, 20_KB, 0, timeHist, {});
+        checkTime(5, 800);
+
+        TVector<TRequestCounters::TTimeBucket> nextTimeHist{
+            {TDuration::MicroSeconds(50), 4}};
+        counters.BatchCompleted(ReadRequestType, 4, 16_KB, 0, nextTimeHist, {});
+        checkTime(9, 1'000);
+    }
+
+    Y_UNIT_TEST(ShouldIgnoreEmptyAndZeroTimeBucketsInBatchRequestTime)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters();
+        counters.Register(*monitoring->GetCounters());
+        auto read =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+
+        TVector<TRequestCounters::TTimeBucket> timeHist{
+            {TDuration::MicroSeconds(7), 2},
+            {TDuration::Zero(), 4},
+            {TDuration::MicroSeconds(999), 0}};
+        counters.BatchCompleted(ReadRequestType, 6, 24_KB, 0, timeHist, {});
+        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Time", true)->Val(), 14);
+        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Count", true)->Val(), 6);
+
+        counters.BatchCompleted(ReadRequestType, 0, 0, 0, {}, {});
+        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Time", true)->Val(), 14);
+        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Count", true)->Val(), 6);
+    }
+
+    Y_UNIT_TEST(ShouldAccumulateBatchRequestTimeBeyond32Bits)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters();
+        counters.Register(*monitoring->GetCounters());
+        auto write =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+
+        TVector<TRequestCounters::TTimeBucket> timeHist{
+            {TDuration::Seconds(1), 5'000}};
+        counters.BatchCompleted(WriteRequestType, 5'000, 0, 0, timeHist, {});
+        UNIT_ASSERT_VALUES_EQUAL(
+            write->GetCounter("Time", true)->Val(),
+            5'000'000'000ULL);
+        UNIT_ASSERT_VALUES_EQUAL(
+            write->GetCounter("Count", true)->Val(),
+            5'000);
+    }
+
     Y_UNIT_TEST(ShouldTrackRequestsInProgress)
     {
         auto monitoring = CreateMonitoringServiceStub();

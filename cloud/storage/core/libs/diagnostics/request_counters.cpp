@@ -774,7 +774,7 @@ struct TRequestCounters::TStatCounters
         Errors->Add(errors);
 
         for (auto [dt, count]: timeHist) {
-            Time->Add(dt.MicroSeconds());
+            Time->Add(dt.MicroSeconds() * count);
             TimeHist.Increment(dt, count);
             MaxTimeCalc.Add(dt.MicroSeconds());
         }
