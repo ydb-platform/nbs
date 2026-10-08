@@ -574,6 +574,10 @@ NCloud::NProto::TError ValidatePatch(
     const NProto::TStateFileDump& newState,
     const IFileRingBufferDataProcessor& dataProcessor)
 {
+    if (!newState.IsInitialized()) {
+        return MakeArgumentError("Patch is missing required fields");
+    }
+
     if (curState.GetChecksum() != newState.GetChecksum()) {
         return MakeInvalidStateError(Sprintf(
             "State file checksum mismatch (cur: %u, new: %u)",
