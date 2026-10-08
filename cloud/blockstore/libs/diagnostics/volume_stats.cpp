@@ -254,7 +254,6 @@ class TVolumeInfo final
 private:
     const std::shared_ptr<TVolumeInfoBase> VolumeBase;
     const TRealInstanceId RealInstanceId;
-    const bool ReportZeroBlocksMetrics;
 
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
@@ -321,16 +320,14 @@ private:
 
 public:
     TVolumeInfo(
-            std::shared_ptr<TVolumeInfoBase> volumeBase,
-            ITimerPtr timer,
-            TRealInstanceId realInstanceId,
-            EHistogramCounterOptions histogramCounterOptions,
-            const TVector<TSizeInterval>& executionTimeSizeClasses,
-            bool reportZeroBlocksMetrics,
-            TIoDepthClock ioDepthClock)
+        std::shared_ptr<TVolumeInfoBase> volumeBase,
+        ITimerPtr timer,
+        TRealInstanceId realInstanceId,
+        EHistogramCounterOptions histogramCounterOptions,
+        const TVector<TSizeInterval>& executionTimeSizeClasses,
+        TIoDepthClock ioDepthClock)
         : VolumeBase(std::move(volumeBase))
         , RealInstanceId(std::move(realInstanceId))
-        , ReportZeroBlocksMetrics(reportZeroBlocksMetrics)
         , RequestCounters(MakeRequestCounters(
               std::move(timer),
               GetRequestCountersOptions(*VolumeBase),
@@ -358,41 +355,6 @@ public:
     std::optional<TIoDepthSnapshot> GetIoDepthSnapshot() override
     {
         return RequestCounters.GetIoDepthSnapshot();
-    }
-
-    std::optional<TVolumeIoDepthSnapshot> GetIoDepthByDirection() override
-    {
-        const auto snapshot = RequestCounters.GetIoDepthSnapshot();
-        if (!snapshot) {
-            return std::nullopt;
-        }
-
-        auto lane = [&](EBlockStoreRequest type)
-        {
-            return snapshot->Lanes[static_cast<ui32>(type)];
-        };
-        TVolumeIoDepthSnapshot result{
-            .Generation = snapshot->Generation,
-            .TimestampNs = snapshot->TimestampNs,
-            .Continuous = snapshot->Continuous,
-            .Read = lane(EBlockStoreRequest::ReadBlocks),
-            .Write = lane(EBlockStoreRequest::WriteBlocks)};
-
-        if (ReportZeroBlocksMetrics) {
-            const auto zero = lane(EBlockStoreRequest::ZeroBlocks);
-            const auto max = std::numeric_limits<ui64>::max();
-            if (zero.Current > max - result.Write.Current ||
-                zero.IntegralUs > max - result.Write.IntegralUs)
-            {
-                result.Continuous = false;
-                result.Write = {};
-            } else {
-                result.Write.Current += zero.Current;
-                result.Write.IntegralUs += zero.IntegralUs;
-            }
-        }
-
-        return result;
     }
 
     void SetServingCellHost(
@@ -698,12 +660,12 @@ private:
 
 public:
     TVolumeStats(
-            IMonitoringServicePtr monitoring,
-            TDuration inactiveClientsTimeout,
-            TDiagnosticsConfigPtr diagnosticsConfig,
-            EVolumeStatsType type,
-            ITimerPtr timer,
-            TIoDepthClock ioDepthClock)
+        IMonitoringServicePtr monitoring,
+        TDuration inactiveClientsTimeout,
+        TDiagnosticsConfigPtr diagnosticsConfig,
+        EVolumeStatsType type,
+        ITimerPtr timer,
+        TIoDepthClock ioDepthClock)
         : Monitoring(std::move(monitoring))
         , InactiveClientsTimeout(inactiveClientsTimeout)
         , DiagnosticsConfig(std::move(diagnosticsConfig))
@@ -1286,17 +1248,12 @@ private:
         TVolumeBasePtr volumeBase,
         const TRealInstanceId& realInstanceId)
     {
-        const bool reportZeroBlocksMetrics =
-            !DiagnosticsConfig
-                 ->GetSkipReportingZeroBlocksMetricsForYDBBasedDisks() ||
-            IsDiskRegistryMediaKind(volumeBase->Volume.GetStorageMediaKind());
         auto info = std::make_shared<TVolumeInfo>(
             volumeBase,
             Timer,
             realInstanceId,
             DiagnosticsConfig->GetHistogramCounterOptions(),
             ExecutionTimeSizeClasses,
-            reportZeroBlocksMetrics,
             IoDepthClock);
 
         if (!Counters) {
@@ -1346,6 +1303,10 @@ private:
         info->HealthySecondsCounter =
             availabilityCountersGroup->GetCounter("HealthySeconds", true);
 
+        auto reportZeroBlocksMetrics =
+            !DiagnosticsConfig
+                 ->GetSkipReportingZeroBlocksMetricsForYDBBasedDisks() ||
+            IsDiskRegistryMediaKind(volumeConfig.GetStorageMediaKind());
         NUserCounter::RegisterServerVolumeInstance(
             *UserCounters,
             volumeConfig.GetCloudId(),

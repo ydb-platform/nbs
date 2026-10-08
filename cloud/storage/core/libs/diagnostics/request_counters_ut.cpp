@@ -130,7 +130,8 @@ auto MakeRequestCounters(TRequestCountersOptions options = {})
         IsStartEndpointRequest,
         options.Options,
         options.HistogramCounterOptions,
-        options.ExecutionTimeSizeClasses, std::move(options.IoDepthClock));
+        options.ExecutionTimeSizeClasses,
+        std::move(options.IoDepthClock));
 }
 
 auto MakeRequestCountersPtr(TRequestCountersOptions options = {})
@@ -143,7 +144,8 @@ auto MakeRequestCountersPtr(TRequestCountersOptions options = {})
         IsStartEndpointRequest,
         options.Options,
         options.HistogramCounterOptions,
-        options.ExecutionTimeSizeClasses, std::move(options.IoDepthClock));
+        options.ExecutionTimeSizeClasses,
+        std::move(options.IoDepthClock));
 }
 
 }   // namespace
@@ -180,14 +182,16 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         counters.UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("IoDepthCurrent")->Val(), 1);
         UNIT_ASSERT_VALUES_EQUAL(
-            read->GetCounter("IoDepthTimeUs", true)->Val(), 5'000'000);
+            read->GetCounter("IoDepthTimeUs", true)->Val(),
+            5'000'000);
         UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Count", true)->Val(), 0);
         UNIT_ASSERT_VALUES_EQUAL(write->GetCounter("IoDepthCurrent")->Val(), 0);
 
         nowNs = 10'000'000'000ULL;
         counters.UpdateStats(true);
         UNIT_ASSERT_VALUES_EQUAL(
-            read->GetCounter("IoDepthTimeUs", true)->Val(), 10'000'000);
+            read->GetCounter("IoDepthTimeUs", true)->Val(),
+            10'000'000);
 
         counters.RequestCompleted(
             ReadRequestType,
@@ -197,12 +201,16 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             TDuration::Zero(),
             4096,
             EDiagnosticsErrorKind::ErrorFatal,
-            NCloud::NProto::EF_NONE, false, ECalcMaxTime::ENABLE, 0);
+            NCloud::NProto::EF_NONE,
+            false,
+            ECalcMaxTime::ENABLE,
+            0);
         nowNs = 12'000'000'000ULL;
         counters.UpdateStats(false);
         UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("IoDepthCurrent")->Val(), 0);
         UNIT_ASSERT_VALUES_EQUAL(
-            read->GetCounter("IoDepthTimeUs", true)->Val(), 10'000'000);
+            read->GetCounter("IoDepthTimeUs", true)->Val(),
+            10'000'000);
         UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Errors", true)->Val(), 1);
         UNIT_ASSERT(counters.GetIoDepthSnapshot()->Continuous);
     }
@@ -246,7 +254,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         UNIT_ASSERT_VALUES_EQUAL(
             rebound->GetSubgroup("request", "ReadBlocks")
                 ->GetCounter("IoDepthTimeUs", true)
-                ->Val(), 1'000'000);
+                ->Val(),
+            1'000'000);
     }
 
     Y_UNIT_TEST(ShouldTrackIoDepthOncePerSubscriber)
@@ -269,7 +278,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         const auto started = counters->RequestStarted(ReadRequestType, 4096);
         nowNs = 1'000'000'000;
         UNIT_ASSERT_VALUES_EQUAL(
-            counters->GetIoDepthSnapshot()->Lanes[ReadRequestType].Current, 1);
+            counters->GetIoDepthSnapshot()->Lanes[ReadRequestType].Current,
+            1);
         UNIT_ASSERT_VALUES_EQUAL(
             subscriber->GetIoDepthSnapshot()->Lanes[ReadRequestType].Current,
             1);
@@ -281,14 +291,19 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
             TDuration::Zero(),
             4096,
             EDiagnosticsErrorKind::Success,
-            NCloud::NProto::EF_NONE, false, ECalcMaxTime::ENABLE, 0);
+            NCloud::NProto::EF_NONE,
+            false,
+            ECalcMaxTime::ENABLE,
+            0);
         for (const auto& source: {counters, subscriber}) {
             const auto snapshot = source->GetIoDepthSnapshot();
             UNIT_ASSERT(snapshot->Continuous);
             UNIT_ASSERT_VALUES_EQUAL(
-                snapshot->Lanes[ReadRequestType].Current, 0);
+                snapshot->Lanes[ReadRequestType].Current,
+                0);
             UNIT_ASSERT_VALUES_EQUAL(
-                snapshot->Lanes[ReadRequestType].IntegralUs, 1'000'000);
+                snapshot->Lanes[ReadRequestType].IntegralUs,
+                1'000'000);
         }
     }
 
@@ -314,9 +329,11 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         UNIT_ASSERT(afterExternal->Continuous);
         UNIT_ASSERT(first->Generation == afterExternal->Generation);
         UNIT_ASSERT_VALUES_EQUAL(
-            afterExternal->Lanes[ReadRequestType].Current, 1);
+            afterExternal->Lanes[ReadRequestType].Current,
+            1);
         UNIT_ASSERT_VALUES_EQUAL(
-            afterExternal->Lanes[ReadRequestType].IntegralUs, 1'000'000);
+            afterExternal->Lanes[ReadRequestType].IntegralUs,
+            1'000'000);
 
         auto finish = [&](ui64 started)
         {
@@ -328,7 +345,10 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
                 {},
                 4096,
                 EDiagnosticsErrorKind::Success,
-                NCloud::NProto::EF_NONE, false, ECalcMaxTime::ENABLE, 0);
+                NCloud::NProto::EF_NONE,
+                false,
+                ECalcMaxTime::ENABLE,
+                0);
         };
         nowNs = 2'000'000'000;
         finish(firstStarted);
@@ -341,100 +361,16 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         UNIT_ASSERT(first->Generation == fallback->Generation);
         UNIT_ASSERT_VALUES_EQUAL(fallback->Lanes[ReadRequestType].Current, 1);
         UNIT_ASSERT_VALUES_EQUAL(
-            fallback->Lanes[ReadRequestType].IntegralUs, 3'000'000);
+            fallback->Lanes[ReadRequestType].IntegralUs,
+            3'000'000);
         nowNs = 5'000'000'000;
         finish(fallbackStarted);
         const auto final = counters.GetIoDepthSnapshot();
         UNIT_ASSERT(final->Continuous);
         UNIT_ASSERT_VALUES_EQUAL(final->Lanes[ReadRequestType].Current, 0);
         UNIT_ASSERT_VALUES_EQUAL(
-            final->Lanes[ReadRequestType].IntegralUs, 4'000'000);
-    }
-
-    Y_UNIT_TEST(ShouldAccumulateBatchRequestTimeAndNotifySubscribers)
-    {
-        auto monitoring = CreateMonitoringServiceStub();
-        auto counters = MakeRequestCounters();
-        counters.Register(*monitoring->GetCounters());
-
-        auto subscriberGroup =
-            monitoring->GetCounters()->GetSubgroup("source", "subscriber");
-        auto subscriber = MakeRequestCountersPtr();
-        subscriber->Register(*subscriberGroup);
-        counters.Subscribe(subscriber);
-
-        auto checkTime = [&](ui64 expectedCount, ui64 expectedTimeUs)
-        {
-            for (const auto& group:
-                 {monitoring->GetCounters(), subscriberGroup})
-            {
-                auto read = group->GetSubgroup("request", "ReadBlocks");
-                auto write = group->GetSubgroup("request", "WriteBlocks");
-                UNIT_ASSERT_VALUES_EQUAL(
-                    read->GetCounter("Count", true)->Val(),
-                    expectedCount);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    read->GetCounter("Time", true)->Val(),
-                    expectedTimeUs);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    write->GetCounter("Count", true)->Val(),
-                    0);
-                UNIT_ASSERT_VALUES_EQUAL(
-                    write->GetCounter("Time", true)->Val(),
-                    0);
-            }
-        };
-
-        TVector<TRequestCounters::TTimeBucket> timeHist{
-            {TDuration::MicroSeconds(100), 3},
-            {TDuration::MicroSeconds(250), 2}};
-        counters.BatchCompleted(ReadRequestType, 5, 20_KB, 0, timeHist, {});
-        checkTime(5, 800);
-
-        TVector<TRequestCounters::TTimeBucket> nextTimeHist{
-            {TDuration::MicroSeconds(50), 4}};
-        counters.BatchCompleted(ReadRequestType, 4, 16_KB, 0, nextTimeHist, {});
-        checkTime(9, 1'000);
-    }
-
-    Y_UNIT_TEST(ShouldIgnoreEmptyAndZeroTimeBucketsInBatchRequestTime)
-    {
-        auto monitoring = CreateMonitoringServiceStub();
-        auto counters = MakeRequestCounters();
-        counters.Register(*monitoring->GetCounters());
-        auto read =
-            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
-
-        TVector<TRequestCounters::TTimeBucket> timeHist{
-            {TDuration::MicroSeconds(7), 2},
-            {TDuration::Zero(), 4},
-            {TDuration::MicroSeconds(999), 0}};
-        counters.BatchCompleted(ReadRequestType, 6, 24_KB, 0, timeHist, {});
-        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Time", true)->Val(), 14);
-        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Count", true)->Val(), 6);
-
-        counters.BatchCompleted(ReadRequestType, 0, 0, 0, {}, {});
-        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Time", true)->Val(), 14);
-        UNIT_ASSERT_VALUES_EQUAL(read->GetCounter("Count", true)->Val(), 6);
-    }
-
-    Y_UNIT_TEST(ShouldAccumulateBatchRequestTimeBeyond32Bits)
-    {
-        auto monitoring = CreateMonitoringServiceStub();
-        auto counters = MakeRequestCounters();
-        counters.Register(*monitoring->GetCounters());
-        auto write =
-            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
-
-        TVector<TRequestCounters::TTimeBucket> timeHist{
-            {TDuration::Seconds(1), 5'000}};
-        counters.BatchCompleted(WriteRequestType, 5'000, 0, 0, timeHist, {});
-        UNIT_ASSERT_VALUES_EQUAL(
-            write->GetCounter("Time", true)->Val(),
-            5'000'000'000ULL);
-        UNIT_ASSERT_VALUES_EQUAL(
-            write->GetCounter("Count", true)->Val(),
-            5'000);
+            final->Lanes[ReadRequestType].IntegralUs,
+            4'000'000);
     }
 
     Y_UNIT_TEST(ShouldTrackRequestsInProgress)

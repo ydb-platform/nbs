@@ -5,18 +5,15 @@
 #include <cloud/blockstore/libs/diagnostics/profile_log.h>
 #include <cloud/blockstore/libs/diagnostics/request_stats.h>
 #include <cloud/blockstore/libs/diagnostics/volume_stats.h>
-#include <cloud/blockstore/vhost-server/stats.h>
 
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
-#include <library/cpp/json/json_reader.h>
 #include <library/cpp/json/json_value.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/size_literals.h>
-#include <util/stream/str.h>
 
 #include <chrono>
 
@@ -63,7 +60,7 @@ struct TVolumeStats
 auto Dump(const TReqStats& stats)
 {
     auto value = NJson::TJsonMap {
-        {"count", stats.Count}, {"bytes", stats.Bytes}, {"errors", stats.Errors}
+        {"count", stats.Count}, {"bytes", stats.Bytes}
     };
 
     auto hist = [] (auto& h) {
@@ -158,146 +155,6 @@ struct TFixture
 
 Y_UNIT_TEST_SUITE(TEndpointStatsTest)
 {
-    Y_UNIT_TEST_F(ShouldConsumeDumpedStatsOncePerDirection, TFixture)
-    {
-        TEndpointStats stats{ClientId, DiskId, ServerStats};
-
-        auto serverCounters = Monitoring->GetCounters()
-                                  ->GetSubgroup("counters", "blockstore")
-                                  ->GetSubgroup("component", "server")
-                                  ->GetSubgroup("type", "ssd_local");
-        auto volumeCounters = Monitoring->GetCounters()
-                                  ->GetSubgroup("counters", "blockstore")
-                                  ->GetSubgroup("component", "server_volume")
-                                  ->GetSubgroup("host", "cluster")
-                                  ->GetSubgroup("volume", DiskId)
-                                  ->GetSubgroup("instance", "instance")
-                                  ->GetSubgroup("cloud", "")
-                                  ->GetSubgroup("folder", "")
-                                  ->GetSubgroup("type", "ssd_local");
-
-        NVHostServer::TCompleteStats completeStats;
-        NVHostServer::TSimpleStats previousStats;
-        auto& current = completeStats.SimpleStats;
-
-        // The directional errors include disk and crypto failures. The
-        // aggregate encryptor_errors field repeats only the crypto subset.
-        current.Requests[0].Count = 4;
-        current.Requests[0].Bytes = 16_KB;
-        current.Requests[0].Errors = 1 + 2;   // disk + decrypt
-        current.Requests[1].Count = 3;
-        current.Requests[1].Bytes = 24_KB;
-        current.Requests[1].Errors = 1 + 1;   // disk + encrypt
-        current.EncryptorErrors = 2 + 1;
-
-        // At 100 cycles/ms, the low-range bucket midpoints below produce
-        // read durations of 1000/1200us and write durations of 1100/1200us.
-        completeStats.SimpleStats.Times[0].Increment(100, 3);
-        completeStats.SimpleStats.Times[0].Increment(120, 1);
-        completeStats.SimpleStats.Times[1].Increment(110, 2);
-        completeStats.SimpleStats.Times[1].Increment(120, 1);
-
-        auto dump = [&]
-        {
-            TStringStream stream;
-            NVHostServer::DumpStats(
-                completeStats,
-                previousStats,
-                1s,
-                stream,
-                100);
-            NJson::TJsonValue value;
-            NJson::ReadJsonTree(stream.Str(), &value, true);
-            UNIT_ASSERT(value.Has("encryptor_errors"));
-            UNIT_ASSERT(!value["read"].Has("encryptor_errors"));
-            UNIT_ASSERT(!value["write"].Has("encryptor_errors"));
-            return value;
-        };
-
-        auto consume = [&](const NJson::TJsonValue& value)
-        {
-            Timer->AdvanceTime(1s);
-            stats.Update(value);
-            ServerStats->UpdateStats(true);
-
-            for (const auto& counters: {serverCounters, volumeCounters}) {
-                for (ui32 kind = 0; kind != 2; ++kind) {
-                    auto request = counters->GetSubgroup(
-                        "request", kind == 0 ? "ReadBlocks" : "WriteBlocks");
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        current.Requests[kind].Count,
-                        request->GetCounter("Count", true)->Val());
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        current.Requests[kind].Bytes,
-                        request->GetCounter("RequestBytes", true)->Val());
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        current.Requests[kind].Errors,
-                        request->GetCounter("Errors", true)->Val());
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        kind == 0 ? 4200 : 3400,
-                        request->GetCounter("Time", true)->Val());
-                }
-            }
-        };
-
-        {
-            const auto value = dump();
-            UNIT_ASSERT_VALUES_EQUAL(3, value["read"]["errors"].GetUInteger());
-            UNIT_ASSERT_VALUES_EQUAL(2, value["write"]["errors"].GetUInteger());
-            UNIT_ASSERT_VALUES_EQUAL(
-                3,
-                value["encryptor_errors"].GetUInteger());
-            UNIT_ASSERT_VALUES_EQUAL(
-                1000,
-                value["read"]["times"][0][0].GetUInteger());
-            UNIT_ASSERT_VALUES_EQUAL(
-                3,
-                value["read"]["times"][0][1].GetUInteger());
-            consume(value);
-        }
-
-        {
-            // DumpStats emits deltas: an unchanged producer must not add
-            // any errors or successful requests to either consumer again.
-            const auto value = dump();
-            for (const auto* kind: {"read", "write"}) {
-                UNIT_ASSERT_VALUES_EQUAL(0, value[kind]["count"].GetUInteger());
-                UNIT_ASSERT_VALUES_EQUAL(0, value[kind]["bytes"].GetUInteger());
-                UNIT_ASSERT_VALUES_EQUAL(
-                    0,
-                    value[kind]["errors"].GetUInteger());
-            }
-            UNIT_ASSERT_VALUES_EQUAL(
-                0,
-                value["encryptor_errors"].GetUInteger());
-            consume(value);
-        }
-
-        {
-            ++current.Requests[0].Errors;
-            ++current.EncryptorErrors;
-            const auto value = dump();
-            UNIT_ASSERT_VALUES_EQUAL(1, value["read"]["errors"].GetUInteger());
-            UNIT_ASSERT_VALUES_EQUAL(0, value["write"]["errors"].GetUInteger());
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                value["encryptor_errors"].GetUInteger());
-            consume(value);
-        }
-
-        {
-            ++current.Requests[1].Errors;
-            ++current.EncryptorErrors;
-            const auto value = dump();
-            UNIT_ASSERT_VALUES_EQUAL(0, value["read"]["errors"].GetUInteger());
-            UNIT_ASSERT_VALUES_EQUAL(1, value["write"]["errors"].GetUInteger());
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                value["encryptor_errors"].GetUInteger());
-            consume(value);
-        }
-    }
-
     Y_UNIT_TEST_F(ShouldCalcMaxValues, TFixture)
     {
         TEndpointStats stats {ClientId, DiskId, ServerStats};

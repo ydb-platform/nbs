@@ -69,19 +69,11 @@ private:
 
     TContLockFreeQueue<TServerResponsePtr> ResponseQueue;
 
-    // Receive and Send run on the same executor. Notify recovery immediately,
-    // but cancel remaining requests only after sending has stopped.
-    std::exception_ptr ReceiveException;
-
     size_t InFlightBytes = 0;
 
     // Requests read from this connection that may still reach or be executing
     // in the backend. Includes requests waiting in Limiter::Acquire.
     std::atomic<size_t> ActiveRequests = 0;
-
-    // Backend completion only enqueues a response. Drain also waits until the
-    // send coroutine has finalized metrics and released connection capacity.
-    std::atomic<bool> SendFinished = false;
 
     std::atomic_flag ShuttingDown = false;
     TPromise<void> DrainResult = NewPromise<void>();
@@ -217,8 +209,7 @@ private:
             if (!IsShuttingDown() && !c->Cancelled()) {
                 STORAGE_INFO("lost connection with client, failed to receive: "
                     << CurrentExceptionMessage());
-                ReceiveException = std::current_exception();
-                Handler->NotifyException(ReceiveException);
+                Handler->ProcessException(std::current_exception());
             }
         }
 
@@ -239,10 +230,11 @@ private:
         TIntrusivePtr<TConnection> holder(this);
 
         TServerResponsePtr response;
-        std::exception_ptr sendException;
         while (ResponseQueue.Dequeue(&response)) {
             if (!response) {
                 // stop signal received
+                Handler->ProcessException(
+                    std::make_exception_ptr(TSystemError(-ESHUTDOWN)));
                 break;
             }
 
@@ -251,8 +243,7 @@ private:
             } catch (...) {
                 STORAGE_INFO("lost connection with client, failed to send: "
                     << CurrentExceptionMessage());
-                sendException = std::current_exception();
-                break;
+                Handler->ProcessException(std::current_exception());
             }
 
             ReleaseRequest(response->RequestBytes);
@@ -260,13 +251,8 @@ private:
         }
 
         ShutDown();
-        Handler->ProcessException(
-            sendException ? sendException
-                          : (ReceiveException ? ReceiveException
-                                              : std::make_exception_ptr(
-                                                    TSystemError(-ESHUTDOWN))));
+        Handler->CancelRequests();
         ReleaseRequest(InFlightBytes);
-        SendFinished.store(true, std::memory_order_seq_cst);
         TryCompleteDrain();
     }
 
@@ -313,21 +299,17 @@ private:
     void CompleteRequest()
     {
         const auto previous =
-            ActiveRequests.fetch_sub(1, std::memory_order_seq_cst);
+            ActiveRequests.fetch_sub(1, std::memory_order_acq_rel);
         Y_ABORT_UNLESS(previous != 0);
 
-        if (previous == 1) {
-            TryCompleteDrain();
+        if (previous == 1 && IsShuttingDown()) {
+            DrainResult.TrySetValue();
         }
     }
 
     void TryCompleteDrain()
     {
-        // A single order across both gates prevents the final backend and Send
-        // from each observing the other gate's old value and missing drain.
-        if (SendFinished.load(std::memory_order_seq_cst) &&
-            ActiveRequests.load(std::memory_order_seq_cst) == 0)
-        {
+        if (ActiveRequests.load(std::memory_order_acquire) == 0) {
             DrainResult.TrySetValue();
         }
     }

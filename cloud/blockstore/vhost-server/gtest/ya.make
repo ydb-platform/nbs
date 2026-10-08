@@ -5,8 +5,6 @@ INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 SRCS(
     ../backend.cpp
     ../backend_aio.cpp
-    ../backend_null.cpp
-    ../backend_rdma.cpp
     ../critical_event.cpp
     ../histogram.cpp
     ../options.cpp
@@ -23,18 +21,13 @@ ADDINCL(
 )
 
 PEERDIR(
-    cloud/blockstore/libs/client
     cloud/blockstore/libs/common
     cloud/blockstore/libs/encryption
     cloud/blockstore/libs/encryption/model
-    cloud/blockstore/libs/rdma
-    cloud/blockstore/libs/service
-    cloud/blockstore/libs/service_local
     cloud/contrib/vhost
 
     cloud/storage/core/libs/common
     cloud/storage/core/libs/diagnostics
-    cloud/storage/core/libs/rdma/impl
     cloud/storage/core/libs/vhost-client
 
     library/cpp/getopt

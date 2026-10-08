@@ -28,9 +28,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-static_assert(
-    VHD_BDEV_READ < 2 && VHD_BDEV_WRITE < 2 && VHD_BDEV_READ != VHD_BDEV_WRITE);
-
 void CompleteRequestImpl(
     TLog& log,
     IEncryptor* encryptor,
@@ -42,6 +39,8 @@ void CompleteRequestImpl(
     const ui64 bytes = bio->total_sectors * VHD_SECTOR_SIZE;
 
     auto& requestStat = stats.Requests[bio->type];
+    requestStat.Errors += status != VHD_BDEV_SUCCESS;
+    requestStat.Count += status == VHD_BDEV_SUCCESS;
     requestStat.Bytes += bytes;
     requestStat.Unaligned += req->Unaligned;
 
@@ -64,14 +63,11 @@ void CompleteRequestImpl(
 
     const TCpuCycles now = GetCycleCount();
 
-    requestStat.Errors += status != VHD_BDEV_SUCCESS;
-    requestStat.Count += status == VHD_BDEV_SUCCESS;
     if (status == VHD_BDEV_SUCCESS) {
         stats.Times[bio->type].Increment(now - req->SubmitTs);
         stats.Sizes[bio->type].Increment(bytes);
     }
 
-    req->FinishIoDepth();
     vhd_complete_bio(req->Io, status);
 }
 
@@ -84,7 +80,6 @@ private:
     TLog Log;
 
     IEncryptorPtr Encryptor;
-    TIoDepthTracker IoDepth;
     TVector<TAioDevice> Devices;
 
     io_context_t Io = {};
@@ -103,8 +98,7 @@ public:
     TAioBackend(
         IEncryptorPtr encryptor,
         ILoggingServicePtr logging,
-        ui64 threadPoolSize,
-        TIoDepthClock ioDepthClock);
+        ui64 threadPoolSize);
 
     vhd_bdev_info Init(const TOptions& options) override;
     void Start() override;
@@ -114,7 +108,6 @@ public:
         vhd_request_queue* queue,
         TSimpleStats& queueStats) override;
     std::optional<TSimpleStats> GetCompletionStats(TDuration timeout) override;
-    std::optional<TIoDepthSnapshot> GetIoDepthStats() override;
 
 private:
     // Dequeue requests from |queue| and start processing them. Returns the
@@ -147,12 +140,10 @@ private:
 TAioBackend::TAioBackend(
     IEncryptorPtr encryptor,
     ILoggingServicePtr logging,
-    ui64 threadPoolSize,
-    TIoDepthClock ioDepthClock)
+    ui64 threadPoolSize)
     : Logging{std::move(logging)}
     , Log(Logging->CreateLog("AIO"))
     , Encryptor(std::move(encryptor))
-    , IoDepth(2, std::move(ioDepthClock))
     , CompletionStats(CreateCompletionStats())
     , ThreadPool(
           threadPoolSize > 0 ? CreateThreadPool("ENCRYPTION", threadPoolSize)
@@ -327,15 +318,6 @@ void TAioBackend::Stop()
 
     io_destroy(Io);
     Devices.clear();
-
-    const auto ioDepth = IoDepth.Snapshot();
-    for (const auto& lane: ioDepth.Lanes) {
-        if (lane.Current) {
-            IoDepth.MarkDiscontinuity();
-            STORAGE_ERROR("AIO depth has unfinished requests after drain");
-            break;
-        }
-    }
 }
 
 void TAioBackend::ProcessQueue(
@@ -410,11 +392,6 @@ std::optional<TSimpleStats> TAioBackend::GetCompletionStats(TDuration timeout)
     return CompletionStats->Get(timeout);
 }
 
-std::optional<TIoDepthSnapshot> TAioBackend::GetIoDepthStats()
-{
-    return IoDepth.Snapshot();
-}
-
 size_t TAioBackend::PrepareBatch(
     vhd_request_queue* queue,
     TVector<iocb*>& batch,
@@ -434,8 +411,7 @@ size_t TAioBackend::PrepareBatch(
             req.io,
             batch,
             now,
-            queueStats,
-            &IoDepth);
+            queueStats);
     }
 
     return batch.size() - initialSize;
@@ -606,14 +582,12 @@ void TAioBackend::CompletionThreadFunc()
 IBackendPtr CreateAioBackend(
     IEncryptorPtr encryptor,
     ILoggingServicePtr logging,
-    ui64 threadPoolSize,
-    TIoDepthClock ioDepthClock)
+    ui64 threadPoolSize)
 {
     return std::make_shared<TAioBackend>(
         std::move(encryptor),
         std::move(logging),
-        threadPoolSize,
-        std::move(ioDepthClock));
+        threadPoolSize);
 }
 
 }   // namespace NCloud::NBlockStore::NVHostServer

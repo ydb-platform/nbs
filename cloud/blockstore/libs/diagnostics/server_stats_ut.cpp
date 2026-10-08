@@ -137,7 +137,10 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         auto monitoring = CreateMonitoringServiceStub();
         auto volumeStats = CreateVolumeStats(
             monitoring,
-            {}, EVolumeStatsType::EServerStats, timer, [&] { return nowNs; });
+            {},
+            EVolumeStatsType::EServerStats,
+            timer,
+            [&] { return nowNs; });
         auto serverStats = CreateServerStats(
             std::make_shared<TTestDumpable>(),
             std::make_shared<TDiagnosticsConfig>(),
@@ -147,7 +150,8 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
                 monitoring->GetCounters(),
                 timer,
                 EHistogramCounterOption::ReportMultipleCounters,
-                {}), volumeStats);
+                {}),
+            volumeStats);
         NProto::TVolume volume;
         volume.SetDiskId("volume");
         volume.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
@@ -157,8 +161,8 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
         serverStats->MountVolume(volume, "client", "instance");
 
         TMetricRequest request{EBlockStoreRequest::ReadBlocks};
-        serverStats->PrepareMetricRequest(
-            request, "client", "volume", 0, 4096, false);
+        serverStats
+            ->PrepareMetricRequest(request, "client", "volume", 0, 4096, false);
         auto context = MakeIntrusive<TCallContext>();
         TLog log;
         serverStats->RequestStarted(log, request, *context);
@@ -183,10 +187,14 @@ Y_UNIT_TEST_SUITE(TServerStatsTest)
                             ->GetSubgroup("request", "ReadBlocks");
         UNIT_ASSERT_VALUES_EQUAL(counters->GetCounter("Count", true)->Val(), 0);
         UNIT_ASSERT_VALUES_EQUAL(
-            counters->GetCounter("IoDepthCurrent")->Val(), 1);
+            counters->GetCounter("IoDepthCurrent")->Val(),
+            1);
 
         serverStats->RequestCompleted(
-            log, request, *context, MakeError(E_REJECTED, "final failure"));
+            log,
+            request,
+            *context,
+            MakeError(E_REJECTED, "final failure"));
         const auto completed = request.VolumeInfo->GetIoDepthSnapshot();
         UNIT_ASSERT(completed->Continuous);
         UNIT_ASSERT_VALUES_EQUAL(completed->Lanes[lane].Current, 0);

@@ -36,15 +36,14 @@ class TIoDepthTracker
     std::unique_ptr<TImpl> Impl;
 
 public:
-    explicit TIoDepthTracker(
-        ui32 laneCount,
-        TIoDepthClock clock = {});
+    explicit TIoDepthTracker(ui32 laneCount, TIoDepthClock clock = {});
 
     ~TIoDepthTracker();
 
     TIoDepthTracker(const TIoDepthTracker&) = delete;
     TIoDepthTracker& operator=(const TIoDepthTracker&) = delete;
 
+    // More than ui32::max active requests invalidates this generation.
     void Started(ui32 lane);
     // Returns false on underflow and permanently invalidates this generation.
     bool Completed(ui32 lane);
@@ -52,7 +51,6 @@ public:
     // Credits pending requests to the observation time without resetting
     // totals.
     TIoDepthSnapshot Snapshot();
-    void MarkDiscontinuity();
 };
 
-} // namespace NCloud
+}   // namespace NCloud

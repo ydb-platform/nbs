@@ -1,5 +1,7 @@
 #include "io_depth_tracker.h"
 
+#include "busy_idle_calculator.h"
+
 #include <library/cpp/int128/int128.h>
 
 #include <util/system/guard.h>
@@ -13,18 +15,38 @@ namespace NCloud {
 
 namespace {
 
+struct TDepthStorage
+{
+    ui128* IntegralNs = nullptr;
+
+    void Register(ui128* integralNs)
+    {
+        IntegralNs = integralNs;
+    }
+
+    void IncrementDepth(ui64 elapsedNs, ui32 depth)
+    {
+        *IntegralNs += ui128(elapsedNs) * ui128(depth);
+    }
+};
+
+using TDepthCalculator =
+    TBusyIdleTimeCalculator<TDepthStorage, true, TIoDepthClock>;
+
 TIoDepthClock MakeIoDepthClock()
 {
     const auto origin = std::chrono::steady_clock::now();
 
-    return [origin] {
+    return [origin]
+    {
         return static_cast<ui64>(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
-                std::chrono::steady_clock::now() - origin).count());
+                std::chrono::steady_clock::now() - origin)
+                .count());
     };
 }
 
-} // namespace
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -32,9 +54,14 @@ struct TIoDepthTracker::TImpl
 {
     struct TLane
     {
-        ui64 Current = 0;
-        ui64 LastNs = 0;
         ui128 IntegralNs = 0;
+        TDepthCalculator Calculator;
+
+        explicit TLane(TIoDepthClock clock)
+            : Calculator(std::move(clock))
+        {
+            Calculator.Register(&IntegralNs);
+        }
     };
 
     TAdaptiveLock Lock;
@@ -42,19 +69,21 @@ struct TIoDepthTracker::TImpl
     const TGUID Generation = TGUID::Create();
     const TIoDepthClock Clock;
 
-    TVector<TLane> Lanes;
+    TVector<std::unique_ptr<TLane>> Lanes;
 
     ui64 LastObservedNs = 0;
     bool Continuous = true;
 
     TImpl(ui32 laneCount, TIoDepthClock clock)
         : Clock(clock ? std::move(clock) : MakeIoDepthClock())
-        , Lanes(laneCount)
     {
         LastObservedNs = Clock();
 
-        for (auto& lane : Lanes) {
-            lane.LastNs = LastObservedNs;
+        Lanes.reserve(laneCount);
+        for (ui32 i = 0; i < laneCount; ++i) {
+            // All calculators use the same observation time under Lock.
+            Lanes.push_back(
+                std::make_unique<TLane>([this] { return LastObservedNs; }));
         }
     }
 
@@ -70,17 +99,9 @@ struct TIoDepthTracker::TImpl
         LastObservedNs = now;
         return now;
     }
-
-    void Advance(TLane& lane, ui64 now)
-    {
-        lane.IntegralNs += ui128(lane.Current) * ui128(now - lane.LastNs);
-        lane.LastNs = now;
-    }
 };
 
-TIoDepthTracker::TIoDepthTracker(
-    ui32 laneCount,
-    TIoDepthClock clock)
+TIoDepthTracker::TIoDepthTracker(ui32 laneCount, TIoDepthClock clock)
     : Impl(std::make_unique<TImpl>(laneCount, std::move(clock)))
 {}
 
@@ -92,16 +113,16 @@ void TIoDepthTracker::Started(ui32 index)
 
     Y_ABORT_UNLESS(index < Impl->Lanes.size());
 
-    auto& lane = Impl->Lanes[index];
+    auto& calculator = Impl->Lanes[index]->Calculator;
+    Impl->ReadNow();
 
-    Impl->Advance(lane, Impl->ReadNow());
-
-    if (lane.Current == std::numeric_limits<ui64>::max()) {
+    if (calculator.GetInflight() == std::numeric_limits<ui32>::max()) {
+        calculator.OnUpdateStats();
         Impl->Continuous = false;
         return;
     }
 
-    ++lane.Current;
+    calculator.OnRequestStarted();
 }
 
 bool TIoDepthTracker::Completed(ui32 index)
@@ -110,15 +131,16 @@ bool TIoDepthTracker::Completed(ui32 index)
 
     Y_ABORT_UNLESS(index < Impl->Lanes.size());
 
-    auto& lane = Impl->Lanes[index];
-    Impl->Advance(lane, Impl->ReadNow());
+    auto& calculator = Impl->Lanes[index]->Calculator;
+    Impl->ReadNow();
 
-    if (!lane.Current) {
+    if (!calculator.GetInflight()) {
+        calculator.OnUpdateStats();
         Impl->Continuous = false;
         return false;
     }
 
-    --lane.Current;
+    calculator.OnRequestCompleted();
     return true;
 }
 
@@ -133,16 +155,17 @@ TIoDepthSnapshot TIoDepthTracker::Snapshot()
     result.TimestampNs = now;
     result.Lanes.reserve(Impl->Lanes.size());
 
-    for (auto& lane : Impl->Lanes) {
-        Impl->Advance(lane, now);
+    for (auto& lane: Impl->Lanes) {
+        lane->Calculator.OnUpdateStats();
 
-        const ui128 integralUs = lane.IntegralNs / ui128(1000);
+        const ui64 current = lane->Calculator.GetInflight();
+        const ui128 integralUs = lane->IntegralNs / ui128(1000);
 
         if (integralUs > ui128(std::numeric_limits<ui64>::max())) {
             Impl->Continuous = false;
-            result.Lanes.push_back({lane.Current, 0});
+            result.Lanes.push_back({current, 0});
         } else {
-            result.Lanes.push_back({lane.Current, static_cast<ui64>(integralUs)});
+            result.Lanes.push_back({current, static_cast<ui64>(integralUs)});
         }
     }
 
@@ -150,17 +173,4 @@ TIoDepthSnapshot TIoDepthTracker::Snapshot()
     return result;
 }
 
-void TIoDepthTracker::MarkDiscontinuity()
-{
-    TGuard<TAdaptiveLock> guard(Impl->Lock);
-
-    const ui64 now = Impl->ReadNow();
-
-    for (auto& lane : Impl->Lanes) {
-        Impl->Advance(lane, now);
-    }
-
-    Impl->Continuous = false;
-}
-
-} // namespace NCloud
+}   // namespace NCloud

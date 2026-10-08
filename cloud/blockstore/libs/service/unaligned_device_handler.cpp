@@ -3,10 +3,6 @@
 
 #include <cloud/blockstore/libs/service/context.h>
 
-#include <util/generic/noncopyable.h>
-
-#include <exception>
-
 namespace NCloud::NBlockStore {
 
 using namespace NThreading;
@@ -39,35 +35,6 @@ TErrorResponse CreateUnalignedTooBigResponse(ui32 blockCount)
         TStringBuilder() << "Unaligned request is too big. BlockCount="
                          << blockCount};
 }
-
-template <typename TExecute>
-auto ExecuteSafely(TExecute&& execute)
-{
-    using TResponse = typename decltype(execute())::value_type;
-    try {
-        return execute();
-    } catch (...) {
-        // Complete synchronous failures through the same continuation that
-        // unregisters requests after asynchronous failures.
-        return MakeErrorFuture<TResponse>(std::current_exception());
-    }
-}
-
-struct TGuardedRequestBuffer final: TNonCopyable
-{
-    TStorageBuffer Buffer;
-    TGuardedSgList SgList;
-
-    TGuardedRequestBuffer(TStorageBuffer buffer, TGuardedSgList sgList)
-        : Buffer(std::move(buffer))
-        , SgList(std::move(sgList))
-    {}
-
-    ~TGuardedRequestBuffer()
-    {
-        SgList.Close();
-    }
-};
 
 }   // namespace
 
@@ -152,7 +119,6 @@ public:
 private:
     TResponsePromise Promise;
     TGuardedSgList SgList;
-    TGuardedSgList RMWGuardedSgList;
 
 public:
     TWriteRequest(
@@ -160,7 +126,6 @@ public:
         TCallContextPtr callContext,
         const TBlocksInfo& blocksInfo,
         TGuardedSgList sgList);
-    ~TWriteRequest() override;
 
     TResponseFuture ExecuteOrPostpone(bool readyToRun);
 
@@ -310,15 +275,9 @@ TWriteRequest::TWriteRequest(
     , SgList(std::move(sgList))
 {}
 
-TWriteRequest::~TWriteRequest()
-{
-    RMWGuardedSgList.Close();
-}
-
 TWriteRequest::TResponseFuture TWriteRequest::ExecuteOrPostpone(bool readyToRun)
 {
-    return readyToRun ? ExecuteSafely([this] { return DoExecute(); })
-                      : Promise.GetFuture();
+    return readyToRun ? DoExecute() : Promise.GetFuture();
 }
 
 void TWriteRequest::DoPostpone()
@@ -330,13 +289,9 @@ void TWriteRequest::DoPostpone()
 void TWriteRequest::DoExecutePostponed()
 {
     Y_ABORT_UNLESS(Promise.Initialized());
-    auto future = ExecuteSafely([this] { return DoExecute(); });
-    future.Subscribe(
-        [promise = Promise](const TResponseFuture& f) mutable
-        {
-            promise.SetValue(SafeExecute<NProto::TWriteBlocksLocalResponse>(
-                [&] { return f.GetValue(); }));
-        });
+    auto future = DoExecute();
+    future.Subscribe([promise = Promise](const TResponseFuture& f) mutable
+                     { promise.SetValue(f.GetValue()); });
 }
 
 TWriteRequest::TResponseFuture TWriteRequest::DoExecute()
@@ -357,12 +312,11 @@ TWriteRequest::TResponseFuture TWriteRequest::ReadModifyWrite(
     TAlignedDeviceHandler& backend)
 {
     AllocateRMWBuffer(backend);
-    // Close access to the owned RMW buffer independently of the caller's
-    // reusable sglist before the request releases this buffer.
-    RMWGuardedSgList = SgList.CreateDepender(RMWBufferSgList);
 
     auto read = backend.ExecuteReadRequest(
-        CallContext, BlocksInfo.MakeAligned(), RMWGuardedSgList,
+        CallContext,
+        BlocksInfo.MakeAligned(),
+        SgList.Create(RMWBufferSgList),
         {});
 
     return read.Apply(
@@ -403,8 +357,10 @@ TWriteRequest::TResponseFuture TWriteRequest::ModifyAndWrite()
             CreateErrorAcquireResponse());
     }
 
-    return backend->ExecuteWriteRequest(CallContext, BlocksInfo.MakeAligned(),
-                                        RMWGuardedSgList);
+    return backend->ExecuteWriteRequest(
+        CallContext,
+        BlocksInfo.MakeAligned(),
+        SgList.Create(RMWBufferSgList));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -426,8 +382,7 @@ TZeroRequest::~TZeroRequest()
 
 TZeroRequest::TResponseFuture TZeroRequest::ExecuteOrPostpone(bool readyToRun)
 {
-    return readyToRun ? ExecuteSafely([this] { return DoExecute(); })
-                      : Promise.GetFuture();
+    return readyToRun ? DoExecute() : Promise.GetFuture();
 }
 
 void TZeroRequest::DoPostpone()
@@ -439,13 +394,9 @@ void TZeroRequest::DoPostpone()
 void TZeroRequest::DoExecutePostponed()
 {
     Y_ABORT_UNLESS(Promise.Initialized());
-    auto future = ExecuteSafely([this] { return DoExecute(); });
-    future.Subscribe(
-        [promise = Promise](const TResponseFuture& f) mutable
-        {
-            promise.SetValue(SafeExecute<NProto::TZeroBlocksResponse>(
-                [&] { return f.GetValue(); }));
-        });
+    auto future = DoExecute();
+    future.Subscribe([promise = Promise](const TResponseFuture& f) mutable
+                     { promise.SetValue(f.GetValue()); });
 }
 
 TZeroRequest::TResponseFuture TZeroRequest::DoExecute()
@@ -599,8 +550,7 @@ TFuture<NProto::TWriteBlocksLocalResponse> TUnalignedDeviceHandler::Write(
             if (auto p = weakDeviceHandler.lock()) {
                 p->OnRequestFinished(std::move(weakRequest));
             }
-            return SafeExecute<NProto::TWriteBlocksLocalResponse>(
-                [&] { return f.GetValue(); });
+            return f.GetValue();
         });
 }
 
@@ -654,8 +604,7 @@ TUnalignedDeviceHandler::ExecuteZeroBlocksRequest(
             if (auto p = weakDeviceHandler.lock()) {
                 p->OnRequestFinished(std::move(weakRequest));
             }
-            return SafeExecute<NProto::TZeroBlocksResponse>(
-                [&] { return f.GetValue(); });
+            return f.GetValue();
         });
 }
 
@@ -703,27 +652,19 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
             TErrorResponse(sgListOrError.GetError()));
     }
 
-    auto readBuffer = std::make_shared<TGuardedRequestBuffer>(
-        std::move(buffer),
-        sgList.CreateDepender(sgListOrError.ExtractResult()));
-    auto alignedRequest = ExecuteSafely(
-        [&]
-        {
-            return Backend->ExecuteReadRequest(
-                std::move(ctx), blocksInfo.MakeAligned(), readBuffer->SgList,
-                std::move(checkpointId));
-        });
+    auto alignedRequest = Backend->ExecuteReadRequest(
+        std::move(ctx),
+        blocksInfo.MakeAligned(),
+        sgList.Create(sgListOrError.ExtractResult()),
+        std::move(checkpointId));
 
     return alignedRequest.Apply(
-        [sgList = std::move(sgList), readBuffer = std::move(readBuffer),
+        [sgList = std::move(sgList),
+         buffer = std::move(buffer),
          beginOffset = blocksInfo.BeginOffset](
             const TFuture<NProto::TReadBlocksLocalResponse>& future)
         {
-            // Stop storage access before copying from or releasing the owned
-            // buffer, including exceptional and synchronous failure paths.
-            readBuffer->SgList.Close();
-            const auto response = SafeExecute<NProto::TReadBlocksLocalResponse>(
-                [&] { return future.GetValue(); });
+            const auto& response = future.GetValue();
             if (HasError(response)) {
                 return response;
             }
@@ -731,8 +672,7 @@ TUnalignedDeviceHandler::ExecuteUnalignedReadRequest(
             if (auto guard = sgList.Acquire()) {
                 const auto& dstSgList = guard.Get();
                 auto size = SgListGetSize(dstSgList);
-                TBlockDataRef srcBuf(readBuffer->Buffer.get() + beginOffset,
-                                     size);
+                TBlockDataRef srcBuf(buffer.get() + beginOffset, size);
                 auto cpSize = SgListCopy({srcBuf}, dstSgList);
                 Y_ABORT_UNLESS(cpSize == size);
                 return response;

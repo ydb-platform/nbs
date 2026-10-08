@@ -65,7 +65,9 @@ Y_UNIT_TEST_SUITE(TIoDepthTrackerTest)
         UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].IntegralUs, 32'000'000);
         UNIT_ASSERT_DOUBLES_EQUAL(
             double(snapshot.Lanes[0].IntegralUs) /
-                (double(snapshot.TimestampNs) / 1000), 3.2, 1e-9);
+                (double(snapshot.TimestampNs) / 1000),
+            3.2,
+            1e-9);
     }
 
     Y_UNIT_TEST(ShouldKeepReadAndWriteIndependent)
@@ -97,7 +99,8 @@ Y_UNIT_TEST_SUITE(TIoDepthTrackerTest)
         const auto first = tracker.Snapshot();
         UNIT_ASSERT_VALUES_EQUAL(first.Lanes[0].IntegralUs, 5'000'000);
         UNIT_ASSERT_VALUES_EQUAL(
-            tracker.Snapshot().Lanes[0].IntegralUs, 5'000'000);
+            tracker.Snapshot().Lanes[0].IntegralUs,
+            5'000'000);
 
         nowNs = 10'000'000'000ULL;
         const auto second = tracker.Snapshot();
@@ -165,9 +168,8 @@ Y_UNIT_TEST_SUITE(TIoDepthTrackerTest)
     {
         ui64 nowNs = 0;
         TIoDepthTracker oldSource(1, [&] { return nowNs; });
+        UNIT_ASSERT(!oldSource.Completed(0));
         oldSource.Started(0);
-        nowNs = 1000;
-        oldSource.MarkDiscontinuity();
         nowNs = 2000;
         UNIT_ASSERT(oldSource.Completed(0));
 

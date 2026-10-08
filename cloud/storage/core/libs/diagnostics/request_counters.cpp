@@ -774,7 +774,7 @@ struct TRequestCounters::TStatCounters
         Errors->Add(errors);
 
         for (auto [dt, count]: timeHist) {
-            Time->Add(dt.MicroSeconds() * count);
+            Time->Add(dt.MicroSeconds());
             TimeHist.Increment(dt, count);
             MaxTimeCalc.Add(dt.MicroSeconds());
         }
@@ -923,15 +923,15 @@ struct TRequestCounters::TStatCounters
 ////////////////////////////////////////////////////////////////////////////////
 
 TRequestCounters::TRequestCounters(
-        ITimerPtr timer,
-        ui32 requestCount,
-        std::function<TString(TRequestType)> requestType2Name,
-        std::function<bool(TRequestType)> isReadWriteRequestType,
-        std::function<bool(TRequestType)> isStartEndpointRequestType,
-        EOptions options,
-        EHistogramCounterOptions histogramCounterOptions,
-        const TVector<TSizeInterval>& executionTimeSizeClasses,
-        TIoDepthClock ioDepthClock)
+    ITimerPtr timer,
+    ui32 requestCount,
+    std::function<TString(TRequestType)> requestType2Name,
+    std::function<bool(TRequestType)> isReadWriteRequestType,
+    std::function<bool(TRequestType)> isStartEndpointRequestType,
+    EOptions options,
+    EHistogramCounterOptions histogramCounterOptions,
+    const TVector<TSizeInterval>& executionTimeSizeClasses,
+    TIoDepthClock ioDepthClock)
     : RequestType2Name(std::move(requestType2Name))
     , IsReadWriteRequestType(std::move(isReadWriteRequestType))
     , IsStartEndpointRequestType(std::move(isStartEndpointRequestType))
@@ -1153,10 +1153,8 @@ void TRequestCounters::BatchCompleted(
     std::span<TSizeBucket> sizeHist)
 {
     if (ShouldReport(requestType)) {
-        // External completion batches have no start/pending timeline. Their
-        // depth belongs to the external backend source, independently of this
-        // common tracker. Source selection and full-window coverage are done by
-        // the consumer; neither reconstruct nor invalidate common depth here.
+        // Completion batches have no start/pending timeline and do not affect
+        // the depth of requests tracked by RequestStarted/RequestCompleted.
         AccessRequestStats(requestType).BatchCompleted(
             count,
             bytes,

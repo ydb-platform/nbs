@@ -5,8 +5,6 @@
 #include "critical_event.h"
 #include "histogram.h"
 
-#include <cloud/storage/core/libs/diagnostics/io_depth_tracker.h>
-
 #include <util/datetime/base.h>
 #include <util/system/types.h>
 
@@ -33,7 +31,6 @@ struct TRequestStats
 {
     T Count = {};
     T Bytes = {};
-    // Failed logical requests, including encryption and decryption failures.
     T Errors = {};
     T Unaligned = {};
 
@@ -89,7 +86,6 @@ struct TStats
     T SubFailed = {};
     T Completed = {};
     T CompFailed = {};
-    // Diagnostic subset of directional Errors; do not add it to request errors.
     T EncryptorErrors = {};
 
     std::array<TRequestStats<T>, 2> Requests = {};
@@ -160,8 +156,6 @@ using TSimpleStats = TStats<ui64>;
 struct TCompleteStats {
     TSimpleStats SimpleStats;
     TCriticalEvents CriticalEvents;
-    // This source snapshot is not part of additive completion counters.
-    std::optional<TIoDepthSnapshot> IoDepth;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

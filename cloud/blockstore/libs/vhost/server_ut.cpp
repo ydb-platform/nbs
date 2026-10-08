@@ -8,7 +8,6 @@
 #include <cloud/blockstore/libs/diagnostics/volume_stats_test.h>
 #include <cloud/blockstore/libs/service/device_handler.h>
 #include <cloud/blockstore/libs/service/storage_test.h>
-#include <cloud/blockstore/libs/service_local/compound_storage.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/sglist_test.h>
@@ -22,7 +21,6 @@
 #include <util/folder/path.h>
 #include <util/generic/guid.h>
 #include <util/generic/scope.h>
-#include <util/generic/yexception.h>
 #include <util/string/builder.h>
 #include <util/system/tempfile.h>
 #include <util/thread/factory.h>
@@ -73,7 +71,8 @@ private:
 public:
     TTestEnvironment(
         ui32 blockSize,
-        bool dropDiscardRequests = false, IServerStatsPtr serverStats = {})
+        bool dropDiscardRequests = false,
+        IServerStatsPtr serverStats = {})
         : BlockSize(blockSize)
         , DropDiscardRequests(dropDiscardRequests)
         , ServerStats(
@@ -428,9 +427,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
             depth.Started(
                 request.RequestType == EBlockStoreRequest::ReadBlocks ? 0 : 1);
         };
-        stats->RequestCompletedHandler =
-            [&](TLog&,
-                TMetricRequest& request, TCallContext&, const NProto::TError&)
+        stats->RequestCompletedHandler = [&](TLog&,
+                                             TMetricRequest& request,
+                                             TCallContext&,
+                                             const NProto::TError&)
         {
             UNIT_ASSERT(depth.Completed(
                 request.RequestType == EBlockStoreRequest::ReadBlocks ? 0 : 1));
@@ -466,9 +466,15 @@ Y_UNIT_TEST_SUITE(TServerTest)
             ResizeBlocks(writeBlocks, 1, TString(DefaultBlockSize, 'w'));
         auto device = env.GetVhostDevice();
         auto read = device->SendTestRequest(
-            EBlockStoreRequest::ReadBlocks, 0, DefaultBlockSize, readSg);
+            EBlockStoreRequest::ReadBlocks,
+            0,
+            DefaultBlockSize,
+            readSg);
         auto write = device->SendTestRequest(
-            EBlockStoreRequest::WriteBlocks, 0, DefaultBlockSize, writeSg);
+            EBlockStoreRequest::WriteBlocks,
+            0,
+            DefaultBlockSize,
+            writeSg);
         readArrived.GetFuture().GetValue(TDuration::Seconds(5));
         writeArrived.GetFuture().GetValue(TDuration::Seconds(5));
 
@@ -529,7 +535,10 @@ Y_UNIT_TEST_SUITE(TServerTest)
         TVector<TString> blocks;
         auto sglist = ResizeBlocks(blocks, 1, TString(DefaultBlockSize, 'r'));
         auto future = env.GetVhostDevice()->SendTestRequest(
-            EBlockStoreRequest::ReadBlocks, 0, DefaultBlockSize, sglist);
+            EBlockStoreRequest::ReadBlocks,
+            0,
+            DefaultBlockSize,
+            sglist);
         arrived.GetFuture().GetValue(TDuration::Seconds(5));
 
         nowNs = 60'000'000'000ULL;
@@ -543,359 +552,6 @@ Y_UNIT_TEST_SUITE(TServerTest)
         UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].Current, 0);
         UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].IntegralUs, 60'000'000);
         UNIT_ASSERT(snapshot.Continuous);
-    }
-
-    Y_UNIT_TEST(ShouldFinishVhostIoDepthForExceptionalStorage)
-    {
-        for (bool synchronous: {false, true}) {
-            std::atomic<ui64> nowNs = 0;
-            TIoDepthTracker depth(1, [&] { return nowNs.load(); });
-            auto stats = std::make_shared<TTestServerStats>();
-            stats->RequestStartedHandler =
-                [&](TLog&, TMetricRequest&, TCallContext&, const TString&)
-            {
-                depth.Started(0);
-            };
-            stats->RequestCompletedHandler =
-                [&](TLog&,
-                    TMetricRequest&, TCallContext&, const NProto::TError&)
-            {
-                UNIT_ASSERT(depth.Completed(0));
-            };
-            TTestEnvironment env(DefaultBlockSize, false, stats);
-            env.GetTestStorage()->ReadBlocksLocalHandler = [&](auto, auto)
-            {
-                nowNs = 1'000;
-                if (synchronous) {
-                    ythrow yexception() << "test synchronous failure";
-                }
-                auto response = NewPromise<NProto::TReadBlocksLocalResponse>();
-                response.SetException(std::make_exception_ptr(
-                    yexception() << "test exceptional future"));
-                return response.GetFuture();
-            };
-            TVector<TString> blocks;
-            auto sglist =
-                ResizeBlocks(blocks, 1, TString(DefaultBlockSize, 'r'));
-            auto future = env.GetVhostDevice()->SendTestRequest(
-                EBlockStoreRequest::ReadBlocks, 0, DefaultBlockSize, sglist);
-            UNIT_ASSERT(
-                future.GetValue(TDuration::Seconds(5)) == TVhostRequest::IOERR);
-            const auto snapshot = depth.Snapshot();
-            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].Current, 0);
-            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].IntegralUs, 1);
-            UNIT_ASSERT(snapshot.Continuous);
-        }
-    }
-
-    Y_UNIT_TEST(ShouldFinishVhostIoDepthForPendingExceptionalStorage)
-    {
-        for (const auto type:
-             {EBlockStoreRequest::ReadBlocks, EBlockStoreRequest::WriteBlocks,
-              EBlockStoreRequest::ZeroBlocks})
-        {
-            std::atomic<ui64> nowNs = 0;
-            TIoDepthTracker depth(1, [&] { return nowNs.load(); });
-            std::atomic<ui32> completed = 0;
-            auto stats = std::make_shared<TTestServerStats>();
-            stats->RequestStartedHandler = [&](TLog&, TMetricRequest& request,
-                                               TCallContext&, const TString&)
-            {
-                if (request.RequestType == type) {
-                    depth.Started(0);
-                }
-            };
-            stats->RequestCompletedHandler = [&](TLog&, TMetricRequest& request,
-                                                 TCallContext&,
-                                                 const NProto::TError& error)
-            {
-                if (request.RequestType == type) {
-                    UNIT_ASSERT_VALUES_EQUAL(error.GetCode(),
-                                             completed++ == 0 ? E_FAIL : S_OK);
-                    UNIT_ASSERT(depth.Completed(0));
-                }
-            };
-
-            auto read = NewPromise<NProto::TReadBlocksLocalResponse>();
-            auto write = NewPromise<NProto::TWriteBlocksLocalResponse>();
-            auto zero = NewPromise<NProto::TZeroBlocksResponse>();
-            auto arrived = NewPromise<void>();
-            std::atomic<ui32> calls = 0;
-            TVector<TString> blocks;
-            auto sglist =
-                ResizeBlocks(blocks, 1, TString(DefaultBlockSize, 'r'));
-            // Stop the server before destroying the storage callbacks' captures
-            // and buffers, including when an assertion fails.
-            TTestEnvironment env(DefaultBlockSize, false, stats);
-            if (type == EBlockStoreRequest::ReadBlocks) {
-                env.GetTestStorage()->ReadBlocksLocalHandler = [&](auto, auto)
-                {
-                    if (calls++ == 0) {
-                        arrived.SetValue();
-                        return read.GetFuture();
-                    }
-                    return MakeFuture(NProto::TReadBlocksLocalResponse{});
-                };
-            } else if (type == EBlockStoreRequest::WriteBlocks) {
-                env.GetTestStorage()->WriteBlocksLocalHandler = [&](auto, auto)
-                {
-                    if (calls++ == 0) {
-                        arrived.SetValue();
-                        return write.GetFuture();
-                    }
-                    return MakeFuture(NProto::TWriteBlocksLocalResponse{});
-                };
-            } else {
-                env.GetTestStorage()->ZeroBlocksHandler = [&](auto, auto)
-                {
-                    if (calls++ == 0) {
-                        arrived.SetValue();
-                        return zero.GetFuture();
-                    }
-                    return MakeFuture(NProto::TZeroBlocksResponse{});
-                };
-            }
-            Y_DEFER
-            {
-                const TErrorResponse error(E_FAIL, "test cleanup");
-                read.TrySetValue(NProto::TReadBlocksLocalResponse(error));
-                write.TrySetValue(NProto::TWriteBlocksLocalResponse(error));
-                zero.TrySetValue(NProto::TZeroBlocksResponse(error));
-            };
-
-            auto device = env.GetVhostDevice();
-            auto failed =
-                device->SendTestRequest(type, 0, DefaultBlockSize, sglist);
-            arrived.GetFuture().GetValue(TDuration::Seconds(5));
-
-            // This endpoint has one queue. A later request completes only after
-            // processing the first request returned and installed its
-            // callbacks.
-            const auto probeType = type == EBlockStoreRequest::ReadBlocks
-                                       ? EBlockStoreRequest::ZeroBlocks
-                                       : EBlockStoreRequest::ReadBlocks;
-            auto probe = device->SendTestRequest(probeType, DefaultBlockSize,
-                                                 DefaultBlockSize, sglist);
-            UNIT_ASSERT(
-                probe.GetValue(TDuration::Seconds(5)) ==
-                TVhostRequest::SUCCESS);
-            UNIT_ASSERT(!failed.HasValue());
-            UNIT_ASSERT_VALUES_EQUAL(depth.Snapshot().Lanes[0].Current, 1);
-
-            nowNs = 1'000;
-            const auto exception = std::make_exception_ptr(
-                yexception() << "test pending storage failure");
-            if (type == EBlockStoreRequest::ReadBlocks) {
-                read.SetException(exception);
-            } else if (type == EBlockStoreRequest::WriteBlocks) {
-                write.SetException(exception);
-            } else {
-                zero.SetException(exception);
-            }
-            UNIT_ASSERT(
-                failed.GetValue(TDuration::Seconds(5)) == TVhostRequest::IOERR);
-            UNIT_ASSERT_VALUES_EQUAL(depth.Snapshot().Lanes[0].Current, 0);
-
-            // A failed write/zero must also release the device-handler queue.
-            TSgList unaligned = {
-                TBlockDataRef(blocks[0].data(), DefaultBlockSize - 2)};
-            auto next = device->SendTestRequest(type, 1, DefaultBlockSize - 2,
-                                                unaligned);
-            UNIT_ASSERT(
-                next.GetValue(TDuration::Seconds(5)) == TVhostRequest::SUCCESS);
-            env.StopVhostServer();
-
-            nowNs = 2'000;
-            const auto snapshot = depth.Snapshot();
-            UNIT_ASSERT_VALUES_EQUAL(completed.load(), 2);
-            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].Current, 0);
-            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].IntegralUs, 1);
-            UNIT_ASSERT(snapshot.Continuous);
-        }
-    }
-
-    Y_UNIT_TEST(ShouldFinishVhostIoDepthForCompoundStorageExceptions)
-    {
-        for (const auto type:
-             {EBlockStoreRequest::ReadBlocks, EBlockStoreRequest::WriteBlocks,
-              EBlockStoreRequest::ZeroBlocks})
-        {
-            std::atomic<ui64> nowNs = 0;
-            TIoDepthTracker depth(1, [&] { return nowNs.load(); });
-            std::atomic<ui32> completed = 0;
-            std::atomic<ui32> firstCode = S_OK;
-            std::atomic<ui32> secondCode = E_FAIL;
-            std::atomic<bool> balanced = true;
-            auto stats = std::make_shared<TTestServerStats>();
-            stats->RequestStartedHandler = [&](TLog&, TMetricRequest& request,
-                                               TCallContext&, const TString&)
-            {
-                if (request.RequestType == type) {
-                    depth.Started(0);
-                }
-            };
-            stats->RequestCompletedHandler = [&](TLog&, TMetricRequest& request,
-                                                 TCallContext&,
-                                                 const NProto::TError& error)
-            {
-                if (request.RequestType == type) {
-                    if (completed++ == 0) {
-                        firstCode = error.GetCode();
-                    } else {
-                        secondCode = error.GetCode();
-                    }
-                    if (!depth.Completed(0)) {
-                        balanced = false;
-                    }
-                }
-            };
-
-            auto read = NewPromise<NProto::TReadBlocksLocalResponse>();
-            auto write = NewPromise<NProto::TWriteBlocksLocalResponse>();
-            auto zero = NewPromise<NProto::TZeroBlocksResponse>();
-            auto arrived = NewPromise<void>();
-            std::atomic<ui32> calls = 0;
-            TVector<TString> blocks;
-            auto sglist =
-                ResizeBlocks(blocks, 2, TString(DefaultBlockSize, 'r'));
-            auto storage = std::make_shared<TTestStorage>();
-            auto readSuccess = [](auto, auto request)
-            {
-                auto guard = request->Sglist.Acquire();
-                UNIT_ASSERT(guard);
-                for (const auto& block: guard.Get()) {
-                    memset(const_cast<char*>(block.Data()), 'r', block.Size());
-                }
-                return MakeFuture(NProto::TReadBlocksLocalResponse{});
-            };
-            storage->ReadBlocksLocalHandler = readSuccess;
-            storage->WriteBlocksLocalHandler = [](auto, auto)
-            {
-                return MakeFuture(NProto::TWriteBlocksLocalResponse{});
-            };
-            storage->ZeroBlocksHandler = [](auto, auto)
-            {
-                return MakeFuture(NProto::TZeroBlocksResponse{});
-            };
-            // Stop the server before destroying the storage callbacks' captures
-            // and buffers, including when an assertion fails.
-            TTestEnvironment env(DefaultBlockSize, false, stats);
-            if (type == EBlockStoreRequest::ReadBlocks) {
-                storage->ReadBlocksLocalHandler = [&](auto ctx, auto request)
-                {
-                    if (calls++ == 0) {
-                        arrived.SetValue();
-                        return read.GetFuture();
-                    }
-                    return readSuccess(std::move(ctx), std::move(request));
-                };
-            } else if (type == EBlockStoreRequest::WriteBlocks) {
-                storage->WriteBlocksLocalHandler = [&](auto, auto)
-                {
-                    if (calls++ == 0) {
-                        arrived.SetValue();
-                        return write.GetFuture();
-                    }
-                    return MakeFuture(NProto::TWriteBlocksLocalResponse{});
-                };
-            } else {
-                storage->ZeroBlocksHandler = [&](auto, auto)
-                {
-                    if (calls++ == 0) {
-                        arrived.SetValue();
-                        return zero.GetFuture();
-                    }
-                    return MakeFuture(NProto::TZeroBlocksResponse{});
-                };
-            }
-            Y_DEFER
-            {
-                const TErrorResponse error(E_FAIL, "test cleanup");
-                read.TrySetValue(NProto::TReadBlocksLocalResponse(error));
-                write.TrySetValue(NProto::TWriteBlocksLocalResponse(error));
-                zero.TrySetValue(NProto::TZeroBlocksResponse(error));
-            };
-
-            auto compound = NServer::CreateCompoundStorage(
-                {storage, storage},
-                {1, 2}, DefaultBlockSize, "test-disk", "test-client",
-                CreateServerStatsStub());
-            env.GetTestStorage()->ReadBlocksLocalHandler =
-                [compound](auto ctx, auto request)
-            {
-                return compound->ReadBlocksLocal(std::move(ctx),
-                                                 std::move(request));
-            };
-            env.GetTestStorage()->WriteBlocksLocalHandler =
-                [compound](auto ctx, auto request)
-            {
-                return compound->WriteBlocksLocal(std::move(ctx),
-                                                  std::move(request));
-            };
-            env.GetTestStorage()->ZeroBlocksHandler =
-                [compound](auto ctx, auto request)
-            {
-                return compound->ZeroBlocks(std::move(ctx), std::move(request));
-            };
-            TSgList unaligned = {
-                TBlockDataRef(blocks[0].data(), DefaultBlockSize - 1),
-                TBlockDataRef(blocks[1].data(), DefaultBlockSize - 1)};
-
-            auto device = env.GetVhostDevice();
-            auto failed =
-                type == EBlockStoreRequest::ZeroBlocks
-                    ? device->SendTestRequest(type, 0, 2 * DefaultBlockSize,
-                                              sglist)
-                    : device->SendTestRequest(type, 1, 2 * DefaultBlockSize - 2,
-                                              unaligned);
-            arrived.GetFuture().GetValue(TDuration::Seconds(5));
-
-            // This endpoint has one queue. A later request completes only after
-            // processing the first request returned and installed its
-            // callbacks.
-            const auto probeType = type == EBlockStoreRequest::ReadBlocks
-                                       ? EBlockStoreRequest::ZeroBlocks
-                                       : EBlockStoreRequest::ReadBlocks;
-            auto probe = device->SendTestRequest(
-                probeType, DefaultBlockSize, DefaultBlockSize,
-                {TBlockDataRef(blocks[0].data(), DefaultBlockSize)});
-            UNIT_ASSERT(
-                probe.GetValue(TDuration::Seconds(5)) ==
-                TVhostRequest::SUCCESS);
-            UNIT_ASSERT(!failed.HasValue());
-            UNIT_ASSERT_VALUES_EQUAL(depth.Snapshot().Lanes[0].Current, 1);
-
-            nowNs = 1'000;
-            const auto exception = std::make_exception_ptr(
-                yexception() << "test pending storage failure");
-            if (type == EBlockStoreRequest::ReadBlocks) {
-                read.SetException(exception);
-            } else if (type == EBlockStoreRequest::WriteBlocks) {
-                write.SetException(exception);
-            } else {
-                zero.SetException(exception);
-            }
-            UNIT_ASSERT(
-                failed.GetValue(TDuration::Seconds(5)) == TVhostRequest::IOERR);
-            UNIT_ASSERT_VALUES_EQUAL(depth.Snapshot().Lanes[0].Current, 0);
-
-            // A failed write/zero must also release the device-handler queue.
-            auto next = device->SendTestRequest(
-                type, 1, 2 * DefaultBlockSize - 2, unaligned);
-            UNIT_ASSERT(
-                next.GetValue(TDuration::Seconds(5)) == TVhostRequest::SUCCESS);
-            env.StopVhostServer();
-
-            nowNs = 2'000;
-            const auto snapshot = depth.Snapshot();
-            UNIT_ASSERT_VALUES_EQUAL(completed.load(), 2);
-            UNIT_ASSERT_VALUES_EQUAL(firstCode.load(), E_FAIL);
-            UNIT_ASSERT_VALUES_EQUAL(secondCode.load(), S_OK);
-            UNIT_ASSERT(balanced.load());
-            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].Current, 0);
-            UNIT_ASSERT_VALUES_EQUAL(snapshot.Lanes[0].IntegralUs, 1);
-            UNIT_ASSERT(snapshot.Continuous);
-        }
     }
 
     Y_UNIT_TEST(ShouldStartStopVhostEndpoint)

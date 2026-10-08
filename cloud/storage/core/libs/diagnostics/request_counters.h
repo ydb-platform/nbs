@@ -1,7 +1,8 @@
 #pragma once
 
-#include "io_depth_tracker.h"
 #include "public.h"
+
+#include "io_depth_tracker.h"
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/size_interval.h>
@@ -42,7 +43,7 @@ public:
         OnlyStartEndpointRequests        = (1 << 5),
         ThrottlingHistogramsDisabled     = (1 << 6),
         DisaggregatedCountersDisabled    = (1 << 7),
-        ReportIoDepth                    = (1 << 9),
+        ReportIoDepth = (1 << 8),
     };
 
     using TRequestType = TDiagnosticsRequestType;

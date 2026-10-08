@@ -7,14 +7,12 @@
 
 #include <util/generic/scope.h>
 #include <util/generic/size_literals.h>
-#include <util/generic/yexception.h>
 #include <util/string/builder.h>
 #include <util/system/datetime.h>
 
 #include <algorithm>
 #include <array>
 #include <cstring>
-#include <functional>
 #include <random>
 
 namespace NCloud::NBlockStore::NVHostServer {
@@ -70,43 +68,6 @@ public:
     {
         Y_UNUSED(blockIndex);
         ++DecryptCount;
-        std::memcpy(const_cast<char*>(dst.Data()), src.Data(), src.Size());
-        return {};
-    }
-};
-
-class TIoDepthTestEncryptor final: public IEncryptor
-{
-public:
-    std::function<NProto::TError()> OnEncrypt;
-    std::function<NProto::TError()> OnDecrypt;
-
-    NProto::TError Encrypt(
-        TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
-    {
-        Y_UNUSED(blockIndex);
-        if (OnEncrypt) {
-            auto error = OnEncrypt();
-            if (HasError(error)) {
-                return error;
-            }
-        }
-
-        std::memcpy(const_cast<char*>(dst.Data()), src.Data(), src.Size());
-        return {};
-    }
-
-    NProto::TError Decrypt(
-        TBlockDataRef src, TBlockDataRef dst, ui64 blockIndex) override
-    {
-        Y_UNUSED(blockIndex);
-        if (OnDecrypt) {
-            auto error = OnDecrypt();
-            if (HasError(error)) {
-                return error;
-            }
-        }
-
         std::memcpy(const_cast<char*>(dst.Data()), src.Data(), src.Size());
         return {};
     }
@@ -202,7 +163,7 @@ public:
 
     TVector<TAioSubRequestHolder> PrepareCompoundIO(
         virtio_blk_io& bio,
-        IEncryptor* encryptor = nullptr, TIoDepthTracker* ioDepth = nullptr)
+        IEncryptor* encryptor = nullptr)
     {
         TVector<iocb*> batch;
         TSimpleStats queueStats;
@@ -210,7 +171,10 @@ public:
             Log,
             encryptor,
             Devices,
-            &bio.io, batch, GetCycleCount(), queueStats, ioDepth, CompleteBio);
+            &bio.io,
+            batch,
+            GetCycleCount(),
+            queueStats);
 
         TVector<TAioSubRequestHolder> subs;
         for (iocb* cb: batch) {
@@ -906,355 +870,6 @@ TEST_P(TRequestAIOTest, ShouldCompleteCompoundRequestOnceInAnyOrder)
                 failedPart == -1 ? VHD_BDEV_SUCCESS : VHD_BDEV_IOERR,
                 CompletedBios[0].Status);
         } while (std::next_permutation(order.begin(), order.end()));
-    }
-}
-
-TEST_P(TRequestAIOTest, ShouldAccumulateIoDepthForPendingSingleRequest)
-{
-    InitDevices(1_MB);
-
-    ui64 nowNs = 0;
-    TIoDepthTracker ioDepth(2, [&nowNs] { return nowNs; });
-
-    std::array buffers{
-        vhd_buffer{.base = reinterpret_cast<void*>(0x1000000), .len = 4_KB}};
-
-    virtio_blk_io bio{
-        .bdev_io = {
-            .type = VHD_BDEV_READ,
-            .total_sectors = 4_KB / VHD_SECTOR_SIZE,
-            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
-
-    TVector<iocb*> batch;
-    TSimpleStats queueStats;
-    PrepareIO(
-        Log,
-        nullptr,
-        Devices,
-        &bio.io, batch, GetCycleCount(), queueStats, &ioDepth, CompleteBio);
-
-    ASSERT_EQ(1u, batch.size());
-    auto req = TAioRequest::FromIocb(batch[0]);
-
-    nowNs = 5'000'000'000ULL;
-    const auto pending = ioDepth.Snapshot();
-    EXPECT_EQ(1u, pending.Lanes[VHD_BDEV_READ].Current);
-    EXPECT_EQ(5'000'000u, pending.Lanes[VHD_BDEV_READ].IntegralUs);
-    EXPECT_EQ(0u, pending.Lanes[VHD_BDEV_WRITE].Current);
-    EXPECT_TRUE(pending.Continuous);
-    EXPECT_TRUE(CompletedBios.empty());
-
-    nowNs = 7'000'000'000ULL;
-    req->FinishIoDepth();
-    req->FinishIoDepth();
-
-    nowNs = 10'000'000'000ULL;
-    const auto completed = ioDepth.Snapshot();
-    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
-    EXPECT_EQ(7'000'000u, completed.Lanes[VHD_BDEV_READ].IntegralUs);
-    EXPECT_EQ(pending.Generation, completed.Generation);
-    EXPECT_TRUE(completed.Continuous);
-}
-
-TEST_P(TRequestAIOTest, ShouldCountCompoundParentIoDepthUntilLastPart)
-{
-    InitDevices(64_KB);
-
-    ui64 nowNs = 0;
-    TIoDepthTracker ioDepth(2, [&nowNs] { return nowNs; });
-
-    const ui64 size = 80_KB;
-    TVector<char> guest(size, 'W');
-    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
-
-    virtio_blk_io bio{
-        .bdev_io = {
-            .type = VHD_BDEV_WRITE,
-            .first_sector = (64_KB - 8_KB) / VHD_SECTOR_SIZE,
-            .total_sectors = size / VHD_SECTOR_SIZE,
-            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
-
-    auto subs = PrepareCompoundIO(bio, nullptr, &ioDepth);
-    ASSERT_EQ(3u, subs.size());
-
-    TAtomicStats stats;
-    nowNs = 1'000'000'000ULL;
-    CompleteSubRequest(subs[1], VHD_BDEV_IOERR, stats);
-    EXPECT_TRUE(CompletedBios.empty());
-
-    nowNs = 2'000'000'000ULL;
-    CompleteSubRequest(subs[0], VHD_BDEV_SUCCESS, stats);
-
-    const auto pending = ioDepth.Snapshot();
-    EXPECT_EQ(1u, pending.Lanes[VHD_BDEV_WRITE].Current);
-    EXPECT_EQ(2'000'000u, pending.Lanes[VHD_BDEV_WRITE].IntegralUs);
-    EXPECT_EQ(0u, pending.Lanes[VHD_BDEV_READ].Current);
-    EXPECT_TRUE(CompletedBios.empty());
-
-    nowNs = 3'000'000'000ULL;
-    CompleteSubRequest(subs[2], VHD_BDEV_SUCCESS, stats);
-
-    ASSERT_EQ(1u, CompletedBios.size());
-    EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
-
-    nowNs = 4'000'000'000ULL;
-    const auto completed = ioDepth.Snapshot();
-    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_WRITE].Current);
-    EXPECT_EQ(3'000'000u, completed.Lanes[VHD_BDEV_WRITE].IntegralUs);
-    EXPECT_TRUE(completed.Continuous);
-}
-
-TEST_P(TRequestAIOTest, ShouldFinishIoDepthWhenPreparingBrokenDevice)
-{
-    InitDevices(1_MB);
-    Devices[1].File.Release();
-    Devices[1].File = {};
-
-    const ui64 size = 16_KB;
-    TVector<char> guest(size, 'W');
-    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
-
-    for (bool compound: {false, true}) {
-        for (auto type: {VHD_BDEV_READ, VHD_BDEV_WRITE}) {
-            SCOPED_TRACE(
-                TStringBuilder() << "compound: " << compound
-                                 << ", type: " << static_cast<int>(type));
-
-            CompletedBios.clear();
-            ui64 nowNs = 0;
-            TIoDepthTracker ioDepth(
-                2,
-                [&nowNs]
-                {
-                    nowNs += 1'000;
-                    return nowNs;
-                });
-
-            virtio_blk_io bio{
-                .bdev_io = {
-                    .type = type,
-                    .first_sector =
-                        (compound ? 1_MB - 8_KB : 1_MB) / VHD_SECTOR_SIZE,
-                    .total_sectors = size / VHD_SECTOR_SIZE,
-                    .sglist = {
-                        .nbuffers = buffers.size(),
-                        .buffers = buffers.data()}}};
-
-            TVector<iocb*> batch;
-            TSimpleStats queueStats;
-            PrepareIO(
-                Log,
-                nullptr,
-                Devices,
-                &bio.io,
-                batch, GetCycleCount(), queueStats, &ioDepth, CompleteBio);
-
-            EXPECT_TRUE(batch.empty());
-            ASSERT_EQ(1u, CompletedBios.size());
-            EXPECT_EQ(&bio.io, CompletedBios[0].Io);
-            EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
-            EXPECT_EQ(1u, queueStats.SubFailed);
-
-            nowNs = 5'000'000'000ULL;
-            const auto snapshot = ioDepth.Snapshot();
-            EXPECT_EQ(0u, snapshot.Lanes[type].Current);
-            EXPECT_EQ(1u, snapshot.Lanes[type].IntegralUs);
-            EXPECT_TRUE(snapshot.Continuous);
-        }
-    }
-}
-
-TEST_P(TRequestAIOTest, ShouldIncludeFailedEncryptionTimeInIoDepth)
-{
-    InitDevices(1_MB);
-
-    const ui64 size = 16_KB;
-    TVector<char> guest(size, 'W');
-    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
-
-    for (bool compound: {false, true}) {
-        for (bool throwException: {false, true}) {
-            SCOPED_TRACE(
-                TStringBuilder() << "compound: " << compound
-                                 << ", exception: " << throwException);
-
-            CompletedBios.clear();
-            ui64 nowNs = 0;
-            TIoDepthTracker ioDepth(2, [&nowNs] { return nowNs; });
-
-            TIoDepthTestEncryptor encryptor;
-            encryptor.OnEncrypt = [&]() -> NProto::TError
-            {
-                EXPECT_EQ(1u, ioDepth.Snapshot().Lanes[VHD_BDEV_WRITE].Current);
-                nowNs = 3'000'000'000ULL;
-
-                if (throwException) {
-                    ythrow yexception() << "test encryption failure";
-                }
-
-                return MakeError(E_FAIL, "test encryption failure");
-            };
-
-            virtio_blk_io bio{
-                .bdev_io = {
-                    .type = VHD_BDEV_WRITE,
-                    .first_sector =
-                        (compound ? 1_MB - 8_KB : 0) / VHD_SECTOR_SIZE,
-                    .total_sectors = size / VHD_SECTOR_SIZE,
-                    .sglist = {
-                        .nbuffers = buffers.size(),
-                        .buffers = buffers.data()}}};
-
-            TVector<iocb*> batch;
-            TSimpleStats queueStats;
-            PrepareIO(
-                Log,
-                &encryptor,
-                Devices,
-                &bio.io,
-                batch, GetCycleCount(), queueStats, &ioDepth, CompleteBio);
-
-            EXPECT_TRUE(batch.empty());
-            ASSERT_EQ(1u, CompletedBios.size());
-            EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
-            EXPECT_EQ(1u, queueStats.EncryptorErrors);
-            EXPECT_EQ(1u, queueStats.Requests[VHD_BDEV_WRITE].Errors);
-            EXPECT_EQ(0u, queueStats.Requests[VHD_BDEV_WRITE].Count);
-            EXPECT_EQ(0u, queueStats.Requests[VHD_BDEV_READ].Errors);
-            EXPECT_EQ(0u, queueStats.Requests[VHD_BDEV_READ].Count);
-            EXPECT_EQ(0u, queueStats.SubFailed);
-            EXPECT_EQ(0u, GetTotalCount(queueStats.Times[VHD_BDEV_WRITE]));
-            EXPECT_EQ(0u, GetTotalCount(queueStats.Sizes[VHD_BDEV_WRITE]));
-            EXPECT_EQ(0u, GetTotalCount(queueStats.Times[VHD_BDEV_READ]));
-            EXPECT_EQ(0u, GetTotalCount(queueStats.Sizes[VHD_BDEV_READ]));
-
-            nowNs = 5'000'000'000ULL;
-            const auto snapshot = ioDepth.Snapshot();
-            EXPECT_EQ(0u, snapshot.Lanes[VHD_BDEV_WRITE].Current);
-            EXPECT_EQ(0u, snapshot.Lanes[VHD_BDEV_READ].Current);
-            EXPECT_EQ(3'000'000u, snapshot.Lanes[VHD_BDEV_WRITE].IntegralUs);
-            EXPECT_TRUE(snapshot.Continuous);
-        }
-    }
-}
-
-TEST_P(TRequestAIOTest, ShouldKeepCompoundIoDepthDuringDecryption)
-{
-    InitDevices(1_MB);
-
-    ui64 nowNs = 0;
-    TIoDepthTracker ioDepth(2, [&nowNs] { return nowNs; });
-
-    const ui64 size = 16_KB;
-    TVector<char> guest(size, 'G');
-    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
-
-    virtio_blk_io bio{
-        .bdev_io = {
-            .type = VHD_BDEV_READ,
-            .first_sector = (1_MB - 8_KB) / VHD_SECTOR_SIZE,
-            .total_sectors = size / VHD_SECTOR_SIZE,
-            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
-
-    TIoDepthTestEncryptor encryptor;
-    bool decrypted = false;
-    encryptor.OnDecrypt = [&]
-    {
-        if (!decrypted) {
-            const auto pending = ioDepth.Snapshot();
-            EXPECT_EQ(1u, pending.Lanes[VHD_BDEV_READ].Current);
-            EXPECT_EQ(2'000'000u, pending.Lanes[VHD_BDEV_READ].IntegralUs);
-            EXPECT_TRUE(CompletedBios.empty());
-            nowNs = 3'000'000'000ULL;
-            decrypted = true;
-        }
-
-        return NProto::TError{};
-    };
-
-    auto subs = PrepareCompoundIO(bio, &encryptor, &ioDepth);
-    ASSERT_EQ(2u, subs.size());
-    auto* parent = subs[0]->GetParentRequest();
-    std::memset(parent->Buffer.get(), 'R', parent->BufferSize);
-
-    TAtomicStats stats;
-    nowNs = 1'000'000'000ULL;
-    CompleteSubRequest(subs[0], VHD_BDEV_SUCCESS, stats, &encryptor);
-    EXPECT_FALSE(decrypted);
-
-    nowNs = 2'000'000'000ULL;
-    CompleteSubRequest(subs[1], VHD_BDEV_SUCCESS, stats, &encryptor);
-
-    ASSERT_EQ(1u, CompletedBios.size());
-    EXPECT_EQ(VHD_BDEV_SUCCESS, CompletedBios[0].Status);
-    EXPECT_TRUE(decrypted);
-    EXPECT_EQ(TVector<char>(size, 'R'), guest);
-
-    const auto completed = ioDepth.Snapshot();
-    EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
-    EXPECT_EQ(3'000'000u, completed.Lanes[VHD_BDEV_READ].IntegralUs);
-    EXPECT_TRUE(completed.Continuous);
-}
-
-TEST_P(TRequestAIOTest, ShouldFinishCompoundIoDepthOnDecryptionException)
-{
-    InitDevices(1_MB);
-
-    const ui64 size = 16_KB;
-    TVector<char> guest(size, 'G');
-    std::array buffers{vhd_buffer{.base = guest.data(), .len = size}};
-
-    virtio_blk_io bio{
-        .bdev_io = {
-            .type = VHD_BDEV_READ,
-            .first_sector = (1_MB - 8_KB) / VHD_SECTOR_SIZE,
-            .total_sectors = size / VHD_SECTOR_SIZE,
-            .sglist = {.nbuffers = buffers.size(), .buffers = buffers.data()}}};
-
-    for (bool throwException: {false, true}) {
-        SCOPED_TRACE(TStringBuilder() << "exception: " << throwException);
-        CompletedBios.clear();
-        ui64 nowNs = 0;
-        TIoDepthTracker ioDepth(2, [&nowNs] { return nowNs; });
-        TAtomicStats stats;
-        TIoDepthTestEncryptor encryptor;
-        encryptor.OnDecrypt = [&]() -> NProto::TError
-        {
-            EXPECT_EQ(1u, ioDepth.Snapshot().Lanes[VHD_BDEV_READ].Current);
-            EXPECT_EQ(0u, stats.Requests[VHD_BDEV_READ].Count.load());
-            EXPECT_EQ(0u, stats.Requests[VHD_BDEV_READ].Errors.load());
-            nowNs = 3'000'000'000ULL;
-            if (throwException) {
-                ythrow yexception() << "test decryption failure";
-            }
-            return MakeError(E_FAIL, "test decryption failure");
-        };
-
-        auto subs = PrepareCompoundIO(bio, &encryptor, &ioDepth);
-        ASSERT_EQ(2u, subs.size());
-        auto* parent = subs[0]->GetParentRequest();
-        std::memset(parent->Buffer.get(), 'R', parent->BufferSize);
-
-        nowNs = 1'000'000'000ULL;
-        CompleteSubRequest(subs[0], VHD_BDEV_SUCCESS, stats, &encryptor);
-        ExpectNoSuccessStats(stats, VHD_BDEV_READ);
-        EXPECT_EQ(0u, stats.Requests[VHD_BDEV_READ].Errors.load());
-        nowNs = 2'000'000'000ULL;
-        CompleteSubRequest(subs[1], VHD_BDEV_SUCCESS, stats, &encryptor);
-
-        ASSERT_EQ(1u, CompletedBios.size());
-        EXPECT_EQ(VHD_BDEV_IOERR, CompletedBios[0].Status);
-        EXPECT_EQ(1u, stats.EncryptorErrors.load());
-        EXPECT_EQ(1u, stats.Requests[VHD_BDEV_READ].Errors.load());
-        ExpectNoSuccessStats(stats, VHD_BDEV_READ);
-        EXPECT_EQ(0u, stats.Requests[VHD_BDEV_WRITE].Errors.load());
-        ExpectNoSuccessStats(stats, VHD_BDEV_WRITE);
-
-        const auto completed = ioDepth.Snapshot();
-        EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_READ].Current);
-        EXPECT_EQ(0u, completed.Lanes[VHD_BDEV_WRITE].Current);
-        EXPECT_EQ(3'000'000u, completed.Lanes[VHD_BDEV_READ].IntegralUs);
-        EXPECT_TRUE(completed.Continuous);
     }
 }
 

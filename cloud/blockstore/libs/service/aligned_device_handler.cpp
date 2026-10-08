@@ -214,9 +214,7 @@ TAlignedDeviceHandler::ExecuteReadRequest(
             [weakPtr = weak_from_this(), range = blocksInfo.Range](
                 const TFuture<NProto::TReadBlocksLocalResponse>& future)
             {
-                const auto response =
-                    SafeExecute<NProto::TReadBlocksLocalResponse>(
-                        [&] { return future.GetValue(); });
+                const auto& response = future.GetValue();
                 if (HasError(response)) {
                     if (auto self = weakPtr.lock()) {
                         self->ReportCriticalError(
@@ -304,8 +302,7 @@ TAlignedDeviceHandler::ExecuteWriteRequest(
             [weakPtr = weak_from_this(), range = blocksInfo.Range](
                 const TFuture<NProto::TWriteBlocksResponse>& future)
             {
-                const auto response = SafeExecute<NProto::TWriteBlocksResponse>(
-                    [&] { return future.GetValue(); });
+                const auto& response = future.GetValue();
                 if (HasError(response)) {
                     if (auto self = weakPtr.lock()) {
                         self->ReportCriticalError(
@@ -384,11 +381,10 @@ TFuture<NProto::TZeroBlocksResponse> TAlignedDeviceHandler::ExecuteZeroRequest(
         // The request size is quite small. We do all work at once.
         auto result = Storage->ZeroBlocks(std::move(ctx), std::move(request));
         return result.Subscribe(
-            [weakPtr = weak_from_this(), range = blocksInfo.Range](
-                const TFuture<NProto::TZeroBlocksResponse>& future)
+            [weakPtr = weak_from_this(),
+             range = blocksInfo.Range](const TFuture<NProto::TZeroBlocksResponse>& future)
             {
-                const auto response = SafeExecute<NProto::TZeroBlocksResponse>(
-                    [&] { return future.GetValue(); });
+                const auto& response = future.GetValue();
                 if (HasError(response)) {
                     if (auto self = weakPtr.lock()) {
                         self->ReportCriticalError(

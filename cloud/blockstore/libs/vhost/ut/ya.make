@@ -6,8 +6,4 @@ SRCS(
     server_ut.cpp
 )
 
-PEERDIR(
-    cloud/blockstore/libs/service_local
-)
-
 END()

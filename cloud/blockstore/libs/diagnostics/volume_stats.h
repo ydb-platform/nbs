@@ -35,17 +35,6 @@ enum class EVolumeStatsType
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TVolumeIoDepthSnapshot
-{
-    TGUID Generation;
-    ui64 TimestampNs = 0;
-    bool Continuous = true;
-    TIoDepthLaneSnapshot Read;
-    TIoDepthLaneSnapshot Write;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct IVolumeInfo
 {
     virtual ~IVolumeInfo() = default;
@@ -55,13 +44,6 @@ struct IVolumeInfo
 
     // Raw per-request-type lanes; ZeroBlocks is separate from WriteBlocks.
     virtual std::optional<TIoDepthSnapshot> GetIoDepthSnapshot()
-    {
-        return std::nullopt;
-    }
-
-    // Write includes ZeroBlocks according to this volume's reporting policy.
-    // Both directions and metadata belong to one observation of this source.
-    virtual std::optional<TVolumeIoDepthSnapshot> GetIoDepthByDirection()
     {
         return std::nullopt;
     }
