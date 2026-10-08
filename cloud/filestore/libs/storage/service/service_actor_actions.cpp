@@ -137,6 +137,10 @@ void TStorageServiceActor::HandleExecuteAction(
             &TStorageServiceActor::CreateFastShardCommandActionActor
         },
         {
+            "generatefilesystemevent",
+            &TStorageServiceActor::CreateGenerateFileSystemEventActionActor
+        },
+        {
             "getfilesystemtopology",
             &TStorageServiceActor::CreateGetFileSystemTopologyActionActor
         },

@@ -35,8 +35,7 @@ void MergeQuotaUsages(
 // TAggregateStatsCompleted to a TIndexTabletActor that created the actor.
 // 1. IsBackgroundRequest. It means the actor was created in
 //    TIndexTabletActor::HandleUpdateCounters.
-//    If MainFileSystemId is not empty and
-//    FanoutStatsCollectionInShardsDisabled, the actor requests cached
+//    If MainFileSystemId is not empty, the actor requests cached
 //    aggregated statistics from the main tablet. Otherwise it sends requests to
 //    all shards.
 // 2. !IsBackgroundRequest. It means that TAggregateStatsActor is created in
@@ -57,7 +56,6 @@ private:
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> Response;
     ui64 RemainingResponses = 0;
     const bool IsBackgroundRequest;
-    const bool FanoutStatsCollectionInShardsDisabled;
 
 public:
     TAggregateStatsActor(
@@ -68,8 +66,7 @@ public:
         TString mainFileSystemId,
         google::protobuf::RepeatedPtrField<TString> shardIds,
         std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response,
-        bool isBackgroundRequest,
-        bool fanoutStatsCollectionInShardsDisabled);
+        bool isBackgroundRequest);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -98,8 +95,7 @@ private:
 
     bool ShouldOnlyGetStatsFromMainTablet() const
     {
-        return IsBackgroundRequest && MainFileSystemId &&
-               FanoutStatsCollectionInShardsDisabled;
+        return IsBackgroundRequest && MainFileSystemId;
     }
 };
 
@@ -113,8 +109,7 @@ TAggregateStatsActor::TAggregateStatsActor(
     TString mainFileSystemId,
     google::protobuf::RepeatedPtrField<TString> shardIds,
     std::unique_ptr<TEvIndexTablet::TEvGetStorageStatsResponse> response,
-    bool isBackgroundRequest,
-    bool fanoutStatsCollectionInShardsDisabled)
+    bool isBackgroundRequest)
     : LogTag(std::move(logTag))
     , Tablet(tablet)
     , RequestInfo(std::move(requestInfo))
@@ -123,8 +118,6 @@ TAggregateStatsActor::TAggregateStatsActor(
     , ShardIds(std::move(shardIds))
     , Response(std::move(response))
     , IsBackgroundRequest(isBackgroundRequest)
-    , FanoutStatsCollectionInShardsDisabled(
-          fanoutStatsCollectionInShardsDisabled)
 {
     auto& dst = *Response->Record.MutableStats();
     auto& shardStats = *dst.MutableShardStats();
@@ -764,8 +757,7 @@ void TIndexTabletActor::HandleUpdateCounters(
             !IsMainTablet() ? GetFileSystem().GetMainFileSystemId() : TString(),
             shardIds,
             std::move(response),
-            true, /* isBackgroundRequest */
-            Config->GetFanoutStatsCollectionInShardsDisabled());
+            true /* isBackgroundRequest */);
 
         auto actorId = NCloud::Register(ctx, std::move(actor));
         WorkerActors.insert(actorId);
@@ -925,8 +917,7 @@ void TIndexTabletActor::HandleGetStorageStats(
         !IsMainTablet() ? GetFileSystem().GetMainFileSystemId() : TString(),
         shardIds,
         std::move(response),
-        false, /* isBackgroundRequest */
-        Config->GetFanoutStatsCollectionInShardsDisabled());
+        false /* isBackgroundRequest */);
 
     auto actorId = NCloud::Register(ctx, std::move(actor));
     WorkerActors.insert(actorId);

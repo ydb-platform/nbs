@@ -12,11 +12,13 @@ using namespace NKikimr;
 
 IActorPtr CreateIndexTabletProxy(
     TStorageConfigPtr config,
-    ITraceSerializerPtr traceSerializer)
+    ITraceSerializerPtr traceSerializer,
+    IFileSystemEventHandlerPtr fileSystemEventHandler)
 {
     return std::make_unique<TIndexTabletProxyActor>(
         std::move(config),
-        std::move(traceSerializer));
+        std::move(traceSerializer),
+        std::move(fileSystemEventHandler));
 }
 
 }   // namespace NCloud::NFileStore::NStorage

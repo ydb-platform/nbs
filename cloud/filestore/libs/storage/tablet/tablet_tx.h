@@ -235,9 +235,14 @@ struct TIndexStateNodeUpdates
 {
     TVector<IInMemoryIndexState::TIndexStateRequest> NodeUpdates;
 
+    // Sent to the tablet's clients after NodeUpdates are applied to the
+    // in-memory index state.
+    TVector<NProto::TFileSystemEvent> FileSystemEvents;
+
     void Clear()
     {
         NodeUpdates.clear();
+        FileSystemEvents.clear();
     }
 };
 

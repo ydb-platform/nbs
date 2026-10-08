@@ -2,6 +2,7 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/service/public.h>
 #include <cloud/filestore/libs/storage/api/ss_proxy.h>
 #include <cloud/filestore/libs/storage/api/tablet_proxy.h>
 #include <cloud/filestore/libs/storage/core/config.h>
@@ -80,6 +81,7 @@ class TIndexTabletProxyActor final
 private:
     const TStorageConfigPtr Config;
     const ITraceSerializerPtr TraceSerializer;
+    const IFileSystemEventHandlerPtr FileSystemEventHandler;
 
     ui64 ConnectionId = 0;
     THashMap<TString, TConnection> Connections;
@@ -94,7 +96,8 @@ private:
 public:
     TIndexTabletProxyActor(
         TStorageConfigPtr config,
-        ITraceSerializerPtr traceSerializer);
+        ITraceSerializerPtr traceSerializer,
+        IFileSystemEventHandlerPtr fileSystemEventHandler);
 
 private:
     TConnection& CreateConnection(const TString& fileSystemId);
@@ -136,6 +139,10 @@ private:
         const NActors::TActorContext& ctx,
         TConnection& conn);
 
+    void NotifyFileSystemEventHandlerDisconnected(
+        const NActors::TActorContext& ctx,
+        ui64 tabletId);
+
 private:
     void HandleClientConnected(
         NKikimr::TEvTabletPipe::TEvClientConnected::TPtr& ev,
@@ -147,6 +154,10 @@ private:
 
     void HandleDescribeFileStoreResponse(
         const TEvSSProxy::TEvDescribeFileStoreResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
+    void HandleFileSystemEvent(
+        const TEvIndexTabletProxy::TEvFileSystemEvent::TPtr& ev,
         const NActors::TActorContext& ctx);
 
     void HandlePoisonPill(

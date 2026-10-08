@@ -444,6 +444,8 @@ void TIndexTabletActor::HandleCreateNode(
     const TEvService::TEvCreateNodeRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
+
     using TMethod = TEvService::TCreateNodeMethod;
     auto* msg = ev->Get();
 
@@ -843,6 +845,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
                 CopyAttrs(args.ChildNode->Attrs, E_CM_CMTIME | E_CM_REF);
             UpdateNode(
                 *db,
+                args.FileSystemEvents,
                 args.ChildNodeId,
                 args.ChildNode->MinCommitId,
                 args.CommitId,
@@ -857,6 +860,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.ParentNode->NodeId,
         args.ParentNode->MinCommitId,
         args.CommitId,
@@ -870,6 +874,7 @@ void TIndexTabletActor::ExecuteTx_CreateNode(
         // contents are exhaustively stored in the in-memory state
         CreateNodeRef(
             *db,
+            args.FileSystemEvents,
             args.ParentNodeId,
             args.CommitId,
             args.Name,
