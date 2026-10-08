@@ -43,6 +43,10 @@ struct TTestBackend: public IServerBackend
         std::function<TFuture<NProto::TFormatDeviceResponse>(
             NProto::TFormatDeviceRequest)>;
 
+    using TListDevicesFunc =
+        std::function<TFuture<NProto::TListDevicesResponse>(
+            NProto::TListDevicesRequest)>;
+
     using TReadPagesFunc = std::function<TFuture<NProto::TReadPagesResponse>(
         NProto::TReadPagesRequest)>;
 
@@ -61,6 +65,7 @@ struct TTestBackend: public IServerBackend
     TAcquireDevicesFunc AcquireDevicesImpl;
     TReleaseDevicesFunc ReleaseDevicesImpl;
     TFormatDeviceFunc FormatDeviceImpl;
+    TListDevicesFunc ListDevicesImpl;
     TReadPagesFunc ReadPagesImpl;
     TWriteLogRecordFunc WriteLogRecordImpl;
     TReadJournalTailFunc ReadJournalTailImpl;
@@ -95,6 +100,12 @@ struct TTestBackend: public IServerBackend
         -> TFuture<NProto::TFormatDeviceResponse> final
     {
         return FormatDeviceImpl(std::move(request));
+    }
+
+    [[nodiscard]] auto ListDevices(NProto::TListDevicesRequest request)
+        -> TFuture<NProto::TListDevicesResponse> final
+    {
+        return ListDevicesImpl(std::move(request));
     }
 
     [[nodiscard]] auto ReadPages(
@@ -631,6 +642,67 @@ Y_UNIT_TEST_SUITE(TDeviceTCPServerTest)
         UNIT_ASSERT_VALUES_EQUAL(
             expectedRequest.DebugString(),
             formatDeviceRequest->DebugString());
+    }
+
+    Y_UNIT_TEST_F(ShouldDispatchListDevices, TFixture)
+    {
+        const ui64 requestId = 51;
+
+        const auto expectedRequest = []
+        {
+            NProto::TListDevicesRequest proto;
+            proto.MutableHeaders()->SetClientId("list");
+            return proto;
+        }();
+
+        std::optional<NProto::TListDevicesRequest> listDevicesRequest;
+
+        Backend->ListDevicesImpl = [&](auto request)
+        {
+            listDevicesRequest = std::move(request);
+
+            NProto::TListDevicesResponse response;
+            auto& info = *response.AddDevices();
+            info.SetDeviceUUID("uuid-1");
+            info.SetBlockSize(4096);
+            info.SetLogMetaSize(1_MB);
+            info.SetLogDataSize(2_MB);
+            info.SetDataSize(4_MB);
+            return MakeFuture(std::move(response));
+        };
+
+        TTestClient client{Port};
+
+        {
+            NProto::TDeviceProtocolRequest request;
+            request.SetRequestId(requestId);
+            request.MutableListDevices()->CopyFrom(expectedRequest);
+            client.Send(request);
+        }
+
+        auto response = client.Receive();
+
+        UNIT_ASSERT_VALUES_EQUAL(requestId, response.GetRequestId());
+        UNIT_ASSERT(response.HasListDevices());
+
+        const auto& listDevices = response.GetListDevices();
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            listDevices.GetError().GetCode(),
+            FormatError(listDevices.GetError()));
+        UNIT_ASSERT_VALUES_EQUAL(1, listDevices.DevicesSize());
+
+        const auto& info = listDevices.GetDevices(0);
+        UNIT_ASSERT_VALUES_EQUAL("uuid-1", info.GetDeviceUUID());
+        UNIT_ASSERT_VALUES_EQUAL(4096, info.GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(1_MB, info.GetLogMetaSize());
+        UNIT_ASSERT_VALUES_EQUAL(2_MB, info.GetLogDataSize());
+        UNIT_ASSERT_VALUES_EQUAL(4_MB, info.GetDataSize());
+
+        UNIT_ASSERT(listDevicesRequest);
+        UNIT_ASSERT_VALUES_EQUAL(
+            expectedRequest.DebugString(),
+            listDevicesRequest->DebugString());
     }
 
     Y_UNIT_TEST_F(ShouldHandleBackendExecptions, TFixture)

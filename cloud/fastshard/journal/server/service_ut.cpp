@@ -13,6 +13,7 @@
 #include <util/generic/hash_set.h>
 #include <util/generic/size_literals.h>
 #include <util/generic/vector.h>
+#include <util/string/printf.h>
 
 namespace NCloud::NJournalled {
 
@@ -562,6 +563,89 @@ Y_UNIT_TEST_SUITE(TServiceTest)
         const auto error = FormatDevice(Configs[0].DeviceUUID, true);
         UNIT_ASSERT_VALUES_EQUAL_C(E_IO, error.GetCode(), FormatError(error));
         UNIT_ASSERT_VALUES_EQUAL("zero failed", error.GetMessage());
+    }
+
+    Y_UNIT_TEST_F(ShouldListDevices, TFixture)
+    {
+        NProto::TListDevicesRequest request;
+        request.MutableHeaders()->SetClientId(ClientId);
+
+        const auto response =
+            Service->ListDevices(std::move(request)).GetValueSync();
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+
+        // The data part is what the journal leaves of the device, a device
+        // without a journal is all data
+
+        UNIT_ASSERT_VALUES_EQUAL(std::size(Configs), response.DevicesSize());
+
+        for (size_t i = 0; i != std::size(Configs); ++i) {
+            const auto& config = Configs[i];
+            const auto& info = response.GetDevices(i);
+
+            UNIT_ASSERT_VALUES_EQUAL(config.DeviceUUID, info.GetDeviceUUID());
+            UNIT_ASSERT_VALUES_EQUAL(config.BlockSize, info.GetBlockSize());
+            UNIT_ASSERT_VALUES_EQUAL(config.LogMetaSize, info.GetLogMetaSize());
+            UNIT_ASSERT_VALUES_EQUAL(config.LogDataSize, info.GetLogDataSize());
+            UNIT_ASSERT_VALUES_EQUAL(
+                config.BlocksCount * config.BlockSize - config.LogMetaSize -
+                    config.LogDataSize,
+                info.GetDataSize());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldListDevicesSortedByUUID, TFixture)
+    {
+        constexpr ui32 DeviceCount = 32;
+
+        TVector<TJournalledDeviceSpec> specs;
+        for (ui32 i = DeviceCount; i != 0; --i) {
+            const TString uuid = Sprintf("uuid-%02u", i);
+            specs.push_back(
+                {.Device = std::make_shared<TTestJournalledDevice>(uuid),
+                 .Config = {
+                     .DeviceUUID = uuid,
+                     .BlocksCount = 1024,
+                     .BlockSize = DefaultBlockSize}});
+        }
+
+        auto service = CreateService(DeviceManager, std::move(specs));
+
+        const auto response =
+            service->ListDevices(NProto::TListDevicesRequest()).GetValueSync();
+        const auto& error = response.GetError();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+        UNIT_ASSERT_VALUES_EQUAL(DeviceCount, response.DevicesSize());
+
+        for (ui32 i = 0; i != DeviceCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                Sprintf("uuid-%02u", i + 1),
+                response.GetDevices(i).GetDeviceUUID());
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldListDevicesWithoutAccessCheck, TFixture)
+    {
+        // Listing does not touch the devices, so any client may list them
+
+        for (const TString clientId: {"", "unknown-client"}) {
+            NProto::TListDevicesRequest request;
+            request.MutableHeaders()->SetClientId(clientId);
+
+            const auto response =
+                Service->ListDevices(std::move(request)).GetValueSync();
+            const auto& error = response.GetError();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+            UNIT_ASSERT_VALUES_EQUAL(
+                std::size(Configs),
+                response.DevicesSize());
+        }
+
+        UNIT_ASSERT_VALUES_EQUAL(0, DeviceManager->AccessDeviceCalls.size());
     }
 
     Y_UNIT_TEST_F(ShouldStartAndStopDevices, TFixture)
