@@ -20,7 +20,8 @@ struct IStateFileLocator
 
     virtual TResultOrError<NProto::TStateFileList> ListStateFiles() = 0;
 
-    // An empty fileType matches state files of any type.
+    // An empty sessionId matches all sessions. An empty fileType matches all
+    // file types. Paths outside the filters are not inspected.
     virtual TResultOrError<TFile> LocateAndOpenStateFile(
         const TString& fsId,
         const TString& sessionId,
