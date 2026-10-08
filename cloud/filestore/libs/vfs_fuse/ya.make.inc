@@ -5,6 +5,7 @@ SRCS(
     directory_handle_stats.cpp
     directory_handle_storage.cpp
     directory_handle_storage_stats.cpp
+    filesystem_event_handler.cpp
     fs.cpp
     fs_directory_content_format.cpp
     fs_directory_handle.cpp

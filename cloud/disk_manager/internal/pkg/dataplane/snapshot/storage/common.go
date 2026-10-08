@@ -247,7 +247,8 @@ func backupChunkKeyListValue(
 }
 
 func backupChunkQueueEntryStructTypeString() string {
-	return "Struct<snapshot_id: Utf8, chunk_id: Utf8, stored_in_s3: Bool>"
+	return "Struct<snapshot_id: Utf8, chunk_id: Utf8, stored_in_s3: Bool, " +
+		"encrypted_dek: String>"
 }
 
 func backupChunkQueueEntryListValue(
@@ -268,6 +269,10 @@ func backupChunkQueueEntryListValue(
 			persistence.StructFieldValue(
 				"stored_in_s3",
 				persistence.BoolValue(entry.StoredInS3),
+			),
+			persistence.StructFieldValue(
+				"encrypted_dek",
+				persistence.StringValue(entry.EncryptedDEK),
 			),
 		))
 	}

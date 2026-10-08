@@ -13,8 +13,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
-using namespace NPartition;
-
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
 
 ////////////////////////////////////////////////////////////////////////////////

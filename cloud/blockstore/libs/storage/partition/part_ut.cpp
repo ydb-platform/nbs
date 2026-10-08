@@ -3091,18 +3091,39 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(3, compactedRangeCount);
     }
 
-    Y_UNIT_TEST(ShouldAutomaticallyRunCompactionForManyMixedBlocksPerDisk)
+    void CheckMixedBlocksPercentageCompactionPerDisk(
+        NCloud::NProto::EStorageMediaKind mediaKind,
+        ui64 percentageThreshold,
+        ui64 startBytes,
+        ui32 triggerAfterMixedBlocks,
+        bool enabled = true,
+        bool reboot = false,
+        ui32 diskBlockCount = 2 * MaxBlocksCount,
+        ui32 mergedBlocksPerRange = MaxBlocksCount)
     {
-        static constexpr ui32 diskBlockCount = 2 * MaxBlocksCount;
-        // Scale the per-unit limit to keep the disk-wide threshold at 6 blocks.
-        static constexpr ui64 maxMixedBytesPerUnit = 6 * 1_GB / diskBlockCount;
-
         auto config = DefaultConfig(1_MB);
-        config.SetAllocationUnitHDD(1);
-        config.SetMixedBlocksCountCompactionEnabledHDD(true);
-        config.SetHDDMaxMixedBytesPerUnit(maxMixedBytesPerUnit);
+        config.SetMixedBlocksCountCompactionEnabledHDD(enabled);
+        config.SetMixedBlocksCountCompactionEnabledSSD(enabled);
+        // The other media kind must not control this disk's trigger.
+        config.SetMixedBlocksCompactionThresholdPercentageHDD(100);
+        config.SetMixedBlocksCompactionThresholdPercentageSSD(100);
+        if (mediaKind == NCloud::NProto::STORAGE_MEDIA_SSD) {
+            config.SetMixedBlocksCompactionThresholdPercentageSSD(
+                percentageThreshold);
+            config.SetMixedBlocksCompactionMinStoredBytesSSD(startBytes);
+        } else {
+            config.SetMixedBlocksCompactionThresholdPercentageHDD(
+                percentageThreshold);
+            config.SetMixedBlocksCompactionMinStoredBytesHDD(startBytes);
+        }
 
-        auto runtime = PrepareTestActorRuntime(config, diskBlockCount);
+        TTestPartitionInfo partitionInfo;
+        partitionInfo.MediaKind = mediaKind;
+        auto runtime = PrepareTestActorRuntime(
+            config,
+            diskBlockCount,
+            {},
+            partitionInfo);
 
         TPartitionClient partition(*runtime);
         partition.WaitReady();
@@ -3142,13 +3163,13 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
                 return false;
             });
 
-        // Fill each compaction range with one 4 MiB merged write to satisfy
+        // Fill each compaction range with a merged write to satisfy
         // the used-blocks gate and keep the ranges non-empty.
-        for (ui32 startIndex = 0; startIndex < diskBlockCount;
+        for (ui32 startIndex = 0; startIndex < 2 * MaxBlocksCount;
              startIndex += MaxBlocksCount)
         {
             partition.WriteBlocks(
-                TBlockRange32::WithLength(startIndex, MaxBlocksCount),
+                TBlockRange32::WithLength(startIndex, mergedBlocksPerRange),
                 1);
             runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
         }
@@ -3166,21 +3187,41 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
         UNIT_ASSERT_VALUES_EQUAL(0, compactionByMixedBlockCountPerDisk);
         observeCompactionRequests = true;
 
-        partition.WriteBlocks(TBlockRange32::WithLength(0, 2), 1);
+        // Each range stays below its mixed-byte threshold. The disk has
+        // 2048 merged blocks, so 20 mixed blocks are below 1% of all stored
+        // bytes, while 21 mixed blocks exceed it (21 / 2069).
+        partition.WriteBlocks(TBlockRange32::WithLength(0, 10), 2);
         partition.Flush();
-        partition.WriteBlocks(TBlockRange32::WithLength(2, 2), 2);
-        partition.Flush();
-        UNIT_ASSERT(!compactionRequestObserved);
-
-        partition.WriteBlocks(TBlockRange32::WithLength(MaxBlocksCount, 1), 3);
-        partition.Flush();
-        UNIT_ASSERT(!compactionRequestObserved);
-
         partition.WriteBlocks(
-            TBlockRange32::WithLength(MaxBlocksCount + 1, 1), 4);
+            TBlockRange32::WithLength(MaxBlocksCount, 10), 3);
         partition.Flush();
-        runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
-        UNIT_ASSERT(compactionRequestObserved);
+        UNIT_ASSERT_VALUES_EQUAL(
+            triggerAfterMixedBlocks == 20,
+            compactionRequestObserved);
+
+        if (reboot) {
+            partition.RebootTablet();
+            partition.WaitReady();
+            UNIT_ASSERT(!compactionRequestObserved);
+        }
+
+        if (!compactionRequestObserved) {
+            partition.WriteBlocks(MaxBlocksCount + 10, 4);
+            partition.Flush();
+            runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                triggerAfterMixedBlocks == 21,
+                compactionRequestObserved);
+        }
+
+        if (!compactionRequestObserved) {
+            partition.WriteBlocks(MaxBlocksCount + 11, 5);
+            partition.Flush();
+            runtime->DispatchEvents(TDispatchOptions(), TDuration::Seconds(1));
+            UNIT_ASSERT_VALUES_EQUAL(
+                triggerAfterMixedBlocks == 22,
+                compactionRequestObserved);
+        }
 
         partition.SendToPipe(
             std::make_unique<TEvPartitionPrivate::TEvUpdateCounters>());
@@ -3191,7 +3232,47 @@ Y_UNIT_TEST_SUITE(TPartitionTest)
             runtime->DispatchEvents(options);
         }
         UNIT_ASSERT_VALUES_EQUAL(0, compactionByMixedBlockCountPerRange);
-        UNIT_ASSERT_VALUES_EQUAL(1, compactionByMixedBlockCountPerDisk);
+        UNIT_ASSERT_VALUES_EQUAL(
+            triggerAfterMixedBlocks ? 1 : 0,
+            compactionByMixedBlockCountPerDisk);
+    }
+
+    Y_UNIT_TEST(ShouldCompactByMixedBlocksPercentagePerDisk)
+    {
+        for (const auto mediaKind: {NCloud::NProto::STORAGE_MEDIA_HDD,
+                                   NCloud::NProto::STORAGE_MEDIA_SSD})
+        {
+            CheckMixedBlocksPercentageCompactionPerDisk(mediaKind, 1, 0, 21);
+            // 20 mixed blocks out of 2000 stored blocks reach exactly 1%.
+            CheckMixedBlocksPercentageCompactionPerDisk(
+                mediaKind, 1, 0, 20, true, false, 2 * MaxBlocksCount, 990);
+            CheckMixedBlocksPercentageCompactionPerDisk(
+                mediaKind, 1, 0, 21, true, true);
+            // The same stored bytes on a larger disk yield the same trigger.
+            CheckMixedBlocksPercentageCompactionPerDisk(
+                mediaKind, 1, 0, 21, true, false, 4 * MaxBlocksCount);
+            CheckMixedBlocksPercentageCompactionPerDisk(mediaKind, 2, 0, 0);
+            CheckMixedBlocksPercentageCompactionPerDisk(mediaKind, 0, 0, 0);
+            CheckMixedBlocksPercentageCompactionPerDisk(
+                mediaKind, 1, 0, 0, false);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldWaitForMinimumStoredBytesBeforeMixedBlocksCompaction)
+    {
+        for (const auto mediaKind: {NCloud::NProto::STORAGE_MEDIA_HDD,
+                                   NCloud::NProto::STORAGE_MEDIA_SSD})
+        {
+            // Start exactly at the byte threshold even if the percentage was
+            // already high enough one block earlier.
+            CheckMixedBlocksPercentageCompactionPerDisk(
+                mediaKind,
+                1,
+                (2 * MaxBlocksCount + 22) * DefaultBlockSize,
+                22);
+            CheckMixedBlocksPercentageCompactionPerDisk(
+                mediaKind, 1, 1_GB, 0);
+        }
     }
 
     Y_UNIT_TEST(ShouldEnableMixedBlocksCountCompactionByMediaKind)

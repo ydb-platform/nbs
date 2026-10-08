@@ -85,6 +85,7 @@ namespace {
 
 const TString VhostMetricsComponent = "client";
 const TString ServerMetricsComponent = "server";
+const TString LocalServiceMetricsComponent = "local_service";
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -552,6 +553,9 @@ void TBootstrapVhost::InitEndpoints()
             Timer,
             Scheduler,
             Logging,
+            FilestoreCounters->GetSubgroup(
+                "component",
+                LocalServiceMetricsComponent),
             FileIOService,
             ThreadPool,
             ProfileLog);
@@ -638,7 +642,8 @@ void TBootstrapVhost::InitEndpoints()
             ModuleStatsRegistry,
             FsCountersProvider,
             ProfileLog,
-            std::move(persistentState)),
+            std::move(persistentState),
+            MultiFileSystemEventHandler),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
             .MaxQueueSize =

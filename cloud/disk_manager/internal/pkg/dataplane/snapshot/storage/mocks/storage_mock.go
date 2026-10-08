@@ -306,7 +306,7 @@ func (s *StorageMock) ChunksBackupCompleted(
 	return args.Error(0)
 }
 
-func (s *StorageMock) ClearCompletedBackupChunkQueueEntries(
+func (s *StorageMock) ClearCompletedBackupChunks(
 	ctx context.Context,
 	snapshotID string,
 	limit int,
@@ -322,15 +322,6 @@ func (s *StorageMock) GetBackupChunkQueueLength(
 
 	args := s.Called(ctx)
 	return args.Get(0).(uint64), args.Error(1)
-}
-
-func (s *StorageMock) FilterExistingChunkIDs(
-	ctx context.Context,
-	chunkIDs []string,
-) ([]string, error) {
-
-	args := s.Called(ctx, chunkIDs)
-	return args.Get(0).([]string), args.Error(1)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

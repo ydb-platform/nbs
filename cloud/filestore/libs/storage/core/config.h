@@ -372,6 +372,7 @@ public:
 
     bool GetParentlessFilesOnly() const;
     bool GetAllowHandlelessIO() const;
+    bool GetFileSystemEventsEnabled() const;
 
     bool GetLazyXAttrsEnabled() const;
 
@@ -435,6 +436,10 @@ public:
     [[nodiscard]] ui32 GetFastShardServerPort() const;
     [[nodiscard]] bool GetFastShardRuntimeEnabled() const;
     [[nodiscard]] bool GetFastShardExtendedVerificationEnabled() const;
+    [[nodiscard]] ui64 GetFastShardDiskRegistryTabletId() const;
+    [[nodiscard]] ui64 GetFastShardDiskRegistryOwner() const;
+    [[nodiscard]] ui64 GetFastShardDiskRegistryOwnerIdx() const;
+    [[nodiscard]] TDuration GetFastShardDiskRegistryLookupTimeout() const;
 
     [[nodiscard]] bool GetEnableNodeRefCompression() const;
 
@@ -458,8 +463,6 @@ public:
 
     [[nodiscard]] double GetFakeTxPageFaultsProbability() const;
     [[nodiscard]] TDuration GetArtificialShardPhaseDelay() const;
-
-    [[nodiscard]] bool GetFanoutStatsCollectionInShardsDisabled() const;
 
     [[nodiscard]] bool GetEnableLoadActor() const;
 

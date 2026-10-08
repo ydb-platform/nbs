@@ -22,6 +22,7 @@
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/algorithm.h>
 #include <util/generic/hash.h>
 #include <util/generic/hash_set.h>
 #include <util/system/rwlock.h>
@@ -257,6 +258,29 @@ private:
     TRequestCounters RequestCounters;
     TDynamicCounters::TCounterPtr HasDowntimeCounter;
 
+    struct TServingCellHost
+    {
+        TString CellId;
+        TString Fqdn;
+
+        bool operator==(const TServingCellHost& other) const = default;
+    };
+
+    struct TServingConnection
+    {
+        ui64 ConnectionId = 0;
+        TServingCellHost Host;
+    };
+
+    // the per-instance group; the serving cell host hangs off it
+    TDynamicCountersPtr CountersGroup;
+    // under TVolumeStats::Lock for writing. Endpoints of the same disk and
+    // client - a local VM migration, a switch to the -copy - share this
+    // instance, each through its own cell connection: a host is shown while
+    // any of them goes through it. Two at most in practice, hence vectors
+    TVector<TServingConnection> ServingConnections;
+    TVector<TServingCellHost> ShownServingCellHosts;
+
     // Cumulative per-volume availability counters (derivative/RATE, seconds).
     // Nested: ObservedSeconds >= AvailableSeconds >= HealthySeconds. Consumers
     // compute availability = Available/Observed and quality = Healthy/Observed
@@ -323,6 +347,60 @@ public:
     TDuration GetPossiblePostponeDuration() const override
     {
         return VolumeBase->PostponeTimePredictor->GetPossiblePostponeDuration();
+    }
+
+    void SetServingCellHost(
+        ui64 connectionId,
+        const TString& cellId,
+        const TString& fqdn)
+    {
+        EraseIf(
+            ServingConnections,
+            [&](const auto& c) { return c.ConnectionId == connectionId; });
+        if (fqdn) {
+            ServingConnections.push_back({connectionId, {cellId, fqdn}});
+        }
+        ShowServingCellHosts();
+    }
+
+    void CarryServingCellHostFrom(const TVolumeInfo& other)
+    {
+        ServingConnections = other.ServingConnections;
+        ShowServingCellHosts();
+    }
+
+    void ShowServingCellHosts()
+    {
+        if (!CountersGroup) {
+            return;
+        }
+
+        TVector<TServingCellHost> hosts;
+        for (const auto& connection: ServingConnections) {
+            if (!IsIn(hosts, connection.Host)) {
+                hosts.push_back(connection.Host);
+            }
+        }
+
+        for (const auto& host: hosts) {
+            *CountersGroup->GetSubgroup("cell", host.CellId)
+                 ->GetSubgroup("cell_host", host.Fqdn)
+                 ->GetCounter("CellMount") = 1;
+        }
+
+        for (const auto& shown: ShownServingCellHosts) {
+            const bool cellInUse = AnyOf(
+                hosts,
+                [&](const auto& h) { return h.CellId == shown.CellId; });
+            if (!cellInUse) {
+                CountersGroup->RemoveSubgroup("cell", shown.CellId);
+            } else if (!IsIn(hosts, shown)) {
+                CountersGroup->GetSubgroup("cell", shown.CellId)
+                    ->RemoveSubgroup("cell_host", shown.Fqdn);
+            }
+        }
+
+        ShownServingCellHosts = std::move(hosts);
     }
 
     ui64 RequestStarted(
@@ -597,8 +675,8 @@ public:
     {
         bool inserted = false;
 
-        volume.SetDiskId(NStorage::GetLogicalDiskId(volume.GetDiskId()));
-
+        // the disk id is already logical: normalizing it again would turn a
+        // disk-copy-copy into a disk on a relabel
         auto volumeIt = Volumes.find(volume.GetDiskId());
         if (volumeIt == Volumes.end()) {
             volumeIt = Volumes.emplace(
@@ -635,14 +713,15 @@ public:
     {
         TWriteGuard guard(Lock);
 
-        const auto& diskId = NStorage::GetLogicalDiskId(volume.GetDiskId());
+        auto logicalVolume = volume;
+        logicalVolume.SetDiskId(NStorage::GetLogicalDiskId(volume.GetDiskId()));
         auto [it, _] = ClientVolumeToRealInstance.try_emplace(
-            {clientId, diskId},
+            {clientId, logicalVolume.GetDiskId()},
             clientId,
             instanceId);
 
         return MountVolumeImpl(
-            volume,
+            std::move(logicalVolume),
             it->second,
             0 /* pinCountForNewInstance */);
     }
@@ -699,8 +778,12 @@ public:
         UnregisterVolume(holder.VolumeBase);
 
         for (const auto& item: holder.VolumeInfos) {
-            const TVolumeInfo& info = *item.second;
+            TVolumeInfo& info = *item.second;
             MountVolumeImpl(volumeConfig, info.RealInstanceId, info.PinCount);
+
+            Volumes.at(volumeConfig.GetDiskId())
+                .VolumeInfos.at(info.RealInstanceId)
+                ->CarryServingCellHostFrom(info);
         }
     }
 
@@ -1109,6 +1192,22 @@ public:
         return volumeIt->second.VolumeBase->HasStorageConfigPatchCounter->Val();
     }
 
+    void SetServingCellHost(
+        const TString& diskId,
+        const TString& clientId,
+        ui64 connectionId,
+        const TString& cellId,
+        const TString& fqdn) override
+    {
+        // a write lock: rare, and it keeps a relabel carrying the host over
+        // out of the way
+        TWriteGuard guard(Lock);
+
+        if (auto info = GetVolumeInfoImpl(diskId, clientId)) {
+            info->SetServingCellHost(connectionId, cellId, fqdn);
+        }
+    }
+
 private:
     TVolumeInfoHolder RegisterVolume(NProto::TVolume volume)
     {
@@ -1166,6 +1265,7 @@ private:
                         volumeConfig.GetStorageMediaKind()));
         info->RequestCounters.Register(*countersGroup);
         info->HasDowntimeCounter = countersGroup->GetCounter("HasDowntime");
+        info->CountersGroup = countersGroup;
 
         // Register the cumulative counters in the narrow component=sli_volume
         // tree (see AvailabilityCounters comment).
@@ -1398,6 +1498,20 @@ struct TVolumeStatsStub final
     {
         Y_UNUSED(diskId);
         return {};
+    }
+
+    void SetServingCellHost(
+        const TString& diskId,
+        const TString& clientId,
+        ui64 connectionId,
+        const TString& cellId,
+        const TString& fqdn) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
+        Y_UNUSED(connectionId);
+        Y_UNUSED(cellId);
+        Y_UNUSED(fqdn);
     }
 
 };

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -314,8 +313,9 @@ func (c *S3Client) GetObject(
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case aws_s3.ErrCodeNoSuchKey:
-				return S3Object{}, errors.NewSilentNonRetriableError(
-					ObjectNotFoundError{Key: key},
+				return S3Object{}, errors.NewSilentNonRetriableErrorf(
+					"s3 object not found: %v",
+					key,
 				)
 			case aws_s3.ErrCodeNoSuchBucket:
 				return S3Object{}, errors.NewNonRetriableError(err)
@@ -494,14 +494,6 @@ func (c *S3Client) DeleteObject(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-type ObjectNotFoundError struct {
-	Key string
-}
-
-func (e ObjectNotFoundError) Error() string {
-	return fmt.Sprintf("s3 object not found: %v", e.Key)
-}
 
 type S3Object struct {
 	Data         []byte

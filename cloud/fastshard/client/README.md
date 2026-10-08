@@ -33,10 +33,18 @@ everything else that needs the real silk runtime.
    `WriteLogRecord`, or the request protobuf with `--proto`
  * `--output` - file to write to instead of stdout: page data for
    `ReadPages`, or the response protobuf with `--proto`
- * `--verbose` - enable silk debug logging
+ * `--verbose [LEVEL]` - log level of the client: `error`, `warn` (default),
+  `info`, `debug` or `trace`; bare `--verbose` means `debug`. `debug` and
+  `trace` also enable silk debug logging
  * `--timing` - print connect and round trip times (in ms) to stderr. The
    connection is opened lazily inside the call, so the round trip excludes
    the connect time
+ * `--acquire` - every command except `AcquireDevices` / `ReleaseDevices`:
+   acquire the device of the request (with the same headers and generation
+   0) before sending it and release it afterwards. If the acquire fails the
+   request is not sent; the release is attempted even when the request
+   fails, and a failed release fails the command. `--request-timeout`
+   applies to each of the three requests
  * free argument: the command; either camel case (`ReadPages`), a single
    lowercase word (`readpages`) or words separated by hyphens or underscores
    (`read-pages`)
@@ -63,9 +71,12 @@ Prints `OK`.
 ### FormatDevice
 
  * `--device-uuid` - device whose journal is wiped; **mandatory**
+ * `--whole-device` - zero the whole device instead of the journal metadata
+   only
 
 Zeroes the journal metadata, so the journal restores as empty. A device
-without a journal is left untouched. Prints `OK`.
+without a journal is left untouched unless `--whole-device` is given, which
+zeroes all of the device's blocks. Prints `OK`.
 
 ### ReadPages
 

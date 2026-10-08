@@ -62,6 +62,9 @@ message TClientThrottlingConfig
 
     // Actual settings (these ones override legacy settings)
     optional TClientMediaKindThrottlingConfig HddNonreplThrottlingConfig = 17;
+    // Throttling config for network-ssd-direct-mirror3of5-group volumes.
+    // Unset fields do not fall back to the legacy per-cpu-unit settings above.
+    optional TClientMediaKindThrottlingConfig DirectMirror3Of5ThrottlingConfig = 18;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

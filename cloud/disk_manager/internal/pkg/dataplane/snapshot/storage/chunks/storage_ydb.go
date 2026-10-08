@@ -215,62 +215,6 @@ func (s *StorageYDB) UnrefChunk(
 	return err
 }
 
-func (s *StorageYDB) FilterExistingChunkIDs(
-	ctx context.Context,
-	chunkIDs []string,
-) (existing []string, err error) {
-
-	if len(chunkIDs) == 0 {
-		return nil, nil
-	}
-
-	var shardIDs []persistence.Value
-	var ids []persistence.Value
-	for _, chunkID := range chunkIDs {
-		shardIDs = append(
-			shardIDs,
-			persistence.Uint64Value(makeShardID(chunkID)),
-		)
-		ids = append(ids, persistence.UTF8Value(chunkID))
-	}
-
-	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $shard_ids as List<Uint64>;
-		declare $chunk_ids as List<Utf8>;
-
-		select chunk_id
-		from %v
-		where shard_id in $shard_ids and
-			chunk_id in $chunk_ids and
-			referer = ""
-	`, s.tablesPath, s.tableName),
-		persistence.ValueParam("$shard_ids", persistence.ListValue(shardIDs...)),
-		persistence.ValueParam("$chunk_ids", persistence.ListValue(ids...)),
-	)
-	if err != nil {
-		return nil, err
-	}
-	defer res.Close()
-
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			var chunkID string
-			err = res.ScanNamed(
-				persistence.OptionalWithDefault("chunk_id", &chunkID),
-			)
-			if err != nil {
-				return nil, err
-			}
-
-			existing = append(existing, chunkID)
-		}
-	}
-
-	return existing, res.Err()
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
 func makeShardID(chunkID string) uint64 {

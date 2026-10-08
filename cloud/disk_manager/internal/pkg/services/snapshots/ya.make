@@ -4,7 +4,6 @@ SRCS(
     backup_snapshot_task.go
     clear_deleted_snapshots_task.go
     create_snapshot_from_disk_task.go
-    delete_backup_meta_task.go
     delete_snapshot_task.go
     interface.go
     register.go

@@ -34,7 +34,9 @@ struct TVhostModuleFactories
         IModuleStatsRegistryPtr moduleStats,
         IFsCountersProviderPtr fsCountersProvider,
         IProfileLogPtr profileLog,
-        NFuse::IPersistentStateManagerPtr persistentState)> LoopFactory;
+        NFuse::IPersistentStateManagerPtr persistentState,
+        IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler)>
+        LoopFactory;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

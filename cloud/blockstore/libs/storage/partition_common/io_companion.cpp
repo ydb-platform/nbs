@@ -24,9 +24,9 @@ TIOCompanion::TIOCompanion(
         IIOCompanionClient& client,
         TPartitionChannelsState& channelsState,
         TLogTitle& logTitle,
-        std::shared_ptr<NPartition::TResourceMetricsQueue> resourceMetricsQueue,
-        std::shared_ptr<NPartition::TGroupDowntimes> groupDowntimes,
-        std::shared_ptr<NPartition::TThreadSafePartCounters> partCounters)
+        std::shared_ptr<TResourceMetricsQueue> resourceMetricsQueue,
+        std::shared_ptr<TGroupDowntimes> groupDowntimes,
+        std::shared_ptr<TThreadSafePartCounters> partCounters)
     : Config(std::move(config))
     , PartitionConfig(partitionConfig)
     , TabletStorageInfo(std::move(tabletStorageInfo))

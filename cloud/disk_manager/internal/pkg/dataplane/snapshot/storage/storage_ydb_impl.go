@@ -1625,7 +1625,7 @@ func (s *storageYDB) getQueuedChunksToBackup(
 		pragma TablePathPrefix = "%v";
 		declare $limit as Uint64;
 
-		select snapshot_id, chunk_id, stored_in_s3
+		select snapshot_id, chunk_id, stored_in_s3, encrypted_dek
 		from backup_chunk_queue
 		limit $limit
 	`, s.tablesPath),
@@ -1644,6 +1644,10 @@ func (s *storageYDB) getQueuedChunksToBackup(
 				persistence.OptionalWithDefault("snapshot_id", &entry.SnapshotID),
 				persistence.OptionalWithDefault("chunk_id", &entry.ChunkID),
 				persistence.OptionalWithDefault("stored_in_s3", &entry.StoredInS3),
+				persistence.OptionalWithDefault(
+					"encrypted_dek",
+					&entry.EncryptedDEK,
+				),
 			)
 			if err != nil {
 				return nil, err
@@ -1742,13 +1746,13 @@ func (s *storageYDB) ChunksBackupCompleted(
 	return err
 }
 
-func (s *storageYDB) ClearCompletedBackupChunkQueueEntries(
+func (s *storageYDB) ClearCompletedBackupChunks(
 	ctx context.Context,
 	snapshotID string,
 	limit int,
 ) (cleared int, err error) {
 
-	defer s.metrics.StatOperation("ClearCompletedBackupChunkQueueEntries")(&err)
+	defer s.metrics.StatOperation("ClearCompletedBackupChunks")(&err)
 
 	res, err := s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -1800,15 +1804,6 @@ func (s *storageYDB) ClearCompletedBackupChunkQueueEntries(
 	}
 
 	return int(count), nil
-}
-
-func (s *storageYDB) FilterExistingChunkIDs(
-	ctx context.Context,
-	chunkIDs []string,
-) (existing []string, err error) {
-
-	defer s.metrics.StatOperation("FilterExistingChunkIDs")(&err)
-	return s.chunkStorageYDB.FilterExistingChunkIDs(ctx, chunkIDs)
 }
 
 func (s *storageYDB) GetBackupChunkQueueLength(
