@@ -1735,8 +1735,8 @@ message TStorageServiceConfig
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
 
-    // If true, the volume throttler reports in responses how much of its delay
-    // the original performance profile alone would have caused. Diagnostics
-    // only: throttling decisions are not affected.
+    // If true, estimate the original quota's share of measured throttler delay
+    // from the ratio of original and effective request costs. This ignores
+    // budget and queue history. Diagnostics only; admission is unchanged.
     optional bool QuotaDelayAccountingEnabled = 542;
 }

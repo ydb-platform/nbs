@@ -96,11 +96,9 @@ public:
         TInstant ts,
         const TThrottlingRequestInfo& requestInfo) override;
 
-    // Simulates the original performance profile alone: no volatile
-    // throttling coefficients and no backpressure. Never delays anything.
-    TMaybe<TQuotaReference> RegisterQuotaReference(
-        TInstant ts,
-        const TThrottlingRequestInfo& requestInfo) override;
+    // Proportional estimate, not a simulation of quota-only admission.
+    TMaybe<double> GetQuotaCostShare(
+        const TThrottlingRequestInfo& requestInfo) const override;
 
     void OnBackpressureReport(
         TInstant ts,

@@ -158,8 +158,8 @@ struct TTabletThrottlerPolicyAlwaysPostpone: public ITabletThrottlerPolicy
 struct TScriptedThrottlerPolicy: public ITabletThrottlerPolicy
 {
     TDeque<TMaybe<TDuration>> Delays;
-    TMaybe<TQuotaReference> QuotaReference;
-    ui32 QuotaReferenceRegistrations = 0;
+    TMaybe<double> QuotaCostShare;
+    mutable ui32 QuotaShareQueries = 0;
 
     bool TryPostpone(
         TInstant ts,
@@ -188,13 +188,12 @@ struct TScriptedThrottlerPolicy: public ITabletThrottlerPolicy
         Y_UNUSED(ts, requestInfo);
     }
 
-    TMaybe<TQuotaReference> RegisterQuotaReference(
-        TInstant ts,
-        const TThrottlingRequestInfo& requestInfo) override
+    TMaybe<double> GetQuotaCostShare(
+        const TThrottlingRequestInfo& requestInfo) const override
     {
-        Y_UNUSED(ts, requestInfo);
-        ++QuotaReferenceRegistrations;
-        return QuotaReference;
+        Y_UNUSED(requestInfo);
+        ++QuotaShareQueries;
+        return QuotaCostShare;
     }
 };
 
@@ -284,32 +283,32 @@ Y_UNIT_TEST_SUITE(TTabletThrottlerTest)
                 new IEventHandle(actorId, senderId, event, 0, cookie)));
         };
 
-        // The original profile would have delayed the request for 10ms, but
-        // it actually waited longer, e.g. because of backpressure.
-        policy.QuotaReference = TQuotaReference{
-            .Delay = TDuration::MilliSeconds(10)};
+        // Capture the share at arrival, not when the queue is redelivered.
+        policy.QuotaCostShare = 0.5;
         policy.Delays = {TDuration::Seconds(1), TDuration::Zero()};
         send(new NActors::TEvents::TEvPing(), 0);
         UNIT_ASSERT_EQUAL(
             ETabletThrottlerStatus::POSTPONED,
             requests.Statuses[0]);
 
+        policy.QuotaCostShare = 1.;
         Sleep(TDuration::MilliSeconds(20));
         send(new NActors::TEvents::TEvFlushLog());
         UNIT_ASSERT_EQUAL(ETabletThrottlerStatus::ADVANCED, requests.Statuses[0]);
-        // The reference is registered once per request, not per redelivery.
-        UNIT_ASSERT_VALUES_EQUAL(1, policy.QuotaReferenceRegistrations);
+        // The share is queried once per request, not per redelivery.
+        UNIT_ASSERT_VALUES_EQUAL(1, policy.QuotaShareQueries);
         const auto& postponed = *requests.CallContexts[0];
         UNIT_ASSERT(
             postponed.Time(EProcessingStage::Postponed) >=
             TDuration::MilliSeconds(20));
         UNIT_ASSERT(postponed.GetThrottlerQuotaDelay());
         UNIT_ASSERT_VALUES_EQUAL(
-            TDuration::MilliSeconds(10),
+            TDuration::MicroSeconds(
+                postponed.Time(EProcessingStage::Postponed).MicroSeconds() / 2),
             *postponed.GetThrottlerQuotaDelay());
 
-        // The original profile would have rejected the request too.
-        policy.QuotaReference = TQuotaReference{.Rejected = true};
+        // Immediate rejection has no measured waiting to attribute.
+        policy.QuotaCostShare = 1.;
         policy.Delays = {Nothing()};
         send(new NActors::TEvents::TEvPing(), 1);
         UNIT_ASSERT_EQUAL(ETabletThrottlerStatus::REJECTED, requests.Statuses[1]);
@@ -320,7 +319,7 @@ Y_UNIT_TEST_SUITE(TTabletThrottlerTest)
             *rejected.GetThrottlerQuotaDelay());
 
         // The policy does not measure the quota delay.
-        policy.QuotaReference = Nothing();
+        policy.QuotaCostShare = Nothing();
         policy.Delays = {TDuration::Zero()};
         send(new NActors::TEvents::TEvPing(), 2);
         UNIT_ASSERT_EQUAL(ETabletThrottlerStatus::ADVANCED, requests.Statuses[2]);

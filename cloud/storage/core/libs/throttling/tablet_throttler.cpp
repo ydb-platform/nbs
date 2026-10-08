@@ -30,7 +30,7 @@ private:
         TThrottlingRequestInfo Info;
         TCallContextBasePtr CallContext;
         NActors::IEventHandlePtr Event;
-        TMaybe<TQuotaReference> QuotaReference;
+        TMaybe<double> QuotaCostShare;
     };
     // TODO: replace with a ring buffer
     TList<TPostponedRequest> PostponedRequests;
@@ -110,14 +110,14 @@ public:
         const std::function<NActors::IEventHandlePtr(void)>& eventReleaser,
         const char* methodName) override
     {
-        // While flushing, the only request that can get here is the front
-        // one being redelivered; it was registered when it first arrived.
-        TMaybe<TQuotaReference> quotaReference;
+        // Keep the arrival-time share across redelivery and policy changes.
+        // This is a proportional estimate, not a reconstruction of the wait.
+        TMaybe<double> quotaCostShare;
         if (PostponedQueueFlushInProgress) {
-            quotaReference = PostponedRequests.front().QuotaReference;
+            quotaCostShare = PostponedRequests.front().QuotaCostShare;
         } else {
-            quotaReference =
-                Policy.RegisterQuotaReference(ctx.Now(), requestInfo);
+            quotaCostShare =
+                Policy.GetQuotaCostShare(requestInfo);
         }
 
         bool rejected = false;
@@ -137,7 +137,7 @@ public:
                     requestInfo,
                     std::move(callContext),
                     eventReleaser(),
-                    quotaReference);
+                    quotaCostShare);
 
                 return ETabletThrottlerStatus::POSTPONED;
             }
@@ -164,7 +164,7 @@ public:
                         requestInfo,
                         std::move(callContext),
                         eventReleaser(),
-                        quotaReference);
+                        quotaCostShare);
 
                     Y_DEBUG_ABORT_UNLESS(!PostponedQueueFlushScheduled);
                     PostponedQueueFlushScheduled = true;
@@ -183,7 +183,7 @@ public:
         if (rejected) {
             const TDuration waited =
                 PostponedQueueFlushInProgress ? queueTime : TDuration::Zero();
-            SetQuotaDelay(*callContext, quotaReference, waited);
+            SetQuotaDelay(*callContext, quotaCostShare, waited);
             return ETabletThrottlerStatus::REJECTED;
         }
 
@@ -191,7 +191,7 @@ public:
         if (PostponedQueueFlushInProgress) {
             delay = callContext->Advance(GetCycleCount());
         }
-        SetQuotaDelay(*callContext, quotaReference, delay);
+        SetQuotaDelay(*callContext, quotaCostShare, delay);
         Logger.LogRequestAdvanced(
             ctx,
             *callContext,
@@ -205,17 +205,18 @@ public:
 private:
     static void SetQuotaDelay(
         TCallContextBase& callContext,
-        const TMaybe<TQuotaReference>& quotaReference,
+        const TMaybe<double>& quotaCostShare,
         TDuration throttlerDelay)
     {
-        // The real wait also contains delays the original profile would not
-        // have caused, so only the smaller of the two is attributed to it.
-        if (!quotaReference && !callContext.GetThrottlerQuotaDelay()) {
+        // Scale measured waiting by the original limits' share of request cost.
+        // Unsupported policies keep the existing unmeasured-delay behavior.
+        if (!quotaCostShare && !callContext.GetThrottlerQuotaDelay()) {
             return;
         }
         callContext.SetThrottlerQuotaDelay(
-            quotaReference
-                ? TMaybe<TDuration>(Min(throttlerDelay, quotaReference->Delay))
+            quotaCostShare
+                ? TMaybe<TDuration>(TDuration::MicroSeconds(
+                      throttlerDelay.MicroSeconds() * *quotaCostShare))
                 : Nothing());
     }
 
@@ -224,7 +225,7 @@ private:
         TThrottlingRequestInfo requestInfo,
         TCallContextBasePtr callContext,
         NActors::IEventHandlePtr ev,
-        const TMaybe<TQuotaReference>& quotaReference)
+        const TMaybe<double>& quotaCostShare)
     {
         if (PostponedQueueFlushInProgress) {
             Y_DEBUG_ABORT_UNLESS(!PostponedRequests.front().Event);
@@ -238,7 +239,7 @@ private:
                 requestInfo,
                 std::move(callContext),
                 std::move(ev),
-                quotaReference});
+                quotaCostShare});
        }
     }
 };

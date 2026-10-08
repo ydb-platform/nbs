@@ -16,16 +16,6 @@ constexpr TDuration MinPostponeQueueFlushInterval = TDuration::MilliSeconds(1);
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// How a request would have been throttled if only the original performance
-// profile of the tablet had limited it.
-struct TQuotaReference
-{
-    TDuration Delay;
-    bool Rejected = false;
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
 struct ITabletThrottlerPolicy
 {
     virtual ~ITabletThrottlerPolicy() = default;
@@ -42,14 +32,12 @@ struct ITabletThrottlerPolicy
         TInstant ts,
         const TThrottlingRequestInfo& requestInfo) = 0;
 
-    // Called once per request when it reaches the throttler, before
-    // SuggestDelay or TryPostpone. Must not affect throttling decisions.
-    // Nothing() means the quota delay is not measured.
-    virtual TMaybe<TQuotaReference> RegisterQuotaReference(
-        TInstant ts,
-        const TThrottlingRequestInfo& requestInfo)
+    // Optional estimate of the original limits' share of this request's cost.
+    // Captured once on arrival, including requests joining a postponed queue.
+    // Nothing() means unsupported or unknown; must not affect admission.
+    virtual TMaybe<double> GetQuotaCostShare(
+        const TThrottlingRequestInfo& requestInfo) const
     {
-        Y_UNUSED(ts);
         Y_UNUSED(requestInfo);
         return Nothing();
     }
