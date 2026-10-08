@@ -37,12 +37,14 @@
 #include <cloud/storage/core/libs/aio/service.h>
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/common/file_io_service.h>
+#include <cloud/storage/core/libs/common/file_io_stats.h>
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/task_queue.h>
 #include <cloud/storage/core/libs/common/thread_pool.h>
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/daemon/mlock.h>
 #include <cloud/storage/core/libs/diagnostics/critical_events.h>
+#include <cloud/storage/core/libs/diagnostics/file_io_stats_publisher.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/diagnostics/monitoring.h>
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
@@ -330,6 +332,15 @@ void TBootstrap::Init()
 
     STORAGE_INFO("CriticalEventsStatsUpdater initialized");
 
+    if (FileIOStatsRegistry) {
+        FileIOStatsUpdater = CreateStatsUpdater(
+            Timer,
+            Scheduler,
+            CreateFileIOStatsPublisher(Timer, FileIOStatsRegistry, rootGroup));
+
+        STORAGE_INFO("FileIOStatsUpdater initialized");
+    }
+
     for (auto& event: PostponedCriticalEvents) {
         ReportCriticalEvent(
             event,
@@ -394,7 +405,12 @@ bool TBootstrap::InitBackend()
     Y_ABORT_IF(LocalStorageProvider);
     Y_ABORT_UNLESS(Logging);
 
-    auto r = CreateDiskAgentBackendComponents(Logging, config);
+    if (config.GetFileIOStatsEnabled()) {
+        FileIOStatsRegistry = std::make_shared<TFileIOStatsRegistry>();
+    }
+
+    auto r =
+        CreateDiskAgentBackendComponents(Logging, config, FileIOStatsRegistry);
     NvmeManager = std::move(r.NvmeManager);
     FileIOServiceProvider = std::move(r.FileIOServiceProvider);
     LocalStorageProvider = std::move(r.StorageProvider);
@@ -691,6 +707,7 @@ void TBootstrap::Start()
     START_COMPONENT(LocalNVMeService);
     START_COMPONENT(ActorSystem);
     START_COMPONENT(CriticalEventsStatsUpdater);
+    START_COMPONENT(FileIOStatsUpdater);
 
     // we need to start scheduler after all other components for 2 reasons:
     // 1) any component can schedule a task that uses a dependency that hasn't
@@ -727,6 +744,7 @@ void TBootstrap::Stop()
     // scheduled tasks and shutting down of component dependencies
     STOP_COMPONENT(Scheduler);
     STOP_COMPONENT(CriticalEventsStatsUpdater);
+    STOP_COMPONENT(FileIOStatsUpdater);
 
     STOP_COMPONENT(ActorSystem);
     // stop FileIOServiceProvider after ActorSystem to ensure that there are no
