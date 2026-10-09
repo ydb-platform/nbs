@@ -542,8 +542,33 @@ func (s *storageYDB) snapshotCreated(
 		return err
 	}
 
-	// Backup is opt-in through EnqueueSnapshotBackup: creation does not
-	// enqueue the snapshot.
+	// A new ready snapshot of a configured folder is queued in the same
+	// transaction. Other snapshots are queued by EnqueueSnapshotBackup. The
+	// snapshot becomes ready once, so its create task identifies the attempt.
+	_, backupFolder := s.backupFolderIDs[state.folderID]
+	if s.backupEnabled && backupFolder {
+		_, err = tx.Execute(ctx, fmt.Sprintf(`
+			--!syntax_v1
+			pragma TablePathPrefix = "%v";
+			declare $snapshot_id as Utf8;
+			declare $backup_id as Utf8;
+
+			upsert into backup_queue (snapshot_id, backup_id)
+			values ($snapshot_id, $backup_id)
+		`, s.snapshotsPath),
+			persistence.ValueParam(
+				"$snapshot_id",
+				persistence.UTF8Value(snapshotID),
+			),
+			persistence.ValueParam(
+				"$backup_id",
+				persistence.UTF8Value(state.createTaskID),
+			),
+		)
+		if err != nil {
+			return err
+		}
+	}
 
 	return tx.Commit(ctx)
 }
