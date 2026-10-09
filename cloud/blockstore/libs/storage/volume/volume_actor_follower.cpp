@@ -239,6 +239,7 @@ void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
         auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
         request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
         request->Record.SetDiskId(leader.Link.LeaderDiskId);
+        request->Record.MutableHeaders()->SetShardId(leader.Link.LeaderShardId);
 
         auto event = std::make_unique<IEventHandle>(
             MakeStorageServiceId(),

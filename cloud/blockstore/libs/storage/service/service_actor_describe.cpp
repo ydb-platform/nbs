@@ -29,16 +29,15 @@ private:
     const TString DiskId;
     const bool ExactDiskIdMatch = false;
     const bool IsCellRequest = false;
+    const TString ShardId;
 
     NProto::TVolume Volume;
 
 public:
-    TDescribeVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        TString diskId,
-        bool exactDiskIdMatch,
-        bool isCellRequest);
+    TDescribeVolumeActor(TRequestInfoPtr requestInfo,
+                         TStorageConfigConstPtr config, TString diskId,
+                         bool exactDiskIdMatch, bool isCellRequest,
+                         TString shardId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -65,16 +64,14 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeActor::TDescribeVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        TString diskId,
-        bool exactDiskIdMatch,
-        bool isCellRequest)
+    TRequestInfoPtr requestInfo, TStorageConfigConstPtr config, TString diskId,
+    bool exactDiskIdMatch, bool isCellRequest, TString shardId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
     , ExactDiskIdMatch(exactDiskIdMatch)
     , IsCellRequest(isCellRequest)
+    , ShardId(std::move(shardId))
 {}
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -87,8 +84,7 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
     Become(&TThis::StateDescribeVolume);
 
     auto request = std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-        DiskId,
-        ExactDiskIdMatch);
+        DiskId, ExactDiskIdMatch, ShardId);
 
     NCloud::Send(
         ctx,
@@ -244,12 +240,10 @@ void TServiceActor::HandleDescribeVolume(
         request.GetDiskId().Quote().data());
 
     NCloud::Register<TDescribeVolumeActor>(
-        ctx,
-        std::move(requestInfo),
-        Config,
-        request.GetDiskId(),
+        ctx, std::move(requestInfo), Config, request.GetDiskId(),
         request.GetHeaders().GetExactDiskIdMatch(),
-        !request.GetHeaders().GetCellId().empty());
+        !request.GetHeaders().GetCellId().empty(),
+        request.GetHeaders().GetShardId());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -49,6 +49,7 @@ private:
     const TDuration AttachedDiskDestructionTimeout;
     const TVector<TString> DestructionAllowedOnlyForDisksWithIdPrefixes;
     TString DiskId;
+    const TString ShardId;
     const bool DestroyIfBroken;
     const bool Sync;
     const ui64 FillGeneration;
@@ -60,16 +61,11 @@ private:
 
 public:
     TDestroyVolumeActor(
-        const TActorId& sender,
-        ui64 cookie,
+        const TActorId& sender, ui64 cookie,
         TDuration attachedDiskDestructionTimeout,
         TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
-        TString diskId,
-        EDiskIdTolerance diskIdTolerance,
-        bool destroyIfBroken,
-        bool sync,
-        ui64 fillGeneration,
-        TDuration timeout);
+        TString diskId, EDiskIdTolerance diskIdTolerance, bool destroyIfBroken,
+        bool sync, ui64 fillGeneration, TDuration timeout, TString shardId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -120,22 +116,18 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroyVolumeActor::TDestroyVolumeActor(
-        const TActorId& sender,
-        ui64 cookie,
-        TDuration attachedDiskDestructionTimeout,
-        TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
-        TString diskId,
-        EDiskIdTolerance diskIdTolerance,
-        bool destroyIfBroken,
-        bool sync,
-        ui64 fillGeneration,
-        TDuration timeout)
+    const TActorId& sender, ui64 cookie,
+    TDuration attachedDiskDestructionTimeout,
+    TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
+    TString diskId, EDiskIdTolerance diskIdTolerance, bool destroyIfBroken,
+    bool sync, ui64 fillGeneration, TDuration timeout, TString shardId)
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
     , DestructionAllowedOnlyForDisksWithIdPrefixes(
           std::move(destructionAllowedOnlyForDisksWithIdPrefixes))
     , DiskId(std::move(diskId))
+    , ShardId(std::move(shardId))
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
     , FillGeneration(fillGeneration)
@@ -159,6 +151,9 @@ void TDestroyVolumeActor::WaitReady(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
     request->Record.SetDiskId(DiskId);
+    request->Record.MutableHeaders()->SetShardId(ShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(
+        DiskIdTolerance == EDiskIdTolerance::StrictMatch);
 
     NCloud::Send(
         ctx,
@@ -175,9 +170,9 @@ void TDestroyVolumeActor::DestroyVolume(const TActorContext& ctx)
         std::make_unique<TEvSSProxy::TEvModifyVolumeRequest>(
             TEvSSProxy::TModifyVolumeRequest::EOpType::Destroy,
             DiskId,
-            "", // newMountToken
-            0,  // tokenVersion
-            FillGeneration));
+            "",   // newMountToken
+            0,    // tokenVersion
+            FillGeneration, ShardId));
 }
 
 void TDestroyVolumeActor::NotifyDiskRegistry(const TActorContext& ctx)
@@ -196,6 +191,9 @@ void TDestroyVolumeActor::StatVolume(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvService::TEvStatVolumeRequest>();
     request->Record.SetDiskId(DiskId);
+    request->Record.MutableHeaders()->SetShardId(ShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(
+        DiskIdTolerance == EDiskIdTolerance::StrictMatch);
     // no need to check partition readiness and retrieve partition stats
     request->Record.SetNoPartition(true);
 
@@ -221,6 +219,9 @@ void TDestroyVolumeActor::GracefulShutdown(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvVolume::TEvGracefulShutdownRequest>();
     request->Record.SetDiskId(DiskId);
+    request->Record.MutableHeaders()->SetShardId(ShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(
+        DiskIdTolerance == EDiskIdTolerance::StrictMatch);
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
 
@@ -594,17 +595,11 @@ void TServiceActor::HandleDestroyVolume(
         fillGeneration);
 
     NCloud::Register<TDestroyVolumeActor>(
-        ctx,
-        ev->Sender,
-        ev->Cookie,
+        ctx, ev->Sender, ev->Cookie,
         Config->GetAttachedDiskDestructionTimeout(),
-        Config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(),
-        diskId,
-        diskIdTolerance,
-        destroyIfBroken,
-        sync,
-        fillGeneration,
-        Config->GetDestroyVolumeTimeout());
+        Config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(), diskId,
+        diskIdTolerance, destroyIfBroken, sync, fillGeneration,
+        Config->GetDestroyVolumeTimeout(), request.GetHeaders().GetShardId());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -1,7 +1,9 @@
 #include "service_ut.h"
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
@@ -14,6 +16,202 @@ using namespace NActors;
 
 Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
 {
+    struct TCrossShardFixture
+    {
+        TTestEnv Env{1, 2, 4};
+        std::unique_ptr<TServiceClient> Source;
+        std::unique_ptr<TServiceClient> Target;
+
+        explicit TCrossShardFixture(
+            NCloud::NProto::EStorageMediaKind mediaKind =
+                NProto::STORAGE_MEDIA_SSD)
+        {
+            NProto::TStorageServiceConfig proto;
+            (*proto.MutableShardDirectories())["source"] = "/local/nbs";
+            (*proto.MutableShardDirectories())["target"] = "/local/remote";
+            const auto sourceNode = SetupTestEnv(Env, proto);
+            Env.CreateSubDomain("remote");
+            proto.SetSchemeShardDir("/local/remote");
+            const auto targetNode = Env.CreateBlockStoreNode(
+                "remote", CreateTestStorageConfig(proto),
+                CreateTestDiagnosticsConfig());
+            Source =
+                std::make_unique<TServiceClient>(Env.GetRuntime(), sourceNode);
+            Target =
+                std::make_unique<TServiceClient>(Env.GetRuntime(), targetNode);
+            Source->CreateVolume("disk", DefaultBlocksCount, DefaultBlockSize,
+                                 "", "", mediaKind);
+
+            // Exercise destination creation and WaitReady through the source
+            // node's existing NBS API, rather than bypassing the service.
+            auto request = Source->CreateCreateVolumeRequest(
+                "disk-copy", DefaultBlocksCount, DefaultBlockSize, "", "",
+                mediaKind);
+            request->Record.MutableHeaders()->SetShardId("target");
+            Source->SendRequest(MakeStorageServiceId(), std::move(request));
+            const auto response = Source->RecvCreateVolumeResponse();
+            UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()),
+                          response->GetErrorReason());
+        }
+
+        auto CreateLink()
+        {
+            auto request =
+                Source->CreateCreateVolumeLinkRequest("disk", "disk-copy");
+            request->Record.SetLeaderShardId("source");
+            request->Record.SetFollowerShardId("target");
+            Source->SendRequest(MakeStorageServiceId(), std::move(request));
+            return Source->RecvCreateVolumeLinkResponse();
+        }
+
+        auto DestroyLink(const TString& leader = "disk")
+        {
+            auto request =
+                Source->CreateDestroyVolumeLinkRequest(leader, "disk-copy");
+            request->Record.SetLeaderShardId("source");
+            request->Record.SetFollowerShardId("target");
+            Source->SendRequest(MakeStorageServiceId(), std::move(request));
+            return Source->RecvDestroyVolumeLinkResponse();
+        }
+
+        NProto::TGetLinkStatusResponse GetStatus(const TString& leader = "disk")
+        {
+            NProto::TGetLinkStatusRequest request;
+            request.SetLeaderDiskId(leader);
+            request.SetFollowerDiskId("disk-copy");
+            request.SetLeaderShardId("source");
+            request.SetFollowerShardId("target");
+            TString json;
+            UNIT_ASSERT(
+                google::protobuf::util::MessageToJsonString(request, &json)
+                    .ok());
+            const auto response = Source->ExecuteAction("GetLinkStatus", json);
+            NProto::TGetLinkStatusResponse status;
+            UNIT_ASSERT_C(
+                google::protobuf::util::JsonStringToMessage(
+                    response->Record.GetOutput(), &status)
+                    .ok(), response->Record.GetOutput());
+            return status;
+        }
+    };
+
+    Y_UNIT_TEST(ShouldCreateInspectAndCancelCrossShardSsdAndHddLinks)
+    {
+        for (const auto kind:
+             {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+        {
+            TCrossShardFixture fixture(kind);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::LINK_STATUS_NOT_FOUND),
+                static_cast<int>(fixture.GetStatus().GetStatus()));
+            const auto created = fixture.CreateLink();
+            UNIT_ASSERT_C(SUCCEEDED(created->GetStatus()),
+                          created->GetErrorReason());
+            const auto repeated = fixture.CreateLink();
+            UNIT_ASSERT_C(SUCCEEDED(repeated->GetStatus()),
+                          repeated->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::LINK_STATUS_PREPARING),
+                static_cast<int>(fixture.GetStatus().GetStatus()));
+
+            const auto cancelled = fixture.DestroyLink();
+            UNIT_ASSERT_C(SUCCEEDED(cancelled->GetStatus()),
+                          cancelled->GetErrorReason());
+            const auto repeatedCancel = fixture.DestroyLink();
+            UNIT_ASSERT_C(SUCCEEDED(repeatedCancel->GetStatus()),
+                          repeatedCancel->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::LINK_STATUS_NOT_FOUND),
+                static_cast<int>(fixture.GetStatus().GetStatus()));
+
+            // Both volumes survive link cancellation in their own namespace.
+            fixture.Source->DescribeVolume("disk", true);
+            fixture.Target->DescribeVolume("disk-copy", true);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRouteFollowerCleanupWhenCrossShardLeaderIsMissing)
+    {
+        TCrossShardFixture fixture;
+        const auto response = fixture.DestroyLink("missing-leader");
+        UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()),
+                      response->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NProto::LINK_STATUS_NOT_FOUND),
+            static_cast<int>(fixture.GetStatus("missing-leader").GetStatus()));
+        fixture.Source->DescribeVolume("disk", true);
+        fixture.Target->DescribeVolume("disk-copy", true);
+    }
+
+    Y_UNIT_TEST(ShouldRejectInvalidCrossShardLinkAddresses)
+    {
+        TCrossShardFixture fixture;
+        for (const auto& shards:
+             {std::pair<TString, TString>{"unknown", "target"},
+              {"source", "unknown"},
+              {"", "target"},
+              {"target", ""}})
+        {
+            auto create = fixture.Source->CreateCreateVolumeLinkRequest(
+                "disk", "disk-copy");
+            create->Record.SetLeaderShardId(shards.first);
+            create->Record.SetFollowerShardId(shards.second);
+            fixture.Source->SendRequest(MakeStorageServiceId(),
+                                        std::move(create));
+            const auto response =
+                fixture.Source->RecvCreateVolumeLinkResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+
+            auto destroy = fixture.Source->CreateDestroyVolumeLinkRequest(
+                "disk", "disk-copy");
+            destroy->Record.SetLeaderShardId(shards.first);
+            destroy->Record.SetFollowerShardId(shards.second);
+            fixture.Source->SendRequest(MakeStorageServiceId(),
+                                        std::move(destroy));
+            const auto removed =
+                fixture.Source->RecvDestroyVolumeLinkResponse();
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, removed->GetStatus());
+        }
+        auto emptyLeader =
+            fixture.Source->CreateDestroyVolumeLinkRequest("", "disk-copy");
+        emptyLeader->Record.SetLeaderShardId("source");
+        emptyLeader->Record.SetFollowerShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(),
+                                    std::move(emptyLeader));
+        const auto response = fixture.Source->RecvDestroyVolumeLinkResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NProto::LINK_STATUS_NOT_FOUND),
+            static_cast<int>(fixture.GetStatus().GetStatus()));
+    }
+
+    Y_UNIT_TEST(ShouldAddressDescribeAndDestroyInDestinationShard)
+    {
+        TCrossShardFixture fixture;
+        auto describe =
+            fixture.Source->CreateDescribeVolumeRequest("disk-copy", true);
+        describe->Record.MutableHeaders()->SetShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(),
+                                    std::move(describe));
+        const auto described = fixture.Source->RecvDescribeVolumeResponse();
+        UNIT_ASSERT_C(SUCCEEDED(described->GetStatus()),
+                      described->GetErrorReason());
+        UNIT_ASSERT_VALUES_EQUAL("disk-copy",
+                                 described->Record.GetVolume().GetDiskId());
+
+        auto destroy = fixture.Source->CreateDestroyVolumeRequest(
+            "disk-copy", false, false, 0, true);
+        destroy->Record.MutableHeaders()->SetShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(), std::move(destroy));
+        const auto removed = fixture.Source->RecvDestroyVolumeResponse();
+        UNIT_ASSERT_C(SUCCEEDED(removed->GetStatus()),
+                      removed->GetErrorReason());
+        fixture.Target->SendDescribeVolumeRequest("disk-copy", true);
+        const auto absent = fixture.Target->RecvDescribeVolumeResponse();
+        UNIT_ASSERT(HasError(absent->GetError()));
+        fixture.Source->DescribeVolume("disk", true);
+    }
+
     Y_UNIT_TEST(ShouldFailOnInvalidArgumentVolume)
     {
         TTestEnv env(1, 1, 4);

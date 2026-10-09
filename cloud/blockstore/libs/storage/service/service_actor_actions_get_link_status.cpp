@@ -121,6 +121,8 @@ void TGetLinkStatusActionActor::SendRequestToLeader(const TActorContext& ctx)
     auto request = std::make_unique<TEvVolume::TEvGetLinkStatusRequest>(
         RequestInfo->CallContext);
     request->Record.SetDiskId(Request.LeaderDiskId);
+    request->Record.MutableHeaders()->SetShardId(Request.LeaderShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
     request->Record.SetLeaderDiskId(Request.LeaderDiskId);
     request->Record.SetLeaderShardId(Request.LeaderShardId);
     request->Record.SetFollowerDiskId(Request.FollowerDiskId);
@@ -138,6 +140,8 @@ void TGetLinkStatusActionActor::SendRequestToFollower(const TActorContext& ctx)
     auto request = std::make_unique<TEvVolume::TEvGetLinkStatusRequest>(
         RequestInfo->CallContext);
     request->Record.SetDiskId(Request.FollowerDiskId);
+    request->Record.MutableHeaders()->SetShardId(Request.FollowerShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
     request->Record.SetLeaderDiskId(Request.LeaderDiskId);
     request->Record.SetLeaderShardId(Request.LeaderShardId);
     request->Record.SetFollowerDiskId(Request.FollowerDiskId);

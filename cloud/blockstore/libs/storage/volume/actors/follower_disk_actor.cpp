@@ -101,11 +101,9 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
     }
 
     FollowerPartitionActorId = NCloud::Register<TVolumeAsPartitionActor>(
-        ctx,
-        LogTitle,
-        LeaderBlockSize,
-        FollowerDiskInfo.Link.FollowerDiskId,
-        GetConfig()->GetDestroyVolumeTimeout());
+        ctx, LogTitle, LeaderBlockSize, FollowerDiskInfo.Link.FollowerDiskId,
+        GetConfig()->GetDestroyVolumeTimeout(),
+        FollowerDiskInfo.Link.FollowerShardId);
 
     InitWork(
         ctx,

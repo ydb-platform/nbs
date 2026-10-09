@@ -43,15 +43,13 @@ void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-            Follower.Link.LeaderDiskId,
-            true),
+            Follower.Link.LeaderDiskId, true, Follower.Link.LeaderShardId),
         DESCRIBE_KIND_LEADER);
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-            Follower.Link.FollowerDiskId,
-            true),
+            Follower.Link.FollowerDiskId, true, Follower.Link.FollowerShardId),
         DESCRIBE_KIND_FOLLOWER);
 }
 

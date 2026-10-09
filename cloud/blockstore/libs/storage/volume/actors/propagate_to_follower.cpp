@@ -47,6 +47,7 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
     auto request =
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
     request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    request->Record.MutableHeaders()->SetShardId(Link.FollowerShardId);
     request->Record.SetLinkUUID(Link.LinkUUID);
     request->Record.SetDiskId(Link.FollowerDiskId);
     request->Record.SetFollowerShardId(Link.FollowerShardId);

@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -21,12 +22,13 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TString LeaderDiskId;
     const TString FollowerDiskId;
+    const TString LeaderShardId;
+    const TString FollowerShardId;
 
 public:
-    TCreateVolumeLinkActor(
-        TRequestInfoPtr requestInfo,
-        TString leaderDiskId,
-        TString followerDiskId);
+    TCreateVolumeLinkActor(TRequestInfoPtr requestInfo, TString leaderDiskId,
+                           TString followerDiskId, TString leaderShardId,
+                           TString followerShardId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -46,12 +48,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateVolumeLinkActor::TCreateVolumeLinkActor(
-        TRequestInfoPtr requestInfo,
-        TString leaderDiskId,
-        TString followerDiskId)
+    TRequestInfoPtr requestInfo, TString leaderDiskId, TString followerDiskId,
+    TString leaderShardId, TString followerShardId)
     : RequestInfo(std::move(requestInfo))
     , LeaderDiskId(std::move(leaderDiskId))
     , FollowerDiskId(std::move(followerDiskId))
+    , LeaderShardId(std::move(leaderShardId))
+    , FollowerShardId(std::move(followerShardId))
 {}
 
 void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
@@ -63,6 +66,10 @@ void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
             RequestInfo->CallContext);
     request->Record.SetDiskId(LeaderDiskId);
     request->Record.SetFollowerDiskId(FollowerDiskId);
+    request->Record.SetLeaderShardId(LeaderShardId);
+    request->Record.SetFollowerShardId(FollowerShardId);
+    request->Record.MutableHeaders()->SetShardId(LeaderShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
 
     NCloud::Send(
         ctx,
@@ -123,6 +130,31 @@ void TServiceActor::HandleCreateVolumeLink(
 
     const auto& request = msg->Record;
 
+    const auto leaderDirectory =
+        Config->GetSchemeShardDirForShard(request.GetLeaderShardId());
+    const auto followerDirectory =
+        Config->GetSchemeShardDirForShard(request.GetFollowerShardId());
+    if (!leaderDirectory || !followerDirectory) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvCreateVolumeLinkResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+    if (*leaderDirectory != *followerDirectory &&
+        (request.GetLeaderShardId().empty() ||
+         request.GetFollowerShardId().empty()))
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvCreateVolumeLinkResponse>(MakeError(
+                E_ARGUMENT,
+                "Both shard identifiers are required for a cross-shard link")));
+        return;
+    }
+
     if (request.GetLeaderDiskId().empty()) {
         LOG_ERROR(
             ctx,
@@ -169,10 +201,9 @@ void TServiceActor::HandleCreateVolumeLink(
         request.GetFollowerDiskId().Quote().data());
 
     NCloud::Register<TCreateVolumeLinkActor>(
-        ctx,
-        std::move(requestInfo),
-        request.GetLeaderDiskId(),
-        request.GetFollowerDiskId());
+        ctx, std::move(requestInfo), request.GetLeaderDiskId(),
+        request.GetFollowerDiskId(), request.GetLeaderShardId(),
+        request.GetFollowerShardId());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage
