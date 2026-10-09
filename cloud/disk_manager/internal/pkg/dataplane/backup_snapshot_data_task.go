@@ -16,6 +16,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Holds a reference to the snapshot for the whole copy, so the snapshot and
+// the chunks it uses stay until the copy ends.
 type backupSnapshotDataTask struct {
 	storage   storage.Storage
 	backupS3  *backup.S3
@@ -44,15 +46,31 @@ func (t *backupSnapshotDataTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	// A DEK that cannot be opened fails the chunk copier on every
-	// chunk and leaves those queue rows unfinished, so this task
-	// interrupts forever. Reject it before anything is enqueued.
-	err := t.backupS3.CheckEncryptedDEK(t.request.EncryptedDek)
+	snapshotID := t.request.SnapshotId
+
+	// Deletion waits until the copy releases the snapshot. A repeated hold by
+	// the same copy succeeds.
+	held, err := t.storage.HoldSnapshotForBackup(
+		ctx,
+		snapshotID,
+		execCtx.GetTaskID(),
+	)
 	if err != nil {
 		return err
 	}
 
-	snapshotID := t.request.SnapshotId
+	// Deletion started first: there is nothing to copy.
+	if !held {
+		return nil
+	}
+
+	// A DEK that cannot be opened fails the chunk copier on every
+	// chunk and leaves those queue rows unfinished, so this task
+	// interrupts forever. Reject it before anything is enqueued.
+	err = t.backupS3.CheckEncryptedDEK(t.request.EncryptedDek)
+	if err != nil {
+		return err
+	}
 
 	meta, err := t.storage.CheckSnapshotReady(ctx, snapshotID)
 	if err != nil {
@@ -71,7 +89,7 @@ func (t *backupSnapshotDataTask) Run(
 		return err
 	}
 
-	return t.clearCompletedBackupChunks(ctx, snapshotID)
+	return t.finish(ctx, execCtx)
 }
 
 func (t *backupSnapshotDataTask) Cancel(
@@ -79,10 +97,7 @@ func (t *backupSnapshotDataTask) Cancel(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	// TODO(https://github.com/ydb-platform/nbs/issues/7237):
-	// lock the snapshot while its chunks are copied and remove them from
-	// backup_chunk_queue on cancellation.
-	return nil
+	return t.finish(ctx, execCtx)
 }
 
 func (t *backupSnapshotDataTask) GetMetadata(
@@ -134,7 +149,6 @@ func (t *backupSnapshotDataTask) enqueueBatch(
 		}
 	}
 
-	t.state.EnqueuedChunkCount += uint32(len(batch))
 	t.state.MilestoneChunkIndex = milestoneChunkIndex
 	return execCtx.SaveState(ctx)
 }
@@ -170,10 +184,9 @@ func (t *backupSnapshotDataTask) enqueueChunks(
 			return err
 		}
 
-		// Zero chunks have no data, and the chunks shallow copied from another
-		// snapshot (this snapshot only references them) are copied when that
-		// snapshot is backed up.
-		if !storage.IsChunkCreatedBySnapshot(entry.ChunkID, snapshotID) {
+		// Zero chunks have no data. Chunks already in the follower, including
+		// those of other snapshots, are skipped on enqueue.
+		if len(entry.ChunkID) == 0 {
 			continue
 		}
 
@@ -207,32 +220,43 @@ func (t *backupSnapshotDataTask) waitForChunksBackupCompleted(
 	snapshotID string,
 ) error {
 
-	completed, err := t.storage.GetBackedUpChunkCount(ctx, snapshotID)
-	if err != nil {
-		return err
-	}
-
-	if completed < uint64(t.state.EnqueuedChunkCount) {
+	err := t.storage.CheckBackupChunksCompleted(ctx, snapshotID)
+	if errors.Is(err, errors.NewInterruptExecutionError()) {
 		logging.Debug(
 			ctx,
 			"Backup of snapshot with id %v is waiting for its chunks to finish backing up",
 			snapshotID,
 		)
-		return errors.NewInterruptExecutionError()
 	}
 
-	return nil
+	return err
 }
 
-func (t *backupSnapshotDataTask) clearCompletedBackupChunks(
+// Clears the chunk entries of the snapshot and drops the reference. A copy
+// ends this way both on success and on cancellation; a cancelled copy is
+// enqueued again by its next attempt.
+func (t *backupSnapshotDataTask) finish(
 	ctx context.Context,
-	snapshotID string,
+	execCtx tasks.ExecutionContext,
 ) error {
 
+	err := t.clearChunks(ctx)
+	if err != nil {
+		return err
+	}
+
+	return t.storage.ReleaseSnapshotForBackup(
+		ctx,
+		t.request.SnapshotId,
+		execCtx.GetTaskID(),
+	)
+}
+
+func (t *backupSnapshotDataTask) clearChunks(ctx context.Context) error {
 	for {
-		cleared, err := t.storage.ClearCompletedBackupChunks(
+		cleared, err := t.storage.ClearBackupChunks(
 			ctx,
-			snapshotID,
+			t.request.SnapshotId,
 			t.batchSize,
 		)
 		if err != nil {
@@ -240,13 +264,14 @@ func (t *backupSnapshotDataTask) clearCompletedBackupChunks(
 		}
 
 		// The storage clears fewer than batchSize entries only when no
-		// completed entries are left.
+		// entries are left.
 		if cleared < t.batchSize {
 			return nil
 		}
 	}
 }
 
+// The full map is published only after every queued chunk has completed.
 func (t *backupSnapshotDataTask) backupChunkMap(
 	ctx context.Context,
 	execCtx tasks.ExecutionContext,
