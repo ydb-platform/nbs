@@ -161,6 +161,21 @@ void TCreateVolumeLinkActor::HandleDescribeVolumeResponse(
         pathDescription.GetBlockStoreVolumeDescription();
     const auto& volumeConfig = volumeDescription.GetVolumeConfig();
 
+    if (ev->Cookie == DESCRIBE_KIND_FOLLOWER) {
+        const auto tabletId = volumeDescription.GetVolumeTabletId();
+        if ((Follower.Link.FollowerTabletId &&
+             Follower.Link.FollowerTabletId != tabletId) ||
+            (!AllowDiskRegistryMedia && !tabletId))
+        {
+            ReplyAndDie(
+                ctx,
+                MakeError(
+                    E_INVALID_STATE,
+                    "Destination volume incarnation changed or is unknown"));
+            return;
+        }
+        Follower.Link.FollowerTabletId = tabletId;
+    }
     VolumeConfigToVolume(volumeConfig, "", volume);
     volume.SetTokenVersion(volumeDescription.GetTokenVersion());
 

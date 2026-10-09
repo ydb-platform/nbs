@@ -1134,7 +1134,23 @@ std::optional<TFollowerDiskInfo> TVolumeState::FindFollower(
     const TLeaderFollowerLink& link) const
 {
     for (const auto& follower: FollowerDisks) {
+        if (!link.LinkUUID && follower.CancellationPending) {
+            continue;
+        }
         if (MatchLinks(follower.Link, link, *StorageConfig)) {
+            return follower;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerCancellation(
+    const TLeaderFollowerLink& link) const
+{
+    for (const auto& follower: FollowerDisks) {
+        if (follower.CancellationPending &&
+            MatchLinks(follower.Link, link, *StorageConfig))
+        {
             return follower;
         }
     }

@@ -121,12 +121,9 @@ bool TFollowerDiskInfo::operator==(const TFollowerDiskInfo& rhs) const
 {
     auto doTie = [](const TFollowerDiskInfo& o)
     {
-        return std::tie(
-            o.CreatedAt,
-            o.State,
-            o.MediaKind,
-            o.MigratedBytes,
-            o.ErrorMessage);
+        return std::tie(o.CreatedAt, o.State, o.MediaKind, o.MigratedBytes,
+                        o.ErrorMessage, o.CancellationPending,
+                        o.CancellationRequireCancellable);
     };
     return Link.Match(rhs.Link) && doTie(*this) == doTie(rhs);
 }

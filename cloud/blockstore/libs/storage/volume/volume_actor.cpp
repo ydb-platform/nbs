@@ -362,6 +362,11 @@ void TVolumeActor::OnTabletDead(
 
 void TVolumeActor::BeforeDie(const TActorContext& ctx)
 {
+    for (const auto& [uuid, actor]: FollowerCancellationPropagators) {
+        Y_UNUSED(uuid);
+        NCloud::Send<TEvents::TEvPoisonPill>(ctx, actor);
+    }
+    FollowerCancellationPropagators.clear();
     UnregisterVolume(ctx);
     StopPartitions(ctx, {});
     TerminateTransactions(ctx);
@@ -1224,6 +1229,8 @@ STFUNC(TVolumeActor::StateWork)
         HFunc(
             TEvVolumePrivate::TEvLinkOnFollowerDestroyed,
             HandleLinkOnFollowerDestroyed);
+        HFunc(TEvVolumePrivate::TEvRetryFollowerCancellations,
+              HandleRetryFollowerCancellations);
 
         HFunc(
             TEvDiskRegistryProxy::TEvGetDrTabletInfoResponse,

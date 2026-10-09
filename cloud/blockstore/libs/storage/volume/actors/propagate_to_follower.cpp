@@ -53,6 +53,7 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
     request->Record.SetLeaderDiskId(Link.LeaderDiskId);
     request->Record.SetLeaderShardId(Link.LeaderShardId);
     request->Record.SetLeaderTabletId(Link.LeaderTabletId);
+    request->Record.SetFollowerTabletId(Link.FollowerTabletId);
 
     switch (Reason) {
         case EReason::Creation: {

@@ -37,7 +37,7 @@ Headers {
 DiskId: "disk-copy"
 ~~~
 
-Include the source's remaining creation parameters in that request. Cross-shard creation through a source node rejects DiskRegistry-based media kinds before allocation. Cross-shard links validate both endpoints as replicated SSD/HDD before persisting a relationship. This admission check also applies when recovering a persisted `Created` link and when the destination receives its creation request. Remote deletion of DiskRegistry-based volumes is rejected before registry or schema changes; a remote not-found synchronous delete never deallocates a local disk. Existing local DiskRegistry workflows remain supported.
+Include the source's remaining creation parameters in that request. Cross-shard creation through a source node rejects DiskRegistry-based media kinds before allocation. Cross-shard links validate both endpoints as replicated SSD/HDD before persisting a relationship. This admission check also applies when recovering a persisted `Created` link and when the destination receives its creation request. Creation records the destination tablet identifier and checks it on the destination owner, so a delayed `CREATE` cannot attach to a volume deleted and recreated under the same physical name. Remote deletion of DiskRegistry-based volumes is rejected before registry or schema changes; a remote not-found synchronous delete never deallocates a local disk. Existing local DiskRegistry workflows remain supported.
 
 ## Start and inspect the copy
 
@@ -65,9 +65,13 @@ A repeated create request for the same active link is idempotent. Query the exis
 
 `LINK_STATUS_PREPARING` means copying is in progress. `LINK_STATUS_LEADERSHIP_TRANSFERRED` means the destination is authoritative, but old-source cleanup is still pending. `LINK_STATUS_COMPLETED` confirms that the old source has been deleted and the destination recorded that result. Cleanup is restored from the persisted destination link after a tablet restart, even without mounts, I/O or partition GC. Deletion retries are idempotent.
 
-Each operation has at most one scheduled or in-flight cleanup request. The delay belongs to the current destination volume actor, which checks that the UUID still requires cleanup before sending a delete. Internal cleanup requests carry `ExpectedVolumeTabletId` and use exact physical names. Schema deletion also checks the resolved path incarnation atomically, so an old request cannot delete a volume recreated under the same name.
+Each operation has at most one scheduled or in-flight cleanup request. The delay belongs to the current destination volume actor, which checks that the UUID still requires cleanup before sending a delete. If an internal unlink removes that UUID, its cleanup reservation is released and another pending operation can proceed, including when an already queued completion transaction is rejected.
 
-For persisted links created before the source tablet identifier was recorded, cleanup first verifies the operation UUID on the current source owner. It does not infer ownership from the physical name alone. An incomplete response without verifiable UUID/tablet information leaves cleanup pending for retry; it does not mark the operation completed.
+Cross-shard cleanup requests carry `ExpectedVolumeTabletId` and use exact physical names. Schema deletion also checks the resolved path incarnation atomically, so an old request cannot delete a volume recreated under the same name. Conditional deletion supports only replicated SSD/HDD and rejects `DestroyIfBroken`. The service checks the media kind both before and after `StatVolume`, before DiskRegistry cleanup or graceful shutdown. Ordinary local DiskRegistry deletion without `ExpectedVolumeTabletId` remains unchanged.
+
+Before deletion, cleanup verifies the operation UUID, tablet identifier and media kind on the current source owner. It does not infer ownership from the physical name alone. A different current tablet identifier means that the recorded source incarnation is already gone. An incomplete response without verifiable UUID/tablet information leaves cleanup pending for retry; it does not mark the operation completed.
+
+Existing same-shard DiskRegistry copies retain their legacy cleanup path without `ExpectedVolumeTabletId` after source-link verification. Cross-shard cleanup never falls back to unconditional deletion for unsupported or unknown media kinds.
 
 Disconnected disks copy without a user mount: source partitions are retained in a copy-only mode while data is needed. Cancellation releases that retention and resets stopped partition state so subsequent mounts and I/O can start the partitions again.
 
@@ -85,7 +89,9 @@ blockstore-client destroyvolumelink \
 
 The service checks the cancellation boundary inside the owning volume tablet's deleting transaction and propagates cancellation only after a successful commit. Once transfer starts, cancellation returns `E_INVALID_STATE` and leaves the authoritative relationship intact. The same protection applies when the source has already disappeared and the request is checked on the destination.
 
-Late progress updates cannot recreate a cancelled source link or modify a newer operation with a different UUID. Cancellation retains the original UUID even if creation has not yet persisted a follower. The destination stores a durable cancellation fence for that UUID, rejecting delayed `CREATE` messages after cancellation or reboot. A repeated cancellation that changes no link state does not restart partitions.
+Late progress updates cannot recreate a cancelled source link or modify a newer operation with a different UUID. Cancellation retains the original UUID even if creation has not yet persisted a follower. The source persists a pending cancellation with the original `RequireCancellable` value until the destination acknowledgment is committed. A source restart or repeated cancellation resumes delivery; a lost message or acknowledgment cannot discard the cancellation obligation. Pending cancellations do not block a new copy generation on the source; the destination must process cancellation before accepting the replacement link.
+
+The destination stores a durable cancellation fence for that UUID, rejecting delayed `CREATE` messages after cancellation or reboot. The destination tablet identifier also rejects those messages after the destination volume itself is deleted and recreated. A repeated cancellation that changes no link state does not restart partitions.
 
 Public cancellation retains the cutover check. Internal diagnostic unlink preserves the caller's `RequireCancellable` value on both sides. Link lookup treats aliases of the same configured directory as equivalent, including persisted empty local selectors.
 
@@ -150,7 +156,14 @@ The test coverage includes:
 - recovered creation revalidates a replaced destination's media kind;
 - wrapper state follows authoritative errors of the same operation UUID;
 - cancellation checked with a real executor queue held before execution;
-- foreign DiskRegistry descriptions rejected before device lookup.
+- foreign DiskRegistry descriptions rejected before device lookup;
+- lost cancellation messages and acknowledgments recovered after source restart;
+- delayed creation rejected after destination deletion and recreation;
+- legacy `Created` links acquire and persist the destination tablet identifier on recovery;
+- cleanup handed off after cancellation and a rejected queued completion transaction;
+- conditional local DiskRegistry deletion rejected before cleanup or shutdown;
+- a DiskRegistry replacement created between guarded describe and stat left untouched;
+- existing same-shard DiskRegistry copy cleanup completes without conditional deletion.
 
 Build the server and administrative client:
 

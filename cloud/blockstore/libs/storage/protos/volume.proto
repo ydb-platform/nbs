@@ -864,6 +864,7 @@ message TUpdateLinkOnFollowerRequest
     bool RequireCancellable = 8;
 
     uint64 LeaderTabletId = 9;
+    uint64 FollowerTabletId = 10;
 }
 
 message TUpdateLinkOnFollowerResponse
@@ -918,6 +919,7 @@ message TGetLinkStatusResponse
 
     uint64 VolumeTabletId = 5;
     string LinkUUID = 6;
+    NCloud.NProto.EStorageMediaKind StorageMediaKind = 7;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;

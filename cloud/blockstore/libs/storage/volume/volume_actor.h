@@ -418,6 +418,7 @@ private:
 
     std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
     ui64 OutdatedLeaderDestructionCookie = 0;
+    THashMap<TString, NActors::TActorId> FollowerCancellationPropagators;
 
     struct TPartCountersData
     {
@@ -1343,6 +1344,10 @@ private:
         const TEvVolumePrivate::TEvCreateLinkFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void PropagateFollowerCancellations(const NActors::TActorContext& ctx);
+    void HandleRetryFollowerCancellations(
+        const TEvVolumePrivate::TEvRetryFollowerCancellations::TPtr& ev,
+        const NActors::TActorContext& ctx);
     void HandleLinkOnFollowerDestroyed(
         const TEvVolumePrivate::TEvLinkOnFollowerDestroyed::TPtr& ev,
         const NActors::TActorContext& ctx);

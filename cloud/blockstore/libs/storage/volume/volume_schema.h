@@ -332,6 +332,21 @@ struct TVolumeSchema
         {
         };
 
+        struct CancellationPending
+            : public Column<12, NKikimr::NScheme::NTypeIds::Bool>
+        {
+        };
+
+        struct CancellationRequireCancellable
+            : public Column<13, NKikimr::NScheme::NTypeIds::Bool>
+        {
+        };
+
+        struct FollowerTabletId
+            : public Column<14, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
         using TKey = TableKey<Uuid>;
         using TColumns =
             TableColumns<Uuid, FollowerDiskId, FollowerShardId, State,
@@ -341,7 +356,10 @@ struct TVolumeSchema
                          LeaderShardId,
                          FollowerMediaKind,
                          ErrorMessage,
-                         LeaderTabletId>;
+                         LeaderTabletId,
+                         CancellationPending,
+                         CancellationRequireCancellable,
+                         FollowerTabletId>;
     };
 
     struct LeaderDisks: public TTableSchema<12>
@@ -387,6 +405,11 @@ struct TVolumeSchema
         {
         };
 
+        struct FollowerTabletId
+            : public Column<10, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
         using TKey = TableKey<Uuid>;
         using TColumns =
             TableColumns<Uuid, CreatedAt, LeaderDiskId, LeaderShardId,
@@ -394,7 +417,8 @@ struct TVolumeSchema
                          FollowerShardId,
                          State,
                          ErrorMessage,
-                         LeaderTabletId>;
+                         LeaderTabletId,
+                         FollowerTabletId>;
     };
 
     struct BrokenDevices: public TTableSchema<13>

@@ -548,6 +548,7 @@ struct TEvVolumePrivate
         EvDiskRegistryDeviceOperationStarted,
         EvDiskRegistryDeviceOperationFinished,
         EvDestroyOutdatedLeader,
+        EvRetryFollowerCancellations,
 
         EvEnd
     };
@@ -569,6 +570,8 @@ struct TEvVolumePrivate
     using TEvDestroyOutdatedLeader =
         TRequestEvent<TDestroyOutdatedLeader, EvDestroyOutdatedLeader>;
 
+    using TEvRetryFollowerCancellations =
+        TRequestEvent<TEmpty, EvRetryFollowerCancellations>;
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
 
     using TEvUpdateThrottlerState = TRequestEvent<TEmpty, EvUpdateThrottlerState>;

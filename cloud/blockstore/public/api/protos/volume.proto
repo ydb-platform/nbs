@@ -535,7 +535,8 @@ message TDestroyVolumeRequest
     uint64 FillGeneration = 6;
 
     // Internal conditional cleanup: never delete another volume incarnation.
-    // Requires ExactDiskIdMatch. Zero preserves the normal deletion workflow.
+    // Supports replicated SSD/HDD and requires ExactDiskIdMatch.
+    // Zero preserves the normal deletion workflow, including local DR volumes.
     uint64 ExpectedVolumeTabletId = 7;
 }
 

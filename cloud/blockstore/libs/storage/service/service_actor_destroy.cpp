@@ -180,11 +180,22 @@ void TDestroyVolumeActor::HandleGuardedDescribeResponse(
         ReplyAndDie(ctx, error);
         return;
     }
-    if (DestroyIfBroken) {
-        WaitReady(ctx);
-    } else {
-        StatVolume(ctx);
+    const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
+        msg->PathDescription.GetBlockStoreVolumeDescription()
+            .GetVolumeConfig()
+            .GetStorageMediaKind());
+    if (mediaKind != NProto::STORAGE_MEDIA_SSD &&
+        mediaKind != NProto::STORAGE_MEDIA_HDD)
+    {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_NOT_IMPLEMENTED,
+                "Conditional deletion supports only replicated SSD/HDD "
+                "volumes"));
+        return;
     }
+    StatVolume(ctx);
 }
 
 void TDestroyVolumeActor::WaitReady(const TActorContext& ctx)
@@ -442,6 +453,18 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
+    const auto mediaKind = msg->Record.GetVolume().GetStorageMediaKind();
+    if (ExpectedTabletId && mediaKind != NProto::STORAGE_MEDIA_SSD &&
+        mediaKind != NProto::STORAGE_MEDIA_HDD)
+    {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_NOT_IMPLEMENTED,
+                "Conditional deletion supports only replicated SSD/HDD "
+                "volumes"));
+        return;
+    }
     const auto foundDiskId = msg->Record.GetVolume().GetDiskId();
     if (foundDiskId && foundDiskId != DiskId) {
         switch (DiskIdTolerance) {
@@ -649,7 +672,7 @@ void TServiceActor::HandleDestroyVolume(
     if (!directory || !localDirectory ||
         (destroyIfBroken && directory != localDirectory) ||
         (request.GetExpectedVolumeTabletId() &&
-         !request.GetHeaders().GetExactDiskIdMatch()))
+         (!request.GetHeaders().GetExactDiskIdMatch() || destroyIfBroken)))
     {
         NCloud::Reply(
             ctx,

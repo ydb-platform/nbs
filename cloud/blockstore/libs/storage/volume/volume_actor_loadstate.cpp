@@ -207,6 +207,7 @@ void TVolumeActor::CompleteLoadState(
     if (State) {
         // Cleanup is a durable link obligation, independent of mounts and GC.
         DestroyOutdatedLeaderIfNeeded(ctx);
+        PropagateFollowerCancellations(ctx);
     }
     StateLoadTimestamp = ctx.Now();
     NextVolumeConfigVersion = GetCurrentConfigVersion();

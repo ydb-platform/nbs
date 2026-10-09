@@ -46,6 +46,7 @@ struct TLeaderFollowerLink
     TString FollowerDiskId;
     TString FollowerShardId;
     ui64 LeaderTabletId = 0;
+    ui64 FollowerTabletId = 0;
 
     ui64 GetHash() const;
     TString LeaderDiskIdForPrint() const;
@@ -125,6 +126,9 @@ struct TFollowerDiskInfo
         NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
     std::optional<ui64> MigratedBytes;
     TString ErrorMessage;
+    // Retained until destination acknowledges cancellation of this UUID.
+    bool CancellationPending = false;
+    bool CancellationRequireCancellable = false;
 
     TString Describe() const;
     bool operator==(const TFollowerDiskInfo& rhs) const;

@@ -83,12 +83,15 @@ void TVolumeActor::HandleGetLinkStatus(
         std::make_unique<TEvVolume::TEvGetLinkStatusResponse>(MakeError(S_OK));
 
     response->Record.SetVolumeTabletId(TabletID());
+    response->Record.SetStorageMediaKind(State->GetStorageMediaKind());
     response->Record.SetLinkUUID(
         follower ? follower->Link.LinkUUID
         : leader ? leader->Link.LinkUUID
                  : "");
     if (follower) {
-        response->Record.SetStatus(TranslateState(follower->State));
+        response->Record.SetStatus(
+            follower->CancellationPending ? NProto::LINK_STATUS_NOT_FOUND
+                                          : TranslateState(follower->State));
         response->Record.SetMigratedBytes(follower->MigratedBytes.value_or(0));
         response->Record.SetErrorMessage(follower->ErrorMessage);
     } else if (leader) {

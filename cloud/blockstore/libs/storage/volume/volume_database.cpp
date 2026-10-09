@@ -731,7 +731,13 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
             NIceDb::TUpdate<TTable::State>(static_cast<ui32>(follower.State)),
             NIceDb::TUpdate<TTable::ErrorMessage>(follower.ErrorMessage),
             NIceDb::TUpdate<TTable::LeaderTabletId>(
-                follower.Link.LeaderTabletId));
+                follower.Link.LeaderTabletId),
+            NIceDb::TUpdate<TTable::FollowerTabletId>(
+                follower.Link.FollowerTabletId),
+            NIceDb::TUpdate<TTable::CancellationPending>(
+                follower.CancellationPending),
+            NIceDb::TUpdate<TTable::CancellationRequireCancellable>(
+                follower.CancellationRequireCancellable));
 
     if (follower.MigratedBytes) {
         Table<TTable>()
@@ -771,7 +777,8 @@ bool TVolumeDatabase::ReadFollowers(TFollowerDisks& followers)
                   .LeaderShardId = it.GetValue<TTable::LeaderShardId>(),
                   .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
                   .FollowerShardId = it.GetValue<TTable::FollowerShardId>(),
-                  .LeaderTabletId = it.GetValue<TTable::LeaderTabletId>()},
+                  .LeaderTabletId = it.GetValue<TTable::LeaderTabletId>(),
+                  .FollowerTabletId = it.GetValue<TTable::FollowerTabletId>()},
             .CreatedAt =
                 TInstant::MicroSeconds(it.GetValue<TTable::CreatedAt>()),
             .State = static_cast<TFollowerDiskInfo::EState>(
@@ -781,7 +788,10 @@ bool TVolumeDatabase::ReadFollowers(TFollowerDisks& followers)
             .MigratedBytes = it.HaveValue<TTable::MigratedBytes>()
                                  ? it.GetValue<TTable::MigratedBytes>()
                                  : std::optional<ui64>(),
-            .ErrorMessage = it.GetValue<TTable::ErrorMessage>()});
+            .ErrorMessage = it.GetValue<TTable::ErrorMessage>(),
+            .CancellationPending = it.GetValue<TTable::CancellationPending>(),
+            .CancellationRequireCancellable =
+                it.GetValue<TTable::CancellationRequireCancellable>()});
         if (!it.Next()) {
             return false;   // not ready
         }
@@ -805,8 +815,9 @@ void TVolumeDatabase::WriteLeader(const TLeaderDiskInfo& leader)
                 leader.Link.FollowerShardId),
             NIceDb::TUpdate<TTable::State>(static_cast<ui32>(leader.State)),
             NIceDb::TUpdate<TTable::ErrorMessage>(leader.ErrorMessage),
-            NIceDb::TUpdate<TTable::LeaderTabletId>(
-                leader.Link.LeaderTabletId));
+            NIceDb::TUpdate<TTable::LeaderTabletId>(leader.Link.LeaderTabletId),
+            NIceDb::TUpdate<TTable::FollowerTabletId>(
+                leader.Link.FollowerTabletId));
 }
 
 void TVolumeDatabase::DeleteLeader(const TLeaderFollowerLink& link)
@@ -835,7 +846,8 @@ bool TVolumeDatabase::ReadLeaders(TLeaderDisks& leaders)
                   .LeaderShardId = it.GetValue<TTable::LeaderShardId>(),
                   .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
                   .FollowerShardId = it.GetValue<TTable::FollowerShardId>(),
-                  .LeaderTabletId = it.GetValue<TTable::LeaderTabletId>()},
+                  .LeaderTabletId = it.GetValue<TTable::LeaderTabletId>(),
+                  .FollowerTabletId = it.GetValue<TTable::FollowerTabletId>()},
             .CreatedAt =
                 TInstant::MicroSeconds(it.GetValue<TTable::CreatedAt>()),
             .State = static_cast<TLeaderDiskInfo::EState>(
