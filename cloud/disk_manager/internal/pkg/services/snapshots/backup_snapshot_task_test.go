@@ -60,7 +60,13 @@ func TestBackupSnapshotTask(t *testing.T) {
 	var scheduledDEK []byte
 
 	storage.On("GetSnapshotMeta", mock.Anything, "snap1").Return(snapshot, nil)
-	storage.On("SnapshotBackupScheduled", mock.Anything, "snap1").Return(nil)
+	storage.On("SnapshotBackupCompleted", mock.Anything, "snap1").Return(nil)
+	storage.On(
+		"RemoveSnapshotFromBackupQueue",
+		mock.Anything,
+		"snap1",
+		"attempt1",
+	).Return(nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
 	scheduler.On(
@@ -95,8 +101,11 @@ func TestBackupSnapshotTask(t *testing.T) {
 		scheduler: scheduler,
 		storage:   storage,
 		backupS3:  backupS3,
-		request:   &protos.BackupSnapshotRequest{SnapshotId: "snap1"},
-		state:     &protos.BackupSnapshotTaskState{},
+		request: &protos.BackupSnapshotRequest{
+			SnapshotId: "snap1",
+			BackupId:   "attempt1",
+		},
+		state: &protos.BackupSnapshotTaskState{},
 	}
 
 	err = task.Run(ctx, execCtx)
@@ -175,9 +184,15 @@ func TestBackupSnapshotTaskReusesEncryptedDEK(t *testing.T) {
 		"snap1",
 	).Return(snapshot, nil)
 	storage.On(
-		"SnapshotBackupScheduled",
+		"SnapshotBackupCompleted",
 		mock.Anything,
 		"snap1",
+	).Return(nil)
+	storage.On(
+		"RemoveSnapshotFromBackupQueue",
+		mock.Anything,
+		"snap1",
+		"attempt1",
 	).Return(nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
@@ -204,7 +219,10 @@ func TestBackupSnapshotTaskReusesEncryptedDEK(t *testing.T) {
 		scheduler: scheduler,
 		storage:   storage,
 		backupS3:  backupS3,
-		request:   &protos.BackupSnapshotRequest{SnapshotId: "snap1"},
+		request: &protos.BackupSnapshotRequest{
+			SnapshotId: "snap1",
+			BackupId:   "attempt1",
+		},
 		state: &protos.BackupSnapshotTaskState{
 			EncryptedDek: preset,
 		},
@@ -249,9 +267,15 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 		"snap1",
 	).Return(snapshot, nil)
 	storage.On(
-		"SnapshotBackupScheduled",
+		"SnapshotBackupCompleted",
 		mock.Anything,
 		"snap1",
+	).Return(nil)
+	storage.On(
+		"RemoveSnapshotFromBackupQueue",
+		mock.Anything,
+		"snap1",
+		"attempt1",
 	).Return(nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
@@ -278,8 +302,11 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 		scheduler: scheduler,
 		storage:   storage,
 		backupS3:  backupS3,
-		request:   &protos.BackupSnapshotRequest{SnapshotId: "snap1"},
-		state:     &protos.BackupSnapshotTaskState{},
+		request: &protos.BackupSnapshotRequest{
+			SnapshotId: "snap1",
+			BackupId:   "attempt1",
+		},
+		state: &protos.BackupSnapshotTaskState{},
 	}
 
 	err = task.Run(ctx, execCtx)
@@ -297,4 +324,78 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 	require.Equal(t, object.Data, raw.Data)
 	require.Nil(t, raw.Metadata["Key-Id"])
 	require.Nil(t, raw.Metadata["Encrypted-Dek"])
+}
+
+func TestBackupSnapshotTaskSkipsSnapshotWithoutCopy(t *testing.T) {
+	for _, snapshot := range []*resources.SnapshotMeta{
+		nil,
+		{ID: "snap1", Ready: false},
+		{ID: "snap1", Ready: true, BackupCompleted: true},
+	} {
+		ctx := test.NewContext()
+		storage := resources_mocks.NewStorageMock()
+		scheduler := tasks_mocks.NewSchedulerMock()
+		execCtx := tasks_mocks.NewExecutionContextMock()
+
+		storage.On("GetSnapshotMeta", mock.Anything, "snap1").Return(snapshot, nil)
+		storage.On(
+			"RemoveSnapshotFromBackupQueue",
+			mock.Anything,
+			"snap1",
+			"attempt1",
+		).Return(nil)
+
+		task := &backupSnapshotTask{
+			scheduler: scheduler,
+			storage:   storage,
+			request: &protos.BackupSnapshotRequest{
+				SnapshotId: "snap1",
+				BackupId:   "attempt1",
+			},
+			state: &protos.BackupSnapshotTaskState{},
+		}
+
+		err := task.Run(ctx, execCtx)
+		require.NoError(t, err)
+		mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
+	}
+}
+
+func TestBackupSnapshotTaskCancel(t *testing.T) {
+	for _, dataplaneTaskID := range []string{"", "dataplane1"} {
+		ctx := test.NewContext()
+		storage := resources_mocks.NewStorageMock()
+		scheduler := tasks_mocks.NewSchedulerMock()
+		execCtx := tasks_mocks.NewExecutionContextMock()
+
+		if len(dataplaneTaskID) != 0 {
+			scheduler.On(
+				"CancelTask",
+				mock.Anything,
+				dataplaneTaskID,
+			).Return(true, nil)
+		}
+		storage.On(
+			"RemoveSnapshotFromBackupQueue",
+			mock.Anything,
+			"snap1",
+			"attempt1",
+		).Return(nil)
+
+		task := &backupSnapshotTask{
+			scheduler: scheduler,
+			storage:   storage,
+			request: &protos.BackupSnapshotRequest{
+				SnapshotId: "snap1",
+				BackupId:   "attempt1",
+			},
+			state: &protos.BackupSnapshotTaskState{
+				DataplaneTaskID: dataplaneTaskID,
+			},
+		}
+
+		err := task.Cancel(ctx, execCtx)
+		require.NoError(t, err)
+		mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
+	}
 }

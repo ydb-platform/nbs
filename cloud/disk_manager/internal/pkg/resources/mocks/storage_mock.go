@@ -292,25 +292,36 @@ func (s *StorageMock) ListSnapshots(
 	return args.Get(0).([]string), args.Error(1)
 }
 
-func (s *StorageMock) ListSnapshotsToBackup(
-	ctx context.Context,
-	limit int,
-) ([]string, error) {
-
-	args := s.Called(ctx, limit)
-	return args.Get(0).([]string), args.Error(1)
-}
-
-func (s *StorageMock) SnapshotBackupScheduled(
+func (s *StorageMock) EnqueueSnapshotBackup(
 	ctx context.Context,
 	snapshotID string,
+	backupID string,
 ) error {
 
-	args := s.Called(ctx, snapshotID)
+	args := s.Called(ctx, snapshotID, backupID)
 	return args.Error(0)
 }
 
-func (s *StorageMock) SnapshotBackupCancelled(
+func (s *StorageMock) ListSnapshotsToBackup(
+	ctx context.Context,
+	limit int,
+) ([]resources.SnapshotBackupRequest, error) {
+
+	args := s.Called(ctx, limit)
+	return args.Get(0).([]resources.SnapshotBackupRequest), args.Error(1)
+}
+
+func (s *StorageMock) RemoveSnapshotFromBackupQueue(
+	ctx context.Context,
+	snapshotID string,
+	backupID string,
+) error {
+
+	args := s.Called(ctx, snapshotID, backupID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) SnapshotBackupCompleted(
 	ctx context.Context,
 	snapshotID string,
 ) error {

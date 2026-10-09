@@ -71,6 +71,7 @@ type SnapshotMeta struct {
 	StorageSize       uint64                `json:"storage_size"`
 	Encryption        *types.EncryptionDesc `json:"encryption"`
 	Ready             bool                  `json:"ready"`
+	BackupCompleted   bool                  `json:"backup_completed"`
 }
 
 type FilesystemMeta struct {
@@ -117,6 +118,11 @@ type PlacementGroupMeta struct {
 	CreatedAt               time.Time               `json:"created_at"`
 	CreatedBy               string                  `json:"created_by"`
 	DeleteTaskID            string                  `json:"delete_task_id"`
+}
+
+type SnapshotBackupRequest struct {
+	SnapshotID string
+	BackupID   string
 }
 
 type Storage interface {
@@ -221,11 +227,27 @@ type Storage interface {
 		creatingBefore time.Time,
 	) ([]string, error)
 
-	ListSnapshotsToBackup(ctx context.Context, limit int) ([]string, error)
+	EnqueueSnapshotBackup(
+		ctx context.Context,
+		snapshotID string,
+		backupID string,
+	) error
 
-	SnapshotBackupScheduled(ctx context.Context, snapshotID string) error
+	ListSnapshotsToBackup(
+		ctx context.Context,
+		limit int,
+	) ([]SnapshotBackupRequest, error)
 
-	SnapshotBackupCancelled(ctx context.Context, snapshotID string) error
+	// Removes the queue row of this attempt only. Does not mark the snapshot
+	// as backed up.
+	RemoveSnapshotFromBackupQueue(
+		ctx context.Context,
+		snapshotID string,
+		backupID string,
+	) error
+
+	// Marks a ready snapshot as backed up. A deleting snapshot is not marked.
+	SnapshotBackupCompleted(ctx context.Context, snapshotID string) error
 
 	// Returns filesystem if action has been accepted by storage and nil otherwise.
 	CreateFilesystem(ctx context.Context, filesystem FilesystemMeta) (*FilesystemMeta, error)

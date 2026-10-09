@@ -54,8 +54,9 @@ func (t *backupSnapshotTask) Run(
 		return err
 	}
 
-	if meta == nil || !meta.Ready {
-		return t.storage.SnapshotBackupCancelled(ctx, snapshotID)
+	// Nothing to copy: the snapshot is gone or already backed up.
+	if meta == nil || !meta.Ready || meta.BackupCompleted {
+		return t.removeFromQueue(ctx)
 	}
 
 	if meta.Disk == nil {
@@ -131,7 +132,14 @@ func (t *backupSnapshotTask) Run(
 		return err
 	}
 
-	return t.storage.SnapshotBackupScheduled(ctx, snapshotID)
+	// Marks only a ready snapshot: if deletion won before the copy took its
+	// hold, the snapshot is already deleting and the copy copied nothing.
+	err = t.storage.SnapshotBackupCompleted(ctx, snapshotID)
+	if err != nil {
+		return err
+	}
+
+	return t.removeFromQueue(ctx)
 }
 
 func (t *backupSnapshotTask) Cancel(
@@ -141,7 +149,15 @@ func (t *backupSnapshotTask) Cancel(
 
 	// TODO(https://github.com/ydb-platform/nbs/issues/7237):
 	// roll back the objects already written to the follower bucket.
-	return t.storage.SnapshotBackupCancelled(ctx, t.request.SnapshotId)
+	// The copy clears its chunks and releases the snapshot in its own Cancel.
+	if len(t.state.DataplaneTaskID) != 0 {
+		_, err := t.scheduler.CancelTask(ctx, t.state.DataplaneTaskID)
+		if err != nil {
+			return err
+		}
+	}
+
+	return t.removeFromQueue(ctx)
 }
 
 func (t *backupSnapshotTask) GetMetadata(
@@ -153,4 +169,14 @@ func (t *backupSnapshotTask) GetMetadata(
 
 func (t *backupSnapshotTask) GetResponse() proto.Message {
 	return &empty.Empty{}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+func (t *backupSnapshotTask) removeFromQueue(ctx context.Context) error {
+	return t.storage.RemoveSnapshotFromBackupQueue(
+		ctx,
+		t.request.SnapshotId,
+		t.request.BackupId,
+	)
 }
