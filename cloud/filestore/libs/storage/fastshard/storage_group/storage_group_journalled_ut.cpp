@@ -122,7 +122,7 @@ struct TJournalledDevices
         return *Nodes[i];
     }
 
-    // The watermark loop is off unless a test asks for it.
+    // The background loops are off unless a test asks for one.
     IStorageGroupPtr MakeGroup(
         std::initializer_list<ui32> indexes,
         TDuration lowWatermarkPeriod = TDuration::Zero())
@@ -134,6 +134,7 @@ struct TJournalledDevices
 
         TStorageGroupConfig config;
         config.LowWatermarkPeriod = lowWatermarkPeriod;
+        config.ReacquirePeriod = TDuration::Zero();
         return CreateQuorumMirroredStorageGroup(
             std::move(config),
             std::move(devices),

@@ -59,11 +59,18 @@ struct TFakeDevice: TFakeStorageNode
     std::atomic<ui64> HoldLsn = 0;
     std::atomic<ui32> Parked = 0;
 
+    silk::FiberEvent AcquireGate;
+    std::atomic<bool> AcquirePaused = false;
+    silk::FiberEvent AcquireParked;
+    silk::FiberSequencer Acquires;
+
     void Unpause()
     {
         Paused = false;
         HoldLsn = 0;
         Gate.set();
+        AcquirePaused = false;
+        AcquireGate.set();
     }
 
     ui32 WriteCount()
@@ -114,6 +121,19 @@ struct TFakeDevice: TFakeStorageNode
 
         return TFakeStorageNode::WriteLogRecord(std::move(request));
     }
+
+    NProto::TAcquireDevicesResponse AcquireDevices(
+        NProto::TAcquireDevicesRequest request) override
+    {
+        if (AcquirePaused) {
+            AcquireParked.set();
+            AcquireGate.wait();
+        }
+
+        auto response = TFakeStorageNode::AcquireDevices(std::move(request));
+        Acquires.increment();
+        return response;
+    }
 };
 
 using TFakeDevicePtr = std::shared_ptr<TFakeDevice>;
@@ -139,13 +159,14 @@ NProto::TReadPagesResponse ClaimedAt(const TString& claim, ui64 lsn)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The watermark loop is off unless a test asks for it.
+// The background loops are off unless a test asks for one.
 TStorageGroupConfig MakeConfig(ui32 pageSize = DefaultBlockSize)
 {
     TStorageGroupConfig config;
     config.ClientId = "test-client";
     config.AcquireGeneration = 42;
     config.LowWatermarkPeriod = TDuration::Zero();
+    config.ReacquirePeriod = TDuration::Zero();
     config.PageSize = pageSize;
     return config;
 }
@@ -161,18 +182,33 @@ TStorageGroupConfig MakeConfigWithWaterMarksLoop()
     return config;
 }
 
+TStorageGroupConfig MakeConfigWithReacquireLoop()
+{
+    auto config = MakeConfig();
+    config.ReacquirePeriod = TDuration::MilliSeconds(1);
+    // Retries are off for the same reason as in the watermark loop config: a
+    // backoff sleeps on the tick timer.
+    config.RetryPolicy.TotalTimeout = TDuration::Zero();
+    return config;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
  * A timer whose Sleep waits for the test to call TickOnce, which lets the
- * watermark loop run exactly one iteration and returns once it is parked in
- * Sleep again. Sleep announces itself before waiting, so the loop is parked
- * exactly when Sleeps == Ticks + 1.
+ * loops run exactly one round and returns once every one of them is parked in
+ * Sleep again. The loops to expect are given up front: a round is over once
+ * each of them has parked once more.
  */
 struct TTickTimer: ITimer
 {
-    silk::FiberSequencer Ticks;    // test to loop
-    silk::FiberSequencer Sleeps;   // loop to test
+    const ui64 Loops;
+    silk::FiberSequencer Rounds;   // test to loops
+    silk::FiberSequencer Parked;   // loops to test
+
+    explicit TTickTimer(ui64 loops = 1)
+        : Loops(loops)
+    {}
 
     TInstant Now() override
     {
@@ -182,13 +218,28 @@ struct TTickTimer: ITimer
     void Sleep(TDuration duration) override
     {
         Y_UNUSED(duration);
-        Y_UNUSED(Ticks.wait(Sleeps.increment()));
+        const ui64 round = (Parked.increment() + Loops - 1) / Loops;
+        Y_UNUSED(Rounds.wait(round));
+    }
+
+    void Sleep(TDuration duration, const std::atomic<bool>& cancelled) override
+    {
+        Y_UNUSED(cancelled);
+        Sleep(duration);
     }
 
     void TickOnce()
     {
-        Y_UNUSED(Sleeps.wait(Ticks.get() + 1));
-        Y_UNUSED(Sleeps.wait(Ticks.increment() + 1));
+        ReleaseRound();
+        Y_UNUSED(Parked.wait((Rounds.get() + 1) * Loops));
+    }
+
+    // A tick that does not wait for the loops to park again, for a round
+    // after which a loop may leave instead.
+    void ReleaseRound()
+    {
+        Y_UNUSED(Parked.wait((Rounds.get() + 1) * Loops));
+        Rounds.increment();
     }
 
     // One full iteration per tick. A tick right after a write may find the
@@ -205,10 +256,10 @@ struct TTickTimer: ITimer
         return false;
     }
 
-    // Lets the loop out of Sleep for good, so TearDown can join it.
+    // Lets the loops out of Sleep for good, so TearDown can join them.
     void Stop()
     {
-        Ticks.stop();
+        Rounds.stop();
     }
 };
 
@@ -726,11 +777,12 @@ FIBER_TEST(NaiveGroupTest, DoesNotRetryNonRetriableErrors)
 FIBER_TEST(NaiveGroupTest, GivesUpWhenTheRetryDeadlineExpires)
 {
     // A one second budget over the default half second increment. The test
-    // timer advances by every sleep, so a dead device fails at 0s, 0.5s and
-    // 1.5s: the third error is past the budget and ends the attempts.
+    // timer advances by every sleep, so a dead device fails at 0s and 0.5s;
+    // the backoff of a second after that would cross the budget, so there is
+    // no third attempt.
     auto config = MakeConfig();
     config.RetryPolicy.TotalTimeout = TDuration::Seconds(1);
-    constexpr ui32 attempts = 3;
+    constexpr ui32 attempts = 2;
 
     {
         TNaiveFixture fx(config);
@@ -760,8 +812,9 @@ FIBER_TEST(NaiveGroupTest, GivesUpWhenTheRetryDeadlineExpires)
         ASSERT_EQ(E_UNAVAILABLE, error.GetCode()) << error.GetMessage();
         ASSERT_TRUE(pageGroups.empty());
 
-        // The rotation keeps moving while retrying, so each device gets one.
-        ASSERT_EQ(TVector<ui32>(DeviceCount, 1), ReadCounts(fx));
+        // The rotation keeps moving while retrying, so each attempt lands on
+        // the next device.
+        ASSERT_EQ((TVector<ui32>{1, 1, 0}), ReadCounts(fx));
         ASSERT_EQ(Backoffs(attempts - 1), Sleeps(fx));
     }
 }
@@ -1504,4 +1557,134 @@ FIBER_TEST(QuorumGroupTest, LowWatermarkRefusedOutrightBreaksTheGroup)
     ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
     ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[2])) << error.GetMessage();
     ASSERT_EQ(writes, TotalWrites(fx));
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldRenewSessions)
+{
+    auto timer = std::make_shared<TTickTimer>(DeviceCount);
+    TQuorumFixture fx(timer, MakeConfigWithReacquireLoop());
+
+    // A storage node lets go of a claim that stops being renewed, so Init's
+    // acquire is repeated on every device for as long as the group lives.
+    timer->TickOnce();
+    for (ui32 i = 0; i < DeviceCount; ++i) {
+        ASSERT_EQ(2U, fx[i].AcquireCalls.size()) << "dev " << i;
+        const auto& renewal = fx[i].AcquireCalls[1];
+        ASSERT_EQ(1U, renewal.DeviceUUIDsSize()) << "dev " << i;
+        ASSERT_EQ(fx.DeviceUUIDs[i], renewal.GetDeviceUUIDs(0)) << "dev " << i;
+        ASSERT_EQ(42U, renewal.GetGeneration()) << "dev " << i;
+        ASSERT_EQ("test-client", renewal.GetHeaders().GetClientId())
+            << "dev " << i;
+    }
+
+    // A retriable or aborted refusal is no verdict on the claim: the group
+    // carries on, and the next round is the retry.
+    *fx[2].AcquireResp.MutableError() = MakeError(E_REJECTED, "busy");
+    timer->TickOnce();
+    auto error = Write(*fx.Group);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+    *fx[2].AcquireResp.MutableError() = MakeError(E_ABORTED, "shutting down");
+    timer->TickOnce();
+    error = Write(*fx.Group, Lsn + 1);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+    fx[2].AcquireResp = {};
+    timer->TickOnce();
+    ASSERT_EQ(5U, fx[2].AcquireCalls.size());
+
+    // The device belongs to someone else now, which is not a device this
+    // group can go on writing to.
+    *fx[2].AcquireResp.MutableError() =
+        MakeError(E_BS_MOUNT_CONFLICT, "another writer");
+    timer->ReleaseRound();
+    TVector<TPageGroup> pageGroups;
+    ASSERT_TRUE(
+        WaitFor([&] { return HasError(Read(*fx.Group, &pageGroups)); }));
+    error = Write(*fx.Group, Lsn + 2);
+    ASSERT_EQ(E_INVALID_STATE, error.GetCode()) << error.GetMessage();
+    ASSERT_TRUE(Mentions(error, fx.DeviceUUIDs[2])) << error.GetMessage();
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldRenewSessionsIndependently)
+{
+    auto config = MakeConfig();
+    config.ReacquirePeriod = TDuration::MilliSeconds(1);
+    TGroupFixture fx(
+        CreateQuorumMirroredStorageGroup,
+        config,
+        CreateFiberTimer(),
+        DeviceCount);
+
+    auto error = fx.Group->Init().GetError();
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+
+    // Each device renews on a clock of its own: a node that does not answer
+    // holds up only its own renewal.
+    fx[2].AcquirePaused = true;
+    fx[2].AcquireParked.wait();
+
+    const ui64 renewals0 = fx[0].Acquires.get();
+    const ui64 renewals1 = fx[1].Acquires.get();
+    const ui64 renewals2 = fx[2].Acquires.get();
+    ASSERT_EQ(0, fx[0].Acquires.wait(renewals0 + 2));
+    ASSERT_EQ(0, fx[1].Acquires.wait(renewals1 + 2));
+    ASSERT_EQ(renewals2, fx[2].Acquires.get());
+}
+
+FIBER_TEST(QuorumGroupTest, ShouldCutSleepsShortOnTearDown)
+{
+    // Counts the cancellable sleeps, so the test knows the loops and the
+    // backoff are under way before it tears down.
+    struct TCountingTimer: ITimer
+    {
+        ITimerPtr Inner = CreateFiberTimer();
+        std::atomic<ui32> Sleeps = 0;
+
+        TInstant Now() override
+        {
+            return Inner->Now();
+        }
+
+        void Sleep(TDuration duration) override
+        {
+            Inner->Sleep(duration);
+        }
+
+        void Sleep(
+            TDuration duration,
+            const std::atomic<bool>& cancelled) override
+        {
+            ++Sleeps;
+            Inner->Sleep(duration, cancelled);
+        }
+    };
+
+    auto config = MakeConfig();
+    config.ReacquirePeriod = TDuration::Hours(1);
+    config.LowWatermarkPeriod = TDuration::Hours(1);
+    config.RetryPolicy.BackoffIncrement = TDuration::Hours(1);
+    config.RetryPolicy.TotalTimeout = TDuration::Hours(2);
+    auto timer = std::make_shared<TCountingTimer>();
+    TGroupFixture fx(
+        CreateQuorumMirroredStorageGroup,
+        config,
+        timer,
+        DeviceCount);
+
+    auto error = fx.Group->Init().GetError();
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    ASSERT_TRUE(WaitFor([&] { return timer->Sleeps == DeviceCount + 1; }));
+
+    // A write whose third replica is in a backoff for an hour.
+    *fx[2].WriteResp.MutableError() = MakeError(E_REJECTED, "busy");
+    error = Write(*fx.Group);
+    ASSERT_EQ(S_OK, error.GetCode()) << error.GetMessage();
+    ASSERT_TRUE(WaitFor([&] { return timer->Sleeps == DeviceCount + 2; }));
+
+    // Neither the loops nor the backoff hold TearDown past a slice.
+    const TInstant start = TInstant::Now();
+    fx.Group->TearDown();
+    ASSERT_LT(TInstant::Now() - start, TDuration::Seconds(5));
+    ASSERT_EQ(1U, fx[2].ReleaseCalls.size());
 }
