@@ -10,6 +10,7 @@ from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
 
 def default_storage_config_patch():
     storage = storage_config_with_default_limits()
+    storage.EnablePartitionV2 = True
 
     storage.InactiveClientsTimeout = 10000
 

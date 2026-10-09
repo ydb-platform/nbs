@@ -67,10 +67,13 @@ def __run_test(test_case):
     server.ServerConfig.EndpointStorageDir = endpoint_storage_dir
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
+    storage = storage_config_with_default_limits()
+    storage.EnablePartitionV2 = True
+
     env = LocalLoadTest(
         "",
         server_app_config=server,
-        storage_config_patches=[storage_config_with_default_limits()],
+        storage_config_patches=[storage],
         use_in_memory_pdisks=True,
         restart_interval=test_case.restart_interval,
     )

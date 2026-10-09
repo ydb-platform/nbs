@@ -16,6 +16,7 @@ def default_storage_config_patch(tablet_version):
     storage.BlockDigestsEnabled = True
 
     if tablet_version == 2:
+        storage.EnablePartitionV2 = True
         storage.UseTestBlockDigestGenerator = True
         storage.DigestedBlocksPercentage = 100
 
