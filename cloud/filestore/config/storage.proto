@@ -948,4 +948,7 @@ message TStorageConfig
     // If set to true, the tablet sends FileSystemEvents (InvalidateNode,
     // InvalidateNodeRef) to its clients upon Node and NodeRef changes.
     optional bool FileSystemEventsEnabled = 553;
+
+    // Server WriteBackCache state file size in bytes per session.
+    optional uint64 ServerWriteBackCacheStateFileSize = 554;
 }

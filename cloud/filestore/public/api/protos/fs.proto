@@ -71,6 +71,9 @@ message TFileStoreFeatures
     uint32 AvailabilityTrackingInterval = 53;
     uint32 AsyncHandleOperationDrainPeriod = 54;
     uint32 AsyncHandleOperationBatchSize = 55;
+
+    // Server WriteBackCache state file size in bytes per session.
+    uint64 ServerWriteBackCacheStateFileSize = 56;
 }
 
 message TFileStore
