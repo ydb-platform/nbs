@@ -1,8 +1,10 @@
 #include "config.h"
 
-#include <library/cpp/testing/unittest/registar.h>
+#include <cloud/blockstore/public/api/protos/volume.pb.h>
 
 #include <contrib/ydb/core/control/immediate_control_board_impl.h>
+
+#include <library/cpp/testing/unittest/registar.h>
 
 #include <util/generic/vector.h>
 
@@ -15,6 +17,115 @@ namespace NCloud::NBlockStore::NStorage {
 
 Y_UNIT_TEST_SUITE(TConfigTest)
 {
+    Y_UNIT_TEST(ShouldResolveLocalShardWithoutAdditionalConfiguration)
+    {
+        TStorageConfig config(NProto::TStorageServiceConfig{},
+                              std::make_shared<NFeatures::TFeaturesConfig>());
+
+        const auto directory = config.GetSchemeShardDirForShard("");
+        UNIT_ASSERT(directory);
+        UNIT_ASSERT_VALUES_EQUAL("/Root", *directory);
+        UNIT_ASSERT(!config.GetSchemeShardDirForShard("unknown"));
+        // A directory supplied in a request is not an allowlisted shard.
+        UNIT_ASSERT(!config.GetSchemeShardDirForShard("/Root/other"));
+    }
+
+    Y_UNIT_TEST(ShouldResolveConfiguredShardDirectories)
+    {
+        NProto::TStorageServiceConfig proto;
+        proto.SetSchemeShardDir("/Root/local/");
+        (*proto.MutableShardDirectories())["local"] = "/Root/local";
+        (*proto.MutableShardDirectories())["remote"] = "/Root/remote/";
+        TStorageConfig config(proto,
+                              std::make_shared<NFeatures::TFeaturesConfig>());
+
+        for (const auto& shardId: {TString{}, TString{"local"}}) {
+            const auto directory = config.GetSchemeShardDirForShard(shardId);
+            UNIT_ASSERT(directory);
+            UNIT_ASSERT_VALUES_EQUAL("/Root/local", *directory);
+        }
+        const auto remote = config.GetSchemeShardDirForShard("remote");
+        UNIT_ASSERT(remote);
+        UNIT_ASSERT_VALUES_EQUAL("/Root/remote", *remote);
+
+        TStorageConfig copy(config);
+        UNIT_ASSERT_VALUES_EQUAL(remote,
+                                 copy.GetSchemeShardDirForShard("remote"));
+    }
+
+    Y_UNIT_TEST(ShouldRejectInvalidShardDirectories)
+    {
+        for (const TString directory:
+             {"", "/", "Root/remote", "/Root//remote", "/Root/./remote",
+              "/Root/../remote", "/Root/.", "/Root/.."})
+        {
+            NProto::TStorageServiceConfig proto;
+            proto.SetSchemeShardDir(directory);
+            (*proto.MutableShardDirectories())["remote"] = directory;
+            TStorageConfig config(
+                proto, std::make_shared<NFeatures::TFeaturesConfig>());
+
+            UNIT_ASSERT_C(!config.GetSchemeShardDirForShard(""), directory);
+            UNIT_ASSERT_C(!config.GetSchemeShardDirForShard("remote"),
+                          directory);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldPreserveShardDirectoriesWhenMergingConfig)
+    {
+        NProto::TStorageServiceConfig proto;
+        (*proto.MutableShardDirectories())["remote"] = "/Root/remote";
+        auto config = std::make_shared<TStorageConfig>(
+            proto, std::make_shared<NFeatures::TFeaturesConfig>());
+        NProto::TStorageServiceConfig patch;
+        patch.SetWriteBlobThreshold(1234);
+        const auto merged = TStorageConfig::Merge(config, patch);
+
+        const auto directory = merged->GetSchemeShardDirForShard("remote");
+        UNIT_ASSERT(directory);
+        UNIT_ASSERT_VALUES_EQUAL("/Root/remote", *directory);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveShardRoutingInLinkRequests)
+    {
+        NProto::TCreateVolumeLinkRequest create;
+        create.SetLeaderDiskId("disk");
+        create.SetFollowerDiskId("disk-copy");
+        create.SetLeaderShardId("source");
+        create.SetFollowerShardId("target");
+        create.MutableHeaders()->SetShardId("source");
+
+        NProto::TCreateVolumeLinkRequest restored;
+        UNIT_ASSERT(restored.ParseFromString(create.SerializeAsString()));
+        UNIT_ASSERT_VALUES_EQUAL("source", restored.GetLeaderShardId());
+        UNIT_ASSERT_VALUES_EQUAL("target", restored.GetFollowerShardId());
+        UNIT_ASSERT_VALUES_EQUAL("source", restored.GetHeaders().GetShardId());
+
+        NProto::TDestroyVolumeLinkRequest destroy;
+        destroy.SetLeaderDiskId(restored.GetLeaderDiskId());
+        destroy.SetFollowerDiskId(restored.GetFollowerDiskId());
+        destroy.SetLeaderShardId(restored.GetLeaderShardId());
+        destroy.SetFollowerShardId(restored.GetFollowerShardId());
+        NProto::TDestroyVolumeLinkRequest restoredDestroy;
+        UNIT_ASSERT(
+            restoredDestroy.ParseFromString(destroy.SerializeAsString()));
+        UNIT_ASSERT_VALUES_EQUAL("source", restoredDestroy.GetLeaderShardId());
+        UNIT_ASSERT_VALUES_EQUAL("target",
+                                 restoredDestroy.GetFollowerShardId());
+
+        // Existing clients omit the new fields and continue to use the local
+        // shard; the existing field numbers and disk identifiers are preserved.
+        create.ClearLeaderShardId();
+        create.ClearFollowerShardId();
+        create.ClearHeaders();
+        UNIT_ASSERT(restored.ParseFromString(create.SerializeAsString()));
+        UNIT_ASSERT(restored.GetLeaderShardId().empty());
+        UNIT_ASSERT(restored.GetFollowerShardId().empty());
+        UNIT_ASSERT(restored.GetHeaders().GetShardId().empty());
+        UNIT_ASSERT_VALUES_EQUAL("disk", restored.GetLeaderDiskId());
+        UNIT_ASSERT_VALUES_EQUAL("disk-copy", restored.GetFollowerDiskId());
+    }
+
     Y_UNIT_TEST(ShouldUpdateHiveProxyFallbackModeViaImmediateControlBoard)
     {
         auto config = std::make_shared<TStorageConfig>(

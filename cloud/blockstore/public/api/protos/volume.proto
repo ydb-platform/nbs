@@ -829,6 +829,12 @@ message TCreateVolumeLinkRequest
 
     // Id of follower disk.
     string FollowerDiskId = 3;
+
+    // Storage shard of the leader. Empty selects the local shard.
+    string LeaderShardId = 4;
+
+    // Storage shard of the follower. Empty selects the local shard.
+    string FollowerShardId = 5;
 }
 
 message TCreateVolumeLinkResponse
@@ -850,6 +856,12 @@ message TDestroyVolumeLinkRequest
 
     // Id of follower disk.
     string FollowerDiskId = 3;
+
+    // Storage shard of the leader. Empty selects the local shard.
+    string LeaderShardId = 4;
+
+    // Storage shard of the follower. Empty selects the local shard.
+    string FollowerShardId = 5;
 }
 
 message TDestroyVolumeLinkResponse
