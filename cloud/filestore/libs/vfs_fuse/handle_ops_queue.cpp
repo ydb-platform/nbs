@@ -6,9 +6,9 @@ namespace NCloud::NFileStore::NFuse {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 size)
-    : RequestsToProcess(filePath, size, 0, EFileRingBufferVersion::V5)
-    , Stats(CreateHandleOpsQueueStats(size))
+THandleOpsQueue::THandleOpsQueue(const TString& filePath, ui32 stateFileSize)
+    : RequestsToProcess(filePath, stateFileSize, 0, EFileRingBufferVersion::V5)
+    , Stats(CreateHandleOpsQueueStats(RequestsToProcess.GetRawCapacity()))
 {
     Stats->SetEntryCount(RequestsToProcess.Size());
 }
@@ -146,9 +146,9 @@ ui64 THandleOpsQueue::Size() const
 
 THandleOpsQueuePtr CreateHandleOpsQueue(
     const TString& filePath,
-    ui32 size)
+    ui32 stateFileSize)
 {
-    return std::make_unique<THandleOpsQueue>(filePath, size);
+    return std::make_unique<THandleOpsQueue>(filePath, stateFileSize);
 }
 
 }   // namespace NCloud::NFileStore::NFuse

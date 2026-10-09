@@ -37,7 +37,7 @@ public:
         : Stats(std::move(stats))
         , Storage(
               config.FilePath,
-              config.DataCapacity,
+              config.StateFileSize,
               config.MetadataCapacity,
               EFileRingBufferVersion::V6)
         , Config(std::move(config))

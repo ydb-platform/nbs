@@ -35,7 +35,7 @@ public:
         NCloud::NProto::TError Error;
     };
 
-    explicit THandleOpsQueue(const TString& filePath, ui32 size);
+    explicit THandleOpsQueue(const TString& filePath, ui32 stateFileSize);
 
     IModuleStatsPtr GetModuleStats() const;
     EResult AddCreateRequest(
@@ -54,6 +54,8 @@ public:
 
 ////////////////////////////////////////////////////////////////////////////////
 
-THandleOpsQueuePtr CreateHandleOpsQueue(const TString& filePath, ui32 size);
+THandleOpsQueuePtr CreateHandleOpsQueue(
+    const TString& filePath,
+    ui32 stateFileSize);
 
 }   // namespace NCloud::NFileStore::NFuse
