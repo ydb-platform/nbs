@@ -62,39 +62,7 @@ func (s *StorageS3) ReadChunk(
 		return err
 	}
 
-	metadata, err := newS3Metadata(object.Metadata)
-	if err != nil {
-		return err
-	}
-
-	logging.Debug(
-		ctx,
-		"read chunk from s3 {id: %q, checksum: %v, compression: %q}",
-		chunk.ID,
-		metadata.checksum,
-		metadata.compression,
-	)
-
-	err = compressor.Decompress(
-		metadata.compression,
-		object.Data,
-		chunk.Data,
-		s.metrics,
-	)
-	if err != nil {
-		return err
-	}
-
-	actualChecksum := chunk.Checksum()
-	if metadata.checksum != actualChecksum {
-		return task_errors.NewNonRetriableErrorf(
-			"ReadChunk: s3 chunk checksum mismatch: expected %v, actual %v",
-			metadata.checksum,
-			actualChecksum,
-		)
-	}
-
-	return nil
+	return DecodeS3Object(ctx, object, chunk, s.metrics)
 }
 
 func (s *StorageS3) ReadChunkBlob(
@@ -278,6 +246,50 @@ func newS3Metadata(metadataMap map[string]*string) (s3Metadata, error) {
 	}
 
 	return metadata, nil
+}
+
+// Decompresses data of the chunk stored in |object| into chunk.Data and
+// verifies its checksum.
+func DecodeS3Object(
+	ctx context.Context,
+	object persistence.S3Object,
+	chunk *common.Chunk,
+	metrics metrics.Metrics,
+) error {
+
+	metadata, err := newS3Metadata(object.Metadata)
+	if err != nil {
+		return err
+	}
+
+	logging.Debug(
+		ctx,
+		"read chunk from s3 {id: %q, checksum: %v, compression: %q}",
+		chunk.ID,
+		metadata.checksum,
+		metadata.compression,
+	)
+
+	err = compressor.Decompress(
+		metadata.compression,
+		object.Data,
+		chunk.Data,
+		metrics,
+	)
+	if err != nil {
+		return err
+	}
+
+	actualChecksum := chunk.Checksum()
+	if metadata.checksum != actualChecksum {
+		return task_errors.NewNonRetriableErrorf(
+			"ReadChunk: s3 chunk checksum mismatch: expected %v, actual %v",
+			metadata.checksum,
+			actualChecksum,
+		)
+	}
+
+	return nil
 }
 
 func NewS3Object(chunkBlob ChunkBlob) persistence.S3Object {

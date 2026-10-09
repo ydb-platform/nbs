@@ -13,6 +13,10 @@ import (
 	internal_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/client"
 	client_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/client/config"
 	server_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/configs/server/config"
+	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
+	"github.com/ydb-platform/nbs/cloud/tasks/headers"
+	"google.golang.org/protobuf/encoding/protojson"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -660,6 +664,169 @@ func newUnassignDiskCmd(clientConfig *client_config.ClientConfig) *cobra.Command
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type scheduleTransferFromBackupToDiskTask struct {
+	commandWithScheduler
+	zoneID            string
+	diskID            string
+	srcSnapshotID     string
+	srcDiskID         string
+	srcImageID        string
+	expectedFolderID  string
+	dstEncryptionDesc string
+}
+
+func (c *scheduleTransferFromBackupToDiskTask) newRequest() (
+	*dataplane_protos.TransferFromBackupToDiskRequest,
+	error,
+) {
+
+	request := &dataplane_protos.TransferFromBackupToDiskRequest{
+		SrcKind:   dataplane_protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT,
+		SrcId:     c.srcSnapshotID,
+		SrcDiskId: c.srcDiskID,
+		DstDisk: &types.Disk{
+			ZoneId: c.zoneID,
+			DiskId: c.diskID,
+		},
+		ExpectedFolderId: c.expectedFolderID,
+	}
+
+	if len(c.srcImageID) != 0 {
+		request.SrcKind = dataplane_protos.BackupSourceKind_BACKUP_SOURCE_KIND_IMAGE
+		request.SrcId = c.srcImageID
+	}
+
+	if len(c.dstEncryptionDesc) != 0 {
+		request.DstEncryption = &types.EncryptionDesc{}
+
+		err := protojson.Unmarshal(
+			[]byte(c.dstEncryptionDesc),
+			request.DstEncryption,
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to parse dst-encryption-desc: %w",
+				err,
+			)
+		}
+	}
+
+	return request, nil
+}
+
+func (c *scheduleTransferFromBackupToDiskTask) run() error {
+	request, err := c.newRequest()
+	if err != nil {
+		return err
+	}
+
+	err = c.init()
+	if err != nil {
+		return err
+	}
+	defer c.close()
+
+	taskID, err := c.scheduler.ScheduleZonalTask(
+		headers.SetIncomingIdempotencyKey(
+			c.ctx,
+			"dataplane.TransferFromBackupToDisk_"+c.diskID+"_"+generateID(),
+		),
+		"dataplane.TransferFromBackupToDisk",
+		"",
+		c.zoneID,
+		request,
+	)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("Task: %v\n", taskID)
+	return nil
+}
+
+func newScheduleTransferFromBackupToDiskTaskCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &scheduleTransferFromBackupToDiskTask{
+		commandWithScheduler: newCommandWithScheduler(
+			clientConfig,
+			serverConfig,
+		),
+	}
+
+	cmd := &cobra.Command{
+		Use: "schedule-transfer-from-backup-to-disk-task",
+		Aliases: []string{
+			"schedule_transfer_from_backup_to_disk_task",
+		},
+		Short: "Fill an existing disk with data of a snapshot or image " +
+			"backup",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.zoneID,
+		"zone-id",
+		"",
+		"zone or cell ID where disk is located; required",
+	)
+	if err := cmd.MarkFlagRequired("zone-id"); err != nil {
+		log.Fatalf("Error setting flag zone-id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(&c.diskID, "id", "", "ID of disk to fill; required")
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+
+	cmd.Flags().StringVar(
+		&c.srcSnapshotID,
+		"src-snapshot-id",
+		"",
+		"ID of snapshot to restore from",
+	)
+	cmd.Flags().StringVar(
+		&c.srcDiskID,
+		"src-disk-id",
+		"",
+		"ID of disk the snapshot was created from; required with "+
+			"src-snapshot-id",
+	)
+	cmd.Flags().StringVar(
+		&c.srcImageID,
+		"src-image-id",
+		"",
+		"ID of image to restore from",
+	)
+	cmd.MarkFlagsOneRequired("src-snapshot-id", "src-image-id")
+	cmd.MarkFlagsMutuallyExclusive("src-snapshot-id", "src-image-id")
+	cmd.MarkFlagsRequiredTogether("src-snapshot-id", "src-disk-id")
+
+	cmd.Flags().StringVar(
+		&c.expectedFolderID,
+		"expected-folder-id",
+		"",
+		"folder ID the backup should belong to; optional",
+	)
+
+	cmd.Flags().StringVar(
+		&c.dstEncryptionDesc,
+		"dst-encryption-desc",
+		"",
+		"encryption desc to mount disk with, in JSON format, e.g. "+
+			`'{"Mode": "ENCRYPTION_AES_XTS", "KeyHash": "<base64>"}'`+
+			"; optional",
+	)
+
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newDisksCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -679,6 +846,7 @@ func newDisksCmd(
 		newAlterDiskCmd(clientConfig),
 		newAssignDiskCmd(clientConfig),
 		newUnassignDiskCmd(clientConfig),
+		newScheduleTransferFromBackupToDiskTaskCmd(clientConfig, serverConfig),
 	)
 
 	return cmd

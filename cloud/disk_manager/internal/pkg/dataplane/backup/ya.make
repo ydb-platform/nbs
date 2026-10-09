@@ -5,6 +5,7 @@ SRCS(
     keys.go
     meta.go
     s3.go
+    source.go
 )
 
 GO_TEST_SRCS(
