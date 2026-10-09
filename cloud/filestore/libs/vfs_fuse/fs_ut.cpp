@@ -75,7 +75,7 @@ namespace {
 constexpr TDuration WaitTimeout = TDuration::Seconds(5);
 constexpr TDuration LargeDirectoryWaitTimeout = TDuration::Seconds(15);
 constexpr TDuration ExceptionWaitTimeout = TDuration::Seconds(1);
-constexpr ui64 WriteBackCacheCapacity = 1024 * 1024 + 1024;
+constexpr ui64 WriteBackCacheStateFileSize = 1024 * 1024 + 1024;
 constexpr TStringBuf MetricsComponent = "fs_ut";
 
 // sizeof(ui64) comes from the name "." aligned up to ui64
@@ -192,7 +192,6 @@ struct TBootstrap
             const NProto::TFileStoreFeatures& featuresConfig = {},
             ui32 handleOpsQueueSize = 1000,
             ui32 writeBackCacheAutomaticFlushPeriodMs = 1000,
-            ui64 writeBackCacheCapacity = WriteBackCacheCapacity,
             ui64 directoryHandlesInitialDataSize = 0,
             ui64 directoryHandlesMaxDataAreaStepSize = 0,
             IFileMapMemoryLimiterPtr fileMapMemoryLimiter =
@@ -231,8 +230,14 @@ struct TBootstrap
 
         Service = std::make_shared<TFileStoreTest>();
 
+        auto features = featuresConfig;
+        if (!features.GetServerWriteBackCacheStateFileSize()) {
+            // The mock server uses a small state file for cache tests.
+            features.SetServerWriteBackCacheStateFileSize(
+                WriteBackCacheStateFileSize);
+        }
         Service->CreateSessionHandler =
-            [featuresConfig](auto callContext, auto request)
+            [features](auto callContext, auto request)
         {
             Y_UNUSED(callContext);
 
@@ -241,7 +246,7 @@ struct TBootstrap
             result.MutableSession()->SetSessionId(SessionId);
             result.MutableFileStore()->SetBlockSize(4096);
             result.MutableFileStore()->MutableFeatures()->CopyFrom(
-                featuresConfig);
+                features);
             result.MutableFileStore()->SetFileSystemId(FileSystemId);
             return MakeFuture(result);
         };
@@ -291,8 +296,6 @@ struct TBootstrap
 
         // WriteBackCache should be configured even if it is disabled
         proto.SetWriteBackCachePath(TempDir.Path() / "WriteBackCache");
-        // minimum possible capacity
-        proto.SetWriteBackCacheCapacity(writeBackCacheCapacity);
         proto.SetWriteBackCacheAutomaticFlushPeriod(
             writeBackCacheAutomaticFlushPeriodMs);
 
@@ -459,7 +462,6 @@ struct TBootstrap
             features,
             1000,
             1000,
-            WriteBackCacheCapacity,
             directoryHandlesInitialDataSize,
             directoryHandlesMaxDataAreaStepSize,
             std::move(fileMapMemoryLimiter));
@@ -606,7 +608,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 {} /* featuresConfig */,
                 1000 /* handleOpsQueueSize */,
                 1000 /* writeBackCacheAutomaticFlushPeriodMs */,
-                WriteBackCacheCapacity,
                 0 /* directoryHandlesInitialDataSize */,
                 0 /* directoryHandlesMaxDataAreaStepSize */,
                 CreateFileMapMemoryLimiterStub(),
@@ -1900,7 +1901,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,   // handleOpsQueueSize
             1000,   // writeBackCacheAutomaticFlushPeriodMs
-            WriteBackCacheCapacity,
             initialDataAreaSize,
             initialDataAreaSize};
 
@@ -5838,7 +5838,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,
             1000,
-            WriteBackCacheCapacity,
             0,
             0,
             CreateFileMapMemoryLimiterStub(),
@@ -5910,7 +5909,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
                 features,
                 1000,
                 1000,
-                WriteBackCacheCapacity,
                 0,
                 0,
                 CreateFileMapMemoryLimiterStub(),
@@ -5932,7 +5930,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             features,
             1000,
             1000,
-            WriteBackCacheCapacity,
             0,
             0,
             CreateFileMapMemoryLimiterStub(),
@@ -6104,21 +6101,19 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(2, errorCounter->Val());
     }
 
-    Y_UNIT_TEST(ShouldOverrideServerWriteBackCacheStateFileSizeFromFeatures)
+    Y_UNIT_TEST(ShouldUseServerWriteBackCacheStateFileSizeFromFeatures)
     {
-        constexpr ui64 defaultCapacity = 8_MB;
-        for (const ui64 capacity: {ui64{0}, ui64{2_MB}, 4_GB + 100500}) {
+        for (const ui64 stateFileSize:
+             {WriteBackCacheStateFileSize, ui64{2_MB}, 4_GB + 100500})
+        {
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(true);
-            features.SetServerWriteBackCacheStateFileSize(capacity);
+            features.SetServerWriteBackCacheStateFileSize(stateFileSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
                 CreateScheduler(),
-                features,
-                1000,
-                1000,
-                defaultCapacity);
+                features);
             const auto error = bootstrap.Start();
             UNIT_ASSERT_C(!HasError(error), error.GetMessage());
             Y_DEFER {
@@ -6130,23 +6125,51 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             TFileRingBufferHeader header;
             TFile(path, RdOnly).Load(&header, sizeof(header));
             UNIT_ASSERT_VALUES_EQUAL(
-                capacity ? capacity : defaultCapacity,
+                stateFileSize,
                 header.DataCapacity);
         }
     }
 
-    Y_UNIT_TEST(ShouldSupportWriteBackCacheCapacity4GiB)
+    Y_UNIT_TEST(ShouldRejectZeroServerWriteBackCacheStateFileSize)
     {
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
+        TBootstrap bootstrap(
+            CreateWallClockTimer(),
+            CreateScheduler(),
+            features);
+
+        const auto createSession = bootstrap.Service->CreateSessionHandler;
+        bootstrap.Service->CreateSessionHandler =
+            [createSession](auto callContext, auto request)
+        {
+            auto result =
+                createSession(std::move(callContext), std::move(request))
+                    .GetValueSync();
+            result.MutableFileStore()
+                ->MutableFeatures()
+                ->SetServerWriteBackCacheStateFileSize(0);
+            return MakeFuture(result);
+        };
+
+        const auto error = bootstrap.Start();
+        UNIT_ASSERT(HasError(error));
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+        const auto path = TFsPath(TempDir.Path()) / "WriteBackCache" /
+                          FileSystemId / SessionId / "write_back_cache";
+        UNIT_ASSERT(!path.Exists());
+    }
+
+    Y_UNIT_TEST(ShouldSupportWriteBackCacheStateFileSize4GiB)
+    {
+        NProto::TFileStoreFeatures features;
+        features.SetServerWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheStateFileSize(4_GB + 100500);
 
         TBootstrap bootstrap(
             CreateWallClockTimer(),
             CreateScheduler(),
-            features,
-            1000,
-            1000,
-            4_GB + 100500); // writeBackCacheCapacity
+            features);
 
         // Narrowing ui64 to ui32 will result in verification failure because
         // 100500 is less than the minimal allowed cache capacity
@@ -6245,8 +6268,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             CreateScheduler(),
             features,
             /* handleOpsQueueSize= */ 1000,
-            /* writeBackCacheAutomaticFlushPeriodMs= */ 0,
-            WriteBackCacheCapacity);
+            /* writeBackCacheAutomaticFlushPeriodMs= */ 0);
 
         auto writeDataPromise = NewPromise();
         std::atomic<int> writeDataCalledCount = 0;
@@ -6542,6 +6564,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(
                 serverWriteBackCacheEnabled);
+            features.SetServerWriteBackCacheStateFileSize(
+                WriteBackCacheStateFileSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
@@ -6644,6 +6668,8 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(
                 serverWriteBackCacheEnabled);
+            features.SetServerWriteBackCacheStateFileSize(
+                WriteBackCacheStateFileSize);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),
@@ -6704,7 +6730,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             TFileRingBuffer ringBuffer(
                 path,
-                WriteBackCacheCapacity,
+                WriteBackCacheStateFileSize,
                 0,
                 EFileRingBufferVersion::V6);
 
@@ -6750,7 +6776,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         {
             TFileRingBuffer ringBuffer(
                 path,
-                WriteBackCacheCapacity,
+                WriteBackCacheStateFileSize,
                 0,
                 EFileRingBufferVersion::V6);
 

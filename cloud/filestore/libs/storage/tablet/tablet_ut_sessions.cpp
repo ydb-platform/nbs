@@ -1426,6 +1426,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetAsyncHandleOperationIdlePeriod(
             TDuration::MilliSeconds(50).MilliSeconds());
         features.SetAsyncHandleOperationBatchSize(32);
+        features.SetServerWriteBackCacheStateFileSize(256_MB);
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
 
