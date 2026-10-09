@@ -8,6 +8,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    backup_blob_test.go
     storage_test.go
 )
 
