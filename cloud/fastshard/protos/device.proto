@@ -25,6 +25,12 @@ message TDeviceResponseHeaders
 ////////////////////////////////////////////////////////////////////////////////
 // Acquire request/response.
 
+enum EAccessMode
+{
+    ACCESS_READ_WRITE = 0;
+    ACCESS_READ_ONLY = 1;
+}
+
 message TAcquireDevicesRequest
 {
     // Headers.
@@ -33,13 +39,19 @@ message TAcquireDevicesRequest
     // List of device UUIDs to acquire.
     repeated string DeviceUUIDs = 2;
 
-    // Writer generation. A writer with a lower generation than the one that
-    // currently holds the devices is rejected.
-    uint64 Generation = 3;
+    // Generation of the client. The storage node remembers the generation of
+    // the last acquire or release per device and rejects a request from the
+    // same client with a lower generation. 0 disables the check.
+    uint32 Generation = 3;
+
+    // Identifier of the fastshard the devices belong to.
+    string FastshardId = 4;
+
+    // Sequence number of the writer session.
+    uint64 SeqNumber = 5;
 
     // Access mode.
-    // Let's just assume r/w access for now.
-    // EAccessMode AccessMode = 2;
+    EAccessMode AccessMode = 6;
 }
 
 message TAcquireDevicesResponse
@@ -61,6 +73,12 @@ message TReleaseDevicesRequest
 
     // List of device UUIDs to release.
     repeated string DeviceUUIDs = 2;
+
+    // Generation of the client.
+    uint32 Generation = 3;
+
+    // Identifier of the fastshard the devices belong to.
+    string FastshardId = 4;
 }
 
 message TReleaseDevicesResponse

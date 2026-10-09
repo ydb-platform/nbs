@@ -59,6 +59,18 @@ protected:
     // AddAcquireOption.
     bool Acquire = false;
 
+    // Generation and writer sequence number of the acquire request; the
+    // generation goes into the release request as well.
+    ui32 AcquireGeneration = 0;
+    ui64 AcquireSeqNumber = 0;
+
+    // Fastshard the device belongs to, sent in the acquire and release
+    // requests.
+    TString AcquireFastshardId;
+
+    // Access mode of the acquire request.
+    NProto::EAccessMode AcquireAccessMode = NProto::ACCESS_READ_ONLY;
+
     TString InputFile;
     std::unique_ptr<IInputStream> InputStream;
 
@@ -136,7 +148,7 @@ protected:
 
     virtual bool DoExecute() = 0;
 
-    void AddAcquireOption();
+    void AddAcquireOption(NProto::EAccessMode accessMode);
 
     template <typename TRequest, typename TResponse>
     TResponse Call(

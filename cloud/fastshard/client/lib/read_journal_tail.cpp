@@ -19,7 +19,7 @@ public:
     explicit TReadJournalTailCommand(IStorageNodePtr client)
         : TCommand(std::move(client))
     {
-        AddAcquireOption();
+        AddAcquireOption(NProto::ACCESS_READ_ONLY);
 
         Opts.AddLongOption("device-uuid", "device to read the journal from")
             .RequiredArgument("STR")

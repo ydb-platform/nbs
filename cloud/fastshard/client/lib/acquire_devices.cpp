@@ -1,6 +1,9 @@
 #include "acquire_devices.h"
 
+#include <util/generic/string.h>
 #include <util/generic/vector.h>
+
+#include <optional>
 
 namespace NCloud::NFastShard::NClient {
 
@@ -10,11 +13,27 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+std::optional<NProto::EAccessMode> ParseAccessMode(const TString& mode)
+{
+    if (mode == "rw") {
+        return NProto::ACCESS_READ_WRITE;
+    }
+    if (mode == "ro") {
+        return NProto::ACCESS_READ_ONLY;
+    }
+    return std::nullopt;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 class TAcquireDevicesCommand final: public TCommand
 {
 private:
     TVector<TString> DeviceUUIDs;
-    ui64 Generation = 0;
+    ui32 Generation = 0;
+    ui64 SeqNumber = 0;
+    TString AccessMode;
+    TString FastshardId;
 
 public:
     explicit TAcquireDevicesCommand(IStorageNodePtr client)
@@ -24,9 +43,31 @@ public:
             .RequiredArgument("STR")
             .AppendTo(&DeviceUUIDs);
 
-        Opts.AddLongOption("generation", "writer generation")
+        Opts.AddLongOption(
+                "generation",
+                "client generation; a request with a lower generation than "
+                "the last one seen from the client is rejected")
             .RequiredArgument("NUM")
             .StoreResult(&Generation);
+
+        Opts.AddLongOption(
+                "seq-number",
+                "writer sequence number; a read-write acquire takes the "
+                "devices over from another writer only with a higher sequence "
+                "number")
+            .RequiredArgument("NUM")
+            .StoreResult(&SeqNumber);
+
+        Opts.AddLongOption("access-mode", "access mode: rw or ro")
+            .RequiredArgument("STR")
+            .DefaultValue("rw")
+            .StoreResult(&AccessMode);
+
+        Opts.AddLongOption(
+                "fastshard-id",
+                "fastshard the devices belong to")
+            .RequiredArgument("STR")
+            .StoreResult(&FastshardId);
     }
 
 protected:
@@ -34,6 +75,10 @@ protected:
     {
         if (!Proto && DeviceUUIDs.empty()) {
             ythrow TUsageException() << "--device-uuid is required";
+        }
+        if (!ParseAccessMode(AccessMode)) {
+            ythrow TUsageException()
+                << "unknown access mode: " << AccessMode.Quote();
         }
     }
 
@@ -47,6 +92,9 @@ protected:
                 request.AddDeviceUUIDs(uuid);
             }
             request.SetGeneration(Generation);
+            request.SetSeqNumber(SeqNumber);
+            request.SetAccessMode(*ParseAccessMode(AccessMode));
+            request.SetFastshardId(FastshardId);
         }
         PrepareHeaders(*request.MutableHeaders());
 

@@ -25,7 +25,7 @@ public:
     explicit TReadPagesCommand(IStorageNodePtr client)
         : TCommand(std::move(client))
     {
-        AddAcquireOption();
+        AddAcquireOption(NProto::ACCESS_READ_ONLY);
 
         Opts.AddLongOption("device-uuid", "device to read from")
             .RequiredArgument("STR")
