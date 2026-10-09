@@ -5825,7 +5825,6 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         auto persistentStateManager = CreatePersistentStateManager({
             .HandleOpsQueueBasePath = statePath,
             .WriteBackCacheBasePath = statePath,
-            .WriteBackCacheStateFileSize = 4096,
             .WriteBackCacheTotalSizeLimit = 1,
             .DirectoryHandlesStorageBasePath = statePath,
         });
