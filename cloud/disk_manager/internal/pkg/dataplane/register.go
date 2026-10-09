@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	storage_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
@@ -321,6 +322,24 @@ func RegisterForExecution(
 				MaxTasksInflight: 1,
 			},
 		)
+
+		backupMetrics := storage_metrics.New(metricsRegistry, "backup")
+
+		err = taskRegistry.RegisterForExecution(
+			"dataplane.TransferFromBackupToDisk",
+			func() tasks.Task {
+				return &transferFromBackupToDiskTask{
+					config:            config,
+					performanceConfig: performanceConfig,
+					nbsFactory:        nbsFactory,
+					backupReader:      backupS3,
+					metrics:           backupMetrics,
+				}
+			},
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -346,6 +365,7 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.MigrateSnapshotTask":         func() tasks.Task { return &migrateSnapshotTask{} },
 	"dataplane.MigrateSnapshotDatabaseTask": func() tasks.Task { return &migrateSnapshotDatabaseTask{} },
 	"dataplane.TransferFromSnapshotToDisk":  func() tasks.Task { return &transferFromSnapshotToDiskTask{} },
+	"dataplane.TransferFromBackupToDisk":    func() tasks.Task { return &transferFromBackupToDiskTask{} },
 	"dataplane.TransferFromDiskToDisk":      func() tasks.Task { return &transferFromDiskToDiskTask{} },
 	"dataplane.ReplicateDisk":               func() tasks.Task { return &replicateDiskTask{} },
 	"dataplane.DeleteSnapshot":              func() tasks.Task { return &deleteSnapshotTask{} },

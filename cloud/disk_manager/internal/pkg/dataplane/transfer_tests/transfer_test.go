@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math/rand"
@@ -13,11 +14,15 @@ import (
 	nbs_client "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	nbs_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	dataplane_common "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot"
 	snapshot_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/config"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/compressor"
+	storage_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -1000,4 +1005,286 @@ func TestTransferFromDiskToDiskWithFewChunksToTransfer(t *testing.T) {
 	}
 
 	fillAndTransfer(t, ctx, from, to, true) // withRandomFailures
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+const backupBucket = "transfer-test-backup"
+
+func newBackupS3(
+	t *testing.T,
+	ctx context.Context,
+	withEncryption bool,
+) *backup.S3 {
+
+	s3, err := test.NewS3Client()
+	require.NoError(t, err)
+
+	exists, err := s3.BucketExists(ctx, backupBucket)
+	require.NoError(t, err)
+	if !exists {
+		err = s3.CreateBucket(ctx, backupBucket)
+		require.NoError(t, err)
+	}
+
+	kekID := ""
+	var kek []byte
+	if withEncryption {
+		kekID = "kek1"
+		kek = make([]byte, 32)
+	}
+
+	backupS3, err := backup.NewS3(s3, backupBucket, t.Name(), kekID, kek)
+	require.NoError(t, err)
+
+	return backupS3
+}
+
+// Stores chunks the way backup tasks do and fills the chunk map with their
+// ids. Chunks that are not written stay zero chunks of the backup.
+type backupTarget struct {
+	backupS3 *backup.S3
+	// Chunks of a backup are not necessarily encrypted with the same DEK:
+	// the ones inherited from the base snapshot keep the DEK of its backup.
+	encryptedDEKs [][]byte
+	chunkIDs      []string
+	metrics       storage_metrics.Metrics
+}
+
+func (t *backupTarget) Write(
+	ctx context.Context,
+	chunk dataplane_common.Chunk,
+) error {
+
+	if chunk.Zero {
+		return nil
+	}
+
+	chunkID := fmt.Sprintf("chunk%v", chunk.Index)
+
+	compression := ""
+	if chunk.Index%2 == 0 {
+		compression = "lz4"
+	}
+
+	data, err := compressor.Compress(
+		compression,
+		chunk.Data,
+		t.metrics,
+		nil, // probeCompressionPercentage
+	)
+	if err != nil {
+		return err
+	}
+
+	var encryptedDEK []byte
+	if len(t.encryptedDEKs) != 0 {
+		encryptedDEK = t.encryptedDEKs[int(chunk.Index)%len(t.encryptedDEKs)]
+	}
+
+	err = t.backupS3.PutObject(
+		ctx,
+		backup.ChunkKey(chunkID),
+		encryptedDEK,
+		chunks.NewS3Object(chunks.ChunkBlob{
+			Data:        data,
+			Checksum:    chunk.Checksum(),
+			Compression: compression,
+		}),
+	)
+	if err != nil {
+		return err
+	}
+
+	t.chunkIDs[chunk.Index] = chunkID
+	return nil
+}
+
+func (t *backupTarget) Close(ctx context.Context) {
+}
+
+// Writes non-zero data to every chunk of the disk.
+func fillDiskWithGarbage(
+	t *testing.T,
+	ctx context.Context,
+	factory nbs_client.Factory,
+	disk *types.Disk,
+) {
+
+	target, err := nbs.NewDiskTarget(
+		ctx,
+		factory,
+		disk,
+		nil,
+		chunkSize,
+		false, // ignoreZeroChunks
+		0,     // fillGeneration
+		0,     // fillSeqNumber
+	)
+	require.NoError(t, err)
+	defer target.Close(ctx)
+
+	data := bytes.Repeat([]byte{0xFF}, int(chunkSize))
+	for i := uint32(0); i < chunkCount; i++ {
+		err := target.Write(ctx, dataplane_common.Chunk{Index: i, Data: data})
+		require.NoError(t, err)
+	}
+}
+
+// Checks that the disk has the data of |expectedChunks| and zeroes everywhere
+// else.
+func checkDiskData(
+	t *testing.T,
+	ctx context.Context,
+	factory nbs_client.Factory,
+	disk *types.Disk,
+	expectedChunks []dataplane_common.Chunk,
+) {
+
+	logging.Info(ctx, "Checking result...")
+
+	expectedData := make(map[uint32][]byte)
+	for _, chunk := range expectedChunks {
+		if !chunk.Zero {
+			expectedData[chunk.Index] = chunk.Data
+		}
+	}
+
+	source := newDiskSource(t, ctx, factory, disk)
+	defer source.Close(ctx)
+
+	for i := uint32(0); i < chunkCount; i++ {
+		// Data stays zero if the source reports the chunk as zero.
+		actual := dataplane_common.Chunk{
+			Index: i,
+			Data:  make([]byte, chunkSize),
+		}
+		err := source.Read(ctx, &actual)
+		require.NoError(t, err)
+
+		expected, ok := expectedData[i]
+		if !ok {
+			expected = make([]byte, chunkSize)
+		}
+
+		require.True(
+			t,
+			bytes.Equal(expected, actual.Data),
+			"chunk %v differs, should be zero: %v",
+			i,
+			!ok,
+		)
+	}
+}
+
+func TestTransferFromBackupToDisk(t *testing.T) {
+	testCases := []struct {
+		name               string
+		withEncryption     bool
+		withRandomFailures bool
+	}{
+		{
+			name:               "encrypted backup without random failures",
+			withEncryption:     true,
+			withRandomFailures: false,
+		},
+		{
+			name:               "not encrypted backup without random failures",
+			withEncryption:     false,
+			withRandomFailures: false,
+		},
+		{
+			name:               "encrypted backup with random failures",
+			withEncryption:     true,
+			withRandomFailures: true,
+		},
+		{
+			name:               "not encrypted backup with random failures",
+			withEncryption:     false,
+			withRandomFailures: true,
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(newContext())
+			defer cancel()
+
+			factory := newFactory(t, ctx)
+
+			disk := &types.Disk{ZoneId: "zone", DiskId: toDiskID(t)}
+			createDisk(t, ctx, factory, disk, blockCount)
+			// Restore should overwrite the whole disk, including the ranges
+			// of zero chunks.
+			fillDiskWithGarbage(t, ctx, factory, disk)
+
+			backupS3 := newBackupS3(t, ctx, testCase.withEncryption)
+
+			var encryptedDEKs [][]byte
+			if testCase.withEncryption {
+				for i := 0; i < 2; i++ {
+					encryptedDEK, err := backupS3.NewEncryptedDEK()
+					require.NoError(t, err)
+					encryptedDEKs = append(encryptedDEKs, encryptedDEK)
+				}
+			}
+
+			backupMetrics := storage_metrics.New(
+				metrics.NewEmptyRegistry(),
+				"backup",
+			)
+			chunkIDs := make([]string, chunkCount)
+
+			from := Resource{
+				newSource: func() dataplane_common.Source {
+					return backup.NewBackupSource(
+						backupS3,
+						chunkIDs,
+						0, // storageSize
+						backupMetrics,
+					)
+				},
+				newTarget: func() dataplane_common.Target {
+					return &backupTarget{
+						backupS3:      backupS3,
+						encryptedDEKs: encryptedDEKs,
+						chunkIDs:      chunkIDs,
+						metrics:       backupMetrics,
+					}
+				},
+			}
+
+			to := Resource{
+				newTarget: func() dataplane_common.Target {
+					target, err := nbs.NewDiskTarget(
+						ctx,
+						factory,
+						disk,
+						nil,
+						chunkSize,
+						false, // ignoreZeroChunks
+						0,     // fillGeneration
+						0,     // fillSeqNumber
+					)
+					require.NoError(t, err)
+					return target
+				},
+			}
+
+			chunks := from.fill(t, ctx)
+
+			transferredChunkCount := transfer(
+				t,
+				ctx,
+				from,
+				to,
+				testCase.withRandomFailures,
+			)
+			// Unlike the other sources, backup source has every chunk of the
+			// disk, zero chunks included.
+			require.Equal(t, chunkCount, transferredChunkCount)
+
+			checkDiskData(t, ctx, factory, disk, chunks)
+		})
+	}
 }
