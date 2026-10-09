@@ -967,4 +967,8 @@ message TStorageConfig
     // operations independently of read operations.
     // Requires RDMA to be enabled in the IC config.
     optional bool EnableRdmaForWrites = 557;
+
+    // Max server WriteBackCache capacity in bytes per session.
+    // Zero keeps the capacity configured in vhost/VFS.
+    optional uint64 ServerWriteBackCacheCapacity = 558;
 }

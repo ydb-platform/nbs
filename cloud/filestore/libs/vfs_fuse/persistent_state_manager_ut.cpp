@@ -847,6 +847,52 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(third.GetResult());
     }
 
+    Y_UNIT_TEST_F(ShouldAccountOverriddenWriteBackCacheStateFileSize, TFixture)
+    {
+        auto manager = CreateManager(8_KB, 12_KB);
+
+        auto first = manager->AcquireWriteBackCacheStateFile(
+            "fs-1",
+            SessionId,
+            4_KB);
+        UNIT_ASSERT_C(!HasError(first), first.GetError().GetMessage());
+        auto firstGuard = first.ExtractResult();
+        UNIT_ASSERT(firstGuard);
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            TFileStat(firstGuard.GetFilePath().GetPath()).Size);
+
+        auto second = manager->AcquireWriteBackCacheStateFile(
+            "fs-2",
+            SessionId);
+        UNIT_ASSERT_C(!HasError(second), second.GetError().GetMessage());
+        auto secondGuard = second.ExtractResult();
+        UNIT_ASSERT(secondGuard);
+        UNIT_ASSERT_VALUES_EQUAL(
+            8_KB,
+            TFileStat(secondGuard.GetFilePath().GetPath()).Size);
+
+        auto third = manager->AcquireWriteBackCacheStateFile(
+            "fs-3",
+            SessionId,
+            1_KB);
+        UNIT_ASSERT_C(!HasError(third), third.GetError().GetMessage());
+        UNIT_ASSERT(!third.GetResult());
+        UNIT_ASSERT(!SessionDir("fs-3", SessionId).Exists());
+
+        firstGuard = {};
+        first = manager->AcquireWriteBackCacheStateFile(
+            "fs-1",
+            SessionId,
+            64_KB);
+        UNIT_ASSERT_C(!HasError(first), first.GetError().GetMessage());
+        firstGuard = first.ExtractResult();
+        UNIT_ASSERT(firstGuard);
+        UNIT_ASSERT_VALUES_EQUAL(
+            4_KB,
+            TFileStat(firstGuard.GetFilePath().GetPath()).Size);
+    }
+
     Y_UNIT_TEST_F(ShouldAccountStateFilesOfAllFileSystemsAndSessions, TFixture)
     {
         constexpr ui64 StateFileSize = 4_KB;
