@@ -43,7 +43,6 @@ TCommand::TCommand()
             "Path to profile log (repeat for multiple files; "
             "processed oldest first by filename timestamp, falling back to "
             "mtime)")
-        .Required()
         .RequiredArgument("STR")
         .Handler1T<TString>(
             [this](TString path)
