@@ -153,7 +153,7 @@ void TIndexTabletActor::HandleWriteData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    auto blockBuffer = externalPayload
+    IConstBlockBufferPtr blockBuffer = externalPayload
                            ? CreateBlockBuffer(range, std::move(payload))
                            : CreateBlockBuffer(range, std::move(buffer));
 
