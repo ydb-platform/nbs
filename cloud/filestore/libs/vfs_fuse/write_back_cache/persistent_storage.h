@@ -106,7 +106,9 @@ using IPersistentStoragePtr = std::shared_ptr<IPersistentStorage>;
 struct TPersistentStorageConfig
 {
     TString FilePath;
-    ui64 DataCapacity = 0;
+    // Total state file size in bytes. The data capacity excludes the space
+    // reserved for the header, metadata and alignment padding.
+    ui64 StateFileSize = 0;
     ui64 MetadataCapacity = 0;
 };
 

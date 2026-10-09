@@ -622,7 +622,8 @@ void TBootstrapVhost::InitEndpoints()
         .HandleOpsQueueTotalSizeLimit =
             vhostConfig.GetHandleOpsQueueTotalSizeLimit(),
         .WriteBackCacheBasePath = vhostConfig.GetWriteBackCachePath(),
-        .WriteBackCacheStateFileSize = vhostConfig.GetWriteBackCacheCapacity(),
+        .WriteBackCacheStateFileSize =
+            vhostConfig.GetWriteBackCacheStateFileSize(),
         .WriteBackCacheTotalSizeLimit =
             vhostConfig.GetWriteBackCacheTotalSizeLimit(),
         .DirectoryHandlesStorageBasePath =
@@ -646,13 +647,13 @@ void TBootstrapVhost::InitEndpoints()
             MultiFileSystemEventHandler),
         THandleOpsQueueConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetHandleOpsQueuePath(),
-            .MaxQueueSize =
+            .StateFileSize =
                 Configs->VhostServiceConfig->GetHandleOpsQueueSize(),
         },
         TWriteBackCacheConfig{
             .PathPrefix = Configs->VhostServiceConfig->GetWriteBackCachePath(),
-            .Capacity =
-                Configs->VhostServiceConfig->GetWriteBackCacheCapacity(),
+            .StateFileSize =
+                Configs->VhostServiceConfig->GetWriteBackCacheStateFileSize(),
             .AutomaticFlushPeriod =
                 Configs->VhostServiceConfig
                     ->GetWriteBackCacheAutomaticFlushPeriod(),

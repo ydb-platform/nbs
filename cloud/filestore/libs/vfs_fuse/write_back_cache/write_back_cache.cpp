@@ -111,7 +111,7 @@ public:
         , FilePath(args.FilePath)
         , PersistentStorage(CreateFileRingBufferPersistentStorage(
               args.Stats->GetPersistentStorageStats(),
-              {.FilePath = args.FilePath, .DataCapacity = args.CapacityBytes},
+              {.FilePath = args.FilePath, .StateFileSize = args.StateFileSize},
               Log,
               LogTag))
         , State(
