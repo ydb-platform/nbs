@@ -330,7 +330,7 @@ TPersistentStateManager::TPersistentStateManager(
     , WriteBackCache(
           std::move(config.WriteBackCacheBasePath),
           TString(WriteBackCacheFileName),
-          config.WriteBackCacheStateFileSize,
+          0,   // stateFileSize: supplied when acquiring a state file
           config.WriteBackCacheTotalSizeLimit)
     , DirectoryHandleStorage(
           std::move(config.DirectoryHandlesStorageBasePath),
@@ -778,11 +778,17 @@ TPersistentStateManager::AcquireWriteBackCacheStateFile(
     const TString& sessionId,
     ui64 stateFileSize)
 {
+    if (!stateFileSize) {
+        return MakeError(
+            E_ARGUMENT,
+            "WriteBackCache state file capacity must be positive");
+    }
+
     return AcquireStateFile(
         WriteBackCache,
         fileSystemId,
         sessionId,
-        stateFileSize ? stateFileSize : WriteBackCache.StateFileSize);
+        stateFileSize);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
