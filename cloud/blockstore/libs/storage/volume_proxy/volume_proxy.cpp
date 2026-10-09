@@ -22,6 +22,8 @@
 
 #include <library/cpp/lwtrace/shuttle.h>
 
+#include <utility>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -81,6 +83,10 @@ class TVolumeProxyActor final
         FAILED = 4,
     };
 
+    // Normalize shard aliases before caching: the same physical name may
+    // exist in multiple SchemeShard directories.
+    using TVolumeKey = std::pair<TString, TString>;
+
     struct TConnection
     {
         // Numeric connection ID. It is used to find connection by cookie.
@@ -91,6 +97,8 @@ class TVolumeProxyActor final
         // disk was copied, since a suffix is added to the name of the copied
         // disk.
         const TString DiskId;
+        const TString ShardId;
+        const TString ShardDirectory;
 
         // Id of the disk that was found by the SchemeShard describe.
         // Note: If the disk was a copy the name of the real disk differs
@@ -131,19 +139,18 @@ class TVolumeProxyActor final
 
         TLogTitle LogTitle;
 
-        TConnection(
-            ui64 id,
-            TString diskId,
-            bool requireExactDiskIdMatch,
-            bool temporaryServer)
+        TConnection(ui64 id, TString diskId, bool requireExactDiskIdMatch,
+                    bool temporaryServer, TString shardId,
+                    TString shardDirectory)
             : Id(id)
             , DiskId(std::move(diskId))
+            , ShardId(std::move(shardId))
+            , ShardDirectory(std::move(shardDirectory))
             , RequireExactDiskIdMatch(requireExactDiskIdMatch)
             , LogTitle(
                   GetCycleCount(),
-                  TLogTitle::TVolumeProxy{
-                      .DiskId = DiskId,
-                      .TemporaryServer = temporaryServer})
+                  TLogTitle::TVolumeProxy{.DiskId = DiskId,
+                                          .TemporaryServer = temporaryServer})
         {}
 
         void AdvanceGeneration()
@@ -190,9 +197,9 @@ private:
     // Mapping of logical DiskId to the connection. The DiskId of the real disk
     // to which the connection is established may differ and have the suffix
     // "-copy".
-    THashMap<TString, TConnection*> ConnectionByDiskId;
+    THashMap<TVolumeKey, TConnection*> ConnectionByDiskId;
     // Mapping of the DiskId to the connection with exact DiskId match.
-    THashMap<TString, TConnection*> ConnectionByRealDiskId;
+    THashMap<TVolumeKey, TConnection*> ConnectionByRealDiskId;
     THashMap<ui64, TConnection*> ConnectionByTablet;
 
     struct TBaseTabletId
@@ -215,7 +222,9 @@ public:
         bool temporaryServer);
 
 private:
-    TConnection& CreateConnection(const TString& diskId, bool exactDiskIdMatch);
+    TConnection& CreateConnection(const TString& diskId, bool exactDiskIdMatch,
+                                  const TString& shardId,
+                                  const TString& shardDirectory);
     void EraseConnection(TConnection* conn);
 
     void StartConnection(
@@ -320,15 +329,16 @@ TVolumeProxyActor::TVolumeProxyActor(
 }
 
 TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
-    const TString& diskId,
-    bool exactDiskIdMatch)
+    const TString& diskId, bool exactDiskIdMatch, const TString& shardId,
+    const TString& shardDirectory)
 {
+    const TVolumeKey key{shardDirectory, diskId};
     if (exactDiskIdMatch) {
-        if (TConnection** conn = ConnectionByRealDiskId.FindPtr(diskId)) {
+        if (TConnection** conn = ConnectionByRealDiskId.FindPtr(key)) {
             return **conn;
         }
     } else {
-        if (TConnection** conn = ConnectionByDiskId.FindPtr(diskId)) {
+        if (TConnection** conn = ConnectionByDiskId.FindPtr(key)) {
             return **conn;
         }
     }
@@ -336,13 +346,13 @@ TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
     const ui64 connectionId = ++ConnectionIdGenerator;
 
     auto [it, inserted] = ConnectionById.emplace(
-        connectionId,
-        TConnection(connectionId, diskId, exactDiskIdMatch, TemporaryServer));
+        connectionId, TConnection(connectionId, diskId, exactDiskIdMatch,
+                                  TemporaryServer, shardId, shardDirectory));
 
     if (exactDiskIdMatch) {
-        ConnectionByRealDiskId[diskId] = &it->second;
+        ConnectionByRealDiskId[key] = &it->second;
     } else {
-        ConnectionByDiskId[diskId] = &it->second;
+        ConnectionByDiskId[key] = &it->second;
     }
 
     return it->second;
@@ -351,9 +361,9 @@ TVolumeProxyActor::TConnection& TVolumeProxyActor::CreateConnection(
 void TVolumeProxyActor::EraseConnection(TConnection* conn)
 {
     auto removeFromMap =
-        [conn](THashMap<TString, TConnection*>& map, const TString& key)
+        [conn](THashMap<TVolumeKey, TConnection*>& map, const TString& diskId)
     {
-        auto it = map.find(key);
+        auto it = map.find(TVolumeKey{conn->ShardDirectory, diskId});
         if (it != map.end() && it->second == conn) {
             map.erase(it);
         }
@@ -387,12 +397,13 @@ void TVolumeProxyActor::StartConnection(
         conn.RealDiskId.Quote().c_str(),
         path.Quote().c_str());
 
-    if (!ConnectionByDiskId.contains(conn.RealDiskId)) {
-        ConnectionByDiskId[conn.RealDiskId] = &conn;
+    const TVolumeKey realKey{conn.ShardDirectory, conn.RealDiskId};
+    if (!ConnectionByDiskId.contains(realKey)) {
+        ConnectionByDiskId[realKey] = &conn;
     }
 
-    if (!ConnectionByRealDiskId.contains(conn.RealDiskId)) {
-        ConnectionByRealDiskId[conn.RealDiskId] = &conn;
+    if (!ConnectionByRealDiskId.contains(realKey)) {
+        ConnectionByRealDiskId[realKey] = &conn;
     }
 
     ConnectionByTablet[tabletId] = &conn;
@@ -546,9 +557,7 @@ void TVolumeProxyActor::DescribeVolume(
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-            conn.DiskId,
-            conn.RequireExactDiskIdMatch),
-        conn.Id);
+            conn.DiskId, conn.RequireExactDiskIdMatch, conn.ShardId), conn.Id);
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -763,15 +772,30 @@ void TVolumeProxyActor::HandleRequest(
 
     const TString& diskId = GetDiskId(*msg);
 
-    TConnection& conn = CreateConnection(
-        diskId,
-        msg->Record.GetHeaders().GetExactDiskIdMatch());
+    const auto& headers = msg->Record.GetHeaders();
+    const auto directory =
+        Config->GetSchemeShardDirForShard(headers.GetShardId());
+    if (!directory) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<typename TMethod::TResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+
+    TConnection& conn = CreateConnection(diskId, headers.GetExactDiskIdMatch(),
+                                         headers.GetShardId(), *directory);
     switch (conn.State) {
         case INITIAL:
         case FAILED:
         {
             conn.State = RESOLVING;
-            if (auto* baseDisk = BaseDiskIdToTabletId.FindPtr(diskId)) {
+            // Base tablet hints belong to this node's local shard.
+            auto* baseDisk = headers.GetShardId().empty()
+                                 ? BaseDiskIdToTabletId.FindPtr(diskId)
+                                 : nullptr;
+            if (baseDisk) {
                 Y_ABORT_UNLESS(baseDisk->TabletId,
                     "%s Base disk %s tablet id is not set",
                     conn.LogTitle.GetWithTime().c_str(),
@@ -922,8 +946,18 @@ void TVolumeProxyActor::HandlePingRequest(
 {
     const auto* msg = ev->Get();
     const auto& diskId = msg->DiskId;
+    const auto directory = Config->GetSchemeShardDirForShard(msg->ShardId);
+    if (!directory) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvVolumeProxy::TEvKeepAliveResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
 
-    auto** connPtr = ConnectionByDiskId.FindPtr(diskId);
+    const TVolumeKey key{*directory, diskId};
+    auto** connPtr = ConnectionByDiskId.FindPtr(key);
     if (!connPtr || (*connPtr)->State != STARTED) {
         auto response = std::make_unique<TEvVolumeProxy::TEvKeepAliveResponse>(
             MakeError(E_INVALID_STATE, "Connection is not established"));

@@ -61,6 +61,106 @@ ui32 SetupTestEnv(
 
 Y_UNIT_TEST_SUITE(TVolumeProxyTest)
 {
+    Y_UNIT_TEST(ShouldIsolateConnectionsByShard)
+    {
+        NProto::TStorageServiceConfig proto;
+        (*proto.MutableShardDirectories())["local"] = "/local/nbs";
+        (*proto.MutableShardDirectories())["local-alias"] = "/local/nbs/";
+        (*proto.MutableShardDirectories())["remote"] = "/local/remote";
+        TTestEnv env(1, 2);
+        const auto localNode = SetupTestEnv(env, proto);
+        env.CreateSubDomain("remote");
+        proto.SetSchemeShardDir("/local/remote");
+        const auto remoteNode =
+            env.CreateBlockStoreNode("remote", CreateTestStorageConfig(proto),
+                                     CreateTestDiagnosticsConfig());
+        auto& runtime = env.GetRuntime();
+        TServiceClient local(runtime, localNode);
+        TServiceClient remote(runtime, remoteNode);
+        local.CreateVolume("same-name", 1024, 4096, "", "",
+                           NProto::STORAGE_MEDIA_SSD);
+        remote.CreateVolume("same-name", 2048, 4096, "", "",
+                            NProto::STORAGE_MEDIA_HDD);
+
+        ui32 describes = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvDescribeVolumeRequest) {
+                    ++describes;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto stat = [&](const TString& shard, ui64 blocks, bool exact)
+        {
+            auto request = local.CreateStatVolumeRequest("same-name");
+            request->Record.MutableHeaders()->SetShardId(shard);
+            request->Record.MutableHeaders()->SetExactDiskIdMatch(exact);
+            local.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+            const auto response =
+                local.RecvResponse<TEvService::TEvStatVolumeResponse>();
+            UNIT_ASSERT_C(Succeeded(response.get()),
+                          GetErrorReason(response.get()));
+            UNIT_ASSERT_VALUES_EQUAL(
+                blocks, response->Record.GetVolume().GetBlocksCount());
+        };
+        stat("", 1024, false);
+        stat("remote", 2048, false);
+        const auto initialDescribes = describes;
+        UNIT_ASSERT(initialDescribes > 0);
+        for (const bool exact: {false, true}) {
+            stat("local", 1024, exact);
+            stat("remote", 2048, exact);
+            stat("local-alias", 1024, exact);
+            stat("", 1024, exact);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(initialDescribes, describes);
+
+        local.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolumeProxy::TEvKeepAliveRequest>("same-name",
+                                                                  "remote"));
+        const auto keepAlive =
+            local.RecvResponse<TEvVolumeProxy::TEvKeepAliveResponse>();
+        UNIT_ASSERT_C(Succeeded(keepAlive.get()),
+                      GetErrorReason(keepAlive.get()));
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnknownShardBeforeResolvingVolume)
+    {
+        TTestEnv env;
+        const auto node = SetupTestEnv(env);
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, node);
+        ui32 describes = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                    TEvSSProxy::EvDescribeVolumeRequest) {
+                    ++describes;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto request = service.CreateStatVolumeRequest("disk");
+        request->Record.MutableHeaders()->SetShardId("unknown");
+        service.SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+        const auto response =
+            service.RecvResponse<TEvService::TEvStatVolumeResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, response->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, describes);
+
+        service.SendRequest(
+            MakeVolumeProxyServiceId(),
+            std::make_unique<TEvVolumeProxy::TEvKeepAliveRequest>("disk",
+                                                                  "unknown"));
+        const auto keepAlive =
+            service.RecvResponse<TEvVolumeProxy::TEvKeepAliveResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, keepAlive->GetError().GetCode());
+        UNIT_ASSERT_VALUES_EQUAL(0, describes);
+    }
+
     Y_UNIT_TEST(ShouldDescribeVolumeBeforeCreatingPipeToIt)
     {
         TTestEnv env;
