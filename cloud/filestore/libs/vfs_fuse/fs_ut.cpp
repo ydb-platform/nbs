@@ -6130,7 +6130,7 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldRejectZeroServerWriteBackCacheStateFileSize)
+    Y_UNIT_TEST(ShouldUseDefaultServerWriteBackCacheStateFileSizeForZero)
     {
         NProto::TFileStoreFeatures features;
         features.SetServerWriteBackCacheEnabled(true);
@@ -6153,11 +6153,17 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         };
 
         const auto error = bootstrap.Start();
-        UNIT_ASSERT(HasError(error));
-        UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, error.GetCode());
+        UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+        Y_DEFER {
+            bootstrap.Stop();
+        };
+
         const auto path = TFsPath(TempDir.Path()) / "WriteBackCache" /
                           FileSystemId / SessionId / "write_back_cache";
-        UNIT_ASSERT(!path.Exists());
+
+        TFileRingBufferHeader header;
+        TFile(path, RdOnly).Load(&header, sizeof(header));
+        UNIT_ASSERT_VALUES_EQUAL(256_MB, header.DataCapacity);
     }
 
     Y_UNIT_TEST(ShouldSupportWriteBackCacheStateFileSize4GiB)

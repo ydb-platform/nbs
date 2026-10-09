@@ -46,7 +46,7 @@ namespace {
     xxx(ExtendedAttributesDisabled, bool,       false                         )\
                                                                                \
     xxx(ServerWriteBackCacheEnabled,                      bool,     false     )\
-    xxx(ServerWriteBackCacheStateFileSize,                ui64,     0         )\
+    xxx(ServerWriteBackCacheStateFileSize,                ui64,     256_MB    )\
     xxx(ServerWriteBackCacheFlushWritesInParallelEnabled, bool,     false     )\
                                                                                \
     xxx(DirectoryHandlesStorageEnabled, bool,   false                         )\

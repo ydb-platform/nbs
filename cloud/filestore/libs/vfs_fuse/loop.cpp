@@ -1080,12 +1080,23 @@ private:
                 if (hasState.GetResult() ||
                     FileSystemConfig->GetServerWriteBackCacheEnabled())
                 {
+                    const ui64 stateFileSize =
+                        FileSystemConfig->GetServerWriteBackCacheStateFileSize();
+                    if (!stateFileSize) {
+                        return MakeError(
+                            E_ARGUMENT,
+                            ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
+                                "[f:%s][c:%s] WriteBackCache state file size "
+                                "must be positive",
+                                Config->GetFileSystemId().Quote().c_str(),
+                                Config->GetClientId().Quote().c_str())));
+                    }
+
                     auto result =
                         PersistentState->AcquireWriteBackCacheStateFile(
                             FileSystemConfig->GetFileSystemId(),
                             SessionId,
-                            FileSystemConfig
-                                ->GetServerWriteBackCacheStateFileSize());
+                            stateFileSize);
 
                     if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1398,10 +1409,13 @@ private:
 
         config.SetServerWriteBackCacheEnabled(
             features.GetServerWriteBackCacheEnabled());
-        config.SetServerWriteBackCacheStateFileSize(
-            features.GetServerWriteBackCacheStateFileSize());
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(
             features.GetServerWriteBackCacheFlushWritesInParallelEnabled());
+
+        if (features.GetServerWriteBackCacheStateFileSize()) {
+            config.SetServerWriteBackCacheStateFileSize(
+                features.GetServerWriteBackCacheStateFileSize());
+        }
 
         config.SetDirectoryHandlesStorageEnabled(
             features.GetDirectoryHandlesStorageEnabled());

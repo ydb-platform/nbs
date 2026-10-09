@@ -1543,7 +1543,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         patch.SetServerWriteBackCacheStateFileSize(0);
         tablet.ChangeStorageConfig(patch);
         tablet.RebootTablet();
-        checkCapacity(0);
+        checkCapacity(256_MB);
     }
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInDestroySession)

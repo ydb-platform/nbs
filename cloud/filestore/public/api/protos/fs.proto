@@ -73,7 +73,6 @@ message TFileStoreFeatures
     uint32 AsyncHandleOperationBatchSize = 55;
 
     // Server WriteBackCache state file size in bytes per session.
-    // Must be positive.
     uint64 ServerWriteBackCacheStateFileSize = 56;
 }
 
