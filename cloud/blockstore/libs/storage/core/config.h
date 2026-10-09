@@ -126,9 +126,6 @@ public:
 
     void SetFeaturesConfig(NFeatures::TFeaturesConfigConstPtr featuresConfig);
 
-    void SetVolumePreemptionType(
-        NProto::EVolumePreemptionType volumePreemptionType);
-
     void Register(NKikimr::TControlBoard& controlBoard) const;
 
     static TStorageConfigConstPtr Merge(
