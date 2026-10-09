@@ -1128,7 +1128,7 @@ private:
                      .FileSystemId = Config->GetFileSystemId(),
                      .ClientId = Config->GetClientId(),
                      .FilePath = WriteBackCacheStateFileGuard.GetFilePath(),
-                     .CapacityBytes = Config->GetWriteBackCacheCapacity(),
+                     .StateFileSize = Config->GetWriteBackCacheStateFileSize(),
                      .AutomaticFlushPeriod =
                          Config->GetWriteBackCacheAutomaticFlushPeriod(),
                      .FlushRetryPeriod =

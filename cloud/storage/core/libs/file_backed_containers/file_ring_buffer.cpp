@@ -1100,15 +1100,22 @@ public:
 
 TFileRingBuffer::TFileRingBuffer(
     const TString& filePath,
-    ui64 dataCapacity,
+    ui64 stateFileSize,
     ui64 metadataCapacity,
     EFileRingBufferVersion version)
-    : Impl(new TImpl(
-          {.FilePath = filePath,
-           .DataCapacity = dataCapacity,
-           .MetadataCapacity = metadataCapacity,
-           .Version = version}))
-{}
+{
+    const ui64 dataOffset =
+        AlignUp(HeaderReserveSize + metadataCapacity, sizeof(ui64));
+
+    const ui64 dataCapacity =
+        stateFileSize > dataOffset ? stateFileSize - dataOffset : 0;
+
+    Impl = std::make_unique<TImpl>(TFileRingBufferArgs{
+        .FilePath = filePath,
+        .DataCapacity = dataCapacity,
+        .MetadataCapacity = metadataCapacity,
+        .Version = version});
+}
 
 TFileRingBuffer::~TFileRingBuffer() = default;
 

@@ -40,6 +40,21 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TTestFileRingBuffer: public TFileRingBuffer
+{
+    TTestFileRingBuffer(
+        const TString& filePath,
+        ui64 dataCapacity,
+        ui64 metadataCapacity,
+        EVersion version)
+        : TFileRingBuffer(
+              filePath,
+              AlignUp(256 + metadataCapacity, sizeof(ui64)) + dataCapacity,
+              metadataCapacity,
+              version)
+    {}
+};
+
 TString Dump(const TVector<TString>& entries)
 {
     TStringBuilder sb;
@@ -75,7 +90,7 @@ TString Dump(const TTempFileHandle& fh)
     return res;
 }
 
-TStringBuf Find(TFileRingBuffer& rb, TStringBuf entry)
+TStringBuf Find(TTestFileRingBuffer& rb, TStringBuf entry)
 {
     TStringBuf result;
 
@@ -242,6 +257,9 @@ TString Dump(const TReferenceImplementation& ri)
 
 Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 {
+    // Keep the existing test scenarios expressed in terms of data capacity.
+    using TFileRingBuffer = TTestFileRingBuffer;
+
     TString GenerateData(ui32 sz)
     {
         TString s(sz, 0);
