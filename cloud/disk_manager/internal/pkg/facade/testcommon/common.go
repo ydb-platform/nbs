@@ -652,7 +652,7 @@ func NewResourceStorage(
 	storage, err := resources.NewStorage(
 		"disks",
 		"images",
-		"snapshot",
+		"snapshots",
 		"filesystems",
 		"filesystem_snapshots",
 		"placement_groups",

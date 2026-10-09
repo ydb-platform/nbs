@@ -1,0 +1,39 @@
+# Prometheus-compatible reference rules. Import through the team's monitoring
+# configuration; do not assume an exporter alone installs these alerts.
+groups:
+  - name: snapshot-backup-e2e
+    rules:
+      - alert: SnapshotBackupTesterUnavailable
+        expr: up{job="snapshot-backup-e2e"} == 0 or absent(up{job="snapshot-backup-e2e"})
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Snapshot backup tester cannot be scraped"
+      - alert: SnapshotBackupTesterFailure
+        expr: snapshot_backup_failure_latched == 1
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Snapshot backup cycle failed or was blocked; acknowledgement required"
+      - alert: SnapshotBackupTesterStale
+        expr: time() - snapshot_backup_last_success_timestamp_seconds > 2400
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "No recent successful backup restore cycle (including never passed)"
+      - alert: SnapshotBackupTesterHeartbeatStale
+        expr: time() - snapshot_backup_runner_heartbeat_timestamp_seconds > 120
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Exporter heartbeat is stale"
+      - alert: SnapshotBackupTesterRetentionBudget
+        expr: snapshot_backup_budget_remaining_cycles <= 2
+        labels:
+          severity: warning
+        annotations:
+          summary: "Approve backup retention/cleanup before extending the tester budget"

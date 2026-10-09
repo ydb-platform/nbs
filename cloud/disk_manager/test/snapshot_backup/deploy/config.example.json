@@ -1,0 +1,30 @@
+{
+  "environment": "testing",
+  "zone": "SET_ZONE",
+  "folder_id": "SET_FOLDER_ID",
+  "instance_id": "SET_INSTANCE_ID",
+  "source_disk_id": "SET_SOURCE_DISK_ID",
+  "target_disk_id": "SET_TARGET_DISK_ID",
+  "source_device": "/dev/disk/by-id/virtio-backup-src",
+  "target_device": "/dev/disk/by-id/virtio-backup-dst",
+  "compute_profile": "snapshot-backup-testing-compute",
+  "storage_profile": "snapshot-backup-testing-storage",
+  "bucket": "SET_BACKUP_BUCKET",
+  "presign_host": "SET_BACKUP_S3_HOST",
+  "prefix": "",
+  "state_dir": "/var/lib/snapshot-backup-tester",
+  "size_bytes": 1073741824,
+  "provider_command": "/usr/local/libexec/snapshot-backup-provider",
+  "provider_config": "/etc/snapshot-backup-tester/provider.json",
+  "provider_trace_paths": ["/var/lib/snapshot-provider-trace"],
+  "curl": "/usr/bin/curl",
+  "key_files": {
+    "SET_ACTUAL_BACKUP_KEK_ID": "/etc/snapshot-backup-tester/keys/current.key"
+  },
+  "require_encryption": true,
+  "interval_seconds": 300,
+  "cycle_timeout_seconds": 1800,
+  "request_timeout_seconds": 120,
+  "max_cycles": 24,
+  "metrics_port": 9799
+}
