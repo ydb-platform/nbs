@@ -49,7 +49,9 @@ struct TMixedBlob: TMixedBlobMeta
             TVector<TBlockDataHolder> blobContent)
         : TMixedBlobMeta(blobId, std::move(blocks))
         , BlobContent(std::move(blobContent))
-    {}
+    {
+        Y_DEBUG_ABORT_UNLESS(Blocks.size() == BlobContent.size());
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
