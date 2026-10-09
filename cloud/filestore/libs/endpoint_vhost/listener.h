@@ -18,7 +18,7 @@ namespace NCloud::NFileStore::NVhost {
 struct THandleOpsQueueConfig
 {
     TString PathPrefix;
-    ui32 MaxQueueSize = 0;
+    ui32 StateFileSize = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -26,7 +26,7 @@ struct THandleOpsQueueConfig
 struct TWriteBackCacheConfig
 {
     TString PathPrefix;
-    ui64 Capacity = 0;
+    ui64 StateFileSize = 0;
     TDuration AutomaticFlushPeriod;
     TDuration FlushRetryPeriod;
     ui32 FlushMaxWriteRequestSize = 0;

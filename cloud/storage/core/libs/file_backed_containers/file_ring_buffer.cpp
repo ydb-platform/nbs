@@ -1110,13 +1110,15 @@ public:
         return TSetMetadataResult(true);
     }
 
-    NProto::TError SetTargetDataCapacity(ui64 dataCapacity)
+    NProto::TError SetTargetStateFileSize(ui64 stateFileSize)
     {
-        if (!ValidateAccess("SetTargetDataCapacity")) {
+        if (!ValidateAccess("SetTargetStateFileSize")) {
             return MakeBufferIsCorruptError();
         }
 
-        Args.DataCapacity = dataCapacity;
+        Args.DataCapacity = TFileRingBufferLayout::CalculateDataCapacity(
+            stateFileSize,
+            Args.MetadataCapacity);
 
         TryMigrateAndResizeDataCapacity();
 
@@ -1128,14 +1130,17 @@ public:
 
 TFileRingBuffer::TFileRingBuffer(
     const TString& filePath,
-    ui64 dataCapacity,
+    ui64 stateFileSize,
     ui64 metadataCapacity,
     EFileRingBufferVersion version)
-    : Impl(new TImpl(
-          {.FilePath = filePath,
-           .DataCapacity = dataCapacity,
-           .MetadataCapacity = metadataCapacity,
-           .Version = version}))
+    : Impl(
+          std::make_unique<TImpl>(TFileRingBufferArgs{
+              .FilePath = filePath,
+              .DataCapacity = TFileRingBufferLayout::CalculateDataCapacity(
+                  stateFileSize,
+                  metadataCapacity),
+              .MetadataCapacity = metadataCapacity,
+              .Version = version}))
 {}
 
 TFileRingBuffer::~TFileRingBuffer() = default;
@@ -1273,9 +1278,9 @@ TFileRingBuffer::TSetMetadataResult TFileRingBuffer::SetMetadata(
     return Impl->SetMetadata(data);
 }
 
-NProto::TError TFileRingBuffer::SetTargetDataCapacity(ui64 dataCapacity)
+NProto::TError TFileRingBuffer::SetTargetStateFileSize(ui64 stateFileSize)
 {
-    return Impl->SetTargetDataCapacity(dataCapacity);
+    return Impl->SetTargetStateFileSize(stateFileSize);
 }
 
 }   // namespace NCloud

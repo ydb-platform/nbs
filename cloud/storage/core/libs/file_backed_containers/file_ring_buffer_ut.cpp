@@ -49,6 +49,23 @@ ui64 GetStateFileSize(ui64 dataCapacity)
     return layout->StateFileSize;
 }
 
+struct TTestFileRingBuffer: public TFileRingBuffer
+{
+    TTestFileRingBuffer(
+        const TString& filePath,
+        ui64 dataCapacity,
+        ui64 metadataCapacity,
+        EVersion version)
+        : TFileRingBuffer(
+              filePath,
+              TFileRingBufferLayout::CalculateStateFileSize(
+                  dataCapacity,
+                  metadataCapacity),
+              metadataCapacity,
+              version)
+    {}
+};
+
 TString Dump(const TVector<TString>& entries)
 {
     TStringBuilder sb;
@@ -84,7 +101,7 @@ TString Dump(const TTempFileHandle& fh)
     return res;
 }
 
-TStringBuf Find(TFileRingBuffer& rb, TStringBuf entry)
+TStringBuf Find(TTestFileRingBuffer& rb, TStringBuf entry)
 {
     TStringBuf result;
 
@@ -277,6 +294,9 @@ TString Dump(const TReferenceImplementation& ri)
 
 Y_UNIT_TEST_SUITE(TFileRingBufferTest)
 {
+    // Keep the existing test scenarios expressed in terms of data capacity.
+    using TFileRingBuffer = TTestFileRingBuffer;
+
     TString GenerateData(ui32 sz)
     {
         TString s(sz, 0);
@@ -367,6 +387,24 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
                     GetCriticalEventForFileRingBufferInitializationError(),
                     true)
                 ->Val());
+    }
+
+    FILE_RING_BUFFER_TEST(ShouldUseRequestedStateFileSize)
+    {
+        constexpr ui64 InitialStateFileSize = 4_KB;
+        constexpr ui64 TargetStateFileSize = 2_KB;
+
+        const auto f = TTempFileHandle();
+        NCloud::TFileRingBuffer rb(
+            f.GetName(),
+            InitialStateFileSize,
+            0,
+            ver);
+
+        UNIT_ASSERT_VALUES_EQUAL(InitialStateFileSize, f.GetLength());
+
+        UNIT_ASSERT(!HasError(rb.SetTargetStateFileSize(TargetStateFileSize)));
+        UNIT_ASSERT_VALUES_EQUAL(TargetStateFileSize, f.GetLength());
     }
 
     FILE_RING_BUFFER_TEST(ShouldPushPop)
@@ -685,134 +723,164 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(!rb2.PushBack("c").Pushed);
     }
 
-    FILE_RING_BUFFER_TEST(ShouldSupportDataCapacityChange)
+    FILE_RING_BUFFER_TEST(ShouldSupportStateFileSizeChange)
     {
         const auto f = TTempFileHandle();
-        const ui32 len = 64;
+        const ui64 stateFileSize = 4_KB;
 
         ui64 maxDataSize = 0;
+        ui64 initialDataCapacity = 0;
 
         // For an empty buffer, resize is performed immediately
         {
-            TFileRingBuffer rb(f.GetName(), len, 0, ver);
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
+            NCloud::TFileRingBuffer rb(f.GetName(), stateFileSize, 0, ver);
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize, f.GetLength());
+            initialDataCapacity = rb.GetDataCapacity();
+            UNIT_ASSERT_VALUES_EQUAL(
+                initialDataCapacity,
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             maxDataSize = rb.GetMaxSupportedAllocationByteCount();
         }
         {
-            TFileRingBuffer rb(f.GetName(), len + 1, 0, ver);
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len + 1), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len + 1, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len + 1, rb.GetTargetDataCapacity());
+            NCloud::TFileRingBuffer rb(f.GetName(), stateFileSize + 1, 0, ver);
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize + 1, f.GetLength());
+            const auto dataCapacity = rb.GetDataCapacity();
+            UNIT_ASSERT_VALUES_UNEQUAL(initialDataCapacity, dataCapacity);
+            UNIT_ASSERT_VALUES_EQUAL(dataCapacity, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
 
-            UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
+            UNIT_ASSERT(!HasError(rb.SetTargetStateFileSize(stateFileSize)));
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize, f.GetLength());
+            UNIT_ASSERT_VALUES_UNEQUAL(dataCapacity, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(
+                rb.GetDataCapacity(),
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
         }
         {
-            TFileRingBuffer rb(f.GetName(), len - 1, 0, ver);
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len - 1), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len - 1, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len - 1, rb.GetTargetDataCapacity());
+            NCloud::TFileRingBuffer rb(f.GetName(), stateFileSize - 1, 0, ver);
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize - 1, f.GetLength());
+            const auto dataCapacity = rb.GetDataCapacity();
+            UNIT_ASSERT_VALUES_UNEQUAL(initialDataCapacity, dataCapacity);
+            UNIT_ASSERT_VALUES_EQUAL(dataCapacity, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
 
-            UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
+            UNIT_ASSERT(!HasError(rb.SetTargetStateFileSize(stateFileSize)));
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize, f.GetLength());
+            UNIT_ASSERT_VALUES_UNEQUAL(dataCapacity, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(
+                rb.GetDataCapacity(),
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
         }
 
         // For an non-empty buffer, resize will be postponed
         {
-            TFileRingBuffer rb(f.GetName(), len, 0, ver);
+            NCloud::TFileRingBuffer rb(f.GetName(), stateFileSize, 0, ver);
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
         }
         {
-            TFileRingBuffer rb(f.GetName(), len + 8, 0, ver);
+            NCloud::TFileRingBuffer rb(f.GetName(), stateFileSize + 8, 0, ver);
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize + 8,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len + 8, rb.GetTargetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(initialDataCapacity, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                rb.GetDataCapacity(),
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT(!rb.PushBack("abc").Pushed);
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT_VALUES_EQUAL("12345678", Dump(rb));
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len + 8), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len + 8, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len + 8, rb.GetTargetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize + 8, f.GetLength());
+            const auto dataCapacity = rb.GetDataCapacity();
+            UNIT_ASSERT_VALUES_UNEQUAL(initialDataCapacity, dataCapacity);
+            UNIT_ASSERT_VALUES_EQUAL(dataCapacity, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
 
-            UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
+            UNIT_ASSERT(!HasError(rb.SetTargetStateFileSize(stateFileSize)));
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len + 8), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len + 8, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize + 8, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(dataCapacity, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                rb.GetDataCapacity(),
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize, f.GetLength());
+            UNIT_ASSERT_VALUES_UNEQUAL(dataCapacity, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(
+                rb.GetDataCapacity(),
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
         }
         {
-            TFileRingBuffer rb(f.GetName(), len - 8, 0, ver);
+            NCloud::TFileRingBuffer rb(f.GetName(), stateFileSize - 8, 0, ver);
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize - 8,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len - 8, rb.GetTargetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(initialDataCapacity, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                rb.GetDataCapacity(),
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT(!rb.PushBack("abc").Pushed);
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT_VALUES_EQUAL("12345678", Dump(rb));
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len - 8), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len - 8, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len - 8, rb.GetTargetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize - 8, f.GetLength());
+            const auto dataCapacity = rb.GetDataCapacity();
+            UNIT_ASSERT_VALUES_UNEQUAL(initialDataCapacity, dataCapacity);
+            UNIT_ASSERT_VALUES_EQUAL(dataCapacity, rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
 
-            UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(len)));
+            UNIT_ASSERT(!HasError(rb.SetTargetStateFileSize(stateFileSize)));
             UNIT_ASSERT_VALUES_EQUAL(
                 maxDataSize,
                 rb.GetMaxSupportedAllocationByteCount());
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len - 8), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len - 8, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize - 8, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(dataCapacity, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                rb.GetDataCapacity(),
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PopFront().Removed);
-            UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(len), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetTargetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize, f.GetLength());
+            UNIT_ASSERT_VALUES_UNEQUAL(dataCapacity, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(
+                rb.GetDataCapacity(),
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_UNEQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(rb.PushBack("12345678").Pushed);
         }
 
         // Zero size is valid
         {
-            TFileRingBuffer rb(f.GetName(), len, 0, ver);
-            UNIT_ASSERT(!HasError(rb.SetTargetDataCapacity(0)));
-            UNIT_ASSERT_VALUES_EQUAL(len, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(0, rb.GetTargetDataCapacity());
+            NCloud::TFileRingBuffer rb(f.GetName(), stateFileSize, 0, ver);
+            UNIT_ASSERT(!HasError(rb.SetTargetStateFileSize(0)));
+            UNIT_ASSERT_VALUES_EQUAL(stateFileSize, f.GetLength());
+            UNIT_ASSERT_VALUES_EQUAL(initialDataCapacity, rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                rb.GetDataCapacity(),
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_EQUAL(
                 0,
                 rb.GetMaxSupportedAllocationByteCount());
             UNIT_ASSERT(rb.PopFront().Removed);
             UNIT_ASSERT_VALUES_EQUAL(GetStateFileSize(0), f.GetLength());
-            UNIT_ASSERT_VALUES_EQUAL(0, rb.GetDataCapacity());
-            UNIT_ASSERT_VALUES_EQUAL(0, rb.GetTargetDataCapacity());
+            UNIT_ASSERT_VALUES_UNEQUAL(
+                initialDataCapacity,
+                rb.GetDataCapacity());
+            UNIT_ASSERT_VALUES_EQUAL(
+                rb.GetDataCapacity(),
+                rb.GetTargetDataCapacity());
             UNIT_ASSERT_VALUES_EQUAL(0, rb.GetAvailableByteCount());
             UNIT_ASSERT(!rb.PushBack("12345678").Pushed);
         }
@@ -890,7 +958,7 @@ Y_UNIT_TEST_SUITE(TFileRingBufferTest)
         UNIT_ASSERT(HasError(rb.SetMetadata("x").Error));
         UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
 
-        UNIT_ASSERT(HasError(rb.SetTargetDataCapacity(40)));
+        UNIT_ASSERT(HasError(rb.SetTargetStateFileSize(f.GetLength() + 8)));
         UNIT_ASSERT_STRINGS_EQUAL(dump, Dump(f));
     }
 

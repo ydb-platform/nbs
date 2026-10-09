@@ -322,7 +322,9 @@ struct TBootstrap
              .FileSystemId = "FileSystemId",
              .ClientId = "ClientId",
              .FilePath = TempFileHandle.GetName(),
-             .CapacityBytes = CacheCapacityBytes,
+             .StateFileSize = TFileRingBufferLayout::CalculateStateFileSize(
+                 CacheCapacityBytes,
+                 0),
              .AutomaticFlushPeriod = CacheAutomaticFlushPeriod,
              .FlushRetryPeriod = CacheFlushRetryPeriod,
              .FlushMaxWriteRequestSize = MaxWriteRequestSize,

@@ -62,7 +62,9 @@ struct TBootstrap
         {
             TFileRingBuffer rb(
                 TempFileHandle.Name(),
-                DataCapacity,
+                TFileRingBufferLayout::CalculateStateFileSize(
+                    DataCapacity,
+                    MetadataCapacity),
                 MetadataCapacity,
                 version);
 

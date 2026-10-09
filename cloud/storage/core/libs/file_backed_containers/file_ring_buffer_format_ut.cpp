@@ -63,6 +63,11 @@ Y_UNIT_TEST_SUITE(TFileRingBufferFormatTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 testCase.Expected.has_value(),
                 layout.has_value());
+            UNIT_ASSERT_VALUES_EQUAL(
+                testCase.Expected ? testCase.Expected->StateFileSize : 0,
+                TFileRingBufferLayout::CalculateStateFileSize(
+                    testCase.DataCapacity,
+                    testCase.MetadataCapacity));
             if (!layout) {
                 continue;
             }
@@ -76,6 +81,11 @@ Y_UNIT_TEST_SUITE(TFileRingBufferFormatTest)
             UNIT_ASSERT_VALUES_EQUAL(
                 testCase.Expected->StateFileSize,
                 layout->StateFileSize);
+            UNIT_ASSERT_VALUES_EQUAL(
+                testCase.DataCapacity,
+                TFileRingBufferLayout::CalculateDataCapacity(
+                    layout->StateFileSize,
+                    testCase.MetadataCapacity));
         }
     }
 
