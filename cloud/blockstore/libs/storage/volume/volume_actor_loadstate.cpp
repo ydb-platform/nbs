@@ -189,8 +189,11 @@ void TVolumeActor::CompleteLoadState(
 
         if (State->IsDiskRegistryMediaKind() || PendingRequests.size()) {
             StartPartitionsForUse(ctx);
-        } else if (State->GetShouldStartPartitionsForGc(ctx.Now())
-            && !Config->GetDisableStartPartitionsForGc())
+        } else if (State->HasActiveFollower()) {
+            StartPartitionsForCopy(ctx);
+        } else if (
+            State->GetShouldStartPartitionsForGc(ctx.Now()) &&
+            !Config->GetDisableStartPartitionsForGc())
         {
             StartPartitionsForGc(ctx);
         }

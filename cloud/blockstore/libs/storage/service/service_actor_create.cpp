@@ -771,7 +771,7 @@ void TServiceActor::HandleCreateVolume(
                 MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
         return;
     }
-    if (*directory != Config->GetSchemeShardDir() &&
+    if (directory != Config->GetSchemeShardDirForShard("") &&
         IsDiskRegistryMediaKind(request.GetStorageMediaKind()))
     {
         NCloud::Reply(

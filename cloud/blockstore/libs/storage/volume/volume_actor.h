@@ -88,6 +88,7 @@ class TVolumeActor final
     {
         STARTED_FOR_GC,
         STARTED_FOR_USE,
+        STARTED_FOR_COPY,
         NOT_STARTED
     };
 
@@ -602,6 +603,7 @@ private:
 
     void StartPartitionsIfNeeded(const NActors::TActorContext& ctx);
     void StartPartitionsForUse(const NActors::TActorContext& ctx);
+    void StartPartitionsForCopy(const NActors::TActorContext& ctx);
     void StartPartitionsForGc(const NActors::TActorContext& ctx);
     void StopPartitions(
         const NActors::TActorContext& ctx,

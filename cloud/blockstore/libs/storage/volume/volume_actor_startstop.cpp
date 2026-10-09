@@ -189,7 +189,8 @@ void TVolumeActor::StartPartitionsIfNeeded(const TActorContext& ctx)
                 StartPartitionsForUse(ctx);
                 return;
             }
-            case EPartitionsStartedReason::STARTED_FOR_GC: {
+            case EPartitionsStartedReason::STARTED_FOR_GC:
+            case EPartitionsStartedReason::STARTED_FOR_COPY: {
                 PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
                 return;
             }
@@ -472,14 +473,34 @@ void TVolumeActor::RestartPartition(
 
     switch (PartitionsStartedReason) {
         case EPartitionsStartedReason::STARTED_FOR_GC: {
-            StartPartitionsForGc(ctx);
+            if (State->HasActiveFollower()) {
+                StartPartitionsForCopy(ctx);
+            } else {
+                StartPartitionsForGc(ctx);
+            }
             break;
         }
         case EPartitionsStartedReason::STARTED_FOR_USE: {
             StartPartitionsForUse(ctx);
             break;
         }
+        case EPartitionsStartedReason::STARTED_FOR_COPY: {
+            if (State->HasActiveFollower()) {
+                StartPartitionsForCopy(ctx);
+            } else if (
+                State->GetShouldStartPartitionsForGc(ctx.Now()) &&
+                !Config->GetDisableStartPartitionsForGc())
+            {
+                StartPartitionsForGc(ctx);
+            } else {
+                PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
+            }
+            break;
+        }
         case EPartitionsStartedReason::NOT_STARTED: {
+            if (State->HasActiveFollower()) {
+                StartPartitionsForCopy(ctx);
+            }
             break;
         }
     };
@@ -519,6 +540,12 @@ void TVolumeActor::StartPartitionsForUse(const TActorContext& ctx)
 {
     StartPartitionsImpl(ctx);
     PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_USE;
+}
+
+void TVolumeActor::StartPartitionsForCopy(const TActorContext& ctx)
+{
+    StartPartitionsImpl(ctx);
+    PartitionsStartedReason = EPartitionsStartedReason::STARTED_FOR_COPY;
 }
 
 void TVolumeActor::StartPartitionsForGc(const TActorContext& ctx)

@@ -232,6 +232,29 @@ void CheckServicePipe(
 
 Y_UNIT_TEST_SUITE(TVolumeStateTest)
 {
+    Y_UNIT_TEST(ShouldKeepPartitionsOnlyWhileFollowerNeedsSourceData)
+    {
+        using EState = TFollowerDiskInfo::EState;
+        const TLeaderFollowerLink link{.LinkUUID = "copy-link",
+                                       .LeaderDiskId = "source",
+                                       .FollowerDiskId = "target"};
+        for (const auto& [copyState, active]:
+             {std::pair{EState::None, false}, {EState::Created, true},
+              {EState::Preparing, true},
+              {EState::DataReady, true},
+              {EState::LeadershipTransferred, false},
+              {EState::Error, false}})
+        {
+            auto state = CreateVolumeState();
+            UNIT_ASSERT(!state.HasActiveFollower());
+            state.AddOrUpdateFollower(
+                TFollowerDiskInfo{.Link = link, .State = copyState});
+            UNIT_ASSERT_VALUES_EQUAL(active, state.HasActiveFollower());
+            state.RemoveFollower(link);
+            UNIT_ASSERT(!state.HasActiveFollower());
+        }
+    }
+
     Y_UNIT_TEST(ShouldNotRemoveNotAddedClient)
     {
         auto volumeState = CreateVolumeState();

@@ -19,34 +19,46 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
     struct TCrossShardFixture
     {
         TTestEnv Env{1, 2, 4};
+        ui32 SourceNode = 0;
+        ui32 TargetNode = 0;
         std::unique_ptr<TServiceClient> Source;
         std::unique_ptr<TServiceClient> Target;
 
         explicit TCrossShardFixture(
             NCloud::NProto::EStorageMediaKind mediaKind =
-                NProto::STORAGE_MEDIA_SSD)
+                NProto::STORAGE_MEDIA_SSD,
+            NCloud::NProto::EStorageMediaKind targetKind =
+                NProto::STORAGE_MEDIA_DEFAULT, ui64 blocksCount = 1024 * 1024)
         {
+            // Cleanup is scheduled to the symbolic service ID. The test
+            // runtime otherwise whitelists only the registered actor IDs.
+            Env.GetRuntime().EnableScheduleForActor(MakeStorageServiceId());
             NProto::TStorageServiceConfig proto;
             (*proto.MutableShardDirectories())["source"] = "/local/nbs";
             (*proto.MutableShardDirectories())["target"] = "/local/remote";
-            const auto sourceNode = SetupTestEnv(Env, proto);
+            SourceNode = SetupTestEnv(Env, proto);
             Env.CreateSubDomain("remote");
             proto.SetSchemeShardDir("/local/remote");
-            const auto targetNode = Env.CreateBlockStoreNode(
+            TargetNode = Env.CreateBlockStoreNode(
                 "remote", CreateTestStorageConfig(proto),
                 CreateTestDiagnosticsConfig());
             Source =
-                std::make_unique<TServiceClient>(Env.GetRuntime(), sourceNode);
+                std::make_unique<TServiceClient>(Env.GetRuntime(), SourceNode);
             Target =
-                std::make_unique<TServiceClient>(Env.GetRuntime(), targetNode);
-            Source->CreateVolume("disk", DefaultBlocksCount, DefaultBlockSize,
-                                 "", "", mediaKind);
+                std::make_unique<TServiceClient>(Env.GetRuntime(), TargetNode);
+            Source->CreateVolume("disk", blocksCount, DefaultBlockSize, "", "",
+                                 mediaKind);
 
             // Exercise destination creation and WaitReady through the source
             // node's existing NBS API, rather than bypassing the service.
             auto request = Source->CreateCreateVolumeRequest(
-                "disk-copy", DefaultBlocksCount, DefaultBlockSize, "", "",
-                mediaKind);
+                "disk-copy",
+                blocksCount,
+                DefaultBlockSize,
+                "",
+                "",
+                targetKind == NProto::STORAGE_MEDIA_DEFAULT ? mediaKind
+                                                            : targetKind);
             request->Record.MutableHeaders()->SetShardId("target");
             Source->SendRequest(MakeStorageServiceId(), std::move(request));
             const auto response = Source->RecvCreateVolumeResponse();
@@ -210,6 +222,242 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         const auto absent = fixture.Target->RecvDescribeVolumeResponse();
         UNIT_ASSERT(HasError(absent->GetError()));
         fixture.Source->DescribeVolume("disk", true);
+    }
+
+    void TestCrossShardCopyData(NCloud::NProto::EStorageMediaKind sourceKind,
+                                NCloud::NProto::EStorageMediaKind targetKind,
+                                bool online)
+    {
+        constexpr ui64 blocksCount = 8192;
+        TCrossShardFixture fixture(sourceKind, targetKind, blocksCount);
+        auto& runtime = fixture.Env.GetRuntime();
+        auto mount = fixture.Source->MountVolume("disk");
+        TString sourceSession = mount->Record.GetSessionId();
+        fixture.Source->WriteBlocks("disk", TBlockRange64::WithLength(0, 16),
+                                    sourceSession, 'a');
+        fixture.Source->ZeroBlocks("disk", 1, sourceSession);
+        fixture.Source->WriteBlocks(
+            "disk", TBlockRange64::WithLength(blocksCount - 2, 2),
+            sourceSession, 'c');
+        if (!online) {
+            fixture.Source->UnmountVolume("disk", sourceSession,
+                                          NProto::SOURCE_CLIENT);
+        }
+
+        struct TProbe
+        {
+            bool HeldOnce = false;
+            bool SourceDeleted = false;
+            bool SourceDeleteAcknowledged = false;
+            ui32 DestinationWrites = 0;
+            std::unique_ptr<IEventHandle> HeldWrite;
+        };
+
+        auto probe = std::make_shared<TProbe>();
+        runtime.SetObserverFunc(
+            [probe, online](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest)
+                {
+                    const auto& request =
+                        event->Get<TEvService::TEvWriteBlocksRequest>()->Record;
+                    if (request.GetDiskId() == "disk-copy" &&
+                        request.GetHeaders().GetShardId() == "target")
+                    {
+                        ++probe->DestinationWrites;
+                        if (online && !probe->HeldOnce) {
+                            probe->HeldOnce = true;
+                            probe->HeldWrite.reset(event.Release());
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                    }
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvService::EvDestroyVolumeRequest) {
+                    const auto& request =
+                        event->Get<TEvService::TEvDestroyVolumeRequest>()
+                            ->Record;
+                    if (request.GetDiskId() == "disk") {
+                        UNIT_ASSERT_VALUES_EQUAL(
+                            "source", request.GetHeaders().GetShardId());
+                        UNIT_ASSERT(request.GetHeaders().GetExactDiskIdMatch());
+                        probe->SourceDeleted = true;
+                    }
+                }
+                if (event->GetTypeRewrite() ==
+                        TEvService::EvDestroyVolumeResponse &&
+                    probe->SourceDeleted)
+                {
+                    const auto* response =
+                        event->Get<TEvService::TEvDestroyVolumeResponse>();
+                    if (SUCCEEDED(response->GetStatus())) {
+                        probe->SourceDeleteAcknowledged = true;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+
+        const auto created = fixture.CreateLink();
+        UNIT_ASSERT_C(SUCCEEDED(created->GetStatus()),
+                      created->GetErrorReason());
+
+        if (online) {
+            TDispatchOptions options;
+            options.CustomFinalCondition = [probe]
+            {
+                return probe->HeldWrite != nullptr;
+            };
+            runtime.DispatchEvents(options, TDuration::Seconds(10));
+            UNIT_ASSERT_C(probe->HeldWrite,
+                          fixture.GetStatus().ShortDebugString());
+
+            // The first migration range is held while writes to a later range
+            // are mirrored. The subsequent background copy must not restore
+            // old data over the acknowledged foreground write or zero.
+            mount = fixture.Source->MountVolume("disk");
+            sourceSession = mount->Record.GetSessionId();
+            fixture.Source->WriteBlocks(
+                "disk", TBlockRange64::MakeOneBlock(blocksCount - 1),
+                sourceSession, 'b');
+            fixture.Source->ZeroBlocks("disk", blocksCount - 2, sourceSession);
+            runtime.Send(probe->HeldWrite.release(), fixture.SourceNode);
+        }
+
+        NProto::TGetLinkStatusResponse status;
+        bool transferred = false;
+        for (ui32 attempt = 0; attempt != 500; ++attempt) {
+            status = fixture.GetStatus();
+            UNIT_ASSERT_C(status.GetStatus() != NProto::LINK_STATUS_ERROR,
+                          status.ShortDebugString());
+            if (status.GetStatus() ==
+                    NProto::LINK_STATUS_LEADERSHIP_TRANSFERRED ||
+                status.GetStatus() == NProto::LINK_STATUS_COMPLETED)
+            {
+                transferred = true;
+                break;
+            }
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(20));
+        }
+        UNIT_ASSERT_C(transferred, status.ShortDebugString());
+        UNIT_ASSERT(probe->DestinationWrites > 0);
+        if (online) {
+            fixture.Source->UnmountVolume("disk", sourceSession,
+                                          NProto::SOURCE_CLIENT);
+        }
+
+        const auto targetMount = fixture.Target->MountVolume("disk-copy");
+        auto targetSession = targetMount->Record.GetSessionId();
+        auto checkBlock = [&](ui32 index, char expected)
+        {
+            const auto response =
+                fixture.Target->ReadBlocks("disk-copy", index, targetSession);
+            UNIT_ASSERT_VALUES_EQUAL(
+                1, response->Record.GetBlocks().BuffersSize());
+            auto data = response->Record.GetBlocks().GetBuffers(0);
+            if (data.empty()) {
+                data = TString(DefaultBlockSize, 0);
+            }
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                TString(DefaultBlockSize, expected), data,
+                TStringBuilder() << "block " << index << ", online=" << online);
+        };
+        for (ui32 index = 0; index != 16; ++index) {
+            checkBlock(index, index == 1 ? 0 : 'a');
+        }
+        checkBlock(32, 0);
+        checkBlock(blocksCount - 2, online ? 0 : 'c');
+        checkBlock(blocksCount - 1, online ? 'b' : 'c');
+
+        const auto destination =
+            fixture.Target->DescribeVolume("disk-copy", true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            blocksCount, destination->Record.GetVolume().GetBlocksCount());
+        UNIT_ASSERT_VALUES_EQUAL(
+            DefaultBlockSize, destination->Record.GetVolume().GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(targetKind),
+            static_cast<int>(
+                destination->Record.GetVolume().GetStorageMediaKind()));
+
+        TDispatchOptions cleanup;
+        cleanup.CustomFinalCondition = [probe]
+        {
+            return probe->SourceDeleteAcknowledged;
+        };
+        runtime.DispatchEvents(cleanup, TDuration::Minutes(3));
+        UNIT_ASSERT_C(probe->SourceDeleteAcknowledged,
+                      fixture.GetStatus().ShortDebugString());
+
+        bool completed = false;
+        for (ui32 attempt = 0; attempt != 3000; ++attempt) {
+            // A volume reboot can orphan an older actor's delete response.
+            // Let the live actor's cleanup retry and principal transaction run
+            // while advancing time in small steps so node leases stay alive.
+            runtime.AdvanceCurrentTime(TDuration::MilliSeconds(100));
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            status = fixture.GetStatus();
+            if (status.GetStatus() == NProto::LINK_STATUS_COMPLETED) {
+                completed = true;
+                break;
+            }
+        }
+        UNIT_ASSERT_C(completed, status.ShortDebugString());
+        UNIT_ASSERT(probe->SourceDeleted);
+        fixture.Source->SendDescribeVolumeRequest("disk", true);
+        const auto absent = fixture.Source->RecvDescribeVolumeResponse();
+        UNIT_ASSERT(HasError(absent->GetError()));
+        // The low-level test client does not implement the SDK's automatic
+        // remount on E_BS_INVALID_SESSION after a tablet restart.
+        targetSession =
+            fixture.Target->MountVolume("disk-copy")->Record.GetSessionId();
+        checkBlock(blocksCount - 1, online ? 'b' : 'c');
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
+    Y_UNIT_TEST(ShouldCompleteCrossShardCopyOfDetachedSsdAndHddDisks)
+    {
+        for (const auto source:
+             {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+        {
+            for (const auto target:
+                 {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+            {
+                TestCrossShardCopyData(source, target, false);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldMirrorWritesAndZerosDuringCrossShardSsdAndHddCopy)
+    {
+        for (const auto source:
+             {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+        {
+            for (const auto target:
+                 {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+            {
+                TestCrossShardCopyData(source, target, true);
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldKeepLocalNonreplicatedCreationWithTrailingSlash)
+    {
+        NProto::TStorageServiceConfig proto;
+        proto.SetSchemeShardDir("/local/nbs/");
+        (*proto.MutableShardDirectories())["local"] = "/local/nbs";
+        TTestEnv env;
+        const auto node = SetupTestEnv(env, proto);
+        TServiceClient service(env.GetRuntime(), node);
+        for (const TString shard: {"", "local"}) {
+            auto request = service.CreateCreateVolumeRequest(
+                "nonrepl-" + shard, 93_GB / DefaultBlockSize, DefaultBlockSize,
+                "", "", NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            request->Record.MutableHeaders()->SetShardId(shard);
+            service.SendRequest(MakeStorageServiceId(), std::move(request));
+            const auto response = service.RecvCreateVolumeResponse();
+            UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()),
+                          response->GetErrorReason());
+        }
     }
 
     Y_UNIT_TEST(ShouldFailOnInvalidArgumentVolume)
