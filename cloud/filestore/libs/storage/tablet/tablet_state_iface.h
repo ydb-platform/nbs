@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
 #include <cloud/filestore/libs/storage/tablet/model/block_list.h>
 #include <cloud/filestore/libs/storage/tablet/model/compaction_map.h>
 #include <cloud/filestore/libs/storage/tablet/model/deletion_markers.h>
@@ -465,6 +466,11 @@ public:
         ui64 commitId,
         ui32 blockIndex,
         TStringBuf blockData) = 0;
+    virtual void WriteFreshBlocks(
+        ui64 nodeId,
+        ui64 commitId,
+        const TByteRange& byteRange,
+        IBlockBufferPtr blockBuffer) = 0;
     virtual void MarkFreshBlockDeleted(
         ui64 nodeId,
         ui64 minCommitId,
