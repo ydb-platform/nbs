@@ -9,6 +9,8 @@ namespace NCloud::NFileStore::NProfileTool {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+struct TProfileLogFile;
+
 class TMaskSensitiveData
 {
     THolder<NEventLog::IIterator> CurrentEvent;
@@ -39,7 +41,9 @@ public:
     bool Advance();
     TString Transform(const TString& str, const ui64 nodeId) const;
     void MaskRequest(NProto::TProfileLogRequestInfo& request) const;
-    void MaskSensitiveData(const TString& in, const TString& out);
+    void MaskSensitiveData(
+        const TVector<TProfileLogFile>& in,
+        const TString& out);
 };
 
 }   // namespace NCloud::NFileStore::NProfileTool

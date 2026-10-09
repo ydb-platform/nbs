@@ -1,6 +1,9 @@
 #include "mask.h"
+#include "time_range.h"
 
 #include <library/cpp/testing/unittest/registar.h>
+
+#include <util/system/tempfile.h>
 
 namespace NCloud::NFileStore::NProfileTool {
 
@@ -8,6 +11,51 @@ namespace NCloud::NFileStore::NProfileTool {
 
 Y_UNIT_TEST_SUITE(TMaskSensitiveData)
 {
+    Y_UNIT_TEST(ShouldMaskMultipleFiles)
+    {
+        TTempFileHandle first;
+        TTempFileHandle second;
+        TTempFileHandle output;
+        for (const auto* input: {&first, &second}) {
+            TEventLog log(input->Name(), 0);
+            {
+                TSelfFlushLogFrame frame(log);
+                NProto::TProfileLogRecord record;
+                record.SetFileSystemId(input->Name());
+                auto* node = record.AddRequests()->MutableNodeInfo();
+                node->SetNodeId(42);
+                node->SetNodeName("secret");
+                frame.LogEvent(record);
+                frame.Flush();
+            }
+            log.CloseLog();
+        }
+
+        TMaskSensitiveData mask(TMaskSensitiveData::EMode::Hash, "seed", 0);
+        mask.MaskSensitiveData(
+            TVector<TProfileLogFile>{{first.Name(), {}}, {second.Name(), {}}},
+            output.Name());
+
+        NEventLog::TOptions options;
+        options.FileName = output.Name();
+        auto iterator = CreateIterator(options);
+        TVector<TString> fileSystems;
+        while (const auto event = iterator->Next()) {
+            const auto* record = dynamic_cast<const NProto::TProfileLogRecord*>(
+                event->GetProto());
+            if (record) {
+                fileSystems.push_back(record->GetFileSystemId());
+                UNIT_ASSERT_VALUES_EQUAL(record->GetRequests().size(), 1);
+                UNIT_ASSERT_VALUES_EQUAL(
+                    record->GetRequests(0).GetNodeInfo().GetNodeName(),
+                    mask.Transform("secret", 42));
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(fileSystems.size(), 2);
+        UNIT_ASSERT_VALUES_EQUAL(fileSystems[0], first.Name());
+        UNIT_ASSERT_VALUES_EQUAL(fileSystems[1], second.Name());
+    }
+
     Y_UNIT_TEST(ShouldMaskBrokenFilenames)
     {
         {

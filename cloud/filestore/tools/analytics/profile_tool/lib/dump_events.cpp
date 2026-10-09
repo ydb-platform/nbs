@@ -182,18 +182,18 @@ public:
                 fileSystemId.GetRef());
         }
 
+        if (!parseResult.Has("all-files")) {
+            ProfileLogFiles =
+                SelectProfileLogFiles(std::move(ProfileLogFiles), since, until);
+        }
+
         return true;
     }
 
     int Execute() override
     {
         TEventProcessor processor(Filter);
-        const char* path[] = {"", PathToProfileLog.c_str()};
-        return IterateEventLog(
-            NEvClass::Factory(),
-            &processor,
-            2,
-            path);
+        return ProcessProfileLogs(processor);
     }
 };
 
