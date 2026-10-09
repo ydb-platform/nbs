@@ -321,12 +321,24 @@ public:
 
     void AddDupCacheEntry(NProto::TDupCacheEntry proto, bool committed)
     {
-        Y_ABORT_UNLESS(proto.GetRequestId());
         Y_ABORT_UNLESS(proto.GetEntryId());
 
         DupCacheEntries.emplace_back(std::move(proto), committed);
 
         auto& entry = DupCacheEntries.back();
+        if (!entry.GetRequestId()) {
+            ReportInvalidDupCacheEntry(TStringBuilder()
+                << "Missing request id: Entry="
+                << entry.Utf8DebugString().Quote()
+                << " ClientId=" << GetClientId()
+                << " SessionId=" << this->GetSessionId());
+
+            // Keep the entry for eviction from the database, but requests
+            // without an id cannot participate in deduplication.
+            entry.Dropped = true;
+            return;
+        }
+
         auto [p, inserted] = DupCache.emplace(entry.GetRequestId(), &entry);
         if (!inserted) {
             ReportDupCacheEntryRequestIdCollision(TStringBuilder()
