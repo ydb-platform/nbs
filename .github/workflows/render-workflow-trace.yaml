@@ -25,6 +25,10 @@ concurrency:
 
 jobs:
   render:
+    if: >-
+      github.event.workflow_run.pull_requests[0] == null ||
+      github.event.workflow_run.pull_requests[0].stack == null ||
+      github.event.workflow_run.pull_requests[0].stack.base.ref == github.event.workflow_run.pull_requests[0].base.ref
     name: Render workflow and ya traces
     runs-on: [self-hosted, runner_light]
     timeout-minutes: 15
@@ -76,6 +80,7 @@ jobs:
           {
               echo "REPORTS_PREFIX=$reports_prefix"
               echo "TRACE_REPORT_URL=https://${REPORTS_BUCKET}.${REPORTS_WEBSITE_SUFFIX}/${reports_prefix}/workflow-trace.html"
+              echo "WORKFLOW_ONLY_TRACE_REPORT_URL=https://${REPORTS_BUCKET}.${REPORTS_WEBSITE_SUFFIX}/${reports_prefix}/workflow-only-trace.html"
           } >> "$GITHUB_ENV"
 
       - name: Render workflow trace
@@ -96,12 +101,17 @@ jobs:
               --include "workflow-trace.html" \
               --include "workflow-trace.manifest.json" \
               --include "workflow-trace.otlp.jsonl.gz" \
+              --include "workflow-only-trace.html" \
+              --include "workflow-only-trace.manifest.json" \
+              --include "workflow-only-trace.otlp.jsonl.gz" \
               trace-output/ \
               "s3://${REPORTS_BUCKET}/${REPORTS_PREFIX}/"
           {
-              echo "### Workflow execution trace"
+              echo "### Execution traces"
               echo
-              echo "[Open the workflow/job/step/ya trace]($TRACE_REPORT_URL)"
+              echo "[Workflow/job/step trace]($WORKFLOW_ONLY_TRACE_REPORT_URL)"
+              echo
+              echo "[Workflow/job/step/ya trace]($TRACE_REPORT_URL)"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Keep trace as a GitHub artifact
