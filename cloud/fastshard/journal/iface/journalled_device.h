@@ -4,33 +4,34 @@
 
 #include <cloud/fastshard/protos/device.pb.h>
 
-#include <cloud/storage/core/libs/common/startable.h>
-
 #include <library/cpp/threading/future/future.h>
 
 namespace NCloud::NJournalled {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-struct IJournalledDevice : public IStartable
+struct IJournalledDevice
 {
     virtual ~IJournalledDevice() = default;
 
+    [[nodiscard]] virtual NThreading::TFuture<NProto::TError> Start() = 0;
+    [[nodiscard]] virtual NThreading::TFuture<NProto::TError> Stop() = 0;
+
     [[nodiscard]] virtual auto ReadPages(
-        NCloud::NProto::TReadPagesRequest request)
-        -> NThreading::TFuture<NCloud::NProto::TReadPagesResponse> = 0;
+        NProto::TReadPagesRequest request)
+        -> NThreading::TFuture<NProto::TReadPagesResponse> = 0;
 
     [[nodiscard]] virtual auto WriteLogRecord(
-        NCloud::NProto::TWriteLogRecordRequest request)
-        -> NThreading::TFuture<NCloud::NProto::TWriteLogRecordResponse> = 0;
+        NProto::TWriteLogRecordRequest request)
+        -> NThreading::TFuture<NProto::TWriteLogRecordResponse> = 0;
 
     [[nodiscard]] virtual auto ReadJournalTail(
-        NCloud::NProto::TReadJournalTailRequest request)
-        -> NThreading::TFuture<NCloud::NProto::TReadJournalTailResponse> = 0;
+        NProto::TReadJournalTailRequest request)
+        -> NThreading::TFuture<NProto::TReadJournalTailResponse> = 0;
 
     [[nodiscard]] virtual auto AdvanceLsnLowWatermark(
-        NCloud::NProto::TAdvanceLsnLowWatermarkRequest request)
-        -> NThreading::TFuture<NCloud::NProto::TAdvanceLsnLowWatermarkResponse> = 0;
+        NProto::TAdvanceLsnLowWatermarkRequest request)
+        -> NThreading::TFuture<NProto::TAdvanceLsnLowWatermarkResponse> = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -432,9 +432,26 @@ struct TFixture: public NUnitTest::TBaseFixture
 
     void TearDown(NUnitTest::TTestContext& /*context*/) override
     {
-        Device->Stop();
+        Device->Stop().Wait();
         Executor->Stop();
         Logging->Stop();
+    }
+
+    NCloud::NProto::TError StartDevice()
+    {
+        return Device->Start().GetValueSync();
+    }
+
+    void StartDeviceAndCheck()
+    {
+        const auto error = StartDevice();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
+    }
+
+    void StopDevice()
+    {
+        const auto error = Device->Stop().GetValueSync();
+        UNIT_ASSERT_VALUES_EQUAL_C(S_OK, error.GetCode(), FormatError(error));
     }
 
     NCloud::NProto::TReadPagesResponse ReadPages(
@@ -856,11 +873,11 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         Journal->AddRecordToFlush(MakeRecord(2, 20, 1));
         Journal->AddRecordToFlush(MakeRecord(3, 30, 3));
 
-        Device->Start();
+        StartDeviceAndCheck();
         UNIT_ASSERT_VALUES_EQUAL(1, Journal->GetRestoreCount());
 
         WaitForAllRecordsToBeFlushed();
-        Device->Stop();
+        StopDevice();
 
         const auto writes = DataStore->GetWriteRequests();
         UNIT_ASSERT_VALUES_EQUAL(3, writes.size());
@@ -898,9 +915,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         Journal->RestoreResponse = 1;
         Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
 
-        Device->Start();
+        StartDeviceAndCheck();
         WaitForAllRecordsToBeFlushed();
-        Device->Stop();
+        StopDevice();
 
         // the record has been written twice: the failed attempt and the retry
 
@@ -926,14 +943,14 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         Journal->AddRecordToFlush(MakeRecord(2, 20, 1));
         Journal->AddRecordToFlush(MakeRecord(3, 30, 3));
 
-        Device->Start();
+        StartDeviceAndCheck();
 
         // the first cycle flushes lsn 1 and 2 and stops at lsn 3, the second
         // one finds nothing to flush at all
 
         WaitForFlushCycle();
         WaitForFlushCycle();
-        Device->Stop();
+        StopDevice();
 
         const auto writes = DataStore->GetWriteRequests();
         UNIT_ASSERT_VALUES_EQUAL(2, writes.size());
@@ -951,7 +968,11 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
         Journal->RestoreResponse = MakeError(E_IO, "journal is broken");
         Journal->AddRecordToFlush(MakeRecord(1, 10, 2));
 
-        Device->Start();
+        const auto startError = StartDevice();
+        UNIT_ASSERT_VALUES_EQUAL(E_IO, startError.GetCode());
+        UNIT_ASSERT_STRING_CONTAINS(
+            startError.GetMessage(),
+            "journal is broken");
 
         const auto readResponse = ReadPages(MakeReadRequest({{10, 4}}));
         UNIT_ASSERT_VALUES_EQUAL(E_IO, readResponse.GetError().GetCode());
@@ -981,7 +1002,7 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
                 .GetError()
                 .GetCode());
 
-        Device->Stop();
+        StopDevice();
 
         // neither the requests nor the flush cycle got to the journal or the
         // data store
@@ -994,9 +1015,9 @@ Y_UNIT_TEST_SUITE(TJournalledDeviceV2Test)
 
     Y_UNIT_TEST_F(ShouldStopFlushCycle, TFixture)
     {
-        Device->Start();
+        StartDeviceAndCheck();
         WaitForAllRecordsToBeFlushed();
-        Device->Stop();
+        StopDevice();
 
         const auto cleanupCount = Journal->GetCleanupCount();
 
