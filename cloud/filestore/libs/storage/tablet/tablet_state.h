@@ -1558,7 +1558,7 @@ public:
     void LoadCompactionMap(const TVector<TCompactionRangeInfo>& compactionMap);
 
     //
-    // Forced Compaction
+    // Forced operations
     //
 
 public:
@@ -1597,17 +1597,49 @@ public:
         }
     };
 
-private:
+    struct TForcedTabletOperationState
+    {
+        const TEvIndexTabletPrivate::EForcedTabletOperationMode Mode;
+        const TString OperationId;
+        TInstant StartTime = TInstant::Now();
+        NProtoPrivate::TForcedOperationStatusResponse::EStatus Status =
+            NProtoPrivate::TForcedOperationStatusResponse::E_UNKNOWN;
+        NProto::TError Error;
+
+        TForcedTabletOperationState(
+                TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
+                TString operationId)
+            : Mode(mode)
+            , OperationId(std::move(operationId))
+        {}
+    };
+
+    using TForcedOperationState =
+        std::variant<TForcedRangeOperationState, TForcedTabletOperationState>;
+
+protected:
     struct TPendingForcedRangeOperation
     {
-        TEvIndexTabletPrivate::EForcedRangeOperationMode Mode;
+        using EMode = TEvIndexTabletPrivate::EForcedRangeOperationMode;
+        EMode Mode = EMode::Compaction;
         TVector<ui32> Ranges;
         TString OperationId;
     };
 
-    TVector<TPendingForcedRangeOperation> PendingForcedRangeOperations;
-    TMaybe<TForcedRangeOperationState> ForcedRangeOperationState;
-    TVector<TForcedRangeOperationState> CompletedForcedRangeOperations;
+    struct TPendingForcedTabletOperation
+    {
+        using EMode = TEvIndexTabletPrivate::EForcedTabletOperationMode;
+        EMode Mode = EMode::Flush;
+        TString OperationId;
+    };
+
+    using TPendingForcedOperation = std::
+        variant<TPendingForcedRangeOperation, TPendingForcedTabletOperation>;
+
+private:
+    TVector<TPendingForcedOperation> PendingForcedOperations;
+    TMaybe<TForcedOperationState> ForcedOperationState;
+    TVector<TForcedOperationState> CompletedForcedOperations;
 
 public:
     // Allocates a new operationId if provided operationId was empty
@@ -1616,11 +1648,17 @@ public:
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges,
         TString operationId);
-    TMaybe<TPendingForcedRangeOperation> DequeueForcedRangeOperation();
+    TString EnqueueForcedTabletOperation(
+        TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
+        TString operationId);
+    TMaybe<TPendingForcedOperation> DequeueForcedOperation();
 
-    void StartForcedRangeOperation(
+    TForcedRangeOperationState* StartForcedRangeOperation(
         TEvIndexTabletPrivate::EForcedRangeOperationMode mode,
         TVector<ui32> ranges,
+        TString operationId);
+    TForcedTabletOperationState* StartForcedTabletOperation(
+        TEvIndexTabletPrivate::EForcedTabletOperationMode mode,
         TString operationId);
 
     void AbortForcedRangeOperation(
@@ -1629,25 +1667,21 @@ public:
         TString operationId,
         const NProto::TError& error);
 
-    void CompleteForcedRangeOperation(const NProto::TError& error);
+    void CompleteForcedOperation(const NProto::TError& error);
 
-    const TForcedRangeOperationState* GetForcedRangeOperationState() const
+    const TForcedOperationState* GetForcedOperationState() const
     {
-        return ForcedRangeOperationState.Get();
+        return ForcedOperationState.Get();
     }
 
-    const TForcedRangeOperationState* FindForcedRangeOperation(
+    const TForcedOperationState* FindForcedOperation(
         const TString& operationId) const;
 
-    void UpdateForcedRangeOperationProgress(ui32 current)
-    {
-        ForcedRangeOperationState->Current =
-            Max(ForcedRangeOperationState->Current, current);
-    }
+    void UpdateForcedRangeOperationProgress(ui32 current);
 
-    bool IsForcedRangeOperationRunning() const
+    bool IsForcedOperationRunning() const
     {
-        return ForcedRangeOperationState.Defined();
+        return ForcedOperationState.Defined();
     }
 
     bool IsForcedRangeOperationPending(const TString& operationId) const;
