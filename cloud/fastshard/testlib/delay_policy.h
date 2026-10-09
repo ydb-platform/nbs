@@ -4,9 +4,12 @@
 
 #include <memory>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
+namespace NCloud::NFastShard {
 
 ////////////////////////////////////////////////////////////////////////////////
+
+constexpr TDuration DefaultStorageDelayMean = TDuration::MicroSeconds(100);
+constexpr TDuration DefaultStorageDelayStdDev = TDuration::MicroSeconds(100);
 
 /**
  * Source of artificial response delays for storage fakes.
@@ -39,4 +42,11 @@ using IDelayPolicyPtr = std::shared_ptr<IDelayPolicy>;
  */
 IDelayPolicyPtr CreateLognormalDelayPolicy(TDuration mean, TDuration stddev);
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+/**
+ * Returns a policy which samples no delay at all.
+ *
+ * @return - The constructed policy.
+ */
+IDelayPolicyPtr CreateZeroDelayPolicy();
+
+}   // namespace NCloud::NFastShard
