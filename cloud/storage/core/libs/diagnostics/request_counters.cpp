@@ -11,6 +11,7 @@
 #include <cloud/storage/core/libs/common/timer.h>
 #include <cloud/storage/core/libs/common/verify.h>
 
+#include <library/cpp/int128/int128.h>
 #include <library/cpp/monlib/dynamic_counters/counters.h>
 
 #include <util/datetime/cputimer.h>
@@ -19,6 +20,7 @@
 #include <util/string/builder.h>
 #include <util/system/mutex.h>
 
+#include <limits>
 #include <utility>
 
 namespace NCloud {
@@ -389,6 +391,11 @@ struct TRequestCounters::TStatCounters
     TDynamicCounters::TCounterPtr MaxInProgress;
     TDynamicCounters::TCounterPtr IoDepthCurrent;
     TDynamicCounters::TCounterPtr IoDepthTimeUs;
+
+    // Average depth in thousandths over the last publication interval.
+    // Meaningful only when IoDepthAverageValid is 1.
+    TDynamicCounters::TCounterPtr IoDepthAverageMilli;
+    TDynamicCounters::TCounterPtr IoDepthAverageValid;
     TDynamicCounters::TCounterPtr InProgressBytes;
     TDynamicCounters::TCounterPtr MaxInProgressBytes;
     TDynamicCounters::TCounterPtr PostponedQueueSize;
@@ -523,6 +530,14 @@ struct TRequestCounters::TStatCounters
             if (reportIoDepth) {
                 IoDepthCurrent = counters.GetCounter("IoDepthCurrent", false);
                 IoDepthTimeUs = counters.GetCounter("IoDepthTimeUs", true);
+
+                IoDepthAverageMilli =
+                    counters.GetCounter("IoDepthAverageMilli", false);
+                IoDepthAverageValid =
+                    counters.GetCounter("IoDepthAverageValid", false);
+
+                *IoDepthAverageValid = 0;
+                *IoDepthAverageMilli = 0;
             }
         }
     }
@@ -999,6 +1014,8 @@ void TRequestCounters::Register(TDynamicCounters& counters)
             }
         }
     }
+
+    PreviousIoDepthSnapshot = GetIoDepthSnapshot();
 }
 
 void TRequestCounters::Subscribe(TRequestCountersPtr subscriber)
@@ -1173,6 +1190,75 @@ void TRequestCounters::BatchCompleted(
         sizeHist);
 }
 
+void TRequestCounters::UpdateIoDepthAverage(
+    const TIoDepthSnapshot& snapshot,
+    bool updateIntervalFinished)
+{
+    const bool sameGeneration =
+        PreviousIoDepthSnapshot &&
+        snapshot.Generation == PreviousIoDepthSnapshot->Generation;
+
+    // Keep the previous published average between publication ticks.
+    // Invalid continuity or a changed source must be handled immediately.
+    if (!updateIntervalFinished && snapshot.Continuous && sameGeneration) {
+        return;
+    }
+
+    const bool validInterval =
+        updateIntervalFinished && sameGeneration &&
+        PreviousIoDepthSnapshot->Continuous && snapshot.Continuous &&
+        snapshot.TimestampNs > PreviousIoDepthSnapshot->TimestampNs &&
+        snapshot.Lanes.size() == PreviousIoDepthSnapshot->Lanes.size() &&
+        snapshot.Lanes.size() == CountersByRequest.size();
+
+    for (TRequestType t = 0; t < CountersByRequest.size(); ++t) {
+        auto& counters = CountersByRequest[t];
+
+        if (!counters.IoDepthAverageMilli) {
+            continue;
+        }
+
+        *counters.IoDepthAverageValid = 0;
+        *counters.IoDepthAverageMilli = 0;
+
+        if (!validInterval) {
+            continue;
+        }
+
+        const auto& currentLane = snapshot.Lanes[t];
+        const auto& previousLane = PreviousIoDepthSnapshot->Lanes[t];
+
+        if (currentLane.IntegralUs < previousLane.IntegralUs) {
+            continue;
+        }
+
+        const ui64 elapsedNs =
+            snapshot.TimestampNs - PreviousIoDepthSnapshot->TimestampNs;
+        const ui64 integralDeltaUs =
+            currentLane.IntegralUs - previousLane.IntegralUs;
+
+        // Convert microseconds to nanoseconds and scale depth by 1000.
+        const ui128 averageMilli =
+            ui128(integralDeltaUs) * ui128(1'000'000) / ui128(elapsedNs);
+
+        if (averageMilli > ui128(std::numeric_limits<i64>::max())) {
+            continue;
+        }
+
+        *counters.IoDepthAverageMilli = static_cast<i64>(averageMilli);
+        *counters.IoDepthAverageValid = 1;
+    }
+
+    if (!snapshot.Continuous) {
+        PreviousIoDepthSnapshot.reset();
+    } else if (
+        !sameGeneration ||
+        snapshot.TimestampNs > PreviousIoDepthSnapshot->TimestampNs)
+    {
+        PreviousIoDepthSnapshot = snapshot;
+    }
+}
+
 void TRequestCounters::UpdateStats(bool updatePercentiles)
 {
     const auto ioDepth = GetIoDepthSnapshot();
@@ -1190,6 +1276,10 @@ void TRequestCounters::UpdateStats(bool updatePercentiles)
                 *statCounters.IoDepthTimeUs = lane.IntegralUs;
             }
         }
+    }
+
+    if (ioDepth) {
+        UpdateIoDepthAverage(*ioDepth, updatePercentiles);
     }
 
     // NOTE subscribers are updated by their owners

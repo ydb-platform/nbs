@@ -160,6 +160,217 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         Y_UNUSED(GetCyclesPerMillisecond());
     }
 
+    Y_UNIT_TEST(ShouldAverageIoDepthOverPublicationInterval)
+    {
+        ui64 nowNs = 0;
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoDepth,
+             .IoDepthClock = [&]
+             {
+                 return nowNs;
+             }});
+        counters.Register(*monitoring->GetCounters());
+
+        auto read =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+        auto average = read->GetCounter("IoDepthAverageMilli");
+        auto valid = read->GetCounter("IoDepthAverageValid");
+
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 0);
+
+        const auto started = counters.RequestStarted(ReadRequestType, 4096);
+
+        nowNs = 5'000'000'000ULL;
+        counters.UpdateStats(false);
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 0);
+
+        nowNs = 10'000'000'000ULL;
+        counters.RequestCompleted(
+            ReadRequestType,
+            started,
+            TDuration::Zero(),
+            TDuration::Zero(),
+            TDuration::Zero(),
+            4096,
+            EDiagnosticsErrorKind::Success,
+            NCloud::NProto::EF_NONE,
+            false,
+            ECalcMaxTime::ENABLE,
+            0);
+
+        nowNs = 12'000'000'000ULL;
+        counters.UpdateStats(false);
+
+        nowNs = 20'000'000'000ULL;
+        counters.UpdateStats(true);
+
+        // One request was active for 10 seconds out of 20.
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 500);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            read->GetCounter("IoDepthTimeUs", true)->Val(),
+            10'000'000);
+
+        auto write =
+            monitoring->GetCounters()->GetSubgroup("request", "WriteBlocks");
+        UNIT_ASSERT_VALUES_EQUAL(
+            write->GetCounter("IoDepthAverageMilli")->Val(),
+            0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            write->GetCounter("IoDepthAverageValid")->Val(),
+            1);
+
+        nowNs = 21'000'000'000ULL;
+        counters.UpdateStats(false);
+
+        // Intermediate updates preserve the published result.
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 500);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 1);
+
+        nowNs = 30'000'000'000ULL;
+        counters.UpdateStats(true);
+
+        // No requests were active during the next interval.
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 1);
+    }
+
+    Y_UNIT_TEST(ShouldInvalidateIoDepthAverageOnClockRollback)
+    {
+        ui64 nowNs = 0;
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoDepth,
+             .IoDepthClock = [&]
+             {
+                 return nowNs;
+             }});
+        counters.Register(*monitoring->GetCounters());
+
+        auto read =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+        auto average = read->GetCounter("IoDepthAverageMilli");
+        auto valid = read->GetCounter("IoDepthAverageValid");
+
+        counters.RequestStarted(ReadRequestType, 4096);
+
+        nowNs = 15'000'000'000ULL;
+        counters.UpdateStats(true);
+
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 1000);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 1);
+
+        nowNs = 10'000'000'000ULL;
+        counters.UpdateStats(false);
+
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 0);
+
+        nowNs = 30'000'000'000ULL;
+        counters.UpdateStats(true);
+
+        // Continuity remains invalid for this source generation.
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 0);
+    }
+
+    Y_UNIT_TEST(ShouldKeepIoDepthAverageWindowOnEqualTimestamps)
+    {
+        ui64 nowNs = 0;
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoDepth,
+             .IoDepthClock = [&]
+             {
+                 return nowNs;
+             }});
+        counters.Register(*monitoring->GetCounters());
+
+        auto read =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+        auto average = read->GetCounter("IoDepthAverageMilli");
+        auto valid = read->GetCounter("IoDepthAverageValid");
+        counters.RequestStarted(ReadRequestType, 4096);
+
+        counters.UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 0);
+
+        nowNs = 1'000'000'000;
+        counters.UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 1000);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 1);
+
+        counters.UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 0);
+
+        nowNs = 3'000'000'000;
+        counters.UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 1000);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 1);
+    }
+
+    Y_UNIT_TEST(ShouldRestartIoDepthAverageWindowOnRegistration)
+    {
+        ui64 nowNs = 0;
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = MakeRequestCounters(
+            {.Options = TRequestCounters::EOption::ReportIoDepth,
+             .IoDepthClock = [&]
+             {
+                 return nowNs;
+             }});
+        counters.Register(*monitoring->GetCounters());
+
+        auto read =
+            monitoring->GetCounters()->GetSubgroup("request", "ReadBlocks");
+        auto average = read->GetCounter("IoDepthAverageMilli");
+        auto valid = read->GetCounter("IoDepthAverageValid");
+        const auto started = counters.RequestStarted(ReadRequestType, 4096);
+
+        nowNs = 5'000'000'000;
+        counters.UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 1000);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 1);
+        const auto before = counters.GetIoDepthSnapshot();
+
+        nowNs = 10'000'000'000ULL;
+        counters.Register(*monitoring->GetCounters());
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 0);
+        const auto after = counters.GetIoDepthSnapshot();
+        UNIT_ASSERT(before->Generation == after->Generation);
+        UNIT_ASSERT(after->Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(after->Lanes[ReadRequestType].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            after->Lanes[ReadRequestType].IntegralUs,
+            10'000'000);
+
+        nowNs = 15'000'000'000ULL;
+        counters.RequestCompleted(
+            ReadRequestType,
+            started,
+            TDuration::Zero(),
+            TDuration::Zero(),
+            TDuration::Zero(),
+            4096,
+            EDiagnosticsErrorKind::Success,
+            NCloud::NProto::EF_NONE,
+            false,
+            ECalcMaxTime::ENABLE,
+            0);
+
+        nowNs = 20'000'000'000ULL;
+        counters.UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(average->Val(), 500);
+        UNIT_ASSERT_VALUES_EQUAL(valid->Val(), 1);
+        UNIT_ASSERT_VALUES_EQUAL(
+            read->GetCounter("IoDepthTimeUs", true)->Val(),
+            15'000'000);
+    }
+
     Y_UNIT_TEST(ShouldAccumulateIoDepthWithoutCompletedRequests)
     {
         ui64 nowNs = 0;
@@ -189,6 +400,12 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
 
         nowNs = 10'000'000'000ULL;
         counters.UpdateStats(true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            read->GetCounter("IoDepthAverageMilli")->Val(),
+            1000);
+        UNIT_ASSERT_VALUES_EQUAL(
+            read->GetCounter("IoDepthAverageValid")->Val(),
+            1);
         UNIT_ASSERT_VALUES_EQUAL(
             read->GetCounter("IoDepthTimeUs", true)->Val(),
             10'000'000);
@@ -226,6 +443,8 @@ Y_UNIT_TEST_SUITE(TRequestCountersTest)
         UNIT_ASSERT(!counters.GetIoDepthSnapshot());
         UNIT_ASSERT(!read->FindCounter("IoDepthCurrent"));
         UNIT_ASSERT(!read->FindCounter("IoDepthTimeUs"));
+        UNIT_ASSERT(!read->FindCounter("IoDepthAverageMilli"));
+        UNIT_ASSERT(!read->FindCounter("IoDepthAverageValid"));
     }
 
     Y_UNIT_TEST(ShouldKeepIoDepthEpochAcrossCounterRegistration)

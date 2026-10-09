@@ -65,6 +65,9 @@ private:
     THolder<TSpecialCounters> SpecialCounters;
     TVector<TStatCounters> CountersByRequest;
     std::unique_ptr<TIoDepthTracker> IoDepthTracker;
+
+    // Snapshot at the beginning of the averaging interval.
+    std::optional<TIoDepthSnapshot> PreviousIoDepthSnapshot;
     TVector<TRequestCountersPtr> Subscribers;
 
 public:
@@ -155,6 +158,10 @@ private:
         ECalcMaxTime calcMaxTime);
 
     bool ShouldReport(TRequestType requestType) const;
+
+    void UpdateIoDepthAverage(
+        const TIoDepthSnapshot& snapshot,
+        bool updateIntervalFinished);
 
     template<typename TMethod, typename... TArgs>
     void NotifySubscribers(TMethod&& m, TArgs&&... args);
