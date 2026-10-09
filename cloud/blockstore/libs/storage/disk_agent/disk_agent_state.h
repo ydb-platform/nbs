@@ -92,7 +92,6 @@ public:
         TVector<NProto::TDeviceConfig> Configs;
         TVector<IStoragePtr> Devices;
         TVector<TString> Errors;
-        TVector<TString> ConfigMismatchErrors;
         TVector<TString> DevicesWithSuspendedIO;
         TVector<TString> LostDevicesIds;
         THashMap<TString, NProto::TJournalConfig> JournalledDevices;

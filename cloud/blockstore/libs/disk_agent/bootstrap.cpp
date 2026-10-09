@@ -266,11 +266,13 @@ void TBootstrap::InitHTTPServer()
 
 void TBootstrap::Init()
 {
+    InitProcessCriticalEventsReporting();
     TLogSettings logSettings;
     logSettings.BackendFileName = Configs->GetLogConfig().GetBackendFileName();
 
     BootstrapLogging = CreateLoggingService("console", logSettings);
     Log = BootstrapLogging->CreateLog("BLOCKSTORE_SERVER");
+    SetCriticalEventsLog(Log);
     STORAGE_INFO("NBS server version: " << GetFullVersionString());
 
     Timer = CreateWallClockTimer();
@@ -329,14 +331,6 @@ void TBootstrap::Init()
         CreateCriticalEventsStatsHandler());
 
     STORAGE_INFO("CriticalEventsStatsUpdater initialized");
-
-    for (auto& event: PostponedCriticalEvents) {
-        ReportCriticalEvent(
-            event,
-            "",     // message
-            false); // verifyDebug
-    }
-    PostponedCriticalEvents.clear();
 }
 
 void TBootstrap::InitProfileLog()
@@ -367,11 +361,11 @@ void TBootstrap::InitRdmaServer(NRdma::TRdmaConfig& config)
             STORAGE_INFO("RDMA server initialized");
         }
     } catch (...) {
-        STORAGE_ERROR("Failed to initialize RDMA server: "
-            << CurrentExceptionMessage().c_str());
+        ReportRdmaError(
+            TStringBuilder() << "Failed to initialize RDMA server: "
+                             << CurrentExceptionMessage());
 
         RdmaServer = nullptr;
-        PostponedCriticalEvents.push_back("AppCriticalEvents/RdmaError");
     }
 }
 
