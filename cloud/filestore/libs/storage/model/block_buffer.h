@@ -15,11 +15,13 @@ struct IBlockBuffer
 {
     virtual ~IBlockBuffer() = default;
 
-    virtual TStringBuf GetUnalignedHead() = 0;
-    virtual TStringBuf GetBlock(size_t index) = 0;
-    virtual TStringBuf GetUnalignedTail() = 0;
+    [[nodiscard]] virtual TStringBuf GetUnalignedHead() const = 0;
+    [[nodiscard]] virtual TStringBuf GetBlock(size_t index) const = 0;
+    [[nodiscard]] virtual TStringBuf GetUnalignedTail() const = 0;
     virtual void SetBlock(size_t index, TStringBuf block) = 0;
     virtual void ClearBlock(size_t index) = 0;
+
+    [[nodiscard]] virtual bool UsesLazyAllocation() const = 0;
 };
 
 ////////////////////////////////////////////////////////////////////////////////

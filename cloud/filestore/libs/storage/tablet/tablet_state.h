@@ -1215,6 +1215,13 @@ public:
         ui32 blockIndex,
         TStringBuf blockData);
 
+    void WriteFreshBlock(
+        IIndexTabletDatabase& db,
+        ui64 nodeId,
+        ui64 commitId,
+        ui32 blockIndex,
+        TBlockDataHolder freshBlock);
+
     void MarkFreshBlocksDeleted(
         IIndexTabletDatabase& db,
         ui64 nodeId,

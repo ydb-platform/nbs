@@ -2,6 +2,8 @@
 
 #include "public.h"
 
+#include <cloud/filestore/libs/storage/model/block_buffer.h>
+
 #include <cloud/storage/core/libs/tablet/model/commit.h>
 #include <cloud/storage/core/libs/tablet/model/partial_blob_id.h>
 
@@ -59,6 +61,20 @@ struct TFreshBlock: TBlock
 struct TOwningFreshBlock: TBlock
 {
     TString BlockData;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+struct TBlockDataHolder
+{
+    size_t BufferBlockIndex = 0;
+    IConstBlockBufferPtr BlockBuffer;
+
+    [[nodiscard]] TStringBuf GetBlockData() const
+    {
+        Y_DEBUG_ABORT_UNLESS(BlockBuffer);
+        return BlockBuffer->GetBlock(BufferBlockIndex);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////

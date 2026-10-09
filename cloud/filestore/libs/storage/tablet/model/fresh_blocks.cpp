@@ -22,35 +22,18 @@ TBlock BlockKey(ui64 nodeId, ui32 blockIndex)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TFreshBlocks::TFreshBlocks(IAllocator* allocator)
-    : Allocator(allocator)
-{}
-
-TFreshBlocks::~TFreshBlocks()
+bool TFreshBlocks::AddBlock(
+    ui64 nodeId,
+    ui32 blockIndex,
+    TBlockDataHolder blockData,
+    ui64 minCommitId,
+    ui64 maxCommitId)
 {
-    for (const auto& [block, blockData]: Blocks) {
-        ReleaseBlock(blockData);
-    }
-}
+    auto [it, inserted] = Blocks.emplace(
+        TBlock(nodeId, blockIndex, minCommitId, maxCommitId),
+        std::move(blockData));
 
-TStringBuf TFreshBlocks::AllocateBlock(TStringBuf content, ui32 blockSize)
-{
-    Y_ABORT_UNLESS(blockSize >= content.size());
-
-    auto block = Allocator->Allocate(blockSize);
-    memcpy(block.Data, content.data(), content.size());
-
-    if (content.size() < blockSize) {
-        memset(static_cast<char*>(block.Data) + content.size(), 0, blockSize - content.size());
-    }
-
-    return { static_cast<const char*>(block.Data), blockSize };
-}
-
-void TFreshBlocks::ReleaseBlock(TStringBuf content)
-{
-    IAllocator::TBlock block { const_cast<char*>(content.data()), content.size() };
-    Allocator->Release(block);
+    return inserted;
 }
 
 bool TFreshBlocks::AddBlock(
@@ -61,18 +44,20 @@ bool TFreshBlocks::AddBlock(
     ui64 minCommitId,
     ui64 maxCommitId)
 {
-    auto content = AllocateBlock(blockData, blockSize);
-
-    auto [it, inserted] = Blocks.emplace(
-        TBlock(nodeId, blockIndex, minCommitId, maxCommitId),
-        content);
-
-    if (!inserted) {
-        ReleaseBlock(content);
-        return false;
-    }
-
-    return true;
+    Y_ABORT_UNLESS(blockSize >= blockData.size());
+    TString buffer;
+    buffer.reserve(blockSize);
+    buffer.append(blockData);
+    buffer.resize(blockSize, 0);
+    auto blockBuffer = CreateBlockBuffer(
+        {static_cast<ui64>(blockIndex) * blockSize, blockSize, blockSize},
+        std::move(buffer));
+    return AddBlock(
+        nodeId,
+        blockIndex,
+        {0, std::move(blockBuffer)},
+        minCommitId,
+        maxCommitId);
 }
 
 ui64 TFreshBlocks::MarkBlockDeleted(ui64 nodeId, ui32 blockIndex, ui64 commitId)
@@ -122,7 +107,6 @@ bool TFreshBlocks::RemoveBlock(ui64 nodeId, ui32 blockIndex, ui64 commitId)
 {
     auto it = Blocks.find(BlockKey(nodeId, blockIndex, commitId));
     if (it != Blocks.end()) {
-        ReleaseBlock(it->second);
         Blocks.erase(it);
         return true;
     }
@@ -156,7 +140,7 @@ TMaybe<TFreshBlock> TFreshBlocks::FindBlock(
         if (block.NodeId == nodeId && block.BlockIndex == blockIndex) {
             Y_ABORT_UNLESS(block.MinCommitId <= commitId);
             if (block.MaxCommitId > commitId) {
-                return TFreshBlock { block, it->second };
+                return TFreshBlock{block, it->second.GetBlockData()};
             }
         }
     }
@@ -166,16 +150,16 @@ TMaybe<TFreshBlock> TFreshBlocks::FindBlock(
 
 void TFreshBlocks::FindBlocks(IFreshBlockVisitor& visitor) const
 {
-    for (const auto& [block, blockData]: Blocks) {
-        visitor.Accept(block, blockData);
+    for (const auto& [block, freshBlock]: Blocks) {
+        visitor.Accept(block, freshBlock);
     }
 }
 
 void TFreshBlocks::FindBlocks(IFreshBlockVisitor& visitor, ui64 commitId) const
 {
-    for (const auto& [block, blockData]: Blocks) {
+    for (const auto& [block, freshBlock]: Blocks) {
         if (VisibleCommitId(commitId, block.MinCommitId, block.MaxCommitId)) {
-            visitor.Accept(block, blockData);
+            visitor.Accept(block, freshBlock);
         }
     }
 }
