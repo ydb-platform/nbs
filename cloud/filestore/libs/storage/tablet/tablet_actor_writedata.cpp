@@ -191,6 +191,9 @@ void TIndexTabletActor::HandleWriteData(
 
     IConstBlockBufferPtr blockBuffer =
         CreateBlockBuffer(range, std::move(buffer));
+    // Do not use lazy block buffer as it can be accessed by FlushActor from
+    // another thread
+    Y_DEBUG_ABORT_UNLESS(!blockBuffer->UsesLazyAllocation());
 
     AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 
