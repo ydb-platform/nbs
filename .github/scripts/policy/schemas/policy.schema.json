@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nbs:actions-policy:shared",
+  "$comment": "Constraints for locally authored, simulatable policies. Live responses use GitHub's response contract instead. Rule parameter shapes and actor/event enums come from the vendored GitHub schema.",
+  "$defs": {
+    "strings": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "actor": {
+      "$ref": "urn:nbs:actions-policy:github:2026-03-10#/$defs/actions-rule-params-actor",
+      "properties": {
+        "id": {
+          "minimum": 1
+        }
+      }
+    },
+    "actorParameters": {
+      "$ref": "urn:nbs:actions-policy:github:2026-03-10#/$defs/actions-rule-restrict-actions-actors/properties/parameters",
+      "properties": {
+        "allowed_actors": {
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/actor"
+          }
+        }
+      }
+    },
+    "eventParameters": {
+      "$ref": "urn:nbs:actions-policy:github:2026-03-10#/$defs/actions-rule-restrict-action-events/properties/parameters",
+      "properties": {
+        "allowed_events": {
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "$ref": "urn:nbs:actions-policy:github:2026-03-10#/$defs/request/properties/name"
+        },
+        "enforcement": {
+          "$ref": "urn:nbs:actions-policy:github:2026-03-10#/$defs/repository-rule-enforcement"
+        },
+        "conditions": {
+          "type": "object",
+          "properties": {
+            "workflow_path": {
+              "type": "object",
+              "properties": {
+                "include": {
+                  "$ref": "#/$defs/strings",
+                  "minItems": 1
+                },
+                "exclude": {
+                  "$ref": "#/$defs/strings"
+                }
+              },
+              "required": [
+                "include",
+                "exclude"
+              ],
+              "additionalProperties": true
+            }
+          },
+          "required": [
+            "workflow_path"
+          ],
+          "additionalProperties": true
+        },
+        "rules": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "enum": [
+                  "restrict_actions_actors",
+                  "restrict_action_events"
+                ]
+              },
+              "parameters": {}
+            },
+            "required": [
+              "type",
+              "parameters"
+            ],
+            "additionalProperties": true,
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "restrict_actions_actors"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "parameters": {
+                      "$ref": "#/$defs/actorParameters"
+                    }
+                  }
+                }
+              },
+              {
+                "if": {
+                  "properties": {
+                    "type": {
+                      "const": "restrict_action_events"
+                    }
+                  },
+                  "required": [
+                    "type"
+                  ]
+                },
+                "then": {
+                  "properties": {
+                    "parameters": {
+                      "$ref": "#/$defs/eventParameters"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "const": "restrict_actions_actors"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "const": "restrict_action_events"
+                  }
+                },
+                "required": [
+                  "type"
+                ]
+              },
+              "minContains": 0,
+              "maxContains": 1
+            }
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "enforcement",
+        "conditions",
+        "rules"
+      ],
+      "additionalProperties": true
+    }
+  }
+}
