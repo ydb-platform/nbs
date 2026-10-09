@@ -1,5 +1,6 @@
 #include "server.h"
 
+#include "binary_writer.h"
 #include "client.h"
 #include "client_handler.h"
 #include "error_handler.h"
@@ -63,6 +64,30 @@ public:
             }
         } catch (...) {
             UNIT_FAIL(CurrentExceptionMessage());
+        }
+    }
+};
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TShortReadErrorHandler final
+    : public IErrorHandler
+{
+public:
+    TManualEvent ShortRead;
+
+    void ProcessException(std::exception_ptr exception) override
+    {
+        try {
+            std::rethrow_exception(std::move(exception));
+        } catch (const yexception& e) {
+            const TStringBuf message = e.what();
+            if (message.Contains("Unexpected end of stream") ||
+                message.Contains("Failed to read required number of bytes"))
+            {
+                ShortRead.Signal();
+            }
+        } catch (...) {
         }
     }
 };
@@ -1172,6 +1197,61 @@ Y_UNIT_TEST_SUITE(TServerTest)
 
         secondClientEndpoint->Stop();
         bootstrap->Stop();
+    }
+
+    Y_UNIT_TEST(ShouldCompleteDrainAfterTruncatedWritePayload)
+    {
+        TPortManager portManager;
+        auto port = portManager.GetPort(9001);
+        TNetworkAddress connectAddress(port);
+
+        auto errorHandler = std::make_shared<TShortReadErrorHandler>();
+        auto bootstrap = CreateBootstrap(
+            connectAddress,
+            std::make_shared<TTestStorage>(),
+            DefaultStorageOptions,
+            Default<TServerConfig>(),
+            nullptr,
+            errorHandler);
+
+        auto error = bootstrap->Start();
+        UNIT_ASSERT_C(!HasError(error), error);
+
+        Y_DEFER {
+            bootstrap->Stop(true);
+        };
+
+        TSocket socket(connectAddress);
+        TSocketInput in(socket);
+        TSocketOutput out(socket);
+
+        auto clientHandler = CreateClientHandler(
+            bootstrap->GetLogging(),
+            StructuredReply,
+            UseNbsErrors);
+        UNIT_ASSERT(clientHandler->NegotiateClient(in, out));
+
+        constexpr ui32 requestLength = 4_KB;
+
+        TBinaryWriter writer(out);
+        writer.Write<ui32>(NBD_REQUEST_MAGIC);
+        writer.Write<ui16>(0);
+        writer.Write<ui16>(NBD_CMD_WRITE);
+        writer.Write<ui64>(1);
+        writer.Write<ui64>(0);
+        writer.Write<ui32>(requestLength);
+
+        TString partialPayload(requestLength / 2, 'X');
+        writer.Write(partialPayload.data(), partialPayload.size());
+        writer.Flush();
+
+        socket.ShutDown(SHUT_WR);
+
+        UNIT_ASSERT(errorHandler->ShortRead.WaitT(TDuration::Seconds(5)));
+
+        auto stopFuture = bootstrap->StopEndpointAsync();
+        error = stopFuture.GetValue(TDuration::Seconds(5));
+        UNIT_ASSERT_C(!HasError(error), error);
     }
 
     Y_UNIT_TEST(ShouldCompleteDrainIfRequestFinishesBeforeSendShutdown)
