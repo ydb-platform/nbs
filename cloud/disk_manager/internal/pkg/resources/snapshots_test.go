@@ -722,6 +722,44 @@ func TestSnapshotsDeletionStopsBackup(t *testing.T) {
 	ids, err := storage.ListSnapshotsToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, ids)
+
+	// The queued attempt moves to the delete queue to be cancelled.
+	snapshotBackupIDsForDeletion, err :=
+		storage.GetSnapshotBackupDeleteQueue(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		[]SnapshotBackupID{{
+			DiskID:     "disk",
+			SnapshotID: "snapshot",
+			BackupID:   "manual",
+		}},
+		snapshotBackupIDsForDeletion,
+	)
+
+	_, err = storage.DeleteSnapshot(ctx, snapshot.ID, "delete", time.Now())
+	require.NoError(t, err)
+
+	snapshotBackupIDsForDeletion, err =
+		storage.GetSnapshotBackupDeleteQueue(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(
+		t,
+		[]SnapshotBackupID{{
+			DiskID:     "disk",
+			SnapshotID: "snapshot",
+			BackupID:   "manual",
+		}},
+		snapshotBackupIDsForDeletion,
+	)
+
+	err = storage.SnapshotBackupDeletionsCompleted(ctx, []string{"snapshot"})
+	require.NoError(t, err)
+
+	snapshotBackupIDsForDeletion, err =
+		storage.GetSnapshotBackupDeleteQueue(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, snapshotBackupIDsForDeletion)
 }
 
 func TestSnapshotBackupCompletedMarksOnlyReadySnapshot(t *testing.T) {

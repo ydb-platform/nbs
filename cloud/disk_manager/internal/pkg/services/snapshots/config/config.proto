@@ -22,4 +22,6 @@ message SnapshotsConfig {
     optional bool RetryBrokenDRBasedDiskCheckpoint = 8;
     optional string ScheduleBackupSnapshotTasksScheduleInterval = 9 [default = "1m"];
     optional uint32 ScheduleBackupSnapshotTasksLimit = 10 [default = 1000];
+    optional string DeleteBackupMetaTaskScheduleInterval = 11 [default = "10s"];
+    optional uint32 DeleteBackupMetaTaskBatchSize = 12 [default = 100];
 }

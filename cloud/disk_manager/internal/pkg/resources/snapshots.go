@@ -641,15 +641,42 @@ func (s *storageYDB) deleteSnapshot(
 	}
 
 	if s.backupEnabled {
+		// The queued backup moves to the delete queue: the deletion cancels
+		// it before deleting the copy.
+		backupID, err := s.takeSnapshotFromBackupQueue(ctx, tx, snapshotID)
+		if err != nil {
+			return nil, err
+		}
+
+		if len(state.diskID) == 0 {
+			return nil, errors.NewNonRetriableErrorf(
+				"snapshot %v has no disk id",
+				snapshotID,
+			)
+		}
+
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
 			declare $snapshot_id as Utf8;
+			declare $disk_id as Utf8;
+			declare $backup_id as Utf8;
 
-			delete from backup_queue
-			where snapshot_id = $snapshot_id
+			upsert into backup_delete_queue (snapshot_id, disk_id, backup_id)
+			values ($snapshot_id, $disk_id, $backup_id)
 		`, s.snapshotsPath),
-			persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+			persistence.ValueParam(
+				"$snapshot_id",
+				persistence.UTF8Value(snapshotID),
+			),
+			persistence.ValueParam(
+				"$disk_id",
+				persistence.UTF8Value(state.diskID),
+			),
+			persistence.ValueParam(
+				"$backup_id",
+				persistence.UTF8Value(backupID),
+			),
 		)
 		if err != nil {
 			return nil, err
@@ -929,6 +956,145 @@ func (s *storageYDB) snapshotBackupCompleted(
 		persistence.ValueParam(
 			"$ready",
 			persistence.Int64Value(int64(snapshotStatusReady)),
+		),
+	)
+	return err
+}
+
+// Removes the snapshot from backup_queue and returns the ID of the backup
+// attempt that was queued, or an empty string.
+func (s *storageYDB) takeSnapshotFromBackupQueue(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	snapshotID string,
+) (string, error) {
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+
+		select backup_id
+		from backup_queue
+		where snapshot_id = $snapshot_id
+	`, s.snapshotsPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+	)
+	if err != nil {
+		return "", err
+	}
+	defer res.Close()
+
+	var backupID string
+	if res.NextResultSet(ctx) && res.NextRow() {
+		err = res.ScanNamed(
+			persistence.OptionalWithDefault("backup_id", &backupID),
+		)
+		if err != nil {
+			return "", err
+		}
+	}
+	if err = res.Err(); err != nil {
+		return "", err
+	}
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+
+		delete from backup_queue
+		where snapshot_id = $snapshot_id
+	`, s.snapshotsPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+	)
+	return backupID, err
+}
+
+func (s *storageYDB) listSnapshotBackupIDsForDeletion(
+	ctx context.Context,
+	session *persistence.Session,
+	limit int,
+) ([]SnapshotBackupID, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $limit as Uint64;
+
+		select snapshot_id, disk_id, backup_id
+		from backup_delete_queue
+		limit $limit
+	`, s.snapshotsPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	var snapshotBackupIDsForDeletion []SnapshotBackupID
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var snapshotBackupID SnapshotBackupID
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault(
+					"snapshot_id",
+					&snapshotBackupID.SnapshotID,
+				),
+				persistence.OptionalWithDefault(
+					"disk_id",
+					&snapshotBackupID.DiskID,
+				),
+				persistence.OptionalWithDefault(
+					"backup_id",
+					&snapshotBackupID.BackupID,
+				),
+			)
+			if err != nil {
+				return nil, err
+			}
+
+			snapshotBackupIDsForDeletion = append(
+				snapshotBackupIDsForDeletion,
+				snapshotBackupID,
+			)
+		}
+	}
+
+	return snapshotBackupIDsForDeletion, nil
+}
+
+func (s *storageYDB) snapshotBackupDeletionsCompleted(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotIDs []string,
+) error {
+
+	if len(snapshotIDs) == 0 {
+		return nil
+	}
+
+	var snapshotIDValues []persistence.Value
+	for _, snapshotID := range snapshotIDs {
+		snapshotIDValues = append(
+			snapshotIDValues,
+			persistence.UTF8Value(snapshotID),
+		)
+	}
+
+	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_ids as List<Utf8>;
+
+		delete from backup_delete_queue
+		where snapshot_id in $snapshot_ids
+	`, s.snapshotsPath),
+		persistence.ValueParam(
+			"$snapshot_ids",
+			persistence.ListValue(snapshotIDValues...),
 		),
 	)
 	return err
@@ -1231,6 +1397,46 @@ func (s *storageYDB) EnqueueSnapshotBackup(
 	)
 }
 
+func (s *storageYDB) GetSnapshotBackupDeleteQueue(
+	ctx context.Context,
+	limit int,
+) ([]SnapshotBackupID, error) {
+
+	var snapshotBackupIDsForDeletion []SnapshotBackupID
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			snapshotBackupIDsForDeletion, err =
+				s.listSnapshotBackupIDsForDeletion(
+					ctx,
+					session,
+					limit,
+				)
+			return err
+		},
+	)
+	return snapshotBackupIDsForDeletion, err
+}
+
+func (s *storageYDB) SnapshotBackupDeletionsCompleted(
+	ctx context.Context,
+	snapshotIDs []string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.snapshotBackupDeletionsCompleted(
+				ctx,
+				session,
+				snapshotIDs,
+			)
+		},
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func createSnapshotsYDBTables(
@@ -1307,6 +1513,34 @@ func createSnapshotsYDBTables(
 	}
 	logging.Info(ctx, "Created backup_queue table")
 
+	err = db.CreateOrAlterTable(
+		ctx,
+		folder,
+		"backup_delete_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn(
+				"snapshot_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"disk_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			// The backup attempt that was queued when the snapshot was
+			// deleted; it is cancelled before the copy is deleted.
+			persistence.WithColumn(
+				"backup_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithPrimaryKeyColumn("snapshot_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_delete_queue table")
+
 	logging.Info(ctx, "Created tables for snapshots")
 
 	return nil
@@ -1343,6 +1577,12 @@ func dropSnapshotsYDBTables(
 		return err
 	}
 	logging.Info(ctx, "Dropped backup_queue table")
+
+	err = db.DropTable(ctx, folder, "backup_delete_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_delete_queue table")
 
 	logging.Info(ctx, "Dropped tables for snapshots")
 

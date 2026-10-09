@@ -10,6 +10,8 @@ SRCS(
     create_snapshot_from_disk_task.go
     create_snapshot_from_snapshot_task.go
     create_snapshot_from_url_task.go
+    delete_backup_chunks_task.go
+    delete_backup_snapshot_data_task.go
     delete_disk_from_incremental.go
     delete_snapshot_data_task.go
     delete_snapshot_task.go

@@ -151,11 +151,31 @@ func Create(
 	}
 	logging.Info(ctx, "Created backup_chunk_queue table")
 
-	// Chunks whose objects are in the follower, whichever snapshot copied them.
+	// Chunks queued for the follower or already copied there, whichever
+	// snapshot queued them. A row lives while the chunk lives in chunk_blobs:
+	// the last unref moves it to backup_chunk_delete_queue.
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
 		"follower_chunks",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("copied", persistence.Optional(persistence.TypeBool)),
+			persistence.WithPrimaryKeyColumn("chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created follower_chunks table")
+
+	// Chunks deleted from chunk_blobs whose follower objects are to be
+	// deleted.
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunk_delete_queue",
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
 			persistence.WithPrimaryKeyColumn("chunk_id"),
@@ -165,7 +185,7 @@ func Create(
 	if err != nil {
 		return err
 	}
-	logging.Info(ctx, "Created follower_chunks table")
+	logging.Info(ctx, "Created backup_chunk_delete_queue table")
 
 	if s3 != nil && len(config.GetS3Bucket()) != 0 {
 		exists, err := s3.BucketExists(ctx, config.GetS3Bucket())
@@ -250,6 +270,12 @@ func Drop(
 		return err
 	}
 	logging.Info(ctx, "Dropped follower_chunks table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_delete_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_chunk_delete_queue table")
 
 	logging.Info(ctx, "Dropped schema for dataplane snapshot storage")
 

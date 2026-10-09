@@ -209,4 +209,15 @@ type Storage interface {
 
 	// Used for monitoring only.
 	GetBackupChunkQueueLength(ctx context.Context) (uint64, error)
+
+	// Returns chunks deleted from chunk_blobs whose follower objects are still
+	// to be deleted.
+	GetBackupChunksToDelete(ctx context.Context, limit int) ([]string, error)
+
+	// Removes the chunks from the delete queue once their follower objects
+	// are deleted.
+	BackupChunksDeleted(ctx context.Context, chunkIDs []string) error
+
+	// Used for monitoring only.
+	GetBackupChunkDeleteQueueLength(ctx context.Context) (uint64, error)
 }

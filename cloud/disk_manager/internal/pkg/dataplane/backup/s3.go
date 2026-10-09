@@ -222,6 +222,31 @@ func (s *S3) GetObject(
 	return object, nil
 }
 
+func (s *S3) DeleteObject(ctx context.Context, key string) error {
+	return s.s3.DeleteObject(ctx, s.bucket, s.Key(key))
+}
+
+func (s *S3) DeleteSnapshotMeta(
+	ctx context.Context,
+	diskID string,
+	snapshotID string,
+) error {
+
+	return s.DeleteObject(ctx, SnapshotMetaKey(diskID, snapshotID))
+}
+
+func (s *S3) DeleteImageMeta(ctx context.Context, imageID string) error {
+	return s.DeleteObject(ctx, ImageMetaKey(imageID))
+}
+
+func (s *S3) DeleteChunk(ctx context.Context, chunkID string) error {
+	return s.DeleteObject(ctx, ChunkKey(chunkID))
+}
+
+func (s *S3) DeleteChunkMap(ctx context.Context, snapshotID string) error {
+	return s.DeleteObject(ctx, ChunkMapKey(snapshotID))
+}
+
 func (s *S3) Key(key string) string {
 	if len(s.keyPrefix) == 0 {
 		return key
