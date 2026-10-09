@@ -528,6 +528,179 @@ TEvSSProxy::TEvModifySchemeResponse::TPtr ModifyScheme(
 
 Y_UNIT_TEST_SUITE(TSSProxyTest)
 {
+    void TestShardVolumeLifecycle(bool useSchemeCache,
+                                  NCloud::NProto::EStorageMediaKind mediaKind)
+    {
+        NProto::TStorageServiceConfig proto;
+        proto.SetUseSchemeCache(useSchemeCache);
+        (*proto.MutableShardDirectories())["remote"] = "/local/remote";
+        auto config = CreateStorageConfig(proto);
+        TTestEnv env(1, 2);
+        SetupTestEnv(env, config);
+        env.CreateSubDomain("remote");
+        auto remoteProto = proto;
+        remoteProto.SetSchemeShardDir("/local/remote");
+        env.CreateBlockStoreNode(
+            "remote", CreateStorageConfig(remoteProto),
+            std::make_shared<TDiagnosticsConfig>(NProto::TDiagnosticsConfig{}));
+        auto& runtime = env.GetRuntime();
+        const auto sender = runtime.AllocateEdgeActor();
+
+        auto create = [&](const TString& shardId, ui32 blockSize)
+        {
+            TVolumeConfig volume;
+            FillVolumeConfig(volume, "same-volume", blockSize, 1024, 1);
+            volume.SetStorageMediaKind(mediaKind);
+            Send(
+                runtime,
+                MakeSSProxyServiceId(),
+                sender,
+                std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
+                    std::move(volume), shardId));
+            TAutoPtr<IEventHandle> handle;
+            const auto* response =
+                runtime
+                    .GrabEdgeEventRethrow<TEvSSProxy::TEvCreateVolumeResponse>(
+                        handle);
+            UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
+        };
+        auto describe = [&](const TString& shardId)
+        {
+            Send(
+                runtime,
+                MakeSSProxyServiceId(),
+                sender,
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                    "same-volume", true, shardId));
+            TAutoPtr<IEventHandle> handle;
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvDescribeVolumeResponse>(
+                handle);
+            return IEventHandle::Downcast<
+                TEvSSProxy::TEvDescribeVolumeResponse>(std::move(handle));
+        };
+
+        create("", 4096);
+        create("remote", 8192);
+        create("remote", 8192);   // Idempotent create in the destination shard.
+        auto source = describe("");
+        auto destination = describe("remote");
+        UNIT_ASSERT_C(Succeeded(source->Get()), GetErrorReason(source->Get()));
+        UNIT_ASSERT_C(Succeeded(destination->Get()),
+                      GetErrorReason(destination->Get()));
+        UNIT_ASSERT(source->Get()->Path.StartsWith("/local/nbs/"));
+        UNIT_ASSERT(destination->Get()->Path.StartsWith("/local/remote/"));
+        UNIT_ASSERT_VALUES_EQUAL(
+            4096,
+            source->Get()
+                ->PathDescription.GetBlockStoreVolumeDescription()
+                .GetVolumeConfig()
+                .GetBlockSize());
+        UNIT_ASSERT_VALUES_EQUAL(
+            8192,
+            destination->Get()
+                ->PathDescription.GetBlockStoreVolumeDescription()
+                .GetVolumeConfig()
+                .GetBlockSize());
+
+        Send(
+            runtime,
+            MakeSSProxyServiceId(),
+            sender,
+            std::make_unique<TEvSSProxy::TEvModifyVolumeRequest>(
+                EOpType::Destroy, "same-volume", "", 0, 0, "remote"));
+        TAutoPtr<IEventHandle> handle;
+        const auto* removed =
+            runtime.GrabEdgeEventRethrow<TEvSSProxy::TEvModifyVolumeResponse>(
+                handle);
+        UNIT_ASSERT_C(Succeeded(removed), GetErrorReason(removed));
+        destination = describe("remote");
+        UNIT_ASSERT(HasError(destination->Get()->GetError()));
+        source = describe("");
+        UNIT_ASSERT_C(Succeeded(source->Get()), GetErrorReason(source->Get()));
+    }
+
+    Y_UNIT_TEST(ShouldIsolateShardVolumeLifecycleViaTxProxy)
+    {
+        for (const auto kind:
+             {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+        {
+            TestShardVolumeLifecycle(false, kind);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldIsolateShardVolumeLifecycleViaSchemeCache)
+    {
+        for (const auto kind:
+             {NProto::STORAGE_MEDIA_SSD, NProto::STORAGE_MEDIA_HDD})
+        {
+            TestShardVolumeLifecycle(true, kind);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldRejectUnknownShardForSchemaOperations)
+    {
+        TTestEnv env;
+        SetupTestEnv(env);
+        auto& runtime = env.GetRuntime();
+        const auto sender = runtime.AllocateEdgeActor();
+        TVolumeConfig volume;
+        FillVolumeConfig(volume, "unknown-shard-volume", 4096, 1024, 1);
+        Send(
+            runtime,
+            MakeSSProxyServiceId(),
+            sender,
+            std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
+                std::move(volume), "unknown"));
+        {
+            TAutoPtr<IEventHandle> handle;
+            const auto* response =
+                runtime
+                    .GrabEdgeEventRethrow<TEvSSProxy::TEvCreateVolumeResponse>(
+                        handle);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT,
+                                     response->GetError().GetCode());
+        }
+        Send(
+            runtime,
+            MakeSSProxyServiceId(),
+            sender,
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                "unknown-shard-volume", true, "unknown"));
+        {
+            TAutoPtr<IEventHandle> handle;
+            const auto* response = runtime.GrabEdgeEventRethrow<
+                TEvSSProxy::TEvDescribeVolumeResponse>(handle);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT,
+                                     response->GetError().GetCode());
+        }
+        Send(
+            runtime, MakeSSProxyServiceId(), sender,
+            std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>("/local/nbs",
+                                                                   "unknown"));
+        {
+            TAutoPtr<IEventHandle> handle;
+            const auto* response = runtime.GrabEdgeEventRethrow<
+                TEvSSProxy::TEvDescribeSchemeResponse>(handle);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT,
+                                     response->GetError().GetCode());
+        }
+        Send(
+            runtime,
+            MakeSSProxyServiceId(),
+            sender,
+            std::make_unique<TEvSSProxy::TEvModifyVolumeRequest>(
+                EOpType::Destroy, "unknown-shard-volume", "", 0, 0, "unknown"));
+        {
+            TAutoPtr<IEventHandle> handle;
+            const auto* response =
+                runtime
+                    .GrabEdgeEventRethrow<TEvSSProxy::TEvModifyVolumeResponse>(
+                        handle);
+            UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT,
+                                     response->GetError().GetCode());
+        }
+    }
+
     Y_UNIT_TEST(ShouldCreateDescribeDirectories)
     {
         NProto::TStorageServiceConfig configProto;
@@ -775,6 +948,78 @@ Y_UNIT_TEST_SUITE(TSSProxyTest)
                     volume.GetName() == "volume0" ||
                         volume.GetName() == "volume1",
                     volume.GetName());
+            }
+        }
+    }
+
+    Y_UNIT_TEST(ShouldDescribeRemoteShardFromBackup)
+    {
+        NProto::TStorageServiceConfig proto;
+        proto.SetPathDescriptionBackupFilePath(
+            "ShouldDescribeRemoteShardFromBackup.path_description_backup");
+        (*proto.MutableShardDirectories())["remote"] = "/local/remote";
+
+        for (const bool fallback: {false, true}) {
+            proto.SetSSProxyFallbackMode(fallback);
+            TTestEnv env(1, 2);
+            auto config = CreateStorageConfig(proto);
+            SetupTestEnv(env, config);
+            auto& runtime = env.GetRuntime();
+            const auto sender = runtime.AllocateEdgeActor();
+            if (!fallback) {
+                env.CreateSubDomain("remote");
+                auto remoteProto = proto;
+                remoteProto.SetSchemeShardDir("/local/remote");
+                remoteProto.ClearPathDescriptionBackupFilePath();
+                env.CreateBlockStoreNode(
+                    "remote",
+                    CreateStorageConfig(remoteProto),
+                    std::make_shared<TDiagnosticsConfig>(
+                        NProto::TDiagnosticsConfig{}));
+                TVolumeConfig volume;
+                FillVolumeConfig(volume, "remote-volume", 4096, 1024, 1);
+                volume.SetStorageMediaKind(NProto::STORAGE_MEDIA_SSD);
+                Send(
+                    runtime,
+                    MakeSSProxyServiceId(),
+                    sender,
+                    std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
+                        std::move(volume), "remote"));
+                TAutoPtr<IEventHandle> handle;
+                const auto* response = runtime.GrabEdgeEventRethrow<
+                    TEvSSProxy::TEvCreateVolumeResponse>(handle);
+                UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
+            }
+
+            Send(
+                runtime,
+                MakeSSProxyServiceId(),
+                sender,
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                    "remote-volume", true, "remote"));
+            {
+                TAutoPtr<IEventHandle> handle;
+                const auto* response = runtime.GrabEdgeEventRethrow<
+                    TEvSSProxy::TEvDescribeVolumeResponse>(handle);
+                UNIT_ASSERT_C(Succeeded(response), GetErrorReason(response));
+                UNIT_ASSERT(response->Path.StartsWith("/local/remote/"));
+            }
+            if (!fallback) {
+                const auto response = BackupPathDescriptions(runtime);
+                UNIT_ASSERT_C(Succeeded(response.get()),
+                              GetErrorReason(response.get()));
+            } else {
+                Send(
+                    runtime,
+                    MakeSSProxyServiceId(),
+                    sender,
+                    std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                        "remote-volume", true, "unknown"));
+                TAutoPtr<IEventHandle> handle;
+                const auto* response = runtime.GrabEdgeEventRethrow<
+                    TEvSSProxy::TEvDescribeVolumeResponse>(handle);
+                UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT,
+                                         response->GetError().GetCode());
             }
         }
     }

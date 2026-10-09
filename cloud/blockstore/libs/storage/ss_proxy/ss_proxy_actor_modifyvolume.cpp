@@ -206,14 +206,19 @@ void TSSProxyActor::HandleModifyVolume(
         ev->Cookie,
         msg->CallContext);
 
+    auto config = GetConfigForShard(msg->ShardId);
+    if (!config) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvSSProxy::TEvModifyVolumeResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+
     NCloud::Register<TModifyVolumeActor>(
-        ctx,
-        std::move(requestInfo),
-        Config,
-        msg->OpType,
-        msg->DiskId,
-        msg->NewMountToken,
-        msg->TokenVersion,
+        ctx, std::move(requestInfo), std::move(config), msg->OpType,
+        msg->DiskId, msg->NewMountToken, msg->TokenVersion,
         msg->FillGeneration);
 }
 

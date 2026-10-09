@@ -365,12 +365,19 @@ void TSSProxyActor::HandleDescribeScheme(
         ev->Cookie,
         msg->CallContext);
 
-    NCloud::Register<TDescribeSchemeActor>(
-        ctx,
-        std::move(requestInfo),
-        Config,
-        msg->Path,
-        PathDescriptionBackup);
+    auto config = GetConfigForShard(msg->ShardId);
+    if (!config) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvSSProxy::TEvDescribeSchemeResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+
+    NCloud::Register<TDescribeSchemeActor>(ctx, std::move(requestInfo),
+                                           std::move(config), msg->Path,
+                                           PathDescriptionBackup);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -44,6 +44,8 @@ public:
     void Bootstrap(const NActors::TActorContext& ctx);
 
 private:
+    TStorageConfigConstPtr GetConfigForShard(const TString& shardId) const;
+
     void SendWaitTxRequest(
         const NActors::TActorContext& ctx,
         ui64 schemeShard,

@@ -41,6 +41,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TStorageConfigConstPtr Config;
     const TVolumeConfig VolumeConfig;
+    const TString ShardId;
 
     bool FirstCreationAttempt = true;
 
@@ -51,10 +52,9 @@ private:
     size_t NextItemToCreate = 0;
 
 public:
-    TCreateVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        TVolumeConfig volumeConfig);
+    TCreateVolumeActor(TRequestInfoPtr requestInfo,
+                       TStorageConfigConstPtr config,
+                       TVolumeConfig volumeConfig, TString shardId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -102,12 +102,12 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TCreateVolumeActor::TCreateVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        TVolumeConfig volumeConfig)
+    TRequestInfoPtr requestInfo, TStorageConfigConstPtr config,
+    TVolumeConfig volumeConfig, TString shardId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , VolumeConfig(std::move(volumeConfig))
+    , ShardId(std::move(shardId))
 {
     const auto& diskId = VolumeConfig.GetDiskId();
     Y_ABORT_UNLESS(diskId);
@@ -150,8 +150,8 @@ void TCreateVolumeActor::DescribeVolumeBeforeCreate(const TActorContext& ctx)
         diskId.Quote().data(),
         volumePath.data());
 
-    auto request =
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(volumePath);
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+        volumePath, ShardId);
 
     NCloud::Send(
         ctx,
@@ -236,8 +236,8 @@ void TCreateVolumeActor::DescribeVolumeAfterCreate(const TActorContext& ctx)
         VolumeConfig.GetDiskId().Quote().data(),
         volumePath.data());
 
-    auto request =
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(volumePath);
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+        volumePath, ShardId);
 
     NCloud::Send(
         ctx,
@@ -632,11 +632,19 @@ void TSSProxyActor::HandleCreateVolume(
         ev->Cookie,
         msg->CallContext);
 
-    NCloud::Register<TCreateVolumeActor>(
-        ctx,
-        std::move(requestInfo),
-        Config,
-        msg->VolumeConfig);
+    auto config = GetConfigForShard(msg->ShardId);
+    if (!config) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvSSProxy::TEvCreateVolumeResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+
+    NCloud::Register<TCreateVolumeActor>(ctx, std::move(requestInfo),
+                                         std::move(config), msg->VolumeConfig,
+                                         msg->ShardId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

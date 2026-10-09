@@ -47,16 +47,15 @@ private:
     const TStorageConfigConstPtr Config;
     const TString DiskId;
     const bool ExactDiskIdMatch = false;
+    const TString ShardId;
 
     EState State = EState::DescribePrimaryDeprecated;
     TVector<TString> CheckedPaths;
 
 public:
-    TDescribeVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        TString diskId,
-        bool exactDiskIdMatch);
+    TDescribeVolumeActor(TRequestInfoPtr requestInfo,
+                         TStorageConfigConstPtr config, TString diskId,
+                         bool exactDiskIdMatch, TString shardId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -88,14 +87,13 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDescribeVolumeActor::TDescribeVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        TString diskId,
-        bool exactDiskIdMatch)
+    TRequestInfoPtr requestInfo, TStorageConfigConstPtr config, TString diskId,
+    bool exactDiskIdMatch, TString shardId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , DiskId(std::move(diskId))
     , ExactDiskIdMatch(exactDiskIdMatch)
+    , ShardId(std::move(shardId))
 {}
 
 void TDescribeVolumeActor::Bootstrap(const TActorContext& ctx)
@@ -146,8 +144,8 @@ TString TDescribeVolumeActor::GetFullPath() const
 
 void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 {
-    auto request =
-        std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(GetFullPath());
+    auto request = std::make_unique<TEvSSProxy::TEvDescribeSchemeRequest>(
+        GetFullPath(), ShardId);
 
     if (CheckedPaths.empty() || CheckedPaths.back() != GetFullPath()) {
         CheckedPaths.push_back(GetFullPath());
@@ -337,12 +335,19 @@ void TSSProxyActor::HandleDescribeVolume(
         ev->Cookie,
         msg->CallContext);
 
-    NCloud::Register<TDescribeVolumeActor>(
-        ctx,
-        std::move(requestInfo),
-        Config,
-        msg->DiskId,
-        msg->ExactDiskIdMatch);
+    auto config = GetConfigForShard(msg->ShardId);
+    if (!config) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+
+    NCloud::Register<TDescribeVolumeActor>(ctx, std::move(requestInfo),
+                                           std::move(config), msg->DiskId,
+                                           msg->ExactDiskIdMatch, msg->ShardId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -36,10 +36,12 @@ struct TEvSSProxy
     struct TCreateVolumeRequest
     {
         const NKikimrBlockStore::TVolumeConfig VolumeConfig;
+        const TString ShardId;
 
-        explicit TCreateVolumeRequest(
-                NKikimrBlockStore::TVolumeConfig config)
+        explicit TCreateVolumeRequest(NKikimrBlockStore::TVolumeConfig config,
+                                      TString shardId = {})
             : VolumeConfig(std::move(config))
+            , ShardId(std::move(shardId))
         {}
     };
 
@@ -105,18 +107,17 @@ struct TEvSSProxy
         const ui64 TokenVersion;
 
         const ui64 FillGeneration;
+        const TString ShardId;
 
-        TModifyVolumeRequest(
-                EOpType opType,
-                TString diskId,
-                TString newMountToken,
-                ui64 tokenVersion,
-                ui64 fillGeneration = 0)
+        TModifyVolumeRequest(EOpType opType, TString diskId,
+                             TString newMountToken, ui64 tokenVersion,
+                             ui64 fillGeneration = 0, TString shardId = {})
             : OpType(opType)
             , DiskId(std::move(diskId))
             , NewMountToken(std::move(newMountToken))
             , TokenVersion(tokenVersion)
             , FillGeneration(fillGeneration)
+            , ShardId(std::move(shardId))
         {}
     };
 
@@ -143,9 +144,11 @@ struct TEvSSProxy
     struct TDescribeSchemeRequest
     {
         const TString Path;
+        const TString ShardId;
 
-        explicit TDescribeSchemeRequest(TString path)
+        explicit TDescribeSchemeRequest(TString path, TString shardId = {})
             : Path(std::move(path))
+            , ShardId(std::move(shardId))
         {}
     };
 
@@ -172,14 +175,13 @@ struct TEvSSProxy
     {
         const TString DiskId;
         const bool ExactDiskIdMatch = false;
+        const TString ShardId;
 
-        explicit TDescribeVolumeRequest(TString diskId)
-            : DiskId(std::move(diskId))
-        {}
-
-        TDescribeVolumeRequest(TString diskId, bool exactDiskIdMatch)
+        explicit TDescribeVolumeRequest(
+            TString diskId, bool exactDiskIdMatch = false, TString shardId = {})
             : DiskId(std::move(diskId))
             , ExactDiskIdMatch(exactDiskIdMatch)
+            , ShardId(std::move(shardId))
         {}
     };
 
