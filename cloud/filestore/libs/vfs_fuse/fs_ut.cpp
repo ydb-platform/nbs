@@ -6104,13 +6104,13 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_VALUES_EQUAL(2, errorCounter->Val());
     }
 
-    Y_UNIT_TEST(ShouldOverrideServerWriteBackCacheCapacityFromFeatures)
+    Y_UNIT_TEST(ShouldOverrideServerWriteBackCacheStateFileSizeFromFeatures)
     {
         constexpr ui64 defaultCapacity = 8_MB;
         for (const ui64 capacity: {ui64{0}, ui64{2_MB}, 4_GB + 100500}) {
             NProto::TFileStoreFeatures features;
             features.SetServerWriteBackCacheEnabled(true);
-            features.SetServerWriteBackCacheCapacity(capacity);
+            features.SetServerWriteBackCacheStateFileSize(capacity);
 
             TBootstrap bootstrap(
                 CreateWallClockTimer(),

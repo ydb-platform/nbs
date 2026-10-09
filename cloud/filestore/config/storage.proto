@@ -949,7 +949,7 @@ message TStorageConfig
     // InvalidateNodeRef) to its clients upon Node and NodeRef changes.
     optional bool FileSystemEventsEnabled = 553;
 
-    // Max server WriteBackCache capacity in bytes per session.
-    // Zero keeps the capacity configured in vhost/VFS.
-    optional uint64 ServerWriteBackCacheCapacity = 554;
+    // Server WriteBackCache state file size in bytes per session.
+    // Zero keeps the size configured in vhost/VFS.
+    optional uint64 ServerWriteBackCacheStateFileSize = 554;
 }

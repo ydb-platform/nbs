@@ -72,9 +72,9 @@ message TFileStoreFeatures
     uint32 AsyncHandleOperationDrainPeriod = 54;
     uint32 AsyncHandleOperationBatchSize = 55;
 
-    // Max server WriteBackCache capacity in bytes per session.
-    // Zero keeps the capacity configured in vhost/VFS.
-    uint64 ServerWriteBackCacheCapacity = 56;
+    // Server WriteBackCache state file size in bytes per session.
+    // Zero keeps the size configured in vhost/VFS.
+    uint64 ServerWriteBackCacheStateFileSize = 56;
 }
 
 message TFileStore

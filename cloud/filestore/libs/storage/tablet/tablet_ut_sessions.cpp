@@ -1447,7 +1447,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
         config.SetServerWriteBackCacheEnabled(true);
-        config.SetServerWriteBackCacheCapacity(4_GB + 100500);
+        config.SetServerWriteBackCacheStateFileSize(4_GB + 100500);
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAllowHandlelessIO(true);
@@ -1486,7 +1486,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
         features.SetServerWriteBackCacheEnabled(true);
-        features.SetServerWriteBackCacheCapacity(4_GB + 100500);
+        features.SetServerWriteBackCacheStateFileSize(4_GB + 100500);
         features.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         features.SetParentlessFilesOnly(true);
         features.SetAllowHandlelessIO(true);
@@ -1510,10 +1510,11 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
     }
 
-    Y_UNIT_TEST(ShouldReturnServerWriteBackCacheCapacityFromStorageConfigOverride)
+    Y_UNIT_TEST(
+        ShouldReturnServerWriteBackCacheStateFileSizeFromStorageConfigOverride)
     {
         NProto::TStorageConfig config;
-        config.SetServerWriteBackCacheCapacity(2_MB);
+        config.SetServerWriteBackCacheStateFileSize(2_MB);
         TTestEnv env({}, config);
 
         const ui32 nodeIdx = env.AddDynamicNode();
@@ -1527,18 +1528,18 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
                 expectedCapacity,
                 response->Record.GetFileStore()
                     .GetFeatures()
-                    .GetServerWriteBackCacheCapacity());
+                    .GetServerWriteBackCacheStateFileSize());
         };
 
         checkCapacity(2_MB);
 
         NProto::TStorageConfig patch;
-        patch.SetServerWriteBackCacheCapacity(4_GB + 100500);
+        patch.SetServerWriteBackCacheStateFileSize(4_GB + 100500);
         tablet.ChangeStorageConfig(patch);
         tablet.RebootTablet();
         checkCapacity(4_GB + 100500);
 
-        patch.SetServerWriteBackCacheCapacity(0);
+        patch.SetServerWriteBackCacheStateFileSize(0);
         tablet.ChangeStorageConfig(patch);
         tablet.RebootTablet();
         checkCapacity(0);

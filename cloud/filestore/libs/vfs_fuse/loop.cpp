@@ -1085,7 +1085,7 @@ private:
                             FileSystemConfig->GetFileSystemId(),
                             SessionId,
                             FileSystemConfig
-                                ->GetServerWriteBackCacheCapacity());
+                                ->GetServerWriteBackCacheStateFileSize());
 
                     if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1131,7 +1131,8 @@ private:
                      .ClientId = Config->GetClientId(),
                      .FilePath = WriteBackCacheStateFileGuard.GetFilePath(),
                      .CapacityBytes =
-                         FileSystemConfig->GetServerWriteBackCacheCapacity(),
+                         FileSystemConfig
+                             ->GetServerWriteBackCacheStateFileSize(),
                      .AutomaticFlushPeriod =
                          Config->GetWriteBackCacheAutomaticFlushPeriod(),
                      .FlushRetryPeriod =
@@ -1397,9 +1398,9 @@ private:
 
         config.SetServerWriteBackCacheEnabled(
             features.GetServerWriteBackCacheEnabled());
-        config.SetServerWriteBackCacheCapacity(
-            features.GetServerWriteBackCacheCapacity()
-                ? features.GetServerWriteBackCacheCapacity()
+        config.SetServerWriteBackCacheStateFileSize(
+            features.GetServerWriteBackCacheStateFileSize()
+                ? features.GetServerWriteBackCacheStateFileSize()
                 : Config->GetWriteBackCacheCapacity());
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(
             features.GetServerWriteBackCacheFlushWritesInParallelEnabled());
