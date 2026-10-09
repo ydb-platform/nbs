@@ -67,11 +67,12 @@ struct TOwningFreshBlock: TBlock
 
 struct TBlockDataHolder
 {
-    size_t BufferBlockIndex;
-    IBlockBufferPtr BlockBuffer;
+    size_t BufferBlockIndex = 0;
+    IConstBlockBufferPtr BlockBuffer;
 
     [[nodiscard]] TStringBuf GetBlockData() const
     {
+        Y_DEBUG_ABORT_UNLESS(BlockBuffer);
         return BlockBuffer->GetBlock(BufferBlockIndex);
     }
 };

@@ -189,7 +189,8 @@ void TIndexTabletActor::HandleWriteData(
         msg->CallContext);
     requestInfo->StartedTs = ctx.Now();
 
-    auto blockBuffer = CreateBlockBuffer(range, std::move(buffer));
+    IConstBlockBufferPtr blockBuffer =
+        CreateBlockBuffer(range, std::move(buffer));
 
     AddInFlightRequest<TEvService::TWriteDataMethod>(*requestInfo);
 

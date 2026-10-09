@@ -71,7 +71,7 @@ void TMergedBlobBuilder::Accept(
     const TBlock& block,
     ui32 blocksCount,
     ui32 blockOffset,
-    IBlockBuffer& buffer)
+    const IBlockBuffer& buffer)
 {
     TString blobContent;
     blobContent.reserve(blocksCount * BlockSize);

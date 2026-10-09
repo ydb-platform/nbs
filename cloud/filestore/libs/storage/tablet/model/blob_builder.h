@@ -97,7 +97,7 @@ public:
         const TBlock& block,
         ui32 blocksCount,
         ui32 blockOffset,
-        IBlockBuffer& buffer);
+        const IBlockBuffer& buffer);
 
     TVector<TMergedBlob> Finish();
 

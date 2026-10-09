@@ -50,7 +50,7 @@ bool TFreshBlocks::AddBlock(
     buffer.append(blockData);
     buffer.resize(blockSize, 0);
     auto blockBuffer = CreateBlockBuffer(
-        {blockIndex * blockSize, blockSize, blockSize},
+        {static_cast<ui64>(blockIndex) * blockSize, blockSize, blockSize},
         std::move(buffer));
     return AddBlock(
         nodeId,
