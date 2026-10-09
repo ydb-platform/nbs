@@ -399,10 +399,20 @@ private:
             std::unique_ptr<TEvBlobStorage::TEvPut> request;
 
             if (!iovecs.empty()) {
-                // TODO(myagkov): Implement TEvPut with TRope as a buffer
-                // to remove unnecessary memcpy
+                // GetRcBufAllocator/GetDefaultRcBufAllocator is available
+                // starting from ydb/stable-26-1
+#ifdef OPENSOURCE
+                IRcBufAllocator* allocator =
+                    ctx.ActorSystem()->GetRcBufAllocator();
+                if (!allocator) {
+                    allocator = GetDefaultRcBufAllocator();
+                }
+                auto putData = allocator->AllocRcBuf(blobId.BlobSize(), 0, 0);
+#else
                 TString putData;
                 putData.ReserveAndResize(blobId.BlobSize());
+#endif
+
                 auto bytesCopied = TRopeUtils::SafeMemcpy(
                     &putData[0],
                     ropeIt,
