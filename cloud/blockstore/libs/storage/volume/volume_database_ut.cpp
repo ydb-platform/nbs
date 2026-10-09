@@ -1293,9 +1293,9 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "x",
                     .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
+                    .LeaderCellId = "su0",
                     .FollowerDiskId = "vol1",
-                    .FollowerShardId = "su1"},
+                    .FollowerCellId = "su1"},
             .MediaKind = NProto::EStorageMediaKind::STORAGE_MEDIA_HDD};
 
         TFollowerDiskInfo follower2{
@@ -1303,9 +1303,9 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "y",
                     .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
+                    .LeaderCellId = "su0",
                     .FollowerDiskId = "vol2",
-                    .FollowerShardId = "su1"},
+                    .FollowerCellId = "su1"},
             .State = TFollowerDiskInfo::EState::Preparing,
             .MediaKind = NProto::EStorageMediaKind::STORAGE_MEDIA_SSD,
             .MigratedBytes = 1_MB};
@@ -1393,9 +1393,9 @@ Y_UNIT_TEST_SUITE(TVolumeDatabaseTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "x",
                     .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
+                    .LeaderCellId = "su0",
                     .FollowerDiskId = "vol1",
-                    .FollowerShardId = "su1"},
+                    .FollowerCellId = "su1"},
             .CreatedAt = TInstant::Now(),
             .State = TLeaderDiskInfo::EState::None,
             .ErrorMessage = ""};

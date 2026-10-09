@@ -12,9 +12,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString IdForPrint(const TString& diskId, const TString& shardId)
+TString IdForPrint(const TString& diskId, const TString& cellId)
 {
-    return shardId ? (shardId + "/" + diskId) : diskId;
+    return cellId ? (cellId + "/" + diskId) : diskId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,19 +25,19 @@ ui64 TLeaderFollowerLink::GetHash() const
 {
     return MultiHash(
         LeaderDiskId,
-        LeaderShardId,
+        LeaderCellId,
         FollowerDiskId,
-        FollowerShardId);
+        FollowerCellId);
 }
 
 TString TLeaderFollowerLink::LeaderDiskIdForPrint() const
 {
-    return IdForPrint(LeaderDiskId, LeaderShardId);
+    return IdForPrint(LeaderDiskId, LeaderCellId);
 }
 
 TString TLeaderFollowerLink::FollowerDiskIdForPrint() const
 {
-    return IdForPrint(FollowerDiskId, FollowerShardId);
+    return IdForPrint(FollowerDiskId, FollowerCellId);
 }
 
 TString TLeaderFollowerLink::Describe() const
@@ -55,21 +55,28 @@ TString TLeaderFollowerLink::Describe() const
 
 bool TLeaderFollowerLink::Match(const TLeaderFollowerLink& rhs) const
 {
-    if (LinkUUID == rhs.LinkUUID) {
+    if (LinkUUID && LinkUUID == rhs.LinkUUID) {
         return true;
     }
     if (LinkUUID && rhs.LinkUUID) {
         return false;
     }
-    auto withoutUUID = [](const TLeaderFollowerLink& o)
+    if (LeaderDiskId != rhs.LeaderDiskId || FollowerDiskId != rhs.FollowerDiskId)
     {
-        return std::tie(
-            o.LeaderDiskId,
-            o.LeaderShardId,
-            o.FollowerDiskId,
-            o.FollowerShardId);
+        return false;
+    }
+    // A link persisted before cell ids were filled in has them empty. Such a
+    // link was made within one cell, so it matches only a same-cell link.
+    auto legacy = [](const TLeaderFollowerLink& l)
+    {
+        return !l.LeaderCellId && !l.FollowerCellId;
     };
-    return withoutUUID(*this) == withoutUUID(rhs);
+    if (legacy(*this) || legacy(rhs)) {
+        return LeaderCellId == FollowerCellId &&
+               rhs.LeaderCellId == rhs.FollowerCellId;
+    }
+    return LeaderCellId == rhs.LeaderCellId &&
+           FollowerCellId == rhs.FollowerCellId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

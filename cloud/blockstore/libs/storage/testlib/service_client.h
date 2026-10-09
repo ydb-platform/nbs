@@ -258,12 +258,14 @@ public:
     std::unique_ptr<TEvService::TEvCreateVolumeLinkRequest>
     CreateCreateVolumeLinkRequest(
         const TString& leaderDiskId,
-        const TString& followerDiskId);
+        const TString& followerDiskId,
+        const TString& followerCellId = {});
 
     std::unique_ptr<TEvService::TEvDestroyVolumeLinkRequest>
     CreateDestroyVolumeLinkRequest(
         const TString& leaderDiskId,
-        const TString& followerDiskId);
+        const TString& followerDiskId,
+        const TString& followerCellId = {});
 
     void WaitForVolume(const TString& diskId = DefaultDiskId);
 
