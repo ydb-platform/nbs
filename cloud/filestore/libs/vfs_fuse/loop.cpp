@@ -1085,7 +1085,8 @@ private:
                         PersistentState->AcquireWriteBackCacheStateFile(
                             FileSystemConfig->GetFileSystemId(),
                             SessionId,
-                            Config->GetWriteBackCacheStateFileSize());
+                            FileSystemConfig
+                                ->GetServerWriteBackCacheStateFileSize());
 
                     if (HasError(result)) {
                         ReportWriteBackCacheCreatingOrDeletingError(Sprintf(
@@ -1402,6 +1403,11 @@ private:
             features.GetServerWriteBackCacheEnabled());
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(
             features.GetServerWriteBackCacheFlushWritesInParallelEnabled());
+
+        if (features.GetServerWriteBackCacheStateFileSize()) {
+            config.SetServerWriteBackCacheStateFileSize(
+                features.GetServerWriteBackCacheStateFileSize());
+        }
 
         config.SetDirectoryHandlesStorageEnabled(
             features.GetDirectoryHandlesStorageEnabled());
