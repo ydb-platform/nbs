@@ -568,22 +568,6 @@ void TConfigInitializerYdb::ApplyNamedConfigs(
     }
 }
 
-void TConfigInitializerYdb::ApplyBlockstoreConfig(
-    const NKikimrConfig::TAppConfig& config)
-{
-    if (!config.HasBlockstoreConfig()) {
-        return;
-    }
-
-    STORAGE_INFO("Apply config from CMS: TAppConfig::BlockstoreConfig");
-
-    const auto& blockstoreConfig = config.GetBlockstoreConfig();
-
-    auto volumePreemptionType = static_cast<NProto::EVolumePreemptionType>(
-        blockstoreConfig.GetVolumePreemptionType());
-    StorageConfig->SetVolumePreemptionType(volumePreemptionType);
-}
-
 void TConfigInitializerYdb::ApplyAllowedKikimrFeatureFlags(
     const NKikimrConfig::TAppConfig& config)
 {
@@ -610,8 +594,6 @@ void TConfigInitializerYdb::ApplyCustomCMSConfigs(
         ApplyNamedConfigs(config);
         ApplyAllowedKikimrFeatureFlags(config);
     }
-
-    ApplyBlockstoreConfig(config);
 }
 
 }   // namespace NCloud::NBlockStore::NServer

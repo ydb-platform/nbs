@@ -1217,12 +1217,6 @@ struct TStorageConfig::TImpl
         FeaturesConfig = std::move(featuresConfig);
     }
 
-    void SetVolumePreemptionType(
-        NProto::EVolumePreemptionType volumePreemptionType)
-    {
-        StorageServiceConfig.SetVolumePreemptionType(volumePreemptionType);
-    }
-
     NProto::TStorageServiceConfig GetEffectiveStorageConfigProto() const
     {
         NProto::TStorageServiceConfig proto = StorageServiceConfig;
@@ -1298,12 +1292,6 @@ void TStorageConfig::SetFeaturesConfig(
     NFeatures::TFeaturesConfigConstPtr featuresConfig)
 {
     Impl->SetFeaturesConfig(std::move(featuresConfig));
-}
-
-void TStorageConfig::SetVolumePreemptionType(
-    NProto::EVolumePreemptionType volumePreemptionType)
-{
-    Impl->SetVolumePreemptionType(volumePreemptionType);
 }
 
 void TStorageConfig::Register(TControlBoard& controlBoard) const
