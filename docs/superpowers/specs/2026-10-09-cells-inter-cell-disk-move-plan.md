@@ -468,6 +468,20 @@ endpoint'ов — один протокол с одним необратимым
 в `libs/daemon/ydb/bootstrap.cpp` рядом с `CreateCellsMonActor`; без ячеек —
 заглушка. По правилу «общая часть отдельно»: PR 1a — интерфейс и заглушка,
 PR 1b — реализация.
+Соединение — на каждый link, не разделяемое: мост делает
+`CreateConnection(cellB, {} /* любой живой хост */, …)` и держит
+`ICellConnectionPtr` до конца копирования или ошибки; при bootstrap data-
+соединений нет, только `ICellManager` с пулами хостов и control-каналами
+(`session_manager.cpp:905`, `cell_manager_impl.cpp:141`). Переехала
+таблетка по hive — новый актор, новое соединение.
+**Хост в B выбирается из пула, а не хост таблетки follower'а.** `TabletHost`
+соединение узнаёт только из `MountVolumeResponse` (`connection.cpp:424`,
+`OnMountResponse` → `MigrateTo`), а копирование идёт без маунта. Записи
+в B пойдут через лишний хоп: volume proxy выбранного хоста → таблетка.
+Внутри ячейки структура та же (volume proxy → pipe), так что это не
+регресс. Опция, не обязательная: describe через мост отдаёт `TabletHost`
+(поле в `DescribeVolumeResponse`), и мост после describe зовёт `MigrateTo`.
+Решать на этапе 2/3 по замерам.
 
 **Этап 2. Control через мост.** При `FollowerShardId != LeaderShardId`:
 - Все describe follower'а идут через мост (`DescribeVolume` с `CellId`), а
