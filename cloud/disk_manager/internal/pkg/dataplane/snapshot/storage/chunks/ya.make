@@ -2,6 +2,7 @@ GO_LIBRARY()
 
 SRCS(
     common.go
+    s3_chunk.go
     storage.go
     storage_s3.go
     storage_ydb.go

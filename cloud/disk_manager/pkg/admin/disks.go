@@ -674,6 +674,7 @@ func newDisksCmd(
 		newGetDiskCmd(clientConfig, serverConfig),
 		newListDisksCmd(clientConfig, serverConfig),
 		newCreateDiskCmd(clientConfig),
+		newRestoreFromBackupCmd(clientConfig, serverConfig),
 		newDeleteDiskCmd(clientConfig),
 		newResizeDiskCmd(clientConfig),
 		newAlterDiskCmd(clientConfig),

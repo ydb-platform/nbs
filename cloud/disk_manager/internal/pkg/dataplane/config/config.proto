@@ -49,4 +49,7 @@ message DataplaneConfig {
     optional uint32 BackupChunksTaskBatchSize = 23 [default = 100];
     // Maximum number of chunks copied to the follower bucket at the same time.
     optional uint32 BackupChunksInflightLimit = 24 [default = 10];
+
+    // Enable only when all restore destinations already read as zeros.
+    optional bool TransferFromBackupToDiskIgnoreZeroChunks = 25 [default = false];
 }

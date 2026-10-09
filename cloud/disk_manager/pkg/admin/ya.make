@@ -10,6 +10,7 @@ SRCS(
     placement_group.go
     pools.go
     private.go
+    restore_from_backup.go
     run.go
     snapshots.go
     tasks.go

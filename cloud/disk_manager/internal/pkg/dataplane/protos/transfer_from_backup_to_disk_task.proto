@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package dataplane;
+
+import "cloud/disk_manager/internal/pkg/types/types.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message TransferFromBackupToDiskRequest {
+    enum SourceKind {
+        SOURCE_KIND_UNSPECIFIED = 0;
+        SNAPSHOT = 1;
+        IMAGE = 2;
+    }
+
+    SourceKind SrcKind = 1;
+    string SrcId = 2;
+    string SrcDiskId = 3;
+    types.Disk DstDisk = 4;
+    types.EncryptionDesc DstEncryption = 5;
+    string ExpectedFolderId = 6;
+}
+
+message TransferFromBackupToDiskTaskState {
+    bytes MetaSha256 = 1;
+    bytes ChunkMapSha256 = 2;
+    uint32 ChunkCount = 3;
+    uint32 MilestoneChunkIndex = 4;
+    uint32 TransferredChunkCount = 5;
+    double Progress = 6;
+}
+
+message TransferFromBackupToDiskMetadata {
+    double Progress = 1;
+}
