@@ -1470,6 +1470,60 @@ Y_UNIT_TEST_SUITE(TWriteBackCacheStateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
         UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.UnflushedQueue.Count->Get());
     }
+
+    Y_UNIT_TEST(ShouldNotDropAllocatedRequestsOnFlushFailure)
+    {
+        TBootstrap b;
+        b.FlushBatchLimits.MaxQueuedFlushBatchesPerNode = 1;
+        b.FlushBatchLimits.MaxWriteRequestsCount = 1;
+        b.Recreate();
+
+        UNIT_ASSERT(b.Add(1, 101, 0, "111").GetValue());
+
+        auto barrier = b.State->AcquireBarrier(1);
+        UNIT_ASSERT(!barrier.HasValue());
+
+        UNIT_ASSERT(b.Add(1, 101, 5, "222").GetValue());
+
+        // These requests trigger backpressure
+        UNIT_ASSERT(b.Add(2, 202, 10, "333").GetValue());
+        UNIT_ASSERT(b.Add(2, 202, 15, "444").GetValue());
+
+        auto backpressured1 = b.Add(1, 101, 20, "555");
+        auto backpressured2 = b.Add(1, 102, 25, "666");
+        auto backpressured3 = b.Add(2, 202, 30, "777");
+
+        UNIT_ASSERT(!backpressured1.HasValue());
+        UNIT_ASSERT(!backpressured2.HasValue());
+        UNIT_ASSERT(!backpressured3.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(3, b.Metrics.PendingQueue.Count->Get());
+
+        barrier.Subscribe(
+            [&](auto&)
+            {
+                // The barrier is acquired after the front pending request
+                // becomes allocated but before it is serialized, so only the
+                // last two requests will be failed.
+                b.State->FlushFailed(2, MakeError(E_FS_NOSPC));
+
+                UNIT_ASSERT_VALUES_EQUAL(
+                    1,
+                    b.Metrics.PendingQueue.Count->Get());
+
+                UNIT_ASSERT(!backpressured1.HasValue());
+                UNIT_ASSERT(backpressured2.HasValue());
+                UNIT_ASSERT(!backpressured2.GetValue());
+                UNIT_ASSERT(backpressured3.HasValue());
+                UNIT_ASSERT(!backpressured3.GetValue());
+            });
+
+        b.State->FlushSucceeded(1, 1);
+
+        UNIT_ASSERT(backpressured1.HasValue());
+        UNIT_ASSERT(backpressured1.GetValue());
+        UNIT_ASSERT(barrier.HasValue());
+        UNIT_ASSERT_VALUES_EQUAL(0, b.Metrics.PendingQueue.Count->Get());
+    }
 }
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
