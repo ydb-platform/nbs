@@ -370,6 +370,7 @@ func initControlplane(
 		db,
 		endedMigrationExpirationTimeout,
 		config.GetSnapshotStorageBackupConfig() != nil, // backupEnabled
+		config.GetSnapshotStorageBackupConfig().GetFolderIds(),
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to initialize resource storage: %v", err)
