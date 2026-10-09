@@ -27,6 +27,14 @@ MAX_CHUNK_MAP_BYTES = 64 * 1024 * 1024
 MAX_CHUNK_ID_BYTES = 1024
 
 
+class MissingDecryptionKey(AuthError):
+    """The object names a KEK that was deliberately not supplied."""
+
+
+class RejectedDecryptionKey(InvalidBackup):
+    """AES-GCM rejected the supplied KEK while unwrapping the object DEK."""
+
+
 @dataclass(frozen=True)
 class RestoreReport:
     snapshot_id: str
@@ -197,7 +205,7 @@ class BackupReader:
         if not key_id or not wrapped:
             raise InvalidBackup("Incomplete backup encryption metadata")
         if key_id not in self.keys:
-            raise AuthError("Required backup decryption key is unavailable")
+            raise MissingDecryptionKey("Required backup decryption key is unavailable")
         try:
             from cryptography.exceptions import InvalidTag
             from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -210,6 +218,11 @@ class BackupReader:
             # Key prefix is intentionally excluded: Go encrypts before s.Key().
             dek = AESGCM(self.keys[key_id]).decrypt(
                 encrypted_dek[:12], encrypted_dek[12:], key_id.encode("utf-8"))
+        except InvalidTag:
+            raise RejectedDecryptionKey("Backup KEK authentication failed") from None
+        except (ValueError, binascii.Error):
+            raise InvalidBackup("Invalid encrypted backup key metadata") from None
+        try:
             if len(dek) != 32:
                 raise InvalidBackup("Invalid decrypted data key size")
             plain = AESGCM(dek).decrypt(obj.data[:12], obj.data[12:], key.encode("utf-8"))
@@ -217,6 +230,27 @@ class BackupReader:
             raise InvalidBackup("Backup authentication failed (key, data or AAD mismatch)") from None
         used_keys.add(key_id)
         return plain, obj.metadata
+
+    def check_key_rejection(self, snapshot_id, disk_id, size_bytes, destination, *,
+                            deadline, expected_sha256, wrong_key):
+        """Probe the real backup with a missing or certainly different KEK.
+
+        Call only after a complete positive restore. Transport/auth failures,
+        missing objects and generic corruption are not evidence of key rejection.
+        No configured key or remote object is changed.
+        """
+        keys = ({key_id: bytes([key[0] ^ 1]) + key[1:] for key_id, key in self.keys.items()}
+                if wrong_key else {})
+        expected_error = RejectedDecryptionKey if wrong_key else MissingDecryptionKey
+        probe = BackupReader(self.store, keys, require_encryption=True)
+        try:
+            probe.restore(snapshot_id, disk_id, size_bytes, destination,
+                          deadline=deadline, expected_sha256=expected_sha256)
+        except expected_error:
+            if os.path.lexists(destination):
+                raise InvalidBackup("Key rejection left a published restore image") from None
+            return
+        raise InvalidBackup("Backup restore unexpectedly accepted an unavailable or incorrect key")
 
     def restore(self, snapshot_id, disk_id, size_bytes, destination, *, deadline,
                 expected_sha256=None):

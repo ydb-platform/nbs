@@ -49,8 +49,8 @@ jobs:
           set -euo pipefail
           revision="$(git rev-parse HEAD)"
           git archive --format=tar.gz --prefix=snapshot-backup-tester/ \
-            --output="snapshot-backup-tester-${revision}.tar.gz" \
-            HEAD cloud/disk_manager/test/snapshot_backup
+              --output="snapshot-backup-tester-${revision}.tar.gz" \
+              HEAD cloud/disk_manager/test/snapshot_backup
           sha256sum "snapshot-backup-tester-${revision}.tar.gz" > SHA256SUMS
       - uses: actions/upload-artifact@v7.0.1
         with:

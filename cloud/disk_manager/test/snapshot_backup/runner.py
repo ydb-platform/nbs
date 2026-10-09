@@ -16,7 +16,7 @@ from .cloud import Cloud
 from .config import Blocked
 from .devices import Devices
 from .reader import BackupReader
-from .state import CASES, State, metrics
+from .state import DATA_CASES, KEY_CASES, State, metrics, required_cases
 from .transport import (AuthError, BackupError, BackupTimeout, InvalidBackup,
                         PendingBackup, TransportError, PresignedObjectStore)
 
@@ -51,6 +51,24 @@ def cleanup(config, state, cloud, deadline):
     state.save()
 
 
+def backup_reference(config, snapshot_id, digest):
+    return dict(id=snapshot_id, sha256=digest, disk_id=config.source_disk_id,
+                size_bytes=config.size_bytes, bucket=config.bucket,
+                presign_host=config.presign_host, prefix=config.prefix)
+
+
+def restore_published(config, reference, reader, devices, cloud, destination, deadline):
+    try:
+        reader.restore(reference["id"], reference["disk_id"], reference["size_bytes"],
+                       destination, deadline=deadline, expected_sha256=reference["sha256"])
+    except PendingBackup:
+        raise InvalidBackup("A previously verified backup map disappeared") from None
+    cloud.verify_vm(deadline)
+    devices.validate()
+    devices.restore_and_verify(destination, reference["sha256"], deadline)
+    destination.unlink()
+
+
 def run_cycle(config, *, cloud=None, devices=None, reader=None, sleep=time.sleep):
     state = State(config.state_dir)
     with (state.directory / "cycle.lock").open("a") as lock:
@@ -65,6 +83,9 @@ def run_cycle(config, *, cloud=None, devices=None, reader=None, sleep=time.sleep
         current_case = None
         try:
             state.data["cases"] = {}
+            retained = state.data.get("retained_backup")
+            if retained is not None and retained != backup_reference(config, retained["id"], retained["sha256"]):
+                raise Blocked("Retained backup belongs to a different configuration; reconcile before changing scope")
             if state.data["active"]:
                 if (state.data["status"] in ("fail", "blocked")
                         and state.data["resources"]
@@ -86,8 +107,9 @@ def run_cycle(config, *, cloud=None, devices=None, reader=None, sleep=time.sleep
             seed = os.urandom(32)
             owner = uuid.uuid4().hex
             expected = None
+            references = {}
             with tempfile.TemporaryDirectory(prefix="cycle-", dir=state.directory) as temporary:
-                for case in CASES:
+                for case in DATA_CASES:
                     current_case = case
                     state.data["cases"][case] = "running"
                     state.save()
@@ -121,10 +143,39 @@ def run_cycle(config, *, cloud=None, devices=None, reader=None, sleep=time.sleep
                     destination.unlink()
                     state.data["cases"][case] = "pass"
                     state.save()
-            # Only our labelled snapshots are deleted. The VM, source/target disks
-            # and backup bucket are never deleted by this loop.
-            cleanup(config, state, cloud, deadline)
-            state.finish("pass", "four backup-only restore cases and cleanup passed")
+                    references[case] = backup_reference(config, resource["id"], expected)
+                if config.require_encryption:
+                    for case in KEY_CASES:
+                        current_case = case
+                        state.data["cases"][case] = "running"
+                        state.save()
+                        reference = references["changed"]
+                        reader.check_key_rejection(
+                            reference["id"], reference["disk_id"], reference["size_bytes"],
+                            Path(temporary) / (case + ".raw"), deadline=deadline,
+                            expected_sha256=reference["sha256"], wrong_key=case == "wrong_key")
+                        state.data["cases"][case] = "pass"
+                        state.save()
+                # Only our labelled snapshots are deleted. The VM, source/target
+                # disks and backup bucket are never deleted by this loop.
+                current_case = "after_delete"
+                state.data["cases"][current_case] = "running"
+                state.save()
+                cleanup(config, state, cloud, deadline)
+                for case, reference in (("after_delete", references["changed"]),
+                                        ("retained", retained or references["full"])):
+                    current_case = case
+                    state.data["cases"][case] = "running"
+                    state.save()
+                    restore_published(config, reference, reader, devices, cloud,
+                                      Path(temporary) / (case + ".raw"), deadline)
+                    state.data["cases"][case] = "pass"
+                    state.save()
+                # Replace the anchor only after all checks pass. Preserve the
+                # old reference across failures and process/service restarts.
+                state.data["retained_backup"] = references["changed"]
+                state.save()
+            state.finish("pass", "backup restore, retained data, key checks and cleanup passed")
             return 0
         except InvalidBackup:
             if current_case:
@@ -165,10 +216,10 @@ def record_child_exit(config, previous_completion, returncode, interruption=None
                     and state.data["status"] == expected)
         if returncode == 0:
             recorded = (recorded and not state.data["active"]
-                        and state.data["cases"] == dict.fromkeys(CASES, "pass"))
+                        and state.data["cases"] == dict.fromkeys(required_cases(config), "pass"))
         if interruption or not recorded:
             # Previous passing case results also belong to the old cycle.
-            state.data["cases"] = dict.fromkeys(CASES, "blocked")
+            state.data["cases"] = dict.fromkeys(required_cases(config), "blocked")
             state.finish("blocked", interruption or "cycle exited without a matching durable result")
 
 

@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from cloud.disk_manager.test.snapshot_backup.config import Blocked
-from cloud.disk_manager.test.snapshot_backup.state import CASES, State, metrics
+from cloud.disk_manager.test.snapshot_backup.state import CASES, KEY_CASES, State, metrics
 from cloud.disk_manager.test.snapshot_backup.tests.helpers import make_config
 
 
@@ -100,6 +100,23 @@ class StateTests(unittest.TestCase):
             self.assertNotIn(private, rendered)
         self.assertIn("budget_remaining_cycles", rendered)
         self.assertEqual(sum('snapshot_backup_status{' in line for line in rendered.splitlines()), 5)
+
+    def test_key_case_metrics_are_only_required_for_encrypted_configuration(self):
+        state = State(self.directory.name)
+        plain = metrics(self.config, state.data, 123)
+        config = make_config(self.directory.name, require_encryption=True, key_files={"key": "/private/test.key"})
+        encrypted = metrics(config, state.data, 123)
+        for case in KEY_CASES:
+            self.assertNotIn('case="' + case + '"', plain)
+            self.assertIn('case="' + case + '",status="pending"} 1', encrypted)
+
+    def test_invalid_retained_reference_is_rejected_without_resetting_journal(self):
+        state = State(self.directory.name)
+        for reference in ({}, [], {"id": "old", "sha256": "not-a-digest"}):
+            state.data["retained_backup"] = reference
+            state.save()
+            with self.assertRaises(Blocked):
+                State(self.directory.name)
 
 
 if __name__ == "__main__":

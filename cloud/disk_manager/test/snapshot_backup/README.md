@@ -14,6 +14,14 @@ This directory contains a credential-free test suite and an opt-in continuous te
 
 The continuous tester checks four successive disk states: fully populated data, modified and zeroed ranges, an unchanged snapshot, and an all-zero disk. It verifies each backup before creating the next snapshot. This is not a backfill test for an existing snapshot chain.
 
+Every cycle also performs these checks, with separate per-case metrics:
+
+- `after_delete`: after confirmed deletion of all four owned source snapshots, restore the changed snapshot again and compare the complete destination disk with its saved digest.
+- `retained`: restore the previous successful cycle's changed snapshot after creating and deleting the new snapshots. Its identity and independent digest survive tester restarts. The first cycle uses its own full snapshot as the initial baseline; it does not claim cross-cycle coverage yet.
+- `missing_key` and `wrong_key`, when `require_encryption` is enabled: after a successful full restore, read the same backup with no KEK and with a deliberately different KEK. Only the specific missing-key or AES-GCM key-rejection result counts as success. Network failures, denied bucket access, missing maps and general corruption do not. The supplied secrets and remote objects are never modified.
+
+The retained reference advances only after all checks pass. A disappeared, previously verified map fails immediately; it is not treated as a newly pending backup. A changed bucket, prefix, endpoint, source disk or size blocks execution until the saved reference is reconciled. This rolling reference checks persistence across cycles, not long-term archival retention or key rotation.
+
 An independent Python reader restores the data; the test does not call a server-side restore API. The reader receives only backup-bucket access, checks snapshot identity and disk size, validates the complete chunk map, verifies CRC32 and authenticated decryption, and compares the restored whole-disk SHA-256 with an independently generated reference.
 
 ## Run code-change checks
@@ -134,7 +142,7 @@ venv/bin/python -B -m cloud.disk_manager.test.snapshot_backup \
   --config /etc/snapshot-backup-tester/config.json metrics
 ```
 
-Exit `0` means all four states were restored and owned snapshots were removed. Exit `1` means backup validation failed or its deadline expired. Exit `2` means execution was blocked by configuration, access, API errors, or unresolved resources. A blocked run is not a pass. Inspect the private state journal without publishing sensitive values.
+Exit `0` means all four states, post-deletion and retained restores, and any required negative-key checks passed, and owned snapshots were removed. Exit `1` means backup validation failed or its deadline expired. Exit `2` means execution was blocked by configuration, access, API errors, or unresolved resources. A blocked run is not a pass. Inspect the private state journal without publishing sensitive values.
 
 ### 4. Enable continuous execution and monitoring
 

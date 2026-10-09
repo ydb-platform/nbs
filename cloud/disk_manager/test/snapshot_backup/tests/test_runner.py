@@ -8,7 +8,7 @@ from unittest import mock
 from cloud.disk_manager.test.snapshot_backup.config import Blocked
 from cloud.disk_manager.test.snapshot_backup.cloud import Cloud
 from cloud.disk_manager.test.snapshot_backup.runner import cleanup, record_child_exit, run_cycle, serve
-from cloud.disk_manager.test.snapshot_backup.state import CASES, State
+from cloud.disk_manager.test.snapshot_backup.state import CASES, KEY_CASES, State, required_cases
 from cloud.disk_manager.test.snapshot_backup.tests.helpers import make_config
 from cloud.disk_manager.test.snapshot_backup.transport import (
     AuthError, InvalidBackup, PendingBackup, TransportError,
@@ -60,8 +60,7 @@ class FakeDevices:
         return self.current_digest
 
     def restore_and_verify(self, image, expected, deadline):
-        assert Path(image).read_bytes() == b"private-fixture"
-        assert expected == self.current_digest
+        assert Path(image).read_bytes() == expected.encode()
         self.verified.append(expected)
         if self.restore_error:
             raise self.restore_error
@@ -72,6 +71,8 @@ class FakeReader:
         self.requests = []
         self.error = None
         self.pending_count = 0
+        self.key_requests = []
+        self.key_error = None
 
     def restore(self, identity, disk_id, size, destination, *, deadline, expected_sha256):
         self.requests.append((identity, disk_id, expected_sha256))
@@ -80,7 +81,13 @@ class FakeReader:
             raise PendingBackup("not yet published")
         if self.error:
             raise self.error
-        Path(destination).write_bytes(b"private-fixture")
+        Path(destination).write_bytes(expected_sha256.encode())
+
+    def check_key_rejection(self, identity, disk_id, size, destination, *, deadline,
+                            expected_sha256, wrong_key):
+        self.key_requests.append((identity, expected_sha256, wrong_key))
+        if self.key_error:
+            raise self.key_error
 
 
 class RunnerTests(unittest.TestCase):
@@ -108,7 +115,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual((state["attempts"], state["cycles"]), (1, 1))
         self.assertEqual([case for _, case in self.devices.filled], ["full", "changed", "zero"])
         self.assertEqual(len({seed for seed, _ in self.devices.filled}), 1)
-        self.assertEqual(self.devices.verified, ["a" * 64, "b" * 64, "b" * 64, "0" * 64])
+        self.assertEqual(self.devices.verified, [value * 64 for value in ("a", "b", "b", "0", "b", "a")])
         self.assertEqual(len(self.cloud.created), 4)
         self.assertEqual(len(self.cloud.deleted), 4)
         self.assertTrue(all(r["deleted"] for r in state["resources"]))
@@ -122,6 +129,96 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(sleeps, [5, 5])
         self.assertEqual(len(self.cloud.created), 4)
         self.assertEqual([r[0] for r in self.reader.requests[:3]], ["snapshot-1"] * 3)
+
+    def test_deleted_backups_are_read_after_cleanup_and_retained_across_restart(self):
+        original_restore = self.reader.restore
+
+        def restore(identity, *args, **kwargs):
+            # Fresh restores happen once; every subsequent read of that ID
+            # must follow confirmed deletion of its source snapshot.
+            if any(request[0] == identity for request in self.reader.requests):
+                self.assertIn(identity, [item[0] for item in self.cloud.deleted])
+            return original_restore(identity, *args, **kwargs)
+        with mock.patch.object(self.reader, "restore", side_effect=restore):
+            self.assertEqual(self.cycle(), 0)
+            previous = self.state().data["retained_backup"]
+            self.assertEqual(previous["id"], "snapshot-2")
+            self.assertEqual(self.cycle(), 0)
+        self.assertEqual(self.reader.requests[-1], (previous["id"], previous["disk_id"], previous["sha256"]))
+        self.assertEqual(self.state().data["retained_backup"]["id"], "snapshot-6")
+        self.assertEqual(len(self.cloud.created), 8)
+
+    def test_retained_missing_map_is_failed_immediately_and_anchor_is_not_replaced(self):
+        self.assertEqual(self.cycle(), 0)
+        previous = self.state().data["retained_backup"]
+        original_restore = self.reader.restore
+
+        def restore(identity, *args, **kwargs):
+            if identity == previous["id"]:
+                raise PendingBackup("previously published map missing")
+            return original_restore(identity, *args, **kwargs)
+        with mock.patch.object(self.reader, "restore", side_effect=restore):
+            self.assertEqual(self.cycle(), 1)
+        state = self.state().data
+        self.assertEqual(state["cases"]["retained"], "fail")
+        self.assertEqual(state["retained_backup"], previous)
+        self.assertEqual(state["cycles"], 1)
+        self.assertFalse(state["active"])
+
+    def test_post_delete_corruption_is_failed_not_reported_as_cleanup_success(self):
+        original_restore = self.reader.restore
+
+        def restore(*args, **kwargs):
+            if self.cloud.deleted:
+                raise InvalidBackup("referenced backup chunk missing")
+            return original_restore(*args, **kwargs)
+        with mock.patch.object(self.reader, "restore", side_effect=restore):
+            self.assertEqual(self.cycle(), 1)
+        state = self.state().data
+        self.assertEqual(state["cases"]["after_delete"], "fail")
+        self.assertNotIn("retained_backup", state)
+        self.assertEqual(state["last_success"], 0)
+
+    def test_retained_scope_change_blocks_before_cloud_or_disk_work(self):
+        self.assertEqual(self.cycle(), 0)
+        state = self.state()
+        state.data["retained_backup"]["bucket"] = "another-bucket"
+        state.save()
+        verified, fills = self.cloud.verified, len(self.devices.filled)
+        self.assertEqual(self.cycle(), 2)
+        self.assertEqual((self.cloud.verified, len(self.devices.filled)), (verified, fills))
+
+    def test_encrypted_cycle_requires_both_negative_key_checks(self):
+        self.config = make_config(self.directory.name, require_encryption=True, key_files={"key": "/private/test.key"})
+        self.cloud.config = self.config
+        self.assertEqual(self.cycle(), 0)
+        self.assertEqual(self.reader.key_requests, [
+            ("snapshot-2", "b" * 64, False), ("snapshot-2", "b" * 64, True),
+        ])
+        self.assertEqual(self.state().data["cases"], dict.fromkeys(required_cases(self.config), "pass"))
+        record_child_exit(self.config, 0, 0)
+        self.assertEqual(self.state().data["status"], "pass")
+
+    def test_key_probe_errors_cannot_be_counted_as_success(self):
+        for error, expected_code in ((InvalidBackup("key unexpectedly accepted"), 1),
+                                     (TransportError("unavailable"), 2), (AuthError("forbidden"), 2)):
+            with self.subTest(error=type(error).__name__), tempfile.TemporaryDirectory() as directory:
+                config = make_config(directory, require_encryption=True, key_files={"key": "/private/test.key"})
+                reader = FakeReader()
+                reader.key_error = error
+                code = run_cycle(config, cloud=FakeCloud(config), devices=FakeDevices(), reader=reader)
+                self.assertEqual(code, expected_code)
+                state = State(directory).data
+                self.assertEqual(state["last_success"], 0)
+                self.assertNotEqual(state["cases"][KEY_CASES[0]], "pass")
+
+    def test_supervisor_rejects_legacy_pass_without_new_required_checks(self):
+        self.config = make_config(self.directory.name, require_encryption=True, key_files={"key": "/private/test.key"})
+        state = self.state()
+        state.data["cases"] = dict.fromkeys(CASES, "pass")
+        state.finish("pass", "missing negative key checks")
+        record_child_exit(self.config, 0, 0)
+        self.assertEqual(self.state().data["status"], "blocked")
 
     def test_pending_backup_deadline_is_failed_not_green(self):
         self.config = make_config(self.directory.name, cycle_timeout_seconds=10)

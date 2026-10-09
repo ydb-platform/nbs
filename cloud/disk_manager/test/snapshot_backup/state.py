@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -9,8 +10,14 @@ from pathlib import Path
 from .config import Blocked
 
 
-CASES = ("full", "changed", "unchanged", "zero")
+DATA_CASES = ("full", "changed", "unchanged", "zero")
+CASES = DATA_CASES + ("after_delete", "retained")
+KEY_CASES = ("missing_key", "wrong_key")
 STATUSES = ("pending", "running", "pass", "fail", "blocked")
+
+
+def required_cases(config):
+    return CASES + KEY_CASES if config.require_encryption else CASES
 
 
 class State:
@@ -45,7 +52,7 @@ class State:
                 if type(value[key]) not in (float, int) or not 0 <= value[key] < float("inf"):
                     raise ValueError()
             if not isinstance(value["cases"], dict) or any(
-                    k not in CASES or v not in STATUSES for k, v in value["cases"].items()):
+                    k not in CASES + KEY_CASES or v not in STATUSES for k, v in value["cases"].items()):
                 raise ValueError()
             if not isinstance(value["resources"], list):
                 raise ValueError()
@@ -55,6 +62,16 @@ class State:
                         or not isinstance(resource["owner"], str)
                         or type(resource["deleted"]) is not bool
                         or (resource["id"] is not None and not isinstance(resource["id"], str))):
+                    raise ValueError()
+            retained = value.get("retained_backup")
+            if retained is not None:
+                if (not isinstance(retained, dict)
+                        or any(not isinstance(retained.get(key), str) or not retained[key]
+                               for key in ("id", "disk_id", "bucket", "presign_host"))
+                        or not isinstance(retained.get("prefix"), str)
+                        or type(retained.get("size_bytes")) is not int or retained["size_bytes"] <= 0
+                        or not isinstance(retained.get("sha256"), str)
+                        or not re.fullmatch(r"[0-9a-f]{64}", retained["sha256"])):
                     raise ValueError()
             return value
         except (OSError, ValueError, KeyError, TypeError):
@@ -106,7 +123,7 @@ def metrics(config, data, heartbeat):
     add("budget_remaining_cycles", max(0, config.max_cycles - data.get("attempts", 0)))
     for status in STATUSES:
         add("status", int(data.get("status", "pending") == status), ',status="' + status + '"')
-    for case in CASES:
+    for case in required_cases(config):
         for status in STATUSES:
             add("case_status", int(data.get("cases", {}).get(case, "pending") == status),
                 ',case="' + case + '",status="' + status + '"')

@@ -17,7 +17,7 @@ from cloud.disk_manager.test.snapshot_backup.tests.zstd_vectors import (
 )
 from cloud.disk_manager.test.snapshot_backup.transport import (
     AuthError, BackupError, BackupTimeout, InvalidBackup, ObjectNotFound,
-    PendingBackup, StoredObject,
+    PendingBackup, StoredObject, TransportError,
 )
 
 
@@ -275,6 +275,55 @@ class ReaderTests(unittest.TestCase):
         with self.assertRaises(InvalidBackup):
             self.restore(reader_options={"keys": keys})
         self.assert_no_partial_output()
+
+    def test_key_probes_reject_missing_and_wrong_keys_without_changing_real_keys(self):
+        keys = self.encrypt_objects()
+        reader = BackupReader(MemoryStore(self.objects), keys, require_encryption=True)
+        expected = hashlib.sha256(self.reference).hexdigest()
+        reader.restore("snapshot", "disk", self.size, self.destination,
+                       deadline=time.monotonic() + 30, expected_sha256=expected)
+        self.destination.unlink()
+        for wrong_key in (False, True):
+            reader.check_key_rejection("snapshot", "disk", self.size, self.destination,
+                                       deadline=time.monotonic() + 30,
+                                       expected_sha256=expected, wrong_key=wrong_key)
+            self.assert_no_partial_output()
+            self.assertEqual(reader.keys, keys)
+        reader.restore("snapshot", "disk", self.size, self.destination,
+                       deadline=time.monotonic() + 30, expected_sha256=expected)
+        self.assertEqual(self.destination.read_bytes(), self.reference)
+
+    def test_key_probes_do_not_accept_network_auth_missing_object_or_format_errors(self):
+        keys = self.encrypt_objects()
+        store = MemoryStore(self.objects)
+        reader = BackupReader(store, keys, require_encryption=True)
+        for wrong_key in (False, True):
+            for error in (TransportError("offline"), AuthError("forbidden"),
+                          InvalidBackup("corrupt metadata"), ObjectNotFound("missing map")):
+                with self.subTest(wrong_key=wrong_key, error=type(error).__name__):
+                    expected = PendingBackup if isinstance(error, ObjectNotFound) else type(error)
+                    with mock.patch.object(store, "get", side_effect=error), self.assertRaises(expected):
+                        reader.check_key_rejection("snapshot", "disk", self.size, self.destination,
+                                                   deadline=time.monotonic() + 30,
+                                                   expected_sha256=hashlib.sha256(self.reference).hexdigest(),
+                                                   wrong_key=wrong_key)
+                    self.assert_no_partial_output()
+
+    def test_key_probe_unexpected_success_is_a_failure(self):
+        reader = BackupReader(MemoryStore({}), {"kek": b"x" * 32}, require_encryption=True)
+        for wrong_key in (False, True):
+            with mock.patch.object(BackupReader, "restore"), self.assertRaisesRegex(InvalidBackup, "unexpectedly"):
+                reader.check_key_rejection("snapshot", "disk", self.size, self.destination,
+                                           deadline=time.monotonic() + 30,
+                                           expected_sha256="a" * 64, wrong_key=wrong_key)
+
+    def test_key_probes_reject_unencrypted_backup_instead_of_counting_it_as_key_failure(self):
+        reader = BackupReader(MemoryStore(self.objects), {"key": b"x" * 32}, require_encryption=True)
+        for wrong_key in (False, True):
+            with self.assertRaisesRegex(InvalidBackup, "unencrypted"):
+                reader.check_key_rejection("snapshot", "disk", self.size, self.destination,
+                                           deadline=time.monotonic() + 30,
+                                           expected_sha256="a" * 64, wrong_key=wrong_key)
 
     def test_object_cannot_be_moved_to_another_path_due_to_aad(self):
         keys = self.encrypt_objects()
