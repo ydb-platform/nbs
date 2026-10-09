@@ -98,6 +98,9 @@ struct TStorageGroupConfig
     // How often the low watermark is pushed to the devices; zero never.
     TDuration LowWatermarkPeriod = TDuration::Seconds(1);
 
+    // How often to update device session activity.
+    TDuration ReacquirePeriod = TDuration::Seconds(4);
+
     ui32 PageSize = DefaultBlockSize;
 };
 

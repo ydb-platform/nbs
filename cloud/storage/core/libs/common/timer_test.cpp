@@ -15,6 +15,12 @@ void TTestTimer::Sleep(TDuration duration)
     AdvanceTime(duration);
 }
 
+void TTestTimer::Sleep(TDuration duration, const std::atomic<bool>& cancelled)
+{
+    Y_UNUSED(cancelled);
+    Sleep(duration);
+}
+
 void TTestTimer::AdvanceTime(TDuration delay)
 {
     AtomicAdd(Timestamp, delay.MilliSeconds());
