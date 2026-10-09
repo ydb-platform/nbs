@@ -38,6 +38,12 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Fastshard orders writers by generation only, so the mount sequence number of
+// the disk agent is never used.
+constexpr ui64 DefaultMountSeqNumber = 0;
+
+////////////////////////////////////////////////////////////////////////////////
+
 void CopyHeaders(
     NProto::THeaders& dst,
     const NCloud::NProto::TDeviceRequestHeaders& src)
@@ -166,7 +172,7 @@ public:
             request.GetDeviceUUIDs().begin(),
             request.GetDeviceUUIDs().end());
         ev->Record.SetAccessMode(*accessMode);
-        ev->Record.SetMountSeqNumber(request.GetSeqNumber());
+        ev->Record.SetMountSeqNumber(DefaultMountSeqNumber);
         ev->Record.SetDiskId(request.GetFastshardId());
         ev->Record.SetVolumeGeneration(request.GetGeneration());
 

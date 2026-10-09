@@ -31,7 +31,6 @@ class TAcquireDevicesCommand final: public TCommand
 private:
     TVector<TString> DeviceUUIDs;
     ui32 Generation = 0;
-    ui64 SeqNumber = 0;
     TString AccessMode;
     TString FastshardId;
 
@@ -49,14 +48,6 @@ public:
                 "the last one seen from the client is rejected")
             .RequiredArgument("NUM")
             .StoreResult(&Generation);
-
-        Opts.AddLongOption(
-                "seq-number",
-                "writer sequence number; a read-write acquire takes the "
-                "devices over from another writer only with a higher sequence "
-                "number")
-            .RequiredArgument("NUM")
-            .StoreResult(&SeqNumber);
 
         Opts.AddLongOption("access-mode", "access mode: rw or ro")
             .RequiredArgument("STR")
@@ -92,7 +83,6 @@ protected:
                 request.AddDeviceUUIDs(uuid);
             }
             request.SetGeneration(Generation);
-            request.SetSeqNumber(SeqNumber);
             request.SetAccessMode(*ParseAccessMode(AccessMode));
             request.SetFastshardId(FastshardId);
         }

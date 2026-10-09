@@ -112,8 +112,8 @@ TEST(TFastShardClientTest, ShouldAcquireDevices)
     EXPECT_TRUE(f.Run(
         "acquiredevices",
         {"--device-uuid", "d1", "--device-uuid", "d2", "--generation", "7",
-         "--seq-number", "9", "--access-mode", "ro", "--fastshard-id", "fs",
-         "--client-id", "cli", "--request-timeout", "500"}));
+         "--access-mode", "ro", "--fastshard-id", "fs", "--client-id", "cli",
+         "--request-timeout", "500"}));
 
     ASSERT_EQ(1u, f.Storage->AcquireCalls.size());
     const auto& req = f.Storage->AcquireCalls[0];
@@ -121,7 +121,6 @@ TEST(TFastShardClientTest, ShouldAcquireDevices)
     EXPECT_EQ("d1", req.GetDeviceUUIDs(0));
     EXPECT_EQ("d2", req.GetDeviceUUIDs(1));
     EXPECT_EQ(7u, req.GetGeneration());
-    EXPECT_EQ(9u, req.GetSeqNumber());
     EXPECT_EQ(NCloud::NProto::ACCESS_READ_ONLY, req.GetAccessMode());
     EXPECT_EQ("fs", req.GetFastshardId());
     EXPECT_EQ("cli", req.GetHeaders().GetClientId());
@@ -138,7 +137,6 @@ TEST(TFastShardClientTest, ShouldAcquireDevicesForWritingByDefault)
     const auto& req = f.Storage->AcquireCalls[0];
     EXPECT_EQ(NCloud::NProto::ACCESS_READ_WRITE, req.GetAccessMode());
     EXPECT_EQ(0u, req.GetGeneration());
-    EXPECT_EQ(0u, req.GetSeqNumber());
 }
 
 TEST(TFastShardClientTest, ShouldRejectUnknownAccessMode)
@@ -293,9 +291,8 @@ TEST(TFastShardClientTest, ShouldAcquireAndReleaseDeviceAroundRequest)
     TFixture f;
     EXPECT_TRUE(f.Run(
         "formatdevice",
-        {"--acquire", "--acquire-generation", "7", "--acquire-seq-number", "9",
-         "--acquire-fastshard-id", "fs", "--device-uuid", "d1", "--client-id",
-         "cli"}));
+        {"--acquire", "--acquire-generation", "7", "--acquire-fastshard-id",
+         "fs", "--device-uuid", "d1", "--client-id", "cli"}));
 
     ASSERT_EQ(1u, f.Storage->AcquireCalls.size());
     const auto& acquire = f.Storage->AcquireCalls[0];
@@ -303,7 +300,6 @@ TEST(TFastShardClientTest, ShouldAcquireAndReleaseDeviceAroundRequest)
     EXPECT_EQ("d1", acquire.GetDeviceUUIDs(0));
     EXPECT_EQ("cli", acquire.GetHeaders().GetClientId());
     EXPECT_EQ(7u, acquire.GetGeneration());
-    EXPECT_EQ(9u, acquire.GetSeqNumber());
     EXPECT_EQ(NCloud::NProto::ACCESS_READ_WRITE, acquire.GetAccessMode());
     EXPECT_EQ("fs", acquire.GetFastshardId());
 
@@ -366,8 +362,7 @@ TEST(TFastShardClientTest, ShouldAcquireWithAccessModeOfCommand)
 TEST(TFastShardClientTest, ShouldRejectAcquireOptionsWithoutAcquire)
 {
     for (auto [arg, value]:
-         {std::pair{"--acquire-seq-number", "9"},
-          std::pair{"--acquire-generation", "7"},
+         {std::pair{"--acquire-generation", "7"},
           std::pair{"--acquire-fastshard-id", "fs"}})
     {
         TFixture f;
@@ -377,30 +372,6 @@ TEST(TFastShardClientTest, ShouldRejectAcquireOptionsWithoutAcquire)
             << arg;
         EXPECT_TRUE(f.Storage->AcquireCalls.empty()) << arg;
         EXPECT_TRUE(f.Storage->FormatCalls.empty()) << arg;
-    }
-}
-
-TEST(TFastShardClientTest, ShouldNotOfferAcquireSeqNumberForReadCommands)
-{
-    {
-        TFixture f;
-        EXPECT_THROW(
-            f.Run(
-                "readpages",
-                {"--acquire", "--acquire-seq-number", "9", "--device-uuid",
-                 "d1", "--page-count", "1"}),
-            NLastGetopt::TUsageException);
-        EXPECT_TRUE(f.Storage->AcquireCalls.empty());
-    }
-    {
-        TFixture f;
-        EXPECT_THROW(
-            f.Run(
-                "readjournaltail",
-                {"--acquire", "--acquire-seq-number", "9", "--device-uuid",
-                 "d1"}),
-            NLastGetopt::TUsageException);
-        EXPECT_TRUE(f.Storage->AcquireCalls.empty());
     }
 }
 

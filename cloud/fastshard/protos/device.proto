@@ -47,11 +47,8 @@ message TAcquireDevicesRequest
     // Identifier of the fastshard the devices belong to.
     string FastshardId = 4;
 
-    // Sequence number of the writer session.
-    uint64 SeqNumber = 5;
-
     // Access mode.
-    EAccessMode AccessMode = 6;
+    EAccessMode AccessMode = 5;
 }
 
 message TAcquireDevicesResponse

@@ -11,7 +11,6 @@
 #include <util/stream/file.h>
 #include <util/string/builder.h>
 #include <util/string/printf.h>
-#include <util/system/compiler.h>
 #include <util/system/event.h>
 
 #include <cstring>
@@ -34,21 +33,6 @@ constexpr TDuration WaitTimeout = TDuration::MilliSeconds(100);
 // storage node may legitimately spend the whole timeout on the request and
 // the reply still has to travel back.
 constexpr TDuration DeadlineMargin = TDuration::Seconds(1);
-
-////////////////////////////////////////////////////////////////////////////////
-
-bool IsWriteAccessMode(NProto::EAccessMode accessMode)
-{
-    switch (accessMode) {
-        case NProto::ACCESS_READ_WRITE:
-            return true;
-        case NProto::ACCESS_READ_ONLY:
-            return false;
-
-        default:
-            Y_UNREACHABLE();
-    }
-}
 
 }   // namespace
 
@@ -140,14 +124,6 @@ void TCommand::AddAcquireOption(NProto::EAccessMode accessMode)
             "client generation sent in the acquire and release requests")
         .RequiredArgument("NUM")
         .StoreResult(&AcquireGeneration);
-
-    if (IsWriteAccessMode(AcquireAccessMode)) {
-        Opts.AddLongOption(
-                "acquire-seq-number",
-                "writer sequence number sent in the acquire request")
-            .RequiredArgument("NUM")
-            .StoreResult(&AcquireSeqNumber);
-    }
 }
 
 void TCommand::ParseOpts(int argc, const char* argv[])
@@ -174,12 +150,10 @@ void TCommand::ParseOpts(int argc, const char* argv[])
     }
     LogLevel = *logLevel;
 
-    if (!Acquire &&
-        (AcquireSeqNumber || AcquireGeneration || AcquireFastshardId))
-    {
+    if (!Acquire && (AcquireGeneration || AcquireFastshardId)) {
         ythrow TUsageException()
-            << "--acquire-seq-number, --acquire-generation and "
-               "--acquire-fastshard-id require --acquire";
+            << "--acquire-generation and --acquire-fastshard-id require "
+               "--acquire";
     }
 
     CheckOpts();
@@ -290,7 +264,6 @@ NCloud::NProto::TError TCommand::AcquireDevice(const TString& deviceUUID)
     PrepareHeaders(*request.MutableHeaders());
     request.AddDeviceUUIDs(deviceUUID);
     request.SetGeneration(AcquireGeneration);
-    request.SetSeqNumber(AcquireSeqNumber);
     request.SetAccessMode(AcquireAccessMode);
     request.SetFastshardId(AcquireFastshardId);
 

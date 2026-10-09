@@ -59,10 +59,8 @@ protected:
     // AddAcquireOption.
     bool Acquire = false;
 
-    // Generation and writer sequence number of the acquire request; the
-    // generation goes into the release request as well.
+    // Generation of the acquire and release requests.
     ui32 AcquireGeneration = 0;
-    ui64 AcquireSeqNumber = 0;
 
     // Fastshard the device belongs to, sent in the acquire and release
     // requests.
