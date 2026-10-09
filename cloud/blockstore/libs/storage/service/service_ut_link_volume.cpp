@@ -707,7 +707,7 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             linkStatus.ShortDebugString());
     }
 
-    Y_UNIT_TEST(ShouldUseExplicitFollowerCellId)
+    Y_UNIT_TEST(ShouldRejectFollowerInAnotherCell)
     {
         TTestEnv env(1, 1, 4);
         ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
@@ -717,39 +717,38 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         service.CreateVolume("vol-1", DefaultBlocksCount);
         service.CreateVolume("vol-2", DefaultBlocksCount);
 
-        service.CreateVolumeLink("vol-1", "vol-2", "cell-b");
+        {
+            service.SendCreateVolumeLinkRequest("vol-1", "vol-2", "cell-b");
+            auto response = service.RecvCreateVolumeLinkResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_NOT_IMPLEMENTED,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
 
+        service.CreateVolumeLink("vol-1", "vol-2", "cell-a");
+
+        // Cell ids are matched strictly once filled in.
         auto linkStatus = GetLinkStatus(service, "vol-1", "vol-2", "cell-b");
-        UNIT_ASSERT_EQUAL_C(
-            NProto::ELinkStatus::LINK_STATUS_PREPARING,
-            linkStatus.GetStatus(),
-            linkStatus.ShortDebugString());
-        UNIT_ASSERT_VALUES_EQUAL("cell-a", linkStatus.GetLeaderCellId());
-        UNIT_ASSERT_VALUES_EQUAL("cell-b", linkStatus.GetFollowerCellId());
-
-        // Without an explicit follower cell the leader's cell is assumed.
-        linkStatus = GetLinkStatus(service, "vol-1", "vol-2", {});
         UNIT_ASSERT_EQUAL_C(
             NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
             linkStatus.GetStatus(),
             linkStatus.ShortDebugString());
-
         {
-            service.SendDestroyVolumeLinkRequest("vol-1", "vol-2");
+            service.SendDestroyVolumeLinkRequest("vol-1", "vol-2", "cell-b");
             auto response = service.RecvDestroyVolumeLinkResponse();
             UNIT_ASSERT_VALUES_EQUAL_C(
                 S_ALREADY,
                 response->GetError().GetCode(),
                 FormatError(response->GetError()));
         }
-
-        service.DestroyVolumeLink("vol-1", "vol-2", "cell-b");
-
-        linkStatus = GetLinkStatus(service, "vol-1", "vol-2", "cell-b");
+        linkStatus = GetLinkStatus(service, "vol-1", "vol-2", {});
         UNIT_ASSERT_EQUAL_C(
-            NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
+            NProto::ELinkStatus::LINK_STATUS_PREPARING,
             linkStatus.GetStatus(),
             linkStatus.ShortDebugString());
+
+        service.DestroyVolumeLink("vol-1", "vol-2");
     }
 
     Y_UNIT_TEST(ShouldMatchLinkCreatedWithoutCellIds)
@@ -775,6 +774,14 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             linkStatus.ShortDebugString());
         UNIT_ASSERT_VALUES_EQUAL("", linkStatus.GetLeaderCellId());
         UNIT_ASSERT_VALUES_EQUAL("", linkStatus.GetFollowerCellId());
+
+        // A legacy link was made within one cell: a lookup naming another
+        // cell must not find it.
+        linkStatus = GetLinkStatus(newService, "vol-1", "vol-2", "cell-b");
+        UNIT_ASSERT_EQUAL_C(
+            NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
+            linkStatus.GetStatus(),
+            linkStatus.ShortDebugString());
 
         newService.DestroyVolumeLink("vol-1", "vol-2");
 

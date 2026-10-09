@@ -55,21 +55,28 @@ TString TLeaderFollowerLink::Describe() const
 
 bool TLeaderFollowerLink::Match(const TLeaderFollowerLink& rhs) const
 {
-    if (LinkUUID == rhs.LinkUUID) {
+    if (LinkUUID && LinkUUID == rhs.LinkUUID) {
         return true;
     }
     if (LinkUUID && rhs.LinkUUID) {
         return false;
     }
-    // A link persisted before cell ids were filled in has them empty.
-    auto sameCell = [](const TString& a, const TString& b)
+    if (LeaderDiskId != rhs.LeaderDiskId || FollowerDiskId != rhs.FollowerDiskId)
     {
-        return !a || !b || a == b;
+        return false;
+    }
+    // A link persisted before cell ids were filled in has them empty. Such a
+    // link was made within one cell, so it matches only a same-cell link.
+    auto legacy = [](const TLeaderFollowerLink& l)
+    {
+        return !l.LeaderCellId && !l.FollowerCellId;
     };
-    return LeaderDiskId == rhs.LeaderDiskId &&
-           FollowerDiskId == rhs.FollowerDiskId &&
-           sameCell(LeaderCellId, rhs.LeaderCellId) &&
-           sameCell(FollowerCellId, rhs.FollowerCellId);
+    if (legacy(*this) || legacy(rhs)) {
+        return LeaderCellId == FollowerCellId &&
+               rhs.LeaderCellId == rhs.FollowerCellId;
+    }
+    return LeaderCellId == rhs.LeaderCellId &&
+           FollowerCellId == rhs.FollowerCellId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

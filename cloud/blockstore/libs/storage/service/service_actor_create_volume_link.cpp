@@ -173,6 +173,16 @@ void TServiceActor::HandleCreateVolumeLink(
 
     const auto& followerCellId =
         request.GetFollowerCellId() ? request.GetFollowerCellId() : CellId;
+    if (followerCellId != CellId) {
+        // The copy still goes through the local proxies; a follower in another
+        // cell would clash with a local disk of the same name.
+        auto response =
+            std::make_unique<TEvService::TEvCreateVolumeLinkResponse>(MakeError(
+                E_NOT_IMPLEMENTED,
+                "Follower in another cell is not supported yet"));
+        NCloud::Reply(ctx, *ev, std::move(response));
+        return;
+    }
 
     LOG_DEBUG(
         ctx,
