@@ -1,10 +1,11 @@
 #include "command.h"
+
 #include "common_filter_params.h"
 #include "factory.h"
 
 #include <cloud/filestore/libs/diagnostics/events/profile_events.ev.pb.h>
-#include <library/cpp/eventlog/eventlog.h>
 
+#include <library/cpp/eventlog/eventlog.h>
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/folder/dirut.h>
@@ -18,6 +19,8 @@ namespace NCloud::NFileStore::NProfileTool {
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 void SetModificationTime(const TString& path, i64 seconds, i64 nanoseconds = 0)
 {
     std::filesystem::last_write_time(
@@ -25,6 +28,8 @@ void SetModificationTime(const TString& path, i64 seconds, i64 nanoseconds = 0)
         std::filesystem::file_time_type{} + std::chrono::seconds(seconds) +
             std::chrono::nanoseconds(nanoseconds));
 }
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TTestCommand final: public TCommand
 {
@@ -46,6 +51,8 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 class TCountingProcessor: public TProtobufEventProcessor
 {
 public:
@@ -55,8 +62,8 @@ public:
 
     void DoProcessEvent(const TEvent* event, IOutputStream*) override
     {
-        if (const auto* record =
-                dynamic_cast<const NProto::TProfileLogRecord*>(event->GetProto()))
+        if (const auto* record = dynamic_cast<const NProto::TProfileLogRecord*>(
+                event->GetProto()))
         {
             FileSystems.push_back(record->GetFileSystemId());
             if (FailProcessing) {
@@ -68,6 +75,8 @@ public:
         }
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TReadWithoutFiltersCommand: public TCommand
 {
@@ -84,6 +93,8 @@ public:
         return ProcessProfileLogs(Processor);
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 class TReadTestCommand: public TCommand
 {
@@ -109,6 +120,8 @@ public:
     }
 };
 
+////////////////////////////////////////////////////////////////////////////////
+
 class TFailingOutput: public IOutputStream
 {
     void DoWrite(const void*, size_t) override
@@ -116,6 +129,8 @@ class TFailingOutput: public IOutputStream
         ythrow TFileError() << "Output write failed";
     }
 };
+
+////////////////////////////////////////////////////////////////////////////////
 
 void WriteProfileLog(const TString& path)
 {
@@ -132,6 +147,8 @@ void WriteProfileLog(const TString& path)
 
 }   // namespace
 
+////////////////////////////////////////////////////////////////////////////////
+
 Y_UNIT_TEST_SUITE(TCommandTest)
 {
     Y_UNIT_TEST(ShouldBypassFilePruningWhenAllFilesRequested)
@@ -147,18 +164,26 @@ Y_UNIT_TEST_SUITE(TCommandTest)
 
         for (const auto* name: {"dumpevents", "findbytesaccess"}) {
             TVector<const char*> args = {
-                name, "--profile-log", oldFile.Name().c_str(),
+                name,
+                "--profile-log",
+                oldFile.Name().c_str(),
                 currentFile.Name().c_str(),
-                "--since", "1970-01-01T00:38:21Z",
-                "--until", "1970-01-01T00:41:40Z"};
+                "--since",
+                "1970-01-01T00:38:21Z",
+                "--until",
+                "1970-01-01T00:41:40Z"};
             if (TStringBuf(name) == "findbytesaccess") {
                 args.insert(args.end(), {"--start", "0", "--count", "1"});
             }
             // The old, truncated log is outside the estimated time range.
-            UNIT_ASSERT_VALUES_EQUAL(GetCommand(name)->Run(args.size(), args.data()), 0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetCommand(name)->Run(args.size(), args.data()),
+                0);
             args.push_back("--all-files");
             // Reading it now must expose its error; pruning would hide it.
-            UNIT_ASSERT_VALUES_EQUAL(GetCommand(name)->Run(args.size(), args.data()), 1);
+            UNIT_ASSERT_VALUES_EQUAL(
+                GetCommand(name)->Run(args.size(), args.data()),
+                1);
         }
     }
 
@@ -167,12 +192,19 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTempFileHandle input;
         WriteProfileLog(input.Name());
         const char* args[] = {
-            "test", "--profile-log", input.Name().c_str(), "--ignore-errors"};
+            "test",
+            "--profile-log",
+            input.Name().c_str(),
+            "--ignore-errors"};
         for (const bool ignoreErrors: {false, true}) {
             TReadWithoutFiltersCommand command;
-            UNIT_ASSERT_VALUES_EQUAL(command.Run(ignoreErrors ? 4 : 3, args), 0);
+            UNIT_ASSERT_VALUES_EQUAL(
+                command.Run(ignoreErrors ? 4 : 3, args),
+                0);
             UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems.size(), 1);
-            UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems[0], input.Name());
+            UNIT_ASSERT_VALUES_EQUAL(
+                command.Processor.FileSystems[0],
+                input.Name());
         }
     }
 
@@ -185,7 +217,10 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         SetModificationTime(first.Name(), 100);
         SetModificationTime(second.Name(), 200);
         const char* args[] = {
-            "test", "--profile-log", first.Name().c_str(), second.Name().c_str(),
+            "test",
+            "--profile-log",
+            first.Name().c_str(),
+            second.Name().c_str(),
             "--ignore-errors"};
         for (const bool ignoreErrors: {false, true}) {
             TReadTestCommand command;
@@ -195,7 +230,9 @@ Y_UNIT_TEST_SUITE(TCommandTest)
                 yexception,
                 "Processing failed");
             UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems.size(), 1);
-            UNIT_ASSERT_VALUES_EQUAL(command.Processor.FileSystems[0], first.Name());
+            UNIT_ASSERT_VALUES_EQUAL(
+                command.Processor.FileSystems[0],
+                first.Name());
         }
     }
 
@@ -204,7 +241,10 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         TTempFileHandle input;
         WriteProfileLog(input.Name());
         const char* args[] = {
-            "test", "--profile-log", input.Name().c_str(), "--ignore-errors"};
+            "test",
+            "--profile-log",
+            input.Name().c_str(),
+            "--ignore-errors"};
         for (const bool ignoreErrors: {false, true}) {
             TFailingOutput output;
             TReadTestCommand command;
@@ -236,10 +276,15 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         SetModificationTime(second.Name(), 2000);
         SetModificationTime(third.Name(), 3000);
         const char* args[] = {
-            "test", "--profile-log", third.Name().c_str(),
-            first.Name().c_str(), second.Name().c_str(),
-            "--since", "1970-01-01T00:38:21Z",
-            "--until", "1970-01-01T00:41:40Z"};
+            "test",
+            "--profile-log",
+            third.Name().c_str(),
+            first.Name().c_str(),
+            second.Name().c_str(),
+            "--since",
+            "1970-01-01T00:38:21Z",
+            "--until",
+            "1970-01-01T00:41:40Z"};
         TReadTestCommand command;
         UNIT_ASSERT_VALUES_EQUAL(command.Run(9, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.FilesSelected, 1);
@@ -268,20 +313,28 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         SetModificationTime(good.Name(), 200);
 
         const char* strictArgs[] = {
-            "test", "--profile-log", broken.Name().c_str(), good.Name().c_str()};
+            "test",
+            "--profile-log",
+            broken.Name().c_str(),
+            good.Name().c_str()};
         TReadTestCommand strict;
         UNIT_ASSERT_VALUES_EQUAL(strict.Run(4, strictArgs), 1);
         UNIT_ASSERT_VALUES_EQUAL(strict.FilesSelected, 2);
         UNIT_ASSERT(strict.Processor.FileSystems.empty());
 
         const char* tolerantArgs[] = {
-            "test", "--ignore-errors", "--profile-log",
-            broken.Name().c_str(), good.Name().c_str()};
+            "test",
+            "--ignore-errors",
+            "--profile-log",
+            broken.Name().c_str(),
+            good.Name().c_str()};
         TReadTestCommand tolerant;
         UNIT_ASSERT_VALUES_EQUAL(tolerant.Run(5, tolerantArgs), 0);
         UNIT_ASSERT_VALUES_EQUAL(tolerant.FilesSelected, 2);
         UNIT_ASSERT_VALUES_EQUAL(tolerant.Processor.FileSystems.size(), 1);
-        UNIT_ASSERT_VALUES_EQUAL(tolerant.Processor.FileSystems[0], good.Name());
+        UNIT_ASSERT_VALUES_EQUAL(
+            tolerant.Processor.FileSystems[0],
+            good.Name());
     }
 
     Y_UNIT_TEST(ShouldAcceptSingleFile)
@@ -304,8 +357,12 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         SetModificationTime(third.Name(), 100);
         TTestCommand command;
         const char* args[] = {
-            "test", "--profile-log", first.Name().c_str(),
-            "--profile-log", second.Name().c_str(), third.Name().c_str()};
+            "test",
+            "--profile-log",
+            first.Name().c_str(),
+            "--profile-log",
+            second.Name().c_str(),
+            third.Name().c_str()};
         UNIT_ASSERT_VALUES_EQUAL(command.Run(6, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 3);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(first.Name()));
@@ -330,8 +387,12 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         SetModificationTime(newest.Name(), 100);
         TTestCommand command;
         const char* args[] = {
-            "test", "--profile-log", current.Name().c_str(),
-            newer.Name().c_str(), oldest.Name().c_str(), newest.Name().c_str()};
+            "test",
+            "--profile-log",
+            current.Name().c_str(),
+            newer.Name().c_str(),
+            oldest.Name().c_str(),
+            newest.Name().c_str()};
         UNIT_ASSERT_VALUES_EQUAL(command.Run(6, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 4);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(oldest.Name()));
@@ -351,9 +412,13 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         SetModificationTime(middle.Name(), 100, 200);
         TTestCommand command;
         const char* args[] = {
-            "test", "--profile-log", newest.Name().c_str(),
-            "--profile-log", oldest.Name().c_str(),
-            "--profile-log", middle.Name().c_str()};
+            "test",
+            "--profile-log",
+            newest.Name().c_str(),
+            "--profile-log",
+            oldest.Name().c_str(),
+            "--profile-log",
+            middle.Name().c_str()};
         UNIT_ASSERT_VALUES_EQUAL(command.Run(7, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 3);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(newest.Name()));
@@ -370,7 +435,10 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         SetModificationTime(second.Name(), 100);
         TTestCommand command;
         const char* args[] = {
-            "test", "--profile-log", first.Name().c_str(), second.Name().c_str()};
+            "test",
+            "--profile-log",
+            first.Name().c_str(),
+            second.Name().c_str()};
         UNIT_ASSERT_VALUES_EQUAL(command.Run(4, args), 0);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs.size(), 2);
         UNIT_ASSERT_VALUES_EQUAL(command.Inputs[0], RealPath(first.Name()));
@@ -383,16 +451,23 @@ Y_UNIT_TEST_SUITE(TCommandTest)
         const TString missing = input.Name() + ".missing";
         TTestCommand command;
         const char* args[] = {
-            "test", "--profile-log", input.Name().c_str(), missing.c_str()};
+            "test",
+            "--profile-log",
+            input.Name().c_str(),
+            missing.c_str()};
         UNIT_ASSERT_VALUES_EQUAL(command.Run(4, args), 1);
         UNIT_ASSERT(command.Inputs.empty());
 
         TTestCommand optionCommand;
         const char* optionArgs[] = {
-            "test", "--profile-log", input.Name().c_str(),
-            "--profile-log", missing.c_str()};
+            "test",
+            "--profile-log",
+            input.Name().c_str(),
+            "--profile-log",
+            missing.c_str()};
         UNIT_ASSERT_EXCEPTION(
-            optionCommand.Run(5, optionArgs), NLastGetopt::TUsageException);
+            optionCommand.Run(5, optionArgs),
+            NLastGetopt::TUsageException);
         UNIT_ASSERT(optionCommand.Inputs.empty());
     }
 }

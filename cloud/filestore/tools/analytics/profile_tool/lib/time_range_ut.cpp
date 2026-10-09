@@ -12,6 +12,8 @@ namespace NCloud::NFileStore::NProfileTool {
 
 namespace {
 
+////////////////////////////////////////////////////////////////////////////////
+
 TInstant Time(ui64 seconds)
 {
     return TInstant::Seconds(seconds);
@@ -28,6 +30,8 @@ void AssertPaths(
 }
 
 }   // namespace
+
+////////////////////////////////////////////////////////////////////////////////
 
 Y_UNIT_TEST_SUITE(TProfileLogTimeRange)
 {
