@@ -5,6 +5,7 @@ RECURSE(
     mocks
     recipe
     remote
+    snapshot_backup
 )
 
 RECURSE_FOR_TESTS(

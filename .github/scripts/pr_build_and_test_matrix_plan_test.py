@@ -232,9 +232,9 @@ def test_build_matrix_skips_empty_san_targets():
     )
     matrix = build_matrix(inp)
 
-    # only the regular row should remain
-    assert len(matrix) == 1
-    assert matrix[0]["san"] == ""
+    # No empty sanitizer row; the task engine also runs backup integration.
+    assert len(matrix) == 2
+    assert all(row["san"] == "" for row in matrix)
 
 
 def test_build_matrix_arm64_is_hybrid_and_build_only():
@@ -278,3 +278,71 @@ def test_build_matrix_arm64_coexists_with_sanitizers():
         "",
         "default-linux-armv9a_grace",
     ]
+
+
+def test_backup_suites_run_without_large_tests_label():
+    matrix = build_matrix(mk_inputs(contains={"disk_manager": True}))
+    assert len(matrix) == 2
+    regular, backup = matrix
+    assert regular["test_size"] == "small,medium"
+    assert backup["test_size"] == "large"
+    assert backup["test_type"] == "go_test"
+    assert backup["number_of_retries"] == 1
+    assert backup["allow_split_workload"] is False
+    assert backup["vm_name_suffix"] == "-snapshot-backup"
+    assert backup["test_target"] == backup["build_target"]
+    assert len(backup["test_target"].split(",")) == 5
+    assert (
+        "cloud/disk_manager/internal/pkg/facade/snapshot_service_backup_crash_test"
+        in backup["test_target"].split(",")
+    )
+    assert all(
+        "/facade/snapshot_service_backup" in target
+        for target in backup["test_target"].split(",")
+    )
+
+
+def test_backup_suites_are_not_duplicated_with_large_tests_label():
+    matrix = build_matrix(mk_inputs(contains={"disk_manager": True}, large_tests=True))
+    assert len(matrix) == 1
+    assert matrix[0]["test_size"] == "small,medium,large"
+
+
+def test_backup_suites_run_when_all_components_selected_by_default():
+    matrix = build_matrix(mk_inputs())
+    assert sum(row["vm_name_suffix"] == "-snapshot-backup" for row in matrix) == 1
+
+
+def test_backup_suites_are_not_added_to_unrelated_component():
+    matrix = build_matrix(mk_inputs(contains={"filestore": True}))
+    assert all(row["vm_name_suffix"] != "-snapshot-backup" for row in matrix)
+
+
+def test_backup_suites_run_for_task_engine_changes():
+    matrix = build_matrix(mk_inputs(contains={"tasks": True}))
+    assert len(matrix) == 2
+    regular, backup = matrix
+    assert regular["test_target"] == "cloud/tasks/"
+    assert backup["vm_name_suffix"] == "-snapshot-backup"
+    assert backup["test_size"] == "large"
+    assert len(backup["test_target"].split(",")) == 5
+
+
+def test_backup_suites_run_for_tasks_with_large_tests_but_without_disk_manager():
+    matrix = build_matrix(mk_inputs(contains={"tasks": True}, large_tests=True))
+    assert len(matrix) == 2
+    regular, backup = matrix
+    assert regular["test_target"] == "cloud/tasks/"
+    assert regular["test_size"] == "small,medium,large"
+    assert backup["vm_name_suffix"] == "-snapshot-backup"
+
+
+def test_backup_suites_not_duplicated_for_tasks_and_disk_manager_with_large_tests():
+    matrix = build_matrix(
+        mk_inputs(
+            contains={"tasks": True, "disk_manager": True},
+            large_tests=True,
+        )
+    )
+    assert len(matrix) == 1
+    assert matrix[0]["test_size"] == "small,medium,large"
