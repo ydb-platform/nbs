@@ -20,13 +20,17 @@ class TCreateVolumeLinkActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const TString LeaderDiskId;
+    const TString LeaderCellId;
     const TString FollowerDiskId;
+    const TString FollowerCellId;
 
 public:
     TCreateVolumeLinkActor(
         TRequestInfoPtr requestInfo,
         TString leaderDiskId,
-        TString followerDiskId);
+        TString leaderCellId,
+        TString followerDiskId,
+        TString followerCellId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -48,10 +52,14 @@ private:
 TCreateVolumeLinkActor::TCreateVolumeLinkActor(
         TRequestInfoPtr requestInfo,
         TString leaderDiskId,
-        TString followerDiskId)
+        TString leaderCellId,
+        TString followerDiskId,
+        TString followerCellId)
     : RequestInfo(std::move(requestInfo))
     , LeaderDiskId(std::move(leaderDiskId))
+    , LeaderCellId(std::move(leaderCellId))
     , FollowerDiskId(std::move(followerDiskId))
+    , FollowerCellId(std::move(followerCellId))
 {}
 
 void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
@@ -62,7 +70,9 @@ void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
         std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>(
             RequestInfo->CallContext);
     request->Record.SetDiskId(LeaderDiskId);
+    request->Record.SetLeaderCellId(LeaderCellId);
     request->Record.SetFollowerDiskId(FollowerDiskId);
+    request->Record.SetFollowerCellId(FollowerCellId);
 
     NCloud::Send(
         ctx,
@@ -161,18 +171,25 @@ void TServiceActor::HandleCreateVolumeLink(
         return;
     }
 
+    const auto& followerCellId =
+        request.GetFollowerCellId() ? request.GetFollowerCellId() : CellId;
+
     LOG_DEBUG(
         ctx,
         TBlockStoreComponents::SERVICE,
-        "CreateVolumeLink leader: %s, follower: %s",
+        "CreateVolumeLink leader: %s/%s, follower: %s/%s",
+        CellId.Quote().data(),
         request.GetLeaderDiskId().Quote().data(),
+        followerCellId.Quote().data(),
         request.GetFollowerDiskId().Quote().data());
 
     NCloud::Register<TCreateVolumeLinkActor>(
         ctx,
         std::move(requestInfo),
         request.GetLeaderDiskId(),
-        request.GetFollowerDiskId());
+        CellId,
+        request.GetFollowerDiskId(),
+        followerCellId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

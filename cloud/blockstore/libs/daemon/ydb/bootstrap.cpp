@@ -903,6 +903,9 @@ void TBootstrapYdb::InitKikimrService()
     args.EndpointEventHandler = EndpointEventHandler;
     args.RootKmsKeyProvider = RootKmsKeyProvider;
     args.TemporaryServer = Configs->Options->TemporaryServer;
+    if (Configs->CellsConfig->GetCellsEnabled()) {
+        args.CellId = Configs->CellsConfig->GetCellId();
+    }
     args.BackgroundThreadPool = BackgroundThreadPool;
     args.PartitionBudgetManager = PartitionBudgetManager;
     args.LocalNVMeService = LocalNVMeService;

@@ -11572,9 +11572,9 @@ Y_UNIT_TEST_SUITE(TVolumeTest)
         TLeaderFollowerLink link{
             .LinkUUID = "",
             .LeaderDiskId = "vol1",
-            .LeaderShardId = "su1",
+            .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerShardId = "su2"};
+            .FollowerCellId = "su2"};
         {
             // Create link
             auto response = volume1.LinkLeaderVolumeToFollower(link);

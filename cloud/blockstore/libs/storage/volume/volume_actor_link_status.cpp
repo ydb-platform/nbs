@@ -55,9 +55,9 @@ void TVolumeActor::HandleGetLinkStatus(
     auto link = TLeaderFollowerLink{
         .LinkUUID = "",
         .LeaderDiskId = msg->Record.GetLeaderDiskId(),
-        .LeaderShardId = msg->Record.GetLeaderShardId(),
+        .LeaderCellId = msg->Record.GetLeaderCellId(),
         .FollowerDiskId = msg->Record.GetFollowerDiskId(),
-        .FollowerShardId = msg->Record.GetFollowerShardId()};
+        .FollowerCellId = msg->Record.GetFollowerCellId()};
 
     auto follower = State->FindFollower(link);
     if (follower) {
@@ -79,6 +79,12 @@ void TVolumeActor::HandleGetLinkStatus(
 
     auto response =
         std::make_unique<TEvVolume::TEvGetLinkStatusResponse>(MakeError(S_OK));
+
+    if (follower || leader) {
+        response->Record.SetLinkUUID(link.LinkUUID);
+        response->Record.SetLeaderCellId(link.LeaderCellId);
+        response->Record.SetFollowerCellId(link.FollowerCellId);
+    }
 
     if (follower) {
         response->Record.SetStatus(TranslateState(follower->State));

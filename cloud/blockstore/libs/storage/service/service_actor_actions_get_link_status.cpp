@@ -33,9 +33,9 @@ constexpr ui64 QueryFollower = 2;
 struct TRequest
 {
     TString LeaderDiskId;
-    TString LeaderShardId;
+    TString LeaderCellId;
     TString FollowerDiskId;
-    TString FollowerShardId;
+    TString FollowerCellId;
 
     NProto::TError Parse(const TString& inputStr);
 };
@@ -46,10 +46,14 @@ class TGetLinkStatusActionActor final
 private:
     const TRequestInfoPtr RequestInfo;
     const TString Input;
+    const TString CellId;
     TRequest Request;
 
 public:
-    TGetLinkStatusActionActor(TRequestInfoPtr requestInfo, TString input);
+    TGetLinkStatusActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input,
+        TString cellId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -83,9 +87,9 @@ NProto::TError TRequest::Parse(const TString& inputStr)
     };
 
     LeaderDiskId = getValue("LeaderDiskId");
-    LeaderShardId = getValue("LeaderShardId");
+    LeaderCellId = getValue("LeaderCellId");
     FollowerDiskId = getValue("FollowerDiskId");
-    FollowerShardId = getValue("FollowerShardId");
+    FollowerCellId = getValue("FollowerCellId");
 
     if (!LeaderDiskId || !FollowerDiskId) {
         return MakeError(
@@ -98,9 +102,11 @@ NProto::TError TRequest::Parse(const TString& inputStr)
 
 TGetLinkStatusActionActor::TGetLinkStatusActionActor(
     TRequestInfoPtr requestInfo,
-    TString input)
+    TString input,
+    TString cellId)
     : RequestInfo(std::move(requestInfo))
     , Input(std::move(input))
+    , CellId(std::move(cellId))
 {}
 
 void TGetLinkStatusActionActor::Bootstrap(const TActorContext& ctx)
@@ -109,6 +115,12 @@ void TGetLinkStatusActionActor::Bootstrap(const TActorContext& ctx)
     if (HasError(error)) {
         HandleError(ctx, error);
         return;
+    }
+    if (!Request.LeaderCellId) {
+        Request.LeaderCellId = CellId;
+    }
+    if (!Request.FollowerCellId) {
+        Request.FollowerCellId = Request.LeaderCellId;
     }
 
     SendRequestToLeader(ctx);
@@ -122,9 +134,9 @@ void TGetLinkStatusActionActor::SendRequestToLeader(const TActorContext& ctx)
         RequestInfo->CallContext);
     request->Record.SetDiskId(Request.LeaderDiskId);
     request->Record.SetLeaderDiskId(Request.LeaderDiskId);
-    request->Record.SetLeaderShardId(Request.LeaderShardId);
+    request->Record.SetLeaderCellId(Request.LeaderCellId);
     request->Record.SetFollowerDiskId(Request.FollowerDiskId);
-    request->Record.SetFollowerShardId(Request.FollowerShardId);
+    request->Record.SetFollowerCellId(Request.FollowerCellId);
 
     NCloud::Send(
         ctx,
@@ -139,9 +151,9 @@ void TGetLinkStatusActionActor::SendRequestToFollower(const TActorContext& ctx)
         RequestInfo->CallContext);
     request->Record.SetDiskId(Request.FollowerDiskId);
     request->Record.SetLeaderDiskId(Request.LeaderDiskId);
-    request->Record.SetLeaderShardId(Request.LeaderShardId);
+    request->Record.SetLeaderCellId(Request.LeaderCellId);
     request->Record.SetFollowerDiskId(Request.FollowerDiskId);
-    request->Record.SetFollowerShardId(Request.FollowerShardId);
+    request->Record.SetFollowerCellId(Request.FollowerCellId);
 
     NCloud::Send(
         ctx,
@@ -233,7 +245,8 @@ TResultOrError<IActorPtr> TServiceActor::CreateGetLinkStatusActionActor(
 {
     return {std::make_unique<TGetLinkStatusActionActor>(
         std::move(requestInfo),
-        std::move(input))};
+        std::move(input),
+        CellId)};
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -12,9 +12,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-TString IdForPrint(const TString& diskId, const TString& shardId)
+TString IdForPrint(const TString& diskId, const TString& cellId)
 {
-    return shardId ? (shardId + "/" + diskId) : diskId;
+    return cellId ? (cellId + "/" + diskId) : diskId;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -25,19 +25,19 @@ ui64 TLeaderFollowerLink::GetHash() const
 {
     return MultiHash(
         LeaderDiskId,
-        LeaderShardId,
+        LeaderCellId,
         FollowerDiskId,
-        FollowerShardId);
+        FollowerCellId);
 }
 
 TString TLeaderFollowerLink::LeaderDiskIdForPrint() const
 {
-    return IdForPrint(LeaderDiskId, LeaderShardId);
+    return IdForPrint(LeaderDiskId, LeaderCellId);
 }
 
 TString TLeaderFollowerLink::FollowerDiskIdForPrint() const
 {
-    return IdForPrint(FollowerDiskId, FollowerShardId);
+    return IdForPrint(FollowerDiskId, FollowerCellId);
 }
 
 TString TLeaderFollowerLink::Describe() const
@@ -61,15 +61,15 @@ bool TLeaderFollowerLink::Match(const TLeaderFollowerLink& rhs) const
     if (LinkUUID && rhs.LinkUUID) {
         return false;
     }
-    auto withoutUUID = [](const TLeaderFollowerLink& o)
+    // A link persisted before cell ids were filled in has them empty.
+    auto sameCell = [](const TString& a, const TString& b)
     {
-        return std::tie(
-            o.LeaderDiskId,
-            o.LeaderShardId,
-            o.FollowerDiskId,
-            o.FollowerShardId);
+        return !a || !b || a == b;
     };
-    return withoutUUID(*this) == withoutUUID(rhs);
+    return LeaderDiskId == rhs.LeaderDiskId &&
+           FollowerDiskId == rhs.FollowerDiskId &&
+           sameCell(LeaderCellId, rhs.LeaderCellId) &&
+           sameCell(FollowerCellId, rhs.FollowerCellId);
 }
 
 ////////////////////////////////////////////////////////////////////////////////

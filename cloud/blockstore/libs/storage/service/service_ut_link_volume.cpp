@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
@@ -9,6 +10,37 @@
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
+
+////////////////////////////////////////////////////////////////////////////////
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+NProto::TGetLinkStatusResponse GetLinkStatus(
+    TServiceClient& service,
+    const TString& leaderDiskId,
+    const TString& followerDiskId,
+    const TString& followerCellId)
+{
+    NProto::TGetLinkStatusRequest request;
+    request.SetLeaderDiskId(leaderDiskId);
+    request.SetFollowerDiskId(followerDiskId);
+    request.SetFollowerCellId(followerCellId);
+    TString buf;
+    google::protobuf::util::MessageToJsonString(request, &buf);
+    auto response = service.ExecuteAction("GetLinkStatus", buf);
+    NProto::TGetLinkStatusResponse proto;
+    UNIT_ASSERT_C(
+        google::protobuf::util::JsonStringToMessage(
+            response->Record.GetOutput(),
+            &proto)
+            .ok(),
+        response->Record.GetOutput());
+    return proto;
+}
+
+}   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -28,22 +60,32 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         {
             service.SendCreateVolumeLinkRequest("vol-1", "vol-1");
             auto response = service.RecvCreateVolumeLinkResponse();
-            UNIT_ASSERT_C(E_ARGUMENT, response->GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
         }
         {
             service.SendCreateVolumeLinkRequest("vol-1", "unknown");
             auto response = service.RecvCreateVolumeLinkResponse();
-            UNIT_ASSERT_C(E_ARGUMENT, response->GetError().GetCode());
+            UNIT_ASSERT_C(
+                IsNotFoundSchemeShardError(response->GetError()),
+                FormatError(response->GetError()));
         }
         {
             service.SendCreateVolumeLinkRequest("unknown", "vol-1");
             auto response = service.RecvCreateVolumeLinkResponse();
-            UNIT_ASSERT_C(E_ARGUMENT, response->GetError().GetCode());
+            UNIT_ASSERT_C(
+                IsNotFoundSchemeShardError(response->GetError()),
+                FormatError(response->GetError()));
         }
         {
             service.SendCreateVolumeLinkRequest("vol-2", "vol-1");
             auto response = service.RecvCreateVolumeLinkResponse();
-            UNIT_ASSERT_C(E_ARGUMENT, response->GetError().GetCode());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
         }
     }
 
@@ -610,6 +652,137 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
                 response->GetStatus(),
                 response->GetErrorReason());
         }
+    }
+
+    Y_UNIT_TEST(ShouldFillCellIdsInLink)
+    {
+        TTestEnv env(1, 1, 4);
+        ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+
+        size_t linkRequestCount = 0;
+        runtime.SetEventFilter(
+            [&](TTestActorRuntimeBase&, TAutoPtr<IEventHandle>& ev)
+            {
+                if (ev->GetTypeRewrite() ==
+                    TEvVolume::EvLinkLeaderVolumeToFollowerRequest)
+                {
+                    ++linkRequestCount;
+                    const auto& record =
+                        ev->Get<TEvVolume::TEvLinkLeaderVolumeToFollowerRequest>()
+                            ->Record;
+                    UNIT_ASSERT_VALUES_EQUAL("cell-a", record.GetLeaderCellId());
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        "cell-a",
+                        record.GetFollowerCellId());
+                }
+                return false;
+            });
+
+        service.CreateVolumeLink("vol-1", "vol-2");
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            2,
+            linkRequestCount,
+            "one for volume proxy and one for volume");
+
+        auto linkStatus = GetLinkStatus(service, "vol-1", "vol-2", {});
+        UNIT_ASSERT_EQUAL_C(
+            NProto::ELinkStatus::LINK_STATUS_PREPARING,
+            linkStatus.GetStatus(),
+            linkStatus.ShortDebugString());
+        UNIT_ASSERT_C(linkStatus.GetLinkUUID(), linkStatus.ShortDebugString());
+        UNIT_ASSERT_VALUES_EQUAL("cell-a", linkStatus.GetLeaderCellId());
+        UNIT_ASSERT_VALUES_EQUAL("cell-a", linkStatus.GetFollowerCellId());
+
+        service.DestroyVolumeLink("vol-1", "vol-2");
+
+        linkStatus = GetLinkStatus(service, "vol-1", "vol-2", {});
+        UNIT_ASSERT_EQUAL_C(
+            NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
+            linkStatus.GetStatus(),
+            linkStatus.ShortDebugString());
+    }
+
+    Y_UNIT_TEST(ShouldUseExplicitFollowerCellId)
+    {
+        TTestEnv env(1, 1, 4);
+        ui32 nodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient service(runtime, nodeIdx);
+        service.CreateVolume("vol-1", DefaultBlocksCount);
+        service.CreateVolume("vol-2", DefaultBlocksCount);
+
+        service.CreateVolumeLink("vol-1", "vol-2", "cell-b");
+
+        auto linkStatus = GetLinkStatus(service, "vol-1", "vol-2", "cell-b");
+        UNIT_ASSERT_EQUAL_C(
+            NProto::ELinkStatus::LINK_STATUS_PREPARING,
+            linkStatus.GetStatus(),
+            linkStatus.ShortDebugString());
+        UNIT_ASSERT_VALUES_EQUAL("cell-a", linkStatus.GetLeaderCellId());
+        UNIT_ASSERT_VALUES_EQUAL("cell-b", linkStatus.GetFollowerCellId());
+
+        // Without an explicit follower cell the leader's cell is assumed.
+        linkStatus = GetLinkStatus(service, "vol-1", "vol-2", {});
+        UNIT_ASSERT_EQUAL_C(
+            NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
+            linkStatus.GetStatus(),
+            linkStatus.ShortDebugString());
+
+        {
+            service.SendDestroyVolumeLinkRequest("vol-1", "vol-2");
+            auto response = service.RecvDestroyVolumeLinkResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_ALREADY,
+                response->GetError().GetCode(),
+                FormatError(response->GetError()));
+        }
+
+        service.DestroyVolumeLink("vol-1", "vol-2", "cell-b");
+
+        linkStatus = GetLinkStatus(service, "vol-1", "vol-2", "cell-b");
+        UNIT_ASSERT_EQUAL_C(
+            NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
+            linkStatus.GetStatus(),
+            linkStatus.ShortDebugString());
+    }
+
+    Y_UNIT_TEST(ShouldMatchLinkCreatedWithoutCellIds)
+    {
+        // A link persisted by a node without a cell id (before the upgrade)
+        // must be found by a node that fills cell ids in.
+        TTestEnv env(1, 2, 4);
+        ui32 oldNodeIdx = SetupTestEnv(env);
+        ui32 newNodeIdx = SetupTestEnvWithCellId(env, "cell-a");
+
+        auto& runtime = env.GetRuntime();
+        TServiceClient oldService(runtime, oldNodeIdx);
+        TServiceClient newService(runtime, newNodeIdx);
+        oldService.CreateVolume("vol-1", DefaultBlocksCount);
+        oldService.CreateVolume("vol-2", DefaultBlocksCount);
+
+        oldService.CreateVolumeLink("vol-1", "vol-2");
+
+        auto linkStatus = GetLinkStatus(newService, "vol-1", "vol-2", {});
+        UNIT_ASSERT_EQUAL_C(
+            NProto::ELinkStatus::LINK_STATUS_PREPARING,
+            linkStatus.GetStatus(),
+            linkStatus.ShortDebugString());
+        UNIT_ASSERT_VALUES_EQUAL("", linkStatus.GetLeaderCellId());
+        UNIT_ASSERT_VALUES_EQUAL("", linkStatus.GetFollowerCellId());
+
+        newService.DestroyVolumeLink("vol-1", "vol-2");
+
+        linkStatus = GetLinkStatus(oldService, "vol-1", "vol-2", {});
+        UNIT_ASSERT_EQUAL_C(
+            NProto::ELinkStatus::LINK_STATUS_NOT_FOUND,
+            linkStatus.GetStatus(),
+            linkStatus.ShortDebugString());
     }
 }
 
