@@ -1,0 +1,113 @@
+name: Render completed workflow trace
+
+on:
+  workflow_run:
+    workflows:
+      - Build and test NBS on demand
+      - Check github workflow
+      - Nightly build
+      - Nightly build (ARM Grace)
+      - Nightly build (asan)
+      - Nightly build (msan)
+      - Nightly build (tsan)
+      - Nightly build (ubsan)
+      - PR-check
+    types:
+      - completed
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: trace-report-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    name: Render workflow and ya traces
+    runs-on: [self-hosted, runner_light]
+    timeout-minutes: 15
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+      REPORTS_BUCKET: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
+      REPORTS_WEBSITE_SUFFIX: ${{ vars.POOLED_HEAVY_AWS_WEBSITE_SUFFIX }}
+      TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+      TRIGGER_RUN_ATTEMPT: ${{ github.event.workflow_run.run_attempt }}
+      TRIGGER_WORKFLOW_PATH: ${{ github.event.workflow_run.path }}
+
+    steps:
+      - name: Checkout trusted trace renderer
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          sparse-checkout: .github
+          submodules: false
+          clean: true
+
+      - name: Prepare AWS CLI
+        uses: ./.github/actions/s3cmd
+        with:
+          s3_bucket: ${{ vars.POOLED_HEAVY_AWS_BUCKET }}
+          s3_endpoint: ${{ vars.POOLED_HEAVY_AWS_ENDPOINT }}
+          s3_website_suffix: ${{ vars.POOLED_HEAVY_AWS_WEBSITE_SUFFIX }}
+          s3_key_id: ${{ secrets.POOLED_HEAVY_AWS_KEY_ID }}
+          s3_key_secret: ${{ secrets.POOLED_HEAVY_AWS_SECRET_KEY }}
+          folder_prefix: workflow-trace-
+          build_preset: relwithdebinfo
+          install: false
+
+      - name: Install trace renderer dependencies
+        shell: bash --noprofile --norc -eo pipefail {0}
+        run: python3 -m pip install -r .github/scripts/requirements.txt
+
+      - name: Resolve triggering report location
+        shell: bash --noprofile --norc -eo pipefail {0}
+        run: |
+          workflow_file="${TRIGGER_WORKFLOW_PATH##*/}"
+          case "$workflow_file" in
+              *.yaml | *.yml) ;;
+              *)
+                  echo "Unexpected workflow path: $TRIGGER_WORKFLOW_PATH"
+                  exit 1
+                  ;;
+          esac
+          reports_prefix="reports/${GITHUB_REPOSITORY}/${workflow_file}/${TRIGGER_RUN_ID}/${TRIGGER_RUN_ATTEMPT}"
+          {
+              echo "REPORTS_PREFIX=$reports_prefix"
+              echo "TRACE_REPORT_URL=https://${REPORTS_BUCKET}.${REPORTS_WEBSITE_SUFFIX}/${reports_prefix}/workflow-trace.html"
+          } >> "$GITHUB_ENV"
+
+      - name: Render workflow trace
+        shell: bash --noprofile --norc -eo pipefail {0}
+        run: |
+          PYTHONPATH="$GITHUB_WORKSPACE/.github" \
+              python3 -m scripts.tracing.workflow_trace_report \
+              --event "$GITHUB_EVENT_PATH" \
+              --s3-bucket "$REPORTS_BUCKET" \
+              --s3-prefix "$REPORTS_PREFIX" \
+              --output-dir trace-output
+
+      - name: Upload trace beside test summaries
+        shell: bash --noprofile --norc -eo pipefail {0}
+        run: |
+          aws s3 sync --acl public-read --no-progress \
+              --exclude "*" \
+              --include "workflow-trace.html" \
+              --include "workflow-trace.manifest.json" \
+              --include "workflow-trace.otlp.jsonl.gz" \
+              trace-output/ \
+              "s3://${REPORTS_BUCKET}/${REPORTS_PREFIX}/"
+          {
+              echo "### Workflow execution trace"
+              echo
+              echo "[Open the workflow/job/step/ya trace]($TRACE_REPORT_URL)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Keep trace as a GitHub artifact
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: workflow-trace-${{ github.event.workflow_run.id }}-${{ github.event.workflow_run.run_attempt }}
+          path: trace-output/
+          if-no-files-found: error
+          retention-days: 14
