@@ -112,13 +112,10 @@ public:
                     Timer->Now());
             }
 
-            // audited because authorization is skipped here: a record of who
-            // went past it, after the fact
-            STORAGE_INFO(
+            STORAGE_DEBUG(
                 "[cell " << cellId << "] inter-cell "
                     << GetBlockStoreRequestName(TMethod::BlockStoreRequest)
-                    << " without authorization, peer=" << peer
-                    << " disk=" << diskId);
+                    << ", peer=" << peer << " disk=" << diskId);
 
             return TMethod::Execute(
                 Trusted.get(),

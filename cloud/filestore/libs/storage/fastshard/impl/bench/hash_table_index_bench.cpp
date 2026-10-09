@@ -1,12 +1,11 @@
-#include "delay_policy.h"
 #include "null_storage_group.h"
 #include "shard_bench.h"
 
+#include <cloud/fastshard/bootstrap/core.h>
+#include <cloud/fastshard/testlib/delay_policy.h>
+
 #include <cloud/filestore/libs/storage/fastshard/impl/hash_table_index/shard.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
-
-#include <silk/fibers/fiber.h>
-#include <silk/util/init.h>
 
 #include <util/generic/size_literals.h>
 
@@ -22,9 +21,6 @@ constexpr ui32 ShardNo = 1U;
 constexpr ui64 NodesPerGroup = 256U;
 constexpr ui64 GroupCapacity = 256_MB;
 
-const TDuration StorageDelayMean = TDuration::MicroSeconds(100);
-const TDuration StorageDelayStdDev = TDuration::MicroSeconds(100);
-
 ////////////////////////////////////////////////////////////////////////////////
 // The google benchmark module owns main(), so the silk runtime is
 // brought up lazily on first use and torn down via atexit: a scheduler
@@ -33,12 +29,8 @@ const TDuration StorageDelayStdDev = TDuration::MicroSeconds(100);
 void EnsureSilk()
 {
     static const bool initialized = [] {
-        silk::initialize();
-        silk::FiberScheduler::initialize();
-        std::atexit([] {
-            silk::FiberScheduler::destroy();
-            silk::destroy();
-        });
+        NCloud::NFastShard::Init();
+        std::atexit(NCloud::NFastShard::Destroy);
         return true;
     }();
     Y_UNUSED(initialized);
@@ -61,9 +53,10 @@ IFileSystemShardPtr MakeHashTableIndexShard()
         "bench-fs",
         ShardNo,
         1 /* generation */,
-        CreateNullStorageGroupFactory(CreateLognormalDelayPolicy(
-            StorageDelayMean,
-            StorageDelayStdDev)),
+        CreateNullStorageGroupFactory(
+            NCloud::NFastShard::CreateLognormalDelayPolicy(
+                NCloud::NFastShard::DefaultStorageDelayMean,
+                NCloud::NFastShard::DefaultStorageDelayStdDev)),
         config);
 }
 

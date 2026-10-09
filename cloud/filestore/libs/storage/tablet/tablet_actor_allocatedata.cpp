@@ -238,6 +238,7 @@ void TIndexTabletActor::ExecuteTx_AllocateData(
 
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.NodeId,
         args.Node->MinCommitId,
         args.CommitId,

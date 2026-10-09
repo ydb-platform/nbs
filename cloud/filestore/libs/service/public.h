@@ -23,6 +23,13 @@ using IFileStorePtr = std::shared_ptr<IFileStore>;
 struct IFileStoreService;
 using IFileStoreServicePtr = std::shared_ptr<IFileStoreService>;
 
+struct IFileSystemEventHandler;
+using IFileSystemEventHandlerPtr = std::shared_ptr<IFileSystemEventHandler>;
+
+struct IMultiFileSystemEventHandler;
+using IMultiFileSystemEventHandlerPtr =
+    std::shared_ptr<IMultiFileSystemEventHandler>;
+
 struct IFileStoreEndpoints;
 using IFileStoreEndpointsPtr = std::shared_ptr<IFileStoreEndpoints>;
 

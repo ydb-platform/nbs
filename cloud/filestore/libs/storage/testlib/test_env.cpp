@@ -91,6 +91,7 @@ TTestEnv::TTestEnv(
     , Runtime(Config.StaticNodes + Config.DynamicNodes, useRealThreads)
     , NextDynamicNode(Config.StaticNodes)
     , Counters(MakeIntrusive<NMonitoring::TDynamicCounters>())
+    , MultiFileSystemEventHandler(CreateMultiFileSystemEventHandler())
 {
     UNIT_ASSERT(config.StaticNodes > 0);
 
@@ -230,7 +231,8 @@ ui32 TTestEnv::AddDynamicNode()
 
     auto tabletProxy = CreateIndexTabletProxy(
         StorageConfig,
-        TraceSerializer);
+        TraceSerializer,
+        MultiFileSystemEventHandler);
     auto tabletProxyId = Runtime.Register(
         tabletProxy.release(),
         nodeIdx,

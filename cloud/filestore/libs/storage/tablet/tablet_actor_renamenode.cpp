@@ -534,6 +534,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
     // remove existing source ref
     RemoveNodeRef(
         *db,
+        args.FileSystemEvents,
         args.ParentNodeId,
         args.ChildRef->MinCommitId,
         args.CommitId,
@@ -547,6 +548,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             // remove existing target ref
             RemoveNodeRef(
                 *db,
+                args.FileSystemEvents,
                 args.NewParentNodeId,
                 args.NewChildRef->MinCommitId,
                 args.CommitId,
@@ -558,6 +560,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             // create source ref to target node
             CreateNodeRef(
                 *db,
+                args.FileSystemEvents,
                 args.ParentNodeId,
                 args.CommitId,
                 args.Name,
@@ -575,6 +578,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             // remove target ref and unlink target node
             auto e = UnlinkNode(
                 *db,
+                args.FileSystemEvents,
                 args.NewParentNode->NodeId,
                 args.NewName,
                 *args.NewChildNode,
@@ -602,6 +606,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
             // remove target ref
             UnlinkExternalNode(
                 *db,
+                args.FileSystemEvents,
                 args.NewParentNode->NodeId,
                 args.NewName,
                 args.NewChildRef->ShardId,
@@ -632,6 +637,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.ParentNode->NodeId,
         args.ParentNode->MinCommitId,
         args.CommitId,
@@ -641,6 +647,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
     // create target ref to source node
     CreateNodeRef(
         *db,
+        args.FileSystemEvents,
         args.NewParentNodeId,
         args.CommitId,
         args.NewName,
@@ -651,6 +658,7 @@ void TIndexTabletActor::ExecuteTx_RenameNode(
     auto newParent = CopyAttrs(args.NewParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.NewParentNode->NodeId,
         args.NewParentNode->MinCommitId,
         args.CommitId,

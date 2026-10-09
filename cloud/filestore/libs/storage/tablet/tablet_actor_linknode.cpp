@@ -142,6 +142,7 @@ void TIndexTabletActor::ExecuteTx_LinkNodeInShard(
     auto attrs = CopyAttrs(args.Node->Attrs, E_CM_CMTIME | E_CM_REF);
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.Request.GetNodeId(),
         args.Node->MinCommitId,
         args.CommitId,

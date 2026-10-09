@@ -52,6 +52,8 @@ void TIndexTabletActor::HandleGetNodeAttr(
     const TEvService::TEvGetNodeAttrRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
+
     using TMethod = TEvService::TGetNodeAttrMethod;
     auto* msg = ev->Get();
 
@@ -226,6 +228,8 @@ void TIndexTabletActor::HandleGetNodeAttrBatch(
     const TEvIndexTablet::TEvGetNodeAttrBatchRequest::TPtr& ev,
     const TActorContext& ctx)
 {
+    RegisterFileSystemEventClient(ev->Recipient, ev->Sender);
+
     using TMethod = TEvIndexTablet::TGetNodeAttrBatchMethod;
     auto* msg = ev->Get();
 

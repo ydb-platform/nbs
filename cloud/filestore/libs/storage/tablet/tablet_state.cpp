@@ -226,6 +226,7 @@ void TIndexTabletState::LoadState(
     MaxTabletStep = Max(config.GetMaxTabletStep(), LastStep);
 
     CompressNodeRef = config.GetEnableNodeRefCompression();
+    FileSystemEventsEnabled = config.GetFileSystemEventsEnabled();
 
     FileSystem.CopyFrom(fileSystem);
     FileSystemStats.CopyFrom(fileSystemStats);

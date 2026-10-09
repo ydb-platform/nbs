@@ -390,6 +390,10 @@ private:
         TRequestInfoPtr requestInfo,
         TString input);
 
+    NActors::IActorPtr CreateGenerateFileSystemEventActionActor(
+        TRequestInfoPtr requestInfo,
+        TString input);
+
     NActors::IActorPtr CreateGetFileSystemTopologyActionActor(
         TRequestInfoPtr requestInfo,
         TString input);

@@ -42,21 +42,32 @@ TVector<ui64> SplitData(ui32 blockSize, TByteRange range)
     return blobSizes;
 }
 
-NProto::TUnconfirmedData BuildUnconfirmedData(
-    const NProtoPrivate::TGenerateBlobIdsRequest& generateRequest,
-    const NProtoPrivate::TGenerateBlobIdsResponse& generateResponse)
+TByteRange GetFullRange(
+    const NProtoPrivate::TGenerateBlobIdsRequest& request,
+    ui32 blockSize)
 {
-    NProto::TUnconfirmedData data;
-
-    ui64 offset = generateRequest.GetOffset();
-    ui64 end = generateRequest.GetOffset() + generateRequest.GetLength();
-    for (const auto& part: generateRequest.GetUnalignedDataRanges()) {
-        *data.AddUnalignedDataRanges() = part;
+    ui64 offset = request.GetOffset();
+    ui64 end = request.GetOffset() + request.GetLength();
+    for (const auto& part: request.GetUnalignedDataRanges()) {
         offset = Min(offset, part.GetOffset());
         end = Max(end, part.GetOffset() + static_cast<ui64>(part.GetContent().size()));
     }
-    data.SetOffset(offset);
-    data.SetLength(end - offset);
+    return TByteRange(offset, end - offset, blockSize);
+}
+
+NProto::TUnconfirmedData BuildUnconfirmedData(
+    const NProtoPrivate::TGenerateBlobIdsRequest& generateRequest,
+    const NProtoPrivate::TGenerateBlobIdsResponse& generateResponse,
+    ui32 blockSize)
+{
+    NProto::TUnconfirmedData data;
+
+    for (const auto& part: generateRequest.GetUnalignedDataRanges()) {
+        *data.AddUnalignedDataRanges() = part;
+    }
+    const auto range = GetFullRange(generateRequest, blockSize);
+    data.SetOffset(range.Offset);
+    data.SetLength(range.Length);
     for (const auto& blob: generateResponse.GetBlobs()) {
         Convert(blob.GetBlobId(), *data.AddBlobIds());
     }
@@ -326,15 +337,37 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         msg->Record.GetLength(),
         blockSize);
 
+    auto replyError = [&] (const NProto::TError& error)
+    {
+        auto response =
+            std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsResponse>(
+                error);
+        NCloud::Reply(ctx, *ev, std::move(response));
+    };
+
     // It is up to the client to provide an aligned range, but we still verify
     // it and reject the request if it is not aligned.
     if (msg->Record.GetLength() % blockSize != 0 ||
         msg->Record.GetOffset() % blockSize != 0)
     {
-        auto response =
-            std::make_unique<TEvIndexTablet::TEvGenerateBlobIdsResponse>(
-                MakeError(E_ARGUMENT, "unaligned range"));
-        NCloud::Reply(ctx, *ev, std::move(response));
+        replyError(MakeError(E_ARGUMENT, "unaligned range"));
+        return;
+    }
+
+    const auto fullRange = GetFullRange(msg->Record, blockSize);
+
+    if (auto error =
+            CheckUnconfirmedDataOverlap(msg->Record.GetNodeId(), fullRange);
+        HasError(error))
+    {
+        replyError(error);
+        return;
+    }
+
+    if (auto error = ForceLoadRangeIfNeeded(msg->Record.GetNodeId(), fullRange);
+        HasError(error))
+    {
+        replyError(error);
         return;
     }
 
@@ -345,7 +378,7 @@ void TIndexTabletActor::HandleGenerateBlobIds(
 
     const bool canUseUnconfirmed =
         msg->Record.GetUnconfirmedFlowRequested() && CanUseUnconfirmedData() &&
-        !IsTabletConsideredOverloaded();
+        !IsTabletConsideredOverloaded() && !HasError(IsDataOperationAllowed());
 
     auto validator = [&](const NProtoPrivate::TGenerateBlobIdsRequest& request)
     {
@@ -359,11 +392,6 @@ void TIndexTabletActor::HandleGenerateBlobIds(
         }
 
         if (canUseUnconfirmed) {
-            error = IsDataOperationAllowed();
-            if (HasError(error)) {
-                return error;
-            }
-
             return ValidateUnalignedDataRanges(
                 request.GetUnalignedDataRanges(),
                 GetBlockSize());
@@ -449,7 +477,8 @@ void TIndexTabletActor::HandleGenerateBlobIds(
     if (canUseUnconfirmed) {
         unconfirmedData = BuildUnconfirmedData(
             msg->Record,
-            response->Record);
+            response->Record,
+            blockSize);
     }
 
     ui64 generateBlobIdsBytes = msg->Record.GetLength();
@@ -544,7 +573,22 @@ void TIndexTabletActor::HandleAddData(
             ProfileLog);
     };
 
-    if (auto error = IsDataOperationAllowed(); HasError(error)) {
+    const TByteRange range(
+        msg->Record.GetOffset(),
+        msg->Record.GetLength(),
+        GetBlockSize());
+
+    if (auto error =
+            CheckUnconfirmedDataOverlap(msg->Record.GetNodeId(), range);
+        HasError(error))
+    {
+        replyError(error);
+        return;
+    }
+
+    if (auto error = ForceLoadRangeIfNeeded(msg->Record.GetNodeId(), range);
+        HasError(error))
+    {
         replyError(error);
         return;
     }
@@ -574,11 +618,6 @@ void TIndexTabletActor::HandleAddData(
             TryReleaseCollectBarrier(commitId);
         }
     };
-
-    const TByteRange range(
-        msg->Record.GetOffset(),
-        msg->Record.GetLength(),
-        GetBlockSize());
 
     auto validator = [&](const NProtoPrivate::TAddDataRequest& request)
     {

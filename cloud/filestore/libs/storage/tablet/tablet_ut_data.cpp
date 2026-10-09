@@ -5217,6 +5217,96 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
         tablet.DestroyHandle(handle);
     }
 
+    TABLET_TEST(ShouldRejectGenerateBlobIdsForUnloadedRangeDuringCompactionLoad)
+    {
+        const auto block = tabletConfig.BlockSize;
+
+        NProto::TStorageConfig storageConfig;
+        storageConfig.SetCompactionThreshold(999'999);
+        storageConfig.SetCleanupThreshold(999'999);
+        storageConfig.SetLoadedCompactionRangesPerTx(2);
+        storageConfig.SetWriteBlobThreshold(block);
+
+        TTestEnv env(testEnvConfig, std::move(storageConfig));
+
+        TAutoPtr<IEventHandle> loadChunk;
+        ui32 loadChunkCount = 0;
+        env.GetRuntime().SetEventFilter(
+            [&](auto& runtime, auto& event)
+            {
+                Y_UNUSED(runtime);
+
+                switch (event->GetTypeRewrite()) {
+                    case TEvIndexTabletPrivate::
+                        EvLoadCompactionMapChunkRequest: {
+                        ++loadChunkCount;
+
+                        if (loadChunkCount == 1) {
+                            loadChunk = event.Release();
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
+            });
+
+        ui32 nodeIdx = env.AddDynamicNode();
+        ui64 tabletId = env.BootIndexTablet(nodeIdx);
+
+        TIndexTabletClient tablet(
+            env.GetRuntime(),
+            nodeIdx,
+            tabletId,
+            tabletConfig);
+        tablet.InitSession("client", "session");
+
+        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
+        auto handle = CreateHandle(tablet, id);
+
+        UNIT_ASSERT(loadChunk);
+        UNIT_ASSERT_VALUES_EQUAL(1, loadChunkCount);
+
+        tablet.SendGenerateBlobIdsRequest(id, handle, 0, block);
+        {
+            auto response = tablet.RecvGenerateBlobIdsResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_REJECTED,
+                response->GetStatus(),
+                response->GetErrorReason());
+            UNIT_ASSERT_VALUES_EQUAL(
+                "compaction state not loaded yet",
+                response->GetErrorReason());
+        }
+
+        env.GetRuntime().Send(loadChunk.Release(), nodeIdx);
+
+        tablet.SendGenerateBlobIdsRequest(id, handle, 0, block);
+        {
+            auto response = tablet.RecvGenerateBlobIdsResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // Run compaction to ensure all pending events are processed
+        tablet.SendCompactionRequest(GetMixedRangeIndex(id, 0));
+        {
+            auto response = tablet.RecvCompactionResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_FALSE,
+                response->GetStatus(),
+                response->GetErrorReason());
+        }
+
+        // The rejected GenerateBlobIds enqueues an out-of-order load of its
+        // range on top of the in-order one
+        UNIT_ASSERT_VALUES_EQUAL(2, loadChunkCount);
+
+        tablet.DestroyHandle(handle);
+    }
+
     TABLET_TEST(ShouldNotAllowTruncateDuringCompactionMapLoading)
     {
         const auto block = tabletConfig.BlockSize;

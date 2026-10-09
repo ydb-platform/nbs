@@ -52,6 +52,21 @@ IActorPtr TStorageServiceActor::CreateFastShardCommandActionActor(
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// FileSystemEvents
+
+IActorPtr TStorageServiceActor::CreateGenerateFileSystemEventActionActor(
+    TRequestInfoPtr requestInfo,
+    TString input)
+{
+    using TGenerateFileSystemEventActor = TTabletActionActor<
+        TEvIndexTablet::TEvGenerateFileSystemEventRequest,
+        TEvIndexTablet::TEvGenerateFileSystemEventResponse>;
+    return std::make_unique<TGenerateFileSystemEventActor>(
+        std::move(requestInfo),
+        std::move(input));
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // Stats
 
 IActorPtr TStorageServiceActor::CreateGetStorageStatsActionActor(

@@ -5,7 +5,7 @@
 #include <cmath>
 #include <random>
 
-namespace NCloud::NFileStore::NStorage::NFastShard {
+namespace NCloud::NFastShard {
 
 namespace {
 
@@ -55,6 +55,15 @@ private:
     }
 };
 
+class TZeroDelayPolicy final: public IDelayPolicy
+{
+public:
+    [[nodiscard]] TDuration NextDelay() override
+    {
+        return TDuration::Zero();
+    }
+};
+
 }   // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -64,4 +73,9 @@ IDelayPolicyPtr CreateLognormalDelayPolicy(TDuration mean, TDuration stddev)
     return std::make_shared<TLognormalDelayPolicy>(mean, stddev);
 }
 
-}   // namespace NCloud::NFileStore::NStorage::NFastShard
+IDelayPolicyPtr CreateZeroDelayPolicy()
+{
+    return std::make_shared<TZeroDelayPolicy>();
+}
+
+}   // namespace NCloud::NFastShard

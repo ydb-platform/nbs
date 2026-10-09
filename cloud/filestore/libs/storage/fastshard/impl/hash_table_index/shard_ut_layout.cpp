@@ -143,7 +143,7 @@ TEST(HashTableIndexShardLayoutTest, DumpsLayout)
     NJson::TJsonValue parsed;
     ASSERT_TRUE(NJson::ReadJsonTree(json.Str(), &parsed)) << json.Str();
     const auto& components = parsed["components"].GetArray();
-    ASSERT_EQ(6u, components.size()) << json.Str();
+    ASSERT_EQ(7u, components.size()) << json.Str();
 
     //
     // The components must cover the group contiguously in the
@@ -152,46 +152,54 @@ TEST(HashTableIndexShardLayoutTest, DumpsLayout)
 
     {
         const auto& c = components[0];
-        EXPECT_EQ("NodeTable", c["name"].GetString());
+        EXPECT_EQ("SuperBlock", c["name"].GetString());
         EXPECT_EQ(0ULL, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(8_KB, c["sizeBytes"].GetUInteger());
+        EXPECT_EQ(1ULL, c["slotCount"].GetUInteger());
+    }
+
+    {
+        const auto& c = components[1];
+        EXPECT_EQ("NodeTable", c["name"].GetString());
+        EXPECT_EQ(8_KB, c["offsetBytes"].GetUInteger());
         EXPECT_EQ(12_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(84ULL, c["slotCount"].GetUInteger());
     }
 
     {
-        const auto& c = components[1];
+        const auto& c = components[2];
         EXPECT_EQ("NameTable", c["name"].GetString());
-        EXPECT_EQ(12_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(20_KB, c["offsetBytes"].GetUInteger());
         EXPECT_EQ(8_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(85ULL, c["slotCount"].GetUInteger());
     }
 
     {
-        const auto& c = components[2];
+        const auto& c = components[3];
         EXPECT_EQ("HandleTable", c["name"].GetString());
-        EXPECT_EQ(20_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(28_KB, c["offsetBytes"].GetUInteger());
         EXPECT_EQ(20_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(1024ULL, c["slotCount"].GetUInteger());
     }
 
     {
-        const auto& c = components[3];
+        const auto& c = components[4];
         EXPECT_EQ("PageIndex", c["name"].GetString());
-        EXPECT_EQ(40_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(48_KB, c["offsetBytes"].GetUInteger());
         EXPECT_EQ(56_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(2210ULL, c["slotCount"].GetUInteger());
     }
 
     {
-        const auto& c = components[4];
+        const auto& c = components[5];
         EXPECT_EQ("PageAllocatorBitmap", c["name"].GetString());
-        EXPECT_EQ(96_KB, c["offsetBytes"].GetUInteger());
+        EXPECT_EQ(104_KB, c["offsetBytes"].GetUInteger());
         EXPECT_EQ(8_KB, c["sizeBytes"].GetUInteger());
         EXPECT_EQ(2048ULL, c["slotCount"].GetUInteger());
     }
 
     {
-        const auto& c = components[5];
+        const auto& c = components[6];
         EXPECT_EQ("DataPages", c["name"].GetString());
         EXPECT_EQ(128_KB, c["offsetBytes"].GetUInteger());
         EXPECT_EQ(64_MB, c["sizeBytes"].GetUInteger());
@@ -222,6 +230,7 @@ TEST(HashTableIndexShardLayoutTest, DumpsLayout)
     //
 
     const TVector<TString> expectedNames = {
+        "SuperBlock",
         "NodeTable",
         "NameTable",
         "HandleTable",

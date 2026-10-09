@@ -5,6 +5,7 @@ SRCS(
     config.cpp
     inbound_activity.cpp
     host_endpoint.cpp
+    serving_host_observer.cpp
 )
 
 PEERDIR(

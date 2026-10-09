@@ -12,6 +12,7 @@ SRCS(
     page_store.cpp
     persistent_bitmap.cpp
     persistent_hash_table.cpp
+    superblock.cpp
 )
 
 PEERDIR(

@@ -92,6 +92,11 @@ NProto::TNode CreateBlockDeviceAttrs(ui32 mode, ui32 uid, ui32 gid, ui64 dev);
 
 NProto::TNode CopyAttrs(const NProto::TNode& src, ui32 mode = E_CM_CTIME);
 
+// Returns true if the attrs differ in anything except ATime, MTime and CTime.
+bool HasNonTimeAttrChanges(
+    const NProto::TNode& attrs,
+    const NProto::TNode& prevAttrs);
+
 void ConvertNodeFromAttrs(
     NProto::TNodeAttr& dst,
     ui64 id,

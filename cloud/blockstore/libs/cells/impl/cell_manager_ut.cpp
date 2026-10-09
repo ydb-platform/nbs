@@ -858,6 +858,37 @@ Y_UNIT_TEST_SUITE(TCellManagerTest)
         connection.reset();
         UNIT_ASSERT_VALUES_EQUAL(0, cellManager->GetSnapshot().Mounts.size());
     }
+
+    Y_UNIT_TEST(ShouldPublishCellSensors)
+    {
+        TTestContext testContext;
+
+        auto cfg = TCellConfigBuilder("abc", true)
+            .AddCell("xyz", 9001, 0, 1, 1, {"host-1", "host-2"})
+            .Build();
+        auto config = std::make_shared<TCellsConfig>(std::move(cfg));
+
+        auto cellManager = CreateCellManager(
+            config,
+            testContext.Timer,
+            testContext.Scheduler,
+            testContext.Logging,
+            testContext.Monitoring,
+            testContext.TraceSerializer,
+            testContext.ServerStats,
+            CreateClientCertificateProvider(config),
+            nullptr,
+            CreateLocalService());
+
+        auto cell = testContext.Monitoring->GetCounters()
+            ->FindSubgroup("counters", "blockstore");
+        cell = cell ? cell->FindSubgroup("component", "cells") : nullptr;
+        cell = cell ? cell->FindSubgroup("cell", "xyz") : nullptr;
+        UNIT_ASSERT(cell);
+        UNIT_ASSERT_VALUES_EQUAL(2, cell->GetCounter("HostsConfigured")->Val());
+        UNIT_ASSERT(cell->FindCounter("HostsUnavailable"));
+        UNIT_ASSERT(cell->FindCounter("Migrations"));
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NCells
