@@ -34,6 +34,7 @@
 #include <cloud/storage/core/libs/common/timer_test.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
 #include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer.h>
+#include <cloud/storage/core/libs/file_backed_containers/file_ring_buffer_format.h>
 
 #include <cloud/contrib/virtiofsd/fuse.h>
 
@@ -6102,6 +6103,37 @@ Y_UNIT_TEST_SUITE(TFileSystemTest)
         UNIT_ASSERT_EXCEPTION(write.GetValue(WaitTimeout), yexception);
 
         UNIT_ASSERT_VALUES_EQUAL(2, errorCounter->Val());
+    }
+
+    Y_UNIT_TEST(ShouldOverrideServerWriteBackCacheCapacityFromFeatures)
+    {
+        constexpr ui64 defaultCapacity = 8_MB;
+        for (const ui64 capacity: {ui64{0}, ui64{2_MB}, 4_GB + 100500}) {
+            NProto::TFileStoreFeatures features;
+            features.SetServerWriteBackCacheEnabled(true);
+            features.SetServerWriteBackCacheCapacity(capacity);
+
+            TBootstrap bootstrap(
+                CreateWallClockTimer(),
+                CreateScheduler(),
+                features,
+                1000,
+                1000,
+                defaultCapacity);
+            const auto error = bootstrap.Start();
+            UNIT_ASSERT_C(!HasError(error), error.GetMessage());
+            Y_DEFER {
+                bootstrap.Stop();
+            };
+
+            const auto path = TempDir.Path() / "WriteBackCache" /
+                              FileSystemId / SessionId / "write_back_cache";
+            TFileRingBufferHeader header;
+            TFile(path, RdOnly).Load(&header, sizeof(header));
+            UNIT_ASSERT_VALUES_EQUAL(
+                capacity ? capacity : defaultCapacity,
+                header.DataCapacity);
+        }
     }
 
     Y_UNIT_TEST(ShouldSupportWriteBackCacheCapacity4GiB)

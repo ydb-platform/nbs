@@ -358,6 +358,7 @@ public:
     bool GetExtendedAttributesDisabled() const;
 
     bool GetServerWriteBackCacheEnabled() const;
+    ui64 GetServerWriteBackCacheCapacity() const;
     bool GetServerWriteBackCacheFlushWritesInParallelEnabled() const;
 
     bool GetGuestKeepCacheAllowed() const;

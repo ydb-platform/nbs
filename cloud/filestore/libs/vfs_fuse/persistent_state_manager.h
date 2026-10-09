@@ -91,10 +91,13 @@ struct IPersistentStateManager
     // size limit of the component is reached. That is the only case in which
     // an empty guard is returned without an error: it means the component is
     // not to be used, since there is no state file for it.
+    // stateFileSize overrides the size used to create and account a new
+    // file. Zero uses WriteBackCacheStateFileSize from the manager config.
     virtual TResultOrError<TAcquireStateFileGuard>
     AcquireWriteBackCacheStateFile(
         const TString& fileSystemId,
-        const TString& sessionId) = 0;
+        const TString& sessionId,
+        ui64 stateFileSize = 0) = 0;
 
     // DirectoryHandleStorage
 

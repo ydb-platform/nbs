@@ -139,4 +139,7 @@ message TFileSystemConfig
 
     // Maximum number of operations in one HandleOpsQueue batch.
     optional uint32 AsyncHandleOperationBatchSize = 41;
+
+    // Max server WriteBackCache capacity in bytes per session.
+    optional uint64 ServerWriteBackCacheCapacity = 42;
 }

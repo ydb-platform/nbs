@@ -1447,6 +1447,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         config.SetGuestPageCacheDisabled(true);
         config.SetExtendedAttributesDisabled(true);
         config.SetServerWriteBackCacheEnabled(true);
+        config.SetServerWriteBackCacheCapacity(4_GB + 100500);
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         config.SetParentlessFilesOnly(true);
         config.SetAllowHandlelessIO(true);
@@ -1485,6 +1486,7 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         features.SetGuestPageCacheDisabled(true);
         features.SetExtendedAttributesDisabled(true);
         features.SetServerWriteBackCacheEnabled(true);
+        features.SetServerWriteBackCacheCapacity(4_GB + 100500);
         features.SetServerWriteBackCacheFlushWritesInParallelEnabled(true);
         features.SetParentlessFilesOnly(true);
         features.SetAllowHandlelessIO(true);
@@ -1506,6 +1508,40 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
             TDuration::Seconds(15).MilliSeconds());
 
         DoTestShouldReturnFeaturesInCreateSessionResponse(config, features);
+    }
+
+    Y_UNIT_TEST(ShouldReturnServerWriteBackCacheCapacityFromStorageConfigOverride)
+    {
+        NProto::TStorageConfig config;
+        config.SetServerWriteBackCacheCapacity(2_MB);
+        TTestEnv env({}, config);
+
+        const ui32 nodeIdx = env.AddDynamicNode();
+        const ui64 tabletId = env.BootIndexTablet(nodeIdx);
+        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
+
+        const auto checkCapacity = [&](ui64 expectedCapacity)
+        {
+            auto response = tablet.CreateSession("client", "session");
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedCapacity,
+                response->Record.GetFileStore()
+                    .GetFeatures()
+                    .GetServerWriteBackCacheCapacity());
+        };
+
+        checkCapacity(2_MB);
+
+        NProto::TStorageConfig patch;
+        patch.SetServerWriteBackCacheCapacity(4_GB + 100500);
+        tablet.ChangeStorageConfig(patch);
+        tablet.RebootTablet();
+        checkCapacity(4_GB + 100500);
+
+        patch.SetServerWriteBackCacheCapacity(0);
+        tablet.ChangeStorageConfig(patch);
+        tablet.RebootTablet();
+        checkCapacity(0);
     }
 
     Y_UNIT_TEST(ShouldHandleCommitIdOverflowInDestroySession)
