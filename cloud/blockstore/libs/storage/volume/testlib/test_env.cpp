@@ -116,15 +116,6 @@ bool IsAllUpperCase(TStringBuf str)
         [](char c) { return std::isupper(c) || c == '_'; });
 }
 
-TStorageConfigPtr MakeStorageConfig()
-{
-    NProto::TStorageServiceConfig config;
-
-    return std::make_shared<TStorageConfig>(
-        std::move(config),
-        std::make_shared<NFeatures::TFeaturesConfig>());
-}
-
 }   // namespace
 
 TString GetBlockContent(char fill, size_t size)
@@ -800,6 +791,9 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
     IProfileLogPtr profileLog,
     EVolumeStartMode startMode)
 {
+    auto config = CreateTestStorageConfig(std::move(storageServiceConfig),
+                                          std::move(featuresConfig));
+
     const ui32 agentCount = Max<ui32>(diskAgentStates.size(), 1);
     auto runtime = std::make_unique<TTestBasicRuntime>(agentCount);
 
@@ -868,13 +862,8 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
 
     runtime->AddLocalService(
         MakeVolumeProxyServiceId(),
-        TActorSetupCmd(
-            CreateVolumeProxy(
-                MakeStorageConfig(),
-                std::move(traceSerializer),
-                false),
-            TMailboxType::Simple,
-            0));
+        TActorSetupCmd(CreateVolumeProxy(config, std::move(traceSerializer),
+                                         false), TMailboxType::Simple, 0));
 
     if (!diskRegistryState) {
         diskRegistryState = MakeIntrusive<TDiskRegistryState>();
@@ -961,9 +950,6 @@ std::unique_ptr<TTestActorRuntime> PrepareTestActorRuntime(
             i);
     }
 
-    auto config = CreateTestStorageConfig(
-        std::move(storageServiceConfig),
-        std::move(featuresConfig));
     auto diagConfig = CreateTestDiagnosticsConfig();
     auto partitionBudgetManager =
         std::make_shared<TPartitionBudgetManager>(config);

@@ -1,5 +1,6 @@
 #include "service_ut.h"
 
+#include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
@@ -86,24 +87,62 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             return Source->RecvDestroyVolumeLinkResponse();
         }
 
-        NProto::TGetLinkStatusResponse GetStatus(const TString& leader = "disk")
+        NProto::TGetLinkStatusResponse GetStatusFor(
+            TServiceClient& client, const TString& leader,
+            const TString& leaderShard, const TString& follower,
+            const TString& followerShard)
         {
             NProto::TGetLinkStatusRequest request;
             request.SetLeaderDiskId(leader);
-            request.SetFollowerDiskId("disk-copy");
-            request.SetLeaderShardId("source");
-            request.SetFollowerShardId("target");
+            request.SetFollowerDiskId(follower);
+            request.SetLeaderShardId(leaderShard);
+            request.SetFollowerShardId(followerShard);
             TString json;
             UNIT_ASSERT(
                 google::protobuf::util::MessageToJsonString(request, &json)
                     .ok());
-            const auto response = Source->ExecuteAction("GetLinkStatus", json);
-            NProto::TGetLinkStatusResponse status;
-            UNIT_ASSERT_C(
-                google::protobuf::util::JsonStringToMessage(
-                    response->Record.GetOutput(), &status)
-                    .ok(), response->Record.GetOutput());
-            return status;
+            for (ui32 attempt = 0; attempt != 100; ++attempt) {
+                client.SendExecuteActionRequest("GetLinkStatus", json);
+                const auto response = client.RecvExecuteActionResponse();
+                if (SUCCEEDED(response->GetStatus())) {
+                    NProto::TGetLinkStatusResponse status;
+                    UNIT_ASSERT_C(
+                        google::protobuf::util::JsonStringToMessage(
+                            response->Record.GetOutput(), &status)
+                            .ok(), response->Record.GetOutput());
+                    return status;
+                }
+                UNIT_ASSERT_C(
+                    response->GetStatus() == E_REJECTED ||
+                        response->GetStatus() == E_TIMEOUT ||
+                        response->GetStatus() == E_BS_INVALID_SESSION ||
+                        response->GetStatus() == E_TRY_AGAIN,
+                    response->GetErrorReason());
+                Env.GetRuntime().DispatchEvents({},
+                                                TDuration::MilliSeconds(100));
+            }
+            UNIT_FAIL("Link status did not recover after tablet restart");
+            return {};
+        }
+
+        NProto::TGetLinkStatusResponse GetStatus(const TString& leader = "disk")
+        {
+            return GetStatusFor(*Source, leader, "source", "disk-copy",
+                                "target");
+        }
+
+        ui64 GetTabletId(const TString& disk, const TString& shard)
+        {
+            Source->SendRequest(
+                MakeSSProxyServiceId(),
+                std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                    disk, true, shard));
+            const auto response =
+                Source->RecvResponse<TEvSSProxy::TEvDescribeVolumeResponse>();
+            UNIT_ASSERT_C(SUCCEEDED(response->GetStatus()),
+                          response->GetErrorReason());
+            return response->PathDescription.GetBlockStoreVolumeDescription()
+                .GetVolumeTabletId();
         }
     };
 
@@ -226,7 +265,9 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
 
     void TestCrossShardCopyData(NCloud::NProto::EStorageMediaKind sourceKind,
                                 NCloud::NProto::EStorageMediaKind targetKind,
-                                bool online)
+                                bool online, bool restartSource = false,
+                                bool restartTarget = false,
+                                bool reverseCopy = false)
     {
         constexpr ui64 blocksCount = 8192;
         TCrossShardFixture fixture(sourceKind, targetKind, blocksCount);
@@ -320,6 +361,16 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
                 "disk", TBlockRange64::MakeOneBlock(blocksCount - 1),
                 sourceSession, 'b');
             fixture.Source->ZeroBlocks("disk", blocksCount - 2, sourceSession);
+            if (restartTarget) {
+                NKikimr::RebootTablet(
+                    runtime, fixture.GetTabletId("disk-copy", "target"),
+                    fixture.Target->GetSender(), fixture.TargetNode);
+            }
+            if (restartSource) {
+                NKikimr::RebootTablet(
+                    runtime, fixture.GetTabletId("disk", "source"),
+                    fixture.Source->GetSender(), fixture.SourceNode);
+            }
             runtime.Send(probe->HeldWrite.release(), fixture.SourceNode);
         }
 
@@ -340,6 +391,10 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         }
         UNIT_ASSERT_C(transferred, status.ShortDebugString());
         UNIT_ASSERT(probe->DestinationWrites > 0);
+        if (status.GetStatus() == NProto::LINK_STATUS_LEADERSHIP_TRANSFERRED) {
+            const auto lateCancel = fixture.DestroyLink();
+            UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, lateCancel->GetStatus());
+        }
         if (online) {
             fixture.Source->UnmountVolume("disk", sourceSession,
                                           NProto::SOURCE_CLIENT);
@@ -403,6 +458,9 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         }
         UNIT_ASSERT_C(completed, status.ShortDebugString());
         UNIT_ASSERT(probe->SourceDeleted);
+        const auto completedCancel = fixture.DestroyLink();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, completedCancel->GetStatus());
+
         fixture.Source->SendDescribeVolumeRequest("disk", true);
         const auto absent = fixture.Source->RecvDescribeVolumeResponse();
         UNIT_ASSERT(HasError(absent->GetError()));
@@ -412,6 +470,89 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             fixture.Target->MountVolume("disk-copy")->Record.GetSessionId();
         checkBlock(blocksCount - 1, online ? 'b' : 'c');
         runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+
+        if (reverseCopy) {
+            fixture.Target->UnmountVolume("disk-copy", targetSession,
+                                          NProto::SOURCE_CLIENT);
+            auto createBack = fixture.Source->CreateCreateVolumeRequest(
+                "disk", blocksCount, DefaultBlockSize, "", "", sourceKind);
+            createBack->Record.MutableHeaders()->SetShardId("source");
+            fixture.Source->SendRequest(MakeStorageServiceId(),
+                                        std::move(createBack));
+            const auto recreated = fixture.Source->RecvCreateVolumeResponse();
+            UNIT_ASSERT_C(SUCCEEDED(recreated->GetStatus()),
+                          recreated->GetErrorReason());
+
+            auto linkBack = fixture.Target->CreateCreateVolumeLinkRequest(
+                "disk-copy", "disk");
+            linkBack->Record.SetLeaderShardId("target");
+            linkBack->Record.SetFollowerShardId("source");
+            fixture.Target->SendRequest(MakeStorageServiceId(),
+                                        std::move(linkBack));
+            const auto linked = fixture.Target->RecvCreateVolumeLinkResponse();
+            UNIT_ASSERT_C(SUCCEEDED(linked->GetStatus()),
+                          linked->GetErrorReason());
+
+            bool backCompleted = false;
+            for (ui32 attempt = 0; attempt != 4000; ++attempt) {
+                status = fixture.GetStatusFor(*fixture.Target, "disk-copy",
+                                              "target", "disk", "source");
+                UNIT_ASSERT_C(status.GetStatus() != NProto::LINK_STATUS_ERROR,
+                              status.ShortDebugString());
+                if (status.GetStatus() == NProto::LINK_STATUS_COMPLETED) {
+                    backCompleted = true;
+                    break;
+                }
+                runtime.AdvanceCurrentTime(TDuration::MilliSeconds(100));
+                runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
+            }
+            UNIT_ASSERT_C(backCompleted, status.ShortDebugString());
+            const auto backMount = fixture.Source->MountVolume("disk");
+            const auto backSession = backMount->Record.GetSessionId();
+            for (const ui32 index:
+                 {0u, 1u, ui32(blocksCount - 2), ui32(blocksCount - 1)})
+            {
+                const auto response =
+                    fixture.Source->ReadBlocks("disk", index, backSession);
+                auto data = response->Record.GetBlocks().GetBuffers(0);
+                if (data.empty()) {
+                    data = TString(DefaultBlockSize, 0);
+                }
+                const char expected = index == 0                 ? 'a'
+                                      : index == blocksCount - 1 ? 'b'
+                                                                 : 0;
+                UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, expected),
+                                         data);
+            }
+            fixture.Target->SendDescribeVolumeRequest("disk-copy", true);
+            const auto oldCopy = fixture.Target->RecvDescribeVolumeResponse();
+            UNIT_ASSERT(HasError(oldCopy->GetError()));
+        }
+    }
+
+    Y_UNIT_TEST(ShouldResumeCrossShardCopyAfterSourceTabletRestart)
+    {
+        TestCrossShardCopyData(NProto::STORAGE_MEDIA_SSD,
+                               NProto::STORAGE_MEDIA_HDD, true, true, false);
+    }
+
+    Y_UNIT_TEST(ShouldResumeCrossShardCopyAfterTargetTabletRestart)
+    {
+        TestCrossShardCopyData(NProto::STORAGE_MEDIA_HDD,
+                               NProto::STORAGE_MEDIA_SSD, true, false, true);
+    }
+
+    Y_UNIT_TEST(ShouldResumeCrossShardCopyAfterBothTabletRestarts)
+    {
+        TestCrossShardCopyData(NProto::STORAGE_MEDIA_SSD,
+                               NProto::STORAGE_MEDIA_SSD, true, true, true);
+    }
+
+    Y_UNIT_TEST(ShouldCopySameLogicalDiskBackToOriginalShard)
+    {
+        TestCrossShardCopyData(NProto::STORAGE_MEDIA_SSD,
+                               NProto::STORAGE_MEDIA_HDD, true, false, false,
+                               true);
     }
 
     Y_UNIT_TEST(ShouldCompleteCrossShardCopyOfDetachedSsdAndHddDisks)
@@ -438,6 +579,86 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
                 TestCrossShardCopyData(source, target, true);
             }
         }
+    }
+
+    Y_UNIT_TEST(ShouldRejectNonlocalDiskRegistryCreationBeforeAllocation)
+    {
+        TCrossShardFixture fixture;
+        auto request = fixture.Source->CreateCreateVolumeRequest(
+            "remote-nrd", 93_GB / DefaultBlockSize, DefaultBlockSize, "", "",
+            NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+        request->Record.MutableHeaders()->SetShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(), std::move(request));
+        const auto response = fixture.Source->RecvCreateVolumeResponse();
+        UNIT_ASSERT_VALUES_EQUAL(E_NOT_IMPLEMENTED, response->GetStatus());
+        fixture.Target->SendDescribeVolumeRequest("remote-nrd", true);
+        const auto absent = fixture.Target->RecvDescribeVolumeResponse();
+        UNIT_ASSERT(HasError(absent->GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldCancelDetachedCopyWithoutLosingSourceData)
+    {
+        TCrossShardFixture fixture(NProto::STORAGE_MEDIA_SSD,
+                                   NProto::STORAGE_MEDIA_HDD, 8192);
+        auto& runtime = fixture.Env.GetRuntime();
+        auto mount = fixture.Source->MountVolume("disk");
+        const auto sourceSession = mount->Record.GetSessionId();
+        fixture.Source->WriteBlocks("disk", TBlockRange64::MakeOneBlock(0),
+                                    sourceSession, 'a');
+        fixture.Source->UnmountVolume("disk", sourceSession,
+                                      NProto::SOURCE_CLIENT);
+
+        struct TProbe
+        {
+            bool Captured = false;
+            std::unique_ptr<IEventHandle> Write;
+        };
+
+        auto probe = std::make_shared<TProbe>();
+        runtime.SetObserverFunc(
+            [probe](TAutoPtr<IEventHandle>& event)
+            {
+                if (!probe->Captured &&
+                    event->GetTypeRewrite() == TEvService::EvWriteBlocksRequest)
+                {
+                    const auto& request =
+                        event->Get<TEvService::TEvWriteBlocksRequest>()->Record;
+                    if (request.GetHeaders().GetShardId() == "target") {
+                        probe->Captured = true;
+                        probe->Write.reset(event.Release());
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        const auto linked = fixture.CreateLink();
+        UNIT_ASSERT_C(SUCCEEDED(linked->GetStatus()), linked->GetErrorReason());
+        TDispatchOptions options;
+        options.CustomFinalCondition = [probe]
+        {
+            return probe->Write != nullptr;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(10));
+        UNIT_ASSERT(probe->Write);
+        const auto cancelled = fixture.DestroyLink();
+        UNIT_ASSERT_C(SUCCEEDED(cancelled->GetStatus()),
+                      cancelled->GetErrorReason());
+        runtime.Send(probe->Write.release(), fixture.SourceNode);
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+        const auto status = fixture.GetStatus();
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NProto::LINK_STATUS_NOT_FOUND),
+            static_cast<int>(status.GetStatus()));
+        mount = fixture.Source->MountVolume("disk");
+        const auto read =
+            fixture.Source->ReadBlocks("disk", 0, mount->Record.GetSessionId());
+        UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'a'),
+                                 read->Record.GetBlocks().GetBuffers(0));
+        auto stat = fixture.Source->CreateStatVolumeRequest("disk");
+        stat->Record.SetNoPartition(true);
+        fixture.Source->SendRequest(MakeStorageServiceId(), std::move(stat));
+        const auto unrestricted = fixture.Source->RecvStatVolumeResponse();
+        UNIT_ASSERT(!unrestricted->Record.GetIsVolumeOperationRestricted());
     }
 
     Y_UNIT_TEST(ShouldKeepLocalNonreplicatedCreationWithTrailingSlash)

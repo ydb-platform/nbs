@@ -858,6 +858,10 @@ message TUpdateLinkOnFollowerRequest
 
     // Follower volume shard.
     string FollowerShardId = 7;
+
+    // Service-level cancellation must not revive an outdated source after
+    // leadership transfer. Internal diagnostic callers retain legacy behavior.
+    bool RequireCancellable = 8;
 }
 
 message TUpdateLinkOnFollowerResponse
@@ -932,6 +936,10 @@ message TUnlinkLeaderVolumeFromFollowerRequest
 
     // Follower volume shard Id.
     string FollowerShardId = 5;
+
+    // Service-level cancellation must not revive an outdated source after
+    // leadership transfer. Internal diagnostic callers retain legacy behavior.
+    bool RequireCancellable = 6;
 }
 
 message TUnlinkLeaderVolumeFromFollowerResponse

@@ -82,6 +82,7 @@ void TDestroyVolumeLinkActor::UnlinkLeaderVolumeFromFollower(
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>(
             RequestInfo->CallContext);
     request->Record.SetDiskId(LeaderDiskId);
+    request->Record.SetRequireCancellable(true);
     request->Record.SetFollowerDiskId(FollowerDiskId);
     request->Record.SetLeaderShardId(LeaderShardId);
     request->Record.SetFollowerShardId(FollowerShardId);
@@ -103,6 +104,7 @@ void TDestroyVolumeLinkActor::RemoveLinkOnFollower(
     request->Record.SetLeaderDiskId(LeaderDiskId);
     request->Record.SetLeaderShardId(LeaderShardId);
     request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
+    request->Record.SetRequireCancellable(true);
 
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }

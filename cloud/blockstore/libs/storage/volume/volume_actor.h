@@ -1353,10 +1353,9 @@ private:
         const NActors::TActorContext& ctx);
 
     // Remove link to leader volume on follower side
-    void DestroyLeaderLink(
-        TRequestInfoPtr requestInfo,
-        TLeaderFollowerLink link,
-        const NActors::TActorContext& ctx);
+    void DestroyLeaderLink(TRequestInfoPtr requestInfo,
+                           TLeaderFollowerLink link, bool requireCancellable,
+                           const NActors::TActorContext& ctx);
 
     // Update link to leader volume on follower side
     void UpdateLeaderLink(

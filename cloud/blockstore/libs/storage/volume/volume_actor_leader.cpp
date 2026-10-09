@@ -213,6 +213,19 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
         .FollowerShardId = msg->Record.GetFollowerShardId()};
 
     auto follower = State->FindFollower(link);
+    if (msg->Record.GetRequireCancellable() && follower &&
+        (follower->State == TFollowerDiskInfo::EState::DataReady ||
+         follower->State == TFollowerDiskInfo::EState::LeadershipTransferred))
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse>(MakeError(
+                E_INVALID_STATE,
+                "Cannot cancel a link after leadership transfer has started")));
+        return;
+    }
     if (follower) {
         link = follower->Link;
     }
