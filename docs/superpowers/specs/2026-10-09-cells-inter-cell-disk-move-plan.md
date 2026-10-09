@@ -459,6 +459,10 @@ endpoint'ов — один протокол с одним необратимым
 поле надо добавить в публичный `TCreateVolumeLinkRequest`, `volume.proto:822`).
 Внутри ячейки они равны, `GetDirectCopyUsage` уже сравнивает их — direct copy
 через DiskAgent автоматически выключится для межъячеечного link. Общая часть.
+Раскатка: новый сервис шлёт заполненные id, а таблетка старой версии
+сравнивает их строго с пустыми — `getlinkstatus` даст `NOT_FOUND`, destroy —
+`S_ALREADY` при живом link'е. Флаг не делаем: копирования запускаются
+только руками, на время раскатки их не запускать (решение 2026-10-09).
 
 **Этап 1. Мост storage → cells.** Сервис-актор `MakeCellProxyServiceId()` в
 `libs/storage/api`: по `CellId` отдаёт пару `IBlockStorePtr` (control,
