@@ -969,6 +969,5 @@ message TStorageConfig
     optional bool EnableRdmaForWrites = 557;
 
     // Server WriteBackCache state file size in bytes per session.
-    // Defaults to 256 MiB. Must be positive.
     optional uint64 ServerWriteBackCacheStateFileSize = 558;
 }
