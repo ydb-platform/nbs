@@ -85,6 +85,11 @@ public:
         char* ptr = AccessMutableData() + offset;
         memset(ptr, 0, ByteRange.BlockSize);
     }
+
+    bool UsesLazyAllocation() const override
+    {
+        return false;
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -142,6 +147,11 @@ public:
     void ClearBlock(size_t index) override
     {
         Blocks[index].clear();
+    }
+
+    bool UsesLazyAllocation() const override
+    {
+        return true;
     }
 };
 
