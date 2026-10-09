@@ -1,6 +1,7 @@
 #include "context.h"
 
 #include <util/datetime/cputimer.h>
+#include <util/generic/utility.h>
 #include <util/system/yassert.h>
 
 namespace NCloud::NBlockStore {
@@ -29,6 +30,44 @@ bool TCallContext::GetHasUncountableRejects() const
 void TCallContext::SetHasUncountableRejects()
 {
     AtomicSet(HasUncountableRejects, true);
+}
+
+TDuration TCallContext::GetQuotaDelay() const
+{
+    return TDuration::MicroSeconds(AtomicGet(QuotaDelayMicroSeconds));
+}
+
+void TCallContext::SetQuotaDelay(TDuration d)
+{
+    AtomicSet(QuotaDelayMicroSeconds, d.MicroSeconds());
+}
+
+bool TCallContext::GetQuotaDelayUnknown() const
+{
+    return AtomicGet(QuotaDelayUnknown);
+}
+
+bool TCallContext::GetQuotaRejected() const
+{
+    return AtomicGet(QuotaRejected);
+}
+
+void TCallContext::AccountThrottlerQuota(
+    TMaybe<TDuration> quotaDelay,
+    TDuration throttlerDelay,
+    bool quotaRejected)
+{
+    if (quotaDelay) {
+        AtomicAdd(
+            QuotaDelayMicroSeconds,
+            Min(*quotaDelay, throttlerDelay).MicroSeconds());
+    } else if (throttlerDelay) {
+        AtomicSet(QuotaDelayUnknown, true);
+    }
+
+    if (quotaRejected) {
+        AtomicSet(QuotaRejected, true);
+    }
 }
 
 TCallContextPtr ToBlockStoreCallContext(TCallContextBasePtr callContext)

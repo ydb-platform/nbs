@@ -779,6 +779,188 @@ Y_UNIT_TEST_SUITE(TVolumeThrottlingPolicyTest)
         tp.OnBackpressureReport({}, {1, 1, 1}, 0);
         UNIT_ASSERT_VALUES_EQUAL(1, tp.GetWriteCostMultiplier());
     }
+
+    NProto::TVolumePerformanceProfile MakeQuotaReferenceConfig()
+    {
+        return MakeSimpleConfig(
+            1_MB,   // maxBandwidth
+            10,     // maxIops
+            100,    // burstPercentage
+            0,      // boostTime
+            0,      // boostRefillTime
+            0,      // boostPercentage
+            10_MB   // maxPostponedWeight
+        );
+    }
+
+    TThrottlerConfig MakeQuotaReferenceThrottlerConfig(
+        TDuration maxDelay = TDuration::Max(),
+        bool quotaDelayAccountingEnabled = true)
+    {
+        return TThrottlerConfig(
+            maxDelay,
+            Max<ui32>(),   // maxWriteCostMultiplier
+            1,             // defaultPostponedRequestWeight
+            CalculateBoostTime(MakeQuotaReferenceConfig()),
+            false,         // useDiskSpaceScore
+            quotaDelayAccountingEnabled);
+    }
+
+    TThrottlingRequestInfo MakeRequestInfo(
+        const TVolumeThrottlingPolicy& tp,
+        ui64 byteCount,
+        EOpType opType)
+    {
+        return {byteCount, static_cast<ui32>(opType), tp.GetVersion()};
+    }
+
+    void CheckDelayNear(TDuration expected, TDuration actual)
+    {
+        // The reference retries no more often than the tablet throttler does.
+        UNIT_ASSERT_C(
+            actual >= expected - TDuration::MicroSeconds(1) &&
+                actual <= expected + MinPostponeQueueFlushInterval,
+            "expected " << expected << ", actual " << actual);
+    }
+
+    Y_UNIT_TEST(QuotaReferenceIsNotMeasuredWhenDisabled)
+    {
+        TVolumeThrottlingPolicy tp(
+            MakeQuotaReferenceConfig(),
+            MakeQuotaReferenceThrottlerConfig(TDuration::Max(), false));
+
+        UNIT_ASSERT(!tp.RegisterQuotaReference(
+            TInstant::MicroSeconds(10'000),
+            MakeRequestInfo(tp, 4_KB, EOpType::Read)));
+    }
+
+    Y_UNIT_TEST(QuotaReferenceMatchesThrottlerWithoutBackpressure)
+    {
+        TVolumeThrottlingPolicy tp(
+            MakeQuotaReferenceConfig(),
+            MakeQuotaReferenceThrottlerConfig());
+        const auto ts = TInstant::MicroSeconds(10'000);
+        const auto read = MakeRequestInfo(tp, 4_KB, EOpType::Read);
+
+        for (ui32 i = 0; i < 9; ++i) {
+            const auto reference = tp.RegisterQuotaReference(ts, read);
+            UNIT_ASSERT(reference);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), reference->Delay);
+            UNIT_ASSERT(!reference->Rejected);
+            UNIT_ASSERT_VALUES_EQUAL(
+                TDuration::Zero(),
+                *tp.SuggestDelay(ts, TDuration::Zero(), read));
+        }
+
+        const auto reference = tp.RegisterQuotaReference(ts, read);
+        const auto delay = tp.SuggestDelay(ts, TDuration::Zero(), read);
+        UNIT_ASSERT(reference);
+        UNIT_ASSERT(delay);
+        UNIT_ASSERT(!reference->Rejected);
+        UNIT_ASSERT_VALUES_EQUAL(TDuration::MicroSeconds(38'131), *delay);
+        CheckDelayNear(*delay, reference->Delay);
+    }
+
+    Y_UNIT_TEST(QuotaReferenceIgnoresBackpressure)
+    {
+        TVolumeThrottlingPolicy tp(
+            MakeQuotaReferenceConfig(),
+            MakeQuotaReferenceThrottlerConfig());
+        tp.OnBackpressureReport({}, {1000, 100, 10}, 0);
+        const auto ts = TInstant::MicroSeconds(10'000);
+        const auto write = MakeRequestInfo(tp, 1_MB, EOpType::Write);
+
+        const auto reference = tp.RegisterQuotaReference(ts, write);
+
+        // The real throttler is not affected by the reference.
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::MicroSeconds(1'074'954'000),
+            *tp.SuggestDelay(ts, TDuration::Zero(), write));
+
+        // Without the write cost multiplier the request costs 1000 times
+        // less, and the original profile would have delayed it only for the
+        // part that does not fit into the burst budget.
+        UNIT_ASSERT(reference);
+        UNIT_ASSERT(!reference->Rejected);
+        CheckDelayNear(TDuration::MicroSeconds(75'954), reference->Delay);
+    }
+
+    Y_UNIT_TEST(QuotaReferenceKeepsFifoOrder)
+    {
+        TVolumeThrottlingPolicy tp(
+            MakeQuotaReferenceConfig(),
+            MakeQuotaReferenceThrottlerConfig());
+        const auto ts = TInstant::MicroSeconds(10'000);
+        const auto write = MakeRequestInfo(tp, 1_MB, EOpType::Write);
+
+        const auto first = tp.RegisterQuotaReference(ts, write);
+        const auto second = tp.RegisterQuotaReference(ts, write);
+        UNIT_ASSERT(first);
+        UNIT_ASSERT(second);
+        CheckDelayNear(TDuration::MicroSeconds(75'954), first->Delay);
+        // The second request waits behind the first one and then for its own
+        // full cost.
+        CheckDelayNear(
+            first->Delay + TDuration::MicroSeconds(1'075'954),
+            second->Delay);
+    }
+
+    Y_UNIT_TEST(QuotaReferenceRejectionDoesNotConsumeBudget)
+    {
+        TVolumeThrottlingPolicy tp(
+            MakeQuotaReferenceConfig(),
+            MakeQuotaReferenceThrottlerConfig(TDuration::MilliSeconds(50)));
+        const auto ts = TInstant::MicroSeconds(10'000);
+
+        const auto rejected = tp.RegisterQuotaReference(
+            ts,
+            MakeRequestInfo(tp, 1_MB, EOpType::Write));
+        UNIT_ASSERT(rejected);
+        UNIT_ASSERT(rejected->Rejected);
+        UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), rejected->Delay);
+
+        for (ui32 i = 0; i < 9; ++i) {
+            const auto reference = tp.RegisterQuotaReference(
+                ts,
+                MakeRequestInfo(tp, 4_KB, EOpType::Read));
+            UNIT_ASSERT(reference);
+            UNIT_ASSERT(!reference->Rejected);
+            UNIT_ASSERT_VALUES_EQUAL(TDuration::Zero(), reference->Delay);
+        }
+    }
+
+    Y_UNIT_TEST(QuotaReferenceIgnoresVolatileThrottlingAndKeepsState)
+    {
+        TVolumeThrottlingPolicy tp(
+            MakeQuotaReferenceConfig(),
+            MakeQuotaReferenceThrottlerConfig());
+        const auto ts = TInstant::MicroSeconds(10'000);
+
+        const auto first = tp.RegisterQuotaReference(
+            ts,
+            MakeRequestInfo(tp, 1_MB, EOpType::Write));
+        UNIT_ASSERT(first);
+
+        NProto::TVolumeThrottlingRule rule;
+        rule.MutableCoefficients()->SetMaxReadBandwidth(0.5);
+        rule.MutableCoefficients()->SetMaxReadIops(0.5);
+        tp.Reset(rule, 1);
+
+        // Requests registered under the previous policy are not measured.
+        UNIT_ASSERT(!tp.RegisterQuotaReference(
+            ts,
+            {1_MB, static_cast<ui32>(EOpType::Write), tp.GetVersion() - 1}));
+
+        // The bucket state survived the reset, and the halved volatile limits
+        // are not applied to the reference.
+        const auto second = tp.RegisterQuotaReference(
+            ts,
+            MakeRequestInfo(tp, 1_MB, EOpType::Write));
+        UNIT_ASSERT(second);
+        CheckDelayNear(
+            first->Delay + TDuration::MicroSeconds(1'075'954),
+            second->Delay);
+    }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

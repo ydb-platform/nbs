@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/common/block_range.h>
 #include <cloud/blockstore/libs/common/request_checksum_helpers.h>
 #include <cloud/blockstore/libs/service/context.h>
+#include <cloud/blockstore/libs/service/request_helpers.h>
 #include <cloud/blockstore/libs/service/service_method.h>
 
 #include <cloud/storage/core/libs/common/error.h>
@@ -835,6 +836,58 @@ Y_UNIT_TEST_SUITE(TSplitRequestServiceTest)
             E_REJECTED,
             result.GetError().GetCode(),
             FormatError(result.GetError()));
+    }
+
+    Y_UNIT_TEST(ShouldNotSumQuotaDelaysOfParallelParts)
+    {
+        TTestEnvironment env;
+        env.MountVolume();
+        TTestBlockStore& testBlockStore = *env.Storage;
+
+        const TString data = "aabbccddeeffgghhjjkk";
+        auto callContext = MakeIntrusive<TCallContext>();
+        // Accounted by an earlier attempt of the same logical request.
+        callContext->SetQuotaDelay(TDuration::MilliSeconds(5));
+
+        auto request = std::make_shared<NProto::TWriteBlocksRequest>();
+        env.SetupRequest(request, TBlockRange64::WithLength(1, 10), data);
+        auto future = env.SplitRequestService->WriteBlocks(
+            callContext,
+            std::move(request));
+
+        auto* firstPart = testBlockStore.WriteBlocksPromises.FindPtr(
+            TBlockRange64::WithLength(1, 5));
+        auto* secondPart = testBlockStore.WriteBlocksPromises.FindPtr(
+            TBlockRange64::WithLength(6, 5));
+        UNIT_ASSERT(firstPart);
+        UNIT_ASSERT(secondPart);
+
+        // Both parts finish together; the first waited 80ms for the quota and
+        // the second 30ms. Without the quota the request would still wait for
+        // the second part, so only 30ms may be excluded, not 110ms.
+        const auto completePart = [&](auto* part, TDuration quotaDelay)
+        {
+            NProto::TWriteBlocksResponse response;
+            auto& throttler = *response.MutableHeaders()->MutableThrottler();
+            throttler.SetDelay(quotaDelay.MicroSeconds());
+            throttler.SetQuotaDelay(quotaDelay.MicroSeconds());
+            // Done by the volume client for every response.
+            AccountThrottlerQuota(*callContext, throttler, quotaDelay);
+            part->Promise.SetValue(std::move(response));
+        };
+        completePart(firstPart, TDuration::MilliSeconds(80));
+        completePart(secondPart, TDuration::MilliSeconds(30));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            future.GetValueSync().GetError().GetCode());
+
+        const auto quotaDelay = callContext->GetQuotaDelay();
+        UNIT_ASSERT_C(
+            quotaDelay >= TDuration::MilliSeconds(34) &&
+                quotaDelay <= TDuration::MilliSeconds(36),
+            quotaDelay);
+        UNIT_ASSERT(!callContext->GetQuotaDelayUnknown());
     }
 
     Y_UNIT_TEST(ShouldForwardRequestIfSplittingIsNotRequired)

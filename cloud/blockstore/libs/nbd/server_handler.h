@@ -30,6 +30,7 @@ struct TRequestContext
 {
     TCallContextPtr CallContext;
     TMetricRequest MetricRequest;
+    ui64 LatencyRequestBytes = 0;
 
     TRequestContext(ui64 requestId, EBlockStoreRequest requestType)
         : CallContext(MakeIntrusive<TCallContext>(requestId))

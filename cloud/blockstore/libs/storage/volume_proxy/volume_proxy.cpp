@@ -839,6 +839,12 @@ void TVolumeProxyActor::HandleResponse(
         it->second.CallContext->AddTime(
             EProcessingStage::Postponed,
             TDuration::MicroSeconds(throttlerDelay));
+        // QuotaDelay stays in the response: request splitters combine the
+        // values of parallel parts.
+        AccountThrottlerQuota(
+            *it->second.CallContext,
+            throttler,
+            TDuration::MicroSeconds(throttlerDelay));
         throttler.SetDelay(0);
         it->second.CallContext->SetPossiblePostponeDuration(TDuration::Zero());
 

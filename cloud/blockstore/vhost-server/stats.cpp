@@ -8,6 +8,7 @@
 #include <util/stream/output.h>
 #include <util/system/event.h>
 
+#include <algorithm>
 #include <numeric>
 
 namespace NCloud::NBlockStore::NVHostServer {
@@ -56,6 +57,7 @@ public:
         CompletionStats.Requests = stats.Requests;
         CompletionStats.Times = stats.Times;
         CompletionStats.Sizes = stats.Sizes;
+        CompletionStats.LatencyCounters = stats.LatencyCounters;
 
         NeedUpdateCompletionStats = false;
         CompletionStatsEvent.Signal();
@@ -63,7 +65,9 @@ public:
 
     void Sync(const TAtomicStats& stats) override
     {
-        if (!NeedUpdateCompletionStats) {
+        // RDMA completion callbacks may call Sync concurrently. Claim the
+        // pending snapshot before writing to the shared publication buffer.
+        if (!NeedUpdateCompletionStats.exchange(false)) {
             return;
         }
 
@@ -74,8 +78,10 @@ public:
         std::ranges::copy(stats.Requests, CompletionStats.Requests.begin());
         std::ranges::copy(stats.Times, CompletionStats.Times.begin());
         std::ranges::copy(stats.Sizes, CompletionStats.Sizes.begin());
+        std::ranges::copy(
+            stats.LatencyCounters,
+            CompletionStats.LatencyCounters.begin());
 
-        NeedUpdateCompletionStats = false;
         CompletionStatsEvent.Signal();
     }
 };
@@ -199,6 +205,27 @@ void DumpStats(
             buf.EndObject();
         }
         buf.EndList();
+    }
+
+    if (completeStats.LatencyTrackingEnabled) {
+        auto latencyCounters = [&] (int kind, TStringBuf key) {
+            const auto counters =
+                stats.LatencyCounters[kind] - old.LatencyCounters[kind];
+
+            buf.WriteKey(key);
+            buf.BeginObject();
+            write("good", counters.Good);
+            write("bad", counters.Bad);
+            write("skipped", counters.Skipped);
+            buf.EndObject();
+        };
+
+        buf.WriteKey("latency_counters");
+        buf.BeginObject();
+        write("version", 1);
+        latencyCounters(0, "read");
+        latencyCounters(1, "write");
+        buf.EndObject();
     }
 
     request(0, "read");

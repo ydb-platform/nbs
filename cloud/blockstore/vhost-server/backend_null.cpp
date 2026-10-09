@@ -1,6 +1,7 @@
 #include "backend_null.h"
 
 #include "backend.h"
+#include "latency_tracker.h"
 
 #include <cloud/contrib/vhost/include/vhost/server.h>
 #include <cloud/storage/core/libs/diagnostics/logging.h>
@@ -18,6 +19,7 @@ private:
     TLog Log;
 
     ui32 BlockSize = 0;
+    TLatencyTracker LatencyTracker;
 
 public:
     explicit TNullBackend(ILoggingServicePtr logging);
@@ -50,6 +52,9 @@ vhd_bdev_info TNullBackend::Init(const TOptions& options)
         totalBytes += chunk.ByteCount;
     }
     BlockSize = options.BlockSize;
+    LatencyTracker = TLatencyTracker(
+        options.LatencyTrackingEnabled,
+        options.LatencyThresholds);
 
     return {
         .serial = options.Serial.c_str(),
@@ -73,10 +78,10 @@ void TNullBackend::ProcessQueue(
     TSimpleStats& queueStats)
 {
     Y_UNUSED(queueIndex);
-    Y_UNUSED(queueStats);
-
     vhd_request req{};
     while (vhd_dequeue_request(queue, &req)) {
+        const TCpuCycles started =
+            LatencyTracker.IsEnabled() ? GetCycleCount() : 0;
         vhd_bdev_io* bio = vhd_get_bdev_io(req.io);
         STORAGE_DEBUG(
             "%s Index=%lu, BlocksCount=%lu, BlockSize=%u",
@@ -85,6 +90,15 @@ void TNullBackend::ProcessQueue(
             bio->total_sectors,
             BlockSize);
 
+        if (LatencyTracker.IsEnabled()) {
+            LatencyTracker.Record(
+                queueStats,
+                bio->type,
+                bio->total_sectors * VHD_SECTOR_SIZE,
+                GetCycleCount() - started,
+                ELatencyCompletion::Success);
+        }
+
         vhd_complete_bio(req.io, VHD_BDEV_SUCCESS);
     }
 }
@@ -92,7 +106,9 @@ void TNullBackend::ProcessQueue(
 std::optional<TSimpleStats> TNullBackend::GetCompletionStats(TDuration timeout)
 {
     Y_UNUSED(timeout);
-    return {};
+    return LatencyTracker.IsEnabled()
+        ? std::optional<TSimpleStats>(TSimpleStats{})
+        : std::nullopt;
 }
 
 }   // namespace
