@@ -781,7 +781,7 @@ TPersistentStateManager::AcquireWriteBackCacheStateFile(
     if (!stateFileSize) {
         return MakeError(
             E_ARGUMENT,
-            "WriteBackCache state file capacity must be positive");
+            "WriteBackCache state file size must be positive");
     }
 
     return AcquireStateFile(

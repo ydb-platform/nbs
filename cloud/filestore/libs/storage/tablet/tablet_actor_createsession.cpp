@@ -71,8 +71,8 @@ void FillFeatures(
 
     features->SetServerWriteBackCacheEnabled(
         config.GetServerWriteBackCacheEnabled());
-    features->SetServerWriteBackCacheCapacity(
-        config.GetServerWriteBackCacheCapacity());
+    features->SetServerWriteBackCacheStateFileSize(
+        config.GetServerWriteBackCacheStateFileSize());
     features->SetServerWriteBackCacheFlushWritesInParallelEnabled(
         config.GetServerWriteBackCacheFlushWritesInParallelEnabled());
 

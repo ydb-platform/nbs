@@ -74,9 +74,9 @@ message TFileStoreFeatures
     uint32 XAttrCacheLimit = 56;
     bool EnableRdmaForWrites = 57;
 
-    // Max server WriteBackCache capacity in bytes per session.
-    // Zero keeps the capacity configured in vhost/VFS.
-    uint64 ServerWriteBackCacheCapacity = 58;
+    // Server WriteBackCache state file size in bytes per session.
+    // Zero keeps the size configured in vhost/VFS.
+    uint64 ServerWriteBackCacheStateFileSize = 58;
 }
 
 message TFileStore

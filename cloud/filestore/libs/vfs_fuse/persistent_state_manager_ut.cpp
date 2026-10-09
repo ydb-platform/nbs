@@ -24,7 +24,7 @@ namespace {
 
 const TString FileSystemId = "fs";
 const TString SessionId = "session";
-constexpr ui64 WriteBackCacheCapacity = 4_KB;
+constexpr ui64 WriteBackCacheStateFileSize = 4_KB;
 
 // In production all the components are configured with the same base path,
 // so their state files of one session live in one directory. The fixture
@@ -166,14 +166,14 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto first = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
         UNIT_ASSERT_C(!HasError(first), first.GetError().GetMessage());
         auto guard = first.ExtractResult();
 
         auto second = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
         UNIT_ASSERT(HasError(second));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, second.GetError().GetCode());
 
@@ -285,7 +285,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto wbcResult = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
         UNIT_ASSERT_C(!HasError(hoqResult), hoqResult.GetError().GetMessage());
         UNIT_ASSERT_C(!HasError(wbcResult), wbcResult.GetError().GetMessage());
         auto guard = hoqResult.ExtractResult();
@@ -322,7 +322,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto wbcResult = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
         auto dhsResult = manager->AcquireDirectoryHandleStorageStateFile(
             FileSystemId,
             SessionId);
@@ -440,7 +440,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             auto result = previous->AcquireWriteBackCacheStateFile(
                 FileSystemId,
                 SessionId,
-                WriteBackCacheCapacity);
+                WriteBackCacheStateFileSize);
             UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
             unheld = result.ExtractResult().GetFilePath();
         }
@@ -476,7 +476,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             auto result = previous->AcquireWriteBackCacheStateFile(
                 FileSystemId,
                 SessionId,
-                WriteBackCacheCapacity);
+                WriteBackCacheStateFileSize);
             UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
             unknown = result.ExtractResult().GetFilePath();
         }
@@ -524,7 +524,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto wbcResult = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
         UNIT_ASSERT_C(!HasError(hoqResult), hoqResult.GetError().GetMessage());
         UNIT_ASSERT_C(!HasError(wbcResult), wbcResult.GetError().GetMessage());
         auto hoq = hoqResult.ExtractResult();
@@ -555,7 +555,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto first = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
         UNIT_ASSERT_C(!HasError(first), first.GetError().GetMessage());
 
         auto error = first.ExtractResult().DeleteStateFile();
@@ -564,12 +564,12 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto second = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
         UNIT_ASSERT_C(!HasError(second), second.GetError().GetMessage());
         UNIT_ASSERT(second.GetResult().GetFilePath().Exists());
     }
 
-    Y_UNIT_TEST_F(ShouldRejectZeroWriteBackCacheCapacity, TFixture)
+    Y_UNIT_TEST_F(ShouldRejectZeroWriteBackCacheStateFileSize, TFixture)
     {
         auto manager = CreateManager();
 
@@ -585,7 +585,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         result = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
         UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
         auto guard = result.ExtractResult();
         UNIT_ASSERT(guard);
@@ -600,7 +600,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT_VALUES_EQUAL(E_ARGUMENT, result.GetError().GetCode());
         UNIT_ASSERT(!IsLocked(filePath));
         UNIT_ASSERT_VALUES_EQUAL(
-            WriteBackCacheCapacity,
+            WriteBackCacheStateFileSize,
             TFileStat(filePath.GetPath()).Size);
     }
 
@@ -617,7 +617,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto result = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
         UNIT_ASSERT(HasError(result));
         UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, result.GetError().GetCode());
 
@@ -715,7 +715,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         auto result = manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity);
+            WriteBackCacheStateFileSize);
         UNIT_ASSERT(HasError(result));
         UNIT_ASSERT_VALUES_EQUAL(E_FAIL, result.GetError().GetCode());
     }
@@ -728,7 +728,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             auto result = previous->AcquireWriteBackCacheStateFile(
                 FileSystemId,
                 SessionId,
-                WriteBackCacheCapacity);
+                WriteBackCacheStateFileSize);
             UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
         }
 
@@ -762,12 +762,12 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
             auto result = previous->AcquireWriteBackCacheStateFile(
                 FileSystemId,
                 SessionId,
-                WriteBackCacheCapacity);
+                WriteBackCacheStateFileSize);
             UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
             result = previous->AcquireWriteBackCacheStateFile(
                 FileSystemId,
                 "unlistable",
-                WriteBackCacheCapacity);
+                WriteBackCacheStateFileSize);
             UNIT_ASSERT_C(!HasError(result), result.GetError().GetMessage());
         }
 
@@ -1132,7 +1132,7 @@ Y_UNIT_TEST_SUITE(TPersistentStateManagerTest)
         UNIT_ASSERT(HasError(manager->AcquireWriteBackCacheStateFile(
             FileSystemId,
             SessionId,
-            WriteBackCacheCapacity)));
+            WriteBackCacheStateFileSize)));
         UNIT_ASSERT(HasError(manager->AcquireDirectoryHandleStorageStateFile(
             FileSystemId,
             SessionId)));
