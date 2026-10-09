@@ -91,6 +91,14 @@ void TServiceActor::ForwardRequest(
     };
 
     if constexpr (!RequiresMount<TMethod>) {
+        if (Config->GetSchemeShardDirForShard(
+                msg->Record.GetHeaders().GetShardId()) !=
+            Config->GetSchemeShardDirForShard({}))
+        {
+            // Never use a local session/cache entry for a remote StatVolume.
+            ctx.Send(ev->Forward(MakeVolumeProxyServiceId()));
+            return;
+        }
         auto volume = State.GetVolume(diskId);
         if (volume) {
             auto* clientInfo = volume->GetClientInfo(clientId);

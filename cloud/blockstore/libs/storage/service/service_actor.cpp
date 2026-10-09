@@ -277,6 +277,46 @@ void TServiceActor::HandleNotSupportedRequest(
 
 bool TServiceActor::HandleRequests(STFUNC_SIG)
 {
+    // Service sessions are local-shard identities. Only explicitly supported
+    // schema/stat paths may address another shard through this service.
+#define CHECK_REQUEST_SHARD(name, ...)                                         \
+    case TEvService::Ev##name##Request: {                                      \
+        const auto& request =                                                  \
+            ev->Get<TEvService::TEv##name##Request>()->Record;                 \
+        const auto& shard = request.GetHeaders().GetShardId();                 \
+        if (shard.empty()) {                                                   \
+            break;                                                             \
+        }                                                                      \
+        const auto directory = Config->GetSchemeShardDirForShard(shard);       \
+        const auto local = Config->GetSchemeShardDirForShard({});              \
+        constexpr bool supported =                                             \
+            TEvService::Ev##name##Request ==                                   \
+                TEvService::EvCreateVolumeRequest ||                           \
+            TEvService::Ev##name##Request ==                                   \
+                TEvService::EvDestroyVolumeRequest ||                          \
+            TEvService::Ev##name##Request ==                                   \
+                TEvService::EvDescribeVolumeRequest ||                         \
+            TEvService::Ev##name##Request == TEvService::EvStatVolumeRequest;  \
+        if (!directory || (!supported && directory != local)) {                \
+            NCloud::Reply(                                                     \
+                ActorContext(),                                                \
+                *ev,                                                           \
+                std::make_unique<TEvService::TEv##name##Response>(MakeError(   \
+                    directory ? E_NOT_IMPLEMENTED : E_ARGUMENT,                \
+                    directory ? "This service request does not support a "     \
+                                "remote storage shard"                         \
+                              : "Unknown or invalid storage shard")));         \
+            return true;                                                       \
+        }                                                                      \
+        break;                                                                 \
+    }
+    switch (ev->GetTypeRewrite()) {
+        BLOCKSTORE_STORAGE_SERVICE(CHECK_REQUEST_SHARD)
+        default:
+            break;
+    }
+#undef CHECK_REQUEST_SHARD
+
     switch (ev->GetTypeRewrite()) {
         BLOCKSTORE_STORAGE_SERVICE(BLOCKSTORE_HANDLE_REQUEST, TEvService)
         BLOCKSTORE_SERVICE_REQUESTS(BLOCKSTORE_HANDLE_REQUEST, TEvService)

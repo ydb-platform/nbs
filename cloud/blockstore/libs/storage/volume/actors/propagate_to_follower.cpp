@@ -60,6 +60,7 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
             break;
         }
         case EReason::Destruction: {
+            request->Record.SetRequireCancellable(true);
             request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
             break;
         }

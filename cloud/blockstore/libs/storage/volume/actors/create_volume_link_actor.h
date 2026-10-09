@@ -54,16 +54,16 @@ class TCreateVolumeLinkActor final
 private:
     const TString LogPrefix;
     const NActors::TActorId VolumeActorId;
+    const bool AllowDiskRegistryMedia;
 
     TFollowerDiskInfo Follower;
     NProto::TVolume LeaderVolume;
     NProto::TVolume FollowerVolume;
 
 public:
-    TCreateVolumeLinkActor(
-        TString logPrefix,
-        NActors::TActorId volumeActorId,
-        TLeaderFollowerLink link);
+    TCreateVolumeLinkActor(TString logPrefix, NActors::TActorId volumeActorId,
+                           TLeaderFollowerLink link,
+                           bool allowDiskRegistryMedia = true);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

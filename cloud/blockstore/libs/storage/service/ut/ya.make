@@ -35,6 +35,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/storage/testlib
+    cloud/blockstore/libs/storage/volume/testlib
     cloud/storage/core/libs/hive_proxy
 )
 

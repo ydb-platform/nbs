@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 #include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -24,15 +26,13 @@ enum EDescribeKind : ui64
 }   // namespace
 
 TCreateVolumeLinkActor::TCreateVolumeLinkActor(
-        TString logPrefix,
-        NActors::TActorId volumeActorId,
-        TLeaderFollowerLink link)
+    TString logPrefix, NActors::TActorId volumeActorId,
+    TLeaderFollowerLink link, bool allowDiskRegistryMedia)
     : LogPrefix(std::move(logPrefix))
     , VolumeActorId(volumeActorId)
-    , Follower{
-          .Link = std::move(link),
-          .CreatedAt = TInstant::Now(),
-          .State = TFollowerDiskInfo::EState::None}
+    , AllowDiskRegistryMedia(allowDiskRegistryMedia)
+    , Follower{.Link = std::move(link), .CreatedAt = TInstant::Now(),
+               .State = TFollowerDiskInfo::EState::None}
 {}
 
 void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
@@ -56,6 +56,20 @@ void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
 void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
 {
     if (!LeaderVolume.GetDiskId() || !FollowerVolume.GetDiskId()) {
+        return;
+    }
+
+    if (!AllowDiskRegistryMedia &&
+        ((LeaderVolume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD &&
+          LeaderVolume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_HDD) ||
+         (FollowerVolume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD &&
+          FollowerVolume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_HDD)))
+    {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_NOT_IMPLEMENTED,
+                "Cross-shard links support only replicated SSD/HDD volumes"));
         return;
     }
 
@@ -210,7 +224,7 @@ void TCreateVolumeLinkActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    if (HasError(error)) {
+    if (HasError(error) && Follower.State != TFollowerDiskInfo::EState::None) {
         Follower.State = TFollowerDiskInfo::EState::Error;
         Follower.ErrorMessage = FormatError(error);
 

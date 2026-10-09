@@ -50,6 +50,7 @@ private:
     const TVector<TString> DestructionAllowedOnlyForDisksWithIdPrefixes;
     TString DiskId;
     const TString ShardId;
+    const bool IsLocalShard;
     const bool DestroyIfBroken;
     const bool Sync;
     const ui64 FillGeneration;
@@ -65,7 +66,8 @@ public:
         TDuration attachedDiskDestructionTimeout,
         TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
         TString diskId, EDiskIdTolerance diskIdTolerance, bool destroyIfBroken,
-        bool sync, ui64 fillGeneration, TDuration timeout, TString shardId);
+        bool sync, ui64 fillGeneration, TDuration timeout, TString shardId,
+        bool isLocalShard);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -120,7 +122,8 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     TDuration attachedDiskDestructionTimeout,
     TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
     TString diskId, EDiskIdTolerance diskIdTolerance, bool destroyIfBroken,
-    bool sync, ui64 fillGeneration, TDuration timeout, TString shardId)
+    bool sync, ui64 fillGeneration, TDuration timeout, TString shardId,
+    bool isLocalShard)
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
@@ -128,6 +131,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
           std::move(destructionAllowedOnlyForDisksWithIdPrefixes))
     , DiskId(std::move(diskId))
     , ShardId(std::move(shardId))
+    , IsLocalShard(isLocalShard)
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
     , FillGeneration(fillGeneration)
@@ -378,7 +382,7 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     const auto* msg = ev->Get();
 
     if (IsNotFoundSchemeShardError(msg->GetError())) {
-        if (Sync) {
+        if (Sync && IsLocalShard) {
             VolumeNotFoundInSS = true;
             DeallocateDisk(ctx);
         } else {
@@ -474,6 +478,15 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     IsDiskRegistryBased = IsDiskRegistryMediaKind(
         msg->Record.GetVolume().GetStorageMediaKind());
 
+    if (IsDiskRegistryBased && !IsLocalShard) {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_NOT_IMPLEMENTED,
+                "Remote deletion of DiskRegistry-based volumes is not "
+                "supported"));
+        return;
+    }
     if (IsDiskRegistryBased) {
         NotifyDiskRegistry(ctx);
     } else {
@@ -587,6 +600,21 @@ void TServiceActor::HandleDestroyVolume(
     const bool sync = request.GetSync();
     const ui64 fillGeneration = request.GetFillGeneration();
 
+    const auto directory =
+        Config->GetSchemeShardDirForShard(request.GetHeaders().GetShardId());
+    const auto localDirectory = Config->GetSchemeShardDirForShard({});
+    if (!directory || !localDirectory ||
+        (destroyIfBroken && directory != localDirectory))
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvDestroyVolumeResponse>(MakeError(
+                E_ARGUMENT,
+                "Unknown shard or unsupported remote broken-volume deletion")));
+        return;
+    }
+
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "Deleting volume: diskId = %s, destroyIfBroken = %d, sync = %d, fillGeneration = %" PRIu64,
         diskId.Quote().c_str(),
@@ -599,7 +627,8 @@ void TServiceActor::HandleDestroyVolume(
         Config->GetAttachedDiskDestructionTimeout(),
         Config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(), diskId,
         diskIdTolerance, destroyIfBroken, sync, fillGeneration,
-        Config->GetDestroyVolumeTimeout(), request.GetHeaders().GetShardId());
+        Config->GetDestroyVolumeTimeout(), request.GetHeaders().GetShardId(),
+        directory == localDirectory);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -493,6 +493,7 @@ void TVolumeActor::RestartPartition(
             {
                 StartPartitionsForGc(ctx);
             } else {
+                State->Reset();
                 PartitionsStartedReason = EPartitionsStartedReason::NOT_STARTED;
             }
             break;

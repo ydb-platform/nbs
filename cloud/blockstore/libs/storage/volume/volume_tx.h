@@ -786,7 +786,8 @@ struct TTxVolume
     struct TUpdateFollower
     {
         const TRequestInfoPtr RequestInfo;
-        const TFollowerDiskInfo FollowerInfo;
+        TFollowerDiskInfo FollowerInfo;
+        NProto::TError Error;
 
         TUpdateFollower(
                 TRequestInfoPtr requestInfo,
@@ -808,11 +809,16 @@ struct TTxVolume
     struct TRemoveFollower
     {
         const TRequestInfoPtr RequestInfo;
-        const TLeaderFollowerLink Link;
+        TLeaderFollowerLink Link;
+        const bool RequireCancellable;
+        NProto::TError Error;
+        TVector<TRequestInfoPtr> PendingCreateRequests;
 
-        TRemoveFollower(TRequestInfoPtr requestInfo, TLeaderFollowerLink link)
+        TRemoveFollower(TRequestInfoPtr requestInfo, TLeaderFollowerLink link,
+                        bool requireCancellable = false)
             : RequestInfo(std::move(requestInfo))
             , Link(std::move(link))
+            , RequireCancellable(requireCancellable)
         {}
 
         void Clear()
@@ -829,6 +835,7 @@ struct TTxVolume
     {
         const TRequestInfoPtr RequestInfo;
         const TLeaderDiskInfo Leader;
+        NProto::TError Error;
 
         TUpdateLeader(TRequestInfoPtr requestInfo, TLeaderDiskInfo leader)
             : RequestInfo(std::move(requestInfo))
@@ -848,11 +855,15 @@ struct TTxVolume
     struct TRemoveLeader
     {
         const TRequestInfoPtr RequestInfo;
-        const TLeaderFollowerLink Link;
+        TLeaderFollowerLink Link;
+        const bool RequireCancellable;
+        NProto::TError Error;
 
-        TRemoveLeader(TRequestInfoPtr requestInfo, TLeaderFollowerLink link)
+        TRemoveLeader(TRequestInfoPtr requestInfo, TLeaderFollowerLink link,
+                      bool requireCancellable = false)
             : RequestInfo(std::move(requestInfo))
             , Link(std::move(link))
+            , RequireCancellable(requireCancellable)
         {}
 
         void Clear()

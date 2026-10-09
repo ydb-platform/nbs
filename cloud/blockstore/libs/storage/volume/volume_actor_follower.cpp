@@ -33,6 +33,13 @@ void TVolumeActor::ExecuteUpdateLeader(
     TTxVolume::TUpdateLeader& args)
 {
     auto current = State->FindLeader(args.Leader.Link);
+    if (args.Leader.State != TLeaderDiskInfo::EState::Following &&
+        (!current || current->State > args.Leader.State))
+    {
+        args.Error = MakeError(E_INVALID_STATE,
+                               "Leader link no longer exists or has advanced");
+        return;
+    }
 
     LOG_INFO(
         ctx,
@@ -58,10 +65,11 @@ void TVolumeActor::CompleteUpdateLeader(
 
     auto response =
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-            MakeError(S_OK));
+            args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    DestroyOutdatedLeaderIfNeeded(ctx);
+    if (!HasError(args.Error)) {
+        DestroyOutdatedLeaderIfNeeded(ctx);
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -83,6 +91,21 @@ void TVolumeActor::ExecuteRemoveLeader(
     ITransactionBase::TTransactionContext& tx,
     TTxVolume::TRemoveLeader& args)
 {
+    const auto leader = State->FindLeader(args.Link);
+    if (args.RequireCancellable && leader &&
+        leader->State != TLeaderDiskInfo::EState::Following)
+    {
+        args.Error = MakeError(
+            E_INVALID_STATE,
+            "Cannot cancel a link after leadership transfer has started");
+        return;
+    }
+    if (leader) {
+        args.Link = leader->Link;
+    } else {
+        args.Error = MakeError(S_ALREADY);
+    }
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -101,11 +124,12 @@ void TVolumeActor::CompleteRemoveLeader(
 {
     auto response =
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-            MakeError(S_OK));
+            args.Error);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    RestartPartition(ctx, {});
+    if (!HasError(args.Error)) {
+        RestartPartition(ctx, {});
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -154,30 +178,8 @@ void TVolumeActor::DestroyLeaderLink(
     TRequestInfoPtr requestInfo, TLeaderFollowerLink link,
     bool requireCancellable, const NActors::TActorContext& ctx)
 {
-    auto currentLeader = State->FindLeader(link);
-    if (!currentLeader) {
-        NCloud::Reply(
-            ctx,
-            *requestInfo,
-            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-                MakeError(S_ALREADY)));
-        return;
-    }
-
-    if (requireCancellable &&
-        currentLeader->State != TLeaderDiskInfo::EState::Following)
-    {
-        NCloud::Reply(
-            ctx,
-            *requestInfo,
-            std::make_unique<
-                TEvVolume::TEvUpdateLinkOnFollowerResponse>(MakeError(
-                E_INVALID_STATE,
-                "Cannot cancel a link after leadership transfer has started")));
-        return;
-    }
-
-    ExecuteTx<TRemoveLeader>(ctx, std::move(requestInfo), std::move(link));
+    ExecuteTx<TRemoveLeader>(ctx, std::move(requestInfo), std::move(link),
+                             requireCancellable);
 }
 
 void TVolumeActor::UpdateLeaderLink(

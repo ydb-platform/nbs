@@ -378,6 +378,10 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        // A rejected late update must never trigger leadership propagation.
+        return;
+    }
     FollowerDiskInfo = msg->Follower;
     ApplyLinkState(ctx);
     if (State == EState::LeadershipTransferredAndPersisted) {
