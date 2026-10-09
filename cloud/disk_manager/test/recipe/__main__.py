@@ -14,6 +14,7 @@ from cloud.disk_manager.test.recipe.metadata_service_launcher import MetadataSer
 from cloud.disk_manager.test.recipe.nbs_launcher import NbsLauncher
 from cloud.disk_manager.test.recipe.nfs_launcher import NfsLauncher
 from cloud.disk_manager.test.recipe.s3_launcher import S3Launcher
+from cloud.disk_manager.test.recipe.backup_fault_launcher import BackupFaultLauncher
 from cloud.disk_manager.test.recipe.ydb_launcher import YDBLauncher
 from cloud.storage.core.tests.common import (
     append_recipe_err_files,
@@ -77,6 +78,7 @@ def parse_args(args):
         default="",
     )
     parser.add_argument("--s3-quota", action='append', default=[])
+    parser.add_argument("--backup-test-stand", action="store_true")
     parser.add_argument(
         "--regular-filesystem-scrubbing-config",
         type=str,
@@ -365,6 +367,24 @@ def start(argv):
     with open(s3_credentials_file, "w") as f:
         f.write(S3_CREDENTIALS_FILE)
 
+    backup_port = None
+    fault = None
+    if args.backup_test_stand:
+        backup_s3 = S3Launcher()
+        backup_s3.start()
+        fault = BackupFaultLauncher(
+            nbs.port, s3.port, backup_s3.port, cert_file, cert_key_file
+        )
+        fault.start()
+        backup_port = fault.backup_port
+        set_env("DISK_MANAGER_BACKUP_S3_PORT", str(backup_s3.port))
+        set_env("DISK_MANAGER_BACKUP_FAULT_PORT", str(fault.control_port))
+        set_env("DISK_MANAGER_BACKUP_FAULT_EVENTS", fault.events)
+        # Longest period in the tested backup chain: the three regular
+        # backup schedules (10s); task polling <=4s, NBS retry <=2s,
+        # HTTP polling 100ms, S3 SDK retry disabled for this stand.
+        set_env("DISK_MANAGER_BACKUP_MAX_PERIOD_SECONDS", "10")
+
     disk_managers = []
 
     controlplane_disk_manager_count = 2 if args.multiple_disk_managers else 1
@@ -374,7 +394,7 @@ def start(argv):
         disk_manager = DiskManagerLauncher(
             hostname="localhost{}".format(idx),
             ydb_port=ydb.port,
-            nbs_port=nbs.port,
+            nbs_port=fault.nbs_port if fault else nbs.port,
             nbs2_port=nbs2.port,
             nbs3_port=nbs3.port,
             nbs4_port=nbs4.port,
@@ -382,6 +402,8 @@ def start(argv):
             metadata_url=metadata_service.url,
             root_certs_file=root_certs_file,
             idx=idx,
+            backup_s3_port=backup_port,
+            backup_s3_credentials_file=s3_credentials_file,
             is_dataplane=False,
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
@@ -419,7 +441,7 @@ def start(argv):
         disk_manager = DiskManagerLauncher(
             hostname="localhost{}".format(idx),
             ydb_port=ydb.port,
-            nbs_port=nbs.port,
+            nbs_port=fault.nbs_port if fault else nbs.port,
             nbs2_port=nbs2.port,
             nbs3_port=nbs3.port,
             nbs4_port=nbs4.port,
@@ -427,13 +449,15 @@ def start(argv):
             metadata_url=metadata_service.url,
             root_certs_file=root_certs_file,
             idx=idx,
+            backup_s3_port=backup_port,
+            backup_s3_credentials_file=s3_credentials_file,
             is_dataplane=True,
             disk_manager_binary_path=disk_manager_binary_path,
             with_nemesis=args.nemesis,
             nfs_port=nfs.secure_port,
             nfs2_port=nfs2.secure_port,
             nfs3_port=nfs3.secure_port,
-            s3_port=s3.port,
+            s3_port=fault.primary_port if fault else s3.port,
             s3_credentials_file=s3_credentials_file,
             min_restart_period_sec=args.min_restart_period_sec,
             max_restart_period_sec=args.max_restart_period_sec,
@@ -471,6 +495,7 @@ def stop(argv):
     KmsLauncher.stop()
     ComputeLauncher.stop()
     YDBLauncher.stop()
+    BackupFaultLauncher.stop()
     S3Launcher.stop()
 
     errors = process_recipe_err_files(ERR_LOG_FILE_NAMES_FILE)

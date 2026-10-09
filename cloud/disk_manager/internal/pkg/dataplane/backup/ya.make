@@ -8,9 +8,11 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    meta_failure_test.go
     keys_test.go
     meta_test.go
     s3_test.go
+    s3_http_test.go
 )
 
 END()

@@ -2,6 +2,7 @@ PY3_PROGRAM()
 
 PY_SRCS(
     __main__.py
+    backup_fault_launcher.py
     common.py
     compute_launcher.py
     disk_manager_launcher.py

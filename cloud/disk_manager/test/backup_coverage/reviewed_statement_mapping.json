@@ -1,0 +1,352 @@
+[
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/services/snapshots/backup_snapshot_task.go",
+      "start": [
+        93,
+        2
+      ],
+      "function": "(t *backupSnapshotTask).Run",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "4f06f647268848e813cb328263feef170df9d11b6e9f6c91f83ae8f2ecc1703c"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/services/snapshots/backup_snapshot_task.go",
+      "start": [
+        109,
+        2
+      ],
+      "function": "(t *backupSnapshotTask).Run",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "a60654bc6967555e551e192ec5108867adc1f27598e7175f0a45ab4192b0d5dc"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/services/snapshots/backup_snapshot_task.go",
+      "start": [
+        78,
+        2
+      ],
+      "function": "(t *backupSnapshotTask).Run",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "00ca13a5920da2c1c6fb65c96487ffe22ab37c1a31b8ea8693e541029ebdbb8f"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/services/snapshots/backup_snapshot_task.go",
+      "start": [
+        93,
+        2
+      ],
+      "function": "(t *backupSnapshotTask).Run",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "2c4433974dc3fa2b60df728db9db84c07b1981bcc077ed1404ebfa6c93927511"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/services/images/backup_image_task.go",
+      "start": [
+        71,
+        2
+      ],
+      "function": "(t *backupImageTask).Run",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "cb3471e509bb8b2c385d68ec84df8ed609812363eb49b5b6cc45ee311c560d8d"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/services/images/backup_image_task.go",
+      "start": [
+        86,
+        2
+      ],
+      "function": "(t *backupImageTask).Run",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "d18820acadda9bad378ef04d6e0159f403af1deb42585248df952ff214d282dc"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/services/images/backup_image_task.go",
+      "start": [
+        82,
+        2
+      ],
+      "function": "(t *backupImageTask).Run",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "89e4c2ba806ac5f7f4e693df043ca102d75a9becdbd5a24300a4b7cb093bf60b"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/services/images/backup_image_task.go",
+      "start": [
+        98,
+        2
+      ],
+      "function": "(t *backupImageTask).Run",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "6378ac0b9cccea88e2af354a91665d3b5311771574df3c60e82554fece367df8"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/backup_chunks_task.go",
+      "start": [
+        114,
+        2
+      ],
+      "function": "(t *backupChunksTask).copyChunk",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "25e9441870b8cacd66427af545627eb8aed36c63520f404b756cc14104adff01"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/backup_chunks_task.go",
+      "start": [
+        114,
+        2
+      ],
+      "function": "(t *backupChunksTask).copyChunk",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "0501377e61ba7bb1cfa779890866e202279081888b016b8be1e5d2c9dccb3e5f"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/pkg/app/run.go",
+      "start": [
+        239,
+        3
+      ],
+      "function": "run",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "d931e08ad923c8d92066d488dee79e2e24af5e00f60be4e99507d91be56c92eb"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/pkg/app/run.go",
+      "start": [
+        284,
+        3
+      ],
+      "function": "run",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "26fdb49024b3c3ab42873f9ea1a7f87323b56dc91a624090778f52029b412789"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/backup/s3.go",
+      "start": [
+        24,
+        2
+      ],
+      "function": "NewS3",
+      "kind": "*ast.ReturnStmt",
+      "tokens_sha256": "def381186499bcae9aa2d29aee95a3e3fbbc37d2853edc7d9664227f0af24523"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/backup/s3.go",
+      "start": [
+        43,
+        3
+      ],
+      "function": "NewS3",
+      "kind": "*ast.ReturnStmt",
+      "tokens_sha256": "8ca21f4f4bd4ba6d8bafd44fab7b056d917a3fe174b465b107b90444d353da13"
+    },
+    "reason": "Original unencrypted S3 constructor maps to plaintext return; encrypted constructor branches were introduced after these PRs and are outside their delta."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/storage_ydb_backup.go",
+      "start": [
+        458,
+        2
+      ],
+      "function": "backupChunkQueueEntryStructTypeString",
+      "kind": "*ast.ReturnStmt",
+      "tokens_sha256": "d1778c91740416424ef07fdc03caa2415ab90b32a5ce33c3ed6c69825854dc3b"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/common.go",
+      "start": [
+        250,
+        2
+      ],
+      "function": "backupChunkQueueEntryStructTypeString",
+      "kind": "*ast.ReturnStmt",
+      "tokens_sha256": "3ec6032db5a56f825d3501e7c1e81a2e3f838086da08eb08203325b3d777a8a7"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/storage_ydb_backup.go",
+      "start": [
+        467,
+        3
+      ],
+      "function": "backupChunkQueueEntryListValue",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "8ee32ae1f180074765fa2f8f5ace22fbd2eaa35a6190e639265b82508fb81f51"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/common.go",
+      "start": [
+        260,
+        3
+      ],
+      "function": "backupChunkQueueEntryListValue",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "297d2fde6cd277e12264d45c24b04b96f027b61411be4b2daa82f7c75fc772f9"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/storage_ydb_backup.go",
+      "start": [
+        166,
+        2
+      ],
+      "function": "(s *storageYDB).getQueuedChunksToBackup",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "53d419a5bf035fb900658b7b43e22c2b6fbf4fc898dfa2188756bb651d8c31e9"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/storage_ydb_impl.go",
+      "start": [
+        1623,
+        2
+      ],
+      "function": "(s *storageYDB).getQueuedChunksToBackup",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "9d36e3a46b26e7426fb8dff4dabf1794ab8f6d7381ebb1461f31f8efdccfa89a"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/storage_ydb_backup.go",
+      "start": [
+        186,
+        4
+      ],
+      "function": "(s *storageYDB).getQueuedChunksToBackup",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "80cf0ebec2bb22658ea2f5f66a463e52e9844c00520df700ca9e94f3cd167efd"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/storage_ydb_impl.go",
+      "start": [
+        1643,
+        4
+      ],
+      "function": "(s *storageYDB).getQueuedChunksToBackup",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "803161eb7532601de0eba3d2a85cea7b2a156399991b88d03843ef1ddcf7f7da"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/backup_snapshot_data_task.go",
+      "start": [
+        287,
+        2
+      ],
+      "function": "(t *backupSnapshotDataTask).backupChunkMap",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "f8083c214e60ed351ba31b195f8804850709f970bcdf409a3bc7f99f55c2c0ff"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/backup_snapshot_data_task.go",
+      "start": [
+        296,
+        2
+      ],
+      "function": "(t *backupSnapshotDataTask).backupChunkMap",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "4d996171f3beab4d2dcf3634fae975e3d837014da8009c85fca83e01bbbe826a"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/backup_snapshot_data_task.go",
+      "start": [
+        172,
+        3
+      ],
+      "function": "(t *backupSnapshotDataTask).enqueueChunks",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "9cb9c0db787ce94d85dab9ccbacabacbd9d4b5c7acca773aac690786e60593a0"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/backup_snapshot_data_task.go",
+      "start": [
+        180,
+        3
+      ],
+      "function": "(t *backupSnapshotDataTask).enqueueChunks",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "4154fe02cad1cf29da9ee965e50b2c549d9579553186432bb0f05d3c8303fcf9"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  },
+  {
+    "source": {
+      "revision": "f8fe79c76cae19902d1c092edc636fd92d44c5ee",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema/schema.go",
+      "start": [
+        150,
+        2
+      ],
+      "function": "Create",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "9e65b335cff987456520e96ab96d5a6f7fe18ad2a276849fdd1a69a38c87a9d3"
+    },
+    "target": {
+      "revision": "8fb8ddf4aea80eb85fdbf5993d8c02f19cbb56d0",
+      "path": "cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/schema/schema.go",
+      "start": [
+        150,
+        2
+      ],
+      "function": "Create",
+      "kind": "*ast.AssignStmt",
+      "tokens_sha256": "379bb9d4d273fa3fb46ab7219a01c20dee13881046b630dd37a7ffdf5d0f307e"
+    },
+    "reason": "Same pre-existing backup operation with added encryption argument/field in later revision; count once, exclude later encryption setup."
+  }
+]
