@@ -1237,6 +1237,10 @@ STFUNC(TVolumeActor::StateWork)
             TEvVolumeThrottlingManager::TEvVolumeThrottlingConfigNotification,
             HandleUpdateVolatileThrottlingConfig);
 
+        HFunc(TEvVolumePrivate::TEvDestroyOutdatedLeader,
+              HandleDestroyOutdatedLeader);
+        HFunc(TEvVolume::TEvGetLinkStatusResponse,
+              HandleOutdatedLeaderStatusResponse);
         HFunc(
             TEvService::TEvDestroyVolumeResponse,
             HandleDestroyOutdatedLeaderVolumeResponse);

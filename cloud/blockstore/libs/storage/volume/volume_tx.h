@@ -813,6 +813,8 @@ struct TTxVolume
         const bool RequireCancellable;
         NProto::TError Error;
         TVector<TRequestInfoPtr> PendingCreateRequests;
+        NActors::TActorId CreateVolumeLinkActor;
+        bool Changed = false;
 
         TRemoveFollower(TRequestInfoPtr requestInfo, TLeaderFollowerLink link,
                         bool requireCancellable = false)
@@ -858,6 +860,7 @@ struct TTxVolume
         TLeaderFollowerLink Link;
         const bool RequireCancellable;
         NProto::TError Error;
+        bool Changed = false;
 
         TRemoveLeader(TRequestInfoPtr requestInfo, TLeaderFollowerLink link,
                       bool requireCancellable = false)

@@ -38,6 +38,7 @@ void TVolumeActor::ExecuteUpdateFollower(
         {
             args.Error =
                 MakeError(E_INVALID_STATE, "Follower link no longer exists");
+            args.FollowerInfo = {};
             return;
         }
     } else {
@@ -61,6 +62,7 @@ void TVolumeActor::ExecuteUpdateFollower(
         current ? current->Describe().c_str() : "{none}",
         args.FollowerInfo.Describe().c_str());
 
+    args.FollowerInfo.Link.LeaderTabletId = TabletID();
     TVolumeDatabase db(tx.DB);
     State->AddOrUpdateFollower(args.FollowerInfo);
     db.WriteFollower(args.FollowerInfo);
@@ -73,7 +75,9 @@ void TVolumeActor::CompleteUpdateFollower(
     auto response =
         std::make_unique<TEvVolumePrivate::TEvUpdateFollowerStateResponse>(
             args.Error);
-    response->Follower = args.FollowerInfo;
+    // Do not deliver a successful but superseded state after cancellation.
+    response->Follower = State->FindFollower(args.FollowerInfo.Link)
+                             .value_or(TFollowerDiskInfo{});
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
 }
 
@@ -108,12 +112,18 @@ void TVolumeActor::ExecuteRemoveFollower(
     }
     if (follower) {
         args.Link = follower->Link;
-    } else {
-        args.Error = MakeError(S_ALREADY);
+        args.Changed = true;
     }
     if (auto* pending = State->FindCreateFollowerRequestInfo(args.Link)) {
+        args.Link = pending->Link;
+        args.CreateVolumeLinkActor = pending->CreateVolumeLinkActor;
         args.PendingCreateRequests = std::move(pending->Requests);
         State->DeleteCreateFollowerRequestInfo(args.Link);
+        args.Changed = true;
+    }
+    if (!args.Changed) {
+        args.Error = MakeError(S_ALREADY);
+        return;
     }
 
     LOG_INFO(
@@ -136,8 +146,12 @@ void TVolumeActor::CompleteRemoveFollower(
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse>(
             args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-    if (HasError(args.Error)) {
+    if (HasError(args.Error) || !args.Changed) {
         return;
+    }
+    if (args.CreateVolumeLinkActor) {
+        NCloud::Send(ctx, args.CreateVolumeLinkActor,
+                     std::make_unique<TEvents::TEvPoisonPill>());
     }
 
     for (const auto& requestInfo: args.PendingCreateRequests) {
@@ -151,7 +165,8 @@ void TVolumeActor::CompleteRemoveFollower(
     NCloud::Register<TPropagateLinkToFollowerActor>(
         ctx, LogTitle.GetBrief(),
         CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
-        args.Link, TPropagateLinkToFollowerActor::EReason::Destruction);
+        args.Link, TPropagateLinkToFollowerActor::EReason::Destruction,
+        args.RequireCancellable);
     RestartPartition(ctx, {});
 }
 

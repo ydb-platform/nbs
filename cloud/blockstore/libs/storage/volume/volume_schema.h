@@ -327,18 +327,21 @@ struct TVolumeSchema
         {
         };
 
+        struct LeaderTabletId
+            : public Column<11, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
         using TKey = TableKey<Uuid>;
-        using TColumns = TableColumns<
-            Uuid,
-            FollowerDiskId,
-            FollowerShardId,
-            State,
-            MigratedBytes,
-            CreatedAt,
-            LeaderDiskId,
-            LeaderShardId,
-            FollowerMediaKind,
-            ErrorMessage>;
+        using TColumns =
+            TableColumns<Uuid, FollowerDiskId, FollowerShardId, State,
+                         MigratedBytes,
+                         CreatedAt,
+                         LeaderDiskId,
+                         LeaderShardId,
+                         FollowerMediaKind,
+                         ErrorMessage,
+                         LeaderTabletId>;
     };
 
     struct LeaderDisks: public TTableSchema<12>
@@ -379,16 +382,19 @@ struct TVolumeSchema
         {
         };
 
+        struct LeaderTabletId
+            : public Column<9, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
         using TKey = TableKey<Uuid>;
-        using TColumns = TableColumns<
-            Uuid,
-            CreatedAt,
-            LeaderDiskId,
-            LeaderShardId,
-            FollowerDiskId,
-            FollowerShardId,
-            State,
-            ErrorMessage>;
+        using TColumns =
+            TableColumns<Uuid, CreatedAt, LeaderDiskId, LeaderShardId,
+                         FollowerDiskId,
+                         FollowerShardId,
+                         State,
+                         ErrorMessage,
+                         LeaderTabletId>;
     };
 
     struct BrokenDevices: public TTableSchema<13>

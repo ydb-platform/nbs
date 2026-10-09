@@ -51,6 +51,7 @@ private:
     TString DiskId;
     const TString ShardId;
     const bool IsLocalShard;
+    const ui64 ExpectedTabletId;
     const bool DestroyIfBroken;
     const bool Sync;
     const ui64 FillGeneration;
@@ -67,11 +68,14 @@ public:
         TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
         TString diskId, EDiskIdTolerance diskIdTolerance, bool destroyIfBroken,
         bool sync, ui64 fillGeneration, TDuration timeout, TString shardId,
-        bool isLocalShard);
+        bool isLocalShard, ui64 expectedTabletId);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
+    void HandleGuardedDescribeResponse(
+        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const TActorContext& ctx);
     void WaitReady(const TActorContext& ctx);
     void DestroyVolume(const TActorContext& ctx);
     void NotifyDiskRegistry(const TActorContext& ctx);
@@ -123,7 +127,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
     TString diskId, EDiskIdTolerance diskIdTolerance, bool destroyIfBroken,
     bool sync, ui64 fillGeneration, TDuration timeout, TString shardId,
-    bool isLocalShard)
+    bool isLocalShard, ui64 expectedTabletId)
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
@@ -132,6 +136,7 @@ TDestroyVolumeActor::TDestroyVolumeActor(
     , DiskId(std::move(diskId))
     , ShardId(std::move(shardId))
     , IsLocalShard(isLocalShard)
+    , ExpectedTabletId(expectedTabletId)
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
     , FillGeneration(fillGeneration)
@@ -142,13 +147,44 @@ TDestroyVolumeActor::TDestroyVolumeActor(
 void TDestroyVolumeActor::Bootstrap(const TActorContext& ctx)
 {
     ctx.Schedule(Timeout, new TEvents::TEvWakeup());
+    Become(&TThis::StateWork);
+    if (ExpectedTabletId) {
+        NCloud::Send(
+            ctx, MakeSSProxyServiceId(),
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId, true,
+                                                                   ShardId));
+    } else if (DestroyIfBroken) {
+        WaitReady(ctx);
+    } else {
+        StatVolume(ctx);
+    }
+}
+
+void TDestroyVolumeActor::HandleGuardedDescribeResponse(
+    const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
+    if (IsNotFoundSchemeShardError(error) ||
+        (!HasError(error) &&
+         msg->PathDescription.GetBlockStoreVolumeDescription()
+                 .GetVolumeTabletId() != ExpectedTabletId))
+    {
+        ReplyAndDie(ctx,
+                    MakeError(S_ALREADY,
+                              "Expected volume incarnation no longer exists"));
+        return;
+    }
+    if (HasError(error)) {
+        ReplyAndDie(ctx, error);
+        return;
+    }
     if (DestroyIfBroken) {
         WaitReady(ctx);
     } else {
         StatVolume(ctx);
     }
-
-    Become(&TThis::StateWork);
 }
 
 void TDestroyVolumeActor::WaitReady(const TActorContext& ctx)
@@ -176,7 +212,7 @@ void TDestroyVolumeActor::DestroyVolume(const TActorContext& ctx)
             DiskId,
             "",   // newMountToken
             0,    // tokenVersion
-            FillGeneration, ShardId));
+            FillGeneration, ShardId, ExpectedTabletId));
 }
 
 void TDestroyVolumeActor::NotifyDiskRegistry(const TActorContext& ctx)
@@ -272,6 +308,11 @@ void TDestroyVolumeActor::HandleModifyResponse(
         "Volume %s dropped successfully",
         DiskId.Quote().c_str());
 
+    if (ExpectedTabletId && error.GetCode() == S_ALREADY) {
+        // The conditional schema operation did not delete this incarnation.
+        ReplyAndDie(ctx, error);
+        return;
+    }
     if (IsDiskRegistryBased) {
         DeallocateDisk(ctx);
 
@@ -562,6 +603,8 @@ STFUNC(TDestroyVolumeActor::StateWork)
             TEvDiskRegistry::TEvDeallocateDiskResponse,
             HandleDeallocateDiskResponse);
 
+        HFunc(TEvSSProxy::TEvDescribeVolumeResponse,
+              HandleGuardedDescribeResponse);
         HFunc(
             TEvService::TEvStatVolumeResponse,
             HandleStatVolumeResponse);
@@ -604,7 +647,9 @@ void TServiceActor::HandleDestroyVolume(
         Config->GetSchemeShardDirForShard(request.GetHeaders().GetShardId());
     const auto localDirectory = Config->GetSchemeShardDirForShard({});
     if (!directory || !localDirectory ||
-        (destroyIfBroken && directory != localDirectory))
+        (destroyIfBroken && directory != localDirectory) ||
+        (request.GetExpectedVolumeTabletId() &&
+         !request.GetHeaders().GetExactDiskIdMatch()))
     {
         NCloud::Reply(
             ctx,
@@ -628,7 +673,7 @@ void TServiceActor::HandleDestroyVolume(
         Config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(), diskId,
         diskIdTolerance, destroyIfBroken, sync, fillGeneration,
         Config->GetDestroyVolumeTimeout(), request.GetHeaders().GetShardId(),
-        directory == localDirectory);
+        directory == localDirectory, request.GetExpectedVolumeTabletId());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -533,6 +533,10 @@ message TDestroyVolumeRequest
 
     // Delete requests with incorrect FillGeneration will be rejected.
     uint64 FillGeneration = 6;
+
+    // Internal conditional cleanup: never delete another volume incarnation.
+    // Requires ExactDiskIdMatch. Zero preserves the normal deletion workflow.
+    uint64 ExpectedVolumeTabletId = 7;
 }
 
 message TDestroyVolumeResponse

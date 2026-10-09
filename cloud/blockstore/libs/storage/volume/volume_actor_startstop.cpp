@@ -425,7 +425,11 @@ TActorsStack TVolumeActor::WrapWithFollowerActorIfNeeded(
                     ctx,
                     LogTitle.GetBrief(),
                     SelfId(),
-                    follower.Link);
+                    follower.Link,
+                    Config->GetSchemeShardDirForShard(
+                        follower.Link.LeaderShardId) ==
+                        Config->GetSchemeShardDirForShard(
+                            follower.Link.FollowerShardId), true);
                 auto& createFollowerRequest =
                     State->AccessCreateFollowerRequestInfo(follower.Link);
                 createFollowerRequest.CreateVolumeLinkActor = actor;

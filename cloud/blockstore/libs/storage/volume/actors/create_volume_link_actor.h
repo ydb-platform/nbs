@@ -56,6 +56,7 @@ private:
     const NActors::TActorId VolumeActorId;
     const bool AllowDiskRegistryMedia;
 
+    NActors::TActorId CreationPropagator;
     TFollowerDiskInfo Follower;
     NProto::TVolume LeaderVolume;
     NProto::TVolume FollowerVolume;
@@ -63,7 +64,8 @@ private:
 public:
     TCreateVolumeLinkActor(TString logPrefix, NActors::TActorId volumeActorId,
                            TLeaderFollowerLink link,
-                           bool allowDiskRegistryMedia = true);
+                           bool allowDiskRegistryMedia,
+                           bool recoveringCreated = false);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 

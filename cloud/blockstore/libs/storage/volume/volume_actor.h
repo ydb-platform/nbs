@@ -417,6 +417,7 @@ private:
     TVector<ui64> GCCompletedPartitions;
 
     std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
+    ui64 OutdatedLeaderDestructionCookie = 0;
 
     struct TPartCountersData
     {
@@ -1367,6 +1368,17 @@ private:
     // Destroy old leader after leadership transferred to follower (happens on
     // the follower's side).
     void DestroyOutdatedLeaderIfNeeded(const NActors::TActorContext& ctx);
+    void HandleDestroyOutdatedLeader(
+        const TEvVolumePrivate::TEvDestroyOutdatedLeader::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void SendOutdatedLeaderDestroy(const NActors::TActorContext& ctx,
+                                   const TLeaderFollowerLink& link,
+                                   ui64 expectedTabletId);
+    void HandleOutdatedLeaderStatusResponse(
+        const TEvVolume::TEvGetLinkStatusResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void FinishOutdatedLeaderDestroy(const NActors::TActorContext& ctx,
+                                     const NProto::TError& error);
     void HandleDestroyOutdatedLeaderVolumeResponse(
         const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);

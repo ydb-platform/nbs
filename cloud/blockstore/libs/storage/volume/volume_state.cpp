@@ -1198,6 +1198,11 @@ std::optional<TLeaderDiskInfo> TVolumeState::FindLeader(
     const TLeaderFollowerLink& link) const
 {
     for (const auto& leader: LeaderDisks) {
+        if (!link.LinkUUID &&
+            leader.State == TLeaderDiskInfo::EState::Cancelled)
+        {
+            continue;
+        }
         if (MatchLinks(leader.Link, link, *StorageConfig)) {
             return leader;
         }

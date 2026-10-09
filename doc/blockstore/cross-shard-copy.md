@@ -37,7 +37,7 @@ Headers {
 DiskId: "disk-copy"
 ~~~
 
-Include the source's remaining creation parameters in that request. Cross-shard creation through a source node rejects DiskRegistry-based media kinds before allocation. Cross-shard links validate both endpoints as replicated SSD/HDD before persisting a relationship. Remote deletion of DiskRegistry-based volumes is rejected before registry or schema changes; a remote not-found synchronous delete never deallocates a local disk. Existing local DiskRegistry workflows remain supported.
+Include the source's remaining creation parameters in that request. Cross-shard creation through a source node rejects DiskRegistry-based media kinds before allocation. Cross-shard links validate both endpoints as replicated SSD/HDD before persisting a relationship. This admission check also applies when recovering a persisted `Created` link and when the destination receives its creation request. Remote deletion of DiskRegistry-based volumes is rejected before registry or schema changes; a remote not-found synchronous delete never deallocates a local disk. Existing local DiskRegistry workflows remain supported.
 
 ## Start and inspect the copy
 
@@ -65,6 +65,10 @@ A repeated create request for the same active link is idempotent. Query the exis
 
 `LINK_STATUS_PREPARING` means copying is in progress. `LINK_STATUS_LEADERSHIP_TRANSFERRED` means the destination is authoritative, but old-source cleanup is still pending. `LINK_STATUS_COMPLETED` confirms that the old source has been deleted and the destination recorded that result. Cleanup is restored from the persisted destination link after a tablet restart, even without mounts, I/O or partition GC. Deletion retries are idempotent.
 
+Each operation has at most one scheduled or in-flight cleanup request. The delay belongs to the current destination volume actor, which checks that the UUID still requires cleanup before sending a delete. Internal cleanup requests carry `ExpectedVolumeTabletId` and use exact physical names. Schema deletion also checks the resolved path incarnation atomically, so an old request cannot delete a volume recreated under the same name.
+
+For persisted links created before the source tablet identifier was recorded, cleanup first verifies the operation UUID on the current source owner. It does not infer ownership from the physical name alone. An incomplete response without verifiable UUID/tablet information leaves cleanup pending for retry; it does not mark the operation completed.
+
 Disconnected disks copy without a user mount: source partitions are retained in a copy-only mode while data is needed. Cancellation releases that retention and resets stopped partition state so subsequent mounts and I/O can start the partitions again.
 
 ## Cancellation
@@ -81,7 +85,9 @@ blockstore-client destroyvolumelink \
 
 The service checks the cancellation boundary inside the owning volume tablet's deleting transaction and propagates cancellation only after a successful commit. Once transfer starts, cancellation returns `E_INVALID_STATE` and leaves the authoritative relationship intact. The same protection applies when the source has already disappeared and the request is checked on the destination.
 
-Late progress updates cannot recreate a cancelled source link or modify a newer operation with a different UUID. Link lookup treats aliases of the same configured directory as equivalent, including persisted empty local selectors.
+Late progress updates cannot recreate a cancelled source link or modify a newer operation with a different UUID. Cancellation retains the original UUID even if creation has not yet persisted a follower. The destination stores a durable cancellation fence for that UUID, rejecting delayed `CREATE` messages after cancellation or reboot. A repeated cancellation that changes no link state does not restart partitions.
+
+Public cancellation retains the cutover check. Internal diagnostic unlink preserves the caller's `RequireCancellable` value on both sides. Link lookup treats aliases of the same configured directory as equivalent, including persisted empty local selectors.
 
 Removing a link does not delete the partially filled destination volume. The internal caller must dispose of that destination separately when cancelling. Address its shard and use an exact physical name for that cleanup:
 
@@ -97,7 +103,7 @@ This is the addressing portion of a `DestroyVolume` request.
 
 ## Routing after transfer
 
-After transfer, use an endpoint for the destination shard for mounts, session-bound I/O and other service operations. Through the storage service, a nonlocal `Headers.ShardId` is supported only by `CreateVolume`, `DescribeVolume`, `DestroyVolume` and `StatVolume`. Other service requests with a nonlocal selector return `E_NOT_IMPLEMENTED` before local session lookup or side effects. Unknown selectors return `E_ARGUMENT`. Local aliases remain supported.
+After transfer, use an endpoint for the destination shard for mounts, session-bound I/O and other service operations. Through the storage service, a nonlocal `Headers.ShardId` is supported only by `CreateVolume`, `DescribeVolume`, `DestroyVolume` and `StatVolume`. Other service requests with a nonlocal selector return `E_NOT_IMPLEMENTED` before local session lookup or side effects. Unknown selectors return `E_ARGUMENT`. Local aliases remain supported. A remote DiskRegistry volume description is rejected before local device lookup; it cannot combine foreign schema metadata with local allocations.
 
 The logical name remains accepted by the destination shard's existing alternate-name lookup. For example, an explicitly routed describe request is:
 
@@ -135,7 +141,16 @@ The test coverage includes:
 - queued cutover/cancellation requests on both owning tablets;
 - late progress rejected after cancellation and operation recreation;
 - remote mount/I/O after cancellation of a rebooted copy-only source;
-- idle destination cleanup restored after reboot with GC disabled.
+- idle destination cleanup restored after reboot with GC disabled;
+- duplicate cleanup timers and conditional schema deletion against a recreated source;
+- original UUID retained when cancelling pending creation;
+- cancelled destination UUIDs remain fenced across reboot;
+- idempotent cancellation preserves mounted volume I/O;
+- unrestricted diagnostic unlink preserves its original flag;
+- recovered creation revalidates a replaced destination's media kind;
+- wrapper state follows authoritative errors of the same operation UUID;
+- cancellation checked with a real executor queue held before execution;
+- foreign DiskRegistry descriptions rejected before device lookup.
 
 Build the server and administrative client:
 

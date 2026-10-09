@@ -14,14 +14,13 @@ namespace NCloud::NBlockStore::NStorage {
 ///////////////////////////////////////////////////////////////////////////////
 
 TPropagateLinkToFollowerActor::TPropagateLinkToFollowerActor(
-        TString logPrefix,
-        TRequestInfoPtr requestInfo,
-        TLeaderFollowerLink link,
-        EReason reason)
+    TString logPrefix, TRequestInfoPtr requestInfo, TLeaderFollowerLink link,
+    EReason reason, bool requireCancellable)
     : LogPrefix(std::move(logPrefix))
     , RequestInfo(std::move(requestInfo))
     , Link(std::move(link))
     , Reason(reason)
+    , RequireCancellable(requireCancellable)
 {}
 
 void TPropagateLinkToFollowerActor::Bootstrap(const NActors::TActorContext& ctx)
@@ -53,6 +52,7 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
     request->Record.SetFollowerShardId(Link.FollowerShardId);
     request->Record.SetLeaderDiskId(Link.LeaderDiskId);
     request->Record.SetLeaderShardId(Link.LeaderShardId);
+    request->Record.SetLeaderTabletId(Link.LeaderTabletId);
 
     switch (Reason) {
         case EReason::Creation: {
@@ -60,7 +60,7 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
             break;
         }
         case EReason::Destruction: {
-            request->Record.SetRequireCancellable(true);
+            request->Record.SetRequireCancellable(RequireCancellable);
             request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
             break;
         }
@@ -170,6 +170,9 @@ STFUNC(TPropagateLinkToFollowerActor::StateWork)
 
         HFunc(NActors::TEvents::TEvWakeup, HandleWakeup);
 
+        case NActors::TEvents::TEvPoisonPill::EventType:
+            Die(ActorContext());
+            break;
         default:
             HandleUnexpectedEvent(
                 ev,

@@ -378,8 +378,12 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
-    if (HasError(msg->GetError())) {
-        // A rejected late update must never trigger leadership propagation.
+    if (msg->Follower.Link.LinkUUID != FollowerDiskInfo.Link.LinkUUID ||
+        msg->Follower.State < FollowerDiskInfo.State)
+    {
+        // Missing/replaced generations cannot authorize further work. An
+        // error carrying authoritative state of this UUID must still be
+        // applied.
         return;
     }
     FollowerDiskInfo = msg->Follower;

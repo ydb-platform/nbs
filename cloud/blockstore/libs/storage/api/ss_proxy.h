@@ -108,16 +108,19 @@ struct TEvSSProxy
 
         const ui64 FillGeneration;
         const TString ShardId;
+        const ui64 ExpectedTabletId;
 
         TModifyVolumeRequest(EOpType opType, TString diskId,
                              TString newMountToken, ui64 tokenVersion,
-                             ui64 fillGeneration = 0, TString shardId = {})
+                             ui64 fillGeneration = 0, TString shardId = {},
+                             ui64 expectedTabletId = 0)
             : OpType(opType)
             , DiskId(std::move(diskId))
             , NewMountToken(std::move(newMountToken))
             , TokenVersion(tokenVersion)
             , FillGeneration(fillGeneration)
             , ShardId(std::move(shardId))
+            , ExpectedTabletId(expectedTabletId)
         {}
     };
 

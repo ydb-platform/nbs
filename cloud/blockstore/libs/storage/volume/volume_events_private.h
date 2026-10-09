@@ -547,6 +547,7 @@ struct TEvVolumePrivate
         EvCreateLinkFinished,
         EvDiskRegistryDeviceOperationStarted,
         EvDiskRegistryDeviceOperationFinished,
+        EvDestroyOutdatedLeader,
 
         EvEnd
     };
@@ -555,6 +556,18 @@ struct TEvVolumePrivate
         "EvEnd expected to be < TBlockStorePrivateEvents::VOLUME_END");
 
     BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
+
+    struct TDestroyOutdatedLeader
+    {
+        TString LinkUUID;
+
+        explicit TDestroyOutdatedLeader(TString uuid)
+            : LinkUUID(std::move(uuid))
+        {}
+    };
+
+    using TEvDestroyOutdatedLeader =
+        TRequestEvent<TDestroyOutdatedLeader, EvDestroyOutdatedLeader>;
 
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
 

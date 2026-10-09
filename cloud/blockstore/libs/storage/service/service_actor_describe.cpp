@@ -95,6 +95,16 @@ void TDescribeVolumeActor::DescribeVolume(const TActorContext& ctx)
 
 void TDescribeVolumeActor::DescribeDiskRegistryVolume(const TActorContext& ctx)
 {
+    if (Config->GetSchemeShardDirForShard(ShardId) !=
+        Config->GetSchemeShardDirForShard({}))
+    {
+        ReplyAndDie(
+            ctx,
+            std::make_unique<TEvService::TEvDescribeVolumeResponse>(MakeError(
+                E_NOT_IMPLEMENTED,
+                "Remote DiskRegistry volume description is not supported")));
+        return;
+    }
     auto request = std::make_unique<TEvDiskRegistry::TEvDescribeDiskRequest>();
     request->Record.SetDiskId(Volume.GetDiskId());
 
