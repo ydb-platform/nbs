@@ -748,6 +748,8 @@ private:
 
     bool IsFreshBlocksWriterEnabled() const;
 
+    bool IsPartitionV2Enabled() const;
+
 private:
     STFUNC(StateBoot);
     STFUNC(StateInit);

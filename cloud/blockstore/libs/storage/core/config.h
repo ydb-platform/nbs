@@ -541,6 +541,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsPartitionV2FeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -987,6 +992,8 @@ public:
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesHDD() const;
 
     [[nodiscard]] bool GetV2GarbageCompactionEnabled() const;
+
+    [[nodiscard]] bool GetEnablePartitionV2() const;
 };
 
 ui64 GetAllocationUnit(

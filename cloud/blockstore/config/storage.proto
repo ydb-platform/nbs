@@ -1736,4 +1736,8 @@ message TStorageServiceConfig
 
     // Enables approximate garbage compaction for partition v2.
     optional bool V2GarbageCompactionEnabled = 542;
+
+    // Allows Volume to start version 2 partitions. Disabled by default;
+    // can also be enabled by the EnablePartitionV2 binary feature.
+    optional bool EnablePartitionV2 = 543;
 }
