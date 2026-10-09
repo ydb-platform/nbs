@@ -1402,9 +1402,7 @@ private:
         config.SetServerWriteBackCacheEnabled(
             features.GetServerWriteBackCacheEnabled());
         config.SetServerWriteBackCacheStateFileSize(
-            features.GetServerWriteBackCacheStateFileSize()
-                ? features.GetServerWriteBackCacheStateFileSize()
-                : Config->GetWriteBackCacheCapacity());
+            features.GetServerWriteBackCacheStateFileSize());
         config.SetServerWriteBackCacheFlushWritesInParallelEnabled(
             features.GetServerWriteBackCacheFlushWritesInParallelEnabled());
 

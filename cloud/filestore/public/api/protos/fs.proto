@@ -75,7 +75,7 @@ message TFileStoreFeatures
     bool EnableRdmaForWrites = 57;
 
     // Server WriteBackCache state file size in bytes per session.
-    // Zero keeps the size configured in vhost/VFS.
+    // Must be positive.
     uint64 ServerWriteBackCacheStateFileSize = 58;
 }
 
