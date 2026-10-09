@@ -114,6 +114,7 @@ func (t *backupChunksTask) copyChunk(
 	err = t.backupS3.PutObject(
 		ctx,
 		backup.ChunkKey(entry.ChunkID),
+		entry.EncryptedDEK,
 		chunks.NewS3Object(chunkBlob),
 	)
 	if err != nil {

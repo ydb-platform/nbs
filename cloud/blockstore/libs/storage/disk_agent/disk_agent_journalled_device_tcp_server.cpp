@@ -65,6 +65,7 @@ struct TJournalledDeviceSpec
 {
     NProto::TJournalConfig Config;
     ui32 BlockSize = 0;
+    ui64 BlocksCount = 0;
 
     NJournalled::IJournalledDevicePtr Device;
 };
@@ -96,18 +97,43 @@ public:
 
     // IServerBackend
 
-    void Start() override
+    TFuture<NCloud::NProto::TError> Start() override
     {
+        TVector<TFuture<NCloud::NProto::TError>> futures;
+        futures.reserve(Devices.size());
+
         for (const auto& [uuid, spec]: Devices) {
-            spec.Device->Start();
+            auto future = spec.Device->Start().Apply(
+                [uuid](const auto& future)
+                {
+                    auto error = ExtractResponse(future);
+                    if (HasError(error)) {
+                        ReportDiskAgentJournalledDeviceCreationError(
+                            TStringBuilder()
+                                << "unable to start: " << FormatError(error),
+                            {{"device", uuid}});
+                    }
+                    return error;
+                });
+
+            futures.push_back(std::move(future));
         }
+
+        return WaitAll(futures).Apply([](const auto&)
+                                      { return NProto::TError(); });
     }
 
-    void Stop() override
+    TFuture<NCloud::NProto::TError> Stop() override
     {
+        TVector<TFuture<NCloud::NProto::TError>> futures;
+        futures.reserve(Devices.size());
+
         for (const auto& [uuid, spec]: Devices) {
-            spec.Device->Stop();
+            futures.push_back(spec.Device->Stop());
         }
+
+        return WaitAll(futures).Apply([](const auto&)
+                                      { return NProto::TError(); });
     }
 
     [[nodiscard]] auto AcquireDevices(
@@ -182,10 +208,13 @@ public:
                 TErrorResponse(error));
         }
 
-        const ui64 logMetaBlockCount =
-            spec->Config.GetLogMetaSize() / spec->BlockSize;
+        // Only the journal metadata is wiped by default.
+        const ui64 blocksCount =
+            request.GetWholeDevice()
+                ? spec->BlocksCount
+                : spec->Config.GetLogMetaSize() / spec->BlockSize;
 
-        if (!logMetaBlockCount) {
+        if (!blocksCount) {
             return MakeFuture(NCloud::NProto::TFormatDeviceResponse());
         }
 
@@ -199,7 +228,7 @@ public:
 
         auto zeroRequest = std::make_shared<NProto::TZeroBlocksRequest>();
         zeroRequest->SetStartIndex(0);
-        zeroRequest->SetBlocksCount(logMetaBlockCount);
+        zeroRequest->SetBlocksCount(blocksCount);
 
         auto future = storageAdapter->ZeroBlocks(
             Timer->Now(),
@@ -562,6 +591,7 @@ NProto::TError TDiskAgentActor::StartJournalledDeviceTcpServer(
                               ? config.Journal
                               : NProto::TJournalConfig{},
                 .BlockSize = config.Device.GetBlockSize(),
+                .BlocksCount = config.Device.GetBlocksCount(),
                 .Device = std::move(device)});
     }
 

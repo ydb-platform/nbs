@@ -1,7 +1,6 @@
 #pragma once
 
 #include "component.h"
-#include "format_page.h"
 #include "page_store.h"
 #include "persistent_hash_table.h"
 
@@ -61,8 +60,6 @@ public:
     {
         return Slots->GetSlotCount();
     }
-
-    NProto::TError AllocateNodeId(ui64* nodeId) const;
 
     NProto::TError ResizeNode(
         ui64 nodeId,

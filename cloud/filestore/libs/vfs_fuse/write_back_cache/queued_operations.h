@@ -9,7 +9,13 @@
 #include <util/generic/vector.h>
 #include <util/system/spinlock.h>
 
+#include <functional>
+
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
+
+////////////////////////////////////////////////////////////////////////////////
+
+class TPendingWriteDataRequest;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -30,10 +36,20 @@ private:
 
     TAdaptiveLock Lock;
     TVector<TEvent> Events;
+
+    // Non-owning pointers. The cache-state lifetime invariant keeps allocated
+    // requests alive until this serialization batch completes.
+    TVector<TPendingWriteDataRequest*> RequestsToSerialize;
     IQueuedOperationsProcessor& Processor;
 
+    // Invoked under Lock after queued WriteData requests are serialized
+    const std::function<void()> RequestsSerializedCallback;
+
 public:
-    explicit TQueuedOperations(IQueuedOperationsProcessor& processor);
+    TQueuedOperations(
+        IQueuedOperationsProcessor& processor,
+        std::function<void()> requestsSerializedCallback);
+
     ~TQueuedOperations();
 
     void Acquire();
@@ -62,6 +78,8 @@ public:
     void FailAcquireBarrierPromise(
         NThreading::TPromise<TResultOrError<ui64>> promise,
         const NCloud::NProto::TError& error);
+
+    void SerializeWriteDataRequest(TPendingWriteDataRequest* request);
 };
 
 }   // namespace NCloud::NFileStore::NFuse::NWriteBackCache
