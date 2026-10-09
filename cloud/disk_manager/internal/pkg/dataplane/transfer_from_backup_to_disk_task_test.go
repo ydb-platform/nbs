@@ -26,8 +26,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// These tests stop at mounting the destination disk: the transfer itself
-// needs NBS and is covered by transfer_tests.
+// These tests stop at mounting the destination disk: the rest of the task
+// needs NBS and is covered by tasks_tests.
 
 const (
 	restoreTestSnapshotID = "snapshot"
@@ -176,6 +176,8 @@ func TestTransferFromBackupToDiskFailsOnInvalidRequest(t *testing.T) {
 	testCases := []struct {
 		name       string
 		invalidate func(request *request)
+		// Tells which check has failed.
+		expectedError string
 	}{
 		{
 			name: "unknown source kind",
@@ -183,36 +185,42 @@ func TestTransferFromBackupToDiskFailsOnInvalidRequest(t *testing.T) {
 				request.SrcKind =
 					protos.BackupSourceKind_BACKUP_SOURCE_KIND_UNSPECIFIED
 			},
+			expectedError: "unknown backup source kind",
 		},
 		{
 			name: "empty source id",
 			invalidate: func(request *request) {
 				request.SrcId = ""
 			},
+			expectedError: "backup source id is empty",
 		},
 		{
 			name: "empty source disk id",
 			invalidate: func(request *request) {
 				request.SrcDiskId = ""
 			},
+			expectedError: "source disk id is required",
 		},
 		{
 			name: "no destination disk",
 			invalidate: func(request *request) {
 				request.DstDisk = nil
 			},
+			expectedError: "destination zone id and disk id are required",
 		},
 		{
 			name: "empty destination zone id",
 			invalidate: func(request *request) {
 				request.DstDisk.ZoneId = ""
 			},
+			expectedError: "destination zone id and disk id are required",
 		},
 		{
 			name: "empty destination disk id",
 			invalidate: func(request *request) {
 				request.DstDisk.DiskId = ""
 			},
+			expectedError: "destination zone id and disk id are required",
 		},
 	}
 
@@ -239,6 +247,7 @@ func TestTransferFromBackupToDiskFailsOnInvalidRequest(t *testing.T) {
 
 			err := task.Run(ctx, execCtx)
 			requireNonSilentNonRetriableError(t, err)
+			require.ErrorContains(t, err, testCase.expectedError)
 			require.Empty(t, reader.requestedKeys)
 		})
 	}
@@ -335,10 +344,13 @@ func TestTransferFromBackupToDiskFailsOnInvalidChunkMap(t *testing.T) {
 	testCases := []struct {
 		name     string
 		chunkMap []byte
+		// Tells which check has failed.
+		expectedError string
 	}{
 		{
-			name:     "too short",
-			chunkMap: marshalBackupChunkMap(t, []string{"chunk0"}),
+			name:          "too short",
+			chunkMap:      marshalBackupChunkMap(t, []string{"chunk0"}),
+			expectedError: "has 1 chunks, expected 2",
 		},
 		{
 			name: "too long",
@@ -346,10 +358,12 @@ func TestTransferFromBackupToDiskFailsOnInvalidChunkMap(t *testing.T) {
 				t,
 				[]string{"chunk0", "", "chunk2"},
 			),
+			expectedError: "has 3 chunks, expected 2",
 		},
 		{
-			name:     "not a protobuf",
-			chunkMap: []byte{0xFF},
+			name:          "not a protobuf",
+			chunkMap:      []byte{0xFF},
+			expectedError: "failed to parse",
 		},
 	}
 
@@ -374,6 +388,7 @@ func TestTransferFromBackupToDiskFailsOnInvalidChunkMap(t *testing.T) {
 
 			err := task.Run(ctx, execCtx)
 			requireNonSilentNonRetriableError(t, err)
+			require.ErrorContains(t, err, testCase.expectedError)
 		})
 	}
 }
@@ -488,6 +503,7 @@ func TestTransferFromBackupToDiskPinsBackup(t *testing.T) {
 			err := task.Run(ctx, execCtx)
 			require.Same(t, mountErr, err)
 			execCtx.AssertNumberOfCalls(t, "SaveState", 1)
+			execCtx.AssertNumberOfCalls(t, "SetEstimatedInflightDuration", 1)
 			nbsFactory.AssertNumberOfCalls(t, "GetClient", 1)
 			require.Equal(t, metaHash[:], task.state.MetaSha256)
 			require.Equal(t, chunkMapHash[:], task.state.ChunkMapSha256)

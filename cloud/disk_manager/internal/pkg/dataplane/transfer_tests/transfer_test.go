@@ -1060,7 +1060,8 @@ func (t *backupTarget) Write(
 		return nil
 	}
 
-	chunkID := fmt.Sprintf("chunk%v", chunk.Index)
+	// The id of a chunk says nothing about its position in the backup.
+	chunkID := fmt.Sprintf("chunk%v", chunkCount-chunk.Index)
 
 	compression := ""
 	if chunk.Index%2 == 0 {
@@ -1177,31 +1178,133 @@ func checkDiskData(
 	}
 }
 
+// Fails the write of the chunk with index |failedChunkIndex| when all the
+// chunks before it are transferred.
+type failingTarget struct {
+	dataplane_common.Target
+	source           dataplane_common.Source
+	failedChunkIndex uint32
+}
+
+func (t *failingTarget) Write(
+	ctx context.Context,
+	chunk dataplane_common.Chunk,
+) error {
+
+	if chunk.Index != t.failedChunkIndex {
+		return t.Target.Write(ctx, chunk)
+	}
+
+	for t.source.Milestone().ChunkIndex < t.failedChunkIndex {
+		select {
+		case <-time.After(time.Millisecond):
+		case <-ctx.Done():
+			return ctx.Err()
+		}
+	}
+
+	return errors.NewRetriableErrorf("emulated write error")
+}
+
+// Random failures of |transfer| depend on time and do not happen when the
+// transfer takes less than a second. This one always stops the transfer in the
+// middle and then resumes it from the milestone of the stopped attempt.
+// Returns the number of transferred chunks.
+func transferWithInterruption(
+	t *testing.T,
+	ctx context.Context,
+	from Resource,
+	to Resource,
+) uint32 {
+
+	transferer := dataplane_common.Transferer{
+		ReaderCount:         readerCount,
+		WriterCount:         writerCount,
+		ChunksInflightLimit: chunksInflightLimit,
+		ChunkSize:           int(chunkSize),
+	}
+	saveProgress := func(context.Context, dataplane_common.Milestone) error {
+		return nil
+	}
+
+	failedChunkIndex := chunkCount / 2
+
+	source := from.newSource()
+	target := to.newTarget()
+	attemptCtx, cancelAttemptCtx := context.WithTimeout(ctx, time.Minute)
+
+	_, err := transferer.Transfer(
+		attemptCtx,
+		source,
+		&failingTarget{
+			Target:           target,
+			source:           source,
+			failedChunkIndex: failedChunkIndex,
+		},
+		dataplane_common.Milestone{},
+		saveProgress,
+	)
+	milestone := source.Milestone()
+
+	cancelAttemptCtx()
+	target.Close(ctx)
+	source.Close(ctx)
+
+	require.True(t, errors.CanRetry(err), "unexpected error: %v", err)
+	// Chunks after the failed one may be written already, but the milestone
+	// should not go past it.
+	require.Equal(
+		t,
+		dataplane_common.Milestone{
+			ChunkIndex:            failedChunkIndex,
+			TransferredChunkCount: failedChunkIndex,
+		},
+		milestone,
+	)
+
+	source = from.newSource()
+	defer source.Close(ctx)
+
+	target = to.newTarget()
+	defer target.Close(ctx)
+
+	transferredChunkCount, err := transferer.Transfer(
+		ctx,
+		source,
+		target,
+		milestone,
+		saveProgress,
+	)
+	require.NoError(t, err)
+
+	return transferredChunkCount
+}
+
 func TestTransferFromBackupToDisk(t *testing.T) {
 	testCases := []struct {
-		name               string
-		withEncryption     bool
-		withRandomFailures bool
+		name             string
+		withEncryption   bool
+		withInterruption bool
 	}{
 		{
-			name:               "encrypted backup without random failures",
-			withEncryption:     true,
-			withRandomFailures: false,
+			name:             "encrypted backup",
+			withEncryption:   true,
+			withInterruption: false,
 		},
 		{
-			name:               "not encrypted backup without random failures",
-			withEncryption:     false,
-			withRandomFailures: false,
+			name:             "not encrypted backup",
+			withEncryption:   false,
+			withInterruption: false,
 		},
 		{
-			name:               "encrypted backup with random failures",
-			withEncryption:     true,
-			withRandomFailures: true,
+			name:             "encrypted backup with interruption",
+			withEncryption:   true,
+			withInterruption: true,
 		},
 		{
-			name:               "not encrypted backup with random failures",
-			withEncryption:     false,
-			withRandomFailures: true,
+			name:             "not encrypted backup with interruption",
+			withEncryption:   false,
+			withInterruption: true,
 		},
 	}
 
@@ -1273,15 +1376,26 @@ func TestTransferFromBackupToDisk(t *testing.T) {
 
 			chunks := from.fill(t, ctx)
 
-			transferredChunkCount := transfer(
-				t,
-				ctx,
-				from,
-				to,
-				testCase.withRandomFailures,
-			)
+			var transferredChunkCount uint32
+			if testCase.withInterruption {
+				transferredChunkCount = transferWithInterruption(
+					t,
+					ctx,
+					from,
+					to,
+				)
+			} else {
+				transferredChunkCount = transfer(
+					t,
+					ctx,
+					from,
+					to,
+					false, // withRandomFailures
+				)
+			}
 			// Unlike the other sources, backup source has every chunk of the
-			// disk, zero chunks included.
+			// disk, zero chunks included. The resumed transfer counts the
+			// chunks before its milestone and does not transfer them again.
 			require.Equal(t, chunkCount, transferredChunkCount)
 
 			checkDiskData(t, ctx, factory, disk, chunks)

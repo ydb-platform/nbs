@@ -140,7 +140,8 @@ func (r *fakeObjectReader) putBackup(
 			compression = "lz4"
 		}
 
-		chunkID := fmt.Sprintf("chunk%v", i)
+		// The id of a chunk says nothing about its position in the backup.
+		chunkID := fmt.Sprintf("chunk%v", chunkCount-i)
 		data := newTestChunkData(i)
 		r.putChunk(t, chunkID, data, compression)
 
@@ -294,18 +295,21 @@ func TestBackupSourceRead(t *testing.T) {
 	)
 }
 
-func TestBackupSourceReadChunkWithoutCompressionValue(t *testing.T) {
+// Backup tasks do not set compression of a chunk that is not compressed, but
+// an empty one means the same.
+func TestBackupSourceReadChunkWithEmptyCompression(t *testing.T) {
 	ctx := newTestContext()
 
 	data := newTestChunkData(0)
 	checksum := fmt.Sprint(dataplane_common.Chunk{Data: data}.Checksum())
+	compression := ""
 
 	reader := newFakeObjectReader()
 	reader.objects[ChunkKey("chunk0")] = persistence.S3Object{
 		Data: data,
 		Metadata: map[string]*string{
 			"Checksum":    &checksum,
-			"Compression": nil,
+			"Compression": &compression,
 		},
 	}
 
@@ -430,23 +434,27 @@ func TestBackupSourceTransfer(t *testing.T) {
 	source := NewBackupSource(reader, chunkIDs, 0, newTestMetrics())
 	defer source.Close(ctx)
 
+	// Chunks are written concurrently, in any order. A chunk that is not
+	// written yet should never be before the milestone.
+	disk.beforeWrite = func(ctx context.Context, chunkIndex uint32) error {
+		milestone := source.Milestone()
+		if milestone.ChunkIndex > chunkIndex {
+			return errors.NewNonRetriableErrorf(
+				"milestone %+v skips chunk %v",
+				milestone,
+				chunkIndex,
+			)
+		}
+
+		return nil
+	}
+
 	transferredChunkCount, err := newTestTransferer().Transfer(
 		ctx,
 		source,
 		disk,
 		dataplane_common.Milestone{},
-		func(ctx context.Context, milestone dataplane_common.Milestone) error {
-			// Chunks before the milestone should be written already.
-			for i := uint32(0); i < milestone.ChunkIndex; i++ {
-				if !disk.isWritten(i) {
-					return errors.NewNonRetriableErrorf(
-						"milestone %+v skips chunk %v",
-						milestone,
-						i,
-					)
-				}
-			}
-
+		func(context.Context, dataplane_common.Milestone) error {
 			return nil
 		},
 	)
@@ -508,17 +516,40 @@ func TestBackupSourceTransferFromMilestone(t *testing.T) {
 	source := NewBackupSource(reader, chunkIDs, 0, newTestMetrics())
 	defer source.Close(ctx)
 
+	var savedMilestones []dataplane_common.Milestone
+
 	transferredChunkCount, err := newTestTransferer().Transfer(
 		ctx,
 		source,
 		disk,
 		milestone,
-		func(context.Context, dataplane_common.Milestone) error {
+		func(
+			ctx context.Context,
+			savedMilestone dataplane_common.Milestone,
+		) error {
+
+			savedMilestones = append(savedMilestones, savedMilestone)
 			return nil
 		},
 	)
 	require.NoError(t, err)
 	require.EqualValues(t, chunkCount, transferredChunkCount)
+
+	// The source has every chunk, so all the chunks before a milestone are
+	// transferred, the ones before the initial milestone included.
+	require.NotEmpty(t, savedMilestones)
+	for _, savedMilestone := range savedMilestones {
+		require.GreaterOrEqual(
+			t,
+			savedMilestone.ChunkIndex,
+			milestone.ChunkIndex,
+		)
+		require.Equal(
+			t,
+			savedMilestone.ChunkIndex,
+			savedMilestone.TransferredChunkCount,
+		)
+	}
 
 	// Chunks before the milestone should stay untouched.
 	offset := int(milestone.ChunkIndex) * testChunkSize
@@ -534,43 +565,53 @@ func TestBackupSourceTransferFromMilestone(t *testing.T) {
 	require.True(t, bytes.Equal(diskData[offset:], disk.data[offset:]))
 }
 
-// Chunks are written out of order, so the chunk that follows the failed one
-// may be written already. The milestone should not go past the failed chunk,
-// otherwise the next attempt skips it.
+// Chunks are written out of order, so chunks that follow the failed one may be
+// written and acknowledged already. The milestone should not go past the
+// failed chunk, otherwise the next attempt skips it.
 func TestBackupSourceMilestoneDoesNotSkipFailedChunk(t *testing.T) {
-	ctx := newTestContext()
+	ctx, cancel := context.WithTimeout(newTestContext(), time.Minute)
+	defer cancel()
 
 	chunkCount := 20
+	transferer := newTestTransferer()
 	failedChunkIndex := uint32(6)
+	// While the failed chunk is inflight, the source gives out this chunk only
+	// after one of the chunks between them is acknowledged.
+	lateChunkIndex := failedChunkIndex + transferer.ChunksInflightLimit
 
 	reader := newFakeObjectReader()
 	chunkIDs, diskData := reader.putBackup(t, chunkCount)
 
 	disk := newFakeDisk(chunkCount)
-	nextChunkWritten := make(chan struct{})
+	source := NewBackupSource(reader, chunkIDs, 0, newTestMetrics())
 	writeErr := errors.NewRetriableErrorf("disk is not available")
+
+	var milestoneAtFailure dataplane_common.Milestone
 
 	disk.beforeWrite = func(ctx context.Context, chunkIndex uint32) error {
 		if chunkIndex != failedChunkIndex {
 			return nil
 		}
 
-		// Fail after the next chunk is written.
-		for !disk.isWritten(failedChunkIndex + 1) {
+		// Fail when everything around the chunk is written and acknowledged.
+		for {
+			milestone := source.Milestone()
+			if milestone.ChunkIndex >= failedChunkIndex &&
+				disk.isWritten(lateChunkIndex) {
+
+				milestoneAtFailure = milestone
+				return writeErr
+			}
+
 			select {
 			case <-time.After(time.Millisecond):
 			case <-ctx.Done():
 				return ctx.Err()
 			}
 		}
-
-		close(nextChunkWritten)
-		return writeErr
 	}
 
-	source := NewBackupSource(reader, chunkIDs, 0, newTestMetrics())
-
-	_, err := newTestTransferer().Transfer(
+	_, err := transferer.Transfer(
 		ctx,
 		source,
 		disk,
@@ -581,17 +622,15 @@ func TestBackupSourceMilestoneDoesNotSkipFailedChunk(t *testing.T) {
 	)
 	require.Same(t, writeErr, err)
 
-	select {
-	case <-nextChunkWritten:
-	default:
-		require.Fail(t, "next chunk should be written before the failure")
+	expectedMilestone := dataplane_common.Milestone{
+		ChunkIndex:            failedChunkIndex,
+		TransferredChunkCount: failedChunkIndex,
 	}
-
-	milestone := source.Milestone()
+	require.Equal(t, expectedMilestone, milestoneAtFailure)
+	require.Equal(t, expectedMilestone, source.Milestone())
 	source.Close(ctx)
 
-	require.LessOrEqual(t, milestone.ChunkIndex, failedChunkIndex)
-	require.LessOrEqual(t, milestone.TransferredChunkCount, failedChunkIndex)
+	require.False(t, disk.isWritten(failedChunkIndex))
 
 	// The next attempt starts from the milestone and rewrites the chunks
 	// that were written after it.
@@ -599,15 +638,16 @@ func TestBackupSourceMilestoneDoesNotSkipFailedChunk(t *testing.T) {
 	source = NewBackupSource(reader, chunkIDs, 0, newTestMetrics())
 	defer source.Close(ctx)
 
-	_, err = newTestTransferer().Transfer(
+	transferredChunkCount, err := transferer.Transfer(
 		ctx,
 		source,
 		disk,
-		milestone,
+		expectedMilestone,
 		func(context.Context, dataplane_common.Milestone) error {
 			return nil
 		},
 	)
 	require.NoError(t, err)
+	require.EqualValues(t, chunkCount, transferredChunkCount)
 	require.True(t, bytes.Equal(diskData, disk.data))
 }
