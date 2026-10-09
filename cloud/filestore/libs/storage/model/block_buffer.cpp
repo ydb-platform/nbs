@@ -10,15 +10,36 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
+template <typename TBuffer>
 class TBlockBuffer final
     : public IBlockBuffer
 {
 private:
     const TByteRange ByteRange;
-    TString Buffer;
+    TBuffer Buffer;
+
+    char* GetMutableData()
+    {
+#ifdef TSTRING_IS_STD_STRING
+        if constexpr (std::is_same_v<TBuffer, TRcBuf>) {
+            // Copy TString-backed payloads into the record buffer to not affect
+            // other owners. In std::string builds, TString::IsDetached() always
+            // returns true, so TRcBuf::Detach() does not copy the shared
+            // storage before modification.
+
+            // It is not a real issue as the payload uses TRcBufInternalBackend
+            // backend and TString is not a std::string.
+            if (Buffer.template ContainsNativeType<TString>()) {
+                Buffer = TRcBuf::Copy(Buffer.GetContiguousSpan());
+            }
+        }
+#endif
+
+        return Buffer.Detach();
+    }
 
 public:
-    TBlockBuffer(TByteRange byteRange, TString buffer)
+    TBlockBuffer(TByteRange byteRange, TBuffer buffer)
         : ByteRange(byteRange)
         , Buffer(std::move(buffer))
     {
@@ -49,14 +70,14 @@ public:
         Y_ABORT_UNLESS(block.size() == ByteRange.BlockSize);
 
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
-        char* ptr = const_cast<char*>(Buffer.data()) + offset;
+        char* ptr = GetMutableData() + offset;
         memcpy(ptr, block.data(), ByteRange.BlockSize);
     }
 
     void ClearBlock(size_t index) override
     {
         const auto offset = ByteRange.RelativeAlignedBlockOffset(index);
-        char* ptr = const_cast<char*>(Buffer.data()) + offset;
+        char* ptr = GetMutableData() + offset;
         memset(ptr, 0, ByteRange.BlockSize);
     }
 };
@@ -125,7 +146,7 @@ public:
 
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange)
 {
-    return std::make_shared<TBlockBuffer>(
+    return std::make_shared<TBlockBuffer<TString>>(
         byteRange,
         TString(byteRange.Length, 0));
 }
@@ -133,7 +154,13 @@ IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange)
 IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TString buffer)
 {
     Y_ABORT_UNLESS(buffer.size() == byteRange.Length);
-    return std::make_shared<TBlockBuffer>(byteRange, std::move(buffer));
+    return std::make_shared<TBlockBuffer<TString>>(byteRange, std::move(buffer));
+}
+
+IBlockBufferPtr CreateBlockBuffer(TByteRange byteRange, TRcBuf buffer)
+{
+    Y_ABORT_UNLESS(buffer.size() == byteRange.Length);
+    return std::make_shared<TBlockBuffer<TRcBuf>>(byteRange, std::move(buffer));
 }
 
 IBlockBufferPtr CreateLazyBlockBuffer(TByteRange byteRange)

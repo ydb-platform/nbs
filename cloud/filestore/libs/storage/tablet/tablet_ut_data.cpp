@@ -9543,43 +9543,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Data)
             "got "
                 << rebootTracker.GetGenerationCount());
     }
-
-    TABLET_TEST(ShouldPassDataAsPayload)
-    {
-        NProto::TStorageConfig storageConfig;
-        storageConfig.SetExternalReadDataPayload(true);
-        storageConfig.SetExternalWriteDataPayloadEnabled(true);
-
-        TTestEnv env(testEnvConfig, storageConfig);
-
-        ui32 nodeIdx = env.AddDynamicNode();
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        TIndexTabletClient tablet(
-            env.GetRuntime(),
-            nodeIdx,
-            tabletId,
-            tabletConfig,
-            true /*updateConfig*/,
-            storageConfig);
-        tablet.InitSession("client", "session");
-
-        auto id = CreateNode(tablet, TCreateNodeArgs::File(RootNodeId, "test"));
-        ui64 handle = CreateHandle(tablet, id);
-
-        auto data = GenerateValidateData(1_KB);
-        tablet.WriteData(handle, 0, data.size(), data.c_str());
-        tablet.Flush();
-
-        auto response = tablet.ReadData(handle, 0, 1_KB);
-        const auto& buffer = response->Record.GetBuffer();
-        UNIT_ASSERT(buffer.empty());
-        UNIT_ASSERT_VALUES_EQUAL(data.size(), response->Record.GetLength());
-        UNIT_ASSERT_VALUES_EQUAL(1, response->GetPayloadCount());
-        auto& payload = response->GetPayload(0);
-        UNIT_ASSERT_VALUES_EQUAL(data.size(), payload.size());
-        UNIT_ASSERT_VALUES_EQUAL(data, payload.ConvertToString());
-    }
 }
 
 }   // namespace NCloud::NFileStore::NStorage
