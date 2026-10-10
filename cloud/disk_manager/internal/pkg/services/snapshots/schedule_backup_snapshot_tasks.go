@@ -39,11 +39,20 @@ func (t *scheduleBackupSnapshotTasks) Run(
 	}
 
 	for _, item := range backups {
-		_, err := scheduleBackupSnapshotTask(
-			ctx,
-			t.scheduler,
+		idempotencyKey := fmt.Sprintf(
+			"backup_snapshot_%v_%v",
 			item.SnapshotID,
 			item.BackupID,
+		)
+
+		_, err := t.scheduler.ScheduleTask(
+			headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
+			"snapshots.BackupSnapshot",
+			"",
+			&protos.BackupSnapshotRequest{
+				SnapshotId: item.SnapshotID,
+				BackupId:   item.BackupID,
+			},
 		)
 		if err != nil {
 			return err
@@ -70,32 +79,4 @@ func (t *scheduleBackupSnapshotTasks) GetMetadata(
 
 func (t *scheduleBackupSnapshotTasks) GetResponse() proto.Message {
 	return &empty.Empty{}
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Returns the task of the backup attempt; the attempt has one task, whoever
-// schedules it.
-func scheduleBackupSnapshotTask(
-	ctx context.Context,
-	scheduler tasks.Scheduler,
-	snapshotID string,
-	backupID string,
-) (string, error) {
-
-	idempotencyKey := fmt.Sprintf(
-		"backup_snapshot_%v_%v",
-		snapshotID,
-		backupID,
-	)
-
-	return scheduler.ScheduleTask(
-		headers.SetIncomingIdempotencyKey(ctx, idempotencyKey),
-		"snapshots.BackupSnapshot",
-		"",
-		&protos.BackupSnapshotRequest{
-			SnapshotId: snapshotID,
-			BackupId:   backupID,
-		},
-	)
 }

@@ -128,8 +128,6 @@ type SnapshotBackupRequest struct {
 type SnapshotBackupID struct {
 	DiskID     string
 	SnapshotID string
-	// The backup attempt queued when the snapshot was deleted, if any.
-	BackupID string
 }
 
 type Storage interface {

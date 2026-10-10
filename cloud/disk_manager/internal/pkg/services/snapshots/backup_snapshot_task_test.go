@@ -58,6 +58,8 @@ func TestBackupSnapshotTask(t *testing.T) {
 	scheduler := tasks_mocks.NewSchedulerMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 	var scheduledDEK []byte
+	var scheduledMetaKey string
+	var scheduledMeta []byte
 
 	storage.On("GetSnapshotMeta", mock.Anything, "snap1").Return(snapshot, nil)
 	storage.On("SnapshotBackupCompleted", mock.Anything, "snap1").Return(nil)
@@ -77,6 +79,8 @@ func TestBackupSnapshotTask(t *testing.T) {
 		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotDataRequest) bool {
 			dek := request.EncryptedDek
 			scheduledDEK = append([]byte(nil), dek...)
+			scheduledMetaKey = request.MetaKey
+			scheduledMeta = append([]byte(nil), request.Meta...)
 			return request.SnapshotId == "snap1" &&
 				len(request.EncryptedDek) != 0
 		}),
@@ -115,14 +119,14 @@ func TestBackupSnapshotTask(t *testing.T) {
 	execCtx.AssertNumberOfCalls(t, "SaveState", 2)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	object, err := backupS3.GetObject(
-		ctx,
-		backup.SnapshotMetaKey("disk1", "snap1"),
-	)
-	require.NoError(t, err)
+	// The copy writes the meta while it holds the source; the task only
+	// passes it.
+	require.Equal(t, backup.SnapshotMetaKey("disk1", "snap1"), scheduledMetaKey)
+	_, err = backupS3.GetObject(ctx, scheduledMetaKey)
+	require.Error(t, err)
 
 	var meta backup.SnapshotMeta
-	require.NoError(t, json.Unmarshal(object.Data, &meta))
+	require.NoError(t, json.Unmarshal(scheduledMeta, &meta))
 	require.Equal(
 		t,
 		backup.SnapshotMeta{
@@ -288,7 +292,9 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 			request *dataplane_protos.BackupSnapshotDataRequest,
 		) bool {
 			return request.SnapshotId == "snap1" &&
-				len(request.EncryptedDek) == 0
+				len(request.EncryptedDek) == 0 &&
+				request.MetaKey == backup.SnapshotMetaKey("disk1", "snap1") &&
+				len(request.Meta) != 0
 		}),
 	).Return("dataplane1", nil)
 	scheduler.On(
@@ -315,15 +321,8 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 	execCtx.AssertNumberOfCalls(t, "SaveState", 1)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	key := backup.SnapshotMetaKey("disk1", "snap1")
-	object, err := backupS3.GetObject(ctx, key)
-	require.NoError(t, err)
-
-	raw, err := s3.GetObject(ctx, backupTestBucket, backupS3.Key(key))
-	require.NoError(t, err)
-	require.Equal(t, object.Data, raw.Data)
-	require.Nil(t, raw.Metadata["Key-Id"])
-	require.Nil(t, raw.Metadata["Encrypted-Dek"])
+	_, err = backupS3.GetObject(ctx, backup.SnapshotMetaKey("disk1", "snap1"))
+	require.Error(t, err)
 }
 
 func TestBackupSnapshotTaskSkipsSnapshotWithoutCopy(t *testing.T) {

@@ -50,26 +50,8 @@ func (t *deleteBackupMetaTask) Run(
 			return errors.NewInterruptExecutionError()
 		}
 
-		// All backups of the batch are cancelled first, so that they stop
-		// at the same time.
-		backupTaskIDs := make([]string, len(snapshotBackupIDsForDeletion))
-		for i, snapshotBackupID := range snapshotBackupIDsForDeletion {
-			backupTaskIDs[i], err = t.cancelBackup(ctx, snapshotBackupID)
-			if err != nil {
-				return err
-			}
-		}
-
 		var snapshotIDs []string
-		for i, snapshotBackupID := range snapshotBackupIDsForDeletion {
-			// A running backup could still write meta.json.
-			if len(backupTaskIDs[i]) != 0 {
-				err = t.scheduler.WaitTaskEnded(ctx, backupTaskIDs[i])
-				if err != nil {
-					return err
-				}
-			}
-
+		for _, snapshotBackupID := range snapshotBackupIDsForDeletion {
 			err = t.deleteSnapshotBackup(ctx, execCtx, snapshotBackupID)
 			if err != nil {
 				return err
@@ -83,38 +65,6 @@ func (t *deleteBackupMetaTask) Run(
 			return err
 		}
 	}
-}
-
-// Cancels the backup attempt queued when the snapshot was deleted and returns
-// its task, or an empty string if no attempt was queued. The task is found by
-// the idempotency key it was scheduled with. If it is not found, a new one is
-// created; it is cancelled at once and, if it runs, finds the snapshot
-// deleting and copies nothing.
-func (t *deleteBackupMetaTask) cancelBackup(
-	ctx context.Context,
-	snapshotBackupID resources.SnapshotBackupID,
-) (string, error) {
-
-	if len(snapshotBackupID.BackupID) == 0 {
-		return "", nil
-	}
-
-	taskID, err := scheduleBackupSnapshotTask(
-		ctx,
-		t.scheduler,
-		snapshotBackupID.SnapshotID,
-		snapshotBackupID.BackupID,
-	)
-	if err != nil {
-		return "", err
-	}
-
-	_, err = t.scheduler.CancelTask(ctx, taskID)
-	if err != nil {
-		return "", err
-	}
-
-	return taskID, nil
 }
 
 func (t *deleteBackupMetaTask) deleteSnapshotBackup(

@@ -38,7 +38,7 @@ func (t *deleteBackupSnapshotDataTask) Run(
 ) error {
 
 	// Deletion of the snapshot waits for its backup copy, so once the
-	// snapshot is gone nothing writes its chunk map anymore.
+	// snapshot is gone nothing writes its chunk map or meta.json anymore.
 	meta, err := t.storage.GetSnapshotMeta(ctx, t.request.SnapshotId)
 	if err != nil {
 		return err

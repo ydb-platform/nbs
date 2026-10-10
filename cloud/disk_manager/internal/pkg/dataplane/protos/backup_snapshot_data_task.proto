@@ -9,6 +9,10 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 message BackupSnapshotDataRequest {
     string SnapshotId = 1;
     bytes EncryptedDek = 2;
+    // meta.json of the snapshot or image. The copy writes it last, while it
+    // holds the snapshot, so a deletion never runs before it.
+    string MetaKey = 3;
+    bytes Meta = 4;
 }
 
 message BackupSnapshotDataTaskState {

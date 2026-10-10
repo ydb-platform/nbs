@@ -723,7 +723,6 @@ func TestSnapshotsDeletionStopsBackup(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, ids)
 
-	// The queued attempt moves to the delete queue to be cancelled.
 	snapshotBackupIDsForDeletion, err :=
 		storage.GetSnapshotBackupDeleteQueue(ctx, 10)
 	require.NoError(t, err)
@@ -732,7 +731,6 @@ func TestSnapshotsDeletionStopsBackup(t *testing.T) {
 		[]SnapshotBackupID{{
 			DiskID:     "disk",
 			SnapshotID: "snapshot",
-			BackupID:   "manual",
 		}},
 		snapshotBackupIDsForDeletion,
 	)
@@ -748,7 +746,6 @@ func TestSnapshotsDeletionStopsBackup(t *testing.T) {
 		[]SnapshotBackupID{{
 			DiskID:     "disk",
 			SnapshotID: "snapshot",
-			BackupID:   "manual",
 		}},
 		snapshotBackupIDsForDeletion,
 	)

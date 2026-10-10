@@ -14,7 +14,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/tasks"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,16 +90,6 @@ func (t *backupSnapshotTask) Run(
 		}
 	}
 
-	err = t.backupS3.PutObject(
-		ctx,
-		backup.SnapshotMetaKey(meta.Disk.DiskId, snapshotID),
-		t.state.EncryptedDek,
-		persistence.S3Object{Data: data},
-	)
-	if err != nil {
-		return err
-	}
-
 	idempotencyKey := fmt.Sprintf(
 		"%v_%v_backup",
 		execCtx.GetTaskID(),
@@ -114,6 +103,9 @@ func (t *backupSnapshotTask) Run(
 		&dataplane_protos.BackupSnapshotDataRequest{
 			SnapshotId:   snapshotID,
 			EncryptedDek: t.state.EncryptedDek,
+			// The copy writes the meta while it holds the snapshot.
+			MetaKey: backup.SnapshotMetaKey(meta.Disk.DiskId, snapshotID),
+			Meta:    data,
 		},
 	)
 	if err != nil {
