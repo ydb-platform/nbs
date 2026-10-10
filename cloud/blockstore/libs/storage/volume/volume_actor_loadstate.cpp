@@ -32,25 +32,21 @@ bool TVolumeActor::PrepareLoadState(
         db.ReadVolumeParams(args.VolumeParams),
         db.ReadStartPartitionsNeeded(args.StartPartitionsNeeded),
         db.ReadClients(args.Clients),
-        db.ReadHistory(
-            THistoryLogKey(now),
-            args.OldestLogEntry,
-            Config->GetVolumeHistoryCacheSize(),
-            args.MountHistory),
+        db.ReadHistory(THistoryLogKey(now), args.OldestLogEntry,
+                       Config->GetVolumeHistoryCacheSize(), args.MountHistory),
         db.ReadPartStats(args.PartStats),
         db.ReadNonReplPartStats(args.PartStats),
         db.CollectCheckpointsToDelete(
-            Config->GetDeletedCheckpointHistoryLifetime(),
-            now,
+            Config->GetDeletedCheckpointHistoryLifetime(), now,
             args.DeletedCheckpoints),
-        db.ReadCheckpointRequests(
-            args.DeletedCheckpoints,
-            args.CheckpointRequests,
-            args.OutdatedCheckpointRequestIds),
+        db.ReadCheckpointRequests(args.DeletedCheckpoints,
+                                  args.CheckpointRequests,
+                                  args.OutdatedCheckpointRequestIds),
         db.ReadThrottlerState(args.ThrottlerStateInfo),
         db.ReadStorageConfig(args.StorageConfig),
         db.ReadFollowers(args.FollowerDisks),
         db.ReadLeaders(args.LeaderDisks),
+        db.ReadNextLeaderLinkGeneration(args.NextLeaderLinkGeneration),
         db.ReadBrokenDevices(args.BrokenDevices),
     };
 
@@ -152,6 +148,7 @@ void TVolumeActor::CompleteLoadState(
             std::move(args.FollowerDisks),
             std::move(args.LeaderDisks),
             startPartitionsNeeded);
+        State->SetNextLeaderLinkGeneration(args.NextLeaderLinkGeneration);
 
         HasPerformanceProfileModifications =
             State->HasPerformanceProfileModifications(*Config);

@@ -16,6 +16,33 @@ constexpr TDuration OutdatedLeaderDestructionBackoffDelay =
 constexpr TDuration OutdatedLeaderDestructionMaxBackoffDelay =
     TDuration::Seconds(180);
 
+namespace {
+
+void PruneCancelledLeaderLinks(TVolumeState& state, TVolumeDatabase& db)
+{
+    for (const auto& link: state.RemoveCancelledLeaders()) {
+        db.DeleteLeader(link);
+    }
+}
+
+void PersistLeaderLinkGenerationFence(TVolumeState& state, TVolumeDatabase& db,
+                                      ui64 nextGeneration)
+{
+    state.SetNextLeaderLinkGeneration(nextGeneration);
+    db.WriteNextLeaderLinkGeneration(nextGeneration);
+    // Unknown unversioned CREATE is rejected after this same commit, so the
+    // legacy UUID history is no longer needed for fencing.
+    PruneCancelledLeaderLinks(state, db);
+}
+
+void ConsumeLeaderLinkGeneration(TVolumeState& state, TVolumeDatabase& db,
+                                 ui64 generation)
+{
+    PersistLeaderLinkGenerationFence(state, db, generation + 1);
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool TVolumeActor::PrepareUpdateLeader(
@@ -45,6 +72,39 @@ void TVolumeActor::ExecuteUpdateLeader(
         return;
     }
 
+    TVolumeDatabase db(tx.DB);
+    if (args.Leader.State == TLeaderDiskInfo::EState::Following) {
+        const auto generation = args.Leader.Link.FollowerGeneration;
+        if (generation) {
+            if (!*generation || *generation == Max<ui64>() ||
+                (current && current->Link.FollowerGeneration &&
+                 current->Link.FollowerGeneration != generation) ||
+                ((!current || !current->Link.FollowerGeneration) &&
+                 *generation != State->GetNextLeaderLinkGeneration()))
+            {
+                args.Error = MakeError(E_INVALID_STATE,
+                                       "Destination link generation expired");
+                return;
+            }
+            if (!current || !current->Link.FollowerGeneration) {
+                ConsumeLeaderLinkGeneration(*State, db, *generation);
+            } else {
+                // A duplicate CREATE can observe an earlier transaction's
+                // in-memory state before its commit. Confirm the fence and
+                // link durably before replying to this retry.
+                PersistLeaderLinkGenerationFence(
+                    *State, db, State->GetNextLeaderLinkGeneration());
+                args.Error = MakeError(S_ALREADY);
+            }
+        } else if (!current && State->HasLeaderLinkGenerationFence()) {
+            args.Error = MakeError(E_INVALID_STATE,
+                                   "CREATE requires a destination generation");
+            return;
+        }
+    }
+
+    // Compaction may move the active legacy row within LeaderDisks.
+    current = State->FindLeader(args.Leader.Link);
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -54,7 +114,6 @@ void TVolumeActor::ExecuteUpdateLeader(
         current ? current->Describe().c_str() : "{}",
         args.Leader.Describe().c_str());
 
-    TVolumeDatabase db(tx.DB);
     State->AddOrUpdateLeader(args.Leader);
     db.WriteLeader(args.Leader);
 }
@@ -101,9 +160,15 @@ void TVolumeActor::ExecuteRemoveLeader(
     ITransactionBase::TTransactionContext& tx,
     TTxVolume::TRemoveLeader& args)
 {
-    Y_UNUSED(ctx);
     const auto leader = State->FindLeader(args.Link);
     if (leader && leader->State == TLeaderDiskInfo::EState::Cancelled) {
+        TVolumeDatabase db(tx.DB);
+        if (State->HasLeaderLinkGenerationFence()) {
+            PersistLeaderLinkGenerationFence(
+                *State, db, State->GetNextLeaderLinkGeneration());
+        } else {
+            db.WriteLeader(*leader);
+        }
         args.Error = MakeError(S_ALREADY);
         return;
     }
@@ -115,8 +180,20 @@ void TVolumeActor::ExecuteRemoveLeader(
             "Cannot cancel a link after leadership transfer has started");
         return;
     }
+    const auto requestedGeneration = args.Link.FollowerGeneration;
     if (leader) {
+        if (requestedGeneration.value_or(0) &&
+            leader->Link.FollowerGeneration &&
+            requestedGeneration != leader->Link.FollowerGeneration)
+        {
+            args.Error = MakeError(E_INVALID_STATE,
+                                   "Cancellation generation does not match");
+            return;
+        }
         args.Link = leader->Link;
+        if (!args.Link.FollowerGeneration && requestedGeneration.value_or(0)) {
+            args.Link.FollowerGeneration = requestedGeneration;
+        }
         args.Changed = true;
     }
     if (!args.Link.LinkUUID) {
@@ -124,10 +201,51 @@ void TVolumeActor::ExecuteRemoveLeader(
         return;
     }
 
-    // Retain a durable UUID fence even when CREATE has not arrived yet.
+    TVolumeDatabase db(tx.DB);
+    if (args.Link.FollowerGeneration) {
+        const auto generation = *args.Link.FollowerGeneration;
+        if (!leader && !generation) {
+            // Zero has never authorized CREATE on the source.
+            args.Error = MakeError(S_ALREADY);
+            return;
+        }
+        const auto previousNext = State->GetNextLeaderLinkGeneration();
+        const auto afterCancellation =
+            generation == Max<ui64>() ? generation : generation + 1;
+        // A token may have been read before an interrupted destination
+        // transaction. Fence at least that token rather than leaving the
+        // source's durable cancellation obligation stuck indefinitely.
+        const auto next = Max(previousNext, afterCancellation);
+        PersistLeaderLinkGenerationFence(*State, db, next);
+        if (leader) {
+            State->RemoveLeader(args.Link);
+            db.DeleteLeader(args.Link);
+        } else if (
+            generation < previousNext ||
+            (generation == Max<ui64>() && previousNext == generation))
+        {
+            args.Error = MakeError(S_ALREADY);
+        }
+        return;
+    }
+    if (State->HasLeaderLinkGenerationFence()) {
+        // Reassert the durable fence even for an idempotent legacy retry;
+        // observing only an earlier transaction's memory is not an ACK.
+        PersistLeaderLinkGenerationFence(*State, db,
+                                         State->GetNextLeaderLinkGeneration());
+        if (leader) {
+            State->RemoveLeader(args.Link);
+            db.DeleteLeader(args.Link);
+        } else {
+            args.Error = MakeError(S_ALREADY);
+        }
+        return;
+    }
+
+    // Keep pre-protocol UUID fences until a generation-bound operation makes
+    // rejecting unknown legacy CREATE durable in the same transaction.
     TLeaderDiskInfo cancelled{.Link = args.Link, .CreatedAt = ctx.Now(),
                               .State = TLeaderDiskInfo::EState::Cancelled};
-    TVolumeDatabase db(tx.DB);
     State->AddOrUpdateLeader(cancelled);
     db.WriteLeader(cancelled);
 }
@@ -157,17 +275,60 @@ void TVolumeActor::CreateLeaderLink(
 {
     auto currentLeader = State->FindLeader(link);
     if (currentLeader) {
+        if (link.FollowerGeneration.value_or(0) &&
+            currentLeader->State == TLeaderDiskInfo::EState::Following &&
+            !currentLeader->Link.FollowerGeneration)
+        {
+            auto upgraded = *currentLeader;
+            upgraded.Link.FollowerGeneration = link.FollowerGeneration;
+            upgraded.Link.FollowerTabletId = link.FollowerTabletId;
+            upgraded.Link.LeaderTabletId = link.LeaderTabletId;
+            State->StartCreateLeaderRequest();
+            ExecuteTx<TUpdateLeader>(ctx, std::move(requestInfo),
+                                     std::move(upgraded));
+            return;
+        }
+        const bool mismatch =
+            link.FollowerGeneration && currentLeader->Link.FollowerGeneration &&
+            link.FollowerGeneration != currentLeader->Link.FollowerGeneration;
+        if (!mismatch && currentLeader->Link.FollowerGeneration &&
+            currentLeader->State == TLeaderDiskInfo::EState::Following)
+        {
+            State->StartCreateLeaderRequest();
+            ExecuteTx<TUpdateLeader>(ctx, std::move(requestInfo),
+                                     *currentLeader);
+            return;
+        }
         NCloud::Reply(
             ctx,
             *requestInfo,
             std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
                 MakeError(
-                    currentLeader->State == TLeaderDiskInfo::EState::Cancelled
+                    currentLeader->State ==
+                                TLeaderDiskInfo::EState::Cancelled ||
+                            mismatch
                         ? E_INVALID_STATE
                         : S_ALREADY,
                     currentLeader->State == TLeaderDiskInfo::EState::Cancelled
                         ? "Link creation was cancelled"
-                        : "")));
+                    : mismatch ? "Destination link generation does not match"
+                               : "")));
+        return;
+    }
+
+    if ((link.FollowerGeneration &&
+         (!*link.FollowerGeneration ||
+          *link.FollowerGeneration == Max<ui64>() ||
+          *link.FollowerGeneration != State->GetNextLeaderLinkGeneration())) ||
+        (!link.FollowerGeneration && State->HasLeaderLinkGenerationFence()))
+    {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
+                MakeError(
+                    E_INVALID_STATE,
+                    "CREATE requires the current destination generation")));
         return;
     }
 
@@ -471,7 +632,11 @@ void TVolumeActor::HandleUpdateLinkOnFollower(
         .FollowerDiskId = msg->Record.GetDiskId(),
         .FollowerShardId = msg->Record.GetFollowerShardId(),
         .LeaderTabletId = msg->Record.GetLeaderTabletId(),
-        .FollowerTabletId = msg->Record.GetFollowerTabletId()};
+        .FollowerTabletId = msg->Record.GetFollowerTabletId(),
+        .FollowerGeneration =
+            msg->Record.HasFollowerGeneration()
+                ? std::optional<ui64>(msg->Record.GetFollowerGeneration())
+                : std::nullopt};
 
     LOG_INFO(
         ctx,
@@ -506,6 +671,16 @@ void TVolumeActor::HandleUpdateLinkOnFollower(
 
     switch (msg->Record.GetAction()) {
         case NProto::LINK_ACTION_CREATE: {
+            if (link.FollowerGeneration && !*link.FollowerGeneration) {
+                NCloud::Reply(
+                    ctx,
+                    *requestInfo,
+                    std::make_unique<
+                        TEvVolume::TEvUpdateLinkOnFollowerResponse>(MakeError(
+                        E_INVALID_STATE,
+                        "CREATE has no bound destination generation")));
+                return;
+            }
             const bool crossShard =
                 Config->GetSchemeShardDirForShard(link.LeaderShardId) !=
                 Config->GetSchemeShardDirForShard(link.FollowerShardId);
@@ -527,6 +702,18 @@ void TVolumeActor::HandleUpdateLinkOnFollower(
             break;
         }
         case NProto::LINK_ACTION_DESTROY: {
+            if (link.FollowerGeneration && link.FollowerTabletId &&
+                link.FollowerTabletId != TabletID())
+            {
+                NCloud::Reply(
+                    ctx,
+                    *requestInfo,
+                    std::make_unique<
+                        TEvVolume::TEvUpdateLinkOnFollowerResponse>(
+                        MakeError(S_ALREADY,
+                                  "Destination incarnation no longer exists")));
+                return;
+            }
             DestroyLeaderLink(std::move(requestInfo), std::move(link),
                               msg->Record.GetRequireCancellable(), ctx);
             break;

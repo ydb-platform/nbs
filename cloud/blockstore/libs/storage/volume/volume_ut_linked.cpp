@@ -455,6 +455,13 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                     auto* msg =
                         event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
                     forwardRequest(event, msg->Record.GetDiskId());
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvVolume::EvGetLinkStatusRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvGetLinkStatusRequest>();
+                    forwardRequest(event, msg->Record.GetDiskId());
                 }
 
                 return true;
@@ -610,6 +617,13 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                     auto* msg =
                         event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
                     forwardRequest(event, msg->Record.GetDiskId());
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvVolume::EvGetLinkStatusRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvGetLinkStatusRequest>();
+                    forwardRequest(event, msg->Record.GetDiskId());
                 }
                 return true;
             }
@@ -697,6 +711,13 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                 {
                     auto* msg =
                         event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+                    forwardRequest(event, msg->Record.GetDiskId());
+                } else if (
+                    event->GetTypeRewrite() ==
+                    TEvVolume::EvGetLinkStatusRequest)
+                {
+                    auto* msg =
+                        event->Get<TEvVolume::TEvGetLinkStatusRequest>();
                     forwardRequest(event, msg->Record.GetDiskId());
                 }
                 return true;

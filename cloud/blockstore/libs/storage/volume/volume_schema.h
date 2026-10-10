@@ -41,9 +41,15 @@ struct TVolumeSchema
             using Type = NProto::TStorageServiceConfig;
         };
 
+        struct NextLeaderLinkGeneration
+            : public Column<5, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
         using TKey = TableKey<Id>;
-        using TColumns = TableColumns<
-            Id, VolumeMeta, StartPartitionsNeeded, StorageConfig>;
+        using TColumns =
+            TableColumns<Id, VolumeMeta, StartPartitionsNeeded, StorageConfig,
+                         NextLeaderLinkGeneration>;
     };
 
     struct Clients
@@ -347,6 +353,11 @@ struct TVolumeSchema
         {
         };
 
+        struct FollowerGeneration
+            : public Column<15, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
         using TKey = TableKey<Uuid>;
         using TColumns =
             TableColumns<Uuid, FollowerDiskId, FollowerShardId, State,
@@ -359,7 +370,8 @@ struct TVolumeSchema
                          LeaderTabletId,
                          CancellationPending,
                          CancellationRequireCancellable,
-                         FollowerTabletId>;
+                         FollowerTabletId,
+                         FollowerGeneration>;
     };
 
     struct LeaderDisks: public TTableSchema<12>
@@ -410,6 +422,11 @@ struct TVolumeSchema
         {
         };
 
+        struct FollowerGeneration
+            : public Column<11, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
         using TKey = TableKey<Uuid>;
         using TColumns =
             TableColumns<Uuid, CreatedAt, LeaderDiskId, LeaderShardId,
@@ -418,7 +435,8 @@ struct TVolumeSchema
                          State,
                          ErrorMessage,
                          LeaderTabletId,
-                         FollowerTabletId>;
+                         FollowerTabletId,
+                         FollowerGeneration>;
     };
 
     struct BrokenDevices: public TTableSchema<13>

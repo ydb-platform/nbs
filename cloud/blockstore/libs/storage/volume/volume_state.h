@@ -217,6 +217,7 @@ private:
     const NProto::TPartitionConfig* Config;
     TRuntimeVolumeParams VolumeParams;
     ui64 BlockCount = 0;
+    ui64 NextLeaderLinkGeneration = 0;
     // only for mirrored disks
     THashSet<TString> FilteredFreshDeviceIds;
 
@@ -309,6 +310,23 @@ public:
     {
         return Meta;
     }
+
+    ui64 GetNextLeaderLinkGeneration() const
+    {
+        return Max<ui64>(1, NextLeaderLinkGeneration);
+    }
+
+    bool HasLeaderLinkGenerationFence() const
+    {
+        return NextLeaderLinkGeneration != 0;
+    }
+
+    void SetNextLeaderLinkGeneration(ui64 generation)
+    {
+        NextLeaderLinkGeneration = generation;
+    }
+
+    TVector<TLeaderFollowerLink> RemoveCancelledLeaders();
 
     const TVector<TVolumeMetaHistoryItem>& GetMetaHistory() const
     {

@@ -93,11 +93,17 @@ The service checks the cancellation boundary inside the owning volume tablet's d
 
 Late progress updates cannot recreate a cancelled source link or modify a newer operation with a different UUID. Cancellation retains the original UUID even if creation has not yet persisted a follower. The source persists a pending cancellation with the original `RequireCancellable` value until the destination acknowledgment is committed. A source restart or repeated cancellation resumes delivery; a lost message or acknowledgment cannot discard the cancellation obligation. Pending cancellations do not block a new copy generation on the source; the destination must process cancellation before accepting the replacement link.
 
-The destination stores a durable cancellation fence for that UUID, rejecting delayed `CREATE` messages after cancellation or reboot. The destination tablet identifier also rejects those messages after the destination volume itself is deleted and recreated. A repeated cancellation that changes no link state does not restart partitions.
+The destination fences cancelled operations with a durable generation watermark instead of keeping one row for every cancelled UUID. The source obtains a destination generation and persists it before sending `CREATE`. Accepting creation or cancelling it before arrival consumes that generation in the destination transaction. Cancelling an accepted generation removes its link row; replaying that generation cannot create another link, including after reboot. A cancellation before any generation was bound cannot have authorized `CREATE` and does not add a destination fence row.
+
+Repeated `create → cancel → create` operations can reuse the same destination without accumulating cancelled-link history. A recovered operation keeps its original bound generation; it must not obtain a fresh generation for the same UUID after cancellation. Successful creation and cancellation retries confirm the corresponding fence durably. Cancellation advances the watermark monotonically even if the token was read before a destination restart, without removing another active UUID. The destination tablet identifier also rejects delayed messages after the destination volume itself is deleted and recreated. A repeated cancellation that changes no link state does not restart partitions.
+
+Legacy links without a generation remain readable, and retries for an existing UUID remain idempotent. A recovered legacy `Created` link can acquire a generation without changing its UUID before the destination has consumed its first generation, or while that UUID is still known there as an active link. Once history has been compacted, an unknown legacy UUID is rejected rather than assigned a fresh token. Existing cancellation fences are removed only in the transaction that enables generation fencing and rejects previously unknown unversioned `CREATE` messages. A peer without generation support keeps the legacy workflow and its fences. Upgrade all participating nodes before using the generation protocol; once a destination has enabled it, do not roll that destination back to an older binary that ignores the watermark.
+
+The watermark is stored separately from the volume configuration, so resize or configuration updates do not reset it. Concurrent new operations can race for the same available generation; a stale request is rejected rather than rebound automatically to a cancelled UUID. The caller should cancel the failed source link and start a new operation. Generation exhaustion is rejected without wrapping the counter.
 
 Public cancellation retains the cutover check. Internal diagnostic unlink preserves the caller's `RequireCancellable` value on both sides. Link lookup treats aliases of the same configured directory as equivalent, including persisted empty local selectors.
 
-Removing a link does not delete the partially filled destination volume. The internal caller must dispose of that destination separately when cancelling. Address its shard and use an exact physical name for that cleanup:
+Removing a link does not delete the partially filled destination volume. The internal caller may reuse that destination for a new copy or delete it separately when it is no longer needed. Address its shard and use an exact physical name for that cleanup:
 
 ~~~protobuf
 Headers {
@@ -168,7 +174,16 @@ The test coverage includes:
 - existing same-shard DiskRegistry copy cleanup completes without conditional deletion;
 - conditional Sync deletion handles a late not-found stat without deallocating a replacement;
 - failed `Created` recovery releases copy-only partitions after the Error commit;
-- delayed Error transactions retain partitions until commit and preserve mounted source I/O.
+- delayed Error transactions retain partitions until commit and preserve mounted source I/O;
+- repeated destination reuse retains no cancelled-link rows across reboot and resize;
+- generation consumption is checked with a real executor queue when cancellation precedes creation;
+- cancellation before generation binding leaves no fence and cannot affect a new operation;
+- legacy fences are compacted only after generation fencing becomes durable;
+- active legacy creation recovers with the same UUID and a bound generation;
+- a pruned legacy cancellation cannot acquire a fresh token after source restart;
+- stale generation messages do not modify the active operation;
+- the generation watermark and optional link generations survive database round trips;
+- exhausted generations are rejected without counter wrap.
 
 Build the server and administrative client:
 

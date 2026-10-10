@@ -78,6 +78,10 @@ private:
         const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void HandleGenerationResponse(
+        const TEvVolume::TEvGetLinkStatusResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+
     void HandlePersistedOnLeader(
         const TEvVolumePrivate::TEvUpdateFollowerStateResponse::TPtr& ev,
         const NActors::TActorContext& ctx);

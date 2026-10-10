@@ -102,6 +102,64 @@ void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
 
     Follower.MediaKind = FollowerVolume.GetStorageMediaKind();
     Follower.State = TFollowerDiskInfo::EState::Created;
+    if (Follower.Link.FollowerGeneration.value_or(0)) {
+        // Recovery must not refresh a cancelled operation's generation.
+        PersistOnLeader(ctx);
+    } else if (!Follower.Link.FollowerTabletId && AllowDiskRegistryMedia) {
+        // A description without a target identity cannot bind a generation.
+        Follower.Link.FollowerGeneration.reset();
+        PersistOnLeader(ctx);
+    } else {
+        auto request = std::make_unique<TEvVolume::TEvGetLinkStatusRequest>();
+        auto& record = request->Record;
+        record.SetDiskId(Follower.Link.FollowerDiskId);
+        record.SetLinkUUID(Follower.Link.LinkUUID);
+        record.MutableHeaders()->SetShardId(Follower.Link.FollowerShardId);
+        record.MutableHeaders()->SetExactDiskIdMatch(true);
+        NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
+    }
+}
+
+void TCreateVolumeLinkActor::HandleGenerationResponse(
+    const TEvVolume::TEvGetLinkStatusResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    if (HasError(msg->GetError())) {
+        ReplyAndDie(ctx, msg->GetError());
+        return;
+    }
+    const auto& record = msg->Record;
+    if (record.GetNextLeaderLinkGeneration()) {
+        if (record.GetVolumeTabletId() != Follower.Link.FollowerTabletId) {
+            ReplyAndDie(ctx, MakeError(E_INVALID_STATE,
+                                       "Destination incarnation changed"));
+            return;
+        }
+        const bool knownUuid =
+            record.GetLinkUUID() == Follower.Link.LinkUUID &&
+            record.GetStatus() != NProto::LINK_STATUS_NOT_FOUND &&
+            record.GetStatus() != NProto::LINK_STATUS_NONE &&
+            record.GetStatus() != NProto::LINK_STATUS_ERROR;
+        if (!Follower.Link.FollowerGeneration &&
+            record.GetNextLeaderLinkGeneration() > 1 && !knownUuid)
+        {
+            // After the first generation is consumed, the legacy UUID
+            // history may have been compacted. Do not assign a fresh token
+            // to an unknown recovered UUID which could have been cancelled.
+            ReplyAndDie(
+                ctx,
+                MakeError(
+                    E_INVALID_STATE,
+                    "Legacy link is no longer known on "
+                    "the destination"));
+            return;
+        }
+        Follower.Link.FollowerGeneration = record.GetNextLeaderLinkGeneration();
+    } else {
+        // An older owner has not enabled the generation protocol.
+        Follower.Link.FollowerGeneration.reset();
+    }
     PersistOnLeader(ctx);
 }
 
@@ -277,6 +335,8 @@ STFUNC(TCreateVolumeLinkActor::StateWork)
         HFunc(
             TEvSSProxy::TEvDescribeVolumeResponse,
             HandleDescribeVolumeResponse);
+
+        HFunc(TEvVolume::TEvGetLinkStatusResponse, HandleGenerationResponse);
 
         HFunc(
             TEvVolumePrivate::TEvUpdateFollowerStateResponse,

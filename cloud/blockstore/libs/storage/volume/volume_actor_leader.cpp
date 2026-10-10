@@ -50,6 +50,7 @@ void TVolumeActor::ExecuteUpdateFollower(
             return;
         }
         const auto followerTabletId = args.FollowerInfo.Link.FollowerTabletId;
+        const auto generation = args.FollowerInfo.Link.FollowerGeneration;
         if (current->State == TFollowerDiskInfo::EState::Error ||
             current->State > args.FollowerInfo.State)
         {
@@ -61,6 +62,9 @@ void TVolumeActor::ExecuteUpdateFollower(
         args.FollowerInfo.Link = current->Link;
         if (!args.FollowerInfo.Link.FollowerTabletId) {
             args.FollowerInfo.Link.FollowerTabletId = followerTabletId;
+        }
+        if (!args.FollowerInfo.Link.FollowerGeneration.value_or(0)) {
+            args.FollowerInfo.Link.FollowerGeneration = generation;
         }
     }
 
@@ -222,12 +226,13 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
     auto requestInfo =
         CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext);
 
-    auto link = TLeaderFollowerLink{
-        .LinkUUID = {},
-        .LeaderDiskId = msg->Record.GetDiskId(),
-        .LeaderShardId = msg->Record.GetLeaderShardId(),
-        .FollowerDiskId = msg->Record.GetFollowerDiskId(),
-        .FollowerShardId =  msg->Record.GetFollowerShardId()};
+    auto link =
+        TLeaderFollowerLink{.LinkUUID = {},
+                            .LeaderDiskId = msg->Record.GetDiskId(),
+                            .LeaderShardId = msg->Record.GetLeaderShardId(),
+                            .FollowerDiskId = msg->Record.GetFollowerDiskId(),
+                            .FollowerShardId = msg->Record.GetFollowerShardId(),
+                            .FollowerGeneration = 0};
 
     if (auto follower = State->FindFollower(link)) {
         link = follower->Link;
@@ -360,9 +365,13 @@ void TVolumeActor::HandleUpdateFollowerState(
 
     if (auto currentFollower = State->FindFollower(msg->Follower.Link)) {
         const auto followerTabletId = msg->Follower.Link.FollowerTabletId;
+        const auto generation = msg->Follower.Link.FollowerGeneration;
         msg->Follower.Link = currentFollower->Link;
         if (!msg->Follower.Link.FollowerTabletId) {
             msg->Follower.Link.FollowerTabletId = followerTabletId;
+        }
+        if (!msg->Follower.Link.FollowerGeneration.value_or(0)) {
+            msg->Follower.Link.FollowerGeneration = generation;
         }
         if (currentFollower->CancellationPending) {
             replyError(

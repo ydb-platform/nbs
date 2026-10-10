@@ -32,6 +32,8 @@ public:
 
     void WriteMeta(const NProto::TVolumeMeta& meta);
     bool ReadMeta(TMaybe<NProto::TVolumeMeta>& meta);
+    void WriteNextLeaderLinkGeneration(ui64 generation);
+    bool ReadNextLeaderLinkGeneration(ui64& generation);
     void WriteStartPartitionsNeeded(const bool startPartitionsNeeded);
     bool ReadStartPartitionsNeeded(TMaybe<bool>& startPartitionsNeeded);
     void WriteStorageConfig(const NProto::TStorageServiceConfig& storageConfig);

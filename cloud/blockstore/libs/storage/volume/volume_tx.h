@@ -95,6 +95,7 @@ struct TTxVolume
         TMaybe<NProto::TStorageServiceConfig> StorageConfig;
         TFollowerDisks FollowerDisks;
         TLeaderDisks LeaderDisks;
+        ui64 NextLeaderLinkGeneration = 0;
         TVector<TVolumeDatabase::TBrokenDeviceInfo> BrokenDevices;
 
         explicit TLoadState(TInstant oldestLogEntry)
@@ -119,6 +120,7 @@ struct TTxVolume
             StorageConfig.Clear();
             FollowerDisks.clear();
             LeaderDisks.clear();
+            NextLeaderLinkGeneration = 0;
             BrokenDevices.clear();
         }
     };

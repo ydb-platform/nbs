@@ -10,6 +10,7 @@
 #include <cloud/blockstore/libs/storage/testlib/disk_agent_mock.h>
 #include <cloud/blockstore/libs/storage/testlib/test_runtime.h>
 #include <cloud/blockstore/libs/storage/volume/testlib/test_env.h>
+#include <cloud/blockstore/libs/storage/volume/volume_database.h>
 #include <cloud/blockstore/libs/storage/volume/volume_events_private.h>
 #include <cloud/blockstore/private/api/protos/checkpoints.pb.h>
 #include <cloud/blockstore/private/api/protos/volume.pb.h>
@@ -88,6 +89,99 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
             Die(ctx);
         }
     };
+
+    struct TLinkMetadataProbe
+    {
+        bool Done = false;
+        TLeaderDisks Leaders;
+        ui64 NextGeneration = 0;
+        std::optional<ui64> WriteGeneration;
+    };
+
+    class TInspectLinkMetadataTx final
+        : public NKikimr::NTabletFlatExecutor::ITransaction
+    {
+    private:
+        const std::shared_ptr<TLinkMetadataProbe> Probe;
+
+    public:
+        explicit TInspectLinkMetadataTx(
+            std::shared_ptr<TLinkMetadataProbe> probe)
+            : Probe(std::move(probe))
+        {}
+
+        bool Execute(TTransactionContext& tx, const TActorContext&) override
+        {
+            TVolumeDatabase db(tx.DB);
+            if (Probe->WriteGeneration) {
+                db.WriteNextLeaderLinkGeneration(*Probe->WriteGeneration);
+            }
+            const bool leadersReady = db.ReadLeaders(Probe->Leaders);
+            const bool generationReady =
+                db.ReadNextLeaderLinkGeneration(Probe->NextGeneration);
+            return leadersReady && generationReady;
+        }
+
+        void Complete(const TActorContext&) override
+        {
+            Probe->Done = true;
+        }
+    };
+
+    class TInspectLinkMetadataActor final
+        : public TActorBootstrapped<TInspectLinkMetadataActor>
+    {
+    private:
+        NKikimr::NTabletFlatExecutor::NFlatExecutorSetup::IExecutor* const
+            Executor;
+        const TActorId ExecutorId;
+        const std::shared_ptr<TLinkMetadataProbe> Probe;
+
+    public:
+        TInspectLinkMetadataActor(
+            NKikimr::NTabletFlatExecutor::NFlatExecutorSetup::IExecutor*
+                executor, TActorId executorId,
+            std::shared_ptr<TLinkMetadataProbe> probe)
+            : Executor(executor)
+            , ExecutorId(executorId)
+            , Probe(std::move(probe))
+        {}
+
+        void Bootstrap(const TActorContext& ctx)
+        {
+            const TActorContext executorCtx(ctx.Mailbox, ctx.ExecutorThread,
+                                            ctx.EventStart, ExecutorId);
+            Executor->Enqueue(new TInspectLinkMetadataTx(Probe), executorCtx);
+            Die(ctx);
+        }
+    };
+
+    std::shared_ptr<TLinkMetadataProbe> InspectLinkMetadata(
+        TTestActorRuntime & runtime, ui32 node, TActorId owner,
+        std::optional<ui64> writeGeneration = std::nullopt)
+    {
+        auto* tablet = dynamic_cast<
+            NKikimr::NTabletFlatExecutor::NFlatExecutorSetup::ITablet*>(
+            runtime.FindActor(owner));
+        UNIT_ASSERT(tablet);
+        const auto executorId = tablet->ExecutorID();
+        auto* executor = dynamic_cast<
+            NKikimr::NTabletFlatExecutor::NFlatExecutorSetup::IExecutor*>(
+            runtime.FindActor(executorId));
+        UNIT_ASSERT(executor);
+        auto probe = std::make_shared<TLinkMetadataProbe>();
+        probe->WriteGeneration = writeGeneration;
+        runtime.Register(
+            new TInspectLinkMetadataActor(executor, executorId, probe), node);
+        TDispatchOptions options;
+        options.CustomFinalCondition = [probe]
+        {
+            return probe->Done;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(probe->Done);
+        return probe;
+    }
 
     struct TCrossShardFixture
     {
@@ -266,6 +360,816 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
                 .GetVolumeTabletId();
         }
     };
+
+    struct TGenerationFixture: TCrossShardFixture
+    {
+        TActorId TargetOwner;
+        NProto::TUpdateLinkOnFollowerRequest LastCreate;
+        TString LastCancellationAck;
+        bool LegacyPeer = false;
+
+        TGenerationFixture()
+            : TCrossShardFixture(NProto::STORAGE_MEDIA_SSD,
+                                 NProto::STORAGE_MEDIA_SSD, 1024 * 1024, false,
+                                 true)
+        {
+            auto& runtime = Env.GetRuntime();
+            runtime.SetObserverFunc(
+                [&](TAutoPtr<IEventHandle>& event)
+                {
+                    if ((event->GetTypeRewrite() ==
+                             TEvVolume::EvUpdateLinkOnFollowerRequest ||
+                         event->GetTypeRewrite() ==
+                             TEvVolume::EvGetLinkStatusRequest) &&
+                        event->GetRecipientRewrite().NodeId() ==
+                            runtime.GetNodeId(TargetNode) &&
+                        dynamic_cast<NKikimr::NTabletFlatExecutor::
+                                         NFlatExecutorSetup::ITablet*>(
+                            runtime.FindActor(event->GetRecipientRewrite())))
+                    {
+                        TargetOwner = event->GetRecipientRewrite();
+                    }
+                    if (event->GetTypeRewrite() ==
+                            TEvVolume::EvUpdateLinkOnFollowerRequest &&
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>()
+                                ->Record.GetAction() ==
+                            NProto::LINK_ACTION_CREATE)
+                    {
+                        LastCreate =
+                            event
+                                ->Get<
+                                    TEvVolume::TEvUpdateLinkOnFollowerRequest>()
+                                ->Record;
+                    }
+                    if (event->GetTypeRewrite() ==
+                        TEvVolumePrivate::EvLinkOnFollowerDestroyed)
+                    {
+                        const auto* response = event->Get<
+                            TEvVolumePrivate::TEvLinkOnFollowerDestroyed>();
+                        if (SUCCEEDED(response->GetStatus())) {
+                            LastCancellationAck = response->Link.LinkUUID;
+                        }
+                    }
+                    if (LegacyPeer && event->GetTypeRewrite() ==
+                                          TEvVolume::EvGetLinkStatusResponse)
+                    {
+                        auto& record =
+                            event->Get<TEvVolume::TEvGetLinkStatusResponse>()
+                                ->Record;
+                        record.ClearNextLeaderLinkGeneration();
+                    }
+                    return TTestActorRuntime::DefaultObserverFunc(event);
+                });
+        }
+
+        ~TGenerationFixture()
+        {
+            Env.GetRuntime().SetObserverFunc(
+                TTestActorRuntime::DefaultObserverFunc);
+        }
+
+        auto Metadata(std::optional<ui64> write = std::nullopt)
+        {
+            GetTargetStatus();
+            UNIT_ASSERT(TargetOwner);
+            return InspectLinkMetadata(Env.GetRuntime(), TargetNode,
+                                       TargetOwner, write);
+        }
+
+        void CancelAndWait()
+        {
+            const auto uuid = LastCreate.GetLinkUUID();
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, DestroyLink()->GetStatus());
+            TDispatchOptions options;
+            options.CustomFinalCondition = [&]
+            {
+                return LastCancellationAck == uuid;
+            };
+            Env.GetRuntime().DispatchEvents(options, TDuration::Seconds(5));
+            UNIT_ASSERT_VALUES_EQUAL(uuid, LastCancellationAck);
+        }
+
+        auto Replay(NProto::TUpdateLinkOnFollowerRequest record)
+        {
+            const auto current = LastCreate;
+            auto request =
+                std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+            request->Record = std::move(record);
+            Source->SendRequest(MakeVolumeProxyServiceId(), std::move(request));
+            auto response = Source->RecvResponse<
+                TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+            LastCreate = current;
+            return response;
+        }
+
+        void RebootTarget()
+        {
+            NKikimr::RebootTablet(Env.GetRuntime(),
+                                  GetTabletId("disk-copy", "target"),
+                                  Target->GetSender(), TargetNode);
+            GetTargetStatus();
+        }
+    };
+
+    Y_UNIT_TEST(ShouldBoundCancelledLinkHistoryAcrossReuseAndReboot)
+    {
+        TGenerationFixture fixture;
+        NProto::TUpdateLinkOnFollowerRequest oldest;
+        for (ui64 generation = 1; generation <= 24; ++generation) {
+            UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.CreateLink()->GetStatus());
+            UNIT_ASSERT(fixture.LastCreate.HasFollowerGeneration());
+            UNIT_ASSERT_VALUES_EQUAL(
+                generation, fixture.LastCreate.GetFollowerGeneration());
+            if (generation == 1) {
+                oldest = fixture.LastCreate;
+            }
+            const auto active = fixture.Metadata();
+            UNIT_ASSERT_VALUES_EQUAL(1, active->Leaders.size());
+            UNIT_ASSERT_VALUES_EQUAL(generation + 1, active->NextGeneration);
+            fixture.CancelAndWait();
+            const auto cancelled = fixture.Metadata();
+            UNIT_ASSERT(cancelled->Leaders.empty());
+            UNIT_ASSERT_VALUES_EQUAL(generation + 1, cancelled->NextGeneration);
+            if (generation % 8 == 0) {
+                fixture.RebootTarget();
+                UNIT_ASSERT(fixture.Metadata()->Leaders.empty());
+                UNIT_ASSERT_VALUES_EQUAL(generation + 1,
+                                         fixture.Metadata()->NextGeneration);
+                NKikimr::RebootTablet(fixture.Env.GetRuntime(),
+                                      fixture.GetTabletId("disk", "source"),
+                                      fixture.Source->GetSender(),
+                                      fixture.SourceNode);
+            }
+            if (generation == 12) {
+                fixture.Target->ResizeVolume("disk-copy", 2 * 1024 * 1024);
+                UNIT_ASSERT_VALUES_EQUAL(13,
+                                         fixture.Metadata()->NextGeneration);
+            }
+        }
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE,
+                                 fixture.Replay(oldest)->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.CreateLink()->GetStatus());
+        const auto current = fixture.LastCreate;
+        UNIT_ASSERT_VALUES_EQUAL(25, current.GetFollowerGeneration());
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, fixture.CreateLink()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY,
+                                 fixture.Replay(current)->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(26, fixture.Metadata()->NextGeneration);
+
+        auto stale = oldest;
+        stale.SetAction(NProto::LINK_ACTION_DESTROY);
+        stale.SetRequireCancellable(false);
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, fixture.Replay(stale)->GetStatus());
+        stale.SetAction(NProto::LINK_ACTION_COMPLETED);
+        UNIT_ASSERT_VALUES_EQUAL(S_FALSE, fixture.Replay(stale)->GetStatus());
+        stale = oldest;
+        stale.ClearFollowerGeneration();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE,
+                                 fixture.Replay(stale)->GetStatus());
+        const auto unchanged = fixture.Metadata();
+        UNIT_ASSERT_VALUES_EQUAL(1, unchanged->Leaders.size());
+        UNIT_ASSERT_VALUES_EQUAL(current.GetLinkUUID(),
+                                 unchanged->Leaders.front().Link.LinkUUID);
+        fixture.CancelAndWait();
+        fixture.RebootTarget();
+        UNIT_ASSERT(fixture.Metadata()->Leaders.empty());
+        UNIT_ASSERT_VALUES_EQUAL(26, fixture.Metadata()->NextGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE,
+                                 fixture.Replay(oldest)->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldFenceQueuedCreateWhenGenerationWasCancelledFirst)
+    {
+        TCrossShardFixture fixture;
+        auto& runtime = fixture.Env.GetRuntime();
+        std::unique_ptr<IEventHandle> heldCreate, heldDestroy;
+        NProto::TUpdateLinkOnFollowerRequest record;
+        TActorId targetOwner, executorId;
+        bool cancelHandled = false, createHandled = false;
+        bool holding = true;
+        std::shared_ptr<TExecutorQueueProbe> queue;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (queue && queue->Block &&
+                    event->GetRecipientRewrite() == executorId &&
+                    event->GetTypeRewrite() ==
+                        EventSpaceBegin(NKikimr::TKikimrEvents::ES_PRIVATE))
+                {
+                    queue->Activations.emplace_back(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                if (event->GetTypeRewrite() ==
+                        TEvVolume::EvGetLinkStatusRequest &&
+                    event->GetRecipientRewrite().NodeId() ==
+                        runtime.GetNodeId(fixture.TargetNode) &&
+                    dynamic_cast<NKikimr::NTabletFlatExecutor::
+                                     NFlatExecutorSetup::ITablet*>(
+                        runtime.FindActor(event->GetRecipientRewrite())))
+                {
+                    targetOwner = event->GetRecipientRewrite();
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvVolume::EvUpdateLinkOnFollowerRequest)
+                {
+                    const auto& request =
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>()
+                            ->Record;
+                    if (holding &&
+                        request.GetAction() == NProto::LINK_ACTION_CREATE)
+                    {
+                        record = request;
+                        heldCreate.reset(event.Release());
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    if (holding &&
+                        request.GetAction() == NProto::LINK_ACTION_DESTROY)
+                    {
+                        heldDestroy.reset(event.Release());
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                    if (event->GetRecipientRewrite() == targetOwner) {
+                        cancelHandled |=
+                            request.GetAction() == NProto::LINK_ACTION_DESTROY;
+                        createHandled |=
+                            request.GetAction() == NProto::LINK_ACTION_CREATE;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto create =
+            fixture.Source->CreateCreateVolumeLinkRequest("disk", "disk-copy");
+        create->Record.SetLeaderShardId("source");
+        create->Record.SetFollowerShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(), std::move(create));
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return heldCreate != nullptr;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(heldCreate && targetOwner);
+        UNIT_ASSERT_VALUES_EQUAL(1, record.GetFollowerGeneration());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.DestroyLink()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            fixture.Source->RecvCreateVolumeLinkResponse()->GetStatus());
+        options.CustomFinalCondition = [&]
+        {
+            return heldDestroy != nullptr;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(heldDestroy);
+        auto* tablet = dynamic_cast<
+            NKikimr::NTabletFlatExecutor::NFlatExecutorSetup::ITablet*>(
+            runtime.FindActor(targetOwner));
+        UNIT_ASSERT(tablet);
+        executorId = tablet->ExecutorID();
+        auto* executor = dynamic_cast<
+            NKikimr::NTabletFlatExecutor::NFlatExecutorSetup::IExecutor*>(
+            runtime.FindActor(executorId));
+        UNIT_ASSERT(executor);
+        queue = std::make_shared<TExecutorQueueProbe>();
+        runtime.Register(
+            new TExecutorQueueSeedActor(executor, executorId, queue),
+            fixture.TargetNode);
+        options.CustomFinalCondition = [&]
+        {
+            return !queue->Activations.empty();
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(3));
+        UNIT_ASSERT(!queue->Activations.empty() && !queue->SeedExecuted);
+
+        holding = false;
+        auto cancel =
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+        cancel->Record =
+            heldDestroy->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>()
+                ->Record;
+        runtime.Send(new IEventHandle(targetOwner, heldDestroy->Sender,
+                                      cancel.release(), 0, heldDestroy->Cookie),
+                     fixture.SourceNode, true);
+        options.CustomFinalCondition = [&]
+        {
+            return cancelHandled;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(3));
+        UNIT_ASSERT(cancelHandled && !queue->SeedExecuted);
+        NTestVolume::TVolumeClient target(
+            runtime, fixture.TargetNode,
+            fixture.GetTabletId("disk-copy", "target"));
+        auto stale =
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+        stale->Record = record;
+        target.SendToPipe(std::move(stale));
+        auto status = std::make_unique<TEvVolume::TEvGetLinkStatusRequest>();
+        status->Record.SetDiskId("disk-copy");
+        target.SendToPipe(std::move(status));
+        const auto beforeCommit = target.RecvGetLinkStatusResponse();
+        UNIT_ASSERT(createHandled && !queue->SeedExecuted);
+        UNIT_ASSERT_VALUES_EQUAL(
+            1, beforeCommit->Record.GetNextLeaderLinkGeneration());
+        queue->Block = false;
+        for (auto& activation: queue->Activations) {
+            runtime.Send(activation.release(), fixture.TargetNode, true);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            target.RecvUpdateLinkOnFollowerResponse()->GetStatus());
+        UNIT_ASSERT(queue->SeedExecuted);
+        const auto afterCommit =
+            InspectLinkMetadata(runtime, fixture.TargetNode, targetOwner);
+        UNIT_ASSERT(afterCommit->Leaders.empty());
+        UNIT_ASSERT_VALUES_EQUAL(2, afterCommit->NextGeneration);
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.CreateLink()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.DestroyLink()->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldCancelUnboundGenerationWithoutLeavingFence)
+    {
+        TCrossShardFixture fixture;
+        auto& runtime = fixture.Env.GetRuntime();
+        std::unique_ptr<IEventHandle> heldGeneration;
+        NProto::TUpdateLinkOnFollowerRequest cancelled;
+        bool captured = false, acknowledged = false;
+        TActorId targetOwner;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvVolume::EvGetLinkStatusRequest &&
+                    event->GetRecipientRewrite().NodeId() ==
+                        runtime.GetNodeId(fixture.TargetNode) &&
+                    dynamic_cast<NKikimr::NTabletFlatExecutor::
+                                     NFlatExecutorSetup::ITablet*>(
+                        runtime.FindActor(event->GetRecipientRewrite())))
+                {
+                    targetOwner = event->GetRecipientRewrite();
+                }
+                if (!captured &&
+                    event->GetTypeRewrite() ==
+                        TEvVolume::EvGetLinkStatusResponse &&
+                    event->Get<TEvVolume::TEvGetLinkStatusResponse>()
+                        ->Record.GetNextLeaderLinkGeneration())
+                {
+                    captured = true;
+                    heldGeneration.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                if (event->GetTypeRewrite() ==
+                        TEvVolume::EvUpdateLinkOnFollowerRequest &&
+                    event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>()
+                            ->Record.GetAction() == NProto::LINK_ACTION_DESTROY)
+                {
+                    cancelled =
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>()
+                            ->Record;
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvVolumePrivate::EvLinkOnFollowerDestroyed)
+                {
+                    acknowledged = true;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto create =
+            fixture.Source->CreateCreateVolumeLinkRequest("disk", "disk-copy");
+        create->Record.SetLeaderShardId("source");
+        create->Record.SetFollowerShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(), std::move(create));
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return heldGeneration != nullptr;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(heldGeneration && targetOwner);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.DestroyLink()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            fixture.Source->RecvCreateVolumeLinkResponse()->GetStatus());
+        options.CustomFinalCondition = [&]
+        {
+            return acknowledged;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(acknowledged && cancelled.HasFollowerGeneration());
+        UNIT_ASSERT_VALUES_EQUAL(0, cancelled.GetFollowerGeneration());
+        const auto untouched =
+            InspectLinkMetadata(runtime, fixture.TargetNode, targetOwner);
+        UNIT_ASSERT(untouched->Leaders.empty());
+        UNIT_ASSERT_VALUES_EQUAL(0, untouched->NextGeneration);
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.CreateLink()->GetStatus());
+        runtime.Send(heldGeneration.release(), fixture.SourceNode);
+        auto invalid =
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+        invalid->Record = cancelled;
+        invalid->Record.SetAction(NProto::LINK_ACTION_CREATE);
+        invalid->Record.SetFollowerTabletId(
+            fixture.GetTabletId("disk-copy", "target"));
+        fixture.Source->SendRequest(MakeVolumeProxyServiceId(),
+                                    std::move(invalid));
+        UNIT_ASSERT_VALUES_EQUAL(
+            E_INVALID_STATE,
+            fixture.Source
+                ->RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>()
+                ->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NProto::LINK_STATUS_PREPARING),
+            static_cast<int>(fixture.GetTargetStatus()));
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.DestroyLink()->GetStatus());
+    }
+
+    Y_UNIT_TEST(ShouldCompactLegacyFencesOnlyWhenGenerationModeIsCommitted)
+    {
+        TGenerationFixture fixture;
+        fixture.LegacyPeer = true;
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.CreateLink()->GetStatus());
+        const auto legacy = fixture.LastCreate;
+        UNIT_ASSERT(!legacy.HasFollowerGeneration());
+        fixture.CancelAndWait();
+        const auto oldMetadata = fixture.Metadata();
+        UNIT_ASSERT_VALUES_EQUAL(0, oldMetadata->NextGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(1, oldMetadata->Leaders.size());
+        UNIT_ASSERT(
+            oldMetadata->Leaders.front().State ==
+            TLeaderDiskInfo::EState::Cancelled);
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE,
+                                 fixture.Replay(legacy)->GetStatus());
+
+        fixture.LegacyPeer = false;
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.CreateLink()->GetStatus());
+        const auto upgraded = fixture.Metadata();
+        UNIT_ASSERT_VALUES_EQUAL(2, upgraded->NextGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(1, upgraded->Leaders.size());
+        UNIT_ASSERT(
+            upgraded->Leaders.front().State ==
+            TLeaderDiskInfo::EState::Following);
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE,
+                                 fixture.Replay(legacy)->GetStatus());
+        fixture.CancelAndWait();
+        fixture.RebootTarget();
+        UNIT_ASSERT(fixture.Metadata()->Leaders.empty());
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE,
+                                 fixture.Replay(legacy)->GetStatus());
+        auto oldCancel = legacy;
+        oldCancel.SetAction(NProto::LINK_ACTION_DESTROY);
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY,
+                                 fixture.Replay(oldCancel)->GetStatus());
+        UNIT_ASSERT(fixture.Metadata()->Leaders.empty());
+    }
+
+    Y_UNIT_TEST(ShouldUpgradeAnActiveLegacyCreatedLinkWithoutChangingUuid)
+    {
+        TCrossShardFixture fixture;
+        auto& runtime = fixture.Env.GetRuntime();
+        NProto::TUpdateLinkOnFollowerRequest legacy;
+        bool upgrading = false;
+        TActorId targetOwner;
+        TVector<std::unique_ptr<IEventHandle>> creates;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvVolume::EvGetLinkStatusRequest &&
+                    event->GetRecipientRewrite().NodeId() ==
+                        runtime.GetNodeId(fixture.TargetNode) &&
+                    dynamic_cast<NKikimr::NTabletFlatExecutor::
+                                     NFlatExecutorSetup::ITablet*>(
+                        runtime.FindActor(event->GetRecipientRewrite())))
+                {
+                    targetOwner = event->GetRecipientRewrite();
+                }
+                if (!upgrading && event->GetTypeRewrite() ==
+                                      TEvVolume::EvGetLinkStatusResponse)
+                {
+                    event->Get<TEvVolume::TEvGetLinkStatusResponse>()
+                        ->Record.ClearNextLeaderLinkGeneration();
+                }
+                if (!upgrading &&
+                    event->GetTypeRewrite() ==
+                        TEvVolume::EvUpdateLinkOnFollowerRequest &&
+                    event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>()
+                            ->Record.GetAction() == NProto::LINK_ACTION_CREATE)
+                {
+                    legacy =
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>()
+                            ->Record;
+                    creates.emplace_back(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto create =
+            fixture.Source->CreateCreateVolumeLinkRequest("disk", "disk-copy");
+        create->Record.SetLeaderShardId("source");
+        create->Record.SetFollowerShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(), std::move(create));
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return !creates.empty();
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(!creates.empty() && !legacy.HasFollowerGeneration());
+        upgrading = true;
+        // Put legacy fences before the active row so compaction must move
+        // that row while its UUID is upgraded to a destination generation.
+        for (ui32 i = 0; i != 8; ++i) {
+            auto cancellation =
+                std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+            cancellation->Record = legacy;
+            cancellation->Record.SetLinkUUID(
+                TStringBuilder() << "cancelled-before-upgrade-" << i);
+            cancellation->Record.SetAction(NProto::LINK_ACTION_DESTROY);
+            cancellation->Record.SetRequireCancellable(true);
+            fixture.Source->SendRequest(MakeVolumeProxyServiceId(),
+                                        std::move(cancellation));
+            UNIT_ASSERT_VALUES_EQUAL(
+                S_OK,
+                fixture.Source
+                    ->RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>()
+                    ->GetStatus());
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            8,
+            InspectLinkMetadata(runtime, fixture.TargetNode, targetOwner)
+                ->Leaders.size());
+        auto oldCreate =
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+        oldCreate->Record = legacy;
+        fixture.Source->SendRequest(MakeVolumeProxyServiceId(),
+                                    std::move(oldCreate));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK,
+            fixture.Source
+                ->RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>()
+                ->GetStatus());
+        NKikimr::RebootTablet(runtime, fixture.GetTabletId("disk", "source"),
+                              fixture.Source->GetSender(), fixture.SourceNode);
+        bool preparing = false;
+        for (ui32 attempt = 0; attempt != 100; ++attempt) {
+            if (fixture.GetStatus().GetStatus() ==
+                NProto::LINK_STATUS_PREPARING)
+            {
+                const auto metadata = InspectLinkMetadata(
+                    runtime, fixture.TargetNode, targetOwner);
+                if (metadata->NextGeneration == 2 &&
+                    metadata->Leaders.size() == 1 &&
+                    metadata->Leaders.front().Link.FollowerGeneration ==
+                        std::optional<ui64>{1})
+                {
+                    preparing = true;
+                    UNIT_ASSERT_VALUES_EQUAL(
+                        legacy.GetLinkUUID(),
+                        metadata->Leaders.front().Link.LinkUUID);
+                    break;
+                }
+            }
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT(preparing);
+        oldCreate =
+            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+        oldCreate->Record = legacy;
+        fixture.Source->SendRequest(MakeVolumeProxyServiceId(),
+                                    std::move(oldCreate));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY,
+            fixture.Source
+                ->RecvResponse<TEvVolume::TEvUpdateLinkOnFollowerResponse>()
+                ->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.DestroyLink()->GetStatus());
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
+    Y_UNIT_TEST(ShouldNotRebindPrunedLegacyCancellationAfterSourceRestart)
+    {
+        TCrossShardFixture fixture;
+        auto& runtime = fixture.Env.GetRuntime();
+        NProto::TUpdateLinkOnFollowerRequest legacy;
+        TActorId targetOwner;
+        bool legacyPeer = true;
+        bool replaying = false;
+        bool secondCancelled = false;
+        TString secondUuid;
+        TVector<std::unique_ptr<IEventHandle>> oldCreates;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (event->GetTypeRewrite() ==
+                        TEvVolume::EvGetLinkStatusRequest &&
+                    event->GetRecipientRewrite().NodeId() ==
+                        runtime.GetNodeId(fixture.TargetNode) &&
+                    dynamic_cast<NKikimr::NTabletFlatExecutor::
+                                     NFlatExecutorSetup::ITablet*>(
+                        runtime.FindActor(event->GetRecipientRewrite())))
+                {
+                    targetOwner = event->GetRecipientRewrite();
+                }
+                if (legacyPeer && event->GetTypeRewrite() ==
+                                      TEvVolume::EvGetLinkStatusResponse)
+                {
+                    event->Get<TEvVolume::TEvGetLinkStatusResponse>()
+                        ->Record.ClearNextLeaderLinkGeneration();
+                }
+                if (!replaying && event->GetTypeRewrite() ==
+                                      TEvVolume::EvUpdateLinkOnFollowerRequest)
+                {
+                    const auto& record =
+                        event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>()
+                            ->Record;
+                    if (record.GetAction() == NProto::LINK_ACTION_CREATE &&
+                        record.GetLeaderDiskId() == "disk" &&
+                        !record.HasFollowerGeneration())
+                    {
+                        legacy = record;
+                        oldCreates.emplace_back(event.Release());
+                        return TTestActorRuntime::EEventAction::DROP;
+                    }
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvVolumePrivate::EvLinkOnFollowerDestroyed)
+                {
+                    const auto* response = event->Get<
+                        TEvVolumePrivate::TEvLinkOnFollowerDestroyed>();
+                    if (response->Link.LinkUUID == secondUuid &&
+                        SUCCEEDED(response->GetStatus()))
+                    {
+                        secondCancelled = true;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto replay = [&](NProto::TUpdateLinkOnFollowerRequest record)
+        {
+            replaying = true;
+            auto request =
+                std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
+            request->Record = std::move(record);
+            fixture.Source->SendRequest(MakeVolumeProxyServiceId(),
+                                        std::move(request));
+            const auto response = fixture.Source->RecvResponse<
+                TEvVolume::TEvUpdateLinkOnFollowerResponse>();
+            replaying = false;
+            return response->GetStatus();
+        };
+        auto create =
+            fixture.Source->CreateCreateVolumeLinkRequest("disk", "disk-copy");
+        create->Record.SetLeaderShardId("source");
+        create->Record.SetFollowerShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(), std::move(create));
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return !oldCreates.empty();
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(!oldCreates.empty() && targetOwner);
+        // Persist Following on the destination, but leave the old source in
+        // Created by withholding its original CREATE acknowledgment.
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, replay(legacy));
+        auto cancel = legacy;
+        cancel.SetAction(NProto::LINK_ACTION_DESTROY);
+        cancel.SetRequireCancellable(true);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, replay(cancel));
+        auto metadata =
+            InspectLinkMetadata(runtime, fixture.TargetNode, targetOwner);
+        UNIT_ASSERT_VALUES_EQUAL(1, metadata->Leaders.size());
+        UNIT_ASSERT(
+            metadata->Leaders.front().State ==
+            TLeaderDiskInfo::EState::Cancelled);
+
+        legacyPeer = false;
+        fixture.Source->CreateVolume("source-b", 1024 * 1024);
+        create = fixture.Source->CreateCreateVolumeLinkRequest("source-b",
+                                                               "disk-copy");
+        create->Record.SetLeaderShardId("source");
+        create->Record.SetFollowerShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(), std::move(create));
+        const auto created = fixture.Source->RecvCreateVolumeLinkResponse();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, created->GetStatus());
+        secondUuid = fixture
+                         .GetStatusFor(*fixture.Source, "source-b", "source",
+                                       "disk-copy", "target")
+                         .GetLinkUUID();
+        UNIT_ASSERT(secondUuid);
+        auto remove = fixture.Source->CreateDestroyVolumeLinkRequest(
+            "source-b", "disk-copy");
+        remove->Record.SetLeaderShardId("source");
+        remove->Record.SetFollowerShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(), std::move(remove));
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_OK, fixture.Source->RecvDestroyVolumeLinkResponse()->GetStatus());
+        options.CustomFinalCondition = [&]
+        {
+            return secondCancelled;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(secondCancelled);
+        metadata =
+            InspectLinkMetadata(runtime, fixture.TargetNode, targetOwner);
+        UNIT_ASSERT(metadata->Leaders.empty());
+        UNIT_ASSERT_VALUES_EQUAL(2, metadata->NextGeneration);
+
+        NKikimr::RebootTablet(runtime, fixture.GetTabletId("disk", "source"),
+                              fixture.Source->GetSender(), fixture.SourceNode);
+        bool rejected = false;
+        for (ui32 attempt = 0; attempt != 100; ++attempt) {
+            if (fixture.GetStatus().GetStatus() == NProto::LINK_STATUS_ERROR) {
+                rejected = true;
+                break;
+            }
+            runtime.DispatchEvents({}, TDuration::MilliSeconds(50));
+        }
+        UNIT_ASSERT_C(rejected, "Compacted legacy cancellation was rebound");
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE, replay(legacy));
+        metadata =
+            InspectLinkMetadata(runtime, fixture.TargetNode, targetOwner);
+        UNIT_ASSERT(metadata->Leaders.empty());
+        UNIT_ASSERT_VALUES_EQUAL(2, metadata->NextGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.DestroyLink()->GetStatus());
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
+    Y_UNIT_TEST(ShouldKeepActiveLinkWhenCancellingAnotherGeneration)
+    {
+        TGenerationFixture fixture;
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.CreateLink()->GetStatus());
+        const auto active = fixture.LastCreate;
+        auto other = active;
+        other.SetLinkUUID("another-cancelled-operation");
+        other.SetAction(NProto::LINK_ACTION_DESTROY);
+        other.SetRequireCancellable(false);
+        other.SetFollowerGeneration(2);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.Replay(other)->GetStatus());
+        auto metadata = fixture.Metadata();
+        UNIT_ASSERT_VALUES_EQUAL(3, metadata->NextGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(1, metadata->Leaders.size());
+        UNIT_ASSERT_VALUES_EQUAL(active.GetLinkUUID(),
+                                 metadata->Leaders.front().Link.LinkUUID);
+        other.SetAction(NProto::LINK_ACTION_CREATE);
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE,
+                                 fixture.Replay(other)->GetStatus());
+        auto wrongActive = active;
+        wrongActive.SetAction(NProto::LINK_ACTION_DESTROY);
+        wrongActive.SetFollowerGeneration(100);
+        wrongActive.SetRequireCancellable(false);
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE,
+                                 fixture.Replay(wrongActive)->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(3, fixture.Metadata()->NextGeneration);
+        other.SetAction(NProto::LINK_ACTION_DESTROY);
+        other.SetFollowerGeneration(100);
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.Replay(other)->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(101, fixture.Metadata()->NextGeneration);
+        UNIT_ASSERT_VALUES_EQUAL(
+            active.GetLinkUUID(),
+            fixture.Metadata()->Leaders.front().Link.LinkUUID);
+        other.SetFollowerGeneration(0);
+        UNIT_ASSERT_VALUES_EQUAL(S_ALREADY, fixture.Replay(other)->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(101, fixture.Metadata()->NextGeneration);
+        fixture.CancelAndWait();
+        UNIT_ASSERT(fixture.Metadata()->Leaders.empty());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, fixture.CreateLink()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(101,
+                                 fixture.LastCreate.GetFollowerGeneration());
+        fixture.CancelAndWait();
+    }
+
+    Y_UNIT_TEST(ShouldRejectExhaustedLinkGenerationWithoutWrapping)
+    {
+        TGenerationFixture fixture;
+        fixture.Metadata(Max<ui64>());
+        fixture.RebootTarget();
+        UNIT_ASSERT_VALUES_EQUAL(E_INVALID_STATE,
+                                 fixture.CreateLink()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(Max<ui64>(),
+                                 fixture.LastCreate.GetFollowerGeneration());
+        fixture.CancelAndWait();
+        const auto metadata = fixture.Metadata();
+        UNIT_ASSERT(metadata->Leaders.empty());
+        UNIT_ASSERT_VALUES_EQUAL(Max<ui64>(), metadata->NextGeneration);
+
+        // An active legacy UUID can coexist with the exhausted watermark.
+        // Cancelling it with a bound token must not wrap that watermark.
+        TGenerationFixture legacy;
+        legacy.LegacyPeer = true;
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, legacy.CreateLink()->GetStatus());
+        auto cancellation = legacy.LastCreate;
+        legacy.Metadata(Max<ui64>());
+        legacy.RebootTarget();
+        cancellation.SetAction(NProto::LINK_ACTION_DESTROY);
+        cancellation.SetRequireCancellable(true);
+        cancellation.SetFollowerGeneration(Max<ui64>());
+        UNIT_ASSERT_VALUES_EQUAL(S_OK,
+                                 legacy.Replay(cancellation)->GetStatus());
+        UNIT_ASSERT(legacy.Metadata()->Leaders.empty());
+        UNIT_ASSERT_VALUES_EQUAL(Max<ui64>(),
+                                 legacy.Metadata()->NextGeneration);
+        legacy.CancelAndWait();
+    }
 
     Y_UNIT_TEST(ShouldRestoreDurableCancellationAfterSourceRestart)
     {
@@ -1823,7 +2727,9 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
                 if (event->GetTypeRewrite() ==
                         TEvVolume::EvGetLinkStatusRequest &&
                     event->Get<TEvVolume::TEvGetLinkStatusRequest>()
-                        ->Record.GetLinkUUID())
+                        ->Record.GetLinkUUID() &&
+                    event->Get<TEvVolume::TEvGetLinkStatusRequest>()
+                            ->Record.GetDiskId() == "disk")
                 {
                     probed = true;
                     if (!probeOwner) {
@@ -1962,9 +2868,37 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         std::unique_ptr<IEventHandle> conditionalDrop;
         NProto::TDestroyVolumeRequest staleDelete;
         bool captured = false;
+        ui32 cleanupAttempts = 0;
+        bool retryScheduled = false;
+        TTestActorRuntimeBase::TScheduledEventFilter previousScheduledFilter;
+        previousScheduledFilter = runtime.SetScheduledEventFilter(
+            [&](TTestActorRuntimeBase& runtime, TAutoPtr<IEventHandle>& event,
+                TDuration delay, TInstant& deadline)
+            {
+                if (captured && event->GetTypeRewrite() ==
+                                    TEvVolumePrivate::EvDestroyOutdatedLeader)
+                {
+                    // Check the backoff, then retry without advancing through
+                    // unrelated service-idle timers in the synthetic runtime.
+                    UNIT_ASSERT_VALUES_EQUAL(TDuration::Seconds(60), delay);
+                    retryScheduled = true;
+                    deadline = runtime.GetTimeProvider()->Now() +
+                               TDuration::MilliSeconds(1);
+                    return false;
+                }
+                return previousScheduledFilter
+                           ? previousScheduledFilter(runtime, event, delay,
+                                                     deadline)
+                           : false;
+            });
         runtime.SetObserverFunc(
             [&](TAutoPtr<IEventHandle>& event)
             {
+                if (event->GetTypeRewrite() ==
+                    TEvVolumePrivate::EvDestroyOutdatedLeader)
+                {
+                    ++cleanupAttempts;
+                }
                 if (event->GetTypeRewrite() ==
                     TEvService::EvDestroyVolumeRequest) {
                     const auto& record =
@@ -2023,8 +2957,17 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         runtime.Send(new IEventHandle(dropRecipient, dropSender,
                                       dropBody.Release(), 0, dropCookie),
                      fixture.TargetNode);
+        // Drive the backoff timer directly instead of repeatedly polling
+        // status while unrelated service idle timers become due.
+        options.CustomFinalCondition = [&]
+        {
+            return cleanupAttempts >= 2;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(retryScheduled);
+        UNIT_ASSERT_VALUES_EQUAL(2, cleanupAttempts);
         bool complete = false;
-        for (ui32 attempt = 0; attempt != 1500; ++attempt) {
+        for (ui32 attempt = 0; attempt != 100; ++attempt) {
             runtime.AdvanceCurrentTime(TDuration::MilliSeconds(100));
             runtime.DispatchEvents({}, TDuration::MilliSeconds(10));
             if (fixture.GetTargetStatus() == NProto::LINK_STATUS_COMPLETED) {
@@ -2045,6 +2988,7 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'b'),
                                  read->Record.GetBlocks().GetBuffers(0));
         runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+        runtime.SetScheduledEventFilter(std::move(previousScheduledFilter));
     }
 
     Y_UNIT_TEST(ShouldApplyAuthoritativeErrorForTheSameCopyUuid)

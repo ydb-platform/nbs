@@ -47,6 +47,8 @@ struct TLeaderFollowerLink
     TString FollowerShardId;
     ui64 LeaderTabletId = 0;
     ui64 FollowerTabletId = 0;
+    // nullopt: legacy; zero: new but not yet bound; positive: immutable token.
+    std::optional<ui64> FollowerGeneration;
 
     ui64 GetHash() const;
     TString LeaderDiskIdForPrint() const;
