@@ -58,6 +58,7 @@ auto UpdateStatsWithRequestResultedInRetriableError(
 
     auto callContext = MakeIntrusive<TCallContext>();
     callContext->SetSilenceRetriableErrors(silenceRetriableErrors);
+    serverStats->RequestStarted(log, request, *callContext);
 
     serverStats->RequestCompleted(
         log,
@@ -129,6 +130,77 @@ void CheckHwProblems(
 
 Y_UNIT_TEST_SUITE(TServerStatsTest)
 {
+    Y_UNIT_TEST(ShouldMeasurePendingIoDepthBeforeCompletion)
+    {
+        ui64 nowNs = 0;
+        auto timer = std::make_shared<TTestTimer>();
+        auto monitoring = CreateMonitoringServiceStub();
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            timer,
+            [&] { return nowNs; });
+        auto serverStats = CreateServerStats(
+            std::make_shared<TTestDumpable>(),
+            std::make_shared<TDiagnosticsConfig>(),
+            monitoring,
+            CreateProfileLogStub(),
+            CreateServerRequestStats(
+                monitoring->GetCounters(),
+                timer,
+                EHistogramCounterOption::ReportMultipleCounters,
+                {}),
+            volumeStats);
+        NProto::TVolume volume;
+        volume.SetDiskId("volume");
+        volume.SetStorageMediaKind(NCloud::NProto::STORAGE_MEDIA_SSD);
+        volume.SetBlockSize(DefaultBlockSize);
+        volume.SetCloudId("cloud");
+        volume.SetFolderId("folder");
+        serverStats->MountVolume(volume, "client", "instance");
+
+        TMetricRequest request{EBlockStoreRequest::ReadBlocks};
+        serverStats
+            ->PrepareMetricRequest(request, "client", "volume", 0, 4096, false);
+        auto context = MakeIntrusive<TCallContext>();
+        TLog log;
+        serverStats->RequestStarted(log, request, *context);
+        nowNs = 60'000'000'000ULL;
+        serverStats->UpdateStats(false);
+
+        const auto snapshot = request.VolumeInfo->GetIoDepthSnapshot();
+        const auto lane = static_cast<ui32>(EBlockStoreRequest::ReadBlocks);
+        UNIT_ASSERT(snapshot);
+        UNIT_ASSERT(snapshot->Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot->Lanes[lane].Current, 1);
+        UNIT_ASSERT_VALUES_EQUAL(snapshot->Lanes[lane].IntegralUs, 60'000'000);
+        auto counters = monitoring->GetCounters()
+                            ->GetSubgroup("counters", "blockstore")
+                            ->GetSubgroup("component", "server_volume")
+                            ->GetSubgroup("host", "cluster")
+                            ->GetSubgroup("volume", "volume")
+                            ->GetSubgroup("instance", "instance")
+                            ->GetSubgroup("cloud", "cloud")
+                            ->GetSubgroup("folder", "folder")
+                            ->GetSubgroup("type", "ssd")
+                            ->GetSubgroup("request", "ReadBlocks");
+        UNIT_ASSERT_VALUES_EQUAL(counters->GetCounter("Count", true)->Val(), 0);
+        UNIT_ASSERT_VALUES_EQUAL(
+            counters->GetCounter("IoDepthCurrent")->Val(),
+            1);
+
+        serverStats->RequestCompleted(
+            log,
+            request,
+            *context,
+            MakeError(E_REJECTED, "final failure"));
+        const auto completed = request.VolumeInfo->GetIoDepthSnapshot();
+        UNIT_ASSERT(completed->Continuous);
+        UNIT_ASSERT_VALUES_EQUAL(completed->Lanes[lane].Current, 0);
+        UNIT_ASSERT_VALUES_EQUAL(completed->Lanes[lane].IntegralUs, 60'000'000);
+    }
+
     Y_UNIT_TEST(ShouldTrackIncompleteRequestsPerVolume)
     {
         auto timer = std::make_shared<TTestTimer>();

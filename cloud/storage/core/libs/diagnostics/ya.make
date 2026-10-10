@@ -8,6 +8,7 @@ SRCS(
     executor_counters.cpp
     histogram_types.cpp
     histogram.cpp
+    io_depth_tracker.cpp
     stats_handler.cpp
     logging.cpp
     max_calculator.cpp
@@ -37,6 +38,7 @@ PEERDIR(
     library/cpp/containers/ring_buffer
     library/cpp/deprecated/atomic
     library/cpp/histogram/hdr
+    library/cpp/int128
     library/cpp/json/writer
     library/cpp/logger
     library/cpp/lwtrace

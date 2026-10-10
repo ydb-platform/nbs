@@ -13,6 +13,7 @@ SRCS(
     busy_idle_calculator_ut.cpp
     cgroup_stats_fetcher_ut.cpp
     histogram_types_ut.cpp
+    io_depth_tracker_ut.cpp
     logging_ut.cpp
     max_calculator_ut.cpp
     postpone_time_predictor_ut.cpp
