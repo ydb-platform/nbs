@@ -5,6 +5,8 @@
 #include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
 
+#include <cloud/storage/core/libs/common/media.h>
+
 #include <utility>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -24,15 +26,17 @@ enum EDescribeKind : ui64
 }   // namespace
 
 TCreateVolumeLinkActor::TCreateVolumeLinkActor(
-        TString logPrefix,
-        NActors::TActorId volumeActorId,
-        TLeaderFollowerLink link)
+    TString logPrefix, NActors::TActorId volumeActorId,
+    TLeaderFollowerLink link, bool allowDiskRegistryMedia,
+    bool recoveringCreated)
     : LogPrefix(std::move(logPrefix))
     , VolumeActorId(volumeActorId)
+    , AllowDiskRegistryMedia(allowDiskRegistryMedia)
     , Follower{
           .Link = std::move(link),
           .CreatedAt = TInstant::Now(),
-          .State = TFollowerDiskInfo::EState::None}
+          .State = recoveringCreated ? TFollowerDiskInfo::EState::Created
+                                     : TFollowerDiskInfo::EState::None}
 {}
 
 void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
@@ -43,21 +47,33 @@ void TCreateVolumeLinkActor::Bootstrap(const TActorContext& ctx)
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-            Follower.Link.LeaderDiskId,
-            true),
+            Follower.Link.LeaderDiskId, true, Follower.Link.LeaderShardId),
         DESCRIBE_KIND_LEADER);
     NCloud::Send(
         ctx,
         MakeSSProxyServiceId(),
         std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
-            Follower.Link.FollowerDiskId,
-            true),
+            Follower.Link.FollowerDiskId, true, Follower.Link.FollowerShardId),
         DESCRIBE_KIND_FOLLOWER);
 }
 
 void TCreateVolumeLinkActor::LinkVolumes(const TActorContext& ctx)
 {
     if (!LeaderVolume.GetDiskId() || !FollowerVolume.GetDiskId()) {
+        return;
+    }
+
+    if (!AllowDiskRegistryMedia &&
+        ((LeaderVolume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD &&
+          LeaderVolume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_HDD) ||
+         (FollowerVolume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD &&
+          FollowerVolume.GetStorageMediaKind() != NProto::STORAGE_MEDIA_HDD)))
+    {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_NOT_IMPLEMENTED,
+                "Cross-shard links support only replicated SSD/HDD volumes"));
         return;
     }
 
@@ -109,12 +125,10 @@ void TCreateVolumeLinkActor::PersistOnLeader(const NActors::TActorContext& ctx)
 void TCreateVolumeLinkActor::PersistOnFollower(
     const NActors::TActorContext& ctx)
 {
-    NCloud::Register<TPropagateLinkToFollowerActor>(
-        ctx,
-        LogPrefix,
+    CreationPropagator = NCloud::Register<TPropagateLinkToFollowerActor>(
+        ctx, LogPrefix,
         CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
-        Follower.Link,
-        TPropagateLinkToFollowerActor::EReason::Creation);
+        Follower.Link, TPropagateLinkToFollowerActor::EReason::Creation);
 }
 
 void TCreateVolumeLinkActor::HandleDescribeVolumeResponse(
@@ -147,6 +161,21 @@ void TCreateVolumeLinkActor::HandleDescribeVolumeResponse(
         pathDescription.GetBlockStoreVolumeDescription();
     const auto& volumeConfig = volumeDescription.GetVolumeConfig();
 
+    if (ev->Cookie == DESCRIBE_KIND_FOLLOWER) {
+        const auto tabletId = volumeDescription.GetVolumeTabletId();
+        if ((Follower.Link.FollowerTabletId &&
+             Follower.Link.FollowerTabletId != tabletId) ||
+            (!AllowDiskRegistryMedia && !tabletId))
+        {
+            ReplyAndDie(
+                ctx,
+                MakeError(
+                    E_INVALID_STATE,
+                    "Destination volume incarnation changed or is unknown"));
+            return;
+        }
+        Follower.Link.FollowerTabletId = tabletId;
+    }
     VolumeConfigToVolume(volumeConfig, "", volume);
     volume.SetTokenVersion(volumeDescription.GetTokenVersion());
 
@@ -165,6 +194,12 @@ void TCreateVolumeLinkActor::HandlePersistedOnLeader(
         return;
     }
 
+    if (message->Follower.Link.LinkUUID != Follower.Link.LinkUUID) {
+        ReplyAndDie(ctx, MakeError(E_INVALID_STATE,
+                                   "Link creation was cancelled or replaced"));
+        return;
+    }
+    Follower = message->Follower;
     switch (message->Follower.State) {
         case TFollowerDiskInfo::EState::DataReady:
         case TFollowerDiskInfo::EState::LeadershipTransferred:
@@ -212,7 +247,7 @@ void TCreateVolumeLinkActor::ReplyAndDie(
     const TActorContext& ctx,
     const NProto::TError& error)
 {
-    if (HasError(error)) {
+    if (HasError(error) && Follower.State != TFollowerDiskInfo::EState::None) {
         Follower.State = TFollowerDiskInfo::EState::Error;
         Follower.ErrorMessage = FormatError(error);
 
@@ -227,6 +262,10 @@ void TCreateVolumeLinkActor::ReplyAndDie(
         Follower.Link);
     NCloud::Send(ctx, VolumeActorId, std::move(response));
 
+    if (CreationPropagator) {
+        NCloud::Send(ctx, CreationPropagator,
+                     std::make_unique<NActors::TEvents::TEvPoisonPill>());
+    }
     Die(ctx);
 }
 
@@ -247,6 +286,11 @@ STFUNC(TCreateVolumeLinkActor::StateWork)
             TEvVolumePrivate::TEvLinkOnFollowerCreated,
             HandlePersistedOnFollower);
 
+        case NActors::TEvents::TEvPoisonPill::EventType:
+            ReplyAndDie(
+                ActorContext(),
+                MakeError(E_INVALID_STATE, "Link creation was cancelled"));
+            break;
         default:
             HandleUnexpectedEvent(
                 ev,

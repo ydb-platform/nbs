@@ -3,6 +3,7 @@
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/config.h>
 
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
 
@@ -22,13 +23,14 @@ private:
     const TStorageConfigConstPtr Config;
     const TString LeaderDiskId;
     const TString FollowerDiskId;
+    const TString LeaderShardId;
+    const TString FollowerShardId;
 
 public:
-    TDestroyVolumeLinkActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        TString leaderDiskId,
-        TString followerDiskId);
+    TDestroyVolumeLinkActor(TRequestInfoPtr requestInfo,
+                            TStorageConfigConstPtr config, TString leaderDiskId,
+                            TString followerDiskId, TString leaderShardId,
+                            TString followerShardId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -55,14 +57,15 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroyVolumeLinkActor::TDestroyVolumeLinkActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        TString leaderDiskId,
-        TString followerDiskId)
+    TRequestInfoPtr requestInfo, TStorageConfigConstPtr config,
+    TString leaderDiskId, TString followerDiskId, TString leaderShardId,
+    TString followerShardId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , LeaderDiskId(std::move(leaderDiskId))
     , FollowerDiskId(std::move(followerDiskId))
+    , LeaderShardId(std::move(leaderShardId))
+    , FollowerShardId(std::move(followerShardId))
 {}
 
 void TDestroyVolumeLinkActor::Bootstrap(const TActorContext& ctx)
@@ -79,7 +82,12 @@ void TDestroyVolumeLinkActor::UnlinkLeaderVolumeFromFollower(
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerRequest>(
             RequestInfo->CallContext);
     request->Record.SetDiskId(LeaderDiskId);
+    request->Record.SetRequireCancellable(true);
     request->Record.SetFollowerDiskId(FollowerDiskId);
+    request->Record.SetLeaderShardId(LeaderShardId);
+    request->Record.SetFollowerShardId(FollowerShardId);
+    request->Record.MutableHeaders()->SetShardId(LeaderShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
 
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
@@ -91,10 +99,12 @@ void TDestroyVolumeLinkActor::RemoveLinkOnFollower(
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerRequest>();
     request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
     request->Record.SetDiskId(FollowerDiskId);
-    request->Record.SetFollowerShardId({});
+    request->Record.MutableHeaders()->SetShardId(FollowerShardId);
+    request->Record.SetFollowerShardId(FollowerShardId);
     request->Record.SetLeaderDiskId(LeaderDiskId);
-    request->Record.SetLeaderShardId({});
+    request->Record.SetLeaderShardId(LeaderShardId);
     request->Record.SetAction(NProto::ELinkAction::LINK_ACTION_DESTROY);
+    request->Record.SetRequireCancellable(true);
 
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
@@ -199,7 +209,33 @@ void TServiceActor::HandleDestroyVolumeLink(
 
     const auto& request = msg->Record;
 
-    if (request.GetFollowerDiskId().empty()) {
+    const auto leaderDirectory =
+        Config->GetSchemeShardDirForShard(request.GetLeaderShardId());
+    const auto followerDirectory =
+        Config->GetSchemeShardDirForShard(request.GetFollowerShardId());
+    if (!leaderDirectory || !followerDirectory) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvDestroyVolumeLinkResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+    if (*leaderDirectory != *followerDirectory &&
+        (request.GetLeaderShardId().empty() ||
+         request.GetFollowerShardId().empty()))
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<
+                TEvService::TEvDestroyVolumeLinkResponse>(MakeError(
+                E_ARGUMENT,
+                "Both shard identifiers are required for a cross-shard link")));
+        return;
+    }
+
+    if (request.GetLeaderDiskId().empty()) {
         LOG_ERROR(
             ctx,
             TBlockStoreComponents::SERVICE,
@@ -232,11 +268,9 @@ void TServiceActor::HandleDestroyVolumeLink(
         request.GetFollowerDiskId().Quote().data());
 
     NCloud::Register<TDestroyVolumeLinkActor>(
-        ctx,
-        std::move(requestInfo),
-        Config,
-        request.GetLeaderDiskId(),
-        request.GetFollowerDiskId());
+        ctx, std::move(requestInfo), Config, request.GetLeaderDiskId(),
+        request.GetFollowerDiskId(), request.GetLeaderShardId(),
+        request.GetFollowerShardId());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

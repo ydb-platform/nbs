@@ -101,11 +101,9 @@ void TFollowerDiskActor::OnBootstrap(const NActors::TActorContext& ctx)
     }
 
     FollowerPartitionActorId = NCloud::Register<TVolumeAsPartitionActor>(
-        ctx,
-        LogTitle,
-        LeaderBlockSize,
-        FollowerDiskInfo.Link.FollowerDiskId,
-        GetConfig()->GetDestroyVolumeTimeout());
+        ctx, LogTitle, LeaderBlockSize, FollowerDiskInfo.Link.FollowerDiskId,
+        GetConfig()->GetDestroyVolumeTimeout(),
+        FollowerDiskInfo.Link.FollowerShardId);
 
     InitWork(
         ctx,
@@ -380,6 +378,14 @@ void TFollowerDiskActor::HandleUpdateFollowerStateResponse(
     const NActors::TActorContext& ctx)
 {
     const auto* msg = ev->Get();
+    if (msg->Follower.Link.LinkUUID != FollowerDiskInfo.Link.LinkUUID ||
+        msg->Follower.State < FollowerDiskInfo.State)
+    {
+        // Missing/replaced generations cannot authorize further work. An
+        // error carrying authoritative state of this UUID must still be
+        // applied.
+        return;
+    }
     FollowerDiskInfo = msg->Follower;
     ApplyLinkState(ctx);
     if (State == EState::LeadershipTransferredAndPersisted) {

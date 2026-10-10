@@ -31,6 +31,8 @@ NProto::ELinkStatus TranslateState(TFollowerDiskInfo::EState state)
 NProto::ELinkStatus TranslateState(TLeaderDiskInfo::EState state)
 {
     switch (state) {
+        case TLeaderDiskInfo::EState::Cancelled:
+            return NProto::ELinkStatus::LINK_STATUS_NOT_FOUND;
         case TLeaderDiskInfo::EState::None:
         case TLeaderDiskInfo::EState::Following:
             return NProto::ELinkStatus::LINK_STATUS_PREPARING;
@@ -53,7 +55,7 @@ void TVolumeActor::HandleGetLinkStatus(
     const auto* msg = ev->Get();
 
     auto link = TLeaderFollowerLink{
-        .LinkUUID = "",
+        .LinkUUID = msg->Record.GetLinkUUID(),
         .LeaderDiskId = msg->Record.GetLeaderDiskId(),
         .LeaderShardId = msg->Record.GetLeaderShardId(),
         .FollowerDiskId = msg->Record.GetFollowerDiskId(),
@@ -80,8 +82,16 @@ void TVolumeActor::HandleGetLinkStatus(
     auto response =
         std::make_unique<TEvVolume::TEvGetLinkStatusResponse>(MakeError(S_OK));
 
+    response->Record.SetVolumeTabletId(TabletID());
+    response->Record.SetStorageMediaKind(State->GetStorageMediaKind());
+    response->Record.SetLinkUUID(
+        follower ? follower->Link.LinkUUID
+        : leader ? leader->Link.LinkUUID
+                 : "");
     if (follower) {
-        response->Record.SetStatus(TranslateState(follower->State));
+        response->Record.SetStatus(
+            follower->CancellationPending ? NProto::LINK_STATUS_NOT_FOUND
+                                          : TranslateState(follower->State));
         response->Record.SetMigratedBytes(follower->MigratedBytes.value_or(0));
         response->Record.SetErrorMessage(follower->ErrorMessage);
     } else if (leader) {

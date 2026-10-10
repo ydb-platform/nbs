@@ -1,5 +1,6 @@
 #include "volume_actor.h"
 
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/volume/actors/create_volume_link_actor.h>
 #include <cloud/blockstore/libs/storage/volume/actors/propagate_to_follower.h>
 
@@ -27,6 +28,41 @@ void TVolumeActor::ExecuteUpdateFollower(
     TTxVolume::TUpdateFollower& args)
 {
     auto current = State->FindFollower(args.FollowerInfo.Link);
+    if (!current) {
+        // Only the active create operation may introduce a new UUID.
+        // Progress from a cancelled or replaced migration must not resurrect
+        // it.
+        const auto* pending =
+            State->FindCreateFollowerRequestInfo(args.FollowerInfo.Link);
+        if (!pending ||
+            pending->Link.LinkUUID != args.FollowerInfo.Link.LinkUUID)
+        {
+            args.Error =
+                MakeError(E_INVALID_STATE, "Follower link no longer exists");
+            args.FollowerInfo = {};
+            return;
+        }
+    } else {
+        if (current->CancellationPending) {
+            args.Error =
+                MakeError(E_INVALID_STATE, "Follower cancellation is pending");
+            args.FollowerInfo = {};
+            return;
+        }
+        const auto followerTabletId = args.FollowerInfo.Link.FollowerTabletId;
+        if (current->State == TFollowerDiskInfo::EState::Error ||
+            current->State > args.FollowerInfo.State)
+        {
+            args.Error =
+                MakeError(E_INVALID_STATE, "Follower state cannot regress");
+            args.FollowerInfo = *current;
+            return;
+        }
+        args.FollowerInfo.Link = current->Link;
+        if (!args.FollowerInfo.Link.FollowerTabletId) {
+            args.FollowerInfo.Link.FollowerTabletId = followerTabletId;
+        }
+    }
 
     LOG_INFO(
         ctx,
@@ -37,6 +73,7 @@ void TVolumeActor::ExecuteUpdateFollower(
         current ? current->Describe().c_str() : "{none}",
         args.FollowerInfo.Describe().c_str());
 
+    args.FollowerInfo.Link.LeaderTabletId = TabletID();
     TVolumeDatabase db(tx.DB);
     State->AddOrUpdateFollower(args.FollowerInfo);
     db.WriteFollower(args.FollowerInfo);
@@ -48,9 +85,28 @@ void TVolumeActor::CompleteUpdateFollower(
 {
     auto response =
         std::make_unique<TEvVolumePrivate::TEvUpdateFollowerStateResponse>(
-            MakeError(S_OK));
-    response->Follower = args.FollowerInfo;
+            args.Error);
+    // Do not deliver a successful but superseded state after cancellation.
+    if (const auto current = State->FindFollower(args.FollowerInfo.Link);
+        current && !current->CancellationPending)
+    {
+        response->Follower = *current;
+    }
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    // Recovery may finish before its Error transaction commits. Release
+    // copy-only retention here, after the terminal state is durable.
+    if (!HasError(args.Error) &&
+        args.FollowerInfo.State == TFollowerDiskInfo::EState::Error &&
+        PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_COPY &&
+        !State->HasActiveFollower())
+    {
+        if (State->HasActiveClients(ctx.Now())) {
+            // A remote mount may still have the copy-only start reason.
+            StartPartitionsIfNeeded(ctx);
+        } else {
+            RestartPartition(ctx, {});
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -72,6 +128,39 @@ void TVolumeActor::ExecuteRemoveFollower(
     ITransactionBase::TTransactionContext& tx,
     TTxVolume::TRemoveFollower& args)
 {
+    const auto follower = State->FindFollower(args.Link);
+    if (args.RequireCancellable && follower &&
+        (follower->State == TFollowerDiskInfo::EState::DataReady ||
+         follower->State == TFollowerDiskInfo::EState::LeadershipTransferred))
+    {
+        args.Error = MakeError(
+            E_INVALID_STATE,
+            "Cannot cancel a link after leadership transfer has started");
+        return;
+    }
+    if (follower) {
+        args.Link = follower->Link;
+        args.Changed = true;
+    }
+    if (auto* pending = State->FindCreateFollowerRequestInfo(args.Link)) {
+        if (!follower) {
+            args.Link = pending->Link;
+        }
+        args.CreateVolumeLinkActor = pending->CreateVolumeLinkActor;
+        args.PendingCreateRequests = std::move(pending->Requests);
+        State->DeleteCreateFollowerRequestInfo(args.Link);
+        args.Changed = true;
+    }
+    if (!args.Changed) {
+        if (const auto cancellation =
+                State->FindFollowerCancellation(args.Link))
+        {
+            args.Link = cancellation->Link;
+        }
+        args.Error = MakeError(S_ALREADY);
+        return;
+    }
+
     LOG_INFO(
         ctx,
         TBlockStoreComponents::VOLUME,
@@ -79,9 +168,17 @@ void TVolumeActor::ExecuteRemoveFollower(
         LogTitle.GetWithTime().c_str(),
         args.Link.Describe().c_str());
 
+    // The same commit releases copy authority and records the durable
+    // obligation to cancel this exact generation on the destination.
+    auto cancelled = follower.value_or(TFollowerDiskInfo{});
+    cancelled.Link = args.Link;
+    cancelled.CreatedAt = ctx.Now();
+    cancelled.State = TFollowerDiskInfo::EState::Error;
+    cancelled.CancellationPending = true;
+    cancelled.CancellationRequireCancellable = args.RequireCancellable;
     TVolumeDatabase db(tx.DB);
-    State->RemoveFollower(args.Link);
-    db.DeleteFollower(args.Link);
+    State->AddOrUpdateFollower(cancelled);
+    db.WriteFollower(cancelled);
 }
 
 void TVolumeActor::CompleteRemoveFollower(
@@ -90,9 +187,27 @@ void TVolumeActor::CompleteRemoveFollower(
 {
     auto response =
         std::make_unique<TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse>(
-            MakeError(S_OK));
+            args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    if (HasError(args.Error)) {
+        return;
+    }
+    PropagateFollowerCancellations(ctx);
+    if (!args.Changed) {
+        return;
+    }
+    if (args.CreateVolumeLinkActor) {
+        NCloud::Send(ctx, args.CreateVolumeLinkActor,
+                     std::make_unique<TEvents::TEvPoisonPill>());
+    }
 
+    for (const auto& requestInfo: args.PendingCreateRequests) {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>(
+                MakeError(E_INVALID_STATE, "Link creation was cancelled")));
+    }
     RestartPartition(ctx, {});
 }
 
@@ -194,7 +309,9 @@ void TVolumeActor::HandleLinkLeaderVolumeToFollower(
         ctx,
         LogTitle.GetBrief(),
         SelfId(),
-        createFollowerRequest.Link);
+        createFollowerRequest.Link,
+        Config->GetSchemeShardDirForShard(link.LeaderShardId) ==
+            Config->GetSchemeShardDirForShard(link.FollowerShardId));
 
     createFollowerRequest.CreateVolumeLinkActor = actor;
 }
@@ -212,41 +329,12 @@ void TVolumeActor::HandleUnlinkLeaderVolumeFromFollower(
         .FollowerDiskId = msg->Record.GetFollowerDiskId(),
         .FollowerShardId = msg->Record.GetFollowerShardId()};
 
-    auto follower = State->FindFollower(link);
-    if (follower) {
+    if (const auto follower = State->FindFollower(link)) {
         link = follower->Link;
     }
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s Unlink %s started",
-        LogTitle.GetWithTime().c_str(),
-        link.Describe().c_str());
-
-    if (follower) {
-        // Destroy link on leader side
-        ExecuteTx<TRemoveFollower>(
-            ctx,
-            CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
-            link);
-    } else {
-        // Link on leader side already destroyed.
-        NCloud::Reply(
-            ctx,
-            *ev,
-            std::make_unique<
-                TEvVolume::TEvUnlinkLeaderVolumeFromFollowerResponse>(
-                MakeError(S_ALREADY)));
-    }
-
-    // In any case, we notify the follower side just in case.
-    NCloud::Register<TPropagateLinkToFollowerActor>(
-        ctx,
-        LogTitle.GetBrief(),
-        CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
-        std::move(link),
-        TPropagateLinkToFollowerActor::EReason::Destruction);
+    ExecuteTx<TRemoveFollower>(
+        ctx, CreateRequestInfo(ev->Sender, ev->Cookie, msg->CallContext),
+        std::move(link), msg->Record.GetRequireCancellable());
 }
 
 void TVolumeActor::HandleUpdateFollowerState(
@@ -271,7 +359,17 @@ void TVolumeActor::HandleUpdateFollowerState(
     };
 
     if (auto currentFollower = State->FindFollower(msg->Follower.Link)) {
+        const auto followerTabletId = msg->Follower.Link.FollowerTabletId;
         msg->Follower.Link = currentFollower->Link;
+        if (!msg->Follower.Link.FollowerTabletId) {
+            msg->Follower.Link.FollowerTabletId = followerTabletId;
+        }
+        if (currentFollower->CancellationPending) {
+            replyError(
+                MakeError(E_INVALID_STATE, "Follower cancellation is pending"),
+                {});
+            return;
+        }
 
         if (currentFollower->State == EState::Error) {
             replyError(
@@ -319,9 +417,13 @@ void TVolumeActor::HandleCreateLinkFinished(
         msg->Link.Describe().c_str(),
         FormatError(msg->Error).c_str());
 
-    auto& createFollowerRequest =
-        State->AccessCreateFollowerRequestInfo(msg->Link);
-    for (const auto& requestInfo: createFollowerRequest.Requests) {
+    auto* createFollowerRequest =
+        State->FindCreateFollowerRequestInfo(msg->Link);
+    if (!createFollowerRequest) {
+        // A cancelled create actor may finish after its operation was removed.
+        return;
+    }
+    for (const auto& requestInfo: createFollowerRequest->Requests) {
         auto response =
             std::make_unique<TEvVolume::TEvLinkLeaderVolumeToFollowerResponse>(
                 msg->Error);
@@ -336,18 +438,89 @@ void TVolumeActor::HandleCreateLinkFinished(
     }
 }
 
+void TVolumeActor::PropagateFollowerCancellations(
+    const NActors::TActorContext& ctx)
+{
+    for (const auto& follower: State->GetAllFollowers()) {
+        if (!follower.CancellationPending ||
+            FollowerCancellationPropagators.contains(follower.Link.LinkUUID))
+        {
+            continue;
+        }
+        const auto actor = NCloud::Register<TPropagateLinkToFollowerActor>(
+            ctx, LogTitle.GetBrief(),
+            CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
+            follower.Link, TPropagateLinkToFollowerActor::EReason::Destruction,
+            follower.CancellationRequireCancellable);
+        FollowerCancellationPropagators.emplace(follower.Link.LinkUUID, actor);
+    }
+}
+
+void TVolumeActor::HandleRetryFollowerCancellations(
+    const TEvVolumePrivate::TEvRetryFollowerCancellations::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+    PropagateFollowerCancellations(ctx);
+}
+
 void TVolumeActor::HandleLinkOnFollowerDestroyed(
     const TEvVolumePrivate::TEvLinkOnFollowerDestroyed::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    auto* msg = ev->Get();
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s Link %s on follower destroyed: %s",
-        LogTitle.GetWithTime().c_str(),
-        msg->Link.Describe().c_str(),
-        FormatError(msg->GetError()).c_str());
+    const auto* msg = ev->Get();
+    const auto it = FollowerCancellationPropagators.find(msg->Link.LinkUUID);
+    if (it == FollowerCancellationPropagators.end() || it->second != ev->Sender)
+    {
+        return;
+    }
+    if (HasError(msg->GetError()) &&
+        !IsNotFoundSchemeShardError(msg->GetError()) &&
+        msg->GetError().GetCode() != E_NOT_FOUND)
+    {
+        // Keep the durable obligation; a repeat request may retry immediately.
+        FollowerCancellationPropagators.erase(it);
+        ctx.Schedule(TDuration::Seconds(1),
+                     new TEvVolumePrivate::TEvRetryFollowerCancellations());
+        return;
+    }
+    ExecuteTx<TFinishFollowerCancellation>(
+        ctx, CreateRequestInfo(SelfId(), 0, MakeIntrusive<TCallContext>()),
+        msg->Link, ev->Sender);
+}
+
+bool TVolumeActor::PrepareFinishFollowerCancellation(
+    const TActorContext& ctx, ITransactionBase::TTransactionContext& tx,
+    TTxVolume::TFinishFollowerCancellation& args)
+{
+    Y_UNUSED(ctx);
+    Y_UNUSED(tx);
+    Y_UNUSED(args);
+    return true;
+}
+
+void TVolumeActor::ExecuteFinishFollowerCancellation(
+    const TActorContext& ctx, ITransactionBase::TTransactionContext& tx,
+    TTxVolume::TFinishFollowerCancellation& args)
+{
+    Y_UNUSED(ctx);
+    if (const auto cancellation = State->FindFollowerCancellation(args.Link)) {
+        TVolumeDatabase db(tx.DB);
+        State->RemoveFollower(cancellation->Link);
+        db.DeleteFollower(cancellation->Link);
+    }
+}
+
+void TVolumeActor::CompleteFinishFollowerCancellation(
+    const TActorContext& ctx, TTxVolume::TFinishFollowerCancellation& args)
+{
+    const auto it = FollowerCancellationPropagators.find(args.Link.LinkUUID);
+    if (it != FollowerCancellationPropagators.end() &&
+        it->second == args.Propagator)
+    {
+        FollowerCancellationPropagators.erase(it);
+    }
+    PropagateFollowerCancellations(ctx);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

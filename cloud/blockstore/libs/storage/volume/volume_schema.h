@@ -327,18 +327,39 @@ struct TVolumeSchema
         {
         };
 
+        struct LeaderTabletId
+            : public Column<11, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct CancellationPending
+            : public Column<12, NKikimr::NScheme::NTypeIds::Bool>
+        {
+        };
+
+        struct CancellationRequireCancellable
+            : public Column<13, NKikimr::NScheme::NTypeIds::Bool>
+        {
+        };
+
+        struct FollowerTabletId
+            : public Column<14, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
         using TKey = TableKey<Uuid>;
-        using TColumns = TableColumns<
-            Uuid,
-            FollowerDiskId,
-            FollowerShardId,
-            State,
-            MigratedBytes,
-            CreatedAt,
-            LeaderDiskId,
-            LeaderShardId,
-            FollowerMediaKind,
-            ErrorMessage>;
+        using TColumns =
+            TableColumns<Uuid, FollowerDiskId, FollowerShardId, State,
+                         MigratedBytes,
+                         CreatedAt,
+                         LeaderDiskId,
+                         LeaderShardId,
+                         FollowerMediaKind,
+                         ErrorMessage,
+                         LeaderTabletId,
+                         CancellationPending,
+                         CancellationRequireCancellable,
+                         FollowerTabletId>;
     };
 
     struct LeaderDisks: public TTableSchema<12>
@@ -379,16 +400,25 @@ struct TVolumeSchema
         {
         };
 
+        struct LeaderTabletId
+            : public Column<9, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
+        struct FollowerTabletId
+            : public Column<10, NKikimr::NScheme::NTypeIds::Uint64>
+        {
+        };
+
         using TKey = TableKey<Uuid>;
-        using TColumns = TableColumns<
-            Uuid,
-            CreatedAt,
-            LeaderDiskId,
-            LeaderShardId,
-            FollowerDiskId,
-            FollowerShardId,
-            State,
-            ErrorMessage>;
+        using TColumns =
+            TableColumns<Uuid, CreatedAt, LeaderDiskId, LeaderShardId,
+                         FollowerDiskId,
+                         FollowerShardId,
+                         State,
+                         ErrorMessage,
+                         LeaderTabletId,
+                         FollowerTabletId>;
     };
 
     struct BrokenDevices: public TTableSchema<13>

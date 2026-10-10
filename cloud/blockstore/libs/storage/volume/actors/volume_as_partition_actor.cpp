@@ -22,13 +22,12 @@ using namespace NActors;
 ////////////////////////////////////////////////////////////////////////////////
 
 TVolumeAsPartitionActor::TVolumeAsPartitionActor(
-        TChildLogTitle logTitle,
-        ui32 originalBlockSize,
-        TString diskId,
-        TDuration shutdownTimeout)
+    TChildLogTitle logTitle, ui32 originalBlockSize, TString diskId,
+    TDuration shutdownTimeout, TString shardId)
     : LogTitle(std::move(logTitle))
     , OriginalBlockSize(originalBlockSize)
     , DiskId(std::move(diskId))
+    , ShardId(std::move(shardId))
     , ShutdownTimeout(shutdownTimeout)
 {}
 
@@ -45,9 +44,9 @@ void TVolumeAsPartitionActor::Bootstrap(const TActorContext& ctx)
         LogTitle.GetWithTime().c_str());
 
     NCloud::Send(
-        ctx,
-        MakeSSProxyServiceId(),
-        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId));
+        ctx, MakeSSProxyServiceId(),
+        std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId, true,
+                                                               ShardId));
 }
 
 bool TVolumeAsPartitionActor::CheckRange(TBlockRange64 range) const
@@ -63,6 +62,7 @@ void TVolumeAsPartitionActor::ForwardRequestToFollower(
 {
     auto* msg = ev->Get();
     msg->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    msg->Record.MutableHeaders()->SetShardId(ShardId);
 
     const ui64 requestId = RequestsInProgress.AddWriteRequest(
         BuildRequestBlockRange(*msg, OriginalBlockSize),

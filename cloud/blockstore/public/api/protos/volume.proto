@@ -533,6 +533,11 @@ message TDestroyVolumeRequest
 
     // Delete requests with incorrect FillGeneration will be rejected.
     uint64 FillGeneration = 6;
+
+    // Internal conditional cleanup: never delete another volume incarnation.
+    // Supports replicated SSD/HDD and requires ExactDiskIdMatch.
+    // Zero preserves the normal deletion workflow, including local DR volumes.
+    uint64 ExpectedVolumeTabletId = 7;
 }
 
 message TDestroyVolumeResponse
@@ -829,6 +834,12 @@ message TCreateVolumeLinkRequest
 
     // Id of follower disk.
     string FollowerDiskId = 3;
+
+    // Storage shard of the leader. Empty selects the local shard.
+    string LeaderShardId = 4;
+
+    // Storage shard of the follower. Empty selects the local shard.
+    string FollowerShardId = 5;
 }
 
 message TCreateVolumeLinkResponse
@@ -850,6 +861,12 @@ message TDestroyVolumeLinkRequest
 
     // Id of follower disk.
     string FollowerDiskId = 3;
+
+    // Storage shard of the leader. Empty selects the local shard.
+    string LeaderShardId = 4;
+
+    // Storage shard of the follower. Empty selects the local shard.
+    string FollowerShardId = 5;
 }
 
 message TDestroyVolumeLinkResponse

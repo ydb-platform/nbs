@@ -547,6 +547,8 @@ struct TEvVolumePrivate
         EvCreateLinkFinished,
         EvDiskRegistryDeviceOperationStarted,
         EvDiskRegistryDeviceOperationFinished,
+        EvDestroyOutdatedLeader,
+        EvRetryFollowerCancellations,
 
         EvEnd
     };
@@ -556,6 +558,20 @@ struct TEvVolumePrivate
 
     BLOCKSTORE_VOLUME_REQUESTS_PRIVATE(BLOCKSTORE_DECLARE_EVENTS)
 
+    struct TDestroyOutdatedLeader
+    {
+        TString LinkUUID;
+
+        explicit TDestroyOutdatedLeader(TString uuid)
+            : LinkUUID(std::move(uuid))
+        {}
+    };
+
+    using TEvDestroyOutdatedLeader =
+        TRequestEvent<TDestroyOutdatedLeader, EvDestroyOutdatedLeader>;
+
+    using TEvRetryFollowerCancellations =
+        TRequestEvent<TEmpty, EvRetryFollowerCancellations>;
     using TEvUpdateCounters = TRequestEvent<TEmpty, EvUpdateCounters>;
 
     using TEvUpdateThrottlerState = TRequestEvent<TEmpty, EvUpdateThrottlerState>;

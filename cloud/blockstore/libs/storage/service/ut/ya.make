@@ -2,6 +2,10 @@ UNITTEST_FOR(cloud/blockstore/libs/storage/service)
 
 INCLUDE(${ARCADIA_ROOT}/cloud/storage/core/tests/recipes/medium.inc)
 
+# Cross-shard data matrices and restart tests exercise real cleanup backoffs.
+# Keep their aggregate time below the per-chunk medium-test timeout.
+SPLIT_FACTOR(40)
+
 SRCS(
     service_state_ut.cpp
     service_ut_actions.cpp
@@ -31,6 +35,7 @@ SRCS(
 
 PEERDIR(
     cloud/blockstore/libs/storage/testlib
+    cloud/blockstore/libs/storage/volume/testlib
     cloud/storage/core/libs/hive_proxy
 )
 

@@ -189,8 +189,11 @@ void TVolumeActor::CompleteLoadState(
 
         if (State->IsDiskRegistryMediaKind() || PendingRequests.size()) {
             StartPartitionsForUse(ctx);
-        } else if (State->GetShouldStartPartitionsForGc(ctx.Now())
-            && !Config->GetDisableStartPartitionsForGc())
+        } else if (State->HasActiveFollower()) {
+            StartPartitionsForCopy(ctx);
+        } else if (
+            State->GetShouldStartPartitionsForGc(ctx.Now()) &&
+            !Config->GetDisableStartPartitionsForGc())
         {
             StartPartitionsForGc(ctx);
         }
@@ -201,6 +204,11 @@ void TVolumeActor::CompleteLoadState(
     }
 
     StateLoadFinished = true;
+    if (State) {
+        // Cleanup is a durable link obligation, independent of mounts and GC.
+        DestroyOutdatedLeaderIfNeeded(ctx);
+        PropagateFollowerCancellations(ctx);
+    }
     StateLoadTimestamp = ctx.Now();
     NextVolumeConfigVersion = GetCurrentConfigVersion();
 

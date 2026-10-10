@@ -1734,4 +1734,9 @@ message TStorageServiceConfig
     // the per-disk mixed-block percentage trigger. Zero removes this minimum.
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
+
+    // Allowlisted storage shards in the same YDB cluster. Keys are stable
+    // shard identifiers and values are absolute SchemeShard directories.
+    // Requests with an empty shard identifier use SchemeShardDir.
+    map<string, string> ShardDirectories = 542;
 }

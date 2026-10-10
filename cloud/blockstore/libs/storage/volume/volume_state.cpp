@@ -22,6 +22,37 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 
+namespace {
+
+// UUIDs fence operation generations. Without one, compare physical addresses
+// using the same directory equivalence as VolumeProxy, including legacy local
+// selectors. Never equate different unresolved shard identifiers.
+bool MatchLinks(const TLeaderFollowerLink& lhs, const TLeaderFollowerLink& rhs,
+                const TStorageConfig& config)
+{
+    if (lhs.LinkUUID && rhs.LinkUUID) {
+        return lhs.LinkUUID == rhs.LinkUUID;
+    }
+    if (lhs.LeaderDiskId != rhs.LeaderDiskId ||
+        lhs.FollowerDiskId != rhs.FollowerDiskId)
+    {
+        return false;
+    }
+    const auto sameShard = [&](const TString& a, const TString& b)
+    {
+        if (a == b) {
+            return true;
+        }
+        const auto left = config.GetSchemeShardDirForShard(a);
+        const auto right = config.GetSchemeShardDirForShard(b);
+        return left && right && *left == *right;
+    };
+    return sameShard(lhs.LeaderShardId, rhs.LeaderShardId) &&
+           sameShard(lhs.FollowerShardId, rhs.FollowerShardId);
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 bool THistoryLogKey::operator == (const THistoryLogKey& rhs) const
@@ -1070,7 +1101,7 @@ TCreateFollowerRequestInfo* TVolumeState::FindCreateFollowerRequestInfo(
     const TLeaderFollowerLink& link)
 {
     for (auto& requestInfo: CreateFollowerRequests) {
-        if (requestInfo.Link.Match(link)) {
+        if (MatchLinks(requestInfo.Link, link, *StorageConfig)) {
             return &requestInfo;
         }
     }
@@ -1081,10 +1112,10 @@ TCreateFollowerRequestInfo* TVolumeState::FindCreateFollowerRequestInfo(
 void TVolumeState::DeleteCreateFollowerRequestInfo(
     const TLeaderFollowerLink& link)
 {
-    EraseIf(
-        CreateFollowerRequests,
-        [&](const TCreateFollowerRequestInfo& requestInfo)
-        { return requestInfo.Link.Match(link); });
+    EraseIf(CreateFollowerRequests,
+            [&](const TCreateFollowerRequestInfo& requestInfo) {
+                return MatchLinks(requestInfo.Link, link, *StorageConfig);
+            });
 }
 
 void TVolumeState::StartCreateLeaderRequest()
@@ -1103,7 +1134,23 @@ std::optional<TFollowerDiskInfo> TVolumeState::FindFollower(
     const TLeaderFollowerLink& link) const
 {
     for (const auto& follower: FollowerDisks) {
-        if (follower.Link.Match(link)) {
+        if (!link.LinkUUID && follower.CancellationPending) {
+            continue;
+        }
+        if (MatchLinks(follower.Link, link, *StorageConfig)) {
+            return follower;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<TFollowerDiskInfo> TVolumeState::FindFollowerCancellation(
+    const TLeaderFollowerLink& link) const
+{
+    for (const auto& follower: FollowerDisks) {
+        if (follower.CancellationPending &&
+            MatchLinks(follower.Link, link, *StorageConfig))
+        {
             return follower;
         }
     }
@@ -1120,7 +1167,7 @@ void TVolumeState::AddOrUpdateFollower(TFollowerDiskInfo follower)
     };
 
     for (auto& followerInfo: FollowerDisks) {
-        if (followerInfo.Link.Match(follower.Link)) {
+        if (MatchLinks(followerInfo.Link, follower.Link, *StorageConfig)) {
             followerInfo = std::move(follower);
             return;
         }
@@ -1135,10 +1182,10 @@ void TVolumeState::RemoveFollower(const TLeaderFollowerLink& link)
         UpdateLeadershipStatus();
     };
 
-    EraseIf(
-        FollowerDisks,
-        [&](const TFollowerDiskInfo& follower)
-        { return follower.Link.Match(link); });
+    EraseIf(FollowerDisks,
+            [&](const TFollowerDiskInfo& follower) {
+                return MatchLinks(follower.Link, link, *StorageConfig);
+            });
 }
 
 const TFollowerDisks& TVolumeState::GetAllFollowers() const
@@ -1146,11 +1193,33 @@ const TFollowerDisks& TVolumeState::GetAllFollowers() const
     return FollowerDisks;
 }
 
+bool TVolumeState::HasActiveFollower() const
+{
+    for (const auto& follower: FollowerDisks) {
+        switch (follower.State) {
+            case TFollowerDiskInfo::EState::Created:
+            case TFollowerDiskInfo::EState::Preparing:
+            case TFollowerDiskInfo::EState::DataReady:
+                return true;
+            case TFollowerDiskInfo::EState::None:
+            case TFollowerDiskInfo::EState::LeadershipTransferred:
+            case TFollowerDiskInfo::EState::Error:
+                break;
+        }
+    }
+    return false;
+}
+
 std::optional<TLeaderDiskInfo> TVolumeState::FindLeader(
     const TLeaderFollowerLink& link) const
 {
     for (const auto& leader: LeaderDisks) {
-        if (leader.Link.Match(link)) {
+        if (!link.LinkUUID &&
+            leader.State == TLeaderDiskInfo::EState::Cancelled)
+        {
+            continue;
+        }
+        if (MatchLinks(leader.Link, link, *StorageConfig)) {
             return leader;
         }
     }
@@ -1175,7 +1244,7 @@ void TVolumeState::AddOrUpdateLeader(TLeaderDiskInfo leader)
     };
 
     for (auto& leaderInfo: LeaderDisks) {
-        if (leaderInfo.Link.Match(leader.Link)) {
+        if (MatchLinks(leaderInfo.Link, leader.Link, *StorageConfig)) {
             leaderInfo = std::move(leader);
             return;
         }
@@ -1190,9 +1259,10 @@ void TVolumeState::RemoveLeader(const TLeaderFollowerLink& link)
         UpdateLeadershipStatus();
     };
 
-    EraseIf(
-        LeaderDisks,
-        [&](const TLeaderDiskInfo& leader) { return leader.Link.Match(link); });
+    EraseIf(LeaderDisks,
+            [&](const TLeaderDiskInfo& leader) {
+                return MatchLinks(leader.Link, link, *StorageConfig);
+            });
 }
 
 const TLeaderDisks& TVolumeState::GetAllLeaders() const

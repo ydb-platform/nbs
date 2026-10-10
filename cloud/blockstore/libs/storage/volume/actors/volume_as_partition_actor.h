@@ -50,6 +50,7 @@ private:
     const TChildLogTitle LogTitle;
     const ui32 OriginalBlockSize;
     const TString DiskId;
+    const TString ShardId;
     const TDuration ShutdownTimeout;
 
     EState State = EState::Describing;
@@ -63,11 +64,9 @@ private:
     TRequestInfoPtr Poisoner;
 
 public:
-    TVolumeAsPartitionActor(
-        TChildLogTitle logTitle,
-        ui32 originalBlockSize,
-        TString diskId,
-        TDuration shutdownTimeout);
+    TVolumeAsPartitionActor(TChildLogTitle logTitle, ui32 originalBlockSize,
+                            TString diskId, TDuration shutdownTimeout,
+                            TString shardId = {});
 
     ~TVolumeAsPartitionActor() override;
 

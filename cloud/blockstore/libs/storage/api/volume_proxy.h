@@ -20,9 +20,11 @@ struct TEvVolumeProxy
     struct TKeepAliveRequest
     {
         TString DiskId;
+        TString ShardId;
 
-        explicit TKeepAliveRequest(TString diskId)
+        explicit TKeepAliveRequest(TString diskId, TString shardId = {})
             : DiskId(std::move(diskId))
+            , ShardId(std::move(shardId))
         {}
     };
 

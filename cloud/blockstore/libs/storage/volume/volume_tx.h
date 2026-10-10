@@ -17,37 +17,39 @@ namespace NCloud::NBlockStore::NStorage {
 ////////////////////////////////////////////////////////////////////////////////
 
 #define BLOCKSTORE_VOLUME_TRANSACTIONS(xxx, ...)                               \
-    xxx(InitSchema,                     __VA_ARGS__)                           \
-    xxx(LoadState,                      __VA_ARGS__)                           \
-    xxx(UpdateConfig,                   __VA_ARGS__)                           \
-    xxx(UpdateDevices,                  __VA_ARGS__)                           \
-    xxx(UpdateMigrationState,           __VA_ARGS__)                           \
-    xxx(AddClient,                      __VA_ARGS__)                           \
-    xxx(RemoveClient,                   __VA_ARGS__)                           \
-    xxx(ResetMountSeqNumber,            __VA_ARGS__)                           \
-    xxx(ReadHistory,                    __VA_ARGS__)                           \
-    xxx(CleanupHistory,                 __VA_ARGS__)                           \
-    xxx(SavePartStats,                  __VA_ARGS__)                           \
-    xxx(SaveCheckpointRequest,          __VA_ARGS__)                           \
-    xxx(UpdateCheckpointRequest,        __VA_ARGS__)                           \
-    xxx(UpdateShadowDiskState,          __VA_ARGS__)                           \
-    xxx(UpdateUsedBlocks,               __VA_ARGS__)                           \
-    xxx(WriteThrottlerState,            __VA_ARGS__)                           \
-    xxx(UpdateResyncState,              __VA_ARGS__)                           \
-    xxx(ToggleResync,                   __VA_ARGS__)                           \
-    xxx(UpdateClientInfo,               __VA_ARGS__)                           \
-    xxx(ResetStartPartitionsNeeded,     __VA_ARGS__)                           \
-    xxx(UpdateVolumeParams,             __VA_ARGS__)                           \
-    xxx(DeleteVolumeParams,             __VA_ARGS__)                           \
-    xxx(ChangeStorageConfig,            __VA_ARGS__)                           \
-    xxx(ReadMetaHistory,                __VA_ARGS__)                           \
-    xxx(AddLaggingAgent,                __VA_ARGS__)                           \
-    xxx(RemoveLaggingAgent,             __VA_ARGS__)                           \
-    xxx(UpdateFollower,                 __VA_ARGS__)                           \
-    xxx(RemoveFollower,                 __VA_ARGS__)                           \
-    xxx(UpdateLeader,                   __VA_ARGS__)                           \
-    xxx(RemoveLeader,                   __VA_ARGS__)                           \
-    xxx(UpdateBrokenDevice,             __VA_ARGS__)                           \
+    xxx(InitSchema, __VA_ARGS__)                                               \
+    xxx(LoadState, __VA_ARGS__)                                                \
+    xxx(UpdateConfig, __VA_ARGS__)                                             \
+    xxx(UpdateDevices, __VA_ARGS__)                                            \
+    xxx(UpdateMigrationState, __VA_ARGS__)                                     \
+    xxx(AddClient, __VA_ARGS__)                                                \
+    xxx(RemoveClient, __VA_ARGS__)                                             \
+    xxx(ResetMountSeqNumber, __VA_ARGS__)                                      \
+    xxx(ReadHistory, __VA_ARGS__)                                              \
+    xxx(CleanupHistory, __VA_ARGS__)                                           \
+    xxx(SavePartStats, __VA_ARGS__)                                            \
+    xxx(SaveCheckpointRequest, __VA_ARGS__)                                    \
+    xxx(UpdateCheckpointRequest, __VA_ARGS__)                                  \
+    xxx(UpdateShadowDiskState, __VA_ARGS__)                                    \
+    xxx(UpdateUsedBlocks, __VA_ARGS__)                                         \
+    xxx(WriteThrottlerState, __VA_ARGS__)                                      \
+    xxx(UpdateResyncState, __VA_ARGS__)                                        \
+    xxx(ToggleResync, __VA_ARGS__)                                             \
+    xxx(UpdateClientInfo, __VA_ARGS__)                                         \
+    xxx(ResetStartPartitionsNeeded, __VA_ARGS__)                               \
+    xxx(UpdateVolumeParams, __VA_ARGS__)                                       \
+    xxx(DeleteVolumeParams, __VA_ARGS__)                                       \
+    xxx(ChangeStorageConfig, __VA_ARGS__)                                      \
+    xxx(ReadMetaHistory, __VA_ARGS__)                                          \
+    xxx(AddLaggingAgent, __VA_ARGS__)                                          \
+    xxx(RemoveLaggingAgent, __VA_ARGS__)                                       \
+    xxx(UpdateFollower, __VA_ARGS__)                                           \
+    xxx(RemoveFollower, __VA_ARGS__)                                           \
+    xxx(FinishFollowerCancellation, __VA_ARGS__)                               \
+    xxx(UpdateLeader, __VA_ARGS__)                                             \
+    xxx(RemoveLeader, __VA_ARGS__)                                             \
+    xxx(UpdateBrokenDevice, __VA_ARGS__)
+
 // BLOCKSTORE_VOLUME_TRANSACTIONS
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -786,7 +788,8 @@ struct TTxVolume
     struct TUpdateFollower
     {
         const TRequestInfoPtr RequestInfo;
-        const TFollowerDiskInfo FollowerInfo;
+        TFollowerDiskInfo FollowerInfo;
+        NProto::TError Error;
 
         TUpdateFollower(
                 TRequestInfoPtr requestInfo,
@@ -808,11 +811,18 @@ struct TTxVolume
     struct TRemoveFollower
     {
         const TRequestInfoPtr RequestInfo;
-        const TLeaderFollowerLink Link;
+        TLeaderFollowerLink Link;
+        const bool RequireCancellable;
+        NProto::TError Error;
+        TVector<TRequestInfoPtr> PendingCreateRequests;
+        NActors::TActorId CreateVolumeLinkActor;
+        bool Changed = false;
 
-        TRemoveFollower(TRequestInfoPtr requestInfo, TLeaderFollowerLink link)
+        TRemoveFollower(TRequestInfoPtr requestInfo, TLeaderFollowerLink link,
+                        bool requireCancellable = false)
             : RequestInfo(std::move(requestInfo))
             , Link(std::move(link))
+            , RequireCancellable(requireCancellable)
         {}
 
         void Clear()
@@ -825,10 +835,29 @@ struct TTxVolume
     // UpdateLeader
     //
 
+    struct TFinishFollowerCancellation
+    {
+        const TRequestInfoPtr RequestInfo;
+        const TLeaderFollowerLink Link;
+        const NActors::TActorId Propagator;
+
+        TFinishFollowerCancellation(TRequestInfoPtr requestInfo,
+                                    TLeaderFollowerLink link,
+                                    NActors::TActorId propagator)
+            : RequestInfo(std::move(requestInfo))
+            , Link(std::move(link))
+            , Propagator(propagator)
+        {}
+
+        void Clear()
+        {}
+    };
+
     struct TUpdateLeader
     {
         const TRequestInfoPtr RequestInfo;
         const TLeaderDiskInfo Leader;
+        NProto::TError Error;
 
         TUpdateLeader(TRequestInfoPtr requestInfo, TLeaderDiskInfo leader)
             : RequestInfo(std::move(requestInfo))
@@ -848,11 +877,16 @@ struct TTxVolume
     struct TRemoveLeader
     {
         const TRequestInfoPtr RequestInfo;
-        const TLeaderFollowerLink Link;
+        TLeaderFollowerLink Link;
+        const bool RequireCancellable;
+        NProto::TError Error;
+        bool Changed = false;
 
-        TRemoveLeader(TRequestInfoPtr requestInfo, TLeaderFollowerLink link)
+        TRemoveLeader(TRequestInfoPtr requestInfo, TLeaderFollowerLink link,
+                      bool requireCancellable = false)
             : RequestInfo(std::move(requestInfo))
             , Link(std::move(link))
+            , RequireCancellable(requireCancellable)
         {}
 
         void Clear()

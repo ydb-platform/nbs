@@ -156,7 +156,8 @@ void TCreateVolumeActor::DescribeBaseVolume(const TActorContext& ctx)
         NCloud::Send(
             ctx,
             MakeSSProxyServiceId(),
-            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(baseDiskId));
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(
+                baseDiskId, false, Request.GetHeaders().GetShardId()));
     } else {
         CreateVolume(ctx);
     }
@@ -254,7 +255,7 @@ void TCreateVolumeActor::CreateVolumeImpl(
         config.SetCreationTs(ctx.Now().MicroSeconds());
 
         auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
-            std::move(config));
+            std::move(config), Request.GetHeaders().GetShardId());
 
         LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
             "Sending createvolume request for direct volume %s",
@@ -352,7 +353,7 @@ void TCreateVolumeActor::CreateVolumeImpl(
     }
 
     auto request = std::make_unique<TEvSSProxy::TEvCreateVolumeRequest>(
-        std::move(config));
+        std::move(config), Request.GetHeaders().GetShardId());
 
     LOG_DEBUG(ctx, TBlockStoreComponents::SERVICE,
         "Sending createvolume request for volume %s",
@@ -474,6 +475,8 @@ void TCreateVolumeActor::HandleCreateVolumeResponse(
 
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
     request->Record.SetDiskId(Request.GetDiskId());
+    request->Record.MutableHeaders()->SetShardId(
+        Request.GetHeaders().GetShardId());
 
     NCloud::Send(
         ctx,
@@ -757,6 +760,28 @@ void TServiceActor::HandleCreateVolume(
         ev->Sender,
         ev->Cookie,
         msg->CallContext);
+
+    const auto directory =
+        Config->GetSchemeShardDirForShard(request.GetHeaders().GetShardId());
+    if (!directory) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvCreateVolumeResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+    if (directory != Config->GetSchemeShardDirForShard("") &&
+        IsDiskRegistryMediaKind(request.GetStorageMediaKind()))
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvCreateVolumeResponse>(MakeError(
+                E_NOT_IMPLEMENTED,
+                "Cross-shard creation supports replicated SSD/HDD volumes")));
+        return;
+    }
 
     const auto error = ValidateCreateVolumeRequest(*Config, request);
     if (HasError(error)) {

@@ -729,7 +729,15 @@ void TVolumeDatabase::WriteFollower(const TFollowerDiskInfo& follower)
                 follower.Link.FollowerShardId),
             NIceDb::TUpdate<TTable::FollowerMediaKind>(follower.MediaKind),
             NIceDb::TUpdate<TTable::State>(static_cast<ui32>(follower.State)),
-            NIceDb::TUpdate<TTable::ErrorMessage>(follower.ErrorMessage));
+            NIceDb::TUpdate<TTable::ErrorMessage>(follower.ErrorMessage),
+            NIceDb::TUpdate<TTable::LeaderTabletId>(
+                follower.Link.LeaderTabletId),
+            NIceDb::TUpdate<TTable::FollowerTabletId>(
+                follower.Link.FollowerTabletId),
+            NIceDb::TUpdate<TTable::CancellationPending>(
+                follower.CancellationPending),
+            NIceDb::TUpdate<TTable::CancellationRequireCancellable>(
+                follower.CancellationRequireCancellable));
 
     if (follower.MigratedBytes) {
         Table<TTable>()
@@ -764,12 +772,13 @@ bool TVolumeDatabase::ReadFollowers(TFollowerDisks& followers)
 
     while (it.IsValid()) {
         followers.push_back(TFollowerDiskInfo{
-            .Link{
-                .LinkUUID = it.GetValue<TTable::Uuid>(),
-                .LeaderDiskId = it.GetValue<TTable::LeaderDiskId>(),
-                .LeaderShardId = it.GetValue<TTable::LeaderShardId>(),
-                .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
-                .FollowerShardId = it.GetValue<TTable::FollowerShardId>()},
+            .Link{.LinkUUID = it.GetValue<TTable::Uuid>(),
+                  .LeaderDiskId = it.GetValue<TTable::LeaderDiskId>(),
+                  .LeaderShardId = it.GetValue<TTable::LeaderShardId>(),
+                  .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
+                  .FollowerShardId = it.GetValue<TTable::FollowerShardId>(),
+                  .LeaderTabletId = it.GetValue<TTable::LeaderTabletId>(),
+                  .FollowerTabletId = it.GetValue<TTable::FollowerTabletId>()},
             .CreatedAt =
                 TInstant::MicroSeconds(it.GetValue<TTable::CreatedAt>()),
             .State = static_cast<TFollowerDiskInfo::EState>(
@@ -779,7 +788,10 @@ bool TVolumeDatabase::ReadFollowers(TFollowerDisks& followers)
             .MigratedBytes = it.HaveValue<TTable::MigratedBytes>()
                                  ? it.GetValue<TTable::MigratedBytes>()
                                  : std::optional<ui64>(),
-            .ErrorMessage = it.GetValue<TTable::ErrorMessage>()});
+            .ErrorMessage = it.GetValue<TTable::ErrorMessage>(),
+            .CancellationPending = it.GetValue<TTable::CancellationPending>(),
+            .CancellationRequireCancellable =
+                it.GetValue<TTable::CancellationRequireCancellable>()});
         if (!it.Next()) {
             return false;   // not ready
         }
@@ -802,7 +814,10 @@ void TVolumeDatabase::WriteLeader(const TLeaderDiskInfo& leader)
             NIceDb::TUpdate<TTable::FollowerShardId>(
                 leader.Link.FollowerShardId),
             NIceDb::TUpdate<TTable::State>(static_cast<ui32>(leader.State)),
-            NIceDb::TUpdate<TTable::ErrorMessage>(leader.ErrorMessage));
+            NIceDb::TUpdate<TTable::ErrorMessage>(leader.ErrorMessage),
+            NIceDb::TUpdate<TTable::LeaderTabletId>(leader.Link.LeaderTabletId),
+            NIceDb::TUpdate<TTable::FollowerTabletId>(
+                leader.Link.FollowerTabletId));
 }
 
 void TVolumeDatabase::DeleteLeader(const TLeaderFollowerLink& link)
@@ -826,12 +841,13 @@ bool TVolumeDatabase::ReadLeaders(TLeaderDisks& leaders)
 
     while (it.IsValid()) {
         leaders.push_back(TLeaderDiskInfo{
-            .Link{
-                .LinkUUID = it.GetValue<TTable::Uuid>(),
-                .LeaderDiskId = it.GetValue<TTable::LeaderDiskId>(),
-                .LeaderShardId = it.GetValue<TTable::LeaderShardId>(),
-                .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
-                .FollowerShardId = it.GetValue<TTable::FollowerShardId>()},
+            .Link{.LinkUUID = it.GetValue<TTable::Uuid>(),
+                  .LeaderDiskId = it.GetValue<TTable::LeaderDiskId>(),
+                  .LeaderShardId = it.GetValue<TTable::LeaderShardId>(),
+                  .FollowerDiskId = it.GetValue<TTable::FollowerDiskId>(),
+                  .FollowerShardId = it.GetValue<TTable::FollowerShardId>(),
+                  .LeaderTabletId = it.GetValue<TTable::LeaderTabletId>(),
+                  .FollowerTabletId = it.GetValue<TTable::FollowerTabletId>()},
             .CreatedAt =
                 TInstant::MicroSeconds(it.GetValue<TTable::CreatedAt>()),
             .State = static_cast<TLeaderDiskInfo::EState>(

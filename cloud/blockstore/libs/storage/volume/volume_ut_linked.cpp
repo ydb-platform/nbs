@@ -105,6 +105,15 @@ struct TFixture: public NUnitTest::TBaseFixture
     void SetUp(NUnitTest::TTestContext& /*testContext*/) override
     {
         NProto::TStorageServiceConfig config;
+
+        // These low-level tests use one mocked schema namespace. Their
+        // distinct shard labels disable direct-copy optimizations and are
+        // now explicitly allowlisted rather than silently ignored.
+        for (const TString shard:
+             {"su1", "su2", "leader-shard", "follower-shard"})
+        {
+            (*config.MutableShardDirectories())[shard] = "/local/nbs";
+        }
         {
             NProto::TLinkedDiskFillBandwidth defaultBandwidth;
             defaultBandwidth.SetReadBandwidth(100);

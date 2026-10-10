@@ -88,6 +88,49 @@ std::pair<TString, TBlockRange64> ParseCheckRangeRequestJson(
 
 Y_UNIT_TEST_SUITE(TCommandTest)
 {
+    Y_UNIT_TEST(ShouldPassShardIdentifiersToVolumeLinkCommands)
+    {
+        for (const bool withShards: {false, true}) {
+            auto client = std::make_shared<TTestService>();
+            bool created = false;
+            bool destroyed = false;
+            auto check = [&](const auto& request)
+            {
+                UNIT_ASSERT_VALUES_EQUAL("disk", request->GetLeaderDiskId());
+                UNIT_ASSERT_VALUES_EQUAL("disk-copy",
+                                         request->GetFollowerDiskId());
+                UNIT_ASSERT_VALUES_EQUAL(withShards ? "source" : "",
+                                         request->GetLeaderShardId());
+                UNIT_ASSERT_VALUES_EQUAL(withShards ? "target" : "",
+                                         request->GetFollowerShardId());
+            };
+            client->CreateVolumeLinkHandler =
+                [&](std::shared_ptr<NProto::TCreateVolumeLinkRequest> request)
+            {
+                check(request);
+                created = true;
+                return MakeFuture(NProto::TCreateVolumeLinkResponse{});
+            };
+            client->DestroyVolumeLinkHandler =
+                [&](std::shared_ptr<NProto::TDestroyVolumeLinkRequest> request)
+            {
+                check(request);
+                destroyed = true;
+                return MakeFuture(NProto::TDestroyVolumeLinkResponse{});
+            };
+            TVector<TString> args{GetProgramName(), "--leader-disk-id=disk",
+                                  "--follower-disk-id=disk-copy"};
+            if (withShards) {
+                args.push_back("--leader-shard-id=source");
+                args.push_back("--follower-shard-id=target");
+            }
+            UNIT_ASSERT(ExecuteRequest("createvolumelink", args, client));
+            UNIT_ASSERT(ExecuteRequest("destroyvolumelink", args, client));
+            UNIT_ASSERT(created);
+            UNIT_ASSERT(destroyed);
+        }
+    }
+
     Y_UNIT_TEST(ShouldAutoMountUnmountVolumeOnReadWriteZeroBlocksRequests)
     {
         auto client = std::make_shared<TTestService>();

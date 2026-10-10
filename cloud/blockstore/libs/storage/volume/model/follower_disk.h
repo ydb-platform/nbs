@@ -45,6 +45,8 @@ struct TLeaderFollowerLink
     TString LeaderShardId;
     TString FollowerDiskId;
     TString FollowerShardId;
+    ui64 LeaderTabletId = 0;
+    ui64 FollowerTabletId = 0;
 
     ui64 GetHash() const;
     TString LeaderDiskIdForPrint() const;
@@ -58,6 +60,10 @@ struct TOutdatedLeaderDestruction
 {
     size_t TryCount = 0;
     TBackoffDelayProvider DelayProvider;
+    TString LinkUUID;
+    bool InFlight = false;
+    bool AwaitingSourceStatus = false;
+    ui64 Cookie = 0;
 };
 
 // Link info persisted on follower side.
@@ -75,6 +81,7 @@ struct TLeaderDiskInfo
                        // Need to destroy previous leader.
 
         Principal = 30,   // Previous leader destroyed.
+        Cancelled = 40,   // Durable fence against delayed CREATE for this UUID.
     };
 
     TLeaderFollowerLink Link;
@@ -119,6 +126,9 @@ struct TFollowerDiskInfo
         NProto::EStorageMediaKind::STORAGE_MEDIA_DEFAULT;
     std::optional<ui64> MigratedBytes;
     TString ErrorMessage;
+    // Retained until destination acknowledges cancellation of this UUID.
+    bool CancellationPending = false;
+    bool CancellationRequireCancellable = false;
 
     TString Describe() const;
     bool operator==(const TFollowerDiskInfo& rhs) const;

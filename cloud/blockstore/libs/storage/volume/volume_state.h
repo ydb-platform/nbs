@@ -857,9 +857,12 @@ public:
 
     std::optional<TFollowerDiskInfo> FindFollower(
         const TLeaderFollowerLink& link) const;
+    std::optional<TFollowerDiskInfo> FindFollowerCancellation(
+        const TLeaderFollowerLink& link) const;
     void AddOrUpdateFollower(TFollowerDiskInfo follower);
     void RemoveFollower(const TLeaderFollowerLink& link);
     const TFollowerDisks& GetAllFollowers() const;
+    bool HasActiveFollower() const;
 
     void StartCreateLeaderRequest();
     void FinishCreateLeaderRequest();

@@ -2,6 +2,7 @@
 
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/core/config.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
 #include <cloud/blockstore/libs/storage/model/volume_label.h>
 
 #include <contrib/ydb/core/protos/schemeshard/operations.pb.h>
@@ -30,18 +31,20 @@ private:
     const ui64 TokenVersion;
 
     const ui64 FillGeneration;
+    const TString ShardId;
+    const ui64 ExpectedTabletId;
+    TString VerifiedPath;
+    ui64 VerifiedPathId = 0;
+    ui64 VerifiedPathVersion = 0;
 
     bool FallbackRequest = false;
 
 public:
-    TModifyVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        EOpType opType,
-        TString diskId,
-        TString newMountToken,
-        ui64 tokenVersion,
-        ui64 fillGeneration);
+    TModifyVolumeActor(TRequestInfoPtr requestInfo,
+                       TStorageConfigConstPtr config, EOpType opType,
+                       TString diskId, TString newMountToken, ui64 tokenVersion,
+                       ui64 fillGeneration, TString shardId,
+                       ui64 expectedTabletId);
 
     void Bootstrap(const TActorContext& ctx);
 
@@ -49,6 +52,9 @@ private:
     STFUNC(StateWork);
 
     void TryModifyScheme(const TActorContext& ctx);
+    void HandleDescribeGuardedVolumeResponse(
+        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const TActorContext& ctx);
 
     void HandleModifySchemeResponse(
         const TEvSSProxy::TEvModifySchemeResponse::TPtr& ev,
@@ -58,13 +64,9 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TModifyVolumeActor::TModifyVolumeActor(
-        TRequestInfoPtr requestInfo,
-        TStorageConfigConstPtr config,
-        EOpType opType,
-        TString diskId,
-        TString newMountToken,
-        ui64 tokenVersion,
-        ui64 fillGeneration)
+    TRequestInfoPtr requestInfo, TStorageConfigConstPtr config, EOpType opType,
+    TString diskId, TString newMountToken, ui64 tokenVersion,
+    ui64 fillGeneration, TString shardId, ui64 expectedTabletId)
     : RequestInfo(std::move(requestInfo))
     , Config(std::move(config))
     , OpType(opType)
@@ -72,13 +74,21 @@ TModifyVolumeActor::TModifyVolumeActor(
     , NewMountToken(std::move(newMountToken))
     , TokenVersion(tokenVersion)
     , FillGeneration(fillGeneration)
+    , ShardId(std::move(shardId))
+    , ExpectedTabletId(expectedTabletId)
 {}
 
 void TModifyVolumeActor::Bootstrap(const TActorContext& ctx)
 {
-    TryModifyScheme(ctx);
-
     Become(&TThis::StateWork);
+    if (ExpectedTabletId) {
+        NCloud::Send(
+            ctx, MakeSSProxyServiceId(),
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId, true,
+                                                                   ShardId));
+    } else {
+        TryModifyScheme(ctx);
+    }
 }
 
 void TModifyVolumeActor::TryModifyScheme(const TActorContext& ctx)
@@ -86,7 +96,12 @@ void TModifyVolumeActor::TryModifyScheme(const TActorContext& ctx)
     TString volumeDir;
     TString volumeName;
 
-    if (!FallbackRequest) {
+    if (ExpectedTabletId) {
+        TStringBuf dir, name;
+        TStringBuf(VerifiedPath).RSplit('/', dir, name);
+        volumeDir = TString(dir);
+        volumeName = TString(name);
+    } else if (!FallbackRequest) {
         std::tie(volumeDir, volumeName)  =
             DiskIdToVolumeDirAndNameDeprecated(
                 Config->GetSchemeShardDir(),
@@ -120,6 +135,12 @@ void TModifyVolumeActor::TryModifyScheme(const TActorContext& ctx)
 
             auto* op = modifyScheme.MutableDrop();
             op->SetName(volumeName);
+            if (ExpectedTabletId) {
+                op->SetId(VerifiedPathId);
+                auto* condition = modifyScheme.AddApplyIf();
+                condition->SetPathId(VerifiedPathId);
+                condition->SetPathVersion(VerifiedPathVersion);
+            }
 
             auto* opParams = modifyScheme.MutableDropBlockStoreVolume();
             opParams->SetFillGeneration(FillGeneration);
@@ -132,6 +153,43 @@ void TModifyVolumeActor::TryModifyScheme(const TActorContext& ctx)
         std::make_unique<TEvSSProxy::TEvModifySchemeRequest>(modifyScheme);
 
     NCloud::Send(ctx, MakeSSProxyServiceId(), std::move(request));
+}
+
+void TModifyVolumeActor::HandleDescribeGuardedVolumeResponse(
+    const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    auto error = msg->GetError();
+    const auto& description = msg->PathDescription;
+    if (IsNotFoundSchemeShardError(error) ||
+        (!HasError(error) &&
+         description.GetBlockStoreVolumeDescription().GetVolumeTabletId() !=
+             ExpectedTabletId))
+    {
+        error = MakeError(S_ALREADY,
+                          "Expected volume incarnation no longer exists");
+    }
+    if (HasError(error) || error.GetCode() == S_ALREADY) {
+        NCloud::Reply(
+            ctx, *RequestInfo,
+            std::make_unique<TEvSSProxy::TEvModifyVolumeResponse>(error));
+        Die(ctx);
+        return;
+    }
+    VerifiedPath = msg->Path;
+    VerifiedPathId = description.GetSelf().GetPathId();
+    VerifiedPathVersion = description.GetSelf().GetPathVersion();
+    if (!VerifiedPathId) {
+        NCloud::Reply(
+            ctx,
+            *RequestInfo,
+            std::make_unique<TEvSSProxy::TEvModifyVolumeResponse>(MakeError(
+                E_INVALID_STATE, "Cannot verify the expected schema path")));
+        Die(ctx);
+        return;
+    }
+    TryModifyScheme(ctx);
 }
 
 void TModifyVolumeActor::HandleModifySchemeResponse(
@@ -147,6 +205,10 @@ void TModifyVolumeActor::HandleModifySchemeResponse(
     if (FAILED(errorCode) && FACILITY_FROM_CODE(errorCode) == FACILITY_SCHEMESHARD) {
         switch ((NKikimrScheme::EStatus) STATUS_FROM_CODE(errorCode)) {
             case NKikimrScheme::StatusPathDoesNotExist:
+                if (ExpectedTabletId) {
+                    error.SetCode(S_ALREADY);
+                    break;
+                }
                 if (!FallbackRequest) {
                     FallbackRequest = true;
                     TryModifyScheme(ctx);
@@ -181,6 +243,8 @@ STFUNC(TModifyVolumeActor::StateWork)
 {
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvSSProxy::TEvModifySchemeResponse, HandleModifySchemeResponse);
+        HFunc(TEvSSProxy::TEvDescribeVolumeResponse,
+              HandleDescribeGuardedVolumeResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -206,15 +270,20 @@ void TSSProxyActor::HandleModifyVolume(
         ev->Cookie,
         msg->CallContext);
 
+    auto config = GetConfigForShard(msg->ShardId);
+    if (!config) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvSSProxy::TEvModifyVolumeResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+
     NCloud::Register<TModifyVolumeActor>(
-        ctx,
-        std::move(requestInfo),
-        Config,
-        msg->OpType,
-        msg->DiskId,
-        msg->NewMountToken,
-        msg->TokenVersion,
-        msg->FillGeneration);
+        ctx, std::move(requestInfo), std::move(config), msg->OpType,
+        msg->DiskId, msg->NewMountToken, msg->TokenVersion, msg->FillGeneration,
+        msg->ShardId, msg->ExpectedTabletId);
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

@@ -158,6 +158,11 @@ public:
     GetEffectiveStorageConfigProto() const;
 
     TString GetSchemeShardDir() const;
+
+    // Empty shardId selects the local directory. Unknown shards and invalid
+    // configured directories return nullopt. Request paths are never accepted.
+    [[nodiscard]] std::optional<TString> GetSchemeShardDirForShard(
+        const TString& shardId) const;
     [[nodiscard]] ui32 GetListVolumesConcurrency() const;
     ui32 GetWriteBlobThreshold() const;
     ui32 GetWriteBlobThresholdSSD() const;

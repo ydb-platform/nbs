@@ -1,5 +1,8 @@
 #include "volume_actor.h"
 
+#include <cloud/blockstore/libs/storage/api/volume_proxy.h>
+#include <cloud/blockstore/libs/storage/core/proto_helpers.h>
+
 #include <cloud/storage/core/libs/common/format.h>
 
 namespace NCloud::NBlockStore::NStorage {
@@ -33,6 +36,14 @@ void TVolumeActor::ExecuteUpdateLeader(
     TTxVolume::TUpdateLeader& args)
 {
     auto current = State->FindLeader(args.Leader.Link);
+    if ((current && current->State == TLeaderDiskInfo::EState::Cancelled) ||
+        (args.Leader.State != TLeaderDiskInfo::EState::Following &&
+         (!current || current->State > args.Leader.State)))
+    {
+        args.Error = MakeError(E_INVALID_STATE,
+                               "Leader link no longer exists or has advanced");
+        return;
+    }
 
     LOG_INFO(
         ctx,
@@ -58,9 +69,16 @@ void TVolumeActor::CompleteUpdateLeader(
 
     auto response =
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-            MakeError(S_OK));
+            args.Error);
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
+    if (!HasError(args.Error)) {
+        if (args.Leader.State == TLeaderDiskInfo::EState::Principal &&
+            OutdatedLeaderDestruction &&
+            OutdatedLeaderDestruction->LinkUUID == args.Leader.Link.LinkUUID)
+        {
+            OutdatedLeaderDestruction.reset();
+        }
+    }
     DestroyOutdatedLeaderIfNeeded(ctx);
 }
 
@@ -83,16 +101,35 @@ void TVolumeActor::ExecuteRemoveLeader(
     ITransactionBase::TTransactionContext& tx,
     TTxVolume::TRemoveLeader& args)
 {
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s Remove leader %s",
-        LogTitle.GetWithTime().c_str(),
-        args.Link.Describe().c_str());
+    Y_UNUSED(ctx);
+    const auto leader = State->FindLeader(args.Link);
+    if (leader && leader->State == TLeaderDiskInfo::EState::Cancelled) {
+        args.Error = MakeError(S_ALREADY);
+        return;
+    }
+    if (args.RequireCancellable && leader &&
+        leader->State != TLeaderDiskInfo::EState::Following)
+    {
+        args.Error = MakeError(
+            E_INVALID_STATE,
+            "Cannot cancel a link after leadership transfer has started");
+        return;
+    }
+    if (leader) {
+        args.Link = leader->Link;
+        args.Changed = true;
+    }
+    if (!args.Link.LinkUUID) {
+        args.Error = MakeError(S_ALREADY);
+        return;
+    }
 
+    // Retain a durable UUID fence even when CREATE has not arrived yet.
+    TLeaderDiskInfo cancelled{.Link = args.Link, .CreatedAt = ctx.Now(),
+                              .State = TLeaderDiskInfo::EState::Cancelled};
     TVolumeDatabase db(tx.DB);
-    State->RemoveLeader(args.Link);
-    db.DeleteLeader(args.Link);
+    State->AddOrUpdateLeader(cancelled);
+    db.WriteLeader(cancelled);
 }
 
 void TVolumeActor::CompleteRemoveLeader(
@@ -101,11 +138,14 @@ void TVolumeActor::CompleteRemoveLeader(
 {
     auto response =
         std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-            MakeError(S_OK));
+            args.Error);
 
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
-
-    RestartPartition(ctx, {});
+    if (!HasError(args.Error) && args.Changed) {
+        // Release the cancelled generation's slot before starting another.
+        DestroyOutdatedLeaderIfNeeded(ctx);
+        RestartPartition(ctx, {});
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -121,10 +161,30 @@ void TVolumeActor::CreateLeaderLink(
             ctx,
             *requestInfo,
             std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-                MakeError(S_ALREADY)));
+                MakeError(
+                    currentLeader->State == TLeaderDiskInfo::EState::Cancelled
+                        ? E_INVALID_STATE
+                        : S_ALREADY,
+                    currentLeader->State == TLeaderDiskInfo::EState::Cancelled
+                        ? "Link creation was cancelled"
+                        : "")));
         return;
     }
 
+    if (Config->GetSchemeShardDirForShard(link.LeaderShardId) !=
+            Config->GetSchemeShardDirForShard(link.FollowerShardId) &&
+        State->GetStorageMediaKind() != NProto::STORAGE_MEDIA_SSD &&
+        State->GetStorageMediaKind() != NProto::STORAGE_MEDIA_HDD)
+    {
+        NCloud::Reply(
+            ctx,
+            *requestInfo,
+            std::make_unique<
+                TEvVolume::TEvUpdateLinkOnFollowerResponse>(MakeError(
+                E_NOT_IMPLEMENTED,
+                "Cross-shard links support only replicated SSD/HDD volumes")));
+        return;
+    }
     if (State->IsVolumeOperationRestricted()) {
         // Link propagation retries E_REJECTED responses with backoff.
         auto response =
@@ -151,21 +211,11 @@ void TVolumeActor::CreateLeaderLink(
 }
 
 void TVolumeActor::DestroyLeaderLink(
-    TRequestInfoPtr requestInfo,
-    TLeaderFollowerLink link,
-    const NActors::TActorContext& ctx)
+    TRequestInfoPtr requestInfo, TLeaderFollowerLink link,
+    bool requireCancellable, const NActors::TActorContext& ctx)
 {
-    auto currentLeader = State->FindLeader(link);
-    if (!currentLeader) {
-        NCloud::Reply(
-            ctx,
-            *requestInfo,
-            std::make_unique<TEvVolume::TEvUpdateLinkOnFollowerResponse>(
-                MakeError(S_ALREADY)));
-        return;
-    }
-
-    ExecuteTx<TRemoveLeader>(ctx, std::move(requestInfo), std::move(link));
+    ExecuteTx<TRemoveLeader>(ctx, std::move(requestInfo), std::move(link),
+                             requireCancellable);
 }
 
 void TVolumeActor::UpdateLeaderLink(
@@ -206,6 +256,7 @@ void TVolumeActor::UpdateLeaderLink(
         return;
     }
 
+    link = currentLeader->Link;
     auto leaderInfo = TLeaderDiskInfo{
         .Link = std::move(link),
         .CreatedAt = TInstant::Now(),
@@ -220,90 +271,191 @@ void TVolumeActor::UpdateLeaderLink(
 void TVolumeActor::DestroyOutdatedLeaderIfNeeded(
     const NActors::TActorContext& ctx)
 {
+    if (OutdatedLeaderDestruction) {
+        const auto reserved = State->FindLeader(TLeaderFollowerLink{
+            .LinkUUID = OutdatedLeaderDestruction->LinkUUID});
+        if (reserved && reserved->State == TLeaderDiskInfo::EState::Leader) {
+            return;
+        }
+        OutdatedLeaderDestruction.reset();
+    }
     for (const auto& leader: State->GetAllLeaders()) {
         if (leader.State != TLeaderDiskInfo::EState::Leader) {
             continue;
         }
-
-        if (!OutdatedLeaderDestruction.has_value()) {
-            OutdatedLeaderDestruction.emplace(
-                TOutdatedLeaderDestruction{
-                    .TryCount = 0,
-                    .DelayProvider = TBackoffDelayProvider(
-                        OutdatedLeaderDestructionBackoffDelay,
-                        OutdatedLeaderDestructionMaxBackoffDelay)});
-        }
-
-        ++OutdatedLeaderDestruction->TryCount;
-
-        auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
-        request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
-        request->Record.SetDiskId(leader.Link.LeaderDiskId);
-
-        auto event = std::make_unique<IEventHandle>(
-            MakeStorageServiceId(),
-            SelfId(),
-            request.release(),
-            0,                      // flags
-            leader.Link.GetHash()   // cookie
-        );
-
-        LOG_INFO(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s Schedule destroying old leader DiskId=%s, try# %lu after "
-            "%s",
-            LogTitle.GetWithTime().c_str(),
-            leader.Link.LeaderDiskId.Quote().c_str(),
-            OutdatedLeaderDestruction->TryCount,
-            FormatDuration(OutdatedLeaderDestruction->DelayProvider.GetDelay())
-                .c_str());
-
+        OutdatedLeaderDestruction.emplace(TOutdatedLeaderDestruction{
+            .TryCount = 0,
+            .DelayProvider =
+                TBackoffDelayProvider(OutdatedLeaderDestructionBackoffDelay,
+                                      OutdatedLeaderDestructionMaxBackoffDelay),
+            .LinkUUID = leader.Link.LinkUUID});
         ctx.Schedule(
             OutdatedLeaderDestruction->DelayProvider.GetDelay(),
-            std::move(event));
+            new TEvVolumePrivate::TEvDestroyOutdatedLeader(
+                leader.Link.LinkUUID));
+        return;
     }
+}
+
+void TVolumeActor::HandleDestroyOutdatedLeader(
+    const TEvVolumePrivate::TEvDestroyOutdatedLeader::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (!OutdatedLeaderDestruction ||
+        OutdatedLeaderDestruction->LinkUUID != ev->Get()->LinkUUID ||
+        OutdatedLeaderDestruction->InFlight)
+    {
+        return;
+    }
+    const auto leader =
+        State->FindLeader(TLeaderFollowerLink{.LinkUUID = ev->Get()->LinkUUID});
+    if (!leader || leader->State != TLeaderDiskInfo::EState::Leader) {
+        OutdatedLeaderDestruction.reset();
+        DestroyOutdatedLeaderIfNeeded(ctx);
+        return;
+    }
+    auto& cleanup = *OutdatedLeaderDestruction;
+    cleanup.InFlight = true;
+    cleanup.Cookie = ++OutdatedLeaderDestructionCookie;
+    ++cleanup.TryCount;
+    // Verify UUID and media kind on the current source before selecting the
+    // replicated conditional-delete or existing local legacy workflow.
+    cleanup.AwaitingSourceStatus = true;
+    auto request = std::make_unique<TEvVolume::TEvGetLinkStatusRequest>();
+    auto& record = request->Record;
+    record.SetDiskId(leader->Link.LeaderDiskId);
+    record.SetLeaderDiskId(leader->Link.LeaderDiskId);
+    record.SetLeaderShardId(leader->Link.LeaderShardId);
+    record.SetFollowerDiskId(leader->Link.FollowerDiskId);
+    record.SetFollowerShardId(leader->Link.FollowerShardId);
+    record.SetLinkUUID(leader->Link.LinkUUID);
+    record.MutableHeaders()->SetShardId(leader->Link.LeaderShardId);
+    record.MutableHeaders()->SetExactDiskIdMatch(true);
+    NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request),
+                 cleanup.Cookie);
+}
+
+void TVolumeActor::SendOutdatedLeaderDestroy(const NActors::TActorContext& ctx,
+                                             const TLeaderFollowerLink& link,
+                                             ui64 expectedTabletId)
+{
+    OutdatedLeaderDestruction->AwaitingSourceStatus = false;
+    auto request = std::make_unique<TEvService::TEvDestroyVolumeRequest>();
+    request->Record.SetDiskId(link.LeaderDiskId);
+    request->Record.SetExpectedVolumeTabletId(expectedTabletId);
+    request->Record.MutableHeaders()->SetShardId(link.LeaderShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
+    NCloud::Send(ctx, MakeStorageServiceId(), std::move(request),
+                 OutdatedLeaderDestruction->Cookie);
+}
+
+void TVolumeActor::HandleOutdatedLeaderStatusResponse(
+    const TEvVolume::TEvGetLinkStatusResponse::TPtr& ev,
+    const NActors::TActorContext& ctx)
+{
+    if (!OutdatedLeaderDestruction || !OutdatedLeaderDestruction->InFlight ||
+        !OutdatedLeaderDestruction->AwaitingSourceStatus ||
+        OutdatedLeaderDestruction->Cookie != ev->Cookie)
+    {
+        return;
+    }
+    const auto leader = State->FindLeader(
+        TLeaderFollowerLink{.LinkUUID = OutdatedLeaderDestruction->LinkUUID});
+    if (!leader || leader->State != TLeaderDiskInfo::EState::Leader) {
+        OutdatedLeaderDestruction.reset();
+        DestroyOutdatedLeaderIfNeeded(ctx);
+        return;
+    }
+    OutdatedLeaderDestruction->AwaitingSourceStatus = false;
+    const auto& record = ev->Get()->Record;
+    if (IsNotFoundSchemeShardError(ev->Get()->GetError())) {
+        FinishOutdatedLeaderDestroy(ctx, {});
+        return;
+    }
+    if (HasError(ev->Get()->GetError()) || !record.GetVolumeTabletId() ||
+        (record.GetStatus() != NProto::LINK_STATUS_NOT_FOUND &&
+         record.GetLinkUUID().empty()))
+    {
+        // An older or incomplete response is not proof of missing ownership.
+        FinishOutdatedLeaderDestroy(
+            ctx,
+            MakeError(E_REJECTED, "Cannot verify the old source incarnation"));
+        return;
+    }
+    if (record.GetStatus() == NProto::LINK_STATUS_NOT_FOUND ||
+        record.GetLinkUUID() != leader->Link.LinkUUID)
+    {
+        FinishOutdatedLeaderDestroy(ctx, {});
+        return;
+    }
+    if (record.GetStatus() != NProto::LINK_STATUS_LEADERSHIP_TRANSFERRED) {
+        FinishOutdatedLeaderDestroy(
+            ctx,
+            MakeError(E_REJECTED, "The source has not transferred leadership"));
+        return;
+    }
+    if (leader->Link.LeaderTabletId &&
+        leader->Link.LeaderTabletId != record.GetVolumeTabletId())
+    {
+        FinishOutdatedLeaderDestroy(ctx, {});
+        return;
+    }
+    const auto mediaKind = record.GetStorageMediaKind();
+    const bool replicated = mediaKind == NProto::STORAGE_MEDIA_SSD ||
+                            mediaKind == NProto::STORAGE_MEDIA_HDD;
+    if (!replicated &&
+        Config->GetSchemeShardDirForShard(leader->Link.LeaderShardId) !=
+            Config->GetSchemeShardDirForShard(leader->Link.FollowerShardId))
+    {
+        FinishOutdatedLeaderDestroy(
+            ctx, MakeError(E_REJECTED,
+                           "Unsupported or unknown remote cleanup media kind"));
+        return;
+    }
+    // Existing same-shard DR/default workflows do not opt into the new
+    // conditional-delete contract. Explicit conditional DR requests reject.
+    SendOutdatedLeaderDestroy(ctx, leader->Link,
+                              replicated ? record.GetVolumeTabletId() : 0);
+}
+
+void TVolumeActor::FinishOutdatedLeaderDestroy(
+    const NActors::TActorContext& ctx, const NProto::TError& error)
+{
+    if (!OutdatedLeaderDestruction) {
+        return;
+    }
+    const auto leader = State->FindLeader(
+        TLeaderFollowerLink{.LinkUUID = OutdatedLeaderDestruction->LinkUUID});
+    if (!leader || leader->State != TLeaderDiskInfo::EState::Leader) {
+        OutdatedLeaderDestruction.reset();
+        DestroyOutdatedLeaderIfNeeded(ctx);
+        return;
+    }
+    if (HasError(error)) {
+        auto& cleanup = *OutdatedLeaderDestruction;
+        cleanup.InFlight = false;
+        cleanup.DelayProvider.IncreaseDelay();
+        ctx.Schedule(
+            cleanup.DelayProvider.GetDelay(),
+            new TEvVolumePrivate::TEvDestroyOutdatedLeader(cleanup.LinkUUID));
+        return;
+    }
+    // Keep the pending flag until the Principal transaction commits.
+    UpdateLeaderLink(CreateRequestInfo({}, 0, MakeIntrusive<TCallContext>()),
+                     leader->Link, TLeaderDiskInfo::EState::Principal, ctx);
 }
 
 void TVolumeActor::HandleDestroyOutdatedLeaderVolumeResponse(
     const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
     const NActors::TActorContext& ctx)
 {
-    const auto* msg = ev->Get();
-
-    auto leader = State->FindLeaderByHash(ev->Cookie);
-    TString diskId = leader ? leader->Link.LeaderDiskId : "unknown";
-
-    if (HasError(msg->GetError())) {
-        LOG_ERROR(
-            ctx,
-            TBlockStoreComponents::VOLUME,
-            "%s Destroy leader volume %s error: %s",
-            LogTitle.GetWithTime().c_str(),
-            diskId.Quote().c_str(),
-            FormatError(msg->GetError()).c_str());
-
-        if (leader) {
-            OutdatedLeaderDestruction->DelayProvider.IncreaseDelay();
-            DestroyOutdatedLeaderIfNeeded(ctx);
-        }
+    if (!OutdatedLeaderDestruction || !OutdatedLeaderDestruction->InFlight ||
+        OutdatedLeaderDestruction->AwaitingSourceStatus ||
+        OutdatedLeaderDestruction->Cookie != ev->Cookie)
+    {
         return;
     }
-
-    LOG_INFO(
-        ctx,
-        TBlockStoreComponents::VOLUME,
-        "%s Destroy leader volume %s success",
-        LogTitle.GetWithTime().c_str(),
-        diskId.Quote().c_str());
-
-    if (leader) {
-        UpdateLeaderLink(
-            CreateRequestInfo({}, 0, MakeIntrusive<TCallContext>()),
-            leader->Link,
-            TLeaderDiskInfo::EState::Principal,
-            ctx);
-    }
+    FinishOutdatedLeaderDestroy(ctx, ev->Get()->GetError());
 }
 
 void TVolumeActor::HandleUpdateLinkOnFollower(
@@ -317,7 +469,9 @@ void TVolumeActor::HandleUpdateLinkOnFollower(
         .LeaderDiskId = msg->Record.GetLeaderDiskId(),
         .LeaderShardId = msg->Record.GetLeaderShardId(),
         .FollowerDiskId = msg->Record.GetDiskId(),
-        .FollowerShardId = msg->Record.GetFollowerShardId()};
+        .FollowerShardId = msg->Record.GetFollowerShardId(),
+        .LeaderTabletId = msg->Record.GetLeaderTabletId(),
+        .FollowerTabletId = msg->Record.GetFollowerTabletId()};
 
     LOG_INFO(
         ctx,
@@ -352,11 +506,29 @@ void TVolumeActor::HandleUpdateLinkOnFollower(
 
     switch (msg->Record.GetAction()) {
         case NProto::LINK_ACTION_CREATE: {
+            const bool crossShard =
+                Config->GetSchemeShardDirForShard(link.LeaderShardId) !=
+                Config->GetSchemeShardDirForShard(link.FollowerShardId);
+            if ((link.FollowerTabletId &&
+                 link.FollowerTabletId != TabletID()) ||
+                (crossShard && !link.FollowerTabletId))
+            {
+                NCloud::Reply(
+                    ctx,
+                    *requestInfo,
+                    std::make_unique<
+                        TEvVolume::TEvUpdateLinkOnFollowerResponse>(MakeError(
+                        E_INVALID_STATE,
+                        "CREATE addressed a different destination "
+                        "incarnation")));
+                return;
+            }
             CreateLeaderLink(std::move(requestInfo), std::move(link), ctx);
             break;
         }
         case NProto::LINK_ACTION_DESTROY: {
-            DestroyLeaderLink(std::move(requestInfo), std::move(link), ctx);
+            DestroyLeaderLink(std::move(requestInfo), std::move(link),
+                              msg->Record.GetRequireCancellable(), ctx);
             break;
         }
         case NProto::LINK_ACTION_COMPLETED: {

@@ -88,6 +88,7 @@ class TVolumeActor final
     {
         STARTED_FOR_GC,
         STARTED_FOR_USE,
+        STARTED_FOR_COPY,
         NOT_STARTED
     };
 
@@ -416,6 +417,8 @@ private:
     TVector<ui64> GCCompletedPartitions;
 
     std::optional<TOutdatedLeaderDestruction> OutdatedLeaderDestruction;
+    ui64 OutdatedLeaderDestructionCookie = 0;
+    THashMap<TString, NActors::TActorId> FollowerCancellationPropagators;
 
     struct TPartCountersData
     {
@@ -602,6 +605,7 @@ private:
 
     void StartPartitionsIfNeeded(const NActors::TActorContext& ctx);
     void StartPartitionsForUse(const NActors::TActorContext& ctx);
+    void StartPartitionsForCopy(const NActors::TActorContext& ctx);
     void StartPartitionsForGc(const NActors::TActorContext& ctx);
     void StopPartitions(
         const NActors::TActorContext& ctx,
@@ -1340,6 +1344,10 @@ private:
         const TEvVolumePrivate::TEvCreateLinkFinished::TPtr& ev,
         const NActors::TActorContext& ctx);
 
+    void PropagateFollowerCancellations(const NActors::TActorContext& ctx);
+    void HandleRetryFollowerCancellations(
+        const TEvVolumePrivate::TEvRetryFollowerCancellations::TPtr& ev,
+        const NActors::TActorContext& ctx);
     void HandleLinkOnFollowerDestroyed(
         const TEvVolumePrivate::TEvLinkOnFollowerDestroyed::TPtr& ev,
         const NActors::TActorContext& ctx);
@@ -1351,10 +1359,9 @@ private:
         const NActors::TActorContext& ctx);
 
     // Remove link to leader volume on follower side
-    void DestroyLeaderLink(
-        TRequestInfoPtr requestInfo,
-        TLeaderFollowerLink link,
-        const NActors::TActorContext& ctx);
+    void DestroyLeaderLink(TRequestInfoPtr requestInfo,
+                           TLeaderFollowerLink link, bool requireCancellable,
+                           const NActors::TActorContext& ctx);
 
     // Update link to leader volume on follower side
     void UpdateLeaderLink(
@@ -1366,6 +1373,17 @@ private:
     // Destroy old leader after leadership transferred to follower (happens on
     // the follower's side).
     void DestroyOutdatedLeaderIfNeeded(const NActors::TActorContext& ctx);
+    void HandleDestroyOutdatedLeader(
+        const TEvVolumePrivate::TEvDestroyOutdatedLeader::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void SendOutdatedLeaderDestroy(const NActors::TActorContext& ctx,
+                                   const TLeaderFollowerLink& link,
+                                   ui64 expectedTabletId);
+    void HandleOutdatedLeaderStatusResponse(
+        const TEvVolume::TEvGetLinkStatusResponse::TPtr& ev,
+        const NActors::TActorContext& ctx);
+    void FinishOutdatedLeaderDestroy(const NActors::TActorContext& ctx,
+                                     const NProto::TError& error);
     void HandleDestroyOutdatedLeaderVolumeResponse(
         const TEvService::TEvDestroyVolumeResponse::TPtr& ev,
         const NActors::TActorContext& ctx);

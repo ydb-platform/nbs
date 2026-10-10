@@ -216,6 +216,17 @@ void TSSProxyFallbackActor::HandleDescribeScheme(
 {
     using TResponse = TEvSSProxy::TEvDescribeSchemeResponse;
 
+    const auto directory =
+        Config->GetSchemeShardDirForShard(ev->Get()->ShardId);
+    if (!directory) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+
     if (!PathDescriptionBackup) {
         // should not return fatal error to client
         auto error = MakeError(E_REJECTED, "PathDescriptionBackup is not set");
@@ -244,6 +255,17 @@ void TSSProxyFallbackActor::HandleDescribeVolume(
 {
     using TResponse = TEvSSProxy::TEvDescribeVolumeResponse;
 
+    const auto directory =
+        Config->GetSchemeShardDirForShard(ev->Get()->ShardId);
+    if (!directory) {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TResponse>(
+                MakeError(E_ARGUMENT, "Unknown or invalid storage shard")));
+        return;
+    }
+
     if (!PathDescriptionBackup) {
         // should not return fatal error to client
         auto error = MakeError(E_REJECTED, "PathDescriptionBackup is not set");
@@ -259,7 +281,7 @@ void TSSProxyFallbackActor::HandleDescribeVolume(
         ev->Cookie,
         msg->CallContext);
 
-    TString dir = TStringBuilder() << Config->GetSchemeShardDir() << '/';
+    TString dir = TStringBuilder() << *directory << '/';
     TString path = TStringBuilder() << dir << DiskIdToPath(msg->DiskId);
     // path for volumes with old layout
     TString fallbackPath =

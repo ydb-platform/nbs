@@ -49,6 +49,9 @@ private:
     const TDuration AttachedDiskDestructionTimeout;
     const TVector<TString> DestructionAllowedOnlyForDisksWithIdPrefixes;
     TString DiskId;
+    const TString ShardId;
+    const bool IsLocalShard;
+    const ui64 ExpectedTabletId;
     const bool DestroyIfBroken;
     const bool Sync;
     const ui64 FillGeneration;
@@ -60,20 +63,19 @@ private:
 
 public:
     TDestroyVolumeActor(
-        const TActorId& sender,
-        ui64 cookie,
+        const TActorId& sender, ui64 cookie,
         TDuration attachedDiskDestructionTimeout,
         TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
-        TString diskId,
-        EDiskIdTolerance diskIdTolerance,
-        bool destroyIfBroken,
-        bool sync,
-        ui64 fillGeneration,
-        TDuration timeout);
+        TString diskId, EDiskIdTolerance diskIdTolerance, bool destroyIfBroken,
+        bool sync, ui64 fillGeneration, TDuration timeout, TString shardId,
+        bool isLocalShard, ui64 expectedTabletId);
 
     void Bootstrap(const TActorContext& ctx);
 
 private:
+    void HandleGuardedDescribeResponse(
+        const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+        const TActorContext& ctx);
     void WaitReady(const TActorContext& ctx);
     void DestroyVolume(const TActorContext& ctx);
     void NotifyDiskRegistry(const TActorContext& ctx);
@@ -120,22 +122,21 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 TDestroyVolumeActor::TDestroyVolumeActor(
-        const TActorId& sender,
-        ui64 cookie,
-        TDuration attachedDiskDestructionTimeout,
-        TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
-        TString diskId,
-        EDiskIdTolerance diskIdTolerance,
-        bool destroyIfBroken,
-        bool sync,
-        ui64 fillGeneration,
-        TDuration timeout)
+    const TActorId& sender, ui64 cookie,
+    TDuration attachedDiskDestructionTimeout,
+    TVector<TString> destructionAllowedOnlyForDisksWithIdPrefixes,
+    TString diskId, EDiskIdTolerance diskIdTolerance, bool destroyIfBroken,
+    bool sync, ui64 fillGeneration, TDuration timeout, TString shardId,
+    bool isLocalShard, ui64 expectedTabletId)
     : Sender(sender)
     , Cookie(cookie)
     , AttachedDiskDestructionTimeout(attachedDiskDestructionTimeout)
     , DestructionAllowedOnlyForDisksWithIdPrefixes(
           std::move(destructionAllowedOnlyForDisksWithIdPrefixes))
     , DiskId(std::move(diskId))
+    , ShardId(std::move(shardId))
+    , IsLocalShard(isLocalShard)
+    , ExpectedTabletId(expectedTabletId)
     , DestroyIfBroken(destroyIfBroken)
     , Sync(sync)
     , FillGeneration(fillGeneration)
@@ -146,19 +147,64 @@ TDestroyVolumeActor::TDestroyVolumeActor(
 void TDestroyVolumeActor::Bootstrap(const TActorContext& ctx)
 {
     ctx.Schedule(Timeout, new TEvents::TEvWakeup());
-    if (DestroyIfBroken) {
+    Become(&TThis::StateWork);
+    if (ExpectedTabletId) {
+        NCloud::Send(
+            ctx, MakeSSProxyServiceId(),
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>(DiskId, true,
+                                                                   ShardId));
+    } else if (DestroyIfBroken) {
         WaitReady(ctx);
     } else {
         StatVolume(ctx);
     }
+}
 
-    Become(&TThis::StateWork);
+void TDestroyVolumeActor::HandleGuardedDescribeResponse(
+    const TEvSSProxy::TEvDescribeVolumeResponse::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto* msg = ev->Get();
+    const auto& error = msg->GetError();
+    if (IsNotFoundSchemeShardError(error) ||
+        (!HasError(error) &&
+         msg->PathDescription.GetBlockStoreVolumeDescription()
+                 .GetVolumeTabletId() != ExpectedTabletId))
+    {
+        ReplyAndDie(ctx,
+                    MakeError(S_ALREADY,
+                              "Expected volume incarnation no longer exists"));
+        return;
+    }
+    if (HasError(error)) {
+        ReplyAndDie(ctx, error);
+        return;
+    }
+    const auto mediaKind = static_cast<NProto::EStorageMediaKind>(
+        msg->PathDescription.GetBlockStoreVolumeDescription()
+            .GetVolumeConfig()
+            .GetStorageMediaKind());
+    if (mediaKind != NProto::STORAGE_MEDIA_SSD &&
+        mediaKind != NProto::STORAGE_MEDIA_HDD)
+    {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_NOT_IMPLEMENTED,
+                "Conditional deletion supports only replicated SSD/HDD "
+                "volumes"));
+        return;
+    }
+    StatVolume(ctx);
 }
 
 void TDestroyVolumeActor::WaitReady(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvVolume::TEvWaitReadyRequest>();
     request->Record.SetDiskId(DiskId);
+    request->Record.MutableHeaders()->SetShardId(ShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(
+        DiskIdTolerance == EDiskIdTolerance::StrictMatch);
 
     NCloud::Send(
         ctx,
@@ -175,9 +221,9 @@ void TDestroyVolumeActor::DestroyVolume(const TActorContext& ctx)
         std::make_unique<TEvSSProxy::TEvModifyVolumeRequest>(
             TEvSSProxy::TModifyVolumeRequest::EOpType::Destroy,
             DiskId,
-            "", // newMountToken
-            0,  // tokenVersion
-            FillGeneration));
+            "",   // newMountToken
+            0,    // tokenVersion
+            FillGeneration, ShardId, ExpectedTabletId));
 }
 
 void TDestroyVolumeActor::NotifyDiskRegistry(const TActorContext& ctx)
@@ -196,6 +242,9 @@ void TDestroyVolumeActor::StatVolume(const TActorContext& ctx)
 
     auto request = std::make_unique<TEvService::TEvStatVolumeRequest>();
     request->Record.SetDiskId(DiskId);
+    request->Record.MutableHeaders()->SetShardId(ShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(
+        DiskIdTolerance == EDiskIdTolerance::StrictMatch);
     // no need to check partition readiness and retrieve partition stats
     request->Record.SetNoPartition(true);
 
@@ -221,6 +270,9 @@ void TDestroyVolumeActor::GracefulShutdown(const TActorContext& ctx)
 {
     auto request = std::make_unique<TEvVolume::TEvGracefulShutdownRequest>();
     request->Record.SetDiskId(DiskId);
+    request->Record.MutableHeaders()->SetShardId(ShardId);
+    request->Record.MutableHeaders()->SetExactDiskIdMatch(
+        DiskIdTolerance == EDiskIdTolerance::StrictMatch);
     NCloud::Send(ctx, MakeVolumeProxyServiceId(), std::move(request));
 }
 
@@ -267,6 +319,11 @@ void TDestroyVolumeActor::HandleModifyResponse(
         "Volume %s dropped successfully",
         DiskId.Quote().c_str());
 
+    if (ExpectedTabletId && error.GetCode() == S_ALREADY) {
+        // The conditional schema operation did not delete this incarnation.
+        ReplyAndDie(ctx, error);
+        return;
+    }
     if (IsDiskRegistryBased) {
         DeallocateDisk(ctx);
 
@@ -377,7 +434,7 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     const auto* msg = ev->Get();
 
     if (IsNotFoundSchemeShardError(msg->GetError())) {
-        if (Sync) {
+        if (Sync && IsLocalShard && !ExpectedTabletId) {
             VolumeNotFoundInSS = true;
             DeallocateDisk(ctx);
         } else {
@@ -396,6 +453,18 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
         return;
     }
 
+    const auto mediaKind = msg->Record.GetVolume().GetStorageMediaKind();
+    if (ExpectedTabletId && mediaKind != NProto::STORAGE_MEDIA_SSD &&
+        mediaKind != NProto::STORAGE_MEDIA_HDD)
+    {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_NOT_IMPLEMENTED,
+                "Conditional deletion supports only replicated SSD/HDD "
+                "volumes"));
+        return;
+    }
     const auto foundDiskId = msg->Record.GetVolume().GetDiskId();
     if (foundDiskId && foundDiskId != DiskId) {
         switch (DiskIdTolerance) {
@@ -473,6 +542,15 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     IsDiskRegistryBased = IsDiskRegistryMediaKind(
         msg->Record.GetVolume().GetStorageMediaKind());
 
+    if (IsDiskRegistryBased && !IsLocalShard) {
+        ReplyAndDie(
+            ctx,
+            MakeError(
+                E_NOT_IMPLEMENTED,
+                "Remote deletion of DiskRegistry-based volumes is not "
+                "supported"));
+        return;
+    }
     if (IsDiskRegistryBased) {
         NotifyDiskRegistry(ctx);
     } else {
@@ -548,6 +626,8 @@ STFUNC(TDestroyVolumeActor::StateWork)
             TEvDiskRegistry::TEvDeallocateDiskResponse,
             HandleDeallocateDiskResponse);
 
+        HFunc(TEvSSProxy::TEvDescribeVolumeResponse,
+              HandleGuardedDescribeResponse);
         HFunc(
             TEvService::TEvStatVolumeResponse,
             HandleStatVolumeResponse);
@@ -586,6 +666,23 @@ void TServiceActor::HandleDestroyVolume(
     const bool sync = request.GetSync();
     const ui64 fillGeneration = request.GetFillGeneration();
 
+    const auto directory =
+        Config->GetSchemeShardDirForShard(request.GetHeaders().GetShardId());
+    const auto localDirectory = Config->GetSchemeShardDirForShard({});
+    if (!directory || !localDirectory ||
+        (destroyIfBroken && directory != localDirectory) ||
+        (request.GetExpectedVolumeTabletId() &&
+         (!request.GetHeaders().GetExactDiskIdMatch() || destroyIfBroken)))
+    {
+        NCloud::Reply(
+            ctx,
+            *ev,
+            std::make_unique<TEvService::TEvDestroyVolumeResponse>(MakeError(
+                E_ARGUMENT,
+                "Unknown shard or unsupported remote broken-volume deletion")));
+        return;
+    }
+
     LOG_INFO(ctx, TBlockStoreComponents::SERVICE,
         "Deleting volume: diskId = %s, destroyIfBroken = %d, sync = %d, fillGeneration = %" PRIu64,
         diskId.Quote().c_str(),
@@ -594,17 +691,12 @@ void TServiceActor::HandleDestroyVolume(
         fillGeneration);
 
     NCloud::Register<TDestroyVolumeActor>(
-        ctx,
-        ev->Sender,
-        ev->Cookie,
+        ctx, ev->Sender, ev->Cookie,
         Config->GetAttachedDiskDestructionTimeout(),
-        Config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(),
-        diskId,
-        diskIdTolerance,
-        destroyIfBroken,
-        sync,
-        fillGeneration,
-        Config->GetDestroyVolumeTimeout());
+        Config->GetDestructionAllowedOnlyForDisksWithIdPrefixes(), diskId,
+        diskIdTolerance, destroyIfBroken, sync, fillGeneration,
+        Config->GetDestroyVolumeTimeout(), request.GetHeaders().GetShardId(),
+        directory == localDirectory, request.GetExpectedVolumeTabletId());
 }
 
 }   // namespace NCloud::NBlockStore::NStorage

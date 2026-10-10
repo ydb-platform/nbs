@@ -52,6 +52,22 @@ TSSProxyActor::TSSProxyActor(TStorageConfigConstPtr config)
     , ClientCache(CreateTabletPipeClientCache(*config))
 {}
 
+TStorageConfigConstPtr TSSProxyActor::GetConfigForShard(
+    const TString& shardId) const
+{
+    const auto directory = Config->GetSchemeShardDirForShard(shardId);
+    if (!directory) {
+        return nullptr;
+    }
+    if (*directory == Config->GetSchemeShardDir()) {
+        return Config;
+    }
+
+    NProto::TStorageServiceConfig patch;
+    patch.SetSchemeShardDir(*directory);
+    return TStorageConfig::Merge(Config, patch);
+}
+
 void TSSProxyActor::Bootstrap(const TActorContext& ctx)
 {
     TThis::Become(&TThis::StateWork);

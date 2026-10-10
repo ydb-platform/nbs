@@ -20,6 +20,8 @@ class TDestroyVolumeLinkCommand final: public TCommand
 private:
     TString LeaderDiskId;
     TString FollowerDiskId;
+    TString LeaderShardId;
+    TString FollowerShardId;
 
 public:
     explicit TDestroyVolumeLinkCommand(IBlockStorePtr client)
@@ -32,6 +34,14 @@ public:
         Opts.AddLongOption("follower-disk-id", "follower volume identifier")
             .RequiredArgument("STR")
             .StoreResult(&FollowerDiskId);
+
+        Opts.AddLongOption("leader-shard-id", "leader storage shard identifier")
+            .RequiredArgument("STR")
+            .StoreResult(&LeaderShardId);
+        Opts.AddLongOption("follower-shard-id",
+                           "follower storage shard identifier")
+            .RequiredArgument("STR")
+            .StoreResult(&FollowerShardId);
     }
 
 protected:
@@ -51,6 +61,8 @@ protected:
         } else {
             request->SetLeaderDiskId(LeaderDiskId);
             request->SetFollowerDiskId(FollowerDiskId);
+            request->SetLeaderShardId(LeaderShardId);
+            request->SetFollowerShardId(FollowerShardId);
         }
 
         STORAGE_DEBUG("Sending DestroyVolumeLink request");

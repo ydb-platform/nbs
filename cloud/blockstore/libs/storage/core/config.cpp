@@ -1366,6 +1366,37 @@ void TStorageConfig::DumpHtml(IOutputStream& out) const
 #undef BLOCKSTORE_CONFIG_DUMP
 }
 
+std::optional<TString> TStorageConfig::GetSchemeShardDirForShard(
+    const TString& shardId) const
+{
+    TString directory;
+    if (shardId.empty()) {
+        directory = GetSchemeShardDir();
+    } else {
+        const auto& shards = Impl->StorageServiceConfig.GetShardDirectories();
+        const auto it = shards.find(shardId);
+        if (it == shards.end()) {
+            return std::nullopt;
+        }
+        directory = it->second;
+    }
+
+    while (directory.size() > 1 && directory.EndsWith('/')) {
+        directory.pop_back();
+    }
+    if (directory.size() < 2 || !directory.StartsWith('/') ||
+        directory.Contains("//") || directory.Contains("/./") ||
+        directory.Contains("/../") || directory.EndsWith("/.") ||
+        directory.EndsWith("/.."))
+    {
+        return std::nullopt;
+    }
+
+    return directory;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 #define BLOCKSTORE_BINARY_FEATURE_GETTER(name)                                 \
 bool TStorageConfig::Is##name##FeatureEnabled(                                 \
     const TString& cloudId,                                                    \

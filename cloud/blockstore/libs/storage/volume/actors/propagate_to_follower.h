@@ -30,6 +30,7 @@ private:
     const TRequestInfoPtr RequestInfo;
     const TLeaderFollowerLink Link;
     const EReason Reason;
+    const bool RequireCancellable;
 
     TBackoffDelayProvider DelayProvider{
         TDuration::Seconds(1),
@@ -37,11 +38,10 @@ private:
     size_t TryCount = 0;
 
 public:
-    TPropagateLinkToFollowerActor(
-        TString logPrefix,
-        TRequestInfoPtr requestInfo,
-        TLeaderFollowerLink link,
-        EReason reason);
+    TPropagateLinkToFollowerActor(TString logPrefix,
+                                  TRequestInfoPtr requestInfo,
+                                  TLeaderFollowerLink link, EReason reason,
+                                  bool requireCancellable = false);
 
     void Bootstrap(const NActors::TActorContext& ctx);
 
