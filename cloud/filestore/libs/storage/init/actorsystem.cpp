@@ -109,7 +109,8 @@ public:
 
         auto tabletProxy = CreateIndexTabletProxy(
             Args.StorageConfig,
-            Args.TraceSerializer);
+            Args.TraceSerializer,
+            Args.FileSystemEventHandler);
 
         setup->LocalServices.emplace_back(
             MakeIndexTabletProxyServiceId(),

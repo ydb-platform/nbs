@@ -13,8 +13,6 @@
 
 #include <cloud/storage/core/libs/diagnostics/public.h>
 
-#include <contrib/ydb/core/cms/console/configs_dispatcher.h>
-#include <contrib/ydb/core/cms/console/console.h>
 #include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
 #include <contrib/ydb/core/tablet/tablet_metrics.h>
 #include <contrib/ydb/library/actors/core/actor_bootstrapped.h>
@@ -23,8 +21,6 @@
 #include <util/datetime/base.h>
 
 namespace NCloud::NBlockStore::NStorage {
-
-using namespace NKikimr::NConsole;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -80,8 +76,6 @@ private:
         const NActors::TActorContext& ctx,
         TString volume);
 
-    void SendConfigSubscriptionRequest(const NActors::TActorContext& ctx);
-
     bool IsMaxInProgressLimitReached() const;
 
     STFUNC(StateWork);
@@ -104,14 +98,6 @@ private:
 
     void HandleConfigureVolumeBalancerRequest(
         const TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleConfigSubscriptionResponse(
-        const TEvConfigsDispatcher::TEvSetConfigSubscriptionResponse::TPtr& ev,
-        const NActors::TActorContext& ctx);
-
-    void HandleConfigNotificationRequest(
-        const TEvConsole::TEvConfigNotificationRequest::TPtr& ev,
         const NActors::TActorContext& ctx);
 };
 

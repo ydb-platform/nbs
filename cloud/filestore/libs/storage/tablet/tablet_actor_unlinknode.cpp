@@ -491,6 +491,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
         if (!GetFileSystem().GetDirectoryCreationInShardsEnabled()) {
             UnlinkExternalNode(
                 *db,
+                args.FileSystemEvents,
                 args.ParentNodeId,
                 args.Name,
                 args.ChildRef->ShardId,
@@ -501,6 +502,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
             UpdateNode(
                 *db,
+                args.FileSystemEvents,
                 args.ParentNode->NodeId,
                 args.ParentNode->MinCommitId,
                 args.CommitId,
@@ -532,6 +534,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
     } else {
         auto e = UnlinkNode(
             *db,
+            args.FileSystemEvents,
             args.ParentNodeId,
             args.Name,
             *args.ChildNode,
@@ -550,6 +553,7 @@ void TIndexTabletActor::ExecuteTx_UnlinkNode(
             auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
             UpdateNode(
                 *db,
+                args.FileSystemEvents,
                 args.ParentNode->NodeId,
                 args.ParentNode->MinCommitId,
                 args.CommitId,
@@ -769,6 +773,7 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
 
     UnlinkExternalNode(
         *db,
+        args.FileSystemEvents,
         args.ParentNodeId,
         args.Name,
         args.ChildRef->ShardId,
@@ -779,6 +784,7 @@ void TIndexTabletActor::ExecuteTx_CompleteUnlinkNode(
     auto parent = CopyAttrs(args.ParentNode->Attrs, E_CM_CMTIME);
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.ParentNode->NodeId,
         args.ParentNode->MinCommitId,
         args.CommitId,

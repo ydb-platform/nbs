@@ -12,7 +12,9 @@ SRCS(
     overlapping_interval_set_ut.cpp
     persistent_storage_ut.cpp
     read_response_builder_ut.cpp
+    test/test_data.cpp
     test/test_persistent_storage.cpp
+    test/test_write_back_cache.cpp
     utils_ut.cpp
     write_back_cache_state_ut.cpp
     write_back_cache_stats_ut.cpp

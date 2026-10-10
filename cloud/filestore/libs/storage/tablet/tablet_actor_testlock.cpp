@@ -120,7 +120,8 @@ void TIndexTabletActor::CompleteTx_TestLock(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvTestLockResponse>(args.Error);
+    auto response = std::make_unique<TEvService::TEvTestLockResponse>(
+        std::move(args.Error));
     if (args.Incompatible.has_value()) {
         SetResponseDetails(response->Record, std::move(*args.Incompatible));
     }

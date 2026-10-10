@@ -510,6 +510,79 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
 #undef DO_TEST
     }
 
+    // A profile that sets only DirectMirror3Of5Profile delays that media kind
+    // after the burst is spent, and leaves SSD and HDD unlimited.
+    Y_UNIT_TEST(TestDirectMirror3Of5ProfileDelaysOnlyThatKind)
+    {
+        constexpr ui32 maxIops = 2;
+        constexpr ui64 maxBandwidth = 4_MB;
+        constexpr ui32 burstTimeMs = 1000;
+        constexpr ui32 byteCount = 4_KB;
+
+        NProto::TClientPerformanceProfile performanceProfile;
+        performanceProfile.SetBurstTime(burstTimeMs);
+        auto& kindProfile =
+            *performanceProfile.MutableDirectMirror3Of5Profile();
+        kindProfile.SetMaxReadIops(maxIops);
+        kindProfile.SetMaxReadBandwidth(maxBandwidth);
+        kindProfile.SetMaxWriteIops(maxIops);
+        kindProfile.SetMaxWriteBandwidth(maxBandwidth);
+
+        auto policy = CreateClientThrottlerPolicy(performanceProfile);
+        const auto now = TInstant::Seconds(1);
+        const auto requestType = EBlockStoreRequest::ReadBlocks;
+        const auto mediaKind =
+            NCloud::NProto::STORAGE_MEDIA_SSD_DIRECT_MIRROR3OF5_GROUP;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            policy->SuggestDelay(now, mediaKind, requestType, byteCount));
+
+        UNIT_ASSERT(
+            policy->SuggestDelay(now, mediaKind, requestType, byteCount)
+            > TDuration::Zero());
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            policy->SuggestDelay(
+                now,
+                NCloud::NProto::STORAGE_MEDIA_SSD,
+                requestType,
+                byteCount));
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            policy->SuggestDelay(
+                now,
+                NCloud::NProto::STORAGE_MEDIA_HDD,
+                requestType,
+                byteCount));
+
+        // An unset profile still yields no delay for this kind.
+        auto emptyPolicy = CreateClientThrottlerPolicy({});
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            emptyPolicy->SuggestDelay(now, mediaKind, requestType, byteCount));
+
+        // ZeroBlocks is throttled for this kind because it is not a
+        // BlobStorage media kind. A second request at the same instant
+        // exceeds the burst.
+        auto zeroPolicy = CreateClientThrottlerPolicy(performanceProfile);
+        UNIT_ASSERT_VALUES_EQUAL(
+            TDuration::Zero(),
+            zeroPolicy->SuggestDelay(
+                now,
+                mediaKind,
+                EBlockStoreRequest::ZeroBlocks,
+                byteCount));
+        UNIT_ASSERT(
+            zeroPolicy->SuggestDelay(
+                now,
+                mediaKind,
+                EBlockStoreRequest::ZeroBlocks,
+                byteCount)
+            > TDuration::Zero());
+    }
+
     Y_UNIT_TEST(TestPreparePerformanceProfileOverflow)
     {
         NProto::TClientConfig clientConfig;
@@ -639,6 +712,61 @@ Y_UNIT_TEST_SUITE(TThrottlingClientTest)
             0,
             performanceProfile.GetNonreplProfile().GetMaxWriteBandwidth()
         );
+    }
+
+    // DirectMirror3Of5Profile is filled from its own throttling config and
+    // does not fall back to the legacy per-cpu limits.
+    Y_UNIT_TEST(TestPreparePerformanceProfileDirectMirror3Of5)
+    {
+        NProto::TClientConfig clientConfig;
+        NProto::TClientProfile clientProfile;
+        clientProfile.SetCpuUnitCount(100);
+
+        auto& tc = *clientConfig.MutableThrottlingConfig();
+        tc.SetIopsPerCpuUnit(400);
+        tc.SetBandwidthPerCpuUnit(1);
+        auto& kindConfig = *tc.MutableDirectMirror3Of5ThrottlingConfig();
+        kindConfig.SetReadIopsPerCpuUnit(5);
+        kindConfig.SetWriteIopsPerCpuUnit(7);
+        kindConfig.SetReadBandwidthPerCpuUnit(3);
+        kindConfig.SetWriteBandwidthPerCpuUnit(4);
+
+        NProto::TClientPerformanceProfile performanceProfile;
+        UNIT_ASSERT(PreparePerformanceProfile(
+            THostPerformanceProfile{},
+            clientConfig,
+            clientProfile,
+            performanceProfile));
+
+        const auto& kindProfile =
+            performanceProfile.GetDirectMirror3Of5Profile();
+        UNIT_ASSERT_VALUES_EQUAL(500, kindProfile.GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(700, kindProfile.GetMaxWriteIops());
+        UNIT_ASSERT_VALUES_EQUAL(300_MB, kindProfile.GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(400_MB, kindProfile.GetMaxWriteBandwidth());
+
+        NProto::TClientConfig legacyConfig;
+        legacyConfig.MutableThrottlingConfig()->SetIopsPerCpuUnit(400);
+        legacyConfig.MutableThrottlingConfig()->SetBandwidthPerCpuUnit(1);
+
+        NProto::TClientPerformanceProfile legacyProfile;
+        UNIT_ASSERT(PreparePerformanceProfile(
+            THostPerformanceProfile{},
+            legacyConfig,
+            clientProfile,
+            legacyProfile));
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            legacyProfile.GetDirectMirror3Of5Profile().GetMaxReadIops());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            legacyProfile.GetDirectMirror3Of5Profile().GetMaxWriteIops());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            legacyProfile.GetDirectMirror3Of5Profile().GetMaxReadBandwidth());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0,
+            legacyProfile.GetDirectMirror3Of5Profile().GetMaxWriteBandwidth());
     }
 
     Y_UNIT_TEST(ShouldReturnCorrectStatusCodeFromClient)

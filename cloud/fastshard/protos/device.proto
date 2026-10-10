@@ -82,6 +82,9 @@ message TFormatDeviceRequest
 
     // UUID of the device to format.
     string DeviceUUID = 2;
+
+    // Zero the whole device instead of the journal metadata only.
+    bool WholeDevice = 3;
 }
 
 message TFormatDeviceResponse

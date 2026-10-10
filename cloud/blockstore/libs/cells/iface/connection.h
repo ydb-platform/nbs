@@ -18,10 +18,14 @@ struct ICellConnectionObserver
 {
     virtual ~ICellConnectionObserver() = default;
 
-    // Reported when a mount served by this connection says the volume tablet
-    // lives on a different host. Called from the thread that completes the
-    // mount request, so implementations must not block.
     virtual void OnTabletHostChanged(TString fqdn) noexcept = 0;
+
+    // On connect and after every move, one at a time, from the thread that
+    // completed it; may wait on the volume stats lock.
+    virtual void OnServingHostChanged(TString fqdn) noexcept
+    {
+        Y_UNUSED(fqdn);
+    }
 };
 
 using ICellConnectionObserverPtr = std::shared_ptr<ICellConnectionObserver>;

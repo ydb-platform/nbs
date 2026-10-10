@@ -321,12 +321,7 @@ private:
         InFlightRequest->Complete(ctx.Now(), error);
 
         if (HasError(error)) {
-            if (error.GetCode() != E_FS_THROTTLED) {
-                LogFallbackToWriteData(ctx, error);
-                WriteData(ctx, true /* isFallback */);
-            } else {
-                HandleError(ctx, error);
-            }
+            HandleError(ctx, error);
             return;
         }
 

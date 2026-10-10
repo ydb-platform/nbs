@@ -2,6 +2,8 @@
 
 #include <cloud/filestore/libs/service/request.h>
 
+#include <library/cpp/digest/crc32c/crc32c.h>
+
 #include <util/stream/mem.h>
 
 namespace NCloud::NFileStore::NFuse::NWriteBackCache {
@@ -59,7 +61,8 @@ void TPendingWriteDataRequest::SerializeToAllocation()
         memoryOutput.Exhausted(),
         "Buffer is expected to be written completely");
 
-    Serialized = true;
+    Checksum = Crc32c(AllocationPtr, AllocationByteCount);
+    Serialized.store(true, std::memory_order_release);
 }
 
 std::unique_ptr<TCachedWriteDataRequest>

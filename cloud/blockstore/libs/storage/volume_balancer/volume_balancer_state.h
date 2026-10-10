@@ -74,9 +74,6 @@ private:
 
     bool IsEnabled = true;
 
-    const NProto::EVolumePreemptionType InitialVolumePreemptionType;
-    NProto::EVolumePreemptionType OverridenVolumePreemptionType;
-
     TDuration PullDelayResetTimespan;
 
 public:
@@ -102,24 +99,9 @@ public:
 
     bool GetEnabled() const
     {
-        return GetVolumePreemptionType() != NProto::PREEMPTION_NONE &&
+        return StorageConfig->GetVolumePreemptionType() !=
+                   NProto::PREEMPTION_NONE &&
                IsEnabled;
-    }
-
-    void OverrideVolumePreemptionTypeIfPossible(
-        NProto::EVolumePreemptionType volumePreemptionType)
-    {
-        OverridenVolumePreemptionType = volumePreemptionType;
-    }
-
-    NProto::EVolumePreemptionType GetVolumePreemptionType() const
-    {
-        // We prioritize Immediate Control Board overriden configs over
-        // Config Dispatcher ones
-        return StorageConfig->GetVolumePreemptionType() ==
-                       InitialVolumePreemptionType
-                   ? OverridenVolumePreemptionType
-                   : StorageConfig->GetVolumePreemptionType();
     }
 
     void SetVolumeInProgress(TString volume)

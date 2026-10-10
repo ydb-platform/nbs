@@ -2,6 +2,7 @@
 
 #include "config.h"
 #include "directory_handle_storage.h"
+#include "filesystem_event_handler.h"
 #include "fs.h"
 #include "fuse.h"
 #include "handle_ops_queue.h"
@@ -15,6 +16,7 @@
 #include <cloud/filestore/libs/diagnostics/module_stats.h>
 #include <cloud/filestore/libs/diagnostics/request_stats.h>
 #include <cloud/filestore/libs/service/context.h>
+#include <cloud/filestore/libs/service/filesystem_event.h>
 #include <cloud/filestore/libs/service/request.h>
 #include <cloud/filestore/libs/vfs/config.h>
 #include <cloud/filestore/libs/vfs/convert.h>
@@ -667,6 +669,12 @@ private:
     const ISessionPtr Session;
     const IFileMapMemoryLimiterPtr FileMapMemoryLimiter;
     const IPersistentStateManagerPtr PersistentState;
+    const IMultiFileSystemEventHandlerPtr MultiFileSystemEventHandler;
+
+    // Registered in MultiFileSystemEventHandler for the loop's lifetime under
+    // FileSystemEventHandlerFileSystemId.
+    IFileSystemEventHandlerPtr FileSystemEventHandler;
+    TString FileSystemEventHandlerFileSystemId;
 
     // Hold the locks on the state files for as long as the loop lives: if the
     // loop goes away without being stopped (e.g. its start has failed and the
@@ -705,7 +713,8 @@ public:
             IProfileLogPtr profileLog,
             ISessionPtr session,
             IFileMapMemoryLimiterPtr fileMapMemoryLimiter,
-            IPersistentStateManagerPtr persistentState)
+            IPersistentStateManagerPtr persistentState,
+            IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler)
         : Config(std::move(config))
         , Logging(std::move(logging))
         , StatsRegistry(std::move(statsRegistry))
@@ -717,8 +726,19 @@ public:
         , Session(std::move(session))
         , FileMapMemoryLimiter(std::move(fileMapMemoryLimiter))
         , PersistentState(std::move(persistentState))
+        , MultiFileSystemEventHandler(
+              std::move(multiFileSystemEventHandler))
     {
         Log = Logging->CreateLog("NFS_FUSE");
+    }
+
+    ~TFileSystemLoop() override
+    {
+        if (FileSystemEventHandler) {
+            MultiFileSystemEventHandler->Unregister(
+                FileSystemEventHandlerFileSystemId,
+                FileSystemEventHandler);
+        }
     }
 
     TFuture<NProto::TError> StartAsync() override
@@ -899,6 +919,30 @@ public:
     }
 
 private:
+    void RegisterFileSystemEventHandler()
+    {
+        if (!MultiFileSystemEventHandler || FileSystemEventHandler) {
+            return;
+        }
+
+        //
+        // The handler is registered under the filesystem id returned by
+        // CreateSession rather than the requested one: the latter may be an
+        // alias. Aliases are resolved by the storage service and the tablet
+        // proxy, the tablets know only the actual id and send
+        // FileSystemEvents with it.
+        //
+
+        FileSystemEventHandler = CreateFileSystemEventHandler(
+            Log,
+            Config->GetFileSystemId());
+        FileSystemEventHandlerFileSystemId =
+            FileSystemConfig->GetFileSystemId();
+        MultiFileSystemEventHandler->Register(
+            FileSystemEventHandlerFileSystemId,
+            FileSystemEventHandler);
+    }
+
     NProto::TError StartWithSessionState(
         const TFuture<NProto::TCreateSessionResponse>& future)
     {
@@ -949,6 +993,7 @@ private:
                 StorageMediaKind,
                 CalcCompletionQueueRequestBucketCount(*Config));
             FileSystemConfig = MakeFileSystemConfig(filestore);
+            RegisterFileSystemEventHandler();
             if (FileSystemConfig->GetAvailabilityTrackingEnabled()) {
                 RequestStats->EnableAvailabilityTracking(
                     FileSystemConfig->GetAvailabilityTrackingInterval());
@@ -957,8 +1002,9 @@ private:
             SessionId = response.GetSession().GetSessionId();
 
             // The state files are kept under the filesystem id returned by
-            // the server rather than the requested one: the latter may be an
-            // alias, which the server resolves upon session creation.
+            // CreateSession rather than the requested one: the latter may be
+            // an alias, which the storage service resolves upon session
+            // creation.
             THandleOpsQueuePtr handleOpsQueue;
             if (Config->GetHandleOpsQueuePath()) {
                 auto hasState = PersistentState->HasHandleOpsQueueState(
@@ -1444,6 +1490,10 @@ private:
 
     void StopAsyncOnCompletionQueueStopped(TPromise<void> stopCompleted)
     {
+        // Stopping the completion queue first guarantees that no
+        // request-driven WriteBackCache call is in flight. Cache callbacks
+        // retain TImpl while accessing its state, so destruction cannot race
+        // a TQueuedOperations::Release() serialization pass.
         if (WriteBackCache && !WriteBackCache.IsDrained()) {
             STORAGE_INFO(
                 "[f:%s][c:%s] (DestroySession) WriteBackCache is not drained, "
@@ -1911,6 +1961,7 @@ struct TFileSystemLoopFactory
     const IProfileLogPtr ProfileLog;
     // Shared by all the loops created by this factory
     const IPersistentStateManagerPtr PersistentState;
+    const IMultiFileSystemEventHandlerPtr MultiFileSystemEventHandler;
 
     TFileSystemLoopFactory(
             ILoggingServicePtr logging,
@@ -1920,7 +1971,8 @@ struct TFileSystemLoopFactory
             IModuleStatsRegistryPtr moduleStats,
             IFsCountersProviderPtr fsCountersProvider,
             IProfileLogPtr profileLog,
-            IPersistentStateManagerPtr persistentState)
+            IPersistentStateManagerPtr persistentState,
+            IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler)
         : Logging(std::move(logging))
         , Timer(std::move(timer))
         , Scheduler(std::move(scheduler))
@@ -1929,6 +1981,8 @@ struct TFileSystemLoopFactory
         , FsCountersProvider(std::move(fsCountersProvider))
         , ProfileLog(std::move(profileLog))
         , PersistentState(std::move(persistentState))
+        , MultiFileSystemEventHandler(
+              std::move(multiFileSystemEventHandler))
     {}
 
     IFileSystemLoopPtr Create(
@@ -1947,7 +2001,8 @@ struct TFileSystemLoopFactory
             ProfileLog,
             std::move(session),
             std::move(fileMapMemoryLimiter),
-            PersistentState);
+            PersistentState,
+            MultiFileSystemEventHandler);
     }
 };
 
@@ -1966,7 +2021,8 @@ IFileSystemLoopPtr CreateFuseLoop(
     IProfileLogPtr profileLog,
     ISessionPtr session,
     IFileMapMemoryLimiterPtr fileMapMemoryLimiter,
-    IPersistentStateManagerPtr persistentState)
+    IPersistentStateManagerPtr persistentState,
+    IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler)
 {
     return std::make_shared<TFileSystemLoop>(
         std::move(config),
@@ -1979,7 +2035,8 @@ IFileSystemLoopPtr CreateFuseLoop(
         std::move(profileLog),
         std::move(session),
         std::move(fileMapMemoryLimiter),
-        std::move(persistentState));
+        std::move(persistentState),
+        std::move(multiFileSystemEventHandler));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1992,7 +2049,8 @@ IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
     IModuleStatsRegistryPtr moduleStats,
     IFsCountersProviderPtr fsCountersProvider,
     IProfileLogPtr profileLog,
-    IPersistentStateManagerPtr persistentState)
+    IPersistentStateManagerPtr persistentState,
+    IMultiFileSystemEventHandlerPtr multiFileSystemEventHandler)
 {
     struct TInitializer {
         TInitializer(const ILoggingServicePtr& logging)
@@ -2011,7 +2069,8 @@ IFileSystemLoopFactoryPtr CreateFuseLoopFactory(
         std::move(moduleStats),
         std::move(fsCountersProvider),
         std::move(profileLog),
-        std::move(persistentState));
+        std::move(persistentState),
+        std::move(multiFileSystemEventHandler));
 }
 
 }   // namespace NCloud::NFileStore::NFuse

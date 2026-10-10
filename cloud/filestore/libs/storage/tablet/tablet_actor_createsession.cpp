@@ -503,7 +503,7 @@ void TIndexTabletActor::CompleteTx_CreateSession(
             LogTag.c_str(),
             FormatError(args.Error).c_str());
 
-        auto response = std::make_unique<TResponse>(args.Error);
+        auto response = std::make_unique<TResponse>(std::move(args.Error));
         NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
         return;
     }

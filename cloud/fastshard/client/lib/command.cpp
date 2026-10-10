@@ -9,6 +9,7 @@
 #include <util/generic/vector.h>
 #include <util/generic/yexception.h>
 #include <util/stream/file.h>
+#include <util/string/builder.h>
 #include <util/string/printf.h>
 #include <util/system/event.h>
 
@@ -87,13 +88,27 @@ TCommand::TCommand(IStorageNodePtr client)
         .RequiredArgument("STR")
         .StoreResult(&OutputFile);
 
-    Opts.AddLongOption("verbose", "enable silk debug logging")
-        .NoArgument()
-        .SetFlag(&Verbose);
+    Opts.AddLongOption(
+            "verbose",
+            "log level: error, warn, info, debug or trace")
+        .OptionalArgument("STR")
+        .OptionalValue("debug")
+        .DefaultValue("warn")
+        .StoreResult(&VerboseLevel);
 
     Opts.AddLongOption("timing", "print connect and round trip times to stderr")
         .NoArgument()
         .SetFlag(&Timing);
+}
+
+void TCommand::AddAcquireOption()
+{
+    Opts.AddLongOption("acquire")
+        .Help(
+            "acquire the device before the request and release it "
+            "afterwards")
+        .NoArgument()
+        .SetFlag(&Acquire);
 }
 
 void TCommand::ParseOpts(int argc, const char* argv[])
@@ -112,12 +127,25 @@ void TCommand::ParseOpts(int argc, const char* argv[])
     if (!Client && !Port) {
         ythrow TUsageException() << "--port is required";
     }
+
+    const auto logLevel = GetLogLevel(VerboseLevel);
+    if (!logLevel) {
+        ythrow TUsageException()
+            << "unknown log level: " << VerboseLevel.Quote();
+    }
+    LogLevel = *logLevel;
+
     CheckOpts();
 }
 
 bool TCommand::Run()
 {
-    if (Verbose) {
+    TLogSettings logSettings;
+    logSettings.FiltrationLevel = LogLevel;
+    Logging = CreateLoggingService("console", logSettings);
+    Log = Logging->CreateLog("FASTSHARD_CLIENT");
+
+    if (LogLevel >= TLOG_DEBUG) {
         EnableDebugLogging();
     }
 
@@ -138,12 +166,12 @@ bool TCommand::Run()
     while (!Done.WaitT(WaitTimeout)) {
         if (StopRequested.load()) {
             Stopped = true;
-            Cerr << "command was stopped" << Endl;
+            STORAGE_WARN("command was stopped");
             return false;
         }
         if (TInstant::Now() > deadline) {
             Stopped = true;
-            Cerr << "request timed out" << Endl;
+            STORAGE_ERROR("request timed out");
             return false;
         }
     }
@@ -200,13 +228,45 @@ int TCommand::FiberMain(TFiberParams* params) noexcept
                 command.Port,
                 command.Metrics);
         }
-        command.Result = command.DoExecute();
+        command.Result = command.DoExecute() && !command.ReleaseFailed;
         command.GetOutputStream().Flush();
     } catch (...) {
         command.Error = CurrentExceptionMessage();
     }
     command.Done.Signal();
     return 0;
+}
+
+NCloud::NProto::TError TCommand::AcquireDevice(const TString& deviceUUID)
+{
+    NCloud::NProto::TAcquireDevicesRequest request;
+    PrepareHeaders(*request.MutableHeaders());
+    request.AddDeviceUUIDs(deviceUUID);
+
+    auto response = Client->AcquireDevices(std::move(request));
+    if (HasError(response)) {
+        auto error = response.GetError();
+        error.SetMessage(TStringBuilder()
+                         << "failed to acquire device " << deviceUUID << ": "
+                         << error.GetMessage());
+        return error;
+    }
+    return {};
+}
+
+void TCommand::ReleaseDevice(const TString& deviceUUID)
+{
+    NCloud::NProto::TReleaseDevicesRequest request;
+    PrepareHeaders(*request.MutableHeaders());
+    request.AddDeviceUUIDs(deviceUUID);
+
+    auto response = Client->ReleaseDevices(std::move(request));
+    if (HasError(response)) {
+        STORAGE_ERROR(
+            "failed to release device " << deviceUUID << ": "
+            << FormatError(response.GetError()));
+        ReleaseFailed = true;
+    }
 }
 
 void TCommand::SetInputStream(std::unique_ptr<IInputStream> is)

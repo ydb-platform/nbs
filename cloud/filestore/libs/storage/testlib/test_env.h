@@ -6,6 +6,7 @@
 #include <cloud/filestore/libs/diagnostics/metrics/visitor.h>
 #include <cloud/filestore/libs/diagnostics/profile_log.h>
 #include <cloud/filestore/libs/diagnostics/public.h>
+#include <cloud/filestore/libs/service/filesystem_event.h>
 #include <cloud/filestore/libs/storage/core/config.h>
 #include <cloud/filestore/libs/storage/core/public.h>
 #include <cloud/filestore/libs/storage/core/system_counters.h>
@@ -112,6 +113,9 @@ private:
 
     NMetrics::IMainMetricsRegistryPtr Registry;
 
+    // Shared by the IndexTabletProxy actors of all the nodes.
+    IMultiFileSystemEventHandlerPtr MultiFileSystemEventHandler;
+
 public:
     explicit TTestEnv(
         TTestEnvConfig config = {},
@@ -155,6 +159,11 @@ public:
     NMetrics::IMainMetricsRegistryPtr GetRegistry() const
     {
         return Registry;
+    }
+
+    IMultiFileSystemEventHandlerPtr GetMultiFileSystemEventHandler() const
+    {
+        return MultiFileSystemEventHandler;
     }
 
     TLog CreateLog();

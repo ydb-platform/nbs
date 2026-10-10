@@ -169,6 +169,7 @@ void TIndexTabletActor::ExecuteTx_DestroySession(
 
     DestroySessionHandlesAndRemoveNodes(
         *db,
+        args.FileSystemEvents,
         ctx,
         session,
         args.CommitId,

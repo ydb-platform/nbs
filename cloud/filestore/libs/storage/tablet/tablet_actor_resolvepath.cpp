@@ -82,7 +82,8 @@ void TIndexTabletActor::CompleteTx_ResolvePath(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvResolvePathResponse>(args.Error);
+    auto response = std::make_unique<TEvService::TEvResolvePathResponse>(
+        std::move(args.Error));
     CompleteResponse<TEvService::TResolvePathMethod>(
         response->Record,
         args.RequestInfo->CallContext,

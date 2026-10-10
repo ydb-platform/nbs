@@ -2713,7 +2713,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         }
     }
 
-    Y_UNIT_TEST(ShouldFallbackToReadDataIfDescribeDataFails)
+    Y_UNIT_TEST(ShouldReturnDescribeDataError)
     {
         TTestEnv env;
 
@@ -2776,16 +2776,18 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
 
         TString data(4_KB, 'A');
         service.WriteData(headers, fs, nodeId, handle, 0, data);
-        auto readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
-        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+        auto readDataResult = service.SendAndRecvReadData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            0,
+            data.size());
+        UNIT_ASSERT_VALUES_EQUAL(
+            error.GetCode(),
+            readDataResult->GetError().GetCode());
         UNIT_ASSERT_VALUES_EQUAL(2, describeDataResponses);
-
-        // 3 responses:
-        // 1. TIndexTabletActor -> TIndexTabletProxyActor
-        // 2. TIndexTabletProxyActor -> TReadDataActor
-        // 3. TReadDataActor -> TServiceClient
-        UNIT_ASSERT_VALUES_EQUAL(3, readDataResponses);
+        UNIT_ASSERT_VALUES_EQUAL(1, readDataResponses);
     }
 
     Y_UNIT_TEST(ShouldFallbackToReadDataIfEvGetFails)
@@ -3493,7 +3495,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         runtime.ClearCounters();
     }
 
-    Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
+    void CheckGenerateBlobIdsError(ui32 errorCode)
     {
         TTestEnv env;
 
@@ -3504,7 +3506,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateFileStore(fs, 1000);
 
         NProto::TError error;
-        error.SetCode(E_REJECTED);
+        error.SetCode(errorCode);
 
         env.GetRuntime().SetEventFilter(
             [&](auto& runtime, auto& event)
@@ -3542,18 +3544,69 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
             .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
             ->Record.GetHandle();
 
-        // GenerateBlobIdsResponse fails
         TString data = GenerateValidateData(256_KB);
-        service.WriteData(headers, fs, nodeId, handle, 0, data);
-        auto readDataResult =
-            service.ReadData(headers, fs, nodeId, handle, 0, data.size());
-        UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
+        auto writeDataResult = service.SendAndRecvWriteData(
+            headers,
+            fs,
+            nodeId,
+            handle,
+            0,
+            data);
+        UNIT_ASSERT_VALUES_EQUAL(
+            error.GetCode(),
+            writeDataResult->GetError().GetCode());
         auto& runtime = env.GetRuntime();
         // clang-format off
         UNIT_ASSERT_VALUES_EQUAL(2, runtime.GetCounter(TEvIndexTablet::EvGenerateBlobIdsResponse));
-        UNIT_ASSERT_VALUES_EQUAL(3, runtime.GetCounter(TEvService::EvWriteDataResponse));
+        UNIT_ASSERT_VALUES_EQUAL(1, runtime.GetCounter(TEvService::EvWriteDataResponse));
         // clang-format on
         runtime.ClearCounters();
+    }
+
+    Y_UNIT_TEST(ShouldReturnGenerateBlobIdsError)
+    {
+        CheckGenerateBlobIdsError(E_REJECTED);
+    }
+
+    Y_UNIT_TEST(ShouldReturnGenerateBlobIdsOutOfSpaceError)
+    {
+        CheckGenerateBlobIdsError(E_FS_OUT_OF_SPACE);
+    }
+
+    Y_UNIT_TEST(ShouldFallbackThreeStageWriteToSimpleWrite)
+    {
+        TTestEnv env;
+
+        ui32 nodeIdx = env.AddDynamicNode();
+
+        TServiceClient service(env.GetRuntime(), nodeIdx);
+        const TString fs = "test";
+        service.CreateFileStore(fs, 1000);
+
+        NProto::TError error;
+        error.SetCode(E_REJECTED);
+
+        {
+            NProto::TStorageConfig newConfig;
+            newConfig.SetThreeStageWriteEnabled(true);
+            const auto response =
+                ExecuteChangeStorageConfig(std::move(newConfig), service);
+            UNIT_ASSERT_VALUES_EQUAL(
+                response.GetStorageConfig().GetThreeStageWriteEnabled(),
+                true);
+            env.GetRuntime().DispatchEvents({}, TDuration::Seconds(1));
+        }
+
+        auto headers = service.InitSession(fs, "client");
+        ui64 nodeId = service
+            .CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"))
+            ->Record.GetNode()
+            .GetId();
+        ui64 handle = service
+            .CreateHandle(headers, fs, nodeId, "", TCreateHandleArgs::RDWR)
+            ->Record.GetHandle();
+
+        auto& runtime = env.GetRuntime();
 
         // AddDataResponse fails
         env.GetRuntime().SetEventFilter(
@@ -3571,9 +3624,9 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
                 }
                 return false;
             });
-        data = GenerateValidateData(256_KB);
+        auto data = GenerateValidateData(256_KB);
         service.WriteData(headers, fs, nodeId, handle, 0, data);
-        readDataResult =
+        auto readDataResult =
             service.ReadData(headers, fs, nodeId, handle, 0, data.size());
         UNIT_ASSERT_VALUES_EQUAL(readDataResult->Record.GetBuffer(), data);
         // clang-format off

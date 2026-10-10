@@ -1,6 +1,7 @@
 #include "tablet_proxy_actor.h"
 
 #include <cloud/filestore/libs/diagnostics/trace_serializer.h>
+#include <cloud/filestore/libs/service/filesystem_event.h>
 #include <cloud/filestore/libs/storage/api/service.h>
 #include <cloud/filestore/libs/storage/api/tablet.h>
 #include <cloud/filestore/libs/storage/core/probes.h>
@@ -86,10 +87,12 @@ void HandleServiceTraceInfo(
 
 TIndexTabletProxyActor::TIndexTabletProxyActor(
         TStorageConfigPtr config,
-        ITraceSerializerPtr traceSerializer)
+        ITraceSerializerPtr traceSerializer,
+        IFileSystemEventHandlerPtr fileSystemEventHandler)
     : TActor(&TThis::StateWork)
     , Config(std::move(config))
     , TraceSerializer(std::move(traceSerializer))
+    , FileSystemEventHandler(std::move(fileSystemEventHandler))
     , ClientCache(CreateTabletPipeClientCache(*Config))
 {}
 
@@ -253,6 +256,21 @@ void TIndexTabletProxyActor::DescribeFileStore(
         conn.Id);
 }
 
+void TIndexTabletProxyActor::NotifyFileSystemEventHandlerDisconnected(
+    const TActorContext& ctx,
+    ui64 tabletId)
+{
+    if (!FileSystemEventHandler) {
+        return;
+    }
+
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET_PROXY,
+        "Pipe to tablet %lu disconnected, notifying FileSystemEvent handler",
+        tabletId);
+
+    FileSystemEventHandler->OnDisconnect(tabletId);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 void TIndexTabletProxyActor::HandleClientConnected(
@@ -278,6 +296,7 @@ void TIndexTabletProxyActor::HandleClientConnected(
 
         CancelActiveRequests(*conn);
         DestroyConnection(ctx, *conn, error);
+        NotifyFileSystemEventHandlerDisconnected(ctx, msg->TabletId);
         return;
     }
 
@@ -306,6 +325,7 @@ void TIndexTabletProxyActor::HandleClientDestroyed(
 
     auto error = MakeError(E_REJECTED, "connection broken");
     OnConnectionError(ctx, *conn, error);
+    NotifyFileSystemEventHandlerDisconnected(ctx, msg->TabletId);
 }
 
 void TIndexTabletProxyActor::HandleDescribeFileStoreResponse(
@@ -340,6 +360,27 @@ void TIndexTabletProxyActor::HandleDescribeFileStoreResponse(
         *conn,
         fsDescr.GetIndexTabletId(),
         msg->Path);
+}
+
+void TIndexTabletProxyActor::HandleFileSystemEvent(
+    const TEvIndexTabletProxy::TEvFileSystemEvent::TPtr& ev,
+    const TActorContext& ctx)
+{
+    const auto& event = ev->Get()->Record;
+
+    LOG_DEBUG(ctx, TFileStoreComponents::TABLET_PROXY,
+        "FileSystemEvent from %s: %s",
+        ev->Sender.ToString().c_str(),
+        event.ShortUtf8DebugString().Quote().c_str());
+
+    //
+    // No buffering: the event is either handled right away or dropped if
+    // there is no handler (e.g. in filestore-server).
+    //
+
+    if (FileSystemEventHandler) {
+        FileSystemEventHandler->OnEvent(event);
+    }
 }
 
 template <typename TMethod>
@@ -552,6 +593,7 @@ STFUNC(TIndexTabletProxyActor::StateWork)
         HFunc(TEvTabletPipe::TEvClientDestroyed, HandleClientDestroyed);
 
         HFunc(TEvSSProxy::TEvDescribeFileStoreResponse, HandleDescribeFileStoreResponse);
+        HFunc(TEvIndexTabletProxy::TEvFileSystemEvent, HandleFileSystemEvent);
 
         default:
             if (!HandleRequests(ev)) {

@@ -11,6 +11,7 @@ SRCS(
     forward_service_ut.cpp
     host_pool_ut.cpp
     inbound_activity_ut.cpp
+    serving_host_observer_ut.cpp
     transport_switcher_ut.cpp
 )
 

@@ -15,10 +15,6 @@
 #include <cloud/storage/core/libs/diagnostics/stats_fetcher.h>
 #include <cloud/storage/core/libs/features/features_config.h>
 
-#include <contrib/ydb/core/cms/console/configs_dispatcher.h>
-#include <contrib/ydb/core/cms/console/console.h>
-#include <contrib/ydb/core/protos/nbs/blockstore.pb.h>
-
 #include <library/cpp/testing/unittest/registar.h>
 
 #include <util/datetime/base.h>
@@ -28,7 +24,6 @@ namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
 using namespace NKikimr;
-using namespace NConsole;
 
 namespace {
 
@@ -205,6 +200,20 @@ struct TVolumeStatsTestMock final: public IVolumeStats
         Y_UNUSED(diskId);
         return {};
     }
+
+    void SetServingCellHost(
+        const TString& diskId,
+        const TString& clientId,
+        ui64 connectionId,
+        const TString& cellId,
+        const TString& fqdn) override
+    {
+        Y_UNUSED(diskId);
+        Y_UNUSED(clientId);
+        Y_UNUSED(connectionId);
+        Y_UNUSED(cellId);
+        Y_UNUSED(fqdn);
+    }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -370,14 +379,6 @@ public:
             TEvVolumeBalancer::TEvConfigureVolumeBalancerRequest>();
         request->Record.SetOpStatus(status);
         Send(receiver, std::move(request));
-    }
-
-    THolder<TEvConsole::TEvConfigNotificationResponse>
-    GrabConfigNotificationResponse()
-    {
-        return TestEnv.GetRuntime()
-            .GrabEdgeEvent<TEvConsole::TEvConfigNotificationResponse>(
-                TDuration());
     }
 
     THolder<TEvVolumeBalancer::TEvConfigureVolumeBalancerResponse>
@@ -722,43 +723,6 @@ Y_UNIT_TEST_SUITE(TVolumeBalancerTest)
         RunState(
             testEnv,
             volumeBindingActorID,
-            {
-                {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
-                {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},
-            },
-            {{"vol0", 10}, {"vol1", 1}},
-            1,
-            {},
-            TDuration::Seconds(15));
-    }
-
-    Y_UNIT_TEST(ShouldNotDoAnythingIfBalancerIsDisabledViaConfigDispatcher)
-    {
-        TVolumeBalancerTestEnv testEnv;
-        TVolumeBalancerConfigBuilder config;
-
-        auto volumeBalancerActorId = testEnv.Register(CreateVolumeBalancerActor(
-            config.WithType(NProto::PREEMPTION_MOVE_MOST_HEAVY),
-            testEnv.VolumeStats,
-            testEnv.Fetcher,
-            testEnv.GetEdgeActor()));
-
-        testEnv.DispatchEvents();
-
-        // Send config update with VolumeBalancer = false
-        auto request =
-            std::make_unique<TEvConsole::TEvConfigNotificationRequest>();
-        request->Record.MutableConfig()
-            ->MutableBlockstoreConfig()
-            ->SetVolumePreemptionType(NKikimrConfig::PREEMPTION_NONE);
-
-        testEnv.Send(volumeBalancerActorId, std::move(request));
-
-        auto response = testEnv.GrabConfigNotificationResponse();
-
-        RunState(
-            testEnv,
-            volumeBalancerActorId,
             {
                 {"vol0", true, NProto::EPreemptionSource::SOURCE_NONE},
                 {"vol1", true, NProto::EPreemptionSource::SOURCE_NONE},

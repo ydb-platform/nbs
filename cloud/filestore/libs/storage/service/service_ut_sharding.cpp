@@ -9591,9 +9591,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         UNIT_ASSERT(counter->GetAtomic() > 0);
     }
 
-    void DoShouldHaveCorrectAggregateCountersWithFanoutDisabled(
-        NProto::TStorageConfig config,
-        const bool fanoutStatsCollectionInShardsDisabled)
+    SERVICE_TEST(ShouldHaveCorrectAggregateCounters)
     {
         constexpr ui64 blockSize = 4_KB;
         constexpr ui64 shardBlockCount = 1024;
@@ -9604,8 +9602,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
             shardBlockCount * (shardCount - 1) + shardBlockCount / 2;
 
         config.SetStrictFileSystemSizeEnforcementEnabled(true);
-        config.SetFanoutStatsCollectionInShardsDisabled(
-            fanoutStatsCollectionInShardsDisabled);
         config.SetAutomaticShardCreationEnabled(true);
         config.SetShardAllocationUnit(shardAllocationUnit);
 
@@ -9660,13 +9656,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 ->GetCounter("Count")
                 ->GetAtomic() / shardCount;
 
-        if (fanoutStatsCollectionInShardsDisabled) {
-            // Linear complexity by shardCount.
-            UNIT_ASSERT_LE(storageStatsRequestsPerShard, 4);
-        } else {
-            // Quadratic complexity by shardCount.
-            UNIT_ASSERT_GE(storageStatsRequestsPerShard, shardCount);
-        }
+        // Linear complexity by shardCount.
+        UNIT_ASSERT_LE(storageStatsRequestsPerShard, 4);
 
         auto mainFsCounters = GetFileSystemCounters(env, fsId);
         UNIT_ASSERT_VALUES_EQUAL(
@@ -9689,12 +9680,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
                 shardCounters->GetCounter("AggregateUsedBytesCount")
                     ->GetAtomic());
         }
-    }
-
-    SERVICE_TEST(ShouldHaveCorrectAggregateCountersWithFanoutDisabled)
-    {
-        DoShouldHaveCorrectAggregateCountersWithFanoutDisabled(config, false);
-        DoShouldHaveCorrectAggregateCountersWithFanoutDisabled(config, true);
     }
 
     SERVICE_TEST(ShouldUseOldHandles)
@@ -9955,8 +9940,7 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     void DoShouldShardedFileSystemHitNodesCountLimit(
         NProto::TStorageConfig config,
-        const bool strictFileSystemSizeEnforcementEnabled,
-        const bool fanoutStatsCollectionInShardsDisabled)
+        const bool strictFileSystemSizeEnforcementEnabled)
     {
         const ui64 blockSize = 4_KB;
         const ui64 shardBlockCount = 512;
@@ -9981,8 +9965,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
         config.SetAutomaticallyCreatedShardSize(shardAllocationUnit);
         config.SetSizeToNodesRatio(sizeToNodeRatio);
         config.SetDefaultNodesLimit(filesPerFs / 2);
-        config.SetFanoutStatsCollectionInShardsDisabled(
-            fanoutStatsCollectionInShardsDisabled);
 
         TShardedFileSystemConfig fsConfig = {
             .ShardBlockCount = shardBlockCount,
@@ -10070,9 +10052,8 @@ Y_UNIT_TEST_SUITE(TStorageServiceShardingTest)
 
     SERVICE_TEST(ShouldShardedFileSystemHitNodesCountLimit)
     {
-        DoShouldShardedFileSystemHitNodesCountLimit(config, false, false);
-        DoShouldShardedFileSystemHitNodesCountLimit(config, true, false);
-        DoShouldShardedFileSystemHitNodesCountLimit(config, true, true);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, false);
+        DoShouldShardedFileSystemHitNodesCountLimit(config, true);
     }
 
     SERVICE_TEST(ShouldNotUpdateShardBalancerInTabletZombieState)

@@ -98,10 +98,10 @@ TEST(TFastShardClientTest, ShouldListEveryStorageNodeMethod)
         "releasedevices",
         "writelogrecord",
     };
-    EXPECT_EQ(GetCommandNames(), expected);
+    EXPECT_EQ(expected, GetCommandNames());
 
-    EXPECT_EQ(NormalizeCommand("Read-Pages"), "readpages");
-    EXPECT_EQ(NormalizeCommand("read_pages"), "readpages");
+    EXPECT_EQ("readpages", NormalizeCommand("Read-Pages"));
+    EXPECT_EQ("readpages", NormalizeCommand("read_pages"));
     EXPECT_FALSE(GetCommand("nosuchcommand"));
 }
 
@@ -113,15 +113,15 @@ TEST(TFastShardClientTest, ShouldAcquireDevices)
         {"--device-uuid", "d1", "--device-uuid", "d2", "--generation", "7",
          "--client-id", "cli", "--request-timeout", "500"}));
 
-    ASSERT_EQ(f.Storage->AcquireCalls.size(), 1u);
+    ASSERT_EQ(1u, f.Storage->AcquireCalls.size());
     const auto& req = f.Storage->AcquireCalls[0];
-    ASSERT_EQ(req.DeviceUUIDsSize(), 2u);
-    EXPECT_EQ(req.GetDeviceUUIDs(0), "d1");
-    EXPECT_EQ(req.GetDeviceUUIDs(1), "d2");
-    EXPECT_EQ(req.GetGeneration(), 7u);
-    EXPECT_EQ(req.GetHeaders().GetClientId(), "cli");
-    EXPECT_EQ(req.GetHeaders().GetRequestTimeout(), 500u);
-    EXPECT_EQ(f.Output->Str(), "OK\n");
+    ASSERT_EQ(2u, req.DeviceUUIDsSize());
+    EXPECT_EQ("d1", req.GetDeviceUUIDs(0));
+    EXPECT_EQ("d2", req.GetDeviceUUIDs(1));
+    EXPECT_EQ(7u, req.GetGeneration());
+    EXPECT_EQ("cli", req.GetHeaders().GetClientId());
+    EXPECT_EQ(500u, req.GetHeaders().GetRequestTimeout());
+    EXPECT_EQ("OK\n", f.Output->Str());
 }
 
 TEST(TFastShardClientTest, ShouldReleaseDevices)
@@ -129,10 +129,10 @@ TEST(TFastShardClientTest, ShouldReleaseDevices)
     TFixture f;
     EXPECT_TRUE(f.Run("releasedevices", {"--device-uuid", "d1"}));
 
-    ASSERT_EQ(f.Storage->ReleaseCalls.size(), 1u);
-    ASSERT_EQ(f.Storage->ReleaseCalls[0].DeviceUUIDsSize(), 1u);
-    EXPECT_EQ(f.Storage->ReleaseCalls[0].GetDeviceUUIDs(0), "d1");
-    EXPECT_EQ(f.Output->Str(), "OK\n");
+    ASSERT_EQ(1u, f.Storage->ReleaseCalls.size());
+    ASSERT_EQ(1u, f.Storage->ReleaseCalls[0].DeviceUUIDsSize());
+    EXPECT_EQ("d1", f.Storage->ReleaseCalls[0].GetDeviceUUIDs(0));
+    EXPECT_EQ("OK\n", f.Output->Str());
 }
 
 TEST(TFastShardClientTest, ShouldReadPagesAsRawBytes)
@@ -148,14 +148,14 @@ TEST(TFastShardClientTest, ShouldReadPagesAsRawBytes)
         {"--device-uuid", "d1", "--first-page-no", "3", "--page-count", "2",
          "--page-size", "4"}));
 
-    ASSERT_EQ(f.Storage->ReadCalls.size(), 1u);
+    ASSERT_EQ(1u, f.Storage->ReadCalls.size());
     const auto& req = f.Storage->ReadCalls[0];
-    EXPECT_EQ(req.GetDeviceUUID(), "d1");
-    ASSERT_EQ(req.PageGroupRefsSize(), 1u);
-    EXPECT_EQ(req.GetPageGroupRefs(0).GetFirstPageNo(), 3u);
-    EXPECT_EQ(req.GetPageGroupRefs(0).GetPageCount(), 2u);
-    EXPECT_EQ(req.GetPageGroupRefs(0).GetPageSize(), 4u);
-    EXPECT_EQ(f.Output->Str(), "AAAABBBB");
+    EXPECT_EQ("d1", req.GetDeviceUUID());
+    ASSERT_EQ(1u, req.PageGroupRefsSize());
+    EXPECT_EQ(3u, req.GetPageGroupRefs(0).GetFirstPageNo());
+    EXPECT_EQ(2u, req.GetPageGroupRefs(0).GetPageCount());
+    EXPECT_EQ(4u, req.GetPageGroupRefs(0).GetPageSize());
+    EXPECT_EQ("AAAABBBB", f.Output->Str());
 }
 
 TEST(TFastShardClientTest, ShouldSplitWriteInputIntoPages)
@@ -167,17 +167,17 @@ TEST(TFastShardClientTest, ShouldSplitWriteInputIntoPages)
          "--lsn", "10", "--prev-lsn", "9"},
         "abcdefgh"));
 
-    ASSERT_EQ(f.Storage->WriteCalls.size(), 1u);
+    ASSERT_EQ(1u, f.Storage->WriteCalls.size());
     const auto& req = f.Storage->WriteCalls[0];
-    EXPECT_EQ(req.GetDeviceUUID(), "d1");
-    EXPECT_EQ(req.GetLogSequenceNumber(), 10u);
-    EXPECT_EQ(req.GetPrevLogSequenceNumber(), 9u);
-    ASSERT_EQ(req.PageGroupsSize(), 1u);
-    EXPECT_EQ(req.GetPageGroups(0).GetFirstPageNo(), 5u);
-    ASSERT_EQ(req.GetPageGroups(0).ContentSize(), 2u);
-    EXPECT_EQ(req.GetPageGroups(0).GetContent(0), "abcd");
-    EXPECT_EQ(req.GetPageGroups(0).GetContent(1), "efgh");
-    EXPECT_EQ(f.Output->Str(), "OK\n");
+    EXPECT_EQ("d1", req.GetDeviceUUID());
+    EXPECT_EQ(10u, req.GetLogSequenceNumber());
+    EXPECT_EQ(9u, req.GetPrevLogSequenceNumber());
+    ASSERT_EQ(1u, req.PageGroupsSize());
+    EXPECT_EQ(5u, req.GetPageGroups(0).GetFirstPageNo());
+    ASSERT_EQ(2u, req.GetPageGroups(0).ContentSize());
+    EXPECT_EQ("abcd", req.GetPageGroups(0).GetContent(0));
+    EXPECT_EQ("efgh", req.GetPageGroups(0).GetContent(1));
+    EXPECT_EQ("OK\n", f.Output->Str());
 }
 
 TEST(TFastShardClientTest, ShouldRejectWriteInputNotAlignedToPageSize)
@@ -209,16 +209,16 @@ TEST(TFastShardClientTest, ShouldSummarizeJournalTail)
         "readjournaltail",
         {"--device-uuid", "d1", "--after-lsn", "40", "--max-record-count", "3"}));
 
-    ASSERT_EQ(f.Storage->ReadJournalTailCalls.size(), 1u);
+    ASSERT_EQ(1u, f.Storage->ReadJournalTailCalls.size());
     const auto& req = f.Storage->ReadJournalTailCalls[0];
-    EXPECT_EQ(req.GetDeviceUUID(), "d1");
-    EXPECT_EQ(req.GetAfterLogSequenceNumber(), 40u);
-    EXPECT_EQ(req.GetMaxRecordCount(), 3u);
+    EXPECT_EQ("d1", req.GetDeviceUUID());
+    EXPECT_EQ(40u, req.GetAfterLogSequenceNumber());
+    EXPECT_EQ(3u, req.GetMaxRecordCount());
     EXPECT_EQ(
-        f.Output->Str(),
         "LsnLowWatermark: 42\n"
         "Records: 1\n"
-        "  Lsn: 41 PrevLsn: 40 [FirstPageNo: 8 Pages: 2 Bytes: 8]\n");
+        "  Lsn: 41 PrevLsn: 40 [FirstPageNo: 8 Pages: 2 Bytes: 8]\n",
+        f.Output->Str());
 }
 
 TEST(TFastShardClientTest, ShouldAdvanceLsnLowWatermark)
@@ -228,11 +228,11 @@ TEST(TFastShardClientTest, ShouldAdvanceLsnLowWatermark)
         "advancelsnlowwatermark",
         {"--device-uuid", "d1", "--lsn-low-watermark", "17"}));
 
-    ASSERT_EQ(f.Storage->AdvanceLsnLowWatermarkCalls.size(), 1u);
+    ASSERT_EQ(1u, f.Storage->AdvanceLsnLowWatermarkCalls.size());
     const auto& req = f.Storage->AdvanceLsnLowWatermarkCalls[0];
-    EXPECT_EQ(req.GetDeviceUUID(), "d1");
-    EXPECT_EQ(req.GetLsnLowWatermark(), 17u);
-    EXPECT_EQ(f.Output->Str(), "OK\n");
+    EXPECT_EQ("d1", req.GetDeviceUUID());
+    EXPECT_EQ(17u, req.GetLsnLowWatermark());
+    EXPECT_EQ("OK\n", f.Output->Str());
 }
 
 TEST(TFastShardClientTest, ShouldFormatDevice)
@@ -240,9 +240,126 @@ TEST(TFastShardClientTest, ShouldFormatDevice)
     TFixture f;
     EXPECT_TRUE(f.Run("formatdevice", {"--device-uuid", "d1"}));
 
-    ASSERT_EQ(f.Storage->FormatCalls.size(), 1u);
-    EXPECT_EQ(f.Storage->FormatCalls[0].GetDeviceUUID(), "d1");
-    EXPECT_EQ(f.Output->Str(), "OK\n");
+    ASSERT_EQ(1u, f.Storage->FormatCalls.size());
+    EXPECT_EQ("d1", f.Storage->FormatCalls[0].GetDeviceUUID());
+    EXPECT_FALSE(f.Storage->FormatCalls[0].GetWholeDevice());
+    EXPECT_EQ("OK\n", f.Output->Str());
+}
+
+TEST(TFastShardClientTest, ShouldFormatWholeDevice)
+{
+    TFixture f;
+    EXPECT_TRUE(
+        f.Run("formatdevice", {"--device-uuid", "d1", "--whole-device"}));
+
+    ASSERT_EQ(1u, f.Storage->FormatCalls.size());
+    EXPECT_EQ("d1", f.Storage->FormatCalls[0].GetDeviceUUID());
+    EXPECT_TRUE(f.Storage->FormatCalls[0].GetWholeDevice());
+    EXPECT_EQ("OK\n", f.Output->Str());
+}
+
+TEST(TFastShardClientTest, ShouldAcquireAndReleaseDeviceAroundRequest)
+{
+    TFixture f;
+    EXPECT_TRUE(f.Run(
+        "formatdevice",
+        {"--acquire", "--device-uuid", "d1", "--client-id", "cli"}));
+
+    ASSERT_EQ(1u, f.Storage->AcquireCalls.size());
+    const auto& acquire = f.Storage->AcquireCalls[0];
+    ASSERT_EQ(1u, acquire.DeviceUUIDsSize());
+    EXPECT_EQ("d1", acquire.GetDeviceUUIDs(0));
+    EXPECT_EQ("cli", acquire.GetHeaders().GetClientId());
+
+    ASSERT_EQ(1u, f.Storage->FormatCalls.size());
+
+    ASSERT_EQ(1u, f.Storage->ReleaseCalls.size());
+    const auto& release = f.Storage->ReleaseCalls[0];
+    ASSERT_EQ(1u, release.DeviceUUIDsSize());
+    EXPECT_EQ("d1", release.GetDeviceUUIDs(0));
+    EXPECT_EQ("cli", release.GetHeaders().GetClientId());
+
+    EXPECT_EQ("OK\n", f.Output->Str());
+}
+
+TEST(TFastShardClientTest, ShouldTakeAcquiredDeviceFromProtoRequest)
+{
+    TFixture f;
+    EXPECT_TRUE(f.Run(
+        "readjournaltail",
+        {"--acquire", "--proto"},
+        "DeviceUUID: \"d1\"\n"));
+
+    ASSERT_EQ(1u, f.Storage->AcquireCalls.size());
+    EXPECT_EQ("d1", f.Storage->AcquireCalls[0].GetDeviceUUIDs(0));
+    EXPECT_EQ(1u, f.Storage->ReadJournalTailCalls.size());
+    ASSERT_EQ(1u, f.Storage->ReleaseCalls.size());
+    EXPECT_EQ("d1", f.Storage->ReleaseCalls[0].GetDeviceUUIDs(0));
+}
+
+TEST(TFastShardClientTest, ShouldNotSendRequestIfAcquireFails)
+{
+    TFixture f;
+    *f.Storage->AcquireResp.MutableError() =
+        MakeError(E_REJECTED, "busy");
+
+    EXPECT_FALSE(f.Run("formatdevice", {"--acquire", "--device-uuid", "d1"}));
+    EXPECT_EQ(1u, f.Storage->AcquireCalls.size());
+    EXPECT_TRUE(f.Storage->FormatCalls.empty());
+    EXPECT_TRUE(f.Storage->ReleaseCalls.empty());
+    EXPECT_EQ("", f.Output->Str());
+}
+
+TEST(TFastShardClientTest, ShouldReleaseDeviceIfRequestFails)
+{
+    TFixture f;
+    *f.Storage->FormatResp.MutableError() = MakeError(E_IO, "io");
+
+    EXPECT_FALSE(f.Run("formatdevice", {"--acquire", "--device-uuid", "d1"}));
+    EXPECT_EQ(1u, f.Storage->FormatCalls.size());
+    EXPECT_EQ(1u, f.Storage->ReleaseCalls.size());
+}
+
+TEST(TFastShardClientTest, ShouldFailIfReleaseFails)
+{
+    TFixture f;
+    *f.Storage->ReleaseResp.MutableError() = MakeError(E_REJECTED, "nope");
+
+    EXPECT_FALSE(f.Run("formatdevice", {"--acquire", "--device-uuid", "d1"}));
+    EXPECT_EQ(1u, f.Storage->FormatCalls.size());
+    EXPECT_EQ(1u, f.Storage->ReleaseCalls.size());
+    EXPECT_EQ("OK\n", f.Output->Str());
+}
+
+TEST(TFastShardClientTest, ShouldNotOfferAcquireForAcquireAndRelease)
+{
+    for (const char* name: {"acquiredevices", "releasedevices"}) {
+        TFixture f;
+        EXPECT_THROW(
+            f.Run(name, {"--acquire", "--device-uuid", "d1"}),
+            NLastGetopt::TUsageException)
+            << name;
+    }
+}
+
+TEST(TFastShardClientTest, ShouldAcceptLogLevels)
+{
+    for (const char* arg:
+         {"--verbose", "--verbose=error", "--verbose=warn", "--verbose=info",
+          "--verbose=debug", "--verbose=trace"})
+    {
+        TFixture f;
+        EXPECT_TRUE(f.Run("formatdevice", {arg, "--device-uuid", "d1"})) << arg;
+        EXPECT_EQ(1u, f.Storage->FormatCalls.size()) << arg;
+    }
+}
+
+TEST(TFastShardClientTest, ShouldRejectUnknownLogLevel)
+{
+    TFixture f;
+    EXPECT_THROW(
+        f.Run("formatdevice", {"--verbose=loud", "--device-uuid", "d1"}),
+        NLastGetopt::TUsageException);
 }
 
 TEST(TFastShardClientTest, ShouldFailOnErrorResponse)
@@ -252,8 +369,8 @@ TEST(TFastShardClientTest, ShouldFailOnErrorResponse)
         MakeError(E_ARGUMENT, "bad device");
 
     EXPECT_FALSE(f.Run("acquiredevices", {"--device-uuid", "d1"}));
-    EXPECT_EQ(f.Storage->AcquireCalls.size(), 1u);
-    EXPECT_EQ(f.Output->Str(), "");
+    EXPECT_EQ(1u, f.Storage->AcquireCalls.size());
+    EXPECT_EQ("", f.Output->Str());
 }
 
 TEST(TFastShardClientTest, ShouldSpeakProtoText)
@@ -269,17 +386,17 @@ TEST(TFastShardClientTest, ShouldSpeakProtoText)
         {"--proto", "--client-id", "cli"},
         "DeviceUUIDs: \"d1\"\nGeneration: 3\n"));
 
-    ASSERT_EQ(f.Storage->AcquireCalls.size(), 1u);
+    ASSERT_EQ(1u, f.Storage->AcquireCalls.size());
     const auto& req = f.Storage->AcquireCalls[0];
-    ASSERT_EQ(req.DeviceUUIDsSize(), 1u);
-    EXPECT_EQ(req.GetDeviceUUIDs(0), "d1");
-    EXPECT_EQ(req.GetGeneration(), 3u);
-    EXPECT_EQ(req.GetHeaders().GetClientId(), "cli");
+    ASSERT_EQ(1u, req.DeviceUUIDsSize());
+    EXPECT_EQ("d1", req.GetDeviceUUIDs(0));
+    EXPECT_EQ(3u, req.GetGeneration());
+    EXPECT_EQ("cli", req.GetHeaders().GetClientId());
 
     NCloud::NProto::TAcquireDevicesResponse resp;
     ParseFromTextFormat(*f.Output, resp);
-    EXPECT_EQ(resp.GetError().GetCode(), E_REJECTED);
-    EXPECT_EQ(resp.GetError().GetMessage(), "not now");
+    EXPECT_EQ(E_REJECTED, resp.GetError().GetCode());
+    EXPECT_EQ("not now", resp.GetError().GetMessage());
 }
 
 TEST(TFastShardClientTest, ShouldReturnOnShutdownWhileRequestIsInFlight)

@@ -15,6 +15,7 @@
 
 #include <util/generic/hash.h>
 #include <util/generic/map.h>
+#include <util/generic/scope.h>
 #include <util/string/builder.h>
 
 namespace NCloud::NJournalled {
@@ -157,7 +158,7 @@ private:
     std::atomic_bool ShouldStop = false;
     std::atomic_bool RestoreFailed = false;
 
-    TPromise<void> FlushCycleStopped;
+    TPromise<NProto::TError> FlushCycleStopped;
 
 public:
     TJournalledDeviceV2(
@@ -174,35 +175,21 @@ public:
         , Log(Logging->CreateLog("BLOCKSTORE_JOURNALLED_DEVICE"))
     {}
 
-    void Start() override
+    TFuture<NProto::TError> Start() override
     {
-        auto future = Executor->Execute(
-            [weakSelf = weak_from_this()]()
-            {
-                auto self = weakSelf.lock();
-                if (!self) {
-                    return MakeError(E_FAIL, "TJournalledDevice is destroyed");
-                }
-
-                return self->DoStart();
-            });
-
-        auto error = future.GetValueSync();
-        if (HasError(error)) {
-            STORAGE_ERROR(
-                "unable to restore the journal on " << DeviceUUID << ": "
-                                                    << FormatError(error));
-            RestoreFailed.store(true);
-        }
+        return Execute<NProto::TError>([](auto& self)
+                                       { return self.DoStart(); });
     }
 
-    void Stop() override
+    TFuture<NProto::TError> Stop() override
     {
         ShouldStop.store(true);
 
-        if (FlushCycleStopped.Initialized()) {
-            FlushCycleStopped.GetFuture().Wait();
+        if (!FlushCycleStopped.Initialized()) {
+            return MakeFuture<NProto::TError>();
         }
+
+        return FlushCycleStopped.GetFuture();
     }
 
     TFuture<NCloud::NProto::TReadPagesResponse> ReadPages(
@@ -298,7 +285,7 @@ private:
             {
                 auto self = weakSelf.lock();
                 if (!self) {
-                    return ErrorResponse<T>(
+                    return TErrorResponse(
                         E_FAIL,
                         "TJournalledDevice is destroyed");
                 }
@@ -311,14 +298,18 @@ private:
     {
         auto response = Executor->ExtractResponse(Journal->Restore());
         if (HasError(response)) {
+            STORAGE_ERROR(
+                "unable to restore the journal on "
+                << DeviceUUID.Quote() << ": "
+                << FormatError(response.GetError()));
+            RestoreFailed.store(true);
             return response.GetError();
         }
 
         IndexedLsnBarrier.Advance(response.GetResult());
 
-        FlushCycleStopped = NewPromise<void>();
+        FlushCycleStopped = NewPromise<NProto::TError>();
         ScheduleFlushCycle();
-
         return {};
     }
 
@@ -383,12 +374,9 @@ private:
         Executor->Execute(
             [weakSelf = weak_from_this()]()
             {
-                auto self = weakSelf.lock();
-                if (!self) {
-                    return;
+                if (auto self = weakSelf.lock()) {
+                    self->RunFlushCycle();
                 }
-
-                self->RunFlushCycle();
             });
     }
 
@@ -432,7 +420,7 @@ private:
         }
 
         if (ShouldStop.load()) {
-            FlushCycleStopped.SetValue();
+            FlushCycleStopped.SetValue(NProto::TError());
             return;
         }
 

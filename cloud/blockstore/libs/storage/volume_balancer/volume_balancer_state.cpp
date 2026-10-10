@@ -31,8 +31,6 @@ TVolumeBalancerState::TVolumeBalancerState(
     TDiagnosticsConfigConstPtr diagnosticsConfig)
     : StorageConfig(std::move(storageConfig))
     , DiagnosticsConfig(std::move(diagnosticsConfig))
-    , InitialVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
-    , OverridenVolumePreemptionType(StorageConfig->GetVolumePreemptionType())
     , PullDelayResetTimespan(StorageConfig->GetInitialPullDelay())
 {}
 

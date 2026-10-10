@@ -13,11 +13,15 @@ class TJournalledDeviceStub final: public IJournalledDevice
 public:
     // IJournalledDevice
 
-    void Start() override
-    {}
+    TFuture<NProto::TError> Start() override
+    {
+        return MakeFuture<NProto::TError>();
+    }
 
-    void Stop() override
-    {}
+    TFuture<NProto::TError> Stop() override
+    {
+        return MakeFuture<NProto::TError>();
+    }
 
     [[nodiscard]] auto ReadPages(NCloud::NProto::TReadPagesRequest request)
         -> TFuture<NCloud::NProto::TReadPagesResponse> final

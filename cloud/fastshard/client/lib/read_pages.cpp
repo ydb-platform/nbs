@@ -25,6 +25,8 @@ public:
     explicit TReadPagesCommand(IStorageNodePtr client)
         : TCommand(std::move(client))
     {
+        AddAcquireOption();
+
         Opts.AddLongOption("device-uuid", "device to read from")
             .RequiredArgument("STR")
             .StoreResult(&DeviceUUID);

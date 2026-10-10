@@ -36,11 +36,15 @@ public:
 
     // IJournalledDevice
 
-    void Start() override
-    {}
+    TFuture<NProto::TError> Start() final
+    {
+        return MakeFuture<NProto::TError>();
+    }
 
-    void Stop() override
-    {}
+    TFuture<NProto::TError> Stop() final
+    {
+        return MakeFuture<NProto::TError>();
+    }
 
     [[nodiscard]] auto ReadPages(
         NCloud::NProto::TReadPagesRequest request)

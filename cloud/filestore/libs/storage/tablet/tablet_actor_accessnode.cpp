@@ -106,7 +106,8 @@ void TIndexTabletActor::CompleteTx_AccessNode(
 {
     RemoveInFlightRequest(*args.RequestInfo);
 
-    auto response = std::make_unique<TEvService::TEvAccessNodeResponse>(args.Error);
+    auto response = std::make_unique<TEvService::TEvAccessNodeResponse>(
+        std::move(args.Error));
     CompleteResponse<TEvService::TAccessNodeMethod>(
         response->Record,
         args.RequestInfo->CallContext,

@@ -1,6 +1,7 @@
 #include "session_manager.h"
 
 #include <cloud/blockstore/libs/cells/iface/cell_manager.h>
+#include <cloud/blockstore/libs/cells/iface/serving_host_observer.h>
 #include <cloud/blockstore/libs/client/client.h>
 #include <cloud/blockstore/libs/client/config.h>
 #include <cloud/blockstore/libs/client/durable.h>
@@ -239,6 +240,7 @@ private:
     const TString ClientId;
     const TDuration RequestTimeout;
     const ui32 BlockSize;
+    const NCells::IServingCellHostObserverPtr CellHostObserver;   // cell mounts
     THotSwap<IVolumeInfoPin> VolumeInfoPin;
 
 public:
@@ -249,7 +251,8 @@ public:
         IVolumeStatsPtr volumeStats,
         TString clientId,
         TDuration requestTimeout,
-        ui32 blockSize)
+        ui32 blockSize,
+        NCells::IServingCellHostObserverPtr cellHostObserver)
         : Storage(std::move(storage))
         , Service(std::move(service))
         , ServerStats(std::move(serverStats))
@@ -257,7 +260,15 @@ public:
         , ClientId(std::move(clientId))
         , RequestTimeout(requestTimeout)
         , BlockSize(blockSize)
+        , CellHostObserver(std::move(cellHostObserver))
     {}
+
+    ~TStorageDataClient() override
+    {
+        if (CellHostObserver) {
+            CellHostObserver->Detach();
+        }
+    }
 
     void Start() override
     {}
@@ -269,6 +280,12 @@ public:
 
     void PinVolumeInfo(const TString& diskId, const TString& clientId)
     {
+        // on every mount, not once: without durable pinning the VolumeInfo can
+        // be trimmed and built again by a later mount, losing the host
+        if (CellHostObserver) {
+            CellHostObserver->Attach(diskId);
+        }
+
         // One-time pinning of the VolumeInfo object until the disk is unmounted
         // or the object is destroyed
         if (VolumeInfoPin.AtomicLoad() != nullptr) {
@@ -281,6 +298,10 @@ public:
 
     void UnpinVolumeInfo()
     {
+        if (CellHostObserver) {
+            CellHostObserver->Detach();
+        }
+
         VolumeInfoPin.AtomicStore(nullptr);
     }
 
@@ -875,13 +896,17 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
 {
     auto service = Service;
     IStoragePtr storage;
+    NCells::IServingCellHostObserverPtr cellHostObserver;
 
     if (!cellId.empty()) {
+        cellHostObserver =
+            NCells::CreateServingCellHostObserver(VolumeStats, cellId, clientId);
+
         auto future = CellManager->CreateConnection(
             cellId,
             {},   // any live configured host
             clientConfig,
-            nullptr);
+            cellHostObserver);
 
         const auto& result = Executor->WaitFor(future);
         if (HasError(result)) {
@@ -905,7 +930,8 @@ TResultOrError<IBlockStorePtr> TSessionManager::CreateStorageDataClient(
         VolumeStats,
         clientId,
         clientConfig->GetRequestTimeout(),
-        volume.GetBlockSize())};
+        volume.GetBlockSize(),
+        std::move(cellHostObserver))};
 }
 
 TResultOrError<TEndpointPtr> TSessionManager::CreateEndpoint(

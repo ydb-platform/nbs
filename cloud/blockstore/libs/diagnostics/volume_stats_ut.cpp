@@ -2569,6 +2569,187 @@ Y_UNIT_TEST_SUITE(TVolumeStatsTest)
                 "compute.cloud_id.folder_id.test2.instance2.disk.write_ops"),
             "2");
     }
+
+    Y_UNIT_TEST(ShouldReportServingCellHostPerInstance)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto counters = monitoring
+            ->GetCounters()
+            ->GetSubgroup("counters", "blockstore")
+            ->GetSubgroup("component", "server_volume");
+
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto findCell = [&] (const TString& type, const TString& cellId) {
+            auto group = counters
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test")
+                ->GetSubgroup("instance", "instance-1")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->FindSubgroup("type", type);
+            return group ? group->FindSubgroup("cell", cellId) : nullptr;
+        };
+
+        auto cellMount = [&] (
+            const TString& type,
+            const TString& cellId,
+            const TString& fqdn) -> i64
+        {
+            auto cell = findCell(type, cellId);
+            auto host = cell ? cell->FindSubgroup("cell_host", fqdn) : nullptr;
+            auto counter = host ? host->FindCounter("CellMount") : nullptr;
+            return counter ? counter->Val() : 0;
+        };
+
+        Mount(
+            volumeStats,
+            "test",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+
+        volumeStats->SetServingCellHost(
+            "test",
+            "client-1",
+            1,
+            "cell-a",
+            "host-1");
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("hdd", "cell-a", "host-1"));
+
+        // a move to another host of the cell drops the old one
+        volumeStats->SetServingCellHost(
+            "test",
+            "client-1",
+            1,
+            "cell-a",
+            "host-2");
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("hdd", "cell-a", "host-1"));
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("hdd", "cell-a", "host-2"));
+
+        // a relabel rebuilds the instance tree - the serving host carries over
+        Mount(
+            volumeStats,
+            "test",
+            "client-2",
+            "instance-2",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("ssd", "cell-a", "host-2"));
+
+        volumeStats->SetServingCellHost("test", "client-1", 1, {}, {});
+        UNIT_ASSERT(!findCell("ssd", "cell-a"));
+    }
+
+    Y_UNIT_TEST(ShouldShowServingCellHostWhileAnyConnectionUsesIt)
+    {
+        auto monitoring = CreateMonitoringServiceStub();
+        auto volumeStats = CreateVolumeStats(
+            monitoring,
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        auto counter = [&] (const TString& fqdn)
+        {
+            auto group = monitoring
+                ->GetCounters()
+                ->GetSubgroup("counters", "blockstore")
+                ->GetSubgroup("component", "server_volume")
+                ->GetSubgroup("host", "cluster")
+                ->GetSubgroup("volume", "test")
+                ->GetSubgroup("instance", "instance-1")
+                ->GetSubgroup("cloud", DefaultCloudId)
+                ->GetSubgroup("folder", DefaultFolderId)
+                ->GetSubgroup("type", "hdd")
+                ->FindSubgroup("cell", "cell-a");
+            auto host = group ? group->FindSubgroup("cell_host", fqdn)
+                              : nullptr;
+            return host ? host->FindCounter("CellMount") : nullptr;
+        };
+        auto cellMount = [&] (const TString& fqdn) -> i64
+        {
+            auto c = counter(fqdn);
+            return c ? c->Val() : 0;
+        };
+
+        Mount(
+            volumeStats,
+            "test",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+
+        // a local VM migration: the new endpoint comes up while the old one
+        // still serves, each through its own connection
+        volumeStats->SetServingCellHost(
+            "test",
+            "client-1",
+            1,
+            "cell-a",
+            "host-1");
+        const auto shown = counter("host-1");
+        volumeStats->SetServingCellHost(
+            "test",
+            "client-1",
+            2,
+            "cell-a",
+            "host-1");
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-1"));
+        // a host still in use stays as it is, never dropped and added back
+        UNIT_ASSERT_EQUAL(shown, counter("host-1"));
+
+        // the new connection moves to another host
+        volumeStats->SetServingCellHost(
+            "test",
+            "client-1",
+            2,
+            "cell-a",
+            "host-2");
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-1"));
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-2"));
+
+        // the old endpoint goes away, the new one is still shown
+        volumeStats->SetServingCellHost("test", "client-1", 1, {}, {});
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("host-1"));
+        UNIT_ASSERT_VALUES_EQUAL(1, cellMount("host-2"));
+
+        volumeStats->SetServingCellHost("test", "client-1", 2, {}, {});
+        UNIT_ASSERT_VALUES_EQUAL(0, cellMount("host-2"));
+    }
+
+    Y_UNIT_TEST(ShouldRelabelDiskWithDoubleCopySuffix)
+    {
+        auto volumeStats = CreateVolumeStats(
+            CreateMonitoringServiceStub(),
+            {},
+            EVolumeStatsType::EServerStats,
+            CreateWallClockTimer());
+
+        // kept under disk-copy, and a relabel must look it up there again
+        // rather than strip the suffix a second time
+        Mount(
+            volumeStats,
+            "disk-copy-copy",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_HYBRID);
+        Mount(
+            volumeStats,
+            "disk-copy-copy",
+            "client-1",
+            "instance-1",
+            NCloud::NProto::STORAGE_MEDIA_SSD);
+
+        auto info = volumeStats->GetVolumeInfo("disk-copy-copy", "client-1");
+        UNIT_ASSERT(info);
+        UNIT_ASSERT_EQUAL(
+            NCloud::NProto::STORAGE_MEDIA_SSD,
+            info->GetInfo().GetStorageMediaKind());
+    }
 }
 
 }   // namespace NCloud::NBlockStore

@@ -12,4 +12,5 @@ message BackupImageRequest {
 
 message BackupImageTaskState {
     string DataplaneTaskID = 1;
+    bytes EncryptedDek = 2;
 }

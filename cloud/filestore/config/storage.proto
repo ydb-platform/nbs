@@ -855,9 +855,9 @@ message TStorageConfig
     // Enables injecting of errors in TIndexTabletDatabase. Must be only used in tests!
     optional double FakeTxPageFaultsProbability = 527;
 
-    // When this flag is enabled, TAggregateStatsActor does not poll all shards.
-    // Instead, it requests aggregate statistics only from the main tablet.
-    optional bool FanoutStatsCollectionInShardsDisabled = 528;
+    // Deprecated.
+    optional bool FanoutStatsCollectionInShardsDisabled = 528
+        [deprecated = true];
 
     // Enable silk regardless of other config parameters. Required for
     // persistent fastshard to work.
@@ -944,4 +944,8 @@ message TStorageConfig
 
     // Timeout for the lookup (in milliseconds).
     optional uint32 FastShardDiskRegistryLookupTimeout = 552;
+
+    // If set to true, the tablet sends FileSystemEvents (InvalidateNode,
+    // InvalidateNodeRef) to its clients upon Node and NodeRef changes.
+    optional bool FileSystemEventsEnabled = 553;
 }

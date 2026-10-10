@@ -82,7 +82,8 @@ public:
             CreateProfileLogStub(),
             session,
             CreateFileMapMemoryLimiterStub(),
-            NFuse::CreatePersistentStateManagerStub());
+            NFuse::CreatePersistentStateManagerStub(),
+            nullptr /* multiFileSystemEventHandler */);
     }
 
     void Start() override

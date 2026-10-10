@@ -5,6 +5,7 @@
 #include <cloud/fastshard/sn/iface/storage_node.h>
 
 #include <cloud/storage/core/libs/common/error.h>
+#include <cloud/storage/core/libs/diagnostics/logging.h>
 
 #include <library/cpp/getopt/small/last_getopt.h>
 #include <library/cpp/protobuf/util/pb_io.h>
@@ -47,10 +48,16 @@ protected:
     // response as protobuf text instead of the human-readable output.
     bool Proto = false;
 
-    bool Verbose = false;
+    TString VerboseLevel;
+    ELogPriority LogLevel = TLOG_WARNING;
 
     // Print connect / round trip times of the request to stderr.
     bool Timing = false;
+
+    // Acquire the device of the request before sending it and release the
+    // device afterwards; only offered by the commands that call
+    // AddAcquireOption.
+    bool Acquire = false;
 
     TString InputFile;
     std::unique_ptr<IInputStream> InputStream;
@@ -61,6 +68,9 @@ protected:
     NLastGetopt::TOpts Opts;
 
     TString ProgramName;
+
+    ILoggingServicePtr Logging;
+    TLog Log;
 
     // Preset by tests; otherwise a TCP client to Host:Port is created
     // inside the fiber right before DoExecute, reporting into Metrics.
@@ -80,6 +90,10 @@ protected:
     // must not be destroyed until WaitForFiber returns (tests) or the
     // process is left via _exit (TApp).
     bool Stopped = false;
+
+    // The --acquire release after the request failed; the command fails
+    // even if the request itself succeeded.
+    bool ReleaseFailed = false;
 
     // Outcome of the fiber, valid once Done is signalled.
     bool Result = false;
@@ -122,15 +136,37 @@ protected:
 
     virtual bool DoExecute() = 0;
 
+    void AddAcquireOption();
+
     template <typename TRequest, typename TResponse>
     TResponse Call(
         TResponse (IStorageNode::*method)(TRequest),
         TRequest request)
     {
+        bool needAcquire = false;
+        TString deviceUUID;
+
+        if constexpr (requires { request.GetDeviceUUID(); }) {
+            needAcquire = Acquire;
+            deviceUUID = request.GetDeviceUUID();
+        }
+
+        if (needAcquire) {
+            auto error = AcquireDevice(deviceUUID);
+            if (HasError(error)) {
+                return TErrorResponse(std::move(error));
+            }
+        }
+
         const TInstant started = TInstant::Now();
         TResponse response = ((*Client).*method)(std::move(request));
         CallTime = TInstant::Now() - started;
         Called = true;
+
+        if (needAcquire) {
+            ReleaseDevice(deviceUUID);
+        }
+
         return response;
     }
 
@@ -148,7 +184,7 @@ protected:
         }
 
         if (HasError(response)) {
-            Cerr << FormatError(response.GetError()) << Endl;
+            STORAGE_ERROR(FormatError(response.GetError()));
             return false;
         }
 
@@ -156,6 +192,9 @@ protected:
     }
 
 private:
+    NCloud::NProto::TError AcquireDevice(const TString& deviceUUID);
+    void ReleaseDevice(const TString& deviceUUID);
+
     void PrintTiming() const;
 
     struct TFiberParams;

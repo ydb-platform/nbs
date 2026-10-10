@@ -30,6 +30,7 @@
 #include <cloud/filestore/libs/storage/tablet/model/verify.h>
 #include <cloud/filestore/libs/storage/tablet/protos/tablet.pb.h>
 #include <cloud/filestore/private/api/protos/tablet.pb.h>
+#include <cloud/filestore/public/api/protos/filesystem_event.pb.h>
 
 #include <cloud/storage/core/libs/common/error.h>
 #include <cloud/storage/core/libs/tablet/model/commit.h>
@@ -249,6 +250,8 @@ private:
 
     bool CompressNodeRef = false;
 
+    /*const*/ bool FileSystemEventsEnabled = false;
+
     bool StateLoaded = false;
 
 protected:
@@ -345,6 +348,24 @@ public:
     void SetFrozen(IIndexTabletDatabase& db, bool frozen);
 
     void SetCompressNodeRef(IIndexTabletDatabase& db, bool compressNodeRef);
+
+protected:
+    //
+    // FileSystemEvents - appended to the transaction's sink, only if
+    // FileSystemEventsEnabled is set.
+    //
+
+    void AddInvalidateNodeEvent(
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
+        ui64 nodeId);
+
+private:
+    void AddInvalidateNodeRefEvent(
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
+        ui64 nodeId,
+        const TString& name);
+
+public:
 
     //
     // FileSystem
@@ -589,6 +610,7 @@ public:
 
     void UpdateNode(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,
@@ -597,6 +619,7 @@ public:
 
     [[nodiscard]] NProto::TError RemoveNode(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         const INodeIndexTabletDatabase::TNode& node,
         ui64 minCommitId,
         ui64 maxCommitId);
@@ -610,6 +633,7 @@ public:
     // removed right away.
     [[nodiscard]] NProto::TError UnlinkNode(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 parentNodeId,
         const TString& name,
         const INodeIndexTabletDatabase::TNode& node,
@@ -620,6 +644,7 @@ public:
 
     void UnlinkExternalNode(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 parentNodeId,
         const TString& name,
         const TString& shardId,
@@ -743,6 +768,7 @@ public:
 public:
     void CreateNodeRef(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
         ui64 commitId,
         const TString& childName,
@@ -753,6 +779,7 @@ public:
 
     void RemoveNodeRef(
         IIndexTabletDatabase& db,
+        TVector<NProto::TFileSystemEvent>& fileSystemEvents,
         ui64 nodeId,
         ui64 minCommitId,
         ui64 maxCommitId,

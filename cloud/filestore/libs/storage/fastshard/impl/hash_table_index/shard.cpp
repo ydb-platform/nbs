@@ -13,6 +13,7 @@
 #include <cloud/filestore/libs/storage/fastshard/impl/model/page_store.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_bitmap.h>
 #include <cloud/filestore/libs/storage/fastshard/impl/model/persistent_hash_table.h>
+#include <cloud/filestore/libs/storage/fastshard/impl/model/superblock.h>
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group.h>
 #include <cloud/filestore/libs/storage/fastshard/storage_group/storage_group_factory.h>
 #include <cloud/filestore/libs/storage/model/utils.h>
@@ -662,6 +663,7 @@ private:
     std::atomic<bool> Initialized = false;
     std::atomic<bool> Ready = false;
     IPageStorePtr PageStore;
+    TSuperBlock SuperBlock;
     TNodeTable Nodes;
     TNameTable Names;
     THandleTable Handles;
@@ -714,6 +716,12 @@ private:
     void InitDataStructures()
     {
         ui64 firstPageNo = 0;
+        const ui64 superBlockOffset = firstPageNo * PageSize;
+        SILK_INFO("superblock offset=%lu", superBlockOffset);
+        const ui64 superBlockPageCount =
+            SuperBlock.Init(firstPageNo, PageStore);
+        firstPageNo += superBlockPageCount;
+
         const ui64 nodeTableOffset = firstPageNo * PageSize;
         SILK_INFO("node table offset=%lu", nodeTableOffset);
         const ui64 nodeTablePageCount =
@@ -751,6 +759,7 @@ private:
 
         SILK_INFO("slack space offset=%lu", firstPageNo * PageSize);
 
+        SILK_INFO("superblock slots=%lu", SuperBlock.GetSlotCount());
         SILK_INFO("node table slots=%lu", Nodes.GetSlotCount());
         SILK_INFO("name table slots=%lu", Names.GetSlotCount());
         SILK_INFO("handle table slots=%lu", Handles.GetSlotCount());
@@ -760,6 +769,14 @@ private:
         std::lock_guard g(LayoutMutex);
 
         Layout = {
+            {
+                .Name = "SuperBlock",
+                .OffsetBytes = superBlockOffset,
+                .SizeBytes = superBlockPageCount * PageSize,
+                .SlotSize = SuperBlockSlotSize,
+                .SlotCount = SuperBlock.GetSlotCount(),
+                .Component = &SuperBlock,
+            },
             {
                 .Name = "NodeTable",
                 .OffsetBytes = nodeTableOffset,
@@ -1067,11 +1084,11 @@ public:
         NProto::TNodeAttr* attr)
     {
         ui64 nodeId = 0;
-        auto error = Nodes.AllocateNodeId(&nodeId);
+        auto error = SuperBlock.AllocateNodeId(writeContext, &nodeId);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
-                "CreateNodeImpl::Nodes.AllocateNodeId error=%s",
+                "CreateNodeImpl::SuperBlock.AllocateNodeId error=%s",
                 FormatError(error).c_str());
             return error;
         }
@@ -1497,11 +1514,11 @@ public:
         }
 
         ui64 handle = 0;
-        auto error = Handles.AllocateHandle(&handle);
+        auto error = SuperBlock.AllocateHandleId(writeContext, &handle);
         if (HasError(error)) {
             SILK_LOG(
                 LogLevel(error),
-                "[%s] CreateHandle::Handles.AllocateHandle error=%s",
+                "[%s] CreateHandle::SuperBlock.AllocateHandleId error=%s",
                 lc.Describe().c_str(),
                 FormatError(error).c_str());
             *response.MutableError() = std::move(error);
@@ -2184,6 +2201,11 @@ public:
         *stats = {};
 
         auto e = CheckReady();
+        if (HasError(e)) {
+            return e;
+        }
+
+        e = SuperBlock.CollectStats(stats);
         if (HasError(e)) {
             return e;
         }

@@ -73,6 +73,8 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(FastShardCommand,           __VA_ARGS__)                               \
                                                                                \
+    xxx(GenerateFileSystemEvent,    __VA_ARGS__)                               \
+                                                                               \
     FILESTORE_UNSAFE_TABLET_REQUESTS(xxx, __VA_ARGS__)                         \
 // FILESTORE_TABLET_REQUESTS
 
@@ -254,10 +256,14 @@ struct TEvIndexTablet
         EvFastShardCommandRequest = EvBegin + 95,
         EvFastShardCommandResponse,
 
-        // After the TABLET sub-namespace we have TABLET_WORKER and TABLET_PROXY
-        // sub-namespaces which don't have any non-local events so if we run out
-        // of event ids in the TABLET sub-namespace we can extend it by
-        // moving TABLET_WORKER and TABLET_PROXY after SS_PROXY
+        EvGenerateFileSystemEventRequest = EvBegin + 97,
+        EvGenerateFileSystemEventResponse,
+
+        // After the TABLET sub-namespace we have TABLET_WORKER sub-namespace
+        // which doesn't have any non-local events so if we run out of event
+        // ids in the TABLET sub-namespace we can extend it by moving
+        // TABLET_WORKER after SS_PROXY. TABLET_PROXY has a non-local event
+        // (FileSystemEvent) and can't be moved
 
         EvEnd
     };

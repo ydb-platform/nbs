@@ -91,66 +91,19 @@ void TIndexTabletActor::HandleWriteData(
             ProfileLog);
     };
 
-    const ui64 nodeId = msg->Record.GetNodeId();
-
-    if (!UnconfirmedRecoveryReady) {
-        if (HasDataOverlapWithUnconfirmed(nodeId, range)) {
-            replyError(MakeError(
-                E_REJECTED,
-                "write overlaps with unconfirmed recovery data"));
-            return;
-        }
+    if (auto error =
+            CheckUnconfirmedDataOverlap(msg->Record.GetNodeId(), range);
+        HasError(error))
+    {
+        replyError(error);
+        return;
     }
 
-    if (!CompactionStateLoadStatus.Finished) {
-        const ui32 limitInQueue =
-            Config->GetMaxOutOfOrderCompactionMapLoadRequestsInQueue();
-        auto& s = CompactionStateLoadStatus;
-
-        bool reject = false;
-
-        for (ui64 b = range.FirstBlock();
-                b < range.FirstBlock() + range.BlockCount();
-                ++b)
-        {
-            const auto rangeId = GetMixedRangeIndex(nodeId, b);
-
-            if (rangeId > s.MaxLoadedInOrderRangeId
-                    && !s.LoadedOutOfOrderRangeIds.contains(rangeId))
-            {
-                reject = true;
-
-                bool shouldEnqueue = true;
-                ui32 oooRequestsInQueue = 0;
-                for (const auto& req: s.LoadQueue) {
-                    if (!req.OutOfOrder) {
-                        continue;
-                    }
-
-                    if (req.FirstRangeId == rangeId) {
-                        shouldEnqueue = false;
-                        break;
-                    }
-
-                    if (++oooRequestsInQueue == limitInQueue) {
-                        shouldEnqueue = false;
-                        break;
-                    }
-                }
-
-                if (shouldEnqueue) {
-                    s.LoadQueue.push_back({rangeId, 1, true});
-                }
-            }
-        }
-
-        if (reject) {
-            replyError(MakeError(
-                E_REJECTED,
-                "compaction state not loaded yet"));
-
-            return;
-        }
+    if (auto error = ForceLoadRangeIfNeeded(msg->Record.GetNodeId(), range);
+        HasError(error))
+    {
+        replyError(error);
+        return;
     }
 
     auto validator = [&](const NProto::TWriteDataRequest& request)
@@ -414,6 +367,7 @@ void TIndexTabletActor::ExecuteTx_WriteData(
 
     UpdateNode(
         *db,
+        args.FileSystemEvents,
         args.NodeId,
         args.Node->MinCommitId,
         args.CommitId,

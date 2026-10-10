@@ -157,7 +157,8 @@ void TIndexTabletActor::CompleteTx_SetNodeXAttr(
         NotifySessionEvent(ctx, sessionEvent);
     }
 
-    auto response = std::make_unique<TEvService::TEvSetNodeXAttrResponse>(args.Error);
+    auto response = std::make_unique<TEvService::TEvSetNodeXAttrResponse>(
+        std::move(args.Error));
     response->Record.SetVersion(args.Version);
     CompleteResponse<TEvService::TSetNodeXAttrMethod>(
         response->Record,

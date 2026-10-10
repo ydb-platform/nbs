@@ -5,6 +5,7 @@
 
 #include <cloud/storage/core/libs/common/scheduler.h>
 #include <cloud/storage/core/libs/common/timer.h>
+#include <cloud/storage/core/libs/diagnostics/monitoring.h>
 
 #include <util/generic/algorithm.h>
 #include <util/generic/utility.h>
@@ -14,11 +15,49 @@
 
 namespace NCloud::NBlockStore::NCells {
 
+using namespace NMonitoring;
+
+namespace {
+
+////////////////////////////////////////////////////////////////////////////////
+
+TCellCounters MakeCellCounters(
+    const IMonitoringServicePtr& monitoring,
+    const TString& cellId)
+{
+    // tests build a pool with a bare TBootstrap
+    auto group = monitoring
+        ? monitoring->GetCounters()
+              ->GetSubgroup("counters", "blockstore")
+              ->GetSubgroup("component", "cells")
+              ->GetSubgroup("cell", cellId)
+        : MakeIntrusive<TDynamicCounters>();
+
+    return {
+        .HostsConfigured = group->GetCounter("HostsConfigured"),
+        .HostsUnavailable = group->GetCounter("HostsUnavailable"),
+        .Connections = group->GetCounter("Connections"),
+        .HostBecameUnavailable =
+            group->GetCounter("HostBecameUnavailable", true),
+        .HostBecameAvailable = group->GetCounter("HostBecameAvailable", true),
+        .ChannelWarmupErrors = group->GetCounter("ChannelWarmupErrors", true),
+        .DescribeEndpointErrors =
+            group->GetCounter("DescribeEndpointErrors", true),
+        .PingSweepErrors = group->GetCounter("PingSweepErrors", true),
+        .Migrations = group->GetCounter("Migrations", true),
+        .MigrationFailures = group->GetCounter("MigrationFailures", true),
+        .NoMigrationTarget = group->GetCounter("NoMigrationTarget", true),
+    };
+}
+
+}   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
 
 TCellHostPool::TCellHostPool(TCellConfigPtr config, TBootstrap bootstrap)
     : Config(std::move(config))
     , Bootstrap(std::move(bootstrap))
+    , Counters(MakeCellCounters(Bootstrap.Monitoring, Config->GetCellId()))
 {
     if (Bootstrap.Logging) {
         // tests build a pool with a bare TBootstrap; a closed TLog swallows
@@ -46,6 +85,8 @@ TCellHostPool::TCellHostPool(TCellConfigPtr config, TBootstrap bootstrap)
         channel.Configured = true;
         channel.Alive = true;
     }
+
+    *Counters.HostsConfigured = Config->GetHosts().size();
 }
 
 TResultOrError<TCellHostConfig> TCellHostPool::PickHost() const
@@ -175,8 +216,10 @@ bool TCellHostPool::ApplyLiveness(
 
         // a discovered host that nobody holds and that stopped answering
         // occupies a slot without earning it
+        bool erased = false;
         if (!channel->Configured && !alive && channel->RefCount == 0) {
             Channels.erase(fqdn);
+            erased = true;
         }
 
         if (transition && alive) {
@@ -184,16 +227,23 @@ bool TCellHostPool::ApplyLiveness(
             // to cover the warm minimum has no reason to linger now
             PruneRetainedDiscoveredLocked();
         }
+
+        // not on every ping: the sweep repeats the verdict for every host
+        if (transition || erased) {
+            UpdateHostsUnavailableLocked();
+        }
     }
 
     // before the watchers run: notifying one starts a migration that logs
     // its own line, and the cause must not read as the consequence
     if (transition) {
         if (alive) {
+            Counters.HostBecameAvailable->Inc();
             STORAGE_INFO(
                 "[" << fqdn << "] is answering again in cell "
                     << Config->GetCellId());
         } else {
+            Counters.HostBecameUnavailable->Inc();
             STORAGE_WARN(
                 "[" << fqdn << "] stopped answering in cell "
                     << Config->GetCellId() << ": " << FormatError(error));
@@ -229,6 +279,11 @@ TString TCellHostPool::GetCellId() const
 {
     // Config is immutable, so no lock is needed here.
     return Config->GetCellId();
+}
+
+const TCellCounters& TCellHostPool::GetCounters() const
+{
+    return Counters;
 }
 
 TVector<TCellHostPool::THostStatus> TCellHostPool::GetHostStatuses() const
@@ -342,6 +397,7 @@ void TCellHostPool::TopUpWarmChannelsLocked()
             // shutting down). One host failing must not abort warming the
             // rest - and, since this runs on the scheduler thread whose task
             // is noexcept, must not escape at all
+            Counters.ChannelWarmupErrors->Inc();
             STORAGE_WARN(
                 "[" << fqdn << "] could not warm a channel in cell "
                     << Config->GetCellId() << ": "
@@ -350,6 +406,12 @@ void TCellHostPool::TopUpWarmChannelsLocked()
         }
         ++live;
     }
+}
+
+void TCellHostPool::UpdateHostsUnavailableLocked()
+{
+    *Counters.HostsUnavailable =
+        CountIf(Channels, [](const auto& c) { return !c.second.Alive; });
 }
 
 void TCellHostPool::PruneRetainedDiscoveredLocked()
@@ -394,6 +456,7 @@ TCellHostPool::AcquireControlChannel(const TString& fqdn)
     with_lock (Lock) {
         auto future = EnsureChannelLocked(fqdn);
         Channels[fqdn].RefCount++;
+        Counters.Connections->Inc();
         return future;
     }
 }
@@ -459,6 +522,7 @@ TCellHostEndpoints TCellHostPool::GetDescribeEndpoints(
                     // building the endpoint can throw (a bad address or port,
                     // the client shutting down); skip this host rather than
                     // fail the whole describe or escape to the caller
+                    Counters.DescribeEndpointErrors->Inc();
                     STORAGE_WARN(
                         "[" << fqdn << "] could not build a describe endpoint "
                             "in cell " << Config->GetCellId() << ": "
@@ -487,6 +551,7 @@ void TCellHostPool::ReleaseControlChannel(const TString& fqdn)
         auto& channel = it->second;
         if (channel.RefCount) {
             --channel.RefCount;
+            Counters.Connections->Dec();
         }
 
         // Configured hosts stay warm. A discovered one normally lives only as
@@ -497,6 +562,7 @@ void TCellHostPool::ReleaseControlChannel(const TString& fqdn)
             CountLiveChannelsLocked(fqdn) >= Config->GetMinCellConnections())
         {
             Channels.erase(it);
+            UpdateHostsUnavailableLocked();
         }
     }
 }
@@ -571,10 +637,8 @@ void TCellHostPool::PingSweep()
             auto& headers = *request->MutableHeaders();
             headers.SetRequestTimeout(
                 Config->GetHostPingTimeout().MilliSeconds());
-            // this endpoint does not go through
-            // TClientEndpoint::PrepareRequest, which is where every other
-            // cells request gets its client id, and the gRPC client aborts
-            // on an empty one. The cell id is always there and makes the
+            // a request leaving the pool's client needs a client id, or the
+            // gRPC client aborts; the cell id is always there and makes the
             // pings easy to spot in the server log
             headers.SetClientId(Config->GetCellId());
 
@@ -597,6 +661,7 @@ void TCellHostPool::PingSweep()
         // nothing here may escape onto the scheduler thread, whose task is
         // noexcept; and whatever went wrong, the pinger must live to try the
         // next sweep - so the reschedule below stays unconditional
+        Counters.PingSweepErrors->Inc();
         STORAGE_WARN(
             "[cell " << Config->GetCellId() << "] ping sweep failed: "
                 << CurrentExceptionMessage());

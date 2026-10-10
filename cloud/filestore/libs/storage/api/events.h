@@ -124,10 +124,10 @@ struct TProtoResponseEvent
         TProtoResponseEvent::Record = std::forward<T>(proto);
     }
 
-    TProtoResponseEvent(const NProto::TError& error)
+    TProtoResponseEvent(NProto::TError error)
     {
         if (error.GetCode() != 0 || !error.GetMessage().empty()) {
-            *TProtoResponseEvent::Record.MutableError() = error;
+            *TProtoResponseEvent::Record.MutableError() = std::move(error);
         }
     }
 
