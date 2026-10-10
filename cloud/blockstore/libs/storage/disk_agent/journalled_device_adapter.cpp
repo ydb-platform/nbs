@@ -53,6 +53,18 @@ auto CreateReadBlocksRequest(
     return request;
 }
 
+auto CreateZeroBlocksRequest(
+    const NJournalled::TPageRangeRef& rangeRef,
+    ui64 firstBlockIndex) -> std::shared_ptr<NProto::TZeroBlocksRequest>
+{
+    auto request = std::make_shared<NProto::TZeroBlocksRequest>();
+
+    request->SetStartIndex(firstBlockIndex + rangeRef.FirstPageNo);
+    request->SetBlocksCount(rangeRef.PageCount);
+
+    return request;
+}
+
 // Checks that the pages fit in the region. An unbounded region leaves the
 // bounds to the device itself.
 NProto::TError ValidatePagesInRegion(
@@ -131,6 +143,34 @@ NProto::TError ValidateReadPagesRequest(
 {
     if (rangeRefs.empty()) {
         return MakeError(E_ARGUMENT, "nothing to read");
+    }
+
+    for (const auto& rangeRef: rangeRefs) {
+        if (rangeRef.PageCount == 0) {
+            return MakeError(
+                E_ARGUMENT,
+                "page group ref must contain at least one page");
+        }
+
+        if (auto error = ValidatePagesInRegion(
+                region,
+                rangeRef.FirstPageNo,
+                rangeRef.PageCount);
+            HasError(error))
+        {
+            return error;
+        }
+    }
+
+    return {};
+}
+
+NProto::TError ValidateZeroPagesRequest(
+    const TVector<NJournalled::TPageRangeRef>& rangeRefs,
+    const TDeviceRegion& region)
+{
+    if (rangeRefs.empty()) {
+        return MakeError(E_ARGUMENT, "nothing to zero");
     }
 
     for (const auto& rangeRef: rangeRefs) {
@@ -273,6 +313,52 @@ public:
                 requestBlockSize,
                 TStringBuf()   // dataBuffer
                 ));
+        }
+
+        auto all = WaitAll(futures);
+
+        return all.Apply([futures](const TFuture<void>& future) mutable
+            -> NProto::TError
+            {
+                if (future.HasException()) {
+                    return ResultOrError(future).GetError();
+                }
+
+                for (const auto& future: futures) {
+                    const auto& sub = future.GetValue();
+                    if (HasError(sub)) {
+                        return sub.GetError();
+                    }
+                }
+
+                return {};
+            });
+    }
+
+    [[nodiscard]] auto ZeroPages(TVector<NJournalled::TPageRangeRef> ranges)
+        -> TFuture<NProto::TError> final
+    {
+        if (auto error = ValidateZeroPagesRequest(ranges, Region);
+            HasError(error))
+        {
+            return MakeFuture(std::move(error));
+        }
+
+        auto [storageAdapter, error] = DeviceClient->AccessDevice(DeviceUUID);
+        if (HasError(error)) {
+            return MakeFuture(std::move(error));
+        }
+
+        TVector<TFuture<NProto::TZeroBlocksResponse>> futures;
+        futures.reserve(ranges.size());
+
+        auto now = Timer->Now();
+        for (const auto& range: ranges) {
+            futures.push_back(storageAdapter->ZeroBlocks(
+                now,
+                CreateCallContext(),
+                CreateZeroBlocksRequest(range, Region.FirstBlockIndex),
+                BlockSize));
         }
 
         auto all = WaitAll(futures);
