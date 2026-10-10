@@ -125,6 +125,11 @@ type SnapshotBackupRequest struct {
 	BackupID   string
 }
 
+type SnapshotBackupID struct {
+	DiskID     string
+	SnapshotID string
+}
+
 type Storage interface {
 	// Returns disk if action has been accepted by storage and nil otherwise.
 	CreateDisk(ctx context.Context, disk DiskMeta) (*DiskMeta, error)
@@ -193,6 +198,10 @@ type Storage interface {
 
 	ImageBackupCancelled(ctx context.Context, imageID string) error
 
+	GetImageBackupDeleteQueue(ctx context.Context, limit int) ([]string, error)
+
+	ImageBackupDeletionsCompleted(ctx context.Context, imageIDs []string) error
+
 	// Returns snapshot if action has been accepted by storage and nil otherwise.
 	CreateSnapshot(ctx context.Context, snapshot SnapshotMeta) (SnapshotMeta, error)
 
@@ -248,6 +257,16 @@ type Storage interface {
 
 	// Marks a ready snapshot as backed up. A deleting snapshot is not marked.
 	SnapshotBackupCompleted(ctx context.Context, snapshotID string) error
+
+	GetSnapshotBackupDeleteQueue(
+		ctx context.Context,
+		limit int,
+	) ([]SnapshotBackupID, error)
+
+	SnapshotBackupDeletionsCompleted(
+		ctx context.Context,
+		snapshotIDs []string,
+	) error
 
 	// Returns filesystem if action has been accepted by storage and nil otherwise.
 	CreateFilesystem(ctx context.Context, filesystem FilesystemMeta) (*FilesystemMeta, error)

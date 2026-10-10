@@ -343,6 +343,32 @@ func (s *StorageMock) GetBackupChunkQueueLength(
 	return args.Get(0).(uint64), args.Error(1)
 }
 
+func (s *StorageMock) GetBackupChunksToDelete(
+	ctx context.Context,
+	limit int,
+) ([]string, error) {
+
+	args := s.Called(ctx, limit)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func (s *StorageMock) BackupChunksDeleted(
+	ctx context.Context,
+	chunkIDs []string,
+) error {
+
+	args := s.Called(ctx, chunkIDs)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetBackupChunkDeleteQueueLength(
+	ctx context.Context,
+) (uint64, error) {
+
+	args := s.Called(ctx)
+	return args.Get(0).(uint64), args.Error(1)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 // Ensure that StorageMock implements storage.Storage.

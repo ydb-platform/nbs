@@ -51,6 +51,8 @@ func TestBackupImageTask(t *testing.T) {
 	scheduler := tasks_mocks.NewSchedulerMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 	var scheduledDEK []byte
+	var scheduledMetaKey string
+	var scheduledMeta []byte
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
 	storage.On("ImageBackupScheduled", mock.Anything, "image1").Return(nil)
@@ -64,6 +66,8 @@ func TestBackupImageTask(t *testing.T) {
 		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotDataRequest) bool {
 			dek := request.EncryptedDek
 			scheduledDEK = append([]byte(nil), dek...)
+			scheduledMetaKey = request.MetaKey
+			scheduledMeta = append([]byte(nil), request.Meta...)
 			return request.SnapshotId == "image1" &&
 				len(request.EncryptedDek) != 0
 		}),
@@ -99,14 +103,14 @@ func TestBackupImageTask(t *testing.T) {
 	execCtx.AssertNumberOfCalls(t, "SaveState", 2)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	object, err := backupS3.GetObject(
-		ctx,
-		backup.ImageMetaKey("image1"),
-	)
-	require.NoError(t, err)
+	// The copy writes the meta while it holds the source; the task only
+	// passes it.
+	require.Equal(t, backup.ImageMetaKey("image1"), scheduledMetaKey)
+	_, err = backupS3.GetObject(ctx, scheduledMetaKey)
+	require.Error(t, err)
 
 	var meta backup.ImageMeta
-	require.NoError(t, json.Unmarshal(object.Data, &meta))
+	require.NoError(t, json.Unmarshal(scheduledMeta, &meta))
 	require.Equal(
 		t,
 		backup.ImageMeta{
@@ -242,7 +246,9 @@ func TestBackupImageTaskWithoutEncryption(t *testing.T) {
 			request *dataplane_protos.BackupSnapshotDataRequest,
 		) bool {
 			return request.SnapshotId == "image1" &&
-				len(request.EncryptedDek) == 0
+				len(request.EncryptedDek) == 0 &&
+				request.MetaKey == backup.ImageMetaKey("image1") &&
+				len(request.Meta) != 0
 		}),
 	).Return("dataplane1", nil)
 	scheduler.On(
@@ -266,13 +272,6 @@ func TestBackupImageTaskWithoutEncryption(t *testing.T) {
 	execCtx.AssertNumberOfCalls(t, "SaveState", 1)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	key := backup.ImageMetaKey("image1")
-	object, err := backupS3.GetObject(ctx, key)
-	require.NoError(t, err)
-
-	raw, err := s3.GetObject(ctx, backupTestBucket, backupS3.Key(key))
-	require.NoError(t, err)
-	require.Equal(t, object.Data, raw.Data)
-	require.Nil(t, raw.Metadata["Key-Id"])
-	require.Nil(t, raw.Metadata["Encrypted-Dek"])
+	_, err = backupS3.GetObject(ctx, backup.ImageMetaKey("image1"))
+	require.Error(t, err)
 }

@@ -48,6 +48,13 @@ func (t *backupSnapshotDataTask) Run(
 
 	snapshotID := t.request.SnapshotId
 
+	if len(t.request.MetaKey) == 0 {
+		return errors.NewNonRetriableErrorf(
+			"backup of snapshot %v has no meta key",
+			snapshotID,
+		)
+	}
+
 	// Deletion waits until the copy releases the snapshot. A repeated hold by
 	// the same copy succeeds.
 	held, err := t.storage.HoldSnapshotForBackup(
@@ -85,6 +92,19 @@ func (t *backupSnapshotDataTask) Run(
 	}
 
 	err = t.backupChunkMap(ctx, execCtx, meta)
+	if err != nil {
+		return err
+	}
+
+	// The meta goes last: a backup with meta.json in the follower is
+	// complete. Deletion waits for the hold, so it deletes the meta after it
+	// is written.
+	err = t.backupS3.PutObject(
+		ctx,
+		t.request.MetaKey,
+		t.request.EncryptedDek,
+		persistence.S3Object{Data: t.request.Meta},
+	)
 	if err != nil {
 		return err
 	}

@@ -502,4 +502,22 @@ func TestImagesDeletionStopsBackup(t *testing.T) {
 	ids, err := storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, ids)
+
+	imageIDs, err := storage.GetImageBackupDeleteQueue(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{"image"}, imageIDs)
+
+	_, err = storage.DeleteImage(ctx, image.ID, "delete", time.Now())
+	require.NoError(t, err)
+
+	imageIDs, err = storage.GetImageBackupDeleteQueue(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{"image"}, imageIDs)
+
+	err = storage.ImageBackupDeletionsCompleted(ctx, imageIDs)
+	require.NoError(t, err)
+
+	imageIDs, err = storage.GetImageBackupDeleteQueue(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, imageIDs)
 }

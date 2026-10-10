@@ -87,9 +87,47 @@ func newBackupSnapshotDataTask(
 		request: &protos.BackupSnapshotDataRequest{
 			SnapshotId:   snapshotID,
 			EncryptedDek: follower.encryptedDEK,
+			MetaKey:      backupTestMetaKey(snapshotID),
+			Meta:         backupTestMeta(snapshotID),
 		},
 		state: &protos.BackupSnapshotDataTaskState{},
 	}
+}
+
+func backupTestMetaKey(snapshotID string) string {
+	return backup.SnapshotMetaKey("disk", snapshotID)
+}
+
+func backupTestMeta(snapshotID string) []byte {
+	return []byte(`{"id":"` + snapshotID + `"}`)
+}
+
+func requireBackupMeta(
+	t *testing.T,
+	ctx context.Context,
+	follower testFollower,
+	snapshotID string,
+) {
+
+	key := backupTestMetaKey(snapshotID)
+	object, err := follower.getObject(ctx, key)
+	require.NoError(t, err)
+	require.Equal(t, backupTestMeta(snapshotID), object.Data)
+
+	raw, err := follower.getRawObject(ctx, key)
+	require.NoError(t, err)
+	require.NotEqual(t, object.Data, raw.Data)
+}
+
+func requireNoBackupMeta(
+	t *testing.T,
+	ctx context.Context,
+	follower testFollower,
+	snapshotID string,
+) {
+
+	_, err := follower.getObject(ctx, backupTestMetaKey(snapshotID))
+	require.Error(t, err)
 }
 
 func newBackupExecutionContext(
@@ -271,6 +309,9 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
+	// The meta is written only after the chunks and the chunk map.
+	requireNoBackupMeta(t, ctx, follower, "snap1")
+
 	err = storage.ChunksBackupCompleted(ctx, queue)
 	require.NoError(t, err)
 
@@ -279,6 +320,7 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 
 	chunkMap := readBackupChunkMap(t, ctx, follower, "snap1")
 	require.Equal(t, []string{chunk0, ""}, chunkMap.ChunkIds)
+	requireBackupMeta(t, ctx, follower, "snap1")
 
 	cleared, err := storage.ClearBackupChunks(ctx, "snap1", 10)
 	require.NoError(t, err)
@@ -604,6 +646,31 @@ func TestBackupSnapshotDataTaskSkipsDeletedSnapshot(t *testing.T) {
 	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, queue)
+
+	// Nothing is written: the deletion would not wait for the copy.
+	_, err = follower.getObject(ctx, backup.ChunkMapKey("snap1"))
+	require.Error(t, err)
+	requireNoBackupMeta(t, ctx, follower, "snap1")
+}
+
+func TestBackupSnapshotDataTaskRejectsRequestWithoutMeta(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage, closeFunc := newStorage(t, ctx)
+	defer closeFunc()
+
+	follower := newTestFollower(t, ctx)
+	createSnapshotWithChunk(t, ctx, storage, "snap1")
+
+	task := newBackupSnapshotDataTask(storage, follower, "snap1")
+	task.request.MetaKey = ""
+
+	err := task.Run(ctx, newBackupExecutionContext(ctx))
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
+	// The request is rejected before the hold.
+	_, err = storage.DeletingSnapshot(ctx, "snap1", "delete")
+	require.NoError(t, err)
 }
 
 func TestBackupSnapshotDataTaskEnqueuesNothingOnBadDEK(t *testing.T) {
