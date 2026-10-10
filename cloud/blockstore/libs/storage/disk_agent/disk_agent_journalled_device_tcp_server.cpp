@@ -25,6 +25,8 @@
 #include <util/generic/hash.h>
 #include <util/string/builder.h>
 
+#include <optional>
+
 namespace NCloud::NBlockStore::NStorage {
 
 using namespace NActors;
@@ -36,10 +38,9 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr NProto::EVolumeAccessMode DefaultAccessMode =
-    NProto::VOLUME_ACCESS_READ_WRITE;
+// Fastshard orders writers by generation only, so the mount sequence number of
+// the disk agent is never used.
 constexpr ui64 DefaultMountSeqNumber = 0;
-constexpr ui64 DefaultVolumeGeneration = 0;
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -49,6 +50,20 @@ void CopyHeaders(
 {
     dst.SetClientId(src.GetClientId());
     dst.SetRequestTimeout(src.GetRequestTimeout());
+}
+
+std::optional<NProto::EVolumeAccessMode> GetVolumeAccessMode(
+    NProto::EAccessMode accessMode)
+{
+    switch (accessMode) {
+        case NProto::ACCESS_READ_WRITE:
+            return NProto::VOLUME_ACCESS_READ_WRITE;
+        case NProto::ACCESS_READ_ONLY:
+            return NProto::VOLUME_ACCESS_READ_ONLY;
+
+        default:
+            return std::nullopt;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -140,16 +155,26 @@ public:
         NCloud::NProto::TAcquireDevicesRequest request)
         -> TFuture<NCloud::NProto::TAcquireDevicesResponse> final
     {
+        const auto accessMode = GetVolumeAccessMode(request.GetAccessMode());
+        if (!accessMode) {
+            return MakeFuture<NCloud::NProto::TAcquireDevicesResponse>(
+                TErrorResponse(
+                    E_ARGUMENT,
+                    TStringBuilder()
+                        << "unknown access mode: "
+                        << static_cast<int>(request.GetAccessMode())));
+        }
+
         auto ev = std::make_unique<TEvDiskAgent::TEvAcquireDevicesRequest>();
 
         CopyHeaders(*ev->Record.MutableHeaders(), request.GetHeaders());
         ev->Record.MutableDeviceUUIDs()->Assign(
             request.GetDeviceUUIDs().begin(),
             request.GetDeviceUUIDs().end());
-        ev->Record.SetAccessMode(DefaultAccessMode);
+        ev->Record.SetAccessMode(*accessMode);
         ev->Record.SetMountSeqNumber(DefaultMountSeqNumber);
-        ev->Record.SetDiskId(request.GetHeaders().GetClientId());
-        ev->Record.SetVolumeGeneration(DefaultVolumeGeneration);
+        ev->Record.SetDiskId(request.GetFastshardId());
+        ev->Record.SetVolumeGeneration(request.GetGeneration());
 
         auto future = ActorSystem->Ask<TEvDiskAgent::TEvAcquireDevicesResponse>(
             DiskAgentActorId,
@@ -178,6 +203,8 @@ public:
         ev->Record.MutableDeviceUUIDs()->Assign(
             request.GetDeviceUUIDs().begin(),
             request.GetDeviceUUIDs().end());
+        ev->Record.SetDiskId(request.GetFastshardId());
+        ev->Record.SetVolumeGeneration(request.GetGeneration());
 
         auto future = ActorSystem->Ask<TEvDiskAgent::TEvReleaseDevicesResponse>(
             DiskAgentActorId,
