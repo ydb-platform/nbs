@@ -13,13 +13,13 @@ import (
 // to the follower whatever the number of copy tasks on it. A nil limiter and
 // a zero rate let everything through.
 //
-// availableBytes grows at addAvailableBytesPerSecond up to maxInflightBytes: a
-// second of bandwidth, but not less than minMaxInflightBytes. An idle node may
+// availableBytes grows at addAvailableBytesPerSecond up to maxAvailableBytes: a
+// second of bandwidth, but not less than minMaxAvailableBytes. An idle node may
 // send at most that much at once. It goes negative when callers reserve more
 // than is available: later callers wait behind them.
 type BandwidthLimiter struct {
 	addAvailableBytesPerSecond float64
-	maxInflightBytes           float64
+	maxAvailableBytes          float64
 	now                        func() time.Time
 
 	// Shared by every copy goroutine of the process.
@@ -28,23 +28,23 @@ type BandwidthLimiter struct {
 	refilledAt     time.Time
 }
 
-// minMaxInflightBytes is the largest single Wait the caller makes: a bucket
+// minMaxAvailableBytes is the largest single Wait the caller makes: a bucket
 // smaller than that would never let it through.
 func NewBandwidthLimiter(
 	addAvailableBytesPerSecond uint64,
-	minMaxInflightBytes uint64,
+	minMaxAvailableBytes uint64,
 ) *BandwidthLimiter {
 
 	return newBandwidthLimiter(
 		addAvailableBytesPerSecond,
-		minMaxInflightBytes,
+		minMaxAvailableBytes,
 		time.Now,
 	)
 }
 
 func newBandwidthLimiter(
 	addAvailableBytesPerSecond uint64,
-	minMaxInflightBytes uint64,
+	minMaxAvailableBytes uint64,
 	now func() time.Time,
 ) *BandwidthLimiter {
 
@@ -52,15 +52,15 @@ func newBandwidthLimiter(
 		return nil
 	}
 
-	maxInflightBytes := math.Max(
+	maxAvailableBytes := math.Max(
 		float64(addAvailableBytesPerSecond),
-		float64(minMaxInflightBytes),
+		float64(minMaxAvailableBytes),
 	)
 	return &BandwidthLimiter{
 		addAvailableBytesPerSecond: float64(addAvailableBytesPerSecond),
-		maxInflightBytes:           maxInflightBytes,
+		maxAvailableBytes:          maxAvailableBytes,
 		now:                        now,
-		availableBytes:             maxInflightBytes,
+		availableBytes:             maxAvailableBytes,
 		refilledAt:                 now(),
 	}
 }
@@ -98,7 +98,7 @@ func (l *BandwidthLimiter) reserve(bytes int) time.Duration {
 	elapsed := now.Sub(l.refilledAt).Seconds()
 	if elapsed > 0 {
 		l.availableBytes = math.Min(
-			l.maxInflightBytes,
+			l.maxAvailableBytes,
 			l.availableBytes+elapsed*l.addAvailableBytesPerSecond,
 		)
 		l.refilledAt = now
