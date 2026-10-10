@@ -1265,23 +1265,6 @@ void TVolumeState::RemoveLeader(const TLeaderFollowerLink& link)
             });
 }
 
-TVector<TLeaderFollowerLink> TVolumeState::RemoveCancelledLeaders()
-{
-    TVector<TLeaderFollowerLink> removed;
-    EraseIf(
-        LeaderDisks,
-        [&](const TLeaderDiskInfo& leader)
-        {
-            if (leader.State != TLeaderDiskInfo::EState::Cancelled) {
-                return false;
-            }
-            removed.push_back(leader.Link);
-            return true;
-        });
-    UpdateLeadershipStatus();
-    return removed;
-}
-
 const TLeaderDisks& TVolumeState::GetAllLeaders() const
 {
     return LeaderDisks;

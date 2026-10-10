@@ -865,10 +865,6 @@ message TUpdateLinkOnFollowerRequest
 
     uint64 LeaderTabletId = 9;
     uint64 FollowerTabletId = 10;
-
-    // Absent for legacy links. Zero means creation was cancelled before a
-    // destination generation was durably bound on the source.
-    optional uint64 FollowerGeneration = 11;
 }
 
 message TUpdateLinkOnFollowerResponse
@@ -924,8 +920,6 @@ message TGetLinkStatusResponse
     uint64 VolumeTabletId = 5;
     string LinkUUID = 6;
     NCloud.NProto.EStorageMediaKind StorageMediaKind = 7;
-    // Destination-owned generation available for a new link.
-    uint64 NextLeaderLinkGeneration = 8;
 
     // Optional response headers.
     TResponseHeaders Headers = 1000;
