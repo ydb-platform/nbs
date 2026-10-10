@@ -16,14 +16,14 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 // Keeps as many dataplane.BackupChunks tasks running as the queue needs: one
-// per batch, up to tasksLimit. Workers end on their own when the queue is
+// per batch, up to maxTasks. Workers end on their own when the queue is
 // empty, so an idle cluster runs none of them.
 type scheduleBackupChunksTasks struct {
-	scheduler  tasks.Scheduler
-	storage    storage.Storage
-	tasksLimit int
-	batchSize  int
-	state      *protos.ScheduleBackupChunksTasksState
+	scheduler tasks.Scheduler
+	storage   storage.Storage
+	maxTasks  int
+	batchSize int
+	state     *protos.ScheduleBackupChunksTasksState
 }
 
 func (t *scheduleBackupChunksTasks) Save() ([]byte, error) {
@@ -43,14 +43,14 @@ func (t *scheduleBackupChunksTasks) Run(
 	// The scan stops where another worker would not change anything.
 	queued, err := t.storage.CountQueuedBackupChunks(
 		ctx,
-		t.tasksLimit*t.batchSize,
+		t.maxTasks*t.batchSize,
 	)
 	if err != nil {
 		return err
 	}
 
 	want := (queued + t.batchSize - 1) / t.batchSize
-	want = min(want, t.tasksLimit)
+	want = min(want, t.maxTasks)
 
 	err = t.dropEndedWorkers(ctx)
 	if err != nil {

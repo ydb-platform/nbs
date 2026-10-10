@@ -26,17 +26,17 @@ type chunkCopyLimiter interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Copies queued chunks to the follower until the queue is empty or, if
-// chunkLimit is not zero, until it has copied that many. The dispatcher keeps
+// maxChunks is not zero, until it has copied that many. The dispatcher keeps
 // as many of these running as the queue needs.
 type backupChunksTask struct {
-	storage    storage.Storage
-	backupS3   *backup.S3
-	limiter    chunkCopyLimiter
-	batchSize  int
-	ioDepth    int
-	chunkLimit int
-	registry   metrics.Registry
-	state      *protos.BackupChunksTaskState
+	storage   storage.Storage
+	backupS3  *backup.S3
+	limiter   chunkCopyLimiter
+	batchSize int
+	ioDepth   int
+	maxChunks int
+	registry  metrics.Registry
+	state     *protos.BackupChunksTaskState
 }
 
 func (t *backupChunksTask) Save() ([]byte, error) {
@@ -81,7 +81,7 @@ func (t *backupChunksTask) Run(
 		}
 
 		copiedCount += len(copied)
-		if t.chunkLimit > 0 && copiedCount >= t.chunkLimit {
+		if t.maxChunks > 0 && copiedCount >= t.maxChunks {
 			return nil
 		}
 	}

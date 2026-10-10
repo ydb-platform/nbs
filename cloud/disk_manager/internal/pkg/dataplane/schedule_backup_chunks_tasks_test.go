@@ -34,11 +34,11 @@ func newScheduleBackupChunksTasksTest(
 	execCtx.On("SaveState", mock.Anything).Return(nil)
 
 	task := &scheduleBackupChunksTasks{
-		scheduler:  scheduler,
-		storage:    storage,
-		tasksLimit: 50,
-		batchSize:  100,
-		state:      &protos.ScheduleBackupChunksTasksState{},
+		scheduler: scheduler,
+		storage:   storage,
+		maxTasks:  50,
+		batchSize: 100,
+		state:     &protos.ScheduleBackupChunksTasksState{},
 	}
 	return ctx, storage, scheduler, execCtx, task
 }
@@ -104,7 +104,7 @@ func TestScheduleBackupChunksTasksSchedulesOneWorkerPerBatch(t *testing.T) {
 
 func TestScheduleBackupChunksTasksSchedulesAtMostLimit(t *testing.T) {
 	ctx, storage, scheduler, execCtx, task := newScheduleBackupChunksTasksTest(t)
-	task.tasksLimit = 2
+	task.maxTasks = 2
 	storage.On("CountQueuedBackupChunks", mock.Anything, 200).Return(200, nil)
 	expectWorkerScheduled(scheduler, 0)
 	expectWorkerScheduled(scheduler, 1)

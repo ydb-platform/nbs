@@ -317,13 +317,13 @@ func RegisterForExecution(
 			"dataplane.BackupChunks",
 			func() tasks.Task {
 				return &backupChunksTask{
-					storage:    storage,
-					backupS3:   backupS3,
-					limiter:    bandwidthLimiter,
-					batchSize:  int(config.GetBackupChunksTaskBatchSize()),
-					ioDepth:    int(config.GetBackupChunksTaskIoDepth()),
-					chunkLimit: int(config.GetBackupChunksTaskChunkLimit()),
-					registry:   metricsRegistry,
+					storage:   storage,
+					backupS3:  backupS3,
+					limiter:   bandwidthLimiter,
+					batchSize: int(config.GetBackupChunksTaskBatchSize()),
+					ioDepth:   int(config.GetBackupChunksTaskIoDepth()),
+					maxChunks: int(config.GetBackupChunksTaskMaxChunks()),
+					registry:  metricsRegistry,
 				}
 			},
 		)
@@ -335,10 +335,10 @@ func RegisterForExecution(
 			"dataplane.ScheduleBackupChunksTasks",
 			func() tasks.Task {
 				return &scheduleBackupChunksTasks{
-					scheduler:  taskScheduler,
-					storage:    storage,
-					tasksLimit: int(config.GetBackupChunksTasksLimit()),
-					batchSize:  int(config.GetBackupChunksTaskBatchSize()),
+					scheduler: taskScheduler,
+					storage:   storage,
+					maxTasks:  int(config.GetBackupChunksMaxTasks()),
+					batchSize: int(config.GetBackupChunksTaskBatchSize()),
 				}
 			},
 		)

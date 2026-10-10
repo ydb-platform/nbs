@@ -146,7 +146,7 @@ func TestBackupChunksTaskCopiesSeveralBatches(t *testing.T) {
 	require.Empty(t, queue)
 }
 
-func TestBackupChunksTaskReturnsAfterChunkLimit(t *testing.T) {
+func TestBackupChunksTaskReturnsAfterMaxChunks(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -175,7 +175,7 @@ func TestBackupChunksTaskReturnsAfterChunkLimit(t *testing.T) {
 
 	task := newBackupChunksTask(storage, follower)
 	task.batchSize = 1
-	task.chunkLimit = 1
+	task.maxChunks = 1
 	execCtx := mocks.NewExecutionContextMock()
 
 	err = task.Run(ctx, execCtx)
