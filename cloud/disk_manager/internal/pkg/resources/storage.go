@@ -130,6 +130,20 @@ type SnapshotBackupID struct {
 	SnapshotID string
 }
 
+// A queued backup attempt whose snapshots.BackupSnapshot task is scheduled.
+type ScheduledSnapshotBackup struct {
+	SnapshotID string
+	BackupID   string
+	TaskID     string
+}
+
+type SnapshotBackupQueueStats struct {
+	// Attempts waiting for a free slot.
+	Queued uint64
+	// Attempts whose task is scheduled.
+	Scheduled uint64
+}
+
 type Storage interface {
 	// Returns disk if action has been accepted by storage and nil otherwise.
 	CreateDisk(ctx context.Context, disk DiskMeta) (*DiskMeta, error)
@@ -242,10 +256,29 @@ type Storage interface {
 		backupID string,
 	) error
 
+	// Returns queued attempts that have no task yet, oldest first.
 	ListSnapshotsToBackup(
 		ctx context.Context,
 		limit int,
 	) ([]SnapshotBackupRequest, error)
+
+	// Records the task of a queued attempt. Returns when the attempt was
+	// queued; zero if it left the queue or was queued before the time was
+	// recorded.
+	SnapshotBackupScheduled(
+		ctx context.Context,
+		snapshotID string,
+		backupID string,
+		taskID string,
+	) (time.Time, error)
+
+	ListScheduledSnapshotBackups(
+		ctx context.Context,
+	) ([]ScheduledSnapshotBackup, error)
+
+	GetSnapshotBackupQueueStats(
+		ctx context.Context,
+	) (SnapshotBackupQueueStats, error)
 
 	// Removes the queue row of this attempt only. Does not mark the snapshot
 	// as backed up.

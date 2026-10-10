@@ -810,3 +810,98 @@ func TestSnapshotBackupCompletedMarksOnlyReadySnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, meta.BackupCompleted)
 }
+
+func createReadySnapshotForBackup(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	snapshotID string,
+) {
+
+	_, err := storage.CreateSnapshot(ctx, SnapshotMeta{
+		ID:            snapshotID,
+		FolderID:      "folder",
+		Disk:          &types.Disk{ZoneId: "zone", DiskId: "disk"},
+		CreateRequest: &wrappers.UInt64Value{Value: 1},
+		CreateTaskID:  "create_" + snapshotID,
+		CreatingAt:    time.Now(),
+	})
+	require.NoError(t, err)
+
+	err = storage.SnapshotCreated(ctx, snapshotID, "cp", time.Now(), 0, 0)
+	require.NoError(t, err)
+}
+
+func TestSnapshotsBackupQueueTracksScheduledAttempts(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	for _, snapshotID := range []string{"snap0", "snap1", "snap2"} {
+		createReadySnapshotForBackup(t, ctx, storage, snapshotID)
+		err = storage.EnqueueSnapshotBackup(ctx, snapshotID, "attempt")
+		require.NoError(t, err)
+	}
+
+	stats, err := storage.GetSnapshotBackupQueueStats(ctx)
+	require.NoError(t, err)
+	require.Equal(t, SnapshotBackupQueueStats{Queued: 3, Scheduled: 0}, stats)
+
+	enqueuedAt, err := storage.SnapshotBackupScheduled(
+		ctx,
+		"snap0",
+		"attempt",
+		"task0",
+	)
+	require.NoError(t, err)
+	require.False(t, enqueuedAt.IsZero())
+	require.True(t, enqueuedAt.Before(time.Now()))
+
+	// A scheduled attempt is not listed again; the rest come oldest first.
+	queue, err := storage.ListSnapshotsToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []SnapshotBackupRequest{
+		{SnapshotID: "snap1", BackupID: "attempt"},
+		{SnapshotID: "snap2", BackupID: "attempt"},
+	}, queue)
+
+	scheduled, err := storage.ListScheduledSnapshotBackups(ctx)
+	require.NoError(t, err)
+	require.Equal(t, []ScheduledSnapshotBackup{
+		{SnapshotID: "snap0", BackupID: "attempt", TaskID: "task0"},
+	}, scheduled)
+
+	stats, err = storage.GetSnapshotBackupQueueStats(ctx)
+	require.NoError(t, err)
+	require.Equal(t, SnapshotBackupQueueStats{Queued: 2, Scheduled: 1}, stats)
+
+	// Another attempt of a queued snapshot is not in the queue: nothing is
+	// recorded.
+	enqueuedAt, err = storage.SnapshotBackupScheduled(
+		ctx,
+		"snap1",
+		"other",
+		"task1",
+	)
+	require.NoError(t, err)
+	require.True(t, enqueuedAt.IsZero())
+
+	// The task removes its row when it ends, which frees the slot.
+	err = storage.RemoveSnapshotFromBackupQueue(ctx, "snap0", "attempt")
+	require.NoError(t, err)
+
+	stats, err = storage.GetSnapshotBackupQueueStats(ctx)
+	require.NoError(t, err)
+	require.Equal(t, SnapshotBackupQueueStats{Queued: 2, Scheduled: 0}, stats)
+
+	queue, err = storage.ListSnapshotsToBackup(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, []SnapshotBackupRequest{
+		{SnapshotID: "snap1", BackupID: "attempt"},
+	}, queue)
+}

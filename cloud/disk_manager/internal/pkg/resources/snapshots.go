@@ -552,9 +552,11 @@ func (s *storageYDB) snapshotCreated(
 			pragma TablePathPrefix = "%v";
 			declare $snapshot_id as Utf8;
 			declare $backup_id as Utf8;
+			declare $enqueued_at as Timestamp;
 
-			upsert into backup_queue (snapshot_id, backup_id)
-			values ($snapshot_id, $backup_id)
+			upsert into backup_queue
+				(snapshot_id, backup_id, task_id, enqueued_at)
+			values ($snapshot_id, $backup_id, "", $enqueued_at)
 		`, s.snapshotsPath),
 			persistence.ValueParam(
 				"$snapshot_id",
@@ -563,6 +565,10 @@ func (s *storageYDB) snapshotCreated(
 			persistence.ValueParam(
 				"$backup_id",
 				persistence.UTF8Value(state.createTaskID),
+			),
+			persistence.ValueParam(
+				"$enqueued_at",
+				persistence.TimestampValue(time.Now()),
 			),
 		)
 		if err != nil {
@@ -912,6 +918,8 @@ func (s *storageYDB) listSnapshotsToBackup(
 
 		select snapshot_id, backup_id
 		from backup_queue
+		where task_id is null or task_id = ""
+		order by enqueued_at
 		limit $limit
 	`, s.snapshotsPath),
 		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
@@ -961,6 +969,151 @@ func (s *storageYDB) removeSnapshotFromBackupQueue(
 		persistence.ValueParam("$backup_id", persistence.UTF8Value(backupID)),
 	)
 	return err
+}
+
+func (s *storageYDB) snapshotBackupScheduled(
+	ctx context.Context,
+	session *persistence.Session,
+	snapshotID string,
+	backupID string,
+	taskID string,
+) (time.Time, error) {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+		declare $backup_id as Utf8;
+
+		select enqueued_at
+		from backup_queue
+		where snapshot_id = $snapshot_id and backup_id = $backup_id
+	`, s.snapshotsPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$backup_id", persistence.UTF8Value(backupID)),
+	)
+	if err != nil {
+		return time.Time{}, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		// The attempt left the queue meanwhile: nothing to mark.
+		err = res.Err()
+		if err != nil {
+			return time.Time{}, err
+		}
+
+		return time.Time{}, tx.Commit(ctx)
+	}
+
+	var enqueuedAt time.Time
+	err = res.ScanNamed(
+		persistence.OptionalWithDefault("enqueued_at", &enqueuedAt),
+	)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $snapshot_id as Utf8;
+		declare $backup_id as Utf8;
+		declare $task_id as Utf8;
+
+		update backup_queue
+		set task_id = $task_id
+		where snapshot_id = $snapshot_id and backup_id = $backup_id
+	`, s.snapshotsPath),
+		persistence.ValueParam("$snapshot_id", persistence.UTF8Value(snapshotID)),
+		persistence.ValueParam("$backup_id", persistence.UTF8Value(backupID)),
+		persistence.ValueParam("$task_id", persistence.UTF8Value(taskID)),
+	)
+	if err != nil {
+		return time.Time{}, err
+	}
+
+	return enqueuedAt, tx.Commit(ctx)
+}
+
+func (s *storageYDB) listScheduledSnapshotBackups(
+	ctx context.Context,
+	session *persistence.Session,
+) ([]ScheduledSnapshotBackup, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+
+		select snapshot_id, backup_id, task_id
+		from backup_queue
+		where task_id is not null and task_id != ""
+	`, s.snapshotsPath))
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	var backups []ScheduledSnapshotBackup
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			var backup ScheduledSnapshotBackup
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault(
+					"snapshot_id",
+					&backup.SnapshotID,
+				),
+				persistence.OptionalWithDefault("backup_id", &backup.BackupID),
+				persistence.OptionalWithDefault("task_id", &backup.TaskID),
+			)
+			if err != nil {
+				return nil, err
+			}
+			backups = append(backups, backup)
+		}
+	}
+	return backups, res.Err()
+}
+
+func (s *storageYDB) getSnapshotBackupQueueStats(
+	ctx context.Context,
+	session *persistence.Session,
+) (SnapshotBackupQueueStats, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+
+		select
+			count_if(task_id is null or task_id = "") as queued,
+			count_if(task_id is not null and task_id != "") as scheduled
+		from backup_queue
+	`, s.snapshotsPath))
+	if err != nil {
+		return SnapshotBackupQueueStats{}, err
+	}
+	defer res.Close()
+
+	var stats SnapshotBackupQueueStats
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return stats, res.Err()
+	}
+
+	err = res.ScanNamed(
+		persistence.OptionalWithDefault("queued", &stats.Queued),
+		persistence.OptionalWithDefault("scheduled", &stats.Scheduled),
+	)
+	if err != nil {
+		return SnapshotBackupQueueStats{}, err
+	}
+	return stats, res.Err()
 }
 
 func (s *storageYDB) snapshotBackupCompleted(
@@ -1162,15 +1315,20 @@ func (s *storageYDB) enqueueSnapshotBackup(
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;
 		declare $backup_id as Utf8;
+		declare $enqueued_at as Timestamp;
 
-		upsert into backup_queue (snapshot_id, backup_id)
-		values ($snapshot_id, $backup_id)
+		upsert into backup_queue (snapshot_id, backup_id, task_id, enqueued_at)
+		values ($snapshot_id, $backup_id, "", $enqueued_at)
 	`, s.snapshotsPath),
 		persistence.ValueParam(
 			"$snapshot_id",
 			persistence.UTF8Value(snapshotID),
 		),
 		persistence.ValueParam("$backup_id", persistence.UTF8Value(backupID)),
+		persistence.ValueParam(
+			"$enqueued_at",
+			persistence.TimestampValue(time.Now()),
+		),
 	)
 	if err != nil {
 		return err
@@ -1372,6 +1530,66 @@ func (s *storageYDB) EnqueueSnapshotBackup(
 	)
 }
 
+func (s *storageYDB) SnapshotBackupScheduled(
+	ctx context.Context,
+	snapshotID string,
+	backupID string,
+	taskID string,
+) (time.Time, error) {
+
+	var enqueuedAt time.Time
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			enqueuedAt, err = s.snapshotBackupScheduled(
+				ctx,
+				session,
+				snapshotID,
+				backupID,
+				taskID,
+			)
+			return err
+		},
+	)
+	return enqueuedAt, err
+}
+
+func (s *storageYDB) ListScheduledSnapshotBackups(
+	ctx context.Context,
+) ([]ScheduledSnapshotBackup, error) {
+
+	var backups []ScheduledSnapshotBackup
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			backups, err = s.listScheduledSnapshotBackups(ctx, session)
+			return err
+		},
+	)
+	return backups, err
+}
+
+func (s *storageYDB) GetSnapshotBackupQueueStats(
+	ctx context.Context,
+) (SnapshotBackupQueueStats, error) {
+
+	var stats SnapshotBackupQueueStats
+
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			stats, err = s.getSnapshotBackupQueueStats(ctx, session)
+			return err
+		},
+	)
+	return stats, err
+}
+
 func (s *storageYDB) GetSnapshotBackupDeleteQueue(
 	ctx context.Context,
 	limit int,
@@ -1479,6 +1697,16 @@ func createSnapshotsYDBTables(
 				persistence.Optional(persistence.TypeUTF8),
 			),
 			persistence.WithColumn("snapshot_id", persistence.Optional(persistence.TypeUTF8)),
+			// The snapshots.BackupSnapshot task of the attempt; empty while
+			// the attempt waits for a free slot.
+			persistence.WithColumn(
+				"task_id",
+				persistence.Optional(persistence.TypeUTF8),
+			),
+			persistence.WithColumn(
+				"enqueued_at",
+				persistence.Optional(persistence.TypeTimestamp),
+			),
 			persistence.WithPrimaryKeyColumn("snapshot_id"),
 		),
 		dropUnusedColumns,
