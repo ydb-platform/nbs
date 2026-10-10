@@ -121,6 +121,11 @@ struct TFixture: public NUnitTest::TBaseFixture
     {
         return Device->ReadPages(std::move(rangeRefs)).GetValueSync();
     }
+
+    NProto::TError ZeroPages(TVector<NJournalled::TPageRangeRef> rangeRefs)
+    {
+        return Device->ZeroPages(std::move(rangeRefs)).GetValueSync();
+    }
 };
 
 }   // namespace
@@ -238,6 +243,94 @@ Y_UNIT_TEST_SUITE(TDeviceAdapterTest)
                 expectedError.GetMessage(),
                 "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
                     << FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldValidateZeroPagesRequest, TFixture)
+    {
+        using TPrepareFunc =
+            std::function<void(TVector<NJournalled::TPageRangeRef>&)>;
+
+        const std::tuple<TPrepareFunc, NProto::TError> testCases[]{
+            {[&](auto&) {}, MakeError(E_ARGUMENT, "nothing to zero")},
+            {[&](auto& rangeRefs) { rangeRefs.emplace_back(); },
+             MakeError(
+                 E_ARGUMENT,
+                 "page group ref must contain at least one page")},
+            {[&](auto& rangeRefs)
+             {
+                 rangeRefs.push_back({.FirstPageNo = 0x10, .PageCount = 1});
+                 rangeRefs.push_back({.FirstPageNo = 0x20, .PageCount = 0});
+             },
+             MakeError(
+                 E_ARGUMENT,
+                 "page group ref must contain at least one page")},
+        };
+
+        for (size_t i = 0; i != std::size(testCases); ++i) {
+            const auto& [prepare, expectedError] = testCases[i];
+
+            TVector<NJournalled::TPageRangeRef> rangeRefs;
+            prepare(rangeRefs);
+
+            const auto error = ZeroPages(std::move(rangeRefs));
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                expectedError.GetCode(),
+                error.GetCode(),
+                "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
+                    << FormatError(error));
+
+            UNIT_ASSERT_STRING_CONTAINS_C(
+                error.GetMessage(),
+                expectedError.GetMessage(),
+                "#" << (i + 1) << ": " << FormatError(expectedError) << " !~ "
+                    << FormatError(error));
+        }
+    }
+
+    Y_UNIT_TEST_F(ShouldZeroPages, TFixture)
+    {
+        FillDevice();
+
+        {
+            const auto error = ZeroPages({
+                {.FirstPageNo = 0x10, .PageCount = 2},
+                {.FirstPageNo = 0x20, .PageCount = 1},
+            });
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                S_OK,
+                error.GetCode(),
+                FormatError(error));
+        }
+
+        const auto result = ReadPages({
+            {.FirstPageNo = 0x0F, .PageCount = 4},
+            {.FirstPageNo = 0x20, .PageCount = 2},
+        });
+        UNIT_ASSERT_C(!HasError(result), FormatError(result.GetError()));
+
+        const auto& pages = result.GetResult();
+        UNIT_ASSERT_VALUES_EQUAL(6, pages.size());
+
+        const std::pair<ui64, char> expected[]{
+            {0x0F, BlockData(0x0F)},
+            {0x10, '\0'},
+            {0x11, '\0'},
+            {0x12, BlockData(0x12)},
+            {0x20, '\0'},
+            {0x21, BlockData(0x21)},
+        };
+
+        for (size_t i = 0; i != std::size(expected); ++i) {
+            const auto& [blockIndex, c] = expected[i];
+            TStringBuf block(pages[i].Data(), pages[i].Size());
+
+            UNIT_ASSERT_VALUES_EQUAL(DefaultBlockSize, block.size());
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                block.size(),
+                std::ranges::count(block, c),
+                "block " << blockIndex);
         }
     }
 
