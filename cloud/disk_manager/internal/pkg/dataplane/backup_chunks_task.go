@@ -8,7 +8,6 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -25,27 +24,29 @@ type chunkCopyLimiter interface {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Copies queued chunks to the follower until the queue is empty or, if
-// maxChunks is not zero, until it has copied that many. The dispatcher keeps
-// as many of these running as the queue needs.
+// Copies queued chunks to the follower until the queue is empty or it has
+// copied maxChunks. The dispatcher keeps as many of these running as the queue
+// needs.
 type backupChunksTask struct {
-	storage   storage.Storage
-	backupS3  *backup.S3
-	limiter   chunkCopyLimiter
+	storage  storage.Storage
+	backupS3 *backup.S3
+	limiter  chunkCopyLimiter
+	registry metrics.Registry
+
+	// Chunks taken from the queue at a time.
 	batchSize int
-	ioDepth   int
+	// Chunks of a batch copied at the same time.
+	ioDepth int
+	// The task ends after copying this many chunks; 0 = no limit.
 	maxChunks int
-	registry  metrics.Registry
-	state     *protos.BackupChunksTaskState
 }
 
 func (t *backupChunksTask) Save() ([]byte, error) {
-	return proto.Marshal(t.state)
+	return nil, nil
 }
 
-func (t *backupChunksTask) Load(_, state []byte) error {
-	t.state = &protos.BackupChunksTaskState{}
-	return proto.Unmarshal(state, t.state)
+func (t *backupChunksTask) Load(_, _ []byte) error {
+	return nil
 }
 
 func (t *backupChunksTask) Run(

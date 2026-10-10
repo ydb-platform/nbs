@@ -67,6 +67,9 @@ message DataplaneConfig {
     // 0 disables the limit.
     optional uint64 BackupBandwidthMiBs = 29 [default = 0];
     // A dataplane.BackupChunks task ends after copying this many chunks and
-    // the dispatcher schedules a new one. 0 = no limit.
+    // the dispatcher schedules a new one. This spreads the tasks over the nodes
+    // again and makes a smaller BackupChunksMaxTasks take effect: the
+    // dispatcher does not cancel tasks, it only stops replacing them.
+    // 0 = no limit.
     optional uint32 BackupChunksTaskMaxChunks = 30 [default = 50000];
 }
