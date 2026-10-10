@@ -20,9 +20,16 @@ func (c *fakeClock) Now() time.Time { return c.now }
 
 func (c *fakeClock) Advance(d time.Duration) { c.now = c.now.Add(d) }
 
-func newTestLimiter(bytesPerSecond uint64) (*BandwidthLimiter, *fakeClock) {
+func newTestLimiter(
+	addAvailableBytesPerSecond uint64,
+) (*BandwidthLimiter, *fakeClock) {
+
 	clock := &fakeClock{now: time.Unix(1000, 0)}
-	limiter := newBandwidthLimiter(bytesPerSecond, testChunkSize, clock.Now)
+	limiter := newBandwidthLimiter(
+		addAvailableBytesPerSecond,
+		testChunkSize,
+		clock.Now,
+	)
 	return limiter, clock
 }
 
