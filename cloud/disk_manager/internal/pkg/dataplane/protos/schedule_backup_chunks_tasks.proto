@@ -7,9 +7,8 @@ option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg
 ////////////////////////////////////////////////////////////////////////////////
 
 message ScheduleBackupChunksTasksState {
-    // Workers scheduled by this dispatcher that may still be running.
-    repeated string worker_task_ids = 1;
-    // Number of workers ever scheduled; makes the idempotency key of the next
-    // one.
-    uint64 scheduled_count = 2;
+    // Copy tasks scheduled by this dispatcher that may still be running.
+    repeated string WorkerTaskIds = 1;
+    // Copy tasks scheduled so far. The next one's idempotency key includes it.
+    uint64 ScheduledCount = 2;
 }
