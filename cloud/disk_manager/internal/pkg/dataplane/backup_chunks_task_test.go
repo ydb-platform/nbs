@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
@@ -147,7 +146,7 @@ func TestBackupChunksTaskCopiesSeveralBatches(t *testing.T) {
 	require.Empty(t, queue)
 }
 
-func TestBackupChunksTaskReturnsAfterLifetime(t *testing.T) {
+func TestBackupChunksTaskReturnsAfterChunkLimit(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -176,7 +175,7 @@ func TestBackupChunksTaskReturnsAfterLifetime(t *testing.T) {
 
 	task := newBackupChunksTask(storage, follower)
 	task.batchSize = 1
-	task.lifetime = time.Nanosecond
+	task.chunkLimit = 1
 	execCtx := mocks.NewExecutionContextMock()
 
 	err = task.Run(ctx, execCtx)

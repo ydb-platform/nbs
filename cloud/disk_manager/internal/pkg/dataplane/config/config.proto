@@ -66,8 +66,10 @@ message DataplaneConfig {
     // Bytes per second one node sends to the follower bucket, in MiB.
     // 0 disables the limit.
     optional uint64 BackupBandwidthMiBs = 29 [default = 0];
-    // A copier returns after this long, so that the dispatcher places a
-    // fresh one through the regular listing, which honours
-    // TasksConfig.InflightTaskPerNodeLimits.
-    optional string BackupChunksTaskLifetime = 30 [default = "10m"];
+    // Number of chunks a dataplane.BackupChunks task copies before it returns;
+    // the dispatcher then places a fresh one through the regular listing,
+    // which honours TasksConfig.InflightTaskPerNodeLimits. A chunk is at most
+    // 4 MiB, so a task runs at most ChunkLimit * 4 MiB / BackupBandwidthMiBs.
+    // 0 disables the limit.
+    optional uint32 BackupChunksTaskChunkLimit = 30 [default = 50000];
 }

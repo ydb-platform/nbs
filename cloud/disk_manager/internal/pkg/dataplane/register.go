@@ -191,13 +191,6 @@ func RegisterForExecution(
 		return err
 	}
 
-	backupChunksTaskLifetime, err := time.ParseDuration(
-		config.GetBackupChunksTaskLifetime(),
-	)
-	if err != nil {
-		return err
-	}
-
 	deleteBackupChunksTaskScheduleInterval, err := time.ParseDuration(
 		config.GetDeleteBackupChunksTaskScheduleInterval(),
 	)
@@ -321,13 +314,13 @@ func RegisterForExecution(
 			"dataplane.BackupChunks",
 			func() tasks.Task {
 				return &backupChunksTask{
-					storage:   storage,
-					backupS3:  backupS3,
-					limiter:   bandwidthLimiter,
-					batchSize: int(config.GetBackupChunksTaskBatchSize()),
-					ioDepth:   int(config.GetBackupChunksTaskIoDepth()),
-					lifetime:  backupChunksTaskLifetime,
-					registry:  metricsRegistry,
+					storage:    storage,
+					backupS3:   backupS3,
+					limiter:    bandwidthLimiter,
+					batchSize:  int(config.GetBackupChunksTaskBatchSize()),
+					ioDepth:    int(config.GetBackupChunksTaskIoDepth()),
+					chunkLimit: int(config.GetBackupChunksTaskChunkLimit()),
+					registry:   metricsRegistry,
 				}
 			},
 		)

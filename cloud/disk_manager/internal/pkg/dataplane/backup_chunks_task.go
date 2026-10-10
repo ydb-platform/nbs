@@ -26,17 +26,17 @@ type chunkCopyLimiter interface {
 ////////////////////////////////////////////////////////////////////////////////
 
 // Copies queued chunks to the follower until the queue is empty or, if
-// lifetime is not zero, until it has run that long. The dispatcher keeps as
-// many of these running as the queue needs.
+// chunkLimit is not zero, until it has copied that many. The dispatcher keeps
+// as many of these running as the queue needs.
 type backupChunksTask struct {
-	storage   storage.Storage
-	backupS3  *backup.S3
-	limiter   chunkCopyLimiter
-	batchSize int
-	ioDepth   int
-	lifetime  time.Duration
-	registry  metrics.Registry
-	state     *protos.BackupChunksTaskState
+	storage    storage.Storage
+	backupS3   *backup.S3
+	limiter    chunkCopyLimiter
+	batchSize  int
+	ioDepth    int
+	chunkLimit int
+	registry   metrics.Registry
+	state      *protos.BackupChunksTaskState
 }
 
 func (t *backupChunksTask) Save() ([]byte, error) {
@@ -53,7 +53,7 @@ func (t *backupChunksTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
-	deadline := time.Now().Add(t.lifetime)
+	copiedCount := 0
 
 	for {
 		// A random start keeps the batches of concurrent workers apart.
@@ -80,7 +80,8 @@ func (t *backupChunksTask) Run(
 			return err
 		}
 
-		if t.lifetime > 0 && time.Now().After(deadline) {
+		copiedCount += len(copied)
+		if t.chunkLimit > 0 && copiedCount >= t.chunkLimit {
 			return nil
 		}
 	}
