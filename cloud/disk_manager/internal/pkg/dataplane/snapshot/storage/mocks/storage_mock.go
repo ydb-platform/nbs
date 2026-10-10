@@ -237,6 +237,26 @@ func (s *StorageMock) UnlockSnapshot(
 	return args.Error(0)
 }
 
+func (s *StorageMock) HoldSnapshotForBackup(
+	ctx context.Context,
+	snapshotID string,
+	taskID string,
+) (bool, error) {
+
+	args := s.Called(ctx, snapshotID, taskID)
+	return args.Bool(0), args.Error(1)
+}
+
+func (s *StorageMock) ReleaseSnapshotForBackup(
+	ctx context.Context,
+	snapshotID string,
+	taskID string,
+) error {
+
+	args := s.Called(ctx, snapshotID, taskID)
+	return args.Error(0)
+}
+
 func (s *StorageMock) GetSnapshotMeta(
 	ctx context.Context,
 	snapshotID string,
@@ -281,20 +301,21 @@ func (s *StorageMock) EnqueueBackupChunks(
 
 func (s *StorageMock) GetQueuedChunksToBackup(
 	ctx context.Context,
+	startShardID uint64,
 	limit int,
 ) ([]storage.BackupChunkQueueEntry, error) {
 
-	args := s.Called(ctx, limit)
+	args := s.Called(ctx, startShardID, limit)
 	return args.Get(0).([]storage.BackupChunkQueueEntry), args.Error(1)
 }
 
-func (s *StorageMock) GetBackedUpChunkCount(
+func (s *StorageMock) CountQueuedBackupChunks(
 	ctx context.Context,
-	snapshotID string,
-) (uint64, error) {
+	limit int,
+) (int, error) {
 
-	args := s.Called(ctx, snapshotID)
-	return args.Get(0).(uint64), args.Error(1)
+	args := s.Called(ctx, limit)
+	return args.Int(0), args.Error(1)
 }
 
 func (s *StorageMock) ChunksBackupCompleted(
@@ -306,7 +327,16 @@ func (s *StorageMock) ChunksBackupCompleted(
 	return args.Error(0)
 }
 
-func (s *StorageMock) ClearCompletedBackupChunks(
+func (s *StorageMock) CheckBackupChunksCompleted(
+	ctx context.Context,
+	snapshotID string,
+) error {
+
+	args := s.Called(ctx, snapshotID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) ClearBackupChunks(
 	ctx context.Context,
 	snapshotID string,
 	limit int,
@@ -317,6 +347,32 @@ func (s *StorageMock) ClearCompletedBackupChunks(
 }
 
 func (s *StorageMock) GetBackupChunkQueueLength(
+	ctx context.Context,
+) (uint64, error) {
+
+	args := s.Called(ctx)
+	return args.Get(0).(uint64), args.Error(1)
+}
+
+func (s *StorageMock) GetBackupChunksToDelete(
+	ctx context.Context,
+	limit int,
+) ([]string, error) {
+
+	args := s.Called(ctx, limit)
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func (s *StorageMock) BackupChunksDeleted(
+	ctx context.Context,
+	chunkIDs []string,
+) error {
+
+	args := s.Called(ctx, chunkIDs)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetBackupChunkDeleteQueueLength(
 	ctx context.Context,
 ) (uint64, error) {
 

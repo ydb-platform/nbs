@@ -3,42 +3,50 @@ package dataplane
 import (
 	"context"
 	"math/rand"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/logging"
 	"golang.org/x/sync/errgroup"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
 
-const backupChunkQueueWindowSize = 1000
+type chunkCopyLimiter interface {
+	Wait(ctx context.Context, bytes int) error
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// Copies queued chunks to the follower until the queue is empty or it has
+// copied maxChunks. The dispatcher keeps as many of these running as the queue
+// needs.
 type backupChunksTask struct {
-	storage       storage.Storage
-	backupS3      *backup.S3
-	batchSize     int
-	inflightLimit int
-	registry      metrics.Registry
-	state         *protos.BackupChunksTaskState
+	storage  storage.Storage
+	backupS3 *backup.S3
+	limiter  chunkCopyLimiter
+	registry metrics.Registry
+
+	// Chunks taken from the queue at a time.
+	batchSize int
+	// Chunks of a batch copied at the same time.
+	ioDepth int
+	// The task ends after copying this many chunks; 0 = no limit.
+	maxChunks int
 }
 
 func (t *backupChunksTask) Save() ([]byte, error) {
-	return proto.Marshal(t.state)
+	return nil, nil
 }
 
-func (t *backupChunksTask) Load(_, state []byte) error {
-	t.state = &protos.BackupChunksTaskState{}
-	return proto.Unmarshal(state, t.state)
+func (t *backupChunksTask) Load(_, _ []byte) error {
+	return nil
 }
 
 func (t *backupChunksTask) Run(
@@ -46,23 +54,22 @@ func (t *backupChunksTask) Run(
 	execCtx tasks.ExecutionContext,
 ) error {
 
+	copiedCount := 0
+
 	for {
+		// A random start keeps the batches of concurrent workers apart.
 		entries, err := t.storage.GetQueuedChunksToBackup(
 			ctx,
-			backupChunkQueueWindowSize,
+			rand.Uint64(),
+			t.batchSize,
 		)
 		if err != nil {
 			return err
 		}
 
 		if len(entries) == 0 {
-			return errors.NewInterruptExecutionError()
+			return nil
 		}
-
-		rand.Shuffle(len(entries), func(i, j int) {
-			entries[i], entries[j] = entries[j], entries[i]
-		})
-		entries = entries[:min(len(entries), t.batchSize)]
 
 		copied, err := t.copyChunks(ctx, entries)
 		if len(copied) == 0 {
@@ -72,6 +79,11 @@ func (t *backupChunksTask) Run(
 		err = t.storage.ChunksBackupCompleted(ctx, copied)
 		if err != nil {
 			return err
+		}
+
+		copiedCount += len(copied)
+		if t.maxChunks > 0 && copiedCount >= t.maxChunks {
+			return nil
 		}
 	}
 }
@@ -110,6 +122,15 @@ func (t *backupChunksTask) copyChunk(
 	if err != nil {
 		return err
 	}
+
+	waitStart := time.Now()
+	err = t.limiter.Wait(ctx, len(chunkBlob.Data))
+	if err != nil {
+		return err
+	}
+	t.registry.Counter("backup/bandwidthWaitMs").Add(
+		time.Since(waitStart).Milliseconds(),
+	)
 
 	err = t.backupS3.PutObject(
 		ctx,
@@ -151,7 +172,7 @@ func (t *backupChunksTask) copyChunks(
 		return nil
 	})
 
-	for i := 0; i < t.inflightLimit; i++ {
+	for i := 0; i < t.ioDepth; i++ {
 		group.Go(func() error {
 			for entry := range queue {
 				if groupCtx.Err() != nil {

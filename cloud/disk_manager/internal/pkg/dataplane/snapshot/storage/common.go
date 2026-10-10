@@ -58,6 +58,7 @@ type snapshotState struct {
 	storageSize       uint64
 	chunkCount        uint32
 	lockTaskID        string
+	backupTaskID      string
 	encryptionMode    uint32
 	encryptionKeyHash []byte
 	status            snapshotStatus
@@ -109,6 +110,7 @@ func (s *snapshotState) structValue() persistence.Value {
 		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
 		persistence.StructFieldValue("chunk_count", persistence.Uint32Value(s.chunkCount)),
 		persistence.StructFieldValue("lock_task_id", persistence.UTF8Value(s.lockTaskID)),
+		persistence.StructFieldValue("backup_task_id", persistence.UTF8Value(s.backupTaskID)),
 		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
 		persistence.StructFieldValue("encryption_keyhash", persistence.StringValue(s.encryptionKeyHash)),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
@@ -131,6 +133,7 @@ func scanSnapshotState(res persistence.Result) (state snapshotState, err error) 
 		persistence.OptionalWithDefault("storage_size", &state.storageSize),
 		persistence.OptionalWithDefault("chunk_count", &state.chunkCount),
 		persistence.OptionalWithDefault("lock_task_id", &state.lockTaskID),
+		persistence.OptionalWithDefault("backup_task_id", &state.backupTaskID),
 		persistence.OptionalWithDefault("encryption_mode", &state.encryptionMode),
 		persistence.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
 		persistence.OptionalWithDefault("status", &state.status),
@@ -177,6 +180,7 @@ func snapshotStateStructTypeString() string {
 		storage_size: Uint64,
 		chunk_count: Uint32,
 		lock_task_id: Utf8,
+		backup_task_id: Utf8,
 		encryption_mode: Uint32,
 		encryption_keyhash: String,
 		status: Int64>`
@@ -184,45 +188,8 @@ func snapshotStateStructTypeString() string {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type backupChunkStatus int64
-
-const (
-	backupChunkStatusQueued    backupChunkStatus = iota
-	backupChunkStatusCompleted backupChunkStatus = iota
-)
-
-func backupChunkStructTypeString() string {
-	return "Struct<snapshot_id: Utf8, chunk_id: Utf8, status: Int64>"
-}
-
-func backupChunkListValue(
-	entries []BackupChunkQueueEntry,
-	status backupChunkStatus,
-) persistence.Value {
-
-	values := make([]persistence.Value, 0, len(entries))
-	for _, entry := range entries {
-		values = append(values, persistence.StructValue(
-			persistence.StructFieldValue(
-				"snapshot_id",
-				persistence.UTF8Value(entry.SnapshotID),
-			),
-			persistence.StructFieldValue(
-				"chunk_id",
-				persistence.UTF8Value(entry.ChunkID),
-			),
-			persistence.StructFieldValue(
-				"status",
-				persistence.Int64Value(int64(status)),
-			),
-		))
-	}
-
-	return persistence.ListValue(values...)
-}
-
 func backupChunkKeyStructTypeString() string {
-	return "Struct<snapshot_id: Utf8, chunk_id: Utf8>"
+	return "Struct<shard_id: Uint64, snapshot_id: Utf8, chunk_id: Utf8>"
 }
 
 func backupChunkKeyListValue(
@@ -232,6 +199,10 @@ func backupChunkKeyListValue(
 	values := make([]persistence.Value, 0, len(entries))
 	for _, entry := range entries {
 		values = append(values, persistence.StructValue(
+			persistence.StructFieldValue(
+				"shard_id",
+				persistence.Uint64Value(makeShardID(entry.ChunkID)),
+			),
 			persistence.StructFieldValue(
 				"snapshot_id",
 				persistence.UTF8Value(entry.SnapshotID),
@@ -247,8 +218,8 @@ func backupChunkKeyListValue(
 }
 
 func backupChunkQueueEntryStructTypeString() string {
-	return "Struct<snapshot_id: Utf8, chunk_id: Utf8, stored_in_s3: Bool, " +
-		"encrypted_dek: String>"
+	return "Struct<shard_id: Uint64, snapshot_id: Utf8, chunk_id: Utf8, " +
+		"stored_in_s3: Bool, encrypted_dek: String>"
 }
 
 func backupChunkQueueEntryListValue(
@@ -258,6 +229,10 @@ func backupChunkQueueEntryListValue(
 	values := make([]persistence.Value, 0, len(entries))
 	for _, entry := range entries {
 		values = append(values, persistence.StructValue(
+			persistence.StructFieldValue(
+				"shard_id",
+				persistence.Uint64Value(makeShardID(entry.ChunkID)),
+			),
 			persistence.StructFieldValue(
 				"snapshot_id",
 				persistence.UTF8Value(entry.SnapshotID),

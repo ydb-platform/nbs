@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message ScheduleBackupChunksTasksState {
+    // Copy tasks scheduled by this dispatcher that may still be running.
+    repeated string WorkerTaskIds = 1;
+    // Copy tasks scheduled so far. The next one's idempotency key includes it.
+    uint64 ScheduledCount = 2;
+}

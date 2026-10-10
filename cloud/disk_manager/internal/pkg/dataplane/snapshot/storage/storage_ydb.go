@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	tasks_common "github.com/ydb-platform/nbs/cloud/tasks/common"
+	task_errors "github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
@@ -275,6 +276,29 @@ func (s *storageYDB) ListSnapshots(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+func (s *storageYDB) HoldSnapshotForBackup(
+	ctx context.Context,
+	snapshotID string,
+	taskID string,
+) (held bool, err error) {
+
+	defer s.metrics.StatOperation("HoldSnapshotForBackup")(&err)
+
+	if len(taskID) == 0 {
+		return false, task_errors.NewNonRetriableErrorf("empty backup task ID")
+	}
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			held, err = s.holdSnapshotForBackup(ctx, session, snapshotID, taskID)
+			return err
+		},
+	)
+	return held, err
+}
+
 func (s *storageYDB) EnqueueBackupChunks(
 	ctx context.Context,
 	snapshotID string,
@@ -293,6 +317,7 @@ func (s *storageYDB) EnqueueBackupChunks(
 
 func (s *storageYDB) GetQueuedChunksToBackup(
 	ctx context.Context,
+	startShardID uint64,
 	limit int,
 ) (entries []BackupChunkQueueEntry, err error) {
 
@@ -301,9 +326,31 @@ func (s *storageYDB) GetQueuedChunksToBackup(
 	err = s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			entries, err = s.getQueuedChunksToBackup(ctx, session, limit)
+			entries, err = s.getQueuedChunksToBackup(
+				ctx,
+				session,
+				startShardID,
+				limit,
+			)
 			return err
 		},
 	)
 	return entries, err
+}
+
+func (s *storageYDB) CountQueuedBackupChunks(
+	ctx context.Context,
+	limit int,
+) (count int, err error) {
+
+	defer s.metrics.StatOperation("CountQueuedBackupChunks")(&err)
+
+	err = s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			count, err = s.countQueuedBackupChunks(ctx, session, limit)
+			return err
+		},
+	)
+	return count, err
 }

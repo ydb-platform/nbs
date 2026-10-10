@@ -1,18 +1,29 @@
 package dataplane
 
 import (
+	"context"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/mocks"
 )
+
+////////////////////////////////////////////////////////////////////////////////
+
+type countingLimiter struct {
+	bytes atomic.Int64
+}
+
+func (l *countingLimiter) Wait(ctx context.Context, bytes int) error {
+	l.bytes.Add(int64(bytes))
+	return nil
+}
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -22,12 +33,12 @@ func newBackupChunksTask(
 ) *backupChunksTask {
 
 	return &backupChunksTask{
-		storage:       storage,
-		backupS3:      follower.backupS3,
-		batchSize:     10,
-		inflightLimit: 2,
-		registry:      metrics.NewEmptyRegistry(),
-		state:         &protos.BackupChunksTaskState{},
+		storage:   storage,
+		backupS3:  follower.backupS3,
+		limiter:   &countingLimiter{},
+		batchSize: 10,
+		ioDepth:   2,
+		registry:  metrics.NewEmptyRegistry(),
 	}
 }
 
@@ -57,7 +68,7 @@ func TestBackupChunksTask(t *testing.T) {
 	execCtx := mocks.NewExecutionContextMock()
 
 	err = task.Run(ctx, execCtx)
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	require.NoError(t, err)
 
 	chunkBlob, err := storage.ReadChunkBlob(
 		ctx,
@@ -81,7 +92,10 @@ func TestBackupChunksTask(t *testing.T) {
 	require.Equal(t, "kek1", *raw.Metadata["Key-Id"])
 	require.Equal(t, *object.Metadata["Checksum"], *raw.Metadata["Checksum"])
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	limiter := task.limiter.(*countingLimiter)
+	require.Equal(t, int64(len(chunkBlob.Data)), limiter.bytes.Load())
+
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 }
@@ -118,16 +132,64 @@ func TestBackupChunksTaskCopiesSeveralBatches(t *testing.T) {
 	execCtx := mocks.NewExecutionContextMock()
 
 	err = task.Run(ctx, execCtx)
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	require.NoError(t, err)
 
 	for _, chunkID := range []string{chunk0, chunk1} {
 		_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
 		require.NoError(t, err)
 	}
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
 	require.NoError(t, err)
 	require.Empty(t, queue)
+}
+
+func TestBackupChunksTaskReturnsAfterMaxChunks(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage, closeFunc := newStorage(t, ctx)
+	defer closeFunc()
+
+	follower := newTestFollower(t, ctx)
+	chunk0 := createSnapshotWithChunk(t, ctx, storage, "snap1")
+	chunk1 := createSnapshotWithChunk(t, ctx, storage, "snap2")
+
+	entries := []snapshot_storage.BackupChunkQueueEntry{
+		{
+			SnapshotID:   "snap1",
+			ChunkID:      chunk0,
+			StoredInS3:   true,
+			EncryptedDEK: follower.encryptedDEK,
+		},
+		{
+			SnapshotID:   "snap2",
+			ChunkID:      chunk1,
+			StoredInS3:   true,
+			EncryptedDEK: follower.encryptedDEK,
+		},
+	}
+	err := enqueueBackupChunks(ctx, storage, entries)
+	require.NoError(t, err)
+
+	task := newBackupChunksTask(storage, follower)
+	task.batchSize = 1
+	task.maxChunks = 1
+	execCtx := mocks.NewExecutionContextMock()
+
+	err = task.Run(ctx, execCtx)
+	require.NoError(t, err)
+
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	require.NoError(t, err)
+	require.Len(t, queue, 1)
+
+	copiedChunkID := chunk0
+	if queue[0].ChunkID == chunk0 {
+		copiedChunkID = chunk1
+	}
+
+	_, err = follower.getObject(ctx, backup.ChunkKey(copiedChunkID))
+	require.NoError(t, err)
 }
 
 func TestBackupChunksTaskGoesOnPastMissingChunk(t *testing.T) {
@@ -162,16 +224,28 @@ func TestBackupChunksTaskGoesOnPastMissingChunk(t *testing.T) {
 
 	err = task.Run(ctx, execCtx)
 	require.Error(t, err)
-	require.False(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
 	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
 	require.NoError(t, err)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
 	require.NoError(t, err)
 	require.Equal(
 		t,
 		[]snapshot_storage.BackupChunkQueueEntry{missing},
 		queue,
 	)
+}
+
+func TestBackupChunksTaskEndsOnEmptyQueue(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage, closeFunc := newStorage(t, ctx)
+	defer closeFunc()
+
+	follower := newTestFollower(t, ctx)
+	task := newBackupChunksTask(storage, follower)
+	execCtx := mocks.NewExecutionContextMock()
+
+	require.NoError(t, task.Run(ctx, execCtx))
 }

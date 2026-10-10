@@ -47,6 +47,29 @@ message DataplaneConfig {
     // Number of chunks taken from the backup chunk queue at a time to be copied
     // to the follower bucket.
     optional uint32 BackupChunksTaskBatchSize = 23 [default = 100];
-    // Maximum number of chunks copied to the follower bucket at the same time.
-    optional uint32 BackupChunksInflightLimit = 24 [default = 10];
+    // Number of chunks one dataplane.BackupChunks task copies to the follower
+    // bucket at the same time.
+    optional uint32 BackupChunksTaskIoDepth = 24 [default = 10];
+
+    optional string DeleteBackupChunksTaskScheduleInterval = 25 [default = "10s"];
+    // Number of chunks taken from the backup chunk delete queue at a time to
+    // be deleted from the follower bucket.
+    optional uint32 DeleteBackupChunksTaskBatchSize = 26 [default = 1000];
+    // Maximum number of chunks deleted from the follower bucket at the same
+    // time.
+    optional uint32 DeleteBackupChunksInflightLimit = 27 [default = 10];
+
+    // Maximum number of dataplane.BackupChunks tasks running at once. With
+    // TasksConfig.InflightTaskPerNodeLimits capping the type at one, this is
+    // the number of nodes that copy.
+    optional uint32 BackupChunksMaxTasks = 28 [default = 1];
+    // Bytes per second one node sends to the follower bucket, in MiB.
+    // 0 disables the limit.
+    optional uint64 BackupBandwidthMiBs = 29 [default = 0];
+    // A dataplane.BackupChunks task ends after copying this many chunks and
+    // the dispatcher schedules a new one. This spreads the tasks over the nodes
+    // again and makes a smaller BackupChunksMaxTasks take effect: the
+    // dispatcher does not cancel tasks, it only stops replacing them.
+    // 0 = no limit.
+    optional uint32 BackupChunksTaskMaxChunks = 30 [default = 50000];
 }
