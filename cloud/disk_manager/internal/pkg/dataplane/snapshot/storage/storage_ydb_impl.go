@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"math"
 	"path"
 	"sync"
 	"time"
@@ -1691,27 +1692,37 @@ func (s *storageYDB) enqueueBackupChunks(
 	return tx.Commit(ctx)
 }
 
+// Reads queued chunks with firstShardID <= shard_id <= lastShardID in key
+// order.
 func (s *storageYDB) readQueuedChunksToBackup(
 	ctx context.Context,
 	session *persistence.Session,
-	condition string,
-	startShardID uint64,
+	firstShardID uint64,
+	lastShardID uint64,
 	limit int,
 ) ([]BackupChunkQueueEntry, error) {
 
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
-		declare $start as Uint64;
+		declare $first_shard_id as Uint64;
+		declare $last_shard_id as Uint64;
 		declare $limit as Uint64;
 
 		select snapshot_id, chunk_id, stored_in_s3, encrypted_dek
 		from backup_chunk_queue
-		where shard_id %v $start
+		where shard_id >= $first_shard_id and shard_id <= $last_shard_id
 		order by shard_id, snapshot_id, chunk_id
 		limit $limit
-	`, s.tablesPath, condition),
-		persistence.ValueParam("$start", persistence.Uint64Value(startShardID)),
+	`, s.tablesPath),
+		persistence.ValueParam(
+			"$first_shard_id",
+			persistence.Uint64Value(firstShardID),
+		),
+		persistence.ValueParam(
+			"$last_shard_id",
+			persistence.Uint64Value(lastShardID),
+		),
 		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
@@ -1747,9 +1758,9 @@ func (s *storageYDB) readQueuedChunksToBackup(
 	return entries, nil
 }
 
-// Reads from startShardID to the end of the table and, if that is short of
-// limit, from the start of the table up to startShardID. The two ranges do
-// not overlap, so a row is returned once.
+// Reads [startShardID, max] and, if that is short of limit, wraps around to
+// [0, startShardID - 1]. The two ranges do not overlap, so a row is returned
+// once.
 func (s *storageYDB) getQueuedChunksToBackup(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1760,8 +1771,8 @@ func (s *storageYDB) getQueuedChunksToBackup(
 	entries, err := s.readQueuedChunksToBackup(
 		ctx,
 		session,
-		">=",
 		startShardID,
+		math.MaxUint64,
 		limit,
 	)
 	if err != nil {
@@ -1775,8 +1786,8 @@ func (s *storageYDB) getQueuedChunksToBackup(
 	rest, err := s.readQueuedChunksToBackup(
 		ctx,
 		session,
-		"<",
-		startShardID,
+		0,
+		startShardID-1,
 		limit-len(entries),
 	)
 	if err != nil {
