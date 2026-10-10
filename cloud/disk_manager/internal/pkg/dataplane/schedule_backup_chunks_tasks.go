@@ -93,10 +93,19 @@ func (t *scheduleBackupChunksTasks) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func (t *scheduleBackupChunksTasks) dropEndedWorkers(ctx context.Context) error {
-	live := t.state.WorkerTaskIds[:0]
+// Keeps the copy tasks that have not ended yet. A task missing from the task
+// storage ended long ago and was cleared.
+func (t *scheduleBackupChunksTasks) dropEndedWorkers(
+	ctx context.Context,
+) error {
+
+	var live []string
 	for _, id := range t.state.WorkerTaskIds {
 		op, err := t.scheduler.GetOperation(ctx, id)
+		if errors.Is(err, errors.NewEmptyNotFoundError()) {
+			continue
+		}
+
 		if err != nil {
 			return err
 		}

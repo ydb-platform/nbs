@@ -152,3 +152,24 @@ func TestScheduleBackupChunksTasksKeepsEnoughWorkers(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, storage, scheduler)
 	require.Len(t, task.state.WorkerTaskIds, 3)
 }
+
+func TestScheduleBackupChunksTasksDropsClearedWorker(t *testing.T) {
+	ctx, storage, scheduler, execCtx, task := newScheduleBackupChunksTasksTest(t)
+	task.state.WorkerTaskIds = []string{"worker_0"}
+	task.state.ScheduledCount = 1
+	storage.On("CountQueuedBackupChunks", mock.Anything, 5000).Return(100, nil)
+	scheduler.On("GetOperation", mock.Anything, "worker_0").Return(
+		nil,
+		errors.NewNonRetriableError(
+			errors.NewNotFoundErrorWithTaskID("worker_0"),
+		),
+	).Once()
+	expectWorkerScheduled(scheduler, 1)
+
+	// The task of worker_0 is gone from the task storage: it ended and was
+	// cleared, so a new worker replaces it.
+	err := task.Run(ctx, execCtx)
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	mock.AssertExpectationsForObjects(t, storage, scheduler)
+	require.Equal(t, []string{"worker_1"}, task.state.WorkerTaskIds)
+}
