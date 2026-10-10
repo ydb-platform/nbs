@@ -212,6 +212,30 @@ func (s *storageCommon) unrefChunk(
 			chunk_id = $chunk_id and
 			referer = $referer;
 
+		-- The chunk dies with its last ref, and its follower object, queued
+		-- or copied, goes to backup_chunk_delete_queue. Chunk IDs are never
+		-- reused, so a late write or delete of the object cannot hit a live
+		-- chunk. Goes before the changes of %[2]v so that it reads the table
+		-- before they are made.
+		$dead = (
+			select chunk_id
+			from $to_delete
+			where referer = ""
+		);
+
+		$dead_follower_chunks = (
+			select chunk_id
+			from follower_chunks
+			where chunk_id = $chunk_id and
+				$chunk_id in $dead
+		);
+
+		upsert into backup_chunk_delete_queue
+		select chunk_id from $dead_follower_chunks;
+
+		delete from follower_chunks
+		on select chunk_id from $dead_follower_chunks;
+
 		%[3]v
 	`, s.tablesPath, s.tableName, s.forEachTable(`
 		update %[1]v

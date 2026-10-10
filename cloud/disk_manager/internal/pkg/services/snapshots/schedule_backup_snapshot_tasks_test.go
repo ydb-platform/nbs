@@ -2,10 +2,12 @@ package snapshots
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks/headers"
@@ -26,21 +28,26 @@ func TestScheduleBackupSnapshotTasks(t *testing.T) {
 	execCtx := tasks_mocks.NewExecutionContextMock()
 
 	storage.On("ListSnapshotsToBackup", mock.Anything, 2).Return(
-		[]string{"snap1", "snap2"},
+		[]resources.SnapshotBackupRequest{
+			{SnapshotID: "snap1", BackupID: "attempt1"},
+			{SnapshotID: "snap2", BackupID: "attempt2"},
+		},
 		nil,
 	)
 
-	for _, snapshotID := range []string{"snap1", "snap2"} {
+	for i, snapshotID := range []string{"snap1", "snap2"} {
 		id := snapshotID
+		attempt := fmt.Sprintf("attempt%v", i+1)
 		scheduler.On(
 			"ScheduleTask",
 			mock.MatchedBy(func(ctx context.Context) bool {
-				return headers.GetIdempotencyKey(ctx) == "backup_snapshot_"+id
+				return headers.GetIdempotencyKey(ctx) ==
+					"backup_snapshot_"+id+"_"+attempt
 			}),
 			"snapshots.BackupSnapshot",
 			"",
 			mock.MatchedBy(func(request *protos.BackupSnapshotRequest) bool {
-				return request.SnapshotId == id
+				return request.SnapshotId == id && request.BackupId == attempt
 			}),
 		).Return(id+"_task", nil)
 	}

@@ -187,6 +187,72 @@ func newListSnapshotsCmd(
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type backupSnapshot struct {
+	clientConfig *client_config.ClientConfig
+	serverConfig *server_config.ServerConfig
+	snapshotID   string
+}
+
+func (c *backupSnapshot) run() error {
+	if len(c.snapshotID) == 0 {
+		return fmt.Errorf("snapshot ID is required")
+	}
+	if c.serverConfig.GetSnapshotStorageBackupConfig() == nil {
+		return fmt.Errorf("snapshot backup is not configured")
+	}
+
+	ctx := newContext(c.clientConfig)
+	resourceStorage, db, err := newResourceStorage(ctx, c.serverConfig)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	err = resourceStorage.EnqueueSnapshotBackup(ctx, c.snapshotID, generateID())
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("OK")
+	return nil
+}
+
+func newBackupSnapshotCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &backupSnapshot{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use:   "backup",
+		Short: "Enqueue a snapshot backup; repeated requests are successful",
+		Long: "Enqueue a snapshot backup and return OK without waiting for completion. " +
+			"Use snapshots get --id <id> to check backup_completed: true means " +
+			"the backup task completed successfully; false means no recorded success " +
+			"and does not distinguish pending, failed, or never requested backups.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.snapshotID,
+		"id",
+		"",
+		"ID of snapshot to back up; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 type createSnapshot struct {
 	clientConfig  *client_config.ClientConfig
 	zoneID        string
@@ -441,6 +507,7 @@ func newSnapshotsCmd(
 	cmd.AddCommand(
 		newGetSnapshotCmd(clientConfig, serverConfig),
 		newListSnapshotsCmd(clientConfig, serverConfig),
+		newBackupSnapshotCmd(clientConfig, serverConfig),
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
 		newScheduleMigrateSnapshotTaskCmd(

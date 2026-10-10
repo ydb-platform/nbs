@@ -124,32 +124,6 @@ func Create(
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
-		"backup_chunks",
-		persistence.NewCreateTableDescription(
-			persistence.WithColumn(
-				"snapshot_id",
-				persistence.Optional(persistence.TypeUTF8),
-			),
-			persistence.WithColumn(
-				"chunk_id",
-				persistence.Optional(persistence.TypeUTF8),
-			),
-			persistence.WithColumn(
-				"status",
-				persistence.Optional(persistence.TypeInt64),
-			),
-			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
-		),
-		dropUnusedColumns,
-	)
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Created backup_chunks table")
-
-	err = db.CreateOrAlterTable(
-		ctx,
-		config.GetStorageFolder(),
 		"backup_chunk_queue",
 		persistence.NewCreateTableDescription(
 			persistence.WithColumn(
@@ -176,6 +150,42 @@ func Create(
 		return err
 	}
 	logging.Info(ctx, "Created backup_chunk_queue table")
+
+	// Chunks queued for the follower or already copied there, whichever
+	// snapshot queued them. A row lives while the chunk lives in chunk_blobs:
+	// the last unref moves it to backup_chunk_delete_queue.
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"follower_chunks",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithColumn("copied", persistence.Optional(persistence.TypeBool)),
+			persistence.WithPrimaryKeyColumn("chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created follower_chunks table")
+
+	// Chunks deleted from chunk_blobs whose follower objects are to be
+	// deleted.
+	err = db.CreateOrAlterTable(
+		ctx,
+		config.GetStorageFolder(),
+		"backup_chunk_delete_queue",
+		persistence.NewCreateTableDescription(
+			persistence.WithColumn("chunk_id", persistence.Optional(persistence.TypeUTF8)),
+			persistence.WithPrimaryKeyColumn("chunk_id"),
+		),
+		dropUnusedColumns,
+	)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Created backup_chunk_delete_queue table")
 
 	if s3 != nil && len(config.GetS3Bucket()) != 0 {
 		exists, err := s3.BucketExists(ctx, config.GetS3Bucket())
@@ -249,17 +259,23 @@ func Drop(
 	}
 	logging.Info(ctx, "Dropped chunk_map table")
 
-	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunks")
-	if err != nil {
-		return err
-	}
-	logging.Info(ctx, "Dropped backup_chunks table")
-
 	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_queue")
 	if err != nil {
 		return err
 	}
 	logging.Info(ctx, "Dropped backup_chunk_queue table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "follower_chunks")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped follower_chunks table")
+
+	err = db.DropTable(ctx, config.GetStorageFolder(), "backup_chunk_delete_queue")
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Dropped backup_chunk_delete_queue table")
 
 	logging.Info(ctx, "Dropped schema for dataplane snapshot storage")
 
@@ -308,6 +324,8 @@ func snapshotStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("chunk_count", persistence.Optional(persistence.TypeUint32)),
 		persistence.WithColumn("lock_task_id", persistence.Optional(persistence.TypeUTF8)),
+		// The backup copy that holds the snapshot; deletion waits for it.
+		persistence.WithColumn("backup_task_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
 		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
