@@ -151,6 +151,23 @@ type Storage interface {
 
 	UnlockSnapshot(ctx context.Context, snapshotID string, lockTaskID string) error
 
+	// HoldSnapshotForBackup marks the snapshot as held by the backup copy
+	// taskID; deletion waits until the copy releases it. Repeating it is
+	// idempotent, another copy waits. Returns false if the snapshot is missing
+	// or not ready.
+	HoldSnapshotForBackup(
+		ctx context.Context,
+		snapshotID string,
+		taskID string,
+	) (bool, error)
+
+	// ReleaseSnapshotForBackup clears the hold if taskID owns it.
+	ReleaseSnapshotForBackup(
+		ctx context.Context,
+		snapshotID string,
+		taskID string,
+	) error
+
 	GetSnapshotMeta(
 		ctx context.Context,
 		snapshotID string,
@@ -169,24 +186,29 @@ type Storage interface {
 		entries []BackupChunkQueueEntry,
 	) error
 
+	// Returns up to limit queued chunks with firstShardID <= shard_id <=
+	// lastShardID in key order, after the given entry; nil starts at
+	// firstShardID. A copy task owns one shard range, so no other task reads
+	// its chunks.
 	GetQueuedChunksToBackup(
 		ctx context.Context,
+		firstShardID uint64,
+		lastShardID uint64,
+		after *BackupChunkQueueEntry,
 		limit int,
 	) ([]BackupChunkQueueEntry, error)
 
-	GetBackedUpChunkCount(
-		ctx context.Context,
-		snapshotID string,
-	) (uint64, error)
+	// Returns InterruptExecutionError while a chunk of the snapshot is queued.
+	CheckBackupChunksCompleted(ctx context.Context, snapshotID string) error
 
 	ChunksBackupCompleted(
 		ctx context.Context,
 		entries []BackupChunkQueueEntry,
 	) error
 
-	// Returns the number of cleared entries: limit, or fewer if there are no
-	// more completed entries of the snapshot.
-	ClearCompletedBackupChunks(
+	// Removes queued chunks of the snapshot. Returns the number of cleared
+	// entries: limit, or fewer if no entries are left.
+	ClearBackupChunks(
 		ctx context.Context,
 		snapshotID string,
 		limit int,
@@ -194,4 +216,15 @@ type Storage interface {
 
 	// Used for monitoring only.
 	GetBackupChunkQueueLength(ctx context.Context) (uint64, error)
+
+	// Returns chunks deleted from chunk_blobs whose follower objects are still
+	// to be deleted.
+	GetBackupChunksToDelete(ctx context.Context, limit int) ([]string, error)
+
+	// Removes the chunks from the delete queue once their follower objects
+	// are deleted.
+	BackupChunksDeleted(ctx context.Context, chunkIDs []string) error
+
+	// Used for monitoring only.
+	GetBackupChunkDeleteQueueLength(ctx context.Context) (uint64, error)
 }

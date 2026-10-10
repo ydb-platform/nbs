@@ -14,4 +14,9 @@ message SnapshotStorageBackupConfig {
     optional string S3KeyPrefix = 3;
     optional string KekFile = 4;
     optional string KekId = 5;
+    // New ready snapshots of these folders are queued for backup.
+    repeated string FolderIds = 6;
+    // Bytes per second one host writes to the bucket, in MiB, whatever the
+    // number of copy tasks on it. 0 disables the limit.
+    optional uint64 UploadBandwidthMiBsPerHost = 7;
 }

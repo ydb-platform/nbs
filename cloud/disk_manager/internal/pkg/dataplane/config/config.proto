@@ -47,6 +47,26 @@ message DataplaneConfig {
     // Number of chunks taken from the backup chunk queue at a time to be copied
     // to the follower bucket.
     optional uint32 BackupChunksTaskBatchSize = 23 [default = 100];
-    // Maximum number of chunks copied to the follower bucket at the same time.
-    optional uint32 BackupChunksInflightLimit = 24 [default = 10];
+    // Number of chunks one dataplane.BackupChunks task copies to the follower
+    // bucket at the same time.
+    optional uint32 BackupChunksTaskIoDepth = 24 [default = 10];
+
+    optional string DeleteBackupChunksTaskScheduleInterval = 25 [default = "10s"];
+    // Number of chunks taken from the backup chunk delete queue at a time to
+    // be deleted from the follower bucket.
+    optional uint32 DeleteBackupChunksTaskBatchSize = 26 [default = 1000];
+    // Maximum number of chunks deleted from the follower bucket at the same
+    // time.
+    optional uint32 DeleteBackupChunksInflightLimit = 27 [default = 10];
+
+    // Maximum number of dataplane.BackupChunks tasks running at once. The
+    // queue is split into 4 shard ranges per task, and a range is copied by
+    // one task at a time. With TasksConfig.InflightTaskPerNodeLimits capping
+    // the type at one, this is the number of nodes that copy.
+    optional uint32 BackupChunksMaxTasks = 28 [default = 1];
+    // Was BackupBandwidthMiBs: the limit lives in
+    // SnapshotStorageBackupConfig.UploadBandwidthMiBsPerHost now.
+    reserved 29;
+    // Was BackupChunksTaskMaxChunks: a task copies one shard range now.
+    reserved 30;
 }

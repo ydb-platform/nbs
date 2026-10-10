@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
@@ -58,9 +59,17 @@ func TestBackupSnapshotTask(t *testing.T) {
 	scheduler := tasks_mocks.NewSchedulerMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 	var scheduledDEK []byte
+	var scheduledMetaKey string
+	var scheduledMeta []byte
 
 	storage.On("GetSnapshotMeta", mock.Anything, "snap1").Return(snapshot, nil)
-	storage.On("SnapshotBackupScheduled", mock.Anything, "snap1").Return(nil)
+	storage.On("SnapshotBackupCompleted", mock.Anything, "snap1").Return(nil)
+	storage.On(
+		"RemoveSnapshotFromBackupQueue",
+		mock.Anything,
+		"snap1",
+		"attempt1",
+	).Return(nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
 	scheduler.On(
@@ -71,6 +80,8 @@ func TestBackupSnapshotTask(t *testing.T) {
 		mock.MatchedBy(func(request *dataplane_protos.BackupSnapshotDataRequest) bool {
 			dek := request.EncryptedDek
 			scheduledDEK = append([]byte(nil), dek...)
+			scheduledMetaKey = request.MetaKey
+			scheduledMeta = append([]byte(nil), request.Meta...)
 			return request.SnapshotId == "snap1" &&
 				len(request.EncryptedDek) != 0
 		}),
@@ -88,6 +99,8 @@ func TestBackupSnapshotTask(t *testing.T) {
 		t.Name(),
 		"kek1",
 		make([]byte, 32),
+		0, // uploadBytesPerSecond
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -95,8 +108,11 @@ func TestBackupSnapshotTask(t *testing.T) {
 		scheduler: scheduler,
 		storage:   storage,
 		backupS3:  backupS3,
-		request:   &protos.BackupSnapshotRequest{SnapshotId: "snap1"},
-		state:     &protos.BackupSnapshotTaskState{},
+		request: &protos.BackupSnapshotRequest{
+			SnapshotId: "snap1",
+			BackupId:   "attempt1",
+		},
+		state: &protos.BackupSnapshotTaskState{},
 	}
 
 	err = task.Run(ctx, execCtx)
@@ -106,14 +122,14 @@ func TestBackupSnapshotTask(t *testing.T) {
 	execCtx.AssertNumberOfCalls(t, "SaveState", 2)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	object, err := backupS3.GetObject(
-		ctx,
-		backup.SnapshotMetaKey("disk1", "snap1"),
-	)
-	require.NoError(t, err)
+	// The copy writes the meta while it holds the source; the task only
+	// passes it.
+	require.Equal(t, backup.SnapshotMetaKey("disk1", "snap1"), scheduledMetaKey)
+	_, err = backupS3.GetObject(ctx, scheduledMetaKey)
+	require.Error(t, err)
 
 	var meta backup.SnapshotMeta
-	require.NoError(t, json.Unmarshal(object.Data, &meta))
+	require.NoError(t, json.Unmarshal(scheduledMeta, &meta))
 	require.Equal(
 		t,
 		backup.SnapshotMeta{
@@ -163,6 +179,8 @@ func TestBackupSnapshotTaskReusesEncryptedDEK(t *testing.T) {
 		t.Name(),
 		"kek1",
 		make([]byte, 32),
+		0, // uploadBytesPerSecond
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -175,9 +193,15 @@ func TestBackupSnapshotTaskReusesEncryptedDEK(t *testing.T) {
 		"snap1",
 	).Return(snapshot, nil)
 	storage.On(
-		"SnapshotBackupScheduled",
+		"SnapshotBackupCompleted",
 		mock.Anything,
 		"snap1",
+	).Return(nil)
+	storage.On(
+		"RemoveSnapshotFromBackupQueue",
+		mock.Anything,
+		"snap1",
+		"attempt1",
 	).Return(nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
@@ -204,7 +228,10 @@ func TestBackupSnapshotTaskReusesEncryptedDEK(t *testing.T) {
 		scheduler: scheduler,
 		storage:   storage,
 		backupS3:  backupS3,
-		request:   &protos.BackupSnapshotRequest{SnapshotId: "snap1"},
+		request: &protos.BackupSnapshotRequest{
+			SnapshotId: "snap1",
+			BackupId:   "attempt1",
+		},
 		state: &protos.BackupSnapshotTaskState{
 			EncryptedDek: preset,
 		},
@@ -240,7 +267,15 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 	scheduler := tasks_mocks.NewSchedulerMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 
-	backupS3, err := backup.NewS3(s3, backupTestBucket, t.Name(), "", nil)
+	backupS3, err := backup.NewS3(
+		s3,
+		backupTestBucket,
+		t.Name(),
+		"",  // kekID
+		nil, // kek
+		0,   // uploadBytesPerSecond
+		metrics.NewEmptyRegistry(),
+	)
 	require.NoError(t, err)
 
 	storage.On(
@@ -249,9 +284,15 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 		"snap1",
 	).Return(snapshot, nil)
 	storage.On(
-		"SnapshotBackupScheduled",
+		"SnapshotBackupCompleted",
 		mock.Anything,
 		"snap1",
+	).Return(nil)
+	storage.On(
+		"RemoveSnapshotFromBackupQueue",
+		mock.Anything,
+		"snap1",
+		"attempt1",
 	).Return(nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
@@ -264,7 +305,9 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 			request *dataplane_protos.BackupSnapshotDataRequest,
 		) bool {
 			return request.SnapshotId == "snap1" &&
-				len(request.EncryptedDek) == 0
+				len(request.EncryptedDek) == 0 &&
+				request.MetaKey == backup.SnapshotMetaKey("disk1", "snap1") &&
+				len(request.Meta) != 0
 		}),
 	).Return("dataplane1", nil)
 	scheduler.On(
@@ -278,8 +321,11 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 		scheduler: scheduler,
 		storage:   storage,
 		backupS3:  backupS3,
-		request:   &protos.BackupSnapshotRequest{SnapshotId: "snap1"},
-		state:     &protos.BackupSnapshotTaskState{},
+		request: &protos.BackupSnapshotRequest{
+			SnapshotId: "snap1",
+			BackupId:   "attempt1",
+		},
+		state: &protos.BackupSnapshotTaskState{},
 	}
 
 	err = task.Run(ctx, execCtx)
@@ -288,13 +334,80 @@ func TestBackupSnapshotTaskWithoutEncryption(t *testing.T) {
 	execCtx.AssertNumberOfCalls(t, "SaveState", 1)
 	mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
 
-	key := backup.SnapshotMetaKey("disk1", "snap1")
-	object, err := backupS3.GetObject(ctx, key)
-	require.NoError(t, err)
+	_, err = backupS3.GetObject(ctx, backup.SnapshotMetaKey("disk1", "snap1"))
+	require.Error(t, err)
+}
 
-	raw, err := s3.GetObject(ctx, backupTestBucket, backupS3.Key(key))
-	require.NoError(t, err)
-	require.Equal(t, object.Data, raw.Data)
-	require.Nil(t, raw.Metadata["Key-Id"])
-	require.Nil(t, raw.Metadata["Encrypted-Dek"])
+func TestBackupSnapshotTaskSkipsSnapshotWithoutCopy(t *testing.T) {
+	for _, snapshot := range []*resources.SnapshotMeta{
+		nil,
+		{ID: "snap1", Ready: false},
+		{ID: "snap1", Ready: true, BackupCompleted: true},
+	} {
+		ctx := test.NewContext()
+		storage := resources_mocks.NewStorageMock()
+		scheduler := tasks_mocks.NewSchedulerMock()
+		execCtx := tasks_mocks.NewExecutionContextMock()
+
+		storage.On("GetSnapshotMeta", mock.Anything, "snap1").Return(snapshot, nil)
+		storage.On(
+			"RemoveSnapshotFromBackupQueue",
+			mock.Anything,
+			"snap1",
+			"attempt1",
+		).Return(nil)
+
+		task := &backupSnapshotTask{
+			scheduler: scheduler,
+			storage:   storage,
+			request: &protos.BackupSnapshotRequest{
+				SnapshotId: "snap1",
+				BackupId:   "attempt1",
+			},
+			state: &protos.BackupSnapshotTaskState{},
+		}
+
+		err := task.Run(ctx, execCtx)
+		require.NoError(t, err)
+		mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
+	}
+}
+
+func TestBackupSnapshotTaskCancel(t *testing.T) {
+	for _, dataplaneTaskID := range []string{"", "dataplane1"} {
+		ctx := test.NewContext()
+		storage := resources_mocks.NewStorageMock()
+		scheduler := tasks_mocks.NewSchedulerMock()
+		execCtx := tasks_mocks.NewExecutionContextMock()
+
+		if len(dataplaneTaskID) != 0 {
+			scheduler.On(
+				"CancelTask",
+				mock.Anything,
+				dataplaneTaskID,
+			).Return(true, nil)
+		}
+		storage.On(
+			"RemoveSnapshotFromBackupQueue",
+			mock.Anything,
+			"snap1",
+			"attempt1",
+		).Return(nil)
+
+		task := &backupSnapshotTask{
+			scheduler: scheduler,
+			storage:   storage,
+			request: &protos.BackupSnapshotRequest{
+				SnapshotId: "snap1",
+				BackupId:   "attempt1",
+			},
+			state: &protos.BackupSnapshotTaskState{
+				DataplaneTaskID: dataplaneTaskID,
+			},
+		}
+
+		err := task.Cancel(ctx, execCtx)
+		require.NoError(t, err)
+		mock.AssertExpectationsForObjects(t, storage, scheduler, execCtx)
+	}
 }
