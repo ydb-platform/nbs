@@ -13,6 +13,7 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
     {
         constexpr ui64 commitId = 1234;
         constexpr bool isStoredInDb = false;
+        const auto writeTimestamp = TInstant::MicroSeconds(1234567);
 
         for (const ui32 blockSize: { 4096, 4096 * 4, 4096 * 16 }) {
             const auto buffers = GetBuffers(blockSize);
@@ -22,18 +23,21 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
 
             const auto blobContent = BuildWriteFreshBlocksBlobContent(
                 blockRanges,
-                holders
-            );
+                holders,
+                writeTimestamp);
 
             TVector<TOwningFreshBlock> result;
+            TInstant timestamp;
             auto error = ParseFreshBlobContent(
                 commitId,
-                {},  // BlobId
+                {},   // BlobId
                 blockSize,
                 blobContent,
-                result);
+                result,
+                timestamp);
 
             UNIT_ASSERT(SUCCEEDED(error.GetCode()));
+            UNIT_ASSERT_VALUES_EQUAL(writeTimestamp, timestamp);
             UNIT_ASSERT_VALUES_EQUAL(15, result.size());
 
             auto subBuffer = buffers.begin();
@@ -65,20 +69,24 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         constexpr ui64 commitId = 1234;
         constexpr bool isStoredInDb = false;
         constexpr ui32 blockSize = 4;
+        const auto writeTimestamp = TInstant::MicroSeconds(1234567);
 
         const TString blobContent = BuildZeroFreshBlocksBlobContent(
-            ZeroFreshBlocksRange
-        );
+            ZeroFreshBlocksRange,
+            writeTimestamp);
 
         TVector<TOwningFreshBlock> result;
+        TInstant timestamp;
         auto error = ParseFreshBlobContent(
             commitId,
-            {},  // BlobId
+            {},   // BlobId
             blockSize,
             blobContent,
-            result);
+            result,
+            timestamp);
 
         UNIT_ASSERT(SUCCEEDED(error.GetCode()));
+        UNIT_ASSERT_VALUES_EQUAL(writeTimestamp, timestamp);
         UNIT_ASSERT_VALUES_EQUAL(5, result.size());
 
         for (ui32 i = 0; i < result.size(); ++i) {
@@ -105,14 +113,18 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         auto oldBlobContent = NResource::Find("fresh_write.blob");
 
         TVector<TOwningFreshBlock> result;
+        TInstant timestamp = TInstant::Max();
         auto error = ParseFreshBlobContent(
             commitId,
-            {},  // BlobId
+            {},   // BlobId
             blockSize,
             oldBlobContent,
-            result);
+            result,
+            timestamp);
 
         UNIT_ASSERT(SUCCEEDED(error.GetCode()));
+        // Old blobs have no timestamp.
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(), timestamp);
         UNIT_ASSERT_VALUES_EQUAL(15, result.size());
 
         auto subBuffer = buffers.begin();
@@ -137,9 +149,11 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
             ++blockIndex;
         }
 
+        // A blob without a timestamp has exactly the old layout.
         auto newBlobContent = BuildWriteFreshBlocksBlobContent(
             blockRanges,
-            holders);
+            holders,
+            TInstant::Zero());
 
         UNIT_ASSERT_VALUES_EQUAL(oldBlobContent.size(), newBlobContent.size());
         for (size_t i = 0; i < oldBlobContent.size(); ++i) {
@@ -156,14 +170,18 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
         auto oldBlobContent = NResource::Find("fresh_zero.blob");
 
         TVector<TOwningFreshBlock> result;
+        TInstant timestamp = TInstant::Max();
         auto error = ParseFreshBlobContent(
             commitId,
-            {},  // BlobId
+            {},   // BlobId
             blockSize,
             oldBlobContent,
-            result);
+            result,
+            timestamp);
 
         UNIT_ASSERT(SUCCEEDED(error.GetCode()));
+        // Old blobs have no timestamp.
+        UNIT_ASSERT_VALUES_EQUAL(TInstant::Zero(), timestamp);
         UNIT_ASSERT_VALUES_EQUAL(5, result.size());
 
         for (ui32 i = 0; i < result.size(); ++i) {
@@ -175,9 +193,10 @@ Y_UNIT_TEST_SUITE(TFreshBlob)
             UNIT_ASSERT_VALUES_EQUAL(isStoredInDb, block.IsStoredInDb);
         }
 
+        // A blob without a timestamp has exactly the old layout.
         auto newBlobContent = BuildZeroFreshBlocksBlobContent(
-            ZeroFreshBlocksRange
-        );
+            ZeroFreshBlocksRange,
+            TInstant::Zero());
 
         UNIT_ASSERT_VALUES_EQUAL(oldBlobContent.size(), newBlobContent.size());
         for (size_t i = 0; i < oldBlobContent.size(); ++i) {

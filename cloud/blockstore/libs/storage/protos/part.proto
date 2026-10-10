@@ -235,6 +235,10 @@ message TFreshBlobMeta
     repeated uint32 StartIndices = 1;
     repeated uint32 EndIndices = 2;
     bool IsZero = 3;
+
+    // Time when the blob was built, in microseconds since epoch.
+    // Zero means unknown (e.g. blobs written by older versions).
+    uint64 Timestamp = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

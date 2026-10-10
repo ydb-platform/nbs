@@ -406,6 +406,7 @@ struct TEvPartitionCommonPrivate
         ui64 CommitId;
         ui64 BlobSize;
         TPartialBlobId BlobId;
+        TInstant Timestamp;
         TVector<TBlockRange32> BlockRanges;
         TVector<IWriteBlocksHandlerPtr> WriteHandlers;
 
@@ -413,11 +414,13 @@ struct TEvPartitionCommonPrivate
                 ui64 commitId,
                 ui64 blobSize,
                 TPartialBlobId blobId,
+                TInstant timestamp,
                 TVector<TBlockRange32> blockRanges,
                 TVector<IWriteBlocksHandlerPtr> writeHandlers)
             : CommitId(commitId)
             , BlobSize(blobSize)
             , BlobId(blobId)
+            , Timestamp(timestamp)
             , BlockRanges(std::move(blockRanges))
             , WriteHandlers(std::move(writeHandlers))
         {}
