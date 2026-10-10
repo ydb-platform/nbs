@@ -155,6 +155,7 @@ using TCritEventParams =
     xxx(AddFreshBlocksResultedInError)                                         \
     xxx(OverlappingRequestsDetected)                                           \
     xxx(CrossPartitionRequestDetected)                                         \
+    xxx(PartitionV2Disabled)                                                   \
     // BLOCKSTORE_VOLUME_CRITICAL_EVENTS
 
 ////////////////////////////////////////////////////////////////////////////////

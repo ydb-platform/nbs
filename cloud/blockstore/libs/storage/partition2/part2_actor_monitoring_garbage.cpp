@@ -1,5 +1,6 @@
 #include "part2_actor.h"
 
+#include <cloud/blockstore/libs/service/context.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
 #include <library/cpp/monlib/service/pages/templates.h>
@@ -11,8 +12,6 @@
 #include <util/string/split.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
-
-using namespace NCloud::NStorage;
 
 using namespace NKikimr;
 
@@ -40,6 +39,7 @@ private:
     const TActorId Tablet;
     const ui64 TabletId;
     const EAction Action;
+    TChildLogTitle LogTitle;
     const TVector<TPartialBlobId> BlobIds;
 
 public:
@@ -48,6 +48,7 @@ public:
         const TActorId& tablet,
         ui64 tabletId,
         EAction action,
+        TChildLogTitle logTitle,
         TVector<TPartialBlobId> blobIds = {});
 
     void Bootstrap(const TActorContext& ctx);
@@ -82,11 +83,13 @@ THttpGarbageActor::THttpGarbageActor(
         const TActorId& tablet,
         ui64 tabletId,
         EAction action,
+        TChildLogTitle logTitle,
         TVector<TPartialBlobId> blobIds)
     : RequestInfo(std::move(requestInfo))
     , Tablet(tablet)
     , TabletId(tabletId)
     , Action(action)
+    , LogTitle(std::move(logTitle))
     , BlobIds(std::move(blobIds))
 {}
 
@@ -122,9 +125,14 @@ void THttpGarbageActor::ReplyAndDie(
     auto alertType = EAlertLevel::SUCCESS;
     TStringStream msg;
     if (FAILED(error.GetCode())) {
-        msg << "[" << TabletId << "] ";
+        msg << LogTitle.GetWithTime();
         msg << "Operation completed with error : " << FormatError(error);
-        LOG_ERROR_S(ctx, TBlockStoreComponents::PARTITION, msg.Str());
+        LOG_ERROR(
+            ctx,
+            TBlockStoreComponents::PARTITION,
+            "%s Operation completed with error: %s",
+            LogTitle.GetWithTime().c_str(),
+            FormatError(error).c_str());
         alertType = EAlertLevel::DANGER;
     } else {
         msg << "Operation successfully completed";
@@ -254,11 +262,7 @@ void TPartitionActor::HandleHttpInfo_AddGarbage(
             }
         }
 
-        SendHttpResponse(
-            ctx,
-            *requestInfo,
-            std::move(out.Str()),
-            EAlertLevel::DANGER);
+        SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
         return;
     }
 
@@ -269,6 +273,7 @@ void TPartitionActor::HandleHttpInfo_AddGarbage(
         SelfId(),
         TabletID(),
         THttpGarbageActor::AddGarbage,
+        LogTitle.GetChild(GetCycleCount()),
         std::move(blobIds));
 }
 
@@ -287,7 +292,8 @@ void TPartitionActor::HandleHttpInfo_CollectGarbage(
         std::move(requestInfo),
         SelfId(),
         TabletID(),
-        THttpGarbageActor::CollectGarbage);
+        THttpGarbageActor::CollectGarbage,
+        LogTitle.GetChild(GetCycleCount()));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

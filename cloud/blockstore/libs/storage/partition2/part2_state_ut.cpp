@@ -1,53 +1,35 @@
 #include "part2_state.h"
 
+#include <cloud/blockstore/libs/storage/model/channel_data_kind.h>
+#include <cloud/blockstore/libs/storage/partition2/part2_schema.h>
+#include <cloud/blockstore/libs/storage/partition_common/part_thread_safe_state.h>
 #include <cloud/blockstore/libs/storage/testlib/test_executor.h>
 #include <cloud/blockstore/libs/storage/testlib/ut_helpers.h>
 
 #include <library/cpp/testing/unittest/registar.h>
 
-#include <util/generic/map.h>
 #include <util/generic/size_literals.h>
-#include <util/generic/string.h>
-#include <util/generic/vector.h>
-#include <util/string/cast.h>
+#include <util/string/builder.h>
 
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
+
+using namespace NActors;
 
 namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-constexpr ui64 TestTabletId = 1;
-const ui32 DataChannelStart = 3;
-const ui32 MaxBlobSize = 4_MB;
-const ui32 MaxRangesPerBlob = 8;
+const ui32 DefaultBlockCount = 1000;
 
-TString GetBlockContent(char fill = 0, size_t size = DefaultBlockSize)
-{
-    return TString(size, fill);
-}
+////////////////////////////////////////////////////////////////////////////////
 
-auto Blocks(const TBlockRange32& blockRange, ui64 commitId)
-{
-    TVector<TBlock> blocks;
-    blocks.reserve(blockRange.Size());
-    for (ui32 i = blockRange.Start; i <= blockRange.End; ++i) {
-        blocks.push_back(TBlock(i, commitId, InvalidCommitId, false));
-    }
-    return blocks;
-}
-
-NProto::TPartitionMeta DefaultConfig(
-    size_t blocksCount = 1024,
-    size_t blockSize = DefaultBlockSize,
-    size_t channelCount = 1)
+NProto::TPartitionMeta DefaultConfig(size_t channelCount, size_t blockCount)
 {
     NProto::TPartitionMeta meta;
 
     auto& config = *meta.MutableConfig();
-    config.SetBlocksCount(blocksCount);
-    config.SetBlockSize(blockSize);
-    config.SetZoneBlockCount(32 * MaxBlocksCount);
+    config.SetBlockSize(DefaultBlockSize);
+    config.SetBlocksCount(blockCount);
 
     auto cps = config.MutableExplicitChannelProfiles();
     cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
@@ -67,14 +49,14 @@ TBackpressureFeaturesConfig DefaultBPConfig()
 {
     return {
         {
-            30,     // compaction score limit
-            10,     // compaction score threshold
-            10,     // compaction score feature max value
+            30,   // compaction score limit
+            10,   // compaction score threshold
+            10,   // compaction score feature max value
         },
         {
-            1600_KB,// fresh byte count limit
-            400_KB, // fresh byte count threshold
-            10,     // fresh byte count feature max value
+            1600_KB,   // fresh byte count limit
+            400_KB,    // fresh byte count threshold
+            10,        // fresh byte count feature max value
         },
         {
             8_MB,   // cleanup queue size limit
@@ -92,19 +74,9 @@ TFreeSpaceConfig DefaultFreeSpaceConfig()
     };
 }
 
-TIndexCachingConfig DefaultIndexCachingConfig()
-{
-    return {
-        10,     // to-mixed conversion factor
-        5,      // to-ranges conversion factor
-        1000,   // blocklist cache size
-    };
-}
-
 ////////////////////////////////////////////////////////////////////////////////
 
-struct TNoBackpressurePolicy
-    : ICompactionPolicy
+struct TNoBackpressurePolicy: ICompactionPolicy
 {
     TCompactionScore CalculateScore(const TRangeStat& stat) const override
     {
@@ -122,121 +94,104 @@ struct TNoBackpressurePolicy
     }
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TFreshBlockVisitor final
-    : public IFreshBlockVisitor
+struct TPartitionStateOptions
 {
-    using TBlockMap = TMap<TBlock, TString, TBlockCompare>;
-
-private:
-    TBlockMap Blocks;
-
-public:
-    void Visit(
-        const TBlock& block,
-        TStringBuf blockContent,
-        const TPartialBlobId& blobId) override
-    {
-        Y_UNUSED(blobId);
-
-        TBlockMap::iterator it;
-        bool inserted;
-
-        std::tie(it, inserted) = Blocks.emplace(block, blockContent);
-        UNIT_ASSERT(inserted);
-    }
-
-    void DumpBlocks(IOutputStream& out) const
-    {
-        for (const auto& kv: Blocks) {
-            out << "BlockIndex: " << kv.first.BlockIndex
-                << ", MinCommitId: " << kv.first.MinCommitId
-                << ", MaxCommitId: " << kv.first.MaxCommitId
-                << Endl;
-        }
-    }
-
-    TVector<TBlock> GetBlocks() const
-    {
-        TVector<TBlock> result(Reserve(Blocks.size()));
-        for (const auto& kv: Blocks) {
-            result.push_back(kv.first);
-        }
-        return result;
-    }
-
-    TString GetBlockContent(ui32 blockIndex, ui64 commitId) const
-    {
-        auto it = Blocks.find(TBlockKey{ blockIndex, commitId });
-        if (it != Blocks.end()) {
-            return it->second;
-        }
-        return {};
-    }
+    bool CheckpointAwareCleanupEnabled = false;
+    bool UseBlobChannelDataKindForCounters = false;
+    bool CompactionStatsTrackerEnabled = false;
+    ICompactionPolicyPtr CompactionPolicy =
+        BuildDefaultCompactionPolicy(5, 0, false);
+    ui32 MixedIndexCacheSize = 0;
+    ui64 AllocationUnit = 10000;
+    ui32 MaxBlobsPerUnit = 100;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-struct TBlobRef
+TPartitionState MakeState(
+    NProto::TPartitionMeta meta,
+    TPartitionStateOptions options = {})
 {
-    TPartialBlobId BlobId;
-    ui16 BlobOffset = 0;
+    const auto channelCount = meta.GetConfig().ExplicitChannelProfilesSize();
+    auto threadSafeState = std::make_shared<TPartitionThreadSafeState>();
+    return TPartitionState(
+        std::move(meta),
+        std::move(options.CompactionPolicy),
+        0,   // compactionScoreHistorySize
+        0,   // cleanupScoreHistorySize
+        DefaultBPConfig(),
+        DefaultFreeSpaceConfig(),
+        Max(),   // maxIORequestsInFlight
+        0,       // reassignChannelsPercentageThreshold
+        100,     // reassignFreshChannelsPercentageThreshold
+        100,     // reassignMixedChannelsPercentageThreshold
+        false,   // reassignSystemChannelsImmediately
+        channelCount,
+        options.MixedIndexCacheSize,
+        options.AllocationUnit,
+        options.MaxBlobsPerUnit,
+        10,   // maxBlobsPerRange,
+        1,    // compactionRangeCountPerRun
+        std::move(threadSafeState),
+        0,              // tabletId
+        std::nullopt,   // mixedBlocksFilterConfig
+        options.CheckpointAwareCleanupEnabled,
+        options.UseBlobChannelDataKindForCounters,
+        options.CompactionStatsTrackerEnabled);
+}
+
+TPartitionState MakeState(
+    size_t blockCount = DefaultBlockCount,
+    TPartitionStateOptions options = {})
+{
+    return MakeState(DefaultConfig(1, blockCount), std::move(options));
+}
+
+struct TBlobAndBlockCounts
+{
+    ui64 MixedBlobs = 0;
+    ui64 MergedBlobs = 0;
+    ui64 MixedBlocks = 0;
+    ui64 MergedBlocks = 0;
 };
 
-////////////////////////////////////////////////////////////////////////////////
-
-class TMergedBlockVisitor final
-    : public IMergedBlockVisitor
+void AssertBlobAndBlockCounts(
+    const NProto::TPartitionStats& stats,
+    const TBlobAndBlockCounts& channel,
+    const TBlobAndBlockCounts& index,
+    const TString& context = {})
 {
-    using TBlockMap = TMap<TBlock, TBlobRef, TBlockCompare>;
-
-private:
-    TBlockMap Blocks;
-
-public:
-    void Visit(
-        const TBlock& block,
-        const TPartialBlobId& blobId,
-        ui16 blobOffset) override
-    {
-        TBlockMap::iterator it;
-        bool inserted;
-
-        std::tie(it, inserted) = Blocks.emplace(
-            block,
-            TBlobRef{ blobId, blobOffset });
-        UNIT_ASSERT(inserted);
-    }
-
-    void DumpBlocks(IOutputStream& out) const
-    {
-        for (const auto& kv: Blocks) {
-            out << "BlockIndex: " << kv.first.BlockIndex
-                << ", MinCommitId: " << kv.first.MinCommitId
-                << ", MaxCommitId: " << kv.first.MaxCommitId
-                << Endl;
-        }
-    }
-
-    TVector<TBlock> GetBlocks() const
-    {
-        TVector<TBlock> result(Reserve(Blocks.size()));
-        for (const auto& kv: Blocks) {
-            result.push_back(kv.first);
-        }
-        return result;
-    }
-
-    TBlobRef GetBlockContent(ui32 blockIndex, ui64 commitId) const
-    {
-        auto it = Blocks.find(TBlockKey{ blockIndex, commitId });
-        if (it != Blocks.end()) {
-            return it->second;
-        }
-        return {};
-    }
-};
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        channel.MixedBlobs,
+        stats.GetMixedBlobsCount(),
+        context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        channel.MergedBlobs,
+        stats.GetMergedBlobsCount(),
+        context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        channel.MixedBlocks,
+        stats.GetMixedBlocksCount(),
+        context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        channel.MergedBlocks,
+        stats.GetMergedBlocksCount(),
+        context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        index.MixedBlobs,
+        stats.GetMixedIndexBlobsCount(),
+        context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        index.MergedBlobs,
+        stats.GetMergedIndexBlobsCount(),
+        context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        index.MixedBlocks,
+        stats.GetMixedIndexBlocksCount(),
+        context);
+    UNIT_ASSERT_VALUES_EQUAL_C(
+        index.MergedBlocks,
+        stats.GetMergedIndexBlocksCount(),
+        context);
+}
 
 }   // namespace
 
@@ -244,1176 +199,355 @@ public:
 
 Y_UNIT_TEST_SUITE(TPartition2StateTest)
 {
-    // TODO: zone-related tests
-
-    Y_UNIT_TEST(ShouldStoreFreshBlocks)
+    Y_UNIT_TEST(ShouldOnlyCreateCompactionStatsTrackerWhenEnabled)
     {
-        TPartitionState state(
-            DefaultConfig(),
-            TestTabletId,
-            0,
-            5,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+        auto disabledState = MakeState();
+        UNIT_ASSERT(!disabledState.AccessCompactionStatsTracker());
 
-        ui64 commitId = state.GenerateCommitId();
+        auto enabledState = MakeState(
+            DefaultBlockCount,
+            {.CompactionStatsTrackerEnabled = true});
+        UNIT_ASSERT(enabledState.AccessCompactionStatsTracker());
+    }
+
+    Y_UNIT_TEST(ShouldInitializeMixedMergedBlobsAndBlocksCounts)
+    {
+        struct TTestCase
         {
-            auto block1 = TBlock(1, commitId, InvalidCommitId, false);
-            auto block2 = TBlock(2, commitId, InvalidCommitId, false);
-            auto one = GetBlockContent(1);
-            auto two = GetBlockContent(2);
-            state.WriteFreshBlock(block1, {one.data(), one.size()});
-            state.WriteFreshBlock(block2, {two.data(), two.size()});
+            TString Name;
+            TBlobAndBlockCounts Channel;
+            TBlobAndBlockCounts Index;
+            TBlobAndBlockCounts ExpectedIndex;
+            TBlobAndBlockCounts ExpectedChannelWhenDisabled;
+            TBlobAndBlockCounts ExpectedChannelWithMixed;
+            TBlobAndBlockCounts ExpectedChannelWithoutMixed;
         };
 
-        {
-            TFreshBlockVisitor visitor;
-            state.FindFreshBlocks(visitor);
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId, InvalidCommitId, false),
-                TBlock(2, commitId, InvalidCommitId, false),
-            }));
-
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(1, commitId), GetBlockContent(1));
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(2, commitId), GetBlockContent(2));
-        };
-    }
-
-    Y_UNIT_TEST(ShouldMarkFreshBlocksDeleted)
-    {
-        TPartitionState state(
-            DefaultConfig(),
-            TestTabletId,
-            0,
-            5,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
-
-        TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
-
-        ui64 commitId1 = state.GenerateCommitId();
-        {
-            auto block1 = TBlock(1, commitId1, InvalidCommitId, false);
-            auto block2 = TBlock(2, commitId1, InvalidCommitId, false);
-
-            auto one = GetBlockContent(1);
-            auto two = GetBlockContent(2);
-
-            state.WriteFreshBlock(block1, {one.data(), one.size()});
-            state.WriteFreshBlock(block2, {two.data(), two.size()});
-        };
-
-        ui64 commitId2 = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.AddFreshBlockUpdate(
-                db, {commitId2, TBlockRange32::MakeOneBlock(1)});
-            state.AddFreshBlockUpdate(
-                db, {commitId2, TBlockRange32::MakeOneBlock(2)});
-        });
-
-        {
-            auto block1 = TBlock(1, commitId2, InvalidCommitId, false);
-            auto block2 = TBlock(2, commitId2, InvalidCommitId, false);
-
-            auto oneone = GetBlockContent(11);
-            auto twotwo = GetBlockContent(22);
-
-            state.WriteFreshBlock(block1, {oneone.data(), oneone.size()});
-            state.WriteFreshBlock(block2, {twotwo.data(), twotwo.size()});
-        }
-
-        {
-            TFreshBlockVisitor visitor;
-            state.FindFreshBlocks(
-                commitId1,
-                TBlockRange32::MakeClosedInterval(1, 2),
-                visitor);
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId1, InvalidCommitId, false),
-                TBlock(2, commitId1, InvalidCommitId, false),
-            }));
-
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(1, commitId1), GetBlockContent(1));
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(2, commitId1), GetBlockContent(2));
-        };
-
-        {
-            TFreshBlockVisitor visitor;
-            state.FindFreshBlocks(visitor);
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(1, commitId1, commitId2, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId1, commitId2, false),
-            }));
-
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(1, commitId2), GetBlockContent(11));
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(2, commitId2), GetBlockContent(22));
-        };
-    }
-
-    Y_UNIT_TEST(ShouldDeleteFreshBlocks)
-    {
-        TPartitionState state(
-            DefaultConfig(),
-            TestTabletId,
-            0,
-            5,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
-
-        ui64 commitId1 = state.GenerateCommitId();
-        {
-            auto block1 = TBlock(1, commitId1, InvalidCommitId, false);
-            auto block2 = TBlock(2, commitId1, InvalidCommitId, false);
-
-            auto one = GetBlockContent(1);
-            auto two = GetBlockContent(2);
-
-            state.WriteFreshBlock(block1, {one.data(), one.size()});
-            state.WriteFreshBlock(block2, {two.data(), two.size()});
-        };
-
-        ui64 commitId2 = state.GenerateCommitId();
-        {
-            state.DeleteFreshBlock(1, commitId1);
-            state.DeleteFreshBlock(2, commitId1);
-
-            auto block1 = TBlock(1, commitId2, InvalidCommitId, false);
-            auto block2 = TBlock(2, commitId2, InvalidCommitId, false);
-
-            auto one = GetBlockContent(11);
-            auto two = GetBlockContent(22);
-
-            state.WriteFreshBlock(block1, {one.data(), one.size()});
-            state.WriteFreshBlock(block2, {two.data(), two.size()});
-        }
-
-        {
-            TFreshBlockVisitor visitor;
-            state.FindFreshBlocks(
-                commitId1,
-                TBlockRange32::MakeClosedInterval(1, 2),
-                visitor);
-
-            auto result = visitor.GetBlocks();
-            UNIT_ASSERT(!result);
-        };
-
-        {
-            TFreshBlockVisitor visitor;
-            state.FindFreshBlocks(visitor);
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-            }));
-
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(1, commitId2), GetBlockContent(11));
-            UNIT_ASSERT_EQUAL(visitor.GetBlockContent(2, commitId2), GetBlockContent(22));
-        };
-    }
-
-    Y_UNIT_TEST(ShouldStoreMergedBlocks)
-    {
-        TPartitionState state(
-            DefaultConfig(),
-            TestTabletId,
-            0,
-            5,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
-
-        TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
-
-        TBlockRange32 blockRange;
-        TPartialBlobId blobId;
-
-        ui64 commitId = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            TVector<TBlock> blocks = {
-                TBlock(1, commitId, InvalidCommitId, false),
-                TBlock(2, commitId, InvalidCommitId, false),
-            };
-
-            blockRange = TBlockRange32::MakeClosedInterval(
-                blocks.front().BlockIndex,
-                blocks.back().BlockIndex);
-
-            blobId = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId,
-                blockRange.Size() * DefaultBlockSize);
-
-            state.WriteBlob(db, blobId, blocks);
-        });
-
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, blockRange, visitor));
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId, InvalidCommitId, false),
-                TBlock(2, commitId, InvalidCommitId, false),
-            }));
-        });
-    }
-
-    Y_UNIT_TEST(ShouldStoreMergedBlocksInMixedIndex)
-    {
-        TPartitionState state(
-            DefaultConfig(),
-            TestTabletId,
-            0,
-            5,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            {1024, 0, 0}
-        );
-
-        TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
-
-        TBlockRange32 blockRange;
-        TPartialBlobId blobId;
-
-        ui64 commitId = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.UpdateIndexStructures(
-                db,
-                TInstant::Seconds(1),
-                TBlockRange32::WithLength(0, 100)
-            );
-
-            TVector<TBlock> blocks = {
-                TBlock(1, commitId, InvalidCommitId, false),
-                TBlock(2, commitId, InvalidCommitId, false),
-            };
-
-            blockRange = TBlockRange32::MakeClosedInterval(
-                blocks.front().BlockIndex,
-                blocks.back().BlockIndex);
-
-            blobId = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId,
-                blockRange.Size() * DefaultBlockSize);
-
-            state.WriteBlob(db, blobId, blocks);
-        });
-
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, blockRange, visitor));
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId, InvalidCommitId, false),
-                TBlock(2, commitId, InvalidCommitId, false),
-            }));
-        });
-    }
-
-    // TODO: test with mixed index
-    Y_UNIT_TEST(ShouldMarkMergedBlocksDeleted)
-    {
-        TPartitionState state(
-            DefaultConfig(),
-            TestTabletId,
-            0,
-            5,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
-
-        TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
-
-        auto blockRange1 = TBlockRange32::MakeClosedInterval(1, 3);
-        TPartialBlobId blobId1;
-
-        ui64 commitId1 = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            auto blocks = Blocks(blockRange1, commitId1);
-
-            blobId1 = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId1,
-                blockRange1.Size() * DefaultBlockSize);
-
-            state.WriteBlob(db, blobId1, blocks);
-        });
-
-        auto blockRange2 = TBlockRange32::MakeClosedInterval(1, 2);
-        TPartialBlobId blobId2;
-
-        ui64 commitId2 = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.MarkMergedBlocksDeleted(db, blockRange2, commitId2);
-
-            auto blocks = Blocks(blockRange2, commitId2);
-
-            blobId2 = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId2,
-                blockRange2.Size() * DefaultBlockSize);
-
-            state.WriteBlob(db, blobId2, blocks);
-        });
-
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, commitId1, blockRange1, visitor));
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId1, InvalidCommitId, false),
-                TBlock(2, commitId1, InvalidCommitId, false),
-                TBlock(3, commitId1, InvalidCommitId, false),
-            }));
-        });
-
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, blockRange1, visitor));
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(1, commitId1, commitId2, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId1, commitId2, false),
-                TBlock(3, commitId1, InvalidCommitId, false),
-            }));
-        });
-
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TVector<TBlock> blocks1 = {
-                TBlock(1, commitId1, InvalidCommitId, false),
-                TBlock(2, commitId1, InvalidCommitId, false),
-                TBlock(3, commitId1, InvalidCommitId, false),
-            };
-            state.UpdateBlob(db, blobId1, true, blocks1);
-            TVector<TBlock> blocks2 = {
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-            };
-            state.UpdateBlob(db, blobId2, true, blocks2);
-        });
-
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, commitId1, blockRange1, visitor));
-
-            auto result = visitor.GetBlocks();
-            // block 3 commit id was rebased to commitId2 => we should get an
-            // empty block list here
-            UNIT_ASSERT_VALUES_EQUAL(result.size(), 0);
-        });
-
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, commitId2, blockRange1, visitor));
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-                TBlock(3, commitId2, InvalidCommitId, false),
-            }));
-        });
-
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, blockRange1, visitor));
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(1, 0, 0, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-                TBlock(2, 0, 0, false),
-                TBlock(3, commitId2, InvalidCommitId, false),
-            }));
-        });
-    }
-
-    // TODO: test with mixed index
-    Y_UNIT_TEST(ShouldDeleteMergedBlocks)
-    {
-        TPartitionState state(
-            DefaultConfig(),
-            TestTabletId,
-            0,
-            5,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
-
-        TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
-
-        TBlockRange32 blockRange1;
-        TPartialBlobId blobId1;
-
-        ui64 commitId1 = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            TVector<TBlock> blocks = {
-                TBlock(1, commitId1, InvalidCommitId, false),
-                TBlock(2, commitId1, InvalidCommitId, false),
-            };
-
-            blockRange1 = TBlockRange32::MakeClosedInterval(
-                blocks.front().BlockIndex,
-                blocks.back().BlockIndex);
-
-            blobId1 = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId1,
-                blockRange1.Size() * DefaultBlockSize);
-
-            state.WriteBlob(db, blobId1, blocks);
-        });
-
-        TBlockRange32 blockRange2;
-        TPartialBlobId blobId2;
-
-        ui64 commitId2 = state.GenerateCommitId();
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.DeleteBlob(db, blobId1);
-
-            TVector<TBlock> blocks = {
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-            };
-
-            blockRange2 = TBlockRange32::MakeClosedInterval(
-                blocks.front().BlockIndex,
-                blocks.back().BlockIndex);
-
-            blobId2 = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                commitId2,
-                blockRange2.Size() * DefaultBlockSize);
-
-            state.WriteBlob(db, blobId2, blocks);
-        });
-
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, commitId1, blockRange1, visitor));
-
-            auto result = visitor.GetBlocks();
-            UNIT_ASSERT(!result);
-        });
-
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TMergedBlockVisitor visitor;
-            UNIT_ASSERT(state.FindMergedBlocks(db, blockRange2, visitor));
-
-            auto result = visitor.GetBlocks();
-            ASSERT_PARTITION2_BLOCK_LISTS_EQUAL(result, TVector<TBlock>({
-                TBlock(1, commitId2, InvalidCommitId, false),
-                TBlock(2, commitId2, InvalidCommitId, false),
-            }));
-        });
-    }
-
-    Y_UNIT_TEST(UpdatePermissions)
-    {
-        for (size_t channelCount = 1; channelCount <= 3; ++channelCount) {
-            TPartitionState state(
-                DefaultConfig(1024, DefaultBlockSize, channelCount),
-                TestTabletId,
-                0,
-                4 + channelCount,
-                MaxBlobSize,
-                MaxRangesPerBlob,
-                EOptimizationMode::OptimizeForLongRanges,
-                BuildDefaultCompactionPolicy(5, 0, false),
-                DefaultBPConfig(),
-                DefaultFreeSpaceConfig(),
-                DefaultIndexCachingConfig()
-            );
-
-            UNIT_ASSERT(state.IsCompactionAllowed());
-
-            ui32 channelId = 0;
-            const double baseScore = 1;
-            const double maxScore = 100;
-
-#define CHECK_DISK_SPACE_SCORE(expected)                                \
-            UNIT_ASSERT_DOUBLES_EQUAL(                                  \
-                expected,                                               \
-                state.CalculateCurrentBackpressure().DiskSpaceScore,    \
-                1e-5                                                    \
-            )                                                           \
-// CHECK_DISK_SPACE_SCORE
-
-            while (channelId < 3) {
-                UNIT_ASSERT(!state.UpdatePermissions(
-                    channelId,
-                    EChannelPermission::SystemWritesAllowed
-                    | EChannelPermission::UserWritesAllowed
-                ));
-                UNIT_ASSERT(state.IsCompactionAllowed());
-                CHECK_DISK_SPACE_SCORE(baseScore);
-
-                UNIT_ASSERT(
-                    !state.UpdatePermissions(
-                        channelId, EChannelPermission::SystemWritesAllowed
-                    )
-                );
-                UNIT_ASSERT(state.IsCompactionAllowed());
-                CHECK_DISK_SPACE_SCORE(baseScore);
-
-                UNIT_ASSERT(state.UpdatePermissions(
-                    channelId, EChannelPermission::UserWritesAllowed
-                ));
-                UNIT_ASSERT(!state.IsCompactionAllowed());
-                CHECK_DISK_SPACE_SCORE(maxScore);
-
-                UNIT_ASSERT(!state.UpdatePermissions(channelId, {}));
-                UNIT_ASSERT(!state.IsCompactionAllowed());
-                CHECK_DISK_SPACE_SCORE(maxScore);
-
-                UNIT_ASSERT(state.UpdatePermissions(
-                    channelId,
-                    EChannelPermission::SystemWritesAllowed
-                    | EChannelPermission::UserWritesAllowed
-                ));
-                CHECK_DISK_SPACE_SCORE(baseScore);
-
-                ++channelId;
-            }
-
-            const TVector<TVector<double>> expectedScores{
-                {baseScore, maxScore},
-                {baseScore, 2, maxScore},
-                {baseScore, 1.5, 3, maxScore},
-            };
-            while (channelId <= 2 + channelCount) {
-                const auto currentScore =
-                    expectedScores[channelCount - 1][channelId - 3];
-                const auto nextScore =
-                    expectedScores[channelCount - 1][channelId - 3 + 1];
-
-                UNIT_ASSERT(!state.UpdatePermissions(
-                    channelId,
-                    EChannelPermission::SystemWritesAllowed
-                    | EChannelPermission::UserWritesAllowed
-                ));
-                UNIT_ASSERT(state.IsCompactionAllowed());
-                CHECK_DISK_SPACE_SCORE(currentScore);
-
-                UNIT_ASSERT(state.UpdatePermissions(
-                    channelId, EChannelPermission::SystemWritesAllowed
-                ));
-                UNIT_ASSERT(state.IsCompactionAllowed());
-                CHECK_DISK_SPACE_SCORE(nextScore);
-
-                UNIT_ASSERT(state.UpdatePermissions(
-                    channelId, EChannelPermission::UserWritesAllowed
-                ));
-                UNIT_ASSERT_VALUES_EQUAL(
-                    channelId < 2 + channelCount, state.IsCompactionAllowed()
-                );
-                CHECK_DISK_SPACE_SCORE(currentScore);
-
-                UNIT_ASSERT(state.UpdatePermissions(channelId, {}));
-                UNIT_ASSERT_VALUES_EQUAL(
-                    channelId < 2 + channelCount, state.IsCompactionAllowed()
-                );
-                CHECK_DISK_SPACE_SCORE(nextScore);
-
-                ++channelId;
-            }
-
-            // TODO: fresh channels
-        }
-    }
-
-    Y_UNIT_TEST(TestReassignedChannelsCollection)
-    {
-        TPartitionState state(
-            DefaultConfig(1024, DefaultBlockSize, 2),
-            TestTabletId,
-            0,
-            6,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
-
-        UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
-        UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
-
-        state.UpdatePermissions(
-            DataChannelStart,
-            EChannelPermission::SystemWritesAllowed
-        );
-
-        UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
-        auto channelsToReassign = state.GetChannelsToReassign();
-        UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
-        UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
-
-        state.UpdatePermissions(
-            DataChannelStart + 1,
-            EChannelPermission::SystemWritesAllowed
-        );
-
-        UNIT_ASSERT(
-            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
-        channelsToReassign = state.GetChannelsToReassign();
-        UNIT_ASSERT_VALUES_EQUAL(2, channelsToReassign.size());
-        UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
-        UNIT_ASSERT_VALUES_EQUAL(DataChannelStart + 1, channelsToReassign[1]);
-
-        state.RegisterReassignRequestFromBlobStorage(DataChannelStart + 2);
-        channelsToReassign = state.GetChannelsToReassign();
-        UNIT_ASSERT_VALUES_EQUAL(3, channelsToReassign.size());
-        UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
-        UNIT_ASSERT_VALUES_EQUAL(DataChannelStart + 1, channelsToReassign[1]);
-        UNIT_ASSERT_VALUES_EQUAL(DataChannelStart + 2, channelsToReassign[2]);
-    }
-
-    Y_UNIT_TEST(TestReassignedChannelsPercentageThreshold)
-    {
-        TPartitionState state(
-            DefaultConfig(1024, DefaultBlockSize, 96),
-            TestTabletId,
-            0,
-            100,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig(),
-            Max(),  // maxIORequestsInFlight
-            10      // reassignChannelsPercentageThreshold
-        );
-
-        UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
-        UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
-
-        for (ui32 i = 0; i < 9; ++i) {
-            state.UpdatePermissions(
-                DataChannelStart + i,
-                EChannelPermission::SystemWritesAllowed
-            );
-        }
-
-        UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
-        auto channelsToReassign = state.GetChannelsToReassign();
-        UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign.size());
-
-        state.UpdatePermissions(
-            DataChannelStart + 9,
-            EChannelPermission::SystemWritesAllowed
-        );
-
-        UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
-        channelsToReassign = state.GetChannelsToReassign();
-        UNIT_ASSERT_VALUES_EQUAL(10, channelsToReassign.size());
-        UNIT_ASSERT_VALUES_EQUAL(DataChannelStart, channelsToReassign[0]);
-        UNIT_ASSERT_VALUES_EQUAL(DataChannelStart + 9, channelsToReassign[9]);
-
-        for (ui32 i = 0; i < 10; ++i) {
-            state.UpdatePermissions(
-                DataChannelStart + i,
-                EChannelPermission::UserWritesAllowed
-                    | EChannelPermission::SystemWritesAllowed
-            );
-        }
-
-        UNIT_ASSERT(
-            state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
-        channelsToReassign = state.GetChannelsToReassign();
-        UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign.size());
-
-        state.UpdatePermissions(
-            0,
-            EChannelPermission::SystemWritesAllowed
-        );
-        UNIT_ASSERT(
-            !state.IsWriteAllowed(EChannelPermission::UserWritesAllowed)
-        );
-        channelsToReassign = state.GetChannelsToReassign();
-        UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
-        UNIT_ASSERT_VALUES_EQUAL(0, channelsToReassign[0]);
-    }
-
-    Y_UNIT_TEST(UpdateChannelFreeSpaceShare)
-    {
-        const size_t maxChannelCount = 3;
-
-        for (size_t channelCount = 1; channelCount <= maxChannelCount; ++channelCount) {
-            TPartitionState state(
-                DefaultConfig(1024, DefaultBlockSize, channelCount),
-                TestTabletId,
-                0,
-                channelCount + 4,
-                MaxBlobSize,
-                MaxRangesPerBlob,
-                EOptimizationMode::OptimizeForLongRanges,
-                BuildDefaultCompactionPolicy(5, 0, false),
-                DefaultBPConfig(),
-                DefaultFreeSpaceConfig(),
-                DefaultIndexCachingConfig()
-            );
-
-            const double baseScore = 1;
-            const double maxScore = 100;
-
-            for (ui32 ch = 0; ch < state.GetChannelCount(); ++ch) {
-                const auto kind = state.GetChannelDataKind(ch);
-                switch (kind) {
-                    case EChannelDataKind::System:
-                    case EChannelDataKind::Log:
-                    case EChannelDataKind::Index: {
-                        UNIT_ASSERT(!state.UpdateChannelFreeSpaceShare(ch, 0));
-                        UNIT_ASSERT(!state.UpdateChannelFreeSpaceShare(ch, 0.25));
-                        CHECK_DISK_SPACE_SCORE(baseScore);
-
-                        UNIT_ASSERT(state.UpdateChannelFreeSpaceShare(ch, 0.20));
-                        CHECK_DISK_SPACE_SCORE(2);
-
-                        UNIT_ASSERT(state.UpdateChannelFreeSpaceShare(ch, 0.15));
-                        CHECK_DISK_SPACE_SCORE(maxScore);
-
-                        UNIT_ASSERT(!state.UpdateChannelFreeSpaceShare(ch, 0));
-                        UNIT_ASSERT(state.UpdateChannelFreeSpaceShare(ch, 1));
-
-                        CHECK_DISK_SPACE_SCORE(baseScore);
-
-                        break;
-                    }
-                    case EChannelDataKind::Mixed:
-                    case EChannelDataKind::Merged: {
-                        UNIT_ASSERT(state.UpdateChannelFreeSpaceShare(ch, 0.2));
-
-                        constexpr ui32 FirstDataChannel = 3;
-                        CHECK_DISK_SPACE_SCORE(
-                            1 / (1 - 0.5 * (ch - FirstDataChannel + 1) / channelCount)
-                        );
-                        break;
-                    }
-
-                    case EChannelDataKind::Fresh: {
-                        UNIT_ASSERT(state.UpdateChannelFreeSpaceShare(ch, 0.2));
-                        CHECK_DISK_SPACE_SCORE(maxScore);
-                        break;
-                    }
-
-                    default: {
-                        Y_ABORT("unsupported kind: %u", static_cast<ui32>(kind));
-                    }
-                }
-            }
-        }
-    }
-
-    Y_UNIT_TEST(ShouldPickProperNextChannel)
-    {
-        auto meta = DefaultConfig(1024, DefaultBlockSize, MaxMergedChannelCount);
-
-        for (auto kind: {EChannelDataKind::Mixed, EChannelDataKind::Merged}) {
-            TPartitionState state(
-                meta,
-                TestTabletId,
-                0,
-                MaxDataChannelCount,
-                MaxBlobSize,
-                MaxRangesPerBlob,
-                EOptimizationMode::OptimizeForLongRanges,
-                BuildDefaultCompactionPolicy(5, 0, false),
-                DefaultBPConfig(),
-                DefaultFreeSpaceConfig(),
-                DefaultIndexCachingConfig()
-            );
-
-            auto blobId = state.GenerateBlobId(
-                kind,
-                EChannelPermission::UserWritesAllowed,
-                1,
-                1024);
-            UNIT_ASSERT(blobId.Channel() == TPartitionSchema::FirstDataChannel);
-        }
-    }
-
-    Y_UNIT_TEST(PickProperNextChannelWithExplicitChannelProfiles)
-    {
-        NProto::TPartitionMeta meta;
-        auto& config = *meta.MutableConfig();
-        config.SetBlocksCount(1024);
-        config.SetBlockSize(DefaultBlockSize);
-        config.SetZoneBlockCount(32 * MaxBlocksCount);
-
-        auto cps = config.MutableExplicitChannelProfiles();
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
-
-        TPartitionState state(
-            meta,
-            TestTabletId,
-            0,
-            config.ExplicitChannelProfilesSize(),
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
-
-        const auto perm = EChannelPermission::UserWritesAllowed;
-        auto kind = EChannelDataKind::Merged;
-
-        auto blobId = state.GenerateBlobId(kind, perm, 1, 1024);
-        UNIT_ASSERT(blobId.Channel() == 3);
-
-        kind = EChannelDataKind::Mixed;
-
-        blobId = state.GenerateBlobId(kind, perm, 1, 1024);
-        UNIT_ASSERT(blobId.Channel() == 5);
-        blobId = state.GenerateBlobId(kind, perm, 1, 1024);
-        UNIT_ASSERT(blobId.Channel() == 10);
-        blobId = state.GenerateBlobId(kind, perm, 1, 1024);
-        UNIT_ASSERT(blobId.Channel() == 5);
-
-        kind = EChannelDataKind::Merged;
-
-        blobId = state.GenerateBlobId(kind, perm, 1, 1024);
-        UNIT_ASSERT(blobId.Channel() == 4);
-        blobId = state.GenerateBlobId(kind, perm, 1, 1024);
-        UNIT_ASSERT(blobId.Channel() == 6);
-        blobId = state.GenerateBlobId(kind, perm, 1, 1024);
-        UNIT_ASSERT(blobId.Channel() == 7);
-        blobId = state.GenerateBlobId(kind, perm, 1, 1024);
-        UNIT_ASSERT(blobId.Channel() == 8);
-        blobId = state.GenerateBlobId(kind, perm, 1, 1024);
-        UNIT_ASSERT(blobId.Channel() == 9);
-        blobId = state.GenerateBlobId(kind, perm, 1, 1024);
-        UNIT_ASSERT(blobId.Channel() == 3);
-    }
-
-    Y_UNIT_TEST(PickNextChannelWithProperFreeSpaceShare)
-    {
-        auto meta = DefaultConfig(1024, DefaultBlockSize, 2);
-
-        for (auto kind: {EChannelDataKind::Mixed, EChannelDataKind::Merged}) {
-            TPartitionState state(
-                meta,
-                TestTabletId,
-                0,
-                6,  // channelCount
-                MaxBlobSize,
-                MaxRangesPerBlob,
-                EOptimizationMode::OptimizeForLongRanges,
-                BuildDefaultCompactionPolicy(5, 0, false),
-                DefaultBPConfig(),
-                DefaultFreeSpaceConfig(),
-                DefaultIndexCachingConfig()
-            );
-
+        const TTestCase testCases[] = {
             {
-                auto blobId = state.GenerateBlobId(
-                    kind,
-                    EChannelPermission::UserWritesAllowed,
-                    1,
-                    1024
-                );
-                UNIT_ASSERT_VALUES_EQUAL(
-                    ui32(TPartitionSchema::FirstDataChannel),
-                    blobId.Channel()
-                );
-                auto blobId2 = state.GenerateBlobId(
-                    kind,
-                    EChannelPermission::UserWritesAllowed,
-                    1,
-                    1024
-                );
-                UNIT_ASSERT_VALUES_EQUAL(
-                    ui32(TPartitionSchema::FirstDataChannel + 1),
-                    blobId2.Channel()
-                );
-            }
+                .Name = "empty",
+                .Channel = {},
+                .Index = {},
+                .ExpectedIndex = {},
+                .ExpectedChannelWhenDisabled = {},
+                .ExpectedChannelWithMixed = {},
+                .ExpectedChannelWithoutMixed = {},
+            },
+            {
+                .Name = "legacy mixed and merged",
+                .Channel = {2, 3, 20, 60},
+                .Index = {},
+                .ExpectedIndex = {2, 3, 20, 60},
+                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
+                .ExpectedChannelWithMixed = {2, 3, 20, 60},
+                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
+            },
+            {
+                .Name = "legacy mixed only",
+                .Channel = {2, 0, 20, 0},
+                .Index = {},
+                .ExpectedIndex = {2, 0, 20, 0},
+                .ExpectedChannelWhenDisabled = {2, 0, 20, 0},
+                .ExpectedChannelWithMixed = {2, 0, 20, 0},
+                .ExpectedChannelWithoutMixed = {0, 2, 0, 20},
+            },
+            {
+                .Name = "legacy merged only",
+                .Channel = {0, 3, 0, 60},
+                .Index = {},
+                .ExpectedIndex = {0, 3, 0, 60},
+                .ExpectedChannelWhenDisabled = {0, 3, 0, 60},
+                .ExpectedChannelWithMixed = {0, 3, 0, 60},
+                .ExpectedChannelWithoutMixed = {0, 3, 0, 60},
+            },
+            {
+                .Name = "initialized",
+                .Channel = {1, 4, 10, 70},
+                .Index = {2, 3, 20, 60},
+                .ExpectedIndex = {2, 3, 20, 60},
+                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
+                .ExpectedChannelWithMixed = {1, 4, 10, 70},
+                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
+            },
+            {
+                .Name = "mixed index only",
+                .Channel = {0, 2, 0, 20},
+                .Index = {2, 0, 20, 0},
+                .ExpectedIndex = {2, 0, 20, 0},
+                .ExpectedChannelWhenDisabled = {2, 0, 20, 0},
+                .ExpectedChannelWithMixed = {0, 2, 0, 20},
+                .ExpectedChannelWithoutMixed = {0, 2, 0, 20},
+            },
+            {
+                .Name = "merged index only",
+                .Channel = {},
+                .Index = {0, 3, 0, 60},
+                .ExpectedIndex = {0, 3, 0, 60},
+                .ExpectedChannelWhenDisabled = {0, 3, 0, 60},
+                .ExpectedChannelWithMixed = {},
+                .ExpectedChannelWithoutMixed = {},
+            },
+            {
+                .Name = "empty channel counters",
+                .Channel = {},
+                .Index = {2, 3, 20, 60},
+                .ExpectedIndex = {2, 3, 20, 60},
+                .ExpectedChannelWhenDisabled = {2, 3, 20, 60},
+                .ExpectedChannelWithMixed = {},
+                .ExpectedChannelWithoutMixed = {},
+            },
+            {
+                .Name = "missing index blocks",
+                .Channel = {2, 3, 20, 60},
+                .Index = {1, 4, 0, 0},
+                .ExpectedIndex = {1, 4, 0, 0},
+                .ExpectedChannelWhenDisabled = {1, 4, 0, 0},
+                .ExpectedChannelWithMixed = {2, 3, 20, 60},
+                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
+            },
+            {
+                .Name = "missing index blobs",
+                .Channel = {2, 3, 20, 60},
+                .Index = {0, 0, 10, 70},
+                .ExpectedIndex = {0, 0, 10, 70},
+                .ExpectedChannelWhenDisabled = {0, 0, 10, 70},
+                .ExpectedChannelWithMixed = {2, 3, 20, 60},
+                .ExpectedChannelWithoutMixed = {0, 5, 0, 80},
+            },
+            {
+                .Name = "mixed deletion markers only",
+                .Channel = {},
+                .Index = {2, 0, 0, 0},
+                .ExpectedIndex = {2, 0, 0, 0},
+                .ExpectedChannelWhenDisabled = {2, 0, 0, 0},
+                .ExpectedChannelWithMixed = {},
+                .ExpectedChannelWithoutMixed = {},
+            },
+            {
+                .Name = "merged deletion markers only",
+                .Channel = {},
+                .Index = {0, 3, 0, 0},
+                .ExpectedIndex = {0, 3, 0, 0},
+                .ExpectedChannelWhenDisabled = {0, 3, 0, 0},
+                .ExpectedChannelWithMixed = {},
+                .ExpectedChannelWithoutMixed = {},
+            },
+        };
 
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetAlmostFullChannelCount());
-            state.UpdateChannelFreeSpaceShare(
-                TPartitionSchema::FirstDataChannel,
-                0.15
-            );
-            UNIT_ASSERT_VALUES_EQUAL(1, state.GetAlmostFullChannelCount());
+        for (const auto& test: testCases) {
+            for (bool hasMixedChannel: {false, true}) {
+                for (bool useChannelCounters: {false, true}) {
+                    auto meta = DefaultConfig(1, DefaultBlockCount);
+                    if (hasMixedChannel) {
+                        meta.MutableConfig()
+                            ->AddExplicitChannelProfiles()
+                            ->SetDataKind(
+                                static_cast<ui32>(EChannelDataKind::Mixed));
+                    }
 
-            for (ui32 i = 0; i < 10; ++i) {
-                auto blobId = state.GenerateBlobId(
-                    kind,
-                    EChannelPermission::UserWritesAllowed,
-                    1,
-                    1024
-                );
-                UNIT_ASSERT_VALUES_EQUAL(
-                    ui32(TPartitionSchema::FirstDataChannel + 1),
-                    blobId.Channel()
-                );
-            }
+                    auto& stats = *meta.MutableStats();
+                    stats.SetMixedBlobsCount(test.Channel.MixedBlobs);
+                    stats.SetMergedBlobsCount(test.Channel.MergedBlobs);
+                    stats.SetMixedBlocksCount(test.Channel.MixedBlocks);
+                    stats.SetMergedBlocksCount(test.Channel.MergedBlocks);
+                    stats.SetMixedIndexBlobsCount(test.Index.MixedBlobs);
+                    stats.SetMergedIndexBlobsCount(test.Index.MergedBlobs);
+                    stats.SetMixedIndexBlocksCount(test.Index.MixedBlocks);
+                    stats.SetMergedIndexBlocksCount(test.Index.MergedBlocks);
 
-            state.UpdateChannelFreeSpaceShare(
-                TPartitionSchema::FirstDataChannel,
-                0.16
-            );
-            UNIT_ASSERT_VALUES_EQUAL(1, state.GetAlmostFullChannelCount());
+                    const auto& expectedChannel =
+                        !useChannelCounters
+                            ? test.ExpectedChannelWhenDisabled
+                            : (hasMixedChannel
+                                   ? test.ExpectedChannelWithMixed
+                                   : test.ExpectedChannelWithoutMixed);
 
-            ui32 firstChannelSelected = 0;
-            for (ui32 i = 0; i < 1000; ++i) {
-                auto blobId = state.GenerateBlobId(
-                    kind,
-                    EChannelPermission::UserWritesAllowed,
-                    1,
-                    1024
-                );
-                if (blobId.Channel() == TPartitionSchema::FirstDataChannel) {
-                    ++firstChannelSelected;
-                } else {
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        ui32(TPartitionSchema::FirstDataChannel + 1),
-                        blobId.Channel()
-                    );
+                    const auto context =
+                        TStringBuilder()
+                        << test.Name << ", hasMixedChannel=" << hasMixedChannel
+                        << ", useChannelCounters=" << useChannelCounters;
+                    auto state = MakeState(
+                        meta,
+                        {.UseBlobChannelDataKindForCounters =
+                             useChannelCounters});
+                    AssertBlobAndBlockCounts(
+                        state.GetStats(),
+                        expectedChannel,
+                        useChannelCounters ? test.ExpectedIndex
+                                           : TBlobAndBlockCounts{},
+                        context);
                 }
             }
-
-            UNIT_ASSERT(firstChannelSelected < 150 && firstChannelSelected > 50);
-
-            state.UpdateChannelFreeSpaceShare(
-                TPartitionSchema::FirstDataChannel,
-                0.16
-            );
-            state.UpdateChannelFreeSpaceShare(
-                TPartitionSchema::FirstDataChannel + 1,
-                0.161
-            );
-            UNIT_ASSERT_VALUES_EQUAL(2, state.GetAlmostFullChannelCount());
-
-            firstChannelSelected = 0;
-            for (ui32 i = 0; i < 1000; ++i) {
-                auto blobId = state.GenerateBlobId(
-                    kind,
-                    EChannelPermission::UserWritesAllowed,
-                    1,
-                    1024
-                );
-                if (blobId.Channel() == TPartitionSchema::FirstDataChannel) {
-                    ++firstChannelSelected;
-                } else {
-                    UNIT_ASSERT_VALUES_EQUAL(
-                        ui32(TPartitionSchema::FirstDataChannel + 1),
-                        blobId.Channel()
-                    );
-                }
-            }
-
-            UNIT_ASSERT(firstChannelSelected < 150 && firstChannelSelected > 50);
         }
     }
 
-    Y_UNIT_TEST(PickMergedChannelIfAllMixedChannelsAreFull)
+    Y_UNIT_TEST(ShouldPreserveBlobAndBlockCountsAcrossCounterModeChanges)
     {
-        NProto::TPartitionMeta meta;
-        auto& config = *meta.MutableConfig();
-        config.SetBlocksCount(1024);
-        config.SetBlockSize(DefaultBlockSize);
-        config.SetZoneBlockCount(32 * MaxBlocksCount);
+        auto meta = DefaultConfig(1, DefaultBlockCount);
+        auto& stats = *meta.MutableStats();
+        stats.SetMixedBlobsCount(2);
+        stats.SetMergedBlobsCount(3);
+        stats.SetMixedBlocksCount(20);
+        stats.SetMergedBlocksCount(60);
 
-        config.AddExplicitChannelProfiles()->SetDataKind(
-            static_cast<ui32>(EChannelDataKind::System));
-        config.AddExplicitChannelProfiles()->SetDataKind(
-            static_cast<ui32>(EChannelDataKind::Log));
-        config.AddExplicitChannelProfiles()->SetDataKind(
-            static_cast<ui32>(EChannelDataKind::Index));
-        config.AddExplicitChannelProfiles()->SetDataKind(
-            static_cast<ui32>(EChannelDataKind::Mixed));
-        config.AddExplicitChannelProfiles()->SetDataKind(
-            static_cast<ui32>(EChannelDataKind::Merged));
-
-        TPartitionState state(
-            meta,
-            TestTabletId,
-            0,
-            config.ExplicitChannelProfilesSize(),
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
-
-        {
-            auto mixedBlobId = state.GenerateBlobId(
-                EChannelDataKind::Mixed,
-                EChannelPermission::UserWritesAllowed,
-                1,
-                1024
-            );
-            UNIT_ASSERT_VALUES_EQUAL(
-                ui32(TPartitionSchema::FirstDataChannel),
-                mixedBlobId.Channel()
-            );
-            auto mergedBlobId = state.GenerateBlobId(
-                EChannelDataKind::Merged,
-                EChannelPermission::UserWritesAllowed,
-                1,
-                1024
-            );
-            UNIT_ASSERT_VALUES_EQUAL(
-                ui32(TPartitionSchema::FirstDataChannel + 1),
-                mergedBlobId.Channel()
-            );
+        // With no mixed channels, enabling channel counters moves mixed counts
+        // to merged. Disabling restores counts by index kind and clears index
+        // counters.
+        for (bool useChannelCounters: {true, true, false, false, true, true}) {
+            auto state = MakeState(
+                std::move(meta),
+                {.UseBlobChannelDataKindForCounters = useChannelCounters});
+            AssertBlobAndBlockCounts(
+                state.GetStats(),
+                useChannelCounters ? TBlobAndBlockCounts{0, 5, 0, 80}
+                                   : TBlobAndBlockCounts{2, 3, 20, 60},
+                useChannelCounters ? TBlobAndBlockCounts{2, 3, 20, 60}
+                                   : TBlobAndBlockCounts{});
+            meta = state.GetMeta();
         }
+    }
 
-        state.UpdatePermissions(TPartitionSchema::FirstDataChannel, {});
+    Y_UNIT_TEST(ShouldResetIndexCountersWhenDisabledAfterRollback)
+    {
+        auto meta = DefaultConfig(1, DefaultBlockCount);
+        auto& stats = *meta.MutableStats();
+        stats.SetMixedBlobsCount(0);
+        stats.SetMergedBlobsCount(5);
+        stats.SetMixedBlocksCount(0);
+        stats.SetMergedBlocksCount(80);
 
-        {
-            auto mixedBlobId = state.GenerateBlobId(
-                EChannelDataKind::Mixed,
-                EChannelPermission::UserWritesAllowed,
-                1,
-                1024
-            );
-            UNIT_ASSERT_VALUES_EQUAL(
-                ui32(TPartitionSchema::FirstDataChannel + 1),
-                mixedBlobId.Channel()
-            );
+        stats.SetMixedIndexBlobsCount(2);
+        stats.SetMergedIndexBlobsCount(3);
+        stats.SetMixedIndexBlocksCount(20);
+        stats.SetMergedIndexBlocksCount(60);
+
+        for (ui64 restart = 0; restart < 3; ++restart) {
+            auto state = MakeState(std::move(meta));
+            AssertBlobAndBlockCounts(
+                state.GetStats(),
+                {2 + restart, 3, 20 + 10 * restart, 60},
+                {});
+
+            state.IncrementMixedBlobsCount(1);
+            state.IncrementMixedBlocksCount(10);
+            meta = state.GetMeta();
         }
+    }
+
+    Y_UNIT_TEST(ShouldUpdateIndexBlockCountersAfterRebuildOnlyWhenEnabled)
+    {
+        for (bool useChannelCounters: {false, true}) {
+            auto state = MakeState(
+                DefaultBlockCount,
+                {.UseBlobChannelDataKindForCounters = useChannelCounters});
+            auto& stats = state.AccessStats();
+            stats.SetMixedIndexBlocksCount(7);
+            stats.SetMergedIndexBlocksCount(11);
+
+            state.UpdateBlocksCountersAfterMetadataRebuild(20, 60, 10, 70);
+
+            AssertBlobAndBlockCounts(
+                state.GetStats(),
+                {0, 0, 10, 70},
+                useChannelCounters ? TBlobAndBlockCounts{0, 0, 20, 60}
+                                   : TBlobAndBlockCounts{0, 0, 7, 11});
+        }
+    }
+
+    Y_UNIT_TEST(ShouldUseChannelBlobTotalsWhenIndexCountersAreDisabled)
+    {
+        for (bool useChannelCounters: {false, true}) {
+            auto state = MakeState(
+                DefaultBlockCount,
+                {.UseBlobChannelDataKindForCounters = useChannelCounters});
+            auto& stats = state.AccessStats();
+            stats.SetMixedBlobsCount(1);
+            stats.SetMergedBlobsCount(7);
+            stats.SetMixedIndexBlobsCount(2);
+            stats.SetMergedIndexBlobsCount(3);
+
+            const ui64 expectedTotal = useChannelCounters ? 5 : 8;
+            UNIT_ASSERT_VALUES_EQUAL(expectedTotal, state.GetTotalBlobsCount());
+            state.StartRebuildBlockCount();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedTotal,
+                state.GetMetadataRebuildProgress().Total);
+            state.StartScanDisk();
+            UNIT_ASSERT_VALUES_EQUAL(
+                expectedTotal,
+                state.GetScanDiskProgress().TotalBlobs);
+        }
+    }
+
+    Y_UNIT_TEST(ShouldTrackLegacyCompactionScoreByBlobCount)
+    {
+        auto state = MakeState(4096);
+        auto& map = state.GetCompactionMap();
+        const ui32 secondRange = map.GetRangeSize();
+
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetLegacyCompactionScore());
+
+        // Blob counts matter even below the compaction policy threshold.
+        map.Update(0, 2, 100, 100, 0, 0, false);
+        map.Update(secondRange, 3, 100, 100, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetLegacyCompactionScore());
+
+        map.Update(0, 10, 100, 100, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(10, state.GetLegacyCompactionScore());
+
+        // Compacted ranges no longer contribute to the legacy score.
+        map.Update(0, 10, 100, 100, 0, 0, true);
+        UNIT_ASSERT_VALUES_EQUAL(3, state.GetLegacyCompactionScore());
+
+        map.Update(secondRange, 0, 0, 0, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetLegacyCompactionScore());
+    }
+
+    Y_UNIT_TEST(ShouldCalculateCompactionBackpressureByBlobCountWithLoadPolicy)
+    {
+        auto state = MakeState(
+            4096,
+            {.CompactionPolicy = BuildLoadOptimizationCompactionPolicy(
+                 {.MaxBlobSize = 4_MB,
+                  .BlockSize = DefaultBlockSize,
+                  .MaxReadIops = 400,
+                  .MaxReadBandwidth = 15_MB,
+                  .MaxWriteIops = 1000,
+                  .MaxWriteBandwidth = 15_MB,
+                  .MaxBlobsPerRange = 100},
+                 0)});
+        auto& map = state.GetCompactionMap();
+        const ui32 hotRange = map.GetRangeSize();
+
+        map.Update(0, 30, 1024, 1024, 0, 0, false);
+        map.Update(hotRange, 2, 1024, 1024, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(30, state.GetLegacyCompactionScore());
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            10,
+            state.CalculateCurrentBackpressure().CompactionScore,
+            1e-5);
+
+        // Reads make the range with fewer blobs the policy's top candidate.
+        map.RegisterRead(hotRange, 1000, 1024);
+        UNIT_ASSERT_VALUES_EQUAL(hotRange, map.GetTop().BlockIndex);
+        UNIT_ASSERT(state.GetCompactionScore() > 0);
+        UNIT_ASSERT_VALUES_EQUAL(30, state.GetLegacyCompactionScore());
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            10,
+            state.CalculateCurrentBackpressure().CompactionScore,
+            1e-5);
+
+        map.Update(0, 0, 0, 0, 0, 0, false);
+        UNIT_ASSERT_VALUES_EQUAL(2, state.GetLegacyCompactionScore());
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            1,
+            state.CalculateCurrentBackpressure().CompactionScore,
+            1e-5);
     }
 
     Y_UNIT_TEST(CalculateCurrentBackpressure)
     {
-        TPartitionState state(
-            DefaultConfig(1000),
-            TestTabletId,
-            0,
-            5,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
-
-        state.GetBlobs().InitializeZone(0);
+        auto state = MakeState(1000);
 
         const auto initialBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.FreshIndexScore);
@@ -1421,32 +555,32 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.DiskSpaceScore);
         UNIT_ASSERT_VALUES_EQUAL(1, initialBackpressure.CleanupScore);
 
-        TVector<TOwningFreshBlock> freshBlocks;
-        for (ui32 i = 0; i < 100; ++i) {
-            freshBlocks.emplace_back(
-                TBlock{i, 1, 1, false},
-                ToString(i),
-                TPartialBlobId{});
-        }
-        state.InitFreshBlocks(freshBlocks);
+        state.AddFreshBlob(1, 400_KB);
         state.GetCompactionMap().Update(0, 10, 10, 10, 0, 0, false);
-        state.AddBlobUpdateByFresh({TBlockRange32::WithLength(0, 1024), 1, 1});
+        state.GetCleanupQueue().Add({{1, 1, 4, 4_MB, 0, 0}, 111, {}});
 
         const auto marginalBackpressure = state.CalculateCurrentBackpressure();
-        UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.FreshIndexScore, 1e-5);
-        UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CompactionScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            1,
+            marginalBackpressure.FreshIndexScore,
+            1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(
+            1,
+            marginalBackpressure.CompactionScore,
+            1e-5);
         UNIT_ASSERT_DOUBLES_EQUAL(1, marginalBackpressure.CleanupScore, 1e-5);
 
-        freshBlocks.clear();
-        for (ui32 i = 100; i < 400; ++i) {
-            freshBlocks.emplace_back(
-                TBlock{i, 1, 1, false},
-                ToString(i),
-                TPartialBlobId{});
+        // Backpressure caused by increased FreshBlobByteCount
+        {
+            state.AddFreshBlob(2, 50 * 4096);
+
+            const auto bp = state.CalculateCurrentBackpressure();
+            UNIT_ASSERT_DOUBLES_EQUAL(2.5, bp.FreshIndexScore, 1e-5);
         }
-        state.InitFreshBlocks(freshBlocks);
+
+        state.AddFreshBlob(3, 300 * 4_KB);
         state.GetCompactionMap().Update(0, 30, 30, 30, 0, 0, false);
-        state.AddBlobUpdateByFresh({TBlockRange32::WithLength(1024, 1024), 2, 2});
+        state.GetCleanupQueue().Add({{1, 2, 4, 4_MB, 0, 0}, 111, {}});
 
         const auto maxBackpressure = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure.FreshIndexScore, 1e-5);
@@ -1457,23 +591,20 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
 
         const auto maxBackpressure2 = state.CalculateCurrentBackpressure();
         UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure2.CompactionScore, 1e-5);
+
+        state.AccessCheckpoints().Add({"c1", 3, "idemp", Now(), {}});
+
+        const auto maxBackpressure3 = state.CalculateCurrentBackpressure();
+        UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure3.FreshIndexScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(10, maxBackpressure3.CompactionScore, 1e-5);
+        UNIT_ASSERT_DOUBLES_EQUAL(0, maxBackpressure3.CleanupScore, 1e-5);
     }
 
     Y_UNIT_TEST(CompactionBackpressureShouldBeZeroIfNotRequiredByPolicy)
     {
-        TPartitionState state(
-            DefaultConfig(1000),
-            TestTabletId,
-            0,
-            5,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            std::make_shared<TNoBackpressurePolicy>(),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+        auto state = MakeState(
+            1000,
+            {.CompactionPolicy = std::make_shared<TNoBackpressurePolicy>()});
 
         state.GetCompactionMap().Update(0, 30, 30, 30, 0, 0, false);
 
@@ -1481,346 +612,689 @@ Y_UNIT_TEST_SUITE(TPartition2StateTest)
         UNIT_ASSERT_VALUES_EQUAL(0, bp.CompactionScore);
     }
 
-    Y_UNIT_TEST(ShouldUpdateIndexStructures)
+    Y_UNIT_TEST(ShouldCorrectlyCalculateUsedBlocksCount)
     {
-        // TODO
-    }
+        auto config = DefaultConfig(1, DefaultBlockCount);
 
-    Y_UNIT_TEST(ShouldReturnInvalidCommitIdWhenItOverflows)
-    {
-        auto meta = DefaultConfig();
-        auto& config = *meta.MutableConfig();
-        auto cps = config.MutableExplicitChannelProfiles();
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
+        config.MutableConfig()->SetBaseDiskId("baseDiskID");
+        config.MutableConfig()->SetBaseDiskCheckpointId("baseDiskCheckpointId");
 
-        TPartitionState state(
-            meta,
-            TestTabletId,
-            0,
-            config.ExplicitChannelProfilesSize(),
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig(),
-            Max<ui32>(),  // maxIORequestsInFlight
-            0,            // reassignChannelsPercentageThreshold
-            100,          // reassignFreshChannelsPercentageThreshold
-            100,          // reassignMixedChannelsPercentageThreshold
-            false,        // reassignSystemChannelsImmediately
-            Max<ui32>()   // lastStep
-        );
+        auto state = MakeState(std::move(config));
 
-        UNIT_ASSERT(state.GenerateCommitId() == InvalidCommitId);
-    }
-
-    Y_UNIT_TEST(ShouldStoreFreshBlockUpdates)
-    {
-        TPartitionState state(
-            DefaultConfig(),
-            TestTabletId,
-            0,
-            5,  // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig()
-        );
+        state.GetLogicalUsedBlocks().Set(0, 9);
+        state.IncrementLogicalUsedBlocksCount(10);
 
         TTestExecutor executor;
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            db.InitSchema();
-        });
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.InitIndex(db, TBlockRange32::WithLength(0, 1024));
-        });
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
 
-        ui64 commitId1 = state.GenerateCommitId();
-        ui64 commitId2 = state.GenerateCommitId();
-        ui64 commitId3 = state.GenerateCommitId();
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.SetUsedBlocks(
+                    db,
+                    TBlockRange32::MakeClosedInterval(100, 110),
+                    0);
+            });
+        UNIT_ASSERT_EQUAL(11, state.GetUsedBlocksCount());
+        UNIT_ASSERT_EQUAL(21, state.GetLogicalUsedBlocksCount());
 
-        TFreshBlockUpdates updates = {
-            { commitId1, TBlockRange32::MakeClosedInterval(1, 4) },
-            { commitId2, TBlockRange32::MakeClosedInterval(3, 5) },
-            { commitId2, TBlockRange32::MakeClosedInterval(8, 9) },
-            { commitId3, TBlockRange32::MakeClosedInterval(2, 6) },
-            { commitId3, TBlockRange32::MakeClosedInterval(4, 8) },
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.SetUsedBlocks(
+                    db,
+                    TBlockRange32::MakeClosedInterval(105, 130),
+                    0);
+            });
+        UNIT_ASSERT_EQUAL(31, state.GetUsedBlocksCount());
+        UNIT_ASSERT_EQUAL(41, state.GetLogicalUsedBlocksCount());
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.UnsetUsedBlocks(
+                    db,
+                    TBlockRange32::MakeClosedInterval(106, 115));
+            });
+        UNIT_ASSERT_EQUAL(21, state.GetUsedBlocksCount());
+        UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.UnsetUsedBlocks(
+                    db,
+                    TBlockRange32::MakeClosedInterval(109, 110));
+            });
+        UNIT_ASSERT_EQUAL(21, state.GetUsedBlocksCount());
+        UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.SetUsedBlocks(db, {101, 102, 103, 106, 108}); });
+        UNIT_ASSERT_EQUAL(23, state.GetUsedBlocksCount());
+        UNIT_ASSERT_EQUAL(33, state.GetLogicalUsedBlocksCount());
+
+        executor.WriteTx([&](TPartitionDatabase db)
+                         { state.UnsetUsedBlocks(db, {108, 120, 250}); });
+        UNIT_ASSERT_EQUAL(21, state.GetUsedBlocksCount());
+        UNIT_ASSERT_EQUAL(31, state.GetLogicalUsedBlocksCount());
+    }
+
+    Y_UNIT_TEST(ShouldCorrectlyCalculateCheckpointBytes)
+    {
+        auto state = MakeState(10_GB / DefaultBlockSize);
+
+        state.IncrementMergedBlocksCount(5_GB / DefaultBlockSize);
+        TCheckpoint checkpoint;
+        checkpoint.CheckpointId = "c1";
+        checkpoint.CommitId = 1;
+        checkpoint.Stats.CopyFrom(state.GetStats());
+        state.AccessCheckpoints().Add(checkpoint);
+
+        state.IncrementMixedBlocksCount(2_GB / DefaultBlockSize);
+
+        checkpoint.CheckpointId = "c2";
+        checkpoint.CommitId = 2;
+        checkpoint.Stats.CopyFrom(state.GetStats());
+        state.AccessCheckpoints().Add(checkpoint);
+
+        UNIT_ASSERT_VALUES_EQUAL(7_GB, state.CalculateCheckpointBytes());
+    }
+
+    Y_UNIT_TEST(ShouldStoreBlocksInMixedCache)
+    {
+        auto config = DefaultConfig(1, 10_GB / DefaultBlockSize);
+
+        auto state = MakeState(std::move(config), {.MixedIndexCacheSize = 1});
+
+        TTestExecutor executor;
+        executor.WriteTx([&](TPartitionDatabase db) { db.InitSchema(); });
+
+        constexpr ui32 rangeIdx = 0;
+        TVector<TMixedBlock> blocks = {
+            {{1, 1}, 1, 1, 1, 1},
+            {{2, 2}, 2, 2, 2, 2},
+            {{3, 3}, 3, 3, 3, 3},
+            {{4, 4}, 4, 4, 4, 4},
+            {{5, 5}, 5, 5, 5, 5}};
+
+        auto mixedBlocksCompatator = [](const auto& lhs, const auto& rhs)
+        {
+            return lhs.BlockIndex < rhs.BlockIndex;
         };
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            for (const auto update: updates) {
-                state.AddFreshBlockUpdate(db, update);
+        // range is warm now: mixed blocks are not cached
+        state.RaiseRangeTemperature(rangeIdx);
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.WriteMixedBlock(db, blocks[0]);
+                state.WriteMixedBlock(db, blocks[1]);
+            });
+
+        TVector<TMixedBlock> actual;
+
+        struct TVisitor final: public IMixedBlocksIndexVisitor
+        {
+            TVector<TMixedBlock>& Blocks;
+
+            TVisitor(TVector<TMixedBlock>& blocks)
+                : Blocks(blocks)
+            {}
+
+            bool VisitBlock(
+                ui32 blockIndex,
+                ui64 commitId,
+                const TPartialBlobId& blobId,
+                ui16 blobOffset,
+                ui8 compactionRangeCount) override
+            {
+                Blocks.emplace_back(
+                    blobId,
+                    commitId,
+                    blockIndex,
+                    blobOffset,
+                    compactionRangeCount);
+                return true;
             }
-        });
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TFreshBlockUpdates actual;
-            db.ReadFreshBlockUpdates(actual);
+        } visitor{actual};
 
-            UNIT_ASSERT_VALUES_EQUAL(5, actual.size());
-            UNIT_ASSERT_VALUES_EQUAL(actual, updates);
-        });
+        // should read mixed blocks from db and place them into cache
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.FindMixedBlocksForCompaction(db, visitor, rangeIdx); });
 
-        state.SetLastFlushCommitId(commitId2);
+        Sort(actual, mixedBlocksCompatator);
+        ASSERT_VECTORS_EQUAL(
+            TVector<TMixedBlock>({blocks[0], blocks[1]}),
+            actual);
 
-        executor.WriteTx([&] (TPartitionDatabase db) {
-            state.TrimFreshBlockUpdates(db);
-        });
+        // range is hot now
+        state.RaiseRangeTemperature(rangeIdx);
 
-        executor.ReadTx([&] (TPartitionDatabase db) {
-            TFreshBlockUpdates actual;
-            db.ReadFreshBlockUpdates(actual);
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.DeleteMixedBlock(
+                    db,
+                    blocks[1].BlockIndex,
+                    blocks[1].CommitId);
+                state.WriteMixedBlock(db, blocks[2]);
+                state.WriteMixedBlock(db, blocks[3]);
+            });
 
-            UNIT_ASSERT_VALUES_EQUAL(2, actual.size());
-            UNIT_ASSERT_VALUES_EQUAL(actual[0], updates[3]);
-            UNIT_ASSERT_VALUES_EQUAL(actual[1], updates[4]);
-        });
+        actual.clear();
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.FindMixedBlocksForCompaction(db, visitor, rangeIdx); });
+
+        Sort(actual, mixedBlocksCompatator);
+        ASSERT_VECTORS_EQUAL(
+            TVector<TMixedBlock>({blocks[0], blocks[2], blocks[3]}),
+            actual);
+
+        // kick range from cache
+        state.RaiseRangeTemperature(rangeIdx + 1);
+
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            {
+                state.DeleteMixedBlock(
+                    db,
+                    blocks[2].BlockIndex,
+                    blocks[2].CommitId);
+                state.WriteMixedBlock(db, blocks[4]);
+            });
+
+        actual.clear();
+
+        // should read from db
+        executor.WriteTx(
+            [&](TPartitionDatabase db)
+            { state.FindMixedBlocksForCompaction(db, visitor, rangeIdx); });
+
+        Sort(actual, mixedBlocksCompatator);
+        ASSERT_VECTORS_EQUAL(
+            TVector<TMixedBlock>({blocks[0], blocks[3], blocks[4]}),
+            actual);
     }
 
-    Y_UNIT_TEST(TestReassignedMixedChannelsPercentageThreshold)
+    void CheckMaxBlobsPerDisk(
+        ui64 diskSize,
+        ui64 allocationUnit,
+        ui32 maxBlobsPerUnit,
+        ui32 maxBlobsPerDisk,
+        ui32 blockSize = DefaultBlockSize)
     {
-        const ui32 mixedChannelCount = 10;
-        const ui32 mergedChannelCount = 10;
-        const ui32 reassignMixedChannelsPercentageThreshold = 20;
+        auto config = DefaultConfig(1, diskSize / blockSize);
+        config.MutableConfig()->SetBlockSize(blockSize);
 
-        NProto::TPartitionMeta meta;
-
-        auto& config = *meta.MutableConfig();
-        config.SetBlockSize(DefaultBlockSize);
-        config.SetBlocksCount(1024);
-        config.SetZoneBlockCount(32 * MaxBlocksCount);
-
-        auto* cps = config.MutableExplicitChannelProfiles();
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
-        for (ui32 i = 0; i < mergedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        }
-        for (ui32 i = 0; i < mixedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
-        }
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
-
-        TPartitionState state(
-            meta,
-            TestTabletId,
-            0,
-            mixedChannelCount + mergedChannelCount + DataChannelStart + 1, // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig(),
-            Max(),  // maxIORequestsInFlight
-            100,    // reassignChannelsPercentageThreshold
-            100,    // reassignFreshChannelsPercentageThreshold
-            reassignMixedChannelsPercentageThreshold
-        );
-
-        UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
-
-        {
-            state.UpdatePermissions(
-                DataChannelStart + mergedChannelCount,
-                EChannelPermission::SystemWritesAllowed);
-
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
-
-            state.UpdatePermissions(
-                DataChannelStart + mergedChannelCount + 5,
-                EChannelPermission::SystemWritesAllowed);
-
-            const auto channelsToReassign = state.GetChannelsToReassign();
-            UNIT_ASSERT_VALUES_EQUAL(2, channelsToReassign.size());
-            UNIT_ASSERT_VALUES_EQUAL(
-                DataChannelStart + mergedChannelCount,
-                channelsToReassign[0]);
-            UNIT_ASSERT_VALUES_EQUAL(
-                DataChannelStart + mergedChannelCount + 5,
-                channelsToReassign[1]);
-        }
-
-        {
-            state.UpdatePermissions(
-                DataChannelStart + mergedChannelCount,
-                EChannelPermission::UserWritesAllowed |
-                    EChannelPermission::SystemWritesAllowed);
-            state.UpdatePermissions(
-                DataChannelStart + mergedChannelCount + 5,
-                EChannelPermission::UserWritesAllowed |
-                    EChannelPermission::SystemWritesAllowed);
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
-        }
+        auto state = MakeState(
+            std::move(config),
+            {
+                .MixedIndexCacheSize = 1,
+                .AllocationUnit = allocationUnit,
+                .MaxBlobsPerUnit = maxBlobsPerUnit,
+            });
+        UNIT_ASSERT_VALUES_EQUAL(maxBlobsPerDisk, state.GetMaxBlobsPerDisk());
     }
 
-    Y_UNIT_TEST(TestReassignSystemChannelsImmediately)
+    Y_UNIT_TEST(CheckMaxBlobsPerDisk)
     {
-        const ui32 mixedChannelCount = 10;
-        const ui32 mergedChannelCount = 10;
-
-        NProto::TPartitionMeta meta;
-
-        auto& config = *meta.MutableConfig();
-        config.SetBlockSize(DefaultBlockSize);
-        config.SetBlocksCount(1024);
-        config.SetZoneBlockCount(32 * MaxBlocksCount);
-
-        auto* cps = config.MutableExplicitChannelProfiles();
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
-        for (ui32 i = 0; i < mergedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        }
-        for (ui32 i = 0; i < mixedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
-        }
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
-
-        TPartitionState state(
-            meta,
-            TestTabletId,
-            0,
-            mixedChannelCount + mergedChannelCount + DataChannelStart + 1, // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig(),
-            Max(), // maxIORequestsInFlight
-            100,   // reassignChannelsPercentageThreshold
-            100,   // reassignFreshChannelsPercentageThreshold
-            100,   // reassignMixedChannelsPercentageThreshold
-            true   // reassignSystemChannelsImmediately
-        );
-
-        UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
-
-        {
-            state.UpdatePermissions(
-                1, // Log
-                EChannelPermission::SystemWritesAllowed);
-
-            const auto channelsToReassign = state.GetChannelsToReassign();
-            UNIT_ASSERT_VALUES_EQUAL(1, channelsToReassign.size());
-            UNIT_ASSERT_VALUES_EQUAL(
-                1,
-                channelsToReassign[0]);
-        }
-
-        {
-            state.UpdatePermissions(
-                1,
-                EChannelPermission::UserWritesAllowed |
-                    EChannelPermission::SystemWritesAllowed);
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
-        }
+        CheckMaxBlobsPerDisk(320_GB, 32_GB, 100, 1000);
+        CheckMaxBlobsPerDisk(32_GB, 32_GB, 100, 100);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 100, 150);
+        CheckMaxBlobsPerDisk(16_GB, 32_GB, 100, 50);
+        CheckMaxBlobsPerDisk(10_GB, 32_GB, 100, 32);
+        CheckMaxBlobsPerDisk(32_GB, 256_GB, 800, 100);
+        CheckMaxBlobsPerDisk(48_GB, 256_GB, 800, 150);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 100, 150, 16_KB);
     }
 
-    Y_UNIT_TEST(TestReassignFreshChannelsAfterCertainThreshold)
+    Y_UNIT_TEST(ShouldRoundMaxBlobsPerDiskUp)
     {
-        const ui32 mixedChannelCount = 10;
-        const ui32 mergedChannelCount = 10;
-        const ui32 freshChannelCount = 10;
-        const ui32 reassignFreshChannelsPercentageThreshold = 20;
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 1, 2);
+        CheckMaxBlobsPerDisk(DefaultBlockSize, 32_GB, 1, 1);
+    }
 
-        NProto::TPartitionMeta meta;
+    Y_UNIT_TEST(ShouldKeepMaxBlobsPerDiskDisabled)
+    {
+        CheckMaxBlobsPerDisk(320_GB, 32_GB, 0, 0);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 0, 0);
+        CheckMaxBlobsPerDisk(10_GB, 32_GB, 0, 0);
+    }
 
-        auto& config = *meta.MutableConfig();
-        config.SetBlockSize(DefaultBlockSize);
-        config.SetBlocksCount(1024);
-        config.SetZoneBlockCount(32 * MaxBlocksCount);
+    Y_UNIT_TEST(ShouldCalculateMaxBlobsPerDiskWithoutOverflow)
+    {
+        CheckMaxBlobsPerDisk(32_GB, 32_GB, 1'000'000'000, 1'000'000'000);
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, 1'000'000'000, 1'500'000'000);
+        CheckMaxBlobsPerDisk(32_GB, 32_GB, Max<ui32>(), Max<ui32>());
+        CheckMaxBlobsPerDisk(48_GB, 32_GB, Max<ui32>(), Max<ui32>());
+    }
 
-        auto* cps = config.MutableExplicitChannelProfiles();
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::System));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Log));
-        cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Index));
-        for (ui32 i = 0; i < mergedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Merged));
-        }
-        for (ui32 i = 0; i < mixedChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Mixed));
-        }
-        for (ui32 i = 0; i < freshChannelCount; ++i) {
-            cps->Add()->SetDataKind(static_cast<ui32>(EChannelDataKind::Fresh));
-        }
+    Y_UNIT_TEST(ShouldTreatAllocationUnitSmallerThanBlockAsOneBlock)
+    {
+        // 1_MB disk with 4_KB blocks has 256 blocks, each block is a unit.
+        CheckMaxBlobsPerDisk(1_MB, 0, 1, 256);
+        CheckMaxBlobsPerDisk(1_MB, 1, 2, 512);
+        CheckMaxBlobsPerDisk(1_MB, DefaultBlockSize - 1, 3, 768);
+        CheckMaxBlobsPerDisk(1_MB, 4_KB, 1, 64, 16_KB);
+        CheckMaxBlobsPerDisk(32_GB, 1, Max<ui32>(), Max<ui32>());
+    }
 
-        TPartitionState state(
-            meta,
-            TestTabletId,
+    Y_UNIT_TEST(ShouldTrackCleanupQueueBlockCount)
+    {
+        auto state = MakeState(1000);
+
+        TCleanupQueueItem b1{{1, 1, 4, 4_MB, 0, 0}, 111, {}};
+        TCleanupQueueItem b2{{1, 2, 4, 4096, 0, 0}, 112, {}};
+
+        state.GetCleanupQueue().Add(b2);
+        state.GetCleanupQueue().Add(b1);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            1025,
+            state.GetCleanupQueue().GetQueueBlocks());
+
+        state.GetCleanupQueue().Remove(b1);
+        UNIT_ASSERT_VALUES_EQUAL(1, state.GetCleanupQueue().GetQueueBlocks());
+
+        state.GetCleanupQueue().Remove(b2);
+        UNIT_ASSERT_VALUES_EQUAL(0, state.GetCleanupQueue().GetQueueBlocks());
+    }
+
+    Y_UNIT_TEST(ShouldCalculateNewlyZeroedBlocks)
+    {
+        auto state = MakeState();
+
+        const ui32 blockIndex = 0;
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 0));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 10));
+
+        state.GetCompactionMap().Update(
+            blockIndex,
+            1 /*blobCount=*/,
+            15 /*blockCount=*/,
+            10 /*usedBlockCount=*/,
+            5 /*newlyZeroedBlocks=*/,
+            0 /*mixedBlockCount=*/,
+            false /*compacted=*/);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            5u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 10));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            2u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 13));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            7u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 8));
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.CalculateNewlyZeroedBlocks(blockIndex, 30));
+    }
+
+    Y_UNIT_TEST(ShouldGetMinAndMaxCheckpointCommitId)
+    {
+        auto state = MakeState();
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            InvalidCommitId,
+            state.GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetMaxCheckpointCommitId());
+
+        state.AccessCheckpoints().Add({"c1", 10, "idemp1", Now(), {}});
+        state.AccessCheckpoints().Add({"c2", 30, "idemp2", Now(), {}});
+
+        UNIT_ASSERT_VALUES_EQUAL(10u, state.GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(30u, state.GetMaxCheckpointCommitId());
+
+        UNIT_ASSERT(state.AccessCheckpointsInFlight()->AddTx("c3", nullptr, 5));
+        UNIT_ASSERT(
+            state.AccessCheckpointsInFlight()->AddTx("c4", nullptr, 40));
+
+        UNIT_ASSERT_VALUES_EQUAL(5u, state.GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(40u, state.GetMaxCheckpointCommitId());
+
+        state.AccessCheckpointsInFlight()->PopTx("c3");
+        state.AccessCheckpointsInFlight()->PopTx("c4");
+
+        UNIT_ASSERT_VALUES_EQUAL(10u, state.GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(30u, state.GetMaxCheckpointCommitId());
+    }
+
+    Y_UNIT_TEST(ShouldGetCleanupCommitId)
+    {
+        auto generateCommitIds = [](TPartitionState& state)
+        {
+            for (ui32 i = 0; i < 100; ++i) {
+                state.GenerateCommitId();
+            }
+        };
+
+        auto disabled = MakeState();
+        auto enabled = MakeState(
+            DefaultBlockCount,
+            {.CheckpointAwareCleanupEnabled = true});
+        generateCommitIds(disabled);
+        generateCommitIds(enabled);
+
+        const ui64 lastCommitId = disabled.GetLastCommitId();
+        UNIT_ASSERT_VALUES_EQUAL(MakeCommitId(0, 100), lastCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(lastCommitId, disabled.GetCleanupCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(lastCommitId, enabled.GetCleanupCommitId());
+
+        const ui64 barrierCommitId = MakeCommitId(0, 60);
+        disabled.GetCleanupQueue().AcquireBarrier(barrierCommitId);
+        enabled.GetCleanupQueue().AcquireBarrier(barrierCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            barrierCommitId - 1,
+            disabled.GetCleanupCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            barrierCommitId - 1,
+            enabled.GetCleanupCommitId());
+
+        const ui64 checkpointCommitId = MakeCommitId(0, 40);
+        disabled.AccessCheckpoints().Add(
+            {"c1", checkpointCommitId, "idemp", Now(), {}});
+        enabled.AccessCheckpoints().Add(
+            {"c1", checkpointCommitId, "idemp", Now(), {}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            checkpointCommitId - 1,
+            disabled.GetCleanupCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            barrierCommitId - 1,
+            enabled.GetCleanupCommitId());
+    }
+
+    Y_UNIT_TEST(ShouldDetectWhenBlobCountToCleanupReachedThreshold)
+    {
+        auto addBlobs = [](TPartitionState& state)
+        {
+            state.GetCleanupQueue().Add(
+                {{1, 1, 4, 4_KB, 0, 0}, MakeCommitId(0, 10), {}});
+            state.GetCleanupQueue().Add(
+                {{1, 2, 4, 4_KB, 0, 0}, MakeCommitId(0, 20), {}});
+            state.GetCleanupQueue().Add(
+                {{1, 3, 4, 4_KB, 0, 0}, MakeCommitId(0, 30), {}});
+        };
+
+        auto enabled = MakeState(
+            DefaultBlockCount,
+            {.CheckpointAwareCleanupEnabled = true});
+        auto disabled = MakeState();
+
+        const ui64 cleanupCommitId = MakeCommitId(0, 100);
+        UNIT_ASSERT(
+            !enabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 1));
+        UNIT_ASSERT(!disabled.HasBlobCountToCleanupReachedThreshold(
+            cleanupCommitId,
+            1));
+
+        addBlobs(enabled);
+        addBlobs(disabled);
+
+        UNIT_ASSERT(!enabled.HasBlobCountToCleanupReachedThreshold(
+            MakeCommitId(0, 15),
+            2));
+        UNIT_ASSERT(
+            enabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 3));
+        UNIT_ASSERT(
+            disabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 3));
+
+        // Default milestone bounds are (0, 0), so the update is applied.
+        const TPartialBlobId milestoneBlobId(1, 2, 4, 4_KB, 0, 0);
+        enabled.UpdateCleanupMilestoneIfNeeded(
+            MakeCommitId(0, 20),
+            milestoneBlobId,
             0,
-            mixedChannelCount + mergedChannelCount + DataChannelStart + freshChannelCount, // channelCount
-            MaxBlobSize,
-            MaxRangesPerBlob,
-            EOptimizationMode::OptimizeForLongRanges,
-            BuildDefaultCompactionPolicy(5, 0, false),
-            DefaultBPConfig(),
-            DefaultFreeSpaceConfig(),
-            DefaultIndexCachingConfig(),
-            Max(),  // maxIORequestsInFlight
-            100,                                      // reassignChannelsPercentageThreshold
-            reassignFreshChannelsPercentageThreshold  // reassignFreshChannelsPercentageThreshold
-        );
+            0);
+        disabled.UpdateCleanupMilestoneIfNeeded(
+            MakeCommitId(0, 20),
+            milestoneBlobId,
+            0,
+            0);
 
-        UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+        // Checkpoint-aware cleanup respects the milestone.
+        UNIT_ASSERT(
+            !enabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 2));
+        UNIT_ASSERT(
+            enabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 1));
 
-        {
-            state.UpdatePermissions(
-                DataChannelStart + mergedChannelCount + mixedChannelCount,
-                EChannelPermission::SystemWritesAllowed);
+        // Non-checkpoint-aware cleanup ignores the milestone and still sees
+        // all blobs.
+        UNIT_ASSERT(
+            disabled.HasBlobCountToCleanupReachedThreshold(cleanupCommitId, 3));
+    }
 
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
+    Y_UNIT_TEST(ShouldUpdateCleanupMilestoneIfNeeded)
+    {
+        auto state = MakeState(
+            DefaultBlockCount,
+            {.CheckpointAwareCleanupEnabled = true});
+        auto disabled = MakeState();
 
-            state.UpdatePermissions(
-                DataChannelStart + mergedChannelCount + mixedChannelCount + 5,
-                EChannelPermission::SystemWritesAllowed);
+        const ui64 minCheckpointCommitId = MakeCommitId(0, 10);
+        const ui64 maxCheckpointCommitId = MakeCommitId(0, 20);
+        const ui64 milestoneCommitId = MakeCommitId(0, 15);
+        const TPartialBlobId milestoneBlobId(1, 7);
 
-            const auto channelsToReassign = state.GetChannelsToReassign();
-            UNIT_ASSERT_VALUES_EQUAL(2, channelsToReassign.size());
-            UNIT_ASSERT_VALUES_EQUAL(
-                DataChannelStart + mergedChannelCount + mixedChannelCount,
-                channelsToReassign[0]);
-            UNIT_ASSERT_VALUES_EQUAL(
-                DataChannelStart + mergedChannelCount + mixedChannelCount + 5,
-                channelsToReassign[1]);
-        }
+        // Stale checkpoint bounds: milestone is not updated.
+        state.UpdateCleanupMilestoneIfNeeded(
+            milestoneCommitId,
+            milestoneBlobId,
+            minCheckpointCommitId,
+            maxCheckpointCommitId);
 
-        {
-            state.UpdatePermissions(
-                DataChannelStart + mergedChannelCount + mixedChannelCount,
-                EChannelPermission::UserWritesAllowed |
-                    EChannelPermission::SystemWritesAllowed);
-            state.UpdatePermissions(
-                DataChannelStart + mergedChannelCount + mixedChannelCount + 5,
-                EChannelPermission::UserWritesAllowed |
-                    EChannelPermission::SystemWritesAllowed);
-            UNIT_ASSERT_VALUES_EQUAL(0, state.GetChannelsToReassign().size());
-        }
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TPartialBlobId(),
+            state.GetCleanupMilestoneBlobId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+
+        state.AccessCheckpoints().Add(
+            {"c1", minCheckpointCommitId, "idemp1", Now(), {}});
+        state.AccessCheckpoints().Add(
+            {"c2", maxCheckpointCommitId, "idemp2", Now(), {}});
+        state.ResetCleanupMilestoneIfNeeded();
+
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            minCheckpointCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxCheckpointCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+
+        // Matching checkpoint bounds: milestone position is updated.
+        state.UpdateCleanupMilestoneIfNeeded(
+            milestoneCommitId,
+            milestoneBlobId,
+            minCheckpointCommitId,
+            maxCheckpointCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneCommitId,
+            state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneBlobId,
+            state.GetCleanupMilestoneBlobId());
+
+        disabled.UpdateCleanupMilestoneIfNeeded(
+            milestoneCommitId,
+            milestoneBlobId,
+            0,
+            0);
+        // Non-checkpoint-aware getters always return an empty milestone.
+        UNIT_ASSERT_VALUES_EQUAL(0u, disabled.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TPartialBlobId(),
+            disabled.GetCleanupMilestoneBlobId());
+
+        const ui64 advancedCommitId = MakeCommitId(0, 18);
+        const TPartialBlobId advancedBlobId(1, 9);
+        state.UpdateCleanupMilestoneIfNeeded(
+            advancedCommitId,
+            advancedBlobId,
+            minCheckpointCommitId,
+            maxCheckpointCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            advancedCommitId,
+            state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            advancedBlobId,
+            state.GetCleanupMilestoneBlobId());
+
+        // Checkpoint set changed, but milestone bounds were not reset yet:
+        // update is ignored and the previous position is kept.
+        const ui64 newMaxCheckpointCommitId = MakeCommitId(0, 30);
+        state.AccessCheckpoints().Add(
+            {"c3", newMaxCheckpointCommitId, "idemp3", Now(), {}});
+        state.UpdateCleanupMilestoneIfNeeded(
+            MakeCommitId(0, 19),
+            TPartialBlobId(1, 11),
+            minCheckpointCommitId,
+            newMaxCheckpointCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            advancedCommitId,
+            state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            advancedBlobId,
+            state.GetCleanupMilestoneBlobId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            minCheckpointCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            maxCheckpointCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+    }
+
+    Y_UNIT_TEST(ShouldResetCleanupMilestoneIfNeeded)
+    {
+        auto disabled = MakeState();
+        disabled.AccessCheckpoints().Add(
+            {"c1", MakeCommitId(0, 10), "idemp", Now(), {}});
+        disabled.ResetCleanupMilestoneIfNeeded();
+        // Flag is disabled: milestone bounds stay at the default.
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            disabled.GetMeta()
+                .GetCleanupMilestone()
+                .GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            disabled.GetMeta()
+                .GetCleanupMilestone()
+                .GetMaxCheckpointCommitId());
+
+        auto state = MakeState(
+            DefaultBlockCount,
+            {.CheckpointAwareCleanupEnabled = true});
+
+        const ui64 checkpointCommitId = MakeCommitId(0, 10);
+        state.AccessCheckpoints().Add(
+            {"c1", checkpointCommitId, "idemp", Now(), {}});
+
+        const ui64 milestoneCommitId = MakeCommitId(0, 5);
+        const TPartialBlobId milestoneBlobId(1, 3);
+
+        // Align milestone checkpoint bounds with the current checkpoints,
+        // then set the milestone position with the same bounds.
+        state.ResetCleanupMilestoneIfNeeded();
+        state.UpdateCleanupMilestoneIfNeeded(
+            milestoneCommitId,
+            milestoneBlobId,
+            checkpointCommitId,
+            checkpointCommitId);
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneCommitId,
+            state.GetCleanupMilestoneCommitId());
+
+        // Bounds still match: milestone is preserved.
+        state.ResetCleanupMilestoneIfNeeded();
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneCommitId,
+            state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneBlobId,
+            state.GetCleanupMilestoneBlobId());
+
+        const ui64 checkpointCommitId2 = MakeCommitId(0, 20);
+        state.AccessCheckpoints().Add(
+            {"c2", checkpointCommitId2, "idemp2", Now(), {}});
+        state.ResetCleanupMilestoneIfNeeded();
+
+        // Bounds changed: milestone is reset.
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            TPartialBlobId(),
+            state.GetCleanupMilestoneBlobId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            checkpointCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            checkpointCommitId2,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
+
+        state.UpdateCleanupMilestoneIfNeeded(
+            milestoneCommitId,
+            milestoneBlobId,
+            checkpointCommitId,
+            checkpointCommitId2);
+
+        state.ResetCleanupMilestoneIfNeeded();
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneCommitId,
+            state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            milestoneBlobId,
+            state.GetCleanupMilestoneBlobId());
+
+        state.AccessCheckpoints().Delete("c1");
+        state.AccessCheckpoints().Delete("c2");
+        state.ResetCleanupMilestoneIfNeeded();
+
+        UNIT_ASSERT_VALUES_EQUAL(0u, state.GetCleanupMilestoneCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            InvalidCommitId,
+            state.GetMeta().GetCleanupMilestone().GetMinCheckpointCommitId());
+        UNIT_ASSERT_VALUES_EQUAL(
+            0u,
+            state.GetMeta().GetCleanupMilestone().GetMaxCheckpointCommitId());
     }
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2
 
 template <>
-inline void Out<NCloud::NBlockStore::NStorage::NPartition2::TFreshBlockUpdate>(
+inline void Out<NCloud::NBlockStore::NStorage::NPartition2::TMixedBlock>(
     IOutputStream& out,
-    const NCloud::NBlockStore::NStorage::NPartition2::TFreshBlockUpdate& update)
+    const NCloud::NBlockStore::NStorage::NPartition2::TMixedBlock& b)
 {
-    out << "CommitId=" << update.CommitId
-        << ", BlockRange=" << DescribeRange(update.BlockRange);
+    out << "[" << b.BlockIndex << ", " << b.CommitId << ", " << b.BlobId << ", "
+        << b.BlobOffset << "]";
 }

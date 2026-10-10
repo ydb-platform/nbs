@@ -250,8 +250,8 @@ message TStorageServiceConfig
     // Retry timeout for compaction started from monitoring (in milliseconds).
     optional uint32 CompactionRetryTimeout = 21;
 
-    // Number of deletions before starting an update process.
-    optional uint32 UpdateBlobsThreshold = 22;
+    reserved 22;
+    reserved "UpdateBlobsThreshold";
 
     // File to write metering data.
     // optional string MeteringFilename = 23;  // obsolete
@@ -385,8 +385,8 @@ message TStorageServiceConfig
     // Enables allocation of special channels for Mixed blobs.
     optional bool AllocateSeparateMixedChannels = 91;
 
-    // Retry timeout for cleanup started from monitoring (in milliseconds).
-    optional uint32 CleanupRetryTimeout = 92;
+    reserved 92;
+    reserved "CleanupRetryTimeout";
 
     // Channel free space threshold - used for write request balancing.
     optional uint32 ChannelFreeSpaceThreshold = 93;
@@ -403,16 +403,16 @@ message TStorageServiceConfig
     // Timeout for client to send ping (in milliseconds).
     optional uint32 ClientRemountPeriod = 97;
 
-    // Index caching parameters (only for partition2).
-    optional uint32 ZoneBlockCount = 98;
-    optional uint32 HotZoneRequestCountFactor = 99;
-    optional uint32 ColdZoneRequestCountFactor = 100;
+    reserved 98, 99, 100;
+    reserved "ZoneBlockCount",
+        "HotZoneRequestCountFactor",
+        "ColdZoneRequestCountFactor";
 
     // Enables/disables write request batching.
     optional bool WriteRequestBatchingEnabled = 101;
 
-    // BlockList cache size (only for partition2).
-    optional uint32 BlockListCacheSizePercentage = 102;
+    reserved 102;
+    reserved "BlockListCacheSizePercentage";
 
     // Max blobs to process in a single Cleanup op run.
     optional uint32 MaxBlobsToCleanup = 103;
@@ -443,8 +443,8 @@ message TStorageServiceConfig
     // Enables digest calculation & logging for some blocks.
     optional bool BlockDigestsEnabled = 117;
 
-    // Partition2 index structures conversion attempt time interval (in ms).
-    optional uint32 IndexStructuresConversionAttemptInterval = 118;
+    reserved 118;
+    reserved "IndexStructuresConversionAttemptInterval";
 
     // Calculate block digests for the following percentage of blocks in each
     // block group.
@@ -487,8 +487,8 @@ message TStorageServiceConfig
     // Partition tablet version to be used for new volumes.
     optional uint32 DefaultTabletVersion = 137;
 
-    // Max number of intervals stored in RangeMap for each blob (v2 only).
-    optional uint32 MaxRangesPerBlob = 138;
+    reserved 138;
+    reserved "MaxRangesPerBlob";
 
     // Cleanup delay settings.
     optional uint32 MaxCleanupDelay = 139;  // in ms
@@ -533,8 +533,8 @@ message TStorageServiceConfig
     optional uint32 MaxCompactionExecTimePerSecond = 152;   // in ms
     optional uint32 MaxCleanupExecTimePerSecond = 153;  // in ms
 
-    // Don't automatically enqueue garbage collection upon partition startup.
-    optional bool DontEnqueueCollectGarbageUponPartitionStartup = 154;
+    reserved 154;
+    reserved "DontEnqueueCollectGarbageUponPartitionStartup";
 
     optional uint32 NonReplicatedDiskRepairTimeout = 155;
 
@@ -575,21 +575,20 @@ message TStorageServiceConfig
     optional uint32 SSDV2MaxBlobsPerRange = 167;
     optional uint32 HDDV2MaxBlobsPerRange = 168;
 
-    // Enables incremental compaction for v1 tablets.
+    // Enables incremental compaction.
     optional bool IncrementalCompactionEnabled = 169;
     // Compaction in partition v1 will generate sparse merged blobs instead of
     // mixed blobs if this flag is set.
     // optional bool UseSparseMergedBlobs = 170; // obsolete
 
-    // Enables some optimizations for small requests (affects partition v2 only).
-    optional bool OptimizeForShortRanges = 171;
+    reserved 171;
+    reserved "OptimizeForShortRanges";
 
     // Consecutive timeout limit after which nr device is considered unavailable.
     // optional uint32 MaxConsecutiveDeviceTimeouts = 172; // obsolete
 
-    // Max blobs and blocks processed by a single v2 garbage compaction iteration.
-    optional uint32 CompactionGarbageBlobLimit = 173;
-    optional uint32 CompactionGarbageBlockLimit = 174;
+    reserved 173, 174;
+    reserved "CompactionGarbageBlobLimit", "CompactionGarbageBlockLimit";
 
     // User data may be dumped on some monitoring pages if this flag is set.
     // See NBS-1726
@@ -618,8 +617,8 @@ message TStorageServiceConfig
     // Run GC barriers for all channels in tablet history.
     // optional bool CleanupPartitionChannelsAtStartup = 184; // obsolete
 
-    // Run GC soft barriers for all channels in tablet history (v2 only).
-    optional bool RunV2SoftGcAtStartup = 185;
+    reserved 185;
+    reserved "RunV2SoftGcAtStartup";
 
     // Lifetime of deleted checkpoint in checkpoints history.
     optional uint32 DeletedCheckpointHistoryLifetime = 186;
@@ -676,14 +675,14 @@ message TStorageServiceConfig
     // MaxNonReplicatedDeviceMigrationPercentageInProgress * deviceCount.
     optional uint32 MaxNonReplicatedDeviceMigrationsInProgress = 201;
 
-    // Enables extra diagnostics by dumping block commitIds.
-    optional bool DumpBlockCommitIdsIntoProfileLog = 203;
+    reserved 203;
+    reserved "DumpBlockCommitIdsIntoProfileLog";
 
     // Uses the first 4 bytes of the block as its digest.
     optional bool UseTestBlockDigestGenerator = 204;
 
-    // Enables conversion of rangeMap into mixedIndex for partition v2.
-    optional bool EnableConversionIntoMixedIndexV2 = 205;
+    reserved 205;
+    reserved "EnableConversionIntoMixedIndexV2";
 
     // Number of disks to be reported to YDB in a single request.
     optional uint32 StatsUploadDiskCount = 206;
@@ -712,8 +711,8 @@ message TStorageServiceConfig
     // Grace period before making next attempt to update volume config
     optional uint32 DiskRegistryVolumeConfigUpdatePeriod = 214;
 
-    // Enables extra diagnostics by dumping blob updates.
-    optional bool DumpBlobUpdatesIntoProfileLog = 215;
+    reserved 215;
+    reserved "DumpBlobUpdatesIntoProfileLog";
 
     // Reassign request retry timeout in milliseconds.
     optional uint32 ReassignRequestRetryTimeout = 216;
@@ -1734,4 +1733,11 @@ message TStorageServiceConfig
     // the per-disk mixed-block percentage trigger. Zero removes this minimum.
     optional uint64 MixedBlocksCompactionMinStoredBytesSSD = 540;
     optional uint64 MixedBlocksCompactionMinStoredBytesHDD = 541;
+
+    // Enables approximate garbage compaction for partition v2.
+    optional bool V2GarbageCompactionEnabled = 542;
+
+    // Allows Volume to start version 2 partitions. Disabled by default;
+    // can also be enabled by the EnablePartitionV2 binary feature.
+    optional bool EnablePartitionV2 = 543;
 }

@@ -278,7 +278,6 @@ void TCreateVolumeActor::CreateVolumeImpl(
         // => it needs to be stored
         config.SetMaxBlocksInBlob(maxBlocksInBlob);
     }
-    config.SetZoneBlockCount(Config->GetZoneBlockCount());
     config.SetDiskId(Request.GetDiskId());
     config.SetFolderId(Request.GetFolderId());
     config.SetCloudId(Request.GetCloudId());

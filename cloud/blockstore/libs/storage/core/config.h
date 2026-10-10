@@ -173,8 +173,6 @@ public:
     bool GetV1GarbageCompactionEnabled() const;
     bool GetIgnoringZeroedCompactionEnabled() const;
     ui32 GetCompactionGarbageThreshold() const;
-    ui32 GetCompactionGarbageBlobLimit() const;
-    ui32 GetCompactionGarbageBlockLimit() const;
     ui32 GetCompactionRangeGarbageThreshold() const;
     ui32 GetMaxAffectedBlocksPerCompaction() const;
     TDuration GetMaxCompactionDelay() const;
@@ -203,7 +201,6 @@ public:
     ui32 GetMaxDiffPercentageForBlobPatching() const;
 
     ui32 GetCleanupThreshold() const;
-    ui32 GetUpdateBlobsThreshold() const;
     ui32 GetMaxBlobsToCleanup() const;
     TDuration GetMaxCleanupDelay() const;
     TDuration GetMinCleanupDelay() const;
@@ -212,7 +209,6 @@ public:
     ui64 GetCleanupQueueBytesLimitForThrottling() const;
 
     ui32 GetCollectGarbageThreshold() const;
-    bool GetDontEnqueueCollectGarbageUponPartitionStartup() const;
     TDuration GetHiveLockExpireTimeout() const;
     TDuration GetTabletRebootCoolDownIncrement() const;
     TDuration GetTabletRebootCoolDownMax() const;
@@ -224,11 +220,9 @@ public:
     TDuration GetPipeClientMinRetryTime() const;
     TDuration GetPipeClientMaxRetryTime() const;
     TDuration GetCompactionRetryTimeout() const;
-    TDuration GetCleanupRetryTimeout() const;
     ui64 GetMaxReadWriteRangeSize() const;
     ui64 GetMaxChangedBlocksRangeBlocksCount() const;
     ui32 GetMaxBlobRangeSize() const;
-    ui32 GetMaxRangesPerBlob() const;
     ui32 GetMaxBlobSize() const;
     ui32 GetMaxIORequestsInFlight() const;
     ui32 GetMaxIORequestsInFlightSSD() const;
@@ -389,21 +383,13 @@ public:
     [[nodiscard]] ui32 GetFreshChannelCountSSD() const;
     [[nodiscard]] ui32 GetFreshChannelCountHDD() const;
 
-    ui32 GetZoneBlockCount() const;
-    ui32 GetHotZoneRequestCountFactor() const;
-    ui32 GetColdZoneRequestCountFactor() const;
-
     bool GetWriteRequestBatchingEnabled() const;
 
     bool GetFreshChannelWriteRequestsEnabled() const;
 
-    ui32 GetBlockListCacheSizePercentage() const;
-
     bool GetBlockDigestsEnabled() const;
     bool GetUseTestBlockDigestGenerator() const;
     ui32 GetDigestedBlocksPercentage() const;
-
-    TDuration GetIndexStructuresConversionAttemptInterval() const;
 
     TDuration GetNonReplicatedDiskRecyclingPeriod() const;
     TDuration GetNonReplicatedDiskRepairTimeout() const;
@@ -552,6 +538,11 @@ public:
         const TString& folderId,
         const TString& diskId) const;
 
+    [[nodiscard]] bool IsPartitionV2FeatureEnabled(
+        const TString& cloudId,
+        const TString& folderId,
+        const TString& diskId) const;
+
     TDuration GetMaxTimedOutDeviceStateDurationFeatureValue(
         const TString& cloudId,
         const TString& folderId,
@@ -624,11 +615,7 @@ public:
 
     bool GetMirroredMigrationStartAllowed() const;
 
-    bool GetOptimizeForShortRanges() const;
-
     bool GetUserDataDebugDumpAllowed() const;
-
-    bool GetRunV2SoftGcAtStartup() const;
 
     TDuration GetPlacementGroupAlertPeriod() const;
 
@@ -640,11 +627,6 @@ public:
     TDuration GetInitialPullDelay() const;
 
     ui32 GetLogicalUsedBlocksUpdateBlockCount() const;
-
-    bool GetDumpBlockCommitIdsIntoProfileLog() const;
-    bool GetDumpBlobUpdatesIntoProfileLog() const;
-
-    bool GetEnableConversionIntoMixedIndexV2() const;
 
     ui32 GetStatsUploadDiskCount() const;
     ui32 GetStatsUploadMaxRowsPerTx() const;
@@ -1005,6 +987,10 @@ public:
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesSSD() const;
 
     [[nodiscard]] ui64 GetMixedBlocksCompactionMinStoredBytesHDD() const;
+
+    [[nodiscard]] bool GetV2GarbageCompactionEnabled() const;
+
+    [[nodiscard]] bool GetEnablePartitionV2() const;
 };
 
 ui64 GetAllocationUnit(

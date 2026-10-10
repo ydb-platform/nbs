@@ -68,8 +68,7 @@ message TPartitionConfig
     // v1 disk since it affects the behaviour of block masks for all existing blobs.
     uint32 MaxBlocksInBlob = 15;
 
-    // Determines index geometry for v2 partitions.
-    uint32 ZoneBlockCount = 16;
+    reserved 16;
 
     // Optional tablet id of base volume.
     uint64 BaseDiskTabletId = 17;
@@ -222,10 +221,31 @@ message TBlobMeta
 
 message TBlobMeta2
 {
-    repeated uint32 StartIndices = 1;
-    repeated uint32 EndIndices = 2;
-    uint32 BlockCount = 3;
-    uint32 CheckpointBlockCount = 4;
+    message TMixedBlocks
+    {
+        repeated uint32 Blocks = 1;
+        repeated uint64 CommitIds = 2;
+    }
+
+    message TMergedBlocks
+    {
+        uint32 Start = 1;
+        uint32 End = 2;
+        uint32 Skipped = 3;
+    }
+
+    oneof Blocks
+    {
+        TMixedBlocks MixedBlocks = 1;
+        TMergedBlocks MergedBlocks = 2;
+    }
+
+    // May be empty. Checksums are calculated and stored only if the
+    // corresponding flag in TStorageServiceConfig is set.
+    // May contain zeroes. Zeroes are treated as "no checksum" and thus
+    // verification doesn't work for actual zero checksums.
+    reserved 3;
+    repeated uint32 BlockChecksums = 4;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -235,15 +255,6 @@ message TFreshBlobMeta
     repeated uint32 StartIndices = 1;
     repeated uint32 EndIndices = 2;
     bool IsZero = 3;
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
-message TFreshBlobMeta2
-{
-    repeated uint32 StartIndices = 1;
-    repeated uint32 EndIndices = 2;
-    repeated uint64 DeletionIds = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -3,6 +3,8 @@
 #include <cloud/blockstore/libs/storage/core/config.h>
 #include <cloud/blockstore/libs/storage/core/probes.h>
 
+#include <cloud/storage/core/libs/common/guarded_sglist.h>
+
 #include <library/cpp/cgiparam/cgiparam.h>
 #include <library/cpp/monlib/service/pages/templates.h>
 
@@ -13,6 +15,7 @@
 namespace NCloud::NBlockStore::NStorage::NPartition2 {
 
 using namespace NKikimr;
+
 using namespace NMonitoringUtils;
 
 LWTRACE_USING(BLOCKSTORE_STORAGE_PROVIDER);
@@ -68,6 +71,10 @@ private:
         const TEvService::TEvReadBlocksLocalResponse::TPtr& ev,
         const TActorContext& ctx);
 
+    void HandleReadBlockRequest(
+        const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
+        const TActorContext& ctx);
+
     void HandlePoisonPill(
         const TEvents::TEvPoisonPill::TPtr& ev,
         const TActorContext& ctx);
@@ -114,7 +121,7 @@ void THttpReadBlockActor::ReadBlocks(const TActorContext& ctx)
     request->Record.Sglist = BufferHolder.GetGuardedSgList();
     request->Record.CommitId = CommitId;
 
-    NCloud::Send(
+    NCloud::SendWithUndeliveryTracking(
         ctx,
         Tablet,
         std::move(request));
@@ -155,16 +162,15 @@ void THttpReadBlockActor::SendBinaryResponse(
         << "\r\n";
     out << buffer;
 
+    auto response = std::make_unique<NMon::TEvRemoteBinaryInfoRes>(out.Str());
+
     LWTRACK(
         ResponseSent_Partition,
         RequestInfo->CallContext->LWOrbit,
         "HttpInfo",
         RequestInfo->CallContext->RequestId);
 
-    NCloud::Reply(
-        ctx,
-        *RequestInfo,
-        std::move(std::make_unique<NMon::TEvRemoteBinaryInfoRes>(out.Str())));
+    NCloud::Reply(ctx, *RequestInfo, std::move(response));
 }
 
 void THttpReadBlockActor::SendHttpResponse(
@@ -236,6 +242,15 @@ void THttpReadBlockActor::HandleReadBlockResponse(
     ReplyAndDie(ctx, BufferHolder.Extract());
 }
 
+void THttpReadBlockActor::HandleReadBlockRequest(
+    const TEvService::TEvReadBlocksLocalRequest::TPtr& ev,
+    const TActorContext& ctx)
+{
+    Y_UNUSED(ev);
+
+    ReplyAndDie(ctx, MakeError(E_REJECTED, "tablet is shutting down"));
+}
+
 void THttpReadBlockActor::HandlePoisonPill(
     const TEvents::TEvPoisonPill::TPtr& ev,
     const TActorContext& ctx)
@@ -250,11 +265,12 @@ STFUNC(THttpReadBlockActor::StateWork)
     switch (ev->GetTypeRewrite()) {
         HFunc(TEvents::TEvPoisonPill, HandlePoisonPill);
         HFunc(TEvService::TEvReadBlocksLocalResponse, HandleReadBlockResponse);
+        HFunc(TEvService::TEvReadBlocksLocalRequest, HandleReadBlockRequest);
 
         default:
             HandleUnexpectedEvent(
                 ev,
-                TBlockStoreComponents::PARTITION_WORKER,
+                TBlockStoreComponents::PARTITION,
                 __PRETTY_FUNCTION__);
             break;
     }
@@ -274,8 +290,8 @@ void TPartitionActor::HandleHttpInfo_View(
         ui64 commitId = 0;
 
         if (TryFromString(params.Get("block"), blockIndex) &&
-            TryFromString(params.Get("commitid"), commitId))
-        {
+            TryFromString(params.Get("commitid"), commitId)) {
+
             NCloud::Register<THttpReadBlockActor>(
                 ctx,
                 std::move(requestInfo),
@@ -286,21 +302,99 @@ void TPartitionActor::HandleHttpInfo_View(
                 commitId,
                 params.Has("binary"));
         } else {
-            SendHttpResponse(
+            RejectHttpRequest(
                 ctx,
                 *requestInfo,
-                "invalid index specified",
-                EAlertLevel::DANGER);
+                "invalid index specified");
         }
         return;
     }
-
-    using namespace NMonitoringUtils;
 
     TStringStream out;
     DumpDefaultHeader(out, *Info(), SelfId().NodeId(), *DiagnosticsConfig);
 
     SendHttpResponse(ctx, *requestInfo, std::move(out.Str()));
+}
+
+void TPartitionActor::HandleHttpInfo_GetTransactionsLatency(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            TransactionTimeTracker.GetStatJson(GetCycleCount())));
+}
+
+void TPartitionActor::HandleHttpInfo_GetGroupLatencies(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteJsonInfoRes>(
+            BSGroupOperationTimeTracker.GetStatJson(GetCycleCount())));
+}
+
+void TPartitionActor::HandleHttpInfo_ResetTransactionLatencyStats(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    TransactionTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
+void TPartitionActor::HandleHttpInfo_ResetBSGroupLatencyStats(
+    const TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+    BSGroupOperationTimeTracker.ResetStats();
+    SendHttpResponse(ctx, *requestInfo, "");
+}
+
+void TPartitionActor::HandleHttpInfo_GetTransactionsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(FormatTransactionsInflight(
+            TransactionTimeTracker.GetInflightOperations(),
+            GetCycleCount(),
+            TInstant::Now())));
+}
+
+void TPartitionActor::HandleHttpInfo_GetBSGroupOperationsInflight(
+    const NActors::TActorContext& ctx,
+    const TCgiParameters& params,
+    TRequestInfoPtr requestInfo)
+{
+    Y_UNUSED(params);
+
+    NCloud::Reply(
+        ctx,
+        *requestInfo,
+        std::make_unique<NMon::TEvRemoteHttpInfoRes>(
+            FormatBSGroupOperationsInflight(
+                BSGroupOperationTimeTracker.GetInflightOperations(),
+                GetCycleCount(),
+                TInstant::Now())));
 }
 
 }   // namespace NCloud::NBlockStore::NStorage::NPartition2

@@ -5,6 +5,7 @@ import yatest.common as common
 
 from cloud.blockstore.config.client_pb2 import TClientConfig
 from cloud.blockstore.config.server_pb2 import TServerAppConfig, TServerConfig, TKikimrServiceConfig
+from cloud.blockstore.config.storage_pb2 import TStorageServiceConfig
 from cloud.blockstore.tests.python.lib.loadtest_env import LocalLoadTest
 from cloud.blockstore.tests.python.lib.test_base import thread_count, run_test
 from contrib.ydb.tests.library.harness.kikimr_runner import get_unique_path_for_current_test, ensure_path_exists
@@ -110,9 +111,13 @@ def __run_test(test_case):
     server.ServerConfig.NbdSocketSuffix = nbd_socket_suffix
     server.KikimrServiceConfig.CopyFrom(TKikimrServiceConfig())
 
+    storage = TStorageServiceConfig()
+    storage.EnablePartitionV2 = test_case.tablet_version == "2"
+
     env = LocalLoadTest(
         "",
         server_app_config=server,
+        storage_config_patches=[storage],
         use_in_memory_pdisks=True,
     )
 

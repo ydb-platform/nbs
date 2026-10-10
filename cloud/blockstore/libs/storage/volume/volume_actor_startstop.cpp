@@ -36,13 +36,60 @@ using namespace NCloud::NBlockStore::NStorage::NFreshBlocksWriter;
 
 using namespace NCloud::NStorage;
 
+namespace {
+
+///////////////////////////////////////////////////////////////////////////////
+
+void ReportPartitionV2StartupDisabled(
+    const TLogTitle& logTitle,
+    const TActorContext& ctx,
+    TVolumeState& state,
+    TPartitionInfo& partition)
+{
+    LOG_WARN(
+        ctx,
+        TBlockStoreComponents::VOLUME,
+        "%s Partition V2 is disabled, skipping boot for partition %lu",
+        logTitle.GetWithTime().c_str(),
+        partition.TabletId);
+
+    ReportPartitionV2Disabled(
+        state.GetDiskId(),
+        state.GetConfig().GetCloudId(),
+        state.GetConfig().GetFolderId(),
+        "EnablePartitionV2 is disabled",
+        {{"TabletId", partition.TabletId}});
+
+    partition.SetFailed("Partition V2 is disabled");
+    state.UpdatePartitionsState();
+}
+
+};   // namespace
+
 ////////////////////////////////////////////////////////////////////////////////
+
+bool TVolumeActor::IsPartitionV2Enabled() const
+{
+    const auto& volumeConfig = State->GetConfig();
+    return Config->GetEnablePartitionV2() ||
+           Config->IsPartitionV2FeatureEnabled(
+               volumeConfig.GetCloudId(),
+               volumeConfig.GetFolderId(),
+               volumeConfig.GetDiskId());
+}
 
 bool TVolumeActor::SendBootExternalRequest(
     const TActorContext& ctx,
     TPartitionInfo& partition)
 {
     if (partition.Bootstrapper || partition.RequestingBootExternal) {
+        return false;
+    }
+
+    if (partition.PartitionConfig.GetTabletVersion() == 2 &&
+        !IsPartitionV2Enabled())
+    {
+        ReportPartitionV2StartupDisabled(LogTitle, ctx, *State, partition);
         return false;
     }
 
@@ -802,6 +849,13 @@ void TVolumeActor::HandleBootExternalResponse(
         msg->StorageInfo->TabletID,
         partTabletId);
 
+    if (msg->StorageInfo->TabletType == TTabletTypes::BlockStorePartition2 &&
+        !IsPartitionV2Enabled())
+    {
+        ReportPartitionV2StartupDisabled(LogTitle, ctx, *State, *part);
+        return;
+    }
+
     {
         auto request = std::make_unique<TEvStatsService::TEvPartitionBootExternalCompleted>(
             State->GetDiskId(),
@@ -861,6 +915,7 @@ void TVolumeActor::HandleBootExternalResponse(
                        std::move(blockDigestGenerator),
                        std::move(partitionConfig),
                        storageAccessMode,
+                       partitionIndex,
                        siblingCount,
                        selfId,
                        volumeTabletId)
@@ -940,7 +995,7 @@ void TVolumeActor::HandleTabletStatus(
                 TActorsStack::EActorPurpose::BlobStoragePartitionTablet);
 
             TActorId freshBlocksWriterId;
-            if (IsFreshBlocksWriterEnabled(msg->TabletId)) {
+            if (IsFreshBlocksWriterEnabled()) {
                 actorStack = WrapWithFreshBlocksWriterIfNeeded(
                     ctx,
                     std::move(actorStack),
@@ -1079,7 +1134,7 @@ TActorsStack TVolumeActor::WrapWithFreshBlocksWriterIfNeeded(
     TActorsStack actors,
     ui64 partTabletId)
 {
-    if (!IsFreshBlocksWriterEnabled(partTabletId)) {
+    if (!IsFreshBlocksWriterEnabled()) {
         return actors;
     }
 

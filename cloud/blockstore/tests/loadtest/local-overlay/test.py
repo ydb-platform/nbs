@@ -13,17 +13,12 @@ def default_storage_config_patch(tablet_version):
 
     storage.InactiveClientsTimeout = 10000
 
-    storage.ZoneBlockCount = 2048
-    storage.HotZoneRequestCountFactor = 2
-    storage.ColdZoneRequestCountFactor = 1
-
     storage.BlockDigestsEnabled = True
 
     if tablet_version == 2:
+        storage.EnablePartitionV2 = True
         storage.UseTestBlockDigestGenerator = True
         storage.DigestedBlocksPercentage = 100
-        storage.DumpBlockCommitIdsIntoProfileLog = True
-        storage.DumpBlobUpdatesIntoProfileLog = True
 
     return storage
 
