@@ -321,13 +321,13 @@ func RegisterForExecution(
 			"dataplane.BackupChunks",
 			func() tasks.Task {
 				return &backupChunksTask{
-					storage:       storage,
-					backupS3:      backupS3,
-					limiter:       bandwidthLimiter,
-					batchSize:     int(config.GetBackupChunksTaskBatchSize()),
-					inflightLimit: int(config.GetBackupChunksInflightLimit()),
-					lifetime:      backupChunksTaskLifetime,
-					registry:      metricsRegistry,
+					storage:   storage,
+					backupS3:  backupS3,
+					limiter:   bandwidthLimiter,
+					batchSize: int(config.GetBackupChunksTaskBatchSize()),
+					ioDepth:   int(config.GetBackupChunksTaskIoDepth()),
+					lifetime:  backupChunksTaskLifetime,
+					registry:  metricsRegistry,
 				}
 			},
 		)

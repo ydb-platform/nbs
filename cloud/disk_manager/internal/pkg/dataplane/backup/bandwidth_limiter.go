@@ -11,21 +11,26 @@ import (
 
 // The bucket is never smaller than a chunk, otherwise a chunk larger than a
 // second of bandwidth would never pass.
-const minBurstBytes = 4 << 20
+const minCapacityBytes = 4 << 20
 
 ////////////////////////////////////////////////////////////////////////////////
 
 // Token bucket over bytes. One instance per process caps what the node sends
 // to the follower whatever the number of copy tasks on it. A nil limiter and
 // a zero rate let everything through.
+//
+// availableBytes grows at bytesPerSecond up to capacityBytes, so an idle node
+// may send at most a second of bandwidth at once. It goes negative when
+// callers reserve more than is available: later callers wait behind them.
 type BandwidthLimiter struct {
 	bytesPerSecond float64
-	burst          float64
+	capacityBytes  float64
 	now            func() time.Time
 
-	mutex  sync.Mutex
-	tokens float64
-	last   time.Time
+	// Shared by every copy goroutine of the process.
+	mutex          sync.Mutex
+	availableBytes float64
+	refilledAt     time.Time
 }
 
 func NewBandwidthLimiter(bytesPerSecond uint64) *BandwidthLimiter {
@@ -41,13 +46,13 @@ func newBandwidthLimiter(
 		return nil
 	}
 
-	burst := math.Max(float64(bytesPerSecond), minBurstBytes)
+	capacityBytes := math.Max(float64(bytesPerSecond), minCapacityBytes)
 	return &BandwidthLimiter{
 		bytesPerSecond: float64(bytesPerSecond),
-		burst:          burst,
+		capacityBytes:  capacityBytes,
 		now:            now,
-		tokens:         burst,
-		last:           now(),
+		availableBytes: capacityBytes,
+		refilledAt:     now(),
 	}
 }
 
@@ -75,22 +80,27 @@ func (l *BandwidthLimiter) Wait(ctx context.Context, bytes int) error {
 }
 
 // Takes the bytes from the bucket and returns how long the caller waits for
-// them. A negative balance is a reservation: later callers queue behind it.
+// them.
 func (l *BandwidthLimiter) reserve(bytes int) time.Duration {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 
 	now := l.now()
-	elapsed := now.Sub(l.last).Seconds()
+	elapsed := now.Sub(l.refilledAt).Seconds()
 	if elapsed > 0 {
-		l.tokens = math.Min(l.burst, l.tokens+elapsed*l.bytesPerSecond)
-		l.last = now
+		l.availableBytes = math.Min(
+			l.capacityBytes,
+			l.availableBytes+elapsed*l.bytesPerSecond,
+		)
+		l.refilledAt = now
 	}
 
-	l.tokens -= float64(bytes)
-	if l.tokens >= 0 {
+	l.availableBytes -= float64(bytes)
+	if l.availableBytes >= 0 {
 		return 0
 	}
 
-	return time.Duration(-l.tokens / l.bytesPerSecond * float64(time.Second))
+	return time.Duration(
+		-l.availableBytes / l.bytesPerSecond * float64(time.Second),
+	)
 }

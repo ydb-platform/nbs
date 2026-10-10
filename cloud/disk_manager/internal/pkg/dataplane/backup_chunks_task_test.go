@@ -35,13 +35,13 @@ func newBackupChunksTask(
 ) *backupChunksTask {
 
 	return &backupChunksTask{
-		storage:       storage,
-		backupS3:      follower.backupS3,
-		limiter:       &countingLimiter{},
-		batchSize:     10,
-		inflightLimit: 2,
-		registry:      metrics.NewEmptyRegistry(),
-		state:         &protos.BackupChunksTaskState{},
+		storage:   storage,
+		backupS3:  follower.backupS3,
+		limiter:   &countingLimiter{},
+		batchSize: 10,
+		ioDepth:   2,
+		registry:  metrics.NewEmptyRegistry(),
+		state:     &protos.BackupChunksTaskState{},
 	}
 }
 

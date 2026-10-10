@@ -29,14 +29,14 @@ type chunkCopyLimiter interface {
 // lifetime is not zero, until it has run that long. The dispatcher keeps as
 // many of these running as the queue needs.
 type backupChunksTask struct {
-	storage       storage.Storage
-	backupS3      *backup.S3
-	limiter       chunkCopyLimiter
-	batchSize     int
-	inflightLimit int
-	lifetime      time.Duration
-	registry      metrics.Registry
-	state         *protos.BackupChunksTaskState
+	storage   storage.Storage
+	backupS3  *backup.S3
+	limiter   chunkCopyLimiter
+	batchSize int
+	ioDepth   int
+	lifetime  time.Duration
+	registry  metrics.Registry
+	state     *protos.BackupChunksTaskState
 }
 
 func (t *backupChunksTask) Save() ([]byte, error) {
@@ -170,7 +170,7 @@ func (t *backupChunksTask) copyChunks(
 		return nil
 	})
 
-	for i := 0; i < t.inflightLimit; i++ {
+	for i := 0; i < t.ioDepth; i++ {
 		group.Go(func() error {
 			for entry := range queue {
 				if groupCtx.Err() != nil {
