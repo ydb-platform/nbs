@@ -1,6 +1,10 @@
 #include "client.h"
 
+#include <cloud/storage/core/libs/common/page_size.h>
+
 #include <library/cpp/monlib/service/pages/templates.h>
+
+#include <util/system/align.h>
 
 namespace NCloud::NStorage::NRdma {
 
@@ -34,6 +38,17 @@ void TClientConfig::Validate(TLog& log)
             "QpRnrRetryCount=" << QpRnrRetryCount
                                << " is greater than 7, set QpRnrRetryCount=7");
         QpRnrRetryCount = ThreeBitsMax;
+    }
+    const size_t pageSize = GetPlatformPageSize();
+    const size_t maxEagerRequestBytes = Min(
+        AlignUp<size_t>(MaxEagerRequestBytes, pageSize),
+        AlignDown<size_t>(MaxBufferSize, pageSize));
+    if (maxEagerRequestBytes != MaxEagerRequestBytes) {
+        RDMA_WARN(
+            log,
+            "MaxEagerRequestBytes=" << MaxEagerRequestBytes
+                                    << " adjusted to " << maxEagerRequestBytes);
+        MaxEagerRequestBytes = maxEagerRequestBytes;
     }
     if (QpTimeout > FiveBitsMax) {
         RDMA_WARN(
@@ -85,6 +100,7 @@ void TClientConfig::DumpHtml(IOutputStream& out) const
                 ENTRY(QpRetryCount, static_cast<ui32>(QpRetryCount));
                 ENTRY(QpMinRnrTimer, static_cast<ui32>(QpMinRnrTimer));
                 ENTRY(QpRnrRetryCount, static_cast<ui32>(QpRnrRetryCount));
+                ENTRY(MaxEagerRequestBytes, MaxEagerRequestBytes);
                 ENTRY(UseMemoryWindows, UseMemoryWindows);
                 ENTRY(MemoryWindowsPoolSize, MemoryWindowsPoolSize);
             }
