@@ -1046,16 +1046,21 @@ func (s *storageYDB) snapshotBackupScheduled(
 func (s *storageYDB) listScheduledSnapshotBackups(
 	ctx context.Context,
 	session *persistence.Session,
+	limit int,
 ) ([]ScheduledSnapshotBackup, error) {
 
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
+		declare $limit as Uint64;
 
 		select snapshot_id, backup_id, task_id
 		from backup_queue
 		where task_id is not null and task_id != ""
-	`, s.snapshotsPath))
+		limit $limit
+	`, s.snapshotsPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -1558,6 +1563,7 @@ func (s *storageYDB) SnapshotBackupScheduled(
 
 func (s *storageYDB) ListScheduledSnapshotBackups(
 	ctx context.Context,
+	limit int,
 ) ([]ScheduledSnapshotBackup, error) {
 
 	var backups []ScheduledSnapshotBackup
@@ -1566,7 +1572,7 @@ func (s *storageYDB) ListScheduledSnapshotBackups(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
 			var err error
-			backups, err = s.listScheduledSnapshotBackups(ctx, session)
+			backups, err = s.listScheduledSnapshotBackups(ctx, session, limit)
 			return err
 		},
 	)

@@ -310,10 +310,9 @@ func RegisterForExecution(
 				return &backupChunksTask{
 					storage:   storage,
 					backupS3:  backupS3,
+					registry:  metricsRegistry,
 					batchSize: int(config.GetBackupChunksTaskBatchSize()),
 					ioDepth:   int(config.GetBackupChunksTaskIoDepth()),
-					maxChunks: int(config.GetBackupChunksTaskMaxChunks()),
-					registry:  metricsRegistry,
 				}
 			},
 		)
@@ -328,7 +327,6 @@ func RegisterForExecution(
 					scheduler: taskScheduler,
 					storage:   storage,
 					maxTasks:  int(config.GetBackupChunksMaxTasks()),
-					batchSize: int(config.GetBackupChunksTaskBatchSize()),
 				}
 			},
 		)

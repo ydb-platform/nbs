@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"math"
 	"math/rand"
 	"os"
 	"sort"
@@ -331,6 +332,17 @@ type fixture struct {
 	s3      *persistence.S3Client
 	config  *snapshot_config.SnapshotConfig
 	storage Storage
+}
+
+// Reads the whole queue in key order.
+func (f *fixture) queuedChunks(limit int) ([]BackupChunkQueueEntry, error) {
+	return f.storage.GetQueuedChunksToBackup(
+		f.ctx,
+		0,
+		math.MaxUint64,
+		nil, // after
+		limit,
+	)
 }
 
 func (f *fixture) teardown() {
@@ -1931,7 +1943,7 @@ func TestBackupChunkQueue(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 3, length)
 
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 2)
+	got, err := f.queuedChunks(2)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
@@ -1948,14 +1960,14 @@ func TestBackupChunkQueue(t *testing.T) {
 	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:2])
 	require.NoError(t, err)
 
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
+	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:], got)
 
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[2:])
 	require.NoError(t, err)
 
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
+	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Empty(t, got)
 
@@ -1992,7 +2004,7 @@ func TestBackupChunkInFollowerIsNotEnqueuedForAnotherSnapshot(t *testing.T) {
 		[]BackupChunkQueueEntry{second},
 	)
 	require.NoError(t, err)
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
+	got, err := f.queuedChunks(10)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []BackupChunkQueueEntry{first, second}, got)
 
@@ -2014,7 +2026,7 @@ func TestBackupChunkInFollowerIsNotEnqueuedForAnotherSnapshot(t *testing.T) {
 		[]BackupChunkQueueEntry{third},
 	)
 	require.NoError(t, err)
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
+	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Empty(t, got)
 	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap3"))
@@ -2058,7 +2070,7 @@ func TestClearBackupChunks(t *testing.T) {
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[3:])
 	require.NoError(t, err)
 
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
+	got, err := f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:3], got)
 
@@ -2077,7 +2089,7 @@ func TestClearBackupChunks(t *testing.T) {
 		require.Equal(t, expected, cleared)
 	}
 
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
+	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Empty(t, got)
 	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1"))
@@ -2086,7 +2098,7 @@ func TestClearBackupChunks(t *testing.T) {
 	// copied ones are already in the follower.
 	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:3])
 	require.NoError(t, err)
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
+	got, err = f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:3], got)
 
@@ -2116,7 +2128,7 @@ func TestBackupChunkQueueKeysChunksByShard(t *testing.T) {
 
 	// Rows of one snapshot are spread over the key space, so a read from the
 	// start of the table does not return them in chunk order.
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 20)
+	got, err := f.queuedChunks(20)
 	require.NoError(t, err)
 	require.Len(t, got, 20)
 	require.ElementsMatch(t, entries, got)
@@ -2340,12 +2352,12 @@ func TestBackupChunkCompletedAfterDeletionIsNotMarkedCopied(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
+	got, err := f.queuedChunks(10)
 	require.NoError(t, err)
 	require.Equal(t, []BackupChunkQueueEntry{other}, got)
 }
 
-func TestGetQueuedChunksToBackupStartsAtShardAndWrapsAround(t *testing.T) {
+func TestGetQueuedChunksToBackupReadsShardRangeAfterCursor(t *testing.T) {
 	f := createFixture(t)
 	defer f.teardown()
 
@@ -2360,53 +2372,60 @@ func TestGetQueuedChunksToBackupStartsAtShardAndWrapsAround(t *testing.T) {
 	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries)
 	require.NoError(t, err)
 
-	all, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
-	require.NoError(t, err)
-	require.Len(t, all, 10)
-
-	// Rows come in shard_id order; start from the shard of the seventh.
-	start := makeShardID(all[6].ChunkID)
-
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, start, 3)
-	require.NoError(t, err)
-	require.Equal(t, all[6:9], got)
-
-	// Past the end the read wraps around to the start of the table.
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, start, 6)
-	require.NoError(t, err)
-	require.Equal(t, append(append([]BackupChunkQueueEntry{}, all[6:]...), all[:2]...), got)
-
-	// A limit above the queue length returns every row once.
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, start, 100)
-	require.NoError(t, err)
-	require.Len(t, got, 10)
-	require.ElementsMatch(t, all, got)
-}
-
-func TestCountQueuedBackupChunksIsCapped(t *testing.T) {
-	f := createFixture(t)
-	defer f.teardown()
-
-	count, err := f.storage.CountQueuedBackupChunks(f.ctx, 5)
-	require.NoError(t, err)
-	require.Equal(t, 0, count)
-
-	var entries []BackupChunkQueueEntry
-	for i := 0; i < 7; i++ {
-		entries = append(entries, BackupChunkQueueEntry{
-			SnapshotID:   "snap1",
-			ChunkID:      fmt.Sprintf("t.snap1.%v", i),
-			EncryptedDEK: []byte("dek"),
-		})
+	// The same chunk queued by another snapshot has the same shard_id.
+	shared := BackupChunkQueueEntry{
+		SnapshotID:   "snap2",
+		ChunkID:      entries[6].ChunkID,
+		EncryptedDEK: []byte("dek"),
 	}
-	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries)
+	err = f.storage.EnqueueBackupChunks(
+		f.ctx,
+		"snap2",
+		[]BackupChunkQueueEntry{shared},
+	)
 	require.NoError(t, err)
 
-	count, err = f.storage.CountQueuedBackupChunks(f.ctx, 5)
+	all, err := f.queuedChunks(100)
 	require.NoError(t, err)
-	require.Equal(t, 5, count)
+	require.Len(t, all, 11)
 
-	count, err = f.storage.CountQueuedBackupChunks(f.ctx, 100)
+	// Rows come in key order: shard_id, then snapshot_id.
+	sixth := -1
+	for i, entry := range all {
+		if entry.SnapshotID == "snap1" && entry.ChunkID == entries[6].ChunkID {
+			sixth = i
+		}
+	}
+	require.NotEqual(t, -1, sixth)
+	require.Equal(t, shared, all[sixth+1])
+
+	end := min(sixth+4, len(all))
+	first := makeShardID(all[sixth].ChunkID)
+	last := makeShardID(all[end-1].ChunkID)
+
+	// A range starts at its first shard, rows of other shards are not read.
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, first, last, nil, 100)
 	require.NoError(t, err)
-	require.Equal(t, 7, count)
+	require.Equal(t, all[sixth:end], got)
+
+	// Reading goes on after the last entry read, also inside one shard.
+	got, err = f.storage.GetQueuedChunksToBackup(
+		f.ctx,
+		first,
+		last,
+		&all[sixth],
+		1,
+	)
+	require.NoError(t, err)
+	require.Equal(t, all[sixth+1:sixth+2], got)
+
+	got, err = f.storage.GetQueuedChunksToBackup(
+		f.ctx,
+		first,
+		last,
+		&all[end-1],
+		100,
+	)
+	require.NoError(t, err)
+	require.Empty(t, got)
 }

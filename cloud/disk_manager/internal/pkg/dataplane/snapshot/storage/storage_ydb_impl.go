@@ -3,7 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"math"
 	"path"
 	"sync"
 	"time"
@@ -1692,32 +1691,56 @@ func (s *storageYDB) enqueueBackupChunks(
 	return tx.Commit(ctx)
 }
 
-// Reads queued chunks with firstShardID <= shard_id <= lastShardID in key
-// order.
-func (s *storageYDB) readQueuedChunksToBackup(
+func (s *storageYDB) getQueuedChunksToBackup(
 	ctx context.Context,
 	session *persistence.Session,
 	firstShardID uint64,
 	lastShardID uint64,
+	after *BackupChunkQueueEntry,
 	limit int,
 ) ([]BackupChunkQueueEntry, error) {
+
+	// The cursor is the key of the last entry read; an empty snapshot ID is
+	// before every row of its shard.
+	afterShardID := firstShardID
+	afterSnapshotID := ""
+	afterChunkID := ""
+	if after != nil {
+		afterShardID = makeShardID(after.ChunkID)
+		afterSnapshotID = after.SnapshotID
+		afterChunkID = after.ChunkID
+	}
 
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
-		declare $first_shard_id as Uint64;
+		declare $after_shard_id as Uint64;
+		declare $after_snapshot_id as Utf8;
+		declare $after_chunk_id as Utf8;
 		declare $last_shard_id as Uint64;
 		declare $limit as Uint64;
 
 		select snapshot_id, chunk_id, stored_in_s3, encrypted_dek
 		from backup_chunk_queue
-		where shard_id >= $first_shard_id and shard_id <= $last_shard_id
+		where shard_id >= $after_shard_id and shard_id <= $last_shard_id and (
+			shard_id > $after_shard_id or
+			snapshot_id > $after_snapshot_id or
+			(snapshot_id = $after_snapshot_id and chunk_id > $after_chunk_id)
+		)
 		order by shard_id, snapshot_id, chunk_id
 		limit $limit
 	`, s.tablesPath),
 		persistence.ValueParam(
-			"$first_shard_id",
-			persistence.Uint64Value(firstShardID),
+			"$after_shard_id",
+			persistence.Uint64Value(afterShardID),
+		),
+		persistence.ValueParam(
+			"$after_snapshot_id",
+			persistence.UTF8Value(afterSnapshotID),
+		),
+		persistence.ValueParam(
+			"$after_chunk_id",
+			persistence.UTF8Value(afterChunkID),
 		),
 		persistence.ValueParam(
 			"$last_shard_id",
@@ -1756,83 +1779,6 @@ func (s *storageYDB) readQueuedChunksToBackup(
 	}
 
 	return entries, nil
-}
-
-// Reads [startShardID, max] and, if that is short of limit, wraps around to
-// [0, startShardID - 1]. The two ranges do not overlap, so a row is returned
-// once.
-func (s *storageYDB) getQueuedChunksToBackup(
-	ctx context.Context,
-	session *persistence.Session,
-	startShardID uint64,
-	limit int,
-) ([]BackupChunkQueueEntry, error) {
-
-	entries, err := s.readQueuedChunksToBackup(
-		ctx,
-		session,
-		startShardID,
-		math.MaxUint64,
-		limit,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(entries) >= limit || startShardID == 0 {
-		return entries, nil
-	}
-
-	rest, err := s.readQueuedChunksToBackup(
-		ctx,
-		session,
-		0,
-		startShardID-1,
-		limit-len(entries),
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	return append(entries, rest...), nil
-}
-
-func (s *storageYDB) countQueuedBackupChunks(
-	ctx context.Context,
-	session *persistence.Session,
-	limit int,
-) (int, error) {
-
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $limit as Uint64;
-
-		select count(*)
-		from (
-			select shard_id
-			from backup_chunk_queue
-			limit $limit
-		)
-	`, s.tablesPath),
-		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
-	)
-	if err != nil {
-		return 0, err
-	}
-	defer res.Close()
-
-	if !res.NextResultSet(ctx) || !res.NextRow() {
-		return 0, res.Err()
-	}
-
-	var count uint64
-	err = res.Scan(&count)
-	if err != nil {
-		return 0, err
-	}
-
-	return int(count), res.Err()
 }
 
 func (s *storageYDB) ChunksBackupCompleted(

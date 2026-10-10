@@ -2,6 +2,7 @@ package dataplane
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -163,6 +164,21 @@ func enqueueBackupChunks(
 	return nil
 }
 
+// Reads the whole backup chunk queue.
+func queuedBackupChunks(
+	ctx context.Context,
+	storage snapshot_storage.Storage,
+) ([]snapshot_storage.BackupChunkQueueEntry, error) {
+
+	return storage.GetQueuedChunksToBackup(
+		ctx,
+		0,
+		math.MaxUint64,
+		nil, // after
+		10,  // limit
+	)
+}
+
 func createSnapshotWithChunk(
 	t *testing.T,
 	ctx context.Context,
@@ -294,7 +310,7 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 	_, err = follower.getObject(ctx, backup.ChunkMapKey("snap1"))
 	require.Error(t, err)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Equal(
 		t,
@@ -394,7 +410,7 @@ func TestBackupSnapshotDataTaskEnqueuesInBatches(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 	require.EqualValues(t, 2, task.state.MilestoneChunkIndex)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.ElementsMatch(
 		t,
@@ -431,7 +447,7 @@ func TestBackupSnapshotDataTaskEnqueuesInBatches(t *testing.T) {
 	err = resumed.Run(ctx, execCtx)
 	require.NoError(t, err)
 
-	queue, err = storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err = queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 
@@ -479,7 +495,7 @@ func TestBackupSnapshotDataTaskBacksUpChunkStoredInYDB(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Equal(
 		t,
@@ -620,7 +636,7 @@ func TestBackupSnapshotDataTaskBacksUpShallowCopyWithoutCreatorBackup(t *testing
 	_, err = follower.getObject(ctx, backup.ChunkKey(chunk0))
 	require.NoError(t, err)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 
@@ -646,7 +662,7 @@ func TestBackupSnapshotDataTaskSkipsDeletedSnapshot(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 
@@ -693,7 +709,7 @@ func TestBackupSnapshotDataTaskEnqueuesNothingOnBadDEK(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.Zero(t, task.state.MilestoneChunkIndex)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 
@@ -716,12 +732,12 @@ func TestBackupSnapshotDataTaskCancellationClearsQueue(t *testing.T) {
 
 	err := task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Len(t, queue, 1)
 
 	require.NoError(t, task.Cancel(ctx, execCtx))
-	queue, err = storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err = queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 	cleared, err := storage.ClearBackupChunks(ctx, "snap1", 10)
@@ -732,7 +748,7 @@ func TestBackupSnapshotDataTaskCancellationClearsQueue(t *testing.T) {
 	next := newBackupSnapshotDataTask(storage, follower, "snap1")
 	err = next.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-	queue, err = storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err = queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Len(t, queue, 1)
 }
@@ -762,7 +778,7 @@ func TestBackupSnapshotDataTaskNextAttemptWaitsForCancelledCopy(t *testing.T) {
 	require.NoError(t, cancelled.Cancel(ctx, cancelledCtx))
 	err = next.Run(ctx, nextCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Len(t, queue, 1)
 }
@@ -843,7 +859,7 @@ func backUpSnapshot(
 	}
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 
 	err = newBackupChunksTask(storage, follower).Run(ctx, workerCtx)

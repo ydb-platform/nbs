@@ -17,6 +17,11 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// A data query returns at most this many rows.
+const maxScheduledSnapshotBackupsRead = 1000
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Starts queued backup attempts while fewer than inflightLimit copies run, so
 // that a few snapshots are copied at a time instead of all of them together.
 type scheduleBackupSnapshotTasks struct {
@@ -125,12 +130,16 @@ func (t *scheduleBackupSnapshotTasks) GetResponse() proto.Message {
 
 // A snapshots.BackupSnapshot task removes its queue row when it ends. A row
 // whose task ended anyway, for example force-finished, would hold a slot
-// forever, so it is removed here.
+// forever, so it is removed here. A task that is being cancelled counts as
+// ended: its slot frees before its copy has cleared its chunks.
 func (t *scheduleBackupSnapshotTasks) countRunningCopies(
 	ctx context.Context,
 ) (int, error) {
 
-	scheduled, err := t.storage.ListScheduledSnapshotBackups(ctx)
+	scheduled, err := t.storage.ListScheduledSnapshotBackups(
+		ctx,
+		maxScheduledSnapshotBackupsRead,
+	)
 	if err != nil {
 		return 0, err
 	}

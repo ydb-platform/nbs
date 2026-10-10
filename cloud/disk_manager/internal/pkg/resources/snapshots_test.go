@@ -870,7 +870,7 @@ func TestSnapshotsBackupQueueTracksScheduledAttempts(t *testing.T) {
 		{SnapshotID: "snap2", BackupID: "attempt"},
 	}, queue)
 
-	scheduled, err := storage.ListScheduledSnapshotBackups(ctx)
+	scheduled, err := storage.ListScheduledSnapshotBackups(ctx, 10)
 	require.NoError(t, err)
 	require.Equal(t, []ScheduledSnapshotBackup{
 		{SnapshotID: "snap0", BackupID: "attempt", TaskID: "task0"},

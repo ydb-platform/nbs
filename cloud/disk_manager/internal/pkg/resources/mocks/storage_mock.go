@@ -342,9 +342,10 @@ func (s *StorageMock) SnapshotBackupScheduled(
 
 func (s *StorageMock) ListScheduledSnapshotBackups(
 	ctx context.Context,
+	limit int,
 ) ([]resources.ScheduledSnapshotBackup, error) {
 
-	args := s.Called(ctx)
+	args := s.Called(ctx, limit)
 	return args.Get(0).([]resources.ScheduledSnapshotBackup), args.Error(1)
 }
 

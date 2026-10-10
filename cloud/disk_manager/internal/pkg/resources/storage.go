@@ -274,6 +274,7 @@ type Storage interface {
 
 	ListScheduledSnapshotBackups(
 		ctx context.Context,
+		limit int,
 	) ([]ScheduledSnapshotBackup, error)
 
 	GetSnapshotBackupQueueStats(

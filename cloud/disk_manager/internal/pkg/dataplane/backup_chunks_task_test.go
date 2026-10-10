@@ -1,16 +1,20 @@
 package dataplane
 
 import (
-	"errors"
+	"context"
+	"math"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/mocks"
+	"github.com/ydb-platform/nbs/contrib/go/cityhash"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -21,12 +25,33 @@ func newBackupChunksTask(
 ) *backupChunksTask {
 
 	return &backupChunksTask{
-		storage:   storage,
-		backupS3:  follower.backupS3,
+		storage:  storage,
+		backupS3: follower.backupS3,
+		registry: metrics.NewEmptyRegistry(),
+		request: &protos.BackupChunksRequest{
+			FirstShardId: 0,
+			LastShardId:  math.MaxUint64,
+		},
 		batchSize: 10,
 		ioDepth:   2,
-		registry:  metrics.NewEmptyRegistry(),
 	}
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type chunkReadCountingStorage struct {
+	snapshot_storage.Storage
+	reads atomic.Int64
+}
+
+func (s *chunkReadCountingStorage) ReadChunkBlob(
+	ctx context.Context,
+	chunkID string,
+	storedInS3 bool,
+) (chunks.ChunkBlob, error) {
+
+	s.reads.Add(1)
+	return s.Storage.ReadChunkBlob(ctx, chunkID, storedInS3)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -79,7 +104,7 @@ func TestBackupChunksTask(t *testing.T) {
 	require.Equal(t, "kek1", *raw.Metadata["Key-Id"])
 	require.Equal(t, *object.Metadata["Checksum"], *raw.Metadata["Checksum"])
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 }
@@ -123,12 +148,12 @@ func TestBackupChunksTaskCopiesSeveralBatches(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 }
 
-func TestBackupChunksTaskReturnsAfterMaxChunks(t *testing.T) {
+func TestBackupChunksTaskCopiesOnlyItsRange(t *testing.T) {
 	ctx := test.NewContext()
 
 	storage, closeFunc := newStorage(t, ctx)
@@ -155,25 +180,61 @@ func TestBackupChunksTaskReturnsAfterMaxChunks(t *testing.T) {
 	err := enqueueBackupChunks(ctx, storage, entries)
 	require.NoError(t, err)
 
+	// The range holds only the shard of chunk0, as backup_chunk_queue keys
+	// rows by cityhash64 of the chunk ID.
+	shardID := cityhash.Hash64([]byte(chunk0))
 	task := newBackupChunksTask(storage, follower)
-	task.batchSize = 1
-	task.maxChunks = 1
+	task.request.FirstShardId = shardID
+	task.request.LastShardId = shardID
 	execCtx := mocks.NewExecutionContextMock()
 
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	_, err = follower.getObject(ctx, backup.ChunkKey(chunk0))
 	require.NoError(t, err)
-	require.Len(t, queue, 1)
 
-	copiedChunkID := chunk0
-	if queue[0].ChunkID == chunk0 {
-		copiedChunkID = chunk1
+	queue, err := queuedBackupChunks(ctx, storage)
+	require.NoError(t, err)
+	require.Equal(t, entries[1:], queue)
+}
+
+func TestBackupChunksTaskStopsWhenChunksFailInARow(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage, closeFunc := newStorage(t, ctx)
+	defer closeFunc()
+
+	follower := newTestFollower(t, ctx)
+
+	// None of these chunks exists in the chunk storage.
+	var entries []snapshot_storage.BackupChunkQueueEntry
+	for _, chunkID := range []string{"task.snap1.0", "task.snap1.1"} {
+		entries = append(entries, snapshot_storage.BackupChunkQueueEntry{
+			SnapshotID:   "snap1",
+			ChunkID:      chunkID,
+			StoredInS3:   true,
+			EncryptedDEK: follower.encryptedDEK,
+		})
 	}
-
-	_, err = follower.getObject(ctx, backup.ChunkKey(copiedChunkID))
+	err := enqueueBackupChunks(ctx, storage, entries)
 	require.NoError(t, err)
+
+	countingStorage := &chunkReadCountingStorage{Storage: storage}
+	task := newBackupChunksTask(countingStorage, follower)
+	task.batchSize = 1
+	task.ioDepth = 1
+	execCtx := mocks.NewExecutionContextMock()
+
+	// The first failure is a batch worth of failures in a row: the task
+	// stops instead of trying the next chunk.
+	err = task.Run(ctx, execCtx)
+	require.Error(t, err)
+	require.EqualValues(t, 1, countingStorage.reads.Load())
+
+	queue, err := queuedBackupChunks(ctx, storage)
+	require.NoError(t, err)
+	require.ElementsMatch(t, entries, queue)
 }
 
 func TestBackupChunksTaskGoesOnPastMissingChunk(t *testing.T) {
@@ -212,7 +273,7 @@ func TestBackupChunksTaskGoesOnPastMissingChunk(t *testing.T) {
 	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
 	require.NoError(t, err)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Equal(
 		t,
@@ -232,59 +293,4 @@ func TestBackupChunksTaskEndsOnEmptyQueue(t *testing.T) {
 	execCtx := mocks.NewExecutionContextMock()
 
 	require.NoError(t, task.Run(ctx, execCtx))
-}
-
-func queueEntry(
-	snapshotID string,
-	chunkID string,
-) snapshot_storage.BackupChunkQueueEntry {
-
-	return snapshot_storage.BackupChunkQueueEntry{
-		SnapshotID: snapshotID,
-		ChunkID:    chunkID,
-	}
-}
-
-func TestTakenBackupChunksSkipsTakenEntries(t *testing.T) {
-	entry := queueEntry
-	taken := newTakenBackupChunks()
-
-	fresh := taken.take([]snapshot_storage.BackupChunkQueueEntry{
-		entry("snap1", "c1"),
-		entry("snap1", "c2"),
-	})
-	require.Len(t, fresh, 2)
-	require.True(t, taken.hasPending())
-
-	// A prefetched batch returns c2 again and a new c3; the same chunk of
-	// another snapshot is a separate entry.
-	fresh = taken.take([]snapshot_storage.BackupChunkQueueEntry{
-		entry("snap1", "c2"),
-		entry("snap1", "c3"),
-		entry("snap2", "c2"),
-	})
-	require.Equal(t, []snapshot_storage.BackupChunkQueueEntry{
-		entry("snap1", "c3"),
-		entry("snap2", "c2"),
-	}, fresh)
-
-	taken.completed([]snapshot_storage.BackupChunkQueueEntry{
-		entry("snap1", "c1"),
-		entry("snap1", "c2"),
-		entry("snap2", "c2"),
-	})
-
-	copyErr := errors.New("copy failed")
-	taken.failed(entry("snap1", "c3"), copyErr)
-	require.False(t, taken.hasPending())
-	require.Equal(t, copyErr, taken.firstError())
-
-	// A completed entry can be taken again, a failed one cannot.
-	fresh = taken.take([]snapshot_storage.BackupChunkQueueEntry{
-		entry("snap1", "c1"),
-		entry("snap1", "c3"),
-	})
-	require.Equal(t, []snapshot_storage.BackupChunkQueueEntry{
-		entry("snap1", "c1"),
-	}, fresh)
 }

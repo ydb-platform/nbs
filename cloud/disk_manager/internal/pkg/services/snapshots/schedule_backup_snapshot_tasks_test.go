@@ -100,10 +100,11 @@ func expectRunningCopies(
 		).Once()
 	}
 
-	storage.On("ListScheduledSnapshotBackups", mock.Anything).Return(
-		scheduled,
-		nil,
-	).Once()
+	storage.On(
+		"ListScheduledSnapshotBackups",
+		mock.Anything,
+		mock.Anything,
+	).Return(scheduled, nil).Once()
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -185,7 +186,11 @@ func TestScheduleBackupSnapshotTasksFreesSlotsOfEndedTasks(t *testing.T) {
 
 	// Both tasks ended without removing their rows: one was force-finished,
 	// the other was cleared from the task storage.
-	storage.On("ListScheduledSnapshotBackups", mock.Anything).Return(
+	storage.On(
+		"ListScheduledSnapshotBackups",
+		mock.Anything,
+		mock.Anything,
+	).Return(
 		[]resources.ScheduledSnapshotBackup{
 			{SnapshotID: "snap1", BackupID: "attempt1", TaskID: "task1"},
 			{SnapshotID: "snap2", BackupID: "attempt2", TaskID: "task2"},

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package dataplane;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message BackupChunksRequest {
+    // The shard_id range of backup_chunk_queue the task copies, inclusive.
+    // Only one task at a time copies a range.
+    uint64 FirstShardId = 1;
+    uint64 LastShardId = 2;
+}

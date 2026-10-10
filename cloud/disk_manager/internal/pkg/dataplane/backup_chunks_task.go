@@ -2,13 +2,13 @@ package dataplane
 
 import (
 	"context"
-	"math/rand"
 	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
@@ -24,32 +24,32 @@ const backupChunksCompleteInterval = time.Second
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Copies queued chunks to the follower until the queue is empty or it has
-// taken maxChunks. The dispatcher keeps as many of these running as the queue
-// needs.
+// Copies the queued chunks of one shard_id range to the follower and ends.
+// The dispatcher gives a range to one task at a time, so no other task copies
+// these chunks.
 //
-// The copy is a pipeline: a fetcher reads the next batch while the copiers
-// work on the current one, and a completer marks copied chunks in batches.
-// There is no pause between batches.
+// The copy is a pipeline: a fetcher reads the next batch of the range while
+// the copiers work on the current one, and a completer marks copied chunks in
+// batches. There is no pause between batches.
 type backupChunksTask struct {
 	storage  storage.Storage
 	backupS3 *backup.S3
 	registry metrics.Registry
+	request  *protos.BackupChunksRequest
 
-	// Chunks taken from the queue at a time.
+	// Chunks read from the queue at a time.
 	batchSize int
 	// Chunks copied at the same time.
 	ioDepth int
-	// The task ends after taking this many chunks; 0 = no limit.
-	maxChunks int
 }
 
 func (t *backupChunksTask) Save() ([]byte, error) {
 	return nil, nil
 }
 
-func (t *backupChunksTask) Load(_, _ []byte) error {
-	return nil
+func (t *backupChunksTask) Load(request, _ []byte) error {
+	t.request = &protos.BackupChunksRequest{}
+	return proto.Unmarshal(request, t.request)
 }
 
 func (t *backupChunksTask) Run(
@@ -61,7 +61,7 @@ func (t *backupChunksTask) Run(
 	workers.Add(1)
 	defer workers.Add(-1)
 
-	taken := newTakenBackupChunks()
+	failures := &backupChunkCopyFailures{limit: t.batchSize}
 	toCopy := make(chan storage.BackupChunkQueueEntry, t.batchSize)
 	copied := make(chan storage.BackupChunkQueueEntry, t.batchSize)
 
@@ -69,7 +69,7 @@ func (t *backupChunksTask) Run(
 
 	group.Go(func() error {
 		defer close(toCopy)
-		return t.fetch(groupCtx, taken, toCopy)
+		return t.fetch(groupCtx, toCopy)
 	})
 
 	var copiers sync.WaitGroup
@@ -77,8 +77,7 @@ func (t *backupChunksTask) Run(
 		copiers.Add(1)
 		group.Go(func() error {
 			defer copiers.Done()
-			t.copy(groupCtx, taken, toCopy, copied)
-			return nil
+			return t.copy(groupCtx, failures, toCopy, copied)
 		})
 	}
 
@@ -88,8 +87,10 @@ func (t *backupChunksTask) Run(
 		return nil
 	})
 
+	// The completer runs on the parent context: when the copy stops early, the
+	// chunks already copied are still marked and not copied again.
 	group.Go(func() error {
-		return t.complete(groupCtx, taken, copied)
+		return t.complete(ctx, copied)
 	})
 
 	err := group.Wait()
@@ -97,8 +98,10 @@ func (t *backupChunksTask) Run(
 		return err
 	}
 
-	// Failed chunks stay queued; the task is retried and takes them again.
-	return taken.firstError()
+	// Failed chunks stay queued. A retriable error makes the framework run
+	// the task again; otherwise the task fails and the dispatcher schedules
+	// a new one for the range.
+	return failures.first()
 }
 
 func (t *backupChunksTask) Cancel(
@@ -122,22 +125,21 @@ func (t *backupChunksTask) GetResponse() proto.Message {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// Reads batches from random places of the queue and passes the chunks this
-// task has not taken yet to the copiers. Ends when the queue is empty, when
-// only this task's failed chunks are left or after maxChunks.
+// Reads the range batch by batch, each after the last entry of the previous
+// one, and passes the chunks to the copiers.
 func (t *backupChunksTask) fetch(
 	ctx context.Context,
-	taken *takenBackupChunks,
 	toCopy chan<- storage.BackupChunkQueueEntry,
 ) error {
 
-	sent := 0
-	for t.maxChunks == 0 || sent < t.maxChunks {
+	var after *storage.BackupChunkQueueEntry
+	for {
 		readStart := time.Now()
-		// A random start keeps the batches of concurrent workers apart.
 		entries, err := t.storage.GetQueuedChunksToBackup(
 			ctx,
-			rand.Uint64(),
+			t.request.FirstShardId,
+			t.request.LastShardId,
+			after,
 			t.batchSize,
 		)
 		t.registry.Timer("backup/queueReadTime").RecordDuration(
@@ -151,45 +153,30 @@ func (t *backupChunksTask) fetch(
 			return nil
 		}
 
-		fresh := taken.take(entries)
-		if len(fresh) == 0 {
-			// Everything read is this task's: being copied, waiting to be
-			// marked or failed.
-			if !taken.hasPending() {
-				return nil
-			}
-
-			select {
-			case <-taken.progress:
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-			continue
-		}
-
-		for _, entry := range fresh {
+		for _, entry := range entries {
 			select {
 			case toCopy <- entry:
-				sent++
 			case <-ctx.Done():
 				return ctx.Err()
 			}
 		}
-	}
 
-	return nil
+		after = &entries[len(entries)-1]
+	}
 }
 
+// Stops the task when a batch worth of chunks failed in a row: the follower
+// or the chunk storage is likely down.
 func (t *backupChunksTask) copy(
 	ctx context.Context,
-	taken *takenBackupChunks,
+	failures *backupChunkCopyFailures,
 	toCopy <-chan storage.BackupChunkQueueEntry,
 	copied chan<- storage.BackupChunkQueueEntry,
-) {
+) error {
 
 	for entry := range toCopy {
 		if ctx.Err() != nil {
-			return
+			return nil
 		}
 
 		err := t.copyChunk(ctx, entry)
@@ -201,23 +188,29 @@ func (t *backupChunksTask) copy(
 				entry.SnapshotID,
 				err,
 			)
-			taken.failed(entry, err)
+			if failures.add(err) {
+				return err
+			}
 			continue
 		}
+
+		failures.reset()
 
 		select {
 		case copied <- entry:
 		case <-ctx.Done():
-			return
+			return nil
 		}
 	}
+
+	return nil
 }
 
 // Marks copied chunks in batches of batchSize, or every
-// backupChunksCompleteInterval when fewer are waiting.
+// backupChunksCompleteInterval when fewer are waiting. Ends when the copiers
+// are done and copied is closed.
 func (t *backupChunksTask) complete(
 	ctx context.Context,
-	taken *takenBackupChunks,
 	copied <-chan storage.BackupChunkQueueEntry,
 ) error {
 
@@ -232,7 +225,6 @@ func (t *backupChunksTask) complete(
 			return err
 		}
 
-		taken.completed(batch)
 		batch = nil
 		return nil
 	}
@@ -259,8 +251,6 @@ func (t *backupChunksTask) complete(
 			if err != nil {
 				return err
 			}
-		case <-ctx.Done():
-			return ctx.Err()
 		}
 	}
 }
@@ -301,108 +291,36 @@ func (t *backupChunksTask) copyChunk(
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type backupChunkKey struct {
-	snapshotID string
-	chunkID    string
-}
-
-// Queue entries this task has taken and not marked copied yet. A prefetched
-// batch may return them again; they are skipped instead of copied twice.
-type takenBackupChunks struct {
+type backupChunkCopyFailures struct {
 	mutex sync.Mutex
-	// Taken entries; true once the copy of the entry failed.
-	entries map[backupChunkKey]bool
-	pending int
-	err     error
-	// Signalled when an entry stops being pending.
-	progress chan struct{}
+	// Failures in a row that stop the task.
+	limit int
+	inRow int
+	err   error
 }
 
-func newTakenBackupChunks() *takenBackupChunks {
-	return &takenBackupChunks{
-		entries:  make(map[backupChunkKey]bool),
-		progress: make(chan struct{}, 1),
+// Returns true when limit chunks failed in a row.
+func (f *backupChunkCopyFailures) add(err error) bool {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+
+	if f.err == nil {
+		f.err = err
 	}
+	f.inRow++
+	return f.inRow >= f.limit
 }
 
-func backupChunkKeyOf(entry storage.BackupChunkQueueEntry) backupChunkKey {
-	return backupChunkKey{
-		snapshotID: entry.SnapshotID,
-		chunkID:    entry.ChunkID,
-	}
+func (f *backupChunkCopyFailures) reset() {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
+
+	f.inRow = 0
 }
 
-// Returns the entries not taken before and takes them.
-func (c *takenBackupChunks) take(
-	entries []storage.BackupChunkQueueEntry,
-) []storage.BackupChunkQueueEntry {
+func (f *backupChunkCopyFailures) first() error {
+	f.mutex.Lock()
+	defer f.mutex.Unlock()
 
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	var fresh []storage.BackupChunkQueueEntry
-	for _, entry := range entries {
-		key := backupChunkKeyOf(entry)
-		if _, ok := c.entries[key]; ok {
-			continue
-		}
-
-		c.entries[key] = false
-		c.pending++
-		fresh = append(fresh, entry)
-	}
-
-	return fresh
-}
-
-func (c *takenBackupChunks) completed(
-	entries []storage.BackupChunkQueueEntry,
-) {
-
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	for _, entry := range entries {
-		delete(c.entries, backupChunkKeyOf(entry))
-		c.pending--
-	}
-	c.signal()
-}
-
-// The entry stays taken: this task does not retry it, the next one will.
-func (c *takenBackupChunks) failed(
-	entry storage.BackupChunkQueueEntry,
-	err error,
-) {
-
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	c.entries[backupChunkKeyOf(entry)] = true
-	c.pending--
-	if c.err == nil {
-		c.err = err
-	}
-	c.signal()
-}
-
-func (c *takenBackupChunks) hasPending() bool {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	return c.pending > 0
-}
-
-func (c *takenBackupChunks) firstError() error {
-	c.mutex.Lock()
-	defer c.mutex.Unlock()
-
-	return c.err
-}
-
-func (c *takenBackupChunks) signal() {
-	select {
-	case c.progress <- struct{}{}:
-	default:
-	}
+	return f.err
 }
