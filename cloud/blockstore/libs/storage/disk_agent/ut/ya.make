@@ -9,6 +9,7 @@ ENDIF()
 SRCS(
     disk_agent_state_ut.cpp
     journalled_device_adapter_ut.cpp
+    journalled_device_manager_ut.cpp
     rdma_target_ut.cpp
     recent_blocks_tracker_ut.cpp
     secure_erase_state_ut.cpp

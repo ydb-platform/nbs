@@ -1,6 +1,7 @@
 #include "server.h"
 
 #include "request.h"
+#include "service.h"
 
 #include <cloud/fastshard/sn/iface/storage_node.h>
 
