@@ -434,7 +434,7 @@ void TDestroyVolumeActor::HandleStatVolumeResponse(
     const auto* msg = ev->Get();
 
     if (IsNotFoundSchemeShardError(msg->GetError())) {
-        if (Sync && IsLocalShard) {
+        if (Sync && IsLocalShard && !ExpectedTabletId) {
             VolumeNotFoundInSS = true;
             DeallocateDisk(ctx);
         } else {

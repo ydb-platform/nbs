@@ -67,13 +67,15 @@ A repeated create request for the same active link is idempotent. Query the exis
 
 Each operation has at most one scheduled or in-flight cleanup request. The delay belongs to the current destination volume actor, which checks that the UUID still requires cleanup before sending a delete. If an internal unlink removes that UUID, its cleanup reservation is released and another pending operation can proceed, including when an already queued completion transaction is rejected.
 
-Cross-shard cleanup requests carry `ExpectedVolumeTabletId` and use exact physical names. Schema deletion also checks the resolved path incarnation atomically, so an old request cannot delete a volume recreated under the same name. Conditional deletion supports only replicated SSD/HDD and rejects `DestroyIfBroken`. The service checks the media kind both before and after `StatVolume`, before DiskRegistry cleanup or graceful shutdown. Ordinary local DiskRegistry deletion without `ExpectedVolumeTabletId` remains unchanged.
+Cross-shard cleanup requests carry `ExpectedVolumeTabletId` and use exact physical names. Schema deletion also checks the resolved path incarnation atomically, so an old request cannot delete a volume recreated under the same name. Conditional deletion supports only replicated SSD/HDD and rejects `DestroyIfBroken`. The service checks the media kind both before and after `StatVolume`, before DiskRegistry cleanup or graceful shutdown. If `StatVolume` reports not-found after the guarded describe, conditional deletion returns `S_ALREADY` without DiskRegistry deallocation, including with `Sync=true`. Ordinary local DiskRegistry deletion without `ExpectedVolumeTabletId` remains unchanged.
 
 Before deletion, cleanup verifies the operation UUID, tablet identifier and media kind on the current source owner. It does not infer ownership from the physical name alone. A different current tablet identifier means that the recorded source incarnation is already gone. An incomplete response without verifiable UUID/tablet information leaves cleanup pending for retry; it does not mark the operation completed.
 
 Existing same-shard DiskRegistry copies retain their legacy cleanup path without `ExpectedVolumeTabletId` after source-link verification. Cross-shard cleanup never falls back to unconditional deletion for unsupported or unknown media kinds.
 
 Disconnected disks copy without a user mount: source partitions are retained in a copy-only mode while data is needed. Cancellation releases that retention and resets stopped partition state so subsequent mounts and I/O can start the partitions again.
+
+If a recovered `Created` link fails because the destination is missing, recreated or unsupported, copy-only retention is released after the terminal `Error` state commits. Partitions either stop or return to the normal GC lifecycle if needed. This release does not stop partitions serving a mounted source.
 
 ## Cancellation
 
@@ -163,7 +165,10 @@ The test coverage includes:
 - cleanup handed off after cancellation and a rejected queued completion transaction;
 - conditional local DiskRegistry deletion rejected before cleanup or shutdown;
 - a DiskRegistry replacement created between guarded describe and stat left untouched;
-- existing same-shard DiskRegistry copy cleanup completes without conditional deletion.
+- existing same-shard DiskRegistry copy cleanup completes without conditional deletion;
+- conditional Sync deletion handles a late not-found stat without deallocating a replacement;
+- failed `Created` recovery releases copy-only partitions after the Error commit;
+- delayed Error transactions retain partitions until commit and preserve mounted source I/O.
 
 Build the server and administrative client:
 

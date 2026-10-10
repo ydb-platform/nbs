@@ -1,6 +1,8 @@
 #include "service_ut.h"
 
+#include <cloud/blockstore/libs/storage/api/bootstrapper.h>
 #include <cloud/blockstore/libs/storage/api/disk_registry.h>
+#include <cloud/blockstore/libs/storage/api/partition.h>
 #include <cloud/blockstore/libs/storage/api/ss_proxy.h>
 #include <cloud/blockstore/libs/storage/api/volume.h>
 #include <cloud/blockstore/libs/storage/api/volume_proxy.h>
@@ -467,6 +469,116 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         UNIT_ASSERT_VALUES_EQUAL(
             static_cast<int>(NProto::LINK_STATUS_PREPARING),
             static_cast<int>(fixture.GetStatus().GetStatus()));
+    }
+
+    void TestConditionalSyncDeleteNotFound(bool createReplacement)
+    {
+        TTestEnvState state;
+        TTestEnv env(1, 1, 4, 1, state);
+        NProto::TStorageServiceConfig config;
+        config.SetAllocationUnitNonReplicatedSSD(1);
+        const auto node = SetupTestEnv(env, config);
+        auto& runtime = env.GetRuntime();
+        TServiceClient client(runtime, node);
+        client.CreateVolume("disk", 1_GB / DefaultBlockSize, DefaultBlockSize,
+                            "", "", NProto::STORAGE_MEDIA_SSD);
+        client.SendRequest(
+            MakeSSProxyServiceId(),
+            std::make_unique<TEvSSProxy::TEvDescribeVolumeRequest>("disk",
+                                                                   true));
+        const auto described =
+            client.RecvResponse<TEvSSProxy::TEvDescribeVolumeResponse>();
+        UNIT_ASSERT_VALUES_EQUAL(S_OK, described->GetStatus());
+        const auto tabletId =
+            described->PathDescription.GetBlockStoreVolumeDescription()
+                .GetVolumeTabletId();
+        std::unique_ptr<IEventHandle> heldStat;
+        bool captured = false;
+        ui32 mutations = 0;
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (!captured &&
+                    event->GetTypeRewrite() ==
+                        TEvService::EvStatVolumeRequest &&
+                    event->Get<TEvService::TEvStatVolumeRequest>()
+                            ->Record.GetDiskId() == "disk")
+                {
+                    captured = true;
+                    heldStat.reset(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                if (event->GetTypeRewrite() ==
+                        TEvDiskRegistry::EvDeallocateDiskRequest ||
+                    event->GetTypeRewrite() ==
+                        TEvDiskRegistry::EvMarkDiskForCleanupRequest ||
+                    event->GetTypeRewrite() ==
+                        TEvVolume::EvGracefulShutdownRequest)
+                {
+                    ++mutations;
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto request =
+            client.CreateDestroyVolumeRequest("disk", false, true, 0, true);
+        request->Record.SetExpectedVolumeTabletId(tabletId);
+        client.SendRequest(MakeStorageServiceId(), std::move(request));
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return heldStat != nullptr;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(heldStat);
+
+        client.DestroyVolume("disk", false, false, 0, true);
+        TString replacementDevice;
+        if (createReplacement) {
+            client.CreateVolume("disk", 1_GB / DefaultBlockSize,
+                                DefaultBlockSize, "", "",
+                                NProto::STORAGE_MEDIA_SSD_NONREPLICATED);
+            replacementDevice = state.DiskRegistryState->Disks.at("disk")
+                                    .Devices.front()
+                                    .GetDeviceUUID();
+        }
+        // A late not-found result for the original incarnation must not
+        // deallocate a fresh allocation with the same physical name.
+        auto response = std::make_unique<TEvService::TEvStatVolumeResponse>();
+        *response->Record.MutableError() = MakeError(
+            MAKE_SCHEMESHARD_ERROR(NKikimrScheme::StatusPathDoesNotExist));
+        runtime.Send(new IEventHandle(heldStat->Sender,
+                                      runtime.AllocateEdgeActor(node),
+                                      response.release(), 0, heldStat->Cookie),
+                     node, true);
+        UNIT_ASSERT_VALUES_EQUAL(
+            S_ALREADY, client.RecvDestroyVolumeResponse()->GetStatus());
+        UNIT_ASSERT_VALUES_EQUAL(0, mutations);
+        if (createReplacement) {
+            UNIT_ASSERT_VALUES_EQUAL(
+                replacementDevice,
+                state.DiskRegistryState->Disks.at("disk")
+                    .Devices.front()
+                    .GetDeviceUUID());
+            UNIT_ASSERT(
+                !state.DiskRegistryState->DisksMarkedForCleanup.contains(
+                    "disk"));
+            const auto replacement = client.DescribeVolume("disk", true);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::STORAGE_MEDIA_SSD_NONREPLICATED),
+                static_cast<int>(
+                    replacement->Record.GetVolume().GetStorageMediaKind()));
+        }
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
+    Y_UNIT_TEST(ShouldSkipDrDeallocationOnConditionalSyncDeleteNotFound)
+    {
+        TestConditionalSyncDeleteNotFound(false);
+    }
+
+    Y_UNIT_TEST(ShouldPreserveDrReplacementOnConditionalSyncDeleteNotFound)
+    {
+        TestConditionalSyncDeleteNotFound(true);
     }
 
     Y_UNIT_TEST(ShouldRejectConditionalLocalDrDeleteBeforeMutations)
@@ -2080,6 +2192,305 @@ Y_UNIT_TEST_SUITE(TServiceLinkVolumeTest)
         UNIT_ASSERT_C(creates.size() > oldCreates,
                       "Recovered Created link did not persist its destination");
         runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
+    enum class ERecoveryDestination
+    {
+        Missing,
+        Recreated,
+        Unsupported,
+    };
+
+    void TestCreatedRecoveryErrorReleasesPartitions(
+        ERecoveryDestination destination, bool queueError, bool mounted)
+    {
+        TCrossShardFixture fixture(NProto::STORAGE_MEDIA_SSD,
+                                   NProto::STORAGE_MEDIA_SSD,
+                                   1_GB / DefaultBlockSize, false, true);
+        auto& runtime = fixture.Env.GetRuntime();
+        const auto sourceTablet = fixture.GetTabletId("disk", "source");
+        TString uuid;
+        bool recovering = false;
+        bool holdError = true;
+        bool creatorFinished = false;
+        bool errorHandled = false;
+        bool errorCommitted = false;
+        bool partitionStopped = false;
+        ui32 stops = 0;
+        TActorId sourceOwner, bootstrapper, errorSender, executorId;
+        TActorId nativeReadyOwner;
+        std::unique_ptr<IEventHandle> heldError;
+        TVector<std::unique_ptr<IEventHandle>> creates;
+        std::shared_ptr<TExecutorQueueProbe> queue;
+
+        runtime.SetObserverFunc(
+            [&](TAutoPtr<IEventHandle>& event)
+            {
+                if (queue && queue->Block &&
+                    event->GetRecipientRewrite() == executorId &&
+                    event->GetTypeRewrite() ==
+                        EventSpaceBegin(NKikimr::TKikimrEvents::ES_PRIVATE))
+                {
+                    queue->Activations.emplace_back(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                if (event->GetTypeRewrite() ==
+                    TEvVolumePrivate::EvUpdateFollowerStateRequest)
+                {
+                    auto& follower =
+                        event
+                            ->Get<TEvVolumePrivate::
+                                      TEvUpdateFollowerStateRequest>()
+                            ->Follower;
+                    if (!recovering &&
+                        follower.State == TFollowerDiskInfo::EState::Created)
+                    {
+                        uuid = follower.Link.LinkUUID;
+                        if (destination == ERecoveryDestination::Unsupported) {
+                            // Exercise media admission for a legacy Created
+                            // row without a stored destination incarnation.
+                            follower.Link.FollowerTabletId = 0;
+                        }
+                    }
+                    if (recovering && follower.Link.LinkUUID == uuid &&
+                        follower.State == TFollowerDiskInfo::EState::Error)
+                    {
+                        sourceOwner = event->GetRecipientRewrite();
+                        errorSender = event->Sender;
+                        if (holdError) {
+                            UNIT_ASSERT(!heldError);
+                            heldError.reset(event.Release());
+                            return TTestActorRuntime::EEventAction::DROP;
+                        }
+                        errorHandled = true;
+                    }
+                }
+                if (recovering &&
+                    event->GetTypeRewrite() ==
+                        TEvVolumePrivate::EvCreateLinkFinished &&
+                    event->GetRecipientRewrite() == sourceOwner)
+                {
+                    creatorFinished = true;
+                }
+                if (event->GetTypeRewrite() ==
+                        TEvVolume::EvUpdateLinkOnFollowerRequest &&
+                    event->Get<TEvVolume::TEvUpdateLinkOnFollowerRequest>()
+                            ->Record.GetAction() == NProto::LINK_ACTION_CREATE)
+                {
+                    creates.emplace_back(event.Release());
+                    return TTestActorRuntime::EEventAction::DROP;
+                }
+                if (recovering &&
+                    event->GetTypeRewrite() == TEvBootstrapper::EvStatus &&
+                    event->Sender.NodeId() ==
+                        runtime.GetNodeId(fixture.SourceNode))
+                {
+                    const auto* status =
+                        event->Get<TEvBootstrapper::TEvStatus>();
+                    if (!bootstrapper &&
+                        status->Status == TEvBootstrapper::STARTED) {
+                        bootstrapper = event->Sender;
+                    }
+                    if (event->Sender == bootstrapper &&
+                        status->Status == TEvBootstrapper::STOPPED)
+                    {
+                        partitionStopped = true;
+                    }
+                }
+                if (recovering &&
+                    event->GetTypeRewrite() ==
+                        TEvPartition::EvWaitReadyResponse &&
+                    event->Sender.NodeId() ==
+                        runtime.GetNodeId(fixture.SourceNode))
+                {
+                    nativeReadyOwner = event->GetRecipientRewrite();
+                }
+                if (bootstrapper && event->Sender == sourceOwner &&
+                    event->GetRecipientRewrite() == bootstrapper &&
+                    event->GetTypeRewrite() == TEvBootstrapper::EvStop)
+                {
+                    ++stops;
+                }
+                if (recovering && event->Sender == sourceOwner &&
+                    event->GetRecipientRewrite() == errorSender &&
+                    event->GetTypeRewrite() ==
+                        TEvVolumePrivate::EvUpdateFollowerStateResponse)
+                {
+                    const auto* response = event->Get<
+                        TEvVolumePrivate::TEvUpdateFollowerStateResponse>();
+                    if (response->Follower.Link.LinkUUID == uuid &&
+                        response->Follower.State ==
+                            TFollowerDiskInfo::EState::Error)
+                    {
+                        UNIT_ASSERT_VALUES_EQUAL(S_OK, response->GetStatus());
+                        errorCommitted = true;
+                    }
+                }
+                return TTestActorRuntime::DefaultObserverFunc(event);
+            });
+        auto create =
+            fixture.Source->CreateCreateVolumeLinkRequest("disk", "disk-copy");
+        create->Record.SetLeaderShardId("source");
+        create->Record.SetFollowerShardId("target");
+        fixture.Source->SendRequest(MakeStorageServiceId(), std::move(create));
+        TDispatchOptions options;
+        options.CustomFinalCondition = [&]
+        {
+            return !creates.empty();
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(uuid && !creates.empty());
+        fixture.Target->DestroyVolume("disk-copy", false, false, 0, true);
+        if (destination != ERecoveryDestination::Missing) {
+            fixture.Target->CreateVolume(
+                "disk-copy",
+                1_GB / DefaultBlockSize,
+                DefaultBlockSize,
+                "",
+                "",
+                destination == ERecoveryDestination::Unsupported
+                    ? NProto::STORAGE_MEDIA_SSD_NONREPLICATED
+                    : NProto::STORAGE_MEDIA_SSD);
+        }
+        recovering = true;
+        NKikimr::RebootTablet(runtime, sourceTablet,
+                              fixture.Source->GetSender(), fixture.SourceNode);
+        options.CustomFinalCondition = [&]
+        {
+            return heldError && bootstrapper && creatorFinished &&
+                   nativeReadyOwner == sourceOwner;
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(heldError && bootstrapper && creatorFinished);
+        UNIT_ASSERT_VALUES_EQUAL(sourceOwner, nativeReadyOwner);
+        UNIT_ASSERT(!partitionStopped);
+        UNIT_ASSERT_VALUES_EQUAL(0, stops);
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NProto::LINK_STATUS_PREPARING),
+            static_cast<int>(fixture.GetStatus().GetStatus()));
+        auto mountSource = [&]
+        {
+            // A local mount deliberately reboots the owner under a client
+            // lock. Keep this recovered owner and its queued Error in place.
+            auto request = fixture.Source->CreateMountVolumeRequest("disk");
+            request->Record.SetVolumeMountMode(NProto::VOLUME_MOUNT_REMOTE);
+            fixture.Source->SendRequest(MakeStorageServiceId(),
+                                        std::move(request));
+            const auto response = fixture.Source->RecvMountVolumeResponse();
+            UNIT_ASSERT_VALUES_EQUAL_C(S_OK, response->GetStatus(),
+                                       response->GetErrorReason());
+            NTestVolume::TVolumeClient source(runtime, fixture.SourceNode,
+                                              sourceTablet);
+            source.WaitReady();
+            return response->Record.GetSessionId();
+        };
+        TString session;
+        if (mounted) {
+            session = mountSource();
+            fixture.Source->WriteBlocks("disk", TBlockRange64::MakeOneBlock(0),
+                                        session, 'r');
+        }
+        if (queueError) {
+            auto* tablet = dynamic_cast<
+                NKikimr::NTabletFlatExecutor::NFlatExecutorSetup::ITablet*>(
+                runtime.FindActor(sourceOwner));
+            UNIT_ASSERT(tablet);
+            executorId = tablet->ExecutorID();
+            auto* executor = dynamic_cast<
+                NKikimr::NTabletFlatExecutor::NFlatExecutorSetup::IExecutor*>(
+                runtime.FindActor(executorId));
+            UNIT_ASSERT(executor);
+            queue = std::make_shared<TExecutorQueueProbe>();
+            runtime.Register(
+                new TExecutorQueueSeedActor(executor, executorId, queue),
+                fixture.SourceNode);
+            options.CustomFinalCondition = [&]
+            {
+                return !queue->Activations.empty();
+            };
+            runtime.DispatchEvents(options, TDuration::Seconds(3));
+            UNIT_ASSERT(!queue->Activations.empty() && !queue->SeedExecuted);
+        }
+        holdError = false;
+        const auto errorRecipient = heldError->GetRecipientRewrite();
+        const auto sender = heldError->Sender;
+        const auto cookie = heldError->Cookie;
+        auto errorBody = heldError->ReleaseBase();
+        heldError.reset();
+        runtime.Send(new IEventHandle(errorRecipient, sender,
+                                      errorBody.Release(), 0, cookie),
+                     fixture.SourceNode, true);
+        if (queueError) {
+            options.CustomFinalCondition = [&]
+            {
+                return errorHandled;
+            };
+            runtime.DispatchEvents(options, TDuration::Seconds(3));
+            UNIT_ASSERT(errorHandled && !queue->SeedExecuted);
+            UNIT_ASSERT(!errorCommitted && !partitionStopped);
+            UNIT_ASSERT_VALUES_EQUAL(0, stops);
+            UNIT_ASSERT_VALUES_EQUAL(
+                static_cast<int>(NProto::LINK_STATUS_PREPARING),
+                static_cast<int>(fixture.GetStatus().GetStatus()));
+            queue->Block = false;
+            for (auto& activation: queue->Activations) {
+                runtime.Send(activation.release(), fixture.SourceNode);
+            }
+        }
+        options.CustomFinalCondition = [&]
+        {
+            return errorCommitted && (mounted || partitionStopped);
+        };
+        runtime.DispatchEvents(options, TDuration::Seconds(5));
+        UNIT_ASSERT(errorCommitted);
+        UNIT_ASSERT_VALUES_EQUAL(mounted ? 0 : 1, stops);
+        UNIT_ASSERT_VALUES_EQUAL(!mounted, partitionStopped);
+        if (queueError) {
+            UNIT_ASSERT(queue->SeedExecuted);
+        }
+        UNIT_ASSERT_VALUES_EQUAL(
+            static_cast<int>(NProto::LINK_STATUS_ERROR),
+            static_cast<int>(fixture.GetStatus().GetStatus()));
+        if (!mounted) {
+            session = mountSource();
+            fixture.Source->WriteBlocks("disk", TBlockRange64::MakeOneBlock(0),
+                                        session, 'r');
+        }
+        const auto read = fixture.Source->ReadBlocks("disk", 0, session);
+        UNIT_ASSERT_VALUES_EQUAL(TString(DefaultBlockSize, 'r'),
+                                 read->Record.GetBlocks().GetBuffers(0));
+        UNIT_ASSERT_VALUES_EQUAL(mounted ? 0 : 1, stops);
+        runtime.SetObserverFunc(TTestActorRuntime::DefaultObserverFunc);
+    }
+
+    Y_UNIT_TEST(ShouldReleaseCopyOnlyAfterRecoveryDestinationDisappears)
+    {
+        TestCreatedRecoveryErrorReleasesPartitions(
+            ERecoveryDestination::Missing, false, false);
+    }
+
+    Y_UNIT_TEST(ShouldReleaseCopyOnlyAfterRecoveryDestinationIsRecreated)
+    {
+        TestCreatedRecoveryErrorReleasesPartitions(
+            ERecoveryDestination::Recreated, false, false);
+    }
+
+    Y_UNIT_TEST(ShouldReleaseCopyOnlyAfterRecoveryDestinationIsUnsupported)
+    {
+        TestCreatedRecoveryErrorReleasesPartitions(
+            ERecoveryDestination::Unsupported, false, false);
+    }
+
+    Y_UNIT_TEST(ShouldReleaseCopyOnlyAfterQueuedRecoveryErrorCommit)
+    {
+        TestCreatedRecoveryErrorReleasesPartitions(
+            ERecoveryDestination::Missing, true, false);
+    }
+
+    Y_UNIT_TEST(ShouldKeepMountedPartitionsAfterQueuedRecoveryErrorCommit)
+    {
+        TestCreatedRecoveryErrorReleasesPartitions(
+            ERecoveryDestination::Missing, true, true);
     }
 
     Y_UNIT_TEST(

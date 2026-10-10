@@ -93,6 +93,20 @@ void TVolumeActor::CompleteUpdateFollower(
         response->Follower = *current;
     }
     NCloud::Reply(ctx, *args.RequestInfo, std::move(response));
+    // Recovery may finish before its Error transaction commits. Release
+    // copy-only retention here, after the terminal state is durable.
+    if (!HasError(args.Error) &&
+        args.FollowerInfo.State == TFollowerDiskInfo::EState::Error &&
+        PartitionsStartedReason == EPartitionsStartedReason::STARTED_FOR_COPY &&
+        !State->HasActiveFollower())
+    {
+        if (State->HasActiveClients(ctx.Now())) {
+            // A remote mount may still have the copy-only start reason.
+            StartPartitionsIfNeeded(ctx);
+        } else {
+            RestartPartition(ctx, {});
+        }
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
