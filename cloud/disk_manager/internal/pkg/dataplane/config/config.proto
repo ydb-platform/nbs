@@ -49,4 +49,12 @@ message DataplaneConfig {
     optional uint32 BackupChunksTaskBatchSize = 23 [default = 100];
     // Maximum number of chunks copied to the follower bucket at the same time.
     optional uint32 BackupChunksInflightLimit = 24 [default = 10];
+
+    optional string DeleteBackupChunksTaskScheduleInterval = 25 [default = "10s"];
+    // Number of chunks taken from the backup chunk delete queue at a time to
+    // be deleted from the follower bucket.
+    optional uint32 DeleteBackupChunksTaskBatchSize = 26 [default = 1000];
+    // Maximum number of chunks deleted from the follower bucket at the same
+    // time.
+    optional uint32 DeleteBackupChunksInflightLimit = 27 [default = 10];
 }
