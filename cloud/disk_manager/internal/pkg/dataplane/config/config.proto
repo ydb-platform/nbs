@@ -63,9 +63,9 @@ message DataplaneConfig {
     // TasksConfig.InflightTaskPerNodeLimits capping the type at one, this is
     // the number of nodes that copy.
     optional uint32 BackupChunksMaxTasks = 28 [default = 1];
-    // Bytes per second one node sends to the follower bucket, in MiB.
-    // 0 disables the limit.
-    optional uint64 BackupBandwidthMiBs = 29 [default = 0];
+    // Was BackupBandwidthMiBs: the limit lives in
+    // SnapshotStorageBackupConfig.UploadBandwidthMiBsPerHost now.
+    reserved 29;
     // A dataplane.BackupChunks task ends after copying this many chunks and
     // the dispatcher schedules a new one. This spreads the tasks over the nodes
     // again and makes a smaller BackupChunksMaxTasks take effect: the

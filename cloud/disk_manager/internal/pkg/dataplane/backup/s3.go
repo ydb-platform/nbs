@@ -7,7 +7,9 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"time"
 
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
@@ -23,28 +25,40 @@ const (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// One instance per process: every write to the follower bucket goes through
+// it and waits in its limiter.
 type S3 struct {
 	s3        *persistence.S3Client
 	bucket    string
 	keyPrefix string
 	kekID     string
 	kek       cipher.AEAD
+	limiter   *BandwidthLimiter
+	registry  metrics.Registry
 }
 
+// uploadBytesPerSecond caps what this host writes to the bucket; 0 disables
+// the cap.
 func NewS3(
 	s3 *persistence.S3Client,
 	bucket string,
 	keyPrefix string,
 	kekID string,
 	kek []byte,
+	uploadBytesPerSecond uint64,
+	registry metrics.Registry,
 ) (*S3, error) {
 
+	backupS3 := &S3{
+		s3:        s3,
+		bucket:    bucket,
+		keyPrefix: keyPrefix,
+		limiter:   NewBandwidthLimiter(uploadBytesPerSecond),
+		registry:  registry,
+	}
+
 	if len(kekID) == 0 && len(kek) == 0 {
-		return &S3{
-			s3:        s3,
-			bucket:    bucket,
-			keyPrefix: keyPrefix,
-		}, nil
+		return backupS3, nil
 	}
 
 	if len(kekID) == 0 {
@@ -72,13 +86,9 @@ func NewS3(
 		return nil, err
 	}
 
-	return &S3{
-		s3:        s3,
-		bucket:    bucket,
-		keyPrefix: keyPrefix,
-		kekID:     kekID,
-		kek:       aead,
-	}, nil
+	backupS3.kekID = kekID
+	backupS3.kek = aead
+	return backupS3, nil
 }
 
 func (s *S3) NewEncryptedDEK() ([]byte, error) {
@@ -129,7 +139,7 @@ func (s *S3) PutObject(
 			)
 		}
 
-		return s.s3.PutObject(ctx, s.bucket, s.Key(key), object)
+		return s.put(ctx, key, object)
 	}
 
 	dek, err := s.decryptDEK(encryptedDEK)
@@ -154,11 +164,36 @@ func (s *S3) PutObject(
 	encodedDEK := base64.StdEncoding.EncodeToString(encryptedDEK)
 	metadata[encryptedDEKMetadataKey] = &encodedDEK
 
-	return s.s3.PutObject(ctx, s.bucket, s.Key(key), persistence.S3Object{
+	return s.put(ctx, key, persistence.S3Object{
 		Data:         data,
 		Metadata:     metadata,
 		StorageClass: object.StorageClass,
 	})
+}
+
+func (s *S3) put(
+	ctx context.Context,
+	key string,
+	object persistence.S3Object,
+) error {
+
+	waitStart := time.Now()
+	err := s.limiter.Wait(ctx, len(object.Data))
+	if err != nil {
+		return err
+	}
+	s.registry.Counter("backup/bandwidthWaitMs").Add(
+		time.Since(waitStart).Milliseconds(),
+	)
+
+	inflight := s.registry.Gauge("backup/putInflight")
+	inflight.Add(1)
+	defer inflight.Add(-1)
+
+	putStart := time.Now()
+	err = s.s3.PutObject(ctx, s.bucket, s.Key(key), object)
+	s.registry.Timer("backup/putTime").RecordDuration(time.Since(putStart))
+	return err
 }
 
 func (s *S3) GetObject(

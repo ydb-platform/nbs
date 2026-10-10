@@ -13,10 +13,10 @@ import (
 // to the follower whatever the number of copy tasks on it. A nil limiter and
 // a zero rate let everything through.
 //
-// availableBytes grows at addAvailableBytesPerSecond up to maxAvailableBytes: a
-// second of bandwidth, but not less than minMaxAvailableBytes. An idle node may
-// send at most that much at once. It goes negative when callers reserve more
-// than is available: later callers wait behind them.
+// availableBytes grows at addAvailableBytesPerSecond up to maxAvailableBytes,
+// a second of bandwidth: an idle node may send at most that much at once. It
+// goes negative when callers reserve more than is available: later callers
+// wait behind them. A request larger than the bucket waits in proportion.
 type BandwidthLimiter struct {
 	addAvailableBytesPerSecond float64
 	maxAvailableBytes          float64
@@ -28,23 +28,12 @@ type BandwidthLimiter struct {
 	refilledAt     time.Time
 }
 
-// minMaxAvailableBytes is the largest single Wait the caller makes: a bucket
-// smaller than that would never let it through.
-func NewBandwidthLimiter(
-	addAvailableBytesPerSecond uint64,
-	minMaxAvailableBytes uint64,
-) *BandwidthLimiter {
-
-	return newBandwidthLimiter(
-		addAvailableBytesPerSecond,
-		minMaxAvailableBytes,
-		time.Now,
-	)
+func NewBandwidthLimiter(addAvailableBytesPerSecond uint64) *BandwidthLimiter {
+	return newBandwidthLimiter(addAvailableBytesPerSecond, time.Now)
 }
 
 func newBandwidthLimiter(
 	addAvailableBytesPerSecond uint64,
-	minMaxAvailableBytes uint64,
 	now func() time.Time,
 ) *BandwidthLimiter {
 
@@ -52,15 +41,11 @@ func newBandwidthLimiter(
 		return nil
 	}
 
-	maxAvailableBytes := math.Max(
-		float64(addAvailableBytesPerSecond),
-		float64(minMaxAvailableBytes),
-	)
 	return &BandwidthLimiter{
 		addAvailableBytesPerSecond: float64(addAvailableBytesPerSecond),
-		maxAvailableBytes:          maxAvailableBytes,
+		maxAvailableBytes:          float64(addAvailableBytesPerSecond),
 		now:                        now,
-		availableBytes:             maxAvailableBytes,
+		availableBytes:             float64(addAvailableBytesPerSecond),
 		refilledAt:                 now(),
 	}
 }

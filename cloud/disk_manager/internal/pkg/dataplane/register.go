@@ -9,7 +9,6 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
-	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -305,21 +304,12 @@ func RegisterForExecution(
 			return err
 		}
 
-		// One limiter per process: the cap is per node whatever the number of
-		// copy tasks the scheduler puts on it. A copier waits for one chunk at
-		// a time.
-		bandwidthLimiter := backup.NewBandwidthLimiter(
-			performance.ConvertMiBsToBytes(config.GetBackupBandwidthMiBs()),
-			chunkSize,
-		)
-
 		err = taskRegistry.RegisterForExecution(
 			"dataplane.BackupChunks",
 			func() tasks.Task {
 				return &backupChunksTask{
 					storage:   storage,
 					backupS3:  backupS3,
-					limiter:   bandwidthLimiter,
 					batchSize: int(config.GetBackupChunksTaskBatchSize()),
 					ioDepth:   int(config.GetBackupChunksTaskIoDepth()),
 					maxChunks: int(config.GetBackupChunksTaskMaxChunks()),

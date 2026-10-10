@@ -1,8 +1,7 @@
 package dataplane
 
 import (
-	"context"
-	"sync/atomic"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,17 +15,6 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type countingLimiter struct {
-	bytes atomic.Int64
-}
-
-func (l *countingLimiter) Wait(ctx context.Context, bytes int) error {
-	l.bytes.Add(int64(bytes))
-	return nil
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 func newBackupChunksTask(
 	storage snapshot_storage.Storage,
 	follower testFollower,
@@ -35,7 +23,6 @@ func newBackupChunksTask(
 	return &backupChunksTask{
 		storage:   storage,
 		backupS3:  follower.backupS3,
-		limiter:   &countingLimiter{},
 		batchSize: 10,
 		ioDepth:   2,
 		registry:  metrics.NewEmptyRegistry(),
@@ -91,9 +78,6 @@ func TestBackupChunksTask(t *testing.T) {
 	require.NotEqual(t, chunkBlob.Data, raw.Data)
 	require.Equal(t, "kek1", *raw.Metadata["Key-Id"])
 	require.Equal(t, *object.Metadata["Checksum"], *raw.Metadata["Checksum"])
-
-	limiter := task.limiter.(*countingLimiter)
-	require.Equal(t, int64(len(chunkBlob.Data)), limiter.bytes.Load())
 
 	queue, err := storage.GetQueuedChunksToBackup(ctx, 0, 10)
 	require.NoError(t, err)
@@ -248,4 +232,59 @@ func TestBackupChunksTaskEndsOnEmptyQueue(t *testing.T) {
 	execCtx := mocks.NewExecutionContextMock()
 
 	require.NoError(t, task.Run(ctx, execCtx))
+}
+
+func queueEntry(
+	snapshotID string,
+	chunkID string,
+) snapshot_storage.BackupChunkQueueEntry {
+
+	return snapshot_storage.BackupChunkQueueEntry{
+		SnapshotID: snapshotID,
+		ChunkID:    chunkID,
+	}
+}
+
+func TestTakenBackupChunksSkipsTakenEntries(t *testing.T) {
+	entry := queueEntry
+	taken := newTakenBackupChunks()
+
+	fresh := taken.take([]snapshot_storage.BackupChunkQueueEntry{
+		entry("snap1", "c1"),
+		entry("snap1", "c2"),
+	})
+	require.Len(t, fresh, 2)
+	require.True(t, taken.hasPending())
+
+	// A prefetched batch returns c2 again and a new c3; the same chunk of
+	// another snapshot is a separate entry.
+	fresh = taken.take([]snapshot_storage.BackupChunkQueueEntry{
+		entry("snap1", "c2"),
+		entry("snap1", "c3"),
+		entry("snap2", "c2"),
+	})
+	require.Equal(t, []snapshot_storage.BackupChunkQueueEntry{
+		entry("snap1", "c3"),
+		entry("snap2", "c2"),
+	}, fresh)
+
+	taken.completed([]snapshot_storage.BackupChunkQueueEntry{
+		entry("snap1", "c1"),
+		entry("snap1", "c2"),
+		entry("snap2", "c2"),
+	})
+
+	copyErr := errors.New("copy failed")
+	taken.failed(entry("snap1", "c3"), copyErr)
+	require.False(t, taken.hasPending())
+	require.Equal(t, copyErr, taken.firstError())
+
+	// A completed entry can be taken again, a failed one cannot.
+	fresh = taken.take([]snapshot_storage.BackupChunkQueueEntry{
+		entry("snap1", "c1"),
+		entry("snap1", "c3"),
+	})
+	require.Equal(t, []snapshot_storage.BackupChunkQueueEntry{
+		entry("snap1", "c1"),
+	}, fresh)
 }

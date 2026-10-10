@@ -12,6 +12,7 @@ import (
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/mocks"
@@ -45,6 +46,8 @@ func newTestFollower(t *testing.T, ctx context.Context) testFollower {
 		t.Name(),
 		"kek1",
 		make([]byte, 32),
+		0, // uploadBytesPerSecond
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 

@@ -25,11 +25,7 @@ func newTestLimiter(
 ) (*BandwidthLimiter, *fakeClock) {
 
 	clock := &fakeClock{now: time.Unix(1000, 0)}
-	limiter := newBandwidthLimiter(
-		addAvailableBytesPerSecond,
-		testChunkSize,
-		clock.Now,
-	)
+	limiter := newBandwidthLimiter(addAvailableBytesPerSecond, clock.Now)
 	return limiter, clock
 }
 
@@ -39,7 +35,7 @@ func TestBandwidthLimiterWithoutLimitDoesNotWait(t *testing.T) {
 	var nilLimiter *BandwidthLimiter
 	require.NoError(t, nilLimiter.Wait(context.Background(), 1<<30))
 
-	limiter := NewBandwidthLimiter(0, testChunkSize)
+	limiter := NewBandwidthLimiter(0)
 	require.NoError(t, limiter.Wait(context.Background(), 1<<30))
 }
 
@@ -77,18 +73,18 @@ func TestBandwidthLimiterQueuesReservations(t *testing.T) {
 	require.Equal(t, 2*time.Second, limiter.reserve(10<<20))
 }
 
-func TestBandwidthLimiterBucketHoldsAtLeastOneChunk(t *testing.T) {
-	// 1 MiB/s is less than a chunk: the bucket is still a chunk deep, so a
-	// chunk passes and the next one waits a chunk's worth of time.
+func TestBandwidthLimiterLetsRequestLargerThanBucketWait(t *testing.T) {
+	// 1 MiB/s is less than a chunk: the chunk is not refused, it waits for
+	// the bytes the bucket lacks.
 	limiter, _ := newTestLimiter(1 << 20)
 
-	require.Zero(t, limiter.reserve(testChunkSize))
-	require.Equal(t, 4*time.Second, limiter.reserve(testChunkSize))
+	require.Equal(t, 3*time.Second, limiter.reserve(testChunkSize))
+	require.Equal(t, 7*time.Second, limiter.reserve(testChunkSize))
 }
 
 func TestBandwidthLimiterWaitHonoursCancellation(t *testing.T) {
 	limiter, _ := newTestLimiter(1 << 20)
-	require.Zero(t, limiter.reserve(testChunkSize))
+	require.Equal(t, 3*time.Second, limiter.reserve(testChunkSize))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -98,7 +94,7 @@ func TestBandwidthLimiterWaitHonoursCancellation(t *testing.T) {
 }
 
 func TestBandwidthLimiterWaitReturnsWhenBytesAreAvailable(t *testing.T) {
-	limiter := NewBandwidthLimiter(1<<30, testChunkSize)
+	limiter := NewBandwidthLimiter(1 << 30)
 
 	start := time.Now()
 	require.NoError(t, limiter.Wait(context.Background(), testChunkSize))

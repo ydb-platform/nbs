@@ -23,6 +23,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
@@ -287,6 +288,10 @@ func run(
 			backupConfig.GetS3KeyPrefix(),
 			kekID,
 			kek,
+			performance.ConvertMiBsToBytes(
+				backupConfig.GetUploadBandwidthMiBsPerHost(),
+			),
+			mon.NewRegistry("backup"),
 		)
 		if err != nil {
 			return err
