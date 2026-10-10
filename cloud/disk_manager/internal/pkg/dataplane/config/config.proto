@@ -57,4 +57,16 @@ message DataplaneConfig {
     // Maximum number of chunks deleted from the follower bucket at the same
     // time.
     optional uint32 DeleteBackupChunksInflightLimit = 27 [default = 10];
+
+    // Maximum number of dataplane.BackupChunks tasks the dispatcher keeps
+    // running. One task per node is enough when
+    // TasksConfig.InflightTaskPerNodeLimits caps the type at one.
+    optional uint32 BackupChunksTasksLimit = 28 [default = 1];
+    // Bytes per second one node sends to the follower bucket, in MiB.
+    // 0 disables the limit.
+    optional uint64 BackupBandwidthMiBs = 29 [default = 0];
+    // A copier returns after this long, so that the dispatcher places a
+    // fresh one through the regular listing, which honours
+    // TasksConfig.InflightTaskPerNodeLimits.
+    optional string BackupChunksTaskLifetime = 30 [default = "10m"];
 }

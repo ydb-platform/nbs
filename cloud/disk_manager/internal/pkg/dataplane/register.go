@@ -191,6 +191,13 @@ func RegisterForExecution(
 		return err
 	}
 
+	backupChunksTaskLifetime, err := time.ParseDuration(
+		config.GetBackupChunksTaskLifetime(),
+	)
+	if err != nil {
+		return err
+	}
+
 	deleteBackupChunksTaskScheduleInterval, err := time.ParseDuration(
 		config.GetDeleteBackupChunksTaskScheduleInterval(),
 	)
@@ -304,15 +311,38 @@ func RegisterForExecution(
 			return err
 		}
 
+		// One limiter per process: the cap is per node whatever the number of
+		// copy tasks the scheduler puts on it.
+		bandwidthLimiter := backup.NewBandwidthLimiter(
+			config.GetBackupBandwidthMiBs() << 20,
+		)
+
 		err = taskRegistry.RegisterForExecution(
 			"dataplane.BackupChunks",
 			func() tasks.Task {
 				return &backupChunksTask{
 					storage:       storage,
 					backupS3:      backupS3,
+					limiter:       bandwidthLimiter,
 					batchSize:     int(config.GetBackupChunksTaskBatchSize()),
 					inflightLimit: int(config.GetBackupChunksInflightLimit()),
+					lifetime:      backupChunksTaskLifetime,
 					registry:      metricsRegistry,
+				}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		err = taskRegistry.RegisterForExecution(
+			"dataplane.ScheduleBackupChunksTasks",
+			func() tasks.Task {
+				return &scheduleBackupChunksTasks{
+					scheduler:  taskScheduler,
+					storage:    storage,
+					tasksLimit: int(config.GetBackupChunksTasksLimit()),
+					batchSize:  int(config.GetBackupChunksTaskBatchSize()),
 				}
 			},
 		)
@@ -322,7 +352,7 @@ func RegisterForExecution(
 
 		taskScheduler.ScheduleRegularTasks(
 			ctx,
-			"dataplane.BackupChunks",
+			"dataplane.ScheduleBackupChunksTasks",
 			tasks.TaskSchedule{
 				ScheduleInterval: backupChunksTaskScheduleInterval,
 				MaxTasksInflight: 1,
@@ -401,6 +431,7 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.CreateDRBasedDiskCheckpoint": func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
 	"dataplane.BackupSnapshotData":          func() tasks.Task { return &backupSnapshotDataTask{} },
 	"dataplane.BackupChunks":                func() tasks.Task { return &backupChunksTask{} },
+	"dataplane.ScheduleBackupChunksTasks":   func() tasks.Task { return &scheduleBackupChunksTasks{} },
 	"dataplane.DeleteBackupSnapshotData":    func() tasks.Task { return &deleteBackupSnapshotDataTask{} },
 	"dataplane.DeleteBackupChunks":          func() tasks.Task { return &deleteBackupChunksTask{} },
 }

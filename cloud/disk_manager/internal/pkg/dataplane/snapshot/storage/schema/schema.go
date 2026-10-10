@@ -121,11 +121,18 @@ func Create(
 	}
 	logging.Info(ctx, "Created chunk_map table")
 
+	// Keyed by a hash of the chunk so that copy tasks reading from a random
+	// shard_id take disjoint batches. Per-snapshot operations go through the
+	// snapshot_id index.
 	err = db.CreateOrAlterTable(
 		ctx,
 		config.GetStorageFolder(),
 		"backup_chunk_queue",
 		persistence.NewCreateTableDescription(
+			persistence.WithColumn(
+				"shard_id",
+				persistence.Optional(persistence.TypeUint64),
+			),
 			persistence.WithColumn(
 				"snapshot_id",
 				persistence.Optional(persistence.TypeUTF8),
@@ -142,7 +149,8 @@ func Create(
 				"encrypted_dek",
 				persistence.Optional(persistence.TypeString),
 			),
-			persistence.WithPrimaryKeyColumn("snapshot_id", "chunk_id"),
+			persistence.WithPrimaryKeyColumn("shard_id", "snapshot_id", "chunk_id"),
+			persistence.WithSecondaryKeyColumn("snapshot_id"),
 		),
 		dropUnusedColumns,
 	)

@@ -186,10 +186,17 @@ type Storage interface {
 		entries []BackupChunkQueueEntry,
 	) error
 
+	// Returns up to limit queued chunks starting at startShardID and wrapping
+	// around to the start of the table. Workers start at a random shard so
+	// that their batches rarely overlap.
 	GetQueuedChunksToBackup(
 		ctx context.Context,
+		startShardID uint64,
 		limit int,
 	) ([]BackupChunkQueueEntry, error)
+
+	// Returns the number of queued chunks, but not more than limit.
+	CountQueuedBackupChunks(ctx context.Context, limit int) (int, error)
 
 	// Returns InterruptExecutionError while a chunk of the snapshot is queued.
 	CheckBackupChunksCompleted(ctx context.Context, snapshotID string) error

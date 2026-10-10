@@ -1931,7 +1931,7 @@ func TestBackupChunkQueue(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 3, length)
 
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 2)
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 2)
 	require.NoError(t, err)
 	require.Len(t, got, 2)
 
@@ -1948,14 +1948,14 @@ func TestBackupChunkQueue(t *testing.T) {
 	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:2])
 	require.NoError(t, err)
 
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:], got)
 
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[2:])
 	require.NoError(t, err)
 
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
 	require.NoError(t, err)
 	require.Empty(t, got)
 
@@ -1992,7 +1992,7 @@ func TestBackupChunkInFollowerIsNotEnqueuedForAnotherSnapshot(t *testing.T) {
 		[]BackupChunkQueueEntry{second},
 	)
 	require.NoError(t, err)
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []BackupChunkQueueEntry{first, second}, got)
 
@@ -2014,7 +2014,7 @@ func TestBackupChunkInFollowerIsNotEnqueuedForAnotherSnapshot(t *testing.T) {
 		[]BackupChunkQueueEntry{third},
 	)
 	require.NoError(t, err)
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
 	require.NoError(t, err)
 	require.Empty(t, got)
 	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap3"))
@@ -2058,7 +2058,7 @@ func TestClearBackupChunks(t *testing.T) {
 	err = f.storage.ChunksBackupCompleted(f.ctx, entries[3:])
 	require.NoError(t, err)
 
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:3], got)
 
@@ -2077,7 +2077,7 @@ func TestClearBackupChunks(t *testing.T) {
 		require.Equal(t, expected, cleared)
 	}
 
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
 	require.NoError(t, err)
 	require.Empty(t, got)
 	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1"))
@@ -2086,7 +2086,7 @@ func TestClearBackupChunks(t *testing.T) {
 	// copied ones are already in the follower.
 	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries[:3])
 	require.NoError(t, err)
-	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
 	require.NoError(t, err)
 	require.Equal(t, entries[2:3], got)
 
@@ -2097,6 +2097,42 @@ func TestClearBackupChunks(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Zero(t, cleared)
+}
+
+func TestBackupChunkQueueKeysChunksByShard(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	var entries []BackupChunkQueueEntry
+	for i := 0; i < 20; i++ {
+		entries = append(entries, BackupChunkQueueEntry{
+			SnapshotID:   "snap1",
+			ChunkID:      fmt.Sprintf("t.snap1.%v", i),
+			EncryptedDEK: []byte("dek"),
+		})
+	}
+	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries)
+	require.NoError(t, err)
+
+	// Rows of one snapshot are spread over the key space, so a read from the
+	// start of the table does not return them in chunk order.
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 20)
+	require.NoError(t, err)
+	require.Len(t, got, 20)
+	require.ElementsMatch(t, entries, got)
+	require.NotEqual(t, entries, got)
+
+	err = f.storage.ChunksBackupCompleted(f.ctx, entries[:19])
+	require.NoError(t, err)
+
+	err = f.storage.CheckBackupChunksCompleted(f.ctx, "snap1")
+	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+
+	cleared, err := f.storage.ClearBackupChunks(f.ctx, "snap1", 10)
+	require.NoError(t, err)
+	require.Equal(t, 1, cleared)
+
+	require.NoError(t, f.storage.CheckBackupChunksCompleted(f.ctx, "snap1"))
 }
 
 func TestReadChunkBlob(t *testing.T) {
@@ -2304,7 +2340,73 @@ func TestBackupChunkCompletedAfterDeletionIsNotMarkedCopied(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 10)
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
 	require.NoError(t, err)
 	require.Equal(t, []BackupChunkQueueEntry{other}, got)
+}
+
+func TestGetQueuedChunksToBackupStartsAtShardAndWrapsAround(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	var entries []BackupChunkQueueEntry
+	for i := 0; i < 10; i++ {
+		entries = append(entries, BackupChunkQueueEntry{
+			SnapshotID:   "snap1",
+			ChunkID:      fmt.Sprintf("t.snap1.%v", i),
+			EncryptedDEK: []byte("dek"),
+		})
+	}
+	err := f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries)
+	require.NoError(t, err)
+
+	all, err := f.storage.GetQueuedChunksToBackup(f.ctx, 0, 10)
+	require.NoError(t, err)
+	require.Len(t, all, 10)
+
+	// Rows come in shard_id order; start from the shard of the seventh.
+	start := makeShardID(all[6].ChunkID)
+
+	got, err := f.storage.GetQueuedChunksToBackup(f.ctx, start, 3)
+	require.NoError(t, err)
+	require.Equal(t, all[6:9], got)
+
+	// Past the end the read wraps around to the start of the table.
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, start, 6)
+	require.NoError(t, err)
+	require.Equal(t, append(append([]BackupChunkQueueEntry{}, all[6:]...), all[:2]...), got)
+
+	// A limit above the queue length returns every row once.
+	got, err = f.storage.GetQueuedChunksToBackup(f.ctx, start, 100)
+	require.NoError(t, err)
+	require.Len(t, got, 10)
+	require.ElementsMatch(t, all, got)
+}
+
+func TestCountQueuedBackupChunksIsCapped(t *testing.T) {
+	f := createFixture(t)
+	defer f.teardown()
+
+	count, err := f.storage.CountQueuedBackupChunks(f.ctx, 5)
+	require.NoError(t, err)
+	require.Equal(t, 0, count)
+
+	var entries []BackupChunkQueueEntry
+	for i := 0; i < 7; i++ {
+		entries = append(entries, BackupChunkQueueEntry{
+			SnapshotID:   "snap1",
+			ChunkID:      fmt.Sprintf("t.snap1.%v", i),
+			EncryptedDEK: []byte("dek"),
+		})
+	}
+	err = f.storage.EnqueueBackupChunks(f.ctx, "snap1", entries)
+	require.NoError(t, err)
+
+	count, err = f.storage.CountQueuedBackupChunks(f.ctx, 5)
+	require.NoError(t, err)
+	require.Equal(t, 5, count)
+
+	count, err = f.storage.CountQueuedBackupChunks(f.ctx, 100)
+	require.NoError(t, err)
+	require.Equal(t, 7, count)
 }

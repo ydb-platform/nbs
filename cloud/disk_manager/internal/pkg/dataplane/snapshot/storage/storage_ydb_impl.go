@@ -1691,21 +1691,27 @@ func (s *storageYDB) enqueueBackupChunks(
 	return tx.Commit(ctx)
 }
 
-func (s *storageYDB) getQueuedChunksToBackup(
+func (s *storageYDB) readQueuedChunksToBackup(
 	ctx context.Context,
 	session *persistence.Session,
+	condition string,
+	startShardID uint64,
 	limit int,
 ) ([]BackupChunkQueueEntry, error) {
 
-	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
+		declare $start as Uint64;
 		declare $limit as Uint64;
 
 		select snapshot_id, chunk_id, stored_in_s3, encrypted_dek
 		from backup_chunk_queue
+		where shard_id %v $start
+		order by shard_id, snapshot_id, chunk_id
 		limit $limit
-	`, s.tablesPath),
+	`, s.tablesPath, condition),
+		persistence.ValueParam("$start", persistence.Uint64Value(startShardID)),
 		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
@@ -1740,6 +1746,84 @@ func (s *storageYDB) getQueuedChunksToBackup(
 
 	return entries, nil
 }
+
+// Reads from startShardID to the end of the table and, if that is short of
+// limit, from the start of the table up to startShardID. The two ranges do
+// not overlap, so a row is returned once.
+func (s *storageYDB) getQueuedChunksToBackup(
+	ctx context.Context,
+	session *persistence.Session,
+	startShardID uint64,
+	limit int,
+) ([]BackupChunkQueueEntry, error) {
+
+	entries, err := s.readQueuedChunksToBackup(
+		ctx,
+		session,
+		">=",
+		startShardID,
+		limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(entries) >= limit || startShardID == 0 {
+		return entries, nil
+	}
+
+	rest, err := s.readQueuedChunksToBackup(
+		ctx,
+		session,
+		"<",
+		startShardID,
+		limit-len(entries),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(entries, rest...), nil
+}
+
+func (s *storageYDB) countQueuedBackupChunks(
+	ctx context.Context,
+	session *persistence.Session,
+	limit int,
+) (int, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $limit as Uint64;
+
+		select count(*)
+		from (
+			select shard_id
+			from backup_chunk_queue
+			limit $limit
+		)
+	`, s.tablesPath),
+		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
+	)
+	if err != nil {
+		return 0, err
+	}
+	defer res.Close()
+
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return 0, res.Err()
+	}
+
+	var count uint64
+	err = res.Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return int(count), res.Err()
+}
+
 func (s *storageYDB) ChunksBackupCompleted(
 	ctx context.Context,
 	entries []BackupChunkQueueEntry,
@@ -1791,8 +1875,8 @@ func (s *storageYDB) ClearBackupChunks(
 		declare $limit as Uint64;
 
 		$keys = (
-			select snapshot_id, chunk_id
-			from backup_chunk_queue
+			select shard_id, snapshot_id, chunk_id
+			from backup_chunk_queue view snapshot_id_index
 			where snapshot_id = $snapshot_id
 			limit $limit
 		);
@@ -1882,7 +1966,7 @@ func (s *storageYDB) CheckBackupChunksCompleted(
 		declare $snapshot_id as Utf8;
 
 		select chunk_id
-		from backup_chunk_queue
+		from backup_chunk_queue view snapshot_id_index
 		where snapshot_id = $snapshot_id
 		limit 1
 	`, s.tablesPath),
