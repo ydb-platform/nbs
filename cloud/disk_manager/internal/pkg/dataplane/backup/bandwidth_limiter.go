@@ -9,18 +9,13 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// The bucket is never smaller than a chunk, otherwise a chunk larger than a
-// second of bandwidth would never pass.
-const minCapacityBytes = 4 << 20
-
-////////////////////////////////////////////////////////////////////////////////
-
 // Token bucket over bytes. One instance per process caps what the node sends
 // to the follower whatever the number of copy tasks on it. A nil limiter and
 // a zero rate let everything through.
 //
-// availableBytes grows at bytesPerSecond up to capacityBytes, so an idle node
-// may send at most a second of bandwidth at once. It goes negative when
+// availableBytes grows at bytesPerSecond up to capacityBytes: a second of
+// bandwidth, but not less than minCapacityBytes. An idle node may send at most
+// that much at once. It goes negative when
 // callers reserve more than is available: later callers wait behind them.
 type BandwidthLimiter struct {
 	bytesPerSecond float64
@@ -33,12 +28,19 @@ type BandwidthLimiter struct {
 	refilledAt     time.Time
 }
 
-func NewBandwidthLimiter(bytesPerSecond uint64) *BandwidthLimiter {
-	return newBandwidthLimiter(bytesPerSecond, time.Now)
+// minCapacityBytes is the largest single Wait the caller makes: a bucket
+// smaller than that would never let it through.
+func NewBandwidthLimiter(
+	bytesPerSecond uint64,
+	minCapacityBytes uint64,
+) *BandwidthLimiter {
+
+	return newBandwidthLimiter(bytesPerSecond, minCapacityBytes, time.Now)
 }
 
 func newBandwidthLimiter(
 	bytesPerSecond uint64,
+	minCapacityBytes uint64,
 	now func() time.Time,
 ) *BandwidthLimiter {
 
@@ -46,7 +48,10 @@ func newBandwidthLimiter(
 		return nil
 	}
 
-	capacityBytes := math.Max(float64(bytesPerSecond), minCapacityBytes)
+	capacityBytes := math.Max(
+		float64(bytesPerSecond),
+		float64(minCapacityBytes),
+	)
 	return &BandwidthLimiter{
 		bytesPerSecond: float64(bytesPerSecond),
 		capacityBytes:  capacityBytes,
