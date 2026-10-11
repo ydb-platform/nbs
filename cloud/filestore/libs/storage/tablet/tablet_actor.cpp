@@ -1687,9 +1687,6 @@ STFUNC(TIndexTabletActor::StateWork)
 bool TIndexTabletActor::HandleRequestsByAdapter(STFUNC_SIG)
 {
     switch (ev->GetTypeRewrite()) {
-        FILESTORE_SERVICE_ADAPTER_REQUESTS_PLAIN(
-            FILESTORE_HANDLE_REQUEST,
-            TEvService)
         FILESTORE_SERVICE_ADAPTER_REQUESTS(
             FILESTORE_HANDLE_ADAPTER_REQUEST,
             TEvService)

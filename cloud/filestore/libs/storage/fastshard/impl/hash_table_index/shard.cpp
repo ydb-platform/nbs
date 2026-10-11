@@ -2195,6 +2195,30 @@ public:
         return NotImplemented<NProto::TListNodeXAttrResponse>(request);
     }
 
+    NProtoPrivate::TCreateSessionResponse CreateSession(
+        NProtoPrivate::TCreateSessionRequest request)
+    {
+        // TODO(#6958): implement
+        Y_UNUSED(request);
+        return {};
+    }
+
+    NProto::TResetSessionResponse ResetSession(
+        NProto::TResetSessionRequest request)
+    {
+        // TODO(#6958): implement
+        Y_UNUSED(request);
+        return {};
+    }
+
+    NProtoPrivate::TDestroySessionResponse DestroySession(
+        NProtoPrivate::TDestroySessionRequest request)
+    {
+        // TODO(#6958): implement
+        Y_UNUSED(request);
+        return {};
+    }
+
     [[nodiscard]] NProto::TError CollectStats(
         TFileSystemShardStats* stats) const
     {
