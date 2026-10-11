@@ -95,7 +95,20 @@ func (t *backupChunksTask) Run(
 		return t.complete(ctx, copied)
 	})
 
-	return group.Wait()
+	err := group.Wait()
+
+	// The task copies its range for hours, so transient errors of the
+	// follower or YDB, such as an S3 500, add up past the retry limit and end
+	// it as failed while the copy is fine. They are retried without a limit;
+	// the counter shows how often the copy restarts.
+	var retriable *errors.RetriableError
+	if errors.As(err, &retriable) && !retriable.IgnoreRetryLimit {
+		t.registry.Counter("backup/copyRestarts").Inc()
+		retriable.IgnoreRetryLimit = true
+		return retriable
+	}
+
+	return err
 }
 
 func (t *backupChunksTask) Cancel(
