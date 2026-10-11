@@ -189,7 +189,7 @@ func snapshotStateStructTypeString() string {
 ////////////////////////////////////////////////////////////////////////////////
 
 func backupChunkKeyStructTypeString() string {
-	return "Struct<snapshot_id: Utf8, chunk_id: Utf8>"
+	return "Struct<shard_id: Uint64, snapshot_id: Utf8, chunk_id: Utf8>"
 }
 
 func backupChunkKeyListValue(
@@ -199,6 +199,10 @@ func backupChunkKeyListValue(
 	values := make([]persistence.Value, 0, len(entries))
 	for _, entry := range entries {
 		values = append(values, persistence.StructValue(
+			persistence.StructFieldValue(
+				"shard_id",
+				persistence.Uint64Value(makeShardID(entry.ChunkID)),
+			),
 			persistence.StructFieldValue(
 				"snapshot_id",
 				persistence.UTF8Value(entry.SnapshotID),
@@ -214,8 +218,8 @@ func backupChunkKeyListValue(
 }
 
 func backupChunkQueueEntryStructTypeString() string {
-	return "Struct<snapshot_id: Utf8, chunk_id: Utf8, stored_in_s3: Bool, " +
-		"encrypted_dek: String>"
+	return "Struct<shard_id: Uint64, snapshot_id: Utf8, chunk_id: Utf8, " +
+		"stored_in_s3: Bool, encrypted_dek: String>"
 }
 
 func backupChunkQueueEntryListValue(
@@ -225,6 +229,10 @@ func backupChunkQueueEntryListValue(
 	values := make([]persistence.Value, 0, len(entries))
 	for _, entry := range entries {
 		values = append(values, persistence.StructValue(
+			persistence.StructFieldValue(
+				"shard_id",
+				persistence.Uint64Value(makeShardID(entry.ChunkID)),
+			),
 			persistence.StructFieldValue(
 				"snapshot_id",
 				persistence.UTF8Value(entry.SnapshotID),

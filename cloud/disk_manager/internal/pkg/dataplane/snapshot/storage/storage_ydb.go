@@ -317,6 +317,9 @@ func (s *storageYDB) EnqueueBackupChunks(
 
 func (s *storageYDB) GetQueuedChunksToBackup(
 	ctx context.Context,
+	firstShardID uint64,
+	lastShardID uint64,
+	after *BackupChunkQueueEntry,
 	limit int,
 ) (entries []BackupChunkQueueEntry, err error) {
 
@@ -325,7 +328,14 @@ func (s *storageYDB) GetQueuedChunksToBackup(
 	err = s.db.Execute(
 		ctx,
 		func(ctx context.Context, session *persistence.Session) error {
-			entries, err = s.getQueuedChunksToBackup(ctx, session, limit)
+			entries, err = s.getQueuedChunksToBackup(
+				ctx,
+				session,
+				firstShardID,
+				lastShardID,
+				after,
+				limit,
+			)
 			return err
 		},
 	)

@@ -12,6 +12,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
 	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
@@ -85,6 +86,8 @@ func TestBackupImageTask(t *testing.T) {
 		t.Name(),
 		"kek1",
 		make([]byte, 32),
+		0, // uploadBytesPerSecond
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -154,6 +157,8 @@ func TestBackupImageTaskReusesEncryptedDEK(t *testing.T) {
 		t.Name(),
 		"kek1",
 		make([]byte, 32),
+		0, // uploadBytesPerSecond
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -226,7 +231,15 @@ func TestBackupImageTaskWithoutEncryption(t *testing.T) {
 	scheduler := tasks_mocks.NewSchedulerMock()
 	execCtx := tasks_mocks.NewExecutionContextMock()
 
-	backupS3, err := backup.NewS3(s3, backupTestBucket, t.Name(), "", nil)
+	backupS3, err := backup.NewS3(
+		s3,
+		backupTestBucket,
+		t.Name(),
+		"",  // kekID
+		nil, // kek
+		0,   // uploadBytesPerSecond
+		metrics.NewEmptyRegistry(),
+	)
 	require.NoError(t, err)
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)

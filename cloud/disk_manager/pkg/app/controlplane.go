@@ -227,6 +227,7 @@ func registerControlplaneTasks(
 		nbsFactory,
 		cellSelector,
 		backupS3,
+		mon.NewRegistry("backup_queue"),
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)

@@ -301,12 +301,16 @@ func (s *StorageMock) EnqueueBackupChunks(
 
 func (s *StorageMock) GetQueuedChunksToBackup(
 	ctx context.Context,
+	firstShardID uint64,
+	lastShardID uint64,
+	after *storage.BackupChunkQueueEntry,
 	limit int,
 ) ([]storage.BackupChunkQueueEntry, error) {
 
-	args := s.Called(ctx, limit)
+	args := s.Called(ctx, firstShardID, lastShardID, after, limit)
 	return args.Get(0).([]storage.BackupChunkQueueEntry), args.Error(1)
 }
+
 func (s *StorageMock) ChunksBackupCompleted(
 	ctx context.Context,
 	entries []storage.BackupChunkQueueEntry,
@@ -322,6 +326,16 @@ func (s *StorageMock) CheckBackupChunksCompleted(
 ) error {
 
 	args := s.Called(ctx, snapshotID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) BackupChunkFailed(
+	ctx context.Context,
+	entry storage.BackupChunkQueueEntry,
+	message string,
+) error {
+
+	args := s.Called(ctx, entry, message)
 	return args.Error(0)
 }
 

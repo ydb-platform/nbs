@@ -186,21 +186,37 @@ type Storage interface {
 		entries []BackupChunkQueueEntry,
 	) error
 
+	// Returns up to limit queued chunks with firstShardID <= shard_id <=
+	// lastShardID in key order, after the given entry; nil starts at
+	// firstShardID. A copy task owns one shard range, so no other task reads
+	// its chunks.
 	GetQueuedChunksToBackup(
 		ctx context.Context,
+		firstShardID uint64,
+		lastShardID uint64,
+		after *BackupChunkQueueEntry,
 		limit int,
 	) ([]BackupChunkQueueEntry, error)
 
-	// Returns InterruptExecutionError while a chunk of the snapshot is queued.
+	// Returns a non-retriable error if a chunk of the snapshot could not be
+	// copied, and InterruptExecutionError while a chunk of it is queued.
 	CheckBackupChunksCompleted(ctx context.Context, snapshotID string) error
+
+	// Moves a chunk that cannot be copied, such as missing or corrupt data,
+	// out of the queue. The backup of its snapshot then fails.
+	BackupChunkFailed(
+		ctx context.Context,
+		entry BackupChunkQueueEntry,
+		message string,
+	) error
 
 	ChunksBackupCompleted(
 		ctx context.Context,
 		entries []BackupChunkQueueEntry,
 	) error
 
-	// Removes queued chunks of the snapshot. Returns the number of cleared
-	// entries: limit, or fewer if no entries are left.
+	// Removes queued and failed chunks of the snapshot. Returns the number of
+	// cleared queued entries: limit, or fewer if no entries are left.
 	ClearBackupChunks(
 		ctx context.Context,
 		snapshotID string,

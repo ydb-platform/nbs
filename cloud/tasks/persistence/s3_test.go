@@ -61,6 +61,7 @@ func newS3Client(
 		maxRetriableErrorCount,
 		nil, // availabilityMonitoring
 		nil, // tokenProvider
+		0,   // maxIdleConnsPerHost
 	)
 }
 
@@ -199,6 +200,30 @@ func TestS3TokenAuthTransportShouldNotSetAuthorizationHeaderForHTTP(t *testing.T
 	)
 
 	require.Empty(t, authorization)
+}
+
+func TestNewS3HTTPTransportKeepsIdleConnections(t *testing.T) {
+	transport := newS3HTTPTransport(64)
+	require.EqualValues(t, 64, transport.MaxIdleConnsPerHost)
+	require.EqualValues(t, 64, transport.MaxIdleConns)
+
+	// The default transport is cloned, not modified.
+	defaultTransport := http.DefaultTransport.(*http.Transport)
+	require.NotSame(t, defaultTransport, transport)
+	require.Zero(t, defaultTransport.MaxIdleConnsPerHost)
+}
+
+func TestNewS3TokenAuthHTTPClientWrapsGivenTransport(t *testing.T) {
+	inner := newS3HTTPTransport(8)
+	client := newS3TokenAuthHTTPClient(
+		"s3.example.com",
+		&testS3TokenProvider{token: "token"},
+		inner,
+	)
+
+	transport, ok := client.Transport.(*s3TokenAuthTransport)
+	require.True(t, ok)
+	require.Same(t, inner, transport.inner)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

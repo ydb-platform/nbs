@@ -83,7 +83,7 @@ func backUpChunk(
 
 	task := newBackupChunksTask(storage, follower)
 	err := task.Run(ctx, mocks.NewExecutionContextMock())
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	require.NoError(t, err)
 
 	_, err = follower.getObject(ctx, backup.ChunkKey(chunkID))
 	require.NoError(t, err)

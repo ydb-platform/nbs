@@ -1,6 +1,7 @@
 GO_LIBRARY()
 
 SRCS(
+    bandwidth_limiter.go
     encrypt.go
     keys.go
     meta.go
@@ -8,6 +9,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    bandwidth_limiter_test.go
     keys_test.go
     meta_test.go
     s3_test.go

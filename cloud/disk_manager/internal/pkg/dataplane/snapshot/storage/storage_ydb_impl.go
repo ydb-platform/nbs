@@ -1694,18 +1694,58 @@ func (s *storageYDB) enqueueBackupChunks(
 func (s *storageYDB) getQueuedChunksToBackup(
 	ctx context.Context,
 	session *persistence.Session,
+	firstShardID uint64,
+	lastShardID uint64,
+	after *BackupChunkQueueEntry,
 	limit int,
 ) ([]BackupChunkQueueEntry, error) {
 
-	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+	// The cursor is the key of the last entry read; an empty snapshot ID is
+	// before every row of its shard.
+	afterShardID := firstShardID
+	afterSnapshotID := ""
+	afterChunkID := ""
+	if after != nil {
+		afterShardID = makeShardID(after.ChunkID)
+		afterSnapshotID = after.SnapshotID
+		afterChunkID = after.ChunkID
+	}
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
+		declare $after_shard_id as Uint64;
+		declare $after_snapshot_id as Utf8;
+		declare $after_chunk_id as Utf8;
+		declare $last_shard_id as Uint64;
 		declare $limit as Uint64;
 
 		select snapshot_id, chunk_id, stored_in_s3, encrypted_dek
 		from backup_chunk_queue
+		where shard_id >= $after_shard_id and shard_id <= $last_shard_id and (
+			shard_id > $after_shard_id or
+			snapshot_id > $after_snapshot_id or
+			(snapshot_id = $after_snapshot_id and chunk_id > $after_chunk_id)
+		)
+		order by shard_id, snapshot_id, chunk_id
 		limit $limit
 	`, s.tablesPath),
+		persistence.ValueParam(
+			"$after_shard_id",
+			persistence.Uint64Value(afterShardID),
+		),
+		persistence.ValueParam(
+			"$after_snapshot_id",
+			persistence.UTF8Value(afterSnapshotID),
+		),
+		persistence.ValueParam(
+			"$after_chunk_id",
+			persistence.UTF8Value(afterChunkID),
+		),
+		persistence.ValueParam(
+			"$last_shard_id",
+			persistence.Uint64Value(lastShardID),
+		),
 		persistence.ValueParam("$limit", persistence.Uint64Value(uint64(limit))),
 	)
 	if err != nil {
@@ -1740,6 +1780,7 @@ func (s *storageYDB) getQueuedChunksToBackup(
 
 	return entries, nil
 }
+
 func (s *storageYDB) ChunksBackupCompleted(
 	ctx context.Context,
 	entries []BackupChunkQueueEntry,
@@ -1791,8 +1832,8 @@ func (s *storageYDB) ClearBackupChunks(
 		declare $limit as Uint64;
 
 		$keys = (
-			select snapshot_id, chunk_id
-			from backup_chunk_queue
+			select shard_id, snapshot_id, chunk_id
+			from backup_chunk_queue view snapshot_id_index
 			where snapshot_id = $snapshot_id
 			limit $limit
 		);
@@ -1801,6 +1842,9 @@ func (s *storageYDB) ClearBackupChunks(
 
 		delete from backup_chunk_queue
 		on select * from $keys;
+
+		delete from backup_chunk_failures
+		where snapshot_id = $snapshot_id;
 	`, s.tablesPath),
 		persistence.ValueParam(
 			"$snapshot_id",
@@ -1875,16 +1919,22 @@ func (s *storageYDB) CheckBackupChunksCompleted(
 
 	defer s.metrics.StatOperation("CheckBackupChunksCompleted")(&err)
 
-	// A worker removes a chunk from the queue once it is in the follower.
+	// A worker removes a chunk from the queue once it is in the follower, or
+	// moves it to backup_chunk_failures if it cannot be copied.
 	res, err := s.db.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $snapshot_id as Utf8;
 
-		select chunk_id
-		from backup_chunk_queue
+		select chunk_id, error
+		from backup_chunk_failures
 		where snapshot_id = $snapshot_id
-		limit 1
+		limit 1;
+
+		select chunk_id
+		from backup_chunk_queue view snapshot_id_index
+		where snapshot_id = $snapshot_id
+		limit 1;
 	`, s.tablesPath),
 		persistence.ValueParam(
 			"$snapshot_id",
@@ -1897,10 +1947,70 @@ func (s *storageYDB) CheckBackupChunksCompleted(
 	defer res.Close()
 
 	if res.NextResultSet(ctx) && res.NextRow() {
+		var chunkID string
+		var message string
+		err = res.ScanNamed(
+			persistence.OptionalWithDefault("chunk_id", &chunkID),
+			persistence.OptionalWithDefault("error", &message),
+		)
+		if err != nil {
+			return err
+		}
+
+		return task_errors.NewNonRetriableErrorf(
+			"chunk %v of snapshot %v could not be copied to the follower: %v",
+			chunkID,
+			snapshotID,
+			message,
+		)
+	}
+
+	if res.NextResultSet(ctx) && res.NextRow() {
 		return task_errors.NewInterruptExecutionError()
 	}
 
 	return res.Err()
+}
+
+func (s *storageYDB) BackupChunkFailed(
+	ctx context.Context,
+	entry BackupChunkQueueEntry,
+	message string,
+) (err error) {
+
+	defer s.metrics.StatOperation("BackupChunkFailed")(&err)
+
+	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $shard_id as Uint64;
+		declare $snapshot_id as Utf8;
+		declare $chunk_id as Utf8;
+		declare $error as Utf8;
+
+		delete from backup_chunk_queue
+		where shard_id = $shard_id and
+			snapshot_id = $snapshot_id and
+			chunk_id = $chunk_id;
+
+		upsert into backup_chunk_failures (snapshot_id, chunk_id, error)
+		values ($snapshot_id, $chunk_id, $error);
+	`, s.tablesPath),
+		persistence.ValueParam(
+			"$shard_id",
+			persistence.Uint64Value(makeShardID(entry.ChunkID)),
+		),
+		persistence.ValueParam(
+			"$snapshot_id",
+			persistence.UTF8Value(entry.SnapshotID),
+		),
+		persistence.ValueParam(
+			"$chunk_id",
+			persistence.UTF8Value(entry.ChunkID),
+		),
+		persistence.ValueParam("$error", persistence.UTF8Value(message)),
+	)
+	return err
 }
 
 ////////////////////////////////////////////////////////////////////////////////

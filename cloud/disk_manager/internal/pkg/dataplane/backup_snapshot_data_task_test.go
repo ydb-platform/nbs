@@ -2,6 +2,7 @@ package dataplane
 
 import (
 	"context"
+	"math"
 	"testing"
 
 	"github.com/golang/protobuf/proto"
@@ -12,6 +13,7 @@ import (
 	snapshot_storage "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/chunks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/test"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	"github.com/ydb-platform/nbs/cloud/tasks/mocks"
@@ -45,6 +47,8 @@ func newTestFollower(t *testing.T, ctx context.Context) testFollower {
 		t.Name(),
 		"kek1",
 		make([]byte, 32),
+		0, // uploadBytesPerSecond
+		metrics.NewEmptyRegistry(),
 	)
 	require.NoError(t, err)
 
@@ -158,6 +162,21 @@ func enqueueBackupChunks(
 	}
 
 	return nil
+}
+
+// Reads the whole backup chunk queue.
+func queuedBackupChunks(
+	ctx context.Context,
+	storage snapshot_storage.Storage,
+) ([]snapshot_storage.BackupChunkQueueEntry, error) {
+
+	return storage.GetQueuedChunksToBackup(
+		ctx,
+		0,
+		math.MaxUint64,
+		nil, // after
+		10,  // limit
+	)
 }
 
 func createSnapshotWithChunk(
@@ -291,7 +310,7 @@ func TestBackupSnapshotDataTask(t *testing.T) {
 	_, err = follower.getObject(ctx, backup.ChunkMapKey("snap1"))
 	require.Error(t, err)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Equal(
 		t,
@@ -391,7 +410,7 @@ func TestBackupSnapshotDataTaskEnqueuesInBatches(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 	require.EqualValues(t, 2, task.state.MilestoneChunkIndex)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.ElementsMatch(
 		t,
@@ -428,7 +447,7 @@ func TestBackupSnapshotDataTaskEnqueuesInBatches(t *testing.T) {
 	err = resumed.Run(ctx, execCtx)
 	require.NoError(t, err)
 
-	queue, err = storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err = queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 
@@ -476,7 +495,7 @@ func TestBackupSnapshotDataTaskBacksUpChunkStoredInYDB(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Equal(
 		t,
@@ -492,7 +511,7 @@ func TestBackupSnapshotDataTaskBacksUpChunkStoredInYDB(t *testing.T) {
 
 	chunksTask := newBackupChunksTask(storage, follower)
 	err = chunksTask.Run(ctx, newBackupExecutionContext(ctx))
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	require.NoError(t, err)
 
 	chunkBlob, err := storage.ReadChunkBlob(
 		ctx,
@@ -612,12 +631,12 @@ func TestBackupSnapshotDataTaskBacksUpShallowCopyWithoutCreatorBackup(t *testing
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 	workerCtx := mocks.NewExecutionContextMock()
 	err = newBackupChunksTask(storage, follower).Run(ctx, workerCtx)
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	require.NoError(t, err)
 	require.NoError(t, task.Run(ctx, execCtx))
 	_, err = follower.getObject(ctx, backup.ChunkKey(chunk0))
 	require.NoError(t, err)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 
@@ -643,7 +662,7 @@ func TestBackupSnapshotDataTaskSkipsDeletedSnapshot(t *testing.T) {
 	err = task.Run(ctx, execCtx)
 	require.NoError(t, err)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 
@@ -690,7 +709,7 @@ func TestBackupSnapshotDataTaskEnqueuesNothingOnBadDEK(t *testing.T) {
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 	require.Zero(t, task.state.MilestoneChunkIndex)
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 
@@ -713,12 +732,12 @@ func TestBackupSnapshotDataTaskCancellationClearsQueue(t *testing.T) {
 
 	err := task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Len(t, queue, 1)
 
 	require.NoError(t, task.Cancel(ctx, execCtx))
-	queue, err = storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err = queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Empty(t, queue)
 	cleared, err := storage.ClearBackupChunks(ctx, "snap1", 10)
@@ -729,7 +748,7 @@ func TestBackupSnapshotDataTaskCancellationClearsQueue(t *testing.T) {
 	next := newBackupSnapshotDataTask(storage, follower, "snap1")
 	err = next.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-	queue, err = storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err = queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Len(t, queue, 1)
 }
@@ -759,7 +778,7 @@ func TestBackupSnapshotDataTaskNextAttemptWaitsForCancelledCopy(t *testing.T) {
 	require.NoError(t, cancelled.Cancel(ctx, cancelledCtx))
 	err = next.Run(ctx, nextCtx)
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 	require.Len(t, queue, 1)
 }
@@ -777,29 +796,29 @@ func (s failingBackupChunkStorage) ReadChunkBlob(
 	return chunks.ChunkBlob{}, errors.NewNonRetriableErrorf("source chunk is corrupt")
 }
 
-func TestBackupSnapshotDataTaskWaitsForChunkRetriedByAnotherWorker(t *testing.T) {
+func TestBackupSnapshotDataTaskFailsWhenChunkCannotBeCopied(t *testing.T) {
 	ctx := test.NewContext()
 	storage, closeFunc := newStorage(t, ctx)
 	defer closeFunc()
 	follower := newTestFollower(t, ctx)
-	chunkID := createSnapshotWithChunk(t, ctx, storage, "snapshot")
+	createSnapshotWithChunk(t, ctx, storage, "snapshot")
 	task := newBackupSnapshotDataTask(storage, follower, "snapshot")
 	execCtx := newBackupExecutionContext(ctx)
 	require.True(t, errors.Is(task.Run(ctx, execCtx), errors.NewInterruptExecutionError()))
 
 	workerCtx := mocks.NewExecutionContextMock()
 	worker := newBackupChunksTask(failingBackupChunkStorage{Storage: storage}, follower)
-	require.True(t, errors.Is(worker.Run(ctx, workerCtx), errors.NewEmptyNonRetriableError()))
+	require.NoError(t, worker.Run(ctx, workerCtx))
 
-	// The chunk stays queued; the copy waits instead of failing.
-	require.True(t, errors.Is(task.Run(ctx, execCtx), errors.NewInterruptExecutionError()))
+	// The corrupt chunk fails the copy instead of holding the snapshot
+	// forever; no map is written.
+	require.True(t, errors.Is(task.Run(ctx, execCtx), errors.NewEmptyNonRetriableError()))
 	_, err := follower.getObject(ctx, backup.ChunkMapKey("snapshot"))
 	require.Error(t, err)
 
-	err = newBackupChunksTask(storage, follower).Run(ctx, workerCtx)
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
-	require.NoError(t, task.Run(ctx, execCtx))
-	require.Equal(t, []string{chunkID}, readBackupChunkMap(t, ctx, follower, "snapshot").ChunkIds)
+	// The failed copy clears its chunks and releases the snapshot.
+	require.NoError(t, task.Cancel(ctx, execCtx))
+	require.NoError(t, storage.CheckBackupChunksCompleted(ctx, "snapshot"))
 }
 
 // Fails reading a chunk, so the test sees which chunks a copy reads.
@@ -840,11 +859,11 @@ func backUpSnapshot(
 	}
 	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
 
-	queue, err := storage.GetQueuedChunksToBackup(ctx, 10)
+	queue, err := queuedBackupChunks(ctx, storage)
 	require.NoError(t, err)
 
 	err = newBackupChunksTask(storage, follower).Run(ctx, workerCtx)
-	require.True(t, errors.Is(err, errors.NewInterruptExecutionError()))
+	require.NoError(t, err)
 	require.NoError(t, task.Run(ctx, execCtx))
 	return queue
 }

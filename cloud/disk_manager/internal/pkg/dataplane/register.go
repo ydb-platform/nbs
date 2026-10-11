@@ -308,11 +308,26 @@ func RegisterForExecution(
 			"dataplane.BackupChunks",
 			func() tasks.Task {
 				return &backupChunksTask{
-					storage:       storage,
-					backupS3:      backupS3,
-					batchSize:     int(config.GetBackupChunksTaskBatchSize()),
-					inflightLimit: int(config.GetBackupChunksInflightLimit()),
-					registry:      metricsRegistry,
+					storage:   storage,
+					backupS3:  backupS3,
+					registry:  metricsRegistry,
+					batchSize: int(config.GetBackupChunksTaskBatchSize()),
+					ioDepth:   int(config.GetBackupChunksTaskIoDepth()),
+				}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		err = taskRegistry.RegisterForExecution(
+			"dataplane.ScheduleBackupChunksTasks",
+			func() tasks.Task {
+				return &scheduleBackupChunksTasks{
+					scheduler:  taskScheduler,
+					storage:    storage,
+					rangeCount: config.GetBackupChunksRangeCount(),
+					maxTasks:   int(config.GetBackupChunksMaxTasks()),
 				}
 			},
 		)
@@ -322,7 +337,7 @@ func RegisterForExecution(
 
 		taskScheduler.ScheduleRegularTasks(
 			ctx,
-			"dataplane.BackupChunks",
+			"dataplane.ScheduleBackupChunksTasks",
 			tasks.TaskSchedule{
 				ScheduleInterval: backupChunksTaskScheduleInterval,
 				MaxTasksInflight: 1,
@@ -401,6 +416,7 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.CreateDRBasedDiskCheckpoint": func() tasks.Task { return &createDRBasedDiskCheckpointTask{} },
 	"dataplane.BackupSnapshotData":          func() tasks.Task { return &backupSnapshotDataTask{} },
 	"dataplane.BackupChunks":                func() tasks.Task { return &backupChunksTask{} },
+	"dataplane.ScheduleBackupChunksTasks":   func() tasks.Task { return &scheduleBackupChunksTasks{} },
 	"dataplane.DeleteBackupSnapshotData":    func() tasks.Task { return &deleteBackupSnapshotDataTask{} },
 	"dataplane.DeleteBackupChunks":          func() tasks.Task { return &deleteBackupChunksTask{} },
 }

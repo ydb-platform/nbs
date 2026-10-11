@@ -27,6 +27,9 @@ message S3Config {
     optional uint64 MaxRetriableErrorCount = 5 [default = 3];
     optional S3ControlPlaneConfig ControlPlaneConfig = 6;
     optional bool UseIamToken = 7;
+    // Idle keep-alive connections kept per host. 0 keeps the Go default of 2,
+    // which reopens a TLS connection for almost every concurrent request.
+    optional uint64 MaxIdleConnsPerHost = 8;
 }
 
 message S3ControlPlaneConfig {
