@@ -87,7 +87,8 @@ func newStorage(
 		placementGroupsFolder,
 		db,
 		endedMigrationExpirationTimeout,
-		true, // backupEnabled
+		true,               // backupEnabled
+		[]string{"backed"}, // backupFolderIDs
 	)
 	require.NoError(t, err)
 

@@ -126,6 +126,7 @@ func newResourceStorage(
 		db,
 		endedMigrationExpirationTimeout,
 		false, // backupEnabled
+		nil,   // backupFolderIDs
 	)
 }
 
@@ -232,6 +233,7 @@ func createServices(
 	err = filesystem.RegisterForExecution(
 		ctx,
 		filesystemConfig,
+		nil,
 		taskScheduler,
 		taskRegistry,
 		resourceStorage,

@@ -23,6 +23,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/health"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/util"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/auth"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
@@ -96,6 +97,8 @@ func run(
 
 	logger := logging.NewLogger(config.LoggingConfig)
 	ctx = logging.SetLogger(ctx, logger)
+
+	disabledZones := common.NewDisabledZones(config.GetDisabledZonesConfig().GetZones())
 
 	logging.Info(ctx, "Locking process memory")
 
@@ -287,6 +290,10 @@ func run(
 			backupConfig.GetS3KeyPrefix(),
 			kekID,
 			kek,
+			performance.ConvertMiBsToBytes(
+				backupConfig.GetUploadBandwidthMiBsPerHost(),
+			),
+			mon.NewRegistry("backup"),
 		)
 		if err != nil {
 			return err
@@ -401,6 +408,7 @@ func run(
 		err = initDataplane(
 			ctx,
 			config,
+			disabledZones,
 			mon,
 			creds,
 			newSnapshotStorageQuotaReporter,
@@ -473,6 +481,7 @@ func run(
 		serve, err = initControlplane(
 			ctx,
 			config,
+			disabledZones,
 			mon,
 			creds,
 			newAuthorizer,

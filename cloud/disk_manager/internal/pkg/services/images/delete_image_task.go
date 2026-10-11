@@ -6,6 +6,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
@@ -17,12 +18,13 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type deleteImageTask struct {
-	config      *config.ImagesConfig
-	scheduler   tasks.Scheduler
-	storage     resources.Storage
-	poolService pools.Service
-	request     *protos.DeleteImageRequest
-	state       *protos.DeleteImageTaskState
+	config        *config.ImagesConfig
+	disabledZones *common.DisabledZones
+	scheduler     tasks.Scheduler
+	storage       resources.Storage
+	poolService   pools.Service
+	request       *protos.DeleteImageRequest
+	state         *protos.DeleteImageTaskState
 }
 
 func (t *deleteImageTask) Save() ([]byte, error) {
@@ -85,6 +87,7 @@ func (t *deleteImageTask) deleteImage(
 		ctx,
 		execCtx,
 		t.config,
+		t.disabledZones,
 		t.scheduler,
 		t.storage,
 		t.poolService,

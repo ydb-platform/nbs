@@ -659,6 +659,7 @@ func NewResourceStorage(
 		db,
 		endedMigrationExpirationTimeout,
 		false, // backupEnabled
+		nil,   // backupFolderIDs
 	)
 	require.NoError(t, err)
 

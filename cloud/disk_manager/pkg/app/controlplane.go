@@ -144,6 +144,7 @@ func newGrpcServer(
 func registerControlplaneTasks(
 	ctx context.Context,
 	config *server_config.ServerConfig,
+	disabledZones *common.DisabledZones,
 	mon *monitoring.Monitoring,
 	creds auth.Credentials,
 	db *persistence.YDBClient,
@@ -187,6 +188,7 @@ func registerControlplaneTasks(
 		ctx,
 		config.GetDisksConfig(),
 		performanceConfig,
+		disabledZones,
 		resourceStorage,
 		poolStorage,
 		taskRegistry,
@@ -204,6 +206,7 @@ func registerControlplaneTasks(
 	err = images.RegisterForExecution(
 		ctx,
 		config.GetImagesConfig(),
+		disabledZones,
 		taskRegistry,
 		taskScheduler,
 		resourceStorage,
@@ -227,6 +230,7 @@ func registerControlplaneTasks(
 		nbsFactory,
 		cellSelector,
 		backupS3,
+		mon.NewRegistry("backup_queue"),
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)
@@ -239,6 +243,7 @@ func registerControlplaneTasks(
 		err = filesystem.RegisterForExecution(
 			ctx,
 			config.GetFilesystemConfig(),
+			disabledZones,
 			taskScheduler,
 			taskRegistry,
 			resourceStorage,
@@ -306,6 +311,7 @@ func registerControlplaneTasks(
 func initControlplane(
 	ctx context.Context,
 	config *server_config.ServerConfig,
+	disabledZones *common.DisabledZones,
 	mon *monitoring.Monitoring,
 	creds auth.Credentials,
 	newAuthorizer auth.NewAuthorizer,
@@ -370,6 +376,7 @@ func initControlplane(
 		db,
 		endedMigrationExpirationTimeout,
 		config.GetSnapshotStorageBackupConfig() != nil, // backupEnabled
+		config.GetSnapshotStorageBackupConfig().GetFolderIds(),
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to initialize resource storage: %v", err)
@@ -408,6 +415,7 @@ func initControlplane(
 	err = registerControlplaneTasks(
 		ctx,
 		config,
+		disabledZones,
 		mon,
 		creds,
 		db,
