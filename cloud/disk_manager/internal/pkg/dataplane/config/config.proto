@@ -47,6 +47,33 @@ message DataplaneConfig {
     // Number of chunks taken from the backup chunk queue at a time to be copied
     // to the follower bucket.
     optional uint32 BackupChunksTaskBatchSize = 23 [default = 100];
-    // Maximum number of chunks copied to the follower bucket at the same time.
-    optional uint32 BackupChunksInflightLimit = 24 [default = 10];
+    // Number of chunks one dataplane.BackupChunks task copies to the follower
+    // bucket at the same time.
+    optional uint32 BackupChunksTaskIoDepth = 24 [default = 10];
+
+    // Do not zero the ranges of zero chunks when restoring a disk from backup.
+    // Correct only if every destination disk already reads as zeros there: an
+    // empty disk created without a source and never written.
+    optional bool TransferFromBackupToDiskIgnoreZeroChunks = 25 [default = false];
+
+    optional string DeleteBackupChunksTaskScheduleInterval = 26 [default = "10s"];
+    // Number of chunks taken from the backup chunk delete queue at a time to
+    // be deleted from the follower bucket.
+    optional uint32 DeleteBackupChunksTaskBatchSize = 27 [default = 1000];
+    // Maximum number of chunks deleted from the follower bucket at the same
+    // time.
+    optional uint32 DeleteBackupChunksInflightLimit = 28 [default = 10];
+
+    // Maximum number of dataplane.BackupChunks tasks running at once. With
+    // TasksConfig.InflightTaskPerNodeLimits capping the type at one, this is
+    // the number of nodes that copy. Keep BackupChunksRangeCount about 4 times
+    // this.
+    optional uint32 BackupChunksMaxTasks = 29 [default = 1];
+    // Number of parts the backup chunk queue is split into by shard_id. A part
+    // is copied by at most one task at a time, so no more tasks than parts
+    // run, whatever BackupChunksMaxTasks is. About 4 parts per task: a part
+    // goes to whichever task frees first, so a slow node holds one part at a
+    // time and delays the end by one part, not by its whole share. Changing it
+    // waits for the tasks of the old split to end.
+    optional uint32 BackupChunksRangeCount = 30 [default = 4];
 }

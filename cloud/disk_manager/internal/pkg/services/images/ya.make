@@ -8,6 +8,7 @@ SRCS(
     create_image_from_image_task.go
     create_image_from_snapshot_task.go
     create_image_from_url_task.go
+    delete_backup_meta_task.go
     delete_image_task.go
     interface.go
     register.go
@@ -16,6 +17,7 @@ SRCS(
 )
 
 GO_TEST_SRCS(
+    delete_image_disabled_zones_test.go
     delete_image_task_test.go
     schedule_backup_image_tasks_test.go
 )

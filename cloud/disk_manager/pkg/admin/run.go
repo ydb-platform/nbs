@@ -12,6 +12,8 @@ import (
 
 ////////////////////////////////////////////////////////////////////////////////
 
+const skipClientConfigParsingAnnotation = "skip-client-config-parsing"
+
 func isHelperCommand(cmd *cobra.Command) bool {
 	// cmd.Name() would be the name of the most specific subcommand
 	// for "disk-manager-admin completion bash" it would be "bash".
@@ -28,6 +30,19 @@ func isHelperCommand(cmd *cobra.Command) bool {
 
 	_, ok := helperCommands[cmd.Name()]
 	return ok
+}
+
+func hasCommandAnnotation(cmd *cobra.Command, annotation string) bool {
+	for cmd != nil {
+		if cmd.Annotations != nil {
+			if _, ok := cmd.Annotations[annotation]; ok {
+				return true
+			}
+		}
+		cmd = cmd.Parent()
+	}
+
+	return false
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -51,9 +66,11 @@ func Run(
 				return nil
 			}
 
-			err := util.ParseProto(clientConfigFilePath, clientConfig)
-			if err != nil {
-				return err
+			if !hasCommandAnnotation(cmd, skipClientConfigParsingAnnotation) {
+				err := util.ParseProto(clientConfigFilePath, clientConfig)
+				if err != nil {
+					return err
+				}
 			}
 
 			if idExtracted {

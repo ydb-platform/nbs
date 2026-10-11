@@ -22,6 +22,7 @@ type storageYDB struct {
 	placementGroupsPath             string
 	endedMigrationExpirationTimeout time.Duration
 	backupEnabled                   bool
+	backupFolderIDs                 map[string]struct{}
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -36,7 +37,13 @@ func NewStorage(
 	db *persistence.YDBClient,
 	endedMigrationExpirationTimeout time.Duration,
 	backupEnabled bool,
+	backupFolderIDs []string,
 ) (Storage, error) {
+
+	folderIDs := make(map[string]struct{}, len(backupFolderIDs))
+	for _, folderID := range backupFolderIDs {
+		folderIDs[folderID] = struct{}{}
+	}
 
 	return &storageYDB{
 		db:              db,
@@ -50,6 +57,7 @@ func NewStorage(
 		placementGroupsPath:             db.AbsolutePath(placementGroupsPath),
 		endedMigrationExpirationTimeout: endedMigrationExpirationTimeout,
 		backupEnabled:                   backupEnabled,
+		backupFolderIDs:                 folderIDs,
 	}, nil
 }
 
