@@ -314,6 +314,7 @@ using TAliases = NProto::TStorageConfig::TFilestoreAliases;
     xxx(ParentlessFilesOnly,               bool,       false                  )\
     xxx(AllowHandlelessIO,                 bool,       false                  )\
     xxx(FileSystemEventsEnabled,           bool,       false                  )\
+    xxx(FileSystemEventsDryRunModeEnabled, bool,       false                  )\
                                                                                \
     xxx(LazyXAttrsEnabled,                 bool,       false                  )\
     xxx(MaxBackground,                     ui32,       0                      )\

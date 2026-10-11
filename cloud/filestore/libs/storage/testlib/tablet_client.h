@@ -324,6 +324,15 @@ public:
         return std::make_unique<TEvIndexTablet::TEvListQuotasRequest>();
     }
 
+    auto CreateGenerateFileSystemEventRequest(
+        const NProto::TFileSystemEvent& event)
+    {
+        auto request = std::make_unique<
+            TEvIndexTablet::TEvGenerateFileSystemEventRequest>();
+        *request->Record.MutableEvent() = event;
+        return request;
+    }
+
     auto CreateDestroySessionRequest(ui64 seqNo = 0)
     {
         auto request = std::make_unique<TEvIndexTablet::TEvDestroySessionRequest>();
