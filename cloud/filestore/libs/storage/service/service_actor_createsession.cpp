@@ -27,19 +27,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-std::pair<ui64, ui64> GetSeqNo(const NProto::TGetSessionEventsResponse& response)
-{
-    size_t numEvents = response.EventsSize();
-    Y_ABORT_UNLESS(numEvents);
-
-    return {
-        response.GetEvents(0).GetSeqNo(),
-        response.GetEvents(numEvents - 1).GetSeqNo(),
-    };
-}
-
-////////////////////////////////////////////////////////////////////////////////
-
 class TCreateSessionActor final
     : public TActorBootstrapped<TCreateSessionActor>
 {
@@ -66,10 +53,6 @@ private:
 
     TInstant LastPipeResetTime;
     TInstant LastPing;
-
-    static const int MaxStoredEvents = 1000;
-    google::protobuf::RepeatedPtrField<NProto::TSessionEvent> StoredEvents;
-    TActorId EventListener;
 
     bool FirstWakeupScheduled = false;
 
@@ -129,14 +112,6 @@ private:
 
     void HandlePingSession(
         const TEvServicePrivate::TEvPingSession::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleGetSessionEvents(
-        const TEvService::TEvGetSessionEventsRequest::TPtr& ev,
-        const TActorContext& ctx);
-
-    void HandleGetSessionEventsResponse(
-        const TEvService::TEvGetSessionEventsResponse::TPtr& ev,
         const TActorContext& ctx);
 
     void ScheduleWakeup(const TActorContext& ctx);
@@ -463,65 +438,6 @@ void TCreateSessionActor::HandlePingSession(
     LastPing = ctx.Now();
 }
 
-void TCreateSessionActor::HandleGetSessionEvents(
-    const TEvService::TEvGetSessionEventsRequest::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_ABORT_UNLESS(SessionId);
-
-    if (ev->Cookie == TEvService::StreamCookie) {
-        LOG_INFO(ctx, TFileStoreComponents::SERVICE_WORKER,
-            "%s subscribe event listener (%s)",
-            LogTag().c_str(),
-            ToString(EventListener).c_str());
-
-        EventListener = ev->Sender;
-    }
-
-    auto response = std::make_unique<TEvService::TEvGetSessionEventsResponse>();
-    response->Record.MutableEvents()->Swap(&StoredEvents);
-
-    NCloud::Reply(ctx, *ev, std::move(response));
-}
-
-void TCreateSessionActor::HandleGetSessionEventsResponse(
-    const TEvService::TEvGetSessionEventsResponse::TPtr& ev,
-    const TActorContext& ctx)
-{
-    Y_ABORT_UNLESS(SessionId);
-
-    const auto* msg = ev->Get();
-
-    const auto [firstSeqNo, lastSeqNo] = GetSeqNo(msg->Record);
-    LOG_ERROR(ctx, TFileStoreComponents::SERVICE_WORKER,
-        "%s got session events (seqNo: %lu-%lu)",
-        LogTag().c_str(),
-        firstSeqNo,
-        lastSeqNo);
-
-    if (EventListener) {
-        Y_ABORT_UNLESS(StoredEvents.size() == 0);
-
-        // just forward response to listener as-is
-        ctx.Send(ev->Forward(EventListener));
-        return;
-    }
-
-    for (const auto& event: msg->Record.GetEvents()) {
-        if (StoredEvents.size() < MaxStoredEvents) {
-            StoredEvents.Add()->CopyFrom(event);
-        } else {
-            // number of stored events exceeded
-            LOG_WARN(ctx, TFileStoreComponents::SERVICE_WORKER,
-                "%s not enough space - session events will be lost (seqNo: %lu-%lu)",
-                LogTag().c_str(),
-                event.GetSeqNo(),
-                lastSeqNo);
-            break;
-        }
-    }
-}
-
 void TCreateSessionActor::ScheduleWakeup(const TActorContext& ctx)
 {
     ctx.Schedule(TDuration::Seconds(1), new TEvents::TEvWakeup());
@@ -645,8 +561,6 @@ STFUNC(TCreateSessionActor::StateWork)
         HFunc(TEvServicePrivate::TEvCreateSession, HandleCreateSession);
         HFunc(TEvIndexTablet::TEvCreateSessionResponse, HandleCreateSessionResponse);
         HFunc(TEvServicePrivate::TEvPingSession, HandlePingSession);
-        HFunc(TEvService::TEvGetSessionEventsRequest, HandleGetSessionEvents);
-        HFunc(TEvService::TEvGetSessionEventsResponse, HandleGetSessionEventsResponse);
 
         default:
             HandleUnexpectedEvent(
@@ -668,8 +582,6 @@ STFUNC(TCreateSessionActor::StateShutdown)
         IgnoreFunc(TEvTabletPipe::TEvClientDestroyed);
         IgnoreFunc(TEvIndexTablet::TEvCreateSessionResponse);
         IgnoreFunc(TEvServicePrivate::TEvPingSession);
-        IgnoreFunc(TEvService::TEvGetSessionEventsRequest);
-        IgnoreFunc(TEvService::TEvGetSessionEventsResponse);
 
         default:
             HandleUnexpectedEvent(

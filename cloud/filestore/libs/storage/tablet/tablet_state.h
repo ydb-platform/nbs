@@ -454,11 +454,6 @@ public:
         return MakeCommitId(Generation, ++LastStep);
     }
 
-    ui64 GenerateEventId(TSession* session)
-    {
-        return MakeCommitId(Generation, ++session->LastEvent);
-    }
-
     const NProto::TFileSystemStats& GetFileSystemStats() const
     {
         return FileSystemStats;
@@ -883,7 +878,6 @@ public:
     void ResetSession(IIndexTabletDatabase& db, TSession* session, const TMaybe<TString>& state);
 
     TVector<TSession*> GetTimedOutSessions(TInstant now) const;
-    TVector<TSession*> GetSessionsToNotify(const NProto::TSessionEvent& event) const;
     TVector<NProtoPrivate::TTabletSessionInfo> DescribeSessions() const;
 
     const TSessionHistoryList& GetSessionHistoryList() const;

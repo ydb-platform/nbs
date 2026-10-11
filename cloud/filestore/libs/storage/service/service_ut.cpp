@@ -1193,60 +1193,6 @@ Y_UNIT_TEST_SUITE(TStorageServiceTest)
         service.CreateNode(headers, nodeArgs);
     }
 
-    Y_UNIT_TEST(ShouldGetSessionEvents)
-    {
-        TTestEnv env;
-
-        ui32 nodeIdx = env.AddDynamicNode();
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore("test", 1000);
-
-        auto headers = service.InitSession("test", "client");
-
-        service.SubscribeSession(headers);
-        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file"));
-
-        auto response = service.GetSessionEvents(headers);
-
-        const auto& events = response->Record.GetEvents();
-        UNIT_ASSERT_VALUES_EQUAL(events.size(), 1);
-    }
-
-    Y_UNIT_TEST(ShouldGetSessionEventsStream)
-    {
-        TTestEnv env;
-
-        ui32 nodeIdx = env.AddDynamicNode();
-
-        TServiceClient service(env.GetRuntime(), nodeIdx);
-        service.CreateFileStore("test", 1000);
-
-        auto headers = service.InitSession("test", "client");
-
-        service.SubscribeSession(headers);
-        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file1"));
-
-        {
-            auto response = service.GetSessionEventsStream(headers);
-
-            const auto& events = response->Record.GetEvents();
-            UNIT_ASSERT_VALUES_EQUAL(events.size(), 1);
-        }
-
-        service.CreateNode(headers, TCreateNodeArgs::File(RootNodeId, "file2"));
-
-        {
-            auto response = service.RecvResponse<TEvService::TEvGetSessionEventsResponse>();
-            UNIT_ASSERT_C(
-                SUCCEEDED(response->GetStatus()),
-                response->GetErrorReason());
-
-            const auto& events = response->Record.GetEvents();
-            UNIT_ASSERT_VALUES_EQUAL(events.size(), 1);
-        }
-    }
-
     Y_UNIT_TEST(ShouldListFileStores)
     {
         TTestEnv env;

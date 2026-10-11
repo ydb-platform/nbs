@@ -237,14 +237,6 @@ FILESTORE_SERVICE_LOCAL_ASYNC(FILESTORE_IMPLEMENT_METHOD_ASYNC)
 
 #undef FILESTORE_IMPLEMENT_METHOD
 
-    void GetSessionEventsStream(
-        TCallContextPtr callContext,
-        std::shared_ptr<NProto::TGetSessionEventsRequest> request,
-        IResponseHandlerPtr<NProto::TGetSessionEventsResponse> responseHandler) override
-    {
-        Y_UNUSED(callContext, request, responseHandler);
-    }
-
 private:
     struct TFileStorePaths
     {
@@ -466,28 +458,6 @@ private:
         return TErrorResponse(
             E_NOT_IMPLEMENTED,
             "ResizeFileStore is not implemented for the local service");
-    }
-
-    template <>
-    NProto::TSubscribeSessionResponse Execute<TSubscribeSessionMethod>(
-        NProto::TSubscribeSessionRequest& request,
-        NProto::TProfileLogRequestInfo& logRequest)
-    {
-        Y_UNUSED(request, logRequest);
-        return TErrorResponse(
-            E_NOT_IMPLEMENTED,
-            "SubscribeSession is not implemented for the local service");
-    }
-
-    template <>
-    NProto::TGetSessionEventsResponse Execute<TGetSessionEventsMethod>(
-        NProto::TGetSessionEventsRequest& request,
-        NProto::TProfileLogRequestInfo& logRequest)
-    {
-        Y_UNUSED(request, logRequest);
-        return TErrorResponse(
-            E_NOT_IMPLEMENTED,
-            "GetSessionEvents is not implemented for the local service");
     }
 
     template <>
