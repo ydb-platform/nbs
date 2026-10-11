@@ -642,6 +642,42 @@ type pool struct {
 	lockID            string
 	status            poolStatus
 	createdAt         time.Time
+
+	// Desired state of the pool (formerly stored in 'configs' table).
+	// Invariant: pool is configured iff its status is "ready".
+	// |capacity| is NULL only for rows that were never written by this version
+	// of the code (e.g. pool materialized by the previous version), config of
+	// such pool should be looked up in legacy 'configs' table.
+	// TODO: make |capacity| non-nullable after migration is completed.
+	capacity  *uint64
+	imageSize uint64
+}
+
+// Returns pool config, nil if pool is not configured (or not migrated yet).
+func (p *pool) config() *poolConfig {
+	if p.status != poolStatusReady || p.capacity == nil {
+		return nil
+	}
+
+	return &poolConfig{
+		imageID:   p.imageID,
+		zoneID:    p.zoneID,
+		capacity:  *p.capacity,
+		imageSize: p.imageSize,
+	}
+}
+
+func (p *pool) setConfig(capacity uint64, imageSize uint64) {
+	p.capacity = &capacity
+	p.imageSize = imageSize
+}
+
+func (p *pool) capacityValue() persistence.Value {
+	if p.capacity == nil {
+		return persistence.NullValue(persistence.TypeUint64)
+	}
+
+	return persistence.OptionalValue(persistence.Uint64Value(*p.capacity))
 }
 
 func (p *pool) structValue() persistence.Value {
@@ -655,6 +691,8 @@ func (p *pool) structValue() persistence.Value {
 		persistence.StructFieldValue("lock_id", persistence.UTF8Value(p.lockID)),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(p.status))),
 		persistence.StructFieldValue("created_at", persistence.TimestampValue(p.createdAt)),
+		persistence.StructFieldValue("capacity", p.capacityValue()),
+		persistence.StructFieldValue("image_size", persistence.Uint64Value(p.imageSize)),
 	)
 }
 
@@ -668,7 +706,9 @@ func poolStructTypeString() string {
 		base_disks_inflight: Uint64,
 		lock_id: Utf8,
 		status: Int64,
-		created_at: Timestamp>`
+		created_at: Timestamp,
+		capacity: Optional<Uint64>,
+		image_size: Uint64>`
 }
 
 func poolsTableDescription() persistence.CreateTableDescription {
@@ -682,6 +722,8 @@ func poolsTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("lock_id", persistence.Optional(persistence.TypeUTF8)),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithColumn("created_at", persistence.Optional(persistence.TypeTimestamp)),
+		persistence.WithColumn("capacity", persistence.Optional(persistence.TypeUint64)),
+		persistence.WithColumn("image_size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithPrimaryKeyColumn("image_id", "zone_id"),
 	)
 }
@@ -697,6 +739,8 @@ func scanPool(res persistence.Result) (pool pool, err error) {
 		persistence.OptionalWithDefault("lock_id", &pool.lockID),
 		persistence.OptionalWithDefault("status", &pool.status),
 		persistence.OptionalWithDefault("created_at", &pool.createdAt),
+		persistence.OptionalOrNil("capacity", &pool.capacity),
+		persistence.OptionalWithDefault("image_size", &pool.imageSize),
 	)
 	if err != nil {
 		return
@@ -1132,6 +1176,13 @@ func CreateYDBTables(
 	}
 	logging.Info(ctx, "Created pools table")
 
+	// TODO: remove 'configs' table after migration to 'pools' is completed.
+	err = migratePoolConfigs(ctx, config, db)
+	if err != nil {
+		return err
+	}
+	logging.Info(ctx, "Migrated pool configs")
+
 	// Contains ids of base disks that currently have status "deleting".
 	err = db.CreateOrAlterTable(
 		ctx,
@@ -1185,6 +1236,144 @@ func CreateYDBTables(
 	logging.Info(ctx, "Created tables for pools")
 
 	return nil
+}
+
+// Copies pool configs from legacy 'configs' table into 'pools' table.
+// Idempotent: pools that are already configured are left untouched.
+// TODO: remove after migration is completed.
+func migratePoolConfigs(
+	ctx context.Context,
+	config *pools_config.PoolsConfig,
+	db *persistence.YDBClient,
+) error {
+
+	tablesPath := db.AbsolutePath(config.GetStorageFolder())
+
+	return db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+
+				select *
+				from configs
+			`, tablesPath))
+			if err != nil {
+				return err
+			}
+			defer res.Close()
+
+			configs := make(map[string]*poolConfig)
+
+			for res.NextResultSet(ctx) {
+				for res.NextRow() {
+					c, err := scanPoolConfig(res)
+					if err != nil {
+						return err
+					}
+
+					key := c.imageID + c.zoneID
+
+					// NBS-4007: accumulate capacities of all pool kinds.
+					if existing, ok := configs[key]; ok {
+						c.capacity += existing.capacity
+					}
+					configs[key] = &c
+				}
+			}
+
+			// NOTE: always check stream query result after iteration.
+			err = res.Err()
+			if err != nil {
+				return errors.NewRetriableError(err)
+			}
+
+			for _, c := range configs {
+				err = migratePoolConfig(ctx, session, tablesPath, *c)
+				if err != nil {
+					return err
+				}
+			}
+
+			return nil
+		},
+	)
+}
+
+func migratePoolConfig(
+	ctx context.Context,
+	session *persistence.Session,
+	tablesPath string,
+	c poolConfig,
+) error {
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $image_id as Utf8;
+		declare $zone_id as Utf8;
+
+		select *
+		from pools
+		where image_id = $image_id and zone_id = $zone_id
+	`, tablesPath),
+		persistence.ValueParam("$image_id", persistence.UTF8Value(c.imageID)),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(c.zoneID)),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	p := pool{
+		imageID:   c.imageID,
+		zoneID:    c.zoneID,
+		status:    poolStatusReady,
+		createdAt: time.Now(),
+	}
+
+	if res.NextResultSet(ctx) && res.NextRow() {
+		p, err = scanPool(res)
+		if err != nil {
+			return err
+		}
+
+		if p.capacity != nil {
+			// Already migrated.
+			return tx.Commit(ctx)
+		}
+	}
+
+	// Legacy config + pool row with status "deleted" means that pool should
+	// be resurrected on the next scheduling iteration (on demand pool).
+	p.status = poolStatusReady
+	p.setConfig(c.capacity, c.imageSize)
+
+	logging.Info(ctx, "Migrating pool config %+v to pool %+v", c, p)
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $pools as List<%v>;
+
+		upsert into pools
+		select *
+		from AS_TABLE($pools)
+	`, tablesPath, poolStructTypeString()),
+		persistence.ValueParam("$pools", persistence.ListValue(p.structValue())),
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
 }
 
 func DropYDBTables(

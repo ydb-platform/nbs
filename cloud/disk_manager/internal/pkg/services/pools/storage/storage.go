@@ -129,6 +129,7 @@ type Storage interface {
 	// Deletes pools of all kinds (ssd, hdd, ...) matching given |imageID|, |zoneID|.
 	DeletePool(ctx context.Context, imageID string, zoneID string) error
 
+	// Deletes all pools of the image.
 	ImageDeleting(ctx context.Context, imageID string) error
 
 	GetBaseDisksToDelete(ctx context.Context, limit uint64) ([]BaseDisk, error)

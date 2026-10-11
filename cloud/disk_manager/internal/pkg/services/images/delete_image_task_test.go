@@ -112,3 +112,61 @@ func TestDeleteImageSchedulesRetireBaseDisksIdempotently(t *testing.T) {
 	require.NoError(t, err)
 	mock.AssertExpectationsForObjects(t, scheduler, storage, poolService, execCtx)
 }
+
+// pools.ConfigurePool relies on this order to close the race between image
+// deletion and pool configuration, see configurePoolTask.checkImage.
+func TestDeleteImageMarksImageDeletingBeforeDeletingPools(t *testing.T) {
+	ctx := logging.SetLogger(
+		context.Background(),
+		logging.NewStderrLogger(logging.DebugLevel),
+	)
+	scheduler := tasks_mocks.NewSchedulerMock()
+	storage := resources_storage_mocks.NewStorageMock()
+	poolService := pools_service_mocks.NewServiceMock()
+	execCtx := tasks_mocks.NewExecutionContextMock()
+
+	task := &deleteImageTask{
+		config:      &config.ImagesConfig{},
+		scheduler:   scheduler,
+		storage:     storage,
+		poolService: poolService,
+		request:     &protos.DeleteImageRequest{ImageId: "image"},
+		state:       &protos.DeleteImageTaskState{},
+	}
+
+	var calls []string
+
+	execCtx.On("GetTaskID").Return("delete_image_task")
+	storage.On(
+		"DeleteImage",
+		mock.Anything,
+		"image",
+		"delete_image_task",
+		mock.Anything,
+	).Run(func(mock.Arguments) {
+		calls = append(calls, "DeleteImage")
+	}).Return(&resources.ImageMeta{
+		ID:           "image",
+		DeleteTaskID: "delete_image_task",
+	}, nil)
+	poolService.On(
+		"ImageDeleting",
+		mock.Anything,
+		mock.Anything,
+	).Run(func(mock.Arguments) {
+		calls = append(calls, "ImageDeleting")
+	}).Return(mock.Anything, nil)
+	scheduler.On("WaitTask", mock.Anything, mock.Anything).Return(mock.Anything, nil)
+	scheduler.On(
+		"ScheduleTask",
+		mock.Anything,
+		"dataplane.DeleteSnapshot",
+		mock.Anything,
+		mock.Anything,
+	).Return(mock.Anything, nil)
+	storage.On("ImageDeleted", mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	err := task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	require.Equal(t, []string{"DeleteImage", "ImageDeleting"}, calls)
+}

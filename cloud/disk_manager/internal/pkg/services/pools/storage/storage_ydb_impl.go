@@ -1047,12 +1047,30 @@ func (s *storageYDB) updateBaseDiskAndSlot(
 	)
 }
 
-func (s *storageYDB) getPoolCapacity(
+// Returns pool config, nil if pool is not configured.
+// TODO: remove fallback to legacy 'configs' table after migration is completed.
+func (s *storageYDB) getPoolConfigTx(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	p pool,
+) (*poolConfig, error) {
+
+	if c := p.config(); c != nil {
+		return c, nil
+	}
+
+	return s.getLegacyPoolConfigTx(ctx, tx, p.imageID, p.zoneID)
+}
+
+// Reads pool config written by the previous version of the code into 'configs'
+// table. Returns nil if there is no such config.
+// TODO: remove after migration is completed.
+func (s *storageYDB) getLegacyPoolConfigTx(
 	ctx context.Context,
 	tx *persistence.Transaction,
 	imageID string,
 	zoneID string,
-) (capacity uint64, err error) {
+) (*poolConfig, error) {
 
 	res, err := tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -1060,7 +1078,7 @@ func (s *storageYDB) getPoolCapacity(
 		declare $image_id as Utf8;
 		declare $zone_id as Utf8;
 
-		select capacity
+		select *
 		from configs
 		where image_id = $image_id and zone_id = $zone_id
 	`, s.tablesPath),
@@ -1068,44 +1086,40 @@ func (s *storageYDB) getPoolCapacity(
 		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
 	)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer res.Close()
 
-	var rows int
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			rows++
-			var c uint64
-			err = res.ScanNamed(
-				persistence.OptionalWithDefault("capacity", &c),
-			)
-			if err != nil {
-				return 0, err
-			}
-
-			capacity += c
-		}
-	}
-
-	if rows == 0 {
-		err = tx.Commit(ctx)
-		if err != nil {
-			return 0, err
-		}
-
-		err = errors.NewNonRetriableErrorf(
-			"pool should be configured, imageID=%v, zoneID=%v",
-			imageID,
-			zoneID,
-		)
-		return 0, err
-	}
-
-	return capacity, nil
+	return scanLegacyPoolConfig(ctx, res)
 }
 
-// Just an overloading for |isPoolConfigured|.
+// NBS-4007: accumulates capacities of all pool kinds.
+// TODO: remove after migration is completed.
+func scanLegacyPoolConfig(
+	ctx context.Context,
+	res persistence.Result,
+) (*poolConfig, error) {
+
+	var config *poolConfig
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			c, err := scanPoolConfig(res)
+			if err != nil {
+				return nil, err
+			}
+
+			if config == nil {
+				config = &c
+			} else {
+				config.capacity += c.capacity
+			}
+		}
+	}
+
+	return config, nil
+}
+
 func (s *storageYDB) isPoolConfiguredTx(
 	ctx context.Context,
 	tx *persistence.Transaction,
@@ -1113,35 +1127,17 @@ func (s *storageYDB) isPoolConfiguredTx(
 	zoneID string,
 ) (bool, error) {
 
-	res, err := tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $image_id as Utf8;
-		declare $zone_id as Utf8;
-
-		select count(*)
-		from configs
-		where image_id = $image_id and zone_id = $zone_id
-	`, s.tablesPath),
-		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
-		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
-	)
-	if err != nil {
-		return false, err
-	}
-	defer res.Close()
-
-	if !res.NextResultSet(ctx) || !res.NextRow() {
-		return false, nil
-	}
-
-	var count uint64
-	err = res.ScanWithDefaults(&count)
+	p, err := s.getPoolOrDefault(ctx, tx, imageID, zoneID)
 	if err != nil {
 		return false, err
 	}
 
-	return count != 0, nil
+	config, err := s.getPoolConfigTx(ctx, tx, p)
+	if err != nil {
+		return false, err
+	}
+
+	return config != nil, nil
 }
 
 func (s *storageYDB) isPoolConfigured(
@@ -1151,35 +1147,12 @@ func (s *storageYDB) isPoolConfigured(
 	zoneID string,
 ) (bool, error) {
 
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $image_id as Utf8;
-		declare $zone_id as Utf8;
-
-		select count(*)
-		from configs
-		where image_id = $image_id and zone_id = $zone_id
-	`, s.tablesPath),
-		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
-		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
-	)
-	if err != nil {
-		return false, err
-	}
-	defer res.Close()
-
-	if !res.NextResultSet(ctx) || !res.NextRow() {
-		return false, nil
-	}
-
-	var count uint64
-	err = res.ScanWithDefaults(&count)
+	config, err := s.getPoolConfig(ctx, session, imageID, zoneID)
 	if err != nil {
 		return false, err
 	}
 
-	return count != 0, nil
+	return config != nil, nil
 }
 
 func (s *storageYDB) createPoolIfNecessary(
@@ -1189,35 +1162,86 @@ func (s *storageYDB) createPoolIfNecessary(
 	zoneID string,
 ) error {
 
-	capacity, err := s.getPoolCapacity(ctx, tx, imageID, zoneID)
+	p, err := s.getPoolOrDefault(ctx, tx, imageID, zoneID)
 	if err != nil {
 		return err
 	}
 
-	if capacity == 0 {
-		// Zero capacity means that this pool should be created "on demand".
-		_, err = tx.Execute(ctx, fmt.Sprintf(`
-			--!syntax_v1
-			pragma TablePathPrefix = "%v";
-			declare $image_id as Utf8;
-			declare $zone_id as Utf8;
-			declare $kind as Int64;
-			declare $capacity as Uint64;
+	config, err := s.getPoolConfigTx(ctx, tx, p)
+	if err != nil {
+		return err
+	}
 
-			upsert into configs (image_id, zone_id, kind, capacity)
-			values ($image_id, $zone_id, $kind, $capacity)
-		`, s.tablesPath),
-			persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
-			persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
-			persistence.ValueParam("$kind", persistence.Int64Value(0)), // TODO: get rid of this param.
-			persistence.ValueParam("$capacity", persistence.Uint64Value(1)),
-		)
+	if config == nil {
+		err = tx.Commit(ctx)
 		if err != nil {
 			return err
 		}
+
+		return errors.NewNonRetriableErrorf(
+			"pool should be configured, imageID=%v, zoneID=%v",
+			imageID,
+			zoneID,
+		)
 	}
 
-	return nil
+	if config.capacity != 0 {
+		// Base disks will be created by the regular scheduling.
+		return nil
+	}
+
+	// Zero capacity means that this pool should be created "on demand".
+	// NOTE: deleted pool (via pools.DeletePool) is resurrected here, it is
+	// intentional: image is still alive, so overlay disks should be created.
+	updated := p
+	updated.status = poolStatusReady
+	updated.setConfig(1, config.imageSize)
+
+	logging.Info(ctx, "Creating pool on demand, transition from %+v to %+v", p, updated)
+
+	return s.upsertPoolConfig(ctx, tx, updated)
+}
+
+// Writes pool into 'pools' table and (until migration is completed) its config
+// into legacy 'configs' table, so that previous version of the code can see it.
+func (s *storageYDB) upsertPoolConfig(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	p pool,
+) error {
+
+	if p.status != poolStatusReady || p.capacity == nil {
+		return errors.NewNonRetriableErrorf(
+			"internal inconsistency: can't configure pool %+v",
+			p,
+		)
+	}
+
+	_, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $pools as List<%v>;
+		declare $image_id as Utf8;
+		declare $zone_id as Utf8;
+		declare $kind as Int64;
+		declare $capacity as Uint64;
+		declare $image_size as Uint64;
+
+		upsert into pools
+		select *
+		from AS_TABLE($pools);
+
+		upsert into configs (image_id, zone_id, kind, capacity, image_size)
+		values ($image_id, $zone_id, $kind, $capacity, $image_size)
+	`, s.tablesPath, poolStructTypeString()),
+		persistence.ValueParam("$pools", persistence.ListValue(p.structValue())),
+		persistence.ValueParam("$image_id", persistence.UTF8Value(p.imageID)),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(p.zoneID)),
+		persistence.ValueParam("$kind", persistence.Int64Value(0)), // TODO: get rid of this param.
+		persistence.ValueParam("$capacity", persistence.Uint64Value(*p.capacity)),
+		persistence.ValueParam("$image_size", persistence.Uint64Value(p.imageSize)),
+	)
+	return err
 }
 
 func (s *storageYDB) acquireBaseDiskSlot(
@@ -2113,7 +2137,31 @@ func (s *storageYDB) getPoolConfig(
 	zoneID string,
 ) (*poolConfig, error) {
 
-	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+	res, err := session.ExecuteRO(
+		ctx,
+		s.makeSelectPoolsQuery(),
+		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	if res.NextResultSet(ctx) && res.NextRow() {
+		p, err := scanPool(res)
+		if err != nil {
+			return nil, err
+		}
+
+		if c := p.config(); c != nil {
+			return c, nil
+		}
+	}
+
+	// TODO: remove fallback to legacy 'configs' table after migration is
+	// completed.
+	legacy, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $image_id as Utf8;
@@ -2129,18 +2177,9 @@ func (s *storageYDB) getPoolConfig(
 	if err != nil {
 		return nil, err
 	}
-	defer res.Close()
+	defer legacy.Close()
 
-	if !res.NextResultSet(ctx) || !res.NextRow() {
-		return nil, nil
-	}
-
-	config, err := scanPoolConfig(res)
-	if err != nil {
-		return nil, err
-	}
-
-	return &config, nil
+	return scanLegacyPoolConfig(ctx, legacy)
 }
 
 func (s *storageYDB) getPoolConfigs(
@@ -2149,6 +2188,85 @@ func (s *storageYDB) getPoolConfigs(
 ) (configs []poolConfig, err error) {
 
 	defer s.metrics.StatCall("getPoolConfigs")(&err)
+
+	m, err := s.getConfiguredPools(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+
+	// TODO: remove fallback to legacy 'configs' table after migration is
+	// completed.
+	legacyConfigs, err := s.getLegacyPoolConfigs(ctx, session)
+	if err != nil {
+		return nil, err
+	}
+
+	for key, config := range legacyConfigs {
+		if _, ok := m[key]; !ok {
+			m[key] = config
+		}
+	}
+
+	for _, config := range m {
+		configs = append(configs, *config)
+	}
+
+	return configs, nil
+}
+
+// Returns configs of all configured pools, keyed by imageID+zoneID.
+func (s *storageYDB) getConfiguredPools(
+	ctx context.Context,
+	session *persistence.Session,
+) (map[string]*poolConfig, error) {
+
+	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $status as Int64;
+
+		select *
+		from pools
+		where status = $status and capacity is not null
+	`, s.tablesPath),
+		persistence.ValueParam("$status", persistence.Int64Value(int64(poolStatusReady))),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Close()
+
+	m := make(map[string]*poolConfig)
+
+	for res.NextResultSet(ctx) {
+		for res.NextRow() {
+			p, err := scanPool(res)
+			if err != nil {
+				return nil, err
+			}
+
+			if c := p.config(); c != nil {
+				m[p.imageID+p.zoneID] = c
+			}
+		}
+	}
+
+	// NOTE: always check stream query result after iteration.
+	err = res.Err()
+	if err != nil {
+		return nil, errors.NewRetriableError(err)
+	}
+
+	return m, nil
+}
+
+// Returns configs written by the previous version of the code into legacy
+// 'configs' table, keyed by imageID+zoneID.
+// TODO: remove after migration is completed.
+func (s *storageYDB) getLegacyPoolConfigs(
+	ctx context.Context,
+	session *persistence.Session,
+) (map[string]*poolConfig, error) {
 
 	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
@@ -2177,7 +2295,6 @@ func (s *storageYDB) getPoolConfigs(
 			// NBS-4007: don't use 'kind' key of 'configs' table.
 			if c, ok := m[key]; ok {
 				// Just accumulate capacities of all pool kinds.
-				// TODO: Do something better.
 				config.capacity += c.capacity
 			}
 			m[key] = &config
@@ -2190,11 +2307,7 @@ func (s *storageYDB) getPoolConfigs(
 		return nil, errors.NewRetriableError(err)
 	}
 
-	for _, config := range m {
-		configs = append(configs, *config)
-	}
-
-	return configs, nil
+	return m, nil
 }
 
 func (s *storageYDB) getPoolConfigsWithNonZeroCapacity(
@@ -2202,34 +2315,15 @@ func (s *storageYDB) getPoolConfigsWithNonZeroCapacity(
 	session *persistence.Session,
 ) (configs []poolConfig, err error) {
 
-	res, err := session.StreamExecuteRO(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-
-		select *
-		from configs
-		where capacity > 0
-	`, s.tablesPath,
-	))
+	all, err := s.getPoolConfigs(ctx, session)
 	if err != nil {
 		return nil, err
 	}
-	defer res.Close()
 
-	for res.NextResultSet(ctx) {
-		for res.NextRow() {
-			config, err := scanPoolConfig(res)
-			if err != nil {
-				return nil, err
-			}
+	for _, config := range all {
+		if config.capacity > 0 {
 			configs = append(configs, config)
 		}
-	}
-
-	// NOTE: always check stream query result after iteration.
-	err = res.Err()
-	if err != nil {
-		return nil, errors.NewRetriableError(err)
 	}
 
 	return configs, nil
@@ -2296,28 +2390,31 @@ func (s *storageYDB) takeBaseDisksToScheduleForPool(
 	}
 	defer tx.Rollback(ctx)
 
-	// Check that config is still present (NBS-2171).
-	configured, err := s.isPoolConfiguredTx(
-		ctx,
-		tx,
-		config.imageID,
-		config.zoneID,
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	if !configured {
-		// Nothing to schedule.
-		return nil, tx.Commit(ctx)
-	}
-
 	pool, err := s.getPoolOrDefault(ctx, tx, config.imageID, config.zoneID)
 	if err != nil {
 		return nil, err
 	}
 
+	// Check that config is still present (NBS-2171) and use the actual one.
+	actualConfig, err := s.getPoolConfigTx(ctx, tx, pool)
+	if err != nil {
+		return nil, err
+	}
+
+	if actualConfig == nil {
+		// Nothing to schedule.
+		return nil, tx.Commit(ctx)
+	}
+	config = *actualConfig
+
+	// TODO: remove after migration from legacy 'configs' table is completed.
+	// Pool with legacy config: resurrect it if it was deleted (on demand pool
+	// created by the previous version of the code) and migrate the config
+	// into 'pools' table.
 	pool.status = poolStatusReady
+	if pool.capacity == nil {
+		pool.setConfig(config.capacity, config.imageSize)
+	}
 
 	if pool.size >= config.capacity {
 		// Pool is already full.
@@ -2668,6 +2765,10 @@ func (s *storageYDB) configurePool(
 		return err
 	}
 
+	// NOTE: this is what makes |imageDeleting| final: once it has marked the
+	// pool as deleted, no concurrent pools.ConfigurePool can resurrect it. The
+	// race with a pools.ConfigurePool that has not written anything yet is
+	// closed by pools.ConfigurePool itself (see configurePoolTask).
 	if p.status == poolStatusDeleted {
 		err = tx.Commit(ctx)
 		if err != nil {
@@ -2681,24 +2782,12 @@ func (s *storageYDB) configurePool(
 		)
 	}
 
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $image_id as Utf8;
-		declare $zone_id as Utf8;
-		declare $kind as Int64;
-		declare $capacity as Uint64;
-		declare $image_size as Uint64;
+	updated := p
+	updated.setConfig(uint64(capacity), imageSize)
 
-		upsert into configs (image_id, zone_id, kind, capacity, image_size)
-		values ($image_id, $zone_id, $kind, $capacity, $image_size)
-	`, s.tablesPath),
-		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
-		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
-		persistence.ValueParam("$kind", persistence.Int64Value(0)), // TODO: get rid of this param.
-		persistence.ValueParam("$capacity", persistence.Uint64Value(uint64(capacity))),
-		persistence.ValueParam("$image_size", persistence.Uint64Value(imageSize)),
-	)
+	logging.Info(ctx, "Configuring pool, transition from %+v to %+v", p, updated)
+
+	err = s.upsertPoolConfig(ctx, tx, updated)
 	if err != nil {
 		return err
 	}
@@ -2758,7 +2847,14 @@ func (s *storageYDB) deletePool(
 	defer res.Close()
 
 	if !res.NextResultSet(ctx) || !res.NextRow() {
-		// Nothing to do.
+		// Pool does not exist. Legacy config (written by the previous version
+		// of the code) may still exist though.
+		// TODO: remove after migration is completed.
+		err = s.deleteLegacyPoolConfig(ctx, tx, imageID, zoneID)
+		if err != nil {
+			return err
+		}
+
 		return tx.Commit(ctx)
 	}
 
@@ -2794,14 +2890,16 @@ func (s *storageYDB) deletePool(
 		}
 	}
 
+	err = s.deleteLegacyPoolConfig(ctx, tx, p.imageID, p.zoneID)
+	if err != nil {
+		return err
+	}
+
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $image_id as Utf8;
 		declare $zone_id as Utf8;
-
-		delete from configs where
-		image_id = $image_id and zone_id = $zone_id;
 
 		delete from free where
 		image_id = $image_id and zone_id = $zone_id;
@@ -2815,6 +2913,8 @@ func (s *storageYDB) deletePool(
 
 	updated := p
 	updated.status = poolStatusDeleted
+	updated.capacity = nil
+	updated.imageSize = 0
 
 	logging.Info(ctx, "Applying pool transition from %+v to %+v", p, updated)
 
@@ -2845,21 +2945,56 @@ func (s *storageYDB) deletePool(
 	return tx.Commit(ctx)
 }
 
+// TODO: remove after migration is completed.
+func (s *storageYDB) deleteLegacyPoolConfig(
+	ctx context.Context,
+	tx *persistence.Transaction,
+	imageID string,
+	zoneID string,
+) error {
+
+	_, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $image_id as Utf8;
+		declare $zone_id as Utf8;
+
+		delete from configs where
+		image_id = $image_id and zone_id = $zone_id;
+	`, s.tablesPath),
+		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+		persistence.ValueParam("$zone_id", persistence.UTF8Value(zoneID)),
+	)
+	return err
+}
+
 func (s *storageYDB) imageDeleting(
 	ctx context.Context,
 	session *persistence.Session,
 	imageID string,
 ) error {
 
+	// NOTE: pools that are not written yet (concurrent pools.ConfigurePool)
+	// can't be found here, that race is closed by pools.ConfigurePool itself,
+	// see configurePoolTask.
+	//
+	// TODO: remove union with legacy 'configs' table after migration is
+	// completed. Previous version of the code creates row in 'pools' table
+	// lazily (on the first scheduling iteration), so its configs should be
+	// looked up separately.
 	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $image_id as Utf8;
 		declare $status as Int64;
 
-		select *
+		select zone_id
 		from pools
 		where image_id = $image_id and status = $status
+		union all
+		select zone_id
+		from configs
+		where image_id = $image_id
 	`, s.tablesPath),
 		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
 		persistence.ValueParam("$status", persistence.Int64Value(int64(poolStatusReady))),
@@ -2869,17 +3004,26 @@ func (s *storageYDB) imageDeleting(
 	}
 	defer res.Close()
 
+	zoneIDs := make(map[string]struct{})
+
 	for res.NextResultSet(ctx) {
 		for res.NextRow() {
-			pool, err := scanPool(res)
+			var zoneID string
+			err = res.ScanNamed(
+				persistence.OptionalWithDefault("zone_id", &zoneID),
+			)
 			if err != nil {
 				return err
 			}
 
-			err = s.deletePool(ctx, session, pool.imageID, pool.zoneID)
-			if err != nil {
-				return err
-			}
+			zoneIDs[zoneID] = struct{}{}
+		}
+	}
+
+	for zoneID := range zoneIDs {
+		err = s.deletePool(ctx, session, imageID, zoneID)
+		if err != nil {
+			return err
 		}
 	}
 
