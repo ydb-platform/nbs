@@ -90,6 +90,16 @@ func (s *SchedulerMock) WaitAnyTasks(
 	return res, args.Error(1)
 }
 
+func (s *SchedulerMock) GetEndedTasks(
+	ctx context.Context,
+	taskIDs []string,
+) ([]string, error) {
+
+	args := s.Called(ctx, taskIDs)
+	res, _ := args.Get(0).([]string)
+	return res, args.Error(1)
+}
+
 func (s *SchedulerMock) WaitTaskEnded(
 	ctx context.Context,
 	taskID string,
