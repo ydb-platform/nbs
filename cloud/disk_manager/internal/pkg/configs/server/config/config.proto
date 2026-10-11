@@ -86,4 +86,5 @@ message ServerConfig {
     optional cells.CellsConfig FilestoreCellsConfig = 21;
     optional backup.SnapshotStorageBackupConfig SnapshotStorageBackupConfig = 22;
     optional DisabledZonesConfig DisabledZonesConfig = 23;
+    optional backup.SnapshotExportConfig SnapshotExportConfig = 24;
 }

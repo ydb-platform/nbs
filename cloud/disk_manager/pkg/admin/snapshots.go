@@ -916,6 +916,7 @@ func newSnapshotsCmd(
 		newCreateSnapshotCmd(clientConfig),
 		newDeleteSnapshotCmd(clientConfig),
 		newExportSnapshotCmd(serverConfig),
+		newExportSnapshotToS3Cmd(clientConfig),
 		newScheduleMigrateSnapshotTaskCmd(
 			clientConfig,
 			serverConfig,

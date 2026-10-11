@@ -3,6 +3,7 @@ GO_LIBRARY()
 SRCS(
     common.go
     disks.go
+    export.go
     filesystem.go
     filesystem_snapshots.go
     images.go

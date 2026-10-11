@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package cloud.disk_manager;
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/api;disk_manager";
+
+// Destination of a snapshot or image export: an S3-compatible bucket of the
+// caller. The keys are encrypted before they reach the task storage and are
+// opened only by the host that performs the export.
+message ExportDestination {
+    // HTTP(S) endpoint of an S3-compatible storage.
+    string endpoint = 1;
+    // Signing region; empty when the storage does not use one.
+    string region = 2;
+    // The bucket must exist.
+    string bucket = 3;
+    // Optional prefix; objects are placed under
+    // <prefix>/<id>-backup-<uuid>/part-00000001.raw, ..., manifest.json.
+    string prefix = 4;
+    string access_key_id = 5;
+    string secret_access_key = 6;
+    // Size of one part; 0 selects the server default. A positive multiple of
+    // 4 MiB, at most 1 GiB.
+    uint64 part_size = 7;
+}
+
+message ExportMetadata {
+    double progress = 1;
+}
+
+message ExportResponse {
+    string bucket = 1;
+    // Prefix of the exported objects, ends with "/".
+    string prefix = 2;
+    string manifest_key = 3;
+    uint32 part_count = 4;
+    int64 size = 5;
+}

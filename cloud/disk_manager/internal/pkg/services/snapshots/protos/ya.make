@@ -6,9 +6,11 @@ SRCS(
     backup_snapshot_task.proto
     create_snapshot_from_disk_task.proto
     delete_snapshot_task.proto
+    export_to_s3_task.proto
 )
 
 PEERDIR(
+    cloud/disk_manager/internal/pkg/dataplane/protos
     cloud/disk_manager/internal/pkg/types
 )
 

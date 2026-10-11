@@ -643,3 +643,103 @@ func TestS3ExportReusesOneBufferAndUploadsBeforeReadingNextPart(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 1, source.readyCalls)
 }
+
+// A task keeps the backup UUID and the uploaded parts in its state: after a
+// restart it continues from the next part under the same prefix, and the
+// manifest published at the end covers parts of both attempts.
+func TestS3ExportResumesByPart(t *testing.T) {
+	source := &s3TestSource{
+		meta: storage.SnapshotMeta{
+			ID:         "snapshot",
+			Size:       5 * chunkSize,
+			ChunkCount: 5,
+			Ready:      true,
+		},
+		entries: []storage.ChunkMapEntry{
+			{ChunkIndex: 0, ChunkID: "data-0"},
+			{ChunkIndex: 2, ChunkID: "data-2", StoredInS3: true},
+			{ChunkIndex: 4, ChunkID: "data-4"},
+		},
+	}
+
+	dest := newS3TestDestination()
+	options := s3TestOptions()
+	const backupUUID = "11111111-2222-3333-4444-555555555555"
+
+	first, err := NewS3Export(
+		newContext(),
+		source,
+		"snapshot",
+		dest,
+		options,
+		backupUUID,
+	)
+	require.NoError(t, err)
+	require.Equal(t, uint32(3), first.PartCount())
+	require.Equal(t, uint64(5*chunkSize), first.Size())
+	prefix := s3BackupPrefix(options.Prefix, "snapshot", backupUUID)
+	require.Equal(t, prefix, first.Prefix())
+	require.Equal(t, prefix+"manifest.json", first.ManifestKey())
+
+	part1, err := first.ExportPart(newContext(), 1)
+	require.NoError(t, err)
+	require.Equal(t, uint32(1), part1.Number)
+	require.Len(t, dest.uploads, 1)
+	require.Equal(t, prefix+"part-00000001.raw", dest.uploads[0].key)
+
+	// The restarted attempt: the same UUID, parts 2 and 3 only.
+	second, err := NewS3Export(
+		newContext(),
+		source,
+		"snapshot",
+		dest,
+		options,
+		backupUUID,
+	)
+	require.NoError(t, err)
+	require.Equal(t, first.PartCount(), second.PartCount())
+
+	parts := []S3ManifestPart{part1}
+	for number := uint32(2); number <= second.PartCount(); number++ {
+		part, err := second.ExportPart(newContext(), number)
+		require.NoError(t, err)
+		parts = append(parts, part)
+	}
+	require.Len(t, dest.uploads, 3)
+	require.NotContains(t, dest.objects, prefix+"manifest.json")
+
+	_, err = second.ExportPart(newContext(), 4)
+	require.Error(t, err)
+
+	manifest, err := second.PublishManifest(newContext(), parts)
+	require.NoError(t, err)
+	require.Equal(t, backupUUID, manifest.BackupUUID)
+	require.NoError(t, validateS3Manifest(manifest))
+	require.Contains(t, dest.objects, prefix+"manifest.json")
+
+	var reconstructed bytes.Buffer
+	for _, part := range manifest.Parts {
+		data := dest.objects[prefix+part.Key]
+		require.Equal(t, part.Length, uint64(len(data)))
+		sum := sha256.Sum256(data)
+		require.Equal(t, part.SHA256, hex.EncodeToString(sum[:]))
+		reconstructed.Write(data)
+	}
+
+	var stdout bytes.Buffer
+	_, err = ExportPartitionToWriterWithReadWorkers(
+		newContext(),
+		source,
+		"snapshot",
+		&stdout,
+		1,
+		1,
+		2,
+	)
+	require.NoError(t, err)
+	require.Equal(t, stdout.Bytes(), reconstructed.Bytes())
+
+	// Parts of a different set do not pass as a manifest.
+	_, err = second.PublishManifest(newContext(), parts[:2])
+	require.Error(t, err)
+}

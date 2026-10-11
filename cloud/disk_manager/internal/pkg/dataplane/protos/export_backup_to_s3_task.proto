@@ -1,0 +1,66 @@
+syntax = "proto3";
+
+package dataplane;
+
+import "cloud/disk_manager/internal/pkg/dataplane/protos/transfer_from_backup_to_disk_task.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message ExportBackupToS3Request {
+    BackupSourceKind SrcKind = 1;
+    // Snapshot or image id.
+    string SrcId = 2;
+    // Disk the snapshot was created from. Not used for images.
+    string SrcDiskId = 3;
+    // The backup must belong to this folder.
+    string ExpectedFolderId = 4;
+
+    string Endpoint = 5;
+    string Region = 6;
+    string Bucket = 7;
+    string Prefix = 8;
+    uint64 PartSize = 9;
+    // Keys of the destination bucket, sealed by backup.S3.EncryptSecret: the
+    // task storage never sees them in the clear.
+    bytes EncryptedDek = 10;
+    bytes EncryptedCredentials = 11;
+}
+
+message ExportBackupToS3Part {
+    uint32 Number = 1;
+    string Key = 2;
+    uint64 Offset = 3;
+    uint64 Length = 4;
+    string Sha256 = 5;
+}
+
+message ExportBackupToS3TaskState {
+    // Set by the first attempt; object keys derive from it, so a part
+    // interrupted by a restart is overwritten under the same key.
+    string BackupUuid = 1;
+    // Hashes of the backup's meta and chunk map, set by the first attempt.
+    bytes MetaSha256 = 2;
+    bytes ChunkMapSha256 = 3;
+    uint32 ChunkCount = 4;
+    uint64 Size = 5;
+    uint32 PartCount = 6;
+    // Uploaded parts in order; the next attempt continues from
+    // len(Parts) + 1.
+    repeated ExportBackupToS3Part Parts = 7;
+    string ManifestKey = 8;
+    double Progress = 9;
+}
+
+message ExportBackupToS3Metadata {
+    double Progress = 1;
+}
+
+message ExportBackupToS3Response {
+    string Bucket = 1;
+    string Prefix = 2;
+    string ManifestKey = 3;
+    uint32 PartCount = 4;
+    uint64 Size = 5;
+}

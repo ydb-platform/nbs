@@ -7,6 +7,8 @@ SRCS(
     create_snapshot_from_disk_task.go
     delete_backup_meta_task.go
     delete_snapshot_task.go
+    export.go
+    export_to_s3_task.go
     interface.go
     register.go
     schedule_backup_snapshot_tasks.go

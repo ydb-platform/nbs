@@ -86,3 +86,54 @@ func (s *S3) CheckEncryptedDEK(encryptedDEK []byte) error {
 	_, err := s.decryptDEK(encryptedDEK)
 	return err
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Kind bound to the sealed keys of an export destination.
+const ExportCredentialsSecretKind = "export-s3-credentials"
+
+// Secrets that travel through the task storage, such as keys of a destination
+// bucket, use the same envelope as follower objects: a fresh DEK under the
+// kek, the secret under the DEK. The kek id binds the DEK, the secret kind
+// binds the ciphertext, so a sealed value cannot be replayed as another kind.
+
+func (s *S3) EncryptSecret(
+	kind string,
+	plaintext []byte,
+) (encryptedDEK []byte, ciphertext []byte, err error) {
+
+	encryptedDEK, err = s.NewEncryptedDEK()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	aead, err := s.decryptDEK(encryptedDEK)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	ciphertext, err = encrypt(aead, plaintext, []byte(kind))
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return encryptedDEK, ciphertext, nil
+}
+
+func (s *S3) DecryptSecret(
+	kind string,
+	encryptedDEK []byte,
+	ciphertext []byte,
+) ([]byte, error) {
+
+	if s.kek == nil {
+		return nil, errors.NewNonRetriableErrorf("kek is not configured")
+	}
+
+	aead, err := s.decryptDEK(encryptedDEK)
+	if err != nil {
+		return nil, err
+	}
+
+	return decrypt(aead, ciphertext, []byte(kind))
+}

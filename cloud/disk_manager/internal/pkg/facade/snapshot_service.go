@@ -42,6 +42,19 @@ func (s *snapshotService) Delete(
 	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
+func (s *snapshotService) Export(
+	ctx context.Context,
+	req *disk_manager.ExportSnapshotRequest,
+) (*disk_manager.Operation, error) {
+
+	taskID, err := s.service.ExportSnapshot(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return getOperation(ctx, s.taskScheduler, taskID)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func RegisterSnapshotService(

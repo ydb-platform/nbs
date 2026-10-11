@@ -44,9 +44,11 @@ var (
 		{name: "ImageService.Create", permission: "disk-manager.images.create"},
 		{name: "ImageService.Update", permission: "disk-manager.images.update"},
 		{name: "ImageService.Delete", permission: "disk-manager.images.delete"},
+		{name: "ImageService.Export", permission: "disk-manager.images.export"},
 
 		{name: "SnapshotService.Create", permission: "disk-manager.snapshots.create"},
 		{name: "SnapshotService.Delete", permission: "disk-manager.snapshots.delete"},
+		{name: "SnapshotService.Export", permission: "disk-manager.snapshots.export"},
 
 		{name: "OperationService.Get", permission: "disk-manager.operations.get"},
 		{name: "OperationService.Cancel", permission: "disk-manager.operations.update"},
@@ -265,11 +267,13 @@ func (i *interceptor) handleRequest(
 	resp, err := handler(ctx, req)
 	if err == nil {
 		// Don't log DiskService.Assign, ImageService.Create requests because of
-		// sensitive data.
+		// sensitive data. Export requests carry the keys of the destination.
 		// TODO: remove this hack for DiskService.Assign request (NBS-2668).
 		// TODO: should mask secrets instead.
 		if requestName != "DiskService.Assign" &&
-			requestName != "ImageService.Create" {
+			requestName != "ImageService.Create" &&
+			requestName != "ImageService.Export" &&
+			requestName != "SnapshotService.Export" {
 
 			if strings.Contains(permission, "create") ||
 				strings.Contains(permission, "update") ||

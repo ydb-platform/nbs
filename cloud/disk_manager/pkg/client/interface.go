@@ -25,6 +25,7 @@ type Client interface {
 
 	// ImageService:
 	CreateImage(ctx context.Context, req *disk_manager.CreateImageRequest) (*disk_manager.Operation, error)
+	ExportImage(ctx context.Context, req *disk_manager.ExportImageRequest) (*disk_manager.Operation, error)
 	UpdateImage(ctx context.Context, req *disk_manager.UpdateImageRequest) (*disk_manager.Operation, error)
 	DeleteImage(ctx context.Context, req *disk_manager.DeleteImageRequest) (*disk_manager.Operation, error)
 
@@ -43,6 +44,7 @@ type Client interface {
 	// SnapshotService:
 	CreateSnapshot(ctx context.Context, req *disk_manager.CreateSnapshotRequest) (*disk_manager.Operation, error)
 	DeleteSnapshot(ctx context.Context, req *disk_manager.DeleteSnapshotRequest) (*disk_manager.Operation, error)
+	ExportSnapshot(ctx context.Context, req *disk_manager.ExportSnapshotRequest) (*disk_manager.Operation, error)
 
 	// FilesystemService
 	CreateFilesystem(ctx context.Context, req *disk_manager.CreateFilesystemRequest) (*disk_manager.Operation, error)

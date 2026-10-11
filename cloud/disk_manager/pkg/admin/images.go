@@ -292,6 +292,7 @@ func newImagesCmd(
 		newListImagesCmd(clientConfig, serverConfig),
 		newCreateImageCmd(clientConfig),
 		newDeleteImageCmd(clientConfig),
+		newExportImageToS3Cmd(clientConfig),
 	)
 
 	return cmd

@@ -15,6 +15,7 @@ SRCS(
     delete_disk_from_incremental.go
     delete_snapshot_data_task.go
     delete_snapshot_task.go
+    export_backup_to_s3_task.go
     migrate_snapshot.go
     migrate_snapshot_database_task.go
     register.go

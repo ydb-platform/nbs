@@ -201,222 +201,282 @@ func validateS3Manifest(manifest S3Manifest) error {
 	return nil
 }
 
-// ExportToS3 synchronously exports a complete ready snapshot, publishing its
-// completion manifest only after every raw part succeeds. Source access is
-// read-only; the caller must keep the source available throughout the export.
-func ExportToS3(
+// S3Export is one export of a ready snapshot to an S3 prefix, split into
+// parts so that a task can save its progress between them. Parts are
+// independent: ExportPart(n) reads chunks of part n only and uploads it under
+// a key that depends on the backup UUID, so a part interrupted by a restart
+// is overwritten under the same key when ExportPart(n) is called again.
+type S3Export struct {
+	snapshotStorage Source
+	snapshotID      string
+	meta            storage.SnapshotMeta
+	destination     S3Destination
+	options         S3ExportOptions
+	backupUUID      string
+	prefix          string
+	uri             string
+	partCount       uint32
+	buffer          bytes.Buffer
+}
+
+// NewS3Export validates the options, reads the snapshot meta, checks the
+// destination bucket and plans the parts. backupUUID names the prefix; a task
+// keeps it in its state so that every attempt writes to the same prefix.
+func NewS3Export(
 	ctx context.Context,
 	snapshotStorage Source,
 	snapshotID string,
 	destination S3Destination,
 	options S3ExportOptions,
-) (S3Manifest, error) {
+	backupUUID string,
+) (*S3Export, error) {
 
-	if snapshotID == "" || options.Bucket == "" {
-		return S3Manifest{}, fmt.Errorf(
-			"snapshot ID and destination bucket are required",
+	if snapshotID == "" || options.Bucket == "" || backupUUID == "" {
+		return nil, fmt.Errorf(
+			"snapshot ID, destination bucket and backup UUID are required",
 		)
 	}
 
 	if err := ValidateReadWorkers(options.ReadWorkerCount); err != nil {
-		return S3Manifest{}, err
+		return nil, err
 	}
 
 	if err := ValidateS3PartSize(options.PartSize); err != nil {
-		return S3Manifest{}, err
+		return nil, err
 	}
 
 	if err := ctx.Err(); err != nil {
-		return S3Manifest{}, err
+		return nil, err
 	}
 
 	meta, err := checkSnapshotReadyForExport(ctx, snapshotStorage, snapshotID)
 	if err != nil {
-		return S3Manifest{}, err
+		return nil, err
 	}
 
 	count, err := s3PartitionCount(meta, options.PartSize)
 	if err != nil {
-		return S3Manifest{}, err
+		return nil, err
 	}
 
 	exists, err := destination.BucketExists(ctx, options.Bucket)
 	if err != nil {
-		return S3Manifest{}, fmt.Errorf("checking destination bucket: %w", err)
+		return nil, fmt.Errorf("checking destination bucket: %w", err)
 	}
 
 	if !exists {
-		return S3Manifest{}, fmt.Errorf(
+		return nil, fmt.Errorf(
 			"destination bucket %v does not exist",
 			options.Bucket,
 		)
 	}
 
-	backupUUID, err := uuid.NewV4()
-	if err != nil {
-		return S3Manifest{}, err
+	prefix := s3BackupPrefix(options.Prefix, snapshotID, backupUUID)
+	return &S3Export{
+		snapshotStorage: snapshotStorage,
+		snapshotID:      snapshotID,
+		meta:            meta,
+		destination:     destination,
+		options:         options,
+		backupUUID:      backupUUID,
+		prefix:          prefix,
+		uri:             "s3://" + options.Bucket + "/" + prefix,
+		partCount:       count,
+	}, nil
+}
+
+func (e *S3Export) PartCount() uint32 {
+	return e.partCount
+}
+
+func (e *S3Export) Size() uint64 {
+	return e.meta.Size
+}
+
+func (e *S3Export) ChunkCount() uint32 {
+	return e.meta.ChunkCount
+}
+
+// Prefix of every exported object, ends with "/".
+func (e *S3Export) Prefix() string {
+	return e.prefix
+}
+
+func (e *S3Export) ManifestKey() string {
+	return e.prefix + "manifest.json"
+}
+
+// ExportPart reads the 1-based part and uploads it. The returned part carries
+// the SHA-256 of the uploaded bytes for the manifest.
+func (e *S3Export) ExportPart(
+	ctx context.Context,
+	number uint32,
+) (S3ManifestPart, error) {
+
+	if number == 0 || number > e.partCount {
+		return S3ManifestPart{}, task_errors.NewNonRetriableErrorf(
+			"backup %v has no part %v of %v",
+			e.uri,
+			number,
+			e.partCount,
+		)
 	}
 
-	prefix := s3BackupPrefix(options.Prefix, snapshotID, backupUUID.String())
-	uri := "s3://" + options.Bucket + "/" + prefix
-	logging.Info(ctx, "exporting snapshot backup to %v", uri)
+	if err := ctx.Err(); err != nil {
+		return S3ManifestPart{}, fmt.Errorf(
+			"backup %v stopped before part %v/%v: %w",
+			e.uri,
+			number,
+			e.partCount,
+			err,
+		)
+	}
+
+	start, end, err := partitionChunkRange(
+		e.meta.ChunkCount,
+		number,
+		e.partCount,
+	)
+	if err != nil {
+		return S3ManifestPart{}, fmt.Errorf(
+			"backup %v planning part %v: %w",
+			e.uri,
+			number,
+			err,
+		)
+	}
+
+	length, err := partitionSize(e.meta.Size, start, end)
+	if err != nil || length > e.options.PartSize {
+		return S3ManifestPart{}, fmt.Errorf(
+			"backup %v has invalid part %v length %v: %v",
+			e.uri,
+			number,
+			length,
+			err,
+		)
+	}
+
+	e.buffer.Reset()
+	e.buffer.Grow(int(length))
+	writer := boundedPartWriter{buffer: &e.buffer, remaining: length}
+	stats, err := exportPartitionToWriter(
+		ctx,
+		e.snapshotStorage,
+		e.snapshotID,
+		e.meta,
+		&writer,
+		number,
+		e.partCount,
+		e.options.ReadWorkerCount,
+	)
+	if err != nil {
+		return S3ManifestPart{}, fmt.Errorf(
+			"backup %v reading part %v/%v: %w",
+			e.uri,
+			number,
+			e.partCount,
+			err,
+		)
+	}
+
+	if writer.remaining != 0 || stats.Size != length {
+		return S3ManifestPart{}, fmt.Errorf(
+			"backup %v part %v byte count mismatch",
+			e.uri,
+			number,
+		)
+	}
+
+	key := fmt.Sprintf("part-%08d.raw", number)
+	sum := sha256.Sum256(e.buffer.Bytes())
+	err = e.destination.PutObjectWithOptions(
+		ctx,
+		e.options.Bucket,
+		e.prefix+key,
+		persistence.S3Object{Data: e.buffer.Bytes()},
+		persistence.S3PutObjectOptions{
+			ContentType: "application/octet-stream",
+			ContentMD5:  true,
+		},
+	)
+	if err != nil {
+		return S3ManifestPart{}, fmt.Errorf(
+			"backup %v uploading part %v/%v: %w",
+			e.uri,
+			number,
+			e.partCount,
+			err,
+		)
+	}
+
+	logging.Info(
+		ctx,
+		"backup %v: uploaded part %v/%v, %v bytes",
+		e.uri,
+		number,
+		e.partCount,
+		length,
+	)
+
+	return S3ManifestPart{
+		Number: number,
+		Key:    key,
+		Offset: uint64(start) * chunkSize,
+		Length: length,
+		SHA256: hex.EncodeToString(sum[:]),
+	}, nil
+}
+
+// PublishManifest validates the parts against the plan and writes the
+// completion marker. An uncertain upload is confirmed by reading the object
+// back, so a lost response after a successful write does not fail the export.
+func (e *S3Export) PublishManifest(
+	ctx context.Context,
+	parts []S3ManifestPart,
+) (S3Manifest, error) {
 
 	interpretation := "plaintext"
-	if meta.Encryption.GetMode() == types.EncryptionMode_ENCRYPTION_AES_XTS {
+	if e.meta.Encryption.GetMode() == types.EncryptionMode_ENCRYPTION_AES_XTS {
 		interpretation = "ciphertext"
 	}
 
 	manifest := S3Manifest{
 		FormatVersion:         1,
 		Format:                "partitioned-raw-image",
-		SnapshotID:            snapshotID,
-		BackupUUID:            backupUUID.String(),
+		SnapshotID:            e.snapshotID,
+		BackupUUID:            e.backupUUID,
 		CreatedAt:             time.Now().UTC(),
-		Size:                  meta.Size,
-		EncryptionMode:        meta.Encryption.GetMode().String(),
-		EncryptionKeyHash:     meta.Encryption.GetKeyHash(),
+		Size:                  e.meta.Size,
+		EncryptionMode:        e.meta.Encryption.GetMode().String(),
+		EncryptionKeyHash:     e.meta.Encryption.GetKeyHash(),
 		RawDataInterpretation: interpretation,
-		MaxPartSize:           options.PartSize,
-		PartCount:             count,
-		Parts:                 make([]S3ManifestPart, 0),
-	}
-
-	var buffer bytes.Buffer
-	var uploaded uint64
-	// The uint64 iteration handles the maximum uint32 part count without
-	// wrapping.
-	for number := uint64(1); number <= uint64(count); number++ {
-		if err := ctx.Err(); err != nil {
-			return manifest, fmt.Errorf(
-				"backup %v stopped before part %v/%v: %w",
-				uri,
-				number,
-				count,
-				err,
-			)
-		}
-
-		start, end, err := partitionChunkRange(
-			meta.ChunkCount,
-			uint32(number),
-			count,
-		)
-		if err != nil {
-			return manifest, fmt.Errorf(
-				"backup %v planning part %v: %w",
-				uri,
-				number,
-				err,
-			)
-		}
-
-		length, err := partitionSize(meta.Size, start, end)
-		if err != nil || length > options.PartSize {
-			return manifest, fmt.Errorf(
-				"backup %v has invalid part %v length %v: %v",
-				uri,
-				number,
-				length,
-				err,
-			)
-		}
-
-		buffer.Reset()
-		buffer.Grow(int(length))
-		writer := boundedPartWriter{buffer: &buffer, remaining: length}
-		stats, err := exportPartitionToWriter(
-			ctx,
-			snapshotStorage,
-			snapshotID,
-			meta,
-			&writer,
-			uint32(number),
-			count,
-			options.ReadWorkerCount,
-		)
-		if err != nil {
-			return manifest, fmt.Errorf(
-				"backup %v reading part %v/%v: %w",
-				uri,
-				number,
-				count,
-				err,
-			)
-		}
-
-		if writer.remaining != 0 || stats.Size != length {
-			return manifest, fmt.Errorf(
-				"backup %v part %v byte count mismatch",
-				uri,
-				number,
-			)
-		}
-
-		key := fmt.Sprintf("part-%08d.raw", number)
-		sum := sha256.Sum256(buffer.Bytes())
-		err = destination.PutObjectWithOptions(
-			ctx,
-			options.Bucket,
-			prefix+key,
-			persistence.S3Object{Data: buffer.Bytes()},
-			persistence.S3PutObjectOptions{
-				ContentType: "application/octet-stream",
-				ContentMD5:  true,
-			},
-		)
-		if err != nil {
-			return manifest, fmt.Errorf(
-				"backup %v uploading part %v/%v: %w",
-				uri,
-				number,
-				count,
-				err,
-			)
-		}
-
-		manifest.Parts = append(
-			manifest.Parts,
-			S3ManifestPart{
-				Number: uint32(number),
-				Key:    key,
-				Offset: uint64(start) * chunkSize,
-				Length: length,
-				SHA256: hex.EncodeToString(sum[:]),
-			},
-		)
-		uploaded += length
-		logging.Info(
-			ctx,
-			"backup %v: uploaded %v/%v bytes, part %v/%v",
-			uri,
-			uploaded,
-			meta.Size,
-			number,
-			count,
-		)
+		MaxPartSize:           e.options.PartSize,
+		PartCount:             e.partCount,
+		Parts:                 append(make([]S3ManifestPart, 0, len(parts)), parts...),
 	}
 
 	if err := validateS3Manifest(manifest); err != nil {
-		return manifest, fmt.Errorf("backup %v: %w", uri, err)
+		return manifest, fmt.Errorf("backup %v: %w", e.uri, err)
 	}
 
 	if err := ctx.Err(); err != nil {
 		return manifest, fmt.Errorf(
 			"backup %v stopped before manifest publication: %w",
-			uri,
+			e.uri,
 			err,
 		)
 	}
 
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
-		return manifest, fmt.Errorf("backup %v: %w", uri, err)
+		return manifest, fmt.Errorf("backup %v: %w", e.uri, err)
 	}
 
-	manifestKey := prefix + "manifest.json"
-	err = destination.PutObjectWithOptions(
+	manifestKey := e.ManifestKey()
+	err = e.destination.PutObjectWithOptions(
 		ctx,
-		options.Bucket,
+		e.options.Bucket,
 		manifestKey,
 		persistence.S3Object{Data: data},
 		persistence.S3PutObjectOptions{
@@ -428,9 +488,9 @@ func ExportToS3(
 		// Even a permanent final response can follow a retry after a successful
 		// write whose response was lost. Confirm the intended bytes on any
 		// error.
-		stored, readErr := destination.GetObjectWithLimit(
+		stored, readErr := e.destination.GetObjectWithLimit(
 			ctx,
-			options.Bucket,
+			e.options.Bucket,
 			manifestKey,
 			int64(len(data)),
 		)
@@ -442,15 +502,69 @@ func ExportToS3(
 
 		if readErr != nil {
 			return manifest, fmt.Errorf(
-				"manifest publication is uncertain at %vmanifest.json: "+
+				"manifest publication is uncertain at %v: "+
 					"upload: %w; verification: %v",
-				uri,
+				e.options.Bucket+"/"+manifestKey,
 				err,
 				readErr,
 			)
 		}
 	}
 
-	logging.Info(ctx, "snapshot backup complete: %vmanifest.json", uri)
+	logging.Info(ctx, "snapshot backup complete: %v", e.uri+"manifest.json")
 	return manifest, nil
+}
+
+// ExportToS3 synchronously exports a complete ready snapshot, publishing its
+// completion manifest only after every raw part succeeds. Source access is
+// read-only; the caller must keep the source available throughout the export.
+func ExportToS3(
+	ctx context.Context,
+	snapshotStorage Source,
+	snapshotID string,
+	destination S3Destination,
+	options S3ExportOptions,
+) (S3Manifest, error) {
+
+	backupUUID, err := uuid.NewV4()
+	if err != nil {
+		return S3Manifest{}, err
+	}
+
+	export, err := NewS3Export(
+		ctx,
+		snapshotStorage,
+		snapshotID,
+		destination,
+		options,
+		backupUUID.String(),
+	)
+	if err != nil {
+		return S3Manifest{}, err
+	}
+
+	logging.Info(ctx, "exporting snapshot backup to %v", export.uri)
+
+	parts := make([]S3ManifestPart, 0, export.partCount)
+	var uploaded uint64
+	for number := uint32(1); number <= export.partCount; number++ {
+		part, err := export.ExportPart(ctx, number)
+		if err != nil {
+			return S3Manifest{}, err
+		}
+
+		parts = append(parts, part)
+		uploaded += part.Length
+		logging.Info(
+			ctx,
+			"backup %v: uploaded %v/%v bytes, part %v/%v",
+			export.uri,
+			uploaded,
+			export.meta.Size,
+			number,
+			export.partCount,
+		)
+	}
+
+	return export.PublishManifest(ctx, parts)
 }

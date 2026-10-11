@@ -56,6 +56,17 @@ func NewBackupSnapshotSource(
 		return nil, err
 	}
 
+	return NewLoadedBackupSnapshotSource(reader, loaded, metrics), nil
+}
+
+// NewLoadedBackupSnapshotSource wraps a backup that the caller has already
+// loaded, for example to pin its hashes before reading chunks.
+func NewLoadedBackupSnapshotSource(
+	reader backup.ObjectReader,
+	loaded *backup.LoadedBackup,
+	metrics storage_metrics.Metrics,
+) Source {
+
 	return &backupSnapshotSource{
 		meta: storage.SnapshotMeta{
 			ID:          loaded.Meta.ID,
@@ -78,7 +89,7 @@ func NewBackupSnapshotSource(
 			loaded.Meta.StorageSize,
 			metrics,
 		),
-	}, nil
+	}
 }
 
 func (s *backupSnapshotSource) CheckSnapshotReady(

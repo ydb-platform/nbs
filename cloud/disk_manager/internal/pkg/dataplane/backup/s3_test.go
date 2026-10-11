@@ -168,3 +168,51 @@ func TestCheckEncryptedDEK(t *testing.T) {
 	err = backupS3.CheckEncryptedDEK([]byte("bad"))
 	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
 }
+
+func TestEncryptAndDecryptSecret(t *testing.T) {
+	kek := make([]byte, keySize)
+	kek[0] = 7
+	backupS3, err := newTestS3("", "kek-1", kek)
+	require.NoError(t, err)
+
+	secret := []byte(`{"id":"key","secret":"value"}`)
+	encryptedDEK, sealed, err := backupS3.EncryptSecret(
+		ExportCredentialsSecretKind,
+		secret,
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, encryptedDEK)
+	require.NotContains(t, string(sealed), "value")
+
+	opened, err := backupS3.DecryptSecret(
+		ExportCredentialsSecretKind,
+		encryptedDEK,
+		sealed,
+	)
+	require.NoError(t, err)
+	require.Equal(t, secret, opened)
+
+	// Bound to the kind: a sealed value cannot be replayed as another kind.
+	_, err = backupS3.DecryptSecret("other", encryptedDEK, sealed)
+	require.Error(t, err)
+
+	// Bound to the kek.
+	otherKek := make([]byte, keySize)
+	otherKek[0] = 8
+	otherS3, err := newTestS3("", "kek-1", otherKek)
+	require.NoError(t, err)
+	_, err = otherS3.DecryptSecret(
+		ExportCredentialsSecretKind,
+		encryptedDEK,
+		sealed,
+	)
+	require.Error(t, err)
+
+	// Without a kek there is nothing to seal with.
+	noKek, err := newTestS3("", "", nil)
+	require.NoError(t, err)
+	_, _, err = noKek.EncryptSecret(ExportCredentialsSecretKind, secret)
+	require.Error(t, err)
+	_, err = noKek.DecryptSecret(ExportCredentialsSecretKind, encryptedDEK, sealed)
+	require.Error(t, err)
+}

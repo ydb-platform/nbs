@@ -51,6 +51,19 @@ func (s *imageService) Delete(
 	return getOperation(ctx, s.taskScheduler, taskID)
 }
 
+func (s *imageService) Export(
+	ctx context.Context,
+	req *disk_manager.ExportImageRequest,
+) (*disk_manager.Operation, error) {
+
+	taskID, err := s.service.ExportImage(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	return getOperation(ctx, s.taskScheduler, taskID)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func RegisterImageService(

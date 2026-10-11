@@ -7,6 +7,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	backup_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage"
 	storage_metrics "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/snapshot/storage/metrics"
@@ -14,6 +15,7 @@ import (
 	performance_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/performance/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/pkg/snapshot"
 	"github.com/ydb-platform/nbs/cloud/tasks"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -410,15 +412,68 @@ func RegisterForExecution(
 	return nil
 }
 
+// Register makes every dataplane task known to the node without executing
+// it. A task type the node has already registered for execution, such as
+// dataplane.ExportBackupToS3 on an export node, is left as is.
 func Register(ctx context.Context, taskRegistry *tasks.Registry) error {
 	for taskType, newTask := range newTaskByTaskType {
-		err := taskRegistry.Register(taskType, newTask)
+		_, err := taskRegistry.NewTask(taskType)
+		if err == nil {
+			continue
+		}
+
+		err = taskRegistry.Register(taskType, newTask)
 		if err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+// RegisterExportForExecution makes the node an export node: it executes
+// dataplane.ExportBackupToS3. Called instead of, or in addition to,
+// RegisterForExecution; needs only the follower and the kek.
+func RegisterExportForExecution(
+	ctx context.Context,
+	config *backup_config.SnapshotExportConfig,
+	taskRegistry *tasks.Registry,
+	backupS3 *backup.S3,
+	metricsRegistry metrics.Registry,
+) error {
+
+	if backupS3 == nil {
+		return errors.NewNonRetriableErrorf(
+			"snapshot export needs SnapshotStorageBackupConfig",
+		)
+	}
+
+	s3CallTimeout, err := time.ParseDuration(config.GetS3CallTimeout())
+	if err != nil {
+		return err
+	}
+
+	exportMetrics := storage_metrics.New(metricsRegistry, "export")
+	s3Registry := metricsRegistry.WithTags(map[string]string{
+		"client": "export_s3",
+	})
+
+	return taskRegistry.RegisterForExecution(
+		"dataplane.ExportBackupToS3",
+		func() tasks.Task {
+			return &exportBackupToS3Task{
+				backupReader:             backupS3,
+				secrets:                  backupS3,
+				metrics:                  exportMetrics,
+				s3Registry:               s3Registry,
+				readWorkerCount:          int(config.GetReadWorkerCount()),
+				s3CallTimeout:            s3CallTimeout,
+				s3MaxRetriableErrorCount: config.GetS3MaxRetriableErrorCount(),
+			}
+		},
+	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -442,4 +497,5 @@ var newTaskByTaskType = map[string]func() tasks.Task{
 	"dataplane.ScheduleBackupChunksTasks":   func() tasks.Task { return &scheduleBackupChunksTasks{} },
 	"dataplane.DeleteBackupSnapshotData":    func() tasks.Task { return &deleteBackupSnapshotDataTask{} },
 	"dataplane.DeleteBackupChunks":          func() tasks.Task { return &deleteBackupChunksTask{} },
+	"dataplane.ExportBackupToS3":            func() tasks.Task { return &exportBackupToS3Task{} },
 }

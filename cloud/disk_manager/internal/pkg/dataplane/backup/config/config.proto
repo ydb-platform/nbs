@@ -20,3 +20,25 @@ message SnapshotStorageBackupConfig {
     // number of copy tasks on it. 0 disables the limit.
     optional uint64 UploadBandwidthMiBsPerHost = 7;
 }
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Export of follower copies to S3 buckets of the callers. Present on every
+// node that serves the Export API; ExecuteTasks is set only on the nodes that
+// perform exports.
+message SnapshotExportConfig {
+    // The node registers dataplane.ExportBackupToS3 for execution. Such a
+    // node needs SnapshotStorageBackupConfig with a kek, network access to
+    // the destination endpoints and the tasks database; DataplaneConfig is
+    // not required.
+    optional bool ExecuteTasks = 1 [default = false];
+    // Part size used when the request does not set one.
+    optional uint64 DefaultPartSize = 2 [default = 268435456];
+    optional uint32 ReadWorkerCount = 3 [default = 16];
+    optional string S3CallTimeout = 4 [default = "60s"];
+    optional uint64 S3MaxRetriableErrorCount = 5 [default = 3];
+    // Clouds and folders that must not be exported. Checked by
+    // snapshots.ExportToS3 before anything is read.
+    repeated string DenyListCloudIds = 6;
+    repeated string DenyListFolderIds = 7;
+}

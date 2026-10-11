@@ -18,4 +18,9 @@ type Service interface {
 		ctx context.Context,
 		req *disk_manager.DeleteSnapshotRequest,
 	) (string, error)
+
+	ExportSnapshot(
+		ctx context.Context,
+		req *disk_manager.ExportSnapshotRequest,
+	) (string, error)
 }

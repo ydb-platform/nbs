@@ -300,6 +300,22 @@ func run(
 		}
 	}
 
+	exportConfig := config.GetSnapshotExportConfig()
+	if exportConfig.GetExecuteTasks() {
+		logging.Info(ctx, "Registering snapshot export tasks for execution")
+		err = dataplane.RegisterExportForExecution(
+			ctx,
+			exportConfig,
+			taskRegistry,
+			backupS3,
+			mon.NewRegistry("export"),
+		)
+		if err != nil {
+			logging.Error(ctx, "Failed to register snapshot export tasks: %v", err)
+			return err
+		}
+	}
+
 	dataplaneConfig := config.GetDataplaneConfig()
 	if dataplaneConfig == nil {
 		logging.Info(ctx, "Registering dataplane tasks")

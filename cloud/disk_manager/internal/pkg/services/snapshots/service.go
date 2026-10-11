@@ -7,6 +7,7 @@ import (
 
 	disk_manager "github.com/ydb-platform/nbs/cloud/disk_manager/api"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
+	dataplane_protos "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
@@ -16,8 +17,9 @@ import (
 ////////////////////////////////////////////////////////////////////////////////
 
 type service struct {
-	taskScheduler tasks.Scheduler
-	config        *config.SnapshotsConfig
+	taskScheduler   tasks.Scheduler
+	config          *config.SnapshotsConfig
+	exportScheduler *ExportScheduler
 }
 
 func (s *service) CreateSnapshot(
@@ -80,15 +82,32 @@ func (s *service) DeleteSnapshot(
 	)
 }
 
+func (s *service) ExportSnapshot(
+	ctx context.Context,
+	req *disk_manager.ExportSnapshotRequest,
+) (string, error) {
+
+	return s.exportScheduler.Schedule(
+		ctx,
+		dataplane_protos.BackupSourceKind_BACKUP_SOURCE_KIND_SNAPSHOT,
+		req.SnapshotId,
+		req.CloudId,
+		req.FolderId,
+		req.Dst,
+	)
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewService(
 	taskScheduler tasks.Scheduler,
 	config *config.SnapshotsConfig,
+	exportScheduler *ExportScheduler,
 ) Service {
 
 	return &service{
-		taskScheduler: taskScheduler,
-		config:        config,
+		taskScheduler:   taskScheduler,
+		config:          config,
+		exportScheduler: exportScheduler,
 	}
 }

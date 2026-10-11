@@ -1,0 +1,35 @@
+syntax = "proto3";
+
+package snapshots;
+
+import "cloud/disk_manager/internal/pkg/dataplane/protos/transfer_from_backup_to_disk_task.proto";
+
+option go_package = "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/snapshots/protos";
+
+////////////////////////////////////////////////////////////////////////////////
+
+message ExportToS3Request {
+    dataplane.BackupSourceKind SrcKind = 1;
+    // Snapshot or image id.
+    string SrcId = 2;
+    string CloudId = 3;
+    string FolderId = 4;
+
+    string Endpoint = 5;
+    string Region = 6;
+    string Bucket = 7;
+    string Prefix = 8;
+    uint64 PartSize = 9;
+    // Keys of the destination bucket, sealed by backup.S3.EncryptSecret.
+    bytes EncryptedDek = 10;
+    bytes EncryptedCredentials = 11;
+}
+
+message ExportToS3TaskState {
+    string DataplaneTaskID = 1;
+    string Bucket = 2;
+    string Prefix = 3;
+    string ManifestKey = 4;
+    uint32 PartCount = 5;
+    uint64 Size = 6;
+}
