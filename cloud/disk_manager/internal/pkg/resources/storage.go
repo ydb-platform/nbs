@@ -131,6 +131,18 @@ type SnapshotBackupID struct {
 }
 
 // A queued backup attempt whose snapshots.BackupSnapshot task is scheduled.
+// An attempt queued by the previous version has an empty BackupID.
+type ImageBackupRequest struct {
+	ImageID  string
+	BackupID string
+}
+
+type ScheduledImageBackup struct {
+	ImageID  string
+	BackupID string
+	TaskID   string
+}
+
 type ScheduledSnapshotBackup struct {
 	SnapshotID string
 	BackupID   string
@@ -206,15 +218,42 @@ type Storage interface {
 		creatingBefore time.Time,
 	) ([]string, error)
 
-	ListImagesToBackup(ctx context.Context, limit int) ([]string, error)
+	// Returns queued attempts that have no task yet, oldest first.
+	ListImagesToBackup(
+		ctx context.Context,
+		limit int,
+	) ([]ImageBackupRequest, error)
 
-	// Queues a ready image of any folder for backup. Repeated requests
-	// succeed; a request for an image that was already copied copies it again.
-	EnqueueImageBackup(ctx context.Context, imageID string) error
+	// Queues a ready image of any folder for backup as attempt backupID. A
+	// request while an attempt is queued or running joins it; a request after
+	// it ended starts a new one.
+	EnqueueImageBackup(
+		ctx context.Context,
+		imageID string,
+		backupID string,
+	) error
 
-	ImageBackupScheduled(ctx context.Context, imageID string) error
+	// Records the task of a queued attempt. Returns when the attempt was
+	// queued; zero if it left the queue or was queued before the time was
+	// recorded.
+	ImageBackupScheduled(
+		ctx context.Context,
+		imageID string,
+		backupID string,
+		taskID string,
+	) (time.Time, error)
 
-	ImageBackupCancelled(ctx context.Context, imageID string) error
+	ListScheduledImageBackups(
+		ctx context.Context,
+		limit int,
+	) ([]ScheduledImageBackup, error)
+
+	// Removes the queue row of this attempt only.
+	RemoveImageFromBackupQueue(
+		ctx context.Context,
+		imageID string,
+		backupID string,
+	) error
 
 	GetImageBackupDeleteQueue(ctx context.Context, limit int) ([]string, error)
 

@@ -167,27 +167,39 @@ func (s *StorageMock) ListImages(
 func (s *StorageMock) ListImagesToBackup(
 	ctx context.Context,
 	limit int,
-) ([]string, error) {
+) ([]resources.ImageBackupRequest, error) {
 
 	args := s.Called(ctx, limit)
-	return args.Get(0).([]string), args.Error(1)
+	return args.Get(0).([]resources.ImageBackupRequest), args.Error(1)
 }
 
 func (s *StorageMock) ImageBackupScheduled(
 	ctx context.Context,
 	imageID string,
-) error {
+	backupID string,
+	taskID string,
+) (time.Time, error) {
 
-	args := s.Called(ctx, imageID)
-	return args.Error(0)
+	args := s.Called(ctx, imageID, backupID, taskID)
+	return args.Get(0).(time.Time), args.Error(1)
 }
 
-func (s *StorageMock) ImageBackupCancelled(
+func (s *StorageMock) ListScheduledImageBackups(
+	ctx context.Context,
+	limit int,
+) ([]resources.ScheduledImageBackup, error) {
+
+	args := s.Called(ctx, limit)
+	return args.Get(0).([]resources.ScheduledImageBackup), args.Error(1)
+}
+
+func (s *StorageMock) RemoveImageFromBackupQueue(
 	ctx context.Context,
 	imageID string,
+	backupID string,
 ) error {
 
-	args := s.Called(ctx, imageID)
+	args := s.Called(ctx, imageID, backupID)
 	return args.Error(0)
 }
 
@@ -313,9 +325,10 @@ func (s *StorageMock) ListSnapshots(
 func (s *StorageMock) EnqueueImageBackup(
 	ctx context.Context,
 	imageID string,
+	backupID string,
 ) error {
 
-	args := s.Called(ctx, imageID)
+	args := s.Called(ctx, imageID, backupID)
 	return args.Error(0)
 }
 

@@ -56,7 +56,12 @@ func TestBackupImageTask(t *testing.T) {
 	var scheduledMeta []byte
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
-	storage.On("ImageBackupScheduled", mock.Anything, "image1").Return(nil)
+	storage.On(
+		"RemoveImageFromBackupQueue",
+		mock.Anything,
+		"image1",
+		"attempt1",
+	).Return(nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
 	scheduler.On(
@@ -95,8 +100,11 @@ func TestBackupImageTask(t *testing.T) {
 		scheduler: scheduler,
 		storage:   storage,
 		backupS3:  backupS3,
-		request:   &protos.BackupImageRequest{ImageId: "image1"},
-		state:     &protos.BackupImageTaskState{},
+		request: &protos.BackupImageRequest{
+			ImageId:  "image1",
+			BackupId: "attempt1",
+		},
+		state: &protos.BackupImageTaskState{},
 	}
 
 	err = task.Run(ctx, execCtx)
@@ -167,9 +175,10 @@ func TestBackupImageTaskReusesEncryptedDEK(t *testing.T) {
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
 	storage.On(
-		"ImageBackupScheduled",
+		"RemoveImageFromBackupQueue",
 		mock.Anything,
 		"image1",
+		"attempt1",
 	).Return(nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
@@ -196,7 +205,10 @@ func TestBackupImageTaskReusesEncryptedDEK(t *testing.T) {
 		scheduler: scheduler,
 		storage:   storage,
 		backupS3:  backupS3,
-		request:   &protos.BackupImageRequest{ImageId: "image1"},
+		request: &protos.BackupImageRequest{
+			ImageId:  "image1",
+			BackupId: "attempt1",
+		},
 		state: &protos.BackupImageTaskState{
 			EncryptedDek: preset,
 		},
@@ -244,9 +256,10 @@ func TestBackupImageTaskWithoutEncryption(t *testing.T) {
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
 	storage.On(
-		"ImageBackupScheduled",
+		"RemoveImageFromBackupQueue",
 		mock.Anything,
 		"image1",
+		"attempt1",
 	).Return(nil)
 	execCtx.On("GetTaskID").Return("backup1")
 	execCtx.On("SaveState", mock.Anything).Return(nil)
@@ -275,8 +288,11 @@ func TestBackupImageTaskWithoutEncryption(t *testing.T) {
 		scheduler: scheduler,
 		storage:   storage,
 		backupS3:  backupS3,
-		request:   &protos.BackupImageRequest{ImageId: "image1"},
-		state:     &protos.BackupImageTaskState{},
+		request: &protos.BackupImageRequest{
+			ImageId:  "image1",
+			BackupId: "attempt1",
+		},
+		state: &protos.BackupImageTaskState{},
 	}
 
 	err = task.Run(ctx, execCtx)
@@ -287,4 +303,77 @@ func TestBackupImageTaskWithoutEncryption(t *testing.T) {
 
 	_, err = backupS3.GetObject(ctx, backup.ImageMetaKey("image1"))
 	require.Error(t, err)
+}
+
+func TestBackupImageTaskCancelsItsCopy(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage := resources_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	execCtx := tasks_mocks.NewExecutionContextMock()
+
+	// The copy clears its chunks in its own Cancel; the image task only
+	// cancels it and leaves the queue.
+	scheduler.On("CancelTask", mock.Anything, "dataplane1").Return(true, nil)
+	storage.On(
+		"RemoveImageFromBackupQueue",
+		mock.Anything,
+		"image1",
+		"attempt1",
+	).Return(nil)
+
+	task := &backupImageTask{
+		scheduler: scheduler,
+		storage:   storage,
+		request: &protos.BackupImageRequest{
+			ImageId:  "image1",
+			BackupId: "attempt1",
+		},
+		state: &protos.BackupImageTaskState{DataplaneTaskID: "dataplane1"},
+	}
+
+	err := task.Cancel(ctx, execCtx)
+	require.NoError(t, err)
+	mock.AssertExpectationsForObjects(t, storage, scheduler)
+}
+
+func TestBackupImageTaskLeavesQueueForMissingImage(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage := resources_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	execCtx := tasks_mocks.NewExecutionContextMock()
+
+	storage.On("GetImageMeta", mock.Anything, "image1").Return(
+		(*resources.ImageMeta)(nil),
+		nil,
+	)
+	storage.On(
+		"RemoveImageFromBackupQueue",
+		mock.Anything,
+		"image1",
+		"attempt1",
+	).Return(nil)
+
+	task := &backupImageTask{
+		scheduler: scheduler,
+		storage:   storage,
+		request: &protos.BackupImageRequest{
+			ImageId:  "image1",
+			BackupId: "attempt1",
+		},
+		state: &protos.BackupImageTaskState{},
+	}
+
+	err := task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	mock.AssertExpectationsForObjects(t, storage, scheduler)
+	scheduler.AssertNotCalled(
+		t,
+		"ScheduleTask",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	)
 }

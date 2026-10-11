@@ -124,6 +124,9 @@ func RegisterForExecution(
 				scheduler: taskScheduler,
 				storage:   storage,
 				limit:     int(config.GetScheduleBackupImageTasksLimit()),
+				inflightLimit: int(
+					config.GetBackupImagesInflightLimit(),
+				),
 			}
 		})
 		if err != nil {

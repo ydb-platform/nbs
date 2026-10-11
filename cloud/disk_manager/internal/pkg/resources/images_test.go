@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
+	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -456,17 +458,33 @@ func TestImagesBackup(t *testing.T) {
 
 	ids, err = storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
-	require.Equal(t, []string{image.ID}, ids)
+	require.Equal(t, []ImageBackupRequest{{
+		ImageID:  image.ID,
+		BackupID: "create",
+	}}, ids)
 
-	err = storage.ImageBackupScheduled(ctx, image.ID)
+	enqueuedAt, err := storage.ImageBackupScheduled(ctx, image.ID, "create", "task")
 	require.NoError(t, err)
+	require.False(t, enqueuedAt.IsZero())
 
 	ids, err = storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, ids)
 
-	err = storage.ImageBackupCancelled(ctx, image.ID)
+	scheduled, err := storage.ListScheduledImageBackups(ctx, 10)
 	require.NoError(t, err)
+	require.Equal(t, []ScheduledImageBackup{{
+		ImageID:  image.ID,
+		BackupID: "create",
+		TaskID:   "task",
+	}}, scheduled)
+
+	err = storage.RemoveImageFromBackupQueue(ctx, image.ID, "create")
+	require.NoError(t, err)
+
+	scheduled, err = storage.ListScheduledImageBackups(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, scheduled)
 }
 
 func TestImagesDeletionStopsBackup(t *testing.T) {
@@ -561,7 +579,10 @@ func TestImagesBackupQueuesNewReadyImageOfConfiguredFolder(t *testing.T) {
 
 	ids, err := storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
-	require.Equal(t, []string{"image_backed"}, ids)
+	require.Equal(t, []ImageBackupRequest{{
+		ImageID:  "image_backed",
+		BackupID: "create_image_backed",
+	}}, ids)
 }
 
 // Any image may have a copy in the follower, queued by its folder or by hand,
@@ -604,7 +625,10 @@ func TestImagesBackupOfAllFoldersWithWildcard(t *testing.T) {
 
 	ids, err := storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
-	require.ElementsMatch(t, []string{"image_a", "image_b"}, ids)
+	require.ElementsMatch(t, []ImageBackupRequest{
+		{ImageID: "image_a", BackupID: "create_image_a"},
+		{ImageID: "image_b", BackupID: "create_image_b"},
+	}, ids)
 
 	_, err = storage.DeleteImage(ctx, "image_a", "delete_image_a", time.Now())
 	require.NoError(t, err)
@@ -635,35 +659,57 @@ func TestEnqueueImageBackupQueuesImageOfAnyFolder(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, ids)
 
-	err = storage.EnqueueImageBackup(ctx, "image")
+	err = storage.EnqueueImageBackup(ctx, "image", "manual1")
 	require.NoError(t, err)
 
 	ids, err = storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
-	require.Equal(t, []string{"image"}, ids)
+	require.Equal(t, []ImageBackupRequest{{
+		ImageID:  "image",
+		BackupID: "manual1",
+	}}, ids)
 }
 
 func TestEnqueueImageBackupIsIdempotent(t *testing.T) {
 	ctx, storage := newImageBackupTestStorage(t)
 
-	for i := 0; i != 2; i++ {
-		err := storage.EnqueueImageBackup(ctx, "image")
-		require.NoError(t, err)
-	}
+	err := storage.EnqueueImageBackup(ctx, "image", "manual1")
+	require.NoError(t, err)
+
+	// A request while an attempt is queued joins it.
+	err = storage.EnqueueImageBackup(ctx, "image", "manual2")
+	require.NoError(t, err)
 
 	ids, err := storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
-	require.Equal(t, []string{"image"}, ids)
+	require.Equal(t, []ImageBackupRequest{{
+		ImageID:  "image",
+		BackupID: "manual1",
+	}}, ids)
 
-	// A copy that already ran can be requested again.
-	err = storage.ImageBackupScheduled(ctx, "image")
+	_, err = storage.ImageBackupScheduled(ctx, "image", "manual1", "task1")
 	require.NoError(t, err)
-	err = storage.EnqueueImageBackup(ctx, "image")
+
+	// A stale attempt cannot remove the row of another one.
+	err = storage.RemoveImageFromBackupQueue(ctx, "image", "manual2")
+	require.NoError(t, err)
+	scheduled, err := storage.ListScheduledImageBackups(ctx, 10)
+	require.NoError(t, err)
+	require.Len(t, scheduled, 1)
+
+	// After the attempt ends, a request starts a new attempt with its own ID,
+	// so its task is not the ended one.
+	err = storage.RemoveImageFromBackupQueue(ctx, "image", "manual1")
+	require.NoError(t, err)
+	err = storage.EnqueueImageBackup(ctx, "image", "manual3")
 	require.NoError(t, err)
 
 	ids, err = storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
-	require.Equal(t, []string{"image"}, ids)
+	require.Equal(t, []ImageBackupRequest{{
+		ImageID:  "image",
+		BackupID: "manual3",
+	}}, ids)
 }
 
 func TestEnqueueImageBackupRejectsUnavailableImage(t *testing.T) {
@@ -683,12 +729,66 @@ func TestEnqueueImageBackupRejectsUnavailableImage(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, id := range []string{"", "missing", "creating", "deleting"} {
-		err = storage.EnqueueImageBackup(ctx, id)
+		err = storage.EnqueueImageBackup(ctx, id, "backup")
 		require.Error(t, err, id)
 		require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()), id)
 	}
 
+	err = storage.EnqueueImageBackup(ctx, "image", "")
+	require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()))
+
 	ids, err := storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, ids)
+}
+
+// A row queued by the previous version has only image_id. It is scheduled and
+// removed under the empty backup ID, so the task it already has is found again
+// rather than started twice.
+func TestImageBackupQueueKeepsRowsWithoutBackupID(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+	createReadyImage(t, ctx, storage, "legacy", "other")
+
+	imagesPath := db.AbsolutePath(fmt.Sprintf("%v/images", t.Name()))
+	err = db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+				--!syntax_v1
+				pragma TablePathPrefix = "%v";
+				upsert into backup_queue (image_id) values ("legacy")
+			`, imagesPath))
+			return err
+		},
+	)
+	require.NoError(t, err)
+
+	ids, err := storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []ImageBackupRequest{{ImageID: "legacy"}}, ids)
+
+	enqueuedAt, err := storage.ImageBackupScheduled(ctx, "legacy", "", "task")
+	require.NoError(t, err)
+	require.True(t, enqueuedAt.IsZero())
+
+	scheduled, err := storage.ListScheduledImageBackups(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []ScheduledImageBackup{{
+		ImageID: "legacy",
+		TaskID:  "task",
+	}}, scheduled)
+
+	err = storage.RemoveImageFromBackupQueue(ctx, "legacy", "")
+	require.NoError(t, err)
+
+	scheduled, err = storage.ListScheduledImageBackups(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, scheduled)
 }
