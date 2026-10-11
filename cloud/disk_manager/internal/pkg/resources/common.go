@@ -22,7 +22,7 @@ type storageYDB struct {
 	placementGroupsPath             string
 	endedMigrationExpirationTimeout time.Duration
 	backupEnabled                   bool
-	backupFolderIDs                 map[string]struct{}
+	backupFolderIDs                 map[string]bool
 }
 
 // A folder ID in SnapshotStorageBackupConfig.FolderIds that stands for all
@@ -36,9 +36,7 @@ func (s *storageYDB) isBackupFolder(folderID string) bool {
 		return false
 	}
 
-	_, all := s.backupFolderIDs[backupAllFolders]
-	_, listed := s.backupFolderIDs[folderID]
-	return all || listed
+	return s.backupFolderIDs[backupAllFolders] || s.backupFolderIDs[folderID]
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -56,9 +54,9 @@ func NewStorage(
 	backupFolderIDs []string,
 ) (Storage, error) {
 
-	folderIDs := make(map[string]struct{}, len(backupFolderIDs))
+	folderIDs := make(map[string]bool, len(backupFolderIDs))
 	for _, folderID := range backupFolderIDs {
-		folderIDs[folderID] = struct{}{}
+		folderIDs[folderID] = true
 	}
 
 	return &storageYDB{
