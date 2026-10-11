@@ -19,9 +19,6 @@ message ExportDestination {
     string prefix = 4;
     string access_key_id = 5;
     string secret_access_key = 6;
-    // Size of one part; 0 selects the server default. A positive multiple of
-    // 4 MiB, at most 1 GiB.
-    uint64 part_size = 7;
 }
 
 message ExportMetadata {

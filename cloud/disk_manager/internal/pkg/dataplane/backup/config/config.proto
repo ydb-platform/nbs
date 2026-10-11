@@ -32,8 +32,9 @@ message SnapshotExportConfig {
     // the destination endpoints and the tasks database; DataplaneConfig is
     // not required.
     optional bool ExecuteTasks = 1 [default = false];
-    // Part size used when the request does not set one.
-    optional uint64 DefaultPartSize = 2 [default = 268435456];
+    // Size of one exported part-NNNNNNNN.raw object: a positive multiple of
+    // 4 MiB, at most 1 GiB. One part is buffered in memory per export task.
+    optional uint64 PartSize = 2 [default = 268435456];
     optional uint32 ReadWorkerCount = 3 [default = 16];
     optional string S3CallTimeout = 4 [default = "60s"];
     optional uint64 S3MaxRetriableErrorCount = 5 [default = 3];

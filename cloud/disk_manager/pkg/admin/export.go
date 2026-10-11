@@ -27,7 +27,6 @@ type exportToS3 struct {
 	s3Bucket          string
 	s3Prefix          string
 	s3CredentialsFile string
-	s3PartSize        string
 }
 
 func (c *exportToS3) destination() (*disk_manager.ExportDestination, error) {
@@ -38,14 +37,6 @@ func (c *exportToS3) destination() (*disk_manager.ExportDestination, error) {
 		return nil, fmt.Errorf("loading destination S3 credentials: %w", err)
 	}
 
-	var partSize uint64
-	if len(c.s3PartSize) != 0 {
-		partSize, err = parseS3PartSize(c.s3PartSize)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return &disk_manager.ExportDestination{
 		Endpoint:        c.s3Endpoint,
 		Region:          c.s3Region,
@@ -53,7 +44,6 @@ func (c *exportToS3) destination() (*disk_manager.ExportDestination, error) {
 		Prefix:          c.s3Prefix,
 		AccessKeyId:     credentials.ID,
 		SecretAccessKey: credentials.Secret,
-		PartSize:        partSize,
 	}, nil
 }
 
@@ -172,13 +162,6 @@ func (c *exportToS3) addFlags(cmd *cobra.Command, idUsage string) {
 			err,
 		)
 	}
-
-	cmd.Flags().StringVar(
-		&c.s3PartSize,
-		"s3-part-size",
-		"",
-		"Part size, a multiple of 4MiB up to 1GiB; the server default if empty",
-	)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

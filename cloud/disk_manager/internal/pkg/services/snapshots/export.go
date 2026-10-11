@@ -89,14 +89,13 @@ func (s *ExportScheduler) Schedule(
 		)
 	}
 
-	partSize := dst.PartSize
-	if partSize == 0 {
-		partSize = s.config.GetDefaultPartSize()
-	}
-
+	partSize := s.config.GetPartSize()
 	err = exporter.ValidateS3PartSize(partSize)
 	if err != nil {
-		return "", common.NewInvalidArgumentError("invalid dst.part_size: %v", err)
+		return "", errors.NewNonRetriableErrorf(
+			"invalid SnapshotExportConfig.PartSize: %w",
+			err,
+		)
 	}
 
 	credentials, err := json.Marshal(persistence.S3Credentials{
