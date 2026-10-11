@@ -564,9 +564,9 @@ func TestImagesBackupQueuesNewReadyImageOfConfiguredFolder(t *testing.T) {
 	require.Equal(t, []string{"image_backed"}, ids)
 }
 
-// An image of a folder that is not backed up has no copy in the follower, so
-// its deletion queues nothing to delete there.
-func TestImagesDeletionQueuesBackupDeletionOfConfiguredFolder(t *testing.T) {
+// Any image may have a copy in the follower, queued by its folder or by hand,
+// so deletion of every image queues deletion of the copy.
+func TestImagesDeletionQueuesBackupDeletionOfEveryImage(t *testing.T) {
 	ctx, cancel := context.WithCancel(newContext())
 	defer cancel()
 
@@ -586,7 +586,7 @@ func TestImagesDeletionQueuesBackupDeletionOfConfiguredFolder(t *testing.T) {
 
 	imageIDs, err := storage.GetImageBackupDeleteQueue(ctx, 10)
 	require.NoError(t, err)
-	require.Equal(t, []string{"image_backed"}, imageIDs)
+	require.ElementsMatch(t, []string{"image_backed", "image_other"}, imageIDs)
 }
 
 func TestImagesBackupOfAllFoldersWithWildcard(t *testing.T) {
@@ -691,28 +691,4 @@ func TestEnqueueImageBackupRejectsUnavailableImage(t *testing.T) {
 	ids, err := storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, ids)
-}
-
-// A manually requested image of a folder that is not backed up has a copy in
-// the follower too, so its deletion queues deletion of that copy.
-func TestImagesDeletionQueuesBackupDeletionOfManuallyRequestedImage(
-	t *testing.T,
-) {
-
-	ctx, storage := newImageBackupTestStorage(t)
-	createReadyImage(t, ctx, storage, "not_requested", "other")
-
-	err := storage.EnqueueImageBackup(ctx, "image")
-	require.NoError(t, err)
-	err = storage.ImageBackupScheduled(ctx, "image")
-	require.NoError(t, err)
-
-	for _, imageID := range []string{"image", "not_requested"} {
-		_, err = storage.DeleteImage(ctx, imageID, "delete_"+imageID, time.Now())
-		require.NoError(t, err)
-	}
-
-	imageIDs, err := storage.GetImageBackupDeleteQueue(ctx, 10)
-	require.NoError(t, err)
-	require.Equal(t, []string{"image"}, imageIDs)
 }

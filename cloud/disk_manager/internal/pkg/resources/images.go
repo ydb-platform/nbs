@@ -69,9 +69,6 @@ type imageState struct {
 	storageSize       uint64
 	encryptionMode    uint32
 	encryptionKeyHash []byte
-	// The image was queued for backup, by its folder or manually, so its copy
-	// may be in the follower.
-	backupRequested bool
 
 	status imageStatus
 }
@@ -124,10 +121,6 @@ func (s *imageState) structValue() persistence.Value {
 		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
 		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
 		persistence.StructFieldValue("encryption_keyhash", persistence.StringValue(s.encryptionKeyHash)),
-		persistence.StructFieldValue(
-			"backup_requested",
-			persistence.BoolValue(s.backupRequested),
-		),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 	)
 }
@@ -154,10 +147,6 @@ func scanImageState(res persistence.Result) (state imageState, err error) {
 		persistence.OptionalWithDefault("storage_size", &state.storageSize),
 		persistence.OptionalWithDefault("encryption_mode", &state.encryptionMode),
 		persistence.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
-		persistence.OptionalWithDefault(
-			"backup_requested",
-			&state.backupRequested,
-		),
 	)
 	return
 }
@@ -203,7 +192,6 @@ func imageStateStructTypeString() string {
 		storage_size: Uint64,
 		encryption_mode: Uint32,
 		encryption_keyhash: String,
-		backup_requested: Bool,
 		status: Int64>`
 }
 
@@ -228,10 +216,6 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
 		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
-		persistence.WithColumn(
-			"backup_requested",
-			persistence.Optional(persistence.TypeBool),
-		),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -557,13 +541,6 @@ func (s *storageYDB) imageCreated(
 	state.size = imageSize
 	state.storageSize = imageStorageSize
 
-	// A new ready image of a backed up folder is queued in the same
-	// transaction. Other images are queued by EnqueueImageBackup.
-	backup := s.backupEnabledForFolder(state.folderID)
-	if backup {
-		state.backupRequested = true
-	}
-
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
@@ -579,7 +556,9 @@ func (s *storageYDB) imageCreated(
 		return err
 	}
 
-	if backup {
+	// A new ready image of a backed up folder is queued in the same
+	// transaction. Other images are queued by EnqueueImageBackup.
+	if s.backupEnabledForFolder(state.folderID) {
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
@@ -706,12 +685,9 @@ func (s *storageYDB) deleteImage(
 		if err != nil {
 			return nil, err
 		}
-	}
 
-	// Only an image that was queued for backup can have a copy in the
-	// follower. Images of backed up folders queued before backup_requested
-	// existed have no mark, so their folder still counts.
-	if state.backupRequested || s.backupEnabledForFolder(state.folderID) {
+		// Any image may have a copy: it is queued by its folder or by hand.
+		// Deleting a copy that does not exist is a no-op.
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
@@ -1025,23 +1001,6 @@ func (s *storageYDB) enqueueImageBackup(
 			imageID,
 			imageStatusToString(state.status),
 		)
-	}
-
-	// The mark and the queue row go together: deletion of the image then
-	// queues deletion of the copy.
-	_, err = tx.Execute(ctx, fmt.Sprintf(`
-		--!syntax_v1
-		pragma TablePathPrefix = "%v";
-		declare $image_id as Utf8;
-
-		update images
-		set backup_requested = true
-		where id = $image_id
-	`, s.imagesPath),
-		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
-	)
-	if err != nil {
-		return err
 	}
 
 	_, err = tx.Execute(ctx, fmt.Sprintf(`
