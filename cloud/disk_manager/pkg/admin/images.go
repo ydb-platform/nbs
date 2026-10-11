@@ -278,6 +278,71 @@ func newDeleteImageCmd(clientConfig *client_config.ClientConfig) *cobra.Command 
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type backupImage struct {
+	clientConfig *client_config.ClientConfig
+	serverConfig *server_config.ServerConfig
+	imageID      string
+}
+
+func (c *backupImage) run() error {
+	if len(c.imageID) == 0 {
+		return fmt.Errorf("image ID is required")
+	}
+	if c.serverConfig.GetSnapshotStorageBackupConfig() == nil {
+		return fmt.Errorf("image backup is not configured")
+	}
+
+	ctx := newContext(c.clientConfig)
+	resourceStorage, db, err := newResourceStorage(ctx, c.serverConfig)
+	if err != nil {
+		return err
+	}
+	defer db.Close(ctx)
+
+	err = resourceStorage.EnqueueImageBackup(ctx, c.imageID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("OK")
+	return nil
+}
+
+func newBackupImageCmd(
+	clientConfig *client_config.ClientConfig,
+	serverConfig *server_config.ServerConfig,
+) *cobra.Command {
+
+	c := &backupImage{
+		clientConfig: clientConfig,
+		serverConfig: serverConfig,
+	}
+
+	cmd := &cobra.Command{
+		Use:   "backup",
+		Short: "Enqueue an image backup; repeated requests are successful",
+		Long: "Enqueue a backup of a ready image of any folder and return OK " +
+			"without waiting for completion. A request for an image that was " +
+			"already copied copies it again.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return c.run()
+		},
+	}
+
+	cmd.Flags().StringVar(
+		&c.imageID,
+		"id",
+		"",
+		"ID of image to back up; required",
+	)
+	if err := cmd.MarkFlagRequired("id"); err != nil {
+		log.Fatalf("Error setting flag id as required: %v", err)
+	}
+	return cmd
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
 func newImagesCmd(
 	clientConfig *client_config.ClientConfig,
 	serverConfig *server_config.ServerConfig,
@@ -290,6 +355,7 @@ func newImagesCmd(
 	cmd.AddCommand(
 		newGetImageCmd(clientConfig, serverConfig),
 		newListImagesCmd(clientConfig, serverConfig),
+		newBackupImageCmd(clientConfig, serverConfig),
 		newCreateImageCmd(clientConfig),
 		newDeleteImageCmd(clientConfig),
 	)

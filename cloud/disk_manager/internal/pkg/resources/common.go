@@ -29,9 +29,9 @@ type storageYDB struct {
 // folders.
 const backupAllFolders = "*"
 
-// Reports whether new snapshots and images of the folder are backed up, so
-// they are queued for backup and, once deleted, for deletion of the copy.
-func (s *storageYDB) isBackupFolder(folderID string) bool {
+// Reports whether new snapshots and images of the folder are backed up: they
+// are queued for backup when they become ready.
+func (s *storageYDB) backupEnabledForFolder(folderID string) bool {
 	if !s.backupEnabled {
 		return false
 	}

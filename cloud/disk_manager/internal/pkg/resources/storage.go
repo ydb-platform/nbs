@@ -208,6 +208,10 @@ type Storage interface {
 
 	ListImagesToBackup(ctx context.Context, limit int) ([]string, error)
 
+	// Queues a ready image of any folder for backup. Repeated requests
+	// succeed; a request for an image that was already copied copies it again.
+	EnqueueImageBackup(ctx context.Context, imageID string) error
+
 	ImageBackupScheduled(ctx context.Context, imageID string) error
 
 	ImageBackupCancelled(ctx context.Context, imageID string) error

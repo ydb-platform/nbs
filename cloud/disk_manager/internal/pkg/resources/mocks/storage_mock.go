@@ -310,6 +310,15 @@ func (s *StorageMock) ListSnapshots(
 	return args.Get(0).([]string), args.Error(1)
 }
 
+func (s *StorageMock) EnqueueImageBackup(
+	ctx context.Context,
+	imageID string,
+) error {
+
+	args := s.Called(ctx, imageID)
+	return args.Error(0)
+}
+
 func (s *StorageMock) EnqueueSnapshotBackup(
 	ctx context.Context,
 	snapshotID string,
