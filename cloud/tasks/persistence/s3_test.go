@@ -61,6 +61,7 @@ func newS3Client(
 		maxRetriableErrorCount,
 		nil, // availabilityMonitoring
 		nil, // tokenProvider
+		0,   // maxIdleConnsPerHost
 	)
 }
 

@@ -3,7 +3,10 @@ package persistence
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/base64"
 	"encoding/json"
+	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -62,11 +65,12 @@ type s3TokenAuthTransport struct {
 func newS3TokenAuthHTTPClient(
 	host string,
 	tokenProvider credentials.Credentials,
+	inner http.RoundTripper,
 ) *http.Client {
 
 	return &http.Client{
 		Transport: &s3TokenAuthTransport{
-			inner:         http.DefaultTransport,
+			inner:         inner,
 			host:          host,
 			tokenProvider: tokenProvider,
 		},
@@ -102,6 +106,25 @@ type S3Client struct {
 	metrics     *s3Metrics
 }
 
+type s3ClientOptions struct {
+	emptySigningRegion bool
+}
+
+type S3ClientOption func(*s3ClientOptions)
+
+// WithS3EmptySigningRegion allows an empty region: requests are signed with
+// the SigV4 default scope "us-east-1", which S3-compatible storages that do
+// not use regions accept. Without the option an empty region is an error.
+func WithS3EmptySigningRegion() S3ClientOption {
+	return func(options *s3ClientOptions) {
+		options.emptySigningRegion = true
+	}
+}
+
+const s3DefaultSigningRegion = "us-east-1"
+
+// maxIdleConnsPerHost limits idle connections kept to the endpoint; 0 keeps
+// the http.DefaultTransport value.
 func NewS3Client(
 	endpoint string,
 	region string,
@@ -111,7 +134,25 @@ func NewS3Client(
 	maxRetriableErrorCount uint64,
 	availabilityMonitoring *AvailabilityMonitoring,
 	tokenProvider credentials.Credentials,
+	maxIdleConnsPerHost int,
+	options ...S3ClientOption,
 ) (*S3Client, error) {
+
+	var clientOptions s3ClientOptions
+	for _, option := range options {
+		option(&clientOptions)
+	}
+
+	if len(region) == 0 {
+		if !clientOptions.emptySigningRegion {
+			return nil, errors.NewNonRetriableErrorf(
+				"S3 region is empty for endpoint %v",
+				endpoint,
+			)
+		}
+
+		region = s3DefaultSigningRegion
+	}
 
 	s3Metrics := newS3Metrics(
 		callTimeout,
@@ -135,6 +176,13 @@ func NewS3Client(
 			metrics: s3Metrics,
 		},
 	}
+	transport := http.DefaultTransport
+	if maxIdleConnsPerHost > 0 {
+		custom := http.DefaultTransport.(*http.Transport).Clone()
+		custom.MaxIdleConnsPerHost = maxIdleConnsPerHost
+		transport = custom
+	}
+
 	if tokenProvider != nil {
 		endpointURL, err := url.Parse(aws_endpoints.AddScheme(endpoint, false))
 		if err != nil {
@@ -147,7 +195,10 @@ func NewS3Client(
 		sessionConfig.HTTPClient = newS3TokenAuthHTTPClient(
 			endpointURL.Host,
 			tokenProvider,
+			transport,
 		)
+	} else if maxIdleConnsPerHost > 0 {
+		sessionConfig.HTTPClient = &http.Client{Transport: transport}
 	}
 
 	session, err := session.NewSession(sessionConfig)
@@ -199,6 +250,7 @@ func NewS3ClientFromConfig(
 		config.GetMaxRetriableErrorCount(),
 		availabilityMonitoring,
 		tokenProvider,
+		0, // maxIdleConnsPerHost
 	)
 }
 
@@ -383,6 +435,107 @@ func (c *S3Client) PutObject(
 
 	err = c.putObject(ctx, bucket, key, object)
 	return wrapError(err)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+type S3PutObjectOptions struct {
+	// Content-Type of the object; empty keeps the storage default.
+	ContentType string
+	// Sends Content-MD5 so that the storage rejects a corrupted upload.
+	ContentMD5 bool
+}
+
+// PutObjectWithOptions uploads the object as is: no storage class and no
+// quota fallback, with the Content-Type and Content-MD5 the options ask for.
+// Used for objects written to buckets outside Disk Manager, such as exports.
+func (c *S3Client) PutObjectWithOptions(
+	ctx context.Context,
+	bucket string,
+	key string,
+	object S3Object,
+	options S3PutObjectOptions,
+) (err error) {
+
+	ctx = withComponentLoggingField(ctx)
+	logging.Info(ctx, "putting object to s3, bucket %v, key %v", bucket, key)
+
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "PutObject", bucket, key)(&err)
+
+	input := &aws_s3.PutObjectInput{
+		Bucket:   &bucket,
+		Key:      &key,
+		Body:     bytes.NewReader(object.Data),
+		Metadata: object.Metadata,
+	}
+	if len(options.ContentType) != 0 {
+		input.ContentType = aws.String(options.ContentType)
+	}
+
+	if options.ContentMD5 {
+		sum := md5.Sum(object.Data)
+		input.ContentMD5 = aws.String(
+			base64.StdEncoding.EncodeToString(sum[:]),
+		)
+	}
+
+	_, err = c.s3.PutObjectWithContext(ctx, input)
+	return wrapError(err)
+}
+
+// GetObjectWithLimit returns the object data when it is at most limit bytes
+// long and a non-retriable error otherwise, so that a caller comparing an
+// object with a known value never reads an unbounded body.
+func (c *S3Client) GetObjectWithLimit(
+	ctx context.Context,
+	bucket string,
+	key string,
+	limit int64,
+) (data []byte, err error) {
+
+	ctx = withComponentLoggingField(ctx)
+	logging.Info(ctx, "getting object from s3, bucket %v, key %v", bucket, key)
+
+	ctx, cancel := context.WithTimeout(ctx, c.callTimeout)
+	defer cancel()
+
+	defer c.metrics.StatCall(ctx, "GetObject", bucket, key)(&err)
+
+	res, err := c.s3.GetObjectWithContext(ctx, &aws_s3.GetObjectInput{
+		Bucket: &bucket,
+		Key:    &key,
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			if aerr.Code() == aws_s3.ErrCodeNoSuchKey {
+				return nil, errors.NewSilentNonRetriableErrorf(
+					"s3 object not found: %v",
+					key,
+				)
+			}
+		}
+
+		return nil, wrapError(err)
+	}
+	defer res.Body.Close()
+
+	data, err = ioutil.ReadAll(io.LimitReader(res.Body, limit+1))
+	if err != nil {
+		return nil, errors.NewRetriableError(err)
+	}
+
+	if int64(len(data)) > limit {
+		return nil, errors.NewNonRetriableErrorf(
+			"s3 object %v is longer than %v bytes",
+			key,
+			limit,
+		)
+	}
+
+	return data, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
