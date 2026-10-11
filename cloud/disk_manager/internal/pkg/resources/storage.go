@@ -132,8 +132,6 @@ type SnapshotBackupID struct {
 	SnapshotID string
 }
 
-// A queued backup attempt whose snapshots.BackupSnapshot task is scheduled.
-// An attempt queued by the previous version has an empty BackupID.
 type ImageBackupRequest struct {
 	ImageID  string
 	BackupID string
@@ -152,6 +150,7 @@ type ScheduledImageBackup struct {
 	TaskID   string
 }
 
+// A queued backup attempt whose snapshots.BackupSnapshot task is scheduled.
 type ScheduledSnapshotBackup struct {
 	SnapshotID string
 	BackupID   string

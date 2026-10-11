@@ -148,33 +148,6 @@ func TestScheduleBackupImageTasks(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, storage, scheduler)
 }
 
-// An attempt queued by the previous version keeps the key of its running
-// task, so that task is found again instead of a second copy.
-func TestScheduleBackupImageTasksKeepsKeyOfAttemptWithoutBackupID(
-	t *testing.T,
-) {
-
-	ctx, storage, scheduler, task := newScheduleBackupImageTasksTest(10, 0)
-	execCtx := tasks_mocks.NewExecutionContextMock()
-
-	expectRunningImageCopies(storage, scheduler, 0, nil)
-	storage.On("ListImagesToBackup", mock.Anything, 10).Return(
-		[]resources.ImageBackupRequest{{ImageID: "legacy"}},
-		nil,
-	)
-	expectImageBackupScheduled(
-		storage,
-		scheduler,
-		"legacy",
-		"",
-		"backup_image_legacy",
-	)
-
-	err := task.Run(ctx, execCtx)
-	require.NoError(t, err)
-	mock.AssertExpectationsForObjects(t, storage, scheduler)
-}
-
 func TestScheduleBackupImageTasksStartsOnlyFreeSlots(t *testing.T) {
 	ctx, storage, scheduler, task := newScheduleBackupImageTasksTest(
 		1000, // limit

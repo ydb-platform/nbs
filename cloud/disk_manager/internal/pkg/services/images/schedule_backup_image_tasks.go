@@ -66,7 +66,14 @@ func (t *scheduleBackupImageTasks) Run(
 
 	for _, item := range backups {
 		taskID, err := t.scheduler.ScheduleTask(
-			headers.SetIncomingIdempotencyKey(ctx, backupImageTaskKey(item)),
+			headers.SetIncomingIdempotencyKey(
+				ctx,
+				fmt.Sprintf(
+					"backup_image_%v_%v",
+					item.ImageID,
+					item.BackupID,
+				),
+			),
 			"images.BackupImage",
 			"",
 			&protos.BackupImageRequest{
@@ -120,17 +127,6 @@ func (t *scheduleBackupImageTasks) GetResponse() proto.Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-
-// Each attempt has its own task. An attempt queued by the previous version has
-// no backup ID and keeps the key it was scheduled with, so its running task is
-// found again instead of started twice.
-func backupImageTaskKey(item resources.ImageBackupRequest) string {
-	if len(item.BackupID) == 0 {
-		return fmt.Sprintf("backup_image_%v", item.ImageID)
-	}
-
-	return fmt.Sprintf("backup_image_%v_%v", item.ImageID, item.BackupID)
-}
 
 // An images.BackupImage task removes its queue row when it ends. A row whose
 // task ended anyway, for example force-finished, would hold a slot forever, so

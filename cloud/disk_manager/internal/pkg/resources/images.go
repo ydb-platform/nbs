@@ -925,8 +925,6 @@ func (s *storageYDB) queueImageBackup(
 	return err
 }
 
-// A row queued by the previous version has no backup_id: it reads, and is
-// addressed, as the empty backup ID.
 func (s *storageYDB) listImagesToBackup(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1031,7 +1029,7 @@ func (s *storageYDB) imageBackupScheduled(
 
 		select enqueued_at
 		from backup_queue
-		where image_id = $image_id and coalesce(backup_id, "") = $backup_id
+		where image_id = $image_id and backup_id = $backup_id
 	`, s.imagesPath),
 		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
 		persistence.ValueParam("$backup_id", persistence.UTF8Value(backupID)),
@@ -1068,7 +1066,7 @@ func (s *storageYDB) imageBackupScheduled(
 
 		update backup_queue
 		set task_id = $task_id
-		where image_id = $image_id and coalesce(backup_id, "") = $backup_id
+		where image_id = $image_id and backup_id = $backup_id
 	`, s.imagesPath),
 		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
 		persistence.ValueParam("$backup_id", persistence.UTF8Value(backupID)),
@@ -1095,7 +1093,7 @@ func (s *storageYDB) removeImageFromBackupQueue(
 		declare $backup_id as Utf8;
 
 		delete from backup_queue
-		where image_id = $image_id and coalesce(backup_id, "") = $backup_id
+		where image_id = $image_id and backup_id = $backup_id
 	`, s.imagesPath),
 		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
 		persistence.ValueParam("$backup_id", persistence.UTF8Value(backupID)),

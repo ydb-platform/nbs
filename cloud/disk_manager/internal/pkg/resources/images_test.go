@@ -2,7 +2,6 @@ package resources
 
 import (
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/types"
 	"github.com/ydb-platform/nbs/cloud/tasks/errors"
-	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
 )
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -740,57 +738,6 @@ func TestEnqueueImageBackupRejectsUnavailableImage(t *testing.T) {
 	ids, err := storage.ListImagesToBackup(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, ids)
-}
-
-// A row queued by the previous version has only image_id. It is scheduled and
-// removed under the empty backup ID, so the task it already has is found again
-// rather than started twice.
-func TestImageBackupQueueKeepsRowsWithoutBackupID(t *testing.T) {
-	ctx, cancel := context.WithCancel(newContext())
-	defer cancel()
-
-	db, err := newYDB(ctx)
-	require.NoError(t, err)
-	defer db.Close(ctx)
-
-	storage := newStorage(t, ctx, db)
-	createReadyImage(t, ctx, storage, "legacy", "other")
-
-	imagesPath := db.AbsolutePath(fmt.Sprintf("%v/images", t.Name()))
-	err = db.Execute(
-		ctx,
-		func(ctx context.Context, session *persistence.Session) error {
-			_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
-				--!syntax_v1
-				pragma TablePathPrefix = "%v";
-				upsert into backup_queue (image_id) values ("legacy")
-			`, imagesPath))
-			return err
-		},
-	)
-	require.NoError(t, err)
-
-	ids, err := storage.ListImagesToBackup(ctx, 10)
-	require.NoError(t, err)
-	require.Equal(t, []ImageBackupRequest{{ImageID: "legacy"}}, ids)
-
-	enqueuedAt, err := storage.ImageBackupScheduled(ctx, "legacy", "", "task")
-	require.NoError(t, err)
-	require.True(t, enqueuedAt.IsZero())
-
-	scheduled, err := storage.ListScheduledImageBackups(ctx, 10)
-	require.NoError(t, err)
-	require.Equal(t, []ScheduledImageBackup{{
-		ImageID: "legacy",
-		TaskID:  "task",
-	}}, scheduled)
-
-	err = storage.RemoveImageFromBackupQueue(ctx, "legacy", "")
-	require.NoError(t, err)
-
-	scheduled, err = storage.ListScheduledImageBackups(ctx, 10)
-	require.NoError(t, err)
-	require.Empty(t, scheduled)
 }
 
 func TestImageBackupCompletedMarksOnlyReadyImage(t *testing.T) {
