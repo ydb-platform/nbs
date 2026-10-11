@@ -545,8 +545,7 @@ func (s *storageYDB) snapshotCreated(
 	// A new ready snapshot of a configured folder is queued in the same
 	// transaction. Other snapshots are queued by EnqueueSnapshotBackup. The
 	// snapshot becomes ready once, so its create task identifies the attempt.
-	_, backupFolder := s.backupFolderIDs[state.folderID]
-	if s.backupEnabled && backupFolder {
+	if s.backupEnabledForFolder(state.folderID) {
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";

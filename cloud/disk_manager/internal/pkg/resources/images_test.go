@@ -435,7 +435,7 @@ func TestImagesBackup(t *testing.T) {
 
 	image := ImageMeta{
 		ID:       "image",
-		FolderID: "folder",
+		FolderID: "backed",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -481,7 +481,7 @@ func TestImagesDeletionStopsBackup(t *testing.T) {
 
 	image := ImageMeta{
 		ID:       "image",
-		FolderID: "folder",
+		FolderID: "backed",
 		CreateRequest: &wrappers.UInt64Value{
 			Value: 1,
 		},
@@ -520,4 +520,175 @@ func TestImagesDeletionStopsBackup(t *testing.T) {
 	imageIDs, err = storage.GetImageBackupDeleteQueue(ctx, 10)
 	require.NoError(t, err)
 	require.Empty(t, imageIDs)
+}
+
+func createReadyImage(
+	t *testing.T,
+	ctx context.Context,
+	storage Storage,
+	imageID string,
+	folderID string,
+) {
+
+	_, err := storage.CreateImage(ctx, ImageMeta{
+		ID:       imageID,
+		FolderID: folderID,
+		CreateRequest: &wrappers.UInt64Value{
+			Value: 1,
+		},
+		CreateTaskID: "create_" + imageID,
+		CreatingAt:   time.Now(),
+		CreatedBy:    "user",
+	})
+	require.NoError(t, err)
+
+	err = storage.ImageCreated(ctx, imageID, "checkpoint", time.Now(), 0, 0)
+	require.NoError(t, err)
+}
+
+func TestImagesBackupQueuesNewReadyImageOfConfiguredFolder(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	createReadyImage(t, ctx, storage, "image_backed", "backed")
+	createReadyImage(t, ctx, storage, "image_other", "other")
+
+	ids, err := storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{"image_backed"}, ids)
+}
+
+// Any image may have a copy in the follower, queued by its folder or by hand,
+// so deletion of every image queues deletion of the copy.
+func TestImagesDeletionQueuesBackupDeletionOfEveryImage(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorage(t, ctx, db)
+
+	createReadyImage(t, ctx, storage, "image_backed", "backed")
+	createReadyImage(t, ctx, storage, "image_other", "other")
+
+	for _, imageID := range []string{"image_backed", "image_other"} {
+		_, err = storage.DeleteImage(ctx, imageID, "delete_"+imageID, time.Now())
+		require.NoError(t, err)
+	}
+
+	imageIDs, err := storage.GetImageBackupDeleteQueue(ctx, 10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"image_backed", "image_other"}, imageIDs)
+}
+
+func TestImagesBackupOfAllFoldersWithWildcard(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorageWithBackupFolders(t, ctx, db, []string{"*"})
+
+	createReadyImage(t, ctx, storage, "image_a", "folder_a")
+	createReadyImage(t, ctx, storage, "image_b", "folder_b")
+
+	ids, err := storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"image_a", "image_b"}, ids)
+
+	_, err = storage.DeleteImage(ctx, "image_a", "delete_image_a", time.Now())
+	require.NoError(t, err)
+
+	imageIDs, err := storage.GetImageBackupDeleteQueue(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{"image_a"}, imageIDs)
+}
+
+func newImageBackupTestStorage(t *testing.T) (context.Context, Storage) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(newContext())
+	t.Cleanup(cancel)
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	t.Cleanup(func() { require.NoError(t, db.Close(ctx)) })
+
+	storage := newStorage(t, ctx, db)
+	// Not a backed up folder: only a manual request queues it.
+	createReadyImage(t, ctx, storage, "image", "other")
+	return ctx, storage
+}
+
+func TestEnqueueImageBackupQueuesImageOfAnyFolder(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	ids, err := storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+
+	err = storage.EnqueueImageBackup(ctx, "image")
+	require.NoError(t, err)
+
+	ids, err = storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{"image"}, ids)
+}
+
+func TestEnqueueImageBackupIsIdempotent(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	for i := 0; i != 2; i++ {
+		err := storage.EnqueueImageBackup(ctx, "image")
+		require.NoError(t, err)
+	}
+
+	ids, err := storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{"image"}, ids)
+
+	// A copy that already ran can be requested again.
+	err = storage.ImageBackupScheduled(ctx, "image")
+	require.NoError(t, err)
+	err = storage.EnqueueImageBackup(ctx, "image")
+	require.NoError(t, err)
+
+	ids, err = storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Equal(t, []string{"image"}, ids)
+}
+
+func TestEnqueueImageBackupRejectsUnavailableImage(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	_, err := storage.CreateImage(ctx, ImageMeta{
+		ID:            "creating",
+		FolderID:      "other",
+		CreateRequest: &wrappers.UInt64Value{Value: 1},
+		CreateTaskID:  "create_creating",
+		CreatingAt:    time.Now(),
+	})
+	require.NoError(t, err)
+
+	createReadyImage(t, ctx, storage, "deleting", "other")
+	_, err = storage.DeleteImage(ctx, "deleting", "delete", time.Now())
+	require.NoError(t, err)
+
+	for _, id := range []string{"", "missing", "creating", "deleting"} {
+		err = storage.EnqueueImageBackup(ctx, id)
+		require.Error(t, err, id)
+		require.True(t, errors.Is(err, errors.NewEmptyNonRetriableError()), id)
+	}
+
+	ids, err := storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, ids)
 }

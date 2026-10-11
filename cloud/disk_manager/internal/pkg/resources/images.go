@@ -556,7 +556,9 @@ func (s *storageYDB) imageCreated(
 		return err
 	}
 
-	if s.backupEnabled {
+	// A new ready image of a backed up folder is queued in the same
+	// transaction. Other images are queued by EnqueueImageBackup.
+	if s.backupEnabledForFolder(state.folderID) {
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
@@ -684,6 +686,8 @@ func (s *storageYDB) deleteImage(
 			return nil, err
 		}
 
+		// Any image may have a copy: it is queued by its folder or by hand.
+		// Deleting a copy that does not exist is a no-op.
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
@@ -946,6 +950,76 @@ func (s *storageYDB) removeImageFromBackupQueue(
 	return err
 }
 
+func (s *storageYDB) enqueueImageBackup(
+	ctx context.Context,
+	session *persistence.Session,
+	imageID string,
+) error {
+
+	if len(imageID) == 0 {
+		return errors.NewNonRetriableErrorf("empty image ID")
+	}
+
+	tx, err := session.BeginRWTransaction(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	res, err := tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+
+		select * from images where id = $id
+	`, s.imagesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(imageID)),
+	)
+	if err != nil {
+		return err
+	}
+	defer res.Close()
+
+	states, err := scanImageStates(ctx, res)
+	if err != nil {
+		return err
+	}
+	if err = res.Err(); err != nil {
+		return err
+	}
+	if len(states) == 0 {
+		return errors.NewNonRetriableErrorf(
+			"image with id %v is not found",
+			imageID,
+		)
+	}
+
+	state := states[0]
+	if state.status != imageStatusReady {
+		return errors.NewNonRetriableErrorf(
+			"image with id %v and status %v can't be backed up",
+			imageID,
+			imageStatusToString(state.status),
+		)
+	}
+
+	_, err = tx.Execute(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $image_id as Utf8;
+
+		upsert into backup_queue (image_id)
+		values ($image_id)
+	`, s.imagesPath),
+		persistence.ValueParam("$image_id", persistence.UTF8Value(imageID)),
+	)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (s *storageYDB) listImageIDsForDeletion(
 	ctx context.Context,
 	session *persistence.Session,
@@ -1164,6 +1238,19 @@ func (s *storageYDB) ListImagesToBackup(
 		},
 	)
 	return ids, err
+}
+
+func (s *storageYDB) EnqueueImageBackup(
+	ctx context.Context,
+	imageID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.enqueueImageBackup(ctx, session, imageID)
+		},
+	)
 }
 
 func (s *storageYDB) ImageBackupScheduled(
