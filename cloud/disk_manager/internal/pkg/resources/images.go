@@ -556,7 +556,9 @@ func (s *storageYDB) imageCreated(
 		return err
 	}
 
-	if s.backupEnabled {
+	// Images are backed up only through the folder filter: there is no manual
+	// image backup.
+	if s.isBackupFolder(state.folderID) {
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";
@@ -683,7 +685,10 @@ func (s *storageYDB) deleteImage(
 		if err != nil {
 			return nil, err
 		}
+	}
 
+	// Only an image of a backed up folder can have a copy in the follower.
+	if s.isBackupFolder(state.folderID) {
 		_, err = tx.Execute(ctx, fmt.Sprintf(`
 			--!syntax_v1
 			pragma TablePathPrefix = "%v";

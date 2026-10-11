@@ -534,6 +534,50 @@ func TestSnapshotsBackupQueuesNewReadySnapshotOfConfiguredFolder(t *testing.T) {
 	}}, queue)
 }
 
+func TestSnapshotsBackupQueuesNewReadySnapshotsOfAllFoldersWithWildcard(
+	t *testing.T,
+) {
+
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	db, err := newYDB(ctx)
+	require.NoError(t, err)
+	defer db.Close(ctx)
+
+	storage := newStorageWithBackupFolders(t, ctx, db, []string{"*"})
+
+	for _, folderID := range []string{"folder_a", "folder_b"} {
+		snapshot := SnapshotMeta{
+			ID:       "snapshot_" + folderID,
+			FolderID: folderID,
+			Disk: &types.Disk{
+				ZoneId: "zone",
+				DiskId: "disk_" + folderID,
+			},
+			CreateRequest: &wrappers.UInt64Value{
+				Value: 1,
+			},
+			CreateTaskID: "create_" + folderID,
+			CreatingAt:   time.Now(),
+			CreatedBy:    "user",
+		}
+
+		_, err = storage.CreateSnapshot(ctx, snapshot)
+		require.NoError(t, err)
+
+		err = storage.SnapshotCreated(ctx, snapshot.ID, "checkpoint", time.Now(), 0, 0)
+		require.NoError(t, err)
+	}
+
+	queue, err := storage.ListSnapshotsToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []SnapshotBackupRequest{
+		{SnapshotID: "snapshot_folder_a", BackupID: "create_folder_a"},
+		{SnapshotID: "snapshot_folder_b", BackupID: "create_folder_b"},
+	}, queue)
+}
+
 func newSnapshotBackupTestStorage(t *testing.T) (context.Context, Storage) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(newContext())

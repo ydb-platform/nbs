@@ -25,6 +25,22 @@ type storageYDB struct {
 	backupFolderIDs                 map[string]struct{}
 }
 
+// A folder ID in SnapshotStorageBackupConfig.FolderIds that stands for all
+// folders.
+const backupAllFolders = "*"
+
+// Reports whether new snapshots and images of the folder are backed up, so
+// they are queued for backup and, once deleted, for deletion of the copy.
+func (s *storageYDB) isBackupFolder(folderID string) bool {
+	if !s.backupEnabled {
+		return false
+	}
+
+	_, all := s.backupFolderIDs[backupAllFolders]
+	_, listed := s.backupFolderIDs[folderID]
+	return all || listed
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 
 func NewStorage(
