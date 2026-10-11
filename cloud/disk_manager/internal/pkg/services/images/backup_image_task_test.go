@@ -56,6 +56,7 @@ func TestBackupImageTask(t *testing.T) {
 	var scheduledMeta []byte
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
+	storage.On("ImageBackupCompleted", mock.Anything, "image1").Return(nil)
 	storage.On(
 		"RemoveImageFromBackupQueue",
 		mock.Anything,
@@ -174,6 +175,7 @@ func TestBackupImageTaskReusesEncryptedDEK(t *testing.T) {
 	require.NoError(t, err)
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
+	storage.On("ImageBackupCompleted", mock.Anything, "image1").Return(nil)
 	storage.On(
 		"RemoveImageFromBackupQueue",
 		mock.Anything,
@@ -255,6 +257,7 @@ func TestBackupImageTaskWithoutEncryption(t *testing.T) {
 	require.NoError(t, err)
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(image, nil)
+	storage.On("ImageBackupCompleted", mock.Anything, "image1").Return(nil)
 	storage.On(
 		"RemoveImageFromBackupQueue",
 		mock.Anything,
@@ -346,6 +349,47 @@ func TestBackupImageTaskLeavesQueueForMissingImage(t *testing.T) {
 
 	storage.On("GetImageMeta", mock.Anything, "image1").Return(
 		(*resources.ImageMeta)(nil),
+		nil,
+	)
+	storage.On(
+		"RemoveImageFromBackupQueue",
+		mock.Anything,
+		"image1",
+		"attempt1",
+	).Return(nil)
+
+	task := &backupImageTask{
+		scheduler: scheduler,
+		storage:   storage,
+		request: &protos.BackupImageRequest{
+			ImageId:  "image1",
+			BackupId: "attempt1",
+		},
+		state: &protos.BackupImageTaskState{},
+	}
+
+	err := task.Run(ctx, execCtx)
+	require.NoError(t, err)
+	mock.AssertExpectationsForObjects(t, storage, scheduler)
+	scheduler.AssertNotCalled(
+		t,
+		"ScheduleTask",
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+		mock.Anything,
+	)
+}
+
+func TestBackupImageTaskSkipsBackedUpImage(t *testing.T) {
+	ctx := test.NewContext()
+
+	storage := resources_mocks.NewStorageMock()
+	scheduler := tasks_mocks.NewSchedulerMock()
+	execCtx := tasks_mocks.NewExecutionContextMock()
+
+	storage.On("GetImageMeta", mock.Anything, "image1").Return(
+		&resources.ImageMeta{ID: "image1", Ready: true, BackupCompleted: true},
 		nil,
 	)
 	storage.On(

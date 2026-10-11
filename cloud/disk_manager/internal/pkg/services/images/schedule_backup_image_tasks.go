@@ -3,9 +3,11 @@ package images
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/golang/protobuf/ptypes/empty"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
 	"github.com/ydb-platform/nbs/cloud/tasks"
@@ -24,6 +26,7 @@ const maxScheduledImageBackupsRead = 1000
 type scheduleBackupImageTasks struct {
 	scheduler tasks.Scheduler
 	storage   resources.Storage
+	registry  metrics.Registry
 	// Attempts started per pass at most.
 	limit int
 	// Copies running at once; 0 = no limit.
@@ -77,7 +80,7 @@ func (t *scheduleBackupImageTasks) Run(
 
 		// If this fails, the next pass schedules the same task again by the
 		// same key and records it.
-		_, err = t.storage.ImageBackupScheduled(
+		enqueuedAt, err := t.storage.ImageBackupScheduled(
 			ctx,
 			item.ImageID,
 			item.BackupID,
@@ -85,6 +88,12 @@ func (t *scheduleBackupImageTasks) Run(
 		)
 		if err != nil {
 			return err
+		}
+
+		if !enqueuedAt.IsZero() {
+			t.registry.Timer("backup/imageQueueWaitTime").RecordDuration(
+				time.Since(enqueuedAt),
+			)
 		}
 	}
 

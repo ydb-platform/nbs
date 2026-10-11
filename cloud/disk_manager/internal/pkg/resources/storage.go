@@ -54,6 +54,8 @@ type ImageMeta struct {
 	StorageSize       uint64                `json:"storage_size"`
 	Encryption        *types.EncryptionDesc `json:"encryption"`
 	Ready             bool                  `json:"ready"`
+	// A backup of the image completed; a deleting image is never marked.
+	BackupCompleted bool `json:"backup_completed"`
 }
 
 type SnapshotMeta struct {
@@ -135,6 +137,13 @@ type SnapshotBackupID struct {
 type ImageBackupRequest struct {
 	ImageID  string
 	BackupID string
+}
+
+type ImageBackupQueueStats struct {
+	// Attempts waiting for a free slot.
+	Queued uint64
+	// Attempts whose task is scheduled.
+	Scheduled uint64
 }
 
 type ScheduledImageBackup struct {
@@ -225,8 +234,9 @@ type Storage interface {
 	) ([]ImageBackupRequest, error)
 
 	// Queues a ready image of any folder for backup as attempt backupID. A
-	// request while an attempt is queued or running joins it; a request after
-	// it ended starts a new one.
+	// request for a backed up image does nothing, a request while an attempt
+	// is queued or running joins it, a request after it failed or was
+	// cancelled starts a new one.
 	EnqueueImageBackup(
 		ctx context.Context,
 		imageID string,
@@ -248,12 +258,18 @@ type Storage interface {
 		limit int,
 	) ([]ScheduledImageBackup, error)
 
-	// Removes the queue row of this attempt only.
+	// Removes the queue row of this attempt only. Does not mark the image as
+	// backed up.
 	RemoveImageFromBackupQueue(
 		ctx context.Context,
 		imageID string,
 		backupID string,
 	) error
+
+	// Marks a ready image as backed up. A deleting image is not marked.
+	ImageBackupCompleted(ctx context.Context, imageID string) error
+
+	GetImageBackupQueueStats(ctx context.Context) (ImageBackupQueueStats, error)
 
 	GetImageBackupDeleteQueue(ctx context.Context, limit int) ([]string, error)
 

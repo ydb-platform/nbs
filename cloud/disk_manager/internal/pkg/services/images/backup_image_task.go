@@ -53,8 +53,9 @@ func (t *backupImageTask) Run(
 		return err
 	}
 
-	// Nothing to copy: the image is gone or is being deleted.
-	if meta == nil || !meta.Ready {
+	// Nothing to copy: the image is gone, is being deleted or is already
+	// backed up.
+	if meta == nil || !meta.Ready || meta.BackupCompleted {
 		return t.removeFromQueue(ctx)
 	}
 
@@ -109,6 +110,13 @@ func (t *backupImageTask) Run(
 	}
 
 	_, err = t.scheduler.WaitTask(ctx, execCtx, taskID)
+	if err != nil {
+		return err
+	}
+
+	// Marks only a ready image: if deletion won before the copy took its
+	// hold, the image is already deleting and the copy copied nothing.
+	err = t.storage.ImageBackupCompleted(ctx, imageID)
 	if err != nil {
 		return err
 	}

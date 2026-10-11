@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	resources_mocks "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources/mocks"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/protos"
@@ -39,6 +40,7 @@ func newScheduleBackupImageTasksTest(
 	task := &scheduleBackupImageTasks{
 		scheduler:     scheduler,
 		storage:       storage,
+		registry:      metrics.NewEmptyRegistry(),
 		limit:         limit,
 		inflightLimit: inflightLimit,
 	}

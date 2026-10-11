@@ -69,6 +69,7 @@ type imageState struct {
 	storageSize       uint64
 	encryptionMode    uint32
 	encryptionKeyHash []byte
+	backupCompleted   bool
 
 	status imageStatus
 }
@@ -96,7 +97,8 @@ func (s *imageState) toImageMeta() *ImageMeta {
 				KeyHash: s.encryptionKeyHash,
 			},
 		},
-		Ready: s.status == imageStatusReady,
+		Ready:           s.status == imageStatusReady,
+		BackupCompleted: s.backupCompleted,
 	}
 }
 
@@ -121,6 +123,10 @@ func (s *imageState) structValue() persistence.Value {
 		persistence.StructFieldValue("storage_size", persistence.Uint64Value(s.storageSize)),
 		persistence.StructFieldValue("encryption_mode", persistence.Uint32Value(s.encryptionMode)),
 		persistence.StructFieldValue("encryption_keyhash", persistence.StringValue(s.encryptionKeyHash)),
+		persistence.StructFieldValue(
+			"backup_completed",
+			persistence.BoolValue(s.backupCompleted),
+		),
 		persistence.StructFieldValue("status", persistence.Int64Value(int64(s.status))),
 	)
 }
@@ -147,6 +153,10 @@ func scanImageState(res persistence.Result) (state imageState, err error) {
 		persistence.OptionalWithDefault("storage_size", &state.storageSize),
 		persistence.OptionalWithDefault("encryption_mode", &state.encryptionMode),
 		persistence.OptionalWithDefault("encryption_keyhash", &state.encryptionKeyHash),
+		persistence.OptionalWithDefault(
+			"backup_completed",
+			&state.backupCompleted,
+		),
 	)
 	return
 }
@@ -192,6 +202,7 @@ func imageStateStructTypeString() string {
 		storage_size: Uint64,
 		encryption_mode: Uint32,
 		encryption_keyhash: String,
+		backup_completed: Bool,
 		status: Int64>`
 }
 
@@ -216,6 +227,10 @@ func imageStateTableDescription() persistence.CreateTableDescription {
 		persistence.WithColumn("storage_size", persistence.Optional(persistence.TypeUint64)),
 		persistence.WithColumn("encryption_mode", persistence.Optional(persistence.TypeUint32)),
 		persistence.WithColumn("encryption_keyhash", persistence.Optional(persistence.TypeString)),
+		persistence.WithColumn(
+			"backup_completed",
+			persistence.Optional(persistence.TypeBool),
+		),
 		persistence.WithColumn("status", persistence.Optional(persistence.TypeInt64)),
 		persistence.WithPrimaryKeyColumn("id"),
 	)
@@ -1134,6 +1149,9 @@ func (s *storageYDB) enqueueImageBackup(
 	}
 
 	state := states[0]
+	if state.backupCompleted {
+		return tx.Commit(ctx)
+	}
 	if state.status != imageStatusReady {
 		return errors.NewNonRetriableErrorf(
 			"image with id %v and status %v can't be backed up",
@@ -1172,6 +1190,67 @@ func (s *storageYDB) enqueueImageBackup(
 	}
 
 	return tx.Commit(ctx)
+}
+
+func (s *storageYDB) imageBackupCompleted(
+	ctx context.Context,
+	session *persistence.Session,
+	imageID string,
+) error {
+
+	// A deleting image is not marked: its copy may have found the image
+	// already deleted and copied nothing.
+	_, err := session.ExecuteRW(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+		declare $id as Utf8;
+		declare $ready as Int64;
+
+		update images
+		set backup_completed = true
+		where id = $id and status = $ready
+	`, s.imagesPath),
+		persistence.ValueParam("$id", persistence.UTF8Value(imageID)),
+		persistence.ValueParam(
+			"$ready",
+			persistence.Int64Value(int64(imageStatusReady)),
+		),
+	)
+	return err
+}
+
+func (s *storageYDB) getImageBackupQueueStats(
+	ctx context.Context,
+	session *persistence.Session,
+) (ImageBackupQueueStats, error) {
+
+	res, err := session.ExecuteRO(ctx, fmt.Sprintf(`
+		--!syntax_v1
+		pragma TablePathPrefix = "%v";
+
+		select
+			count_if(task_id is null or task_id = "") as queued,
+			count_if(task_id is not null and task_id != "") as scheduled
+		from backup_queue
+	`, s.imagesPath))
+	if err != nil {
+		return ImageBackupQueueStats{}, err
+	}
+	defer res.Close()
+
+	var stats ImageBackupQueueStats
+	if !res.NextResultSet(ctx) || !res.NextRow() {
+		return stats, res.Err()
+	}
+
+	err = res.ScanNamed(
+		persistence.OptionalWithDefault("queued", &stats.Queued),
+		persistence.OptionalWithDefault("scheduled", &stats.Scheduled),
+	)
+	if err != nil {
+		return ImageBackupQueueStats{}, err
+	}
+	return stats, res.Err()
 }
 
 func (s *storageYDB) listImageIDsForDeletion(
@@ -1461,6 +1540,35 @@ func (s *storageYDB) RemoveImageFromBackupQueue(
 			return s.removeImageFromBackupQueue(ctx, session, imageID, backupID)
 		},
 	)
+}
+
+func (s *storageYDB) ImageBackupCompleted(
+	ctx context.Context,
+	imageID string,
+) error {
+
+	return s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			return s.imageBackupCompleted(ctx, session, imageID)
+		},
+	)
+}
+
+func (s *storageYDB) GetImageBackupQueueStats(
+	ctx context.Context,
+) (ImageBackupQueueStats, error) {
+
+	var stats ImageBackupQueueStats
+	err := s.db.Execute(
+		ctx,
+		func(ctx context.Context, session *persistence.Session) error {
+			var err error
+			stats, err = s.getImageBackupQueueStats(ctx, session)
+			return err
+		},
+	)
+	return stats, err
 }
 
 func (s *storageYDB) GetImageBackupDeleteQueue(

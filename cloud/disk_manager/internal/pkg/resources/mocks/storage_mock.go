@@ -193,6 +193,23 @@ func (s *StorageMock) ListScheduledImageBackups(
 	return args.Get(0).([]resources.ScheduledImageBackup), args.Error(1)
 }
 
+func (s *StorageMock) ImageBackupCompleted(
+	ctx context.Context,
+	imageID string,
+) error {
+
+	args := s.Called(ctx, imageID)
+	return args.Error(0)
+}
+
+func (s *StorageMock) GetImageBackupQueueStats(
+	ctx context.Context,
+) (resources.ImageBackupQueueStats, error) {
+
+	args := s.Called(ctx)
+	return args.Get(0).(resources.ImageBackupQueueStats), args.Error(1)
+}
+
 func (s *StorageMock) RemoveImageFromBackupQueue(
 	ctx context.Context,
 	imageID string,

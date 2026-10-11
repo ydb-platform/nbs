@@ -203,6 +203,9 @@ func registerControlplaneTasks(
 	}
 
 	logging.Info(ctx, "Registering image tasks")
+	// Snapshot and image backups report their queues side by side.
+	backupQueueMetricsRegistry := mon.NewRegistry("backup_queue")
+
 	err = images.RegisterForExecution(
 		ctx,
 		config.GetImagesConfig(),
@@ -214,6 +217,7 @@ func registerControlplaneTasks(
 		poolService,
 		cellSelector,
 		backupS3,
+		backupQueueMetricsRegistry,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register image tasks: %v", err)
@@ -230,7 +234,7 @@ func registerControlplaneTasks(
 		nbsFactory,
 		cellSelector,
 		backupS3,
-		mon.NewRegistry("backup_queue"),
+		backupQueueMetricsRegistry,
 	)
 	if err != nil {
 		logging.Error(ctx, "Failed to register snapshot tasks: %v", err)

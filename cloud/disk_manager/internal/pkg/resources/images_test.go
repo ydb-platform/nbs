@@ -792,3 +792,60 @@ func TestImageBackupQueueKeepsRowsWithoutBackupID(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, scheduled)
 }
+
+func TestImageBackupCompletedMarksOnlyReadyImage(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	err := storage.ImageBackupCompleted(ctx, "image")
+	require.NoError(t, err)
+
+	meta, err := storage.GetImageMeta(ctx, "image")
+	require.NoError(t, err)
+	require.True(t, meta.BackupCompleted)
+
+	// A deleting image is not marked: its copy may have copied nothing.
+	createReadyImage(t, ctx, storage, "deleting", "other")
+	_, err = storage.DeleteImage(ctx, "deleting", "delete", time.Now())
+	require.NoError(t, err)
+
+	err = storage.ImageBackupCompleted(ctx, "deleting")
+	require.NoError(t, err)
+
+	meta, err = storage.GetImageMeta(ctx, "deleting")
+	require.NoError(t, err)
+	require.False(t, meta.BackupCompleted)
+}
+
+func TestEnqueueImageBackupSkipsBackedUpImage(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+
+	err := storage.ImageBackupCompleted(ctx, "image")
+	require.NoError(t, err)
+
+	err = storage.EnqueueImageBackup(ctx, "image", "manual1")
+	require.NoError(t, err)
+
+	ids, err := storage.ListImagesToBackup(ctx, 10)
+	require.NoError(t, err)
+	require.Empty(t, ids)
+}
+
+func TestImageBackupQueueStats(t *testing.T) {
+	ctx, storage := newImageBackupTestStorage(t)
+	createReadyImage(t, ctx, storage, "image2", "other")
+
+	stats, err := storage.GetImageBackupQueueStats(ctx)
+	require.NoError(t, err)
+	require.Equal(t, ImageBackupQueueStats{}, stats)
+
+	for _, imageID := range []string{"image", "image2"} {
+		err = storage.EnqueueImageBackup(ctx, imageID, "manual")
+		require.NoError(t, err)
+	}
+	_, err = storage.ImageBackupScheduled(ctx, "image", "manual", "task")
+	require.NoError(t, err)
+
+	stats, err = storage.GetImageBackupQueueStats(ctx)
+	require.NoError(t, err)
+	require.Equal(t, ImageBackupQueueStats{Queued: 1, Scheduled: 1}, stats)
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/clients/nbs"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/common"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/dataplane/backup"
+	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/monitoring/metrics"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/resources"
 	images_config "github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/images/config"
 	"github.com/ydb-platform/nbs/cloud/disk_manager/internal/pkg/services/pools"
@@ -27,6 +28,7 @@ func RegisterForExecution(
 	poolService pools.Service,
 	cellSelector cells.CellSelector,
 	backupS3 *backup.S3,
+	backupMetricsRegistry metrics.Registry,
 ) error {
 
 	deletedImageExpirationTimeout, err := time.ParseDuration(
@@ -107,6 +109,20 @@ func RegisterForExecution(
 		return err
 	}
 
+	collectBackupQueueMetricsTaskScheduleInterval, err := time.ParseDuration(
+		config.GetCollectBackupQueueMetricsTaskScheduleInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
+	backupQueueMetricsCollectionInterval, err := time.ParseDuration(
+		config.GetBackupQueueMetricsCollectionInterval(),
+	)
+	if err != nil {
+		return err
+	}
+
 	if backupS3 != nil {
 		err = taskRegistry.RegisterForExecution("images.BackupImage", func() tasks.Task {
 			return &backupImageTask{
@@ -123,6 +139,7 @@ func RegisterForExecution(
 			return &scheduleBackupImageTasks{
 				scheduler: taskScheduler,
 				storage:   storage,
+				registry:  backupMetricsRegistry,
 				limit:     int(config.GetScheduleBackupImageTasksLimit()),
 				inflightLimit: int(
 					config.GetBackupImagesInflightLimit(),
@@ -138,6 +155,29 @@ func RegisterForExecution(
 			"images.ScheduleBackupImageTasks",
 			tasks.TaskSchedule{
 				ScheduleInterval: scheduleBackupImageTasksScheduleInterval,
+				MaxTasksInflight: 1,
+			},
+		)
+
+		err = taskRegistry.RegisterForExecution(
+			"images.CollectBackupQueueMetrics",
+			func() tasks.Task {
+				return &collectBackupQueueMetricsTask{
+					storage:            storage,
+					registry:           backupMetricsRegistry,
+					collectionInterval: backupQueueMetricsCollectionInterval,
+				}
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		taskScheduler.ScheduleRegularTasks(
+			ctx,
+			"images.CollectBackupQueueMetrics",
+			tasks.TaskSchedule{
+				ScheduleInterval: collectBackupQueueMetricsTaskScheduleInterval,
 				MaxTasksInflight: 1,
 			},
 		)
