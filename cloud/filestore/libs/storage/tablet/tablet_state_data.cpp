@@ -1754,8 +1754,9 @@ bool TIndexTabletState::IsForcedRangeOperationPending(
     const TString& operationId) const
 {
     for (auto const& op: PendingForcedOperations) {
-        const auto& opId =
-            std::visit([](const auto& op) { return op.OperationId; }, op);
+        const auto& opId = std::visit(
+            [](const auto& op) -> const TString& { return op.OperationId; },
+            op);
         if (opId == operationId) {
             return true;
         }
