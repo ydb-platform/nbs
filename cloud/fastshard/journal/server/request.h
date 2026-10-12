@@ -3,6 +3,7 @@
 #include "public.h"
 
 #include <cloud/fastshard/protos/device.pb.h>
+
 #include <cloud/fastshard/sn/iface/storage_node.h>
 
 #include <util/generic/string.h>

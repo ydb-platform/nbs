@@ -153,6 +153,21 @@ struct TFixture: public NUnitTest::TBaseFixture
             FormatError(error));
     }
 
+    NCloud::NProto::TError Zero(const TVector<std::pair<ui64, ui64>>& refs)
+    {
+        return Device->ZeroPages(MakeRangeRefs(refs)).GetValueSync();
+    }
+
+    void ZeroPages(const TVector<std::pair<ui64, ui64>>& refs)
+    {
+        const auto error = Zero(refs);
+
+        UNIT_ASSERT_VALUES_EQUAL_C(
+            S_OK,
+            error.GetCode(),
+            FormatError(error));
+    }
+
     // the pages read are grouped after the refs they have been read for
     NCloud::NProto::TReadPagesResponse Read(
         const TVector<std::pair<ui64, ui64>>& refs)
@@ -473,6 +488,79 @@ Y_UNIT_TEST_SUITE(TFileDeviceTest)
         UNIT_ASSERT_VALUES_EQUAL(
             ZeroedPage(),
             response.GetPageGroups(0).GetContent(0));
+    }
+
+    Y_UNIT_TEST_F(ShouldZeroPages, TFixture)
+    {
+        WritePages({
+            {10, {Page('a'), Page('b'), Page('c'), Page('d')}},
+            {20, {Page('e'), Page('f')}},
+        });
+
+        // every range of the request is zeroed, the other pages are kept
+
+        ZeroPages({{11, 2}, {21, 1}});
+
+        UNIT_ASSERT_VALUES_EQUAL(
+            "10:[a,0,0,d] 20:[e,0]",
+            ReadPages({{10, 4}, {20, 2}}));
+
+        // empty ranges are fine
+
+        ZeroPages({{10, 0}, {DefaultPageCount, 0}});
+        ZeroPages({});
+
+        UNIT_ASSERT_VALUES_EQUAL("10:[a]", ReadPages({{10, 1}}));
+    }
+
+    Y_UNIT_TEST_F(ShouldZeroARangeLargerThanAChunk, TFixture)
+    {
+        // more than the 1 MiB the zeroes are written in at once
+        constexpr ui64 pageCount = 1_MB / DefaultPageSize + 3;
+
+        Device = CreateDevice(pageCount + 2);
+
+        TVector<TString> pages(pageCount + 2, Page('a'));
+        WritePages({{0, pages}});
+
+        ZeroPages({{1, pageCount}});
+
+        const auto response = ReadPagesResponse({{0, pageCount + 2}});
+        const auto& content = response.GetPageGroups(0).GetContent();
+
+        UNIT_ASSERT_VALUES_EQUAL(pageCount + 2, content.size());
+        UNIT_ASSERT_VALUES_EQUAL("a", DescribePage(content[0]));
+        for (ui64 i = 1; i <= pageCount; ++i) {
+            UNIT_ASSERT_VALUES_EQUAL_C("0", DescribePage(content[i]), i);
+        }
+        UNIT_ASSERT_VALUES_EQUAL("a", DescribePage(content[pageCount + 1]));
+    }
+
+    Y_UNIT_TEST_F(ShouldRejectZeroingPagesBeyondTheDevice, TFixture)
+    {
+        WritePages({{10, {Page('a')}}});
+
+        const TVector<std::pair<ui64, ui64>> ranges {
+            {DefaultPageCount - 1, 2},
+            {DefaultPageCount, 1},
+            {DefaultPageCount + 1, 0},
+            {Max<ui64>(), 1},
+            {1, Max<ui64>()},
+        };
+
+        for (const auto& [firstPageNo, pageCount]: ranges) {
+            // the valid range of the request is not zeroed either
+
+            const auto error = Zero({{10, 1}, {firstPageNo, pageCount}});
+
+            UNIT_ASSERT_VALUES_EQUAL_C(
+                E_ARGUMENT,
+                error.GetCode(),
+                "[" << firstPageNo << ", " << pageCount << "]: "
+                    << FormatError(error));
+
+            UNIT_ASSERT_VALUES_EQUAL("10:[a]", ReadPages({{10, 1}}));
+        }
     }
 
     Y_UNIT_TEST_F(ShouldThrowIfTheFileCanNotBeOpened, TFixture)

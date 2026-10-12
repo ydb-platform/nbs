@@ -357,6 +357,7 @@ struct TTestDevice final: public IDevice
     mutable TMutex Mutex;
     TVector<TVector<TPageRangeRef>> ReadRequests;
     TVector<TVector<TPageRange>> WriteRequests;
+    TVector<TVector<TPageRangeRef>> ZeroRequests;
 
     // IDevice
 
@@ -378,6 +379,16 @@ struct TTestDevice final: public IDevice
         }
 
         return MakeFuture(WriteHandler(ranges));
+    }
+
+    TFuture<NCloud::NProto::TError> ZeroPages(
+        TVector<TPageRangeRef> ranges) override
+    {
+        with_lock (Mutex) {
+            ZeroRequests.push_back(ranges);
+        }
+
+        return MakeFuture<NCloud::NProto::TError>();
     }
 
     // helpers

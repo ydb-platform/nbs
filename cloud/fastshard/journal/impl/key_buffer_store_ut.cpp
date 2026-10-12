@@ -206,6 +206,17 @@ public:
         return promise.GetFuture();
     }
 
+    NThreading::TFuture<NCloud::NProto::TError> ZeroPages(
+        TVector<TPageRangeRef> ranges) override
+    {
+        if (Broken) {
+            return NThreading::MakeFuture(
+                MakeError(E_IO, "device is broken"));
+        }
+
+        return Device->ZeroPages(std::move(ranges));
+    }
+
     size_t PendingCount() const
     {
         return Pending.size();

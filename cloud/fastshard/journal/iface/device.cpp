@@ -24,6 +24,13 @@ public:
         Y_UNUSED(ranges);
         return MakeFuture<NCloud::NProto::TError>();
     }
+
+    TFuture<NCloud::NProto::TError> ZeroPages(
+        TVector<TPageRangeRef> ranges) override
+    {
+        Y_UNUSED(ranges);
+        return MakeFuture<NCloud::NProto::TError>();
+    }
 };
 
 }   // namespace
