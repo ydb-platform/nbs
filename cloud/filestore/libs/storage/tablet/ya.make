@@ -82,7 +82,6 @@ SRCS(
     tablet_actor_set_has_xattrs.cpp
     tablet_actor_setnodeattr.cpp
     tablet_actor_setnodexattr.cpp
-    tablet_actor_subscribesession.cpp
     tablet_actor_testlock.cpp
     tablet_actor_throttling.cpp
     tablet_actor_truncate.cpp

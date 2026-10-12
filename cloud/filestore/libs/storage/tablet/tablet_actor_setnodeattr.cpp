@@ -275,14 +275,6 @@ void TIndexTabletActor::CompleteTx_SetNodeAttr(
 
         auto* node = response->Record.MutableNode();
         ConvertNodeFromAttrs(*node, args.NodeId, args.Node->Attrs);
-
-        NProto::TSessionEvent sessionEvent;
-        {
-            auto* changed = sessionEvent.AddNodeChanged();
-            changed->SetNodeId(args.NodeId);
-            changed->SetKind(NProto::TSessionEvent::NODE_ATTR_CHANGED);
-        }
-        NotifySessionEvent(ctx, sessionEvent);
     }
 
     CompleteResponse<TEvService::TSetNodeAttrMethod>(

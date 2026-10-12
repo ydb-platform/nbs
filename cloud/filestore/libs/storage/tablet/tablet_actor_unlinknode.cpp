@@ -642,16 +642,6 @@ void TIndexTabletActor::CompleteTx_UnlinkNode(
         if (!BehaveAsShard(args.Request.GetHeaders())) {
             CommitDupCacheEntry(args.SessionId, args.RequestId);
         }
-
-        // TODO(#1350): support session events for external nodes
-        NProto::TSessionEvent sessionEvent;
-        {
-            auto* unlinked = sessionEvent.AddNodeUnlinked();
-            unlinked->SetParentNodeId(args.ParentNodeId);
-            unlinked->SetChildNodeId(args.ChildNode->NodeId);
-            unlinked->SetName(args.Name);
-        }
-        NotifySessionEvent(ctx, sessionEvent);
     }
 
     RemoveInFlightRequest(*args.RequestInfo);

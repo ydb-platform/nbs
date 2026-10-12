@@ -25,8 +25,6 @@ namespace NCloud::NFileStore::NStorage {
                                                                                \
     xxx(ResetSession,                       __VA_ARGS__)                       \
                                                                                \
-    xxx(SubscribeSession,                   __VA_ARGS__)                       \
-                                                                               \
     xxx(CreateCheckpoint,                   __VA_ARGS__)                       \
     xxx(DestroyCheckpoint,                  __VA_ARGS__)                       \
                                                                                \
@@ -101,8 +99,6 @@ namespace NCloud::NFileStore::NStorage {
 
 struct TEvService
 {
-    static const ui64 StreamCookie = -1;
-
     //
     // Register Local Filestore
     //
@@ -249,11 +245,13 @@ struct TEvService
         EvDescribeFileStoreModelRequest = EvBegin + 65,
         EvDescribeFileStoreModelResponse,
 
-        EvSubscribeSessionRequest = EvBegin + 67,
-        EvSubscribeSessionResponse,
+        // formerly EvSubscribeSessionRequest/Response
+        EvReserved1 = EvBegin + 67,
+        EvReserved2,
 
-        EvGetSessionEventsRequest = EvBegin + 69,
-        EvGetSessionEventsResponse,
+        // formerly EvGetSessionEventsRequest/Response
+        EvReserved3 = EvBegin + 69,
+        EvReserved4,
 
         // Show local tablets in the service monitoring.
         EvRegisterLocalFileStore = EvBegin + 71,

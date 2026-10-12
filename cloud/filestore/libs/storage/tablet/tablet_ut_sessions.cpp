@@ -274,28 +274,6 @@ Y_UNIT_TEST_SUITE(TIndexTabletTest_Sessions)
         tablet.AssertReadDataFailed(handle, 0, 1_KB);
     }
 
-    Y_UNIT_TEST(ShouldSendSessionEvents)
-    {
-        TTestEnv env;
-
-        ui32 nodeIdx = env.AddDynamicNode();
-        ui64 tabletId = env.BootIndexTablet(nodeIdx);
-
-        TIndexTabletClient tablet(env.GetRuntime(), nodeIdx, tabletId);
-        tablet.InitSession("client", "session");
-
-        tablet.SubscribeSession();
-        tablet.CreateNode(TCreateNodeArgs::File(RootNodeId, "test"));
-
-        auto response = tablet.RecvResponse<TEvService::TEvGetSessionEventsResponse>();
-        UNIT_ASSERT_C(
-            SUCCEEDED(response->GetStatus()),
-            response->GetErrorReason());
-
-        const auto& events = response->Record.GetEvents();
-        UNIT_ASSERT_VALUES_EQUAL(events.size(), 1);
-    }
-
     Y_UNIT_TEST(ShouldRestoreClientSession)
     {
         TTestEnv env;

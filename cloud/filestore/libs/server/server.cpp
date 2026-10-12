@@ -93,7 +93,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 NProto::TError MakeGrpcError(const grpc::Status& status)
 {
     NProto::TError error;
@@ -102,14 +101,6 @@ NProto::TError MakeGrpcError(const grpc::Status& status)
         error.SetMessage(TString(status.error_message()));
     }
     return error;
-}
-
-grpc::Status MakeGrpcStatus(const NProto::TError& error)
-{
-    if (HasError(error)) {
-        return { grpc::UNAVAILABLE, error.GetMessage() };
-    }
-    return grpc::Status::OK;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -143,17 +134,12 @@ grpc::Status MakeGrpcStatus(const NProto::TError& error)
 #define FILESTORE_DECLARE_METHOD_VHOST(name, ...) \
     FILESTORE_DECLARE_METHOD(name##Vhost, name, name, __VA_ARGS__)
 
-#define FILESTORE_DECLARE_METHOD_STREAM(name, ...) \
-    FILESTORE_DECLARE_METHOD(name##Stream, name, name##Stream, __VA_ARGS__)
-
 FILESTORE_SERVICE(FILESTORE_DECLARE_METHOD_FS)
 FILESTORE_ENDPOINT_SERVICE(FILESTORE_DECLARE_METHOD_VHOST)
-FILESTORE_DECLARE_METHOD_STREAM(GetSessionEvents)
 
 #undef FILESTORE_DECLARE_METHOD
 #undef FILESTORE_DECLARE_METHOD_FS
 #undef FILESTORE_DECLARE_METHOD_VHOST
-#undef FILESTORE_DECLARE_METHOD_STREAM
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -868,289 +854,6 @@ private:
 };
 
 ////////////////////////////////////////////////////////////////////////////////
-
-template <typename TAppContext, typename TMethod>
-class TStreamRequestHandler final
-    : public TServerRequestHandlerBase
-{
-    using TRequest = typename TMethod::TRequest;
-    using TResponse = typename TMethod::TResponse;
-
-    class TResponseHandler final
-        : public IResponseHandler<TResponse>
-    {
-    private:
-        TStreamRequestHandler* Self;
-
-    public:
-        TResponseHandler(TStreamRequestHandler* self)
-            : Self(self)
-        {}
-
-        void HandleResponse(const TResponse& response) override
-        {
-            Self->HandleResponse(response);
-        }
-
-        void HandleCompletion(const NProto::TError& error) override
-        {
-            Self->HandleCompletion(error);
-
-            Self->ReleaseCompletionTag();
-        }
-    };
-
-private:
-    TAppContext& AppCtx;
-    TExecutorContext& ExecCtx;
-
-    std::unique_ptr<grpc::ServerContext> Context = std::make_unique<grpc::ServerContext>();
-    grpc::ServerAsyncWriter<TResponse> Writer;
-
-    std::shared_ptr<TRequest> Request = std::make_shared<TRequest>();
-
-    enum {
-        WaitingForRequest = 0,
-        ExecutingRequest = 1,
-        ExecutionCompleted = 2,
-        ExecutionCancelled = 3,
-        SendingResponse = 4,
-        SendingCompletion = 5,
-        RequestCompleted = 6,
-    };
-    TAtomic RequestState = WaitingForRequest;
-
-    TDeque<TResponse> ResponseQueue;
-    TMaybe<grpc::Status> CompletionStatus;
-    TAdaptiveLock ResponseLock;
-
-    ui64 RequestId = 0;
-
-public:
-    TStreamRequestHandler(TExecutorContext& execCtx, TAppContext& appCtx)
-        : AppCtx(appCtx)
-        , ExecCtx(execCtx)
-        , Writer(Context.get())
-    {}
-
-    static void Start(TExecutorContext& execCtx, TAppContext& appCtx)
-    {
-        using THandler = TStreamRequestHandler<TAppContext, TMethod>;
-        execCtx.StartRequestHandler<THandler>(appCtx);
-    }
-
-    void Process(bool ok) override
-    {
-        if (AtomicGet(AppCtx.ShouldStop) == 0 &&
-            AtomicGet(RequestState) == WaitingForRequest)
-        {
-            // There always should be handler waiting for request.
-            // Spawn new request only when handling request from server queue.
-            Start(ExecCtx, AppCtx);
-        }
-
-        if (!ok) {
-            AtomicSet(RequestState, RequestCompleted);
-        }
-
-        for (;;) {
-            switch (AtomicGet(RequestState)) {
-                case WaitingForRequest:
-                    if (AtomicCas(&RequestState, ExecutingRequest, WaitingForRequest)) {
-                        PrepareRequestContext();
-                        ExecuteRequest();
-
-                        // request is in progress now
-                        return;
-                    }
-                    break;
-
-                case ExecutionCompleted:
-                    with_lock (ResponseLock) {
-                        if (ResponseQueue) {
-                            if (AtomicCas(&RequestState, SendingResponse, ExecutionCompleted)) {
-                                SendResponse(ResponseQueue.front());
-                                ResponseQueue.pop_front();
-
-                                // request is in progress now
-                                return;
-                            }
-                        } else {
-                            if (AtomicCas(&RequestState, SendingCompletion, ExecutionCompleted)) {
-                                Y_ABORT_UNLESS(CompletionStatus);
-                                SendCompletion(*CompletionStatus);
-
-                                // request is in progress now
-                                return;
-                            }
-                        }
-                    }
-                    break;
-
-                case ExecutionCancelled:
-                    if (AtomicCas(&RequestState, SendingCompletion, ExecutionCancelled)) {
-                        // cancel inflight requests due to server shutting down
-                        SendCompletion(grpc::Status(
-                            grpc::StatusCode::UNAVAILABLE,
-                            "Server shutting down"));
-
-                        // request is in progress now
-                        return;
-                    }
-                    break;
-
-                case SendingResponse:
-                    with_lock (ResponseLock) {
-                        if (ResponseQueue) {
-                            SendResponse(ResponseQueue.front());
-                            ResponseQueue.pop_front();
-
-                            // request is in progress now
-                            return;
-                        } else if (CompletionStatus) {
-                            if (AtomicCas(&RequestState, SendingCompletion, SendingResponse)) {
-                                SendCompletion(*CompletionStatus);
-
-                                // request is in progress now
-                                return;
-                            }
-                        } else {
-                            if (AtomicCas(&RequestState, ExecutingRequest, SendingResponse)) {
-                                // request is in progress now
-                                return;
-                            }
-                        }
-                    }
-                    break;
-
-                case SendingCompletion:
-                    if (AtomicCas(&RequestState, RequestCompleted, SendingCompletion)) {
-                    }
-                    break;
-
-                case RequestCompleted:
-                    // request completed and could be safely destroyed
-                    ExecCtx.RequestsInFlight.Unregister(this);
-
-                    // free grpc server context as soon as we completed request
-                    // because request handler may be destructed later than
-                    // grpc shutdown
-                    Context.reset();
-                    return;
-            }
-        }
-    }
-
-    void Cancel() override
-    {
-        if (AtomicCas(&RequestState, ExecutionCancelled, ExecutingRequest)) {
-            // will be processed on executor thread
-            EnqueueCompletion(ExecCtx.CompletionQueue.get(), AcquireCompletionTag());
-            return;
-        }
-
-        if (Context->c_call()) {
-            Context->TryCancel();
-        }
-    }
-
-    void PrepareRequest()
-    {
-        TMethod::Prepare(
-            AppCtx.Service,
-            Context.get(),
-            Request.get(),
-            &Writer,
-            ExecCtx.CompletionQueue.get(),
-            ExecCtx.CompletionQueue.get(),
-            this);
-    }
-
-private:
-    void PrepareRequestContext()
-    {
-        CallContext->FileSystemId = GetFileSystemId(*Request);
-        CallContext->RequestId = RequestId;
-        CallContext->RequestType = TMethod::RequestType;
-        // TODO fill context
-    }
-
-    void ExecuteRequest()
-    {
-        AcquireCompletionTag();
-        // TODO report stats
-
-        try {
-            AppCtx.ValidateRequest(
-                *Context,
-                *Request->MutableHeaders());
-
-            TMethod::Execute(
-                *AppCtx.ServiceImpl,
-                CallContext,
-                std::move(Request),
-                std::make_shared<TResponseHandler>(this));
-
-            // request is in progress now
-            return;
-
-        } catch (const TServiceError& e) {
-            HandleCompletion(MakeError(e.GetCode(), TString(e.GetMessage())));
-        } catch (...) {
-            HandleCompletion(MakeError(E_FAIL, CurrentExceptionMessage()));
-        }
-
-        ReleaseCompletionTag();
-    }
-
-    void HandleResponse(const TResponse& response)
-    {
-        with_lock (ResponseLock) {
-            Y_ABORT_UNLESS(!CompletionStatus);
-            ResponseQueue.push_back(response);
-        }
-
-        if (AtomicCas(&RequestState, ExecutionCompleted, ExecutingRequest)) {
-            // will be processed on executor thread
-            EnqueueCompletion(ExecCtx.CompletionQueue.get(), AcquireCompletionTag());
-        }
-    }
-
-    void HandleCompletion(const NProto::TError& error)
-    {
-        with_lock (ResponseLock) {
-            Y_ABORT_UNLESS(!CompletionStatus);
-            CompletionStatus = MakeGrpcStatus(error);
-        }
-
-        if (AtomicCas(&RequestState, ExecutionCompleted, ExecutingRequest)) {
-            // will be processed on executor thread
-            EnqueueCompletion(ExecCtx.CompletionQueue.get(), AcquireCompletionTag());
-        }
-    }
-
-    void SendResponse(const TResponse& response)
-    {
-        auto& Log = AppCtx.Log;
-
-        STORAGE_TRACE(TMethod::RequestName
-            << " send response: " << ProtoMessagePrinter.ToString(response));
-
-        Writer.Write(response, AcquireCompletionTag());
-    }
-
-    void SendCompletion(const grpc::Status& status)
-    {
-        auto& Log = AppCtx.Log;
-
-        STORAGE_TRACE(TMethod::RequestName
-            << " send completion: " << FormatError(MakeGrpcError(status)));
-
-        Writer.Finish(status, AcquireCompletionTag());
-    }
-};
-
-////////////////////////////////////////////////////////////////////////////////
 // Template base class for custom sync handlers
 
 template <typename TRequestType, typename TResponseType, typename TDerived>
@@ -1499,9 +1202,6 @@ private:
 template <typename T>
 using TFileStoreHandler = TRequestHandler<TFileStoreContext, T>;
 
-template <typename T>
-using TFileStoreStreamHandler = TStreamRequestHandler<TFileStoreContext, T>;
-
 void StartRequests(TExecutorContext& execCtx, TFileStoreContext& appCtx)
 {
 #define FILESTORE_START_REQUEST(name, ...)                                     \
@@ -1511,8 +1211,6 @@ void StartRequests(TExecutorContext& execCtx, TFileStoreContext& appCtx)
     FILESTORE_SERVICE(FILESTORE_START_REQUEST)
 
 #undef FILESTORE_START_REQUEST
-
-    TFileStoreStreamHandler<TGetSessionEventsStreamMethod>::Start(execCtx, appCtx);
 
     // Custom handlers for the shared memory transport
     if (appCtx.State) {

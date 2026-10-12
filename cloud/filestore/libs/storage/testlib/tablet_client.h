@@ -1168,12 +1168,6 @@ public:
         return request;
     }
 
-    auto CreateSubscribeSessionRequest()
-    {
-        auto request = CreateSessionRequest<TEvService::TEvSubscribeSessionRequest>();
-        return request;
-    }
-
     //
     // Monitoring Http Info
     //
