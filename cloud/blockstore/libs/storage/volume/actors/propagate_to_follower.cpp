@@ -49,9 +49,9 @@ void TPropagateLinkToFollowerActor::PersistOnFollower(
     request->Record.MutableHeaders()->SetExactDiskIdMatch(true);
     request->Record.SetLinkUUID(Link.LinkUUID);
     request->Record.SetDiskId(Link.FollowerDiskId);
-    request->Record.SetFollowerShardId(Link.FollowerShardId);
+    request->Record.SetFollowerCellId(Link.FollowerCellId);
     request->Record.SetLeaderDiskId(Link.LeaderDiskId);
-    request->Record.SetLeaderShardId(Link.LeaderShardId);
+    request->Record.SetLeaderCellId(Link.LeaderCellId);
 
     switch (Reason) {
         case EReason::Creation: {

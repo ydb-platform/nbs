@@ -28,6 +28,7 @@ NActors::IActorPtr CreateStorageService(
     IVolumeStatsPtr volumeStats,
     TManuallyPreemptedVolumesPtr preemptedVolumes,
     IRootKmsKeyProviderPtr rootKmsKeyProvider,
-    bool temporaryServer);
+    bool temporaryServer,
+    TString cellId);
 
 }   // namespace NCloud::NBlockStore::NStorage

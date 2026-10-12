@@ -458,9 +458,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         TLeaderFollowerLink link{
             .LinkUUID = "",
             .LeaderDiskId = "vol1",
-            .LeaderShardId = "su1",
+            .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerShardId = "su2"};
+            .FollowerCellId = "su2"};
         {
             // Create link
             auto response = volume1.LinkLeaderVolumeToFollower(link);
@@ -621,9 +621,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         TLeaderFollowerLink link{
             .LinkUUID = "",
             .LeaderDiskId = "vol1",
-            .LeaderShardId = "su1",
+            .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerShardId = "su2"};
+            .FollowerCellId = "su2"};
 
         // Create link
         volume1.LinkLeaderVolumeToFollower(link);
@@ -719,9 +719,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         TLeaderFollowerLink link{
             .LinkUUID = "",
             .LeaderDiskId = "vol1",
-            .LeaderShardId = "su1",
+            .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerShardId = "su2"};
+            .FollowerCellId = "su2"};
 
         // Create link
         volume1.SendLinkLeaderVolumeToFollowerRequest(link);
@@ -874,9 +874,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         TLeaderFollowerLink link{
             .LinkUUID = "",
             .LeaderDiskId = "vol1",
-            .LeaderShardId = "su1",
+            .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerShardId = "su2"};
+            .FollowerCellId = "su2"};
         {
             volume1.SendLinkLeaderVolumeToFollowerRequest(link);
             auto response = volume1.RecvLinkLeaderVolumeToFollowerResponse();
@@ -1180,9 +1180,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         TLeaderFollowerLink link{
             .LinkUUID = "",
             .LeaderDiskId = "vol1",
-            .LeaderShardId = "su1",
+            .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerShardId = "su2"};
+            .FollowerCellId = "su2"};
         {
             auto response = volume1.LinkLeaderVolumeToFollower(link);
             link.LinkUUID = response->Record.GetLinkUUID();
@@ -1436,9 +1436,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             TLeaderFollowerLink link{
                 .LinkUUID = "",
                 .LeaderDiskId = "vol1",
-                .LeaderShardId = "su1",
+                .LeaderCellId = "su1",
                 .FollowerDiskId = "vol2",
-                .FollowerShardId = "su2"};
+                .FollowerCellId = "su2"};
 
             auto response = volume1.LinkLeaderVolumeToFollower(link);
             link.LinkUUID = response->Record.GetLinkUUID();
@@ -1605,9 +1605,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             TLeaderFollowerLink link{
                 .LinkUUID = "",
                 .LeaderDiskId = "vol1",
-                .LeaderShardId = "su1",
+                .LeaderCellId = "su1",
                 .FollowerDiskId = "vol2",
-                .FollowerShardId = "su2"};
+                .FollowerCellId = "su2"};
 
             auto response = volume1.LinkLeaderVolumeToFollower(link);
             link.LinkUUID = response->Record.GetLinkUUID();
@@ -1717,9 +1717,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
             TLeaderFollowerLink link{
                 .LinkUUID = "",
                 .LeaderDiskId = "vol1",
-                .LeaderShardId = "su1",
+                .LeaderCellId = "su1",
                 .FollowerDiskId = "vol2",
-                .FollowerShardId = "su2"};
+                .FollowerCellId = "su2"};
 
             auto response = volume1.LinkLeaderVolumeToFollower(link);
             link.LinkUUID = response->Record.GetLinkUUID();
@@ -2200,9 +2200,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
         TLeaderFollowerLink link{
             .LinkUUID = "",
             .LeaderDiskId = "vol1",
-            .LeaderShardId = "su1",
+            .LeaderCellId = "su1",
             .FollowerDiskId = "vol2",
-            .FollowerShardId = "su2"};
+            .FollowerCellId = "su2"};
         auto linkResponse = volume1.LinkLeaderVolumeToFollower(link);
         link.LinkUUID = linkResponse->Record.GetLinkUUID();
 
@@ -2305,9 +2305,9 @@ Y_UNIT_TEST_SUITE(TLinkedVolumeTest)
                     .Link =
                         {.LinkUUID = "link-id",
                          .LeaderDiskId = "vol1",
-                         .LeaderShardId = "leader-shard",
+                         .LeaderCellId = "leader-cell",
                          .FollowerDiskId = "vol2",
-                         .FollowerShardId = "follower-shard"},
+                         .FollowerCellId = "follower-cell"},
                     .CreatedAt = TInstant::Now(),
                     .State = persistedState,
                     .MediaKind = NProto::STORAGE_MEDIA_SSD}});

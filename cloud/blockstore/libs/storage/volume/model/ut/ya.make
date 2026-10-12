@@ -6,6 +6,7 @@ SRCS(
     checkpoint_light_ut.cpp
     checkpoint_ut.cpp
     client_state_ut.cpp
+    follower_disk_ut.cpp
     merge_ut.cpp
     requests_inflight_ut.cpp
     requests_time_tracker_ut.cpp

@@ -527,22 +527,26 @@ TServiceClient::CreateAddTagsRequest(
 std::unique_ptr<TEvService::TEvCreateVolumeLinkRequest>
 TServiceClient::CreateCreateVolumeLinkRequest(
     const TString& leaderDiskId,
-    const TString& followerDiskId)
+    const TString& followerDiskId,
+    const TString& followerCellId)
 {
     auto request = std::make_unique<TEvService::TEvCreateVolumeLinkRequest>();
     request->Record.SetLeaderDiskId(leaderDiskId);
     request->Record.SetFollowerDiskId(followerDiskId);
+    request->Record.SetFollowerCellId(followerCellId);
     return request;
 }
 
 std::unique_ptr<TEvService::TEvDestroyVolumeLinkRequest>
 TServiceClient::CreateDestroyVolumeLinkRequest(
     const TString& leaderDiskId,
-    const TString& followerDiskId)
+    const TString& followerDiskId,
+    const TString& followerCellId)
 {
     auto request = std::make_unique<TEvService::TEvDestroyVolumeLinkRequest>();
     request->Record.SetLeaderDiskId(leaderDiskId);
     request->Record.SetFollowerDiskId(followerDiskId);
+    request->Record.SetFollowerCellId(followerCellId);
     return request;
 }
 

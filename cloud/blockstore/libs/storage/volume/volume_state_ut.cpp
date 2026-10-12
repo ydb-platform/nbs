@@ -2173,9 +2173,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "uuid1",
                     .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
+                    .LeaderCellId = "su0",
                     .FollowerDiskId = "vol1",
-                    .FollowerShardId = "su1"},
+                    .FollowerCellId = "su1"},
             .State = TFollowerDiskInfo::EState::None,
             .MediaKind = NProto::STORAGE_MEDIA_SSD});
 
@@ -2192,9 +2192,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "uuid1",
                     .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
+                    .LeaderCellId = "su0",
                     .FollowerDiskId = "vol1",
-                    .FollowerShardId = "su1"},
+                    .FollowerCellId = "su1"},
             .State = TFollowerDiskInfo::EState::Preparing,
             .MediaKind = NProto::STORAGE_MEDIA_SSD,
             .MigratedBytes = 100});
@@ -2210,9 +2210,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
                 TLeaderFollowerLink{
                     .LinkUUID = "uuid2",
                     .LeaderDiskId = "vol0",
-                    .LeaderShardId = "su0",
+                    .LeaderCellId = "su0",
                     .FollowerDiskId = "vol2",
-                    .FollowerShardId = "su1"},
+                    .FollowerCellId = "su1"},
             .State = TFollowerDiskInfo::EState::None,
             .MediaKind = NProto::STORAGE_MEDIA_SSD});
         UNIT_ASSERT_VALUES_EQUAL(2, followers.size());
@@ -2228,9 +2228,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         volumeState.RemoveFollower(TLeaderFollowerLink{
             .LinkUUID = "",
             .LeaderDiskId = "vol0",
-            .LeaderShardId = "su0",
+            .LeaderCellId = "su0",
             .FollowerDiskId = "vol2",
-            .FollowerShardId = "su1"});
+            .FollowerCellId = "su1"});
         UNIT_ASSERT_VALUES_EQUAL(0, followers.size());
     }
 
@@ -2241,9 +2241,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         const auto link = TLeaderFollowerLink{
             .LinkUUID = "uuid1",
             .LeaderDiskId = "vol0",
-            .LeaderShardId = "su0",
+            .LeaderCellId = "su0",
             .FollowerDiskId = "vol1",
-            .FollowerShardId = "su1"};
+            .FollowerCellId = "su1"};
 
         // Add leader
         volumeState.AddOrUpdateLeader(
@@ -2287,9 +2287,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         auto link = TLeaderFollowerLink{
             .LinkUUID = "uuid1",
             .LeaderDiskId = "vol0",
-            .LeaderShardId = "",
+            .LeaderCellId = "",
             .FollowerDiskId = "vol0-copy",
-            .FollowerShardId = ""};
+            .FollowerCellId = ""};
 
         // Add follower
         volumeState.AddOrUpdateFollower(
@@ -2346,9 +2346,9 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         const auto link = TLeaderFollowerLink{
             .LinkUUID = "uuid1",
             .LeaderDiskId = "disk-1",
-            .LeaderShardId = "su0",
+            .LeaderCellId = "su0",
             .FollowerDiskId = "disk-1-copy",
-            .FollowerShardId = "su0"};
+            .FollowerCellId = "su0"};
 
         // When a follower disk is following a leader, we refer to it as the PrincipalDiskId.
         volumeState.AddOrUpdateLeader(
@@ -2381,16 +2381,16 @@ Y_UNIT_TEST_SUITE(TVolumeStateTest)
         const auto link = TLeaderFollowerLink{
             .LinkUUID = "uuid1",
             .LeaderDiskId = "disk-1",
-            .LeaderShardId = "su0",
+            .LeaderCellId = "su0",
             .FollowerDiskId = "disk-1-copy",
-            .FollowerShardId = "su0"};
+            .FollowerCellId = "su0"};
 
         const auto linkWithEmptyUUID = TLeaderFollowerLink{
             .LinkUUID = "",
             .LeaderDiskId = "disk-1",
-            .LeaderShardId = "su0",
+            .LeaderCellId = "su0",
             .FollowerDiskId = "disk-1-copy",
-            .FollowerShardId = "su0"};
+            .FollowerCellId = "su0"};
 
         UNIT_ASSERT_VALUES_EQUAL(link.GetHash(), linkWithEmptyUUID.GetHash());
 
