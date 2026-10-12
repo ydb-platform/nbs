@@ -1788,19 +1788,33 @@ func (s *storageYDB) ChunksBackupCompleted(
 
 	defer s.metrics.StatOperation("ChunksBackupCompleted")(&err)
 
+	chunkIDs := tasks_common.NewStringSet()
+	for _, entry := range entries {
+		chunkIDs.Add(entry.ChunkID)
+	}
+
+	var chunkIDValues []persistence.Value
+	for _, chunkID := range chunkIDs.List() {
+		chunkIDValues = append(chunkIDValues, persistence.UTF8Value(chunkID))
+	}
+
 	// The object is in the follower now, so later copies of any snapshot skip
 	// the chunk. Only existing rows are marked: a missing row means the chunk
 	// was deleted from chunk_blobs and its object is queued for deletion.
+	//
+	// The rows are read by key: a join with the table scans it and locks it
+	// whole, so every concurrent write to follower_chunks aborts the
+	// transaction.
 	_, err = s.db.ExecuteRW(ctx, fmt.Sprintf(`
 		--!syntax_v1
 		pragma TablePathPrefix = "%v";
 		declare $keys as List<%v>;
+		declare $chunk_ids as List<Utf8>;
 
 		$copied = (
-			select f.chunk_id as chunk_id, true as copied
-			from follower_chunks as f
-			join (select distinct chunk_id from AS_TABLE($keys)) as k
-			on f.chunk_id = k.chunk_id
+			select chunk_id, true as copied
+			from follower_chunks
+			where chunk_id in $chunk_ids
 		);
 
 		delete from backup_chunk_queue
@@ -1813,6 +1827,10 @@ func (s *storageYDB) ChunksBackupCompleted(
 		backupChunkKeyStructTypeString(),
 	),
 		persistence.ValueParam("$keys", backupChunkKeyListValue(entries)),
+		persistence.ValueParam(
+			"$chunk_ids",
+			persistence.ListValue(chunkIDValues...),
+		),
 	)
 	return err
 }
