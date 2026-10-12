@@ -93,7 +93,6 @@ namespace {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-
 NProto::TError MakeGrpcError(const grpc::Status& status)
 {
     NProto::TError error;
@@ -102,14 +101,6 @@ NProto::TError MakeGrpcError(const grpc::Status& status)
         error.SetMessage(TString(status.error_message()));
     }
     return error;
-}
-
-grpc::Status MakeGrpcStatus(const NProto::TError& error)
-{
-    if (HasError(error)) {
-        return { grpc::UNAVAILABLE, error.GetMessage() };
-    }
-    return grpc::Status::OK;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
