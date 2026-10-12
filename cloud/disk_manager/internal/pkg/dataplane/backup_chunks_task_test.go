@@ -242,8 +242,12 @@ func TestBackupChunksTaskStopsOnRetriableError(t *testing.T) {
 
 	// The chunk storage is unavailable: the task stops on the first chunk
 	// instead of trying the next one, and the framework runs it again later.
+	// The task lives for hours, so the retry is not counted against the limit.
 	err = task.Run(ctx, execCtx)
 	require.True(t, errors.Is(err, errors.NewEmptyRetriableError()))
+	var retriable *errors.RetriableError
+	require.True(t, errors.As(err, &retriable))
+	require.True(t, retriable.IgnoreRetryLimit)
 	require.EqualValues(t, 1, unavailableStorage.reads.Load())
 
 	queue, err := queuedBackupChunks(ctx, storage)

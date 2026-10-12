@@ -15,6 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	tasks_config "github.com/ydb-platform/nbs/cloud/tasks/config"
+	"github.com/ydb-platform/nbs/cloud/tasks/errors"
 	metrics_empty "github.com/ydb-platform/nbs/cloud/tasks/metrics/empty"
 	"github.com/ydb-platform/nbs/cloud/tasks/operation"
 	"github.com/ydb-platform/nbs/cloud/tasks/persistence"
@@ -332,6 +333,47 @@ func TestSchedulerCancelTask(t *testing.T) {
 	mock.AssertExpectationsForObjects(t, storage)
 	assert.NoError(t, err)
 	assert.True(t, cancelling)
+}
+
+func TestSchedulerGetEndedTasks(t *testing.T) {
+	ctx, cancel := context.WithCancel(newContext())
+	defer cancel()
+
+	storage := mocks.NewStorageMock()
+	scheduler, err := NewScheduler(
+		ctx,
+		NewRegistry(),
+		storage,
+		defaultConfig(),
+		metrics_empty.NewRegistry(),
+	)
+	require.NoError(t, err)
+
+	statuses := map[string]tasks_storage.TaskStatus{
+		"running":    tasks_storage.TaskStatusRunning,
+		"cancelling": tasks_storage.TaskStatusCancelling,
+		"finished":   tasks_storage.TaskStatusFinished,
+		"cancelled":  tasks_storage.TaskStatusCancelled,
+	}
+	for taskID, status := range statuses {
+		storage.On("GetTask", mock.Anything, taskID).Return(
+			tasks_storage.TaskState{ID: taskID, Status: status},
+			nil,
+		)
+	}
+	storage.On("GetTask", mock.Anything, "cleared").Return(
+		tasks_storage.TaskState{},
+		errors.NewNonRetriableError(errors.NewNotFoundErrorWithTaskID("cleared")),
+	)
+
+	// A cancelling task has not ended yet: its Cancel still runs.
+	ended, err := scheduler.GetEndedTasks(
+		ctx,
+		[]string{"running", "cancelling", "finished", "cancelled", "cleared"},
+	)
+	require.NoError(t, err)
+	require.Equal(t, []string{"finished", "cancelled", "cleared"}, ended)
+	mock.AssertExpectationsForObjects(t, storage)
 }
 
 func TestSchedulerGetTaskMetadata(t *testing.T) {

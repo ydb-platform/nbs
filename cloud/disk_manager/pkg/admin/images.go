@@ -299,7 +299,7 @@ func (c *backupImage) run() error {
 	}
 	defer db.Close(ctx)
 
-	err = resourceStorage.EnqueueImageBackup(ctx, c.imageID)
+	err = resourceStorage.EnqueueImageBackup(ctx, c.imageID, generateID())
 	if err != nil {
 		return err
 	}
@@ -322,8 +322,9 @@ func newBackupImageCmd(
 		Use:   "backup",
 		Short: "Enqueue an image backup; repeated requests are successful",
 		Long: "Enqueue a backup of a ready image of any folder and return OK " +
-			"without waiting for completion. A request for an image that was " +
-			"already copied copies it again.",
+			"without waiting for completion. A request while a backup of the " +
+			"image is queued or running joins it; a request after it ended " +
+			"copies the image again.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return c.run()
 		},

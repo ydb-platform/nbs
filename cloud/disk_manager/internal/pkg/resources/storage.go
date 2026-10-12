@@ -54,6 +54,8 @@ type ImageMeta struct {
 	StorageSize       uint64                `json:"storage_size"`
 	Encryption        *types.EncryptionDesc `json:"encryption"`
 	Ready             bool                  `json:"ready"`
+	// A backup of the image completed; a deleting image is never marked.
+	BackupCompleted bool `json:"backup_completed"`
 }
 
 type SnapshotMeta struct {
@@ -128,6 +130,24 @@ type SnapshotBackupRequest struct {
 type SnapshotBackupID struct {
 	DiskID     string
 	SnapshotID string
+}
+
+type ImageBackupRequest struct {
+	ImageID  string
+	BackupID string
+}
+
+type ImageBackupQueueStats struct {
+	// Attempts waiting for a free slot.
+	Queued uint64
+	// Attempts whose task is scheduled.
+	Scheduled uint64
+}
+
+type ScheduledImageBackup struct {
+	ImageID  string
+	BackupID string
+	TaskID   string
 }
 
 // A queued backup attempt whose snapshots.BackupSnapshot task is scheduled.
@@ -206,15 +226,49 @@ type Storage interface {
 		creatingBefore time.Time,
 	) ([]string, error)
 
-	ListImagesToBackup(ctx context.Context, limit int) ([]string, error)
+	// Returns queued attempts that have no task yet, oldest first.
+	ListImagesToBackup(
+		ctx context.Context,
+		limit int,
+	) ([]ImageBackupRequest, error)
 
-	// Queues a ready image of any folder for backup. Repeated requests
-	// succeed; a request for an image that was already copied copies it again.
-	EnqueueImageBackup(ctx context.Context, imageID string) error
+	// Queues a ready image of any folder for backup as attempt backupID. A
+	// request for a backed up image does nothing, a request while an attempt
+	// is queued or running joins it, a request after it failed or was
+	// cancelled starts a new one.
+	EnqueueImageBackup(
+		ctx context.Context,
+		imageID string,
+		backupID string,
+	) error
 
-	ImageBackupScheduled(ctx context.Context, imageID string) error
+	// Records the task of a queued attempt. Returns when the attempt was
+	// queued; zero if it left the queue or was queued before the time was
+	// recorded.
+	ImageBackupScheduled(
+		ctx context.Context,
+		imageID string,
+		backupID string,
+		taskID string,
+	) (time.Time, error)
 
-	ImageBackupCancelled(ctx context.Context, imageID string) error
+	ListScheduledImageBackups(
+		ctx context.Context,
+		limit int,
+	) ([]ScheduledImageBackup, error)
+
+	// Removes the queue row of this attempt only. Does not mark the image as
+	// backed up.
+	RemoveImageFromBackupQueue(
+		ctx context.Context,
+		imageID string,
+		backupID string,
+	) error
+
+	// Marks a ready image as backed up. A deleting image is not marked.
+	ImageBackupCompleted(ctx context.Context, imageID string) error
+
+	GetImageBackupQueueStats(ctx context.Context) (ImageBackupQueueStats, error)
 
 	GetImageBackupDeleteQueue(ctx context.Context, limit int) ([]string, error)
 
